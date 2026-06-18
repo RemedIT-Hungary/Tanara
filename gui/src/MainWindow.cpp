@@ -37,10 +37,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
     setWindowTitle(QStringLiteral("Tanara"));
     resize(1100, 720);
 
-    m_player = new QMediaPlayer(this);
-    m_audioOutput = new QAudioOutput(this);
-    m_player->setAudioOutput(m_audioOutput);
-
+    // A QMediaPlayer-t LUSTÁN hozzuk létre (első lejátszáskor), hogy indításkor ne
+    // triggerelje a Qt Multimedia videó-hwaccel próbáját (libvdpau stderr-zaj).
     buildUi();
     buildMenu();
 
@@ -247,6 +245,11 @@ void MainWindow::onPlayClicked() {
         return;
     }
 
+    if (!m_player) {
+        m_player = new QMediaPlayer(this);
+        m_audioOutput = new QAudioOutput(this);
+        m_player->setAudioOutput(m_audioOutput);
+    }
     if (m_player->playbackState() == QMediaPlayer::PlayingState) {
         m_player->pause();
         m_playBtn->setText(QStringLiteral("▶ Lejátszás"));
