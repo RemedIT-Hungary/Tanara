@@ -44,14 +44,10 @@ QString formatTimestamp(qint64 ms) {
 
 } // namespace
 
-QString MergedTranscript::renderMarkdown() const {
-    // A Soniox subword-tokeneket ad, ahol a szóhatárt a vezető szóköz jelzi → a
-    // tokeneket KÖZVETLENÜL fűzzük össze (nem teszünk közéjük szóközt). Az átfedő
-    // beszéd token-szintű keveredése helyett beszélőnként, szünet-alapú blokkokba
-    // (utterance) rendezünk, majd a blokkokat idő szerint sorba tesszük.
+QVector<Utterance> MergedTranscript::segments() const {
+    // A Soniox subword-tokeneket KÖZVETLENÜL fűzzük (a vezető szóköz a szóhatár).
+    // Beszélőnként, szünet-alapú (1.5s) blokkokba rendezünk, majd idő szerint.
     const qint64 GAP_MS = 1500;
-
-    struct Utt { QString spk; qint64 startMs; qint64 endMs; QString text; };
 
     QHash<QString, QVector<const TranscriptToken*>> bySpeaker;
     QStringList speakerOrder;
@@ -60,13 +56,13 @@ QString MergedTranscript::renderMarkdown() const {
         bySpeaker[t.speaker].append(&t);
     }
 
-    QVector<Utt> utts;
+    QVector<Utterance> utts;
     for (const QString& spk : speakerOrder) {
-        Utt cur; bool have = false;
+        Utterance cur; bool have = false;
         for (const TranscriptToken* t : bySpeaker[spk]) {
             if (!have || (t->startMs - cur.endMs) > GAP_MS) {
                 if (have) utts.append(cur);
-                cur = Utt{spk, t->startMs, t->endMs, t->text};
+                cur = Utterance{t->startMs, t->endMs, spk, t->text};
                 have = true;
             } else {
                 cur.text += t->text;
@@ -76,19 +72,24 @@ QString MergedTranscript::renderMarkdown() const {
         if (have) utts.append(cur);
     }
 
-    std::stable_sort(utts.begin(), utts.end(),
-                     [](const Utt& a, const Utt& b) { return a.startMs < b.startMs; });
-
     static const QRegularExpression multiSpace(QStringLiteral("[ \\t]{2,}"));
-    QStringList paragraphs;
-    for (const Utt& u : utts) {
-        QString body = u.text;
-        body.replace(multiSpace, QStringLiteral(" "));
-        body = body.trimmed();
-        if (body.isEmpty()) continue;
-        paragraphs << QStringLiteral("**%1** [%2] %3")
-                          .arg(u.spk, formatTimestamp(u.startMs), body);
+    QVector<Utterance> out;
+    for (Utterance u : utts) {
+        u.text.replace(multiSpace, QStringLiteral(" "));
+        u.text = u.text.trimmed();
+        if (!u.text.isEmpty()) out.append(u);
     }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Utterance& a, const Utterance& b) { return a.startMs < b.startMs; });
+    return out;
+}
+
+QString MergedTranscript::renderMarkdown() const {
+    // Formátum: `[mm:ss]` **Beszélő** szöveg — időbélyeg ELŐL (időre kereshető).
+    QStringList paragraphs;
+    for (const Utterance& u : segments())
+        paragraphs << QStringLiteral("`[%1]` **%2** %3")
+                          .arg(formatTimestamp(u.startMs), u.speaker, u.text);
     return paragraphs.join(QStringLiteral("\n\n"));
 }
 

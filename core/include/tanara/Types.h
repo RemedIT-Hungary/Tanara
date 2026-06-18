@@ -58,9 +58,19 @@ struct TrackTranscript {
     QVector<TranscriptToken> tokens;
 };
 
+// Egy összefüggő beszéd-blokk (egy beszélő, szünetig). A lejátszó-szinkronhoz
+// és a kattintható transcripthez ez a gépiesen kezelhető egység.
+struct Utterance {
+    qint64 startMs = 0;
+    qint64 endMs = 0;
+    QString speaker;
+    QString text;
+};
+
 struct MergedTranscript {
     QString language;
     QVector<TranscriptToken> tokens;     // startMs szerint rendezve, sávok összefésülve
+    QVector<Utterance> segments() const; // beszélőnként, szünet-alapú blokkok időrendben
     QString renderMarkdown() const;      // impl: TranscriptMerger modul
 };
 
@@ -117,6 +127,7 @@ Q_DECLARE_METATYPE(tanara::AudioDeviceInfo)
 Q_DECLARE_METATYPE(tanara::Track)
 Q_DECLARE_METATYPE(tanara::TranscriptToken)
 Q_DECLARE_METATYPE(tanara::TrackTranscript)
+Q_DECLARE_METATYPE(tanara::Utterance)
 Q_DECLARE_METATYPE(tanara::MergedTranscript)
 Q_DECLARE_METATYPE(tanara::ActionItem)
 Q_DECLARE_METATYPE(tanara::Summary)

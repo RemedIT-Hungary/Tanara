@@ -95,12 +95,22 @@ void OpenAiCompatibleJob::onFinished()
     }
     reply->deleteLater();
 
+    const QByteArray data = reply->readAll();   // a hibatörzset is kiolvassuk
     if (reply->error() != QNetworkReply::NoError) {
-        emit failed(QStringLiteral("Hálózati hiba: %1").arg(reply->errorString()));
+        QString apiMsg;
+        const QJsonDocument edoc = QJsonDocument::fromJson(data);
+        if (edoc.isObject()) {
+            const QJsonValue ev = edoc.object().value(QStringLiteral("error"));
+            if (ev.isObject()) apiMsg = ev.toObject().value(QStringLiteral("message")).toString();
+            else if (ev.isString()) apiMsg = ev.toString();
+        }
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        emit failed(apiMsg.isEmpty()
+            ? QStringLiteral("Hálózati hiba: %1").arg(reply->errorString())
+            : QStringLiteral("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));
         return;
     }
 
-    const QByteArray data = reply->readAll();
     QJsonParseError perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &perr);
     if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -117,12 +127,13 @@ void OpenAiCompatibleJob::onFinished()
 
     const QJsonObject first = choices.at(0).toObject();
     const QJsonObject message = first.value(QStringLiteral("message")).toObject();
-    if (!message.contains(QStringLiteral("content"))) {
-        emit failed(QStringLiteral("Hiányzik a choices[0].message.content mező."));
+    QString content = message.value(QStringLiteral("content")).toString();
+    if (content.trimmed().isEmpty())   // reasoning-modell: a tartalom a reasoning_content-ben lehet
+        content = message.value(QStringLiteral("reasoning_content")).toString();
+    if (content.trimmed().isEmpty()) {
+        emit failed(QStringLiteral("Üres LLM-válasz (sem content, sem reasoning_content)."));
         return;
     }
-
-    const QString content = message.value(QStringLiteral("content")).toString();
     emit finished(content);
 }
 

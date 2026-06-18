@@ -60,6 +60,20 @@ void writeTokensJson(const QString& path, const MergedTranscript& mt) {
     }
 }
 
+void writeSegmentsJson(const QString& path, const QVector<Utterance>& segs) {
+    QJsonArray arr;
+    for (const auto& u : segs) {
+        QJsonObject o;
+        o["startMs"] = double(u.startMs);
+        o["endMs"]   = double(u.endMs);
+        o["speaker"] = u.speaker;
+        o["text"]    = u.text;
+        arr.append(o);
+    }
+    QSaveFile f(path);
+    if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented)); f.commit(); }
+}
+
 MergedTranscript readTokensJson(const QString& path) {
     MergedTranscript mt;
     QFile f(path);
@@ -288,6 +302,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
             const QString mdPath = QDir(m.folder).filePath(QStringLiteral("transcript.md"));
             writeTextFile(mdPath, merged.renderMarkdown());
             writeTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
+            writeSegmentsJson(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
             d->mergedCache.insert(m.id, merged);
             m.hasTranscript = true;
             d->store->saveMeeting(m);

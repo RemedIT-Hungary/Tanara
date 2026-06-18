@@ -52,7 +52,7 @@ AppSettings SettingsManager::defaults(const QString& metadataDir)
 
     s.llm.type    = QStringLiteral("openai-compat");
     s.llm.baseUrl = QStringLiteral("http://localhost:1234/v1");
-    s.llm.model   = QStringLiteral("gemma-4-12b");
+    s.llm.model   = QStringLiteral("google/gemma-4-12b");
 
     return s;
 }

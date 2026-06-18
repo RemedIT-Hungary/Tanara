@@ -139,6 +139,7 @@ void SummaryService::summarize(const MergedTranscript& transcript,
     LlmRequest req;
     req.model = model;
     req.stream = false;
+    req.maxTokens = 8000;   // reasoning-modellnek bőven kell (gondolkodás + JSON kimenet)
 
     ChatMessage sys;
     sys.role = QStringLiteral("system");
