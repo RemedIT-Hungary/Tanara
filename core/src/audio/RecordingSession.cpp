@@ -16,6 +16,7 @@
 #include <QUuid>
 #include <QVector>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -317,26 +318,54 @@ void RecordingSession::stop() {
         QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::BlockingQueuedConnection);
     impl_->teardownWorker();
 
-    // Mixdown — a fő szálon létrehozott+használt tranziens QProcess (egy szál, OK).
+    // Csendes sávok meghatározása ELŐRE (a mixdownhoz is kell): a csúcs-RMS-küszöb
+    // alattiak inaktívak (auto-eldobás, reverzibilis — a FÁJL MARAD). Ha MINDEN sáv
+    // néma lenne, egyiket sem dobjuk (inkább maradjon meg minden).
+    constexpr float kSilencePeak = 0.01f;   // tunálható; reverzibilis, ezért óvatosan alacsony
+    const int nTr = static_cast<int>(impl_->tracks.size());
+    auto peakOf = [&](int i) { return (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f; };
+    bool anyAbove = false;
+    for (int i = 0; i < nTr; ++i)
+        if (peakOf(i) >= kSilencePeak) anyAbove = true;
+    auto isActive = [&](int i) { return anyAbove ? (peakOf(i) >= kSilencePeak) : true; };
+
+    // Mixdown — a fő szálon, tranziens QProcess. CSAK az aktív (nem néma) sávokból:
+    // egy meg nem szólalt vagy üres sáv (pl. 0 frame-es loopback) az amix-et
+    // elronthatja, ezért kihagyjuk. Az időkorlát a felvétel hosszához igazodik —
+    // egy 90 perces mixdown a korábbi fix 120 s-nál tovább tart (akkor üresen maradt).
     QString mixdownRel;
-    if (!impl_->tracks.empty()) {
-        QStringList args{QStringLiteral("-hide_banner"),
-                         QStringLiteral("-loglevel"), QStringLiteral("error")};
-        for (const auto& t : impl_->tracks)
-            args << QStringLiteral("-i") << QDir(impl_->folder).absoluteFilePath(t.fileName);
-        const int inputs = static_cast<int>(impl_->tracks.size());
-        mixdownRel = QStringLiteral("mixdown.mp3");
-        args << QStringLiteral("-filter_complex")
-             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs)
-             << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
-             << QStringLiteral("-q:a") << QStringLiteral("4")
-             << QStringLiteral("-y") << QDir(impl_->folder).absoluteFilePath(mixdownRel);
-        QProcess mix;
-        mix.start(QStringLiteral("ffmpeg"), args);
-        bool mixOk = mix.waitForStarted(5000)
-                     && mix.waitForFinished(120000)
-                     && mix.exitStatus() == QProcess::NormalExit && mix.exitCode() == 0;
-        if (!mixOk) mixdownRel.clear();   // nem fatális
+    {
+        QStringList inArgs;
+        int inputs = 0;
+        for (int i = 0; i < nTr; ++i) {
+            if (!isActive(i)) continue;
+            inArgs << QStringLiteral("-i")
+                   << QDir(impl_->folder).absoluteFilePath(impl_->tracks[i].fileName);
+            ++inputs;
+        }
+        if (inputs > 0) {
+            QStringList args{QStringLiteral("-hide_banner"),
+                             QStringLiteral("-loglevel"), QStringLiteral("error")};
+            args += inArgs;
+            mixdownRel = QStringLiteral("mixdown.mp3");
+            if (inputs > 1) {
+                args << QStringLiteral("-filter_complex")
+                     << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs);
+            }   // 1 aktív sáv → nincs mit keverni, sima átkódolás MP3-ra
+            args << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
+                 << QStringLiteral("-q:a") << QStringLiteral("4")
+                 << QStringLiteral("-y") << QDir(impl_->folder).absoluteFilePath(mixdownRel);
+            QProcess mix;
+            mix.start(QStringLiteral("ffmpeg"), args);
+            // Legalább 3 perc, hosszú felvételnél ~valós idő + ráhagyás. (Az encode
+            // gyorsabb a valós időnél, így ennyit a gyakorlatban sosem vár ki teljesen.)
+            const int mixTimeout =
+                static_cast<int>(std::max<qint64>(180000, durationMs + 60000));
+            bool mixOk = mix.waitForStarted(5000)
+                         && mix.waitForFinished(mixTimeout)
+                         && mix.exitStatus() == QProcess::NormalExit && mix.exitCode() == 0;
+            if (!mixOk) mixdownRel.clear();   // nem fatális
+        }
     }
 
     // Meeting összeállítása.
@@ -347,16 +376,6 @@ void RecordingSession::stop() {
     m.startedAt = impl_->startedAt;
     m.durationMs = durationMs;
     m.mixdownFile = mixdownRel;
-    // Csendes sávok auto-eldobása: a csúcs-RMS-küszöb alattiak active=false-ot kapnak
-    // (a FÁJL MARAD a lemezen — utólag visszaállítható/törölhető). Ha MINDEN sáv a
-    // küszöb alatt lenne, egyiket sem dobjuk (inkább maradjon meg minden).
-    constexpr float kSilencePeak = 0.01f;   // tunálható; reverzibilis, ezért óvatosan alacsony
-    const int nTr = static_cast<int>(impl_->tracks.size());
-    auto peakOf = [&](int i) { return (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f; };
-
-    bool anyAbove = false;
-    for (int i = 0; i < nTr; ++i)
-        if (peakOf(i) >= kSilencePeak) anyAbove = true;
 
     // FONTOS: a felhasználót NEM hangerő/pozíció alapján nevezzük el — a beszélő
     // azonosítása a VOICE-ID (fingerprint) feladata (autoIdentifyMeeting). Itt a
@@ -378,7 +397,7 @@ void RecordingSession::stop() {
         tr.sampleRate = 48000;
         tr.channels = t.channels;
         tr.peakLevel = peakOf(i);
-        tr.active = anyAbove ? (tr.peakLevel >= kSilencePeak) : true;
+        tr.active = isActive(i);
         m.tracks.push_back(tr);
     }
 

@@ -313,8 +313,26 @@ QString MainWindow::readMarkdownFile(const QString& path) {
 }
 
 QString MainWindow::meetingAudioPath(const tanara::Meeting& m) {
-    return QDir(m.folder).filePath(
+    const QString mixdown = QDir(m.folder).filePath(
         m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
+    if (QFileInfo::exists(mixdown))
+        return mixdown;
+    // Nincs mixdown (régi felvétel vagy sikertelen keverés) → fallback: a legnagyobb
+    // AKTÍV sáv, hogy a lejátszás akkor is működjön. A szegmens-időbélyegek globálisak
+    // és minden sáv t=0-ról indul, így a kiemelés/odaugrás egyetlen sávra is időhelyes.
+    QString best;
+    qint64 bestSize = -1;
+    for (const tanara::Track& t : m.tracks) {
+        if (!t.active)
+            continue;
+        const QString p = QDir(m.folder).filePath(t.file);
+        const QFileInfo fi(p);
+        if (fi.exists() && fi.size() > bestSize) {
+            bestSize = fi.size();
+            best = p;
+        }
+    }
+    return best.isEmpty() ? mixdown : best;
 }
 
 void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
