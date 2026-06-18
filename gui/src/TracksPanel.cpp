@@ -51,11 +51,16 @@ TracksPanel::TracksPanel(QWidget* parent) : QWidget(parent) {
     m_stopBtn = new QPushButton(QStringLiteral("⏹"), this);
     m_restoreBtn = new QPushButton(QStringLiteral("Visszaállítás"), this);
     m_deleteBtn  = new QPushButton(QStringLiteral("🗑 Törlés (végleges)"), this);
+    m_remixBtn   = new QPushButton(QStringLiteral("🔀 Lekeverés frissítése"), this);
+    m_remixBtn->setToolTip(QStringLiteral(
+        "A kevert hang (mixdown.mp3) újragenerálása az AKTÍV sávokból — a lejátszó "
+        "ezt használja. Sáv eldobása/törlése után érdemes frissíteni."));
     btnRow->addWidget(m_playBtn);
     btnRow->addWidget(m_stopBtn);
     btnRow->addWidget(m_restoreBtn);
     btnRow->addWidget(m_deleteBtn);
     btnRow->addStretch(1);
+    btnRow->addWidget(m_remixBtn);
     root->addLayout(btnRow);
 
     connect(m_list, &QListWidget::itemSelectionChanged, this, &TracksPanel::updateButtons);
@@ -65,6 +70,7 @@ TracksPanel::TracksPanel(QWidget* parent) : QWidget(parent) {
     connect(m_stopBtn, &QPushButton::clicked, this, &TracksPanel::onStopClicked);
     connect(m_restoreBtn, &QPushButton::clicked, this, &TracksPanel::onRestoreClicked);
     connect(m_deleteBtn, &QPushButton::clicked, this, &TracksPanel::onDeleteClicked);
+    connect(m_remixBtn, &QPushButton::clicked, this, &TracksPanel::onRemixClicked);
     updateButtons();
 }
 
@@ -76,6 +82,8 @@ void TracksPanel::setMeeting(const tanara::Meeting& meeting) {
     m_meetingId = meeting.id;
     m_folder = meeting.folder;
     m_tracks = meeting.tracks;
+    m_mixdownDirty = meeting.mixdownDirty;
+    m_remixRunning = false;   // friss meeting-állapot → ha futott, mostanra kész
     onStopClicked();
     populate();
 }
@@ -84,6 +92,8 @@ void TracksPanel::clearMeeting() {
     m_meetingId.clear();
     m_folder.clear();
     m_tracks.clear();
+    m_mixdownDirty = false;
+    m_remixRunning = false;
     onStopClicked();
     populate();
 }
@@ -115,6 +125,30 @@ void TracksPanel::updateButtons() {
     m_restoreBtn->setEnabled(hasSel && !active);
     m_deleteBtn->setEnabled(hasSel);
     m_playBtn->setEnabled(hasSel);
+
+    // „Lekeverés frissítése": akkor van értelme, ha van meeting + (több) sáv. Ha a
+    // mixdown elavult (dirty), kiemeljük (félkövér + jelölés). Futás közben tiltva.
+    const bool canRemix = !m_meetingId.isEmpty() && !m_tracks.isEmpty();
+    m_remixBtn->setEnabled(canRemix && !m_remixRunning);
+    QFont rf = m_remixBtn->font();
+    rf.setBold(m_mixdownDirty && !m_remixRunning);
+    m_remixBtn->setFont(rf);
+    m_remixBtn->setText(m_remixRunning
+        ? QStringLiteral("⏳ Lekeverés folyamatban…")
+        : (m_mixdownDirty ? QStringLiteral("🔀 Lekeverés frissítése (elavult)")
+                          : QStringLiteral("🔀 Lekeverés frissítése")));
+}
+
+void TracksPanel::onRemixClicked() {
+    if (!m_controller || m_meetingId.isEmpty() || m_remixRunning)
+        return;
+    // A lejátszót elengedjük (a régi mixdown fájlja nyitva lehet → felülírható legyen),
+    // majd elindítjuk az aszinkron újrakeverést. A panel a tracksChanged jelre frissül
+    // (a MainWindow újratölti a meetinget → setMeeting → m_remixRunning visszaáll).
+    onStopClicked();
+    m_remixRunning = true;
+    updateButtons();
+    m_controller->regenerateMixdown(m_meetingId);
 }
 
 void TracksPanel::onPlayClicked() {
@@ -170,6 +204,12 @@ void TracksPanel::onDeleteClicked() {
     if (ans != QMessageBox::Yes)
         return;
 
+    // A fájl fizikai törléséhez Windowson NEM lehet nyitva → elengedjük a lejátszó
+    // forrását (ha épp ezt a sávot hallgattuk).
+    if (m_player) {
+        m_player->stop();
+        m_player->setSource(QUrl());
+    }
     m_controller->deleteTrack(m_meetingId, item->data(RoleTrackId).toString());
 }
 

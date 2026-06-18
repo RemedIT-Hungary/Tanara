@@ -101,6 +101,7 @@ struct Meeting {
     qint64 durationMs = 0;
     QVector<Track> tracks;
     QString mixdownFile;     // pl. "mixdown.mp3"
+    bool mixdownDirty = false;   // true → a sávok változtak a mixdown óta (újrakeverés kell)
     bool hasTranscript = false;
     bool hasSummary = false;
     QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")

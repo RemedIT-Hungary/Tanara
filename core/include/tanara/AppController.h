@@ -76,6 +76,12 @@ public slots:
     // Egy sáv VÉGLEGES törlése: a hangfájl fizikailag törlődik + kikerül a meetingből.
     void deleteTrack(const QString& meetingId, const QString& trackId);
 
+    // A mixdown.mp3 újrakeverése a meeting AKTÍV sávjaiból (a sávok módosítása után
+    // a mixdown „dirty" lesz; ez frissíti). Aszinkron (ffmpeg QProcess, nem blokkol):
+    // a végén mixdownUpdated(meetingId, ok) + tracksChanged jelet ad. jobProgress-t is
+    // emittál az állapotról. Ha nincs aktív sáv vagy fut már egy keverés → no-op.
+    void regenerateMixdown(const QString& meetingId);
+
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
 
@@ -126,6 +132,7 @@ signals:
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
+    void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
     void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
     void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot

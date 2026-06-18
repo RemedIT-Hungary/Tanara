@@ -141,6 +141,7 @@ QJsonObject toJson(const Meeting& m)
     o[QStringLiteral("tracks")] = tracks;
 
     o[QStringLiteral("mixdownFile")]   = m.mixdownFile;
+    o[QStringLiteral("mixdownDirty")]  = m.mixdownDirty;
     o[QStringLiteral("hasTranscript")] = m.hasTranscript;
     o[QStringLiteral("hasSummary")]    = m.hasSummary;
 
@@ -166,6 +167,7 @@ Meeting meetingFromJson(const QJsonObject& o)
         m.tracks.append(trackFromJson(v.toObject()));
 
     m.mixdownFile   = o.value(QStringLiteral("mixdownFile")).toString();
+    m.mixdownDirty  = o.value(QStringLiteral("mixdownDirty")).toBool(false);
     m.hasTranscript = o.value(QStringLiteral("hasTranscript")).toBool();
     m.hasSummary    = o.value(QStringLiteral("hasSummary")).toBool();
 

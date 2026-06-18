@@ -31,6 +31,7 @@ public:
 private slots:
     void onRestoreClicked();
     void onDeleteClicked();
+    void onRemixClicked();      // „Lekeverés frissítése" — mixdown újrakeverése
     void onPlayClicked();
     void onStopClicked();
     void updateButtons();
@@ -42,6 +43,8 @@ private:
     QString m_meetingId;
     QString m_folder;
     QVector<tanara::Track> m_tracks;
+    bool m_mixdownDirty = false;   // a meetingből: a sávok változtak a mixdown óta
+    bool m_remixRunning = false;   // épp fut egy újrakeverés (gomb tiltva)
 
     QLabel*      m_hint = nullptr;
     QListWidget* m_list = nullptr;
@@ -49,6 +52,7 @@ private:
     QPushButton* m_stopBtn = nullptr;
     QPushButton* m_restoreBtn = nullptr;
     QPushButton* m_deleteBtn = nullptr;
+    QPushButton* m_remixBtn = nullptr;
 
     QMediaPlayer* m_player = nullptr;
     QAudioOutput* m_audioOutput = nullptr;

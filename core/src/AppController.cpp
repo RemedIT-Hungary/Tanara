@@ -17,6 +17,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -528,6 +529,7 @@ void AppController::restoreTrack(const QString& meetingId, const QString& trackI
     for (Track& t : m.tracks)
         if (t.id == trackId && !t.active) { t.active = true; changed = true; }
     if (!changed) return;
+    m.mixdownDirty = true;   // megváltozott az aktív sáv-halmaz → a mixdown elavult
     d->store->saveMeeting(m);
     emit tracksChanged(meetingId);
 }
@@ -548,8 +550,71 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
     }
     if (!removed) return;
     m.tracks = kept;
+    m.mixdownDirty = true;   // megváltozott az aktív sáv-halmaz → a mixdown elavult
     d->store->saveMeeting(m);
     emit tracksChanged(meetingId);
+}
+
+void AppController::regenerateMixdown(const QString& meetingId) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+
+    // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe.
+    QStringList inArgs;
+    int inputs = 0;
+    for (const Track& t : m.tracks) {
+        if (!t.active) continue;
+        const QString path = QDir(m.folder).filePath(t.file);
+        if (!QFile::exists(path)) continue;
+        inArgs << QStringLiteral("-i") << path;
+        ++inputs;
+    }
+    if (inputs == 0) {
+        emit errorOccurred(QStringLiteral("Nincs aktív hangsáv a lekeveréshez."));
+        emit mixdownUpdated(meetingId, false);
+        return;
+    }
+
+    const QString outRel = QStringLiteral("mixdown.mp3");
+    const QString outPath = QDir(m.folder).filePath(outRel);
+
+    QStringList args{QStringLiteral("-hide_banner"),
+                     QStringLiteral("-loglevel"), QStringLiteral("error")};
+    args += inArgs;
+    if (inputs > 1) {
+        args << QStringLiteral("-filter_complex")
+             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs);
+    }   // 1 aktív sáv → sima átkódolás
+    args << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
+         << QStringLiteral("-q:a") << QStringLiteral("4")
+         << QStringLiteral("-y") << outPath;
+
+    // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat).
+    auto* proc = new QProcess(this);
+    proc->setProgram(QStringLiteral("ffmpeg"));
+    proc->setArguments(args);
+    connect(proc, &QProcess::finished, this,
+            [this, proc, meetingId, outRel](int code, QProcess::ExitStatus status) {
+        const bool ok = (status == QProcess::NormalExit && code == 0);
+        if (ok) {
+            // Friss meeting (közben módosulhatott) → mixdownFile + dirty törlése.
+            Meeting mm = d->store->load(meetingId);
+            if (!mm.id.isEmpty()) {
+                mm.mixdownFile  = outRel;
+                mm.mixdownDirty = false;
+                d->store->saveMeeting(mm);
+            }
+            emit jobProgress(meetingId, QStringLiteral("Lekeverés kész."));
+        } else {
+            emit errorOccurred(QStringLiteral("A lekeverés (ffmpeg) sikertelen."));
+        }
+        emit mixdownUpdated(meetingId, ok);
+        emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
+        proc->deleteLater();
+    });
+
+    emit jobProgress(meetingId, QStringLiteral("Lekeverés folyamatban…"));
+    proc->start();
 }
 
 void AppController::setUserSpeakerName(const QString& name) {
