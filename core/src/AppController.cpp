@@ -528,7 +528,8 @@ void AppController::summarizeMeeting(const QString& meetingId)
         emit errorOccurred(QStringLiteral("Összefoglaló hiba: %1").arg(e));
     });
 
-    svc->summarize(merged, /*contextNotes*/ QString(), /*glossary*/ QStringList(), s.llm.model);
+    svc->summarize(merged, /*contextNotes*/ QString(), /*glossary*/ QStringList(),
+                   s.llm.model, s.llm.temperature, s.llm.maxTokens);
 }
 
 } // namespace tanara

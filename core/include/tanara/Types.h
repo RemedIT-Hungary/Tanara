@@ -110,6 +110,8 @@ struct ProviderConfig {
     QString baseUrl;
     QString apiKey;          // futásidőben; tároláskor keychainbe megy
     QString model;
+    double temperature = 0.2; // LLM mintavételezési hőmérséklet (összefoglaló); STT nem használja
+    int maxTokens = 8000;     // LLM válasz max tokenszáma (reasoning-modellnek bőven); STT nem használja
     QVariantMap extra;
 };
 

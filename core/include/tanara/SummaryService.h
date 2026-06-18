@@ -23,7 +23,9 @@ public:
     void summarize(const MergedTranscript& transcript,
                    const QString& contextNotes,
                    const QStringList& glossary,
-                   const QString& model = {});
+                   const QString& model = {},
+                   double temperature = 0.2,
+                   int maxTokens = 8000);
 
 signals:
     void summaryReady(const tanara::Summary& summary);

@@ -179,6 +179,8 @@ QJsonObject toJson(const ProviderConfig& p)
     o[QStringLiteral("type")]    = p.type;
     o[QStringLiteral("baseUrl")] = p.baseUrl;
     o[QStringLiteral("model")]   = p.model;
+    o[QStringLiteral("temperature")] = p.temperature;
+    o[QStringLiteral("maxTokens")]   = p.maxTokens;
     if (!p.extra.isEmpty())
         o[QStringLiteral("extra")] = QJsonObject::fromVariantMap(p.extra);
     return o;
@@ -190,6 +192,9 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
     p.type    = o.value(QStringLiteral("type")).toString();
     p.baseUrl = o.value(QStringLiteral("baseUrl")).toString();
     p.model   = o.value(QStringLiteral("model")).toString();
+    // Visszafelé kompatibilis: hiányzó mezőnél a ProviderConfig-default marad.
+    p.temperature = o.value(QStringLiteral("temperature")).toDouble(0.2);
+    p.maxTokens   = o.value(QStringLiteral("maxTokens")).toInt(8000);
     // apiKey-t SOHA nem olvasunk JSON-ből; futásidőben a KeyStore tölti.
     if (o.contains(QStringLiteral("extra")))
         p.extra = o.value(QStringLiteral("extra")).toObject().toVariantMap();

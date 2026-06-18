@@ -129,7 +129,9 @@ SummaryService::~SummaryService() = default;
 void SummaryService::summarize(const MergedTranscript& transcript,
                                const QString& contextNotes,
                                const QStringList& glossary,
-                               const QString& model)
+                               const QString& model,
+                               double temperature,
+                               int maxTokens)
 {
     if (!m_provider) {
         emit summaryFailed(QStringLiteral("Nincs beállított LLM provider."));
@@ -139,7 +141,8 @@ void SummaryService::summarize(const MergedTranscript& transcript,
     LlmRequest req;
     req.model = model;
     req.stream = false;
-    req.maxTokens = 8000;   // reasoning-modellnek bőven kell (gondolkodás + JSON kimenet)
+    req.temperature = temperature;
+    req.maxTokens = maxTokens > 0 ? maxTokens : 8000;   // reasoning-modellnek bőven kell (gondolkodás + JSON kimenet)
 
     ChatMessage sys;
     sys.role = QStringLiteral("system");

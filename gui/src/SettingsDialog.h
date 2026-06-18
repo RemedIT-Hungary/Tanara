@@ -8,6 +8,8 @@ class QLineEdit;
 class QComboBox;
 class QPushButton;
 class QLabel;
+class QDoubleSpinBox;
+class QSpinBox;
 
 namespace tanara {
 class AppController;
@@ -43,6 +45,8 @@ private:
     QComboBox* m_llmModel = nullptr;        // szerkeszthető: kézi bevitel is marad
     QPushButton* m_llmFetchBtn = nullptr;
     QLabel* m_llmModelStatus = nullptr;     // inline visszajelzés (hiba)
+    QDoubleSpinBox* m_llmTemperature = nullptr; // összefoglaló mintavételezési hőmérséklet
+    QSpinBox* m_llmMaxTokens = nullptr;         // összefoglaló válasz max tokenszám
     QLineEdit* m_sonioxApiKey = nullptr;  // jelszó-echo, csak írásra
 };
 

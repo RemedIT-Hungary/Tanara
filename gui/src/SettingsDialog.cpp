@@ -6,6 +6,8 @@
 
 #include <QLineEdit>
 #include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QPushButton>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -90,8 +92,26 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     m_llmModelStatus->setStyleSheet(QStringLiteral("color: #b00020;"));
     m_llmModelStatus->setVisible(false);
 
+    // Finomhangolás: hőmérséklet (0–2) és max tokenszám.
+    m_llmTemperature = new QDoubleSpinBox(llmBox);
+    m_llmTemperature->setRange(0.0, 2.0);
+    m_llmTemperature->setSingleStep(0.1);
+    m_llmTemperature->setDecimals(2);
+    m_llmTemperature->setToolTip(QStringLiteral(
+        "Alacsony = pontosabb/egyhangúbb, magas = kreatívabb. Összefoglalóhoz 0,1–0,3 ajánlott."));
+
+    m_llmMaxTokens = new QSpinBox(llmBox);
+    m_llmMaxTokens->setRange(256, 32768);
+    m_llmMaxTokens->setSingleStep(512);
+    m_llmMaxTokens->setToolTip(QStringLiteral(
+        "A válasz maximális hossza tokenben. Reasoning-modellnél (Gemma) magasabb kell (~8000), "
+        "mert a gondolkodás is beleszámít.\n"
+        "Megjegyzés: a context-méret a modell LM Studio-beli betöltésekor dől el, nem itt."));
+
     llmForm->addRow(QStringLiteral("Alap URL:"), m_llmBaseUrl);
     llmForm->addRow(QStringLiteral("Modell:"), modelRow);
+    llmForm->addRow(QStringLiteral("Hőmérséklet:"), m_llmTemperature);
+    llmForm->addRow(QStringLiteral("Max. tokenszám:"), m_llmMaxTokens);
     llmForm->addRow(QString(), m_llmModelStatus);
     root->addWidget(llmBox);
 
@@ -167,6 +187,8 @@ void SettingsDialog::loadFromController() {
     m_sttModel->setText(s.stt.model);
     m_llmBaseUrl->setText(s.llm.baseUrl);
     m_llmModel->setEditText(s.llm.model);
+    m_llmTemperature->setValue(s.llm.temperature);
+    m_llmMaxTokens->setValue(s.llm.maxTokens > 0 ? s.llm.maxTokens : 8000);
     // Az API-kulcsot SOHA nem töltjük vissza (titok).
 }
 
@@ -185,6 +207,8 @@ void SettingsDialog::onAccept() {
     s.stt.model = m_sttModel->text().trimmed();
     s.llm.baseUrl = m_llmBaseUrl->text().trimmed();
     s.llm.model = m_llmModel->currentText().trimmed();
+    s.llm.temperature = m_llmTemperature->value();
+    s.llm.maxTokens = m_llmMaxTokens->value();
 
     m_controller->settings()->setSettings(s);
 
