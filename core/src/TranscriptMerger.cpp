@@ -2,6 +2,8 @@
 
 #include <QString>
 #include <QStringList>
+#include <QHash>
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace tanara {
@@ -40,50 +42,53 @@ QString formatTimestamp(qint64 ms) {
         .arg(ss, 2, 10, QLatin1Char('0'));
 }
 
-// A tokenek összeillesztése egy bekezdés szövegévé: szóköz a tokenek között,
-// de írásjel elé nem teszünk szóközt.
-QString joinTokens(const QStringList& parts) {
-    QString out;
-    for (const QString& raw : parts) {
-        const QString p = raw;
-        if (p.isEmpty())
-            continue;
-        if (!out.isEmpty()) {
-            const QChar c = p.at(0);
-            const bool isPunct = (c == QLatin1Char('.') || c == QLatin1Char(',') ||
-                                  c == QLatin1Char('!') || c == QLatin1Char('?') ||
-                                  c == QLatin1Char(':') || c == QLatin1Char(';'));
-            if (!isPunct && !out.endsWith(QLatin1Char(' ')))
-                out += QLatin1Char(' ');
-        }
-        out += p;
-    }
-    return out.trimmed();
-}
 } // namespace
 
 QString MergedTranscript::renderMarkdown() const {
-    QStringList paragraphs;
+    // A Soniox subword-tokeneket ad, ahol a szóhatárt a vezető szóköz jelzi → a
+    // tokeneket KÖZVETLENÜL fűzzük össze (nem teszünk közéjük szóközt). Az átfedő
+    // beszéd token-szintű keveredése helyett beszélőnként, szünet-alapú blokkokba
+    // (utterance) rendezünk, majd a blokkokat idő szerint sorba tesszük.
+    const qint64 GAP_MS = 1500;
 
-    int i = 0;
-    const int n = tokens.size();
-    while (i < n) {
-        const QString speaker = tokens[i].speaker;
-        const qint64 startMs = tokens[i].startMs;
+    struct Utt { QString spk; qint64 startMs; qint64 endMs; QString text; };
 
-        QStringList parts;
-        int j = i;
-        while (j < n && tokens[j].speaker == speaker) {
-            parts << tokens[j].text;
-            ++j;
-        }
-
-        const QString body = joinTokens(parts);
-        paragraphs << QStringLiteral("**%1** [%2] %3")
-                          .arg(speaker, formatTimestamp(startMs), body);
-        i = j;
+    QHash<QString, QVector<const TranscriptToken*>> bySpeaker;
+    QStringList speakerOrder;
+    for (const TranscriptToken& t : tokens) {
+        if (!bySpeaker.contains(t.speaker)) speakerOrder << t.speaker;
+        bySpeaker[t.speaker].append(&t);
     }
 
+    QVector<Utt> utts;
+    for (const QString& spk : speakerOrder) {
+        Utt cur; bool have = false;
+        for (const TranscriptToken* t : bySpeaker[spk]) {
+            if (!have || (t->startMs - cur.endMs) > GAP_MS) {
+                if (have) utts.append(cur);
+                cur = Utt{spk, t->startMs, t->endMs, t->text};
+                have = true;
+            } else {
+                cur.text += t->text;
+                cur.endMs = t->endMs;
+            }
+        }
+        if (have) utts.append(cur);
+    }
+
+    std::stable_sort(utts.begin(), utts.end(),
+                     [](const Utt& a, const Utt& b) { return a.startMs < b.startMs; });
+
+    static const QRegularExpression multiSpace(QStringLiteral("[ \\t]{2,}"));
+    QStringList paragraphs;
+    for (const Utt& u : utts) {
+        QString body = u.text;
+        body.replace(multiSpace, QStringLiteral(" "));
+        body = body.trimmed();
+        if (body.isEmpty()) continue;
+        paragraphs << QStringLiteral("**%1** [%2] %3")
+                          .arg(u.spk, formatTimestamp(u.startMs), body);
+    }
     return paragraphs.join(QStringLiteral("\n\n"));
 }
 

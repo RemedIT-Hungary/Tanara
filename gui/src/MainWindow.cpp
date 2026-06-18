@@ -19,6 +19,7 @@
 #include <QMenuBar>
 #include <QMenu>
 #include <QStatusBar>
+#include <QProgressBar>
 #include <QMessageBox>
 #include <QItemSelectionModel>
 #include <QItemSelection>
@@ -94,6 +95,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onSummaryReady);
         connect(m_controller, &tanara::AppController::errorOccurred,
                 this, &MainWindow::onError);
+        connect(m_controller, &tanara::AppController::jobProgress,
+                this, &MainWindow::onJobProgress);
         connect(m_controller, &tanara::AppController::recordingFinished,
                 this, &MainWindow::onRecordingFinished);
 
@@ -181,6 +184,12 @@ void MainWindow::buildUi() {
     setCentralWidget(splitter);
 
     statusBar()->showMessage(QStringLiteral("Készen áll"));
+    m_busyBar = new QProgressBar(this);
+    m_busyBar->setRange(0, 0);            // indeterminált (pörgő) busy-jelző
+    m_busyBar->setMaximumWidth(160);
+    m_busyBar->setTextVisible(false);
+    m_busyBar->setVisible(false);
+    statusBar()->addPermanentWidget(m_busyBar);
 
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_summarizeBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
@@ -299,7 +308,7 @@ void MainWindow::onTranscribeClicked() {
     const tanara::Meeting m = selectedMeeting(&ok);
     if (!ok || !m_controller)
         return;
-    statusBar()->showMessage(QStringLiteral("Átírás folyamatban…"));
+    setBusy(true, QStringLiteral("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
 }
 
@@ -308,7 +317,7 @@ void MainWindow::onSummarizeClicked() {
     const tanara::Meeting m = selectedMeeting(&ok);
     if (!ok || !m_controller)
         return;
-    statusBar()->showMessage(QStringLiteral("Összefoglaló készítése…"));
+    setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
 }
 
@@ -340,6 +349,7 @@ void MainWindow::onPlayClicked() {
 }
 
 void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) {
+    setBusy(false);
     statusBar()->showMessage(QStringLiteral("Átirat elkészült."), 5000);
     if (meetingId != m_currentMeetingId)
         return;
@@ -352,6 +362,7 @@ void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) 
 }
 
 void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
+    setBusy(false);
     statusBar()->showMessage(QStringLiteral("Összefoglaló elkészült."), 5000);
     if (meetingId != m_currentMeetingId)
         return;
@@ -364,8 +375,24 @@ void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
 }
 
 void MainWindow::onError(QString message) {
+    setBusy(false);
     statusBar()->showMessage(QStringLiteral("Hiba: ") + message, 8000);
     QMessageBox::warning(this, QStringLiteral("Hiba"), message);
+}
+
+void MainWindow::onJobProgress(QString /*meetingId*/, QString message) {
+    setBusy(true, message);
+}
+
+void MainWindow::setBusy(bool busy, const QString& msg) {
+    if (m_busyBar) m_busyBar->setVisible(busy);
+    if (!msg.isEmpty()) statusBar()->showMessage(msg);
+    if (busy) {
+        if (m_transcribeBtn) m_transcribeBtn->setEnabled(false);
+        if (m_summarizeBtn)  m_summarizeBtn->setEnabled(false);
+    } else {
+        loadSelectedMeetingViews();   // gombok visszaállítása a kiválasztás szerint
+    }
 }
 
 void MainWindow::onRecordingFinished(tanara::Meeting meeting) {

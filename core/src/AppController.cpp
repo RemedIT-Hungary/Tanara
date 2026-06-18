@@ -98,6 +98,17 @@ void saveLastDevices(const QString& path, const QStringList& names) {
     if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); f.commit(); }
 }
 
+QString sttPhase(JobState s) {
+    switch (s) {
+    case JobState::Uploading:  return QStringLiteral("Hang feltöltése…");
+    case JobState::Queued:     return QStringLiteral("Várakozás a Soniox sorban…");
+    case JobState::Processing: return QStringLiteral("Átírás folyamatban…");
+    case JobState::Completed:  return QStringLiteral("Sáv kész");
+    case JobState::Failed:     return QStringLiteral("Hiba");
+    default:                   return QStringLiteral("…");
+    }
+}
+
 QString slugify(const QString& s) {
     QString out;
     for (QChar c : s) out += (c.isLetterOrNumber() ? c : QChar('-'));
@@ -247,6 +258,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
     }
 
     auto* provider = new SonioxProvider(cfg, this);
+    emit jobProgress(m.id, QStringLiteral("Átírás indítása…"));
 
     struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
     auto ctx = std::make_shared<Ctx>();
@@ -263,6 +275,10 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.diarization = false;
 
         SttJob* job = provider->transcribe(req);
+        connect(job, &SttJob::stateChanged, this,
+                [this, id = m.id, label = t.speakerLabel](JobState st) {
+                    emit jobProgress(id, sttPhase(st) + QStringLiteral(" — ") + label);
+                });
         connect(job, &SttJob::finished, this, [this, ctx, i, m, provider](const TrackTranscript& tr) mutable {
             if (ctx->failed) return;
             ctx->results[i] = tr;
@@ -305,6 +321,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
     auto* provider = new OpenAiCompatibleProvider(cfg, this);
     auto* svc = new SummaryService(provider, this);
+    emit jobProgress(meetingId, QStringLiteral("Összefoglalás a helyi modellel (Gemma)…"));
 
     connect(svc, &SummaryService::summaryReady, this, [this, m, provider, svc](const Summary& sum) mutable {
         const QString md = sum.renderMarkdown();

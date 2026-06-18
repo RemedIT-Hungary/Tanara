@@ -69,6 +69,7 @@ signals:
     void recordingFinished(tanara::Meeting meeting);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
+    void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 
 private:

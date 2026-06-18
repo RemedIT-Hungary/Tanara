@@ -12,6 +12,7 @@ class QSortFilterProxyModel;
 class QTextBrowser;
 class QTabWidget;
 class QPushButton;
+class QProgressBar;
 class QMediaPlayer;
 class QAudioOutput;
 class QItemSelection;
@@ -43,6 +44,7 @@ private slots:
     void onTranscriptReady(QString meetingId, QString markdownPath);
     void onSummaryReady(QString meetingId, QString markdownPath);
     void onError(QString message);
+    void onJobProgress(QString meetingId, QString message);
     void openSettings();
     void onRecordingFinished(tanara::Meeting meeting);
 
@@ -51,6 +53,7 @@ private:
     void buildMenu();
     void loadSelectedMeetingViews();
     void reloadMeetings();
+    void setBusy(bool busy, const QString& msg = QString());
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
@@ -69,6 +72,7 @@ private:
     QPushButton*  m_transcribeBtn = nullptr;
     QPushButton*  m_summarizeBtn = nullptr;
     QPushButton*  m_playBtn = nullptr;
+    QProgressBar* m_busyBar = nullptr;
 
     QMediaPlayer* m_player = nullptr;
     QAudioOutput* m_audioOutput = nullptr;
