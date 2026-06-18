@@ -20,7 +20,11 @@ target_include_directories(miniaudio INTERFACE ${CMAKE_SOURCE_DIR}/third_party/m
 
 enable_testing()
 
+option(TANARA_BUILD_GUI "Build the Qt Widgets GUI" ON)
+
 add_subdirectory(core)
 add_subdirectory(cli)
-add_subdirectory(gui)
+if(TANARA_BUILD_GUI)
+    add_subdirectory(gui)
+endif()
 add_subdirectory(tests)

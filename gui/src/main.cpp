@@ -1,13 +1,22 @@
-// Tanara GUI (Qt Widgets). MVP-ig placeholder ablak.
-#include "tanara/Types.h"
+// Tanara GUI (Qt Widgets) — belépési pont.
+#include "MainWindow.h"
+
+#include "tanara/AppController.h"
+
 #include <QApplication>
-#include <QLabel>
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    QLabel w(QStringLiteral("Tanara %1 — scaffold").arg(tanara::libraryVersion()));
-    w.setMinimumSize(420, 120);
-    w.setAlignment(Qt::AlignCenter);
-    w.show();
+    QApplication::setApplicationName(QStringLiteral("Tanara"));
+    QApplication::setOrganizationName(QStringLiteral("RemedIT"));
+
+    tanara::AppController controller;
+
+    tanara_gui::MainWindow window(&controller);
+    window.show();
+
+    // Eszközök felsorolása indításkor (→ devicesChanged → eszközlista feltöltése).
+    controller.refreshDevices();
+
     return app.exec();
 }

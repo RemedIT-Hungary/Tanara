@@ -1,0 +1,71 @@
+#pragma once
+//
+// AppController — az EGYETLEN objektum, amihez az UI köt (Widgets most, QML később).
+// Összedrótozza a modulokat: beállítások, eszközök, felvétel, tár, STT, LLM, összefoglaló.
+// SZABÁLY: itt sincs Widgets-függőség — sima QObject API (signal/slot + value DTO-k).
+//
+#include "tanara/Types.h"
+#include <QObject>
+#include <QVector>
+#include <memory>
+
+namespace tanara {
+
+class SettingsManager;
+class DeviceManager;
+class MeetingStore;
+
+class AppController : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(tanara::RecordingState recordingState READ recordingState NOTIFY recordingStateChanged)
+public:
+    explicit AppController(QObject* parent = nullptr);
+    ~AppController() override;
+
+    // Alkomponensek (a UI ezekre köthet modellt/nézetet — pl. MeetingListModel::setStore(store())).
+    SettingsManager* settings() const;
+    DeviceManager*   devices() const;
+    MeetingStore*    store() const;
+
+    RecordingState recordingState() const;
+    QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
+
+public slots:
+    // Eszközök újrafelsorolása (→ devicesChanged()).
+    void refreshDevices();
+
+    // Felvétel indítása a megadott eszközökkel (üres → az összes capture eszköz).
+    void startRecording(const QString& title, const QVector<tanara::AudioDeviceInfo>& devices = {});
+    void stopRecording();
+
+    // Egy meeting átírása (Soniox, per-sáv → merge → transcript.md). Kulcs a KeyStore-ból.
+    void transcribeMeeting(const QString& meetingId);
+    // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
+    void summarizeMeeting(const QString& meetingId);
+
+    // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
+    void setSecret(const QString& name, const QString& value);
+    bool hasSecret(const QString& name) const;
+
+signals:
+    void devicesChanged();
+    void recordingStateChanged(tanara::RecordingState state);
+    void levelMeterUpdated(int trackIndex, float rms);
+    void elapsedChanged(qint64 ms);
+    void recordingFinished(tanara::Meeting meeting);
+    void transcriptReady(QString meetingId, QString markdownPath);
+    void summaryReady(QString meetingId, QString markdownPath);
+    void errorOccurred(QString message);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> d;
+};
+
+// A KeyStore kulcsnevei (egy helyen).
+namespace keys {
+inline const QString SonioxApiKey = QStringLiteral("soniox.apiKey");
+inline const QString LlmApiKey    = QStringLiteral("llm.apiKey");
+}
+
+} // namespace tanara
