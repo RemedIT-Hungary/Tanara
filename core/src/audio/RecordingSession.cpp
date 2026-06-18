@@ -36,47 +36,81 @@ QString slugify(const QString& in) {
     return s;
 }
 
-// Egy felvett sáv minden lemez-oldali állapota.
-struct TrackProc {
-    int engineIndex = 0;               // az AudioEngine slot-indexe
-    QProcess* ffmpeg = nullptr;        // raw PCM stdin → Opus
-    QString fileName;                  // pl. "track_mic.ogg" (relatív)
+// Egy sáv lemez-oldali metaadata (a QProcess NEM itt él — azt a worker birtokolja
+// a saját szálán, hogy semmilyen cross-thread QProcess hozzáférés ne legyen).
+struct TrackMeta {
+    int engineIndex = 0;
+    QString fileName;          // pl. "track_mic.ogg" (relatív)
     QString slug;
     int channels = 1;
     TrackKind kind = TrackKind::Mic;
     QString deviceName;
     QString speakerLabel;
-    std::vector<int16_t> scratch;      // drain ideiglenes puffer (worker szálon)
 };
 
 } // namespace
 
-// A drain worker: külön QThread-en él egy QTimer, ami periodikusan kiüríti az
-// összes körpuffert és a PCM-bájtokat a megfelelő ffmpeg stdin-jére írja.
-// Külön QObject, hogy moveToThread-elhető legyen.
+// A drain worker külön QThread-en él. MINDEN ffmpeg QProcess-t Ő hoz létre, Ő ír
+// rá és Ő zárja le — ugyanazon a szálon, így nincs "QSocketNotifier from another
+// thread" probléma és nincs adatvesztés-kockázat.
 class DrainWorker : public QObject {
     Q_OBJECT
 public:
-    DrainWorker(AudioEngine* engine, std::vector<TrackProc>* tracks)
-        : engine_(engine), tracks_(tracks) {}
+    DrainWorker(AudioEngine* engine, const std::vector<TrackMeta>* tracks, QString folder)
+        : engine_(engine), tracks_(tracks), folder_(std::move(folder)) {}
+
+    ~DrainWorker() override {
+        for (QProcess* p : procs_) delete p;
+    }
 
 public slots:
-    void begin() {
+    // A worker szálán fut (BlockingQueuedConnection). Létrehozza+indítja az
+    // encodereket; true ha minden elindult. Sikertelenségnél visszatakarít.
+    bool startEncoders() {
+        const int n = static_cast<int>(tracks_->size());
+        procs_.assign(n, nullptr);
+        scratch_.resize(n);
+        for (int i = 0; i < n; ++i) {
+            const TrackMeta& t = (*tracks_)[i];
+            auto* proc = new QProcess(this);          // a worker szálon él
+            const QString outPath = QDir(folder_).absoluteFilePath(t.fileName);
+            const QStringList args{
+                QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+                QStringLiteral("-f"), QStringLiteral("s16le"),
+                QStringLiteral("-ar"), QStringLiteral("48000"),
+                QStringLiteral("-ac"), QString::number(t.channels),
+                QStringLiteral("-i"), QStringLiteral("pipe:0"),
+                QStringLiteral("-c:a"), QStringLiteral("libopus"),
+                QStringLiteral("-b:a"), QStringLiteral("64k"),
+                QStringLiteral("-y"), outPath};
+            proc->start(QStringLiteral("ffmpeg"), args);
+            if (!proc->waitForStarted(5000)) {
+                delete proc;
+                for (QProcess* p : procs_) { if (p) { p->kill(); delete p; } }
+                procs_.clear();
+                return false;
+            }
+            procs_[i] = proc;
+        }
         timer_ = new QTimer(this);
-        timer_->setInterval(20);  // 50 Hz drain; bőven a 30 Hz meter fölött
+        timer_->setInterval(20);   // 50 Hz drain
         connect(timer_, &QTimer::timeout, this, &DrainWorker::tick);
         meter_.start();
         elapsed_.start();
         timer_->start();
+        return true;
     }
 
-    // Utolsó ürítés stop előtt (a maradék minták kiírása).
-    void finalDrain() {
-        drainOnce(/*emitMeters=*/false);
-    }
-
-    void shutdown() {
+    // Stopkor (BlockingQueuedConnection): utolsó ürítés + encoderek lezárása,
+    // megvárva az ffmpeg-ek befejezését — mind a worker szálon.
+    void finalize() {
         if (timer_) { timer_->stop(); }
+        drainOnce(/*emitMeters=*/false);
+        for (QProcess* p : procs_) {
+            if (!p) continue;
+            p->closeWriteChannel();
+            if (!p->waitForFinished(30000)) { p->kill(); p->waitForFinished(2000); }
+        }
     }
 
 signals:
@@ -84,40 +118,39 @@ signals:
     void elapsed(qint64 ms);
 
 private slots:
-    void tick() {
-        drainOnce(/*emitMeters=*/true);
-    }
+    void tick() { drainOnce(/*emitMeters=*/true); }
 
 private:
     void drainOnce(bool emitMeters) {
         const int n = static_cast<int>(tracks_->size());
         for (int i = 0; i < n; ++i) {
-            TrackProc& t = (*tracks_)[i];
-            RingBuffer& ring = engine_->buffer(t.engineIndex);
+            RingBuffer& ring = engine_->buffer((*tracks_)[i].engineIndex);
             size_t avail = ring.available();
             while (avail > 0) {
-                if (t.scratch.size() < avail) t.scratch.resize(avail);
-                const size_t got = ring.read(t.scratch.data(), avail);
+                if (scratch_[i].size() < avail) scratch_[i].resize(avail);
+                const size_t got = ring.read(scratch_[i].data(), avail);
                 if (got == 0) break;
-                if (t.ffmpeg && t.ffmpeg->state() == QProcess::Running) {
-                    t.ffmpeg->write(reinterpret_cast<const char*>(t.scratch.data()),
-                                    static_cast<qint64>(got * sizeof(int16_t)));
+                QProcess* p = procs_[i];
+                if (p && p->state() == QProcess::Running) {
+                    p->write(reinterpret_cast<const char*>(scratch_[i].data()),
+                             static_cast<qint64>(got * sizeof(int16_t)));
                 }
                 avail = ring.available();
             }
         }
-
-        if (emitMeters && meter_.elapsed() >= 33) {  // ~30 Hz
+        if (emitMeters && meter_.elapsed() >= 33) {   // ~30 Hz
             meter_.restart();
-            for (int i = 0; i < n; ++i) {
+            for (int i = 0; i < n; ++i)
                 emit meter(i, engine_->rms((*tracks_)[i].engineIndex));
-            }
             emit elapsed(elapsed_.elapsed());
         }
     }
 
     AudioEngine* engine_ = nullptr;
-    std::vector<TrackProc>* tracks_ = nullptr;
+    const std::vector<TrackMeta>* tracks_ = nullptr;
+    QString folder_;
+    std::vector<QProcess*> procs_;
+    std::vector<std::vector<int16_t>> scratch_;
     QTimer* timer_ = nullptr;
     QElapsedTimer meter_;
     QElapsedTimer elapsed_;
@@ -128,7 +161,7 @@ struct RecordingSession::Impl {
     QString title;
     QString userSpeakerName;
 
-    QString folder;                    // abszolút meeting-mappa
+    QString folder;
     QString id;
     QDateTime startedAt;
     QElapsedTimer wall;
@@ -136,10 +169,19 @@ struct RecordingSession::Impl {
     RecordingState state = RecordingState::Idle;
 
     std::unique_ptr<AudioEngine> engine;
-    std::vector<TrackProc> tracks;
+    std::vector<TrackMeta> tracks;
 
     QThread* workerThread = nullptr;
     DrainWorker* worker = nullptr;
+
+    void teardownWorker() {
+        if (workerThread) {
+            workerThread->quit();
+            workerThread->wait(3000);
+        }
+        delete worker; worker = nullptr;          // a dtor törli a QProcess-eket
+        delete workerThread; workerThread = nullptr;
+    }
 };
 
 RecordingSession::RecordingSession(QString audioDir, QString title,
@@ -152,22 +194,10 @@ RecordingSession::RecordingSession(QString audioDir, QString title,
 
 RecordingSession::~RecordingSession() {
     if (impl_->state == RecordingState::Recording) {
-        // Best-effort takarítás; nem emittálunk a destruktorból.
-        if (impl_->worker) {
-            QMetaObject::invokeMethod(impl_->worker, "shutdown", Qt::BlockingQueuedConnection);
-        }
+        if (impl_->worker)
+            QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::BlockingQueuedConnection);
         if (impl_->engine) impl_->engine->stop();
-        if (impl_->workerThread) {
-            impl_->workerThread->quit();
-            impl_->workerThread->wait(2000);
-        }
-        for (auto& t : impl_->tracks) {
-            if (t.ffmpeg) {
-                t.ffmpeg->closeWriteChannel();
-                t.ffmpeg->waitForFinished(3000);
-                delete t.ffmpeg;
-            }
-        }
+        impl_->teardownWorker();
     }
 }
 
@@ -188,20 +218,15 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     impl_->startedAt = QDateTime::currentDateTime();
     const QString stamp = impl_->startedAt.toString(QStringLiteral("yyyy-MM-dd_HHmm"));
     const QString dirName = stamp + QStringLiteral("_") + slugify(impl_->title);
-
     QDir base(impl_->audioDir);
-    if (!base.exists() && !base.mkpath(QStringLiteral("."))) {
-        emit failed(QStringLiteral("Nem hozható létre az audioDir: ") + impl_->audioDir);
-        return;
-    }
-    if (!base.mkpath(dirName)) {
+    if ((!base.exists() && !base.mkpath(QStringLiteral("."))) || !base.mkpath(dirName)) {
         emit failed(QStringLiteral("Nem hozható létre a meeting-mappa: ") + dirName);
         return;
     }
     impl_->folder = base.absoluteFilePath(dirName);
     impl_->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-    // 2) AudioEngine indítása.
+    // 2) AudioEngine.
     impl_->engine = std::make_unique<AudioEngine>();
     if (!impl_->engine->start(devices)) {
         emit failed(QStringLiteral("Az audio motor nem indult el (nincs elérhető eszköz/backend)."));
@@ -209,89 +234,59 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
-    // 3) Eszközönként ffmpeg encoder + TrackProc. Egyedi slug-ok (ütközés esetén
-    //    sorszám-utótaggal).
+    // 3) Sáv-metaadatok (QProcess NÉLKÜL — azt a worker hozza létre a saját szálán).
     const int n = impl_->engine->count();
     QStringList usedSlugs;
     int micSeen = 0;
     for (int i = 0; i < n; ++i) {
         const AudioDeviceInfo info = impl_->engine->deviceInfo(i);
-
-        TrackProc t;
+        TrackMeta t;
         t.engineIndex = i;
         t.channels = impl_->engine->channels(i);
         if (t.channels <= 0) t.channels = 1;
         t.kind = info.kind;
         t.deviceName = info.name;
 
-        QString baseSlug = slugify(info.name);
-        QString slug = baseSlug;
+        QString baseSlug = slugify(info.name), slug = baseSlug;
         int suffix = 2;
-        while (usedSlugs.contains(slug)) {
-            slug = baseSlug + QStringLiteral("-") + QString::number(suffix++);
-        }
+        while (usedSlugs.contains(slug)) slug = baseSlug + QStringLiteral("-") + QString::number(suffix++);
         usedSlugs << slug;
         t.slug = slug;
         t.fileName = QStringLiteral("track_") + slug + QStringLiteral(".ogg");
 
-        // Beszélő-cimkék: első mic → userSpeakerName; további mic-ek → "Beszélő 2/3..";
-        // loopback/egyéb → "Rendszer".
         if (info.kind == TrackKind::Mic) {
-            if (micSeen == 0) {
-                t.speakerLabel = impl_->userSpeakerName;
-            } else {
-                t.speakerLabel = QStringLiteral("Beszélő ") + QString::number(micSeen + 1);
-            }
+            t.speakerLabel = (micSeen == 0) ? impl_->userSpeakerName
+                                            : QStringLiteral("Beszélő ") + QString::number(micSeen + 1);
             ++micSeen;
         } else {
             t.speakerLabel = QStringLiteral("Rendszer");
         }
-
-        QProcess* proc = new QProcess(this);
-        const QString outPath = QDir(impl_->folder).absoluteFilePath(t.fileName);
-        const QStringList args{
-            QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
-            QStringLiteral("-f"), QStringLiteral("s16le"),
-            QStringLiteral("-ar"), QStringLiteral("48000"),
-            QStringLiteral("-ac"), QString::number(t.channels),
-            QStringLiteral("-i"), QStringLiteral("pipe:0"),
-            QStringLiteral("-c:a"), QStringLiteral("libopus"),
-            QStringLiteral("-b:a"), QStringLiteral("64k"),
-            QStringLiteral("-y"), outPath};
-        proc->start(QStringLiteral("ffmpeg"), args);
-        if (!proc->waitForStarted(5000)) {
-            // Egy encoder nem indult: teljes leállás, takarítás.
-            emit failed(QStringLiteral("Nem indult el az ffmpeg encoder: ") + t.deviceName);
-            delete proc;
-            impl_->engine->stop();
-            impl_->engine.reset();
-            for (auto& done : impl_->tracks) {
-                if (done.ffmpeg) { done.ffmpeg->kill(); delete done.ffmpeg; }
-            }
-            impl_->tracks.clear();
-            return;
-        }
-        t.ffmpeg = proc;
         impl_->tracks.push_back(std::move(t));
     }
 
-    // 4) Drain worker külön szálon. A QProcess-ek a fő szálon élnek (parent=this);
-    //    a write() bármely szálról hívható ugyanazon QProcess-re itt szekvenciálisan,
-    //    de a biztonság kedvéért a write-okat a worker végzi és csak ő nyúl hozzá.
+    // 4) Worker szál — Ő hozza létre+indítja az encodereket (a saját szálán).
     impl_->workerThread = new QThread(this);
-    impl_->worker = new DrainWorker(impl_->engine.get(), &impl_->tracks);
+    impl_->worker = new DrainWorker(impl_->engine.get(), &impl_->tracks, impl_->folder);
     impl_->worker->moveToThread(impl_->workerThread);
-
     connect(impl_->worker, &DrainWorker::meter, this,
-            [this](int idx, float rms) { emit levelMeterUpdated(idx, rms); },
-            Qt::QueuedConnection);
+            [this](int idx, float rms) { emit levelMeterUpdated(idx, rms); }, Qt::QueuedConnection);
     connect(impl_->worker, &DrainWorker::elapsed, this,
             [this](qint64 ms) { emit elapsedChanged(ms); }, Qt::QueuedConnection);
-    connect(impl_->workerThread, &QThread::started, impl_->worker, &DrainWorker::begin);
-
-    impl_->wall.start();
     impl_->workerThread->start();
 
+    bool ok = false;
+    QMetaObject::invokeMethod(impl_->worker, "startEncoders",
+                              Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok));
+    if (!ok) {
+        emit failed(QStringLiteral("Nem indult el az ffmpeg encoder."));
+        impl_->engine->stop();
+        impl_->teardownWorker();
+        impl_->engine.reset();
+        impl_->tracks.clear();
+        return;
+    }
+
+    impl_->wall.start();
     impl_->state = RecordingState::Recording;
     emit stateChanged(impl_->state);
 }
@@ -304,71 +299,41 @@ void RecordingSession::stop() {
 
     impl_->state = RecordingState::Stopping;
     emit stateChanged(impl_->state);
-
     const qint64 durationMs = impl_->wall.elapsed();
 
-    // 1) Capture leállítása — a callbackek többé nem írnak a ringekbe.
+    // Capture leáll → a callbackek nem írnak többé a ringekbe.
     if (impl_->engine) impl_->engine->stop();
 
-    // 2) Worker: utolsó ürítés (maradék minták), majd leállás.
-    if (impl_->worker) {
-        QMetaObject::invokeMethod(impl_->worker, "finalDrain", Qt::BlockingQueuedConnection);
-        QMetaObject::invokeMethod(impl_->worker, "shutdown", Qt::BlockingQueuedConnection);
-    }
-    if (impl_->workerThread) {
-        impl_->workerThread->quit();
-        impl_->workerThread->wait(3000);
-        delete impl_->worker;
-        impl_->worker = nullptr;
-        delete impl_->workerThread;
-        impl_->workerThread = nullptr;
-    }
-
-    // 3) Encoderek lezárása: stdin flush + close, majd várakozás a befejezésre.
+    // Encoding: a worker utolsó ürítés + ffmpeg-ek lezárása/várása (a worker szálán).
     impl_->state = RecordingState::Encoding;
     emit stateChanged(impl_->state);
+    if (impl_->worker)
+        QMetaObject::invokeMethod(impl_->worker, "finalize", Qt::BlockingQueuedConnection);
+    impl_->teardownWorker();
 
-    for (auto& t : impl_->tracks) {
-        if (!t.ffmpeg) continue;
-        t.ffmpeg->closeWriteChannel();
-        if (!t.ffmpeg->waitForFinished(30000)) {
-            t.ffmpeg->kill();
-            t.ffmpeg->waitForFinished(2000);
-        }
-    }
-
-    // 4) Mixdown: az összes sáv → egyetlen .mp3 (amix). Ha 0/1 sáv van, az amix is
-    //    helyesen viselkedik (1 bemenettel egyszerű átkódolás).
+    // Mixdown — a fő szálon létrehozott+használt tranziens QProcess (egy szál, OK).
     QString mixdownRel;
     if (!impl_->tracks.empty()) {
         QStringList args{QStringLiteral("-hide_banner"),
                          QStringLiteral("-loglevel"), QStringLiteral("error")};
-        for (const auto& t : impl_->tracks) {
+        for (const auto& t : impl_->tracks)
             args << QStringLiteral("-i") << QDir(impl_->folder).absoluteFilePath(t.fileName);
-        }
         const int inputs = static_cast<int>(impl_->tracks.size());
-        const QString filter =
-            QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs);
         mixdownRel = QStringLiteral("mixdown.mp3");
-        args << QStringLiteral("-filter_complex") << filter
+        args << QStringLiteral("-filter_complex")
+             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs)
              << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
              << QStringLiteral("-q:a") << QStringLiteral("4")
-             << QStringLiteral("-y")
-             << QDir(impl_->folder).absoluteFilePath(mixdownRel);
-
+             << QStringLiteral("-y") << QDir(impl_->folder).absoluteFilePath(mixdownRel);
         QProcess mix;
         mix.start(QStringLiteral("ffmpeg"), args);
-        bool mixOk = mix.waitForStarted(5000);
-        if (mixOk) {
-            mixOk = mix.waitForFinished(120000) && mix.exitStatus() == QProcess::NormalExit
-                    && mix.exitCode() == 0;
-        }
-        if (!mixOk) {
-            mixdownRel.clear();  // nem fatális: a sávok megvannak, mixdown nélkül megyünk tovább
-        }
+        bool mixOk = mix.waitForStarted(5000)
+                     && mix.waitForFinished(120000)
+                     && mix.exitStatus() == QProcess::NormalExit && mix.exitCode() == 0;
+        if (!mixOk) mixdownRel.clear();   // nem fatális
     }
 
-    // 5) Meeting összeállítása.
+    // Meeting összeállítása.
     Meeting m;
     m.id = impl_->id;
     m.title = impl_->title;
@@ -389,13 +354,8 @@ void RecordingSession::stop() {
         m.tracks.push_back(tr);
     }
 
-    // 6) Takarítás.
-    for (auto& t : impl_->tracks) {
-        if (t.ffmpeg) { delete t.ffmpeg; t.ffmpeg = nullptr; }
-    }
     impl_->tracks.clear();
     impl_->engine.reset();
-
     impl_->state = RecordingState::Idle;
     emit stateChanged(impl_->state);
     emit finished(m);
