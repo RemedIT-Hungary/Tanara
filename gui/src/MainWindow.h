@@ -43,6 +43,7 @@ private slots:
     void onSummaryReady(QString meetingId, QString markdownPath);
     void onError(QString message);
     void onJobProgress(QString meetingId, QString message);
+    void onSpeakerMapChanged(QString meetingId);
     void openSettings();
     void onRecordingFinished(tanara::Meeting meeting);
 

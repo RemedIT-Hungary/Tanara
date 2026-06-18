@@ -97,6 +97,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onJobProgress);
         connect(m_controller, &tanara::AppController::recordingFinished,
                 this, &MainWindow::onRecordingFinished);
+        connect(m_controller, &tanara::AppController::speakerMapChanged,
+                this, &MainWindow::onSpeakerMapChanged);
 
         // A táblát ezek a jelzések is frissítik (új meeting / friss átirat-jelölés).
         connect(m_controller, &tanara::AppController::recordingFinished,
@@ -168,6 +170,7 @@ void MainWindow::buildUi() {
     // lapfülek
     m_tabs = new QTabWidget(right);
     m_transcriptPlayer = new TranscriptPlayer(m_tabs);
+    m_transcriptPlayer->setController(m_controller);
     m_summaryView = new QTextBrowser(m_tabs);
     m_summaryView->setOpenExternalLinks(true);
     m_tabs->addTab(m_transcriptPlayer, QStringLiteral("Átirat"));
@@ -258,9 +261,7 @@ void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
     // Az Átirat fül most a TranscriptPlayer: a segments.json-t és a hangforrást
     // töltjük be (auto-play NÉLKÜL). Hiányzó segments.json esetén a widget
     // maga jeleníti meg a „Nincs átirat — futtass Átírást.” placeholdert.
-    const QString segments =
-        QDir(m.folder).filePath(QStringLiteral("transcript.segments.json"));
-    m_transcriptPlayer->loadMeeting(segments, meetingAudioPath(m));
+    m_transcriptPlayer->loadMeeting(m, meetingAudioPath(m));
 }
 
 void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
@@ -348,6 +349,19 @@ void MainWindow::onError(QString message) {
 
 void MainWindow::onJobProgress(QString /*meetingId*/, QString message) {
     setBusy(true, message);
+}
+
+void MainWindow::onSpeakerMapChanged(QString meetingId) {
+    // Beszélő-átnevezés után: a store frissült (people.json + meeting.json), így a
+    // tábla újratöltése friss speakerMap-et ad. Ha az érintett meeting az épp
+    // megjelenített, újrarendereljük az Átirat-nézetet (sorok + beszélők-panel).
+    reloadMeetings();
+    if (meetingId != m_currentMeetingId)
+        return;
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (ok)
+        reloadTranscriptView(m);
 }
 
 void MainWindow::setBusy(bool busy, const QString& msg) {

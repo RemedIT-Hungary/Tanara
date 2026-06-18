@@ -8,9 +8,12 @@
 // Csak gui/-ben él, namespace tanara_gui. A QMediaPlayer LUSTÁN jön létre
 // (az első forrás-betöltéskor), hogy az app indítása tiszta maradjon.
 //
+#include "tanara/Types.h"
+
 #include <QWidget>
 #include <QString>
 #include <QVector>
+#include <QMap>
 
 class QPushButton;
 class QSlider;
@@ -19,6 +22,12 @@ class QListWidget;
 class QListWidgetItem;
 class QMediaPlayer;
 class QAudioOutput;
+class QComboBox;
+class QHBoxLayout;
+
+namespace tanara {
+class AppController;
+}
 
 namespace tanara_gui {
 
@@ -28,11 +37,16 @@ public:
     explicit TranscriptPlayer(QWidget* parent = nullptr);
     ~TranscriptPlayer() override;
 
-    // Egy meeting betöltése: szegmensek + hangforrás.
-    //   segmentsJsonPath: <folder>/transcript.segments.json
+    // A controllert a beszélő-átnevezéshez (renameSpeaker) + autocomplete-hez
+    // (knownPeople) használjuk. Beállítható konstrukció után is.
+    void setController(tanara::AppController* controller);
+
+    // Egy meeting betöltése: szegmensek + hangforrás + beszélő-leképezés.
+    //   A nyers címkék helyett a speakerMap szerinti valódi neveket jelenítjük meg
+    //   (ha van leképezés), de a nyers címkét megőrizzük az átnevezéshez.
     //   audioPath:        <folder>/<mixdownFile>  (üres/nemlétező → sáv tiltva)
     // A lejátszás NEM indul automatikusan.
-    void loadMeeting(const QString& segmentsJsonPath, const QString& audioPath);
+    void loadMeeting(const tanara::Meeting& meeting, const QString& audioPath);
 
     // Üres állapot (nincs kijelölt meeting).
     void clearMeeting();
@@ -51,7 +65,7 @@ private:
     struct Segment {
         qint64 startMs = 0;
         qint64 endMs = 0;
-        QString speaker;
+        QString speaker;    // NYERS beszélő-címke (a segments.json-ból)
         QString text;
     };
 
@@ -60,8 +74,19 @@ private:
     void highlightForPosition(qint64 pos);
     bool loadSegments(const QString& path);   // segments.json → m_segments
     void populateList();
+    void populateSpeakersPanel();        // a "Beszélők" sor (combo-k) felépítése
+    QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
+    void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
     static QString formatTime(qint64 ms);
     void updateTimeLabel(qint64 pos, qint64 dur);
+
+    tanara::AppController* m_controller = nullptr;
+    QString m_meetingId;
+    QMap<QString, QString> m_speakerMap;   // nyers címke → valódi név (a meetingből)
+
+    QLabel*      m_speakersLabel = nullptr;
+    QWidget*     m_speakersPanel = nullptr;
+    QHBoxLayout* m_speakersLayout = nullptr;
 
     QPushButton* m_playPauseBtn = nullptr;
     QSlider*     m_seekSlider = nullptr;

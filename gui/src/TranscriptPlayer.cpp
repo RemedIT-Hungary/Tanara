@@ -1,20 +1,28 @@
 #include "TranscriptPlayer.h"
 
+#include "tanara/AppController.h"
+
 #include <QPushButton>
 #include <QSlider>
 #include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QComboBox>
+#include <QCompleter>
+#include <QLineEdit>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 #include <QUrl>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QColor>
 #include <QBrush>
+#include <QStringList>
+#include <QSet>
 
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -23,6 +31,7 @@ namespace tanara_gui {
 
 static constexpr int kRoleStartMs = Qt::UserRole;
 static constexpr int kRoleEndMs   = Qt::UserRole + 1;
+static constexpr int kRoleRawSpeaker = Qt::UserRole + 2;   // a sor NYERS beszélő-címkéje
 
 TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
@@ -40,6 +49,19 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     bar->addWidget(m_seekSlider, 1);
     bar->addWidget(m_timeLabel);
     root->addLayout(bar);
+
+    // --- beszélők sora (átnevezhető combo-k) ---
+    auto* speakersRow = new QHBoxLayout();
+    m_speakersLabel = new QLabel(QStringLiteral("Beszélők:"), this);
+    speakersRow->addWidget(m_speakersLabel);
+    m_speakersPanel = new QWidget(this);
+    m_speakersLayout = new QHBoxLayout(m_speakersPanel);
+    m_speakersLayout->setContentsMargins(0, 0, 0, 0);
+    speakersRow->addWidget(m_speakersPanel, 1);
+    speakersRow->addStretch(0);
+    root->addLayout(speakersRow);
+    m_speakersLabel->setVisible(false);
+    m_speakersPanel->setVisible(false);
 
     // --- szegmens-lista ---
     m_list = new QListWidget(this);
@@ -132,29 +154,104 @@ bool TranscriptPlayer::loadSegments(const QString& path) {
     return true;
 }
 
+QString TranscriptPlayer::displayName(const QString& rawSpeaker) const {
+    return m_speakerMap.value(rawSpeaker, rawSpeaker);
+}
+
 void TranscriptPlayer::populateList() {
     m_list->clear();
     m_highlightedRow = -1;
     for (const Segment& s : m_segments) {
-        // [mm:ss]  <SPEAKER>  <text> — a beszélőt nagybetűvel kiemeljük,
-        // a QListWidgetItem nem renderel rich textet, ezért prefix-szel jelöljük.
+        // [mm:ss]  <SPEAKER>  <text> — a beszélőt a speakerMap szerinti valódi
+        // névvel jelenítjük meg (ha van), nagybetűvel kiemelve. A NYERS címkét
+        // az item-adatban őrizzük, hogy az átnevezés azt tudja célozni.
         const QString ts = QStringLiteral("[%1]").arg(formatTime(s.startMs));
         QString line = ts;
         if (!s.speaker.isEmpty())
-            line += QStringLiteral("  %1").arg(s.speaker.toUpper());
+            line += QStringLiteral("  %1").arg(displayName(s.speaker).toUpper());
         line += QStringLiteral("  %1").arg(s.text);
 
         auto* item = new QListWidgetItem(line, m_list);
         item->setData(kRoleStartMs, static_cast<qlonglong>(s.startMs));
         item->setData(kRoleEndMs,   static_cast<qlonglong>(s.endMs));
+        item->setData(kRoleRawSpeaker, s.speaker);
     }
 }
 
-void TranscriptPlayer::loadMeeting(const QString& segmentsJsonPath,
+void TranscriptPlayer::populateSpeakersPanel() {
+    // Régi combo-k eltakarítása.
+    QLayoutItem* old = nullptr;
+    while ((old = m_speakersLayout->takeAt(0)) != nullptr) {
+        if (QWidget* w = old->widget())
+            w->deleteLater();
+        delete old;
+    }
+
+    // Egyedi NYERS beszélő-címkék a szegmensekből, az első előfordulás sorrendjében.
+    QStringList rawSpeakers;
+    QSet<QString> seen;
+    for (const Segment& s : m_segments) {
+        if (s.speaker.isEmpty() || seen.contains(s.speaker))
+            continue;
+        seen.insert(s.speaker);
+        rawSpeakers.push_back(s.speaker);
+    }
+
+    const QStringList people = m_controller ? m_controller->knownPeople() : QStringList{};
+
+    for (const QString& raw : rawSpeakers) {
+        auto* lbl = new QLabel(raw + QStringLiteral(":"), m_speakersPanel);
+        auto* combo = new QComboBox(m_speakersPanel);
+        combo->setEditable(true);
+        combo->setInsertPolicy(QComboBox::NoInsert);
+        combo->setMinimumWidth(120);
+        combo->addItems(people);
+        combo->setCurrentText(displayName(raw));
+        if (auto* c = combo->completer())
+            c->setCaseSensitivity(Qt::CaseInsensitive);
+
+        // Commit: legördülőből választás VAGY a szerkesztés befejezése.
+        connect(combo, &QComboBox::activated, this,
+                [this, raw, combo](int) { onSpeakerRenamed(raw, combo->currentText()); });
+        if (auto* le = combo->lineEdit())
+            connect(le, &QLineEdit::editingFinished, this,
+                    [this, raw, combo]() { onSpeakerRenamed(raw, combo->currentText()); });
+
+        m_speakersLayout->addWidget(lbl);
+        m_speakersLayout->addWidget(combo);
+    }
+    m_speakersLayout->addStretch(1);
+
+    const bool any = !rawSpeakers.isEmpty();
+    m_speakersLabel->setVisible(any);
+    m_speakersPanel->setVisible(any);
+}
+
+void TranscriptPlayer::onSpeakerRenamed(const QString& rawLabel, const QString& chosenName) {
+    if (!m_controller || m_meetingId.isEmpty())
+        return;
+    const QString chosen = chosenName.trimmed();
+    // Nincs változás → ne hívjuk feleslegesen a backendet (nem-üres azonos név).
+    if (chosen == displayName(rawLabel))
+        return;
+    m_controller->renameSpeaker(m_meetingId, rawLabel, chosen);
+    // A frissítést a speakerMapChanged → újratöltés intézi (MainWindow).
+}
+
+void TranscriptPlayer::setController(tanara::AppController* controller) {
+    m_controller = controller;
+}
+
+void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
                                    const QString& audioPath) {
     m_singleSegmentMode = false;
     m_singleSegmentEndMs = 0;
     m_userSeeking = false;
+
+    m_meetingId = meeting.id;
+    m_speakerMap = meeting.speakerMap;
+    const QString segmentsJsonPath =
+        QDir(meeting.folder).filePath(QStringLiteral("transcript.segments.json"));
 
     // Forrás-váltáskor megállítjuk a korábbi lejátszást.
     if (m_player) {
@@ -173,6 +270,7 @@ void TranscriptPlayer::loadMeeting(const QString& segmentsJsonPath,
         m_list->clear();
         m_list->addItem(
             QStringLiteral("Nincs átirat — futtass Átírást."));
+        populateSpeakersPanel();   // nincs szegmens → üres panel, elrejti magát
         setBarEnabled(false);
         m_hasAudio = false;
         m_audioPath.clear();
@@ -180,6 +278,7 @@ void TranscriptPlayer::loadMeeting(const QString& segmentsJsonPath,
     }
 
     populateList();
+    populateSpeakersPanel();
 
     m_hasAudio = !audioPath.isEmpty() && QFileInfo::exists(audioPath);
     m_audioPath = m_hasAudio ? audioPath : QString();
@@ -194,12 +293,15 @@ void TranscriptPlayer::loadMeeting(const QString& segmentsJsonPath,
 void TranscriptPlayer::clearMeeting() {
     m_singleSegmentMode = false;
     m_userSeeking = false;
+    m_meetingId.clear();
+    m_speakerMap.clear();
     if (m_player) {
         m_player->stop();
         m_player->setSource(QUrl());
     }
     m_segments.clear();
     m_list->clear();
+    populateSpeakersPanel();
     m_seekSlider->setRange(0, 0);
     updateTimeLabel(0, 0);
     m_playPauseBtn->setText(QStringLiteral("▶ Lejátszás"));
