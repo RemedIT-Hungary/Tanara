@@ -47,6 +47,8 @@ private slots:
     void openSettings();
     void openPeopleManager();
     void onRecordingFinished(tanara::Meeting meeting);
+    void onTableContextMenu(const QPoint& pos);
+    void renameSelectedMeeting();
 
 private:
     void buildUi();

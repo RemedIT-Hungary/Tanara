@@ -42,6 +42,10 @@ public:
     void renamePerson(const QString& oldName, const QString& newName);
     void removePerson(const QString& name);
 
+    // Mely meetingeken szerepel az adott személy (speakerMap-érték vagy mic-sáv neve).
+    // "Cím (yyyy-MM-dd)" formátumú sorok, legújabb elöl — az azonosítást segíti.
+    QStringList meetingsForPerson(const QString& name) const;
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
@@ -58,6 +62,16 @@ public slots:
     // Felvétel indítása a megadott eszközökkel (üres → az összes capture eszköz).
     void startRecording(const QString& title, const QVector<tanara::AudioDeviceInfo>& devices = {});
     void stopRecording();
+
+    // Meeting címének átnevezése (meeting.json + index frissül).
+    void renameMeeting(const QString& meetingId, const QString& newTitle);
+
+    // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
+    void setUserSpeakerName(const QString& name);
+
+    // Az LLM-endpont (settings.llm.baseUrl) elérhető modelljeinek lekérése (GET /models).
+    // Eredmény: llmModelsFetched(QStringList) vagy llmModelsFailed(QString).
+    void fetchLlmModels();
 
     // Egy meeting átírása (Soniox, per-sáv → merge → transcript.md). Kulcs a KeyStore-ból.
     void transcribeMeeting(const QString& meetingId);
@@ -84,6 +98,8 @@ signals:
     void summaryReady(QString meetingId, QString markdownPath);
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
+    void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
+    void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 

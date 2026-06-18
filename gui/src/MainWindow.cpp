@@ -23,6 +23,9 @@
 #include <QStatusBar>
 #include <QProgressBar>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QPoint>
 #include <QItemSelectionModel>
 #include <QItemSelection>
 #include <QFile>
@@ -149,6 +152,9 @@ void MainWindow::buildUi() {
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setHighlightSections(false);
     m_table->setMinimumWidth(320);
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_table, &QWidget::customContextMenuRequested,
+            this, &MainWindow::onTableContextMenu);
     splitter->addWidget(m_table);
 
     // --- jobb: record bar + akciók + lapfülek ---
@@ -391,6 +397,46 @@ void MainWindow::onRecordingFinished(tanara::Meeting meeting) {
     statusBar()->showMessage(
         QStringLiteral("Felvétel kész: %1").arg(meeting.title), 5000);
     // A modell a store jelzéseire magától frissül; ettől függetlenül friss.
+}
+
+void MainWindow::onTableContextMenu(const QPoint& pos) {
+    // Csak akkor van értelme, ha a kattintás egy érvényes soron áll, ÉS van
+    // kiválasztott meeting (a kijelölés a jobbgombra is áthelyeződik a SelectRows
+    // viselkedéssel; ha mégsem, a renameSelectedMeeting maga is no-op).
+    const QModelIndex idx = m_table->indexAt(pos);
+    if (!idx.isValid())
+        return;
+
+    QMenu menu(this);
+    QAction* renameAct = menu.addAction(QStringLiteral("Átnevezés…"));
+    connect(renameAct, &QAction::triggered, this, &MainWindow::renameSelectedMeeting);
+    menu.exec(m_table->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::renameSelectedMeeting() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller || m.id.isEmpty())
+        return;
+
+    bool accepted = false;
+    const QString newTitle = QInputDialog::getText(
+        this,
+        QStringLiteral("Megbeszélés átnevezése"),
+        QStringLiteral("Új cím:"),
+        QLineEdit::Normal,
+        m.title,
+        &accepted);
+
+    if (!accepted)
+        return;
+    const QString trimmed = newTitle.trimmed();
+    // Üres vagy változatlan cím → nincs teendő (a tábla a meetingUpdated jelre
+    // magától frissül, így itt nem kell kézzel újratölteni).
+    if (trimmed.isEmpty() || trimmed == m.title)
+        return;
+
+    m_controller->renameMeeting(m.id, trimmed);
 }
 
 void MainWindow::openSettings() {

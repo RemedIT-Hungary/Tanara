@@ -19,7 +19,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QHash>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <memory>
 
 namespace tanara {
@@ -149,6 +153,7 @@ struct AppController::Impl {
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     std::unique_ptr<PeopleStore> people;
+    QNetworkAccessManager* nam = nullptr;   // LLM-modellek lekéréséhez
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
     QString          metaDir;
@@ -274,6 +279,71 @@ void AppController::removePerson(const QString& name) {
         emit speakerMapChanged(m.id);
     }
     emit peopleChanged();
+}
+
+QStringList AppController::meetingsForPerson(const QString& name) const {
+    QStringList out;
+    const QString nm = name.trimmed();
+    if (nm.isEmpty()) return out;
+    const QVector<Meeting> all = d->store->loadAll();
+    for (const Meeting& idx : all) {
+        const Meeting m = d->store->load(idx.id);
+        bool present = false;
+        for (const QString& v : m.speakerMap) if (v == nm) { present = true; break; }
+        if (!present)
+            for (const Track& tr : m.tracks) if (tr.speakerLabel == nm) { present = true; break; }
+        if (present)
+            out << QStringLiteral("%1 (%2)")
+                       .arg(m.title, m.startedAt.toString(QStringLiteral("yyyy-MM-dd")));
+    }
+    return out;
+}
+
+void AppController::renameMeeting(const QString& meetingId, const QString& newTitle) {
+    const QString t = newTitle.trimmed();
+    if (t.isEmpty()) return;
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    m.title = t;
+    d->store->saveMeeting(m);   // meeting.json + index frissül → meetingUpdated jel
+}
+
+void AppController::setUserSpeakerName(const QString& name) {
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return;
+    AppSettings s = d->settings->settings();
+    if (s.userSpeakerName != n) {
+        s.userSpeakerName = n;
+        d->settings->setSettings(s);
+    }
+    if (d->people) d->people->add(n);
+    emit peopleChanged();
+}
+
+void AppController::fetchLlmModels() {
+    if (!d->nam) d->nam = new QNetworkAccessManager(this);
+    QString base = d->settings->settings().llm.baseUrl;
+    while (base.endsWith(QLatin1Char('/'))) base.chop(1);
+    QNetworkRequest req{QUrl(base + QStringLiteral("/models"))};
+    const QString key = d->keyStore.get(keys::LlmApiKey);
+    if (!key.isEmpty())
+        req.setRawHeader(QByteArrayLiteral("Authorization"), QByteArrayLiteral("Bearer ") + key.toUtf8());
+    QNetworkReply* reply = d->nam->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit llmModelsFailed(reply->errorString());
+            return;
+        }
+        const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+        QStringList models;
+        for (const QJsonValue& v : root.value(QStringLiteral("data")).toArray()) {
+            const QString id = v.toObject().value(QStringLiteral("id")).toString();
+            if (!id.isEmpty()) models << id;
+        }
+        models.sort();
+        emit llmModelsFetched(models);
+    });
 }
 
 void AppController::startLevelMonitoring() {

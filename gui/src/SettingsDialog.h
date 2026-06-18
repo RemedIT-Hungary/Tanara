@@ -5,6 +5,9 @@
 #include <QDialog>
 
 class QLineEdit;
+class QComboBox;
+class QPushButton;
+class QLabel;
 
 namespace tanara {
 class AppController;
@@ -19,19 +22,27 @@ public:
 
 private slots:
     void onAccept();
+    void onLlmModelsFetched(const QStringList& models);
+    void onLlmModelsFailed(const QString& error);
 
 private:
     void loadFromController();
+
+    // Mappa-választó gomb bekötése egy könyvtár-mezőhöz (Tallózás…).
+    void wireFolderPicker(QLineEdit* field, QPushButton* button, const QString& caption);
 
     tanara::AppController* m_controller = nullptr;
 
     QLineEdit* m_audioDir = nullptr;
     QLineEdit* m_notesDir = nullptr;
+    QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
     QLineEdit* m_sttBaseUrl = nullptr;
     QLineEdit* m_sttModel = nullptr;
     QLineEdit* m_llmBaseUrl = nullptr;
-    QLineEdit* m_llmModel = nullptr;
+    QComboBox* m_llmModel = nullptr;        // szerkeszthető: kézi bevitel is marad
+    QPushButton* m_llmFetchBtn = nullptr;
+    QLabel* m_llmModelStatus = nullptr;     // inline visszajelzés (hiba)
     QLineEdit* m_sonioxApiKey = nullptr;  // jelszó-echo, csak írásra
 };
 
