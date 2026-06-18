@@ -13,8 +13,6 @@ class QTextBrowser;
 class QTabWidget;
 class QPushButton;
 class QProgressBar;
-class QMediaPlayer;
-class QAudioOutput;
 class QItemSelection;
 
 namespace tanara {
@@ -25,6 +23,7 @@ namespace tanara_gui {
 
 class RecordBar;
 class MeetingTableModel;
+class TranscriptPlayer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -40,7 +39,6 @@ private slots:
     void onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onTranscribeClicked();
     void onSummarizeClicked();
-    void onPlayClicked();
     void onTranscriptReady(QString meetingId, QString markdownPath);
     void onSummaryReady(QString meetingId, QString markdownPath);
     void onError(QString message);
@@ -57,6 +55,7 @@ private:
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
+    static QString meetingAudioPath(const tanara::Meeting& m);
     static QString readMarkdownFile(const QString& path);
 
     tanara::AppController*  m_controller = nullptr;
@@ -65,17 +64,13 @@ private:
 
     QTableView*   m_table = nullptr;
     RecordBar*    m_recordBar = nullptr;
-    QTabWidget*   m_tabs = nullptr;
-    QTextBrowser* m_transcriptView = nullptr;
-    QTextBrowser* m_summaryView = nullptr;
+    QTabWidget*       m_tabs = nullptr;
+    TranscriptPlayer* m_transcriptPlayer = nullptr;
+    QTextBrowser*     m_summaryView = nullptr;
 
     QPushButton*  m_transcribeBtn = nullptr;
     QPushButton*  m_summarizeBtn = nullptr;
-    QPushButton*  m_playBtn = nullptr;
     QProgressBar* m_busyBar = nullptr;
-
-    QMediaPlayer* m_player = nullptr;
-    QAudioOutput* m_audioOutput = nullptr;
 
     QString m_currentMeetingId;
     bool    m_monitoringStarted = false;

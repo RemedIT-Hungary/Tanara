@@ -2,6 +2,7 @@
 #include "RecordBar.h"
 #include "SettingsDialog.h"
 #include "MeetingTableModel.h"
+#include "TranscriptPlayer.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -28,9 +29,6 @@
 #include <QDir>
 #include <QTextStream>
 #include <QUrl>
-
-#include <QMediaPlayer>
-#include <QAudioOutput>
 
 #include <QShowEvent>
 #include <QCloseEvent>
@@ -157,24 +155,22 @@ void MainWindow::buildUi() {
     m_recordBar = new RecordBar(m_controller, right);
     rl->addWidget(m_recordBar);
 
-    // akció-sor a kiválasztott meetingre
+    // akció-sor a kiválasztott meetingre (a lejátszást már a TranscriptPlayer
+    // sávja kezeli az Átirat fülön, külön Lejátszás-gomb nincs).
     auto* actionRow = new QHBoxLayout();
     m_transcribeBtn = new QPushButton(QStringLiteral("Átírás"), right);
     m_summarizeBtn = new QPushButton(QStringLiteral("Összefoglaló"), right);
-    m_playBtn = new QPushButton(QStringLiteral("▶ Lejátszás"), right);
     actionRow->addWidget(m_transcribeBtn);
     actionRow->addWidget(m_summarizeBtn);
-    actionRow->addWidget(m_playBtn);
     actionRow->addStretch(1);
     rl->addLayout(actionRow);
 
     // lapfülek
     m_tabs = new QTabWidget(right);
-    m_transcriptView = new QTextBrowser(m_tabs);
-    m_transcriptView->setOpenExternalLinks(true);
+    m_transcriptPlayer = new TranscriptPlayer(m_tabs);
     m_summaryView = new QTextBrowser(m_tabs);
     m_summaryView->setOpenExternalLinks(true);
-    m_tabs->addTab(m_transcriptView, QStringLiteral("Átirat"));
+    m_tabs->addTab(m_transcriptPlayer, QStringLiteral("Átirat"));
     m_tabs->addTab(m_summaryView, QStringLiteral("Összefoglaló"));
     rl->addWidget(m_tabs, 1);
 
@@ -193,11 +189,9 @@ void MainWindow::buildUi() {
 
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_summarizeBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
-    connect(m_playBtn, &QPushButton::clicked, this, &MainWindow::onPlayClicked);
 
     m_transcribeBtn->setEnabled(false);
     m_summarizeBtn->setEnabled(false);
-    m_playBtn->setEnabled(false);
 }
 
 void MainWindow::buildMenu() {
@@ -255,14 +249,18 @@ QString MainWindow::readMarkdownFile(const QString& path) {
     return ts.readAll();
 }
 
+QString MainWindow::meetingAudioPath(const tanara::Meeting& m) {
+    return QDir(m.folder).filePath(
+        m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
+}
+
 void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
-    const QString path = QDir(m.folder).filePath(QStringLiteral("transcript.md"));
-    const QString md = readMarkdownFile(path);
-    if (md.isEmpty())
-        m_transcriptView->setPlainText(
-            QStringLiteral("Nincs átirat. Indítsd el az „Átírás” műveletet."));
-    else
-        m_transcriptView->setMarkdown(md);
+    // Az Átirat fül most a TranscriptPlayer: a segments.json-t és a hangforrást
+    // töltjük be (auto-play NÉLKÜL). Hiányzó segments.json esetén a widget
+    // maga jeleníti meg a „Nincs átirat — futtass Átírást.” placeholdert.
+    const QString segments =
+        QDir(m.folder).filePath(QStringLiteral("transcript.segments.json"));
+    m_transcriptPlayer->loadMeeting(segments, meetingAudioPath(m));
 }
 
 void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
@@ -284,19 +282,14 @@ void MainWindow::loadSelectedMeetingViews() {
 
     if (!ok) {
         m_currentMeetingId.clear();
-        m_playBtn->setEnabled(false);
-        m_transcriptView->clear();
+        m_transcriptPlayer->clearMeeting();
         m_summaryView->clear();
         return;
     }
 
     m_currentMeetingId = m.id;
-    reloadTranscriptView(m);
+    reloadTranscriptView(m);   // betölti a segments.json-t + hangforrást a lejátszóba
     reloadSummaryView(m);
-
-    const QString mix = QDir(m.folder).filePath(
-        m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
-    m_playBtn->setEnabled(QFileInfo::exists(mix));
 }
 
 void MainWindow::onSelectionChanged(const QItemSelection&, const QItemSelection&) {
@@ -321,33 +314,6 @@ void MainWindow::onSummarizeClicked() {
     m_controller->summarizeMeeting(m.id);
 }
 
-void MainWindow::onPlayClicked() {
-    bool ok = false;
-    const tanara::Meeting m = selectedMeeting(&ok);
-    if (!ok)
-        return;
-    const QString mix = QDir(m.folder).filePath(
-        m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile);
-    if (!QFileInfo::exists(mix)) {
-        statusBar()->showMessage(QStringLiteral("Nincs lejátszható hangfájl (mixdown.mp3)."));
-        return;
-    }
-
-    if (!m_player) {
-        m_player = new QMediaPlayer(this);
-        m_audioOutput = new QAudioOutput(this);
-        m_player->setAudioOutput(m_audioOutput);
-    }
-    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
-        m_player->pause();
-        m_playBtn->setText(QStringLiteral("▶ Lejátszás"));
-        return;
-    }
-    m_player->setSource(QUrl::fromLocalFile(mix));
-    m_player->play();
-    m_playBtn->setText(QStringLiteral("⏸ Szünet"));
-}
-
 void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) {
     setBusy(false);
     statusBar()->showMessage(QStringLiteral("Átirat elkészült."), 5000);
@@ -357,7 +323,7 @@ void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) 
     const tanara::Meeting m = selectedMeeting(&ok);
     if (ok) {
         reloadTranscriptView(m);
-        m_tabs->setCurrentWidget(m_transcriptView);
+        m_tabs->setCurrentWidget(m_transcriptPlayer);
     }
 }
 
