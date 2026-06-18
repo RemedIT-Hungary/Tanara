@@ -524,6 +524,8 @@ void MainWindow::popOutRecorder() {
         m_floatingRecorder->activateWindow();
         return;
     }
+    // Lebegőben a kompakt nézet a default (a sarokba illő, kicsi vezérlő).
+    m_recordBar->setViewMode(RecordBar::ViewMode::Compact);
     // A RecordBar-t a FloatingRecorder ctora reparentálja magába; itt a
     // helykitöltőt mutatjuk a jobb pane-ben. parent=nullptr → ÖNÁLLÓ top-level
     // ablak (saját tálca-bejegyzés, NEM minimalizálódik a főablakkal).
@@ -541,6 +543,7 @@ void MainWindow::dockRecorder() {
         return;
     // A RecordBar-t visszaillesztjük a jobb pane tetejére (a helykitöltő elé).
     m_rightLayout->insertWidget(0, m_recordBar);
+    m_recordBar->setViewMode(RecordBar::ViewMode::Full);   // dokkolva a teljes nézet
     m_recordBar->show();
     m_dockPlaceholder->setVisible(false);
 

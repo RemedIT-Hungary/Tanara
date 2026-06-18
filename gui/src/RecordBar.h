@@ -10,9 +10,12 @@
 
 class QLineEdit;
 class QPushButton;
+class QToolButton;
 class QLabel;
 class QListWidget;
+class QListWidgetItem;
 class QVBoxLayout;
+class QGroupBox;
 class QProgressBar;
 class QCheckBox;
 
@@ -25,7 +28,17 @@ namespace tanara_gui {
 class RecordBar : public QWidget {
     Q_OBJECT
 public:
+    // Teljes: minden eszköz, checkbox, beállítás. Kompakt: csak a kiválasztott
+    // eszközök (név + szint), a részletek elrejtve (sarokba illő lebegő vezérlő).
+    enum class ViewMode { Full, Compact };
+
     explicit RecordBar(tanara::AppController* controller, QWidget* parent = nullptr);
+
+    ViewMode viewMode() const { return m_mode; }
+    void setViewMode(ViewMode mode);
+
+signals:
+    void viewModeChanged(ViewMode mode);
 
 public slots:
     void onDevicesChanged();
@@ -41,28 +54,34 @@ private:
     void rebuildDeviceList();
     void saveSelection();   // a bepipált eszközöket azonnal perzisztálja
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
-    QProgressBar* meterForTrack(int trackIndex);
     void resetDeviceLevelBars();
+    void applyViewMode();   // a m_mode szerint mutat/rejt elemeket
 
     tanara::AppController* m_controller = nullptr;
     tanara::RecordingState m_state = tanara::RecordingState::Idle;
+    ViewMode m_mode = ViewMode::Full;
 
     QLineEdit*   m_titleEdit = nullptr;
     QPushButton* m_startStopBtn = nullptr;
+    QToolButton* m_viewToggleBtn = nullptr;
     QLabel*      m_elapsedLabel = nullptr;
+    QGroupBox*   m_devBox = nullptr;
+    QLabel*      m_devHint = nullptr;
     QListWidget* m_deviceList = nullptr;
 
     // Egy-egy eszköz-sor vezérlői, eszköznév szerint kulcsolva (a deviceLevel és
     // a lastUsedDeviceNames is NÉV alapú).
     struct DeviceRow {
-        QCheckBox*    check = nullptr;
-        QProgressBar* level = nullptr;
+        QCheckBox*       check = nullptr;
+        QProgressBar*    level = nullptr;
+        QListWidgetItem* item = nullptr;   // a sor (kompakt módban rejthető)
     };
-    QHash<QString, DeviceRow> m_deviceRows;   // deviceName -> sor
+    QHash<QString, DeviceRow> m_deviceRows;     // deviceName -> sor
+    QVector<QListWidgetItem*> m_headerItems;    // csoportfejek (kompaktban rejtve)
 
-    QWidget*               m_metersHost = nullptr;
-    QVBoxLayout*           m_metersLayout = nullptr;
-    QHash<int, QProgressBar*> m_meters;   // trackIndex -> progress bar
+    // Felvétel közben a sáv-index → eszköznév leképezés (a per-sáv szintet a
+    // megfelelő eszköz VU-sávjába vezetjük, így nincs külön „Szintek" doboz).
+    QVector<QString> m_recordingDeviceNames;
 };
 
 } // namespace tanara_gui

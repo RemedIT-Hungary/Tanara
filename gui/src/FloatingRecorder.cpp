@@ -76,7 +76,8 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
         QSignalBlocker block(m_alwaysOnTop);
         m_alwaysOnTop->setChecked(true);
     }
-    resize(440, 520);
+    setMinimumWidth(300);
+    resize(360, 300);   // kompakt alapméret (a RecordBar lebegőben Kompakt módban van)
 }
 
 void FloatingRecorder::onAlwaysOnTopToggled(bool on) {

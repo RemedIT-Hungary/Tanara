@@ -5,6 +5,7 @@
 
 #include <QLineEdit>
 #include <QPushButton>
+#include <QToolButton>
 #include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -56,39 +57,75 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     m_startStopBtn = new QPushButton(QStringLiteral("● Felvétel indítása"), this);
     m_startStopBtn->setCheckable(false);
 
+    // Teljes ⇄ Kompakt nézet-váltó.
+    m_viewToggleBtn = new QToolButton(this);
+    m_viewToggleBtn->setAutoRaise(true);
+    m_viewToggleBtn->setText(QStringLiteral("⤡"));
+    m_viewToggleBtn->setToolTip(QStringLiteral("Kompakt nézet (csak a kiválasztott eszközök szintje)"));
+
     topRow->addWidget(m_titleEdit, /*stretch*/ 1);
     topRow->addWidget(m_elapsedLabel);
     topRow->addWidget(m_startStopBtn);
+    topRow->addWidget(m_viewToggleBtn);
     root->addLayout(topRow);
 
-    // --- szintmérők (felvétel közbeni sáv-szintek) ---
-    auto* metersBox = new QGroupBox(QStringLiteral("Szintek"), this);
-    auto* metersOuter = new QVBoxLayout(metersBox);
-    m_metersHost = new QWidget(metersBox);
-    m_metersLayout = new QVBoxLayout(m_metersHost);
-    m_metersLayout->setContentsMargins(0, 0, 0, 0);
-    metersOuter->addWidget(m_metersHost);
-    root->addWidget(metersBox);
-
-    // --- eszközválasztó (élő VU-sávokkal) ---
-    auto* devBox = new QGroupBox(QStringLiteral("Hangeszközök"), this);
-    auto* devLayout = new QVBoxLayout(devBox);
-    auto* hint = new QLabel(
+    // --- eszközválasztó (élő VU-sávokkal) — a szintek (felvétel előtt ÉS közben) is
+    //     itt jelennek meg, eszköznév mellett; nincs külön „Szintek" doboz. ---
+    m_devBox = new QGroupBox(QStringLiteral("Hangeszközök"), this);
+    auto* devLayout = new QVBoxLayout(m_devBox);
+    m_devHint = new QLabel(
         QStringLiteral("Beszélj a mikrofonba / játssz le hangot — a mozgó sáv mutatja, melyik eszköz aktív."),
-        devBox);
-    hint->setWordWrap(true);
-    devLayout->addWidget(hint);
-    m_deviceList = new QListWidget(devBox);
+        m_devBox);
+    m_devHint->setWordWrap(true);
+    devLayout->addWidget(m_devHint);
+    m_deviceList = new QListWidget(m_devBox);
     m_deviceList->setMaximumHeight(200);
     m_deviceList->setSelectionMode(QAbstractItemView::NoSelection);
     devLayout->addWidget(m_deviceList);
-    root->addWidget(devBox);
+    root->addWidget(m_devBox);
 
     connect(m_startStopBtn, &QPushButton::clicked, this, &RecordBar::onStartStopClicked);
+    connect(m_viewToggleBtn, &QToolButton::clicked, this, [this]() {
+        setViewMode(m_mode == ViewMode::Full ? ViewMode::Compact : ViewMode::Full);
+    });
 
     rebuildDeviceList();
     onRecordingStateChanged(m_controller ? m_controller->recordingState()
                                          : tanara::RecordingState::Idle);
+    applyViewMode();
+}
+
+void RecordBar::setViewMode(ViewMode mode) {
+    if (m_mode == mode) return;
+    m_mode = mode;
+    applyViewMode();
+    emit viewModeChanged(mode);
+}
+
+void RecordBar::applyViewMode() {
+    const bool compact = (m_mode == ViewMode::Compact);
+    // Felső sor: kompaktban a cím-mező rejtett (auto-cím megy), az idő + stop marad.
+    if (m_titleEdit) m_titleEdit->setVisible(!compact);
+    if (m_devHint)   m_devHint->setVisible(!compact);
+    if (m_viewToggleBtn) {
+        m_viewToggleBtn->setText(compact ? QStringLiteral("⤢") : QStringLiteral("⤡"));
+        m_viewToggleBtn->setToolTip(compact
+            ? QStringLiteral("Teljes nézet (összes eszköz + beállítás)")
+            : QStringLiteral("Kompakt nézet (csak a kiválasztott eszközök szintje)"));
+    }
+    // Csoportfejek: kompaktban rejtve.
+    for (QListWidgetItem* h : m_headerItems)
+        if (h) h->setHidden(compact);
+    // Eszköz-sorok: kompaktban csak a bepipáltak, checkbox nélkül.
+    for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it) {
+        DeviceRow& r = it.value();
+        const bool checked = r.check && r.check->isChecked();
+        if (r.item) r.item->setHidden(compact && !checked);
+        if (r.check) r.check->setVisible(!compact);
+    }
+    if (m_devBox)
+        m_devBox->setTitle(compact ? QStringLiteral("Szintek")
+                                   : QStringLiteral("Hangeszközök"));
 }
 
 void RecordBar::rebuildDeviceList() {
@@ -105,6 +142,7 @@ void RecordBar::rebuildDeviceList() {
 
     m_deviceList->clear();
     m_deviceRows.clear();
+    m_headerItems.clear();
 
     const QVector<tanara::AudioDeviceInfo> devs = m_controller->devices()->captureDevices();
 
@@ -125,6 +163,7 @@ void RecordBar::rebuildDeviceList() {
         QFont hf = item->font();
         hf.setBold(true);
         item->setFont(hf);
+        m_headerItems.append(item);        // kompakt módban rejthető
         // SZÍN: nincs felülírás → a rendszer-paletta szövegszíne öröklődik (olvasható
         // sötét témán is). Korábban itt 'color: palette(mid)' szürke volt.
     };
@@ -189,9 +228,10 @@ void RecordBar::rebuildDeviceList() {
 
             // Több eszköz is jöhet AZONOS névvel (a headset ~4× felbukkan): az utolsó
             // VU-sávja vezet, de a kijelölés/indítás úgyis név-alapú, így ez rendben van.
-            m_deviceRows.insert(d.name, DeviceRow{check, level});
+            m_deviceRows.insert(d.name, DeviceRow{check, level, item});
         }
     }
+    applyViewMode();   // a frissen épített listára is alkalmazzuk az aktuális módot
 }
 
 void RecordBar::saveSelection() {
@@ -224,27 +264,6 @@ void RecordBar::resetDeviceLevelBars() {
     }
 }
 
-QProgressBar* RecordBar::meterForTrack(int trackIndex) {
-    auto it = m_meters.find(trackIndex);
-    if (it != m_meters.end())
-        return it.value();
-
-    auto* row = new QWidget(m_metersHost);
-    auto* rl = new QHBoxLayout(row);
-    rl->setContentsMargins(0, 0, 0, 0);
-    auto* lbl = new QLabel(QStringLiteral("Sáv %1").arg(trackIndex + 1), row);
-    lbl->setMinimumWidth(56);
-    auto* bar = new QProgressBar(row);
-    bar->setRange(0, 100);
-    bar->setValue(0);
-    bar->setTextVisible(false);
-    rl->addWidget(lbl);
-    rl->addWidget(bar, 1);
-    m_metersLayout->addWidget(row);
-    m_meters.insert(trackIndex, bar);
-    return bar;
-}
-
 void RecordBar::onStartStopClicked() {
     if (!m_controller)
         return;
@@ -261,9 +280,17 @@ void RecordBar::onStartStopClicked() {
         title = QStringLiteral("Megbeszélés %1")
                     .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 
+    // A sáv-index → eszköznév leképezés rögzítése (a sávok a kiválasztott eszközök
+    // sorrendjében jönnek létre), hogy a felvétel közbeni szinteket az eszköz
+    // VU-sávjába vezethessük.
+    const QVector<tanara::AudioDeviceInfo> sel = selectedDevices();
+    m_recordingDeviceNames.clear();
+    for (const auto& d : sel)
+        m_recordingDeviceNames << d.name;
+
     // startRecording() automatikusan leállítja a monitoringot, és elmenti a
     // használt eszközneveket (lastUsedDeviceNames).
-    m_controller->startRecording(title, selectedDevices());
+    m_controller->startRecording(title, sel);
 }
 
 void RecordBar::onDevicesChanged() {
@@ -277,7 +304,9 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
         m_startStopBtn->setEnabled(true);
         m_startStopBtn->setText(QStringLiteral("● Felvétel indítása"));
         m_titleEdit->setEnabled(true);
-        m_deviceList->setEnabled(true);
+        // A checkboxok újra engedélyezve (a listát NEM tiltjuk, hogy a VU látszódjon).
+        for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
+            if (it.value().check) it.value().check->setEnabled(true);
         // Visszatértünk üresjáratba → újraindítjuk az élő szintfigyelést.
         if (m_controller)
             m_controller->startLevelMonitoring();
@@ -286,7 +315,9 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
         m_startStopBtn->setEnabled(true);
         m_startStopBtn->setText(QStringLiteral("■ Felvétel leállítása"));
         m_titleEdit->setEnabled(false);
-        m_deviceList->setEnabled(false);
+        // Csak a kijelölést tiltjuk (checkboxok), a lista marad aktív → a VU mozoghat.
+        for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
+            if (it.value().check) it.value().check->setEnabled(false);
         // A monitoringot a controller már leállította; csak a sávokat nullázzuk.
         resetDeviceLevelBars();
         break;
@@ -311,10 +342,15 @@ void RecordBar::onElapsedChanged(qint64 ms) {
 }
 
 void RecordBar::onLevelMeterUpdated(int trackIndex, float rms) {
-    int v = static_cast<int>(rms * 100.0f);
-    if (v < 0) v = 0;
-    if (v > 100) v = 100;
-    meterForTrack(trackIndex)->setValue(v);
+    // Felvétel közbeni sáv-szint → a megfelelő eszköz VU-sávjába (nincs külön doboz).
+    if (trackIndex < 0 || trackIndex >= m_recordingDeviceNames.size())
+        return;
+    auto it = m_deviceRows.constFind(m_recordingDeviceNames[trackIndex]);
+    if (it == m_deviceRows.constEnd() || !it.value().level)
+        return;
+    int v = static_cast<int>(rms * 100.0f * kLevelVisualGain / 100.0f);
+    v = std::clamp(v, 0, 100);
+    it.value().level->setValue(v);
 }
 
 void RecordBar::onDeviceLevel(QString deviceName, float rms) {
