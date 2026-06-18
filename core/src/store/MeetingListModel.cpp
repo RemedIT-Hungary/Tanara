@@ -29,8 +29,19 @@ QVariant MeetingListModel::data(const QModelIndex& index, int role) const
     const Meeting& m = m_meetings.at(index.row());
     switch (role) {
     case IdRole:                       return m.id;
-    case TitleRole:
-    case Qt::DisplayRole:              return m.title;
+    case TitleRole:                    return m.title;
+    case Qt::DisplayRole: {
+        const qint64 secs = m.durationMs / 1000;
+        const QString dur = QStringLiteral("%1:%2")
+            .arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+        QString s = QStringLiteral("%1  —  %2  —  %3")
+            .arg(m.title,
+                 m.startedAt.toString(QStringLiteral("yyyy-MM-dd HH:mm")),
+                 dur);
+        if (m.hasTranscript) s += QStringLiteral("  📝");
+        if (m.hasSummary)    s += QStringLiteral("  ✓");
+        return s;
+    }
     case DateRole:                     return m.startedAt;
     case DurationRole:                 return static_cast<qlonglong>(m.durationMs);
     case HasSummaryRole:               return m.hasSummary;

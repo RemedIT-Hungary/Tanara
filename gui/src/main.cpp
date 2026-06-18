@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QLoggingCategory>
+#include <QDebug>
 
 int main(int argc, char** argv) {
     // Konzol-zaj csendesítése (külső libek). Audio-only lejátszás → ne próbáljon
@@ -15,6 +16,10 @@ int main(int argc, char** argv) {
     if (!qEnvironmentVariableIsSet("PIPEWIRE_DEBUG")) qputenv("PIPEWIRE_DEBUG", "0");
     // Qt Multimedia ffmpeg info-banner némítása.
     QLoggingCategory::setFilterRules(QStringLiteral("qt.multimedia.ffmpeg.info=false"));
+
+    qInfo().noquote() << "Tanara: a konzolon esetenként ártalmatlan külső-library üzenetek "
+                         "jelenhetnek meg (libvdpau – hiányzó NVIDIA VDPAU AMD gépen; libspa/PipeWire – "
+                         "optikai eszköz formátum-egyeztetés). Ezek NEM hibák, a működést nem érintik.";
 
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Tanara"));

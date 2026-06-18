@@ -30,9 +30,22 @@ public:
     RecordingState recordingState() const;
     QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
 
+    // Az utoljára (legutóbbi felvételnél) használt eszközök NEVEI — induláskor
+    // ezeket érdemes előpipálni a UI-ban. Perzisztens (~/.tanara/state.json).
+    QStringList lastUsedDeviceNames() const;
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
+
+    // Felvétel ELŐTTI élő szintfigyelés (VU-sávokhoz a UI-ban). Megnyitja az
+    // összes capture-eszközt, és deviceLevel(name, rms)-t emittál ~20 Hz-cel.
+    // Felvétel indításakor automatikusan leáll.
+    void startLevelMonitoring();
+    void stopLevelMonitoring();
+
+    // Az utoljára használt eszközök kézi felülírása/perzisztálása.
+    void setLastUsedDeviceNames(const QStringList& names);
 
     // Felvétel indítása a megadott eszközökkel (üres → az összes capture eszköz).
     void startRecording(const QString& title, const QVector<tanara::AudioDeviceInfo>& devices = {});
@@ -49,6 +62,7 @@ public slots:
 
 signals:
     void devicesChanged();
+    void deviceLevel(QString deviceName, float rms);   // élő szint (monitoring)
     void recordingStateChanged(tanara::RecordingState state);
     void levelMeterUpdated(int trackIndex, float rms);
     void elapsedChanged(qint64 ms);

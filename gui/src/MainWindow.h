@@ -30,6 +30,10 @@ public:
     explicit MainWindow(tanara::AppController* controller, QWidget* parent = nullptr);
     ~MainWindow() override;
 
+protected:
+    void showEvent(QShowEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+
 private slots:
     void onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onTranscribeClicked();
@@ -67,6 +71,7 @@ private:
     QAudioOutput* m_audioOutput = nullptr;
 
     QString m_currentMeetingId;
+    bool    m_monitoringStarted = false;
 };
 
 } // namespace tanara_gui

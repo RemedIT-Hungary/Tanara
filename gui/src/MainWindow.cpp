@@ -29,6 +29,9 @@
 #include <QMediaPlayer>
 #include <QAudioOutput>
 
+#include <QShowEvent>
+#include <QCloseEvent>
+
 namespace tanara_gui {
 
 MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
@@ -62,6 +65,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 m_recordBar, &RecordBar::onElapsedChanged);
         connect(m_controller, &tanara::AppController::levelMeterUpdated,
                 m_recordBar, &RecordBar::onLevelMeterUpdated);
+        connect(m_controller, &tanara::AppController::deviceLevel,
+                m_recordBar, &RecordBar::onDeviceLevel);
 
         connect(m_controller, &tanara::AppController::transcriptReady,
                 this, &MainWindow::onTranscriptReady);
@@ -74,7 +79,29 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
     }
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Biztosítjuk, hogy a capture-eszközök elengedésre kerüljenek kilépéskor.
+    if (m_controller)
+        m_controller->stopLevelMonitoring();
+}
+
+void MainWindow::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    // Ablak megjelenésekor — ha épp NEM veszünk fel — indítjuk az élő
+    // szintfigyelést, hogy a VU-sávok mozogjanak és az eszközök azonosíthatók
+    // legyenek. Csak egyszer (a recordingStateChanged kezeli az újraindítást).
+    if (!m_monitoringStarted && m_controller
+        && m_controller->recordingState() == tanara::RecordingState::Idle) {
+        m_controller->startLevelMonitoring();
+        m_monitoringStarted = true;
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (m_controller)
+        m_controller->stopLevelMonitoring();
+    QMainWindow::closeEvent(event);
+}
 
 void MainWindow::buildUi() {
     auto* splitter = new QSplitter(Qt::Horizontal, this);

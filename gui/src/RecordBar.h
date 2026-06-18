@@ -1,7 +1,7 @@
 #pragma once
 //
 // RecordBar — felvétel-vezérlő sáv: Start/Stop gomb, cím-mező, eltelt idő,
-// szintmérők (sávonként), és többszörös eszközválasztó (checkbox-os lista).
+// szintmérők (sávonként), és többszörös eszközválasztó élő VU-sávval.
 //
 #include "tanara/Types.h"
 #include <QWidget>
@@ -14,6 +14,7 @@ class QLabel;
 class QListWidget;
 class QVBoxLayout;
 class QProgressBar;
+class QCheckBox;
 
 namespace tanara {
 class AppController;
@@ -31,6 +32,7 @@ public slots:
     void onRecordingStateChanged(tanara::RecordingState state);
     void onElapsedChanged(qint64 ms);
     void onLevelMeterUpdated(int trackIndex, float rms);
+    void onDeviceLevel(QString deviceName, float rms);
 
 private slots:
     void onStartStopClicked();
@@ -39,6 +41,7 @@ private:
     void rebuildDeviceList();
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
     QProgressBar* meterForTrack(int trackIndex);
+    void resetDeviceLevelBars();
 
     tanara::AppController* m_controller = nullptr;
     tanara::RecordingState m_state = tanara::RecordingState::Idle;
@@ -47,6 +50,14 @@ private:
     QPushButton* m_startStopBtn = nullptr;
     QLabel*      m_elapsedLabel = nullptr;
     QListWidget* m_deviceList = nullptr;
+
+    // Egy-egy eszköz-sor vezérlői, eszköznév szerint kulcsolva (a deviceLevel és
+    // a lastUsedDeviceNames is NÉV alapú).
+    struct DeviceRow {
+        QCheckBox*    check = nullptr;
+        QProgressBar* level = nullptr;
+    };
+    QHash<QString, DeviceRow> m_deviceRows;   // deviceName -> sor
 
     QWidget*               m_metersHost = nullptr;
     QVBoxLayout*           m_metersLayout = nullptr;

@@ -12,10 +12,25 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QProgressBar>
+#include <QCheckBox>
 #include <QDateTime>
 #include <QVariant>
+#include <algorithm>
 
 namespace tanara_gui {
+
+namespace {
+// "Vizuális erősítés": a halk beszéd is láthatóan mozgassa a sávot.
+constexpr float kLevelVisualGain = 140.0f;
+
+QString kindTag(tanara::TrackKind kind) {
+    switch (kind) {
+    case tanara::TrackKind::Mic:      return QStringLiteral("🎤 mikrofon");
+    case tanara::TrackKind::Loopback: return QStringLiteral("🔊 hangszóró/loopback");
+    default:                          return QStringLiteral("egyéb");
+    }
+}
+} // namespace
 
 RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     : QWidget(parent), m_controller(controller) {
@@ -46,7 +61,7 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     topRow->addWidget(m_startStopBtn);
     root->addLayout(topRow);
 
-    // --- szintmérők ---
+    // --- szintmérők (felvétel közbeni sáv-szintek) ---
     auto* metersBox = new QGroupBox(QStringLiteral("Szintek"), this);
     auto* metersOuter = new QVBoxLayout(metersBox);
     m_metersHost = new QWidget(metersBox);
@@ -55,11 +70,17 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     metersOuter->addWidget(m_metersHost);
     root->addWidget(metersBox);
 
-    // --- eszközválasztó ---
+    // --- eszközválasztó (élő VU-sávokkal) ---
     auto* devBox = new QGroupBox(QStringLiteral("Felvevő eszközök"), this);
     auto* devLayout = new QVBoxLayout(devBox);
+    auto* hint = new QLabel(
+        QStringLiteral("Beszélj a mikrofonba / játssz le hangot — a mozgó sáv mutatja, melyik eszköz aktív."),
+        devBox);
+    hint->setWordWrap(true);
+    devLayout->addWidget(hint);
     m_deviceList = new QListWidget(devBox);
-    m_deviceList->setMaximumHeight(120);
+    m_deviceList->setMaximumHeight(200);
+    m_deviceList->setSelectionMode(QAbstractItemView::NoSelection);
     devLayout->addWidget(m_deviceList);
     root->addWidget(devBox);
 
@@ -74,31 +95,71 @@ void RecordBar::rebuildDeviceList() {
     if (!m_controller || !m_controller->devices())
         return;
 
-    // Megjegyezzük a korábbi kijelölést id alapján.
+    // Az eddigi kijelölés megőrzése NÉV szerint (az eszközök közben átsorszámozódhatnak).
     QStringList previouslyChecked;
-    for (int i = 0; i < m_deviceList->count(); ++i) {
-        auto* it = m_deviceList->item(i);
-        if (it->checkState() == Qt::Checked)
-            previouslyChecked << it->data(Qt::UserRole).toString();
+    for (auto it = m_deviceRows.constBegin(); it != m_deviceRows.constEnd(); ++it) {
+        if (it.value().check && it.value().check->isChecked())
+            previouslyChecked << it.key();
     }
+    const bool hadRows = !m_deviceRows.isEmpty();
 
     m_deviceList->clear();
-    const QVector<tanara::AudioDeviceInfo> devs = m_controller->devices()->captureDevices();
-    for (const auto& d : devs) {
-        QString label = d.name;
-        if (d.kind == tanara::TrackKind::Loopback)
-            label += QStringLiteral("  [rendszerhang]");
-        else if (d.kind == tanara::TrackKind::Mic)
-            label += QStringLiteral("  [mikrofon]");
-        if (d.isDefault)
-            label += QStringLiteral("  (alapértelmezett)");
+    m_deviceRows.clear();
 
-        auto* item = new QListWidgetItem(label, m_deviceList);
-        item->setData(Qt::UserRole, d.id);
-        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-        const bool wasChecked = previouslyChecked.contains(d.id);
-        item->setCheckState((wasChecked || (previouslyChecked.isEmpty() && d.isDefault))
-                                ? Qt::Checked : Qt::Unchecked);
+    const QVector<tanara::AudioDeviceInfo> devs = m_controller->devices()->captureDevices();
+
+    // Előpipálás forrása: ha első felépítés és nem volt korábbi kijelölés, az
+    // utoljára használt eszköznevek; ha az is üres → az alapértelmezett eszköz(ök).
+    QStringList lastUsed = m_controller->lastUsedDeviceNames();
+    const bool useLastUsed = !hadRows && previouslyChecked.isEmpty() && !lastUsed.isEmpty();
+    const bool useDefaults = !hadRows && previouslyChecked.isEmpty() && lastUsed.isEmpty();
+
+    for (const auto& d : devs) {
+        auto* item = new QListWidgetItem(m_deviceList);
+
+        auto* rowWidget = new QWidget(m_deviceList);
+        auto* rl = new QHBoxLayout(rowWidget);
+        rl->setContentsMargins(4, 2, 4, 2);
+
+        auto* check = new QCheckBox(rowWidget);
+
+        auto* nameLbl = new QLabel(d.name, rowWidget);
+        nameLbl->setMinimumWidth(160);
+
+        auto* tagLbl = new QLabel(kindTag(d.kind)
+                                      + (d.isDefault ? QStringLiteral("  (alapértelmezett)")
+                                                     : QString()),
+                                  rowWidget);
+        tagLbl->setStyleSheet(QStringLiteral("color: palette(mid);"));
+
+        auto* level = new QProgressBar(rowWidget);
+        level->setRange(0, 100);
+        level->setValue(0);
+        level->setTextVisible(false);
+        level->setMaximumHeight(10);
+        level->setMinimumWidth(80);
+
+        rl->addWidget(check);
+        rl->addWidget(nameLbl, 1);
+        rl->addWidget(tagLbl);
+        rl->addWidget(level, 1);
+
+        // Előpipálás eldöntése.
+        bool checked = false;
+        if (useLastUsed)
+            checked = lastUsed.contains(d.name);
+        else if (useDefaults)
+            checked = d.isDefault;
+        else
+            checked = previouslyChecked.contains(d.name);
+        check->setChecked(checked);
+
+        item->setSizeHint(rowWidget->sizeHint());
+        m_deviceList->setItemWidget(item, rowWidget);
+
+        // Több eszköz is jöhet AZONOS névvel (a headset ~4× felbukkan): az utolsó
+        // VU-sávja vezet, de a kijelölés/indítás úgyis név-alapú, így ez rendben van.
+        m_deviceRows.insert(d.name, DeviceRow{check, level});
     }
 }
 
@@ -107,16 +168,19 @@ QVector<tanara::AudioDeviceInfo> RecordBar::selectedDevices() const {
     if (!m_controller || !m_controller->devices())
         return out;
     const QVector<tanara::AudioDeviceInfo> all = m_controller->devices()->captureDevices();
-    for (int i = 0; i < m_deviceList->count(); ++i) {
-        auto* it = m_deviceList->item(i);
-        if (it->checkState() != Qt::Checked)
-            continue;
-        const QString id = it->data(Qt::UserRole).toString();
-        for (const auto& d : all) {
-            if (d.id == id) { out.push_back(d); break; }
-        }
+    for (const auto& d : all) {
+        auto it = m_deviceRows.constFind(d.name);
+        if (it != m_deviceRows.constEnd() && it.value().check && it.value().check->isChecked())
+            out.push_back(d);
     }
     return out;
+}
+
+void RecordBar::resetDeviceLevelBars() {
+    for (auto it = m_deviceRows.constBegin(); it != m_deviceRows.constEnd(); ++it) {
+        if (it.value().level)
+            it.value().level->setValue(0);
+    }
 }
 
 QProgressBar* RecordBar::meterForTrack(int trackIndex) {
@@ -156,6 +220,8 @@ void RecordBar::onStartStopClicked() {
         title = QStringLiteral("Megbeszélés %1")
                     .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 
+    // startRecording() automatikusan leállítja a monitoringot, és elmenti a
+    // használt eszközneveket (lastUsedDeviceNames).
     m_controller->startRecording(title, selectedDevices());
 }
 
@@ -171,12 +237,17 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
         m_startStopBtn->setText(QStringLiteral("● Felvétel indítása"));
         m_titleEdit->setEnabled(true);
         m_deviceList->setEnabled(true);
+        // Visszatértünk üresjáratba → újraindítjuk az élő szintfigyelést.
+        if (m_controller)
+            m_controller->startLevelMonitoring();
         break;
     case tanara::RecordingState::Recording:
         m_startStopBtn->setEnabled(true);
         m_startStopBtn->setText(QStringLiteral("■ Felvétel leállítása"));
         m_titleEdit->setEnabled(false);
         m_deviceList->setEnabled(false);
+        // A monitoringot a controller már leállította; csak a sávokat nullázzuk.
+        resetDeviceLevelBars();
         break;
     case tanara::RecordingState::Stopping:
         m_startStopBtn->setEnabled(false);
@@ -203,6 +274,15 @@ void RecordBar::onLevelMeterUpdated(int trackIndex, float rms) {
     if (v < 0) v = 0;
     if (v > 100) v = 100;
     meterForTrack(trackIndex)->setValue(v);
+}
+
+void RecordBar::onDeviceLevel(QString deviceName, float rms) {
+    auto it = m_deviceRows.constFind(deviceName);
+    if (it == m_deviceRows.constEnd() || !it.value().level)
+        return;
+    int v = static_cast<int>(rms * 100.0f * kLevelVisualGain / 100.0f);
+    v = std::clamp(v, 0, 100);
+    it.value().level->setValue(v);
 }
 
 } // namespace tanara_gui

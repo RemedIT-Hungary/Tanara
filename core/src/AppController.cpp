@@ -2,6 +2,7 @@
 
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
+#include "tanara/audio/DeviceMonitor.h"
 #include "tanara/audio/RecordingSession.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/KeyStore.h"
@@ -79,6 +80,24 @@ MergedTranscript readTokensJson(const QString& path) {
     return mt;
 }
 
+QStringList loadLastDevices(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const auto root = QJsonDocument::fromJson(f.readAll()).object();
+    QStringList out;
+    for (const auto& v : root["lastDevices"].toArray()) out << v.toString();
+    return out;
+}
+
+void saveLastDevices(const QString& path, const QStringList& names) {
+    QJsonArray arr;
+    for (const auto& n : names) arr.append(n);
+    QJsonObject root;
+    root["lastDevices"] = arr;
+    QSaveFile f(path);
+    if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); f.commit(); }
+}
+
 QString slugify(const QString& s) {
     QString out;
     for (QChar c : s) out += (c.isLetterOrNumber() ? c : QChar('-'));
@@ -93,11 +112,14 @@ struct AppController::Impl {
     DeviceManager*   devices  = nullptr;
     MeetingStore*    store    = nullptr;
     RecordingSession* session = nullptr;
+    DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
     QString          metaDir;
     QString          notesDir;
+    QString          statePath;
+    QStringList      lastDevices;
     QString          currentFolder;
     QHash<QString, MergedTranscript> mergedCache;
 };
@@ -118,6 +140,11 @@ AppController::AppController(QObject* parent)
     d->store   = new MeetingStore(d->audioDir, d->metaDir, this);
 
     connect(d->devices, &DeviceManager::devicesChanged, this, &AppController::devicesChanged);
+
+    d->statePath = QDir(d->metaDir).filePath(QStringLiteral("state.json"));
+    d->lastDevices = loadLastDevices(d->statePath);
+    d->monitor = new DeviceMonitor(this);
+    connect(d->monitor, &DeviceMonitor::level, this, &AppController::deviceLevel);
 }
 
 AppController::~AppController() = default;
@@ -130,6 +157,23 @@ QString AppController::currentMeetingFolder() const { return d->currentFolder; }
 
 void AppController::refreshDevices() { d->devices->refresh(); }
 
+QStringList AppController::lastUsedDeviceNames() const { return d->lastDevices; }
+
+void AppController::setLastUsedDeviceNames(const QStringList& names) {
+    d->lastDevices = names;
+    saveLastDevices(d->statePath, names);
+}
+
+void AppController::startLevelMonitoring() {
+    if (d->state == RecordingState::Recording || d->state == RecordingState::Stopping) return;
+    d->devices->refresh();
+    d->monitor->start(d->devices->captureDevices());
+}
+
+void AppController::stopLevelMonitoring() {
+    if (d->monitor) d->monitor->stop();
+}
+
 void AppController::setSecret(const QString& name, const QString& value) { d->keyStore.set(name, value); }
 bool AppController::hasSecret(const QString& name) const { return !d->keyStore.get(name).isEmpty(); }
 
@@ -139,6 +183,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit errorOccurred(QStringLiteral("Már folyik felvétel."));
         return;
     }
+    stopLevelMonitoring();   // a monitor felszabadítja az eszközöket a felvétel előtt
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();
@@ -148,6 +193,11 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit errorOccurred(QStringLiteral("Nincs felvehető hangeszköz."));
         return;
     }
+
+    // Megjegyezzük a használt eszközöket (induláskor előpipáláshoz).
+    QStringList usedNames;
+    for (const auto& dvc : use) usedNames << dvc.name;
+    setLastUsedDeviceNames(usedNames);
 
     const AppSettings s = d->settings->settings();
     auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName, this);
