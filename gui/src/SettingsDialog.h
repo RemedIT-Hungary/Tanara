@@ -10,6 +10,7 @@ class QPushButton;
 class QLabel;
 class QDoubleSpinBox;
 class QSpinBox;
+class QCheckBox;
 
 namespace tanara {
 class AppController;
@@ -39,6 +40,7 @@ private:
     QLineEdit* m_notesDir = nullptr;
     QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
+    QCheckBox* m_autoRecord = nullptr;
     QLineEdit* m_sttBaseUrl = nullptr;
     QLineEdit* m_sttModel = nullptr;
     QLineEdit* m_llmBaseUrl = nullptr;

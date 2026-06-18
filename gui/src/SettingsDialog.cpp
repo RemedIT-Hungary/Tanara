@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
+#include <QCheckBox>
 #include <QPushButton>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -55,6 +56,13 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
                      makeDirRow(dirsBox, m_metadataDir, QStringLiteral("Metaadat mappája")));
     m_userSpeakerName = new QLineEdit(dirsBox);
     dirsForm->addRow(QStringLiteral("Saját beszélő neve:"), m_userSpeakerName);
+    m_autoRecord = new QCheckBox(
+        QStringLiteral("Automatikus rögzítés (minden eszköz)"), dirsBox);
+    m_autoRecord->setToolTip(QStringLiteral(
+        "Bekapcsolva minden bemenetet rögzít; a csendes sávokat a felvétel után "
+        "automatikusan eldobja (a fájl megmarad, visszaállítható). Kikapcsolva a "
+        "felvétel-vezérlőben pipált eszközöket rögzíti."));
+    dirsForm->addRow(QString(), m_autoRecord);
     root->addWidget(dirsBox);
 
     // --- STT (Soniox) ---
@@ -183,6 +191,7 @@ void SettingsDialog::loadFromController() {
     m_notesDir->setText(s.notesDir);
     m_metadataDir->setText(s.metadataDir);
     m_userSpeakerName->setText(s.userSpeakerName);
+    m_autoRecord->setChecked(s.autoRecordAllDevices);
     m_sttBaseUrl->setText(s.stt.baseUrl);
     m_sttModel->setText(s.stt.model);
     m_llmBaseUrl->setText(s.llm.baseUrl);
@@ -203,6 +212,7 @@ void SettingsDialog::onAccept() {
     s.notesDir = m_notesDir->text().trimmed();
     s.metadataDir = m_metadataDir->text().trimmed();
     s.userSpeakerName = m_userSpeakerName->text().trimmed();
+    s.autoRecordAllDevices = m_autoRecord->isChecked();
     s.stt.baseUrl = m_sttBaseUrl->text().trimmed();
     s.stt.model = m_sttModel->text().trimmed();
     s.llm.baseUrl = m_llmBaseUrl->text().trimmed();

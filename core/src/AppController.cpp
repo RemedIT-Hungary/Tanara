@@ -511,6 +511,37 @@ void AppController::deleteMeeting(const QString& meetingId) {
     d->store->deleteMeeting(meetingId);   // meetingRemoved jel a store-ból
 }
 
+void AppController::restoreTrack(const QString& meetingId, const QString& trackId) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    bool changed = false;
+    for (Track& t : m.tracks)
+        if (t.id == trackId && !t.active) { t.active = true; changed = true; }
+    if (!changed) return;
+    d->store->saveMeeting(m);
+    emit tracksChanged(meetingId);
+}
+
+void AppController::deleteTrack(const QString& meetingId, const QString& trackId) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    QVector<Track> kept;
+    bool removed = false;
+    for (const Track& t : m.tracks) {
+        if (t.id == trackId) {
+            // A hangfájl FIZIKAI törlése (explicit user-művelet).
+            QFile::remove(QDir(m.folder).filePath(t.file));
+            removed = true;
+        } else {
+            kept.push_back(t);
+        }
+    }
+    if (!removed) return;
+    m.tracks = kept;
+    d->store->saveMeeting(m);
+    emit tracksChanged(meetingId);
+}
+
 void AppController::setUserSpeakerName(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
@@ -644,12 +675,18 @@ void AppController::transcribeMeeting(const QString& meetingId)
     auto* provider = new SonioxProvider(cfg, this);
     emit jobProgress(m.id, QStringLiteral("Átírás indítása…"));
 
+    // Csak az AKTÍV sávokat írjuk át (az eldobott/csendes sávokra nem pazarlunk Soniox-időt).
+    QVector<int> activeIdx;
+    for (int i = 0; i < m.tracks.size(); ++i)
+        if (m.tracks[i].active) activeIdx << i;
+    if (activeIdx.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs aktív hangsáv az átíráshoz.")); return; }
+
     struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
     auto ctx = std::make_shared<Ctx>();
-    ctx->remaining = m.tracks.size();
+    ctx->remaining = activeIdx.size();
     ctx->results.resize(m.tracks.size());
 
-    for (int i = 0; i < m.tracks.size(); ++i) {
+    for (int i : activeIdx) {
         const Track& t = m.tracks[i];
         SttRequest req;
         req.audioFilePath = QDir(m.folder).filePath(t.file);

@@ -1,6 +1,7 @@
 #include "RecordBar.h"
 
 #include "tanara/AppController.h"
+#include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 
 #include <QLineEdit>
@@ -280,10 +281,19 @@ void RecordBar::onStartStopClicked() {
         title = QStringLiteral("Megbeszélés %1")
                     .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 
-    // A sáv-index → eszköznév leképezés rögzítése (a sávok a kiválasztott eszközök
-    // sorrendjében jönnek létre), hogy a felvétel közbeni szinteket az eszköz
-    // VU-sávjába vezethessük.
-    const QVector<tanara::AudioDeviceInfo> sel = selectedDevices();
+    // Auto-mód: MINDEN eszközt rögzítünk (a csendeseket a felvétel után eldobjuk);
+    // kézi módban a bepipáltakat. A sáv-index → eszköznév leképezést is innen
+    // rögzítjük (a sávok ebben a sorrendben jönnek létre) a VU-routinghoz.
+    const bool autoAll = m_controller->settings()
+                         && m_controller->settings()->settings().autoRecordAllDevices;
+    QVector<tanara::AudioDeviceInfo> sel;
+    if (autoAll && m_controller->devices())
+        sel = m_controller->devices()->captureDevices();
+    else
+        sel = selectedDevices();
+    if (sel.isEmpty() && m_controller->devices())   // auto fallback: ha üres a kijelölés
+        sel = m_controller->devices()->captureDevices();
+
     m_recordingDeviceNames.clear();
     for (const auto& d : sel)
         m_recordingDeviceNames << d.name;

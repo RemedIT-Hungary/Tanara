@@ -54,6 +54,8 @@ QJsonObject toJson(const Track& t)
     o[QStringLiteral("fixedSpeaker")] = t.fixedSpeaker;
     o[QStringLiteral("sampleRate")]   = t.sampleRate;
     o[QStringLiteral("channels")]     = t.channels;
+    o[QStringLiteral("active")]       = t.active;
+    o[QStringLiteral("peakLevel")]    = t.peakLevel;
     return o;
 }
 
@@ -68,6 +70,8 @@ Track trackFromJson(const QJsonObject& o)
     t.fixedSpeaker = o.value(QStringLiteral("fixedSpeaker")).toBool();
     t.sampleRate   = o.value(QStringLiteral("sampleRate")).toInt(48000);
     t.channels     = o.value(QStringLiteral("channels")).toInt(1);
+    t.active       = o.value(QStringLiteral("active")).toBool(true);   // régi felvétel → aktív
+    t.peakLevel    = static_cast<float>(o.value(QStringLiteral("peakLevel")).toDouble(0.0));
     return t;
 }
 
@@ -209,6 +213,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("notesDir")]       = s.notesDir;
     o[QStringLiteral("metadataDir")]    = s.metadataDir;
     o[QStringLiteral("userSpeakerName")] = s.userSpeakerName;
+    o[QStringLiteral("autoRecordAllDevices")] = s.autoRecordAllDevices;
     o[QStringLiteral("languageHints")]  = stringListToArray(s.languageHints);
     o[QStringLiteral("stt")]            = toJson(s.stt);
     o[QStringLiteral("llm")]            = toJson(s.llm);
@@ -222,6 +227,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.notesDir        = o.value(QStringLiteral("notesDir")).toString();
     s.metadataDir     = o.value(QStringLiteral("metadataDir")).toString();
     s.userSpeakerName = o.value(QStringLiteral("userSpeakerName")).toString();
+    s.autoRecordAllDevices = o.value(QStringLiteral("autoRecordAllDevices")).toBool(true);
     if (o.contains(QStringLiteral("languageHints")))
         s.languageHints = arrayToStringList(o.value(QStringLiteral("languageHints")).toArray());
     s.stt = providerConfigFromJson(o.value(QStringLiteral("stt")).toObject());

@@ -5,6 +5,7 @@
 #include "TranscriptPlayer.h"
 #include "PeopleManagerDialog.h"
 #include "FloatingRecorder.h"
+#include "TracksPanel.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -110,6 +111,11 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onRecordingFinished);
         connect(m_controller, &tanara::AppController::speakerMapChanged,
                 this, &MainWindow::onSpeakerMapChanged);
+        connect(m_controller, &tanara::AppController::tracksChanged,
+                this, [this](const QString& id) {
+                    reloadMeetings();
+                    if (id == m_currentMeetingId) loadSelectedMeetingViews();
+                });
 
         // A táblát ezek a jelzések is frissítik (új meeting / friss átirat-jelölés).
         connect(m_controller, &tanara::AppController::recordingFinished,
@@ -214,8 +220,11 @@ void MainWindow::buildUi() {
     m_transcriptPlayer->setController(m_controller);
     m_summaryView = new QTextBrowser(m_tabs);
     m_summaryView->setOpenExternalLinks(true);
+    m_tracksPanel = new TracksPanel(m_tabs);
+    m_tracksPanel->setController(m_controller);
     m_tabs->addTab(m_transcriptPlayer, QStringLiteral("Átirat"));
     m_tabs->addTab(m_summaryView, QStringLiteral("Összefoglaló"));
+    m_tabs->addTab(m_tracksPanel, QStringLiteral("Sávok"));
     rl->addWidget(m_tabs, 1);
 
     splitter->addWidget(right);
@@ -347,12 +356,14 @@ void MainWindow::loadSelectedMeetingViews() {
         m_currentMeetingId.clear();
         m_transcriptPlayer->clearMeeting();
         m_summaryView->clear();
+        m_tracksPanel->clearMeeting();
         return;
     }
 
     m_currentMeetingId = m.id;
     reloadTranscriptView(m);   // betölti a segments.json-t + hangforrást a lejátszóba
     reloadSummaryView(m);
+    m_tracksPanel->setMeeting(m);
 }
 
 void MainWindow::onSelectionChanged(const QItemSelection&, const QItemSelection&) {

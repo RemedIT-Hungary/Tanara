@@ -71,6 +71,11 @@ public slots:
     // Meeting VÉGLEGES törlése (mappa + index). A store meetingRemoved jelét adja.
     void deleteMeeting(const QString& meetingId);
 
+    // Egy (felvétel után eldobott) sáv visszaállítása aktívvá — a fájl megvolt a lemezen.
+    void restoreTrack(const QString& meetingId, const QString& trackId);
+    // Egy sáv VÉGLEGES törlése: a hangfájl fizikailag törlődik + kikerül a meetingből.
+    void deleteTrack(const QString& meetingId, const QString& trackId);
+
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
 
@@ -116,6 +121,7 @@ signals:
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
+    void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
     void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
     void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot

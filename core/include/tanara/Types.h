@@ -40,6 +40,8 @@ struct Track {
     bool fixedSpeaker = false;
     int sampleRate = 48000;
     int channels = 1;
+    bool active = true;     // false = felvétel után csendesnek ítélve, eldobva (fájl MARAD)
+    float peakLevel = 0.0f; // a felvétel alatti csúcs-RMS (a megtartás-döntéshez)
 };
 
 // ---- transcript ------------------------------------------------------------
@@ -141,6 +143,7 @@ struct AppSettings {
     QString notesDir;            // hova az összefoglaló .md másolatát (vault Meetings/)
     QString metadataDir;         // pl. ~/.tanara
     QString userSpeakerName;     // a mic-sáv fix neve (pl. "Ádám")
+    bool autoRecordAllDevices = true;  // true → minden eszközt rögzít (csendeseket utólag eldobja)
     QStringList languageHints{QStringLiteral("hu")};
     ProviderConfig stt;          // Soniox
     ProviderConfig llm;          // OpenAI-kompatibilis (LM Studio)

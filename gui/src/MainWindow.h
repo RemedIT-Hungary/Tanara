@@ -27,6 +27,7 @@ class RecordBar;
 class MeetingTableModel;
 class TranscriptPlayer;
 class FloatingRecorder;
+class TracksPanel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -81,6 +82,7 @@ private:
     QTabWidget*       m_tabs = nullptr;
     TranscriptPlayer* m_transcriptPlayer = nullptr;
     QTextBrowser*     m_summaryView = nullptr;
+    TracksPanel*      m_tracksPanel = nullptr;
 
     QPushButton*  m_transcribeBtn = nullptr;
     QPushButton*  m_summarizeBtn = nullptr;

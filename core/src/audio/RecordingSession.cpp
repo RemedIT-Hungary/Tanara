@@ -170,6 +170,7 @@ struct RecordingSession::Impl {
 
     std::unique_ptr<AudioEngine> engine;
     std::vector<TrackMeta> tracks;
+    QVector<float> trackPeak;   // sávonkénti csúcs-RMS a felvétel alatt
 
     QThread* workerThread = nullptr;
     DrainWorker* worker = nullptr;
@@ -265,11 +266,16 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     }
 
     // 4) Worker szál — Ő hozza létre+indítja az encodereket (a saját szálán).
+    impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
     impl_->worker = new DrainWorker(impl_->engine.get(), &impl_->tracks, impl_->folder);
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,
-            [this](int idx, float rms) { emit levelMeterUpdated(idx, rms); }, Qt::QueuedConnection);
+            [this](int idx, float rms) {
+                if (idx >= 0 && idx < impl_->trackPeak.size())
+                    impl_->trackPeak[idx] = qMax(impl_->trackPeak[idx], rms);
+                emit levelMeterUpdated(idx, rms);
+            }, Qt::QueuedConnection);
     connect(impl_->worker, &DrainWorker::elapsed, this,
             [this](qint64 ms) { emit elapsedChanged(ms); }, Qt::QueuedConnection);
     impl_->workerThread->start();
@@ -341,7 +347,15 @@ void RecordingSession::stop() {
     m.startedAt = impl_->startedAt;
     m.durationMs = durationMs;
     m.mixdownFile = mixdownRel;
-    for (const auto& t : impl_->tracks) {
+    // Csendes sávok auto-eldobása: a csúcs-RMS-küszöb alattiak active=false-ot kapnak
+    // (a FÁJL MARAD a lemezen — utólag visszaállítható/törölhető). Ha MINDEN sáv a
+    // küszöb alatt lenne, egyiket sem dobjuk (inkább maradjon meg minden).
+    constexpr float kSilencePeak = 0.01f;   // tunálható; reverzibilis, ezért óvatosan alacsony
+    bool anyAbove = false;
+    for (int i = 0; i < static_cast<int>(impl_->tracks.size()); ++i)
+        if (i < impl_->trackPeak.size() && impl_->trackPeak[i] >= kSilencePeak) anyAbove = true;
+    for (int i = 0; i < static_cast<int>(impl_->tracks.size()); ++i) {
+        const auto& t = impl_->tracks[i];
         Track tr;
         tr.id = t.slug;
         tr.deviceName = t.deviceName;
@@ -351,6 +365,8 @@ void RecordingSession::stop() {
         tr.fixedSpeaker = true;
         tr.sampleRate = 48000;
         tr.channels = t.channels;
+        tr.peakLevel = (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f;
+        tr.active = anyAbove ? (tr.peakLevel >= kSilencePeak) : true;
         m.tracks.push_back(tr);
     }
 
