@@ -116,9 +116,20 @@ MergedTranscript readTokensJson(const QString& path) {
 //  - pontos egyezés egy sáv fix beszélőjével (mic) → az a sáv;
 //  - egyébként (diarizált "Távoli N") → a loopback sáv;
 //  - végső fallback: az első sáv.
-const Track* resolveTrackForLabel(const Meeting& m, const QString& rawLabel) {
+const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
+                                  const QString& rawLabel) {
+    // 1) Elsődlegesen a címke tokenjeinek trackId-je alapján (a diarizált mic/loopback
+    //    beszélők — „Mikrofon N" / „Távoli N" — így a HELYES sávra oldódnak fel).
+    QString tid;
+    for (const TranscriptToken& t : mt.tokens)
+        if (t.speaker == rawLabel && !t.trackId.isEmpty()) { tid = t.trackId; break; }
+    if (!tid.isEmpty())
+        for (const Track& t : m.tracks)
+            if (t.id == tid) return &t;
+    // 2) Fallback: pontos sáv-beszélőnév egyezés (fix mic-név).
     for (const Track& t : m.tracks)
         if (t.speakerLabel == rawLabel) return &t;
+    // 3) Fallback: az első loopback sáv.
     for (const Track& t : m.tracks)
         if (t.kind == TrackKind::Loopback) return &t;
     return m.tracks.isEmpty() ? nullptr : &m.tracks.first();
@@ -327,11 +338,11 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     VoiceEmbedder* emb = ensureEmb();
     if (!emb) return;   // nincs modell → csendben kihagyjuk (a kézi címkézés így is működik)
 
-    const Track* track = resolveTrackForLabel(m, rawLabel);
-    if (!track) return;
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return;
+    const Track* track = resolveTrackForLabel(m, merged, rawLabel);
+    if (!track) return;
 
     const QVector<float> embedding = embeddingForLabel(*emb, m.folder, merged, rawLabel, *track);
     if (embedding.isEmpty()) return;
@@ -375,7 +386,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
 
     bool mapChanged = false, printsChanged = false;
     for (const QString& label : labels) {
-        const Track* track = resolveTrackForLabel(m, label);
+        const Track* track = resolveTrackForLabel(m, merged, label);
         if (!track) continue;
 
         // Mic-sáv = ISMERT identitás (a fix beszélőnév). Lenyomatot rögzítünk
@@ -693,9 +704,9 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.trackId = t.id;
         req.speakerLabel = t.speakerLabel;
         req.languageHints = s.languageHints;
-        // Mikrofon-sáv = egy ismert beszélő (fix név). Loopback/rendszerhang =
-        // a hívás távoli oldala, ahol TÖBB beszélő lehet → Soniox diarizáció BE.
-        req.diarization = (t.kind == TrackKind::Loopback);
+        // Diarizáció MINDEN sávra: a mikrofonba is beszélhet egyszerre több ember,
+        // ezért a mic-sávot is fel kell bontani beszélőkre (nem fix egy beszélő).
+        req.diarization = true;
 
         SttJob* job = provider->transcribe(req);
         connect(job, &SttJob::stateChanged, this,
@@ -705,13 +716,32 @@ void AppController::transcribeMeeting(const QString& meetingId)
         connect(job, &SttJob::finished, this, [this, ctx, i, m, provider](const TrackTranscript& tr) mutable {
             if (ctx->failed) return;
             TrackTranscript res = tr;
-            // Diarizált (loopback) sávnál a Soniox beszélő-azonosítóit (1,2,…) emberi
-            // címkére fordítjuk, hogy a távoli beszélők elkülönüljenek a transcriptben.
-            if (i < m.tracks.size() && m.tracks[i].kind == TrackKind::Loopback) {
-                for (TranscriptToken& tok : res.tokens)
-                    tok.speaker = tok.speaker.isEmpty()
-                        ? m.tracks[i].speakerLabel
-                        : QStringLiteral("Távoli %1").arg(tok.speaker);
+            // A Soniox diarizációs id-ket (1,2,…) emberi címkére fordítjuk.
+            if (i < m.tracks.size()) {
+                const Track& trk = m.tracks[i];
+                if (trk.kind == TrackKind::Loopback) {
+                    // Távoli oldal: minden id külön „Távoli N".
+                    for (TranscriptToken& tok : res.tokens)
+                        tok.speaker = tok.speaker.isEmpty()
+                            ? trk.speakerLabel
+                            : QStringLiteral("Távoli %1").arg(tok.speaker);
+                } else {
+                    // Mic: a DOMINÁNS beszélő (legtöbb token) = a sáv beszélője
+                    // (a primary mic-en a felhasználó neve); a többi mic-beszélő
+                    // „Mikrofon N" → a voice-ID auto-match nevesítheti.
+                    QHash<QString, int> cnt;
+                    for (const TranscriptToken& tok : res.tokens)
+                        if (!tok.speaker.isEmpty()) ++cnt[tok.speaker];
+                    QString dom; int best = -1;
+                    for (auto it = cnt.constBegin(); it != cnt.constEnd(); ++it)
+                        if (it.value() > best) { best = it.value(); dom = it.key(); }
+                    for (TranscriptToken& tok : res.tokens) {
+                        if (tok.speaker.isEmpty() || tok.speaker == dom)
+                            tok.speaker = trk.speakerLabel;
+                        else
+                            tok.speaker = QStringLiteral("Mikrofon %1").arg(tok.speaker);
+                    }
+                }
             }
             ctx->results[i] = res;
             if (--ctx->remaining != 0) return;

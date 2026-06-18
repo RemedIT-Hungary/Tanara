@@ -1,6 +1,7 @@
 #include "TranscriptPlayer.h"
 
 #include "tanara/AppController.h"
+#include "tanara/SettingsManager.h"
 
 #include <QPushButton>
 #include <QToolButton>
@@ -199,9 +200,19 @@ void TranscriptPlayer::populateSpeakersPanel() {
     }
 
     const QStringList people = m_controller ? m_controller->knownPeople() : QStringList{};
+    const QString ownName = (m_controller && m_controller->settings())
+        ? m_controller->settings()->settings().userSpeakerName.trimmed()
+        : QString();
 
     for (const QString& raw : rawSpeakers) {
-        auto* lbl = new QLabel(raw + QStringLiteral(":"), m_speakersPanel);
+        // A SAJÁT beszélő sorát „(én)"-nel + félkövéren jelöljük, hogy a felületről
+        // azonnal látsszon, melyik vagy te.
+        const bool isOwn = !ownName.isEmpty() && displayName(raw) == ownName;
+        auto* lbl = new QLabel(raw + (isOwn ? QStringLiteral(" (én):") : QStringLiteral(":")),
+                               m_speakersPanel);
+        if (isOwn) {
+            QFont f = lbl->font(); f.setBold(true); lbl->setFont(f);
+        }
 
         // "Meghallgatás" gomb: a beszélő reprezentatív (leghosszabb) szegmensét
         // játssza le, hogy a felhasználó hallás után azonosíthassa a beszélőt.
