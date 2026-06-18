@@ -7,7 +7,8 @@
 #include "tanara/Types.h"
 #include <QMainWindow>
 
-class QListView;
+class QTableView;
+class QSortFilterProxyModel;
 class QTextBrowser;
 class QTabWidget;
 class QPushButton;
@@ -17,12 +18,12 @@ class QItemSelection;
 
 namespace tanara {
 class AppController;
-class MeetingListModel;
 }
 
 namespace tanara_gui {
 
 class RecordBar;
+class MeetingTableModel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -49,15 +50,17 @@ private:
     void buildUi();
     void buildMenu();
     void loadSelectedMeetingViews();
+    void reloadMeetings();
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
     static QString readMarkdownFile(const QString& path);
 
-    tanara::AppController*    m_controller = nullptr;
-    tanara::MeetingListModel* m_model = nullptr;
+    tanara::AppController*  m_controller = nullptr;
+    MeetingTableModel*      m_tableModel = nullptr;
+    QSortFilterProxyModel*  m_proxy = nullptr;
 
-    QListView*    m_list = nullptr;
+    QTableView*   m_table = nullptr;
     RecordBar*    m_recordBar = nullptr;
     QTabWidget*   m_tabs = nullptr;
     QTextBrowser* m_transcriptView = nullptr;

@@ -1,12 +1,14 @@
 #include "MainWindow.h"
 #include "RecordBar.h"
 #include "SettingsDialog.h"
+#include "MeetingTableModel.h"
 
 #include "tanara/AppController.h"
-#include "tanara/store/MeetingListModel.h"
 #include "tanara/store/MeetingStore.h"
 
-#include <QListView>
+#include <QTableView>
+#include <QHeaderView>
+#include <QSortFilterProxyModel>
 #include <QTextBrowser>
 #include <QTabWidget>
 #include <QPushButton>
@@ -45,15 +47,33 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
     buildUi();
     buildMenu();
 
-    // Modell összekötése a store-ral.
-    m_model = new tanara::MeetingListModel(this);
-    if (m_controller && m_controller->store())
-        m_model->setStore(m_controller->store());
-    m_list->setModel(m_model);
+    // GUI-oldali táblamodell + rendező proxy.
+    m_tableModel = new MeetingTableModel(this);
+    m_proxy = new QSortFilterProxyModel(this);
+    m_proxy->setSourceModel(m_tableModel);
+    m_proxy->setSortRole(Qt::EditRole);   // típushelyes rendezés (lásd MeetingTableModel)
+    m_proxy->setDynamicSortFilter(true);
+    m_table->setModel(m_proxy);
+    m_table->setSortingEnabled(true);
+    m_table->sortByColumn(MeetingTableModel::ColTime, Qt::DescendingOrder);
 
-    if (auto* sel = m_list->selectionModel())
+    // Oszlopszélességek (a Név oszlop nyúlik — setStretchLastSection a buildUi-ban).
+    m_table->setColumnWidth(MeetingTableModel::ColTime, 130);
+    m_table->setColumnWidth(MeetingTableModel::ColDuration, 60);
+
+    reloadMeetings();
+
+    if (auto* sel = m_table->selectionModel())
         connect(sel, &QItemSelectionModel::selectionChanged,
                 this, &MainWindow::onSelectionChanged);
+
+    // Store jelzésekre frissítjük a táblát.
+    if (m_controller && m_controller->store()) {
+        connect(m_controller->store(), &tanara::MeetingStore::meetingAdded,
+                this, [this](const QString&) { reloadMeetings(); });
+        connect(m_controller->store(), &tanara::MeetingStore::meetingUpdated,
+                this, [this](const QString&) { reloadMeetings(); });
+    }
 
     // Controller jelzések.
     if (m_controller) {
@@ -76,6 +96,14 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::recordingFinished,
                 this, &MainWindow::onRecordingFinished);
+
+        // A táblát ezek a jelzések is frissítik (új meeting / friss átirat-jelölés).
+        connect(m_controller, &tanara::AppController::recordingFinished,
+                this, [this](const tanara::Meeting&) { reloadMeetings(); });
+        connect(m_controller, &tanara::AppController::transcriptReady,
+                this, [this](const QString&, const QString&) { reloadMeetings(); });
+        connect(m_controller, &tanara::AppController::summaryReady,
+                this, [this](const QString&, const QString&) { reloadMeetings(); });
     }
 }
 
@@ -106,13 +134,18 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 void MainWindow::buildUi() {
     auto* splitter = new QSplitter(Qt::Horizontal, this);
 
-    // --- bal: meeting-lista ---
-    m_list = new QListView(splitter);
-    m_list->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_list->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_list->setUniformItemSizes(true);
-    m_list->setMinimumWidth(240);
-    splitter->addWidget(m_list);
+    // --- bal: meeting-lista (rendezhető tábla) ---
+    m_table = new QTableView(splitter);
+    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setShowGrid(false);
+    m_table->setAlternatingRowColors(true);
+    m_table->verticalHeader()->setVisible(false);
+    m_table->horizontalHeader()->setStretchLastSection(true);
+    m_table->horizontalHeader()->setHighlightSections(false);
+    m_table->setMinimumWidth(320);
+    splitter->addWidget(m_table);
 
     // --- jobb: record bar + akciók + lapfülek ---
     auto* right = new QWidget(splitter);
@@ -167,22 +200,41 @@ void MainWindow::buildMenu() {
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 }
 
-tanara::Meeting MainWindow::selectedMeeting(bool* ok) const {
-    if (ok) *ok = false;
-    if (!m_list || !m_model)
-        return {};
-    const QModelIndex idx = m_list->currentIndex();
-    if (!idx.isValid())
-        return {};
-    const QString id = m_model->data(idx, tanara::MeetingListModel::IdRole).toString();
-    const QVector<tanara::Meeting>& all = m_model->meetings();
-    for (const auto& m : all) {
-        if (m.id == id) {
-            if (ok) *ok = true;
-            return m;
+void MainWindow::reloadMeetings() {
+    if (!m_tableModel || !m_controller || !m_controller->store())
+        return;
+    // A kijelölt meeting megőrzése id szerint (a reset után visszaállítjuk).
+    const QString keepId = m_currentMeetingId;
+
+    m_tableModel->setMeetings(m_controller->store()->loadAll());
+
+    if (keepId.isEmpty() || !m_table->selectionModel())
+        return;
+    for (int row = 0; row < m_tableModel->rowCount(); ++row) {
+        if (m_tableModel->idAt(row) == keepId) {
+            const QModelIndex proxyIdx =
+                m_proxy->mapFromSource(m_tableModel->index(row, 0));
+            if (proxyIdx.isValid())
+                m_table->selectionModel()->setCurrentIndex(
+                    proxyIdx, QItemSelectionModel::ClearAndSelect
+                                  | QItemSelectionModel::Rows);
+            break;
         }
     }
-    return {};
+}
+
+tanara::Meeting MainWindow::selectedMeeting(bool* ok) const {
+    if (ok) *ok = false;
+    if (!m_table || !m_proxy || !m_tableModel)
+        return {};
+    const QModelIndex proxyIdx = m_table->currentIndex();
+    if (!proxyIdx.isValid())
+        return {};
+    const QModelIndex srcIdx = m_proxy->mapToSource(proxyIdx);
+    if (!srcIdx.isValid())
+        return {};
+    if (ok) *ok = true;
+    return m_tableModel->meetingAt(srcIdx.row());
 }
 
 QString MainWindow::readMarkdownFile(const QString& path) {

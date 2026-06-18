@@ -23,11 +23,11 @@ namespace {
 // "Vizuális erősítés": a halk beszéd is láthatóan mozgassa a sávot.
 constexpr float kLevelVisualGain = 140.0f;
 
-QString kindTag(tanara::TrackKind kind) {
+QString groupTitle(tanara::TrackKind kind) {
     switch (kind) {
-    case tanara::TrackKind::Mic:      return QStringLiteral("🎤 mikrofon");
-    case tanara::TrackKind::Loopback: return QStringLiteral("🔊 hangszóró/loopback");
-    default:                          return QStringLiteral("egyéb");
+    case tanara::TrackKind::Mic:      return QStringLiteral("🎤 Mikrofonok");
+    case tanara::TrackKind::Loopback: return QStringLiteral("🔊 Hangkimenetek");
+    default:                          return QStringLiteral("Egyéb");
     }
 }
 } // namespace
@@ -71,7 +71,7 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     root->addWidget(metersBox);
 
     // --- eszközválasztó (élő VU-sávokkal) ---
-    auto* devBox = new QGroupBox(QStringLiteral("Felvevő eszközök"), this);
+    auto* devBox = new QGroupBox(QStringLiteral("Hangeszközök"), this);
     auto* devLayout = new QVBoxLayout(devBox);
     auto* hint = new QLabel(
         QStringLiteral("Beszélj a mikrofonba / játssz le hangot — a mozgó sáv mutatja, melyik eszköz aktív."),
@@ -114,52 +114,80 @@ void RecordBar::rebuildDeviceList() {
     const bool useLastUsed = !hadRows && previouslyChecked.isEmpty() && !lastUsed.isEmpty();
     const bool useDefaults = !hadRows && previouslyChecked.isEmpty() && lastUsed.isEmpty();
 
-    for (const auto& d : devs) {
-        auto* item = new QListWidgetItem(m_deviceList);
+    // Csoportokba rendezés (Mic / Loopback / Other), mindegyik névre ábécé-sorrendben.
+    const tanara::TrackKind kindOrder[] = {
+        tanara::TrackKind::Mic, tanara::TrackKind::Loopback, tanara::TrackKind::Other
+    };
 
-        auto* rowWidget = new QWidget(m_deviceList);
-        auto* rl = new QHBoxLayout(rowWidget);
-        rl->setContentsMargins(4, 2, 4, 2);
+    auto addHeader = [this](const QString& title) {
+        auto* item = new QListWidgetItem(title, m_deviceList);
+        item->setFlags(Qt::NoItemFlags);   // nem kijelölhető / nem interaktív
+        QFont hf = item->font();
+        hf.setBold(true);
+        item->setFont(hf);
+        // SZÍN: nincs felülírás → a rendszer-paletta szövegszíne öröklődik (olvasható
+        // sötét témán is). Korábban itt 'color: palette(mid)' szürke volt.
+    };
 
-        auto* check = new QCheckBox(rowWidget);
+    for (tanara::TrackKind kind : kindOrder) {
+        // Az aktuális csoport eszközei, névre rendezve.
+        QVector<tanara::AudioDeviceInfo> group;
+        for (const auto& d : devs)
+            if (d.kind == kind)
+                group.push_back(d);
+        if (group.isEmpty())
+            continue;   // pl. "Egyéb" csak akkor jelenik meg, ha van ilyen
+        std::sort(group.begin(), group.end(),
+                  [](const tanara::AudioDeviceInfo& a, const tanara::AudioDeviceInfo& b) {
+                      return a.name.localeAwareCompare(b.name) < 0;
+                  });
 
-        auto* nameLbl = new QLabel(d.name, rowWidget);
-        nameLbl->setMinimumWidth(160);
+        addHeader(groupTitle(kind));
 
-        auto* tagLbl = new QLabel(kindTag(d.kind)
-                                      + (d.isDefault ? QStringLiteral("  (alapértelmezett)")
-                                                     : QString()),
-                                  rowWidget);
-        tagLbl->setStyleSheet(QStringLiteral("color: palette(mid);"));
+        for (const auto& d : group) {
+            auto* item = new QListWidgetItem(m_deviceList);
 
-        auto* level = new QProgressBar(rowWidget);
-        level->setRange(0, 100);
-        level->setValue(0);
-        level->setTextVisible(false);
-        level->setMaximumHeight(10);
-        level->setMinimumWidth(80);
+            auto* rowWidget = new QWidget(m_deviceList);
+            auto* rl = new QHBoxLayout(rowWidget);
+            rl->setContentsMargins(16, 2, 4, 2);   // bal behúzás a csoport-fej alá
 
-        rl->addWidget(check);
-        rl->addWidget(nameLbl, 1);
-        rl->addWidget(tagLbl);
-        rl->addWidget(level, 1);
+            auto* check = new QCheckBox(rowWidget);
 
-        // Előpipálás eldöntése.
-        bool checked = false;
-        if (useLastUsed)
-            checked = lastUsed.contains(d.name);
-        else if (useDefaults)
-            checked = d.isDefault;
-        else
-            checked = previouslyChecked.contains(d.name);
-        check->setChecked(checked);
+            QString nameText = d.name;
+            if (d.isDefault)
+                nameText += QStringLiteral("  (alapértelmezett)");
+            auto* nameLbl = new QLabel(nameText, rowWidget);
+            nameLbl->setMinimumWidth(160);
+            // SZÍN: nincs felülírás → öröklött paletta-szövegszín (sötét témán is olvasható).
 
-        item->setSizeHint(rowWidget->sizeHint());
-        m_deviceList->setItemWidget(item, rowWidget);
+            auto* level = new QProgressBar(rowWidget);
+            level->setRange(0, 100);
+            level->setValue(0);
+            level->setTextVisible(false);
+            level->setMaximumHeight(10);
+            level->setMinimumWidth(80);
 
-        // Több eszköz is jöhet AZONOS névvel (a headset ~4× felbukkan): az utolsó
-        // VU-sávja vezet, de a kijelölés/indítás úgyis név-alapú, így ez rendben van.
-        m_deviceRows.insert(d.name, DeviceRow{check, level});
+            rl->addWidget(check);
+            rl->addWidget(nameLbl, 1);
+            rl->addWidget(level, 1);
+
+            // Előpipálás eldöntése.
+            bool checked = false;
+            if (useLastUsed)
+                checked = lastUsed.contains(d.name);
+            else if (useDefaults)
+                checked = d.isDefault;
+            else
+                checked = previouslyChecked.contains(d.name);
+            check->setChecked(checked);
+
+            item->setSizeHint(rowWidget->sizeHint());
+            m_deviceList->setItemWidget(item, rowWidget);
+
+            // Több eszköz is jöhet AZONOS névvel (a headset ~4× felbukkan): az utolsó
+            // VU-sávja vezet, de a kijelölés/indítás úgyis név-alapú, így ez rendben van.
+            m_deviceRows.insert(d.name, DeviceRow{check, level});
+        }
     }
 }
 
