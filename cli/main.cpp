@@ -123,8 +123,22 @@ int main(int argc, char** argv) {
         return qapp.exec();
     }
 
+    if (cmd == "rename") {
+        const QString id = args.value(2), raw = args.value(3), name = args.value(4);
+        if (id.isEmpty() || raw.isEmpty()) {
+            err << "Használat: rename <meetingId> <nyersCímke> <név>\n"; return 1;
+        }
+        QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
+            err << "HIBA: " << e << "\n"; err.flush();
+        });
+        app.renameSpeaker(id, raw, name);   // szinkron
+        out << "Átnevezve: \"" << raw << "\" → \"" << name << "\"\n"; out.flush();
+        return 0;
+    }
+
     out << "tanara-cli " << libraryVersion() << "\n"
-        << "Parancsok: devices | record [--title T --seconds N --device IDX] | list | transcribe <id> | summarize <id>\n";
+        << "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
+           "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név>\n";
     out.flush();
     return 0;
 }

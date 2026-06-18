@@ -139,6 +139,11 @@ QJsonObject toJson(const Meeting& m)
     o[QStringLiteral("mixdownFile")]   = m.mixdownFile;
     o[QStringLiteral("hasTranscript")] = m.hasTranscript;
     o[QStringLiteral("hasSummary")]    = m.hasSummary;
+
+    QJsonObject sm;
+    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
+        sm[it.key()] = it.value();
+    o[QStringLiteral("speakerMap")] = sm;
     return o;
 }
 
@@ -159,6 +164,10 @@ Meeting meetingFromJson(const QJsonObject& o)
     m.mixdownFile   = o.value(QStringLiteral("mixdownFile")).toString();
     m.hasTranscript = o.value(QStringLiteral("hasTranscript")).toBool();
     m.hasSummary    = o.value(QStringLiteral("hasSummary")).toBool();
+
+    const QJsonObject sm = o.value(QStringLiteral("speakerMap")).toObject();
+    for (auto it = sm.constBegin(); it != sm.constEnd(); ++it)
+        m.speakerMap.insert(it.key(), it.value().toString());
     return m;
 }
 

@@ -34,6 +34,9 @@ public:
     // ezeket érdemes előpipálni a UI-ban. Perzisztens (~/.tanara/state.json).
     QStringList lastUsedDeviceNames() const;
 
+    // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
+    QStringList knownPeople() const;
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
@@ -56,6 +59,11 @@ public slots:
     // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
     void summarizeMeeting(const QString& meetingId);
 
+    // Egy beszélő átnevezése egy meetingben (nyers címke → valódi név). Perzisztál
+    // (Meeting.speakerMap + people.json), újragenerálja a transcript.md-t a nevekkel,
+    // és speakerMapChanged-et emittál. Üres/azonos név → a leképezés törlése.
+    void renameSpeaker(const QString& meetingId, const QString& rawLabel, const QString& displayName);
+
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
@@ -69,6 +77,7 @@ signals:
     void recordingFinished(tanara::Meeting meeting);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
+    void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 

@@ -9,6 +9,7 @@
 #include <QVector>
 #include <QDateTime>
 #include <QVariantMap>
+#include <QMap>
 #include <QMetaType>
 
 namespace tanara {
@@ -100,6 +101,7 @@ struct Meeting {
     QString mixdownFile;     // pl. "mixdown.mp3"
     bool hasTranscript = false;
     bool hasSummary = false;
+    QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")
 };
 
 // ---- provider konfiguráció / beállítások ----------------------------------

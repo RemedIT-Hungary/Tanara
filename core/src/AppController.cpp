@@ -6,6 +6,7 @@
 #include "tanara/audio/RecordingSession.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/KeyStore.h"
+#include "tanara/store/PeopleStore.h"
 #include "tanara/stt/SonioxProvider.h"
 #include "tanara/stt/ISttProvider.h"
 #include "tanara/llm/OpenAiCompatibleProvider.h"
@@ -74,6 +75,14 @@ void writeSegmentsJson(const QString& path, const QVector<Utterance>& segs) {
     if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented)); f.commit(); }
 }
 
+void applySpeakerMap(MergedTranscript& mt, const QMap<QString, QString>& map) {
+    if (map.isEmpty()) return;
+    for (TranscriptToken& t : mt.tokens) {
+        const auto it = map.constFind(t.speaker);
+        if (it != map.constEnd()) t.speaker = it.value();
+    }
+}
+
 MergedTranscript readTokensJson(const QString& path) {
     MergedTranscript mt;
     QFile f(path);
@@ -139,6 +148,7 @@ struct AppController::Impl {
     RecordingSession* session = nullptr;
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
+    std::unique_ptr<PeopleStore> people;
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
     QString          metaDir;
@@ -170,6 +180,8 @@ AppController::AppController(QObject* parent)
     d->lastDevices = loadLastDevices(d->statePath);
     d->monitor = new DeviceMonitor(this);
     connect(d->monitor, &DeviceMonitor::level, this, &AppController::deviceLevel);
+
+    d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
 }
 
 AppController::~AppController() = default;
@@ -187,6 +199,34 @@ QStringList AppController::lastUsedDeviceNames() const { return d->lastDevices; 
 void AppController::setLastUsedDeviceNames(const QStringList& names) {
     d->lastDevices = names;
     saveLastDevices(d->statePath, names);
+}
+
+QStringList AppController::knownPeople() const {
+    return d->people ? d->people->names() : QStringList();
+}
+
+void AppController::renameSpeaker(const QString& meetingId, const QString& rawLabel, const QString& displayName) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+
+    const QString name = displayName.trimmed();
+    if (name.isEmpty() || name == rawLabel) {
+        m.speakerMap.remove(rawLabel);
+    } else {
+        m.speakerMap.insert(rawLabel, name);
+        if (d->people) d->people->add(name);
+    }
+    d->store->saveMeeting(m);
+
+    // transcript.md újragenerálása a TELJES leképezéssel (a nyers tokenekből).
+    // A segments.json NYERS marad, hogy a UI bármikor újra tudjon címkézni.
+    MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (!merged.tokens.isEmpty()) {
+        applySpeakerMap(merged, m.speakerMap);
+        writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+    }
+    emit speakerMapChanged(meetingId);
 }
 
 void AppController::startLevelMonitoring() {
@@ -341,6 +381,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást."));
         return;
     }
+    applySpeakerMap(merged, m.speakerMap);   // a Gemma a valódi neveket lássa
 
     const AppSettings s = d->settings->settings();
     ProviderConfig cfg = s.llm;
