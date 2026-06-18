@@ -16,8 +16,10 @@ a structured summary — all stored as plain files next to the audio.
   speakers across meetings; you can listen to and correct labels.
 - **Open formats:** transcript and summary are Markdown files stored beside the audio.
 
-Status: **working on Linux.** Windows is a planned first-class target (the stack is
-portable; only WASAPI loopback enumeration remains to be validated there).
+Status: **working on Linux and Windows.** On Windows, system audio is captured via
+WASAPI loopback (playback devices appear as "loopback" capture sources), the voice-ID
+stack (KISS FFT + ONNX Runtime) is validated, and a standalone build is produced with
+`windeployqt`. macOS is not yet targeted.
 
 ---
 
@@ -68,6 +70,44 @@ ctest --test-dir build        # unit tests
 ```
 
 Build without the GUI (faster core/CLI iteration): `-DTANARA_BUILD_GUI=OFF`.
+Build without speaker recognition (no ONNX/KISS FFT needed): `-DTANARA_BUILD_VOICEID=OFF`
+— the app still records, transcribes and summarizes; it just skips voice fingerprinting.
+
+### Build on Windows (MinGW)
+
+Uses the MinGW toolchain bundled with Qt (no MSVC kit required). Prerequisites:
+Qt 6 (mingw_64), the Qt-bundled MinGW + Ninja + CMake, and **FFmpeg** on `PATH`
+(only `ffmpeg.exe` is needed at runtime; a static build works).
+
+```powershell
+# adjust the Qt path to your install
+$qt = 'C:\Qt\6.11.1\mingw_64'
+$env:PATH = "$qt\bin;C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;$env:PATH"
+
+# 1) core + CLI + GUI without voice-ID (fast bring-up)
+cmake -S . -B build -G Ninja "-DCMAKE_PREFIX_PATH=$qt" -DCMAKE_BUILD_TYPE=Release `
+      -DTANARA_BUILD_VOICEID=OFF
+cmake --build build
+
+# 2) full build with voice-ID — point at an unpacked ONNX Runtime win-x64 release:
+#    https://github.com/microsoft/onnxruntime/releases  (e.g. onnxruntime-win-x64-1.20.1)
+#    KISS FFT is vendored under third_party/kissfft (no system package needed).
+cmake -S . -B build -G Ninja "-DCMAKE_PREFIX_PATH=$qt" -DCMAKE_BUILD_TYPE=Release `
+      -DTANARA_BUILD_VOICEID=ON "-DONNXRUNTIME_ROOT_DIR=C:\path\to\onnxruntime-win-x64-1.20.1"
+cmake --build build
+ctest --test-dir build
+```
+
+**Standalone package** (self-contained folder users can run without Qt on `PATH`):
+
+```powershell
+mkdir dist; copy build\gui\tanara.exe dist; copy build\cli\tanara-cli.exe dist
+& "$qt\bin\windeployqt.exe" --release --compiler-runtime --no-translations --dir dist dist\tanara.exe
+copy C:\path\to\onnxruntime-win-x64-1.20.1\lib\onnxruntime.dll dist   # only for voice-ID builds
+copy C:\path\to\ffmpeg.exe dist                                       # so recording is self-contained
+```
+
+The speaker model goes in `%USERPROFILE%\.tanara\models\` (same file as on Linux; see below).
 
 ## Speaker-recognition model
 
