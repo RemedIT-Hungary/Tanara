@@ -39,6 +39,7 @@ private slots:
 
 private:
     void rebuildDeviceList();
+    void saveSelection();   // a bepipált eszközöket azonnal perzisztálja
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
     QProgressBar* meterForTrack(int trackIndex);
     void resetDeviceLevelBars();

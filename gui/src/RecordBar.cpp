@@ -180,6 +180,9 @@ void RecordBar::rebuildDeviceList() {
             else
                 checked = previouslyChecked.contains(d.name);
             check->setChecked(checked);
+            // A programozott setChecked UTÁN kötjük be, hogy az ne mentsen;
+            // a felhasználói pipálás viszont AZONNAL perzisztálódjon (két restart közt megmarad).
+            connect(check, &QCheckBox::toggled, this, [this](bool) { saveSelection(); });
 
             item->setSizeHint(rowWidget->sizeHint());
             m_deviceList->setItemWidget(item, rowWidget);
@@ -189,6 +192,16 @@ void RecordBar::rebuildDeviceList() {
             m_deviceRows.insert(d.name, DeviceRow{check, level});
         }
     }
+}
+
+void RecordBar::saveSelection() {
+    if (!m_controller)
+        return;
+    QStringList names;
+    for (auto it = m_deviceRows.constBegin(); it != m_deviceRows.constEnd(); ++it)
+        if (it.value().check && it.value().check->isChecked())
+            names << it.key();
+    m_controller->setLastUsedDeviceNames(names);
 }
 
 QVector<tanara::AudioDeviceInfo> RecordBar::selectedDevices() const {
