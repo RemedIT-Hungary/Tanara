@@ -21,6 +21,10 @@ namespace tanara {
 class AppController;
 }
 
+QT_BEGIN_NAMESPACE
+namespace Ui { class MainWindow; }
+QT_END_NAMESPACE
+
 namespace tanara_gui {
 
 class RecordBar;
@@ -70,6 +74,7 @@ private:
     static QString meetingAudioPath(const tanara::Meeting& m);
     static QString readMarkdownFile(const QString& path);
 
+    Ui::MainWindow*         ui = nullptr;
     tanara::AppController*  m_controller = nullptr;
     MeetingTableModel*      m_tableModel = nullptr;
     QSortFilterProxyModel*  m_proxy = nullptr;

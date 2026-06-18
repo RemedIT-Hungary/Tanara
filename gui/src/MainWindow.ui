@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1100</width><height>720</height></rect>
+  </property>
+  <property name="windowTitle"><string>Tanara</string></property>
+  <!--
+    Tanara — fő ablak váz (Qt Designerből szerkeszthető). A DINAMIKUS rész a
+    MainWindow.cpp-ben marad: a táblamodell, a felvétel-vezérlő (recordBar) + a
+    helykitöltő beillesztése a rightLayout tetejére, a menü/státuszsor, és a widget-
+    tulajdonságok finomhangolása. Az objectName-eket NE nevezd át (a kód ezekre hivatkozik).
+    A custom fülek (transcriptPlayer, tracksPanel) promotált widgetek.
+  -->
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="centralLayout">
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation"><enum>Qt::Horizontal</enum></property>
+      <widget class="QTableView" name="table">
+       <property name="minimumSize"><size><width>320</width><height>0</height></size></property>
+      </widget>
+      <widget class="QWidget" name="rightPane">
+       <layout class="QVBoxLayout" name="rightLayout">
+        <item>
+         <layout class="QHBoxLayout" name="actionRow">
+          <item>
+           <widget class="QPushButton" name="transcribeBtn">
+            <property name="text"><string>Átírás</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="summarizeBtn">
+            <property name="text"><string>Összefoglaló</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="identifyBtn">
+            <property name="text"><string>🔍 Azonosítás</string></property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="actionSpacer">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTabWidget" name="tabs">
+          <widget class="tanara_gui::TranscriptPlayer" name="transcriptPlayer">
+           <attribute name="title"><string>Átirat</string></attribute>
+          </widget>
+          <widget class="QTextBrowser" name="summaryView">
+           <attribute name="title"><string>Összefoglaló</string></attribute>
+          </widget>
+          <widget class="tanara_gui::TracksPanel" name="tracksPanel">
+           <attribute name="title"><string>Sávok</string></attribute>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar"/>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>tanara_gui::TranscriptPlayer</class>
+   <extends>QWidget</extends>
+   <header>TranscriptPlayer.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>tanara_gui::TracksPanel</class>
+   <extends>QWidget</extends>
+   <header>TracksPanel.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

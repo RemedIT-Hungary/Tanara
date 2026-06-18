@@ -23,6 +23,10 @@ namespace tanara {
 class AppController;
 }
 
+QT_BEGIN_NAMESPACE
+namespace Ui { class RecordBar; }
+QT_END_NAMESPACE
+
 namespace tanara_gui {
 
 class RecordBar : public QWidget {
@@ -33,6 +37,7 @@ public:
     enum class ViewMode { Full, Compact };
 
     explicit RecordBar(tanara::AppController* controller, QWidget* parent = nullptr);
+    ~RecordBar() override;
 
     ViewMode viewMode() const { return m_mode; }
     void setViewMode(ViewMode mode);
@@ -57,6 +62,7 @@ private:
     void resetDeviceLevelBars();
     void applyViewMode();   // a m_mode szerint mutat/rejt elemeket
 
+    Ui::RecordBar* ui = nullptr;
     tanara::AppController* m_controller = nullptr;
     tanara::RecordingState m_state = tanara::RecordingState::Idle;
     ViewMode m_mode = ViewMode::Full;

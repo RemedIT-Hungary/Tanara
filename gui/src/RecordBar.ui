@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RecordBar</class>
+ <widget class="QWidget" name="RecordBar">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>440</width><height>360</height></rect>
+  </property>
+  <!--
+    Tanara — felvétel-vezérlő váz. A STATIKUS elrendezés itt szerkeszthető Qt Designerből.
+    A DINAMIKUS rész (eszközlista feltöltése, élő VU, Teljes/Kompakt nézet, idő, gombok
+    viselkedése) a RecordBar.cpp-ben marad — a tag-pointereket a ui->-ból köti be, így a
+    logika nem változik. Az objectName-eket NE nevezd át (a kód ezekre hivatkozik).
+  -->
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <layout class="QHBoxLayout" name="topRow">
+     <item>
+      <widget class="QLineEdit" name="titleEdit">
+       <property name="placeholderText"><string>Megbeszélés címe…</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="elapsedLabel">
+       <property name="text"><string>00:00</string></property>
+       <property name="alignment"><set>Qt::AlignCenter</set></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="startStopBtn">
+       <property name="text"><string>● Felvétel indítása</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QToolButton" name="viewToggleBtn">
+       <property name="text"><string>⤡</string></property>
+       <property name="autoRaise"><bool>true</bool></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="devBox">
+     <property name="title"><string>Hangeszközök</string></property>
+     <layout class="QVBoxLayout" name="devLayout">
+      <item>
+       <widget class="QLabel" name="devHint">
+        <property name="wordWrap"><bool>true</bool></property>
+        <property name="text"><string>Beszélj a mikrofonba / játssz le hangot — a mozgó sáv mutatja, melyik eszköz aktív.</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="deviceList">
+        <property name="maximumSize">
+         <size><width>16777215</width><height>200</height></size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

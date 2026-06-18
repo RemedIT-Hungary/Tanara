@@ -1,4 +1,5 @@
 #include "RecordBar.h"
+#include "ui_RecordBar.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -35,55 +36,31 @@ QString groupTitle(tanara::TrackKind kind) {
 } // namespace
 
 RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
-    : QWidget(parent), m_controller(controller) {
+    : QWidget(parent), ui(new Ui::RecordBar), m_controller(controller) {
 
-    auto* root = new QVBoxLayout(this);
+    // A STATIKUS vázat a RecordBar.ui adja (Designerből szerkeszthető); a
+    // tag-pointereket innen kötjük be, a viselkedés/paraméterek alább, kódban maradnak.
+    ui->setupUi(this);
+    m_titleEdit    = ui->titleEdit;
+    m_elapsedLabel = ui->elapsedLabel;
+    m_startStopBtn = ui->startStopBtn;
+    m_viewToggleBtn = ui->viewToggleBtn;
+    m_devBox       = ui->devBox;
+    m_devHint      = ui->devHint;
+    m_deviceList   = ui->deviceList;
 
-    // --- felső sor: cím + idő + start/stop ---
-    auto* topRow = new QHBoxLayout();
-
-    m_titleEdit = new QLineEdit(this);
-    m_titleEdit->setPlaceholderText(QStringLiteral("Megbeszélés címe…"));
+    // --- viselkedés / paraméterek (kódban) ---
     m_titleEdit->setText(QStringLiteral("Megbeszélés %1")
-                             .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))));
-
-    m_elapsedLabel = new QLabel(QStringLiteral("00:00"), this);
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))));
     m_elapsedLabel->setMinimumWidth(64);
-    m_elapsedLabel->setAlignment(Qt::AlignCenter);
-    QFont f = m_elapsedLabel->font();
-    f.setPointSizeF(f.pointSizeF() * 1.4);
-    f.setBold(true);
-    m_elapsedLabel->setFont(f);
-
-    m_startStopBtn = new QPushButton(QStringLiteral("● Felvétel indítása"), this);
-    m_startStopBtn->setCheckable(false);
-
-    // Teljes ⇄ Kompakt nézet-váltó.
-    m_viewToggleBtn = new QToolButton(this);
-    m_viewToggleBtn->setAutoRaise(true);
-    m_viewToggleBtn->setText(QStringLiteral("⤡"));
+    {
+        QFont f = m_elapsedLabel->font();
+        f.setPointSizeF(f.pointSizeF() * 1.4);
+        f.setBold(true);
+        m_elapsedLabel->setFont(f);
+    }
     m_viewToggleBtn->setToolTip(QStringLiteral("Kompakt nézet (csak a kiválasztott eszközök szintje)"));
-
-    topRow->addWidget(m_titleEdit, /*stretch*/ 1);
-    topRow->addWidget(m_elapsedLabel);
-    topRow->addWidget(m_startStopBtn);
-    topRow->addWidget(m_viewToggleBtn);
-    root->addLayout(topRow);
-
-    // --- eszközválasztó (élő VU-sávokkal) — a szintek (felvétel előtt ÉS közben) is
-    //     itt jelennek meg, eszköznév mellett; nincs külön „Szintek" doboz. ---
-    m_devBox = new QGroupBox(QStringLiteral("Hangeszközök"), this);
-    auto* devLayout = new QVBoxLayout(m_devBox);
-    m_devHint = new QLabel(
-        QStringLiteral("Beszélj a mikrofonba / játssz le hangot — a mozgó sáv mutatja, melyik eszköz aktív."),
-        m_devBox);
-    m_devHint->setWordWrap(true);
-    devLayout->addWidget(m_devHint);
-    m_deviceList = new QListWidget(m_devBox);
-    m_deviceList->setMaximumHeight(200);
     m_deviceList->setSelectionMode(QAbstractItemView::NoSelection);
-    devLayout->addWidget(m_deviceList);
-    root->addWidget(m_devBox);
 
     connect(m_startStopBtn, &QPushButton::clicked, this, &RecordBar::onStartStopClicked);
     connect(m_viewToggleBtn, &QToolButton::clicked, this, [this]() {
@@ -95,6 +72,8 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
                                          : tanara::RecordingState::Idle);
     applyViewMode();
 }
+
+RecordBar::~RecordBar() { delete ui; }
 
 void RecordBar::setViewMode(ViewMode mode) {
     if (m_mode == mode) return;

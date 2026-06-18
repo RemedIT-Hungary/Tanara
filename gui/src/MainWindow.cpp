@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "ui_MainWindow.h"
 #include "RecordBar.h"
 #include "SettingsDialog.h"
 #include "MeetingTableModel.h"
@@ -131,6 +132,7 @@ MainWindow::~MainWindow() {
     // Biztosítjuk, hogy a capture-eszközök elengedésre kerüljenek kilépéskor.
     if (m_controller)
         m_controller->stopLevelMonitoring();
+    delete ui;
 }
 
 void MainWindow::showEvent(QShowEvent* event) {
@@ -160,10 +162,22 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::buildUi() {
-    auto* splitter = new QSplitter(Qt::Horizontal, this);
+    // A STATIKUS vázat a MainWindow.ui adja (Designerből szerkeszthető); a
+    // tag-pointereket innen kötjük be, a viselkedés/dinamika alább, kódban marad.
+    ui = new Ui::MainWindow;
+    ui->setupUi(this);
 
-    // --- bal: meeting-lista (rendezhető tábla) ---
-    m_table = new QTableView(splitter);
+    m_table            = ui->table;
+    m_rightLayout      = ui->rightLayout;
+    m_tabs             = ui->tabs;
+    m_transcriptPlayer = ui->transcriptPlayer;
+    m_summaryView      = ui->summaryView;
+    m_tracksPanel      = ui->tracksPanel;
+    m_transcribeBtn    = ui->transcribeBtn;
+    m_summarizeBtn     = ui->summarizeBtn;
+    m_identifyBtn      = ui->identifyBtn;
+
+    // --- meeting-tábla viselkedése (kód) ---
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -172,22 +186,15 @@ void MainWindow::buildUi() {
     m_table->verticalHeader()->setVisible(false);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setHighlightSections(false);
-    m_table->setMinimumWidth(320);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested,
             this, &MainWindow::onTableContextMenu);
-    splitter->addWidget(m_table);
 
-    // --- jobb: record bar + akciók + lapfülek ---
-    auto* right = new QWidget(splitter);
-    auto* rl = new QVBoxLayout(right);
+    // --- felvétel-vezérlő + helykitöltő a jobb pane tetejére (a controllert igénylik) ---
+    m_recordBar = new RecordBar(m_controller, ui->rightPane);
+    m_rightLayout->insertWidget(0, m_recordBar);
 
-    m_recordBar = new RecordBar(m_controller, right);
-    rl->addWidget(m_recordBar);
-    m_rightLayout = rl;
-
-    // Helykitöltő: akkor látszik, amikor a felvétel-vezérlő külön (lebegő) ablakban van.
-    m_dockPlaceholder = new QWidget(right);
+    m_dockPlaceholder = new QWidget(ui->rightPane);
     {
         auto* pl = new QVBoxLayout(m_dockPlaceholder);
         pl->setContentsMargins(0, 0, 0, 0);
@@ -202,40 +209,15 @@ void MainWindow::buildUi() {
         });
     }
     m_dockPlaceholder->setVisible(false);
-    rl->addWidget(m_dockPlaceholder);
+    m_rightLayout->insertWidget(1, m_dockPlaceholder);
 
-    // akció-sor a kiválasztott meetingre (a lejátszást már a TranscriptPlayer
-    // sávja kezeli az Átirat fülön, külön Lejátszás-gomb nincs).
-    auto* actionRow = new QHBoxLayout();
-    m_transcribeBtn = new QPushButton(QStringLiteral("Átírás"), right);
-    m_summarizeBtn = new QPushButton(QStringLiteral("Összefoglaló"), right);
-    m_identifyBtn = new QPushButton(QStringLiteral("🔍 Azonosítás"), right);
-    m_identifyBtn->setToolTip(QStringLiteral(
-        "A beszélők újra-azonosítása a hang-lenyomatok alapján (a friss "
-        "személy-adatbázissal). Nem ír át kézzel adott neveket."));
-    actionRow->addWidget(m_transcribeBtn);
-    actionRow->addWidget(m_summarizeBtn);
-    actionRow->addWidget(m_identifyBtn);
-    actionRow->addStretch(1);
-    rl->addLayout(actionRow);
-
-    // lapfülek
-    m_tabs = new QTabWidget(right);
-    m_transcriptPlayer = new TranscriptPlayer(m_tabs);
+    // --- fülek (a custom widgetek a .ui-ban promotálva; itt csak bekötés) ---
     m_transcriptPlayer->setController(m_controller);
-    m_summaryView = new QTextBrowser(m_tabs);
     m_summaryView->setOpenExternalLinks(true);
-    m_tracksPanel = new TracksPanel(m_tabs);
     m_tracksPanel->setController(m_controller);
-    m_tabs->addTab(m_transcriptPlayer, QStringLiteral("Átirat"));
-    m_tabs->addTab(m_summaryView, QStringLiteral("Összefoglaló"));
-    m_tabs->addTab(m_tracksPanel, QStringLiteral("Sávok"));
-    rl->addWidget(m_tabs, 1);
 
-    splitter->addWidget(right);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    setCentralWidget(splitter);
+    ui->splitter->setStretchFactor(0, 0);
+    ui->splitter->setStretchFactor(1, 1);
 
     statusBar()->showMessage(QStringLiteral("Készen áll"));
     m_busyBar = new QProgressBar(this);
