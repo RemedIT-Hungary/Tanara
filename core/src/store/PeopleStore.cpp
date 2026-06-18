@@ -30,6 +30,24 @@ void PeopleStore::add(const QString& name)
     persist();
 }
 
+void PeopleStore::rename(const QString& oldName, const QString& newName)
+{
+    const QString o = oldName.trimmed(), n = newName.trimmed();
+    if (o.isEmpty() || n.isEmpty() || o == n)
+        return;
+    m_names.removeAll(o);
+    if (!m_names.contains(n, Qt::CaseInsensitive))
+        m_names << n;
+    m_names.sort(Qt::CaseInsensitive);
+    persist();
+}
+
+void PeopleStore::remove(const QString& name)
+{
+    if (m_names.removeAll(name.trimmed()) > 0)
+        persist();
+}
+
 void PeopleStore::load()
 {
     QFile f(m_filePath);

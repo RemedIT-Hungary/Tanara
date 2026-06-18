@@ -229,6 +229,53 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
     emit speakerMapChanged(meetingId);
 }
 
+void AppController::renamePerson(const QString& oldName, const QString& newName) {
+    const QString o = oldName.trimmed(), n = newName.trimmed();
+    if (o.isEmpty() || n.isEmpty() || o == n) return;
+    if (d->people) d->people->rename(o, n);
+
+    const QVector<Meeting> all = d->store->loadAll();
+    for (const Meeting& idx : all) {
+        Meeting m = d->store->load(idx.id);
+        bool changed = false;
+        for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
+            if (it.value() == o) { it.value() = n; changed = true; }
+        if (!changed) continue;
+        d->store->saveMeeting(m);
+        MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        if (!merged.tokens.isEmpty()) {
+            applySpeakerMap(merged, m.speakerMap);
+            writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+        }
+        emit speakerMapChanged(m.id);
+    }
+    emit peopleChanged();
+}
+
+void AppController::removePerson(const QString& name) {
+    const QString nm = name.trimmed();
+    if (nm.isEmpty()) return;
+    if (d->people) d->people->remove(nm);
+
+    const QVector<Meeting> all = d->store->loadAll();
+    for (const Meeting& idx : all) {
+        Meeting m = d->store->load(idx.id);
+        bool changed = false;
+        const QList<QString> keys = m.speakerMap.keys();
+        for (const QString& key : keys)
+            if (m.speakerMap.value(key) == nm) { m.speakerMap.remove(key); changed = true; }
+        if (!changed) continue;
+        d->store->saveMeeting(m);
+        MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        if (!merged.tokens.isEmpty()) {
+            applySpeakerMap(merged, m.speakerMap);
+            writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+        }
+        emit speakerMapChanged(m.id);
+    }
+    emit peopleChanged();
+}
+
 void AppController::startLevelMonitoring() {
     if (d->state == RecordingState::Recording || d->state == RecordingState::Stopping) return;
     d->devices->refresh();

@@ -37,6 +37,11 @@ public:
     // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
     QStringList knownPeople() const;
 
+    // Személy átnevezése/törlése GLOBÁLISAN: a névlistában + MINDEN meeting
+    // speakerMap-jében átvezetve (a transcript.md-k újragenerálva). peopleChanged jel.
+    void renamePerson(const QString& oldName, const QString& newName);
+    void removePerson(const QString& name);
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
@@ -78,6 +83,7 @@ signals:
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
+    void peopleChanged();                                   // személy-lista változott
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 

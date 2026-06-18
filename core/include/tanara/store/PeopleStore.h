@@ -14,7 +14,9 @@ public:
     explicit PeopleStore(const QString& filePath = QString());  // üres → ~/.tanara/people.json
 
     QStringList names() const;
-    void add(const QString& name);   // hozzáadja, ha még nincs (case-insensitive); perzisztál
+    void add(const QString& name);              // hozzáadja, ha még nincs (case-insensitive)
+    void rename(const QString& oldName, const QString& newName);  // a névlistában átnevez
+    void remove(const QString& name);           // törli a névlistából
 
     QString filePath() const { return m_filePath; }
 
