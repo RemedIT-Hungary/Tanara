@@ -1,0 +1,128 @@
+# Tanara
+
+**Tanara** is a local-first meeting recorder, transcriber and summarizer for the
+desktop. It records every audio device as a **separate track**, transcribes them
+with good Hungarian accuracy, recognizes who is speaking (by voice), and produces
+a structured summary — all stored as plain files next to the audio.
+
+> Built as a self-hosted alternative to cloud meeting assistants that don't run on
+> Linux, don't capture your own microphone reliably, and send everything to the cloud.
+
+- **Privacy-first:** recording, diarization, speaker recognition and summarization
+  run locally. Only the (optional) speech-to-text call goes to a cloud API.
+- **Multi-track capture:** each device (your mic + system/loopback audio) is a
+  separate Opus track, plus a mixed `mixdown.mp3`. Your own voice is never lost.
+- **Speaker recognition:** an on-device voice-embedding model auto-labels recurring
+  speakers across meetings; you can listen to and correct labels.
+- **Open formats:** transcript and summary are Markdown files stored beside the audio.
+
+Status: **working on Linux.** Windows is a planned first-class target (the stack is
+portable; only WASAPI loopback enumeration remains to be validated there).
+
+---
+
+## How it works
+
+```
+record (miniaudio, per device)  →  track_*.ogg + mixdown.mp3
+   → transcribe (Soniox, per track, Hungarian)  →  transcript.md / .tokens.json / .segments.json
+   → speaker ID (CAM++ ONNX embedding + cosine)  →  auto-labels recurring voices
+   → summarize (local LLM, OpenAI-compatible)     →  summary.md
+```
+
+- **Architecture:** a UI-independent core library (`tanara_core`, no Qt Widgets)
+  with a Qt Widgets GUI (`tanara`) and a headless CLI (`tanara-cli`) on top. The
+  linker boundary enforces the UI⟂backend split (a QML front-end can reuse the same core).
+- Per-meeting folder layout (under your recordings dir):
+  `meeting.json`, `track_*.ogg`, `mixdown.mp3`, `transcript.md`,
+  `transcript.tokens.json`, `transcript.segments.json`, `summary.md`.
+- App data lives in `~/.tanara/`: `settings.json`, `index.db` (rebuildable cache),
+  `people.json`, `voiceprints.json`, `secrets.json`, plus `models/`.
+
+## Requirements
+
+- **C++20**, **CMake ≥ 3.21**, **Ninja**
+- **Qt 6** (Core, Network, Sql, Widgets, Multimedia, Test)
+- **ONNX Runtime** (dev package) — for the speaker-embedding model
+- **KISS FFT** (float build) — used by the bundled kaldi-native-fbank
+- **FFmpeg** CLI — for audio encode/decode (called as an external program)
+- A **Soniox** API key (for transcription) and an **OpenAI-compatible LLM endpoint**
+  (e.g. LM Studio / Ollama) for summaries — both optional, configured in-app.
+
+### Install dependencies (Fedora)
+
+```bash
+sudo dnf install cmake ninja-build gcc-c++ \
+    qt6-qtbase-devel qt6-qtmultimedia-devel \
+    onnxruntime-devel kiss-fft-devel ffmpeg
+```
+
+## Build
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build        # unit tests
+./build/gui/tanara            # GUI
+./build/cli/tanara-cli        # CLI
+```
+
+Build without the GUI (faster core/CLI iteration): `-DTANARA_BUILD_GUI=OFF`.
+
+## Speaker-recognition model
+
+The voice-ID feature needs a speaker-embedding model (not bundled, ~27 MB,
+Apache-2.0). Download it once into `~/.tanara/models/`:
+
+```bash
+mkdir -p ~/.tanara/models
+curl -L -o ~/.tanara/models/campplus_sv_zh_en_16k.onnx \
+  "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+```
+
+Speaker embeddings are language-independent (they model the voice, not the words),
+so this model works fine for Hungarian. If the model is missing, Tanara still works —
+it just skips automatic speaker labeling.
+
+## Configuration
+
+Open **Settings** in the GUI to set:
+- recordings / notes / metadata folders, your own speaker name;
+- automatic recording (record all devices, drop the silent ones afterwards);
+- Soniox API key + base URL;
+- LLM endpoint, model, temperature and max tokens.
+
+## Usage
+
+**GUI:** start a recording (compact floating controller available), then Transcribe
+and Summarize the selected meeting. Rename speakers in the transcript — that also
+*teaches* the voice model. The **Tracks** tab lets you restore or permanently delete
+auto-dropped silent tracks. The **People** dialog manages names and voiceprints
+(listen, merge, delete).
+
+**CLI** (`tanara-cli`):
+
+```
+devices                         list capture devices
+record [--title T --seconds N --device IDX]
+list                            list meetings
+transcribe <meetingId>
+summarize  <meetingId>
+rename <meetingId> <rawLabel> <name>     # maps + enrolls a voiceprint
+identify <meetingId>            # auto-label speakers from the voiceprint DB
+voiceprints                     # list enrolled people / prints
+```
+
+## Privacy
+
+Audio, transcripts, summaries, the people list and voiceprints all stay on your
+machine. The only network calls are the (optional) Soniox transcription request and
+your own LLM endpoint. FFmpeg runs locally; the speaker-embedding model runs on-device.
+
+## License
+
+Tanara is released under the **MIT License** (see [`LICENSE`](LICENSE)).
+Third-party components keep their own licenses — see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+A RemedIT Hungary Kft. project.
