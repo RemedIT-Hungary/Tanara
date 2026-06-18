@@ -2,6 +2,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/store/VoiceprintStore.h"
 
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -10,6 +11,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QStringList>
 #include <QFont>
 
@@ -43,13 +45,21 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
     leftCol->addWidget(m_list, 1);
     mid->addLayout(leftCol, 1);
 
-    // Jobb oldal: „Mely meetingeken” panel.
+    // Jobb oldal: „Mely meetingeken” + „Hang-lenyomatok” panel.
     auto* rightCol = new QVBoxLayout();
     rightCol->addWidget(new QLabel(QStringLiteral("Mely meetingeken:"), this));
     m_meetingsList = new QListWidget(this);
     m_meetingsList->setSelectionMode(QAbstractItemView::NoSelection);
     m_meetingsList->setFocusPolicy(Qt::NoFocus);
     rightCol->addWidget(m_meetingsList, 1);
+
+    m_voiceprintLabel = new QLabel(QStringLiteral("Hang-lenyomatok:"), this);
+    rightCol->addWidget(m_voiceprintLabel);
+    m_voiceprintList = new QListWidget(this);
+    m_voiceprintList->setSelectionMode(QAbstractItemView::SingleSelection);
+    rightCol->addWidget(m_voiceprintList, 1);
+    m_removePrintBtn = new QPushButton(QStringLiteral("Kijelölt lenyomat törlése"), this);
+    rightCol->addWidget(m_removePrintBtn, 0, Qt::AlignLeft);
     mid->addLayout(rightCol, 1);
 
     root->addLayout(mid, 1);
@@ -57,15 +67,24 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
     auto* btnRow = new QHBoxLayout();
     m_editBtn   = new QPushButton(QStringLiteral("✎ Átnevezés"), this);
     m_deleteBtn = new QPushButton(QStringLiteral("Törlés"), this);
+    m_mergeBtn  = new QPushButton(QStringLiteral("Összevonás…"), this);
+    m_mergeBtn->setToolTip(QStringLiteral(
+        "A kijelölt személy összevonása egy másikkal (a hang-lenyomatok és a "
+        "meeting-címkézések átkerülnek)."));
     auto* closeBtn = new QPushButton(QStringLiteral("Bezárás"), this);
     btnRow->addWidget(m_editBtn);
     btnRow->addWidget(m_deleteBtn);
+    btnRow->addWidget(m_mergeBtn);
     btnRow->addStretch(1);
     btnRow->addWidget(closeBtn);
     root->addLayout(btnRow);
 
     connect(m_editBtn, &QPushButton::clicked, this, &PeopleManagerDialog::beginEditCurrent);
     connect(m_deleteBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onDeleteClicked);
+    connect(m_mergeBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onMergeClicked);
+    connect(m_removePrintBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onRemovePrintClicked);
+    connect(m_voiceprintList, &QListWidget::itemSelectionChanged,
+            this, &PeopleManagerDialog::updateButtonState);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     connect(m_list, &QListWidget::itemSelectionChanged,
             this, &PeopleManagerDialog::onSelectionChanged);
@@ -76,9 +95,12 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
             [this](QListWidgetItem*) { beginEditCurrent(); });
 
     // A lista a személyek bármilyen változására frissül (rename/delete → backend jel).
-    if (m_controller)
+    if (m_controller) {
         connect(m_controller, &tanara::AppController::peopleChanged,
                 this, &PeopleManagerDialog::refreshList);
+        connect(m_controller, &tanara::AppController::voiceprintsChanged,
+                this, &PeopleManagerDialog::refreshVoiceprintPanel);
+    }
 
     refreshList();
 }
@@ -143,11 +165,36 @@ void PeopleManagerDialog::refreshList() {
 
     updateButtonState();
     refreshMeetingsPanel();
+    refreshVoiceprintPanel();
 }
 
 void PeopleManagerDialog::onSelectionChanged() {
     updateButtonState();
     refreshMeetingsPanel();
+    refreshVoiceprintPanel();
+}
+
+void PeopleManagerDialog::refreshVoiceprintPanel() {
+    if (!m_voiceprintList)
+        return;
+    m_voiceprintList->clear();
+    auto* vp = m_controller ? m_controller->voiceprints() : nullptr;
+    const QString name = selectedName();
+    if (!vp || name.isEmpty()) {
+        m_voiceprintLabel->setText(QStringLiteral("Hang-lenyomatok:"));
+        updateButtonState();
+        return;
+    }
+    const QVector<tanara::Voiceprint> prints = vp->printsFor(name);
+    m_voiceprintLabel->setText(QStringLiteral("Hang-lenyomatok (%1):").arg(prints.size()));
+    for (const tanara::Voiceprint& p : prints) {
+        const QString dev = p.device.isEmpty() ? QStringLiteral("ismeretlen eszköz") : p.device;
+        const QString when = p.createdAt.left(10);   // yyyy-MM-dd
+        auto* item = new QListWidgetItem(
+            QStringLiteral("%1 — %2").arg(dev, when), m_voiceprintList);
+        item->setData(Qt::UserRole, p.id);            // a törléshez
+    }
+    updateButtonState();
 }
 
 void PeopleManagerDialog::refreshMeetingsPanel() {
@@ -172,6 +219,12 @@ void PeopleManagerDialog::updateButtonState() {
     m_editBtn->setEnabled(hasSel);
     // A saját (én) sor nem törölhető — csak átnevezhető (setUserSpeakerName).
     m_deleteBtn->setEnabled(hasSel && !isOwnRow(m_list->currentItem()));
+    // Összevonás: kell legalább 2 személy, és a kijelölt ne a saját (én) sor legyen.
+    if (m_mergeBtn)
+        m_mergeBtn->setEnabled(hasSel && !isOwnRow(m_list->currentItem()) && m_list->count() > 1);
+    if (m_removePrintBtn)
+        m_removePrintBtn->setEnabled(m_voiceprintList
+                                     && m_voiceprintList->currentItem() != nullptr);
 }
 
 void PeopleManagerDialog::beginEditCurrent() {
@@ -230,6 +283,69 @@ void PeopleManagerDialog::onDeleteClicked() {
 
     m_controller->removePerson(name);
     // A lista a peopleChanged() jelre frissül.
+}
+
+void PeopleManagerDialog::onMergeClicked() {
+    if (!m_controller)
+        return;
+    auto* item = m_list->currentItem();
+    if (!item || isOwnRow(item))
+        return;
+    const QString from = item->data(RoleOriginalName).toString();
+    if (from.isEmpty())
+        return;
+
+    // A lehetséges célok: minden MÁS sor (a saját (én) sor is lehet cél).
+    QStringList targets;
+    for (int i = 0; i < m_list->count(); ++i) {
+        const QString n = m_list->item(i)->data(RoleOriginalName).toString();
+        if (!n.isEmpty() && n != from)
+            targets << n;
+    }
+    if (targets.isEmpty())
+        return;
+
+    bool ok = false;
+    const QString into = QInputDialog::getItem(
+        this, QStringLiteral("Összevonás"),
+        QStringLiteral("„%1” összevonása ezzel a személlyel:").arg(from),
+        targets, 0, false, &ok);
+    if (!ok || into.isEmpty() || into == from)
+        return;
+
+    const auto ans = QMessageBox::question(
+        this, QStringLiteral("Összevonás megerősítése"),
+        QStringLiteral("Biztosan összevonod: „%1” → „%2”?\n"
+                       "A(z) „%1” hang-lenyomatai és minden meeting-címkézése átkerül "
+                       "„%2” alá, és „%1” megszűnik.").arg(from, into),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (ans != QMessageBox::Yes)
+        return;
+
+    // A renamePerson cél-egyesítő: ha a cél már létezik, a lenyomatok + speakerMap-ek
+    // átkerülnek (VoiceprintStore::renamePerson + PeopleStore::rename egyesít).
+    m_controller->renamePerson(from, into);
+}
+
+void PeopleManagerDialog::onRemovePrintClicked() {
+    if (!m_controller || !m_controller->voiceprints() || !m_voiceprintList)
+        return;
+    auto* item = m_voiceprintList->currentItem();
+    if (!item)
+        return;
+    const QString printId = item->data(Qt::UserRole).toString();
+    if (printId.isEmpty())
+        return;
+
+    const auto ans = QMessageBox::question(
+        this, QStringLiteral("Lenyomat törlése"),
+        QStringLiteral("Törlöd ezt a hang-lenyomatot? (A személy és a címkézés megmarad.)"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (ans != QMessageBox::Yes)
+        return;
+
+    m_controller->voiceprints()->removePrint(printId);
+    refreshVoiceprintPanel();
 }
 
 } // namespace tanara_gui

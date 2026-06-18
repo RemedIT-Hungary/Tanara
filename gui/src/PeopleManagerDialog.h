@@ -19,6 +19,7 @@
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
+class QLabel;
 
 namespace tanara {
 class AppController;
@@ -38,17 +39,24 @@ private slots:
     void beginEditCurrent();          // a kijelölt sor inline szerkesztésbe vált
     void onItemChanged(QListWidgetItem* item);   // szerkesztés commitja
     void onSelectionChanged();
+    void onMergeClicked();            // a kijelölt személy összevonása egy másikkal
+    void onRemovePrintClicked();      // a kijelölt hang-lenyomat törlése
 
 private:
     QString selectedName() const;
     bool isOwnRow(QListWidgetItem* item) const;
     void refreshMeetingsPanel();
+    void refreshVoiceprintPanel();    // a kijelölt személy lenyomatai
 
     tanara::AppController* m_controller = nullptr;
     QListWidget* m_list = nullptr;
     QListWidget* m_meetingsList = nullptr;
+    QListWidget* m_voiceprintList = nullptr;
+    QLabel*      m_voiceprintLabel = nullptr;
     QPushButton* m_editBtn = nullptr;
     QPushButton* m_deleteBtn = nullptr;
+    QPushButton* m_mergeBtn = nullptr;
+    QPushButton* m_removePrintBtn = nullptr;
 
     bool m_refreshing = false;   // a refresh alatti itemChanged-jeleket nyeljük el
     QString m_ownName;           // a saját beszélőnév (én) az aktuális frissítéskor
