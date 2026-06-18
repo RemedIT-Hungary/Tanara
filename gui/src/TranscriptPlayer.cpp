@@ -7,8 +7,10 @@
 #include <QToolButton>
 #include <QSlider>
 #include <QLabel>
-#include <QListWidget>
-#include <QListWidgetItem>
+#include <QPlainTextEdit>
+#include <QTextEdit>          // QTextEdit::ExtraSelection
+#include <QTextBlock>
+#include <QTextCursor>
 #include <QComboBox>
 #include <QCompleter>
 #include <QLineEdit>
@@ -23,18 +25,15 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QColor>
-#include <QBrush>
 #include <QStringList>
 #include <QSet>
+#include <QMouseEvent>
+#include <QEvent>
 
 #include <QMediaPlayer>
 #include <QAudioOutput>
 
 namespace tanara_gui {
-
-static constexpr int kRoleStartMs = Qt::UserRole;
-static constexpr int kRoleEndMs   = Qt::UserRole + 1;
-static constexpr int kRoleRawSpeaker = Qt::UserRole + 2;   // a sor NYERS beszélő-címkéje
 
 TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
@@ -67,12 +66,18 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_speakersLabel->setVisible(false);
     m_speakersPanel->setVisible(false);
 
-    // --- szegmens-lista ---
-    m_list = new QListWidget(this);
-    m_list->setWordWrap(true);
-    m_list->setUniformItemSizes(false);
-    m_list->setTextElideMode(Qt::ElideNone);
-    root->addWidget(m_list, 1);
+    // --- szegmens-nézet (QPlainTextEdit, szegmensenként egy blokk) ---
+    // Csak olvasható, de egérrel kijelölhető/másolható; a kattintásokat a viewportra
+    // tett eventFilter fogja (kattintott blokk → szegmens → odaugrás). A dokumentum-
+    // motor csak a látható blokkokat rendereli → hosszú átiratnál is sima.
+    m_view = new QPlainTextEdit(this);
+    m_view->setReadOnly(true);
+    m_view->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    m_view->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_view->setFrameShape(QFrame::NoFrame);
+    m_view->setCenterOnScroll(true);
+    m_view->viewport()->installEventFilter(this);
+    root->addWidget(m_view, 1);
 
     connect(m_playPauseBtn, &QPushButton::clicked,
             this, &TranscriptPlayer::onPlayPauseClicked);
@@ -82,8 +87,6 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
             this, &TranscriptPlayer::onSliderReleased);
     connect(m_seekSlider, &QSlider::sliderMoved,
             this, &TranscriptPlayer::onSliderMoved);
-    connect(m_list, &QListWidget::itemClicked,
-            this, &TranscriptPlayer::onItemClicked);
 
     setBarEnabled(false);
 }
@@ -163,23 +166,24 @@ QString TranscriptPlayer::displayName(const QString& rawSpeaker) const {
 }
 
 void TranscriptPlayer::populateList() {
-    m_list->clear();
     m_highlightedRow = -1;
+    // Egy szegmens = egy blokk (bekezdés). A blokk-index == szegmens-index, így a
+    // kiemeléshez/kattintáshoz nem kell külön item-adat. Egyetlen setPlainText →
+    // a dokumentum egyszer épül fel (gyors), nincs per-item layout-vihar.
+    QStringList lines;
+    lines.reserve(m_segments.size());
     for (const Segment& s : m_segments) {
         // [mm:ss]  <SPEAKER>  <text> — a beszélőt a speakerMap szerinti valódi
-        // névvel jelenítjük meg (ha van), nagybetűvel kiemelve. A NYERS címkét
-        // az item-adatban őrizzük, hogy az átnevezés azt tudja célozni.
-        const QString ts = QStringLiteral("[%1]").arg(formatTime(s.startMs));
-        QString line = ts;
+        // névvel jelenítjük meg (ha van), nagybetűvel kiemelve.
+        QString line = QStringLiteral("[%1]").arg(formatTime(s.startMs));
         if (!s.speaker.isEmpty())
             line += QStringLiteral("  %1").arg(displayName(s.speaker).toUpper());
         line += QStringLiteral("  %1").arg(s.text);
-
-        auto* item = new QListWidgetItem(line, m_list);
-        item->setData(kRoleStartMs, static_cast<qlonglong>(s.startMs));
-        item->setData(kRoleEndMs,   static_cast<qlonglong>(s.endMs));
-        item->setData(kRoleRawSpeaker, s.speaker);
+        lines.push_back(line);
     }
+    m_view->setPlainText(lines.join(QLatin1Char('\n')));
+    m_view->moveCursor(QTextCursor::Start);
+    m_view->setExtraSelections({});
 }
 
 void TranscriptPlayer::populateSpeakersPanel() {
@@ -333,9 +337,9 @@ void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
 
     if (!haveSegments) {
         m_segments.clear();
-        m_list->clear();
-        m_list->addItem(
-            QStringLiteral("Nincs átirat — futtass Átírást."));
+        m_highlightedRow = -1;
+        m_view->setExtraSelections({});
+        m_view->setPlainText(QStringLiteral("Nincs átirat — futtass Átírást."));
         populateSpeakersPanel();   // nincs szegmens → üres panel, elrejti magát
         setBarEnabled(false);
         m_hasAudio = false;
@@ -366,7 +370,8 @@ void TranscriptPlayer::clearMeeting() {
         m_player->setSource(QUrl());
     }
     m_segments.clear();
-    m_list->clear();
+    m_view->clear();
+    m_view->setExtraSelections({});
     populateSpeakersPanel();
     m_seekSlider->setRange(0, 0);
     updateTimeLabel(0, 0);
@@ -427,18 +432,29 @@ void TranscriptPlayer::highlightForPosition(qint64 pos) {
     }
     if (found < 0 || found == m_highlightedRow)
         return;
-
-    // Korábbi kiemelés visszaállítása.
-    if (m_highlightedRow >= 0 && m_highlightedRow < m_list->count()) {
-        if (auto* prev = m_list->item(m_highlightedRow))
-            prev->setBackground(QBrush());
-    }
-    if (auto* cur = m_list->item(found)) {
-        cur->setBackground(QColor(255, 244, 200));   // halvány sárga kiemelés
-        m_list->setCurrentRow(found);
-        m_list->scrollToItem(cur, QAbstractItemView::PositionAtCenter);
-    }
     m_highlightedRow = found;
+
+    // A kiemelt szegmens = a `found`. blokk. FullWidthSelection → a teljes sor
+    // halvány sárga, kijelölés (k”kék”) nélkül. ExtraSelection olcsó, nem épít widgetet.
+    QTextBlock block = m_view->document()->findBlockByNumber(found);
+    if (!block.isValid())
+        return;
+    QTextCursor cur(block);
+    QTextEdit::ExtraSelection sel;
+    sel.cursor = cur;                       // kijelölés nélkül, csak pozíció a blokk elején
+    sel.format.setBackground(QColor(255, 244, 200));
+    sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+    m_view->setExtraSelections({sel});
+
+    // A nézet a kiemelt szegmensre görget (középre), de a felhasználó szöveg-
+    // kijelölését nem bántjuk: külön kurzort használunk a görgetéshez.
+    QTextCursor scrollCur(block);
+    const QTextCursor saved = m_view->textCursor();
+    m_view->setTextCursor(scrollCur);
+    m_view->centerCursor();
+    // A látható (felhasználói) kurzort visszaállítjuk, ha volt kijelölése.
+    if (saved.hasSelection())
+        m_view->setTextCursor(saved);
 }
 
 void TranscriptPlayer::onPlaybackStateChanged() {
@@ -468,14 +484,11 @@ void TranscriptPlayer::onSliderMoved(int value) {
     updateTimeLabel(value, m_player ? m_player->duration() : 0);
 }
 
-void TranscriptPlayer::onItemClicked(QListWidgetItem* item) {
-    if (!item || !m_hasAudio)
+void TranscriptPlayer::seekToSegment(int idx) {
+    if (idx < 0 || idx >= m_segments.size() || !m_hasAudio)
         return;
-    bool okStart = false, okEnd = false;
-    const qint64 startMs = item->data(kRoleStartMs).toLongLong(&okStart);
-    const qint64 endMs   = item->data(kRoleEndMs).toLongLong(&okEnd);
-    if (!okStart)
-        return;
+    const qint64 startMs = m_segments[idx].startMs;
+    const qint64 endMs   = m_segments[idx].endMs;
 
     ensurePlayer();
     const bool wasPlaying =
@@ -487,10 +500,29 @@ void TranscriptPlayer::onItemClicked(QListWidgetItem* item) {
         m_singleSegmentMode = false;
     } else {
         // Állt → lejátsszuk ezt az egy mondatot, a végén (endMs) megállunk.
-        m_singleSegmentMode = okEnd && endMs > startMs;
+        m_singleSegmentMode = endMs > startMs;
         m_singleSegmentEndMs = endMs;
         m_player->play();
     }
+}
+
+bool TranscriptPlayer::eventFilter(QObject* obj, QEvent* ev) {
+    if (m_view && obj == m_view->viewport()) {
+        if (ev->type() == QEvent::MouseButtonPress) {
+            auto* me = static_cast<QMouseEvent*>(ev);
+            if (me->button() == Qt::LeftButton)
+                m_pressPos = me->pos();
+        } else if (ev->type() == QEvent::MouseButtonRelease) {
+            auto* me = static_cast<QMouseEvent*>(ev);
+            // Csak „tiszta” kattintás (nem húzás-kijelölés) ugrik a szegmensre.
+            if (me->button() == Qt::LeftButton &&
+                (me->pos() - m_pressPos).manhattanLength() < 6 && m_hasAudio) {
+                const QTextCursor c = m_view->cursorForPosition(me->pos());
+                seekToSegment(c.blockNumber());
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, ev);
 }
 
 void TranscriptPlayer::playSegmentRange(qint64 startMs, qint64 endMs) {

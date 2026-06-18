@@ -2,8 +2,11 @@
 //
 // TranscriptPlayer — szinkronizált lejátszó + kattintható átirat.
 //   felül:  lejátszó-sáv (Play/Pause + seek-csúszka + mm:ss / mm:ss címke)
-//   alatta: szegmens-lista (QListWidget), kattintásra a lejátszó az adott
-//           szegmens elejére ugrik; a lejátszott szegmens kiemelve.
+//   alatta: szegmens-nézet (QPlainTextEdit — szegmensenként egy blokk), kattintásra
+//           a lejátszó az adott szegmens elejére ugrik; a lejátszott szegmens kiemelve.
+//           A QPlainTextEdit dokumentum-motorja csak a látható blokkokat rendereli,
+//           így több ezer szegmensnél (hosszú meeting) is sima marad (a korábbi
+//           word-wrap-es QListWidget az átméretezéskor minden itemet újraszámolt).
 //
 // Csak gui/-ben él, namespace tanara_gui. A QMediaPlayer LUSTÁN jön létre
 // (az első forrás-betöltéskor), hogy az app indítása tiszta maradjon.
@@ -14,12 +17,12 @@
 #include <QString>
 #include <QVector>
 #include <QMap>
+#include <QPoint>
 
 class QPushButton;
 class QSlider;
 class QLabel;
-class QListWidget;
-class QListWidgetItem;
+class QPlainTextEdit;
 class QMediaPlayer;
 class QAudioOutput;
 class QComboBox;
@@ -52,6 +55,11 @@ public:
     // Üres állapot (nincs kijelölt meeting).
     void clearMeeting();
 
+protected:
+    // A szegmens-nézet (QPlainTextEdit viewport) kattintásait figyeljük: a kattintott
+    // blokk = szegmens-index → odaugrás. (A húzás-szöveges kijelölést nem zavarjuk.)
+    bool eventFilter(QObject* obj, QEvent* ev) override;
+
 private slots:
     void onPlayPauseClicked();
     void onDurationChanged(qint64 dur);
@@ -60,7 +68,6 @@ private slots:
     void onSliderPressed();
     void onSliderReleased();
     void onSliderMoved(int value);
-    void onItemClicked(QListWidgetItem* item);
 
 private:
     struct Segment {
@@ -73,8 +80,9 @@ private:
     void ensurePlayer();                 // lusta QMediaPlayer-létrehozás
     void setBarEnabled(bool on);
     void highlightForPosition(qint64 pos);
+    void seekToSegment(int idx);         // egy szegmensre ugrás (kattintás-logika)
     bool loadSegments(const QString& path);   // segments.json → m_segments
-    void populateList();
+    void populateList();                 // m_segments → a QPlainTextEdit blokkjai
     void populateSpeakersPanel();        // a "Beszélők" sor (combo-k) felépítése
     QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
     void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
@@ -93,10 +101,11 @@ private:
     QWidget*     m_speakersPanel = nullptr;
     QVBoxLayout* m_speakersLayout = nullptr;   // beszélőnként egy sor (jól szerkeszthető)
 
-    QPushButton* m_playPauseBtn = nullptr;
-    QSlider*     m_seekSlider = nullptr;
-    QLabel*      m_timeLabel = nullptr;
-    QListWidget* m_list = nullptr;
+    QPushButton*    m_playPauseBtn = nullptr;
+    QSlider*        m_seekSlider = nullptr;
+    QLabel*         m_timeLabel = nullptr;
+    QPlainTextEdit* m_view = nullptr;     // szegmensenként egy blokk
+    QPoint          m_pressPos;           // kattintás kezdő-pozíció (click vs. drag)
 
     QMediaPlayer* m_player = nullptr;
     QAudioOutput* m_audioOutput = nullptr;
