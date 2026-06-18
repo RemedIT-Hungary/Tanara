@@ -13,6 +13,84 @@
 #ifdef TANARA_HAVE_VOICEID
 #include "tanara/store/VoiceprintStore.h"   // l2normalize
 #include "kaldi-native-fbank/csrc/online-feature.h"
+
+// --- SAL-shim MinGW-hez --------------------------------------------------------
+// Az ONNX Runtime C-API fejléce _WIN32 alatt a <specstrings.h>-ra bízza a SAL2
+// annotációkat (_In_, _Outptr_, _Frees_ptr_opt_, …). A MinGW specstrings.h-ja
+// régi, és több SAL2-makró hiányzik belőle → definiálatlan tokenek miatt a
+// függvénymutató-paraméterek „eltűnnek" (implicit int → fordítási hiba).
+// Megoldás: MinGW-n (csak ott, MSVC-n NEM) az include ELŐTT üresként definiáljuk
+// pontosan azt a készletet, amit a header a nem-Windows ágban maga is használ.
+// (#ifndef-guard → a specstrings.h már meglévő definíciói nem ütköznek.)
+#if defined(_WIN32) && !defined(_MSC_VER)
+#  ifndef _In_
+#    define _In_
+#  endif
+#  ifndef _In_z_
+#    define _In_z_
+#  endif
+#  ifndef _In_opt_
+#    define _In_opt_
+#  endif
+#  ifndef _In_opt_z_
+#    define _In_opt_z_
+#  endif
+#  ifndef _Out_
+#    define _Out_
+#  endif
+#  ifndef _Outptr_
+#    define _Outptr_
+#  endif
+#  ifndef _Out_opt_
+#    define _Out_opt_
+#  endif
+#  ifndef _Inout_
+#    define _Inout_
+#  endif
+#  ifndef _Inout_opt_
+#    define _Inout_opt_
+#  endif
+#  ifndef _Frees_ptr_opt_
+#    define _Frees_ptr_opt_
+#  endif
+#  ifndef _Ret_maybenull_
+#    define _Ret_maybenull_
+#  endif
+#  ifndef _Ret_notnull_
+#    define _Ret_notnull_
+#  endif
+#  ifndef _Check_return_
+#    define _Check_return_
+#  endif
+#  ifndef _Outptr_result_maybenull_
+#    define _Outptr_result_maybenull_
+#  endif
+#  ifndef _In_reads_
+#    define _In_reads_(X)
+#  endif
+#  ifndef _Inout_updates_
+#    define _Inout_updates_(X)
+#  endif
+#  ifndef _Out_writes_
+#    define _Out_writes_(X)
+#  endif
+#  ifndef _Inout_updates_all_
+#    define _Inout_updates_all_(X)
+#  endif
+#  ifndef _Out_writes_bytes_all_
+#    define _Out_writes_bytes_all_(X)
+#  endif
+#  ifndef _Out_writes_all_
+#    define _Out_writes_all_(X)
+#  endif
+#  ifndef _Success_
+#    define _Success_(X)
+#  endif
+#  ifndef _Outptr_result_buffer_maybenull_
+#    define _Outptr_result_buffer_maybenull_(X)
+#  endif
+#endif  // _WIN32 && !_MSC_VER
+
 #include <onnxruntime_cxx_api.h>
 
 #include <string>
@@ -49,8 +127,15 @@ VoiceEmbedder::VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg
         Ort::SessionOptions so;
         so.SetIntraOpNumThreads(1);
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        // Az ORT a modell-útvonalat ORTCHAR_T*-ként várja: Windowson wchar_t
+        // (wide path), POSIX-on char. Ennek megfelelően alakítjuk a QString-et.
+#if defined(_WIN32)
+        const std::wstring modelPathOrt = modelPath.toStdWString();
+#else
+        const std::string modelPathOrt = modelPath.toUtf8().toStdString();
+#endif
         d->session = std::make_unique<Ort::Session>(
-            d->env, modelPath.toUtf8().constData(), so);
+            d->env, modelPathOrt.c_str(), so);
 
         Ort::AllocatorWithDefaultOptions alloc;
         d->inputName  = d->session->GetInputNameAllocated(0, alloc).get();

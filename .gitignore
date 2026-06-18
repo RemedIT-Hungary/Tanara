@@ -1,5 +1,7 @@
 /build/
 /build-*/
+# windeployqt-csomagolás kimenete (DLL-ek, exe-k — nem verziókövetett)
+/dist/
 *.user
 .cache/
 compile_commands.json

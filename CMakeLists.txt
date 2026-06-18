@@ -31,14 +31,18 @@ if(TANARA_BUILD_VOICEID)
     # Az FFT-t a kissfft-float adja (a knf rfft.cc a kiss_fftr-t float-tal hívja).
     if(WIN32)
         # Windowson nincs pkg-config; a kissfft-float-ot forrásból fordítjuk
-        # (vendorelt, third_party/kissfft).
+        # (vendorelt, third_party/kissfft). A projekt alapból csak CXX — a .c
+        # fájlokhoz engedélyezni kell a C nyelvet (különben CMake némán kihagyja).
+        enable_language(C)
         set(KISSFFT_DIR ${CMAKE_SOURCE_DIR}/third_party/kissfft)
         add_library(kissfft_float STATIC
             ${KISSFFT_DIR}/kiss_fft.c
             ${KISSFFT_DIR}/kiss_fftr.c)
         target_include_directories(kissfft_float PUBLIC ${KISSFFT_DIR})
         target_compile_definitions(kissfft_float PUBLIC kiss_fft_scalar=float)
-        set_target_properties(kissfft_float PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        set_target_properties(kissfft_float PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # tiszta C-lib, nincs MOC
         add_library(tanara::kissfft ALIAS kissfft_float)
     else()
         find_package(PkgConfig REQUIRED)

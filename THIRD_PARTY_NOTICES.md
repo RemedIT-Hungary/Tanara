@@ -22,7 +22,9 @@ respective licenses.
   replaceable by the user. Upstream: https://www.qt.io
 - **ONNX Runtime** — MIT License. Used to run the speaker-embedding model.
   Upstream: https://github.com/microsoft/onnxruntime
-- **KISS FFT** — BSD-3-Clause. Used by kaldi-native-fbank for the FFT.
+- **KISS FFT** — BSD-3-Clause. Used by kaldi-native-fbank for the FFT. On Linux it
+  is linked from the system `kissfft-float` package; on Windows the float build is
+  vendored as source under `third_party/kissfft/` and compiled into Tanara.
   Upstream: https://github.com/mborgerding/kissfft
 
 ## External programs / services (not linked)
