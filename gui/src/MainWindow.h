@@ -45,6 +45,7 @@ private slots:
     void onJobProgress(QString meetingId, QString message);
     void onSpeakerMapChanged(QString meetingId);
     void openSettings();
+    void openPeopleManager();
     void onRecordingFinished(tanara::Meeting meeting);
 
 private:

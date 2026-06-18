@@ -3,6 +3,7 @@
 #include "tanara/AppController.h"
 
 #include <QPushButton>
+#include <QToolButton>
 #include <QSlider>
 #include <QLabel>
 #include <QListWidget>
@@ -201,6 +202,16 @@ void TranscriptPlayer::populateSpeakersPanel() {
 
     for (const QString& raw : rawSpeakers) {
         auto* lbl = new QLabel(raw + QStringLiteral(":"), m_speakersPanel);
+
+        // "Meghallgatás" gomb: a beszélő reprezentatív (leghosszabb) szegmensét
+        // játssza le, hogy a felhasználó hallás után azonosíthassa a beszélőt.
+        auto* listenBtn = new QToolButton(m_speakersPanel);
+        listenBtn->setText(QStringLiteral("▶"));
+        listenBtn->setToolTip(QStringLiteral("Meghallgatás (a beszélő egy mondata)"));
+        listenBtn->setEnabled(m_hasAudio);
+        connect(listenBtn, &QToolButton::clicked, this,
+                [this, raw]() { playSpeakerSample(raw); });
+
         auto* combo = new QComboBox(m_speakersPanel);
         combo->setEditable(true);
         combo->setInsertPolicy(QComboBox::NoInsert);
@@ -218,6 +229,7 @@ void TranscriptPlayer::populateSpeakersPanel() {
                     [this, raw, combo]() { onSpeakerRenamed(raw, combo->currentText()); });
 
         m_speakersLayout->addWidget(lbl);
+        m_speakersLayout->addWidget(listenBtn);
         m_speakersLayout->addWidget(combo);
     }
     m_speakersLayout->addStretch(1);
@@ -425,6 +437,39 @@ void TranscriptPlayer::onItemClicked(QListWidgetItem* item) {
         m_singleSegmentEndMs = endMs;
         m_player->play();
     }
+}
+
+void TranscriptPlayer::playSegmentRange(qint64 startMs, qint64 endMs) {
+    if (!m_hasAudio)
+        return;
+    ensurePlayer();
+    // A "Meghallgatás" mindig egy-szegmens lejátszás: a megadott elejére ugrunk,
+    // játszunk, és a végén (endMs) automatikusan megállunk.
+    m_player->setPosition(startMs);
+    m_singleSegmentMode = endMs > startMs;
+    m_singleSegmentEndMs = endMs;
+    m_player->play();
+}
+
+void TranscriptPlayer::playSpeakerSample(const QString& rawSpeaker) {
+    if (!m_hasAudio || rawSpeaker.isEmpty())
+        return;
+    // A beszélő reprezentatív szegmense = a LEGHOSSZABB (max endMs-startMs) az
+    // adott beszélő szegmensei közül.
+    qint64 bestStart = -1, bestEnd = -1, bestLen = -1;
+    for (const Segment& s : m_segments) {
+        if (s.speaker != rawSpeaker)
+            continue;
+        const qint64 len = s.endMs - s.startMs;
+        if (len > bestLen) {
+            bestLen = len;
+            bestStart = s.startMs;
+            bestEnd = s.endMs;
+        }
+    }
+    if (bestStart < 0)
+        return;   // nincs szegmense ennek a beszélőnek
+    playSegmentRange(bestStart, bestEnd);
 }
 
 } // namespace tanara_gui

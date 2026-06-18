@@ -3,6 +3,7 @@
 #include "SettingsDialog.h"
 #include "MeetingTableModel.h"
 #include "TranscriptPlayer.h"
+#include "PeopleManagerDialog.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -201,6 +202,8 @@ void MainWindow::buildMenu() {
     auto* fileMenu = menuBar()->addMenu(QStringLiteral("&Fájl"));
     QAction* settingsAct = fileMenu->addAction(QStringLiteral("Beállítások…"));
     connect(settingsAct, &QAction::triggered, this, &MainWindow::openSettings);
+    QAction* peopleAct = fileMenu->addAction(QStringLiteral("Személyek…"));
+    connect(peopleAct, &QAction::triggered, this, &MainWindow::openPeopleManager);
     fileMenu->addSeparator();
     QAction* quitAct = fileMenu->addAction(QStringLiteral("Kilépés"));
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
@@ -393,6 +396,16 @@ void MainWindow::onRecordingFinished(tanara::Meeting meeting) {
 void MainWindow::openSettings() {
     SettingsDialog dlg(m_controller, this);
     dlg.exec();
+}
+
+void MainWindow::openPeopleManager() {
+    // Nem-modális, hogy a háttérben az átnevezés/törlés hatása (speakerMapChanged
+    // → reloadTranscriptView) azonnal látszódjon a nyitott Átirat-nézeten.
+    auto* dlg = new PeopleManagerDialog(m_controller, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 } // namespace tanara_gui

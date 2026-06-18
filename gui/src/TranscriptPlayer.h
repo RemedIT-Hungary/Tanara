@@ -77,6 +77,9 @@ private:
     void populateSpeakersPanel();        // a "Beszélők" sor (combo-k) felépítése
     QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
     void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
+    // Egy beszélő "reprezentatív" (leghosszabb) szegmensét lejátssza (azonosításhoz).
+    void playSpeakerSample(const QString& rawSpeaker);
+    void playSegmentRange(qint64 startMs, qint64 endMs);   // egy-szegmens lejátszás
     static QString formatTime(qint64 ms);
     void updateTimeLabel(qint64 pos, qint64 dur);
 
