@@ -358,17 +358,11 @@ void RecordingSession::stop() {
     for (int i = 0; i < nTr; ++i)
         if (peakOf(i) >= kSilencePeak) anyAbove = true;
 
-    // A saját nevet a LEGHANGOSABB mikrofon kapja (= amelyikbe a user ténylegesen
-    // beszélt), nem az enumeráció szerinti elsőt. Auto-módban (sok mic) ez kulcs:
-    // a néma mikrofonokra ne kerüljön a felhasználó neve.
-    int primaryMicIdx = -1;
-    float bestMicPeak = -1.0f;
-    for (int i = 0; i < nTr; ++i)
-        if (impl_->tracks[i].kind == TrackKind::Mic && peakOf(i) > bestMicPeak) {
-            bestMicPeak = peakOf(i); primaryMicIdx = i;
-        }
-
-    int speakerNo = 2;
+    // FONTOS: a felhasználót NEM hangerő/pozíció alapján nevezzük el — a beszélő
+    // azonosítása a VOICE-ID (fingerprint) feladata (autoIdentifyMeeting). Itt a
+    // mic-sávok semleges „Mikrofon N" címkét kapnak; a valódi neveket a lenyomat-DB
+    // adja (vagy a felhasználó egyszeri kézi átnevezése, ami betanítja).
+    int micNo = 1;
     for (int i = 0; i < nTr; ++i) {
         const auto& t = impl_->tracks[i];
         Track tr;
@@ -377,9 +371,7 @@ void RecordingSession::stop() {
         tr.file = t.fileName;
         tr.kind = t.kind;
         if (t.kind == TrackKind::Mic)
-            tr.speakerLabel = (i == primaryMicIdx)
-                ? impl_->userSpeakerName
-                : QStringLiteral("Beszélő ") + QString::number(speakerNo++);
+            tr.speakerLabel = QStringLiteral("Mikrofon ") + QString::number(micNo++);
         else
             tr.speakerLabel = t.speakerLabel;   // "Rendszer"
         tr.fixedSpeaker = true;

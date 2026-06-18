@@ -175,8 +175,6 @@ QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLa
 
 // Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
 constexpr double kVoiceMatchThreshold = 0.5;
-// Az auto-enroll (mic, ismert identitás) felső korlátja egy néven, hogy ne nőjön korlátlanul.
-constexpr int kAutoEnrollCap = 5;
 
 QStringList loadLastDevices(const QString& path) {
     QFile f(path);
@@ -384,32 +382,15 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
         if (!t.speaker.isEmpty() && !labels.contains(t.speaker))
             labels << t.speaker;
 
-    bool mapChanged = false, printsChanged = false;
+    // MINDEN nevesítetlen beszélőt (mic + loopback) a voiceprint-DB ellen párosítunk.
+    // Nincs hangerő/pozíció-alapú feltételezés és nincs auto-enroll: a NÉV a fingerprint
+    // (vagy a felhasználó egyszeri kézi átnevezése) alapján kerül a beszélőre.
+    bool mapChanged = false;
     for (const QString& label : labels) {
+        if (m.speakerMap.contains(label))
+            continue;   // már nevesített (kézzel vagy korábbi match)
         const Track* track = resolveTrackForLabel(m, merged, label);
         if (!track) continue;
-
-        // Mic-sáv = ISMERT identitás (a fix beszélőnév). Lenyomatot rögzítünk
-        // (cap-pel), hogy a hang más meetingben távoliként is felismerhető legyen.
-        if (track->kind == TrackKind::Mic && track->speakerLabel == label) {
-            if (d->voiceprints->printCount(label) < kAutoEnrollCap) {
-                const QVector<float> e = embeddingForLabel(*emb, m.folder, merged, label, *track);
-                if (!e.isEmpty()) {
-                    Voiceprint vp;
-                    vp.embedding = e; vp.sourceMeetingId = m.id; vp.sourceTrack = track->id;
-                    vp.device = track->deviceName;
-                    vp.sampleRef = representativeSampleRef(merged, label, *track);
-                    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
-                    d->voiceprints->addPrint(label, vp);
-                    printsChanged = true;
-                }
-            }
-            continue;
-        }
-
-        // Diarizált távoli beszélő: ha még nincs neve, párosítjuk a DB ellen.
-        if (m.speakerMap.contains(label))
-            continue;
         const QVector<float> e = embeddingForLabel(*emb, m.folder, merged, label, *track);
         if (e.isEmpty()) continue;
         const VoiceMatch match = d->voiceprints->bestMatch(e);
@@ -427,8 +408,6 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
         writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), md.renderMarkdown());
         emit speakerMapChanged(m.id);
     }
-    if (printsChanged)
-        emit voiceprintsChanged();
 }
 
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
@@ -726,21 +705,13 @@ void AppController::transcribeMeeting(const QString& meetingId)
                             ? trk.speakerLabel
                             : QStringLiteral("Távoli %1").arg(tok.speaker);
                 } else {
-                    // Mic: a DOMINÁNS beszélő (legtöbb token) = a sáv beszélője
-                    // (a primary mic-en a felhasználó neve); a többi mic-beszélő
-                    // „Mikrofon N" → a voice-ID auto-match nevesítheti.
-                    QHash<QString, int> cnt;
-                    for (const TranscriptToken& tok : res.tokens)
-                        if (!tok.speaker.isEmpty()) ++cnt[tok.speaker];
-                    QString dom; int best = -1;
-                    for (auto it = cnt.constBegin(); it != cnt.constEnd(); ++it)
-                        if (it.value() > best) { best = it.value(); dom = it.key(); }
-                    for (TranscriptToken& tok : res.tokens) {
-                        if (tok.speaker.isEmpty() || tok.speaker == dom)
-                            tok.speaker = trk.speakerLabel;
-                        else
-                            tok.speaker = QStringLiteral("Mikrofon %1").arg(tok.speaker);
-                    }
+                    // Mic: a diarizált beszélők semleges „Mikrofon N" címkét kapnak —
+                    // a NEVET a voice-ID adja (nem hangerő/pozíció). Egy beszélő esetén
+                    // is így megy; a fingerprint dönti el, ki az (te is).
+                    for (TranscriptToken& tok : res.tokens)
+                        tok.speaker = tok.speaker.isEmpty()
+                            ? trk.speakerLabel
+                            : QStringLiteral("Mikrofon %1").arg(tok.speaker);
                 }
             }
             ctx->results[i] = res;
