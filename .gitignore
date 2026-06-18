@@ -11,3 +11,6 @@ CMakeFiles/
 # never commit secrets
 *.key
 secrets.json
+
+# Letöltött ML-modellek (nagy, nem verziókövetett — ~/.tanara/models a futásidejű hely)
+models/

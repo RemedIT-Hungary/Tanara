@@ -19,3 +19,6 @@ target_link_libraries(tanara_core PUBLIC
 # miniaudio + ffmpeg(QProcess) az audio-modulhoz (a capture impl használja).
 # miniaudio Linuxon dlopen-nel tölti a backendeket → dl + pthread + m kell.
 target_link_libraries(tanara_core PRIVATE miniaudio ${CMAKE_DL_LIBS} Threads::Threads m)
+
+# Beszélő-embedding: kaldi-native-fbank (fbank) + onnxruntime (CAM++ modell).
+target_link_libraries(tanara_core PRIVATE kaldi_native_fbank onnxruntime::onnxruntime)

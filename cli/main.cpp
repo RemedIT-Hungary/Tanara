@@ -8,6 +8,7 @@
 #include "tanara/AppController.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/voiceid/VoiceEmbedder.h"
 
 #include <QCoreApplication>
 #include <QTextStream>
@@ -133,6 +134,25 @@ int main(int argc, char** argv) {
         });
         app.renameSpeaker(id, raw, name);   // szinkron
         out << "Átnevezve: \"" << raw << "\" → \"" << name << "\"\n"; out.flush();
+        return 0;
+    }
+
+    if (cmd == "embed-probe") {
+        // Diagnosztika: egy hangszegmens embeddingjének kiírása (voiceprint-hibakereséshez).
+        //   embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]
+        const QString model = args.value(2), path = args.value(3);
+        const qint64 s = args.value(4).toLongLong();
+        const qint64 e = args.value(5).toLongLong();
+        EmbedderConfig cfg;
+        if (args.size() > 6) cfg.waveScale = args.value(6).toFloat();
+        if (args.size() > 7) cfg.subtractMean = args.value(7).toInt() != 0;
+        if (args.size() > 8) cfg.snipEdges = args.value(8).toInt() != 0;
+        VoiceEmbedder emb(model, cfg);
+        if (!emb.isValid()) { err << "HIBA: " << emb.lastError() << "\n"; err.flush(); return 1; }
+        const QVector<float> v = emb.embedFile(path, s, e);
+        if (v.isEmpty()) { err << "HIBA: " << emb.lastError() << "\n"; err.flush(); return 1; }
+        QStringList parts; for (float x : v) parts << QString::number(x, 'g', 8);
+        out << parts.join(QLatin1Char(' ')) << "\n"; out.flush();
         return 0;
     }
 

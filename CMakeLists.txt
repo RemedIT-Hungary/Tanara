@@ -18,6 +18,22 @@ find_package(Threads REQUIRED)
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE ${CMAKE_SOURCE_DIR}/third_party/miniaudio)
 
+# kaldi-native-fbank (vendorelt, Apache-2.0) — kaldi-pontos fbank a beszélő-embeddinghez.
+# Az FFT-t a rendszer kissfft-float adja (a knf rfft.cc a kiss_fftr-t float-tal hívja).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(KISSFFT REQUIRED IMPORTED_TARGET kissfft-float)
+file(GLOB KNF_SOURCES ${CMAKE_SOURCE_DIR}/third_party/kaldi-native-fbank/csrc/*.cc)
+add_library(kaldi_native_fbank STATIC ${KNF_SOURCES})
+target_include_directories(kaldi_native_fbank PUBLIC ${CMAKE_SOURCE_DIR}/third_party)
+target_compile_features(kaldi_native_fbank PUBLIC cxx_std_17)
+target_link_libraries(kaldi_native_fbank PRIVATE PkgConfig::KISSFFT)
+set_target_properties(kaldi_native_fbank PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # nem Qt-cél, ne fusson rajta MOC
+
+# onnxruntime (Fedora onnxruntime-devel; cmake-config) — beszélő-embedding modellhez.
+find_package(onnxruntime REQUIRED)
+
 enable_testing()
 
 option(TANARA_BUILD_GUI "Build the Qt Widgets GUI" ON)

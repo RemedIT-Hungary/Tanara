@@ -1,0 +1,4 @@
+Vendored from https://github.com/csukuangfj/kaldi-native-fbank
+Commit: b09e686fe2084732ddd30d1ef80acfc0f13eaf01
+License: Apache-2.0 (see LICENSE)
+Only non-test csrc files; built into tanara_core.
