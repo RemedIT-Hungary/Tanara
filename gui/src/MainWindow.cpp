@@ -240,7 +240,16 @@ tanara::Meeting MainWindow::selectedMeeting(bool* ok) const {
     if (!srcIdx.isValid())
         return {};
     if (ok) *ok = true;
-    return m_tableModel->meetingAt(srcIdx.row());
+    const tanara::Meeting indexMeeting = m_tableModel->meetingAt(srcIdx.row());
+    // A tábla az SQLite-INDEXből jön (nincs benne speakerMap/tracks). A részletekhez
+    // a TELJES meetinget LEMEZRŐL (meeting.json) töltjük, hogy a beszélő-nevek és a
+    // sávok is meglegyenek.
+    if (m_controller && m_controller->store() && !indexMeeting.id.isEmpty()) {
+        const tanara::Meeting full = m_controller->store()->load(indexMeeting.id);
+        if (!full.id.isEmpty())
+            return full;
+    }
+    return indexMeeting;
 }
 
 QString MainWindow::readMarkdownFile(const QString& path) {
