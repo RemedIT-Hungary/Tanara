@@ -8,6 +8,7 @@
 #include "tanara/AppController.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/store/VoiceprintStore.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
 
 #include <QCoreApplication>
@@ -137,6 +138,30 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (cmd == "identify") {
+        const QString id = args.value(2);
+        if (id.isEmpty()) { err << "Használat: identify <meetingId>\n"; return 1; }
+        app.autoIdentifyMeeting(id);   // szinkron (ffmpeg + onnx)
+        const Meeting m = app.store()->load(id);
+        out << "Auto-azonosítás kész. Leképezés (speakerMap):\n";
+        if (m.speakerMap.isEmpty())
+            out << "  (üres — nincs küszöb feletti találat, vagy nincs modell/lenyomat)\n";
+        for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
+            out << "  " << it.key() << " → " << it.value() << "\n";
+        out.flush();
+        return 0;
+    }
+
+    if (cmd == "voiceprints") {
+        auto* vp = app.voiceprints();
+        out << "Hang-lenyomatok (" << vp->people().size() << " személy, "
+            << vp->totalPrintCount() << " lenyomat):\n";
+        for (const QString& name : vp->people())
+            out << "  " << name << ": " << vp->printCount(name) << " lenyomat\n";
+        out.flush();
+        return 0;
+    }
+
     if (cmd == "embed-probe") {
         // Diagnosztika: egy hangszegmens embeddingjének kiírása (voiceprint-hibakereséshez).
         //   embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]
@@ -158,7 +183,8 @@ int main(int argc, char** argv) {
 
     out << "tanara-cli " << libraryVersion() << "\n"
         << "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
-           "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név>\n";
+           "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
+           "identify <id> | voiceprints\n";
     out.flush();
     return 0;
 }

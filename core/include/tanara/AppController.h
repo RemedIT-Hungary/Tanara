@@ -14,6 +14,7 @@ namespace tanara {
 class SettingsManager;
 class DeviceManager;
 class MeetingStore;
+class VoiceprintStore;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -26,6 +27,7 @@ public:
     SettingsManager* settings() const;
     DeviceManager*   devices() const;
     MeetingStore*    store() const;
+    VoiceprintStore* voiceprints() const;   // hang-lenyomat DB (voice-ID)
 
     RecordingState recordingState() const;
     QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
@@ -81,7 +83,19 @@ public slots:
     // Egy beszélő átnevezése egy meetingben (nyers címke → valódi név). Perzisztál
     // (Meeting.speakerMap + people.json), újragenerálja a transcript.md-t a nevekkel,
     // és speakerMapChanged-et emittál. Üres/azonos név → a leképezés törlése.
-    void renameSpeaker(const QString& meetingId, const QString& rawLabel, const QString& displayName);
+    // Ha enroll=true (alapért.) és van hang-modell, a beszélő hangjából lenyomatot is
+    // rögzít a name alá (a kézi címkézés „tanítja" a voice-ID-t).
+    void renameSpeaker(const QString& meetingId, const QString& rawLabel,
+                       const QString& displayName, bool enroll = true);
+
+    // Egy beszélő hang-lenyomatának explicit rögzítése a voiceprint DB-be (a meeting
+    // adott nyers címkéjének reprezentatív hangjából). voiceprintsChanged jel.
+    void enrollSpeaker(const QString& meetingId, const QString& rawLabel, const QString& name);
+
+    // Auto-azonosítás: a meeting még névtelen (nem leképezett) nyers beszélőit a
+    // voiceprint DB ellen párosítja; küszöb felett előtölti a speakerMap-et.
+    // A mic-sáv (ismert) beszélőjét lenyomatként rögzíti. speakerMapChanged-et emittál.
+    void autoIdentifyMeeting(const QString& meetingId);
 
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
@@ -98,6 +112,7 @@ signals:
     void summaryReady(QString meetingId, QString markdownPath);
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
+    void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
     void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot

@@ -7,6 +7,8 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/KeyStore.h"
 #include "tanara/store/PeopleStore.h"
+#include "tanara/store/VoiceprintStore.h"
+#include "tanara/voiceid/VoiceEmbedder.h"
 #include "tanara/stt/SonioxProvider.h"
 #include "tanara/stt/ISttProvider.h"
 #include "tanara/llm/OpenAiCompatibleProvider.h"
@@ -24,6 +26,9 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QFileInfo>
+#include <QDateTime>
+#include <algorithm>
 #include <memory>
 
 namespace tanara {
@@ -107,6 +112,46 @@ MergedTranscript readTokensJson(const QString& path) {
     return mt;
 }
 
+// Melyik sávból vegyünk hangot egy nyers beszélő-címkéhez:
+//  - pontos egyezés egy sáv fix beszélőjével (mic) → az a sáv;
+//  - egyébként (diarizált "Távoli N") → a loopback sáv;
+//  - végső fallback: az első sáv.
+const Track* resolveTrackForLabel(const Meeting& m, const QString& rawLabel) {
+    for (const Track& t : m.tracks)
+        if (t.speakerLabel == rawLabel) return &t;
+    for (const Track& t : m.tracks)
+        if (t.kind == TrackKind::Loopback) return &t;
+    return m.tracks.isEmpty() ? nullptr : &m.tracks.first();
+}
+
+// Egy beszélő reprezentatív embeddingje: a leghosszabb utterance-eiből ~3–12 s hangot
+// gyűjt a megadott sávból, és egyetlen embeddinget számol. Üres = nincs elég hang/hiba.
+QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& folder,
+                                 const MergedTranscript& mt, const QString& rawLabel,
+                                 const Track& track) {
+    QVector<Utterance> utts;
+    for (const Utterance& u : mt.segments())
+        if (u.speaker == rawLabel) utts.append(u);
+    std::sort(utts.begin(), utts.end(), [](const Utterance& a, const Utterance& b) {
+        return (a.endMs - a.startMs) > (b.endMs - b.startMs);
+    });
+    const QString path = QDir(folder).filePath(track.file);
+    QVector<float> pcm;
+    qint64 accMs = 0;
+    for (const Utterance& u : utts) {
+        if (accMs >= 3000 || pcm.size() > 16000 * 12) break;
+        pcm += VoiceEmbedder::decodePcm16kMono(path, u.startMs, u.endMs);
+        accMs += (u.endMs - u.startMs);
+    }
+    if (pcm.isEmpty()) return {};
+    return emb.embedPcm(pcm);
+}
+
+// Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
+constexpr double kVoiceMatchThreshold = 0.5;
+// Az auto-enroll (mic, ismert identitás) felső korlátja egy néven, hogy ne nőjön korlátlanul.
+constexpr int kAutoEnrollCap = 5;
+
 QStringList loadLastDevices(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -153,6 +198,9 @@ struct AppController::Impl {
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     std::unique_ptr<PeopleStore> people;
+    std::unique_ptr<VoiceprintStore> voiceprints;
+    std::unique_ptr<VoiceEmbedder>   embedder;   // lusta betöltés (első használatkor)
+    QString          voiceModelPath;
     QNetworkAccessManager* nam = nullptr;   // LLM-modellek lekéréséhez
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
@@ -187,6 +235,12 @@ AppController::AppController(QObject* parent)
     connect(d->monitor, &DeviceMonitor::level, this, &AppController::deviceLevel);
 
     d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
+
+    // Voice-ID: lenyomat-DB + a modell várt helye (~/.tanara/models/...).
+    d->voiceprints = std::make_unique<VoiceprintStore>(
+        QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
+    d->voiceModelPath = QDir(d->metaDir).filePath(
+        QStringLiteral("models/campplus_sv_zh_en_16k.onnx"));
 }
 
 AppController::~AppController() = default;
@@ -194,6 +248,7 @@ AppController::~AppController() = default;
 SettingsManager* AppController::settings() const { return d->settings; }
 DeviceManager*   AppController::devices()  const { return d->devices; }
 MeetingStore*    AppController::store()     const { return d->store; }
+VoiceprintStore* AppController::voiceprints() const { return d->voiceprints.get(); }
 RecordingState   AppController::recordingState() const { return d->state; }
 QString AppController::currentMeetingFolder() const { return d->currentFolder; }
 
@@ -210,7 +265,8 @@ QStringList AppController::knownPeople() const {
     return d->people ? d->people->names() : QStringList();
 }
 
-void AppController::renameSpeaker(const QString& meetingId, const QString& rawLabel, const QString& displayName) {
+void AppController::renameSpeaker(const QString& meetingId, const QString& rawLabel,
+                                 const QString& displayName, bool enroll) {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
@@ -232,12 +288,127 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
         writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
     }
     emit speakerMapChanged(meetingId);
+
+    // A kézi címkézés „tanítja" a voice-ID-t: lenyomatot rögzítünk a név alá.
+    if (enroll && !name.isEmpty() && name != rawLabel)
+        enrollSpeaker(meetingId, rawLabel, name);
+}
+
+void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLabel, const QString& name) {
+    const QString nm = name.trimmed();
+    if (nm.isEmpty()) return;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+
+    auto ensureEmb = [this]() -> VoiceEmbedder* {
+        if (!d->embedder) {
+            if (!QFileInfo::exists(d->voiceModelPath)) return nullptr;
+            auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
+            if (!e->isValid()) return nullptr;
+            d->embedder = std::move(e);
+        }
+        return d->embedder.get();
+    };
+    VoiceEmbedder* emb = ensureEmb();
+    if (!emb) return;   // nincs modell → csendben kihagyjuk (a kézi címkézés így is működik)
+
+    const Track* track = resolveTrackForLabel(m, rawLabel);
+    if (!track) return;
+    const MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) return;
+
+    const QVector<float> embedding = embeddingForLabel(*emb, m.folder, merged, rawLabel, *track);
+    if (embedding.isEmpty()) return;
+
+    Voiceprint vp;
+    vp.embedding = embedding;
+    vp.sourceMeetingId = m.id;
+    vp.sourceTrack = track->id;
+    vp.device = track->deviceName;
+    vp.sampleRef = track->file;
+    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    d->voiceprints->addPrint(nm, vp);
+    emit voiceprintsChanged();
+}
+
+void AppController::autoIdentifyMeeting(const QString& meetingId) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+
+    auto ensureEmb = [this]() -> VoiceEmbedder* {
+        if (!d->embedder) {
+            if (!QFileInfo::exists(d->voiceModelPath)) return nullptr;
+            auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
+            if (!e->isValid()) return nullptr;
+            d->embedder = std::move(e);
+        }
+        return d->embedder.get();
+    };
+    VoiceEmbedder* emb = ensureEmb();
+    if (!emb) return;
+
+    const MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) return;
+
+    // Distinct nyers beszélő-címkék.
+    QStringList labels;
+    for (const TranscriptToken& t : merged.tokens)
+        if (!t.speaker.isEmpty() && !labels.contains(t.speaker))
+            labels << t.speaker;
+
+    bool mapChanged = false, printsChanged = false;
+    for (const QString& label : labels) {
+        const Track* track = resolveTrackForLabel(m, label);
+        if (!track) continue;
+
+        // Mic-sáv = ISMERT identitás (a fix beszélőnév). Lenyomatot rögzítünk
+        // (cap-pel), hogy a hang más meetingben távoliként is felismerhető legyen.
+        if (track->kind == TrackKind::Mic && track->speakerLabel == label) {
+            if (d->voiceprints->printCount(label) < kAutoEnrollCap) {
+                const QVector<float> e = embeddingForLabel(*emb, m.folder, merged, label, *track);
+                if (!e.isEmpty()) {
+                    Voiceprint vp;
+                    vp.embedding = e; vp.sourceMeetingId = m.id; vp.sourceTrack = track->id;
+                    vp.device = track->deviceName; vp.sampleRef = track->file;
+                    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+                    d->voiceprints->addPrint(label, vp);
+                    printsChanged = true;
+                }
+            }
+            continue;
+        }
+
+        // Diarizált távoli beszélő: ha még nincs neve, párosítjuk a DB ellen.
+        if (m.speakerMap.contains(label))
+            continue;
+        const QVector<float> e = embeddingForLabel(*emb, m.folder, merged, label, *track);
+        if (e.isEmpty()) continue;
+        const VoiceMatch match = d->voiceprints->bestMatch(e);
+        if (match.score >= kVoiceMatchThreshold && !match.name.isEmpty()) {
+            m.speakerMap.insert(label, match.name);
+            if (d->people) d->people->add(match.name);
+            mapChanged = true;
+        }
+    }
+
+    if (mapChanged) {
+        d->store->saveMeeting(m);
+        MergedTranscript md = merged;
+        applySpeakerMap(md, m.speakerMap);
+        writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), md.renderMarkdown());
+        emit speakerMapChanged(m.id);
+    }
+    if (printsChanged)
+        emit voiceprintsChanged();
 }
 
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
     if (d->people) d->people->rename(o, n);
+    if (d->voiceprints) { d->voiceprints->renamePerson(o, n); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
     for (const Meeting& idx : all) {
@@ -261,6 +432,7 @@ void AppController::removePerson(const QString& name) {
     const QString nm = name.trimmed();
     if (nm.isEmpty()) return;
     if (d->people) d->people->remove(nm);
+    if (d->voiceprints) { d->voiceprints->removePerson(nm); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
     for (const Meeting& idx : all) {
@@ -476,6 +648,8 @@ void AppController::transcribeMeeting(const QString& meetingId)
             d->store->saveMeeting(m);
             provider->deleteLater();
             emit transcriptReady(m.id, mdPath);
+            // Voice-ID: ismert mic-beszélő rögzítése + távoli beszélők auto-párosítása.
+            autoIdentifyMeeting(m.id);
         });
         connect(job, &SttJob::failed, this, [this, ctx, provider](QString e) {
             if (ctx->failed) return;
