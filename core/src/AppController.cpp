@@ -286,7 +286,9 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.trackId = t.id;
         req.speakerLabel = t.speakerLabel;
         req.languageHints = s.languageHints;
-        req.diarization = false;
+        // Mikrofon-sáv = egy ismert beszélő (fix név). Loopback/rendszerhang =
+        // a hívás távoli oldala, ahol TÖBB beszélő lehet → Soniox diarizáció BE.
+        req.diarization = (t.kind == TrackKind::Loopback);
 
         SttJob* job = provider->transcribe(req);
         connect(job, &SttJob::stateChanged, this,
@@ -295,7 +297,16 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 });
         connect(job, &SttJob::finished, this, [this, ctx, i, m, provider](const TrackTranscript& tr) mutable {
             if (ctx->failed) return;
-            ctx->results[i] = tr;
+            TrackTranscript res = tr;
+            // Diarizált (loopback) sávnál a Soniox beszélő-azonosítóit (1,2,…) emberi
+            // címkére fordítjuk, hogy a távoli beszélők elkülönüljenek a transcriptben.
+            if (i < m.tracks.size() && m.tracks[i].kind == TrackKind::Loopback) {
+                for (TranscriptToken& tok : res.tokens)
+                    tok.speaker = tok.speaker.isEmpty()
+                        ? m.tracks[i].speakerLabel
+                        : QStringLiteral("Távoli %1").arg(tok.speaker);
+            }
+            ctx->results[i] = res;
             if (--ctx->remaining != 0) return;
 
             MergedTranscript merged = mergeTranscripts(ctx->results);
