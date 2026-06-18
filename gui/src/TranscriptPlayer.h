@@ -24,6 +24,7 @@ class QMediaPlayer;
 class QAudioOutput;
 class QComboBox;
 class QHBoxLayout;
+class QVBoxLayout;
 
 namespace tanara {
 class AppController;
@@ -77,6 +78,7 @@ private:
     void populateSpeakersPanel();        // a "Beszélők" sor (combo-k) felépítése
     QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
     void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
+    void onTestSpeaker(const QString& rawLabel);   // fingerprint-teszt: legjobb egyezés
     // Egy beszélő "reprezentatív" (leghosszabb) szegmensét lejátssza (azonosításhoz).
     void playSpeakerSample(const QString& rawSpeaker);
     void playSegmentRange(qint64 startMs, qint64 endMs);   // egy-szegmens lejátszás
@@ -89,7 +91,7 @@ private:
 
     QLabel*      m_speakersLabel = nullptr;
     QWidget*     m_speakersPanel = nullptr;
-    QHBoxLayout* m_speakersLayout = nullptr;
+    QVBoxLayout* m_speakersLayout = nullptr;   // beszélőnként egy sor (jól szerkeszthető)
 
     QPushButton* m_playPauseBtn = nullptr;
     QSlider*     m_seekSlider = nullptr;

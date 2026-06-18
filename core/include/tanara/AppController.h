@@ -102,8 +102,12 @@ public slots:
 
     // Auto-azonosítás: a meeting még névtelen (nem leképezett) nyers beszélőit a
     // voiceprint DB ellen párosítja; küszöb felett előtölti a speakerMap-et.
-    // A mic-sáv (ismert) beszélőjét lenyomatként rögzíti. speakerMapChanged-et emittál.
+    // speakerMapChanged-et emittál. Bármikor újrafuttatható (a friss DB-vel).
     void autoIdentifyMeeting(const QString& meetingId);
+
+    // Fingerprint-teszt EGY beszélőre: a hangjából a legjobb egyezés a voiceprint-DB-ből
+    // (név + cosine pontszám). Nem módosít semmit; { "", -1 } ha nincs modell/egyezés.
+    tanara::VoiceMatch testSpeakerMatch(const QString& meetingId, const QString& rawLabel);
 
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);

@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QMessageBox>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
@@ -57,8 +58,9 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_speakersLabel = new QLabel(QStringLiteral("Beszélők:"), this);
     speakersRow->addWidget(m_speakersLabel);
     m_speakersPanel = new QWidget(this);
-    m_speakersLayout = new QHBoxLayout(m_speakersPanel);
+    m_speakersLayout = new QVBoxLayout(m_speakersPanel);   // beszélőnként egy sor
     m_speakersLayout->setContentsMargins(0, 0, 0, 0);
+    m_speakersLayout->setSpacing(2);
     speakersRow->addWidget(m_speakersPanel, 1);
     speakersRow->addStretch(0);
     root->addLayout(speakersRow);
@@ -205,43 +207,54 @@ void TranscriptPlayer::populateSpeakersPanel() {
         : QString();
 
     for (const QString& raw : rawSpeakers) {
-        // A SAJÁT beszélő sorát „(én)"-nel + félkövéren jelöljük, hogy a felületről
-        // azonnal látsszon, melyik vagy te.
         const bool isOwn = !ownName.isEmpty() && displayName(raw) == ownName;
-        auto* lbl = new QLabel(raw + (isOwn ? QStringLiteral(" (én):") : QStringLiteral(":")),
-                               m_speakersPanel);
-        if (isOwn) {
-            QFont f = lbl->font(); f.setBold(true); lbl->setFont(f);
-        }
 
-        // "Meghallgatás" gomb: a beszélő reprezentatív (leghosszabb) szegmensét
-        // játssza le, hogy a felhasználó hallás után azonosíthassa a beszélőt.
-        auto* listenBtn = new QToolButton(m_speakersPanel);
+        // Egy beszélő = egy vízszintes sor: [▶] [nyers címke (én)] [név-combo] [🔍 teszt].
+        auto* rowW = new QWidget(m_speakersPanel);
+        auto* row = new QHBoxLayout(rowW);
+        row->setContentsMargins(0, 0, 0, 0);
+
+        auto* listenBtn = new QToolButton(rowW);
         listenBtn->setText(QStringLiteral("▶"));
         listenBtn->setToolTip(QStringLiteral("Meghallgatás (a beszélő egy mondata)"));
         listenBtn->setEnabled(m_hasAudio);
         connect(listenBtn, &QToolButton::clicked, this,
                 [this, raw]() { playSpeakerSample(raw); });
 
-        auto* combo = new QComboBox(m_speakersPanel);
+        auto* lbl = new QLabel(raw + (isOwn ? QStringLiteral(" (én)") : QString()), rowW);
+        lbl->setMinimumWidth(90);
+        if (isOwn) { QFont f = lbl->font(); f.setBold(true); lbl->setFont(f); }
+
+        auto* combo = new QComboBox(rowW);
         combo->setEditable(true);
         combo->setInsertPolicy(QComboBox::NoInsert);
-        combo->setMinimumWidth(120);
+        combo->setMinimumWidth(140);
         combo->addItems(people);
         combo->setCurrentText(displayName(raw));
+        if (auto* le = combo->lineEdit())
+            le->setPlaceholderText(QStringLiteral("név megadása…"));
         if (auto* c = combo->completer())
             c->setCaseSensitivity(Qt::CaseInsensitive);
-
-        // Commit: legördülőből választás VAGY a szerkesztés befejezése.
         connect(combo, &QComboBox::activated, this,
                 [this, raw, combo](int) { onSpeakerRenamed(raw, combo->currentText()); });
         if (auto* le = combo->lineEdit())
             connect(le, &QLineEdit::editingFinished, this,
                     [this, raw, combo]() { onSpeakerRenamed(raw, combo->currentText()); });
 
-        m_speakersLayout->addWidget(lbl);
-        m_speakersLayout->addWidget(listenBtn);
-        m_speakersLayout->addWidget(combo);
+        // Fingerprint-teszt: a hang alapján megmutatja a legjobb egyezést a DB-ből.
+        auto* testBtn = new QToolButton(rowW);
+        testBtn->setText(QStringLiteral("🔍"));
+        testBtn->setToolTip(QStringLiteral(
+            "Fingerprint-teszt: a hang alapján a legjobb egyezés a személy-adatbázisból "
+            "(újra lefuttatható)."));
+        testBtn->setEnabled(m_hasAudio);
+        connect(testBtn, &QToolButton::clicked, this, [this, raw]() { onTestSpeaker(raw); });
+
+        row->addWidget(listenBtn);
+        row->addWidget(lbl, 1);
+        row->addWidget(combo, 2);
+        row->addWidget(testBtn);
+        m_speakersLayout->addWidget(rowW);
     }
     m_speakersLayout->addStretch(1);
 
@@ -259,6 +272,36 @@ void TranscriptPlayer::onSpeakerRenamed(const QString& rawLabel, const QString& 
         return;
     m_controller->renameSpeaker(m_meetingId, rawLabel, chosen);
     // A frissítést a speakerMapChanged → újratöltés intézi (MainWindow).
+}
+
+void TranscriptPlayer::onTestSpeaker(const QString& rawLabel) {
+    if (!m_controller || m_meetingId.isEmpty())
+        return;
+    const tanara::VoiceMatch m = m_controller->testSpeakerMatch(m_meetingId, rawLabel);
+    if (m.score < 0.0 || m.name.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Fingerprint-teszt"),
+            QStringLiteral("Ehhez a beszélőhöz (%1) nincs egyezés a személy-adatbázisban "
+                           "(vagy nincs még betanított hang / modell).\n\n"
+                           "Adj nevet a sorban — ezzel betanítod a hangját, és onnantól "
+                           "automatikusan felismeri.").arg(rawLabel));
+        return;
+    }
+    const int pct = static_cast<int>(m.score * 100.0 + 0.5);
+    auto* box = new QMessageBox(this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setIcon(QMessageBox::Question);
+    box->setWindowTitle(QStringLiteral("Fingerprint-teszt"));
+    box->setText(QStringLiteral("„%1” → legjobb egyezés: <b>%2</b> (%3%)")
+                     .arg(rawLabel, m.name).arg(pct));
+    box->setInformativeText(QStringLiteral("Alkalmazzam ezt a nevet erre a beszélőre?"));
+    QPushButton* apply = box->addButton(QStringLiteral("Alkalmaz"), QMessageBox::AcceptRole);
+    box->addButton(QStringLiteral("Mégse"), QMessageBox::RejectRole);
+    const QString name = m.name;
+    connect(box, &QMessageBox::finished, this, [this, box, apply, rawLabel, name](int) {
+        if (box->clickedButton() == apply)
+            m_controller->renameSpeaker(m_meetingId, rawLabel, name);
+    });
+    box->open();
 }
 
 void TranscriptPlayer::setController(tanara::AppController* controller) {

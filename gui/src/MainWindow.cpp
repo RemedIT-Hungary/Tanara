@@ -209,8 +209,13 @@ void MainWindow::buildUi() {
     auto* actionRow = new QHBoxLayout();
     m_transcribeBtn = new QPushButton(QStringLiteral("Átírás"), right);
     m_summarizeBtn = new QPushButton(QStringLiteral("Összefoglaló"), right);
+    m_identifyBtn = new QPushButton(QStringLiteral("🔍 Azonosítás"), right);
+    m_identifyBtn->setToolTip(QStringLiteral(
+        "A beszélők újra-azonosítása a hang-lenyomatok alapján (a friss "
+        "személy-adatbázissal). Nem ír át kézzel adott neveket."));
     actionRow->addWidget(m_transcribeBtn);
     actionRow->addWidget(m_summarizeBtn);
+    actionRow->addWidget(m_identifyBtn);
     actionRow->addStretch(1);
     rl->addLayout(actionRow);
 
@@ -242,9 +247,11 @@ void MainWindow::buildUi() {
 
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_summarizeBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
+    connect(m_identifyBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyClicked);
 
     m_transcribeBtn->setEnabled(false);
     m_summarizeBtn->setEnabled(false);
+    m_identifyBtn->setEnabled(false);
 }
 
 void MainWindow::buildMenu() {
@@ -351,6 +358,7 @@ void MainWindow::loadSelectedMeetingViews() {
     const bool enable = ok;
     m_transcribeBtn->setEnabled(enable);
     m_summarizeBtn->setEnabled(enable);
+    m_identifyBtn->setEnabled(enable);
 
     if (!ok) {
         m_currentMeetingId.clear();
@@ -386,6 +394,17 @@ void MainWindow::onSummarizeClicked() {
         return;
     setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
+}
+
+void MainWindow::onIdentifyClicked() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller)
+        return;
+    setBusy(true, QStringLiteral("Beszélők azonosítása a hang-lenyomatok alapján…"));
+    m_controller->autoIdentifyMeeting(m.id);   // szinkron (ffmpeg + onnx)
+    setBusy(false);
+    statusBar()->showMessage(QStringLiteral("Azonosítás kész."), 4000);
 }
 
 void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) {
@@ -443,6 +462,7 @@ void MainWindow::setBusy(bool busy, const QString& msg) {
     if (busy) {
         if (m_transcribeBtn) m_transcribeBtn->setEnabled(false);
         if (m_summarizeBtn)  m_summarizeBtn->setEnabled(false);
+        if (m_identifyBtn)   m_identifyBtn->setEnabled(false);
     } else {
         loadSelectedMeetingViews();   // gombok visszaállítása a kiválasztás szerint
     }

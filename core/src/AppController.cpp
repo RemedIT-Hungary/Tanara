@@ -410,6 +410,26 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
     }
 }
 
+VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QString& rawLabel) {
+    VoiceMatch none;   // { "", -1 }
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return none;
+    if (!d->embedder) {
+        if (!QFileInfo::exists(d->voiceModelPath)) return none;
+        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
+        if (!e->isValid()) return none;
+        d->embedder = std::move(e);
+    }
+    const MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) return none;
+    const Track* track = resolveTrackForLabel(m, merged, rawLabel);
+    if (!track) return none;
+    const QVector<float> e = embeddingForLabel(*d->embedder, m.folder, merged, rawLabel, *track);
+    if (e.isEmpty()) return none;
+    return d->voiceprints->bestMatch(e);
+}
+
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
