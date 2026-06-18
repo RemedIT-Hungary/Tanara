@@ -16,5 +16,6 @@ target_link_libraries(tanara_core PUBLIC
     Qt6::Network
     Qt6::Sql
 )
-# miniaudio + ffmpeg(QProcess) az audio-modulhoz (a capture impl használja):
-target_link_libraries(tanara_core PRIVATE miniaudio)
+# miniaudio + ffmpeg(QProcess) az audio-modulhoz (a capture impl használja).
+# miniaudio Linuxon dlopen-nel tölti a backendeket → dl + pthread + m kell.
+target_link_libraries(tanara_core PRIVATE miniaudio ${CMAKE_DL_LIBS} Threads::Threads m)
