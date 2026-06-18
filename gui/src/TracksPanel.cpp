@@ -10,6 +10,11 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QFont>
+#include <QMediaPlayer>
+#include <QAudioOutput>
+#include <QUrl>
+#include <QDir>
+#include <QFileInfo>
 
 namespace tanara_gui {
 
@@ -40,14 +45,24 @@ TracksPanel::TracksPanel(QWidget* parent) : QWidget(parent) {
     root->addWidget(m_list, 1);
 
     auto* btnRow = new QHBoxLayout();
+    m_playBtn = new QPushButton(QStringLiteral("▶ Meghallgatás"), this);
+    m_playBtn->setToolTip(QStringLiteral("A kijelölt sáv lejátszása (eldobott sávé is, "
+                                         "hogy törlés előtt ellenőrizhető legyen)."));
+    m_stopBtn = new QPushButton(QStringLiteral("⏹"), this);
     m_restoreBtn = new QPushButton(QStringLiteral("Visszaállítás"), this);
     m_deleteBtn  = new QPushButton(QStringLiteral("🗑 Törlés (végleges)"), this);
+    btnRow->addWidget(m_playBtn);
+    btnRow->addWidget(m_stopBtn);
     btnRow->addWidget(m_restoreBtn);
     btnRow->addWidget(m_deleteBtn);
     btnRow->addStretch(1);
     root->addLayout(btnRow);
 
     connect(m_list, &QListWidget::itemSelectionChanged, this, &TracksPanel::updateButtons);
+    connect(m_list, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem*) { onPlayClicked(); });
+    connect(m_playBtn, &QPushButton::clicked, this, &TracksPanel::onPlayClicked);
+    connect(m_stopBtn, &QPushButton::clicked, this, &TracksPanel::onStopClicked);
     connect(m_restoreBtn, &QPushButton::clicked, this, &TracksPanel::onRestoreClicked);
     connect(m_deleteBtn, &QPushButton::clicked, this, &TracksPanel::onDeleteClicked);
     updateButtons();
@@ -59,13 +74,17 @@ void TracksPanel::setController(tanara::AppController* controller) {
 
 void TracksPanel::setMeeting(const tanara::Meeting& meeting) {
     m_meetingId = meeting.id;
+    m_folder = meeting.folder;
     m_tracks = meeting.tracks;
+    onStopClicked();
     populate();
 }
 
 void TracksPanel::clearMeeting() {
     m_meetingId.clear();
+    m_folder.clear();
     m_tracks.clear();
+    onStopClicked();
     populate();
 }
 
@@ -92,9 +111,42 @@ void TracksPanel::updateButtons() {
     auto* item = m_list->currentItem();
     const bool hasSel = item != nullptr;
     const bool active = hasSel && item->data(RoleActive).toBool();
-    // Visszaállítás csak eldobott sávra; törlés bármelyikre.
+    // Visszaállítás csak eldobott sávra; törlés/lejátszás bármelyikre.
     m_restoreBtn->setEnabled(hasSel && !active);
     m_deleteBtn->setEnabled(hasSel);
+    m_playBtn->setEnabled(hasSel);
+}
+
+void TracksPanel::onPlayClicked() {
+    auto* item = m_list->currentItem();
+    if (!item || m_folder.isEmpty())
+        return;
+    // A kijelölt sávhoz tartozó fájl megkeresése (id alapján).
+    const QString trackId = item->data(RoleTrackId).toString();
+    QString file;
+    for (const tanara::Track& t : m_tracks)
+        if (t.id == trackId) { file = t.file; break; }
+    if (file.isEmpty())
+        return;
+    const QString path = QDir(m_folder).filePath(file);
+    if (!QFileInfo::exists(path)) {
+        QMessageBox::information(this, QStringLiteral("Meghallgatás"),
+            QStringLiteral("A hangsáv-fájl nem található:\n%1").arg(path));
+        return;
+    }
+    if (!m_player) {
+        m_player = new QMediaPlayer(this);
+        m_audioOutput = new QAudioOutput(this);
+        m_player->setAudioOutput(m_audioOutput);
+    }
+    m_player->stop();
+    m_player->setSource(QUrl::fromLocalFile(path));
+    m_player->play();
+}
+
+void TracksPanel::onStopClicked() {
+    if (m_player)
+        m_player->stop();
 }
 
 void TracksPanel::onRestoreClicked() {

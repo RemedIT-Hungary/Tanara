@@ -11,6 +11,8 @@
 class QListWidget;
 class QPushButton;
 class QLabel;
+class QMediaPlayer;
+class QAudioOutput;
 
 namespace tanara {
 class AppController;
@@ -29,6 +31,8 @@ public:
 private slots:
     void onRestoreClicked();
     void onDeleteClicked();
+    void onPlayClicked();
+    void onStopClicked();
     void updateButtons();
 
 private:
@@ -36,12 +40,18 @@ private:
 
     tanara::AppController* m_controller = nullptr;
     QString m_meetingId;
+    QString m_folder;
     QVector<tanara::Track> m_tracks;
 
     QLabel*      m_hint = nullptr;
     QListWidget* m_list = nullptr;
+    QPushButton* m_playBtn = nullptr;
+    QPushButton* m_stopBtn = nullptr;
     QPushButton* m_restoreBtn = nullptr;
     QPushButton* m_deleteBtn = nullptr;
+
+    QMediaPlayer* m_player = nullptr;
+    QAudioOutput* m_audioOutput = nullptr;
 };
 
 } // namespace tanara_gui

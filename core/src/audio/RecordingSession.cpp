@@ -351,21 +351,41 @@ void RecordingSession::stop() {
     // (a FÁJL MARAD a lemezen — utólag visszaállítható/törölhető). Ha MINDEN sáv a
     // küszöb alatt lenne, egyiket sem dobjuk (inkább maradjon meg minden).
     constexpr float kSilencePeak = 0.01f;   // tunálható; reverzibilis, ezért óvatosan alacsony
+    const int nTr = static_cast<int>(impl_->tracks.size());
+    auto peakOf = [&](int i) { return (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f; };
+
     bool anyAbove = false;
-    for (int i = 0; i < static_cast<int>(impl_->tracks.size()); ++i)
-        if (i < impl_->trackPeak.size() && impl_->trackPeak[i] >= kSilencePeak) anyAbove = true;
-    for (int i = 0; i < static_cast<int>(impl_->tracks.size()); ++i) {
+    for (int i = 0; i < nTr; ++i)
+        if (peakOf(i) >= kSilencePeak) anyAbove = true;
+
+    // A saját nevet a LEGHANGOSABB mikrofon kapja (= amelyikbe a user ténylegesen
+    // beszélt), nem az enumeráció szerinti elsőt. Auto-módban (sok mic) ez kulcs:
+    // a néma mikrofonokra ne kerüljön a felhasználó neve.
+    int primaryMicIdx = -1;
+    float bestMicPeak = -1.0f;
+    for (int i = 0; i < nTr; ++i)
+        if (impl_->tracks[i].kind == TrackKind::Mic && peakOf(i) > bestMicPeak) {
+            bestMicPeak = peakOf(i); primaryMicIdx = i;
+        }
+
+    int speakerNo = 2;
+    for (int i = 0; i < nTr; ++i) {
         const auto& t = impl_->tracks[i];
         Track tr;
         tr.id = t.slug;
         tr.deviceName = t.deviceName;
         tr.file = t.fileName;
-        tr.speakerLabel = t.speakerLabel;
         tr.kind = t.kind;
+        if (t.kind == TrackKind::Mic)
+            tr.speakerLabel = (i == primaryMicIdx)
+                ? impl_->userSpeakerName
+                : QStringLiteral("Beszélő ") + QString::number(speakerNo++);
+        else
+            tr.speakerLabel = t.speakerLabel;   // "Rendszer"
         tr.fixedSpeaker = true;
         tr.sampleRate = 48000;
         tr.channels = t.channels;
-        tr.peakLevel = (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f;
+        tr.peakLevel = peakOf(i);
         tr.active = anyAbove ? (tr.peakLevel >= kSilencePeak) : true;
         m.tracks.push_back(tr);
     }
