@@ -14,6 +14,8 @@ class QTabWidget;
 class QPushButton;
 class QProgressBar;
 class QItemSelection;
+class QVBoxLayout;
+class QAction;
 
 namespace tanara {
 class AppController;
@@ -24,6 +26,7 @@ namespace tanara_gui {
 class RecordBar;
 class MeetingTableModel;
 class TranscriptPlayer;
+class FloatingRecorder;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -49,6 +52,8 @@ private slots:
     void onRecordingFinished(tanara::Meeting meeting);
     void onTableContextMenu(const QPoint& pos);
     void renameSelectedMeeting();
+    void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
+    void dockRecorder();     // vissza a főablakba
 
 private:
     void buildUi();
@@ -68,6 +73,10 @@ private:
 
     QTableView*   m_table = nullptr;
     RecordBar*    m_recordBar = nullptr;
+    QVBoxLayout*  m_rightLayout = nullptr;     // a jobb pane elrendezése (vissza-dokkoláshoz)
+    QWidget*      m_dockPlaceholder = nullptr; // látszik, ha a vezérlő külön ablakban van
+    FloatingRecorder* m_floatingRecorder = nullptr;
+    QAction*      m_popOutAct = nullptr;       // Nézet → Felvétel külön ablakban
     QTabWidget*       m_tabs = nullptr;
     TranscriptPlayer* m_transcriptPlayer = nullptr;
     QTextBrowser*     m_summaryView = nullptr;

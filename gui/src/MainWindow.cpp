@@ -4,6 +4,7 @@
 #include "MeetingTableModel.h"
 #include "TranscriptPlayer.h"
 #include "PeopleManagerDialog.h"
+#include "FloatingRecorder.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -20,6 +21,9 @@
 #include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMenu>
+#include <QAction>
+#include <QLabel>
+#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QProgressBar>
 #include <QMessageBox>
@@ -163,6 +167,25 @@ void MainWindow::buildUi() {
 
     m_recordBar = new RecordBar(m_controller, right);
     rl->addWidget(m_recordBar);
+    m_rightLayout = rl;
+
+    // Helykitöltő: akkor látszik, amikor a felvétel-vezérlő külön (lebegő) ablakban van.
+    m_dockPlaceholder = new QWidget(right);
+    {
+        auto* pl = new QVBoxLayout(m_dockPlaceholder);
+        pl->setContentsMargins(0, 0, 0, 0);
+        auto* lbl = new QLabel(
+            QStringLiteral("🎙 A felvétel-vezérlő külön ablakban fut."), m_dockPlaceholder);
+        lbl->setWordWrap(true);
+        auto* backBtn = new QPushButton(QStringLiteral("Vissza a főablakba"), m_dockPlaceholder);
+        pl->addWidget(lbl);
+        pl->addWidget(backBtn, 0, Qt::AlignLeft);
+        connect(backBtn, &QPushButton::clicked, this, [this]() {
+            if (m_popOutAct) m_popOutAct->setChecked(false);   // → dockRecorder()
+        });
+    }
+    m_dockPlaceholder->setVisible(false);
+    rl->addWidget(m_dockPlaceholder);
 
     // akció-sor a kiválasztott meetingre (a lejátszást már a TranscriptPlayer
     // sávja kezeli az Átirat fülön, külön Lejátszás-gomb nincs).
@@ -213,6 +236,16 @@ void MainWindow::buildMenu() {
     fileMenu->addSeparator();
     QAction* quitAct = fileMenu->addAction(QStringLiteral("Kilépés"));
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
+
+    auto* viewMenu = menuBar()->addMenu(QStringLiteral("&Nézet"));
+    m_popOutAct = viewMenu->addAction(QStringLiteral("Felvétel külön ablakban"));
+    m_popOutAct->setCheckable(true);
+    m_popOutAct->setToolTip(QStringLiteral(
+        "A felvétel-vezérlőt önálló, mindig-felül kapcsolható, tálcázható ablakba helyezi."));
+    connect(m_popOutAct, &QAction::toggled, this, [this](bool on) {
+        if (on) popOutRecorder();
+        else    dockRecorder();
+    });
 }
 
 void MainWindow::reloadMeetings() {
@@ -437,6 +470,41 @@ void MainWindow::renameSelectedMeeting() {
         return;
 
     m_controller->renameMeeting(m.id, trimmed);
+}
+
+void MainWindow::popOutRecorder() {
+    if (m_floatingRecorder) {                 // már kint van → csak előtérbe
+        m_floatingRecorder->raise();
+        m_floatingRecorder->activateWindow();
+        return;
+    }
+    // A RecordBar-t a FloatingRecorder ctora reparentálja magába; itt a
+    // helykitöltőt mutatjuk a jobb pane-ben.
+    m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, this);
+    connect(m_floatingRecorder, &FloatingRecorder::dockRequested,
+            this, &MainWindow::dockRecorder);
+    m_dockPlaceholder->setVisible(true);
+    m_floatingRecorder->show();
+    m_floatingRecorder->raise();
+    m_floatingRecorder->activateWindow();
+}
+
+void MainWindow::dockRecorder() {
+    if (!m_floatingRecorder)
+        return;
+    // A RecordBar-t visszaillesztjük a jobb pane tetejére (a helykitöltő elé).
+    m_rightLayout->insertWidget(0, m_recordBar);
+    m_recordBar->show();
+    m_dockPlaceholder->setVisible(false);
+
+    FloatingRecorder* fr = m_floatingRecorder;
+    m_floatingRecorder = nullptr;             // a recordBar már a fő ablak gyermeke
+    fr->deleteLater();
+
+    if (m_popOutAct && m_popOutAct->isChecked()) {
+        QSignalBlocker block(m_popOutAct);    // ne triggereljen újabb dock/pop-ot
+        m_popOutAct->setChecked(false);
+    }
 }
 
 void MainWindow::openSettings() {
