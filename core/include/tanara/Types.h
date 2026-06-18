@@ -104,6 +104,27 @@ struct Meeting {
     QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")
 };
 
+// ---- beszélő-azonosítás (voice fingerprint) -------------------------------
+// Egy hang-lenyomat: egy beszélő egy reprezentatív szegmenséből számolt,
+// L2-normalizált embedding-vektor + a forrás metaadatai. Egy névhez több is
+// tartozhat (más mikrofon más akusztikai aláírást ad).
+struct Voiceprint {
+    QString id;                 // egyedi azonosító (QUuid)
+    QVector<float> embedding;   // L2-normalizált beszélő-embedding
+    int dim = 0;                // embedding.size() (redundáns, de a JSON-ban hasznos)
+    QString sourceMeetingId;    // melyik meetingből származik
+    QString sourceTrack;        // pl. "loopback" / "mic" / track-id
+    QString device;             // a felvevő eszköz neve (több-mikrofonos kontextus)
+    QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs"
+    QString createdAt;          // ISO-8601
+};
+
+// Egy párosítás eredménye: melyik személy, milyen (cosine) pontszámmal.
+struct VoiceMatch {
+    QString name;
+    double score = -1.0;        // [-1..1] cosine; <0 = nincs találat / üres DB
+};
+
 // ---- provider konfiguráció / beállítások ----------------------------------
 struct ProviderConfig {
     QString type;            // "soniox" | "openai-compat" | ...
@@ -136,5 +157,7 @@ Q_DECLARE_METATYPE(tanara::MergedTranscript)
 Q_DECLARE_METATYPE(tanara::ActionItem)
 Q_DECLARE_METATYPE(tanara::Summary)
 Q_DECLARE_METATYPE(tanara::Meeting)
+Q_DECLARE_METATYPE(tanara::Voiceprint)
+Q_DECLARE_METATYPE(tanara::VoiceMatch)
 Q_DECLARE_METATYPE(tanara::ProviderConfig)
 Q_DECLARE_METATYPE(tanara::AppSettings)
