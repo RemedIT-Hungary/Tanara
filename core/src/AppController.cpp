@@ -147,6 +147,21 @@ QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& folder,
     return emb.embedPcm(pcm);
 }
 
+// A lenyomathoz eltárolt, visszahallgatható reprezentatív szegmens hivatkozása:
+// "track_fájl#startMs-endMs" (a leghosszabb utterance). Lejátszáshoz a People-panel
+// a sourceMeetingId-ből oldja fel a mappát.
+QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLabel,
+                                const Track& track) {
+    qint64 bestS = -1, bestE = -1, bestDur = -1;
+    for (const Utterance& u : mt.segments())
+        if (u.speaker == rawLabel && (u.endMs - u.startMs) > bestDur) {
+            bestDur = u.endMs - u.startMs; bestS = u.startMs; bestE = u.endMs;
+        }
+    if (bestS < 0)
+        return track.file;
+    return QStringLiteral("%1#%2-%3").arg(track.file).arg(bestS).arg(bestE);
+}
+
 // Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
 constexpr double kVoiceMatchThreshold = 0.5;
 // Az auto-enroll (mic, ismert identitás) felső korlátja egy néven, hogy ne nőjön korlátlanul.
@@ -326,7 +341,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     vp.sourceMeetingId = m.id;
     vp.sourceTrack = track->id;
     vp.device = track->deviceName;
-    vp.sampleRef = track->file;
+    vp.sampleRef = representativeSampleRef(merged, rawLabel, *track);
     vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
     d->voiceprints->addPrint(nm, vp);
     emit voiceprintsChanged();
@@ -371,7 +386,8 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
                 if (!e.isEmpty()) {
                     Voiceprint vp;
                     vp.embedding = e; vp.sourceMeetingId = m.id; vp.sourceTrack = track->id;
-                    vp.device = track->deviceName; vp.sampleRef = track->file;
+                    vp.device = track->deviceName;
+                    vp.sampleRef = representativeSampleRef(merged, label, *track);
                     vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
                     d->voiceprints->addPrint(label, vp);
                     printsChanged = true;

@@ -20,6 +20,8 @@ class QListWidget;
 class QListWidgetItem;
 class QPushButton;
 class QLabel;
+class QMediaPlayer;
+class QAudioOutput;
 
 namespace tanara {
 class AppController;
@@ -41,6 +43,7 @@ private slots:
     void onSelectionChanged();
     void onMergeClicked();            // a kijelölt személy összevonása egy másikkal
     void onRemovePrintClicked();      // a kijelölt hang-lenyomat törlése
+    void onPlayPrintClicked();        // a kijelölt lenyomat reprezentatív szegmensének lejátszása
 
 private:
     QString selectedName() const;
@@ -57,6 +60,11 @@ private:
     QPushButton* m_deleteBtn = nullptr;
     QPushButton* m_mergeBtn = nullptr;
     QPushButton* m_removePrintBtn = nullptr;
+    QPushButton* m_playPrintBtn = nullptr;
+
+    QMediaPlayer* m_player = nullptr;       // lusta: lenyomat-szegmens visszahallgatás
+    QAudioOutput* m_audioOutput = nullptr;
+    qint64 m_playEndMs = 0;                 // a lejátszandó szegmens vége (ott megállunk)
 
     bool m_refreshing = false;   // a refresh alatti itemChanged-jeleket nyeljük el
     QString m_ownName;           // a saját beszélőnév (én) az aktuális frissítéskor

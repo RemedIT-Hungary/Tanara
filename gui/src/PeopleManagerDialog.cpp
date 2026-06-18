@@ -3,7 +3,13 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/store/MeetingStore.h"
 
+#include <QMediaPlayer>
+#include <QAudioOutput>
+#include <QUrl>
+#include <QDir>
+#include <QFileInfo>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
@@ -58,8 +64,16 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
     m_voiceprintList = new QListWidget(this);
     m_voiceprintList->setSelectionMode(QAbstractItemView::SingleSelection);
     rightCol->addWidget(m_voiceprintList, 1);
-    m_removePrintBtn = new QPushButton(QStringLiteral("Kijelölt lenyomat törlése"), this);
-    rightCol->addWidget(m_removePrintBtn, 0, Qt::AlignLeft);
+    auto* printBtnRow = new QHBoxLayout();
+    m_playPrintBtn = new QPushButton(QStringLiteral("▶ Meghallgatás"), this);
+    m_playPrintBtn->setToolTip(QStringLiteral(
+        "A kijelölt hang-lenyomat reprezentatív szegmensének lejátszása "
+        "(így törlés/azonosítás előtt ki lehet hallgatni, kié)."));
+    m_removePrintBtn = new QPushButton(QStringLiteral("Lenyomat törlése"), this);
+    printBtnRow->addWidget(m_playPrintBtn);
+    printBtnRow->addWidget(m_removePrintBtn);
+    printBtnRow->addStretch(1);
+    rightCol->addLayout(printBtnRow);
     mid->addLayout(rightCol, 1);
 
     root->addLayout(mid, 1);
@@ -83,8 +97,11 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
     connect(m_deleteBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onDeleteClicked);
     connect(m_mergeBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onMergeClicked);
     connect(m_removePrintBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onRemovePrintClicked);
+    connect(m_playPrintBtn, &QPushButton::clicked, this, &PeopleManagerDialog::onPlayPrintClicked);
     connect(m_voiceprintList, &QListWidget::itemSelectionChanged,
             this, &PeopleManagerDialog::updateButtonState);
+    connect(m_voiceprintList, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem*) { onPlayPrintClicked(); });
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     connect(m_list, &QListWidget::itemSelectionChanged,
             this, &PeopleManagerDialog::onSelectionChanged);
@@ -192,7 +209,9 @@ void PeopleManagerDialog::refreshVoiceprintPanel() {
         const QString when = p.createdAt.left(10);   // yyyy-MM-dd
         auto* item = new QListWidgetItem(
             QStringLiteral("%1 — %2").arg(dev, when), m_voiceprintList);
-        item->setData(Qt::UserRole, p.id);            // a törléshez
+        item->setData(Qt::UserRole, p.id);                  // a törléshez
+        item->setData(Qt::UserRole + 1, p.sourceMeetingId); // a lejátszáshoz: mappa-feloldás
+        item->setData(Qt::UserRole + 2, p.sampleRef);       // "track#start-end"
     }
     updateButtonState();
 }
@@ -222,9 +241,9 @@ void PeopleManagerDialog::updateButtonState() {
     // Összevonás: kell legalább 2 személy, és a kijelölt ne a saját (én) sor legyen.
     if (m_mergeBtn)
         m_mergeBtn->setEnabled(hasSel && !isOwnRow(m_list->currentItem()) && m_list->count() > 1);
-    if (m_removePrintBtn)
-        m_removePrintBtn->setEnabled(m_voiceprintList
-                                     && m_voiceprintList->currentItem() != nullptr);
+    const bool hasPrint = m_voiceprintList && m_voiceprintList->currentItem() != nullptr;
+    if (m_removePrintBtn) m_removePrintBtn->setEnabled(hasPrint);
+    if (m_playPrintBtn)   m_playPrintBtn->setEnabled(hasPrint);
 }
 
 void PeopleManagerDialog::beginEditCurrent() {
@@ -346,6 +365,72 @@ void PeopleManagerDialog::onRemovePrintClicked() {
 
     m_controller->voiceprints()->removePrint(printId);
     refreshVoiceprintPanel();
+}
+
+void PeopleManagerDialog::onPlayPrintClicked() {
+    if (!m_controller || !m_controller->store() || !m_voiceprintList)
+        return;
+    auto* item = m_voiceprintList->currentItem();
+    if (!item)
+        return;
+    const QString meetingId = item->data(Qt::UserRole + 1).toString();
+    const QString sampleRef = item->data(Qt::UserRole + 2).toString();
+    if (meetingId.isEmpty() || sampleRef.isEmpty())
+        return;
+
+    // sampleRef = "track_fájl#startMs-endMs"  (a tartomány opcionális)
+    QString file = sampleRef;
+    qint64 startMs = 0, endMs = 0;
+    const int hash = sampleRef.indexOf(QLatin1Char('#'));
+    if (hash >= 0) {
+        file = sampleRef.left(hash);
+        const QString range = sampleRef.mid(hash + 1);
+        const int dash = range.indexOf(QLatin1Char('-'));
+        if (dash > 0) {
+            startMs = range.left(dash).toLongLong();
+            endMs   = range.mid(dash + 1).toLongLong();
+        }
+    }
+
+    const tanara::Meeting m = m_controller->store()->load(meetingId);
+    if (m.folder.isEmpty())
+        return;
+    const QString audioPath = QDir(m.folder).filePath(file);
+    if (!QFileInfo::exists(audioPath)) {
+        QMessageBox::information(this, QStringLiteral("Meghallgatás"),
+            QStringLiteral("A forrás-hangsáv nem található:\n%1").arg(audioPath));
+        return;
+    }
+
+    if (!m_player) {
+        m_player = new QMediaPlayer(this);
+        m_audioOutput = new QAudioOutput(this);
+        m_player->setAudioOutput(m_audioOutput);
+        // A szegmens végén megállunk.
+        connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
+            if (m_playEndMs > 0 && pos >= m_playEndMs)
+                m_player->pause();
+        });
+    }
+
+    m_playEndMs = endMs;
+    m_player->stop();
+    m_player->setSource(QUrl::fromLocalFile(audioPath));
+    // A pozíció beállítása csak betöltött média után megbízható.
+    if (startMs > 0) {
+        QMetaObject::Connection* c = new QMetaObject::Connection();
+        *c = connect(m_player, &QMediaPlayer::mediaStatusChanged, this,
+                     [this, startMs, c](QMediaPlayer::MediaStatus st) {
+            if (st == QMediaPlayer::LoadedMedia || st == QMediaPlayer::BufferedMedia) {
+                m_player->setPosition(startMs);
+                m_player->play();
+                disconnect(*c);
+                delete c;
+            }
+        });
+    } else {
+        m_player->play();
+    }
 }
 
 } // namespace tanara_gui
