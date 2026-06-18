@@ -78,6 +78,35 @@ void DeviceManager::refresh() {
 
             result.push_back(dev);
         }
+
+#if defined(_WIN32)
+        // Windows (WASAPI): a rendszerhang ("loopback") NEM jelenik meg capture-
+        // eszközként (szemben a PulseAudio/PipeWire monitor-forrásokkal). A
+        // kimeneti (playback) eszközöket vesszük fel Loopback-ként; az AudioEngine
+        // ezeket ma_device_type_loopback-kel nyitja meg (a playback eszköz hangját
+        // veszi fel). Így a távoli résztvevők hangja is sávra kerül.
+        for (ma_uint32 i = 0; i < playbackCount; ++i) {
+            const ma_device_info& info = playbackInfos[i];
+
+            AudioDeviceInfo dev;
+            dev.name = QString::fromUtf8(info.name);
+            // "loopback:" prefix → emberi szem + nem ütközik a capture-id-kel.
+            // (Az AudioEngine névre párosít a playback-listából, az id csak kulcs.)
+            dev.id = QStringLiteral("loopback:") + QString::number(i) +
+                     QStringLiteral(":") + dev.name;
+            dev.isDefault = info.isDefault ? true : false;
+            dev.kind = TrackKind::Loopback;
+
+            dev.sampleRate = 48000;
+            dev.channels = 2;   // a rendszerhang jellemzően sztereó
+            if (info.nativeDataFormatCount > 0 &&
+                info.nativeDataFormats[0].channels > 0) {
+                dev.channels = static_cast<int>(info.nativeDataFormats[0].channels);
+            }
+
+            result.push_back(dev);
+        }
+#endif
     }
 
     ma_context_uninit(&context);

@@ -113,11 +113,25 @@ bool AudioEngine::start(const QVector<AudioDeviceInfo>& devices) {
                            &captureInfos, &captureCount);
 
     for (const AudioDeviceInfo& want : devices) {
+        // A loopback (rendszerhang) eszközöket Windowson egy PLAYBACK eszköz
+        // ma_device_type_loopback-módú megnyitásával vesszük fel → a playback-
+        // listából párosítunk. Minden más (mic, ill. Linux-monitor) capture.
+        ma_device_type devType = ma_device_type_capture;
+        const ma_device_info* matchInfos = captureInfos;
+        ma_uint32 matchCount = captureCount;
+#if defined(_WIN32)
+        if (want.kind == TrackKind::Loopback) {
+            devType = ma_device_type_loopback;
+            matchInfos = playbackInfos;
+            matchCount = playbackCount;
+        }
+#endif
+
         const ma_device_id* matchedId = nullptr;
-        if (captureInfos) {
-            for (ma_uint32 i = 0; i < captureCount; ++i) {
-                if (QString::fromUtf8(captureInfos[i].name) == want.name) {
-                    matchedId = &captureInfos[i].id;
+        if (matchInfos) {
+            for (ma_uint32 i = 0; i < matchCount; ++i) {
+                if (QString::fromUtf8(matchInfos[i].name) == want.name) {
+                    matchedId = &matchInfos[i].id;
                     break;
                 }
             }
@@ -132,8 +146,9 @@ bool AudioEngine::start(const QVector<AudioDeviceInfo>& devices) {
 
         auto dev = std::make_unique<ma_device>();
 
-        ma_device_config cfg = ma_device_config_init(ma_device_type_capture);
-        cfg.capture.pDeviceID = matchedId;        // nullptr → default capture
+        ma_device_config cfg = ma_device_config_init(devType);
+        // Loopback esetén is a capture.pDeviceID hordozza a (playback) eszköz id-t.
+        cfg.capture.pDeviceID = matchedId;        // nullptr → default eszköz
         cfg.capture.format    = ma_format_s16;
         cfg.capture.channels  = slot->channels;
         cfg.sampleRate        = kSampleRate;
