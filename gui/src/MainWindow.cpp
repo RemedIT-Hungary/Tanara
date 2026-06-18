@@ -22,6 +22,7 @@
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
+#include <QStyle>
 #include <QLabel>
 #include <QSignalBlocker>
 #include <QStatusBar>
@@ -79,6 +80,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
         connect(m_controller->store(), &tanara::MeetingStore::meetingAdded,
                 this, [this](const QString&) { reloadMeetings(); });
         connect(m_controller->store(), &tanara::MeetingStore::meetingUpdated,
+                this, [this](const QString&) { reloadMeetings(); });
+        connect(m_controller->store(), &tanara::MeetingStore::meetingRemoved,
                 this, [this](const QString&) { reloadMeetings(); });
     }
 
@@ -139,6 +142,14 @@ void MainWindow::showEvent(QShowEvent* event) {
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (m_controller)
         m_controller->stopLevelMonitoring();
+    // A különálló (parent nélküli) lebegő rögzítő-ablakot kézzel zárjuk, különben
+    // a főablak bezárása után is kint maradna (önálló top-level).
+    if (m_floatingRecorder) {
+        m_floatingRecorder->disconnect(this);
+        m_floatingRecorder->close();
+        delete m_floatingRecorder;          // a benne lévő RecordBar-t is elviszi (kilépéskor OK)
+        m_floatingRecorder = nullptr;
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -443,7 +454,42 @@ void MainWindow::onTableContextMenu(const QPoint& pos) {
     QMenu menu(this);
     QAction* renameAct = menu.addAction(QStringLiteral("Átnevezés…"));
     connect(renameAct, &QAction::triggered, this, &MainWindow::renameSelectedMeeting);
+    menu.addSeparator();
+    QAction* deleteAct = menu.addAction(QStringLiteral("🗑  Törlés…"));
+    // Vörös, „veszélyes” kiemelés a törlés-akcióhoz.
+    deleteAct->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    menu.setStyleSheet(QStringLiteral(
+        "QMenu::item:selected { } "));   // alapértelmezett kiemelés megtartása
+    {
+        QFont df = deleteAct->font();
+        df.setBold(true);
+        deleteAct->setFont(df);
+    }
+    connect(deleteAct, &QAction::triggered, this, &MainWindow::deleteSelectedMeeting);
     menu.exec(m_table->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::deleteSelectedMeeting() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller || m.id.isEmpty())
+        return;
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(QStringLiteral("Megbeszélés törlése"));
+    box.setText(QStringLiteral("Biztosan törlöd: „%1”?").arg(m.title));
+    box.setInformativeText(QStringLiteral(
+        "A felvétel (hangsávok), az átirat és az összefoglaló is VÉGLEGESEN törlődik. "
+        "Ez nem visszavonható."));
+    QPushButton* del = box.addButton(QStringLiteral("Törlés"), QMessageBox::DestructiveRole);
+    box.addButton(QStringLiteral("Mégse"), QMessageBox::RejectRole);
+    box.setDefaultButton(qobject_cast<QPushButton*>(box.buttons().last()));
+    box.exec();
+    if (box.clickedButton() != del)
+        return;
+
+    m_controller->deleteMeeting(m.id);   // store meetingRemoved → reloadMeetings
 }
 
 void MainWindow::renameSelectedMeeting() {
@@ -479,8 +525,9 @@ void MainWindow::popOutRecorder() {
         return;
     }
     // A RecordBar-t a FloatingRecorder ctora reparentálja magába; itt a
-    // helykitöltőt mutatjuk a jobb pane-ben.
-    m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, this);
+    // helykitöltőt mutatjuk a jobb pane-ben. parent=nullptr → ÖNÁLLÓ top-level
+    // ablak (saját tálca-bejegyzés, NEM minimalizálódik a főablakkal).
+    m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, nullptr);
     connect(m_floatingRecorder, &FloatingRecorder::dockRequested,
             this, &MainWindow::dockRecorder);
     m_dockPlaceholder->setVisible(true);

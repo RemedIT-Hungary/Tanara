@@ -10,6 +10,8 @@
 #include <QTimer>
 #include <QCloseEvent>
 #include <QFont>
+#include <QSignalBlocker>
+#include <QGuiApplication>
 
 namespace tanara_gui {
 
@@ -35,6 +37,10 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
     m_recIndicator->setFont(rf);
 
     m_alwaysOnTop = new QCheckBox(QStringLiteral("📌 Mindig felül"), this);
+    if (QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive))
+        m_alwaysOnTop->setToolTip(QStringLiteral(
+            "Wayland alatt a kompozitor felülbírálhatja — ha nem marad felül, "
+            "használj KWin-ablakszabályt erre az ablakra."));
     auto* dockBtn = new QPushButton(QStringLiteral("Vissza a főablakba"), this);
 
     top->addWidget(m_recIndicator);
@@ -63,8 +69,13 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
         onRecordingStateChanged(m_controller->recordingState());
     }
 
-    // A felvétel-vezérlő alapból maradjon felül (ez a leggyakoribb igény).
-    m_alwaysOnTop->setChecked(true);
+    // Alapból mindig-felül: a flaget KÖZVETLENÜL állítjuk (ne hívjunk show()-t a
+    // ctorban — azt a MainWindow teszi; a flag így a legelső megjelenítéskor érvényes).
+    setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    {
+        QSignalBlocker block(m_alwaysOnTop);
+        m_alwaysOnTop->setChecked(true);
+    }
     resize(440, 520);
 }
 

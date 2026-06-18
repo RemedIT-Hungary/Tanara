@@ -68,6 +68,9 @@ public slots:
     // Meeting címének átnevezése (meeting.json + index frissül).
     void renameMeeting(const QString& meetingId, const QString& newTitle);
 
+    // Meeting VÉGLEGES törlése (mappa + index). A store meetingRemoved jelét adja.
+    void deleteMeeting(const QString& meetingId);
+
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
 

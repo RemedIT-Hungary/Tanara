@@ -41,6 +41,10 @@ public:
     // Egy meeting betöltése azonosító alapján (lemezről).
     Meeting load(const QString& id);
 
+    // Egy meeting VÉGLEGES törlése: a mappa (audio + átirat + összefoglaló) +
+    // az index-bejegyzés. meetingRemoved jel. true, ha volt mit törölni.
+    bool deleteMeeting(const QString& id);
+
     // Teljes index újraépítés az audioDir mappáit végigpásztázva.
     void rebuildIndexFromDisk();
 
@@ -50,6 +54,7 @@ public:
 signals:
     void meetingAdded(QString id);
     void meetingUpdated(QString id);
+    void meetingRemoved(QString id);
 
 private:
     void openDb();

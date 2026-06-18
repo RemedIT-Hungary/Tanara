@@ -52,6 +52,7 @@ private slots:
     void onRecordingFinished(tanara::Meeting meeting);
     void onTableContextMenu(const QPoint& pos);
     void renameSelectedMeeting();
+    void deleteSelectedMeeting();
     void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
     void dockRecorder();     // vissza a főablakba
 

@@ -1,5 +1,6 @@
 // Tanara GUI (Qt Widgets) — belépési pont.
 #include "MainWindow.h"
+#include "AppIcon.h"
 
 #include "tanara/AppController.h"
 
@@ -24,6 +25,7 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Tanara"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
+    QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // minden ablakra + tálcára
 
     tanara::AppController controller;
 

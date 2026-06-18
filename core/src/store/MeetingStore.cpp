@@ -222,6 +222,38 @@ Meeting MeetingStore::load(const QString& id)
     return meetingFromJson(doc.object());
 }
 
+bool MeetingStore::deleteMeeting(const QString& id)
+{
+    if (id.isEmpty())
+        return false;
+    QSqlDatabase db = QSqlDatabase::database(m_connName);
+
+    // A mappa kikeresése, majd a lemezről törlés (az igazság forrása).
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT folder FROM meetings WHERE id = :id"));
+    q.bindValue(QStringLiteral(":id"), id);
+    QString folder;
+    if (q.exec() && q.next())
+        folder = q.value(0).toString();
+
+    bool any = false;
+    if (!folder.isEmpty()) {
+        QDir dir(folder);
+        if (dir.exists() && dir.removeRecursively())
+            any = true;
+    }
+
+    QSqlQuery del(db);
+    del.prepare(QStringLiteral("DELETE FROM meetings WHERE id = :id"));
+    del.bindValue(QStringLiteral(":id"), id);
+    if (del.exec() && del.numRowsAffected() > 0)
+        any = true;
+
+    if (any)
+        emit meetingRemoved(id);
+    return any;
+}
+
 QVector<Meeting> MeetingStore::loadAll()
 {
     QVector<Meeting> out;

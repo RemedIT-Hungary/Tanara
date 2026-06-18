@@ -414,8 +414,17 @@ void AppController::renamePerson(const QString& oldName, const QString& newName)
     for (const Meeting& idx : all) {
         Meeting m = d->store->load(idx.id);
         bool changed = false;
+        // 1) Meglévő leképezés-ÉRTÉKEK átírása (diarizált → név).
         for (auto it = m.speakerMap.begin(); it != m.speakerMap.end(); ++it)
             if (it.value() == o) { it.value() = n; changed = true; }
+        // 2) Befagyott sáv-beszélő (mic) átnevezése: a track.speakerLabel frissítése,
+        //    és — mivel a nyers tokenek továbbra is "o"-t mondanak — egy o→n leképezés,
+        //    hogy a már elkészült átirat is a friss nevet mutassa.
+        bool micHadOld = false;
+        for (Track& tr : m.tracks)
+            if (tr.speakerLabel == o) { tr.speakerLabel = n; micHadOld = true; }
+        if (micHadOld) { m.speakerMap.insert(o, n); changed = true; }
+
         if (!changed) continue;
         d->store->saveMeeting(m);
         MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -480,16 +489,32 @@ void AppController::renameMeeting(const QString& meetingId, const QString& newTi
     d->store->saveMeeting(m);   // meeting.json + index frissül → meetingUpdated jel
 }
 
+void AppController::deleteMeeting(const QString& meetingId) {
+    if (meetingId.isEmpty()) return;
+    d->mergedCache.remove(meetingId);
+    d->store->deleteMeeting(meetingId);   // meetingRemoved jel a store-ból
+}
+
 void AppController::setUserSpeakerName(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
     AppSettings s = d->settings->settings();
-    if (s.userSpeakerName != n) {
-        s.userSpeakerName = n;
-        d->settings->setSettings(s);
+    const QString old = s.userSpeakerName.trimmed();
+    if (old == n) {
+        if (d->people) d->people->add(n);
+        emit peopleChanged();
+        return;
     }
-    if (d->people) d->people->add(n);
-    emit peopleChanged();
+    s.userSpeakerName = n;
+    d->settings->setSettings(s);
+    // A névváltás propagálódjon MINDEN meetingre: a mic-sáv befagyott beszélőneve,
+    // a leképezések és a voiceprintek is átíródnak (renamePerson ezt mind kezeli).
+    if (!old.isEmpty())
+        renamePerson(old, n);                 // emit peopleChanged + speakerMapChanged-eket bentről
+    else {
+        if (d->people) d->people->add(n);
+        emit peopleChanged();
+    }
 }
 
 void AppController::fetchLlmModels() {
