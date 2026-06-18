@@ -18,7 +18,20 @@ target_link_libraries(tanara_core PUBLIC
 )
 # miniaudio + ffmpeg(QProcess) az audio-modulhoz (a capture impl használja).
 # miniaudio Linuxon dlopen-nel tölti a backendeket → dl + pthread + m kell.
-target_link_libraries(tanara_core PRIVATE miniaudio ${CMAKE_DL_LIBS} Threads::Threads m)
+# A libm csak a POSIX-toolchaineken különálló (MSVC-n nincs); MinGW-n is létezik.
+target_link_libraries(tanara_core PRIVATE miniaudio ${CMAKE_DL_LIBS} Threads::Threads)
+if(NOT MSVC)
+    target_link_libraries(tanara_core PRIVATE m)
+endif()
+# Windowson a miniaudio WASAPI/DirectSound backend COM-ot használ → ole32/oleaut32;
+# az MMDevice enumerációhoz uuid; a WinMM backendhez winmm. MSVC ezeket #pragma
+# comment-tel linkeli, MinGW-n explicit kell.
+if(WIN32)
+    target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser)
+endif()
 
-# Beszélő-embedding: kaldi-native-fbank (fbank) + onnxruntime (CAM++ modell).
-target_link_libraries(tanara_core PRIVATE kaldi_native_fbank onnxruntime::onnxruntime)
+# Beszélő-embedding (opcionális): kaldi-native-fbank (fbank) + onnxruntime (CAM++ modell).
+if(TANARA_BUILD_VOICEID)
+    target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_VOICEID)
+    target_link_libraries(tanara_core PRIVATE kaldi_native_fbank onnxruntime::onnxruntime)
+endif()

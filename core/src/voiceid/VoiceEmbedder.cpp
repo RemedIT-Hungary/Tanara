@@ -1,18 +1,29 @@
 #include "tanara/voiceid/VoiceEmbedder.h"
-#include "tanara/store/VoiceprintStore.h"   // l2normalize
-
-#include "kaldi-native-fbank/csrc/online-feature.h"
-#include <onnxruntime_cxx_api.h>
 
 #include <QProcess>
 #include <QFileInfo>
 
+#include <cstring>
 #include <vector>
+
+// A beszélő-embedding (fbank + ONNX) csak akkor fordul, ha a voice-ID engedélyezett
+// (TANARA_BUILD_VOICEID=ON → TANARA_HAVE_VOICEID). Egyébként stub: isValid()==false,
+// üres embedding → az AppController/CLI automatikusan kihagyja a beszélő-címkézést.
+// A decodePcm16kMono (tisztán ffmpeg/QProcess) MINDKÉT buildben elérhető.
+#ifdef TANARA_HAVE_VOICEID
+#include "tanara/store/VoiceprintStore.h"   // l2normalize
+#include "kaldi-native-fbank/csrc/online-feature.h"
+#include <onnxruntime_cxx_api.h>
+
 #include <string>
 #include <cmath>
 #include <mutex>
+#include <array>
+#endif
 
 namespace tanara {
+
+#ifdef TANARA_HAVE_VOICEID
 
 struct VoiceEmbedder::Impl {
     EmbedderConfig cfg;
@@ -138,6 +149,48 @@ QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& mono16k) const {
     return VoiceprintStore::l2normalize(embedding);
 }
 
+QVector<float> VoiceEmbedder::embedFile(const QString& audioPath,
+                                        qint64 startMs, qint64 endMs,
+                                        const QString& ffmpegPath) const {
+    const QVector<float> pcm = decodePcm16kMono(audioPath, startMs, endMs, ffmpegPath);
+    if (pcm.isEmpty()) {
+        d->error = QStringLiteral("ffmpeg dekódolás sikertelen: %1").arg(audioPath);
+        return {};
+    }
+    return embedPcm(pcm);
+}
+
+#else  // !TANARA_HAVE_VOICEID — stub (nincs ONNX/fbank a buildben)
+
+struct VoiceEmbedder::Impl {
+    EmbedderConfig cfg;
+    QString error;
+    int dim = 0;
+    explicit Impl(const EmbedderConfig& c) : cfg(c) {}
+};
+
+VoiceEmbedder::VoiceEmbedder(const QString& /*modelPath*/, const EmbedderConfig& cfg)
+    : d(std::make_unique<Impl>(cfg)) {
+    d->error = QStringLiteral(
+        "A beszélő-azonosítás ki van kapcsolva ebben a buildben (TANARA_BUILD_VOICEID=OFF).");
+}
+
+VoiceEmbedder::~VoiceEmbedder() = default;
+
+bool VoiceEmbedder::isValid() const { return false; }
+QString VoiceEmbedder::lastError() const { return d->error; }
+int VoiceEmbedder::embeddingDim() const { return 0; }
+EmbedderConfig VoiceEmbedder::config() const { return d->cfg; }
+
+QVector<float> VoiceEmbedder::embedPcm(const QVector<float>& /*mono16k*/) const { return {}; }
+
+QVector<float> VoiceEmbedder::embedFile(const QString& /*audioPath*/,
+                                        qint64 /*startMs*/, qint64 /*endMs*/,
+                                        const QString& /*ffmpegPath*/) const { return {}; }
+
+#endif // TANARA_HAVE_VOICEID
+
+// --- Közös (mindkét build): hangfájl-szegmens → 16 kHz mono float PCM (ffmpeg) -----
 QVector<float> VoiceEmbedder::decodePcm16kMono(const QString& audioPath,
                                                qint64 startMs, qint64 endMs,
                                                const QString& ffmpegPath) {
@@ -167,17 +220,6 @@ QVector<float> VoiceEmbedder::decodePcm16kMono(const QString& audioPath,
     QVector<float> pcm(n);
     std::memcpy(pcm.data(), raw.constData(), static_cast<size_t>(n) * sizeof(float));
     return pcm;
-}
-
-QVector<float> VoiceEmbedder::embedFile(const QString& audioPath,
-                                        qint64 startMs, qint64 endMs,
-                                        const QString& ffmpegPath) const {
-    const QVector<float> pcm = decodePcm16kMono(audioPath, startMs, endMs, ffmpegPath);
-    if (pcm.isEmpty()) {
-        d->error = QStringLiteral("ffmpeg dekódolás sikertelen: %1").arg(audioPath);
-        return {};
-    }
-    return embedPcm(pcm);
 }
 
 } // namespace tanara
