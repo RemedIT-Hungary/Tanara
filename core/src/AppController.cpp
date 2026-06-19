@@ -30,6 +30,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 namespace tanara {
@@ -172,6 +173,36 @@ QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLa
     if (bestS < 0)
         return track.file;
     return QStringLiteral("%1#%2-%3").arg(track.file).arg(bestS).arg(bestE);
+}
+
+// Agglomeratív klaszterezés cosine-centroid alapján: minden embedding-hez klaszter-címke
+// (a címke a klaszter egy reprezentáns indexe). mergeThreshold felett von össze.
+QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double mergeThreshold) {
+    const int n = embs.size();
+    QVector<int> label(n);
+    for (int i = 0; i < n; ++i) label[i] = i;
+    if (n <= 1) return label;
+
+    QVector<QVector<float>> cent = embs;   // L2-normalizált embeddingek
+    QVector<int> sz(n, 1);
+    QVector<bool> alive(n, true);
+    for (;;) {
+        double best = -2.0; int a = -1, b = -1;
+        for (int i = 0; i < n; ++i) if (alive[i])
+            for (int j = i + 1; j < n; ++j) if (alive[j]) {
+                const double s = VoiceprintStore::cosineSimilarity(cent[i], cent[j]);
+                if (s > best) { best = s; a = i; b = j; }
+            }
+        if (a < 0 || best < mergeThreshold) break;
+        const int na = sz[a], nb = sz[b];
+        QVector<float> mrg(cent[a].size());
+        for (int k = 0; k < mrg.size(); ++k)
+            mrg[k] = (cent[a][k] * na + cent[b][k] * nb) / (na + nb);
+        cent[a] = VoiceprintStore::l2normalize(mrg);
+        sz[a] = na + nb; alive[b] = false;
+        for (int i = 0; i < n; ++i) if (label[i] == b) label[i] = a;
+    }
+    return label;
 }
 
 // Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
@@ -429,6 +460,116 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     const QVector<float> e = embeddingForLabel(*d->embedder, m.folder, merged, rawLabel, *track);
     if (e.isEmpty()) return none;
     return d->voiceprints->bestMatch(e);
+}
+
+QVector<ParticipantGuess> AppController::identifyParticipants(const QString& meetingId) {
+    QVector<ParticipantGuess> out;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return out;
+
+    if (!d->embedder) {
+        if (!QFileInfo::exists(d->voiceModelPath)) return out;
+        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
+        if (!e->isValid()) return out;
+        d->embedder = std::move(e);
+    }
+    VoiceEmbedder* emb = d->embedder.get();
+
+    constexpr qint64 kWinMs = 3000;          // ablak-hossz
+    constexpr int    kTargetWindows = 50;    // ablakok száma/sáv (felső korlát)
+    constexpr double kMergeThreshold = 0.55; // klaszter-összevonás cosine-küszöbe
+    constexpr float  kSilenceRms = 0.004f;   // ennél halkabb ablak = csend (kihagy)
+
+    for (const Track& t : m.tracks) {
+        if (!t.active) continue;
+        const qint64 D = m.durationMs;
+        if (D < kWinMs) continue;
+        const QString path = QDir(m.folder).filePath(t.file);
+        const qint64 step = std::max<qint64>(kWinMs, D / kTargetWindows);
+
+        QVector<QVector<float>> embs;
+        QVector<qint64> winStart;
+        for (qint64 s = 0; s + kWinMs <= D; s += step) {
+            QVector<float> pcm = VoiceEmbedder::decodePcm16kMono(path, s, s + kWinMs);
+            if (pcm.isEmpty()) continue;
+            double sum = 0.0;
+            for (float x : pcm) sum += static_cast<double>(x) * x;
+            const double rms = std::sqrt(sum / static_cast<double>(pcm.size()));
+            if (rms < kSilenceRms) continue;          // csend → kihagy
+            const QVector<float> e = emb->embedPcm(pcm);
+            if (!e.isEmpty()) { embs.append(e); winStart.append(s); }
+        }
+        if (embs.isEmpty()) continue;
+
+        const QVector<int> labels = clusterEmbeddings(embs, kMergeThreshold);
+        QMap<int, QVector<int>> groups;
+        for (int i = 0; i < labels.size(); ++i) groups[labels[i]].append(i);
+
+        for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
+            const QVector<int>& idxs = it.value();
+            // Zaj-szűrés: 1-ablakos klasztert eldobunk, ha van más is (átfedés/kattanás).
+            if (idxs.size() < 2 && groups.size() > 1) continue;
+
+            QVector<float> cent(embs[idxs[0]].size(), 0.0f);
+            for (int i : idxs)
+                for (int k = 0; k < cent.size(); ++k) cent[k] += embs[i][k];
+            for (int k = 0; k < cent.size(); ++k) cent[k] /= idxs.size();
+            cent = VoiceprintStore::l2normalize(cent);
+
+            const VoiceMatch mt = d->voiceprints->bestMatch(cent);
+            // Reprezentatív ablak = a centroidhoz legközelebbi (medoid).
+            qint64 repStart = winStart[idxs[0]]; double bestSim = -2.0;
+            for (int i : idxs) {
+                const double s = VoiceprintStore::cosineSimilarity(cent, embs[i]);
+                if (s > bestSim) { bestSim = s; repStart = winStart[i]; }
+            }
+
+            ParticipantGuess g;
+            g.trackId = t.id;
+            g.deviceName = t.deviceName;
+            g.name = (mt.score >= kVoiceMatchThreshold) ? mt.name : QString();
+            g.score = mt.score;
+            g.windows = idxs.size();
+            g.sampleRef = QStringLiteral("%1#%2-%3").arg(t.file).arg(repStart).arg(repStart + kWinMs);
+            out.append(g);
+        }
+    }
+    // Legtöbb ablak elöl (a domináns beszélők előre).
+    std::sort(out.begin(), out.end(),
+              [](const ParticipantGuess& a, const ParticipantGuess& b) { return a.windows > b.windows; });
+    return out;
+}
+
+void AppController::enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
+                                              const QString& trackId, qint64 startMs, qint64 endMs) {
+    const QString nm = name.trimmed();
+    if (nm.isEmpty()) return;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    if (!d->embedder) {
+        if (!QFileInfo::exists(d->voiceModelPath)) return;
+        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
+        if (!e->isValid()) return;
+        d->embedder = std::move(e);
+    }
+    const Track* track = nullptr;
+    for (const Track& t : m.tracks) if (t.id == trackId) { track = &t; break; }
+    if (!track) return;
+    const QString path = QDir(m.folder).filePath(track->file);
+    const QVector<float> e = d->embedder->embedFile(path, startMs, endMs);
+    if (e.isEmpty()) return;
+
+    Voiceprint vp;
+    vp.embedding = e;
+    vp.sourceMeetingId = m.id;
+    vp.sourceTrack = track->id;
+    vp.device = track->deviceName;
+    vp.sampleRef = QStringLiteral("%1#%2-%3").arg(track->file).arg(startMs).arg(endMs);
+    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    d->voiceprints->addPrint(nm, vp);
+    if (d->people) d->people->add(nm);
+    emit voiceprintsChanged();
+    emit peopleChanged();
 }
 
 void AppController::renamePerson(const QString& oldName, const QString& newName) {

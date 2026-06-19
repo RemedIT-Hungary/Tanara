@@ -162,6 +162,23 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (cmd == "participants") {
+        const QString id = args.value(2);
+        if (id.isEmpty()) { err << "Használat: participants <meetingId>\n"; return 1; }
+        out << "Résztvevők azonosítása (átírás előtt, lokálisan)…\n"; out.flush();
+        const auto guesses = app.identifyParticipants(id);
+        if (guesses.isEmpty()) { out << "  (nincs találat — nincs modell/aktív sáv, vagy csend)\n"; out.flush(); return 0; }
+        for (const auto& g : guesses) {
+            const QString who = g.name.isEmpty()
+                ? QStringLiteral("ISMERETLEN")
+                : QStringLiteral("%1 (%2%)").arg(g.name).arg(int(g.score * 100 + 0.5));
+            out << "  • " << g.deviceName << "  →  " << who
+                << "   [" << g.windows << " ablak, minta: " << g.sampleRef << "]\n";
+        }
+        out.flush();
+        return 0;
+    }
+
     if (cmd == "voiceprints") {
         auto* vp = app.voiceprints();
         out << "Hang-lenyomatok (" << vp->people().size() << " személy, "

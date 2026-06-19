@@ -128,6 +128,18 @@ struct VoiceMatch {
     double score = -1.0;        // [-1..1] cosine; <0 = nincs találat / üres DB
 };
 
+// Egy ÁTÍRÁS ELŐTT (lokálisan) felismert beszélő-jelölt egy sávon: a hang-klaszter
+// + a DB-beli legjobb találat (vagy üres név = ismeretlen). A reprezentatív
+// szegmens visszahallgatható / elnevezhető (= betanítás) az átírás előtt.
+struct ParticipantGuess {
+    QString trackId;
+    QString deviceName;
+    QString name;          // a DB-találat neve, vagy "" ha ismeretlen (küszöb alatt)
+    double  score = -1.0;  // a találat cosine pontszáma
+    int     windows = 0;   // hány hang-ablakból állt a klaszter (megbízhatóság)
+    QString sampleRef;     // "track_x.ogg#startMs-endMs" — reprezentatív minta
+};
+
 // ---- provider konfiguráció / beállítások ----------------------------------
 struct ProviderConfig {
     QString type;            // "soniox" | "openai-compat" | ...

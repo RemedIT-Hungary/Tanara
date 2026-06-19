@@ -115,6 +115,17 @@ public slots:
     // (név + cosine pontszám). Nem módosít semmit; { "", -1 } ha nincs modell/egyezés.
     tanara::VoiceMatch testSpeakerMatch(const QString& meetingId, const QString& rawLabel);
 
+    // ÁTÍRÁS ELŐTTI résztvevő-azonosítás: sávonként ablakozva mintázza a hangot,
+    // beszélőkre klaszterezi, és a voiceprint-DB ellen párosítja → kik voltak a
+    // meetingen (név vagy "ismeretlen"). Lokális, Soniox nélkül; szinkron (pár mp).
+    QVector<tanara::ParticipantGuess> identifyParticipants(const QString& meetingId);
+
+    // Lenyomat felvétele egy tetszőleges hang-szegmensből (átírás előtti névadáshoz):
+    // a meeting adott sávjának [startMs,endMs] részéből embeddinget számol és a név
+    // alá menti. voiceprintsChanged jel.
+    void enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
+                                    const QString& trackId, qint64 startMs, qint64 endMs);
+
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;

@@ -280,12 +280,14 @@ QVector<float> VoiceEmbedder::decodePcm16kMono(const QString& audioPath,
                                                qint64 startMs, qint64 endMs,
                                                const QString& ffmpegPath) {
     QStringList args;
-    args << QStringLiteral("-v") << QStringLiteral("error")
-         << QStringLiteral("-i") << audioPath;
+    args << QStringLiteral("-v") << QStringLiteral("error");
+    // INPUT seek: a -ss az -i ELŐTT → a dekódolás a keresett pozíciónál kezdődik
+    // (gyors, hosszú fájlnál is konstans), nem 0-tól. A hosszt -t-vel korlátozzuk.
     if (startMs > 0)
         args << QStringLiteral("-ss") << QString::number(startMs / 1000.0, 'f', 3);
+    args << QStringLiteral("-i") << audioPath;
     if (endMs > startMs)
-        args << QStringLiteral("-to") << QString::number(endMs / 1000.0, 'f', 3);
+        args << QStringLiteral("-t") << QString::number((endMs - startMs) / 1000.0, 'f', 3);
     args << QStringLiteral("-ac") << QStringLiteral("1")
          << QStringLiteral("-ar") << QStringLiteral("16000")
          << QStringLiteral("-f")  << QStringLiteral("f32le")
