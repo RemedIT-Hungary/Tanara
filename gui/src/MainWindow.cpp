@@ -7,6 +7,7 @@
 #include "PeopleManagerDialog.h"
 #include "FloatingRecorder.h"
 #include "TracksPanel.h"
+#include "ParticipantsDialog.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -173,6 +174,7 @@ void MainWindow::buildUi() {
     m_transcriptPlayer = ui->transcriptPlayer;
     m_summaryView      = ui->summaryView;
     m_tracksPanel      = ui->tracksPanel;
+    m_participantsBtn  = ui->participantsBtn;
     m_transcribeBtn    = ui->transcribeBtn;
     m_summarizeBtn     = ui->summarizeBtn;
     m_identifyBtn      = ui->identifyBtn;
@@ -227,10 +229,12 @@ void MainWindow::buildUi() {
     m_busyBar->setVisible(false);
     statusBar()->addPermanentWidget(m_busyBar);
 
+    connect(m_participantsBtn, &QPushButton::clicked, this, &MainWindow::onParticipantsClicked);
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_summarizeBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
     connect(m_identifyBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyClicked);
 
+    m_participantsBtn->setEnabled(false);
     m_transcribeBtn->setEnabled(false);
     m_summarizeBtn->setEnabled(false);
     m_identifyBtn->setEnabled(false);
@@ -356,6 +360,7 @@ void MainWindow::loadSelectedMeetingViews() {
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
     const bool enable = ok;
+    m_participantsBtn->setEnabled(enable);
     m_transcribeBtn->setEnabled(enable);
     m_summarizeBtn->setEnabled(enable);
     m_identifyBtn->setEnabled(enable);
@@ -394,6 +399,15 @@ void MainWindow::onSummarizeClicked() {
         return;
     setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
+}
+
+void MainWindow::onParticipantsClicked() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller)
+        return;
+    ParticipantsDialog dlg(m_controller, m.id, this);
+    dlg.exec();
 }
 
 void MainWindow::onIdentifyClicked() {
@@ -460,6 +474,7 @@ void MainWindow::setBusy(bool busy, const QString& msg) {
     if (m_busyBar) m_busyBar->setVisible(busy);
     if (!msg.isEmpty()) statusBar()->showMessage(msg);
     if (busy) {
+        if (m_participantsBtn) m_participantsBtn->setEnabled(false);
         if (m_transcribeBtn) m_transcribeBtn->setEnabled(false);
         if (m_summarizeBtn)  m_summarizeBtn->setEnabled(false);
         if (m_identifyBtn)   m_identifyBtn->setEnabled(false);

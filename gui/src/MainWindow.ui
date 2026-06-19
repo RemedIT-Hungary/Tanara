@@ -26,6 +26,11 @@
         <item>
          <layout class="QHBoxLayout" name="actionRow">
           <item>
+           <widget class="QPushButton" name="participantsBtn">
+            <property name="text"><string>👥 Résztvevők</string></property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="transcribeBtn">
             <property name="text"><string>Átírás</string></property>
            </widget>

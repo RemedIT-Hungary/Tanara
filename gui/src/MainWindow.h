@@ -48,6 +48,7 @@ private slots:
     void onTranscribeClicked();
     void onSummarizeClicked();
     void onIdentifyClicked();
+    void onParticipantsClicked();
     void onTranscriptReady(QString meetingId, QString markdownPath);
     void onSummaryReady(QString meetingId, QString markdownPath);
     void onError(QString message);
@@ -90,6 +91,7 @@ private:
     QTextBrowser*     m_summaryView = nullptr;
     TracksPanel*      m_tracksPanel = nullptr;
 
+    QPushButton*  m_participantsBtn = nullptr;
     QPushButton*  m_transcribeBtn = nullptr;
     QPushButton*  m_summarizeBtn = nullptr;
     QPushButton*  m_identifyBtn = nullptr;
