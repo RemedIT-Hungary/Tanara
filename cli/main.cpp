@@ -61,6 +61,16 @@ int main(int argc, char** argv) {
     if (cmd == "devices") return cmdDevices(app);
     if (cmd == "list")    return cmdList(app);
 
+    if (cmd == "reindex") {
+        // Az index (SQLite cache) teljes újraépítése a lemezen lévő meeting-mappákból.
+        // Hasznos, ha kézzel másoltunk be felvétel-mappát (pl. másik gépről).
+        app.store()->rebuildIndexFromDisk();
+        const auto ms = app.store()->loadAll();
+        out << "Index újraépítve a lemezről — " << ms.size() << " meeting.\n";
+        out.flush();
+        return 0;
+    }
+
     if (cmd == "record") {
         QString title = QStringLiteral("Felvétel %1").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm"));
         int seconds = 0;
