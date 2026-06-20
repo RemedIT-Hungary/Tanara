@@ -178,11 +178,37 @@ void SonioxJob::createTranscription() {
         hints.append(h);
     payload.insert(QStringLiteral("language_hints"), hints);
     payload.insert(QStringLiteral("enable_speaker_diarization"), m_req.diarization);
-    // Context-envelope: szabad szöveg (meeting-cím + a felhasználó pár szavas leírása,
-    // később naptár-bejegyzés). A Soniox ezzel jobban dönt a kétes/félreérthető
-    // részeknél (nevek, szakszavak, téma). Üresen nem küldjük.
-    if (!m_req.context.trimmed().isEmpty())
-        payload.insert(QStringLiteral("context"), m_req.context.trimmed());
+    // Context-envelope → a Soniox stt-async-v5 strukturált „context" objektuma
+    // (general/text/terms). Ezzel jobban dönt a kétes részeknél (nevek, szakszavak,
+    // téma). Csak a kitöltött szekciókat küldjük; üres objektumot nem.
+    // Limit: ~8000 token (~10000 karakter) az egész objektumra (a Soniox hibát ad túl).
+    {
+        QJsonObject context;
+        if (!m_req.contextGeneral.isEmpty()) {
+            QJsonArray general;
+            for (auto it = m_req.contextGeneral.constBegin();
+                 it != m_req.contextGeneral.constEnd(); ++it) {
+                if (it.value().trimmed().isEmpty()) continue;
+                QJsonObject kv;
+                kv.insert(QStringLiteral("key"), it.key());
+                kv.insert(QStringLiteral("value"), it.value().trimmed());
+                general.append(kv);
+            }
+            if (!general.isEmpty()) context.insert(QStringLiteral("general"), general);
+        }
+        if (!m_req.context.trimmed().isEmpty())
+            context.insert(QStringLiteral("text"), m_req.context.trimmed());
+        if (!m_req.contextTerms.isEmpty()) {
+            QJsonArray terms;
+            for (const QString& t : m_req.contextTerms) {
+                const QString tt = t.trimmed();
+                if (!tt.isEmpty()) terms.append(tt);
+            }
+            if (!terms.isEmpty()) context.insert(QStringLiteral("terms"), terms);
+        }
+        if (!context.isEmpty())
+            payload.insert(QStringLiteral("context"), context);
+    }
 
     QNetworkRequest req = makeRequest(QStringLiteral("/transcriptions"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));

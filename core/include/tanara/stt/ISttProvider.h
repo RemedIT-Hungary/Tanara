@@ -29,11 +29,15 @@ struct SttRequest {
     QString speakerLabel;           // a sávhoz tartozó fix beszélő
     QStringList languageHints{QStringLiteral("hu")};
     bool diarization = false;       // per-sávnál általában false (a sáv = a beszélő)
-    // Context-envelope: szabad szöveg, amivel a STT jobban dönt a kétes részeknél
-    // (meeting-cím + résztvevők + a felhasználó pár szavas téma-leírása; később
-    // naptár-bejegyzés). A Soniox a „context" mezőként küldi; a context-et nem támogató
-    // providerek figyelmen kívül hagyják.
+    // Context-envelope — a STT jobban dönt a kétes részeknél. A Soniox stt-async-v5 a
+    // „context" objektumot várja (general/text/terms); ezt a három mezőre képezzük:
+    //   contextGeneral → "general" (kulcs-érték metaadat: pl. Megbeszélés címe)
+    //   context        → "text"    (szabad háttérszöveg: a felhasználó leírása)
+    //   contextTerms   → "terms"   (fontos szavak: résztvevő-nevek, szakszavak)
+    // A context-et nem támogató providerek e mezőket figyelmen kívül hagyják.
+    QMap<QString, QString> contextGeneral;
     QString context;
+    QStringList contextTerms;
     QVariantMap providerOptions;
 };
 

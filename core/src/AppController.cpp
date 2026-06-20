@@ -948,23 +948,19 @@ void AppController::transcribeMeeting(const QString& meetingId)
     for (int i = 0; i < m.tracks.size(); ++i)
         if (m.tracks[i].active) activeIdx << i;
 
-    // Context-envelope: a STT-nek megadjuk a meeting témáját + résztvevőit, hogy a
-    // kétes/félreérthető részeknél jobban döntsön (Soniox „context"). Forrás: cím +
-    // aktív sávok beszélői + a felhasználó pár szavas leírása (contextNote; később naptár).
-    QStringList ctxParts;
+    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms),
+    // hogy a kétes részeknél jobban döntsön. Forrás: cím (general) + a felhasználó pár
+    // szavas leírása (text) + a résztvevő-nevek (terms; később naptár-bejegyzés is).
+    QMap<QString, QString> ctxGeneral;
     if (!m.title.trimmed().isEmpty())
-        ctxParts << QStringLiteral("Megbeszélés: %1").arg(m.title.trimmed());
+        ctxGeneral.insert(QStringLiteral("Megbeszélés"), m.title.trimmed());
     QStringList participants;
     for (int i : activeIdx) {
         const QString lbl = m.tracks[i].speakerLabel.trimmed();
         if (!lbl.isEmpty() && !participants.contains(lbl))
             participants << lbl;
     }
-    if (!participants.isEmpty())
-        ctxParts << QStringLiteral("Résztvevők: %1").arg(participants.join(QStringLiteral(", ")));
-    if (!m.contextNote.trimmed().isEmpty())
-        ctxParts << m.contextNote.trimmed();
-    const QString contextEnvelope = ctxParts.join(QStringLiteral("\n"));
+    const QString ctxText = m.contextNote.trimmed();
 
     struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
     auto ctx = std::make_shared<Ctx>();
@@ -978,7 +974,9 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.trackId = t.id;
         req.speakerLabel = t.speakerLabel;
         req.languageHints = s.languageHints;
-        req.context = contextEnvelope;
+        req.contextGeneral = ctxGeneral;
+        req.context = ctxText;
+        req.contextTerms = participants;
         // Diarizáció MINDEN sávra: a mikrofonba is beszélhet egyszerre több ember,
         // ezért a mic-sávot is fel kell bontani beszélőkre (nem fix egy beszélő).
         req.diarization = true;
