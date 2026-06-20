@@ -178,6 +178,11 @@ void SonioxJob::createTranscription() {
         hints.append(h);
     payload.insert(QStringLiteral("language_hints"), hints);
     payload.insert(QStringLiteral("enable_speaker_diarization"), m_req.diarization);
+    // Context-envelope: szabad szöveg (meeting-cím + a felhasználó pár szavas leírása,
+    // később naptár-bejegyzés). A Soniox ezzel jobban dönt a kétes/félreérthető
+    // részeknél (nevek, szakszavak, téma). Üresen nem küldjük.
+    if (!m_req.context.trimmed().isEmpty())
+        payload.insert(QStringLiteral("context"), m_req.context.trimmed());
 
     QNetworkRequest req = makeRequest(QStringLiteral("/transcriptions"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));

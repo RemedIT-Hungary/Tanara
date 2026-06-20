@@ -75,6 +75,10 @@ public slots:
     // Meeting címének átnevezése (meeting.json + index frissül).
     void renameMeeting(const QString& meetingId, const QString& newTitle);
 
+    // A meeting pár szavas kontextus-leírásának mentése (téma/résztvevők) — beépül a
+    // STT context-envelope-jába és az LLM-összefoglaló kontextusába. Perzisztens.
+    void setMeetingContextNote(const QString& meetingId, const QString& note);
+
     // Meeting VÉGLEGES törlése (mappa + index). A store meetingRemoved jelét adja.
     void deleteMeeting(const QString& meetingId);
 

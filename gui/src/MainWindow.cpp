@@ -674,6 +674,20 @@ void MainWindow::onTranscribeClicked() {
         }
         return;
     }
+
+    // Context-envelope: átírás előtt pár szóban elkérjük, miről szólt a meeting. A STT
+    // (Soniox „context") ezzel jobban dönt a kétes részeknél; az összefoglaló is kapja.
+    // Előtöltve a korábbi leírással (re-átírásnál megmarad). Mégse → nem indítunk.
+    bool noteOk = false;
+    const QString note = QInputDialog::getMultiLineText(
+        this, QStringLiteral("Miről szól ez a megbeszélés?"),
+        QStringLiteral("Pár szóban a téma / résztvevők / szakszavak — segít a pontosabb "
+                       "átiratban (opcionális, üresen is hagyhatod):"),
+        m.contextNote, &noteOk);
+    if (!noteOk)
+        return;   // Mégse → nem indítjuk az átírást
+    m_controller->setMeetingContextNote(m.id, note);
+
     setBusy(true, QStringLiteral("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
 }

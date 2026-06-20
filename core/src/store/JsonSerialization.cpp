@@ -149,6 +149,8 @@ QJsonObject toJson(const Meeting& m)
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
         sm[it.key()] = it.value();
     o[QStringLiteral("speakerMap")] = sm;
+    if (!m.contextNote.isEmpty())
+        o[QStringLiteral("contextNote")] = m.contextNote;
     return o;
 }
 
@@ -174,6 +176,7 @@ Meeting meetingFromJson(const QJsonObject& o)
     const QJsonObject sm = o.value(QStringLiteral("speakerMap")).toObject();
     for (auto it = sm.constBegin(); it != sm.constEnd(); ++it)
         m.speakerMap.insert(it.key(), it.value().toString());
+    m.contextNote = o.value(QStringLiteral("contextNote")).toString();
     return m;
 }
 

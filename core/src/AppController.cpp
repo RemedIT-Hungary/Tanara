@@ -677,6 +677,15 @@ void AppController::renameMeeting(const QString& meetingId, const QString& newTi
     d->store->saveMeeting(m);   // meeting.json + index frissül → meetingUpdated jel
 }
 
+void AppController::setMeetingContextNote(const QString& meetingId, const QString& note) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    const QString n = note.trimmed();
+    if (m.contextNote == n) return;   // nincs változás
+    m.contextNote = n;
+    d->store->saveMeeting(m);
+}
+
 void AppController::deleteMeeting(const QString& meetingId) {
     if (meetingId.isEmpty()) return;
     d->mergedCache.remove(meetingId);
@@ -939,6 +948,24 @@ void AppController::transcribeMeeting(const QString& meetingId)
     for (int i = 0; i < m.tracks.size(); ++i)
         if (m.tracks[i].active) activeIdx << i;
 
+    // Context-envelope: a STT-nek megadjuk a meeting témáját + résztvevőit, hogy a
+    // kétes/félreérthető részeknél jobban döntsön (Soniox „context"). Forrás: cím +
+    // aktív sávok beszélői + a felhasználó pár szavas leírása (contextNote; később naptár).
+    QStringList ctxParts;
+    if (!m.title.trimmed().isEmpty())
+        ctxParts << QStringLiteral("Megbeszélés: %1").arg(m.title.trimmed());
+    QStringList participants;
+    for (int i : activeIdx) {
+        const QString lbl = m.tracks[i].speakerLabel.trimmed();
+        if (!lbl.isEmpty() && !participants.contains(lbl))
+            participants << lbl;
+    }
+    if (!participants.isEmpty())
+        ctxParts << QStringLiteral("Résztvevők: %1").arg(participants.join(QStringLiteral(", ")));
+    if (!m.contextNote.trimmed().isEmpty())
+        ctxParts << m.contextNote.trimmed();
+    const QString contextEnvelope = ctxParts.join(QStringLiteral("\n"));
+
     struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
     auto ctx = std::make_shared<Ctx>();
     ctx->remaining = activeIdx.size();
@@ -951,6 +978,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.trackId = t.id;
         req.speakerLabel = t.speakerLabel;
         req.languageHints = s.languageHints;
+        req.context = contextEnvelope;
         // Diarizáció MINDEN sávra: a mikrofonba is beszélhet egyszerre több ember,
         // ezért a mic-sávot is fel kell bontani beszélőkre (nem fix egy beszélő).
         req.diarization = true;
@@ -1061,7 +1089,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         emit errorOccurred(QStringLiteral("Összefoglaló hiba: %1").arg(e));
     });
 
-    svc->summarize(merged, /*contextNotes*/ QString(), /*glossary*/ QStringList(),
+    svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
                    cfg.model, cfg.temperature, cfg.maxTokens);
 }
 

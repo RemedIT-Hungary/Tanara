@@ -105,6 +105,10 @@ struct Meeting {
     bool hasTranscript = false;
     bool hasSummary = false;
     QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")
+    // A felhasználó pár szavas leírása a meetingről (téma/kontextus). Beépül a STT
+    // context-envelope-jába (pontosabb átirat a kétes részeknél) ÉS az LLM-összefoglaló
+    // kontextusába is. Átíráskor a UI bekéri (előtöltve ezzel az értékkel).
+    QString contextNote;
 };
 
 // ---- beszélő-azonosítás (voice fingerprint) -------------------------------

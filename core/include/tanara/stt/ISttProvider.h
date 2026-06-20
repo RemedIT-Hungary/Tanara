@@ -29,6 +29,11 @@ struct SttRequest {
     QString speakerLabel;           // a sávhoz tartozó fix beszélő
     QStringList languageHints{QStringLiteral("hu")};
     bool diarization = false;       // per-sávnál általában false (a sáv = a beszélő)
+    // Context-envelope: szabad szöveg, amivel a STT jobban dönt a kétes részeknél
+    // (meeting-cím + résztvevők + a felhasználó pár szavas téma-leírása; később
+    // naptár-bejegyzés). A Soniox a „context" mezőként küldi; a context-et nem támogató
+    // providerek figyelmen kívül hagyják.
+    QString context;
     QVariantMap providerOptions;
 };
 
