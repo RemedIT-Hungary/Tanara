@@ -492,12 +492,19 @@ void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
         m_lineMeta.clear();
         m_highlightedRow = -1;
         m_view->setExtraSelections({});
-        m_view->setPlainText(QStringLiteral("Nincs átirat — futtass Átírást."));
+        m_view->setPlainText(QStringLiteral("Nincs átirat — futtass Átírást.\n\n"
+            "(A felvételbe addig is belehallgathatsz lent a lejátszóval.)"));
         if (m_highlighter) m_highlighter->rehighlight();
         rebuildLegend();   // nincs szegmens → üres panel, elrejti magát
-        setBarEnabled(false);
-        m_hasAudio = false;
-        m_audioPath.clear();
+        // Átirat NÉLKÜL is hallgatható a felvétel (mixdown) — így a context-leíráshoz
+        // bele lehet hallgatni. A szinkron-kiemelés értelemszerűen nincs (nincs szegmens).
+        m_hasAudio = !audioPath.isEmpty() && QFileInfo::exists(audioPath);
+        m_audioPath = m_hasAudio ? audioPath : QString();
+        setBarEnabled(m_hasAudio);
+        if (m_hasAudio) {
+            ensurePlayer();
+            m_player->setSource(QUrl::fromLocalFile(m_audioPath));   // betölt, NEM játszik
+        }
         return;
     }
 
