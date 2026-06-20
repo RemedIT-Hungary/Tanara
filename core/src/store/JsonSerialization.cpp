@@ -208,6 +208,28 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
 }
 
 // ---- AppSettings ----------------------------------------------------------
+namespace {
+
+// id -> ProviderConfig map → JSON-objektum (providerenként a meglévő
+// toJson(ProviderConfig); az apiKey továbbra sem kerül bele).
+QJsonObject providerConfigsToJson(const QMap<QString, ProviderConfig>& configs)
+{
+    QJsonObject o;
+    for (auto it = configs.constBegin(); it != configs.constEnd(); ++it)
+        o[it.key()] = toJson(it.value());
+    return o;
+}
+
+QMap<QString, ProviderConfig> providerConfigsFromJson(const QJsonObject& o)
+{
+    QMap<QString, ProviderConfig> configs;
+    for (auto it = o.constBegin(); it != o.constEnd(); ++it)
+        configs.insert(it.key(), providerConfigFromJson(it.value().toObject()));
+    return configs;
+}
+
+} // namespace
+
 QJsonObject toJson(const AppSettings& s)
 {
     QJsonObject o;
@@ -217,8 +239,12 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("userSpeakerName")] = s.userSpeakerName;
     o[QStringLiteral("autoRecordAllDevices")] = s.autoRecordAllDevices;
     o[QStringLiteral("languageHints")]  = stringListToArray(s.languageHints);
-    o[QStringLiteral("stt")]            = toJson(s.stt);
-    o[QStringLiteral("llm")]            = toJson(s.llm);
+
+    // Új multi-provider shape: kiválasztott id + providerenkénti config.
+    o[QStringLiteral("sttProviderId")] = s.sttProviderId;
+    o[QStringLiteral("llmProviderId")] = s.llmProviderId;
+    o[QStringLiteral("sttProviders")]  = providerConfigsToJson(s.sttConfigs);
+    o[QStringLiteral("llmProviders")]  = providerConfigsToJson(s.llmConfigs);
     return o;
 }
 
@@ -232,8 +258,38 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.autoRecordAllDevices = o.value(QStringLiteral("autoRecordAllDevices")).toBool(true);
     if (o.contains(QStringLiteral("languageHints")))
         s.languageHints = arrayToStringList(o.value(QStringLiteral("languageHints")).toArray());
-    s.stt = providerConfigFromJson(o.value(QStringLiteral("stt")).toObject());
-    s.llm = providerConfigFromJson(o.value(QStringLiteral("llm")).toObject());
+
+    // STT: új shape (sttProviders) elsőbbség; különben migráció a régi `stt`-ből.
+    if (o.contains(QStringLiteral("sttProviders"))) {
+        s.sttProviderId = o.value(QStringLiteral("sttProviderId"))
+                              .toString(s.sttProviderId);
+        s.sttConfigs = providerConfigsFromJson(
+            o.value(QStringLiteral("sttProviders")).toObject());
+    } else if (o.contains(QStringLiteral("stt"))) {
+        const ProviderConfig cfg =
+            providerConfigFromJson(o.value(QStringLiteral("stt")).toObject());
+        const QString id = cfg.type.isEmpty()
+                               ? QStringLiteral("soniox")
+                               : cfg.type;
+        s.sttProviderId = id;
+        s.sttConfigs.insert(id, cfg);
+    }
+
+    // LLM: ugyanígy, openai-compat fallback id-vel.
+    if (o.contains(QStringLiteral("llmProviders"))) {
+        s.llmProviderId = o.value(QStringLiteral("llmProviderId"))
+                              .toString(s.llmProviderId);
+        s.llmConfigs = providerConfigsFromJson(
+            o.value(QStringLiteral("llmProviders")).toObject());
+    } else if (o.contains(QStringLiteral("llm"))) {
+        const ProviderConfig cfg =
+            providerConfigFromJson(o.value(QStringLiteral("llm")).toObject());
+        const QString id = cfg.type.isEmpty()
+                               ? QStringLiteral("openai-compat")
+                               : cfg.type;
+        s.llmProviderId = id;
+        s.llmConfigs.insert(id, cfg);
+    }
     return s;
 }
 

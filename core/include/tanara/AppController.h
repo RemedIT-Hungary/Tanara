@@ -5,6 +5,7 @@
 // SZABÁLY: itt sincs Widgets-függőség — sima QObject API (signal/slot + value DTO-k).
 //
 #include "tanara/Types.h"
+#include "tanara/provider/ReadinessModel.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -31,6 +32,11 @@ public:
 
     RecordingState recordingState() const;
     QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
+
+    // Egy munkafolyamat-lépés kapuzása EGYETLEN igazságforrásból (ReadinessModel):
+    // futtatható-e az adott meetingen, és ha nem, PONTOSAN mi hiányzik. Ugyanezt
+    // használja a GUI gomb-engedélyezés és az itteni guardok is. Headless (nincs UI).
+    ReadinessResult canRun(WorkflowStep step, const QString& meetingId) const;
 
     // Az utoljára (legutóbbi felvételnél) használt eszközök NEVEI — induláskor
     // ezeket érdemes előpipálni a UI-ban. Perzisztens (~/.tanara/state.json).
@@ -85,7 +91,7 @@ public slots:
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
 
-    // Az LLM-endpont (settings.llm.baseUrl) elérhető modelljeinek lekérése (GET /models).
+    // Az LLM-endpont (settings.llmSelected().baseUrl) elérhető modelljeinek lekérése (GET /models).
     // Eredmény: llmModelsFetched(QStringList) vagy llmModelsFailed(QString).
     void fetchLlmModels();
 

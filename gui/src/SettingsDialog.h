@@ -1,15 +1,22 @@
 #pragma once
 //
-// SettingsDialog — AppSettings szerkesztése + Soniox API-kulcs beállítása.
+// SettingsDialog — AppSettings szerkesztése generikus, descriptor-vezérelt
+// rendererrel. A provider-mezők a kiválasztott ProviderDescriptor.fields-éből
+// épülnek; a titkok a KeyStore-ba mennek (nem a settings.json-be).
 //
 #include <QDialog>
+#include <QHash>
+#include <QString>
+
+#include "tanara/provider/ProviderDescriptor.h"
 
 class QLineEdit;
 class QComboBox;
 class QPushButton;
 class QLabel;
-class QDoubleSpinBox;
-class QSpinBox;
+class QWidget;
+class QFormLayout;
+class QGroupBox;
 class QCheckBox;
 
 namespace tanara {
@@ -29,27 +36,45 @@ private slots:
     void onLlmModelsFailed(const QString& error);
 
 private:
-    void loadFromController();
+    void loadGeneral();
 
     // Mappa-választó gomb bekötése egy könyvtár-mezőhöz (Tallózás…).
     void wireFolderPicker(QLineEdit* field, QPushButton* button, const QString& caption);
 
+    // Egy provider-blokk (combo + dinamikus mező-form) belső állapota.
+    struct ProviderSection {
+        tanara::ProviderKind kind = tanara::ProviderKind::Stt;
+        QComboBox* selector = nullptr;       // provider-választó (id a userData-ban)
+        QFormLayout* fieldsForm = nullptr;   // ide épülnek a mezők
+        QString currentId;                   // épp megjelenített descriptor id-ja
+        QHash<QString, QWidget*> widgets;    // ConfigField.key -> szerkesztő widget
+        QComboBox* dynamicCombo = nullptr;   // a dynamicOptions-os combo (modell-lekéréshez)
+        QLabel* statusLabel = nullptr;       // inline visszajelzés (modell-lekérés hibája)
+    };
+
+    // A kiválasztott provider descriptor.fields-éből újraépíti a mező-formot.
+    void rebuildFields(ProviderSection& section, const QString& providerId);
+
+    // Egy ConfigField-hez illő szerkesztő widget. dynamicCombo/statusLabel
+    // töltése a section-ön keresztül (a "Modellek lekérése" gomb bekötéséhez).
+    QWidget* makeWidgetFor(ProviderSection& section, const tanara::ConfigField& field,
+                           QWidget* parent);
+
+    // A section aktuális (kiválasztott) configját kiolvassa a widgetekből és a
+    // megfelelő config-mapba írja; a nem-üres titkokat a KeyStore-ba menti.
+    void collectSection(ProviderSection& section);
+
     tanara::AppController* m_controller = nullptr;
 
+    // --- Általános mezők ---
     QLineEdit* m_audioDir = nullptr;
     QLineEdit* m_notesDir = nullptr;
     QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
     QCheckBox* m_autoRecord = nullptr;
-    QLineEdit* m_sttBaseUrl = nullptr;
-    QLineEdit* m_sttModel = nullptr;
-    QLineEdit* m_llmBaseUrl = nullptr;
-    QComboBox* m_llmModel = nullptr;        // szerkeszthető: kézi bevitel is marad
-    QPushButton* m_llmFetchBtn = nullptr;
-    QLabel* m_llmModelStatus = nullptr;     // inline visszajelzés (hiba)
-    QDoubleSpinBox* m_llmTemperature = nullptr; // összefoglaló mintavételezési hőmérséklet
-    QSpinBox* m_llmMaxTokens = nullptr;         // összefoglaló válasz max tokenszám
-    QLineEdit* m_sonioxApiKey = nullptr;  // jelszó-echo, csak írásra
+
+    ProviderSection m_stt;
+    ProviderSection m_llm;
 };
 
 } // namespace tanara_gui

@@ -9,9 +9,9 @@
 #include "tanara/store/PeopleStore.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
-#include "tanara/stt/SonioxProvider.h"
 #include "tanara/stt/ISttProvider.h"
-#include "tanara/llm/OpenAiCompatibleProvider.h"
+#include "tanara/llm/ILlmProvider.h"
+#include "tanara/provider/ProviderRegistry.h"
 #include "tanara/SummaryService.h"
 #include "tanara/TranscriptMerger.h"
 
@@ -271,6 +271,8 @@ struct AppController::Impl {
 AppController::AppController(QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
+    registerBuiltinProviders();
+
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
     d->audioDir = expandTilde(s.audioDir);
@@ -782,7 +784,7 @@ void AppController::setUserSpeakerName(const QString& name) {
 
 void AppController::fetchLlmModels() {
     if (!d->nam) d->nam = new QNetworkAccessManager(this);
-    QString base = d->settings->settings().llm.baseUrl;
+    QString base = d->settings->settings().llmSelected().baseUrl;
     while (base.endsWith(QLatin1Char('/'))) base.chop(1);
     QNetworkRequest req{QUrl(base + QStringLiteral("/models"))};
     const QString key = d->keyStore.get(keys::LlmApiKey);
@@ -874,28 +876,40 @@ void AppController::stopRecording()
     if (d->session) d->session->stop();
 }
 
+ReadinessResult AppController::canRun(WorkflowStep step, const QString& meetingId) const
+{
+    const Meeting meeting = d->store->load(meetingId);
+    ReadinessModel model(d->settings->settings(),
+                         [this](const QString& k) { return !d->keyStore.get(k).isEmpty(); });
+    return model.check(step, meeting);
+}
+
 void AppController::transcribeMeeting(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (m.tracks.isEmpty()) { emit errorOccurred(QStringLiteral("A meetinghez nincs hangsáv.")); return; }
+
+    ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
+    if (!res.runnable) { emit errorOccurred(res.detail); return; }
 
     const AppSettings s = d->settings->settings();
-    ProviderConfig cfg = s.stt;
+    const QString sttId = s.sttProviderId;
+    ProviderConfig cfg = s.sttSelected();
     cfg.apiKey = d->keyStore.get(keys::SonioxApiKey);
-    if (cfg.apiKey.isEmpty()) {
-        emit errorOccurred(QStringLiteral("Hiányzik a Soniox API-kulcs (Beállítások)."));
+
+    ISttProvider* provider = SttProviderRegistry::instance().create(sttId, cfg, this);
+    if (!provider) {
+        emit errorOccurred(QStringLiteral("Ismeretlen STT-provider: %1.").arg(sttId));
         return;
     }
-
-    auto* provider = new SonioxProvider(cfg, this);
+    QObject* providerObj = dynamic_cast<QObject*>(provider);
     emit jobProgress(m.id, QStringLiteral("Átírás indítása…"));
 
     // Csak az AKTÍV sávokat írjuk át (az eldobott/csendes sávokra nem pazarlunk Soniox-időt).
+    // (Hogy van-e legalább egy aktív sáv, azt a fenti canRun() már garantálta.)
     QVector<int> activeIdx;
     for (int i = 0; i < m.tracks.size(); ++i)
         if (m.tracks[i].active) activeIdx << i;
-    if (activeIdx.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs aktív hangsáv az átíráshoz.")); return; }
 
     struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
     auto ctx = std::make_shared<Ctx>();
@@ -918,7 +932,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 [this, id = m.id, label = t.speakerLabel](JobState st) {
                     emit jobProgress(id, sttPhase(st) + QStringLiteral(" — ") + label);
                 });
-        connect(job, &SttJob::finished, this, [this, ctx, i, m, provider](const TrackTranscript& tr) mutable {
+        connect(job, &SttJob::finished, this, [this, ctx, i, m, providerObj](const TrackTranscript& tr) mutable {
             if (ctx->failed) return;
             TrackTranscript res = tr;
             // A Soniox diarizációs id-ket (1,2,…) emberi címkére fordítjuk.
@@ -951,15 +965,15 @@ void AppController::transcribeMeeting(const QString& meetingId)
             d->mergedCache.insert(m.id, merged);
             m.hasTranscript = true;
             d->store->saveMeeting(m);
-            provider->deleteLater();
+            if (providerObj) providerObj->deleteLater();
             emit transcriptReady(m.id, mdPath);
             // Voice-ID: ismert mic-beszélő rögzítése + távoli beszélők auto-párosítása.
             autoIdentifyMeeting(m.id);
         });
-        connect(job, &SttJob::failed, this, [this, ctx, provider](QString e) {
+        connect(job, &SttJob::failed, this, [this, ctx, providerObj](QString e) {
             if (ctx->failed) return;
             ctx->failed = true;
-            provider->deleteLater();
+            if (providerObj) providerObj->deleteLater();
             emit errorOccurred(QStringLiteral("Soniox hiba: %1").arg(e));
         });
     }
@@ -970,9 +984,15 @@ void AppController::summarizeMeeting(const QString& meetingId)
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
+    ReadinessResult res = canRun(WorkflowStep::Summarize, meetingId);
+    if (!res.runnable) { emit errorOccurred(res.detail); return; }
+
     MergedTranscript merged = d->mergedCache.value(meetingId);
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    // Tartalmi védőág: a canRun(Summarize) a meeting.hasTranscript flagre kapuz, de ha a
+    // tokens.json hiányzik/üres (kézzel törölt, részleges írás, rosszul bemásolt meeting),
+    // ne induljon összefoglaló üres átiratra — tükrözi az eredeti tartalom-alapú guardot.
     if (merged.tokens.isEmpty()) {
         emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást."));
         return;
@@ -980,13 +1000,19 @@ void AppController::summarizeMeeting(const QString& meetingId)
     applySpeakerMap(merged, m.speakerMap);   // a Gemma a valódi neveket lássa
 
     const AppSettings s = d->settings->settings();
-    ProviderConfig cfg = s.llm;
+    const QString llmId = s.llmProviderId;
+    ProviderConfig cfg = s.llmSelected();
     cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
-    auto* provider = new OpenAiCompatibleProvider(cfg, this);
+    ILlmProvider* provider = LlmProviderRegistry::instance().create(llmId, cfg, this);
+    if (!provider) {
+        emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(llmId));
+        return;
+    }
+    QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new SummaryService(provider, this);
     emit jobProgress(meetingId, QStringLiteral("Összefoglalás a helyi modellel (Gemma)…"));
 
-    connect(svc, &SummaryService::summaryReady, this, [this, m, provider, svc](const Summary& sum) mutable {
+    connect(svc, &SummaryService::summaryReady, this, [this, m, providerObj, svc](const Summary& sum) mutable {
         const QString md = sum.renderMarkdown();
         const QString mdPath = QDir(m.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
@@ -997,18 +1023,18 @@ void AppController::summarizeMeeting(const QString& meetingId)
         writeTextFile(QDir(d->notesDir).filePath(noteName), md);
         m.hasSummary = true;
         d->store->saveMeeting(m);
-        provider->deleteLater();
+        if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         emit summaryReady(m.id, mdPath);
     });
-    connect(svc, &SummaryService::summaryFailed, this, [this, provider, svc](const QString& e) {
-        provider->deleteLater();
+    connect(svc, &SummaryService::summaryFailed, this, [this, providerObj, svc](const QString& e) {
+        if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         emit errorOccurred(QStringLiteral("Összefoglaló hiba: %1").arg(e));
     });
 
     svc->summarize(merged, /*contextNotes*/ QString(), /*glossary*/ QStringList(),
-                   s.llm.model, s.llm.temperature, s.llm.maxTokens);
+                   cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
 } // namespace tanara

@@ -158,8 +158,19 @@ struct AppSettings {
     QString userSpeakerName;     // a mic-sáv fix neve (pl. "Ádám")
     bool autoRecordAllDevices = true;  // true → minden eszközt rögzít (csendeseket utólag eldobja)
     QStringList languageHints{QStringLiteral("hu")};
-    ProviderConfig stt;          // Soniox
-    ProviderConfig llm;          // OpenAI-kompatibilis (LM Studio)
+
+    // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
+    // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
+    // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).
+    QString sttProviderId{QStringLiteral("soniox")};
+    QString llmProviderId{QStringLiteral("openai-compat")};
+    QMap<QString, ProviderConfig> sttConfigs;   // id -> config
+    QMap<QString, ProviderConfig> llmConfigs;   // id -> config
+
+    // Back-compat accessorok: a kiválasztott provider futásidejű configja.
+    // A hívóhelyek nagy része ezekre cserélhető (s.stt → s.sttSelected()).
+    ProviderConfig sttSelected() const { return sttConfigs.value(sttProviderId); }
+    ProviderConfig llmSelected() const { return llmConfigs.value(llmProviderId); }
 };
 
 } // namespace tanara
