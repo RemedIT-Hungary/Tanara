@@ -348,11 +348,27 @@ void RecordingSession::stop() {
                              QStringLiteral("-loglevel"), QStringLiteral("error")};
             args += inArgs;
             mixdownRel = QStringLiteral("mixdown.mp3");
+            // Loudness-normalizálás (EBU R128, beszédre hangolva): a felvett bemenet
+            // gyakran nagyon halk ÁTLAGBAN (nagy dinamika, ritka csúcsokkal), így a mixdown
+            // alig hallható. A loudnorm a perceptuális hangerőt -16 LUFS-ra hozza, true-peak
+            // limittel (-1.5 dBTP) → kényelmes lejátszási hangerő. (Az STT a NYERS per-sáv
+            // .ogg-kból megy, ezt NEM érinti.)
+            // loudnorm (input-szint normalizálás, forrás-független) → kompresszor (dinamika
+            // szűkítés + makeup gain) → brickwall limiter. Empirikusan a clip-mentes maximum:
+            // a halk beszédet ~+15 dB-lel hozza fel, a csúcs 0 dB-en limitálva. (STT-t nem érint.)
+            const QString kLoudnorm = QStringLiteral(
+                "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
             if (inputs > 1) {
                 args << QStringLiteral("-filter_complex")
-                     << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs);
-            }   // 1 aktív sáv → nincs mit keverni, sima átkódolás MP3-ra
-            args << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
+                     << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0,%2")
+                            .arg(inputs).arg(kLoudnorm);
+            } else {
+                args << QStringLiteral("-af") << kLoudnorm;   // 1 aktív sáv: csak normalizálás
+            }
+            // SZTEREÓ kimenet (dual-mono): a Qt6/PipeWire a mono streamet gyakran csak
+            // az egyik csatornára / halkan játssza — sztereóval mindkét hangszóró szól.
+            args << QStringLiteral("-ac") << QStringLiteral("2")
+                 << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
                  << QStringLiteral("-q:a") << QStringLiteral("4")
                  << QStringLiteral("-y") << QDir(impl_->folder).absoluteFilePath(mixdownRel);
             QProcess mix;

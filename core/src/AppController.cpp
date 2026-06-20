@@ -724,11 +724,21 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     QStringList args{QStringLiteral("-hide_banner"),
                      QStringLiteral("-loglevel"), QStringLiteral("error")};
     args += inArgs;
+    // Loudness-normalizálás (EBU R128, -16 LUFS, true-peak -1.5 dBTP) — felhozza a
+    // halk beszédet kényelmes lejátszási hangerőre (lásd RecordingSession). STT-t nem érint.
+    const QString kLoudnorm = QStringLiteral(
+        "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
     if (inputs > 1) {
         args << QStringLiteral("-filter_complex")
-             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0").arg(inputs);
-    }   // 1 aktív sáv → sima átkódolás
-    args << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
+             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0,%2")
+                    .arg(inputs).arg(kLoudnorm);
+    } else {
+        args << QStringLiteral("-af") << kLoudnorm;   // 1 aktív sáv → csak normalizálás
+    }
+    // SZTEREÓ kimenet (dual-mono) — a Qt6/PipeWire mono streamet halkan/egy csatornára
+    // játszhat; sztereóval mindkét hangszóró megszólal.
+    args << QStringLiteral("-ac") << QStringLiteral("2")
+         << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
          << QStringLiteral("-q:a") << QStringLiteral("4")
          << QStringLiteral("-y") << outPath;
 
