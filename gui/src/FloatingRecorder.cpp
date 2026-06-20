@@ -1,11 +1,12 @@
 #include "FloatingRecorder.h"
+#include "RecordBar.h"
 
 #include "tanara/AppController.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QCheckBox>
+#include <QAction>
 #include <QPushButton>
 #include <QTimer>
 #include <QCloseEvent>
@@ -27,7 +28,8 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
 
     auto* root = new QVBoxLayout(this);
 
-    // --- felső sor: REC-jelzés + mindig-felül + dokkolás ---
+    // --- felső sor: REC-jelzés (villogó pötty) + dokkolás ---
+    // A "Mindig felül" a RecordBar ⋮-menüjébe került (a régi külön pin-checkbox helyett).
     auto* top = new QHBoxLayout();
     m_recIndicator = new QLabel(QStringLiteral("●"), this);
     m_recIndicator->setToolTip(QStringLiteral("Felvétel állapotjelző"));
@@ -36,16 +38,10 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
     rf.setPointSizeF(rf.pointSizeF() * 1.3);
     m_recIndicator->setFont(rf);
 
-    m_alwaysOnTop = new QCheckBox(QStringLiteral("📌 Mindig felül"), this);
-    if (QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive))
-        m_alwaysOnTop->setToolTip(QStringLiteral(
-            "Wayland alatt a kompozitor felülbírálhatja — ha nem marad felül, "
-            "használj KWin-ablakszabályt erre az ablakra."));
     auto* dockBtn = new QPushButton(QStringLiteral("Vissza a főablakba"), this);
 
     top->addWidget(m_recIndicator);
     top->addStretch(1);
-    top->addWidget(m_alwaysOnTop);
     top->addWidget(dockBtn);
     root->addLayout(top);
 
@@ -56,8 +52,19 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
         m_recordBar->show();
     }
 
-    connect(m_alwaysOnTop, &QCheckBox::toggled, this, &FloatingRecorder::onAlwaysOnTopToggled);
     connect(dockBtn, &QPushButton::clicked, this, [this]() { emit dockRequested(); });
+
+    // "Mindig felül" — a RecordBar ⋮-menüjének checkable action-jéhez kötjük.
+    if (auto* rb = qobject_cast<RecordBar*>(m_recordBar)) {
+        if (QAction* aot = rb->alwaysOnTopAction()) {
+            aot->setVisible(true);   // lebegve releváns (dokkoláskor a MainWindow elrejti)
+            if (QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive))
+                aot->setToolTip(QStringLiteral(
+                    "Wayland alatt a kompozitor felülbírálhatja — ha nem marad felül, "
+                    "használj KWin-ablakszabályt erre az ablakra."));
+            connect(aot, &QAction::toggled, this, &FloatingRecorder::onAlwaysOnTopToggled);
+        }
+    }
 
     m_blinkTimer = new QTimer(this);
     m_blinkTimer->setInterval(500);
@@ -72,9 +79,11 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
     // Alapból mindig-felül: a flaget KÖZVETLENÜL állítjuk (ne hívjunk show()-t a
     // ctorban — azt a MainWindow teszi; a flag így a legelső megjelenítéskor érvényes).
     setWindowFlag(Qt::WindowStaysOnTopHint, true);
-    {
-        QSignalBlocker block(m_alwaysOnTop);
-        m_alwaysOnTop->setChecked(true);
+    if (auto* rb = qobject_cast<RecordBar*>(m_recordBar)) {
+        if (QAction* aot = rb->alwaysOnTopAction()) {
+            QSignalBlocker block(aot);
+            aot->setChecked(true);
+        }
     }
     setMinimumWidth(300);
     resize(360, 300);   // kompakt alapméret (a RecordBar lebegőben Kompakt módban van)

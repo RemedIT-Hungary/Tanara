@@ -3,43 +3,97 @@
  <class>RecordBar</class>
  <widget class="QWidget" name="RecordBar">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>440</width><height>360</height></rect>
+   <rect><x>0</x><y>0</y><width>506</width><height>360</height></rect>
   </property>
   <!--
     Tanara — felvétel-vezérlő váz. A STATIKUS elrendezés itt szerkeszthető Qt Designerből.
     A DINAMIKUS rész (eszközlista feltöltése, élő VU, Teljes/Kompakt nézet, idő, gombok
     viselkedése) a RecordBar.cpp-ben marad — a tag-pointereket a ui->-ból köti be, így a
     logika nem változik. Az objectName-eket NE nevezd át (a kód ezekre hivatkozik).
+
+    Felépítés (a jóváhagyott mockup szerint):
+      topSection (QHBoxLayout)
+        leftCol (QVBoxLayout)
+          titleRow: titleEdit (QLineEdit) + menuBtn (⋮ QToolButton, InstantPopup)
+          infoRow:  voicesLabel ("● N hangot hallok") + spacer + levelsToggle (▸ Szintek)
+                    + tracksToggle (▸ Rögzítendő sávok…)
+        recordBtn (QPushButton, kétsoros, vertical Expanding)
+      levelsBox (QGroupBox, alapból rejtve): devHint + deviceList (dinamikus VU-sorok)
   -->
   <layout class="QVBoxLayout" name="rootLayout">
    <item>
-    <layout class="QHBoxLayout" name="topRow">
+    <layout class="QHBoxLayout" name="topSection">
      <item>
-      <widget class="QLineEdit" name="titleEdit">
-       <property name="placeholderText"><string>Megbeszélés címe…</string></property>
-      </widget>
+      <layout class="QVBoxLayout" name="leftCol">
+       <item>
+        <layout class="QHBoxLayout" name="titleRow">
+         <item>
+          <widget class="QLineEdit" name="titleEdit">
+           <property name="placeholderText"><string>Megbeszélés címe… (opcionális)</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="menuBtn">
+           <property name="toolTip"><string>Ablak-beállítások (mindig felül…)</string></property>
+           <property name="text"><string>⋮</string></property>
+           <property name="popupMode">
+            <enum>QToolButton::ToolButtonPopupMode::InstantPopup</enum>
+           </property>
+           <property name="autoRaise"><bool>true</bool></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="infoRow">
+         <item>
+          <widget class="QLabel" name="voicesLabel">
+           <property name="styleSheet"><string>QLabel { color: palette(text); }</string></property>
+           <property name="text"><string>● 0 hangot hallok</string></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="infoSpacer">
+           <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0">
+            <size><width>20</width><height>10</height></size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QToolButton" name="levelsToggle">
+           <property name="toolTip"><string>VU-sávok megjelenítése / elrejtése</string></property>
+           <property name="text"><string>▸ Szintek</string></property>
+           <property name="autoRaise"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="tracksToggle">
+           <property name="toolTip"><string>Rögzítendő sávok kiválasztása</string></property>
+           <property name="text"><string>▸ Rögzítendő sávok…</string></property>
+           <property name="autoRaise"><bool>true</bool></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
      </item>
      <item>
-      <widget class="QLabel" name="elapsedLabel">
-       <property name="text"><string>00:00</string></property>
-       <property name="alignment"><set>Qt::AlignCenter</set></property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="startStopBtn">
-       <property name="text"><string>● Felvétel indítása</string></property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QToolButton" name="viewToggleBtn">
-       <property name="text"><string>⤡</string></property>
-       <property name="autoRaise"><bool>true</bool></property>
+      <widget class="QPushButton" name="recordBtn">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text"><string>⏺  Felvétel indítása</string></property>
       </widget>
      </item>
     </layout>
    </item>
    <item>
-    <widget class="QGroupBox" name="devBox">
+    <widget class="QGroupBox" name="levelsBox">
+     <property name="visible"><bool>false</bool></property>
      <property name="title"><string>Hangeszközök</string></property>
      <layout class="QVBoxLayout" name="devLayout">
       <item>

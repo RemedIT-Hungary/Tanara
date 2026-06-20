@@ -11,6 +11,29 @@ QString durationToMSS(qint64 ms) {
     const qint64 ss = totalSec % 60;
     return QStringLiteral("%1:%2").arg(mm).arg(ss, 2, 10, QLatin1Char('0'));
 }
+
+// Van-e legalább egy AZONOSÍTOTT beszélő? A speakerMap nyers-címke → valódi-név
+// párokat tárol; akkor tekintjük azonosítottnak, ha legalább egy valódi név
+// (nem üres) hozzá van rendelve.
+bool hasIdentifiedSpeaker(const tanara::Meeting& m) {
+    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it) {
+        if (!it.value().trimmed().isEmpty())
+            return true;
+    }
+    return false;
+}
+
+// A mockup státusz-sora: "✓ átirat   ○ össz   ● azonosítva".
+// Pipa = átirat/összefoglaló kész; ● = van azonosított beszélő, ○ = nincs.
+QString statusLine(const tanara::Meeting& m) {
+    const QChar yes(QChar(0x2713)); // ✓
+    const QChar no(QChar(0x25CB));  // ○
+    const QChar dot(QChar(0x25CF)); // ●
+    return QStringLiteral("%1 átirat   %2 össz   %3 azonosítva")
+        .arg(m.hasTranscript ? yes : no)
+        .arg(m.hasSummary ? yes : no)
+        .arg(hasIdentifiedSpeaker(m) ? dot : no);
+}
 } // namespace
 
 MeetingTableModel::MeetingTableModel(QObject* parent)
@@ -40,15 +63,23 @@ QVariant MeetingTableModel::data(const QModelIndex& index, int role) const {
             return m.startedAt.toString(QStringLiteral("yyyy-MM-dd HH:mm"));
         case ColDuration:
             return durationToMSS(m.durationMs);
-        case ColName: {
-            QString t = m.title;
-            if (m.hasTranscript) t += QStringLiteral("  📝");
-            if (m.hasSummary)    t += QStringLiteral("  ✓");
-            return t;
-        }
+        case ColName:
+            // A státusz a Név alá kerül (MeetingItemDelegate 2. sor), ezért itt NINCS
+            // emoji-suffix — különben duplázódna a delegate badge-soraival.
+            return m.title;
         default:
             return {};
         }
+    }
+
+    // Sor-szintű státusz role-ok (oszlopfüggetlen — a MainWindow a név alá rendeli).
+    switch (role) {
+    case StatusTextRole:        return statusLine(m);
+    case HasTranscriptRole:     return m.hasTranscript;
+    case HasSummaryRole:        return m.hasSummary;
+    case SpeakersIdentifiedRole: return hasIdentifiedSpeaker(m);
+    default:
+        break;
     }
 
     // EditRole = rendezési role (típushelyes nyers érték).

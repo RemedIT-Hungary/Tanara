@@ -17,6 +17,18 @@ class MeetingTableModel : public QAbstractTableModel {
 public:
     enum Column { ColTime = 0, ColDuration = 1, ColName = 2, ColumnCount = 3 };
 
+    // Sor-státusz role-ok (a meglévő oszlopok/rendezés érintetlenül maradnak).
+    // A MainWindow ezekkel tudja a mockup „✓ átirat   ○ össz   ● azonosítva"
+    // státusz-sorát a név alá renderelni — bármelyik oszlop indexéről lekérhető,
+    // mert sor-szintű (oszlopfüggetlen) információ.
+    enum StatusRole {
+        // Kész, ember-olvasható státusz-szöveg (pl. "✓ átirat   ○ össz   ● azonosítva").
+        StatusTextRole = Qt::UserRole + 1,
+        HasTranscriptRole,   // bool
+        HasSummaryRole,      // bool
+        SpeakersIdentifiedRole, // bool — van legalább egy azonosított beszélő
+    };
+
     explicit MeetingTableModel(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;

@@ -3,18 +3,54 @@
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>1100</width><height>720</height></rect>
+   <rect><x>0</x><y>0</y><width>1120</width><height>720</height></rect>
   </property>
   <property name="windowTitle"><string>Tanara</string></property>
   <!--
-    Tanara — fő ablak váz (Qt Designerből szerkeszthető). A DINAMIKUS rész a
-    MainWindow.cpp-ben marad: a táblamodell, a felvétel-vezérlő (recordBar) + a
-    helykitöltő beillesztése a rightLayout tetejére, a menü/státuszsor, és a widget-
-    tulajdonságok finomhangolása. Az objectName-eket NE nevezd át (a kód ezekre hivatkozik).
+    Tanara — fő ablak váz (Könyvtár-otthon mockup; Qt Designerből szerkeszthető).
+    A DINAMIKUS rész a MainWindow.cpp-ben marad: a táblamodell, a fülek kapuzása
+    (canRun), a beszélők-sáv kitöltése, és a lejátszó-sáv kiemelése a TranscriptPlayerből
+    a jobb pane aljára. Az objectName-eket NE nevezd át (a kód ezekre hivatkozik).
     A custom fülek (transcriptPlayer, tracksPanel) promotált widgetek.
+
+    Elrendezés (mockup):
+      FELSŐ SÁV:  [🔴 Új felvétel]  ───────  [👥 Emberek] [⚙ Beállítások]
+      SPLITTER:   bal = meeting-tábla   |   jobb = TISZTA review pane:
+        - fejléc:        cím (nagy) ──── meta (dátum · hossz)
+        - beszélők-sáv:  ▸ Beszélők (N) · nevek ──── [✏ Hozzárendelés…]
+        - kapu-panel:    State A-ban (nincs átirat) vezérelt pipeline (kódból töltve)
+        - fülek:         [Átirat | Összefoglaló | Sávok]
+        - lejátszó-sáv:  a TranscriptPlayer kiemelt lejátszó-sávja (kódból, mindig látható)
   -->
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="centralLayout">
+    <item>
+     <layout class="QHBoxLayout" name="topBar">
+      <item>
+       <widget class="QPushButton" name="newRecordingBtn">
+        <property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 6px 14px; }</string></property>
+        <property name="text"><string>🔴  Új felvétel</string></property>
+        <property name="toolTip"><string>A felvétel-vezérlőt külön, leválasztott ablakban nyitja meg.</string></property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="topSpacer">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="peopleBtn">
+        <property name="text"><string>👥  Emberek</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="settingsBtn">
+        <property name="text"><string>⚙  Beállítások</string></property>
+       </widget>
+      </item>
+     </layout>
+    </item>
     <item>
      <widget class="QSplitter" name="splitter">
       <property name="orientation"><enum>Qt::Horizontal</enum></property>
@@ -24,46 +60,195 @@
       <widget class="QWidget" name="rightPane">
        <layout class="QVBoxLayout" name="rightLayout">
         <item>
-         <layout class="QHBoxLayout" name="actionRow">
+         <layout class="QHBoxLayout" name="headerRow">
           <item>
-           <widget class="QPushButton" name="participantsBtn">
-            <property name="text"><string>👥 Résztvevők</string></property>
+           <widget class="QLabel" name="titleLabel">
+            <property name="styleSheet"><string>QLabel { font-size: 18px; font-weight: bold; }</string></property>
+            <property name="text"><string/></property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="transcribeBtn">
-            <property name="text"><string>Átírás</string></property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="summarizeBtn">
-            <property name="text"><string>Összefoglaló</string></property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="identifyBtn">
-            <property name="text"><string>🔍 Azonosítás</string></property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="actionSpacer">
+           <spacer name="headerSpacer">
             <property name="orientation"><enum>Qt::Horizontal</enum></property>
             <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
            </spacer>
           </item>
+          <item>
+           <widget class="QLabel" name="metaLabel">
+            <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+            <property name="text"><string/></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="tracksBtn">
+            <property name="text"><string>Sávok…</string></property>
+            <property name="toolTip"><string>A hangsávok (mikrofon / rendszerhang) megtekintése és ki-/bekapcsolása.</string></property>
+           </widget>
+          </item>
          </layout>
         </item>
         <item>
-         <widget class="QTabWidget" name="tabs">
-          <widget class="tanara_gui::TranscriptPlayer" name="transcriptPlayer">
-           <attribute name="title"><string>Átirat</string></attribute>
+         <widget class="QFrame" name="speakersBar">
+          <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+          <property name="styleSheet"><string>QFrame#speakersBar { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+          <layout class="QHBoxLayout" name="speakersBarLayout">
+           <property name="topMargin"><number>4</number></property>
+           <property name="bottomMargin"><number>4</number></property>
+           <item>
+            <widget class="QToolButton" name="speakersToggle">
+             <property name="text"><string>▸ Beszélők</string></property>
+             <property name="autoRaise"><bool>true</bool></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="speakersSummary">
+             <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+             <property name="text"><string/></property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="speakersBarSpacer">
+             <property name="orientation"><enum>Qt::Horizontal</enum></property>
+             <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="speakersEditBtn">
+             <property name="text"><string>✏  Hozzárendelés…</string></property>
+             <property name="toolTip"><string>Résztvevők megadása és a beszélők azonosítása (hang-lenyomat alapján).</string></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QStackedWidget" name="reviewStack">
+          <!--
+            page 0 = a fülek (Átirat / Összefoglaló / Sávok) — ha VAN átirat
+            page 1 = State A vezérelt pipeline-panel — ha NINCS átirat (kódból töltve)
+          -->
+          <widget class="QWidget" name="tabsPage">
+           <layout class="QVBoxLayout" name="tabsPageLayout">
+            <property name="leftMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <widget class="QTabWidget" name="tabs">
+              <widget class="tanara_gui::TranscriptPlayer" name="transcriptPlayer">
+               <attribute name="title"><string>Átirat</string></attribute>
+              </widget>
+              <widget class="QTextBrowser" name="summaryView">
+               <attribute name="title"><string>Összefoglaló</string></attribute>
+              </widget>
+              <widget class="tanara_gui::TracksPanel" name="tracksPanel">
+               <attribute name="title"><string>Sávok</string></attribute>
+              </widget>
+             </widget>
+            </item>
+           </layout>
           </widget>
-          <widget class="QTextBrowser" name="summaryView">
-           <attribute name="title"><string>Összefoglaló</string></attribute>
+          <widget class="QWidget" name="stepPage">
+           <layout class="QVBoxLayout" name="stepPageLayout">
+            <item>
+             <layout class="QHBoxLayout" name="stepOuter">
+              <item>
+               <spacer name="stepLeft">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>60</width><height>20</height></size></property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QFrame" name="stepBox">
+                <property name="minimumWidth"><number>480</number></property>
+                <property name="maximumWidth"><number>560</number></property>
+                <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+                <property name="styleSheet"><string>QFrame#stepBox { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 8px; }</string></property>
+                <layout class="QVBoxLayout" name="stepLayout">
+                 <property name="spacing"><number>14</number></property>
+                 <property name="leftMargin"><number>22</number></property>
+                 <property name="rightMargin"><number>22</number></property>
+                 <property name="topMargin"><number>20</number></property>
+                 <property name="bottomMargin"><number>20</number></property>
+                 <item>
+                  <widget class="QLabel" name="stepHeading">
+                   <property name="styleSheet"><string>QLabel { font-size: 15px; font-weight: bold; }</string></property>
+                   <property name="text"><string>Mit csináljunk ezzel a felvétellel?</string></property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="step1">
+                   <property name="text"><string>&lt;span style='color:#1a9e3a;'&gt;✓&lt;/span&gt;  &lt;b&gt;① Felvéve&lt;/b&gt;</string></property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QFrame" name="step2box">
+                   <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+                   <property name="styleSheet"><string>QFrame#step2box { background: rgba(54,122,204,0.14); border: 1px solid rgba(54,122,204,0.5); border-radius: 6px; }</string></property>
+                   <layout class="QHBoxLayout" name="step2layout">
+                    <item>
+                     <widget class="QLabel" name="step2label">
+                      <property name="wordWrap"><bool>true</bool></property>
+                      <property name="text"><string>&lt;b&gt;② Átirat&lt;/b&gt;</string></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="step2spacer">
+                      <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="transcribeBtn">
+                      <property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 7px 16px; }</string></property>
+                      <property name="text"><string>Átírás indítása ▸</string></property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="step3">
+                   <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+                   <property name="text"><string>🔒  &lt;b&gt;③ Összefoglaló&lt;/b&gt; — előbb átirat kell</string></property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="stepHint">
+                   <property name="wordWrap"><bool>true</bool></property>
+                   <property name="styleSheet"><string>QLabel { color: palette(mid); font-style: italic; }</string></property>
+                   <property name="text"><string>A beszélők azonosítása opcionális, és az átirat bármikor elkészül nélküle is — a neveket utólag is hozzárendelheted.</string></property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="stepRight">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>60</width><height>20</height></size></property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <spacer name="stepBottomSpacer">
+              <property name="orientation"><enum>Qt::Vertical</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>20</width><height>60</height></size></property>
+             </spacer>
+            </item>
+           </layout>
           </widget>
-          <widget class="tanara_gui::TracksPanel" name="tracksPanel">
-           <attribute name="title"><string>Sávok</string></attribute>
-          </widget>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="playerBarHost">
+          <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+          <property name="styleSheet"><string>QFrame#playerBarHost { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+          <layout class="QHBoxLayout" name="playerBarHostLayout">
+           <property name="topMargin"><number>4</number></property>
+           <property name="bottomMargin"><number>4</number></property>
+          </layout>
          </widget>
         </item>
        </layout>

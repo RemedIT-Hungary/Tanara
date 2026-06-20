@@ -11,10 +11,15 @@ class QTableView;
 class QSortFilterProxyModel;
 class QTextBrowser;
 class QTabWidget;
+class QStackedWidget;
 class QPushButton;
+class QToolButton;
+class QLabel;
+class QFrame;
 class QProgressBar;
 class QItemSelection;
 class QVBoxLayout;
+class QHBoxLayout;
 class QAction;
 
 namespace tanara {
@@ -62,6 +67,9 @@ private slots:
     void deleteSelectedMeeting();
     void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
     void dockRecorder();     // vissza a főablakba
+    void onTracksToggleClicked();      // a Sávok-fülre vált
+    void onSpeakersToggleClicked();    // a beszélők-sáv ki-/becsukása
+    void onSpeakersEditClicked();      // Résztvevők + Azonosítás menü
 
 private:
     void buildUi();
@@ -72,6 +80,11 @@ private:
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
+    void reloadHeader(const tanara::Meeting& m);        // cím + meta (dátum · hossz)
+    void reloadSpeakersBar(const tanara::Meeting& m);   // összecsukott beszélők-sáv
+    void updateReviewGating(const tanara::Meeting& m);  // State A pipeline vs. fülek + kapuzás
+    static QString humanDate(const tanara::Meeting& m);
+    static QString durationHuman(qint64 ms);
     static QString meetingAudioPath(const tanara::Meeting& m);
     static QString readMarkdownFile(const QString& path);
 
@@ -81,21 +94,46 @@ private:
     QSortFilterProxyModel*  m_proxy = nullptr;
 
     QTableView*   m_table = nullptr;
+    // A felvevő ALAPBÓL leválasztott (pop-out): a RecordBar a FloatingRecorderben él,
+    // a fő ablak jobb pane-jén nincs beágyazott recorder (Könyvtár-otthon mockup).
     RecordBar*    m_recordBar = nullptr;
-    QVBoxLayout*  m_rightLayout = nullptr;     // a jobb pane elrendezése (vissza-dokkoláshoz)
-    QWidget*      m_dockPlaceholder = nullptr; // látszik, ha a vezérlő külön ablakban van
     FloatingRecorder* m_floatingRecorder = nullptr;
-    QAction*      m_popOutAct = nullptr;       // Nézet → Felvétel külön ablakban
+
     QTabWidget*       m_tabs = nullptr;
+    QStackedWidget*   m_reviewStack = nullptr;   // page0 = fülek, page1 = State A pipeline
     TranscriptPlayer* m_transcriptPlayer = nullptr;
     QTextBrowser*     m_summaryView = nullptr;
     TracksPanel*      m_tracksPanel = nullptr;
 
-    QPushButton*  m_participantsBtn = nullptr;
-    QPushButton*  m_transcribeBtn = nullptr;
-    QPushButton*  m_summarizeBtn = nullptr;
-    QPushButton*  m_identifyBtn = nullptr;
+    // --- felső sáv ---
+    QPushButton*  m_newRecordingBtn = nullptr;
+    QPushButton*  m_peopleBtn = nullptr;
+    QPushButton*  m_settingsBtn = nullptr;
+
+    // --- jobb pane fejléc + beszélők-sáv ---
+    QLabel*       m_titleLabel = nullptr;
+    QLabel*       m_metaLabel = nullptr;
+    QToolButton*  m_tracksBtn = nullptr;
+    QFrame*       m_speakersBar = nullptr;
+    QToolButton*  m_speakersToggle = nullptr;
+    QLabel*       m_speakersSummary = nullptr;
+    QPushButton*  m_speakersEditBtn = nullptr;
+
+    // --- State A vezérelt pipeline-panel widgetjei ---
+    // (A step1/step2box/step3/stepHint statikus címkék a .ui-ban élnek, kódból nem
+    //  olvassuk/írjuk őket → nincs rájuk tag-pointer.)
+    QLabel*       m_step2label = nullptr;
+    QPushButton*  m_transcribeBtn = nullptr;   // a kapu-panel „Átírás indítása" gombja
+    // State A: átirat ELŐTTI, hang-alapú résztvevő-tippelés belépője (nem kell átirat).
+    QPushButton*  m_identifyParticipantsBtn = nullptr;
+
+    // --- az Összefoglaló-fül üres állapotának generálás-gombja (kódból injektálva) ---
+    QPushButton*  m_generateSummaryBtn = nullptr;
+    QWidget*      m_summaryEmptyPage = nullptr; // a summaryView helyén üres állapotban
+    QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres+gomb
+
     QProgressBar* m_busyBar = nullptr;
+    bool          m_speakersExpanded = false;
 
     QString m_currentMeetingId;
     bool    m_monitoringStarted = false;

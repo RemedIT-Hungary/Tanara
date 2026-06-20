@@ -18,6 +18,8 @@ class QVBoxLayout;
 class QGroupBox;
 class QProgressBar;
 class QCheckBox;
+class QMenu;
+class QAction;
 
 namespace tanara {
 class AppController;
@@ -42,6 +44,12 @@ public:
     ViewMode viewMode() const { return m_mode; }
     void setViewMode(ViewMode mode);
 
+    // Az ablak-menü (⋮) "Mindig felül" kapcsolója. A FloatingRecorder ezen
+    // keresztül köti be magát (a tényleges WindowStaysOnTopHint kezelése ott marad),
+    // így a régi külön pin-checkbox helyett a menüből vezérelhető. Dokkolt (Full)
+    // nézetben a menüpont rejtett (nincs lebegő ablak, amire vonatkozna).
+    QAction* alwaysOnTopAction() const { return m_alwaysOnTopAct; }
+
 signals:
     void viewModeChanged(ViewMode mode);
 
@@ -61,6 +69,9 @@ private:
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
     void resetDeviceLevelBars();
     void applyViewMode();   // a m_mode szerint mutat/rejt elemeket
+    void updateRecordButton();   // a kétállapotú (piros/semleges, kétsoros) gomb frissítése
+    void setLevelsVisible(bool on);   // a VU-doboz mutatása/rejtése a "▸ Szintek" togglehoz
+    void updateVoicesLabel();   // "● N hangot hallok" frissítése a kiválasztott eszközszámból
 
     Ui::RecordBar* ui = nullptr;
     tanara::AppController* m_controller = nullptr;
@@ -68,12 +79,20 @@ private:
     ViewMode m_mode = ViewMode::Full;
 
     QLineEdit*   m_titleEdit = nullptr;
-    QPushButton* m_startStopBtn = nullptr;
-    QToolButton* m_viewToggleBtn = nullptr;
-    QLabel*      m_elapsedLabel = nullptr;
-    QGroupBox*   m_devBox = nullptr;
+    QPushButton* m_recordBtn = nullptr;     // egyesített, kétállapotú felvétel-gomb
+    QToolButton* m_menuBtn = nullptr;       // ⋮ ablak-menü
+    QToolButton* m_levelsToggle = nullptr;  // ▸ Szintek (VU-doboz mutat/rejt)
+    QToolButton* m_tracksToggle = nullptr;  // ▸ Rögzítendő sávok…
+    QLabel*      m_voicesLabel = nullptr;
+    QGroupBox*   m_levelsBox = nullptr;      // a VU-doboz (alapból rejtve)
     QLabel*      m_devHint = nullptr;
     QListWidget* m_deviceList = nullptr;
+
+    QMenu*   m_windowMenu = nullptr;         // a ⋮-gomb menüje
+    QAction* m_alwaysOnTopAct = nullptr;     // "Mindig felül" (a FloatingRecorder köti be)
+
+    qint64 m_elapsedMs = 0;                  // utolsó eltelt idő (a gomb 2. sorához)
+    bool   m_levelsVisible = false;          // a VU-doboz aktuális láthatósága
 
     // Egy-egy eszköz-sor vezérlői, eszköznév szerint kulcsolva (a deviceLevel és
     // a lastUsedDeviceNames is NÉV alapú).

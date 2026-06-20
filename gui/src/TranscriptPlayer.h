@@ -28,6 +28,7 @@ class QAudioOutput;
 class QComboBox;
 class QHBoxLayout;
 class QVBoxLayout;
+class QFrame;
 
 namespace tanara {
 class AppController;
@@ -55,6 +56,17 @@ public:
     // Üres állapot (nincs kijelölt meeting).
     void clearMeeting();
 
+    // A lejátszó-sáv (Play/Pause + seek + idő + hangerő) KÜLÖN beágyazható widgetje.
+    // A MainWindow kiemeli a fülekből és a jobb pane aljára, MINDIG látható helyre teszi
+    // (Könyvtár-otthon mockup). A TranscriptPlayer megtartja a tulajdonjogot/logikát;
+    // ez csak a vizuális elhelyezést adja át. A reparenting után is a TranscriptPlayer
+    // kezeli a seeket/kiemelést/odaugrást.
+    QWidget* playerBar() const { return m_playerBar; }
+
+signals:
+    // „Mindet kezel… (Emberek)" link → a MainWindow nyitja a globális Személyek-kezelőt.
+    void managePeopleRequested();
+
 protected:
     // A szegmens-nézet (QPlainTextEdit viewport) kattintásait figyeljük: a kattintott
     // blokk = szegmens-index → odaugrás. (A húzás-szöveges kijelölést nem zavarjuk.)
@@ -68,6 +80,9 @@ private slots:
     void onSliderPressed();
     void onSliderReleased();
     void onSliderMoved(int value);
+    void onVolumeChanged(int value);
+    // Az átirat kijelölésekor: a kijelölt rész beszélőjére előhozza a hozzárendelés-sávot.
+    void onTranscriptSelectionChanged();
 
 private:
     struct Segment {
@@ -83,7 +98,9 @@ private:
     void seekToSegment(int idx);         // egy szegmensre ugrás (kattintás-logika)
     bool loadSegments(const QString& path);   // segments.json → m_segments
     void populateList();                 // m_segments → a QPlainTextEdit blokkjai
-    void populateSpeakersPanel();        // a "Beszélők" sor (combo-k) felépítése
+    void rebuildLegend();                // kompakt beszélő-legenda (chipek) felépítése
+    void showAssignBarFor(const QString& rawLabel);  // kontextuális „ki mondta?" sáv
+    void hideAssignBar();
     QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
     void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
     void onTestSpeaker(const QString& rawLabel);   // fingerprint-teszt: legjobb egyezés
@@ -97,13 +114,20 @@ private:
     QString m_meetingId;
     QMap<QString, QString> m_speakerMap;   // nyers címke → valódi név (a meetingből)
 
+    // Kompakt legenda-chipek (ki van a meetingen) + kontextuális hozzárendelés-sáv.
     QLabel*      m_speakersLabel = nullptr;
-    QWidget*     m_speakersPanel = nullptr;
-    QVBoxLayout* m_speakersLayout = nullptr;   // beszélőnként egy sor (jól szerkeszthető)
+    QWidget*     m_legendPanel = nullptr;
+    QHBoxLayout* m_legendLayout = nullptr;     // chipek vízszintesen
+    QFrame*      m_assignBar = nullptr;        // „🖱 …— ki mondta?" (alapból rejtett)
+    QLabel*      m_assignLabel = nullptr;
+    QComboBox*   m_assignCombo = nullptr;
+    QString      m_assignRaw;                  // a hozzárendelés célja (nyers címke)
 
+    QWidget*        m_playerBar = nullptr;   // a beágyazható lejátszó-sáv (kiemelhető)
     QPushButton*    m_playPauseBtn = nullptr;
     QSlider*        m_seekSlider = nullptr;
     QLabel*         m_timeLabel = nullptr;
+    QSlider*        m_volumeSlider = nullptr;
     QPlainTextEdit* m_view = nullptr;     // szegmensenként egy blokk
     QPoint          m_pressPos;           // kattintás kezdő-pozíció (click vs. drag)
 
@@ -111,6 +135,9 @@ private:
     QAudioOutput* m_audioOutput = nullptr;
 
     QVector<Segment> m_segments;
+    // A szegmensek startMs-ei időrendben, a highlightForPosition() bináris
+    // kereséséhez. Egyszer épül fel (loadSegments), így a kiemelés O(log n)/tick.
+    QVector<qint64>  m_segmentStarts;
     QString m_audioPath;
     bool m_hasAudio = false;
 

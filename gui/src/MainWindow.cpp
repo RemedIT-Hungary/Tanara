@@ -3,6 +3,7 @@
 #include "RecordBar.h"
 #include "SettingsDialog.h"
 #include "MeetingTableModel.h"
+#include "MeetingItemDelegate.h"
 #include "TranscriptPlayer.h"
 #include "PeopleManagerDialog.h"
 #include "FloatingRecorder.h"
@@ -17,13 +18,17 @@
 #include <QSortFilterProxyModel>
 #include <QTextBrowser>
 #include <QTabWidget>
+#include <QStackedWidget>
 #include <QPushButton>
+#include <QToolButton>
 #include <QSplitter>
+#include <QFrame>
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMenu>
+#include <QDesktopServices>
 #include <QAction>
 #include <QStyle>
 #include <QLabel>
@@ -34,6 +39,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QPoint>
+#include <QLocale>
 #include <QItemSelectionModel>
 #include <QItemSelection>
 #include <QFile>
@@ -68,9 +74,16 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
     m_table->setSortingEnabled(true);
     m_table->sortByColumn(MeetingTableModel::ColTime, Qt::DescendingOrder);
 
-    // Oszlopszélességek (a Név oszlop nyúlik — setStretchLastSection a buildUi-ban).
-    m_table->setColumnWidth(MeetingTableModel::ColTime, 130);
-    m_table->setColumnWidth(MeetingTableModel::ColDuration, 60);
+    // Egyoszlopos lista a mockup szerint: az Idő és Hossz oszlopot ELREJTJÜK (az
+    // értékeiket a delegate a Név-oszlop 3. sorában rajzolja ki), a Név-oszlop nyúlik.
+    // A rendezés EditRole szerint megy, így rejtett oszlopra is rendezhető (ColTime).
+    m_table->setColumnHidden(MeetingTableModel::ColTime, true);
+    m_table->setColumnHidden(MeetingTableModel::ColDuration, true);
+
+    // A Név-oszlop 3 soros renderelése (név félkövér / státusz-badge-ek / emberi
+    // dátum + hossz). A delegate CSAK rajzol; a rendezés a proxy EditRole-ján megy.
+    m_table->setItemDelegateForColumn(MeetingTableModel::ColName,
+                                      new MeetingItemDelegate(this));
 
     reloadMeetings();
 
@@ -109,6 +122,16 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::jobProgress,
                 this, &MainWindow::onJobProgress);
+        // A lekeverés (Újrakeverés) befejeztével a busy-jelzőt KI kell kapcsolni — a
+        // regenerateMixdown a végén jobProgress-t emittál (ami bekapcsolja a busy-t),
+        // de korábban semmi nem kapcsolta ki. Ez a kötés zárja le.
+        connect(m_controller, &tanara::AppController::mixdownUpdated, this,
+                [this](const QString&, bool ok) {
+                    setBusy(false);
+                    statusBar()->showMessage(
+                        ok ? QStringLiteral("Lekeverés kész.")
+                           : QStringLiteral("A lekeverés sikertelen."), 4000);
+                });
         connect(m_controller, &tanara::AppController::recordingFinished,
                 this, &MainWindow::onRecordingFinished);
         connect(m_controller, &tanara::AppController::speakerMapChanged,
@@ -158,6 +181,11 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         m_floatingRecorder->close();
         delete m_floatingRecorder;          // a benne lévő RecordBar-t is elviszi (kilépéskor OK)
         m_floatingRecorder = nullptr;
+        m_recordBar = nullptr;              // a FloatingRecorder volt a szülője → már törölve
+    } else if (m_recordBar) {
+        // Soha nem volt leválasztva → a parentless RecordBar-t mi takarítjuk el.
+        delete m_recordBar;
+        m_recordBar = nullptr;
     }
     QMainWindow::closeEvent(event);
 }
@@ -169,15 +197,45 @@ void MainWindow::buildUi() {
     ui->setupUi(this);
 
     m_table            = ui->table;
-    m_rightLayout      = ui->rightLayout;
     m_tabs             = ui->tabs;
+    m_reviewStack      = ui->reviewStack;
     m_transcriptPlayer = ui->transcriptPlayer;
     m_summaryView      = ui->summaryView;
     m_tracksPanel      = ui->tracksPanel;
-    m_participantsBtn  = ui->participantsBtn;
+
+    m_newRecordingBtn  = ui->newRecordingBtn;
+    m_peopleBtn        = ui->peopleBtn;
+    m_settingsBtn      = ui->settingsBtn;
+
+    m_titleLabel       = ui->titleLabel;
+    m_metaLabel        = ui->metaLabel;
+    m_tracksBtn        = ui->tracksBtn;
+    m_speakersBar      = ui->speakersBar;
+    m_speakersToggle   = ui->speakersToggle;
+    m_speakersSummary  = ui->speakersSummary;
+    m_speakersEditBtn  = ui->speakersEditBtn;
+
+    m_step2label       = ui->step2label;
     m_transcribeBtn    = ui->transcribeBtn;
-    m_summarizeBtn     = ui->summarizeBtn;
-    m_identifyBtn      = ui->identifyBtn;
+
+    // State A pipeline-panel: átirat ELŐTTI, hang-alapú résztvevő-azonosítás belépője.
+    // (A Beszélők-sáv „✏ Hozzárendelés…" menüje csak átirat MELLETT látszik; itt a
+    // friss, átirat nélküli felvételen is elérhető legyen — az onParticipantsClicked
+    // CSAK az audio-sávokból dolgozik, nem kell hozzá átirat.)
+    m_identifyParticipantsBtn =
+        new QPushButton(QStringLiteral("👥  Résztvevők azonosítása (hang alapján)"), this);
+    m_identifyParticipantsBtn->setToolTip(QStringLiteral(
+        "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható."));
+    if (auto* stepLayout = qobject_cast<QVBoxLayout*>(ui->stepBox->layout())) {
+        // A „③ Összefoglaló" sor (step3) elé, az átirat-doboz után.
+        const int idx = stepLayout->indexOf(ui->step3);
+        if (idx >= 0)
+            stepLayout->insertWidget(idx, m_identifyParticipantsBtn);
+        else
+            stepLayout->addWidget(m_identifyParticipantsBtn);
+    }
+    connect(m_identifyParticipantsBtn, &QPushButton::clicked,
+            this, &MainWindow::onParticipantsClicked);
 
     // --- meeting-tábla viselkedése (kód) ---
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -186,37 +244,78 @@ void MainWindow::buildUi() {
     m_table->setShowGrid(false);
     m_table->setAlternatingRowColors(true);
     m_table->verticalHeader()->setVisible(false);
+    // A sormagasság a delegate sizeHint-jét kövesse (3 soros sor), különben a
+    // QTableView fix egysoros magasságot ad és a tartalom egymásba lóg.
+    m_table->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setVisible(false);   // egyoszlopos lista — nincs Idő/Hossz/Név fejléc
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setHighlightSections(false);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested,
             this, &MainWindow::onTableContextMenu);
 
-    // --- felvétel-vezérlő + helykitöltő a jobb pane tetejére (a controllert igénylik) ---
-    m_recordBar = new RecordBar(m_controller, ui->rightPane);
-    m_rightLayout->insertWidget(0, m_recordBar);
-
-    m_dockPlaceholder = new QWidget(ui->rightPane);
-    {
-        auto* pl = new QVBoxLayout(m_dockPlaceholder);
-        pl->setContentsMargins(0, 0, 0, 0);
-        auto* lbl = new QLabel(
-            QStringLiteral("🎙 A felvétel-vezérlő külön ablakban fut."), m_dockPlaceholder);
-        lbl->setWordWrap(true);
-        auto* backBtn = new QPushButton(QStringLiteral("Vissza a főablakba"), m_dockPlaceholder);
-        pl->addWidget(lbl);
-        pl->addWidget(backBtn, 0, Qt::AlignLeft);
-        connect(backBtn, &QPushButton::clicked, this, [this]() {
-            if (m_popOutAct) m_popOutAct->setChecked(false);   // → dockRecorder()
-        });
-    }
-    m_dockPlaceholder->setVisible(false);
-    m_rightLayout->insertWidget(1, m_dockPlaceholder);
+    // --- felvétel-vezérlő: ALAPBÓL leválasztott (a fő ablakban nincs beágyazott
+    //     recorder). A RecordBar parentless, hogy a FloatingRecorder reparentálhassa;
+    //     a tényleges pop-out a popOutRecorder()-ben jön létre (igény szerint). ---
+    m_recordBar = new RecordBar(m_controller, nullptr);
+    m_recordBar->setVisible(false);
 
     // --- fülek (a custom widgetek a .ui-ban promotálva; itt csak bekötés) ---
     m_transcriptPlayer->setController(m_controller);
+    // „Mindet kezel… (Emberek)" a beszélő-legendából → globális Személyek-kezelő.
+    connect(m_transcriptPlayer, &TranscriptPlayer::managePeopleRequested,
+            this, &MainWindow::openPeopleManager);
     m_summaryView->setOpenExternalLinks(true);
     m_tracksPanel->setController(m_controller);
+
+    // Az Összefoglaló-fül kétállapotú: ha van összefoglaló → summaryView; ha nincs →
+    // középen „✨ Összefoglaló generálása" gomb (canRun(Summarize) szerint kapuzva).
+    // A summaryView-t kivesszük a tab-ból, és egy QStackedWidget-be tesszük helyette.
+    {
+        const int summaryIdx = m_tabs->indexOf(m_summaryView);
+        const QString summaryTitle = (summaryIdx >= 0)
+            ? m_tabs->tabText(summaryIdx) : QStringLiteral("Összefoglaló");
+        if (summaryIdx >= 0)
+            m_tabs->removeTab(summaryIdx);
+
+        m_summaryStack = new QStackedWidget(m_tabs);
+        m_summaryStack->addWidget(m_summaryView);     // page 0: kész összefoglaló
+
+        m_summaryEmptyPage = new QWidget(m_summaryStack);
+        auto* el = new QVBoxLayout(m_summaryEmptyPage);
+        el->addStretch(1);
+        auto* emptyLbl = new QLabel(
+            QStringLiteral("Még nincs összefoglaló ehhez a megbeszéléshez."),
+            m_summaryEmptyPage);
+        emptyLbl->setAlignment(Qt::AlignCenter);
+        emptyLbl->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
+        m_generateSummaryBtn = new QPushButton(
+            QStringLiteral("✨  Összefoglaló generálása"), m_summaryEmptyPage);
+        m_generateSummaryBtn->setStyleSheet(
+            QStringLiteral("QPushButton { font-weight: bold; padding: 8px 18px; }"));
+        auto* btnRow = new QHBoxLayout();
+        btnRow->addStretch(1);
+        btnRow->addWidget(m_generateSummaryBtn);
+        btnRow->addStretch(1);
+        el->addWidget(emptyLbl);
+        el->addSpacing(10);
+        el->addLayout(btnRow);
+        el->addStretch(1);
+        m_summaryStack->addWidget(m_summaryEmptyPage);  // page 1: üres + generálás-gomb
+
+        // A Sávok-fül elé szúrjuk vissza (Átirat | Összefoglaló | Sávok sorrend).
+        const int tracksIdx = m_tabs->indexOf(m_tracksPanel);
+        if (tracksIdx >= 0)
+            m_tabs->insertTab(tracksIdx, m_summaryStack, summaryTitle);
+        else
+            m_tabs->addTab(m_summaryStack, summaryTitle);
+    }
+
+    // --- a TranscriptPlayer lejátszó-sávját KIEMELJÜK a jobb pane aljára (mindig
+    //     látható, a fülektől függetlenül; a logika a TranscriptPlayerben marad). ---
+    if (QWidget* pb = m_transcriptPlayer->playerBar()) {
+        ui->playerBarHostLayout->addWidget(pb);   // reparent a host-frame-be
+    }
 
     ui->splitter->setStretchFactor(0, 0);
     ui->splitter->setStretchFactor(1, 1);
@@ -229,19 +328,35 @@ void MainWindow::buildUi() {
     m_busyBar->setVisible(false);
     statusBar()->addPermanentWidget(m_busyBar);
 
-    connect(m_participantsBtn, &QPushButton::clicked, this, &MainWindow::onParticipantsClicked);
-    connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
-    connect(m_summarizeBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
-    connect(m_identifyBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyClicked);
+    // --- felső sáv akciói (a meglévő logikát hívják) ---
+    connect(m_newRecordingBtn, &QPushButton::clicked, this, &MainWindow::popOutRecorder);
+    connect(m_peopleBtn, &QPushButton::clicked, this, &MainWindow::openPeopleManager);
+    connect(m_settingsBtn, &QPushButton::clicked, this, &MainWindow::openSettings);
 
-    m_participantsBtn->setEnabled(false);
+    // --- jobb pane: beszélők-sáv + Sávok + kapu-panel + összefoglaló-generálás ---
+    connect(m_tracksBtn, &QToolButton::clicked, this, &MainWindow::onTracksToggleClicked);
+    connect(m_speakersToggle, &QToolButton::clicked, this, &MainWindow::onSpeakersToggleClicked);
+    connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onSpeakersEditClicked);
+    connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
+    connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
+
+    // Üres induló állapot (nincs kiválasztott meeting).
+    m_titleLabel->clear();
+    m_metaLabel->clear();
+    m_speakersBar->setVisible(false);
+    m_tracksBtn->setEnabled(false);
     m_transcribeBtn->setEnabled(false);
-    m_summarizeBtn->setEnabled(false);
-    m_identifyBtn->setEnabled(false);
+    m_generateSummaryBtn->setEnabled(false);
+    if (m_identifyParticipantsBtn) m_identifyParticipantsBtn->setEnabled(false);
+    m_reviewStack->setCurrentWidget(ui->tabsPage);
 }
 
 void MainWindow::buildMenu() {
+    // A gyakori akciók a felső sávon élnek; a menü a teljességhez marad meg.
     auto* fileMenu = menuBar()->addMenu(QStringLiteral("&Fájl"));
+    QAction* newRecAct = fileMenu->addAction(QStringLiteral("🔴  Új felvétel…"));
+    connect(newRecAct, &QAction::triggered, this, &MainWindow::popOutRecorder);
+    fileMenu->addSeparator();
     QAction* settingsAct = fileMenu->addAction(QStringLiteral("Beállítások…"));
     connect(settingsAct, &QAction::triggered, this, &MainWindow::openSettings);
     QAction* peopleAct = fileMenu->addAction(QStringLiteral("Személyek…"));
@@ -251,14 +366,19 @@ void MainWindow::buildMenu() {
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
     auto* viewMenu = menuBar()->addMenu(QStringLiteral("&Nézet"));
-    m_popOutAct = viewMenu->addAction(QStringLiteral("Felvétel külön ablakban"));
-    m_popOutAct->setCheckable(true);
-    m_popOutAct->setToolTip(QStringLiteral(
-        "A felvétel-vezérlőt önálló, mindig-felül kapcsolható, tálcázható ablakba helyezi."));
-    connect(m_popOutAct, &QAction::toggled, this, [this](bool on) {
-        if (on) popOutRecorder();
-        else    dockRecorder();
-    });
+    QAction* tracksAct = viewMenu->addAction(QStringLiteral("Sávok"));
+    tracksAct->setToolTip(QStringLiteral("A kiválasztott megbeszélés hangsávjai."));
+    connect(tracksAct, &QAction::triggered, this, &MainWindow::onTracksToggleClicked);
+    QAction* participantsAct =
+        viewMenu->addAction(QStringLiteral("Résztvevők azonosítása (hang alapján)…"));
+    participantsAct->setToolTip(QStringLiteral(
+        "A kiválasztott felvétel résztvevőinek megtippelése a hangsávok alapján "
+        "(átirat nélkül is)."));
+    connect(participantsAct, &QAction::triggered, this, &MainWindow::onParticipantsClicked);
+    QAction* recWinAct = viewMenu->addAction(QStringLiteral("Felvétel-ablak előtérbe"));
+    recWinAct->setToolTip(QStringLiteral(
+        "A leválasztott felvétel-vezérlő ablakot előtérbe hozza (vagy megnyitja)."));
+    connect(recWinAct, &QAction::triggered, this, &MainWindow::popOutRecorder);
 }
 
 void MainWindow::reloadMeetings() {
@@ -349,34 +469,172 @@ void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
 void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
     const QString path = QDir(m.folder).filePath(QStringLiteral("summary.md"));
     const QString md = readMarkdownFile(path);
-    if (md.isEmpty())
-        m_summaryView->setPlainText(
-            QStringLiteral("Nincs összefoglaló. Indítsd el az „Összefoglaló” műveletet."));
-    else
+    if (md.isEmpty()) {
+        // Üres állapot: a kétállapotú stack a „✨ generálás" gomb oldalára vált.
+        // A gomb kapuzását az updateReviewGating(canRun(Summarize)) intézi.
+        m_summaryStack->setCurrentWidget(m_summaryEmptyPage);
+    } else {
         m_summaryView->setMarkdown(md);
+        m_summaryStack->setCurrentWidget(m_summaryView);
+    }
+}
+
+QString MainWindow::humanDate(const tanara::Meeting& m) {
+    if (!m.startedAt.isValid())
+        return {};
+    // „2026. június 18. · 1ó 32p" stílus (a mockup metaLabel-je).
+    return QLocale(QLocale::Hungarian)
+        .toString(m.startedAt, QStringLiteral("yyyy. MMMM d."));
+}
+
+QString MainWindow::durationHuman(qint64 ms) {
+    const qint64 totalSec = ms / 1000;
+    const qint64 hh = totalSec / 3600;
+    const qint64 mm = (totalSec % 3600) / 60;
+    if (hh > 0)
+        return QStringLiteral("%1ó %2p").arg(hh).arg(mm);
+    return QStringLiteral("%1p").arg(mm);
+}
+
+void MainWindow::reloadHeader(const tanara::Meeting& m) {
+    m_titleLabel->setText(m.title);
+    const QString date = humanDate(m);
+    const QString dur = durationHuman(m.durationMs);
+    if (!date.isEmpty() && m.durationMs > 0)
+        m_metaLabel->setText(date + QStringLiteral(" · ") + dur);
+    else if (!date.isEmpty())
+        m_metaLabel->setText(date);
+    else
+        m_metaLabel->setText(dur);
+}
+
+void MainWindow::reloadSpeakersBar(const tanara::Meeting& m) {
+    // Összecsukott összefoglaló: a beszélők darabszáma + a hozzárendelt nevek listája.
+    // A nyers beszélő-címkék a speakerMap kulcsai; a valódi nevek az értékei.
+    const int n = m.speakerMap.size();
+    m_speakersToggle->setText(
+        (m_speakersExpanded ? QStringLiteral("▾ Beszélők (%1)")
+                            : QStringLiteral("▸ Beszélők (%1)")).arg(n));
+
+    QStringList named;
+    int unknown = 0;
+    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it) {
+        if (it.value().trimmed().isEmpty())
+            ++unknown;
+        else
+            named << it.value().trimmed();
+    }
+    named.removeDuplicates();
+    QStringList parts = named;
+    if (unknown > 0)
+        parts << QStringLiteral("%1 ismeretlen").arg(unknown);
+    m_speakersSummary->setText(parts.join(QStringLiteral(" · ")));
+
+    // A beszélők-sáv csak akkor érdemi, ha van átirat (abból jönnek a beszélők).
+    m_speakersBar->setVisible(m.hasTranscript);
+    m_speakersEditBtn->setEnabled(true);
+}
+
+void MainWindow::updateReviewGating(const tanara::Meeting& m) {
+    // State A (nincs átirat) → vezérelt pipeline-panel a fülek helyett.
+    // Van átirat → normál fülek; az Összefoglaló-fül üres állapota maga kapuz.
+    if (!m.hasTranscript) {
+        m_reviewStack->setCurrentWidget(ui->stepPage);
+
+        // „Résztvevők (hang alapján)" — engedélyezve, amint van legalább egy aktív
+        // hangsáv (átirat NEM kell; az onParticipantsClicked csak az audióból dolgozik).
+        if (m_identifyParticipantsBtn) {
+            bool hasActiveTrack = false;
+            for (const tanara::Track& t : m.tracks) {
+                if (t.active) { hasActiveTrack = true; break; }
+            }
+            m_identifyParticipantsBtn->setEnabled(hasActiveTrack);
+            m_identifyParticipantsBtn->setToolTip(
+                hasActiveTrack
+                    ? QStringLiteral("A résztvevők megtippelése a hangsávok alapján — "
+                                     "átirat nélkül is futtatható.")
+                    : QStringLiteral("Nincs aktív hangsáv ehhez a felvételhez."));
+        }
+
+        // ② Átirat — a gomb engedélyezettsége/CTA-ja a canRun(Transcribe) szerint.
+        const tanara::ReadinessResult r =
+            m_controller ? m_controller->canRun(tanara::WorkflowStep::Transcribe, m.id)
+                         : tanara::ReadinessResult{};
+        m_transcribeBtn->setEnabled(r.runnable);
+        if (r.runnable) {
+            m_step2label->setText(QStringLiteral("<b>② Átirat</b>"));
+            m_transcribeBtn->setText(QStringLiteral("Átírás indítása ▸"));
+            m_transcribeBtn->setToolTip(QString());
+        } else {
+            // Blokkolt (jellemzően provider-konfig) → „Előbb: <detail>" + Beállítás CTA.
+            m_step2label->setText(
+                QStringLiteral("<b>② Átirat</b><br><span style='color:#b35900;'>Előbb: %1</span>")
+                    .arg(r.detail.toHtmlEscaped()));
+            if (r.blockerKind == tanara::BlockerKind::ProviderConfig
+                || r.blockerKind == tanara::BlockerKind::Auth) {
+                m_transcribeBtn->setText(QStringLiteral("⚙ Beállítás…"));
+                m_transcribeBtn->setEnabled(true);   // a Beállítás-nyitás mindig megy
+            } else {
+                m_transcribeBtn->setText(QStringLiteral("Átírás indítása ▸"));
+                m_transcribeBtn->setEnabled(false);
+            }
+            m_transcribeBtn->setToolTip(r.detail);
+        }
+        return;
+    }
+
+    // Van átirat → fülek. Az Összefoglaló generálás-gombja canRun(Summarize) szerint.
+    m_reviewStack->setCurrentWidget(ui->tabsPage);
+    const tanara::ReadinessResult rs =
+        m_controller ? m_controller->canRun(tanara::WorkflowStep::Summarize, m.id)
+                     : tanara::ReadinessResult{};
+    if (rs.runnable) {
+        m_generateSummaryBtn->setText(QStringLiteral("✨  Összefoglaló generálása"));
+        m_generateSummaryBtn->setEnabled(true);
+        m_generateSummaryBtn->setToolTip(QString());
+    } else if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+               || rs.blockerKind == tanara::BlockerKind::Auth) {
+        // Provider-konfig/auth blokk → „⚙ Beállítás…" CTA (mint az Átírásnál), a
+        // gomb engedélyezve, és a Beállításokat nyitja (onSummarizeClicked kapuz).
+        m_generateSummaryBtn->setText(QStringLiteral("⚙  Beállítás…"));
+        m_generateSummaryBtn->setEnabled(true);
+        m_generateSummaryBtn->setToolTip(rs.detail);
+    } else {
+        // MeetingState (pl. nincs átirat) → marad a tiltott + tooltip viselkedés.
+        m_generateSummaryBtn->setText(QStringLiteral("✨  Összefoglaló generálása"));
+        m_generateSummaryBtn->setEnabled(false);
+        m_generateSummaryBtn->setToolTip(QStringLiteral("Előbb: %1").arg(rs.detail));
+    }
 }
 
 void MainWindow::loadSelectedMeetingViews() {
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
-    const bool enable = ok;
-    m_participantsBtn->setEnabled(enable);
-    m_transcribeBtn->setEnabled(enable);
-    m_summarizeBtn->setEnabled(enable);
-    m_identifyBtn->setEnabled(enable);
 
     if (!ok) {
         m_currentMeetingId.clear();
         m_transcriptPlayer->clearMeeting();
         m_summaryView->clear();
         m_tracksPanel->clearMeeting();
+        m_titleLabel->clear();
+        m_metaLabel->clear();
+        m_speakersBar->setVisible(false);
+        m_tracksBtn->setEnabled(false);
+        m_transcribeBtn->setEnabled(false);
+        m_generateSummaryBtn->setEnabled(false);
+        if (m_identifyParticipantsBtn) m_identifyParticipantsBtn->setEnabled(false);
+        m_reviewStack->setCurrentWidget(ui->tabsPage);
         return;
     }
 
     m_currentMeetingId = m.id;
+    m_tracksBtn->setEnabled(true);
+    reloadHeader(m);
     reloadTranscriptView(m);   // betölti a segments.json-t + hangforrást a lejátszóba
     reloadSummaryView(m);
     m_tracksPanel->setMeeting(m);
+    reloadSpeakersBar(m);
+    updateReviewGating(m);
 }
 
 void MainWindow::onSelectionChanged(const QItemSelection&, const QItemSelection&) {
@@ -388,6 +646,20 @@ void MainWindow::onTranscribeClicked() {
     const tanara::Meeting m = selectedMeeting(&ok);
     if (!ok || !m_controller)
         return;
+    // Kapuzás: ha az átírás provider-konfig/auth miatt blokkolt, a gomb „⚙ Beállítás…"
+    // CTA-ként viselkedik → a Beállítások-ablakot nyitja, nem indít átírást.
+    const tanara::ReadinessResult r =
+        m_controller->canRun(tanara::WorkflowStep::Transcribe, m.id);
+    if (!r.runnable) {
+        if (r.blockerKind == tanara::BlockerKind::ProviderConfig
+            || r.blockerKind == tanara::BlockerKind::Auth) {
+            openSettings();
+        } else {
+            statusBar()->showMessage(
+                QStringLiteral("Nem indítható: ") + r.detail, 6000);
+        }
+        return;
+    }
     setBusy(true, QStringLiteral("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
 }
@@ -397,6 +669,20 @@ void MainWindow::onSummarizeClicked() {
     const tanara::Meeting m = selectedMeeting(&ok);
     if (!ok || !m_controller)
         return;
+    // Kapuzás (az Átírás CTA-mintáját tükrözve): ha provider-konfig/auth miatt blokkolt,
+    // a gomb „⚙ Beállítás…" CTA-ként a Beállításokat nyitja, nem indít összefoglalót.
+    const tanara::ReadinessResult rs =
+        m_controller->canRun(tanara::WorkflowStep::Summarize, m.id);
+    if (!rs.runnable) {
+        if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+            || rs.blockerKind == tanara::BlockerKind::Auth) {
+            openSettings();
+        } else {
+            statusBar()->showMessage(
+                QStringLiteral("Nem indítható: ") + rs.detail, 6000);
+        }
+        return;
+    }
     setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
 }
@@ -430,6 +716,9 @@ void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) 
     const tanara::Meeting m = selectedMeeting(&ok);
     if (ok) {
         reloadTranscriptView(m);
+        reloadSpeakersBar(m);
+        updateReviewGating(m);          // most már van átirat → fülek + Összefoglaló-kapu
+        m_reviewStack->setCurrentWidget(ui->tabsPage);
         m_tabs->setCurrentWidget(m_transcriptPlayer);
     }
 }
@@ -442,8 +731,9 @@ void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
     if (ok) {
-        reloadSummaryView(m);
-        m_tabs->setCurrentWidget(m_summaryView);
+        reloadSummaryView(m);                       // → a stack a kész összefoglalóra vált
+        m_reviewStack->setCurrentWidget(ui->tabsPage);
+        m_tabs->setCurrentWidget(m_summaryStack);   // az Összefoglaló-fül (stack)
     }
 }
 
@@ -466,21 +756,69 @@ void MainWindow::onSpeakerMapChanged(QString meetingId) {
         return;
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
-    if (ok)
+    if (ok) {
         reloadTranscriptView(m);
+        reloadSpeakersBar(m);
+    }
 }
 
 void MainWindow::setBusy(bool busy, const QString& msg) {
     if (m_busyBar) m_busyBar->setVisible(busy);
     if (!msg.isEmpty()) statusBar()->showMessage(msg);
     if (busy) {
-        if (m_participantsBtn) m_participantsBtn->setEnabled(false);
-        if (m_transcribeBtn) m_transcribeBtn->setEnabled(false);
-        if (m_summarizeBtn)  m_summarizeBtn->setEnabled(false);
-        if (m_identifyBtn)   m_identifyBtn->setEnabled(false);
+        // Futás közben a kapuzott akció-gombokat tiltjuk (a kapuzást újraértékeli a
+        // setBusy(false) → loadSelectedMeetingViews → updateReviewGating).
+        if (m_transcribeBtn)      m_transcribeBtn->setEnabled(false);
+        if (m_generateSummaryBtn) m_generateSummaryBtn->setEnabled(false);
+        if (m_speakersEditBtn)    m_speakersEditBtn->setEnabled(false);
+        if (m_identifyParticipantsBtn) m_identifyParticipantsBtn->setEnabled(false);
     } else {
-        loadSelectedMeetingViews();   // gombok visszaállítása a kiválasztás szerint
+        loadSelectedMeetingViews();   // gombok visszaállítása a kiválasztás/kapuzás szerint
     }
+}
+
+void MainWindow::onTracksToggleClicked() {
+    // A Sávok-funkció elérhető marad: a fülek közti Sávok-fülre vált (van átirat-nézet),
+    // ill. State A-ban a fülekre kapcsol, hogy a Sávok látszódjon.
+    if (!m_tracksPanel)
+        return;
+    m_reviewStack->setCurrentWidget(ui->tabsPage);
+    m_tabs->setCurrentWidget(m_tracksPanel);
+}
+
+void MainWindow::onSpeakersToggleClicked() {
+    // A beszélők-sáv ki-/becsukása: kinyitva az Átirat-fülre váltunk, ahol a
+    // TranscriptPlayer per-beszélő sorai (átnevezés/teszt/meghallgatás) élnek.
+    m_speakersExpanded = !m_speakersExpanded;
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (ok)
+        m_speakersToggle->setText(
+            (m_speakersExpanded ? QStringLiteral("▾ Beszélők (%1)")
+                                : QStringLiteral("▸ Beszélők (%1)")).arg(m.speakerMap.size()));
+    if (m_speakersExpanded) {
+        m_reviewStack->setCurrentWidget(ui->tabsPage);
+        m_tabs->setCurrentWidget(m_transcriptPlayer);
+    }
+}
+
+void MainWindow::onSpeakersEditClicked() {
+    // „✏ Hozzárendelés…": a meglévő Résztvevők (ParticipantsDialog) és Azonosítás
+    // (autoIdentifyMeeting) akciókat ajánlja fel egy kis menüben — a per-beszélő
+    // átnevezés/teszt továbbra is a TranscriptPlayer soraiban érhető el.
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok)
+        return;
+    QMenu menu(this);
+    QAction* participantsAct = menu.addAction(QStringLiteral("👥  Résztvevők…"));
+    QAction* identifyAct = menu.addAction(QStringLiteral("🔍  Beszélők azonosítása (hang alapján)"));
+    QAction* chosen = menu.exec(m_speakersEditBtn->mapToGlobal(
+        QPoint(0, m_speakersEditBtn->height())));
+    if (chosen == participantsAct)
+        onParticipantsClicked();
+    else if (chosen == identifyAct)
+        onIdentifyClicked();
 }
 
 void MainWindow::onRecordingFinished(tanara::Meeting meeting) {
@@ -500,6 +838,17 @@ void MainWindow::onTableContextMenu(const QPoint& pos) {
     QMenu menu(this);
     QAction* renameAct = menu.addAction(QStringLiteral("Átnevezés…"));
     connect(renameAct, &QAction::triggered, this, &MainWindow::renameSelectedMeeting);
+
+    QAction* openFolderAct = menu.addAction(QStringLiteral("📂  Mappa megnyitása"));
+    connect(openFolderAct, &QAction::triggered, this, [this]() {
+        bool ok = false;
+        const tanara::Meeting m = selectedMeeting(&ok);
+        if (!ok || m.folder.isEmpty())
+            return;
+        // A meeting mappáját az OS fájlböngészőjében nyitja.
+        QDesktopServices::openUrl(QUrl::fromLocalFile(m.folder));
+    });
+
     menu.addSeparator();
     QAction* deleteAct = menu.addAction(QStringLiteral("🗑  Törlés…"));
     // Vörös, „veszélyes” kiemelés a törlés-akcióhoz.
@@ -565,42 +914,36 @@ void MainWindow::renameSelectedMeeting() {
 }
 
 void MainWindow::popOutRecorder() {
+    // A felvevő ALAPBÓL leválasztott (a fő ablak jobb pane-je tiszta review). Az
+    // „Új felvétel" gomb a leválasztott FloatingRecordert nyitja meg / hozza előtérbe.
     if (m_floatingRecorder) {                 // már kint van → csak előtérbe
+        m_floatingRecorder->show();
         m_floatingRecorder->raise();
         m_floatingRecorder->activateWindow();
         return;
     }
-    // Lebegőben a kompakt nézet a default (a sarokba illő, kicsi vezérlő).
-    m_recordBar->setViewMode(RecordBar::ViewMode::Compact);
-    // A RecordBar-t a FloatingRecorder ctora reparentálja magába; itt a
-    // helykitöltőt mutatjuk a jobb pane-ben. parent=nullptr → ÖNÁLLÓ top-level
-    // ablak (saját tálca-bejegyzés, NEM minimalizálódik a főablakkal).
+    // Az új felvevő-elrendezés MÁR eleve kompakt (kétoszlopos, VU alapból rejtve), ezért
+    // a régi Kompakt-redukció (cím elrejt, eszközöket szűr, szinteket erőből felnyit)
+    // NEM kell — az töri szét a lebegő ablakot. Teljes nézettel jelenítjük meg.
+    m_recordBar->setViewMode(RecordBar::ViewMode::Full);
+    // A RecordBar-t a FloatingRecorder ctora reparentálja magába. parent=nullptr →
+    // ÖNÁLLÓ top-level ablak (saját tálca-bejegyzés, NEM minimalizálódik a főablakkal).
     m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, nullptr);
     connect(m_floatingRecorder, &FloatingRecorder::dockRequested,
             this, &MainWindow::dockRecorder);
-    m_dockPlaceholder->setVisible(true);
+    m_recordBar->show();
     m_floatingRecorder->show();
     m_floatingRecorder->raise();
     m_floatingRecorder->activateWindow();
 }
 
 void MainWindow::dockRecorder() {
+    // „Dokkolás" az új modellben = a leválasztott felvétel-ablak elrejtése (a fő
+    // ablakban nincs hova beágyazni). A RecordBar a FloatingRecorderben marad, így
+    // egy esetleges futó felvétel/állapot megmarad; az „Új felvétel" újra előhozza.
     if (!m_floatingRecorder)
         return;
-    // A RecordBar-t visszaillesztjük a jobb pane tetejére (a helykitöltő elé).
-    m_rightLayout->insertWidget(0, m_recordBar);
-    m_recordBar->setViewMode(RecordBar::ViewMode::Full);   // dokkolva a teljes nézet
-    m_recordBar->show();
-    m_dockPlaceholder->setVisible(false);
-
-    FloatingRecorder* fr = m_floatingRecorder;
-    m_floatingRecorder = nullptr;             // a recordBar már a fő ablak gyermeke
-    fr->deleteLater();
-
-    if (m_popOutAct && m_popOutAct->isChecked()) {
-        QSignalBlocker block(m_popOutAct);    // ne triggereljen újabb dock/pop-ot
-        m_popOutAct->setChecked(false);
-    }
+    m_floatingRecorder->hide();
 }
 
 void MainWindow::openSettings() {

@@ -9,7 +9,6 @@
 #include <QWidget>
 
 class QLabel;
-class QCheckBox;
 class QTimer;
 class QCloseEvent;
 
@@ -22,7 +21,9 @@ namespace tanara_gui {
 class FloatingRecorder : public QWidget {
     Q_OBJECT
 public:
-    // recordBar: a beágyazandó vezérlő (a ctor reparentálja magába).
+    // recordBar: a beágyazandó vezérlő (a ctor reparentálja magába). A "Mindig felül"
+    // kapcsoló a RecordBar ⋮-menüjéből jön (alwaysOnTopAction) — itt kötjük be a
+    // tényleges WindowStaysOnTopHint kezeléssel; a régi külön pin-checkbox megszűnt.
     FloatingRecorder(tanara::AppController* controller, QWidget* recordBar,
                      QWidget* parent = nullptr);
 
@@ -41,7 +42,6 @@ private:
     tanara::AppController* m_controller = nullptr;
     QWidget*   m_recordBar = nullptr;     // not owned
     QLabel*    m_recIndicator = nullptr;
-    QCheckBox* m_alwaysOnTop = nullptr;
     QTimer*    m_blinkTimer = nullptr;
     bool       m_blinkOn = false;
 };

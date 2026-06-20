@@ -16,6 +16,8 @@
 #include <QVBoxLayout>
 #include <QProgressBar>
 #include <QCheckBox>
+#include <QMenu>
+#include <QAction>
 #include <QDateTime>
 #include <QVariant>
 #include <algorithm>
@@ -42,29 +44,42 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     // tag-pointereket innen kötjük be, a viselkedés/paraméterek alább, kódban maradnak.
     ui->setupUi(this);
     m_titleEdit    = ui->titleEdit;
-    m_elapsedLabel = ui->elapsedLabel;
-    m_startStopBtn = ui->startStopBtn;
-    m_viewToggleBtn = ui->viewToggleBtn;
-    m_devBox       = ui->devBox;
+    m_recordBtn    = ui->recordBtn;
+    m_menuBtn      = ui->menuBtn;
+    m_levelsToggle = ui->levelsToggle;
+    m_tracksToggle = ui->tracksToggle;
+    m_voicesLabel  = ui->voicesLabel;
+    m_levelsBox    = ui->levelsBox;
     m_devHint      = ui->devHint;
     m_deviceList   = ui->deviceList;
 
     // --- viselkedés / paraméterek (kódban) ---
     m_titleEdit->setText(QStringLiteral("Megbeszélés %1")
         .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))));
-    m_elapsedLabel->setMinimumWidth(64);
-    {
-        QFont f = m_elapsedLabel->font();
-        f.setPointSizeF(f.pointSizeF() * 1.4);
-        f.setBold(true);
-        m_elapsedLabel->setFont(f);
-    }
-    m_viewToggleBtn->setToolTip(QStringLiteral("Kompakt nézet (csak a kiválasztott eszközök szintje)"));
+    m_recordBtn->setMinimumWidth(150);
     m_deviceList->setSelectionMode(QAbstractItemView::NoSelection);
 
-    connect(m_startStopBtn, &QPushButton::clicked, this, &RecordBar::onStartStopClicked);
-    connect(m_viewToggleBtn, &QToolButton::clicked, this, [this]() {
-        setViewMode(m_mode == ViewMode::Full ? ViewMode::Compact : ViewMode::Full);
+    // A VU-doboz alapból rejtett; a "▸ Szintek" toggle mutatja.
+    m_levelsVisible = false;
+    if (m_levelsBox) m_levelsBox->setVisible(false);
+
+    // --- ⋮ ablak-menü ("Mindig felül" + a régi nézet-váltás) ---
+    m_windowMenu = new QMenu(this);
+    m_alwaysOnTopAct = m_windowMenu->addAction(QStringLiteral("📌 Mindig felül"));
+    m_alwaysOnTopAct->setCheckable(true);
+    m_alwaysOnTopAct->setChecked(true);
+    // A FloatingRecorder dokkolt nézetben elrejti/letiltja ezt; alapból csak akkor
+    // releváns, ha lebeg az ablak. A tényleges WindowStaysOnTopHint a FloatingRecorderben.
+    m_menuBtn->setMenu(m_windowMenu);
+
+    connect(m_recordBtn, &QPushButton::clicked, this, &RecordBar::onStartStopClicked);
+    connect(m_levelsToggle, &QToolButton::clicked, this, [this]() {
+        setLevelsVisible(!m_levelsVisible);
+    });
+    // "▸ Rögzítendő sávok…" — ugyanazt a VU/eszköz-dobozt nyitja (itt láthatók és
+    // pipálhatók a sávok); a "Szintek"-kel közös dobozt mutatja.
+    connect(m_tracksToggle, &QToolButton::clicked, this, [this]() {
+        setLevelsVisible(!m_levelsVisible);
     });
 
     rebuildDeviceList();
@@ -84,15 +99,10 @@ void RecordBar::setViewMode(ViewMode mode) {
 
 void RecordBar::applyViewMode() {
     const bool compact = (m_mode == ViewMode::Compact);
-    // Felső sor: kompaktban a cím-mező rejtett (auto-cím megy), az idő + stop marad.
+    // Felső sor: kompaktban a cím-mező rejtett (auto-cím megy), a felvétel-gomb marad.
     if (m_titleEdit) m_titleEdit->setVisible(!compact);
     if (m_devHint)   m_devHint->setVisible(!compact);
-    if (m_viewToggleBtn) {
-        m_viewToggleBtn->setText(compact ? QStringLiteral("⤢") : QStringLiteral("⤡"));
-        m_viewToggleBtn->setToolTip(compact
-            ? QStringLiteral("Teljes nézet (összes eszköz + beállítás)")
-            : QStringLiteral("Kompakt nézet (csak a kiválasztott eszközök szintje)"));
-    }
+
     // Csoportfejek: kompaktban rejtve.
     for (QListWidgetItem* h : m_headerItems)
         if (h) h->setHidden(compact);
@@ -103,9 +113,39 @@ void RecordBar::applyViewMode() {
         if (r.item) r.item->setHidden(compact && !checked);
         if (r.check) r.check->setVisible(!compact);
     }
-    if (m_devBox)
-        m_devBox->setTitle(compact ? QStringLiteral("Szintek")
-                                   : QStringLiteral("Hangeszközök"));
+    if (m_levelsBox)
+        m_levelsBox->setTitle(compact ? QStringLiteral("Szintek")
+                                      : QStringLiteral("Hangeszközök"));
+
+    // "Mindig felül" csak lebegő (Kompakt) nézetben releváns — dokkolva (Full) rejtjük.
+    if (m_alwaysOnTopAct)
+        m_alwaysOnTopAct->setVisible(compact);
+
+    // A VU-doboz alap-láthatósága a nézettől függ: kompaktban (lebegő) felnyitva a
+    // kiválasztott eszközök szintjével, teljes nézetben alapból összecsukva (a
+    // "▸ Szintek"/"▸ Rögzítendő sávok…" toggle nyitja). A felhasználó kézi nyitása
+    // (m_levelsVisible) felülírja ezt — csak a nézetváltáskor állítjuk az alapot.
+    setLevelsVisible(compact);
+
+    updateVoicesLabel();
+}
+
+void RecordBar::setLevelsVisible(bool on) {
+    m_levelsVisible = on;
+    if (m_levelsBox) m_levelsBox->setVisible(on);
+    const QString arrow = on ? QStringLiteral("▾") : QStringLiteral("▸");
+    if (m_levelsToggle) m_levelsToggle->setText(arrow + QStringLiteral(" Szintek"));
+    if (m_tracksToggle) m_tracksToggle->setText(arrow + QStringLiteral(" Rögzítendő sávok…"));
+}
+
+void RecordBar::updateVoicesLabel() {
+    if (!m_voicesLabel)
+        return;
+    int n = 0;
+    for (auto it = m_deviceRows.constBegin(); it != m_deviceRows.constEnd(); ++it)
+        if (it.value().check && it.value().check->isChecked())
+            ++n;
+    m_voicesLabel->setText(QStringLiteral("● %1 hangot hallok").arg(n));
 }
 
 void RecordBar::rebuildDeviceList() {
@@ -222,6 +262,7 @@ void RecordBar::saveSelection() {
         if (it.value().check && it.value().check->isChecked())
             names << it.key();
     m_controller->setLastUsedDeviceNames(names);
+    updateVoicesLabel();
 }
 
 QVector<tanara::AudioDeviceInfo> RecordBar::selectedDevices() const {
@@ -290,8 +331,7 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
     m_state = state;
     switch (state) {
     case tanara::RecordingState::Idle:
-        m_startStopBtn->setEnabled(true);
-        m_startStopBtn->setText(QStringLiteral("● Felvétel indítása"));
+        m_elapsedMs = 0;
         m_titleEdit->setEnabled(true);
         // A checkboxok újra engedélyezve (a listát NEM tiltjuk, hogy a VU látszódjon).
         for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
@@ -301,8 +341,6 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
             m_controller->startLevelMonitoring();
         break;
     case tanara::RecordingState::Recording:
-        m_startStopBtn->setEnabled(true);
-        m_startStopBtn->setText(QStringLiteral("■ Felvétel leállítása"));
         m_titleEdit->setEnabled(false);
         // Csak a kijelölést tiltjuk (checkboxok), a lista marad aktív → a VU mozoghat.
         for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
@@ -311,23 +349,57 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
         resetDeviceLevelBars();
         break;
     case tanara::RecordingState::Stopping:
-        m_startStopBtn->setEnabled(false);
-        m_startStopBtn->setText(QStringLiteral("Leállítás…"));
+    case tanara::RecordingState::Encoding:
+        break;
+    }
+    updateRecordButton();
+}
+
+void RecordBar::updateRecordButton() {
+    if (!m_recordBtn)
+        return;
+
+    // Egyesített, kétállapotú gomb. Rögzítés közben PIROS, kétsoros
+    // "⏹ Leállítás / MM:SS"; üresben semleges "⏺ Felvétel indítása".
+    // A REC-jelzést a piros háttér + a "●" pötty adja (a villogó pont funkcióját
+    // a piros gomb veszi át — a blink továbbra is a FloatingRecorder pötytyén él).
+    switch (m_state) {
+    case tanara::RecordingState::Recording: {
+        const qint64 totalSec = m_elapsedMs / 1000;
+        const QString clock = QStringLiteral("%1:%2")
+            .arg(totalSec / 60, 2, 10, QLatin1Char('0'))
+            .arg(totalSec % 60, 2, 10, QLatin1Char('0'));
+        m_recordBtn->setEnabled(true);
+        m_recordBtn->setText(QStringLiteral("⏹  Leállítás\n%1").arg(clock));
+        m_recordBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: #c0392b; color: white; font-weight: bold; "
+            "padding: 6px 16px; border: none; border-radius: 5px; }"
+            "QPushButton:hover { background: #d04434; }"));
+        break;
+    }
+    case tanara::RecordingState::Idle:
+        m_recordBtn->setEnabled(true);
+        m_recordBtn->setText(QStringLiteral("⏺  Felvétel indítása"));
+        m_recordBtn->setStyleSheet(QString());   // semleges (rendszer-paletta)
+        break;
+    case tanara::RecordingState::Stopping:
+        m_recordBtn->setEnabled(false);
+        m_recordBtn->setText(QStringLiteral("Leállítás…"));
+        m_recordBtn->setStyleSheet(QString());
         break;
     case tanara::RecordingState::Encoding:
-        m_startStopBtn->setEnabled(false);
-        m_startStopBtn->setText(QStringLiteral("Kódolás…"));
+        m_recordBtn->setEnabled(false);
+        m_recordBtn->setText(QStringLiteral("Kódolás…"));
+        m_recordBtn->setStyleSheet(QString());
         break;
     }
 }
 
 void RecordBar::onElapsedChanged(qint64 ms) {
-    const qint64 totalSec = ms / 1000;
-    const qint64 mm = totalSec / 60;
-    const qint64 ss = totalSec % 60;
-    m_elapsedLabel->setText(QStringLiteral("%1:%2")
-                                .arg(mm, 2, 10, QLatin1Char('0'))
-                                .arg(ss, 2, 10, QLatin1Char('0')));
+    m_elapsedMs = ms;
+    // A számláló a felvétel-gomb 2. sorában frissül (csak rögzítés közben látszik).
+    if (m_state == tanara::RecordingState::Recording)
+        updateRecordButton();
 }
 
 void RecordBar::onLevelMeterUpdated(int trackIndex, float rms) {
