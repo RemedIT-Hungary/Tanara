@@ -3,7 +3,7 @@
  <class>RecordBar</class>
  <widget class="QWidget" name="RecordBar">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>506</width><height>360</height></rect>
+   <rect><x>0</x><y>0</y><width>506</width><height>120</height></rect>
   </property>
   <!--
     Tanara — felvétel-vezérlő váz. A STATIKUS elrendezés itt szerkeszthető Qt Designerből.
@@ -111,6 +111,14 @@
       </item>
      </layout>
     </widget>
+   </item>
+   <item>
+    <!-- Alsó rugó: a tartalmat FELÜL tartja, kompaktan — ha a befoglaló (lebegő ablak
+         vagy dokk) több függőleges helyet ad, az ide kerül, NEM teríti szét a sorokat. -->
+    <spacer name="rootBottomSpacer">
+     <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>0</height></size></property>
+    </spacer>
    </item>
   </layout>
  </widget>

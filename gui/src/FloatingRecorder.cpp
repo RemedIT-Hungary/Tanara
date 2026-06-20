@@ -48,9 +48,14 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
     // --- a beágyazott vezérlő ---
     if (m_recordBar) {
         m_recordBar->setParent(this);
-        root->addWidget(m_recordBar, 1);
+        // NINCS stretch: a RecordBar a természetes (kompakt) magasságát kapja; a benne
+        // lévő alsó rugó tartja felül a tartalmat. Így a felvevő nem „terül szét".
+        root->addWidget(m_recordBar);
         m_recordBar->show();
     }
+    // Az ablak a TARTALOMRA méretez: kompakt induláskor, és automatikusan nő, ha a
+    // „Szintek"/„Sávok" lenyílik (a levelsBox megjelenik).
+    root->setSizeConstraint(QLayout::SetMinimumSize);
 
     connect(dockBtn, &QPushButton::clicked, this, [this]() { emit dockRequested(); });
 
@@ -85,8 +90,10 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
             aot->setChecked(true);
         }
     }
-    setMinimumWidth(300);
-    resize(360, 300);   // kompakt alapméret (a RecordBar lebegőben Kompakt módban van)
+    setMinimumWidth(420);
+    // Magasságot a SetMinimumSize-constraint adja (tartalomra fitt); csak a szélességet
+    // kérjük szélesebbre, hogy a cím-mező + felvétel-gomb kényelmesen elférjen.
+    resize(480, sizeHint().height());
 }
 
 void FloatingRecorder::onAlwaysOnTopToggled(bool on) {

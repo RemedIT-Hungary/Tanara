@@ -68,7 +68,6 @@ private slots:
     void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
     void dockRecorder();     // vissza a főablakba
     void onTracksToggleClicked();      // a Sávok-fülre vált
-    void onSpeakersToggleClicked();    // a beszélők-sáv ki-/becsukása
     void onSpeakersEditClicked();      // Résztvevők + Azonosítás menü
 
 private:
@@ -115,7 +114,6 @@ private:
     QLabel*       m_metaLabel = nullptr;
     QToolButton*  m_tracksBtn = nullptr;
     QFrame*       m_speakersBar = nullptr;
-    QToolButton*  m_speakersToggle = nullptr;
     QLabel*       m_speakersSummary = nullptr;
     QPushButton*  m_speakersEditBtn = nullptr;
 
@@ -133,7 +131,6 @@ private:
     QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres+gomb
 
     QProgressBar* m_busyBar = nullptr;
-    bool          m_speakersExpanded = false;
 
     QString m_currentMeetingId;
     bool    m_monitoringStarted = false;

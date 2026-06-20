@@ -211,7 +211,6 @@ void MainWindow::buildUi() {
     m_metaLabel        = ui->metaLabel;
     m_tracksBtn        = ui->tracksBtn;
     m_speakersBar      = ui->speakersBar;
-    m_speakersToggle   = ui->speakersToggle;
     m_speakersSummary  = ui->speakersSummary;
     m_speakersEditBtn  = ui->speakersEditBtn;
 
@@ -335,7 +334,6 @@ void MainWindow::buildUi() {
 
     // --- jobb pane: beszélők-sáv + Sávok + kapu-panel + összefoglaló-generálás ---
     connect(m_tracksBtn, &QToolButton::clicked, this, &MainWindow::onTracksToggleClicked);
-    connect(m_speakersToggle, &QToolButton::clicked, this, &MainWindow::onSpeakersToggleClicked);
     connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onSpeakersEditClicked);
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
@@ -509,13 +507,9 @@ void MainWindow::reloadHeader(const tanara::Meeting& m) {
 }
 
 void MainWindow::reloadSpeakersBar(const tanara::Meeting& m) {
-    // Összecsukott összefoglaló: a beszélők darabszáma + a hozzárendelt nevek listája.
+    // Statikus összegző: a hozzárendelt nevek + ismeretlenek darabszáma (a per-beszélő
+    // átnevezés/teszt az Átirat-fül legendájában él — itt csak gyors áttekintés).
     // A nyers beszélő-címkék a speakerMap kulcsai; a valódi nevek az értékei.
-    const int n = m.speakerMap.size();
-    m_speakersToggle->setText(
-        (m_speakersExpanded ? QStringLiteral("▾ Beszélők (%1)")
-                            : QStringLiteral("▸ Beszélők (%1)")).arg(n));
-
     QStringList named;
     int unknown = 0;
     for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it) {
@@ -528,7 +522,9 @@ void MainWindow::reloadSpeakersBar(const tanara::Meeting& m) {
     QStringList parts = named;
     if (unknown > 0)
         parts << QStringLiteral("%1 ismeretlen").arg(unknown);
-    m_speakersSummary->setText(parts.join(QStringLiteral(" · ")));
+    m_speakersSummary->setText(parts.isEmpty()
+        ? QStringLiteral("még nincs azonosítva — a neveket az Átiraton add meg")
+        : parts.join(QStringLiteral(" · ")));
 
     // A beszélők-sáv csak akkor érdemi, ha van átirat (abból jönnek a beszélők).
     m_speakersBar->setVisible(m.hasTranscript);
@@ -784,22 +780,6 @@ void MainWindow::onTracksToggleClicked() {
         return;
     m_reviewStack->setCurrentWidget(ui->tabsPage);
     m_tabs->setCurrentWidget(m_tracksPanel);
-}
-
-void MainWindow::onSpeakersToggleClicked() {
-    // A beszélők-sáv ki-/becsukása: kinyitva az Átirat-fülre váltunk, ahol a
-    // TranscriptPlayer per-beszélő sorai (átnevezés/teszt/meghallgatás) élnek.
-    m_speakersExpanded = !m_speakersExpanded;
-    bool ok = false;
-    const tanara::Meeting m = selectedMeeting(&ok);
-    if (ok)
-        m_speakersToggle->setText(
-            (m_speakersExpanded ? QStringLiteral("▾ Beszélők (%1)")
-                                : QStringLiteral("▸ Beszélők (%1)")).arg(m.speakerMap.size()));
-    if (m_speakersExpanded) {
-        m_reviewStack->setCurrentWidget(ui->tabsPage);
-        m_tabs->setCurrentWidget(m_transcriptPlayer);
-    }
 }
 
 void MainWindow::onSpeakersEditClicked() {
