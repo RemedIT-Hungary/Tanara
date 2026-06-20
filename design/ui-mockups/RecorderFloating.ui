@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RecorderFloating</class>
+ <widget class="QWidget" name="RecorderFloating">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>506</width>
+    <height>82</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Tanara — Felvétel</string>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <layout class="QHBoxLayout" name="topSection">
+     <item>
+      <layout class="QVBoxLayout" name="leftCol">
+       <item>
+        <layout class="QHBoxLayout" name="titleRow">
+         <item>
+          <widget class="QLineEdit" name="titleEdit">
+           <property name="placeholderText">
+            <string>Megbeszélés címe… (opcionális)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="menuBtn">
+           <property name="toolTip">
+            <string>Ablak-beállítások (mindig felül…)</string>
+           </property>
+           <property name="text">
+            <string>⋮</string>
+           </property>
+           <property name="popupMode">
+            <enum>QToolButton::ToolButtonPopupMode::InstantPopup</enum>
+           </property>
+           <property name="autoRaise">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="infoRow">
+         <item>
+          <widget class="QLabel" name="voicesLabel">
+           <property name="styleSheet">
+            <string>QLabel { color: palette(text); }</string>
+           </property>
+           <property name="text">
+            <string>● 3 hangot hallok</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="infoSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>10</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QToolButton" name="levelsToggle">
+           <property name="toolTip">
+            <string>VU-sávok megjelenítése / elrejtése</string>
+           </property>
+           <property name="text">
+            <string>▸ Szintek</string>
+           </property>
+           <property name="autoRaise">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="tracksToggle">
+           <property name="text">
+            <string>▸ Rögzítendő sávok…</string>
+           </property>
+           <property name="autoRaise">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QPushButton" name="recordBtn">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="styleSheet">
+        <string>QPushButton { background: #c0392b; color: white; font-weight: bold; padding: 6px 16px; border: none; border-radius: 5px; }</string>
+       </property>
+       <property name="text">
+        <string>⏹  Leállítás
+00:42</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="levelsBox">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="styleSheet">
+      <string>QFrame#levelsBox { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::Shape::StyledPanel</enum>
+     </property>
+     <layout class="QGridLayout" name="levelsLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="micLabel">
+        <property name="text">
+         <string>🎙 Mikrofon</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QProgressBar" name="micVu">
+        <property name="value">
+         <number>62</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="sysLabel">
+        <property name="text">
+         <string>🔊 Rendszerhang</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QProgressBar" name="sysVu">
+        <property name="value">
+         <number>34</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

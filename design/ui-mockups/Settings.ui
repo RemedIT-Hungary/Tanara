@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Settings</class>
+ <!--
+   Tanara — Beállítások MOCKUP. Provider-leírt (descriptorból renderelt) mezők.
+   BYO és hosztolt EGYENRANGÚ a szolgáltató-comboban (a hosztolt NEM előléptetve).
+   A kiválasztott provider mezői descriptor szerint változnak; Login-providernél
+   a mezők helyén [Bejelentkezés]. CSAK ELŐNÉZET.
+ -->
+ <widget class="QWidget" name="Settings">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>560</width><height>560</height></rect></property>
+  <property name="windowTitle"><string>Beállítások</string></property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <widget class="QGroupBox" name="generalBox">
+     <property name="title"><string>Általános</string></property>
+     <layout class="QFormLayout" name="generalForm">
+      <item row="0" column="0"><widget class="QLabel" name="nameLbl"><property name="text"><string>Saját név</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLineEdit" name="nameEdit"><property name="text"><string>Fibinger Ádám</string></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="dirLbl"><property name="text"><string>Hang mentési mappa</string></property></widget></item>
+      <item row="1" column="1"><widget class="QLineEdit" name="dirEdit"><property name="text"><string>~/Tanara/recordings</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="sttBox">
+     <property name="title"><string>Átírás (STT)</string></property>
+     <layout class="QVBoxLayout" name="sttLayout">
+      <item>
+       <layout class="QHBoxLayout" name="sttProviderRow">
+        <item><widget class="QLabel" name="sttProvLbl"><property name="text"><string>Szolgáltató</string></property></widget></item>
+        <item>
+         <widget class="QComboBox" name="sttProvider">
+          <item><property name="text"><string>Soniox</string></property></item>
+          <item><property name="text"><string>ElevenLabs</string></property></item>
+          <item><property name="text"><string>OpenAI-kompatibilis végpont (pl. Whisper)</string></property></item>
+          <item><property name="text"><string>Tanara felhő</string></property></item>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QFrame" name="sttFieldsFrame">
+        <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+        <property name="styleSheet"><string>QFrame#sttFieldsFrame { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+        <layout class="QFormLayout" name="sttForm">
+         <item row="0" column="0"><widget class="QLabel" name="sttKeyLbl"><property name="text"><string>API-kulcs *</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="sttKey"><property name="echoMode"><enum>QLineEdit::Password</enum></property><property name="text"><string>sk-xxxxxxxxxxxx</string></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="sttKeyHelp"><property name="text"><string/></property></widget></item>
+         <item row="1" column="1"><widget class="QLabel" name="sttKeyHelpVal"><property name="styleSheet"><string>QLabel { color: palette(text); font-size: 12px; }</string></property><property name="text"><string>ⓘ A soniox.com fiókodban generálható; a hangfájl feltöltéséhez kell.</string></property></widget></item>
+         <item row="2" column="0"><widget class="QLabel" name="sttModelLbl"><property name="text"><string>Modell</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="sttModel"><property name="text"><string>stt-async-v5</string></property></widget></item>
+        </layout>
+       </widget>
+      </item>
+      <item><widget class="QLabel" name="sttAltHint"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { color: palette(text); font-size: 12px; }</string></property><property name="text"><string>Nem akarsz végpontot vagy kulcsot kezelni? A „Tanara felhő" bejelentkezéssel megy — kulcs nélkül. (Hamarosan.)</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="llmBox">
+     <property name="title"><string>Összefoglaló (LLM)</string></property>
+     <layout class="QVBoxLayout" name="llmLayout">
+      <item>
+       <layout class="QHBoxLayout" name="llmProviderRow">
+        <item><widget class="QLabel" name="llmProvLbl"><property name="text"><string>Szolgáltató</string></property></widget></item>
+        <item>
+         <widget class="QComboBox" name="llmProvider">
+          <item><property name="text"><string>LM Studio</string></property></item>
+          <item><property name="text"><string>Ollama</string></property></item>
+          <item><property name="text"><string>OpenAI</string></property></item>
+          <item><property name="text"><string>OpenAI-kompatibilis végpont</string></property></item>
+          <item><property name="text"><string>MS Foundry</string></property></item>
+          <item><property name="text"><string>Tanara felhő</string></property></item>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QFrame" name="llmFieldsFrame">
+        <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+        <property name="styleSheet"><string>QFrame#llmFieldsFrame { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+        <layout class="QFormLayout" name="llmForm">
+         <item row="0" column="0"><widget class="QLabel" name="llmUrlLbl"><property name="text"><string>Endpoint *</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="llmUrl"><property name="text"><string>http://localhost:1234/v1</string></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="llmModelLbl"><property name="text"><string>Modell</string></property></widget></item>
+         <item row="1" column="1">
+          <layout class="QHBoxLayout" name="llmModelRow">
+           <item><widget class="QComboBox" name="llmModel"><property name="editable"><bool>true</bool></property><item><property name="text"><string>google/gemma-4-12b</string></property></item></widget></item>
+           <item><widget class="QPushButton" name="llmFetch"><property name="text"><string>Modellek lekérése</string></property></widget></item>
+          </layout>
+         </item>
+         <item row="2" column="0"><widget class="QLabel" name="llmTempLbl"><property name="text"><string>Hőmérséklet</string></property></widget></item>
+         <item row="2" column="1"><widget class="QDoubleSpinBox" name="llmTemp"><property name="value"><double>0.2</double></property><property name="maximum"><double>2.0</double></property><property name="singleStep"><double>0.1</double></property></widget></item>
+         <item row="3" column="0"><widget class="QLabel" name="llmMaxLbl"><property name="text"><string>Max tokens</string></property></widget></item>
+         <item row="3" column="1"><widget class="QSpinBox" name="llmMax"><property name="maximum"><number>32768</number></property><property name="value"><number>8000</number></property></widget></item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="vSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+   <item>
+    <layout class="QHBoxLayout" name="btnRow">
+     <item><spacer name="btnSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="cancelBtn"><property name="text"><string>Mégse</string></property></widget></item>
+     <item><widget class="QPushButton" name="saveBtn"><property name="styleSheet"><string>QPushButton { font-weight: bold; }</string></property><property name="text"><string>Mentés</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>KonyvtarOtthon</class>
+ <!--
+   Tanara — Könyvtár-otthon (Domain A) MOCKUP — v2 (UX-feedback átvezetve).
+   CSAK TERVEZÉSI ELŐNÉZET (nem a fordított GUI része). Tisztán beépített widgetek.
+   Állapot: ÁTIRAT VAN, ÖSSZEFOGLALÓ NINCS (State B) — így látszik a kontextuális kapuzás.
+   - Lista: soronként 3 sor (név / állapot / emberi dátum).
+   - metaLabel elvékonyítva (emberi dátum + hossz); résztvevők a Beszélők-sávban.
+   - Pipeline-strip MEGSZŰNT: a kapuzás a tartalomba költözött (üres Összefoglaló-fül = generálás gomb).
+   - Beszélők-sáv ALAPBÓL ÖSSZECSUKVA (külön widget: TranscriptWidget.ui).
+   - Médialejátszó KIEMELVE a fülekből (mindig elérhető) + HANGERŐ-csúszka.
+ -->
+ <widget class="QMainWindow" name="KonyvtarOtthon">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1120</width><height>720</height></rect>
+  </property>
+  <property name="windowTitle"><string>Tanara — Könyvtár</string></property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="centralLayout">
+    <item>
+     <layout class="QHBoxLayout" name="topBar">
+      <item>
+       <widget class="QPushButton" name="newRecordingBtn">
+        <property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 6px 14px; }</string></property>
+        <property name="text"><string>🔴  Új felvétel</string></property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="topSpacer">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="peopleBtn">
+        <property name="text"><string>👥  Emberek</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="settingsBtn">
+        <property name="text"><string>⚙  Beállítások</string></property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation"><enum>Qt::Horizontal</enum></property>
+      <widget class="QWidget" name="leftPane">
+       <property name="minimumSize"><size><width>330</width><height>0</height></size></property>
+       <layout class="QVBoxLayout" name="leftLayout">
+        <item>
+         <layout class="QHBoxLayout" name="searchRow">
+          <item>
+           <widget class="QLineEdit" name="searchEdit">
+            <property name="placeholderText"><string>🔍  Keresés…</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="filterCombo">
+            <property name="maximumWidth"><number>96</number></property>
+            <item><property name="text"><string>Mind</string></property></item>
+            <item><property name="text"><string>Nincs átirat</string></property></item>
+            <item><property name="text"><string>Nincs összefoglaló</string></property></item>
+            <item><property name="text"><string>Azonosítatlan</string></property></item>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QListWidget" name="meetingList">
+          <property name="alternatingRowColors"><bool>true</bool></property>
+          <property name="styleSheet"><string>QListWidget::item { padding: 7px 6px; border-bottom: 1px solid palette(midlight); }</string></property>
+          <item>
+           <property name="text"><string>Asterisk-meeting
+✓ átirat   ✓ össz   ● azonosítva
+2026. június 18. csütörtök 10:30 · 1ó 32p</string></property>
+          </item>
+          <item>
+           <property name="text"><string>Standup
+✓ átirat   ○ össz   ○ azonosítva
+2026. június 16. hétfő 09:00 · 21p</string></property>
+          </item>
+          <item>
+           <property name="text"><string>Tervezés — provider-platform
+○ átirat   ○ össz   ○ azonosítva
+2026. június 12. péntek 14:00 · 48p</string></property>
+          </item>
+          <item>
+           <property name="text"><string>Ügyfél-egyeztetés (Dompa)
+✓ átirat   ✓ össz   ● azonosítva
+2026. június 9. kedd 11:00 · 37p</string></property>
+          </item>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="rightPane">
+       <layout class="QVBoxLayout" name="rightLayout">
+        <item>
+         <layout class="QHBoxLayout" name="headerRow">
+          <item>
+           <widget class="QLabel" name="titleLabel">
+            <property name="styleSheet"><string>QLabel { font-size: 18px; font-weight: bold; }</string></property>
+            <property name="text"><string>Asterisk-meeting</string></property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="headerSpacer">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QLabel" name="metaLabel">
+            <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+            <property name="text"><string>2026. június 18. · 1ó 32p</string></property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QFrame" name="speakersBar">
+          <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+          <property name="styleSheet"><string>QFrame#speakersBar { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+          <layout class="QHBoxLayout" name="speakersBarLayout">
+           <property name="topMargin"><number>4</number></property>
+           <property name="bottomMargin"><number>4</number></property>
+           <item>
+            <widget class="QToolButton" name="speakersToggle">
+             <property name="text"><string>▸ Beszélők (3)</string></property>
+             <property name="autoRaise"><bool>true</bool></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="speakersSummary">
+             <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+             <property name="text"><string>Te · Dompa · 1 ismeretlen</string></property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="speakersBarSpacer">
+             <property name="orientation"><enum>Qt::Horizontal</enum></property>
+             <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="speakersEditBtn">
+             <property name="text"><string>✏  Hozzárendelés…</string></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTabWidget" name="tabs">
+          <property name="currentIndex"><number>0</number></property>
+          <widget class="QWidget" name="transcriptTab">
+           <attribute name="title"><string>Átirat</string></attribute>
+           <layout class="QVBoxLayout" name="transcriptTabLayout">
+            <item>
+             <widget class="QTextEdit" name="transcriptView">
+              <property name="readOnly"><bool>true</bool></property>
+              <property name="html"><string>&lt;p&gt;&lt;b&gt;[00:03] Te:&lt;/b&gt; Sziasztok, kezdjük az Asterisk-integrációval.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:09] Dompa:&lt;/b&gt; Megnéztem a logokat, a SIP-trunk újra eldobja a hívásokat.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:21] Beszélő 1:&lt;/b&gt; Szerintem a NAT-keepalive a ludas.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:34] Te:&lt;/b&gt; Oké, nézzük meg a qualify beállítást.&lt;/p&gt;</string></property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="summaryTab">
+           <attribute name="title"><string>Összefoglaló</string></attribute>
+           <layout class="QVBoxLayout" name="summaryTabLayout">
+            <item>
+             <spacer name="summaryTopSpacer">
+              <property name="orientation"><enum>Qt::Vertical</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>20</width><height>120</height></size></property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QLabel" name="summaryEmptyLabel">
+              <property name="alignment"><set>Qt::AlignCenter</set></property>
+              <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+              <property name="text"><string>Még nincs összefoglaló ehhez a megbeszéléshez.</string></property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="summaryBtnRow">
+              <item>
+               <spacer name="sbLeft"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer>
+              </item>
+              <item>
+               <widget class="QPushButton" name="generateSummaryBtn">
+                <property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 8px 18px; }</string></property>
+                <property name="text"><string>✨  Összefoglaló generálása</string></property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="sbRight"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <spacer name="summaryBottomSpacer">
+              <property name="orientation"><enum>Qt::Vertical</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>20</width><height>120</height></size></property>
+             </spacer>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="playerBar">
+          <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+          <property name="styleSheet"><string>QFrame#playerBar { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+          <layout class="QHBoxLayout" name="playerLayout">
+           <item>
+            <widget class="QPushButton" name="playBtn"><property name="maximumWidth"><number>40</number></property><property name="text"><string>▶</string></property></widget>
+           </item>
+           <item>
+            <widget class="QSlider" name="seekSlider">
+             <property name="orientation"><enum>Qt::Horizontal</enum></property>
+             <property name="value"><number>10</number></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="posLabel"><property name="text"><string>00:09 / 1:32:04</string></property></widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="volIcon"><property name="text"><string>🔊</string></property></widget>
+           </item>
+           <item>
+            <widget class="QSlider" name="volumeSlider">
+             <property name="orientation"><enum>Qt::Horizontal</enum></property>
+             <property name="maximumWidth"><number>90</number></property>
+             <property name="value"><number>80</number></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

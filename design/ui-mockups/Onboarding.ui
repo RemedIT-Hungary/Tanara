@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Onboarding</class>
+ <!--
+   Tanara — Onboarding, 2/3 lépés: „Hogyan írjunk át?”.
+   Sorrend: (1) Tanara Felhő (nagy Bejelentkezés/Regisztráció gomb, HAMAROSAN),
+            (2) Saját szolgáltató, (3) Csak rögzítés.
+   Másodlagos szöveg OLVASHATÓ színnel (nem palette(mid)) — élesben palette-ből
+   számolt 'muted' szín lesz. Provider-nevek minősítő nélkül. CSAK ELŐNÉZET.
+ -->
+ <widget class="QWidget" name="Onboarding">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>560</width><height>520</height></rect></property>
+  <property name="windowTitle"><string>Tanara — Beállítás</string></property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="leftMargin"><number>26</number></property>
+   <property name="rightMargin"><number>26</number></property>
+   <property name="topMargin"><number>22</number></property>
+   <property name="bottomMargin"><number>22</number></property>
+   <item>
+    <widget class="QLabel" name="stepIndicator">
+     <property name="text"><string>&lt;span style='color:#1a9e3a;'&gt;① Ki vagy te ✓&lt;/span&gt;   →   &lt;b&gt;② Átírás&lt;/b&gt;   →   ③ Összefoglaló</string></property>
+    </widget>
+   </item>
+   <item><widget class="Line" name="line"><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
+   <item><widget class="QLabel" name="heading"><property name="styleSheet"><string>QLabel { font-size: 17px; font-weight: bold; }</string></property><property name="text"><string>Hogyan írjuk át a megbeszéléseket?</string></property></widget></item>
+   <item><widget class="QLabel" name="sub"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { font-size: 12px; }</string></property><property name="text"><string>Válassz egy szolgáltatót — vagy hagyd ki most, és csak rögzíts. Bármikor válthatsz.</string></property></widget></item>
+   <item>
+    <widget class="QFrame" name="hostedCard">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="styleSheet"><string>QFrame#hostedCard { background: rgba(54,122,204,0.12); border: 1px solid rgba(54,122,204,0.5); border-radius: 8px; }</string></property>
+     <layout class="QVBoxLayout" name="hostedLayout">
+      <item><widget class="QLabel" name="hostedTitle"><property name="styleSheet"><string>QLabel { font-weight: bold; }</string></property><property name="text"><string>Tanara Felhő előfizetés</string></property></widget></item>
+      <item><widget class="QLabel" name="hostedDesc"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { font-size: 12px; }</string></property><property name="text"><string>Bejelentkezés vagy regisztráció — végpont és kulcs kezelése nélkül megy az átírás és az összefoglaló.</string></property></widget></item>
+      <item>
+       <layout class="QHBoxLayout" name="hostedBtnRow">
+        <item><widget class="QPushButton" name="hostedBtn"><property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 9px 20px; }</string></property><property name="text"><string>Bejelentkezés / Regisztráció</string></property></widget></item>
+        <item><widget class="QLabel" name="soonBadge"><property name="styleSheet"><string>QLabel { background: rgba(227,179,74,0.28); padding: 3px 10px; border-radius: 9px; }</string></property><property name="text"><string>Hamarosan</string></property></widget></item>
+        <item><spacer name="hostedSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="ownCard">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="styleSheet"><string>QFrame#ownCard { border: 1px solid palette(midlight); border-radius: 8px; }</string></property>
+     <layout class="QVBoxLayout" name="ownLayout">
+      <item><widget class="QRadioButton" name="ownRadio"><property name="checked"><bool>true</bool></property><property name="styleSheet"><string>QRadioButton { font-weight: bold; }</string></property><property name="text"><string>Saját szolgáltató</string></property></widget></item>
+      <item><widget class="QLabel" name="ownDesc"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { font-size: 12px; }</string></property><property name="text"><string>Soniox, ElevenLabs vagy OpenAI-kompatibilis végpont — a beállításokat te adod meg.</string></property></widget></item>
+      <item>
+       <layout class="QHBoxLayout" name="ownPickRow">
+        <item><widget class="QComboBox" name="ownProvider"><item><property name="text"><string>Soniox</string></property></item><item><property name="text"><string>ElevenLabs</string></property></item><item><property name="text"><string>OpenAI-kompatibilis végpont</string></property></item></widget></item>
+        <item><widget class="QLineEdit" name="ownKey"><property name="echoMode"><enum>QLineEdit::Password</enum></property><property name="placeholderText"><string>API-kulcs…</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="recordOnlyCard">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="styleSheet"><string>QFrame#recordOnlyCard { border: 1px solid palette(midlight); border-radius: 8px; }</string></property>
+     <layout class="QVBoxLayout" name="recordOnlyLayout">
+      <item><widget class="QRadioButton" name="recordOnlyRadio"><property name="text"><string>Csak rögzíteni szeretnék</string></property></widget></item>
+      <item><widget class="QLabel" name="recordOnlyDesc"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { font-size: 12px; }</string></property><property name="text"><string>Azonnal felveheted a megbeszéléseket; az átírást később, az első kérésnél állítod be.</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="vSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>16</height></size></property></spacer></item>
+   <item>
+    <layout class="QHBoxLayout" name="navRow">
+     <item><widget class="QPushButton" name="backBtn"><property name="text"><string>‹ Vissza</string></property></widget></item>
+     <item><spacer name="navSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="nextBtn"><property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 6px 18px; }</string></property><property name="text"><string>Tovább ›</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

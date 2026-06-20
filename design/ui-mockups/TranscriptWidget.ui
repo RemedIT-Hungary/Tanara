@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TranscriptWidget</class>
+ <!--
+   Tanara — Átirat-widget „masszírozva" MOCKUP.
+   Cél: a beszélő-azonosítás NE egy sűrű, kezelhetetlen sor legyen 5 főnél.
+   Modell:
+     1) KOMPAKT LEGENDA — chipek: ki van a meetingen (read-only áttekintés).
+     2) KONTEXTUÁLIS HOZZÁRENDELÉS — kijelölsz egy passzust az átiratban → „ki mondta?”
+        inline sáv (alapból REJTETT; csak kijelöléskor / Hozzárendelés-módban bukkan elő).
+     3) Tömeges kezelés a külön Emberek-ablakban.
+   CSAK ELŐNÉZET (beépített widgetek). A médialejátszó a fő ablakban van, ide nem kerül.
+ -->
+ <widget class="QWidget" name="TranscriptWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>720</width><height>540</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <layout class="QHBoxLayout" name="legendRow">
+     <item>
+      <widget class="QLabel" name="legendCaption">
+       <property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property>
+       <property name="text"><string>Beszélők:</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="chipMe">
+       <property name="styleSheet"><string>QLabel { background: palette(highlight); color: palette(highlighted-text); padding: 2px 9px; border-radius: 9px; }</string></property>
+       <property name="text"><string>Te</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="chipDompa">
+       <property name="styleSheet"><string>QLabel { background: rgba(127,127,127,0.28); padding: 2px 9px; border-radius: 9px; }</string></property>
+       <property name="text"><string>Dompa</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="chipUnknown">
+       <property name="styleSheet"><string>QLabel { background: palette(base); border: 1px dashed palette(mid); color: palette(mid); padding: 2px 9px; border-radius: 9px; }</string></property>
+       <property name="text"><string>Beszélő 1 — ismeretlen</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="legendSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="manageBtn">
+       <property name="flat"><bool>true</bool></property>
+       <property name="styleSheet"><string>QPushButton { color: palette(link); }</string></property>
+       <property name="text"><string>Mindet kezel… (Emberek)</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="assignBar">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="styleSheet"><string>QFrame#assignBar { background: rgba(227,179,74,0.18); border: 1px solid rgba(227,179,74,0.55); border-radius: 6px; }</string></property>
+     <layout class="QHBoxLayout" name="assignLayout">
+      <property name="topMargin"><number>5</number></property>
+      <property name="bottomMargin"><number>5</number></property>
+      <item>
+       <widget class="QLabel" name="assignText">
+        <property name="text"><string>🖱 Kijelölt rész — ki mondta?</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="assignCombo">
+        <property name="editable"><bool>true</bool></property>
+        <property name="minimumWidth"><number>160</number></property>
+        <item><property name="text"><string>Dompa</string></property></item>
+        <item><property name="text"><string>Te</string></property></item>
+        <item><property name="text"><string>+ Új személy…</string></property></item>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="assignApply">
+        <property name="styleSheet"><string>QPushButton { font-weight: bold; }</string></property>
+        <property name="text"><string>Hozzárendel</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="assignTest">
+        <property name="text"><string>🔍 teszt</string></property>
+        <property name="autoRaise"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="assignSpacer">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QToolButton" name="assignClose">
+        <property name="text"><string>✕</string></property>
+        <property name="autoRaise"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="transcriptView">
+     <property name="readOnly"><bool>true</bool></property>
+     <property name="html"><string>&lt;p&gt;&lt;b&gt;[00:03] Te:&lt;/b&gt; Sziasztok, kezdjük az Asterisk-integrációval.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:09] Dompa:&lt;/b&gt; Megnéztem a logokat, a SIP-trunk újra eldobja a hívásokat.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:21] Beszélő 1:&lt;/b&gt; &lt;span style='background:#ffe08a; color:#1a1a1a;'&gt;Szerintem a NAT-keepalive a ludas, a tűzfal zárja a portot.&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:34] Te:&lt;/b&gt; Oké, nézzük meg a qualify beállítást és a register-intervallumot.&lt;/p&gt;&lt;p&gt;&lt;b&gt;[00:48] Dompa:&lt;/b&gt; Frissítem a trunk-konfigot és írok teszt-hívást.&lt;/p&gt;</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="hintLabel">
+     <property name="styleSheet"><string>QLabel { color: palette(mid); font-style: italic; }</string></property>
+     <property name="text"><string>Tipp: jelölj ki egy mondatot a beszélőtől, és rendeld hozzá — ettől a rendszer megtanulja a hangját a legközelebbi meetingre.</string></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -16,3 +16,7 @@ secrets.json
 
 # Letöltött ML-modellek (nagy, nem verziókövetett — ~/.tanara/models a futásidejű hely)
 models/
+
+# design render-harness build-kimenete (a .ui + .png + _render.cpp verziókövetett, a bináris/log nem)
+design/ui-mockups/_render
+design/ui-mockups/_build.log

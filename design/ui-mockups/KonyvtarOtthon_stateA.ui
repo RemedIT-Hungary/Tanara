@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>KonyvtarOtthonA</class>
+ <!--
+   Tanara — Könyvtár-otthon, STATE A: van felvétel, NINCS átirat/összefoglaló.
+   A tab-bar HELYÉN vezérelt pipeline-panel (a kapuzás a tartalomban).
+   Médialejátszó marad (a hang már megvan). CSAK ELŐNÉZET, beépített widgetek.
+ -->
+ <widget class="QMainWindow" name="KonyvtarOtthonA">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>1120</width><height>720</height></rect></property>
+  <property name="windowTitle"><string>Tanara — Könyvtár</string></property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="centralLayout">
+    <item>
+     <layout class="QHBoxLayout" name="topBar">
+      <item><widget class="QPushButton" name="newRecordingBtn"><property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 6px 14px; }</string></property><property name="text"><string>🔴  Új felvétel</string></property></widget></item>
+      <item><spacer name="topSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+      <item><widget class="QPushButton" name="peopleBtn"><property name="text"><string>👥  Emberek</string></property></widget></item>
+      <item><widget class="QPushButton" name="settingsBtn"><property name="text"><string>⚙  Beállítások</string></property></widget></item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation"><enum>Qt::Horizontal</enum></property>
+      <widget class="QWidget" name="leftPane">
+       <property name="minimumSize"><size><width>330</width><height>0</height></size></property>
+       <layout class="QVBoxLayout" name="leftLayout">
+        <item>
+         <layout class="QHBoxLayout" name="searchRow">
+          <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>🔍  Keresés…</string></property></widget></item>
+          <item><widget class="QComboBox" name="filterCombo"><property name="maximumWidth"><number>96</number></property><item><property name="text"><string>Mind</string></property></item></widget></item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QListWidget" name="meetingList">
+          <property name="alternatingRowColors"><bool>true</bool></property>
+          <property name="currentRow"><number>0</number></property>
+          <property name="styleSheet"><string>QListWidget::item { padding: 7px 6px; border-bottom: 1px solid palette(midlight); }</string></property>
+          <item><property name="text"><string>Tervezés — provider-platform
+○ átirat   ○ össz   ○ azonosítva
+2026. június 19. péntek 13:00 · 12p</string></property></item>
+          <item><property name="text"><string>Asterisk-meeting
+✓ átirat   ✓ össz   ● azonosítva
+2026. június 18. csütörtök 10:30 · 1ó 32p</string></property></item>
+          <item><property name="text"><string>Standup
+✓ átirat   ○ össz   ○ azonosítva
+2026. június 16. hétfő 09:00 · 21p</string></property></item>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="rightPane">
+       <layout class="QVBoxLayout" name="rightLayout">
+        <item>
+         <layout class="QHBoxLayout" name="headerRow">
+          <item><widget class="QLabel" name="titleLabel"><property name="styleSheet"><string>QLabel { font-size: 18px; font-weight: bold; }</string></property><property name="text"><string>Tervezés — provider-platform</string></property></widget></item>
+          <item><spacer name="headerSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+          <item><widget class="QLabel" name="metaLabel"><property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property><property name="text"><string>2026. június 19. · 12p</string></property></widget></item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="stepOuter">
+          <item><spacer name="stepLeft"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>60</width><height>20</height></size></property></spacer></item>
+          <item>
+           <widget class="QFrame" name="stepBox">
+            <property name="minimumWidth"><number>520</number></property>
+            <property name="maximumWidth"><number>560</number></property>
+            <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+            <property name="styleSheet"><string>QFrame#stepBox { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 8px; }</string></property>
+            <layout class="QVBoxLayout" name="stepLayout">
+             <property name="spacing"><number>14</number></property>
+             <property name="leftMargin"><number>22</number></property>
+             <property name="rightMargin"><number>22</number></property>
+             <property name="topMargin"><number>20</number></property>
+             <property name="bottomMargin"><number>20</number></property>
+             <item><widget class="QLabel" name="stepHeading"><property name="styleSheet"><string>QLabel { font-size: 15px; font-weight: bold; }</string></property><property name="text"><string>Mit csináljunk ezzel a felvétellel?</string></property></widget></item>
+             <item><widget class="QLabel" name="step1"><property name="text"><string>&lt;span style='color:#1a9e3a;'&gt;✓&lt;/span&gt;  &lt;b&gt;① Felvéve&lt;/b&gt; — 3 hangsáv (mikrofon + rendszerhang)</string></property></widget></item>
+             <item>
+              <widget class="QFrame" name="step2box">
+               <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+               <property name="styleSheet"><string>QFrame#step2box { background: rgba(54,122,204,0.14); border: 1px solid rgba(54,122,204,0.5); border-radius: 6px; }</string></property>
+               <layout class="QHBoxLayout" name="step2layout">
+                <item><widget class="QLabel" name="step2label"><property name="text"><string>&lt;b&gt;② Átirat&lt;/b&gt; — Soniox · magyar</string></property></widget></item>
+                <item><spacer name="step2spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item>
+                <item><widget class="QPushButton" name="transcribeBtn"><property name="styleSheet"><string>QPushButton { font-weight: bold; padding: 7px 16px; }</string></property><property name="text"><string>Átírás indítása ▸</string></property></widget></item>
+               </layout>
+              </widget>
+             </item>
+             <item><widget class="QLabel" name="step3"><property name="styleSheet"><string>QLabel { color: palette(mid); }</string></property><property name="text"><string>🔒  &lt;b&gt;③ Összefoglaló&lt;/b&gt; — előbb átirat kell</string></property></widget></item>
+             <item><widget class="QLabel" name="stepHint"><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>QLabel { color: palette(mid); font-style: italic; }</string></property><property name="text"><string>A beszélők azonosítása opcionális, és az átirat bármikor elkészül nélküle is — a neveket utólag is hozzárendelheted.</string></property></widget></item>
+            </layout>
+           </widget>
+          </item>
+          <item><spacer name="stepRight"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>60</width><height>20</height></size></property></spacer></item>
+         </layout>
+        </item>
+        <item><spacer name="stepBottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>60</height></size></property></spacer></item>
+        <item>
+         <widget class="QFrame" name="playerBar">
+          <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+          <property name="styleSheet"><string>QFrame#playerBar { background: palette(alternate-base); border: 1px solid palette(midlight); border-radius: 6px; }</string></property>
+          <layout class="QHBoxLayout" name="playerLayout">
+           <item><widget class="QPushButton" name="playBtn"><property name="maximumWidth"><number>40</number></property><property name="text"><string>▶</string></property></widget></item>
+           <item><widget class="QSlider" name="seekSlider"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="value"><number>0</number></property></widget></item>
+           <item><widget class="QLabel" name="posLabel"><property name="text"><string>00:00 / 12:04</string></property></widget></item>
+           <item><widget class="QLabel" name="volIcon"><property name="text"><string>🔊</string></property></widget></item>
+           <item><widget class="QSlider" name="volumeSlider"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="maximumWidth"><number>90</number></property><property name="value"><number>80</number></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
