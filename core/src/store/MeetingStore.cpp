@@ -1,6 +1,7 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/Logging.h"
 
 #include <QDir>
 #include <QFile>
@@ -96,7 +97,7 @@ void MeetingStore::openDb()
     QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connName);
     db.setDatabaseName(dbPath);
     if (!db.open()) {
-        qWarning("MeetingStore: nem sikerult megnyitni az index.db-t: %s",
+        qCWarning(lcStore, "MeetingStore: nem sikerult megnyitni az index.db-t: %s",
                  qPrintable(db.lastError().text()));
         return;
     }
@@ -118,7 +119,7 @@ void MeetingStore::ensureSchema()
         " hasSummary INTEGER"
         ")"));
     if (!ok)
-        qWarning("MeetingStore: schema hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingStore: schema hiba: %s", qPrintable(q.lastError().text()));
 }
 
 QString MeetingStore::meetingJsonPath(const QString& folder) const
@@ -145,7 +146,7 @@ void MeetingStore::upsertIndex(const Meeting& m)
     q.bindValue(QStringLiteral(":hasTranscript"), m.hasTranscript ? 1 : 0);
     q.bindValue(QStringLiteral(":hasSummary"), m.hasSummary ? 1 : 0);
     if (!q.exec())
-        qWarning("MeetingStore: index upsert hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingStore: index upsert hiba: %s", qPrintable(q.lastError().text()));
 }
 
 Meeting MeetingStore::createMeeting(const QString& title)
@@ -185,7 +186,7 @@ void MeetingStore::saveMeeting(const Meeting& m)
         f.write(QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented));
         f.close();
     } else {
-        qWarning("MeetingStore: nem sikerult irni a meeting.json-t: %s", qPrintable(path));
+        qCWarning(lcStore, "MeetingStore: nem sikerult irni a meeting.json-t: %s", qPrintable(path));
     }
 
     upsertIndex(m);
@@ -263,7 +264,7 @@ QVector<Meeting> MeetingStore::loadAll()
     if (!q.exec(QStringLiteral(
             "SELECT id, title, folder, startedAt, durationMs, hasTranscript, hasSummary"
             " FROM meetings ORDER BY startedAt DESC"))) {
-        qWarning("MeetingStore: loadAll hiba: %s", qPrintable(q.lastError().text()));
+        qCWarning(lcStore, "MeetingStore: loadAll hiba: %s", qPrintable(q.lastError().text()));
         return out;
     }
 
@@ -289,7 +290,7 @@ void MeetingStore::rebuildIndexFromDisk()
     {
         QSqlQuery clear(db);
         if (!clear.exec(QStringLiteral("DELETE FROM meetings")))
-            qWarning("MeetingStore: index urites hiba: %s", qPrintable(clear.lastError().text()));
+            qCWarning(lcStore, "MeetingStore: index urites hiba: %s", qPrintable(clear.lastError().text()));
     }
 
     QDir root(m_audioDir);

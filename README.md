@@ -153,6 +153,39 @@ identify <meetingId>            # auto-label speakers from the voiceprint DB
 voiceprints                     # list enrolled people / prints
 ```
 
+## Logging / debugging
+
+Both the GUI and the CLI use a single cross-platform logger (Qt logging framework).
+Messages go to **stderr** and to a rotating **file log**:
+
+```
+~/.tanara/logs/tanara.log         all messages (filtered by level)
+~/.tanara/logs/tanara-error.log   warnings + errors only — always written
+```
+
+`warning`/`error` are recorded regardless of level (so problems are captured even
+without debug). The level only controls `info`/`debug` verbosity.
+
+Flags (GUI and CLI):
+
+```
+--debug                 verbose; alias for --log-level=debug
+--log-level <lvl>       error | warning | info (default) | debug
+--log-dir <dir>         override the log directory
+--no-log-file           stderr only, no file
+--log-rules <rules>     pass-through QLoggingCategory filter rules
+```
+
+Environment: `TANARA_LOG_LEVEL=debug` (the flag overrides it).
+
+In **debug** mode the app dumps startup diagnostics: resolved paths, loaded
+settings, selected STT/LLM providers (**API keys are never logged**, only their
+presence) and the audio capture devices it sees.
+
+On Linux, when launched from a `.desktop` entry, stderr is captured by the systemd
+journal — `journalctl --user -t tanara`. On Windows the file log is authoritative
+(the GUI has no console) and messages are also mirrored to `OutputDebugString`.
+
 ## Privacy
 
 Audio, transcripts, summaries, the people list and voiceprints all stay on your

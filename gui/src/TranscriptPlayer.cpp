@@ -2,6 +2,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/Logging.h"
 
 #include <QPushButton>
 #include <QToolButton>
@@ -198,10 +199,11 @@ void TranscriptPlayer::ensurePlayer() {
     // a stderr-re — így terminálból indítva látszik, miért néma a lejátszás.
     connect(m_player, &QMediaPlayer::errorOccurred, this,
             [](QMediaPlayer::Error e, const QString& s) {
-                qWarning() << "[Tanara] QMediaPlayer error:" << e << s;
+                qCWarning(tanara::lcAudio) << "QMediaPlayer error:" << e << s;
             });
-    qInfo().noquote() << "[Tanara] audio-out eszköz:" << m_audioOutput->device().description()
-                      << "| volume:" << m_audioOutput->volume();
+    qCDebug(tanara::lcAudio).noquote()
+        << "audio-out eszköz:" << m_audioOutput->device().description()
+        << "| volume:" << m_audioOutput->volume();
 }
 
 void TranscriptPlayer::setBarEnabled(bool on) {

@@ -6,6 +6,7 @@
 //   summarize <meetingId>            összefoglaló (LM Studio)
 //
 #include "tanara/AppController.h"
+#include "tanara/Logging.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -52,11 +53,25 @@ static int cmdList(AppController& app) {
 }
 
 int main(int argc, char** argv) {
+    // Logolás MIELŐTT a QCoreApplication. A log-kapcsolókat (--debug, --log-level …)
+    // kiszedjük az argv-ből, hogy a parancs-parser tiszta listát kapjon.
+    QStringList rawArgs;
+    rawArgs.reserve(argc);
+    for (int i = 0; i < argc; ++i)
+        rawArgs << QString::fromLocal8Bit(argv[i]);
+    tanara::initLogging(tanara::parseLogOptions(rawArgs));
+
     QCoreApplication qapp(argc, argv);
-    const QStringList args = qapp.arguments();
+    const QStringList args = tanara::stripLogArgs(rawArgs);
     const QString cmd = args.value(1);
 
     AppController app;
+
+    // Részletes induló-diagnosztika csak debugban (a normál parancs-kimenet maradjon tiszta).
+    if (tanara::currentLogLevel() == tanara::LogLevel::Debug) {
+        app.refreshDevices();
+        tanara::logStartupDiagnostics(app);
+    }
 
     if (cmd == "devices") return cmdDevices(app);
     if (cmd == "list")    return cmdList(app);
