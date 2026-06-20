@@ -841,7 +841,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();
-        use = d->devices->captureDevices();
+        use = d->devices->autoRecordDevices();   // line-in/AUX kihagyva az auto-halmazból
     }
     if (use.isEmpty()) {
         emit errorOccurred(QStringLiteral("Nincs felvehető hangeszköz."));

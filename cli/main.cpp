@@ -98,7 +98,9 @@ int main(int argc, char** argv) {
         app.refreshDevices();
         const auto all = app.devices()->captureDevices();
         QVector<AudioDeviceInfo> sel;
-        if (deviceIdx.isEmpty()) sel = all;
+        // --device nélkül: az auto-halmaz (line-in/AUX kihagyva). A --device IDX a teljes
+        // 'devices' listára (captureDevices) indexel, így azzal a line-in is felvehető.
+        if (deviceIdx.isEmpty()) sel = app.devices()->autoRecordDevices();
         else for (int idx : deviceIdx) if (idx >= 0 && idx < all.size()) sel << all[idx];
 
         if (sel.isEmpty()) { err << "Nincs kiválasztható eszköz.\n"; return 1; }

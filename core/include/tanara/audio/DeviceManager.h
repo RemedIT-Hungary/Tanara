@@ -24,6 +24,10 @@ public:
     // A legutóbbi refresh() eredménye. Üres lista, ha nincs elérhető backend.
     QVector<AudioDeviceInfo> captureDevices() const;
 
+    // Az „auto-rögzítés minden eszközre" halmaza: a captureDevices() a vonalbemenet/
+    // AUX (TrackKind::Other) inputok NÉLKÜL. Ezeket kézzel kell bepipálni a felvevőben.
+    QVector<AudioDeviceInfo> autoRecordDevices() const;
+
 public slots:
     // Újra felsorolja az eszközöket. Robusztus: ha a backend nem elérhető,
     // üres listát állít be és nem dob.

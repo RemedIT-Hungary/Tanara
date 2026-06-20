@@ -13,11 +13,21 @@ struct DeviceManagerPrivate {
 namespace {
 
 // Heurisztika: Linuxon (PulseAudio/PipeWire) a kimenetek "monitor" forrásai is
-// capture eszközként jelennek meg. Ezeket Loopback-nek soroljuk, a többit Mic-nek.
+// capture eszközként jelennek meg. Ezeket Loopback-nek soroljuk, a vonalbemenet/AUX
+// jellegű inputokat Other-nek (valódi capture, de NEM mikrofon → az auto-rögzítés
+// alapból kihagyja, lásd autoRecordDevices()), a többit Mic-nek.
 TrackKind classifyByName(const QString& nameLower) {
     if (nameLower.contains(QStringLiteral("monitor")) ||
         nameLower.contains(QStringLiteral("loopback"))) {
         return TrackKind::Loopback;
+    }
+    // Vonalbemenet / line-in / AUX: tipikusan nincs bedugva semmi (csendet venne),
+    // ezért nem mikrofon. Kézzel továbbra is bepipálható a felvevő "Egyéb" csoportjában.
+    if (nameLower.contains(QStringLiteral("line-in")) ||
+        nameLower.contains(QStringLiteral("line in")) ||
+        nameLower.contains(QStringLiteral("vonalbemenet")) ||
+        nameLower.contains(QStringLiteral("aux"))) {
+        return TrackKind::Other;
     }
     return TrackKind::Mic;
 }
@@ -33,6 +43,16 @@ DeviceManager::~DeviceManager() = default;
 
 QVector<AudioDeviceInfo> DeviceManager::captureDevices() const {
     return d_->capture;
+}
+
+QVector<AudioDeviceInfo> DeviceManager::autoRecordDevices() const {
+    // Az auto-rögzítés („minden eszköz") halmaza: a valódi mikrofonok + loopback-ek,
+    // de a vonalbemenet/AUX (Other) jellegű inputok NÉLKÜL (azok kézzel pipálhatók).
+    QVector<AudioDeviceInfo> out;
+    for (const auto& d : d_->capture)
+        if (d.kind != TrackKind::Other)
+            out.push_back(d);
+    return out;
 }
 
 void DeviceManager::refresh() {

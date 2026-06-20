@@ -308,11 +308,11 @@ void RecordBar::onStartStopClicked() {
                          && m_controller->settings()->settings().autoRecordAllDevices;
     QVector<tanara::AudioDeviceInfo> sel;
     if (autoAll && m_controller->devices())
-        sel = m_controller->devices()->captureDevices();
+        sel = m_controller->devices()->autoRecordDevices();   // line-in/AUX kihagyva
     else
         sel = selectedDevices();
     if (sel.isEmpty() && m_controller->devices())   // auto fallback: ha üres a kijelölés
-        sel = m_controller->devices()->captureDevices();
+        sel = m_controller->devices()->autoRecordDevices();
 
     m_recordingDeviceNames.clear();
     for (const auto& d : sel)
