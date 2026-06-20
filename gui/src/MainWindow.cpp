@@ -8,7 +8,6 @@
 #include "PeopleManagerDialog.h"
 #include "FloatingRecorder.h"
 #include "TracksPanel.h"
-#include "ParticipantsDialog.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
@@ -234,7 +233,7 @@ void MainWindow::buildUi() {
             stepLayout->addWidget(m_identifyParticipantsBtn);
     }
     connect(m_identifyParticipantsBtn, &QPushButton::clicked,
-            this, &MainWindow::onParticipantsClicked);
+            this, &MainWindow::onIdentifyParticipants);
 
     // --- meeting-tábla viselkedése (kód) ---
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -334,7 +333,7 @@ void MainWindow::buildUi() {
 
     // --- jobb pane: beszélők-sáv + Sávok + kapu-panel + összefoglaló-generálás ---
     connect(m_tracksBtn, &QToolButton::clicked, this, &MainWindow::onTracksToggleClicked);
-    connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onSpeakersEditClicked);
+    connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyParticipants);
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
 
@@ -372,7 +371,7 @@ void MainWindow::buildMenu() {
     participantsAct->setToolTip(QStringLiteral(
         "A kiválasztott felvétel résztvevőinek megtippelése a hangsávok alapján "
         "(átirat nélkül is)."));
-    connect(participantsAct, &QAction::triggered, this, &MainWindow::onParticipantsClicked);
+    connect(participantsAct, &QAction::triggered, this, &MainWindow::onIdentifyParticipants);
     QAction* recWinAct = viewMenu->addAction(QStringLiteral("Felvétel-ablak előtérbe"));
     recWinAct->setToolTip(QStringLiteral(
         "A leválasztott felvétel-vezérlő ablakot előtérbe hozza (vagy megnyitja)."));
@@ -683,24 +682,57 @@ void MainWindow::onSummarizeClicked() {
     m_controller->summarizeMeeting(m.id);
 }
 
-void MainWindow::onParticipantsClicked() {
-    bool ok = false;
-    const tanara::Meeting m = selectedMeeting(&ok);
-    if (!ok || !m_controller)
-        return;
-    ParticipantsDialog dlg(m_controller, m.id, this);
-    dlg.exec();
+// Emberi összegző mondat: nincs név → „N különböző partner azonosítva";
+// van név → „A, B és X ismeretlen partner" (X==0 → csak a nevek).
+static QString participantsSummary(QStringList named, int unknownCount, int totalDistinct) {
+    named.removeDuplicates();
+    if (named.isEmpty())
+        return QStringLiteral("%1 különböző partner azonosítva").arg(totalDistinct);
+    QString s = named.join(QStringLiteral(", "));
+    if (unknownCount > 0)
+        s += QStringLiteral(" és %1 ismeretlen partner").arg(unknownCount);
+    return s;
 }
 
-void MainWindow::onIdentifyClicked() {
+void MainWindow::onIdentifyParticipants() {
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
     if (!ok || !m_controller)
         return;
-    setBusy(true, QStringLiteral("Beszélők azonosítása a hang-lenyomatok alapján…"));
-    m_controller->autoIdentifyMeeting(m.id);   // szinkron (ffmpeg + onnx)
-    setBusy(false);
-    statusBar()->showMessage(QStringLiteral("Azonosítás kész."), 4000);
+
+    QString summary;
+    if (m.hasTranscript) {
+        // Van átirat → a biztos DB-találatokat BEÍRJUK a speakerMap-be, majd az
+        // eredményt a frissített leképezésből összegezzük (a Beszélők-sáv is frissül).
+        setBusy(true, QStringLiteral("Résztvevők azonosítása a hang-lenyomatok alapján…"));
+        m_controller->autoIdentifyMeeting(m.id);     // szinkron (ffmpeg + onnx)
+        setBusy(false);
+        const tanara::Meeting fresh = m_controller->store()->load(m.id);
+        QStringList named;
+        int unknown = 0;
+        for (auto it = fresh.speakerMap.constBegin(); it != fresh.speakerMap.constEnd(); ++it) {
+            if (it.value().trimmed().isEmpty()) ++unknown;
+            else named << it.value().trimmed();
+        }
+        summary = participantsSummary(named, unknown, fresh.speakerMap.size());
+        reloadSpeakersBar(fresh);
+    } else {
+        // Nincs átirat → ELŐNÉZET: hang-klaszterek + DB-találat (nincs mit beírni,
+        // a nyers címkék csak az átírással keletkeznek).
+        setBusy(true, QStringLiteral("Résztvevők azonosítása a hang alapján…"));
+        const auto guesses = m_controller->identifyParticipants(m.id);   // szinkron
+        setBusy(false);
+        QStringList named;
+        int unknown = 0;
+        for (const auto& g : guesses) {
+            if (g.name.trimmed().isEmpty()) ++unknown;
+            else named << g.name.trimmed();
+        }
+        summary = participantsSummary(named, unknown, guesses.size());
+    }
+
+    QMessageBox::information(this, QStringLiteral("Résztvevők azonosítása"), summary);
+    statusBar()->showMessage(summary, 6000);
 }
 
 void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) {
@@ -780,25 +812,6 @@ void MainWindow::onTracksToggleClicked() {
         return;
     m_reviewStack->setCurrentWidget(ui->tabsPage);
     m_tabs->setCurrentWidget(m_tracksPanel);
-}
-
-void MainWindow::onSpeakersEditClicked() {
-    // „✏ Hozzárendelés…": a meglévő Résztvevők (ParticipantsDialog) és Azonosítás
-    // (autoIdentifyMeeting) akciókat ajánlja fel egy kis menüben — a per-beszélő
-    // átnevezés/teszt továbbra is a TranscriptPlayer soraiban érhető el.
-    bool ok = false;
-    const tanara::Meeting m = selectedMeeting(&ok);
-    if (!ok)
-        return;
-    QMenu menu(this);
-    QAction* participantsAct = menu.addAction(QStringLiteral("👥  Résztvevők…"));
-    QAction* identifyAct = menu.addAction(QStringLiteral("🔍  Beszélők azonosítása (hang alapján)"));
-    QAction* chosen = menu.exec(m_speakersEditBtn->mapToGlobal(
-        QPoint(0, m_speakersEditBtn->height())));
-    if (chosen == participantsAct)
-        onParticipantsClicked();
-    else if (chosen == identifyAct)
-        onIdentifyClicked();
 }
 
 void MainWindow::onRecordingFinished(tanara::Meeting meeting) {

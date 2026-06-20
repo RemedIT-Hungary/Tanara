@@ -52,8 +52,10 @@ private slots:
     void onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onTranscribeClicked();
     void onSummarizeClicked();
-    void onIdentifyClicked();
-    void onParticipantsClicked();
+    // EGYETLEN „Résztvevők azonosítása" akció: átirat előtt előnézet (hang-klaszterek +
+    // DB-találatok), átirat után a speakerMap kitöltése a biztos találatokkal — majd
+    // emberi összegzés („3 különböző partner" / „Dompa, Béla és 1 ismeretlen partner").
+    void onIdentifyParticipants();
     void onTranscriptReady(QString meetingId, QString markdownPath);
     void onSummaryReady(QString meetingId, QString markdownPath);
     void onError(QString message);
@@ -68,7 +70,6 @@ private slots:
     void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
     void dockRecorder();     // vissza a főablakba
     void onTracksToggleClicked();      // a Sávok-fülre vált
-    void onSpeakersEditClicked();      // Résztvevők + Azonosítás menü
 
 private:
     void buildUi();

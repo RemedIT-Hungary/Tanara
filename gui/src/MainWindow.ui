@@ -113,8 +113,8 @@
            </item>
            <item>
             <widget class="QPushButton" name="speakersEditBtn">
-             <property name="text"><string>✏  Hozzárendelés…</string></property>
-             <property name="toolTip"><string>Résztvevők megadása és a beszélők azonosítása (hang-lenyomat alapján).</string></property>
+             <property name="text"><string>🔍  Résztvevők azonosítása</string></property>
+             <property name="toolTip"><string>A beszélők azonosítása a hang-lenyomatok alapján; a biztos találatokat beírja, a többit „ismeretlen partner"-ként hagyja. A neveket az átiraton a névre kattintva adhatod meg.</string></property>
             </widget>
            </item>
           </layout>
