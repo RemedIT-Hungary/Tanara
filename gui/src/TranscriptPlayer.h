@@ -25,16 +25,26 @@ class QLabel;
 class QPlainTextEdit;
 class QMediaPlayer;
 class QAudioOutput;
-class QComboBox;
 class QHBoxLayout;
 class QVBoxLayout;
 class QFrame;
+class QSyntaxHighlighter;
 
 namespace tanara {
 class AppController;
 }
 
 namespace tanara_gui {
+
+// Egy átirat-sor kattintható tartományai (oszlop-pozíciók a blokkon belül), hogy a
+// QPlainTextEdit-en rich-text/anchor nélkül is „hiperlink-szerűen" működjenek az
+// időbélyeg és a név CTA-k (a kattintás oszlopát ehhez mérjük, és a link-stílust is
+// ezekre a tartományokra rajzolja a QSyntaxHighlighter).
+struct LineMeta {
+    int tsLen = 0;        // a „[mm:ss]" hossza → [0, tsLen) = időbélyeg-CTA
+    int nameStart = -1;   // a név kezdő oszlopa (-1, ha nincs név)
+    int nameLen = 0;      // a név hossza → [nameStart, nameStart+nameLen) = név-CTA
+};
 
 class TranscriptPlayer : public QWidget {
     Q_OBJECT
@@ -81,8 +91,6 @@ private slots:
     void onSliderReleased();
     void onSliderMoved(int value);
     void onVolumeChanged(int value);
-    // Az átirat kijelölésekor: a kijelölt rész beszélőjére előhozza a hozzárendelés-sávot.
-    void onTranscriptSelectionChanged();
 
 private:
     struct Segment {
@@ -99,11 +107,11 @@ private:
     bool loadSegments(const QString& path);   // segments.json → m_segments
     void populateList();                 // m_segments → a QPlainTextEdit blokkjai
     void rebuildLegend();                // kompakt beszélő-legenda (chipek) felépítése
-    void showAssignBarFor(const QString& rawLabel);  // kontextuális „ki mondta?" sáv
-    void hideAssignBar();
+    // A névre kattintva előugró menü: hozzárendelés meglévő névhez / új név (= azonnal
+    // fingerprint a személy-DB-be) / meghallgatás / név törlése.
+    void showSpeakerMenu(const QString& rawLabel, const QPoint& globalPos);
     QString displayName(const QString& rawSpeaker) const;  // speakerMap szerinti név
     void onSpeakerRenamed(const QString& rawLabel, const QString& chosenName);
-    void onTestSpeaker(const QString& rawLabel);   // fingerprint-teszt: legjobb egyezés
     // Egy beszélő "reprezentatív" (leghosszabb) szegmensét lejátssza (azonosításhoz).
     void playSpeakerSample(const QString& rawSpeaker);
     void playSegmentRange(qint64 startMs, qint64 endMs);   // egy-szegmens lejátszás
@@ -114,14 +122,11 @@ private:
     QString m_meetingId;
     QMap<QString, QString> m_speakerMap;   // nyers címke → valódi név (a meetingből)
 
-    // Kompakt legenda-chipek (ki van a meetingen) + kontextuális hozzárendelés-sáv.
+    // Kompakt legenda-chipek (ki van a meetingen) — áttekintés; a névadás a chipre VAGY
+    // az átiratban a névre kattintva előugró menüvel történik.
     QLabel*      m_speakersLabel = nullptr;
     QWidget*     m_legendPanel = nullptr;
     QHBoxLayout* m_legendLayout = nullptr;     // chipek vízszintesen
-    QFrame*      m_assignBar = nullptr;        // „🖱 …— ki mondta?" (alapból rejtett)
-    QLabel*      m_assignLabel = nullptr;
-    QComboBox*   m_assignCombo = nullptr;
-    QString      m_assignRaw;                  // a hozzárendelés célja (nyers címke)
 
     QWidget*        m_playerBar = nullptr;   // a beágyazható lejátszó-sáv (kiemelhető)
     QPushButton*    m_playPauseBtn = nullptr;
@@ -129,6 +134,8 @@ private:
     QLabel*         m_timeLabel = nullptr;
     QSlider*        m_volumeSlider = nullptr;
     QPlainTextEdit* m_view = nullptr;     // szegmensenként egy blokk
+    QSyntaxHighlighter* m_highlighter = nullptr;  // időbélyeg/név link-stílusa
+    QVector<LineMeta>   m_lineMeta;       // soronkénti kattintható tartományok
     QPoint          m_pressPos;           // kattintás kezdő-pozíció (click vs. drag)
 
     QMediaPlayer* m_player = nullptr;

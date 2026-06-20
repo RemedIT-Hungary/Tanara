@@ -32,6 +32,13 @@
 #include <QSet>
 #include <QMouseEvent>
 #include <QEvent>
+#include <QMenu>
+#include <QInputDialog>
+#include <QSyntaxHighlighter>
+#include <QTextCharFormat>
+#include <QTextDocument>
+#include <QFont>
+#include <QPalette>
 
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -41,6 +48,43 @@
 #include <algorithm>   // std::upper_bound, std::is_sorted, std::stable_sort
 
 namespace tanara_gui {
+
+namespace {
+// Az időbélyeg és a név „hiperlink" megjelenése a QPlainTextEdit-en, a m_lineMeta
+// oszlop-tartományaira (rich-text/anchor nélkül → hosszú átiratnál is gyors). A
+// highlightBlock csak a látható blokkokra fut.
+class LinkHighlighter : public QSyntaxHighlighter {
+public:
+    LinkHighlighter(QTextDocument* doc, const QVector<LineMeta>* meta, const QColor& link)
+        : QSyntaxHighlighter(doc), m_meta(meta) {
+        m_tsFmt.setForeground(link);
+        m_tsFmt.setFontUnderline(true);
+        m_nameFmt.setForeground(link);
+        m_nameFmt.setFontUnderline(true);
+        m_nameFmt.setFontWeight(QFont::Bold);
+    }
+protected:
+    void highlightBlock(const QString& text) override {
+        if (!m_meta) return;
+        const int b = currentBlock().blockNumber();
+        if (b < 0 || b >= m_meta->size()) return;
+        const LineMeta& lm = m_meta->at(b);
+        if (lm.tsLen > 0)
+            setFormat(0, qMin(lm.tsLen, text.length()), m_tsFmt);
+        if (lm.nameStart >= 0 && lm.nameLen > 0 && lm.nameStart < text.length())
+            setFormat(lm.nameStart, qMin(lm.nameLen, text.length() - lm.nameStart), m_nameFmt);
+    }
+private:
+    const QVector<LineMeta>* m_meta = nullptr;
+    QTextCharFormat m_tsFmt, m_nameFmt;
+};
+} // namespace
+
+static QSyntaxHighlighter* makeLinkHighlighter(QTextDocument* doc,
+                                               const QVector<LineMeta>* meta,
+                                               const QColor& link) {
+    return new LinkHighlighter(doc, meta, link);
+}
 
 TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
@@ -86,60 +130,9 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_speakersLabel->setVisible(false);
     m_legendPanel->setVisible(false);
 
-    // --- KONTEXTUÁLIS hozzárendelés-sáv (alapból rejtett; kijelöléskor / chip-kattintásra) ---
-    // „🖱 „<beszélő>" — ki mondta?  [név ▾] [Hozzárendel] [▶] [🔍] … [✕]"
-    m_assignBar = new QFrame(this);
-    m_assignBar->setObjectName(QStringLiteral("assignBar"));
-    m_assignBar->setFrameShape(QFrame::StyledPanel);
-    m_assignBar->setStyleSheet(QStringLiteral(
-        "QFrame#assignBar { background: rgba(227,179,74,0.18); "
-        "border: 1px solid rgba(227,179,74,0.55); border-radius: 6px; }"));
-    auto* ab = new QHBoxLayout(m_assignBar);
-    ab->setContentsMargins(8, 4, 8, 4);
-    m_assignLabel = new QLabel(QStringLiteral("🖱 Jelölj ki egy részt — ki mondta?"), m_assignBar);
-    m_assignCombo = new QComboBox(m_assignBar);
-    m_assignCombo->setEditable(true);
-    m_assignCombo->setInsertPolicy(QComboBox::NoInsert);
-    m_assignCombo->setMinimumWidth(160);
-    if (auto* le = m_assignCombo->lineEdit())
-        le->setPlaceholderText(QStringLiteral("név megadása…"));
-    if (auto* c = m_assignCombo->completer())
-        c->setCaseSensitivity(Qt::CaseInsensitive);
-    auto* assignApply  = new QPushButton(QStringLiteral("Hozzárendel"), m_assignBar);
-    auto* assignListen = new QToolButton(m_assignBar);
-    assignListen->setText(QStringLiteral("▶"));
-    assignListen->setAutoRaise(true);
-    assignListen->setToolTip(QStringLiteral("A beszélő egy mondatának meghallgatása"));
-    auto* assignTest   = new QToolButton(m_assignBar);
-    assignTest->setText(QStringLiteral("🔍"));
-    assignTest->setAutoRaise(true);
-    assignTest->setToolTip(QStringLiteral("Fingerprint-teszt: a legjobb egyezés a személy-adatbázisból"));
-    auto* assignClose  = new QToolButton(m_assignBar);
-    assignClose->setText(QStringLiteral("✕"));
-    assignClose->setAutoRaise(true);
-    ab->addWidget(m_assignLabel);
-    ab->addWidget(m_assignCombo, 1);
-    ab->addWidget(assignApply);
-    ab->addWidget(assignListen);
-    ab->addWidget(assignTest);
-    ab->addStretch(0);
-    ab->addWidget(assignClose);
-    root->addWidget(m_assignBar);
-    m_assignBar->setVisible(false);
-
-    auto applyAssign = [this]() {
-        if (m_assignRaw.isEmpty()) return;
-        onSpeakerRenamed(m_assignRaw, m_assignCombo->currentText());
-        hideAssignBar();
-    };
-    connect(assignApply, &QPushButton::clicked, this, applyAssign);
-    if (auto* le = m_assignCombo->lineEdit())
-        connect(le, &QLineEdit::returnPressed, this, applyAssign);
-    connect(assignListen, &QToolButton::clicked, this,
-            [this]() { if (!m_assignRaw.isEmpty()) playSpeakerSample(m_assignRaw); });
-    connect(assignTest, &QToolButton::clicked, this,
-            [this]() { if (!m_assignRaw.isEmpty()) onTestSpeaker(m_assignRaw); });
-    connect(assignClose, &QToolButton::clicked, this, [this]() { hideAssignBar(); });
+    // A névadás NEM külön sávban történik: az átiratban a NÉVRE kattintva (vagy a fenti
+    // legenda-chipre) ugrik elő a hozzárendelés-menü (showSpeakerMenu); az IDŐBÉLYEGRE
+    // kattintva a lejátszó odaugrik. Lásd populateList() + eventFilter().
 
     // --- szegmens-nézet (QPlainTextEdit, szegmensenként egy blokk) ---
     // Csak olvasható, de egérrel kijelölhető/másolható; a kattintásokat a viewportra
@@ -152,11 +145,13 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->setCenterOnScroll(true);
     m_view->viewport()->installEventFilter(this);
+    m_view->setMouseTracking(true);   // hover → pointing-hand a link-tartományokon
     root->addWidget(m_view, 1);
 
-    // Kijelölés az átiratban → a kijelölt rész beszélőjére előhozza a hozzárendelés-sávot.
-    connect(m_view, &QPlainTextEdit::selectionChanged,
-            this, &TranscriptPlayer::onTranscriptSelectionChanged);
+    // Az időbélyeg/név „hiperlink" megjelenése (link-szín + aláhúzás) a m_lineMeta
+    // tartományaira — rich-text/anchor NÉLKÜL, hogy a hosszú átirat is sima maradjon.
+    m_highlighter = makeLinkHighlighter(m_view->document(), &m_lineMeta,
+                                        m_view->palette().color(QPalette::Link));
 
     connect(m_playPauseBtn, &QPushButton::clicked,
             this, &TranscriptPlayer::onPlayPauseClicked);
@@ -284,18 +279,32 @@ void TranscriptPlayer::populateList() {
     // a dokumentum egyszer épül fel (gyors), nincs per-item layout-vihar.
     QStringList lines;
     lines.reserve(m_segments.size());
+    m_lineMeta.clear();
+    m_lineMeta.reserve(m_segments.size());
     for (const Segment& s : m_segments) {
         // [mm:ss]  <SPEAKER>  <text> — a beszélőt a speakerMap szerinti valódi
-        // névvel jelenítjük meg (ha van), nagybetűvel kiemelve.
-        QString line = QStringLiteral("[%1]").arg(formatTime(s.startMs));
-        if (!s.speaker.isEmpty())
-            line += QStringLiteral("  %1").arg(displayName(s.speaker).toUpper());
+        // névvel jelenítjük meg (ha van), nagybetűvel kiemelve. A kattintható
+        // tartományokat (időbélyeg / név) oszlop-pozícióként eltesszük (m_lineMeta).
+        const QString ts = QStringLiteral("[%1]").arg(formatTime(s.startMs));
+        LineMeta lm;
+        lm.tsLen = ts.length();
+        QString line = ts;
+        if (!s.speaker.isEmpty()) {
+            const QString name = displayName(s.speaker).toUpper();
+            line += QStringLiteral("  ");
+            lm.nameStart = line.length();
+            lm.nameLen = name.length();
+            line += name;
+        }
         line += QStringLiteral("  %1").arg(s.text);
         lines.push_back(line);
+        m_lineMeta.push_back(lm);
     }
     m_view->setPlainText(lines.join(QLatin1Char('\n')));
     m_view->moveCursor(QTextCursor::Start);
     m_view->setExtraSelections({});
+    if (m_highlighter)
+        m_highlighter->rehighlight();   // a friss m_lineMeta szerint színez
 }
 
 void TranscriptPlayer::rebuildLegend() {
@@ -306,7 +315,6 @@ void TranscriptPlayer::rebuildLegend() {
             w->deleteLater();
         delete old;
     }
-    hideAssignBar();
 
     // Egyedi NYERS beszélő-címkék a szegmensekből, az első előfordulás sorrendjében.
     QStringList rawSpeakers;
@@ -331,7 +339,7 @@ void TranscriptPlayer::rebuildLegend() {
         auto* chip = new QToolButton(m_legendPanel);
         chip->setText(disp + (isOwn ? QStringLiteral(" (én)") : QString()));
         chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip(QStringLiteral("Kattints a hozzárendeléshez / átnevezéshez"));
+        chip->setToolTip(QStringLiteral("Kattints a névadáshoz / átnevezéshez"));
         // Chip-stílus (téma-követő rgba): saját = kiemelt; ismeretlen = szaggatott/halvány; ismert = kitöltött.
         if (isOwn)
             chip->setStyleSheet(QStringLiteral(
@@ -345,7 +353,9 @@ void TranscriptPlayer::rebuildLegend() {
             chip->setStyleSheet(QStringLiteral(
                 "QToolButton { background: rgba(127,127,127,0.28); "
                 "padding: 2px 10px; border-radius: 9px; }"));
-        connect(chip, &QToolButton::clicked, this, [this, raw]() { showAssignBarFor(raw); });
+        connect(chip, &QToolButton::clicked, this, [this, chip, raw]() {
+            showSpeakerMenu(raw, chip->mapToGlobal(QPoint(0, chip->height())));
+        });
         m_legendLayout->addWidget(chip);
     }
 
@@ -365,48 +375,55 @@ void TranscriptPlayer::rebuildLegend() {
     m_legendPanel->setVisible(any);
 }
 
-void TranscriptPlayer::showAssignBarFor(const QString& rawLabel) {
-    if (rawLabel.isEmpty())
+void TranscriptPlayer::showSpeakerMenu(const QString& rawLabel, const QPoint& globalPos) {
+    if (rawLabel.isEmpty() || !m_controller)
         return;
-    m_assignRaw = rawLabel;
-    const QStringList people = m_controller ? m_controller->knownPeople() : QStringList{};
-    {
-        QSignalBlocker block(m_assignCombo);
-        m_assignCombo->clear();
-        m_assignCombo->addItems(people);
-        m_assignCombo->setCurrentText(displayName(rawLabel));
-    }
-    m_assignLabel->setText(
-        QStringLiteral("🖱 %1 — ki mondta?").arg(displayName(rawLabel)));
-    m_assignBar->setVisible(true);
-    m_assignCombo->setFocus();
-}
+    const QString current = displayName(rawLabel);
+    const bool named = (current != rawLabel);
 
-void TranscriptPlayer::hideAssignBar() {
-    m_assignRaw.clear();
-    if (m_assignBar)
-        m_assignBar->setVisible(false);
-}
+    QMenu menu(this);
+    QAction* header = menu.addAction(named
+        ? QStringLiteral("„%1” — átnevezés / kezelés").arg(current)
+        : QStringLiteral("„%1” — ki ez a beszélő?").arg(rawLabel));
+    header->setEnabled(false);
+    menu.addSeparator();
 
-void TranscriptPlayer::onTranscriptSelectionChanged() {
-    if (!m_view)
-        return;
-    const QTextCursor c = m_view->textCursor();
-    if (!c.hasSelection()) {
-        // Üres kijelölés (pl. kattintás-seek) → a sávot becsukjuk.
-        hideAssignBar();
-        return;
+    // Ismert nevek (a hozzárendelés egyúttal betanítja a hangját a személy-DB-be).
+    const QStringList people = m_controller->knownPeople();
+    for (const QString& p : people) {
+        QAction* a = menu.addAction(p);
+        a->setCheckable(true);
+        a->setChecked(p == current);
+        connect(a, &QAction::triggered, this, [this, rawLabel, p]() {
+            onSpeakerRenamed(rawLabel, p);
+        });
     }
-    // A kijelölés KEZDETÉHEZ tartozó blokk = szegmens-index → annak nyers beszélője.
-    QTextCursor start = c;
-    start.setPosition(c.selectionStart());
-    const int blk = start.blockNumber();
-    if (blk < 0 || blk >= m_segments.size())
+
+    QAction* newName = menu.addAction(QStringLiteral("✏  Új név…"));
+    menu.addSeparator();
+    QAction* listen = m_hasAudio ? menu.addAction(QStringLiteral("▶  Meghallgatás")) : nullptr;
+    QAction* clear = nullptr;
+    if (named) {
+        menu.addSeparator();
+        clear = menu.addAction(QStringLiteral("✖  Név törlése (ismeretlen)"));
+    }
+
+    QAction* chosen = menu.exec(globalPos);
+    if (!chosen)
         return;
-    const QString raw = m_segments[blk].speaker;
-    if (raw.isEmpty())
-        return;
-    showAssignBarFor(raw);
+    if (chosen == newName) {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, QStringLiteral("Új név"),
+            QStringLiteral("Ki ez a beszélő? (a hangja a személy-adatbázisba kerül)"),
+            QLineEdit::Normal, QString(), &ok).trimmed();
+        if (ok && !name.isEmpty())
+            onSpeakerRenamed(rawLabel, name);   // renameSpeaker enroll=true → fingerprint a DB-be
+    } else if (listen && chosen == listen) {
+        playSpeakerSample(rawLabel);
+    } else if (clear && chosen == clear) {
+        onSpeakerRenamed(rawLabel, QString());  // üres név → a leképezés törlése
+    }
+    // (az ismert-név action-ök a saját triggered-lambdájukban hívták az onSpeakerRenamed-et)
 }
 
 void TranscriptPlayer::onSpeakerRenamed(const QString& rawLabel, const QString& chosenName) {
@@ -418,36 +435,6 @@ void TranscriptPlayer::onSpeakerRenamed(const QString& rawLabel, const QString& 
         return;
     m_controller->renameSpeaker(m_meetingId, rawLabel, chosen);
     // A frissítést a speakerMapChanged → újratöltés intézi (MainWindow).
-}
-
-void TranscriptPlayer::onTestSpeaker(const QString& rawLabel) {
-    if (!m_controller || m_meetingId.isEmpty())
-        return;
-    const tanara::VoiceMatch m = m_controller->testSpeakerMatch(m_meetingId, rawLabel);
-    if (m.score < 0.0 || m.name.isEmpty()) {
-        QMessageBox::information(this, QStringLiteral("Fingerprint-teszt"),
-            QStringLiteral("Ehhez a beszélőhöz (%1) nincs egyezés a személy-adatbázisban "
-                           "(vagy nincs még betanított hang / modell).\n\n"
-                           "Adj nevet a sorban — ezzel betanítod a hangját, és onnantól "
-                           "automatikusan felismeri.").arg(rawLabel));
-        return;
-    }
-    const int pct = static_cast<int>(m.score * 100.0 + 0.5);
-    auto* box = new QMessageBox(this);
-    box->setAttribute(Qt::WA_DeleteOnClose);
-    box->setIcon(QMessageBox::Question);
-    box->setWindowTitle(QStringLiteral("Fingerprint-teszt"));
-    box->setText(QStringLiteral("„%1” → legjobb egyezés: <b>%2</b> (%3%)")
-                     .arg(rawLabel, m.name).arg(pct));
-    box->setInformativeText(QStringLiteral("Alkalmazzam ezt a nevet erre a beszélőre?"));
-    QPushButton* apply = box->addButton(QStringLiteral("Alkalmaz"), QMessageBox::AcceptRole);
-    box->addButton(QStringLiteral("Mégse"), QMessageBox::RejectRole);
-    const QString name = m.name;
-    connect(box, &QMessageBox::finished, this, [this, box, apply, rawLabel, name](int) {
-        if (box->clickedButton() == apply)
-            m_controller->renameSpeaker(m_meetingId, rawLabel, name);
-    });
-    box->open();
 }
 
 void TranscriptPlayer::setController(tanara::AppController* controller) {
@@ -480,9 +467,11 @@ void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
     if (!haveSegments) {
         m_segments.clear();
         m_segmentStarts.clear();
+        m_lineMeta.clear();
         m_highlightedRow = -1;
         m_view->setExtraSelections({});
         m_view->setPlainText(QStringLiteral("Nincs átirat — futtass Átírást."));
+        if (m_highlighter) m_highlighter->rehighlight();
         rebuildLegend();   // nincs szegmens → üres panel, elrejti magát
         setBarEnabled(false);
         m_hasAudio = false;
@@ -514,8 +503,10 @@ void TranscriptPlayer::clearMeeting() {
     }
     m_segments.clear();
     m_segmentStarts.clear();
+    m_lineMeta.clear();
     m_view->clear();
     m_view->setExtraSelections({});
+    if (m_highlighter) m_highlighter->rehighlight();
     rebuildLegend();
     m_seekSlider->setRange(0, 0);
     updateTimeLabel(0, 0);
@@ -673,12 +664,41 @@ bool TranscriptPlayer::eventFilter(QObject* obj, QEvent* ev) {
                 m_pressPos = me->pos();
         } else if (ev->type() == QEvent::MouseButtonRelease) {
             auto* me = static_cast<QMouseEvent*>(ev);
-            // Csak „tiszta” kattintás (nem húzás-kijelölés) ugrik a szegmensre.
+            // Csak „tiszta” kattintás (nem húzás-kijelölés) aktiválja a CTA-kat.
             if (me->button() == Qt::LeftButton &&
-                (me->pos() - m_pressPos).manhattanLength() < 6 && m_hasAudio) {
+                (me->pos() - m_pressPos).manhattanLength() < 6) {
                 const QTextCursor c = m_view->cursorForPosition(me->pos());
-                seekToSegment(c.blockNumber());
+                const int blk = c.blockNumber();
+                const int col = c.positionInBlock();
+                if (blk >= 0 && blk < m_lineMeta.size()) {
+                    const LineMeta& lm = m_lineMeta[blk];
+                    // Időbélyeg-CTA → a lejátszó az adott szegmensre ugrik + indul.
+                    if (col < lm.tsLen) {
+                        if (m_hasAudio)
+                            seekToSegment(blk);
+                        return true;
+                    }
+                    // Név-CTA → hozzárendelés-menü (átnevezés / új név / meghallgatás).
+                    if (lm.nameStart >= 0 && col >= lm.nameStart && col < lm.nameStart + lm.nameLen
+                        && blk < m_segments.size() && !m_segments[blk].speaker.isEmpty()) {
+                        showSpeakerMenu(m_segments[blk].speaker, me->globalPosition().toPoint());
+                        return true;
+                    }
+                }
             }
+        } else if (ev->type() == QEvent::MouseMove) {
+            // Hover-affordancia: a link-tartományok fölött pointing-hand kurzor.
+            auto* me = static_cast<QMouseEvent*>(ev);
+            const QTextCursor c = m_view->cursorForPosition(me->pos());
+            const int blk = c.blockNumber();
+            const int col = c.positionInBlock();
+            bool onLink = false;
+            if (blk >= 0 && blk < m_lineMeta.size()) {
+                const LineMeta& lm = m_lineMeta[blk];
+                onLink = (col < lm.tsLen) ||
+                         (lm.nameStart >= 0 && col >= lm.nameStart && col < lm.nameStart + lm.nameLen);
+            }
+            m_view->viewport()->setCursor(onLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
         }
     }
     return QWidget::eventFilter(obj, ev);
