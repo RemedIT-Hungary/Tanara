@@ -974,7 +974,12 @@ void AppController::transcribeMeeting(const QString& meetingId)
         req.trackId = t.id;
         req.speakerLabel = t.speakerLabel;
         req.languageHints = s.languageHints;
+        // Per-sáv context: a közös general (cím) + melyik beszélő/sáv ez (per-track .ogg-t
+        // küldünk, NEM a mixdownt) → a Soniox tudja, kinek a hangját hallja.
         req.contextGeneral = ctxGeneral;
+        if (!t.speakerLabel.trimmed().isEmpty())
+            req.contextGeneral.insert(QStringLiteral("Aktuális hangsáv beszélője"),
+                                      t.speakerLabel.trimmed());
         req.context = ctxText;
         req.contextTerms = participants;
         // Diarizáció MINDEN sávra: a mikrofonba is beszélhet egyszerre több ember,

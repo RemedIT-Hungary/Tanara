@@ -36,6 +36,7 @@
 #include <QProgressBar>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QPlainTextEdit>
 #include <QCoreApplication>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -53,6 +54,8 @@
 #include <QCloseEvent>
 
 namespace tanara_gui {
+
+static QString participantsSummary(QStringList named, int unknownCount, int totalDistinct);
 
 MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
     : QMainWindow(parent), m_controller(controller) {
@@ -218,30 +221,45 @@ void MainWindow::buildUi() {
     m_step2label       = ui->step2label;
     m_transcribeBtn    = ui->transcribeBtn;
 
-    // State A pipeline-panel: átirat ELŐTTI, hang-alapú résztvevő-azonosítás belépője.
-    // (A Beszélők-sáv „✏ Hozzárendelés…" menüje csak átirat MELLETT látszik; itt a
-    // friss, átirat nélküli felvételen is elérhető legyen — az onParticipantsClicked
-    // CSAK az audio-sávokból dolgozik, nem kell hozzá átirat.)
-    m_identifyParticipantsBtn =
-        new QPushButton(QStringLiteral("👥  Résztvevők azonosítása (hang alapján)"), this);
-    m_identifyParticipantsBtn->setToolTip(QStringLiteral(
-        "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható."));
-    // Tartós eredmény-sor a gomb alatt (átirat előtt is látszik, hogy mire jutott az
-    // azonosítás — nem csak egy eltűnő popup).
+    // State A — context-doboz az ② Átirat (transcribe gomb) FÖLÖTT: a felhasználó pár
+    // szóban megadja, miről szólt → a Soniox context-envelope-ba megy (pontosabb átirat),
+    // és az LLM-összefoglaló is megkapja. Alatta a (tudott) résztvevők + az azonosítás-gomb.
+    auto* ctxTitle = new QLabel(QStringLiteral("Miről szólt a meeting?"), this);
+    ctxTitle->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
+
+    m_contextEdit = new QPlainTextEdit(this);
+    m_contextEdit->setPlaceholderText(QStringLiteral(
+        "Pár szóban a téma, fontos nevek, szakszavak… (opcionális)"));
+    m_contextEdit->setMaximumHeight(72);
+
+    auto* ctxHelp = new QLabel(this);
+    ctxHelp->setWordWrap(true);
+    ctxHelp->setText(QStringLiteral(
+        "Ez a kontextus segíti a pontosabb átiratot: az átíró (Soniox) ezzel jobban "
+        "dönt a kétes/félreérthető részeknél — nevek, szakszavak, téma."));
+    ctxHelp->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); font-size: 11px; }"));
+
+    // (Eddig tudott) résztvevők sora — sáv-címkékből, ill. az azonosítás eredményéből.
     m_participantsResult = new QLabel(this);
     m_participantsResult->setWordWrap(true);
     m_participantsResult->setStyleSheet(QStringLiteral("QLabel { color: palette(text); }"));
     m_participantsResult->setVisible(false);
+
+    m_identifyParticipantsBtn =
+        new QPushButton(QStringLiteral("👥  Résztvevők azonosítása (hang alapján)"), this);
+    m_identifyParticipantsBtn->setToolTip(QStringLiteral(
+        "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható; "
+        "a felismert neveket a context-be is beépíti."));
+
     if (auto* stepLayout = qobject_cast<QVBoxLayout*>(ui->stepBox->layout())) {
-        // A „③ Összefoglaló" sor (step3) elé, az átirat-doboz után.
-        const int idx = stepLayout->indexOf(ui->step3);
-        if (idx >= 0) {
-            stepLayout->insertWidget(idx, m_identifyParticipantsBtn);
-            stepLayout->insertWidget(idx + 1, m_participantsResult);
-        } else {
-            stepLayout->addWidget(m_identifyParticipantsBtn);
-            stepLayout->addWidget(m_participantsResult);
-        }
+        // Az ② Átirat doboz (step2box) ELÉ, az ① Felvéve után.
+        int idx = stepLayout->indexOf(ui->step2box);
+        if (idx < 0) idx = stepLayout->count();
+        stepLayout->insertWidget(idx,     ctxTitle);
+        stepLayout->insertWidget(idx + 1, m_contextEdit);
+        stepLayout->insertWidget(idx + 2, ctxHelp);
+        stepLayout->insertWidget(idx + 3, m_participantsResult);
+        stepLayout->insertWidget(idx + 4, m_identifyParticipantsBtn);
     }
     connect(m_identifyParticipantsBtn, &QPushButton::clicked,
             this, &MainWindow::onIdentifyParticipants);
@@ -562,12 +580,38 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
                     : QStringLiteral("Nincs aktív hangsáv ehhez a felvételhez."));
         }
 
-        // A korábbi azonosítás tartós eredménye (session-cache) ehhez a meetinghez.
+        // A kontextus-doboz feltöltése a meetinghez mentett leírással (re-átírásnál megmarad).
+        if (m_contextEdit && m_contextEdit->toPlainText() != m.contextNote) {
+            const QSignalBlocker block(m_contextEdit);
+            m_contextEdit->setPlainText(m.contextNote);
+        }
+
+        // Résztvevők-sor: a lefuttatott azonosítás eredménye (session-cache), különben a
+        // sáv-címkékből az eddig tudott névsor + az ismeretlen (távoli) oldalak száma.
         if (m_participantsResult) {
+            QString line;
             const QString cached = m_participantsCache.value(m.id);
-            m_participantsResult->setText(cached.isEmpty() ? QString()
-                                                           : QStringLiteral("🔎 %1").arg(cached));
-            m_participantsResult->setVisible(!cached.isEmpty());
+            if (!cached.isEmpty()) {
+                line = QStringLiteral("🔎 Résztvevők: %1").arg(cached);
+            } else {
+                QStringList named;
+                int unknown = 0;
+                for (const tanara::Track& t : m.tracks) {
+                    if (!t.active) continue;
+                    const QString lbl = t.speakerLabel.trimmed();
+                    if (t.kind == tanara::TrackKind::Mic && !lbl.isEmpty()
+                        && lbl != QStringLiteral("Rendszer")) {
+                        if (!named.contains(lbl)) named << lbl;
+                    } else if (t.kind == tanara::TrackKind::Loopback) {
+                        ++unknown;   // távoli oldal — a nevek még ismeretlenek
+                    }
+                }
+                if (!named.isEmpty() || unknown > 0)
+                    line = QStringLiteral("Résztvevők: %1")
+                               .arg(participantsSummary(named, unknown, named.size() + unknown));
+            }
+            m_participantsResult->setText(line);
+            m_participantsResult->setVisible(!line.isEmpty());
         }
 
         // ② Átirat — a gomb engedélyezettsége/CTA-ja a canRun(Transcribe) szerint.
@@ -675,18 +719,10 @@ void MainWindow::onTranscribeClicked() {
         return;
     }
 
-    // Context-envelope: átírás előtt pár szóban elkérjük, miről szólt a meeting. A STT
-    // (Soniox „context") ezzel jobban dönt a kétes részeknél; az összefoglaló is kapja.
-    // Előtöltve a korábbi leírással (re-átírásnál megmarad). Mégse → nem indítunk.
-    bool noteOk = false;
-    const QString note = QInputDialog::getMultiLineText(
-        this, QStringLiteral("Miről szól ez a megbeszélés?"),
-        QStringLiteral("Pár szóban a téma / résztvevők / szakszavak — segít a pontosabb "
-                       "átiratban (opcionális, üresen is hagyhatod):"),
-        m.contextNote, &noteOk);
-    if (!noteOk)
-        return;   // Mégse → nem indítjuk az átírást
-    m_controller->setMeetingContextNote(m.id, note);
+    // Context-envelope: a State A doboz tartalmát (miről szólt a meeting) elmentjük →
+    // a STT (Soniox „context") és az összefoglaló is megkapja. Nincs külön popup.
+    if (m_contextEdit)
+        m_controller->setMeetingContextNote(m.id, m_contextEdit->toPlainText());
 
     setBusy(true, QStringLiteral("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
@@ -786,7 +822,7 @@ void MainWindow::onIdentifyParticipants() {
         summary = participantsSummary(named, unknown, guesses.size());
         m_participantsCache.insert(m.id, summary);
         if (m_participantsResult) {
-            m_participantsResult->setText(QStringLiteral("🔎 %1").arg(summary));
+            m_participantsResult->setText(QStringLiteral("🔎 Résztvevők: %1").arg(summary));
             m_participantsResult->setVisible(true);
         }
     }

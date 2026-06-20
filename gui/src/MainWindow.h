@@ -15,6 +15,7 @@ class QTextBrowser;
 class QTabWidget;
 class QStackedWidget;
 class QPushButton;
+class QPlainTextEdit;
 class QToolButton;
 class QLabel;
 class QFrame;
@@ -127,6 +128,7 @@ private:
     QPushButton*  m_transcribeBtn = nullptr;   // a kapu-panel „Átírás indítása" gombja
     // State A: átirat ELŐTTI, hang-alapú résztvevő-tippelés belépője (nem kell átirat).
     QPushButton*  m_identifyParticipantsBtn = nullptr;
+    QPlainTextEdit* m_contextEdit = nullptr;        // State A: „Miről szólt?" kontextus-doboz
     QLabel*       m_participantsResult = nullptr;   // tartós eredmény-sor a State A panelben
     QHash<QString, QString> m_participantsCache;    // meetingId → utolsó eredmény-mondat (session)
 
