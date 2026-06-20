@@ -18,6 +18,7 @@
 #include <QVector>
 #include <QMap>
 #include <QPoint>
+#include <QColor>
 
 class QPushButton;
 class QSlider;
@@ -44,6 +45,7 @@ struct LineMeta {
     int tsLen = 0;        // a „[mm:ss]" hossza → [0, tsLen) = időbélyeg-CTA
     int nameStart = -1;   // a név kezdő oszlopa (-1, ha nincs név)
     int nameLen = 0;      // a név hossza → [nameStart, nameStart+nameLen) = név-CTA
+    QColor nameColor;     // beszélőnként eltérő szín (a név félkövéren ezzel jelenik meg)
 };
 
 class TranscriptPlayer : public QWidget {
@@ -103,6 +105,9 @@ private:
     void ensurePlayer();                 // lusta QMediaPlayer-létrehozás
     void setBarEnabled(bool on);
     void highlightForPosition(qint64 pos);
+    // A lejátszás-kiemelést (aktuális szegmens) és a hover-token kiemelést EGY helyen
+    // fésüli össze és teszi ki a nézetre (mindkettő ExtraSelection, olcsó).
+    void updateExtraSelections();
     void seekToSegment(int idx);         // egy szegmensre ugrás (kattintás-logika)
     bool loadSegments(const QString& path);   // segments.json → m_segments
     void populateList();                 // m_segments → a QPlainTextEdit blokkjai
@@ -137,6 +142,10 @@ private:
     QSyntaxHighlighter* m_highlighter = nullptr;  // időbélyeg/név link-stílusa
     QVector<LineMeta>   m_lineMeta;       // soronkénti kattintható tartományok
     QPoint          m_pressPos;           // kattintás kezdő-pozíció (click vs. drag)
+    // A hover alatti link-token (block + oszlop-tartomány) a finom háttér-kiemeléshez.
+    int m_hoverBlock = -1;
+    int m_hoverStart = -1;
+    int m_hoverLen = 0;
 
     QMediaPlayer* m_player = nullptr;
     QAudioOutput* m_audioOutput = nullptr;

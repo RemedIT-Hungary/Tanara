@@ -30,6 +30,7 @@
 #include <QColor>
 #include <QStringList>
 #include <QSet>
+#include <QHash>
 #include <QMouseEvent>
 #include <QEvent>
 #include <QMenu>
@@ -55,35 +56,51 @@ namespace {
 // highlightBlock csak a látható blokkokra fut.
 class LinkHighlighter : public QSyntaxHighlighter {
 public:
-    LinkHighlighter(QTextDocument* doc, const QVector<LineMeta>* meta, const QColor& link)
-        : QSyntaxHighlighter(doc), m_meta(meta) {
-        m_tsFmt.setForeground(link);
-        m_tsFmt.setFontUnderline(true);
-        m_nameFmt.setForeground(link);
-        m_nameFmt.setFontUnderline(true);
-        m_nameFmt.setFontWeight(QFont::Bold);
-    }
+    LinkHighlighter(QTextDocument* doc, const QVector<LineMeta>* meta, const QColor& tsColor)
+        : QSyntaxHighlighter(doc), m_meta(meta), m_tsColor(tsColor) {}
 protected:
     void highlightBlock(const QString& text) override {
         if (!m_meta) return;
         const int b = currentBlock().blockNumber();
         if (b < 0 || b >= m_meta->size()) return;
         const LineMeta& lm = m_meta->at(b);
-        if (lm.tsLen > 0)
-            setFormat(0, qMin(lm.tsLen, text.length()), m_tsFmt);
-        if (lm.nameStart >= 0 && lm.nameLen > 0 && lm.nameStart < text.length())
-            setFormat(lm.nameStart, qMin(lm.nameLen, text.length() - lm.nameStart), m_nameFmt);
+        // Időbélyeg: halvány, másodlagos szín (nincs aláhúzás → nem „ronda link").
+        if (lm.tsLen > 0) {
+            QTextCharFormat f;
+            f.setForeground(m_tsColor);
+            setFormat(0, qMin(lm.tsLen, text.length()), f);
+        }
+        // Név: beszélőnként eltérő szín, félkövér (a kattinthatóságot a hover + a
+        // kéz-kurzor jelzi, nem aláhúzás).
+        if (lm.nameStart >= 0 && lm.nameLen > 0 && lm.nameStart < text.length()) {
+            QTextCharFormat f;
+            f.setForeground(lm.nameColor.isValid() ? lm.nameColor : m_tsColor);
+            f.setFontWeight(QFont::Bold);
+            setFormat(lm.nameStart, qMin(lm.nameLen, text.length() - lm.nameStart), f);
+        }
     }
 private:
     const QVector<LineMeta>* m_meta = nullptr;
-    QTextCharFormat m_tsFmt, m_nameFmt;
+    QColor m_tsColor;
 };
+
+// Stabil, témafüggetlen beszélő-paletta (közepes telítettség → világos és sötét témán
+// is olvasható). A beszélőkhöz az első előfordulás sorrendjében rendelünk színt.
+QColor speakerColor(int index) {
+    static const QColor kPalette[] = {
+        QColor(0x4f, 0xa3, 0xe3), QColor(0xe0, 0x82, 0x3d), QColor(0x5d, 0xaa, 0x5d),
+        QColor(0xc2, 0x59, 0x9b), QColor(0xc0, 0xa2, 0x3b), QColor(0x54, 0xb3, 0xb3),
+        QColor(0xb0, 0x60, 0x5d), QColor(0x8c, 0x7a, 0xe6),
+    };
+    const int n = int(sizeof(kPalette) / sizeof(kPalette[0]));
+    return kPalette[((index % n) + n) % n];
+}
 } // namespace
 
 static QSyntaxHighlighter* makeLinkHighlighter(QTextDocument* doc,
                                                const QVector<LineMeta>* meta,
-                                               const QColor& link) {
-    return new LinkHighlighter(doc, meta, link);
+                                               const QColor& tsColor) {
+    return new LinkHighlighter(doc, meta, tsColor);
 }
 
 TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
@@ -151,7 +168,7 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     // Az időbélyeg/név „hiperlink" megjelenése (link-szín + aláhúzás) a m_lineMeta
     // tartományaira — rich-text/anchor NÉLKÜL, hogy a hosszú átirat is sima maradjon.
     m_highlighter = makeLinkHighlighter(m_view->document(), &m_lineMeta,
-                                        m_view->palette().color(QPalette::Link));
+                                        m_view->palette().color(QPalette::Disabled, QPalette::Text));
 
     connect(m_playPauseBtn, &QPushButton::clicked,
             this, &TranscriptPlayer::onPlayPauseClicked);
@@ -281,6 +298,8 @@ void TranscriptPlayer::populateList() {
     lines.reserve(m_segments.size());
     m_lineMeta.clear();
     m_lineMeta.reserve(m_segments.size());
+    // Beszélő → szín, az első előfordulás sorrendjében (stabil a meetingen belül).
+    QHash<QString, QColor> speakerColors;
     for (const Segment& s : m_segments) {
         // [mm:ss]  <SPEAKER>  <text> — a beszélőt a speakerMap szerinti valódi
         // névvel jelenítjük meg (ha van), nagybetűvel kiemelve. A kattintható
@@ -295,6 +314,9 @@ void TranscriptPlayer::populateList() {
             lm.nameStart = line.length();
             lm.nameLen = name.length();
             line += name;
+            if (!speakerColors.contains(s.speaker))
+                speakerColors.insert(s.speaker, speakerColor(speakerColors.size()));
+            lm.nameColor = speakerColors.value(s.speaker);
         }
         line += QStringLiteral("  %1").arg(s.text);
         lines.push_back(line);
@@ -504,6 +526,8 @@ void TranscriptPlayer::clearMeeting() {
     m_segments.clear();
     m_segmentStarts.clear();
     m_lineMeta.clear();
+    m_highlightedRow = -1;
+    m_hoverBlock = -1; m_hoverStart = -1; m_hoverLen = 0;
     m_view->clear();
     m_view->setExtraSelections({});
     if (m_highlighter) m_highlighter->rehighlight();
@@ -573,21 +597,11 @@ void TranscriptPlayer::highlightForPosition(qint64 pos) {
     if (found < 0 || found == m_highlightedRow)
         return;
     m_highlightedRow = found;
+    updateExtraSelections();   // a lejátszás-kiemelés (+ hover) újrarajzolása
 
-    // A kiemelt szegmens = a `found`. blokk. FullWidthSelection → a teljes sor
-    // halvány sárga, kijelölés (k”kék”) nélkül. ExtraSelection olcsó, nem épít widgetet.
     QTextBlock block = m_view->document()->findBlockByNumber(found);
     if (!block.isValid())
         return;
-    QTextCursor cur(block);
-    QTextEdit::ExtraSelection sel;
-    sel.cursor = cur;                       // kijelölés nélkül, csak pozíció a blokk elején
-    sel.format.setBackground(QColor(255, 244, 200));
-    // FIX sötét betűszín a sárga háttérhez — különben sötét témán a világos szöveg
-    // a sárgán olvashatatlan (klasszikus „kijelölt sor" look, bármelyik témán olvasható).
-    sel.format.setForeground(QColor(26, 26, 26));
-    sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-    m_view->setExtraSelections({sel});
 
     // A nézet a kiemelt szegmensre görget (középre), de a felhasználó szöveg-
     // kijelölését nem bántjuk: külön kurzort használunk a görgetéshez.
@@ -598,6 +612,42 @@ void TranscriptPlayer::highlightForPosition(qint64 pos) {
     // A látható (felhasználói) kurzort visszaállítjuk, ha volt kijelölése.
     if (saved.hasSelection())
         m_view->setTextCursor(saved);
+}
+
+void TranscriptPlayer::updateExtraSelections() {
+    if (!m_view)
+        return;
+    QList<QTextEdit::ExtraSelection> list;
+
+    // 1) Lejátszás-kiemelés: a teljes sor halvány sárga (FullWidthSelection), fix sötét
+    //    betűszínnel (sötét témán is olvasható).
+    if (m_highlightedRow >= 0) {
+        QTextBlock block = m_view->document()->findBlockByNumber(m_highlightedRow);
+        if (block.isValid()) {
+            QTextEdit::ExtraSelection sel;
+            sel.cursor = QTextCursor(block);
+            sel.format.setBackground(QColor(255, 244, 200));
+            sel.format.setForeground(QColor(26, 26, 26));
+            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+            list.append(sel);
+        }
+    }
+
+    // 2) Hover-token: finom háttér a link-tartomány alatt → „ez kattintható".
+    if (m_hoverBlock >= 0 && m_hoverLen > 0) {
+        QTextBlock block = m_view->document()->findBlockByNumber(m_hoverBlock);
+        if (block.isValid()) {
+            QTextCursor c(block);
+            c.setPosition(block.position() + m_hoverStart);
+            c.setPosition(block.position() + m_hoverStart + m_hoverLen, QTextCursor::KeepAnchor);
+            QTextEdit::ExtraSelection sel;
+            sel.cursor = c;
+            sel.format.setBackground(QColor(127, 127, 127, 64));   // téma-semleges, halvány
+            list.append(sel);
+        }
+    }
+
+    m_view->setExtraSelections(list);
 }
 
 void TranscriptPlayer::onPlaybackStateChanged() {
@@ -687,18 +737,31 @@ bool TranscriptPlayer::eventFilter(QObject* obj, QEvent* ev) {
                 }
             }
         } else if (ev->type() == QEvent::MouseMove) {
-            // Hover-affordancia: a link-tartományok fölött pointing-hand kurzor.
+            // Hover-affordancia: a link-token fölött pointing-hand kurzor + finom háttér.
             auto* me = static_cast<QMouseEvent*>(ev);
             const QTextCursor c = m_view->cursorForPosition(me->pos());
             const int blk = c.blockNumber();
             const int col = c.positionInBlock();
-            bool onLink = false;
+            int hb = -1, hs = -1, hl = 0;
             if (blk >= 0 && blk < m_lineMeta.size()) {
                 const LineMeta& lm = m_lineMeta[blk];
-                onLink = (col < lm.tsLen) ||
-                         (lm.nameStart >= 0 && col >= lm.nameStart && col < lm.nameStart + lm.nameLen);
+                if (col < lm.tsLen) {
+                    hb = blk; hs = 0; hl = lm.tsLen;
+                } else if (lm.nameStart >= 0 && col >= lm.nameStart
+                           && col < lm.nameStart + lm.nameLen) {
+                    hb = blk; hs = lm.nameStart; hl = lm.nameLen;
+                }
             }
-            m_view->viewport()->setCursor(onLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
+            m_view->viewport()->setCursor(hb >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
+            if (hb != m_hoverBlock || hs != m_hoverStart || hl != m_hoverLen) {
+                m_hoverBlock = hb; m_hoverStart = hs; m_hoverLen = hl;
+                updateExtraSelections();
+            }
+        } else if (ev->type() == QEvent::Leave) {
+            if (m_hoverBlock != -1) {
+                m_hoverBlock = -1; m_hoverStart = -1; m_hoverLen = 0;
+                updateExtraSelections();
+            }
         }
     }
     return QWidget::eventFilter(obj, ev);
