@@ -1,15 +1,14 @@
 #pragma once
 //
 // FloatingRecorder — a felvétel-vezérlő (RecordBar) leválasztható, önálló
-// felső-szintű ablaka. Tálcázható (Qt::Window), opcionálisan mindig-felül,
-// és felvétel közben villogó REC-jelzést mutat. A RecordBar-t NEM birtokolja:
+// felső-szintű ablaka. Tálcázható (Qt::Window), opcionálisan mindig-felül.
+// Nincs külön felső sáv: a felvétel-állapotot a piros felvétel-gomb mutatja, a
+// visszadokkolás az ablak bezárásával történik. A RecordBar-t NEM birtokolja:
 // dokkoláskor a MainWindow visszahelyezi a fő elrendezésbe.
 //
 #include "tanara/Types.h"
 #include <QWidget>
 
-class QLabel;
-class QTimer;
 class QCloseEvent;
 
 namespace tanara {
@@ -35,15 +34,10 @@ protected:
 
 private slots:
     void onAlwaysOnTopToggled(bool on);
-    void onRecordingStateChanged(tanara::RecordingState state);
-    void onBlink();
 
 private:
     tanara::AppController* m_controller = nullptr;
     QWidget*   m_recordBar = nullptr;     // not owned
-    QLabel*    m_recIndicator = nullptr;
-    QTimer*    m_blinkTimer = nullptr;
-    bool       m_blinkOn = false;
 };
 
 } // namespace tanara_gui
