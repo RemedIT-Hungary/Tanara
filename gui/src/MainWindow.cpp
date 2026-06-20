@@ -35,6 +35,8 @@
 #include <QStatusBar>
 #include <QProgressBar>
 #include <QMessageBox>
+#include <QProgressDialog>
+#include <QCoreApplication>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QPoint>
@@ -224,13 +226,22 @@ void MainWindow::buildUi() {
         new QPushButton(QStringLiteral("👥  Résztvevők azonosítása (hang alapján)"), this);
     m_identifyParticipantsBtn->setToolTip(QStringLiteral(
         "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható."));
+    // Tartós eredmény-sor a gomb alatt (átirat előtt is látszik, hogy mire jutott az
+    // azonosítás — nem csak egy eltűnő popup).
+    m_participantsResult = new QLabel(this);
+    m_participantsResult->setWordWrap(true);
+    m_participantsResult->setStyleSheet(QStringLiteral("QLabel { color: palette(text); }"));
+    m_participantsResult->setVisible(false);
     if (auto* stepLayout = qobject_cast<QVBoxLayout*>(ui->stepBox->layout())) {
         // A „③ Összefoglaló" sor (step3) elé, az átirat-doboz után.
         const int idx = stepLayout->indexOf(ui->step3);
-        if (idx >= 0)
+        if (idx >= 0) {
             stepLayout->insertWidget(idx, m_identifyParticipantsBtn);
-        else
+            stepLayout->insertWidget(idx + 1, m_participantsResult);
+        } else {
             stepLayout->addWidget(m_identifyParticipantsBtn);
+            stepLayout->addWidget(m_participantsResult);
+        }
     }
     connect(m_identifyParticipantsBtn, &QPushButton::clicked,
             this, &MainWindow::onIdentifyParticipants);
@@ -551,6 +562,14 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
                     : QStringLiteral("Nincs aktív hangsáv ehhez a felvételhez."));
         }
 
+        // A korábbi azonosítás tartós eredménye (session-cache) ehhez a meetinghez.
+        if (m_participantsResult) {
+            const QString cached = m_participantsCache.value(m.id);
+            m_participantsResult->setText(cached.isEmpty() ? QString()
+                                                           : QStringLiteral("🔎 %1").arg(cached));
+            m_participantsResult->setVisible(!cached.isEmpty());
+        }
+
         // ② Átirat — a gomb engedélyezettsége/CTA-ja a canRun(Transcribe) szerint.
         const tanara::ReadinessResult r =
             m_controller ? m_controller->canRun(tanara::WorkflowStep::Transcribe, m.id)
@@ -700,13 +719,32 @@ void MainWindow::onIdentifyParticipants() {
     if (!ok || !m_controller)
         return;
 
+    // Megszakítható progress: a számítás a fő szálon fut (a store-mutáció miatt), de a
+    // callback minden lépésnél frissíti a dialógust + processEvents-szel életben tartja
+    // a UI-t és figyeli a „Megszakítás"-t. A core UI-mentes marad.
+    QProgressDialog dlg(QStringLiteral("Résztvevők azonosítása a hang alapján…"),
+                        QStringLiteral("Megszakítás"), 0, 0, this);
+    dlg.setWindowTitle(QStringLiteral("Résztvevők azonosítása"));
+    dlg.setWindowModality(Qt::WindowModal);
+    dlg.setMinimumDuration(0);
+    dlg.setAutoClose(false);
+    dlg.setAutoReset(false);
+    dlg.setValue(0);
+    auto progress = [&dlg](int done, int total) -> bool {
+        if (total > 0) { dlg.setMaximum(total); dlg.setValue(done); }
+        QCoreApplication::processEvents();
+        return !dlg.wasCanceled();
+    };
+
     QString summary;
     if (m.hasTranscript) {
-        // Van átirat → a biztos DB-találatokat BEÍRJUK a speakerMap-be, majd az
-        // eredményt a frissített leképezésből összegezzük (a Beszélők-sáv is frissül).
-        setBusy(true, QStringLiteral("Résztvevők azonosítása a hang-lenyomatok alapján…"));
-        m_controller->autoIdentifyMeeting(m.id);     // szinkron (ffmpeg + onnx)
-        setBusy(false);
+        // Van átirat → a biztos DB-találatokat BEÍRJUK a speakerMap-be; a visszajelzés a
+        // (tartós) Beszélők-sáv frissülése.
+        m_controller->autoIdentifyMeeting(m.id, progress);
+        if (dlg.wasCanceled()) {
+            statusBar()->showMessage(QStringLiteral("Azonosítás megszakítva."), 4000);
+            return;
+        }
         const tanara::Meeting fresh = m_controller->store()->load(m.id);
         QStringList named;
         int unknown = 0;
@@ -717,11 +755,14 @@ void MainWindow::onIdentifyParticipants() {
         summary = participantsSummary(named, unknown, fresh.speakerMap.size());
         reloadSpeakersBar(fresh);
     } else {
-        // Nincs átirat → ELŐNÉZET: hang-klaszterek + DB-találat (nincs mit beírni,
-        // a nyers címkék csak az átírással keletkeznek).
-        setBusy(true, QStringLiteral("Résztvevők azonosítása a hang alapján…"));
-        const auto guesses = m_controller->identifyParticipants(m.id);   // szinkron
-        setBusy(false);
+        // Nincs átirat → ELŐNÉZET: hang-klaszterek + DB-találat. A nyers címkék csak az
+        // átírással keletkeznek, ezért itt nem írunk be — a tartós visszajelzés a State A
+        // panel eredmény-sora (+ session-cache), nem egy eltűnő popup.
+        const auto guesses = m_controller->identifyParticipants(m.id, progress);
+        if (dlg.wasCanceled()) {
+            statusBar()->showMessage(QStringLiteral("Azonosítás megszakítva."), 4000);
+            return;
+        }
         QStringList named;
         int unknown = 0;
         for (const auto& g : guesses) {
@@ -729,9 +770,13 @@ void MainWindow::onIdentifyParticipants() {
             else named << g.name.trimmed();
         }
         summary = participantsSummary(named, unknown, guesses.size());
+        m_participantsCache.insert(m.id, summary);
+        if (m_participantsResult) {
+            m_participantsResult->setText(QStringLiteral("🔎 %1").arg(summary));
+            m_participantsResult->setVisible(true);
+        }
     }
-
-    QMessageBox::information(this, QStringLiteral("Résztvevők azonosítása"), summary);
+    dlg.reset();
     statusBar()->showMessage(summary, 6000);
 }
 

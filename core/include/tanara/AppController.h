@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QVector>
 #include <memory>
+#include <functional>
 
 namespace tanara {
 
@@ -115,7 +116,10 @@ public slots:
     // Auto-azonosítás: a meeting még névtelen (nem leképezett) nyers beszélőit a
     // voiceprint DB ellen párosítja; küszöb felett előtölti a speakerMap-et.
     // speakerMapChanged-et emittál. Bármikor újrafuttatható (a friss DB-vel).
-    void autoIdentifyMeeting(const QString& meetingId);
+    // onProgress(done,total): opcionális; false visszatérés → megszakítás (a UI-nak,
+    // a fő szálon hívva — a callback rajzolhat progresst / nézhet „mégse"-t).
+    void autoIdentifyMeeting(const QString& meetingId,
+                             const std::function<bool(int,int)>& onProgress = {});
 
     // Fingerprint-teszt EGY beszélőre: a hangjából a legjobb egyezés a voiceprint-DB-ből
     // (név + cosine pontszám). Nem módosít semmit; { "", -1 } ha nincs modell/egyezés.
@@ -124,7 +128,9 @@ public slots:
     // ÁTÍRÁS ELŐTTI résztvevő-azonosítás: sávonként ablakozva mintázza a hangot,
     // beszélőkre klaszterezi, és a voiceprint-DB ellen párosítja → kik voltak a
     // meetingen (név vagy "ismeretlen"). Lokális, Soniox nélkül; szinkron (pár mp).
-    QVector<tanara::ParticipantGuess> identifyParticipants(const QString& meetingId);
+    // onProgress(done,total): opcionális; false → megszakítás (lásd autoIdentifyMeeting).
+    QVector<tanara::ParticipantGuess> identifyParticipants(
+        const QString& meetingId, const std::function<bool(int,int)>& onProgress = {});
 
     // Lenyomat felvétele egy tetszőleges hang-szegmensből (átírás előtti névadáshoz):
     // a meeting adott sávjának [startMs,endMs] részéből embeddinget számol és a név

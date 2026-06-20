@@ -390,7 +390,8 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     emit voiceprintsChanged();
 }
 
-void AppController::autoIdentifyMeeting(const QString& meetingId) {
+void AppController::autoIdentifyMeeting(const QString& meetingId,
+                                       const std::function<bool(int,int)>& onProgress) {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
 
@@ -420,7 +421,10 @@ void AppController::autoIdentifyMeeting(const QString& meetingId) {
     // Nincs hangerő/pozíció-alapú feltételezés és nincs auto-enroll: a NÉV a fingerprint
     // (vagy a felhasználó egyszeri kézi átnevezése) alapján kerül a beszélőre.
     bool mapChanged = false;
+    int progressDone = 0;
     for (const QString& label : labels) {
+        if (onProgress && !onProgress(++progressDone, labels.size()))
+            break;   // a felhasználó megszakította → a már megtalált matchek mentődnek
         if (m.speakerMap.contains(label))
             continue;   // már nevesített (kézzel vagy korábbi match)
         const Track* track = resolveTrackForLabel(m, merged, label);
@@ -464,7 +468,8 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     return d->voiceprints->bestMatch(e);
 }
 
-QVector<ParticipantGuess> AppController::identifyParticipants(const QString& meetingId) {
+QVector<ParticipantGuess> AppController::identifyParticipants(
+    const QString& meetingId, const std::function<bool(int,int)>& onProgress) {
     QVector<ParticipantGuess> out;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return out;
@@ -482,6 +487,17 @@ QVector<ParticipantGuess> AppController::identifyParticipants(const QString& mee
     constexpr double kMergeThreshold = 0.55; // klaszter-összevonás cosine-küszöbe
     constexpr float  kSilenceRms = 0.004f;   // ennél halkabb ablak = csend (kihagy)
 
+    // Progress: az összes feldolgozandó ablak (aktív sávok × ablak/sáv) — a callbackhez.
+    int progressTotal = 0, progressDone = 0;
+    if (m.durationMs >= kWinMs) {
+        const qint64 step0 = std::max<qint64>(kWinMs, m.durationMs / kTargetWindows);
+        int perTrack = 0;
+        for (qint64 s = 0; s + kWinMs <= m.durationMs; s += step0) ++perTrack;
+        int activeTracks = 0;
+        for (const Track& t : m.tracks) if (t.active) ++activeTracks;
+        progressTotal = perTrack * activeTracks;
+    }
+
     for (const Track& t : m.tracks) {
         if (!t.active) continue;
         const qint64 D = m.durationMs;
@@ -492,6 +508,8 @@ QVector<ParticipantGuess> AppController::identifyParticipants(const QString& mee
         QVector<QVector<float>> embs;
         QVector<qint64> winStart;
         for (qint64 s = 0; s + kWinMs <= D; s += step) {
+            if (onProgress && !onProgress(++progressDone, progressTotal))
+                return out;   // a felhasználó megszakította
             QVector<float> pcm = VoiceEmbedder::decodePcm16kMono(path, s, s + kWinMs);
             if (pcm.isEmpty()) continue;
             double sum = 0.0;
