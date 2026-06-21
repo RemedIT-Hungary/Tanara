@@ -381,16 +381,9 @@ void TranscriptPlayer::rebuildLegend() {
         m_legendLayout->addWidget(chip);
     }
 
-    // „Mindet kezel… (Emberek)" link a globális Személyek-kezelőhöz.
-    auto* manage = new QToolButton(m_legendPanel);
-    manage->setText(QStringLiteral("Mindet kezel… (Emberek)"));
-    manage->setAutoRaise(true);
-    manage->setCursor(Qt::PointingHandCursor);
-    manage->setStyleSheet(QStringLiteral("QToolButton { color: palette(link); }"));
-    connect(manage, &QToolButton::clicked, this, &TranscriptPlayer::managePeopleRequested);
-
+    // (A globális személy-kezelőt a fő ablak jobb felső „Emberek" gombja nyitja — itt
+    //  nem duplikáljuk; a chipek balra igazítva maradnak.)
     m_legendLayout->addStretch(1);
-    m_legendLayout->addWidget(manage);
 
     const bool any = !rawSpeakers.isEmpty();
     m_speakersLabel->setVisible(any);

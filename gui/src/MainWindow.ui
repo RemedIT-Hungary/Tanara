@@ -79,12 +79,6 @@
             <property name="text"><string/></property>
            </widget>
           </item>
-          <item>
-           <widget class="QToolButton" name="tracksBtn">
-            <property name="text"><string>Sávok…</string></property>
-            <property name="toolTip"><string>A hangsávok (mikrofon / rendszerhang) megtekintése és ki-/bekapcsolása.</string></property>
-           </widget>
-          </item>
          </layout>
         </item>
         <item>

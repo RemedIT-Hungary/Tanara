@@ -75,10 +75,6 @@ public:
     // kezeli a seeket/kiemelést/odaugrást.
     QWidget* playerBar() const { return m_playerBar; }
 
-signals:
-    // „Mindet kezel… (Emberek)" link → a MainWindow nyitja a globális Személyek-kezelőt.
-    void managePeopleRequested();
-
 protected:
     // A szegmens-nézet (QPlainTextEdit viewport) kattintásait figyeljük: a kattintott
     // blokk = szegmens-index → odaugrás. (A húzás-szöveges kijelölést nem zavarjuk.)

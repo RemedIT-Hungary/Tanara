@@ -116,7 +116,6 @@ private:
     // --- jobb pane fejléc + beszélők-sáv ---
     QLabel*       m_titleLabel = nullptr;
     QLabel*       m_metaLabel = nullptr;
-    QToolButton*  m_tracksBtn = nullptr;
     QFrame*       m_speakersBar = nullptr;
     QLabel*       m_speakersSummary = nullptr;
     QPushButton*  m_speakersEditBtn = nullptr;

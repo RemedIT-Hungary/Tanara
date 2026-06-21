@@ -213,7 +213,6 @@ void MainWindow::buildUi() {
 
     m_titleLabel       = ui->titleLabel;
     m_metaLabel        = ui->metaLabel;
-    m_tracksBtn        = ui->tracksBtn;
     m_speakersBar      = ui->speakersBar;
     m_speakersSummary  = ui->speakersSummary;
     m_speakersEditBtn  = ui->speakersEditBtn;
@@ -289,9 +288,6 @@ void MainWindow::buildUi() {
 
     // --- fülek (a custom widgetek a .ui-ban promotálva; itt csak bekötés) ---
     m_transcriptPlayer->setController(m_controller);
-    // „Mindet kezel… (Emberek)" a beszélő-legendából → globális Személyek-kezelő.
-    connect(m_transcriptPlayer, &TranscriptPlayer::managePeopleRequested,
-            this, &MainWindow::openPeopleManager);
     m_summaryView->setOpenExternalLinks(true);
     m_tracksPanel->setController(m_controller);
 
@@ -360,8 +356,9 @@ void MainWindow::buildUi() {
     connect(m_peopleBtn, &QPushButton::clicked, this, &MainWindow::openPeopleManager);
     connect(m_settingsBtn, &QPushButton::clicked, this, &MainWindow::openSettings);
 
-    // --- jobb pane: beszélők-sáv + Sávok + kapu-panel + összefoglaló-generálás ---
-    connect(m_tracksBtn, &QToolButton::clicked, this, &MainWindow::onTracksToggleClicked);
+    // --- jobb pane: beszélők-sáv + kapu-panel + összefoglaló-generálás ---
+    // (A Sávok a fülön + a Nézet→Sávok menüből érhető el; a régi „Sávok…" fejléc-gomb
+    //  megszűnt, redundáns volt.)
     connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyParticipants);
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
@@ -370,7 +367,6 @@ void MainWindow::buildUi() {
     m_titleLabel->clear();
     m_metaLabel->clear();
     m_speakersBar->setVisible(false);
-    m_tracksBtn->setEnabled(false);
     m_transcribeBtn->setEnabled(false);
     m_generateSummaryBtn->setEnabled(false);
     if (m_identifyParticipantsBtn) m_identifyParticipantsBtn->setEnabled(false);
@@ -677,7 +673,6 @@ void MainWindow::loadSelectedMeetingViews() {
         m_titleLabel->clear();
         m_metaLabel->clear();
         m_speakersBar->setVisible(false);
-        m_tracksBtn->setEnabled(false);
         m_transcribeBtn->setEnabled(false);
         m_generateSummaryBtn->setEnabled(false);
         if (m_identifyParticipantsBtn) m_identifyParticipantsBtn->setEnabled(false);
@@ -686,7 +681,6 @@ void MainWindow::loadSelectedMeetingViews() {
     }
 
     m_currentMeetingId = m.id;
-    m_tracksBtn->setEnabled(true);
     reloadHeader(m);
     reloadTranscriptView(m);   // betölti a segments.json-t + hangforrást a lejátszóba
     reloadSummaryView(m);
