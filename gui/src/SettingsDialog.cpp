@@ -21,6 +21,8 @@
 #include <QLabel>
 #include <QFileDialog>
 #include <QSizePolicy>
+#include <QFont>
+#include <QPalette>
 #include <QDir>
 #include <QVariant>
 
@@ -79,7 +81,15 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
             ? m_controller->settings()->settings()
             : tanara::AppSettings{};
 
-    const QString mutedStyle = QStringLiteral("QLabel { color: palette(mid); font-size: 11px; }");
+    // Másodlagos („muted") szöveg: a PlaceholderText szerep téma-helyes ÉS olvasható
+    // (a palette(mid) sötét témán túl sötét → olvashatatlan). Stylesheet helyett
+    // foregroundRole, hogy a paletta-szín érvényesüljön; kicsit kisebb betű.
+    auto applyMuted = [](QLabel* l) {
+        l->setForegroundRole(QPalette::PlaceholderText);
+        QFont f = l->font();
+        f.setPointSizeF(f.pointSizeF() * 0.92);
+        l->setFont(f);
+    };
 
     auto* tabs = new QTabWidget(this);
 
@@ -124,7 +134,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         "alapból kimarad (kézzel bepipálható). Auto-rögzítésnél ez a választás nem számít."),
         m_devicesGroup);
     devHint->setWordWrap(true);
-    devHint->setStyleSheet(mutedStyle);
+    applyMuted(devHint);
     dvl->addWidget(devHint);
     buildDevicePolicy(dvl);
     rl->addWidget(m_devicesGroup);
@@ -146,7 +156,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         "végpontoddal — ezeket nem a Tanara futtatja. Bármikor válthatsz, nincs lock-in."),
         extPage);
     extIntro->setWordWrap(true);
-    extIntro->setStyleSheet(mutedStyle);
+    applyMuted(extIntro);
     el->addWidget(extIntro);
 
     // Segéd: egy provider-blokk (combo + üres mező-form) felépítése.
@@ -239,7 +249,7 @@ void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
 
     if (devs.isEmpty()) {
         auto* none = new QLabel(QStringLiteral("Nincs észlelt hangeszköz."), m_devicesGroup);
-        none->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
+        none->setForegroundRole(QPalette::PlaceholderText);
         into->addWidget(none);
         return;
     }
@@ -257,7 +267,11 @@ void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
         if (group.isEmpty())
             continue;
         auto* header = new QLabel(kr.title, m_devicesGroup);
-        header->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
+        // Bold a QFont-on (NEM stylesheet) — a stylesheet szín nélkül fekete alapszínt
+        // erőltetne, ami sötét témán olvashatatlan.
+        QFont hf = header->font();
+        hf.setBold(true);
+        header->setFont(hf);
         into->addWidget(header);
         for (const auto& d : group) {
             auto* cb = new QCheckBox(
