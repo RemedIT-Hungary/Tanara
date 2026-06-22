@@ -16,6 +16,7 @@ class QPushButton;
 class QLabel;
 class QWidget;
 class QFormLayout;
+class QVBoxLayout;
 class QGroupBox;
 class QCheckBox;
 
@@ -37,6 +38,11 @@ private slots:
 
 private:
     void loadGeneral();
+
+    // A Rögzítés fül eszköz-policy listája (capture-eszközök checkboxai, Mic/Loopback/
+    // Egyéb csoportban) — a megadott layoutba építve. A választás a lastUsedDeviceNames-be
+    // megy (ugyanaz a default-halmaz, amit a felvevő használ).
+    void buildDevicePolicy(QVBoxLayout* into);
 
     // Mappa-választó gomb bekötése egy könyvtár-mezőhöz (Tallózás…).
     void wireFolderPicker(QLineEdit* field, QPushButton* button, const QString& caption);
@@ -72,6 +78,10 @@ private:
     QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
     QCheckBox* m_autoRecord = nullptr;
+
+    // Rögzítés fül — eszköz-policy.
+    QWidget* m_devicesGroup = nullptr;
+    QHash<QString, QCheckBox*> m_deviceChecks;   // eszköznév → checkbox
 
     ProviderSection m_stt;
     ProviderSection m_llm;

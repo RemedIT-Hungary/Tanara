@@ -4,6 +4,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/Types.h"
 #include "tanara/provider/ProviderRegistry.h"
+#include "tanara/audio/DeviceManager.h"
 
 #include <QLineEdit>
 #include <QComboBox>
@@ -16,6 +17,7 @@
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 #include <QGroupBox>
+#include <QTabWidget>
 #include <QLabel>
 #include <QFileDialog>
 #include <QSizePolicy>
@@ -72,8 +74,26 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         return container;
     };
 
-    // --- Általános (mappák, saját beszélő) ---
-    auto* dirsBox = new QGroupBox(QStringLiteral("Mappák"), this);
+    const tanara::AppSettings s =
+        (m_controller && m_controller->settings())
+            ? m_controller->settings()->settings()
+            : tanara::AppSettings{};
+
+    const QString mutedStyle = QStringLiteral("QLabel { color: palette(mid); font-size: 11px; }");
+
+    auto* tabs = new QTabWidget(this);
+
+    // ============================ Fül 1: Általános ============================
+    // „ki vagy + hova ment" — ritkán nyúlsz hozzá.
+    auto* generalPage = new QWidget(this);
+    auto* gl = new QVBoxLayout(generalPage);
+    auto* idBox = new QGroupBox(QStringLiteral("Azonosítás"), generalPage);
+    auto* idForm = new QFormLayout(idBox);
+    m_userSpeakerName = new QLineEdit(idBox);
+    idForm->addRow(QStringLiteral("Saját beszélő neve:"), m_userSpeakerName);
+    gl->addWidget(idBox);
+
+    auto* dirsBox = new QGroupBox(QStringLiteral("Mappák"), generalPage);
     auto* dirsForm = new QFormLayout(dirsBox);
     dirsForm->addRow(QStringLiteral("Felvételek mappája:"),
                      makeDirRow(dirsBox, m_audioDir, QStringLiteral("Felvételek mappája")));
@@ -81,21 +101,53 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
                      makeDirRow(dirsBox, m_notesDir, QStringLiteral("Jegyzetek mappája")));
     dirsForm->addRow(QStringLiteral("Metaadat mappája:"),
                      makeDirRow(dirsBox, m_metadataDir, QStringLiteral("Metaadat mappája")));
-    m_userSpeakerName = new QLineEdit(dirsBox);
-    dirsForm->addRow(QStringLiteral("Saját beszélő neve:"), m_userSpeakerName);
+    gl->addWidget(dirsBox);
+    gl->addStretch(1);
+    tabs->addTab(generalPage, QStringLiteral("Általános"));
+
+    // ============================ Fül 2: Rögzítés =============================
+    // Minden a hangfelvételről: auto-rögzítés + mely eszközöket (sávokat) vegyük fel.
+    auto* recPage = new QWidget(this);
+    auto* rl = new QVBoxLayout(recPage);
     m_autoRecord = new QCheckBox(
-        QStringLiteral("Automatikus rögzítés (minden eszköz)"), dirsBox);
+        QStringLiteral("Automatikus rögzítés (minden eszköz)"), recPage);
     m_autoRecord->setToolTip(QStringLiteral(
         "Bekapcsolva minden bemenetet rögzít; a csendes sávokat a felvétel után "
-        "automatikusan eldobja (a fájl megmarad, visszaállítható). Kikapcsolva a "
-        "felvétel-vezérlőben pipált eszközöket rögzíti."));
-    dirsForm->addRow(QString(), m_autoRecord);
-    root->addWidget(dirsBox);
+        "automatikusan eldobja (a fájl megmarad, visszaállítható). Kikapcsolva az "
+        "alább kijelölt eszközöket rögzíti."));
+    rl->addWidget(m_autoRecord);
 
-    const tanara::AppSettings s =
-        (m_controller && m_controller->settings())
-            ? m_controller->settings()->settings()
-            : tanara::AppSettings{};
+    m_devicesGroup = new QGroupBox(QStringLiteral("Rögzítendő eszközök (alapértelmezés)"), recPage);
+    auto* dvl = new QVBoxLayout(m_devicesGroup);
+    auto* devHint = new QLabel(QStringLiteral(
+        "Mely eszközöket (sávokat) vegye fel alapból kézi módban. A vonalbemenet/AUX "
+        "alapból kimarad (kézzel bepipálható). Auto-rögzítésnél ez a választás nem számít."),
+        m_devicesGroup);
+    devHint->setWordWrap(true);
+    devHint->setStyleSheet(mutedStyle);
+    dvl->addWidget(devHint);
+    buildDevicePolicy(dvl);
+    rl->addWidget(m_devicesGroup);
+    rl->addStretch(1);
+
+    // Auto-rögzítéskor a per-eszköz választás moot → letiltjuk a listát.
+    connect(m_autoRecord, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_devicesGroup) m_devicesGroup->setEnabled(!on);
+    });
+    tabs->addTab(recPage, QStringLiteral("Rögzítés"));
+
+    // ===================== Fül 3: Külső szolgáltatások ========================
+    // Az átírás + összefoglaló NEM a Tanarában fut — külső szolgáltatás a saját
+    // kulcsoddal / végpontoddal. Lock-in nincs: bármikor válthatsz.
+    auto* extPage = new QWidget(this);
+    auto* el = new QVBoxLayout(extPage);
+    auto* extIntro = new QLabel(QStringLiteral(
+        "Az átírást és az összefoglalót KÜLSŐ szolgáltatások végzik a saját kulcsoddal / "
+        "végpontoddal — ezeket nem a Tanara futtatja. Bármikor válthatsz, nincs lock-in."),
+        extPage);
+    extIntro->setWordWrap(true);
+    extIntro->setStyleSheet(mutedStyle);
+    el->addWidget(extIntro);
 
     // Segéd: egy provider-blokk (combo + üres mező-form) felépítése.
     auto buildProviderBox = [this](ProviderSection& section, ProviderKind kind,
@@ -137,13 +189,16 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         return box;
     };
 
-    root->addWidget(buildProviderBox(
+    el->addWidget(buildProviderBox(
         m_stt, ProviderKind::Stt, QStringLiteral("Átírás (STT)"),
         tanara::SttProviderRegistry::instance().all(), s.sttProviderId));
-
-    root->addWidget(buildProviderBox(
+    el->addWidget(buildProviderBox(
         m_llm, ProviderKind::Llm, QStringLiteral("Összefoglaló (LLM)"),
         tanara::LlmProviderRegistry::instance().all(), s.llmProviderId));
+    el->addStretch(1);
+    tabs->addTab(extPage, QStringLiteral("Külső szolgáltatások"));
+
+    root->addWidget(tabs);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     root->addWidget(buttons);
@@ -171,6 +226,53 @@ void SettingsDialog::wireFolderPicker(QLineEdit* field, QPushButton* button,
         if (!dir.isEmpty())
             field->setText(dir);
     });
+}
+
+void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
+    m_deviceChecks.clear();
+    const QStringList lastUsed =
+        m_controller ? m_controller->lastUsedDeviceNames() : QStringList{};
+    const QVector<tanara::AudioDeviceInfo> devs =
+        (m_controller && m_controller->devices())
+            ? m_controller->devices()->captureDevices()
+            : QVector<tanara::AudioDeviceInfo>{};
+
+    if (devs.isEmpty()) {
+        auto* none = new QLabel(QStringLiteral("Nincs észlelt hangeszköz."), m_devicesGroup);
+        none->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
+        into->addWidget(none);
+        return;
+    }
+
+    struct KindRow { tanara::TrackKind kind; QString title; };
+    const KindRow order[] = {
+        { tanara::TrackKind::Mic,      QStringLiteral("Mikrofonok") },
+        { tanara::TrackKind::Loopback, QStringLiteral("Rendszerhang (loopback)") },
+        { tanara::TrackKind::Other,    QStringLiteral("Egyéb (vonalbemenet/AUX)") },
+    };
+    for (const KindRow& kr : order) {
+        QVector<tanara::AudioDeviceInfo> group;
+        for (const auto& d : devs)
+            if (d.kind == kr.kind) group.push_back(d);
+        if (group.isEmpty())
+            continue;
+        auto* header = new QLabel(kr.title, m_devicesGroup);
+        header->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
+        into->addWidget(header);
+        for (const auto& d : group) {
+            auto* cb = new QCheckBox(
+                d.name + (d.isDefault ? QStringLiteral("  (alapértelmezett)") : QString()),
+                m_devicesGroup);
+            // Előpipálás: a perzisztens default-halmaz (lastUsed); ha üres, a rendszer-
+            // alapértelmezett (de a line-in/AUX alapból kimarad).
+            const bool checked = lastUsed.isEmpty()
+                ? (d.isDefault && d.kind != tanara::TrackKind::Other)
+                : lastUsed.contains(d.name);
+            cb->setChecked(checked);
+            into->addWidget(cb);
+            m_deviceChecks.insert(d.name, cb);   // azonos név → utolsó nyer (név-alapú a választás)
+        }
+    }
 }
 
 QWidget* SettingsDialog::makeWidgetFor(ProviderSection& section, const ConfigField& field,
@@ -456,6 +558,16 @@ void SettingsDialog::onAccept() {
     s.userSpeakerName = m_userSpeakerName->text().trimmed();
     s.autoRecordAllDevices = m_autoRecord->isChecked();
     m_controller->settings()->setSettings(s);
+
+    // Eszköz-policy mentése (a felvevővel közös default-halmaz). Csak ha volt mit
+    // megjeleníteni (különben nem nulláznánk feleslegesen a lastUsed-et).
+    if (!m_deviceChecks.isEmpty()) {
+        QStringList chosen;
+        for (auto it = m_deviceChecks.constBegin(); it != m_deviceChecks.constEnd(); ++it)
+            if (it.value() && it.value()->isChecked())
+                chosen << it.key();
+        m_controller->setLastUsedDeviceNames(chosen);
+    }
 
     // A provider-szekciók a saját configjukat + titkaikat a friss settings-be írják.
     collectSection(m_stt);
