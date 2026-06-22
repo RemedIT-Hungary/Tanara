@@ -105,6 +105,8 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
 
     auto* dirsBox = new QGroupBox(QStringLiteral("Mappák"), generalPage);
     auto* dirsForm = new QFormLayout(dirsBox);
+    // A címke a mező FÖLÉ, külön sorba — a hosszú út + „Tallózás…" gombbal így nem zsúfolt.
+    dirsForm->setRowWrapPolicy(QFormLayout::WrapAllRows);
     dirsForm->addRow(QStringLiteral("Felvételek mappája:"),
                      makeDirRow(dirsBox, m_audioDir, QStringLiteral("Felvételek mappája")));
     dirsForm->addRow(QStringLiteral("Jegyzetek mappája:"),
