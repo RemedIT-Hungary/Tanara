@@ -2,7 +2,9 @@
 //
 // Tanara — egy felvételi munkamenet vezérlése:
 //   capture (AudioEngine) → eszközönként ffmpeg (QProcess) raw PCM stdin → Opus,
-//   majd stopkor egyetlen mixdown (.mp3) és egy kész tanara::Meeting.
+//   majd stopkor a per-sáv encoderek lezárása és egy kész tanara::Meeting.
+//   A lekevert .mp3 (mixdown) NEM itt készül — azt az AppController gyártja aszinkron,
+//   hogy a leállítás ne fagyassza a UI-t (lásd AppController::regenerateMixdown()).
 //
 #include "tanara/Types.h"
 
@@ -22,9 +24,11 @@ public:
     // audioDir: a felvételek gyökere (ez alá jön a meeting-mappa).
     // title: a meeting címe (a mappanév slugjához és a Meeting.title-höz).
     // userSpeakerName: az első mic-sáv fix beszélő-neve (pl. "Ádám").
+    // opusKbps: per-sáv Opus bitráta (a hangminőség-beállításból; lásd opusBitrateKbps()).
     explicit RecordingSession(QString audioDir,
                               QString title,
                               QString userSpeakerName = QStringLiteral("Beszélő 1"),
+                              int opusKbps = 64,
                               QObject* parent = nullptr);
     ~RecordingSession() override;
 
@@ -36,8 +40,10 @@ public slots:
     // ffmpeg encodert + a drain workert. Nem dob; hibára failed()-et emittál.
     void start(const QVector<AudioDeviceInfo>& devices);
 
-    // Leállít, flush + closeWriteChannel minden ffmpeg-en, megvárja a végét,
-    // lefuttatja a mixdownt, majd finished(Meeting)-et (vagy failed()-et) emittál.
+    // Leállít: flush + closeWriteChannel minden ffmpeg-en, megvárja a per-sáv encoderek
+    // végét (gyors tail-flush), majd finished(Meeting)-et (vagy failed()-et) emittál.
+    // A mixdownt MÁR NEM gyártja le (a fő szál nem fagy) — `mixdownFile` üres marad; a
+    // lekeverést az AppController készíti később, aszinkron (auto vagy kézi módban).
     void stop();
 
 signals:

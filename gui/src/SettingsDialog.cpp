@@ -140,6 +140,55 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     dvl->addWidget(devHint);
     buildDevicePolicy(dvl);
     rl->addWidget(m_devicesGroup);
+
+    // --- Hangminőség + lekeverés ---
+    auto* qualBox  = new QGroupBox(QStringLiteral("Hangminőség és lekeverés"), recPage);
+    auto* qualForm = new QFormLayout(qualBox);
+    qualForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+
+    // Per-sáv Opus bitráta. A legalsó fokozat is „STT-biztos" (24 kbps); lejjebb nem megyünk,
+    // hogy a per-sáv .ogg-ból dolgozó átírás pontossága ne romoljon.
+    m_audioQuality = new QComboBox(qualBox);
+    m_audioQuality->addItem(QStringLiteral("Legjobb (64 kbps)"),  QStringLiteral("best"));
+    m_audioQuality->addItem(QStringLiteral("Magas (48 kbps)"),    QStringLiteral("high"));
+    m_audioQuality->addItem(QStringLiteral("Közepes (32 kbps)"),  QStringLiteral("medium"));
+    m_audioQuality->addItem(QStringLiteral("Takarékos (24 kbps)"),QStringLiteral("low"));
+    qualForm->addRow(QStringLiteral("Hangminőség:"), m_audioQuality);
+
+    m_qualityHint = new QLabel(qualBox);
+    m_qualityHint->setWordWrap(true);
+    applyMuted(m_qualityHint);
+    qualForm->addRow(QString(), m_qualityHint);
+
+    auto sizeHintFor = [](const QString& id) -> QString {
+        // ~1,5 órás felvétel egy sávra; egy meetingben jellemzően 2-4 sáv.
+        if (id == QStringLiteral("low"))    return QStringLiteral("~16 MB / sáv / 1,5h — a legkisebb, STT-talp.");
+        if (id == QStringLiteral("medium")) return QStringLiteral("~22 MB / sáv / 1,5h — jó beszédre.");
+        if (id == QStringLiteral("high"))   return QStringLiteral("~32 MB / sáv / 1,5h.");
+        return QStringLiteral("~43 MB / sáv / 1,5h — a legjobb (jelenlegi alap).");
+    };
+    connect(m_audioQuality, &QComboBox::currentIndexChanged, this,
+            [this, sizeHintFor]() {
+                m_qualityHint->setText(sizeHintFor(m_audioQuality->currentData().toString()));
+            });
+    // Kezdő hint az aktuális (index 0 = Legjobb) fokozatra; a loadGeneral() utána a mentett
+    // szintre állítja az indexet — ha az nem 0, a currentIndexChanged frissíti a hintet.
+    m_qualityHint->setText(sizeHintFor(m_audioQuality->currentData().toString()));
+
+    // Lekeverés időzítése. A mixdown CSAK hallgatásra kell (az átírás a per-sáv .ogg-kból
+    // megy), ezért a leállítás sosem várja meg → nincs UI-fagyás.
+    m_mixdownMode = new QComboBox(qualBox);
+    m_mixdownMode->addItem(QStringLiteral("Automatikusan, a felvétel után (háttérben)"),
+                           QStringLiteral("auto"));
+    m_mixdownMode->addItem(QStringLiteral("Kézzel, később (a felvétel paneljéből)"),
+                           QStringLiteral("manual"));
+    m_mixdownMode->setToolTip(QStringLiteral(
+        "A lekevert, normalizált fájl csak kényelmes hallgatásra kell — az átíráshoz nem. "
+        "Automatikus módban a felvétel után a háttérben készül el (nem fagyaszt, közben új "
+        "felvétel is indítható). Kézi módban a felvétel review-paneljén indíthatod."));
+    qualForm->addRow(QStringLiteral("Lekeverés:"), m_mixdownMode);
+
+    rl->addWidget(qualBox);
     rl->addStretch(1);
 
     // Auto-rögzítéskor a per-eszköz választás moot → letiltjuk a listát.
@@ -492,6 +541,14 @@ void SettingsDialog::loadGeneral() {
     m_metadataDir->setText(s.metadataDir);
     m_userSpeakerName->setText(s.userSpeakerName);
     m_autoRecord->setChecked(s.autoRecordAllDevices);
+    if (m_audioQuality) {
+        int qi = m_audioQuality->findData(s.audioQuality);
+        m_audioQuality->setCurrentIndex(qi >= 0 ? qi : 0);   // a hintet a signal frissíti, ha változik
+    }
+    if (m_mixdownMode) {
+        int mi = m_mixdownMode->findData(s.mixdownMode);
+        m_mixdownMode->setCurrentIndex(mi >= 0 ? mi : 0);
+    }
     // A provider-mezőket a rebuildFields() tölti (ctorban + váltáskor).
 }
 
@@ -573,6 +630,10 @@ void SettingsDialog::onAccept() {
     s.metadataDir = m_metadataDir->text().trimmed();
     s.userSpeakerName = m_userSpeakerName->text().trimmed();
     s.autoRecordAllDevices = m_autoRecord->isChecked();
+    if (m_audioQuality && m_audioQuality->currentIndex() >= 0)
+        s.audioQuality = m_audioQuality->currentData().toString();
+    if (m_mixdownMode && m_mixdownMode->currentIndex() >= 0)
+        s.mixdownMode = m_mixdownMode->currentData().toString();
     m_controller->settings()->setSettings(s);
 
     // Eszköz-policy mentése (a felvevővel közös default-halmaz). Csak ha volt mit

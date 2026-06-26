@@ -160,6 +160,7 @@ signals:
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
+    void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
     void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
     void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot

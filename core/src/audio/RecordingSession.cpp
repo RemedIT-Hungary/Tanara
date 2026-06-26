@@ -57,8 +57,9 @@ struct TrackMeta {
 class DrainWorker : public QObject {
     Q_OBJECT
 public:
-    DrainWorker(AudioEngine* engine, const std::vector<TrackMeta>* tracks, QString folder)
-        : engine_(engine), tracks_(tracks), folder_(std::move(folder)) {}
+    DrainWorker(AudioEngine* engine, const std::vector<TrackMeta>* tracks, QString folder,
+                int opusKbps)
+        : engine_(engine), tracks_(tracks), folder_(std::move(folder)), opusKbps_(opusKbps) {}
 
     ~DrainWorker() override {
         for (QProcess* p : procs_) delete p;
@@ -82,7 +83,7 @@ public slots:
                 QStringLiteral("-ac"), QString::number(t.channels),
                 QStringLiteral("-i"), QStringLiteral("pipe:0"),
                 QStringLiteral("-c:a"), QStringLiteral("libopus"),
-                QStringLiteral("-b:a"), QStringLiteral("64k"),
+                QStringLiteral("-b:a"), QString::number(opusKbps_) + QStringLiteral("k"),
                 QStringLiteral("-y"), outPath};
             proc->start(QStringLiteral("ffmpeg"), args);
             if (!proc->waitForStarted(5000)) {
@@ -150,6 +151,7 @@ private:
     AudioEngine* engine_ = nullptr;
     const std::vector<TrackMeta>* tracks_ = nullptr;
     QString folder_;
+    int opusKbps_ = 64;          // per-sáv Opus bitráta (a hangminőség-beállításból)
     std::vector<QProcess*> procs_;
     std::vector<std::vector<int16_t>> scratch_;
     QTimer* timer_ = nullptr;
@@ -161,6 +163,7 @@ struct RecordingSession::Impl {
     QString audioDir;
     QString title;
     QString userSpeakerName;
+    int opusKbps = 64;           // per-sáv Opus bitráta (hangminőség-beállítás)
 
     QString folder;
     QString id;
@@ -187,11 +190,12 @@ struct RecordingSession::Impl {
 };
 
 RecordingSession::RecordingSession(QString audioDir, QString title,
-                                   QString userSpeakerName, QObject* parent)
+                                   QString userSpeakerName, int opusKbps, QObject* parent)
     : QObject(parent), impl_(std::make_unique<Impl>()) {
     impl_->audioDir = std::move(audioDir);
     impl_->title = std::move(title);
     impl_->userSpeakerName = std::move(userSpeakerName);
+    impl_->opusKbps = opusKbps;
 }
 
 RecordingSession::~RecordingSession() {
@@ -269,7 +273,8 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     // 4) Worker szál — Ő hozza létre+indítja az encodereket (a saját szálán).
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
-    impl_->worker = new DrainWorker(impl_->engine.get(), &impl_->tracks, impl_->folder);
+    impl_->worker = new DrainWorker(impl_->engine.get(), &impl_->tracks, impl_->folder,
+                                    impl_->opusKbps);
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,
             [this](int idx, float rms) {
@@ -329,60 +334,12 @@ void RecordingSession::stop() {
         if (peakOf(i) >= kSilencePeak) anyAbove = true;
     auto isActive = [&](int i) { return anyAbove ? (peakOf(i) >= kSilencePeak) : true; };
 
-    // Mixdown — a fő szálon, tranziens QProcess. CSAK az aktív (nem néma) sávokból:
-    // egy meg nem szólalt vagy üres sáv (pl. 0 frame-es loopback) az amix-et
-    // elronthatja, ezért kihagyjuk. Az időkorlát a felvétel hosszához igazodik —
-    // egy 90 perces mixdown a korábbi fix 120 s-nál tovább tart (akkor üresen maradt).
-    QString mixdownRel;
-    {
-        QStringList inArgs;
-        int inputs = 0;
-        for (int i = 0; i < nTr; ++i) {
-            if (!isActive(i)) continue;
-            inArgs << QStringLiteral("-i")
-                   << QDir(impl_->folder).absoluteFilePath(impl_->tracks[i].fileName);
-            ++inputs;
-        }
-        if (inputs > 0) {
-            QStringList args{QStringLiteral("-hide_banner"),
-                             QStringLiteral("-loglevel"), QStringLiteral("error")};
-            args += inArgs;
-            mixdownRel = QStringLiteral("mixdown.mp3");
-            // Loudness-normalizálás (EBU R128, beszédre hangolva): a felvett bemenet
-            // gyakran nagyon halk ÁTLAGBAN (nagy dinamika, ritka csúcsokkal), így a mixdown
-            // alig hallható. A loudnorm a perceptuális hangerőt -16 LUFS-ra hozza, true-peak
-            // limittel (-1.5 dBTP) → kényelmes lejátszási hangerő. (Az STT a NYERS per-sáv
-            // .ogg-kból megy, ezt NEM érinti.)
-            // loudnorm (input-szint normalizálás, forrás-független) → kompresszor (dinamika
-            // szűkítés + makeup gain) → brickwall limiter. Empirikusan a clip-mentes maximum:
-            // a halk beszédet ~+15 dB-lel hozza fel, a csúcs 0 dB-en limitálva. (STT-t nem érint.)
-            const QString kLoudnorm = QStringLiteral(
-                "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
-            if (inputs > 1) {
-                args << QStringLiteral("-filter_complex")
-                     << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0,%2")
-                            .arg(inputs).arg(kLoudnorm);
-            } else {
-                args << QStringLiteral("-af") << kLoudnorm;   // 1 aktív sáv: csak normalizálás
-            }
-            // SZTEREÓ kimenet (dual-mono): a Qt6/PipeWire a mono streamet gyakran csak
-            // az egyik csatornára / halkan játssza — sztereóval mindkét hangszóró szól.
-            args << QStringLiteral("-ac") << QStringLiteral("2")
-                 << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
-                 << QStringLiteral("-q:a") << QStringLiteral("4")
-                 << QStringLiteral("-y") << QDir(impl_->folder).absoluteFilePath(mixdownRel);
-            QProcess mix;
-            mix.start(QStringLiteral("ffmpeg"), args);
-            // Legalább 3 perc, hosszú felvételnél ~valós idő + ráhagyás. (Az encode
-            // gyorsabb a valós időnél, így ennyit a gyakorlatban sosem vár ki teljesen.)
-            const int mixTimeout =
-                static_cast<int>(std::max<qint64>(180000, durationMs + 60000));
-            bool mixOk = mix.waitForStarted(5000)
-                         && mix.waitForFinished(mixTimeout)
-                         && mix.exitStatus() == QProcess::NormalExit && mix.exitCode() == 0;
-            if (!mixOk) mixdownRel.clear();   // nem fatális
-        }
-    }
+    // Mixdown SZÁNDÉKOSAN nem itt készül. Korábban a fő szálon, szinkron
+    // `QProcess::waitForFinished()`-sel futott — egy 1,5 órás meetingnél ez 15-20 mp-re
+    // BEFAGYASZTOTTA a UI-t. A mixdown viszont KIZÁRÓLAG hallgatásra kell (az STT a nyers
+    // per-sáv .ogg-kból megy), ezért leválasztottuk: `mixdownFile` üresen marad, és a
+    // lekeverést az AppController gyártja le később aszinkron (auto módban azonnal, kézi
+    // módban a review-panel gombjáról) — lásd AppController::regenerateMixdown().
 
     // Meeting összeállítása.
     Meeting m;
@@ -391,7 +348,7 @@ void RecordingSession::stop() {
     m.folder = impl_->folder;
     m.startedAt = impl_->startedAt;
     m.durationMs = durationMs;
-    m.mixdownFile = mixdownRel;
+    m.mixdownFile = QString();   // még nincs lekeverés — az AppController készíti
 
     // FONTOS: a felhasználót NEM hangerő/pozíció alapján nevezzük el — a beszélő
     // azonosítása a VOICE-ID (fingerprint) feladata (autoIdentifyMeeting). Itt a

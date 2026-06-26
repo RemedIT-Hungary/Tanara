@@ -766,13 +766,40 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     // játszhat; sztereóval mindkét hangszóró megszólal.
     args << QStringLiteral("-ac") << QStringLiteral("2")
          << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
-         << QStringLiteral("-q:a") << QStringLiteral("4")
+         << QStringLiteral("-q:a") << QStringLiteral("4");
+    // Valós haladás: az ffmpeg kulcs=érték sorokat ír a stdoutra (out_time_us=…), amiből a
+    // felvétel hosszához mérve százalékot számolunk → mixdownProgress() a nem-modális UI-nak.
+    args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats")
          << QStringLiteral("-y") << outPath;
+    const qint64 totalMs = m.durationMs;   // a százalék nevezője
 
-    // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat).
+    // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat), és nem
+    // blokkolja új felvétel indítását sem (külön child-process + külön capture-engine).
     auto* proc = new QProcess(this);
     proc->setProgram(QStringLiteral("ffmpeg"));
     proc->setArguments(args);
+    // stdout-parse: out_time_us=<mikroszekundum> → százalék a felvétel hosszához mérve.
+    connect(proc, &QProcess::readyReadStandardOutput, this,
+            [this, proc, meetingId, totalMs]() {
+        if (totalMs <= 0) return;
+        const QByteArray chunk = proc->readAllStandardOutput();
+        int lastPct = -1;
+        for (const QByteArray& line : chunk.split('\n')) {
+            const int eq = line.indexOf('=');
+            if (eq < 0) continue;
+            const QByteArray key = line.left(eq).trimmed();
+            const QByteArray val = line.mid(eq + 1).trimmed();
+            qint64 outMs = -1;
+            if (key == "out_time_us")      outMs = val.toLongLong() / 1000;
+            else if (key == "out_time_ms") outMs = val.toLongLong() / 1000;  // (ffmpeg: valójában µs)
+            if (outMs >= 0) {
+                const qint64 p = outMs * 100 / totalMs;
+                lastPct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
+            }
+        }
+        if (lastPct >= 0)
+            emit mixdownProgress(meetingId, lastPct);
+    });
     connect(proc, &QProcess::finished, this,
             [this, proc, meetingId, outRel](int code, QProcess::ExitStatus status) {
         const bool ok = (status == QProcess::NormalExit && code == 0);
@@ -784,7 +811,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
                 mm.mixdownDirty = false;
                 d->store->saveMeeting(mm);
             }
-            emit jobProgress(meetingId, QStringLiteral("Lekeverés kész."));
+            emit mixdownProgress(meetingId, 100);
         } else {
             emit errorOccurred(QStringLiteral("A lekeverés (ffmpeg) sikertelen."));
         }
@@ -793,7 +820,10 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         proc->deleteLater();
     });
 
-    emit jobProgress(meetingId, QStringLiteral("Lekeverés folyamatban…"));
+    // A haladást a mixdownProgress (0..100) jelzi a nem-modális UI-nak — NEM a jobProgress
+    // (az a globális busy-jelzőt kapcsolná be, ami egy háttér-lekeverés alatt feleslegesen
+    // letiltaná az akció-gombokat). Indító 0%:
+    emit mixdownProgress(meetingId, 0);
     proc->start();
 }
 
@@ -881,7 +911,8 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     setLastUsedDeviceNames(usedNames);
 
     const AppSettings s = d->settings->settings();
-    auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName, this);
+    auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName,
+                                      opusBitrateKbps(s.audioQuality), this);
     d->session = sess;
 
     connect(sess, &RecordingSession::stateChanged, this, [this](RecordingState st) {
@@ -903,6 +934,13 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->state = RecordingState::Idle;
         emit recordingFinished(m);
         emit recordingStateChanged(d->state);
+        // Lekeverés (mixdown) leválasztva a stop()-ról: itt indítjuk ASZINKRON, csak ha a
+        // beállítás "auto". Nem blokkol → azonnal indítható új felvétel. Kézi módban a
+        // felhasználó a review-panel „Lekeverés" gombjával indítja. (A mixdown csak
+        // hallgatásra kell; az átíráshoz a per-sáv .ogg-k elegendők.)
+        if (d->settings->settings().mixdownMode != QStringLiteral("manual")
+            && m.mixdownFile.isEmpty())
+            regenerateMixdown(m.id);
     });
 
     sess->start(use);

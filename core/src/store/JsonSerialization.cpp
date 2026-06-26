@@ -242,6 +242,8 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("userSpeakerName")] = s.userSpeakerName;
     o[QStringLiteral("autoRecordAllDevices")] = s.autoRecordAllDevices;
     o[QStringLiteral("languageHints")]  = stringListToArray(s.languageHints);
+    o[QStringLiteral("audioQuality")]   = s.audioQuality;
+    o[QStringLiteral("mixdownMode")]    = s.mixdownMode;
 
     // Új multi-provider shape: kiválasztott id + providerenkénti config.
     o[QStringLiteral("sttProviderId")] = s.sttProviderId;
@@ -261,6 +263,8 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.autoRecordAllDevices = o.value(QStringLiteral("autoRecordAllDevices")).toBool(true);
     if (o.contains(QStringLiteral("languageHints")))
         s.languageHints = arrayToStringList(o.value(QStringLiteral("languageHints")).toArray());
+    s.audioQuality = o.value(QStringLiteral("audioQuality")).toString(s.audioQuality);
+    s.mixdownMode  = o.value(QStringLiteral("mixdownMode")).toString(s.mixdownMode);
 
     // STT: új shape (sttProviders) elsőbbség; különben migráció a régi `stt`-ből.
     if (o.contains(QStringLiteral("sttProviders"))) {

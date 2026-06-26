@@ -163,6 +163,17 @@ struct AppSettings {
     bool autoRecordAllDevices = true;  // true → minden eszközt rögzít (csendeseket utólag eldobja)
     QStringList languageHints{QStringLiteral("hu")};
 
+    // Felvételi hangminőség (per-sáv Opus bitráta). A nyers per-sáv .ogg-kat az STT is
+    // használja, ezért a legalsó fokozat is „STT-biztos" (24 kbps). Gyengébb fokozat =
+    // kisebb fájlok. Értékek: "best"|"high"|"medium"|"low".
+    QString audioQuality{QStringLiteral("best")};
+
+    // Lekeverés (mixdown) időzítése a felvétel leállítása után. "auto" → háttérben,
+    // nem-blokkolóan azonnal; "manual" → csak kézi indításra (a review-panel gombja).
+    // A mixdown CSAK hallgatásra kell (az STT a per-sáv .ogg-kból megy), ezért a stop()
+    // sosem várja meg — a fő szál nem fagy.
+    QString mixdownMode{QStringLiteral("auto")};
+
     // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
     // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
     // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).
@@ -176,6 +187,16 @@ struct AppSettings {
     ProviderConfig sttSelected() const { return sttConfigs.value(sttProviderId); }
     ProviderConfig llmSelected() const { return llmConfigs.value(llmProviderId); }
 };
+
+// A felvételi hangminőség-fokozat → per-sáv Opus bitráta (kbps). Ismeretlen → 64 ("best").
+// A legalsó fokozat (24 kbps) az „STT-talp": az alá nem megyünk, hogy a per-sáv .ogg-ból
+// dolgozó átírás pontossága ne romoljon.
+inline int opusBitrateKbps(const QString& quality) {
+    if (quality == QStringLiteral("low"))    return 24;
+    if (quality == QStringLiteral("medium")) return 32;
+    if (quality == QStringLiteral("high"))   return 48;
+    return 64;   // "best" / ismeretlen
+}
 
 } // namespace tanara
 

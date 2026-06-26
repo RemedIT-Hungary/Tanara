@@ -7,6 +7,7 @@
 #include "tanara/Types.h"
 #include <QMainWindow>
 #include <QHash>
+#include <QSet>
 #include <QString>
 
 class QTableView;
@@ -130,6 +131,10 @@ private:
     QPlainTextEdit* m_contextEdit = nullptr;        // State A: „Miről szólt?" kontextus-doboz
     QLabel*       m_participantsResult = nullptr;   // tartós eredmény-sor a State A panelben
     QHash<QString, QString> m_participantsCache;    // meetingId → utolsó eredmény-mondat (session)
+    // State A: a lekeverés (mixdown) kézi indítója + folyamat-jelzője. A lekeverés csak
+    // hallgatásra kell, ezért opcionális; a leállítás már nem gyártja le (lásd core).
+    QPushButton*  m_convertBtn = nullptr;           // „🎧 Lekeverés készítése" (kézi mód)
+    QSet<QString> m_converting;                     // épp lekeverés alatt álló meetingId-k
 
     // --- az Összefoglaló-fül üres állapotának generálás-gombja (kódból injektálva) ---
     QPushButton*  m_generateSummaryBtn = nullptr;
@@ -137,6 +142,7 @@ private:
     QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres+gomb
 
     QProgressBar* m_busyBar = nullptr;
+    QProgressBar* m_convertBar = nullptr;   // állapotsoros, determinisztikus lekeverés-progress
 
     QString m_currentMeetingId;
     bool    m_monitoringStarted = false;

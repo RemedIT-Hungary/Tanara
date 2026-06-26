@@ -126,15 +126,28 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::jobProgress,
                 this, &MainWindow::onJobProgress);
-        // A lekeverés (Újrakeverés) befejeztével a busy-jelzőt KI kell kapcsolni — a
-        // regenerateMixdown a végén jobProgress-t emittál (ami bekapcsolja a busy-t),
-        // de korábban semmi nem kapcsolta ki. Ez a kötés zárja le.
+        // Lekeverés haladása (0..100) → determinisztikus, nem-modális állapotsor-progress.
+        connect(m_controller, &tanara::AppController::mixdownProgress, this,
+                [this](const QString& id, int pct) {
+                    m_converting.insert(id);
+                    if (m_convertBar) {
+                        m_convertBar->setValue(pct);
+                        m_convertBar->setVisible(true);
+                    }
+                    // Ha az épp kiválasztott meeting konvertál, a State A gomb→folyamat váltás.
+                    if (id == m_currentMeetingId && m_convertBtn)
+                        m_convertBtn->setVisible(false);
+                });
+        // Lekeverés vége: elrejtjük a progress-t, és ha a kiválasztott meetingé volt, a
+        // nézeteket újratöltjük (a lejátszó így a friss kevert fájlt veszi).
         connect(m_controller, &tanara::AppController::mixdownUpdated, this,
-                [this](const QString&, bool ok) {
-                    setBusy(false);
+                [this](const QString& id, bool ok) {
+                    m_converting.remove(id);
+                    if (m_convertBar) m_convertBar->setVisible(false);
                     statusBar()->showMessage(
                         ok ? QStringLiteral("Lekeverés kész.")
                            : QStringLiteral("A lekeverés sikertelen."), 4000);
+                    if (id == m_currentMeetingId) loadSelectedMeetingViews();
                 });
         connect(m_controller, &tanara::AppController::recordingFinished,
                 this, &MainWindow::onRecordingFinished);
@@ -250,6 +263,15 @@ void MainWindow::buildUi() {
         "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható; "
         "a felismert neveket a context-be is beépíti."));
 
+    // Lekeverés (mixdown) kézi indítója — csak akkor látszik, ha még nincs kevert fájl és
+    // nem fut épp a lekeverés. A lekevert, normalizált fájl KÉNYELMES HALLGATÁSRA kell; az
+    // átíráshoz nem szükséges (az a per-sáv felvételekből megy).
+    m_convertBtn = new QPushButton(QStringLiteral("🎧  Lekeverés készítése (hallgatáshoz)"), this);
+    m_convertBtn->setToolTip(QStringLiteral(
+        "Egyetlen, hangosságra normalizált hangfájlt készít a sávokból — kényelmes "
+        "visszahallgatáshoz. Opcionális: az átíráshoz nem kell."));
+    m_convertBtn->setVisible(false);
+
     if (auto* stepLayout = qobject_cast<QVBoxLayout*>(ui->stepBox->layout())) {
         // Az ② Átirat doboz (step2box) ELÉ, az ① Felvéve után.
         int idx = stepLayout->indexOf(ui->step2box);
@@ -259,9 +281,15 @@ void MainWindow::buildUi() {
         stepLayout->insertWidget(idx + 2, ctxHelp);
         stepLayout->insertWidget(idx + 3, m_participantsResult);
         stepLayout->insertWidget(idx + 4, m_identifyParticipantsBtn);
+        stepLayout->insertWidget(idx + 5, m_convertBtn);
     }
     connect(m_identifyParticipantsBtn, &QPushButton::clicked,
             this, &MainWindow::onIdentifyParticipants);
+    connect(m_convertBtn, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const tanara::Meeting m = selectedMeeting(&ok);
+        if (ok && m_controller) m_controller->regenerateMixdown(m.id);
+    });
 
     // --- meeting-tábla viselkedése (kód) ---
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -350,6 +378,16 @@ void MainWindow::buildUi() {
     m_busyBar->setTextVisible(false);
     m_busyBar->setVisible(false);
     statusBar()->addPermanentWidget(m_busyBar);
+
+    // Lekeverés determinisztikus folyamatjelzője (nem-modális, az állapotsorban). A
+    // háttér-lekeverés (auto vagy kézi) ezt mozgatja a mixdownProgress jelből; nem blokkol,
+    // közben akár új felvétel is indítható.
+    m_convertBar = new QProgressBar(this);
+    m_convertBar->setRange(0, 100);
+    m_convertBar->setMaximumWidth(200);
+    m_convertBar->setFormat(QStringLiteral("🎧 Lekeverés %p%"));
+    m_convertBar->setVisible(false);
+    statusBar()->addPermanentWidget(m_convertBar);
 
     // --- felső sáv akciói (a meglévő logikát hívják) ---
     connect(m_newRecordingBtn, &QPushButton::clicked, this, &MainWindow::popOutRecorder);
@@ -575,6 +613,12 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
                                      "átirat nélkül is futtatható.")
                     : QStringLiteral("Nincs aktív hangsáv ehhez a felvételhez."));
         }
+
+        // Lekeverés-gomb (kézi mód / discoverability): csak ha még nincs kevert fájl ÉS
+        // nem fut épp a lekeverése. Auto módban jellemzően már fut/kész, így rejtve marad.
+        if (m_convertBtn)
+            m_convertBtn->setVisible(m.mixdownFile.isEmpty()
+                                     && !m_converting.contains(m.id));
 
         // A kontextus-doboz feltöltése a meetinghez mentett leírással (re-átírásnál megmarad).
         if (m_contextEdit && m_contextEdit->toPlainText() != m.contextNote) {
@@ -999,6 +1043,7 @@ void MainWindow::popOutRecorder() {
     // A felvevő ALAPBÓL leválasztott (a fő ablak jobb pane-je tiszta review). Az
     // „Új felvétel" gomb a leválasztott FloatingRecordert nyitja meg / hozza előtérbe.
     if (m_floatingRecorder) {                 // már kint van → csak előtérbe
+        m_recordBar->refreshFromSettings();   // a Beállítások közben változhattak
         m_floatingRecorder->show();
         m_floatingRecorder->raise();
         m_floatingRecorder->activateWindow();
@@ -1013,6 +1058,7 @@ void MainWindow::popOutRecorder() {
     m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, nullptr);
     connect(m_floatingRecorder, &FloatingRecorder::dockRequested,
             this, &MainWindow::dockRecorder);
+    m_recordBar->refreshFromSettings();   // a Beállításokban megadott eszköz-policy tükrözése
     m_recordBar->show();
     m_floatingRecorder->show();
     m_floatingRecorder->raise();
@@ -1030,7 +1076,8 @@ void MainWindow::dockRecorder() {
 
 void MainWindow::openSettings() {
     SettingsDialog dlg(m_controller, this);
-    dlg.exec();
+    if (dlg.exec() == QDialog::Accepted && m_recordBar)
+        m_recordBar->refreshFromSettings();   // a felvevő tükrözze az új eszköz-policyt
 }
 
 void MainWindow::openPeopleManager() {

@@ -78,6 +78,9 @@ private:
     QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
     QCheckBox* m_autoRecord = nullptr;
+    QComboBox* m_audioQuality = nullptr;   // hangminőség (per-sáv Opus bitráta), userData = id
+    QComboBox* m_mixdownMode = nullptr;    // lekeverés időzítése, userData = "auto"|"manual"
+    QLabel*    m_qualityHint = nullptr;    // a választott fokozat méret-becslése
 
     // Rögzítés fül — eszköz-policy.
     QWidget* m_devicesGroup = nullptr;

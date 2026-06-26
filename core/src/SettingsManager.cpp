@@ -111,58 +111,31 @@ void SettingsManager::load()
         return;
     }
 
-    // Defaultokból indulunk, majd a fájlból érkező mezők felülírják azokat
-    // (így a hiányzó/új mezők is értelmes értéket kapnak; első indításkor sem
-    // ürül ki egyetlen provider-config sem).
+    // A teljes AppSettings-et (MINDEN skalár + a provider-réteg régi→új shape
+    // migrációja) EGY helyen, az appSettingsFromJson olvassa be — így új mező
+    // hozzáadásakor nem kell két helyen átvezetni (a JSON-szerializáció és ez a
+    // betöltő nem csúszhat szét). Utána csak a defaultokkal pótoljuk a hiányt.
     const QJsonObject obj = doc.object();
     const AppSettings def = defaults(m_metadataDir);
+    AppSettings loaded = appSettingsFromJson(obj);
 
-    // Skalár mezők beolvasása közvetlenül a JSON-ból; a hiányzókra default.
-    // (A provider-réteget külön a loadProviders() tölti — lásd lent.)
-    AppSettings loaded;
-    loaded.audioDir        = obj.value(QStringLiteral("audioDir")).toString();
-    loaded.notesDir        = obj.value(QStringLiteral("notesDir")).toString();
-    loaded.metadataDir     = obj.value(QStringLiteral("metadataDir")).toString();
-    loaded.userSpeakerName = obj.value(QStringLiteral("userSpeakerName")).toString();
-    loaded.autoRecordAllDevices =
-        obj.value(QStringLiteral("autoRecordAllDevices")).toBool(def.autoRecordAllDevices);
-    if (obj.contains(QStringLiteral("languageHints"))) {
-        loaded.languageHints.clear();
-        const QJsonArray hints = obj.value(QStringLiteral("languageHints")).toArray();
-        for (const auto& v : hints)
-            loaded.languageHints.append(v.toString());
-    }
-
+    // Üres kötelező mappa-/név-mezők → sensible default (az appSettingsFromJson nem
+    // tölt defaultot; az üres string valódi „nincs megadva", nem „töröld").
     if (loaded.audioDir.isEmpty())        loaded.audioDir = def.audioDir;
     if (loaded.notesDir.isEmpty())        loaded.notesDir = def.notesDir;
     if (loaded.metadataDir.isEmpty())     loaded.metadataDir = def.metadataDir;
     if (loaded.userSpeakerName.isEmpty()) loaded.userSpeakerName = def.userSpeakerName;
     if (loaded.languageHints.isEmpty())   loaded.languageHints = def.languageHints;
 
-    // --- Provider-réteg: új shape betöltés + régi shape migráció ----------
-    // Új shape: "sttProviders"/"llmProviders" + "sttProviderId"/"llmProviderId".
-    // Régi shape (egyetlen "stt"/"llm"): config → id (type, fallback default-típus),
-    //   sttProviderId=id, sttConfigs[id]=config.
-    loadProviders(obj, loaded, def);
+    // A provider-réteg már be van töltve+migrálva; csak a hiányokat pótoljuk.
+    applyProviderDefaults(loaded, def);
 
     m_settings = loaded;
     ensureDirs();
 }
 
-void SettingsManager::loadProviders(const QJsonObject& obj,
-                                    AppSettings& loaded,
-                                    const AppSettings& def)
+void SettingsManager::applyProviderDefaults(AppSettings& loaded, const AppSettings& def)
 {
-    // EGYETLEN migrációs forrás: a régi→új shape leképezést (type→id fallback,
-    // baseUrl/model/temperature/maxTokens/extra megőrzés, apiKey SOHA) az
-    // appSettingsFromJson végzi. Itt csak az ÍGY kapott provider-rétegt vesszük
-    // át, majd ráhúzzuk a produkciós "safety net"-et.
-    const AppSettings migrated = appSettingsFromJson(obj);
-    loaded.sttProviderId = migrated.sttProviderId;
-    loaded.sttConfigs    = migrated.sttConfigs;
-    loaded.llmProviderId = migrated.llmProviderId;
-    loaded.llmConfigs    = migrated.llmConfigs;
-
     // ---- STT safety net ---------------------------------------------------
     // Defaultokkal merge: ne legyen üres provider-lista / kiválasztott id.
     if (loaded.sttConfigs.isEmpty())

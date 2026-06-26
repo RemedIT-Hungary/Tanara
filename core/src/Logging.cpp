@@ -291,6 +291,10 @@ void logStartupDiagnostics(const AppController& app)
     qCDebug(lcApp).noquote() << QStringLiteral("autoRecordAllDevices: %1, languageHints: %2")
                                     .arg(s.autoRecordAllDevices ? QStringLiteral("igen") : QStringLiteral("nem"),
                                          s.languageHints.join(QLatin1Char(',')));
+    qCDebug(lcApp).noquote() << QStringLiteral("hangminőség: %1 (%2 kbps), lekeverés: %3")
+                                    .arg(s.audioQuality)
+                                    .arg(opusBitrateKbps(s.audioQuality))
+                                    .arg(s.mixdownMode);
 
     // Provider-kiválasztás — API-kulcsot SOHA nem logolunk, csak a meglétét.
     const ProviderConfig stt = s.sttSelected();

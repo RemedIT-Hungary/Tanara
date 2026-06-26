@@ -6,8 +6,6 @@
 #include "tanara/Types.h"
 #include <QObject>
 
-class QJsonObject;
-
 namespace tanara {
 
 class SettingsManager : public QObject {
@@ -41,12 +39,11 @@ signals:
 private:
     void ensureDirs() const;
 
-    // A provider-réteg (STT/LLM) betöltése a JSON-ből az `loaded`-be: új shape
-    // ("sttProviders"/"llmProviders") vagy régi shape ("stt"/"llm") migrációja,
-    // majd merge a `def` defaultokkal (üres lista / hiányzó kiválasztott id ellen).
-    static void loadProviders(const QJsonObject& obj,
-                              AppSettings& loaded,
-                              const AppSettings& def);
+    // A provider-réteg (STT/LLM) safety-net merge a `def` defaultokkal: üres provider-lista
+    // vagy hiányzó/érvénytelen kiválasztott id esetén visszaesés a defaultra. A tényleges
+    // betöltést+migrációt (új "sttProviders" / régi "stt" shape) már az appSettingsFromJson
+    // végezte el a `loaded`-ben — itt csak a hiányokat pótoljuk.
+    static void applyProviderDefaults(AppSettings& loaded, const AppSettings& def);
 
     QString     m_metadataDir;
     AppSettings m_settings;
