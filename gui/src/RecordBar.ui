@@ -14,9 +14,9 @@
     Felépítés (a jóváhagyott mockup szerint):
       topSection (QHBoxLayout)
         leftCol (QVBoxLayout)
-          titleRow: titleEdit (QLineEdit) + menuBtn (⋮ QToolButton, InstantPopup)
-          infoRow:  voicesLabel ("● N hangot hallok") + spacer + levelsToggle (▸ Szintek)
-                    + tracksToggle (▸ Rögzítendő sávok…)
+          titleRow: titleLabel (cím, tágul, dupla katt→szerkeszt) + editBtn (✏) + titleEdit (rejtett, szerkesztéskor) + minBtn (—) + closeBtn (✕)
+          infoRow:  voicesLabel ("🎙 N hangforrás kiválasztva") + spacer
+                    + tracksToggle (▸ Rögzítendő hangforrások módosítása)
         recordBtn (QPushButton, kétsoros, vertical Expanding)
       levelsBox (QGroupBox, alapból rejtve): devHint + deviceList (dinamikus VU-sorok)
   -->
@@ -24,21 +24,64 @@
    <item>
     <layout class="QHBoxLayout" name="topSection">
      <item>
+      <!-- Felvétel-gomb BALRA (a többi vezérlő jobbra). -->
+      <widget class="QPushButton" name="recordBtn">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text"><string>⏺  Felvétel indítása</string></property>
+      </widget>
+     </item>
+     <item>
       <layout class="QVBoxLayout" name="leftCol">
        <item>
         <layout class="QHBoxLayout" name="titleRow">
          <item>
+          <!-- A cím ALAPBÓL label (egyben fogantyú az ablak húzásához); dupla kattintásra
+               vagy a ✏ ikonra vált input-tá (titleEdit), Enter/fókuszvesztésre vissza. -->
+          <widget class="QLabel" name="titleLabel">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>1</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="toolTip"><string>Dupla kattintás a szerkesztéshez (húzva mozgatható az ablak)</string></property>
+           <property name="text"><string>Megbeszélés</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="editBtn">
+           <property name="toolTip"><string>Cím szerkesztése</string></property>
+           <property name="text"><string>✏</string></property>
+           <property name="autoRaise"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLineEdit" name="titleEdit">
+           <property name="visible"><bool>false</bool></property>
            <property name="placeholderText"><string>Megbeszélés címe… (opcionális)</string></property>
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="menuBtn">
-           <property name="toolTip"><string>Ablak-beállítások (mindig felül…)</string></property>
-           <property name="text"><string>⋮</string></property>
-           <property name="popupMode">
-            <enum>QToolButton::ToolButtonPopupMode::InstantPopup</enum>
-           </property>
+          <!-- Keret nélküli (frameless) ablak saját vezérlői; csak lebegő módban láthatók
+               (setWindowControlsVisible). A KDE-keret helyett ezek tömörek, a jobb
+               felső sarokban (megszokott hely). A cím-mező tágul → ezeket jobbra tolja. -->
+          <widget class="QToolButton" name="minBtn">
+           <property name="visible"><bool>false</bool></property>
+           <property name="toolTip"><string>Tálcára</string></property>
+           <property name="text"><string>—</string></property>
+           <property name="autoRaise"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="closeBtn">
+           <property name="visible"><bool>false</bool></property>
+           <property name="toolTip"><string>Bezárás (visszadokkolás a főablakba)</string></property>
+           <property name="text"><string>✕</string></property>
            <property name="autoRaise"><bool>true</bool></property>
           </widget>
          </item>
@@ -49,7 +92,7 @@
          <item>
           <widget class="QLabel" name="voicesLabel">
            <property name="styleSheet"><string>QLabel { color: palette(text); }</string></property>
-           <property name="text"><string>● 0 hangot hallok</string></property>
+           <property name="text"><string>Nincs kiválasztott forrás</string></property>
           </widget>
          </item>
          <item>
@@ -61,33 +104,15 @@
           </spacer>
          </item>
          <item>
-          <widget class="QToolButton" name="levelsToggle">
-           <property name="toolTip"><string>VU-sávok megjelenítése / elrejtése</string></property>
-           <property name="text"><string>▸ Szintek</string></property>
-           <property name="autoRaise"><bool>true</bool></property>
-          </widget>
-         </item>
-         <item>
           <widget class="QToolButton" name="tracksToggle">
-           <property name="toolTip"><string>Rögzítendő sávok kiválasztása</string></property>
-           <property name="text"><string>▸ Rögzítendő sávok…</string></property>
+           <property name="toolTip"><string>Rögzítendő hangforrások kiválasztása (a sávjukon a VU-szint is látszik)</string></property>
+           <property name="text"><string>▸ Rögzítendő hangforrások módosítása</string></property>
            <property name="autoRaise"><bool>true</bool></property>
           </widget>
          </item>
         </layout>
        </item>
       </layout>
-     </item>
-     <item>
-      <widget class="QPushButton" name="recordBtn">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="text"><string>⏺  Felvétel indítása</string></property>
-      </widget>
      </item>
     </layout>
    </item>
@@ -103,11 +128,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QListWidget" name="deviceList">
-        <property name="maximumSize">
-         <size><width>16777215</width><height>200</height></size>
-        </property>
-       </widget>
+       <!-- A lista magasságát a RecordBar::adjustDeviceListHeight() állítja a látható
+            sorokra (felső korláttal); itt nincs fix méret-korlát. -->
+       <widget class="QListWidget" name="deviceList"/>
       </item>
      </layout>
     </widget>

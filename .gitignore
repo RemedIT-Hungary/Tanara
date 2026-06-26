@@ -14,6 +14,9 @@ CMakeFiles/
 *.key
 secrets.json
 
+# Claude lokális kontextus-bootstrap (privát mutatók vault/memória felé — sosem GitHubra)
+CLAUDE.local.md
+
 # Letöltött ML-modellek (nagy, nem verziókövetett — ~/.tanara/models a futásidejű hely)
 models/
 

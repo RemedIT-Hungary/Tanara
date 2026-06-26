@@ -16,9 +16,9 @@
 #include <QVBoxLayout>
 #include <QProgressBar>
 #include <QCheckBox>
-#include <QMenu>
-#include <QAction>
+#include <QSignalBlocker>
 #include <QDateTime>
+#include <QEvent>
 #include <QVariant>
 #include <algorithm>
 
@@ -43,10 +43,12 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     // A STATIKUS vázat a RecordBar.ui adja (Designerből szerkeszthető); a
     // tag-pointereket innen kötjük be, a viselkedés/paraméterek alább, kódban maradnak.
     ui->setupUi(this);
+    m_titleLabel   = ui->titleLabel;
+    m_editBtn      = ui->editBtn;
     m_titleEdit    = ui->titleEdit;
     m_recordBtn    = ui->recordBtn;
-    m_menuBtn      = ui->menuBtn;
-    m_levelsToggle = ui->levelsToggle;
+    m_minBtn       = ui->minBtn;
+    m_closeBtn     = ui->closeBtn;
     m_tracksToggle = ui->tracksToggle;
     m_voicesLabel  = ui->voicesLabel;
     m_levelsBox    = ui->levelsBox;
@@ -54,30 +56,31 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     m_deviceList   = ui->deviceList;
 
     // --- viselkedés / paraméterek (kódban) ---
-    m_titleEdit->setText(QStringLiteral("Megbeszélés %1")
-        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))));
+    // Alap cím dátum NÉLKÜL (az időpont a meeting metaadatában úgyis ott van).
+    m_titleEdit->setText(QStringLiteral("Megbeszélés"));
+    updateTitleDisplay();
+    // A cím alapból label; dupla kattintásra / ✏-re vált szerkesztőre.
+    if (m_titleLabel)
+        m_titleLabel->installEventFilter(this);
+    if (m_editBtn)
+        connect(m_editBtn, &QToolButton::clicked, this, &RecordBar::enterTitleEdit);
+    if (m_titleEdit)
+        connect(m_titleEdit, &QLineEdit::editingFinished, this, &RecordBar::commitTitleEdit);
     m_recordBtn->setMinimumWidth(150);
     m_deviceList->setSelectionMode(QAbstractItemView::NoSelection);
 
-    // A VU-doboz alapból rejtett; a "▸ Szintek" toggle mutatja.
+    // A hangforrás-doboz alapból rejtett; a "▸ Rögzítendő hangforrások módosítása" toggle mutatja.
     m_levelsVisible = false;
     if (m_levelsBox) m_levelsBox->setVisible(false);
 
-    // --- ⋮ ablak-menü ("Mindig felül" + a régi nézet-váltás) ---
-    m_windowMenu = new QMenu(this);
-    m_alwaysOnTopAct = m_windowMenu->addAction(QStringLiteral("📌 Mindig felül"));
-    m_alwaysOnTopAct->setCheckable(true);
-    m_alwaysOnTopAct->setChecked(true);
-    // A FloatingRecorder dokkolt nézetben elrejti/letiltja ezt; alapból csak akkor
-    // releváns, ha lebeg az ablak. A tényleges WindowStaysOnTopHint a FloatingRecorderben.
-    m_menuBtn->setMenu(m_windowMenu);
-
     connect(m_recordBtn, &QPushButton::clicked, this, &RecordBar::onStartStopClicked);
-    connect(m_levelsToggle, &QToolButton::clicked, this, [this]() {
-        setLevelsVisible(!m_levelsVisible);
-    });
-    // "▸ Rögzítendő sávok…" — ugyanazt a VU/eszköz-dobozt nyitja (itt láthatók és
-    // pipálhatók a sávok); a "Szintek"-kel közös dobozt mutatja.
+    // Frameless ablak-vezérlők (alapból rejtve; a FloatingRecorder kapcsolja be).
+    if (m_minBtn)
+        connect(m_minBtn, &QToolButton::clicked, this, &RecordBar::minimizeRequested);
+    if (m_closeBtn)
+        connect(m_closeBtn, &QToolButton::clicked, this, &RecordBar::closeRequested);
+    // "▸ Rögzítendő hangforrások módosítása" — a hangforrás-dobozt nyitja/zárja
+    // (itt pipálhatók a források ÉS itt mozog a VU-sávjuk).
     connect(m_tracksToggle, &QToolButton::clicked, this, [this]() {
         setLevelsVisible(!m_levelsVisible);
     });
@@ -90,6 +93,71 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
 
 RecordBar::~RecordBar() { delete ui; }
 
+void RecordBar::setWindowControlsVisible(bool on) {
+    if (m_minBtn)   m_minBtn->setVisible(on);
+    if (m_closeBtn) m_closeBtn->setVisible(on);
+}
+
+void RecordBar::updateTitleDisplay() {
+    if (!m_titleLabel || !m_titleEdit)
+        return;
+    const QString t = m_titleEdit->text().trimmed();
+    m_titleLabel->setText(t.isEmpty() ? QStringLiteral("Megbeszélés") : t);
+}
+
+void RecordBar::enterTitleEdit() {
+    if (!m_titleEdit || m_state != tanara::RecordingState::Idle)
+        return;   // rögzítés közben a cím nem szerkeszthető
+    if (m_titleLabel) m_titleLabel->hide();
+    if (m_editBtn)    m_editBtn->hide();
+    m_titleEdit->show();
+    m_titleEdit->setFocus();
+    m_titleEdit->selectAll();
+}
+
+void RecordBar::commitTitleEdit() {
+    if (!m_titleEdit)
+        return;
+    m_titleEdit->hide();
+    updateTitleDisplay();
+    if (m_titleLabel) m_titleLabel->show();
+    if (m_editBtn && m_state == tanara::RecordingState::Idle)
+        m_editBtn->show();
+}
+
+bool RecordBar::eventFilter(QObject* obj, QEvent* ev) {
+    if (obj == m_titleLabel && ev->type() == QEvent::MouseButtonDblClick) {
+        enterTitleEdit();
+        return true;   // a dupla katt a szerkesztést indítja (nem propagál tovább)
+    }
+    return QWidget::eventFilter(obj, ev);
+}
+
+void RecordBar::refreshFromSettings() {
+    if (!m_controller || !m_controller->devices())
+        return;
+    const bool autoAll = m_controller->settings()
+                         && m_controller->settings()->settings().autoRecordAllDevices;
+    // Mely forrásoknak kell bepipálva lenniük a Beállítások szerint:
+    //   auto-mód → minden auto-rögzítendő (line-in/AUX kihagyva),
+    //   kézi mód → a mentett kiválasztás (lastUsedDeviceNames).
+    QStringList wanted;
+    if (autoAll) {
+        for (const auto& d : m_controller->devices()->autoRecordDevices())
+            wanted << d.name;
+    } else {
+        wanted = m_controller->lastUsedDeviceNames();
+    }
+    for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it) {
+        if (!it.value().check)
+            continue;
+        // A programozott setChecked NE mentsen vissza (különben felülírná a policyt).
+        QSignalBlocker block(it.value().check);
+        it.value().check->setChecked(wanted.contains(it.key()));
+    }
+    updateVoicesLabel();
+}
+
 void RecordBar::setViewMode(ViewMode mode) {
     if (m_mode == mode) return;
     m_mode = mode;
@@ -99,8 +167,11 @@ void RecordBar::setViewMode(ViewMode mode) {
 
 void RecordBar::applyViewMode() {
     const bool compact = (m_mode == ViewMode::Compact);
-    // Felső sor: kompaktban a cím-mező rejtett (auto-cím megy), a felvétel-gomb marad.
-    if (m_titleEdit) m_titleEdit->setVisible(!compact);
+    // A cím MINDIG label-ként indul; a titleEdit-et csak a ✏/dupla-katt nyitja meg
+    // (lásd enterTitleEdit/commitTitleEdit) — a nézettől FÜGGETLENÜL. Korábban itt egy
+    // maradék `m_titleEdit->setVisible(!compact)` Full nézetben felhozta az input mezőt a
+    // label MELLÉ (mindkettő látszott induláskor) → ezt kivettük; a titleEdit láthatóságát
+    // már csak a szerkesztés be/kilépése vezérli.
     if (m_devHint)   m_devHint->setVisible(!compact);
 
     // Csoportfejek: kompaktban rejtve.
@@ -114,16 +185,11 @@ void RecordBar::applyViewMode() {
         if (r.check) r.check->setVisible(!compact);
     }
     if (m_levelsBox)
-        m_levelsBox->setTitle(compact ? QStringLiteral("Szintek")
-                                      : QStringLiteral("Hangeszközök"));
-
-    // "Mindig felül" csak lebegő (Kompakt) nézetben releváns — dokkolva (Full) rejtjük.
-    if (m_alwaysOnTopAct)
-        m_alwaysOnTopAct->setVisible(compact);
+        m_levelsBox->setTitle(QStringLiteral("Hangforrások"));
 
     // A VU-doboz alap-láthatósága a nézettől függ: kompaktban (lebegő) felnyitva a
     // kiválasztott eszközök szintjével, teljes nézetben alapból összecsukva (a
-    // "▸ Szintek"/"▸ Rögzítendő sávok…" toggle nyitja). A felhasználó kézi nyitása
+    // "▸ Rögzítendő hangforrások módosítása" toggle nyitja). A felhasználó kézi nyitása
     // (m_levelsVisible) felülírja ezt — csak a nézetváltáskor állítjuk az alapot.
     setLevelsVisible(compact);
 
@@ -134,18 +200,60 @@ void RecordBar::setLevelsVisible(bool on) {
     m_levelsVisible = on;
     if (m_levelsBox) m_levelsBox->setVisible(on);
     const QString arrow = on ? QStringLiteral("▾") : QStringLiteral("▸");
-    if (m_levelsToggle) m_levelsToggle->setText(arrow + QStringLiteral(" Szintek"));
-    if (m_tracksToggle) m_tracksToggle->setText(arrow + QStringLiteral(" Rögzítendő sávok…"));
+    if (m_tracksToggle)
+        m_tracksToggle->setText(arrow + QStringLiteral(" Rögzítendő hangforrások módosítása"));
+    if (on)
+        adjustDeviceListHeight();   // nyitáskor a tartalomra méretezzük a listát
+    // FONTOS: a SAJÁT layoutunkat is újra kell számolni a levelsBox rejtése/mutatása
+    // után, KÜLÖN updateGeometry-vel — különben a befoglaló (FloatingRecorder) a régi,
+    // nagy sizeHint-ünket látja, és nem zsugorodik vissza (sem auto-, sem kézi
+    // átméretezéssel, mert a minimumSize is beragad). Ezt kétszintes layoutnál muszáj.
+    if (layout())
+        layout()->activate();
+    updateGeometry();
+    // A befoglaló lebegő ablak igazodjon a tartalomhoz (nőjön nyitáskor, zsugorodjon
+    // csukáskor — különben üres sáv marad alul, amit kézzel sem lehet eltüntetni).
+    emit requestResizeToFit();
+}
+
+void RecordBar::adjustDeviceListHeight() {
+    if (!m_deviceList)
+        return;
+    // A LÁTHATÓ sorok együttes magassága (kompakt módban a rejtett sorok nem számítanak),
+    // hogy ne kelljen egyszerre átméretezni ÉS görgetni a kis dobozban. Értelmes felső
+    // korlát fölött visszakapcsol a görgetés (nehogy a teljes képernyőt elfoglalja).
+    int content = 2 * m_deviceList->frameWidth() + 4;
+    for (int i = 0; i < m_deviceList->count(); ++i) {
+        QListWidgetItem* it = m_deviceList->item(i);
+        if (!it || it->isHidden())
+            continue;
+        content += m_deviceList->sizeHintForRow(i);
+    }
+    constexpr int kMaxListHeight = 320;   // e fölött görgessen (sok eszköz esetén)
+    const int h = std::min(content, kMaxListHeight);
+    m_deviceList->setMinimumHeight(h);
+    m_deviceList->setMaximumHeight(h);
 }
 
 void RecordBar::updateVoicesLabel() {
     if (!m_voicesLabel)
         return;
+    // Rögzítés közben a TÉNYLEGESEN rögzített sávok száma (auto-módban ez nem
+    // azonos a bepipált eszközökkel — a valós halmazt a m_recordingDeviceNames tartja).
+    if (m_state == tanara::RecordingState::Recording) {
+        m_voicesLabel->setText(
+            QStringLiteral("● Rögzítés — %1 hangforrás").arg(m_recordingDeviceNames.size()));
+        return;
+    }
+    // Üresjáratban: a rögzítésre KIVÁLASZTOTT hangforrások száma. (Korábban „N hangot
+    // hallok" volt — félrevezető, mert nem hangot detektál, csak a kijelölést számolja.)
     int n = 0;
     for (auto it = m_deviceRows.constBegin(); it != m_deviceRows.constEnd(); ++it)
         if (it.value().check && it.value().check->isChecked())
             ++n;
-    m_voicesLabel->setText(QStringLiteral("● %1 hangot hallok").arg(n));
+    m_voicesLabel->setText(n == 0
+        ? QStringLiteral("Nincs kiválasztott hangforrás")
+        : QStringLiteral("🎙 %1 hangforrás kiválasztva").arg(n));
 }
 
 void RecordBar::rebuildDeviceList() {
@@ -296,10 +404,12 @@ void RecordBar::onStartStopClicked() {
     if (m_state != tanara::RecordingState::Idle)
         return;  // Stopping/Encoding közben nem indítunk
 
+    // A cím szerkesztése épp nyitva lehet (input mód) → előbb véglegesítjük.
+    if (m_titleEdit && m_titleEdit->isVisible())
+        commitTitleEdit();
     QString title = m_titleEdit->text().trimmed();
     if (title.isEmpty())
-        title = QStringLiteral("Megbeszélés %1")
-                    .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        title = QStringLiteral("Megbeszélés");   // dátum nélkül (a metaadatban ott van)
 
     // Auto-mód: MINDEN eszközt rögzítünk (a csendeseket a felvétel után eldobjuk);
     // kézi módban a bepipáltakat. A sáv-index → eszköznév leképezést is innen
@@ -332,7 +442,8 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
     switch (state) {
     case tanara::RecordingState::Idle:
         m_elapsedMs = 0;
-        m_titleEdit->setEnabled(true);
+        // A cím újra szerkeszthető (✏ visszajön; a szöveg label-ben látszik).
+        if (m_editBtn) m_editBtn->show();
         // A checkboxok újra engedélyezve (a listát NEM tiltjuk, hogy a VU látszódjon).
         for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
             if (it.value().check) it.value().check->setEnabled(true);
@@ -341,7 +452,10 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
             m_controller->startLevelMonitoring();
         break;
     case tanara::RecordingState::Recording:
-        m_titleEdit->setEnabled(false);
+        // Rögzítés közben a cím nem szerkeszthető: ha épp input módban volt,
+        // véglegesítjük, és elrejtjük a ✏-t (marad a label).
+        commitTitleEdit();
+        if (m_editBtn) m_editBtn->hide();
         // Csak a kijelölést tiltjuk (checkboxok), a lista marad aktív → a VU mozoghat.
         for (auto it = m_deviceRows.begin(); it != m_deviceRows.end(); ++it)
             if (it.value().check) it.value().check->setEnabled(false);
@@ -352,6 +466,7 @@ void RecordBar::onRecordingStateChanged(tanara::RecordingState state) {
     case tanara::RecordingState::Encoding:
         break;
     }
+    updateVoicesLabel();
     updateRecordButton();
 }
 
