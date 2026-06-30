@@ -1131,7 +1131,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     });
 
     svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
-                   cfg.model, cfg.temperature, cfg.maxTokens);
+                   /*systemPrompt*/ s.summaryPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
 } // namespace tanara

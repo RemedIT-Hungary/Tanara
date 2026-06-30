@@ -354,12 +354,40 @@ void MainWindow::buildUi() {
         el->addStretch(1);
         m_summaryStack->addWidget(m_summaryEmptyPage);  // page 1: üres + generálás-gomb
 
+        // Fejléc a stack FÖLÉ: a kontextus átirat után is szerkeszthető + „Újragenerálás".
+        // Így az átirat birtokában finomíthatod a context-et / promptot, és újrafuttathatod.
+        m_summaryTab  = new QWidget(m_tabs);
+        QWidget* sumTab = m_summaryTab;
+        auto* sumWrap = new QVBoxLayout(sumTab);
+        sumWrap->setContentsMargins(0, 0, 0, 0);
+
+        auto* ctxRow = new QHBoxLayout();
+        auto* ctxLbl = new QLabel(QStringLiteral("Kontextus:"), sumTab);
+        ctxLbl->setToolTip(QStringLiteral(
+            "Pár szó a témáról/nevekről — pontosabb összefoglalót ad. Az átirat után is "
+            "módosítható; az „Újragenerálás\" ezzel futtatja újra."));
+        m_summaryContextEdit = new QPlainTextEdit(sumTab);
+        m_summaryContextEdit->setPlaceholderText(QStringLiteral(
+            "Miről szólt? (téma, nevek, szakszavak…) — a pontosabb összefoglalóhoz"));
+        m_summaryContextEdit->setMaximumHeight(56);
+        m_regenSummaryBtn = new QPushButton(QStringLiteral("🔄  Újragenerálás"), sumTab);
+        m_regenSummaryBtn->setToolTip(QStringLiteral(
+            "Az összefoglaló újragenerálása a (módosított) kontextussal és a beállított "
+            "prompttal — az átiratot nem érinti."));
+        ctxRow->addWidget(ctxLbl, 0, Qt::AlignTop);
+        ctxRow->addWidget(m_summaryContextEdit, 1);
+        ctxRow->addWidget(m_regenSummaryBtn, 0, Qt::AlignTop);
+        sumWrap->addLayout(ctxRow);
+        sumWrap->addWidget(m_summaryStack, 1);
+
+        connect(m_regenSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
+
         // A Sávok-fül elé szúrjuk vissza (Átirat | Összefoglaló | Sávok sorrend).
         const int tracksIdx = m_tabs->indexOf(m_tracksPanel);
         if (tracksIdx >= 0)
-            m_tabs->insertTab(tracksIdx, m_summaryStack, summaryTitle);
+            m_tabs->insertTab(tracksIdx, sumTab, summaryTitle);
         else
-            m_tabs->addTab(m_summaryStack, summaryTitle);
+            m_tabs->addTab(sumTab, summaryTitle);
     }
 
     // --- a TranscriptPlayer lejátszó-sávját KIEMELJÜK a jobb pane aljára (mindig
@@ -527,15 +555,25 @@ void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
 }
 
 void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
+    // A fejléc context-mezője a meetinghez mentett leírást tükrözi (átirat után is
+    // szerkeszthető; a State A doboz ekkor már nem látszik).
+    if (m_summaryContextEdit && m_summaryContextEdit->toPlainText() != m.contextNote) {
+        const QSignalBlocker block(m_summaryContextEdit);
+        m_summaryContextEdit->setPlainText(m.contextNote);
+    }
+
     const QString path = QDir(m.folder).filePath(QStringLiteral("summary.md"));
     const QString md = readMarkdownFile(path);
     if (md.isEmpty()) {
         // Üres állapot: a kétállapotú stack a „✨ generálás" gomb oldalára vált.
-        // A gomb kapuzását az updateReviewGating(canRun(Summarize)) intézi.
+        // A gomb kapuzását az updateReviewGating(canRun(Summarize)) intézi. Az „Újragenerálás"
+        // fejléc-gomb ilyenkor rejtve (az üres-lap középső generálás-gombja a belépő).
         m_summaryStack->setCurrentWidget(m_summaryEmptyPage);
+        if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(false);
     } else {
         m_summaryView->setMarkdown(md);
         m_summaryStack->setCurrentWidget(m_summaryView);
+        if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(true);
     }
 }
 
@@ -785,6 +823,10 @@ void MainWindow::onSummarizeClicked() {
         }
         return;
     }
+    // A summary-fül fejlécében (átirat után) finomított kontextust elmentjük, mielőtt
+    // (újra)generálunk — így a modell a frissített leírást kapja.
+    if (m_summaryContextEdit)
+        m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
     setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
 }
@@ -894,7 +936,7 @@ void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
     if (ok) {
         reloadSummaryView(m);                       // → a stack a kész összefoglalóra vált
         m_reviewStack->setCurrentWidget(ui->tabsPage);
-        m_tabs->setCurrentWidget(m_summaryStack);   // az Összefoglaló-fül (stack)
+        m_tabs->setCurrentWidget(m_summaryTab);     // az Összefoglaló-fül (fejléc + stack)
     }
 }
 

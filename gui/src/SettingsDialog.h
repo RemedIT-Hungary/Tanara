@@ -19,6 +19,7 @@ class QFormLayout;
 class QVBoxLayout;
 class QGroupBox;
 class QCheckBox;
+class QPlainTextEdit;
 
 namespace tanara {
 class AppController;
@@ -81,6 +82,7 @@ private:
     QComboBox* m_audioQuality = nullptr;   // hangminőség (per-sáv Opus bitráta), userData = id
     QComboBox* m_mixdownMode = nullptr;    // lekeverés időzítése, userData = "auto"|"manual"
     QLabel*    m_qualityHint = nullptr;    // a választott fokozat méret-becslése
+    QPlainTextEdit* m_summaryPrompt = nullptr;   // az összefoglaló LLM rendszer-promptja
 
     // Rögzítés fül — eszköz-policy.
     QWidget* m_devicesGroup = nullptr;

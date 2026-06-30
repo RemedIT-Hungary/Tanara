@@ -2,11 +2,13 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/SummaryService.h"
 #include "tanara/Types.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/audio/DeviceManager.h"
 
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
@@ -258,6 +260,33 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         tanara::LlmProviderRegistry::instance().all(), s.llmProviderId));
     el->addStretch(1);
     tabs->addTab(extPage, QStringLiteral("Külső szolgáltatások"));
+
+    // ======================== Fül 4: Összefoglaló ============================
+    // Az összefoglaló LLM rendszer-promptja — szabadon hangolható (séma + szabályok).
+    // Üresen hagyva / alapértelmezettel megegyezve a beépített default érvényes.
+    auto* sumPage = new QWidget(this);
+    auto* sumL = new QVBoxLayout(sumPage);
+    auto* sumIntro = new QLabel(QStringLiteral(
+        "Az összefoglalót készítő modell rendszer-promptja (utasítások + a JSON-séma). "
+        "Itt hangolhatod, pl. a részletességet/arányosságot. A kapott átirat és a "
+        "kontextus-jegyzet automatikusan a prompt UTÁN kerül a modellhez."), sumPage);
+    sumIntro->setWordWrap(true);
+    applyMuted(sumIntro);
+    sumL->addWidget(sumIntro);
+
+    m_summaryPrompt = new QPlainTextEdit(sumPage);
+    m_summaryPrompt->setPlaceholderText(QStringLiteral("Összefoglaló rendszer-prompt…"));
+    sumL->addWidget(m_summaryPrompt, 1);
+
+    auto* resetRow = new QHBoxLayout();
+    resetRow->addStretch(1);
+    auto* resetBtn = new QPushButton(QStringLiteral("Visszaállítás alapértelmezettre"), sumPage);
+    resetRow->addWidget(resetBtn);
+    sumL->addLayout(resetRow);
+    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+        m_summaryPrompt->setPlainText(tanara::SummaryService::defaultSystemPrompt());
+    });
+    tabs->addTab(sumPage, QStringLiteral("Összefoglaló"));
 
     root->addWidget(tabs);
 
@@ -549,6 +578,12 @@ void SettingsDialog::loadGeneral() {
         int mi = m_mixdownMode->findData(s.mixdownMode);
         m_mixdownMode->setCurrentIndex(mi >= 0 ? mi : 0);
     }
+    if (m_summaryPrompt) {
+        // Üres beállítás → a beépített defaultot mutatjuk kiindulásként (szerkeszthető).
+        m_summaryPrompt->setPlainText(
+            s.summaryPrompt.isEmpty() ? tanara::SummaryService::defaultSystemPrompt()
+                                      : s.summaryPrompt);
+    }
     // A provider-mezőket a rebuildFields() tölti (ctorban + váltáskor).
 }
 
@@ -634,6 +669,13 @@ void SettingsDialog::onAccept() {
         s.audioQuality = m_audioQuality->currentData().toString();
     if (m_mixdownMode && m_mixdownMode->currentIndex() >= 0)
         s.mixdownMode = m_mixdownMode->currentData().toString();
+    if (m_summaryPrompt) {
+        // Ha a szöveg a beépített defaulttal egyezik → ÜRESEN mentjük, hogy a kód-default
+        // jövőbeli javításai automatikusan érvényesüljenek; különben a saját promptot.
+        const QString p = m_summaryPrompt->toPlainText();
+        s.summaryPrompt = (p.trimmed() == tanara::SummaryService::defaultSystemPrompt().trimmed())
+                              ? QString() : p;
+    }
     m_controller->settings()->setSettings(s);
 
     // Eszköz-policy mentése (a felvevővel közös default-halmaz). Csak ha volt mit

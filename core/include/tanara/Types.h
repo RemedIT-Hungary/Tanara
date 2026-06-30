@@ -174,6 +174,11 @@ struct AppSettings {
     // sosem várja meg — a fő szál nem fagy.
     QString mixdownMode{QStringLiteral("auto")};
 
+    // Az összefoglaló LLM rendszer-promptja (a séma + szabályok). ÜRES → a beépített
+    // SummaryService::defaultSystemPrompt() érvényes (így a kód-default jövőbeli javításai
+    // automatikusan érvényesülnek, amíg a felhasználó nem ír sajátot).
+    QString summaryPrompt;
+
     // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
     // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
     // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).

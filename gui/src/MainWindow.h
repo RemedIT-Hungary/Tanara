@@ -140,6 +140,11 @@ private:
     QPushButton*  m_generateSummaryBtn = nullptr;
     QWidget*      m_summaryEmptyPage = nullptr; // a summaryView helyén üres állapotban
     QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres+gomb
+    QWidget*      m_summaryTab = nullptr;        // a fül-lap (fejléc + stack) — ezt rakjuk tabba
+    // Az Összefoglaló-fül fejléce: a kontextus átirat UTÁN is szerkeszthető (a State A
+    // doboz ekkor már nem látszik), + „Újragenerálás" a finomított context/prompt alapján.
+    QPlainTextEdit* m_summaryContextEdit = nullptr;
+    QPushButton*  m_regenSummaryBtn = nullptr;
 
     QProgressBar* m_busyBar = nullptr;
     QProgressBar* m_convertBar = nullptr;   // állapotsoros, determinisztikus lekeverés-progress
