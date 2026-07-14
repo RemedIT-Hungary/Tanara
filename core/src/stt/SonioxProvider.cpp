@@ -101,9 +101,18 @@ void SonioxJob::cancel() {
     fail(QStringLiteral("cancelled"));
 }
 
+namespace {
+// Eltelt idő „m:ss" formában a UI-progresshez.
+QString formatElapsed(qint64 ms) {
+    const qint64 s = ms / 1000;
+    return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+} // namespace
+
 void SonioxJob::start() {
     if (m_finished)
         return;
+    m_clock.start();   // az eltelt idő a job teljes hosszát méri (feltöltés → poll → letöltés)
     uploadFile();
 }
 
@@ -290,9 +299,14 @@ void SonioxJob::pollStatus() {
                 msg = QStringLiteral("ismeretlen Soniox hiba");
             fail(msg);
         } else {
-            // queued / processing / running stb. — maradunk a poll-ban
+            // queued / processing / running stb. — maradunk a poll-ban. Minden sikeres
+            // poll egy „életjel" → az eltelt idő + a számláló láthatóan mozog, így a UI
+            // nem tűnik befagyottnak, és látszik, hogy a kapcsolat él.
+            ++m_pollCount;
             setState(JobState::Processing);
-            emit progress(60, QStringLiteral("Feldolgozás (%1)…").arg(status));
+            emit progress(60, QStringLiteral("Feldolgozás (%1)… %2 · %3. életjel")
+                                  .arg(status, formatElapsed(m_clock.elapsed()))
+                                  .arg(m_pollCount));
         }
     });
 }

@@ -1128,6 +1128,10 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     SttJob* job = provider->transcribe(req);
     connect(job, &SttJob::stateChanged, this,
             [this, id = m.id](JobState st) { emit jobProgress(id, sttPhase(st)); });
+    // A részletes poll-üzenet (eltelt idő + életjel) is jusson ki a UI-ra, hogy a hosszú
+    // async feldolgozás alatt látszódjon: fut és a kapcsolat él.
+    connect(job, &SttJob::progress, this,
+            [this, id = m.id](int, const QString& msg) { emit jobProgress(id, msg); });
     connect(job, &SttJob::finished, this, [this, m, providerObj](const TrackTranscript& tr) mutable {
         TrackTranscript res = tr;
         // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.

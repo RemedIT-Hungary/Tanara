@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QString>
 #include <QPointer>
+#include <QElapsedTimer>
 #include <QNetworkRequest>
 
 class QNetworkAccessManager;
@@ -57,6 +58,9 @@ private:
     QString  m_transcriptionId;
     JobState m_state = JobState::Idle;
     bool     m_finished = false;           // finished/failed után ne emittáljunk újra
+
+    QElapsedTimer m_clock;                 // teljes eltelt idő a job indulásától (UI-progress)
+    int      m_pollCount = 0;              // sikeres poll-életjelek száma (kapcsolat él)
 };
 
 class SonioxProvider : public QObject, public ISttProvider {
