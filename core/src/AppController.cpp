@@ -13,6 +13,7 @@
 #include "tanara/llm/ILlmProvider.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/SummaryService.h"
+#include "tanara/ComplexSummaryService.h"
 #include "tanara/TranscriptMerger.h"
 
 #include <QDir>
@@ -112,6 +113,79 @@ MergedTranscript readTokensJson(const QString& path) {
         mt.tokens.append(t);
     }
     return mt;
+}
+
+// A komplex összefoglaló 1. körének SZERKESZTHETŐ téma-listája (summary.topics.json).
+void writeTopicsJson(const QString& path, const QVector<SummaryTopic>& topics) {
+    QJsonArray arr;
+    for (const auto& t : topics) {
+        QJsonObject o;
+        o["id"]      = t.id;
+        o["title"]   = t.title;
+        o["summary"] = t.summary;
+        arr.append(o);
+    }
+    QSaveFile f(path);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+        f.commit();
+    }
+}
+
+QVector<SummaryTopic> readTopicsJson(const QString& path) {
+    QVector<SummaryTopic> topics;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return topics;
+    for (const auto& v : QJsonDocument::fromJson(f.readAll()).array()) {
+        const auto o = v.toObject();
+        SummaryTopic t;
+        t.id      = o["id"].toString();
+        t.title   = o["title"].toString();
+        t.summary = o["summary"].toString();
+        if (!t.title.trimmed().isEmpty())
+            topics.append(t);
+    }
+    return topics;
+}
+
+// A komplex összefoglaló markdown-ja: globális fej (vezetői összefoglaló + összevont
+// teendők) + témánkénti szekciók (összegző + döntések + teendők). A Summary::renderMarkdown
+// stílusát követi (`- [ ]` teendő-checklisták).
+QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionItem>& items,
+                              const QVector<TopicAnalysis>& topics) {
+    auto renderItem = [](const ActionItem& ai) {
+        QString s = QStringLiteral("- [ ] ") + ai.text;
+        if (!ai.owner.isEmpty()) s += QStringLiteral(" — ") + ai.owner;
+        if (!ai.due.isEmpty())   s += QStringLiteral(" (") + ai.due + QStringLiteral(")");
+        return s + QStringLiteral("\n");
+    };
+    QString md;
+    if (!execSummary.isEmpty())
+        md += QStringLiteral("## Vezetői összefoglaló\n\n") + execSummary + QStringLiteral("\n\n");
+    if (!items.isEmpty()) {
+        md += QStringLiteral("## Teendők (összevont)\n\n");
+        for (const ActionItem& ai : items) md += renderItem(ai);
+        md += QStringLiteral("\n");
+    }
+    if (!topics.isEmpty()) {
+        md += QStringLiteral("## Témák\n\n");
+        int n = 1;
+        for (const TopicAnalysis& t : topics) {
+            md += QStringLiteral("### %1. %2\n\n").arg(n++).arg(t.title);
+            if (!t.detail.isEmpty()) md += t.detail + QStringLiteral("\n\n");
+            if (!t.decisions.isEmpty()) {
+                md += QStringLiteral("**Döntések:**\n\n");
+                for (const QString& d : t.decisions) md += QStringLiteral("- ") + d + QStringLiteral("\n");
+                md += QStringLiteral("\n");
+            }
+            if (!t.actionItems.isEmpty()) {
+                md += QStringLiteral("**Teendők:**\n\n");
+                for (const ActionItem& ai : t.actionItems) md += renderItem(ai);
+                md += QStringLiteral("\n");
+            }
+        }
+    }
+    return md;
 }
 
 // Melyik sávból vegyünk hangot egy nyers beszélő-címkéhez:
@@ -1132,6 +1206,136 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
                    /*systemPrompt*/ s.summaryPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
+}
+
+// ---- komplex (több körös) összefoglaló ------------------------------------
+
+void AppController::extractMeetingTopics(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+
+    // Ha már van (esetleg szerkesztett) téma-lista, azt adjuk vissza — nincs újrakinyerés.
+    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
+    const QVector<SummaryTopic> existing = readTopicsJson(topicsPath);
+    if (!existing.isEmpty()) { emit topicsReady(m.id, existing); return; }
+
+    ReadinessResult res = canRun(WorkflowStep::Summarize, meetingId);
+    if (!res.runnable) { emit errorOccurred(res.detail); return; }
+
+    MergedTranscript merged = d->mergedCache.value(meetingId);
+    if (merged.tokens.isEmpty())
+        merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást.")); return; }
+    applySpeakerMap(merged, m.speakerMap);
+    const QString transcriptMd = merged.renderMarkdown();
+
+    const AppSettings s = d->settings->settings();
+    ProviderConfig cfg = s.llmSelected();
+    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
+    if (!provider) { emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    QObject* providerObj = dynamic_cast<QObject*>(provider);
+    auto* svc = new ComplexSummaryService(provider, this);
+    emit jobProgress(meetingId, QStringLiteral("Témák kigyűjtése a helyi modellel…"));
+
+    connect(svc, &ComplexSummaryService::topicsReady, this,
+            [this, id = m.id, topicsPath, providerObj, svc](const QVector<SummaryTopic>& topics) {
+        writeTopicsJson(topicsPath, topics);
+        if (providerObj) providerObj->deleteLater();
+        svc->deleteLater();
+        emit topicsReady(id, topics);
+    });
+    connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc](const QString& e) {
+        if (providerObj) providerObj->deleteLater();
+        svc->deleteLater();
+        emit errorOccurred(QStringLiteral("Téma-kinyerés hiba: %1").arg(e));
+    });
+
+    svc->requestTopics(transcriptMd, m.contextNote.trimmed(), s.topicExtractionPrompt,
+                       cfg.model, cfg.temperature, cfg.maxTokens);
+}
+
+void AppController::generateComplexSummary(const QString& meetingId, const QVector<SummaryTopic>& topics)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (topics.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs téma a komplex összefoglalóhoz.")); return; }
+
+    // A (szerkesztett) téma-lista perzisztálása — folytatható marad.
+    writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
+
+    MergedTranscript merged = d->mergedCache.value(meetingId);
+    if (merged.tokens.isEmpty())
+        merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást.")); return; }
+    applySpeakerMap(merged, m.speakerMap);
+
+    const AppSettings s = d->settings->settings();
+    ProviderConfig cfg = s.llmSelected();
+    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
+    if (!provider) { emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    QObject* providerObj = dynamic_cast<QObject*>(provider);
+    auto* svc = new ComplexSummaryService(provider, this);
+
+    // SZEKVENCIÁLIS 2. kör (a lokális modell parallel=1) — témánként egyesével, majd reduce.
+    struct Ctx {
+        Meeting m; QString transcriptMd; QString context; QString analysisPrompt;
+        QString model; double temp; int maxTokens;
+        QVector<SummaryTopic> topics; QVector<TopicAnalysis> results; int idx = 0;
+    };
+    auto ctx = std::make_shared<Ctx>();
+    ctx->m = m;
+    ctx->transcriptMd = merged.renderMarkdown();
+    ctx->context = m.contextNote.trimmed();
+    ctx->analysisPrompt = s.topicAnalysisPrompt;
+    ctx->model = cfg.model; ctx->temp = cfg.temperature; ctx->maxTokens = cfg.maxTokens;
+    ctx->topics = topics;
+
+    auto cleanup = [providerObj, svc]() {
+        if (providerObj) providerObj->deleteLater();
+        svc->deleteLater();
+    };
+
+    connect(svc, &ComplexSummaryService::failed, this, [this, cleanup](const QString& e) {
+        emit errorOccurred(QStringLiteral("Komplex összefoglaló hiba: %1").arg(e));
+        cleanup();
+    });
+    connect(svc, &ComplexSummaryService::topicAnalysisReady, this,
+            [this, svc, ctx](const TopicAnalysis& a) {
+        ctx->results.append(a);
+        ++ctx->idx;
+        if (ctx->idx < ctx->topics.size()) {
+            emit jobProgress(ctx->m.id, QStringLiteral("Téma %1/%2 elemzése…")
+                                            .arg(ctx->idx + 1).arg(ctx->topics.size()));
+            svc->requestTopicAnalysis(ctx->transcriptMd, ctx->topics[ctx->idx], ctx->context,
+                                      ctx->analysisPrompt, ctx->model, ctx->temp, ctx->maxTokens);
+        } else {
+            emit jobProgress(ctx->m.id, QStringLiteral("Összegzés (vezetői összefoglaló + teendők)…"));
+            svc->requestReduce(ctx->results, ctx->context, ctx->model, ctx->temp, ctx->maxTokens);
+        }
+    });
+    connect(svc, &ComplexSummaryService::reduceReady, this,
+            [this, ctx, cleanup](const QString& execSummary, const QVector<ActionItem>& items) {
+        const QString md = renderComplexMarkdown(execSummary, items, ctx->results);
+        Meeting mm = d->store->load(ctx->m.id);
+        if (mm.id.isEmpty()) mm = ctx->m;
+        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
+        writeTextFile(mdPath, md);
+        QDir().mkpath(d->notesDir);
+        const QString noteName = QStringLiteral("%1 %2.md")
+            .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
+        writeTextFile(QDir(d->notesDir).filePath(noteName), md);
+        mm.hasSummary = true;
+        d->store->saveMeeting(mm);
+        cleanup();
+        emit summaryReady(mm.id, mdPath);
+    });
+
+    emit jobProgress(meetingId, QStringLiteral("Téma 1/%1 elemzése…").arg(topics.size()));
+    svc->requestTopicAnalysis(ctx->transcriptMd, topics[0], ctx->context,
+                              ctx->analysisPrompt, ctx->model, ctx->temp, ctx->maxTokens);
 }
 
 } // namespace tanara

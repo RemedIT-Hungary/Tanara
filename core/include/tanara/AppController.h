@@ -100,10 +100,22 @@ public slots:
     // Eredmény: llmModelsFetched(QStringList) vagy llmModelsFailed(QString).
     void fetchLlmModels();
 
-    // Egy meeting átírása (Soniox, per-sáv → merge → transcript.md). Kulcs a KeyStore-ból.
+    // Egy meeting átírása. A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs
+    // sávonkénti átfedés-összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a
+    // mixdown hiányzik/elavult, előbb legyártja, és a kész jelére indítja az átírást.
+    // Kulcs a KeyStore-ból.
     void transcribeMeeting(const QString& meetingId);
     // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
     void summarizeMeeting(const QString& meetingId);
+
+    // Komplex (több körös) összefoglaló — 1. kör: a teljes átiratból TÉMÁKAT nyer ki, és
+    // topicsReady(meetingId, topics)-szal adja vissza (a UI szerkesztésre megjeleníti).
+    // Ha már létezik summary.topics.json, azt adja vissza (nincs újrakinyerés).
+    void extractMeetingTopics(const QString& meetingId);
+    // 2. kör + reduce: a (felhasználó által szerkesztett) témákra SZEKVENCIÁLISAN elemzést
+    // futtat, majd globális összegzéssel a summary.md-be írja; a végén summaryReady-t emittál.
+    void generateComplexSummary(const QString& meetingId,
+                                const QVector<tanara::SummaryTopic>& topics);
 
     // Egy beszélő átnevezése egy meetingben (nyers címke → valódi név). Perzisztál
     // (Meeting.speakerMap + people.json), újragenerálja a transcript.md-t a nevekkel,
@@ -155,6 +167,7 @@ signals:
     void recordingFinished(tanara::Meeting meeting);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
+    void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott

@@ -17,6 +17,7 @@ class QTabWidget;
 class QStackedWidget;
 class QPushButton;
 class QPlainTextEdit;
+class QLineEdit;
 class QToolButton;
 class QLabel;
 class QFrame;
@@ -56,6 +57,9 @@ private slots:
     void onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onTranscribeClicked();
     void onSummarizeClicked();
+    void onComplexClicked();    // komplex összefoglaló indítása (téma-kinyerés → szerkesztő)
+    void onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // 1. kör kész
+    void onStartAnalysis();     // a szerkesztett témákra a 2. kör + reduce
     // EGYETLEN „Résztvevők azonosítása" akció: átirat előtt előnézet (hang-klaszterek +
     // DB-találatok), átirat után a speakerMap kitöltése a biztos találatokkal — majd
     // emberi összegzés („3 különböző partner" / „Dompa, Béla és 1 ismeretlen partner").
@@ -84,6 +88,8 @@ private:
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
+    void addTopicRow(const tanara::SummaryTopic& t);    // egy szerkeszthető téma-sor
+    void clearTopicRows();                              // a téma-szerkesztő sorainak ürítése
     void reloadHeader(const tanara::Meeting& m);        // cím + meta (dátum · hossz)
     void reloadSpeakersBar(const tanara::Meeting& m);   // összecsukott beszélők-sáv
     void updateReviewGating(const tanara::Meeting& m);  // State A pipeline vs. fülek + kapuzás
@@ -145,6 +151,16 @@ private:
     // doboz ekkor már nem látszik), + „Újragenerálás" a finomított context/prompt alapján.
     QPlainTextEdit* m_summaryContextEdit = nullptr;
     QPushButton*  m_regenSummaryBtn = nullptr;
+    // Komplex (több körös) összefoglaló: belépő gombok + a téma-szerkesztő lap (page2).
+    QPushButton*  m_complexBtn = nullptr;        // belépő a summary-fejlécben (kész állapot)
+    QPushButton*  m_complexEmptyBtn = nullptr;   // belépő az üres-lapon
+    QWidget*      m_topicEditorPage = nullptr;   // a stack 3. lapja (téma-review)
+    QVBoxLayout*  m_topicRowsLayout = nullptr;   // ide kerülnek a dinamikus téma-sorok
+    QPushButton*  m_startAnalysisBtn = nullptr;  // „Témánkénti elemzés indítása →"
+    QString       m_topicsMeetingId;             // melyik meetinghez tartozik a szerkesztő
+    struct TopicRow { QString id; QWidget* row = nullptr;
+                      QLineEdit* title = nullptr; QLineEdit* summary = nullptr; };
+    QVector<TopicRow> m_topicRows;
 
     QProgressBar* m_busyBar = nullptr;
     QProgressBar* m_convertBar = nullptr;   // állapotsoros, determinisztikus lekeverés-progress

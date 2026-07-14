@@ -92,6 +92,24 @@ struct Summary {
     QString renderMarkdown() const;      // impl: SummaryService modul
 };
 
+// ---- komplex (több körös, téma-bontásos) összefoglaló ----------------------
+// 1. kör: a teljes átiratból kinyert TÉMÁK, a felhasználó által szerkeszthető
+// köztes állapot (cím + 1 soros gist). A 2. kör ezekre a (jóváhagyott) témákra megy.
+struct SummaryTopic {
+    QString id;        // stabil azonosító (QUuid) — túléli a szerkesztést/köröket
+    QString title;
+    QString summary;   // 1-2 mondatos gist (az 1. kör adja; szerkeszthető)
+};
+
+// 2. kör eredménye egy témára: részletes összegző + döntések + teendők.
+struct TopicAnalysis {
+    QString topicId;
+    QString title;
+    QString detail;
+    QStringList decisions;
+    QVector<ActionItem> actionItems;
+};
+
 // ---- meeting --------------------------------------------------------------
 struct Meeting {
     QString id;
@@ -179,6 +197,11 @@ struct AppSettings {
     // automatikusan érvényesülnek, amíg a felhasználó nem ír sajátot).
     QString summaryPrompt;
 
+    // A komplex (több körös) összefoglaló két szerkeszthető prompt-ja. ÜRES → a kód-default
+    // (ComplexSummaryService::defaultTopicPrompt() / defaultAnalysisPrompt()).
+    QString topicExtractionPrompt;   // 1. kör: téma-kinyerés
+    QString topicAnalysisPrompt;     // 2. kör: témánkénti elemzés
+
     // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
     // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
     // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).
@@ -213,6 +236,9 @@ Q_DECLARE_METATYPE(tanara::Utterance)
 Q_DECLARE_METATYPE(tanara::MergedTranscript)
 Q_DECLARE_METATYPE(tanara::ActionItem)
 Q_DECLARE_METATYPE(tanara::Summary)
+Q_DECLARE_METATYPE(tanara::SummaryTopic)
+Q_DECLARE_METATYPE(QVector<tanara::SummaryTopic>)
+Q_DECLARE_METATYPE(tanara::TopicAnalysis)
 Q_DECLARE_METATYPE(tanara::Meeting)
 Q_DECLARE_METATYPE(tanara::Voiceprint)
 Q_DECLARE_METATYPE(tanara::VoiceMatch)

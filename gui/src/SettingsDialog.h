@@ -82,7 +82,11 @@ private:
     QComboBox* m_audioQuality = nullptr;   // hangminőség (per-sáv Opus bitráta), userData = id
     QComboBox* m_mixdownMode = nullptr;    // lekeverés időzítése, userData = "auto"|"manual"
     QLabel*    m_qualityHint = nullptr;    // a választott fokozat méret-becslése
-    QPlainTextEdit* m_summaryPrompt = nullptr;   // az összefoglaló LLM rendszer-promptja
+    // Összefoglaló-promptok: egy szerkesztő + választó (Egyszerű / Téma-kinyerés / Téma-elemzés).
+    QComboBox*      m_promptSelect = nullptr;     // melyik promptot szerkesztjük (userData=id)
+    QPlainTextEdit* m_summaryPrompt = nullptr;    // a kiválasztott prompt szerkesztője
+    QHash<QString, QString> m_promptText;         // id → aktuális szöveg (váltáskor megőrizve)
+    QString        m_curPromptId;                 // épp szerkesztett prompt id-ja
 
     // Rögzítés fül — eszköz-policy.
     QWidget* m_devicesGroup = nullptr;

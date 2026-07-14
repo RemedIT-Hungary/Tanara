@@ -245,6 +245,8 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("audioQuality")]   = s.audioQuality;
     o[QStringLiteral("mixdownMode")]    = s.mixdownMode;
     o[QStringLiteral("summaryPrompt")]  = s.summaryPrompt;
+    o[QStringLiteral("topicExtractionPrompt")] = s.topicExtractionPrompt;
+    o[QStringLiteral("topicAnalysisPrompt")]   = s.topicAnalysisPrompt;
 
     // Új multi-provider shape: kiválasztott id + providerenkénti config.
     o[QStringLiteral("sttProviderId")] = s.sttProviderId;
@@ -267,6 +269,8 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.audioQuality = o.value(QStringLiteral("audioQuality")).toString(s.audioQuality);
     s.mixdownMode  = o.value(QStringLiteral("mixdownMode")).toString(s.mixdownMode);
     s.summaryPrompt = o.value(QStringLiteral("summaryPrompt")).toString(s.summaryPrompt);
+    s.topicExtractionPrompt = o.value(QStringLiteral("topicExtractionPrompt")).toString(s.topicExtractionPrompt);
+    s.topicAnalysisPrompt   = o.value(QStringLiteral("topicAnalysisPrompt")).toString(s.topicAnalysisPrompt);
 
     // STT: új shape (sttProviders) elsőbbség; különben migráció a régi `stt`-ből.
     if (o.contains(QStringLiteral("sttProviders"))) {

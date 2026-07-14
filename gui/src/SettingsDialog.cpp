@@ -3,6 +3,7 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/SummaryService.h"
+#include "tanara/ComplexSummaryService.h"
 #include "tanara/Types.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/audio/DeviceManager.h"
@@ -29,6 +30,14 @@
 #include <QVariant>
 
 namespace tanara_gui {
+
+// Az összefoglaló-prompt id-jához tartozó beépített default (egyetlen igazságforrás a
+// betöltés/reset/mentés számára). id: "simple" | "topic" | "analysis".
+static QString summaryPromptDefault(const QString& id) {
+    if (id == QStringLiteral("topic"))    return tanara::ComplexSummaryService::defaultTopicPrompt();
+    if (id == QStringLiteral("analysis")) return tanara::ComplexSummaryService::defaultAnalysisPrompt();
+    return tanara::SummaryService::defaultSystemPrompt();   // "simple"
+}
 
 using tanara::ConfigField;
 using tanara::ConfigFieldType;
@@ -267,15 +276,25 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     auto* sumPage = new QWidget(this);
     auto* sumL = new QVBoxLayout(sumPage);
     auto* sumIntro = new QLabel(QStringLiteral(
-        "Az összefoglalót készítő modell rendszer-promptja (utasítások + a JSON-séma). "
-        "Itt hangolhatod, pl. a részletességet/arányosságot. A kapott átirat és a "
-        "kontextus-jegyzet automatikusan a prompt UTÁN kerül a modellhez."), sumPage);
+        "Az összefoglalót készítő modell rendszer-promptjai (utasítások + JSON-séma). A "
+        "választóval válthatsz az egyszerű, egy-körös prompt és a komplex (több körös) mód két "
+        "prompt-ja között. A kapott átirat és a kontextus automatikusan a prompt UTÁN kerül a modellhez."),
+        sumPage);
     sumIntro->setWordWrap(true);
     applyMuted(sumIntro);
     sumL->addWidget(sumIntro);
 
+    auto* selRow = new QHBoxLayout();
+    selRow->addWidget(new QLabel(QStringLiteral("Prompt:"), sumPage), 0);
+    m_promptSelect = new QComboBox(sumPage);
+    m_promptSelect->addItem(QStringLiteral("Egyszerű összefoglaló"),  QStringLiteral("simple"));
+    m_promptSelect->addItem(QStringLiteral("Komplex — Téma-kinyerés (1. kör)"), QStringLiteral("topic"));
+    m_promptSelect->addItem(QStringLiteral("Komplex — Téma-elemzés (2. kör)"),  QStringLiteral("analysis"));
+    selRow->addWidget(m_promptSelect, 1);
+    sumL->addLayout(selRow);
+
     m_summaryPrompt = new QPlainTextEdit(sumPage);
-    m_summaryPrompt->setPlaceholderText(QStringLiteral("Összefoglaló rendszer-prompt…"));
+    m_summaryPrompt->setPlaceholderText(QStringLiteral("Rendszer-prompt…"));
     sumL->addWidget(m_summaryPrompt, 1);
 
     auto* resetRow = new QHBoxLayout();
@@ -283,8 +302,16 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     auto* resetBtn = new QPushButton(QStringLiteral("Visszaállítás alapértelmezettre"), sumPage);
     resetRow->addWidget(resetBtn);
     sumL->addLayout(resetRow);
+    // Váltáskor a jelenlegi szerkesztő-tartalmat elmentjük a régi promptba, és betöltjük az újat.
+    connect(m_promptSelect, &QComboBox::currentIndexChanged, this, [this]() {
+        if (!m_curPromptId.isEmpty())
+            m_promptText[m_curPromptId] = m_summaryPrompt->toPlainText();
+        m_curPromptId = m_promptSelect->currentData().toString();
+        m_summaryPrompt->setPlainText(m_promptText.value(m_curPromptId));
+    });
+    // Reset csak a KIVÁLASZTOTT prompt defaultjára.
     connect(resetBtn, &QPushButton::clicked, this, [this]() {
-        m_summaryPrompt->setPlainText(tanara::SummaryService::defaultSystemPrompt());
+        m_summaryPrompt->setPlainText(summaryPromptDefault(m_curPromptId));
     });
     tabs->addTab(sumPage, QStringLiteral("Összefoglaló"));
 
@@ -578,11 +605,17 @@ void SettingsDialog::loadGeneral() {
         int mi = m_mixdownMode->findData(s.mixdownMode);
         m_mixdownMode->setCurrentIndex(mi >= 0 ? mi : 0);
     }
-    if (m_summaryPrompt) {
-        // Üres beállítás → a beépített defaultot mutatjuk kiindulásként (szerkeszthető).
-        m_summaryPrompt->setPlainText(
-            s.summaryPrompt.isEmpty() ? tanara::SummaryService::defaultSystemPrompt()
-                                      : s.summaryPrompt);
+    if (m_summaryPrompt && m_promptSelect) {
+        // A három prompt-puffer feltöltése (üres beállítás → a beépített default).
+        auto initBuf = [&](const QString& id, const QString& stored) {
+            m_promptText[id] = stored.isEmpty() ? summaryPromptDefault(id) : stored;
+        };
+        initBuf(QStringLiteral("simple"),   s.summaryPrompt);
+        initBuf(QStringLiteral("topic"),    s.topicExtractionPrompt);
+        initBuf(QStringLiteral("analysis"), s.topicAnalysisPrompt);
+        m_promptSelect->setCurrentIndex(0);
+        m_curPromptId = m_promptSelect->currentData().toString();   // "simple"
+        m_summaryPrompt->setPlainText(m_promptText.value(m_curPromptId));
     }
     // A provider-mezőket a rebuildFields() tölti (ctorban + váltáskor).
 }
@@ -669,12 +702,19 @@ void SettingsDialog::onAccept() {
         s.audioQuality = m_audioQuality->currentData().toString();
     if (m_mixdownMode && m_mixdownMode->currentIndex() >= 0)
         s.mixdownMode = m_mixdownMode->currentData().toString();
-    if (m_summaryPrompt) {
-        // Ha a szöveg a beépített defaulttal egyezik → ÜRESEN mentjük, hogy a kód-default
-        // jövőbeli javításai automatikusan érvényesüljenek; különben a saját promptot.
-        const QString p = m_summaryPrompt->toPlainText();
-        s.summaryPrompt = (p.trimmed() == tanara::SummaryService::defaultSystemPrompt().trimmed())
-                              ? QString() : p;
+    if (m_summaryPrompt && m_promptSelect) {
+        // A jelenleg szerkesztett prompt szövegét a pufferbe szinkronizáljuk, majd mindhárom
+        // promptot mentjük: ha a szöveg == a beépített default, ÜRESEN (a kód-default jövőbeli
+        // javításai így érvényesülnek), különben a saját szöveget.
+        if (!m_curPromptId.isEmpty())
+            m_promptText[m_curPromptId] = m_summaryPrompt->toPlainText();
+        auto store = [&](const QString& id) -> QString {
+            const QString p = m_promptText.value(id);
+            return p.trimmed() == summaryPromptDefault(id).trimmed() ? QString() : p;
+        };
+        s.summaryPrompt          = store(QStringLiteral("simple"));
+        s.topicExtractionPrompt  = store(QStringLiteral("topic"));
+        s.topicAnalysisPrompt    = store(QStringLiteral("analysis"));
     }
     m_controller->settings()->setSettings(s);
 

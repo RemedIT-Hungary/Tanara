@@ -40,6 +40,8 @@
 #include <QCoreApplication>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QScrollArea>
+#include <QUuid>
 #include <QPoint>
 #include <QLocale>
 #include <QItemSelectionModel>
@@ -122,6 +124,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onTranscriptReady);
         connect(m_controller, &tanara::AppController::summaryReady,
                 this, &MainWindow::onSummaryReady);
+        connect(m_controller, &tanara::AppController::topicsReady,
+                this, &MainWindow::onTopicsReady);
         connect(m_controller, &tanara::AppController::errorOccurred,
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::jobProgress,
@@ -344,15 +348,67 @@ void MainWindow::buildUi() {
             QStringLiteral("✨  Összefoglaló generálása"), m_summaryEmptyPage);
         m_generateSummaryBtn->setStyleSheet(
             QStringLiteral("QPushButton { font-weight: bold; padding: 8px 18px; }"));
+        m_complexEmptyBtn = new QPushButton(
+            QStringLiteral("🧩  Komplex (témánként)"), m_summaryEmptyPage);
+        m_complexEmptyBtn->setStyleSheet(QStringLiteral("QPushButton { padding: 8px 18px; }"));
+        m_complexEmptyBtn->setToolTip(QStringLiteral(
+            "Több körös, témánkénti összefoglaló: kigyűjti a témákat (szerkeszthető), majd "
+            "témánként részletes elemzést készít."));
         auto* btnRow = new QHBoxLayout();
         btnRow->addStretch(1);
         btnRow->addWidget(m_generateSummaryBtn);
+        btnRow->addWidget(m_complexEmptyBtn);
         btnRow->addStretch(1);
         el->addWidget(emptyLbl);
         el->addSpacing(10);
         el->addLayout(btnRow);
         el->addStretch(1);
         m_summaryStack->addWidget(m_summaryEmptyPage);  // page 1: üres + generálás-gomb
+        connect(m_complexEmptyBtn, &QPushButton::clicked, this, &MainWindow::onComplexClicked);
+
+        // page 2: téma-szerkesztő (a komplex 1. kör eredménye — szerkeszthető téma-lista).
+        m_topicEditorPage = new QWidget(m_summaryStack);
+        auto* tl = new QVBoxLayout(m_topicEditorPage);
+        auto* tHdr = new QLabel(QStringLiteral(
+            "<b>Témák</b> — szerkeszd (cím + rövid összegző), törölj/adj hozzá, majd indítsd az "
+            "elemzést. Minden témára külön, részletes elemzés készül."), m_topicEditorPage);
+        tHdr->setWordWrap(true);
+        tl->addWidget(tHdr);
+
+        auto* tScroll = new QScrollArea(m_topicEditorPage);
+        tScroll->setWidgetResizable(true);
+        auto* tRowsHost = new QWidget(tScroll);
+        m_topicRowsLayout = new QVBoxLayout(tRowsHost);
+        m_topicRowsLayout->setContentsMargins(0, 0, 0, 0);
+        m_topicRowsLayout->addStretch(1);   // a sorok e fölé kerülnek (insertWidget)
+        tScroll->setWidget(tRowsHost);
+        tl->addWidget(tScroll, 1);
+
+        auto* addRow = new QHBoxLayout();
+        auto* addTopicBtn = new QPushButton(QStringLiteral("➕  Új téma"), m_topicEditorPage);
+        addRow->addWidget(addTopicBtn);
+        addRow->addStretch(1);
+        tl->addLayout(addRow);
+        connect(addTopicBtn, &QPushButton::clicked, this, [this]() {
+            tanara::SummaryTopic t;   // üres sor (id-t a mentéskor kap, ha kell)
+            addTopicRow(t);
+        });
+
+        auto* actRow = new QHBoxLayout();
+        auto* cancelBtn = new QPushButton(QStringLiteral("Mégse"), m_topicEditorPage);
+        m_startAnalysisBtn = new QPushButton(
+            QStringLiteral("Témánkénti elemzés indítása →"), m_topicEditorPage);
+        m_startAnalysisBtn->setStyleSheet(QStringLiteral("QPushButton { font-weight: bold; }"));
+        actRow->addWidget(cancelBtn);
+        actRow->addStretch(1);
+        actRow->addWidget(m_startAnalysisBtn);
+        tl->addLayout(actRow);
+        connect(m_startAnalysisBtn, &QPushButton::clicked, this, &MainWindow::onStartAnalysis);
+        connect(cancelBtn, &QPushButton::clicked, this, [this]() {
+            bool ok = false; const tanara::Meeting m = selectedMeeting(&ok);
+            if (ok) reloadSummaryView(m);   // vissza a kész/üres lapra
+        });
+        m_summaryStack->addWidget(m_topicEditorPage);   // page 2
 
         // Fejléc a stack FÖLÉ: a kontextus átirat után is szerkeszthető + „Újragenerálás".
         // Így az átirat birtokában finomíthatod a context-et / promptot, és újrafuttathatod.
@@ -374,13 +430,22 @@ void MainWindow::buildUi() {
         m_regenSummaryBtn->setToolTip(QStringLiteral(
             "Az összefoglaló újragenerálása a (módosított) kontextussal és a beállított "
             "prompttal — az átiratot nem érinti."));
+        m_complexBtn = new QPushButton(QStringLiteral("🧩  Komplex"), sumTab);
+        m_complexBtn->setToolTip(QStringLiteral(
+            "Több körös, témánkénti összefoglaló: a modell kigyűjti a témákat, te szerkeszted, "
+            "majd témánként részletes elemzést készít. Pontosabb hosszú/összetett felvételekhez."));
+        auto* btnCol = new QVBoxLayout();
+        btnCol->setContentsMargins(0, 0, 0, 0);
+        btnCol->addWidget(m_regenSummaryBtn);
+        btnCol->addWidget(m_complexBtn);
         ctxRow->addWidget(ctxLbl, 0, Qt::AlignTop);
         ctxRow->addWidget(m_summaryContextEdit, 1);
-        ctxRow->addWidget(m_regenSummaryBtn, 0, Qt::AlignTop);
+        ctxRow->addLayout(btnCol, 0);
         sumWrap->addLayout(ctxRow);
         sumWrap->addWidget(m_summaryStack, 1);
 
         connect(m_regenSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
+        connect(m_complexBtn, &QPushButton::clicked, this, &MainWindow::onComplexClicked);
 
         // A Sávok-fül elé szúrjuk vissza (Átirat | Összefoglaló | Sávok sorrend).
         const int tracksIdx = m_tabs->indexOf(m_tracksPanel);
@@ -570,10 +635,12 @@ void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
         // fejléc-gomb ilyenkor rejtve (az üres-lap középső generálás-gombja a belépő).
         m_summaryStack->setCurrentWidget(m_summaryEmptyPage);
         if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(false);
+        if (m_complexBtn)      m_complexBtn->setVisible(false);   // az üres-lap saját gombja a belépő
     } else {
         m_summaryView->setMarkdown(md);
         m_summaryStack->setCurrentWidget(m_summaryView);
         if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(true);
+        if (m_complexBtn)      m_complexBtn->setVisible(true);
     }
 }
 
@@ -829,6 +896,105 @@ void MainWindow::onSummarizeClicked() {
         m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
     setBusy(true, QStringLiteral("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
+}
+
+void MainWindow::onComplexClicked() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller)
+        return;
+    const tanara::ReadinessResult rs =
+        m_controller->canRun(tanara::WorkflowStep::Summarize, m.id);
+    if (!rs.runnable) {
+        if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+            || rs.blockerKind == tanara::BlockerKind::Auth)
+            openSettings();
+        else
+            statusBar()->showMessage(QStringLiteral("Nem indítható: ") + rs.detail, 6000);
+        return;
+    }
+    if (m_summaryContextEdit)
+        m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
+    setBusy(true, QStringLiteral("Témák kigyűjtése…"));
+    m_controller->extractMeetingTopics(m.id);   // → topicsReady → onTopicsReady (szerkesztő)
+}
+
+void MainWindow::onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics) {
+    setBusy(false);
+    if (meetingId != m_currentMeetingId)
+        return;
+    m_topicsMeetingId = meetingId;
+    clearTopicRows();
+    for (const tanara::SummaryTopic& t : topics)
+        addTopicRow(t);
+    if (topics.isEmpty())
+        addTopicRow(tanara::SummaryTopic{});   // legalább egy üres sor a szerkesztéshez
+    if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(true);
+    // A téma-szerkesztő lapra váltunk (a setBusy(false) az imént a kész/üres lapra állította).
+    m_reviewStack->setCurrentWidget(ui->tabsPage);
+    m_tabs->setCurrentWidget(m_summaryTab);
+    m_summaryStack->setCurrentWidget(m_topicEditorPage);
+}
+
+void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
+    if (!m_topicRowsLayout)
+        return;
+    auto* row = new QWidget(m_topicEditorPage);
+    auto* h = new QHBoxLayout(row);
+    h->setContentsMargins(0, 0, 0, 0);
+    auto* title = new QLineEdit(t.title, row);
+    title->setPlaceholderText(QStringLiteral("Téma címe"));
+    auto* summary = new QLineEdit(t.summary, row);
+    summary->setPlaceholderText(QStringLiteral("Rövid összegző (opcionális)"));
+    auto* del = new QPushButton(QStringLiteral("🗑"), row);
+    del->setFixedWidth(36);
+    del->setToolTip(QStringLiteral("Téma törlése"));
+    h->addWidget(title, 2);
+    h->addWidget(summary, 3);
+    h->addWidget(del, 0);
+    // A sort a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
+    m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, row);
+
+    TopicRow tr{ t.id, row, title, summary };
+    m_topicRows.append(tr);
+    connect(del, &QPushButton::clicked, this, [this, row]() {
+        for (int i = 0; i < m_topicRows.size(); ++i) {
+            if (m_topicRows[i].row == row) {
+                m_topicRows.removeAt(i);
+                break;
+            }
+        }
+        row->deleteLater();
+    });
+}
+
+void MainWindow::clearTopicRows() {
+    for (const TopicRow& r : m_topicRows)
+        if (r.row) r.row->deleteLater();
+    m_topicRows.clear();
+}
+
+void MainWindow::onStartAnalysis() {
+    if (!m_controller || m_topicsMeetingId.isEmpty())
+        return;
+    QVector<tanara::SummaryTopic> topics;
+    for (const TopicRow& r : m_topicRows) {
+        const QString title = r.title ? r.title->text().trimmed() : QString();
+        if (title.isEmpty())
+            continue;   // üres című sorokat kihagyjuk
+        tanara::SummaryTopic t;
+        t.id = r.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : r.id;
+        t.title = title;
+        t.summary = r.summary ? r.summary->text().trimmed() : QString();
+        topics.append(t);
+    }
+    if (topics.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("Adj meg legalább egy témát."), 5000);
+        return;
+    }
+    if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(false);
+    setBusy(true, QStringLiteral("Témánkénti elemzés…"));
+    m_controller->generateComplexSummary(m_topicsMeetingId, topics);   // → summaryReady → page0
 }
 
 // Emberi összegző mondat: nincs név → „N különböző partner azonosítva";
