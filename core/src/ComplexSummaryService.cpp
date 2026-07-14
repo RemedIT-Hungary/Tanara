@@ -6,7 +6,9 @@
 #include <QJsonValue>
 #include <QJsonParseError>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QUuid>
+#include <QDebug>
 
 namespace tanara {
 
@@ -58,6 +60,61 @@ QStringList parseStringArray(const QJsonArray& arr)
     return out;
 }
 
+// A téma-lista MARKDOWNból: minden `#`-heading egy téma CÍME, az utána következő (nem-heading)
+// sorok az összegzés a következő headingig. Megengedő: a nem illeszkedő prózát (pl. reasoning-
+// maradék, bevezető) egyszerűen átugorja — egy elrontott szakasz NEM dönti be az egészet
+// (szemben a JSON-nal, ahol egy hiányzó `}` = teljes bukás).
+QVector<SummaryTopic> parseTopicsMarkdown(const QString& raw)
+{
+    static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
+    static const QRegularExpression numPrefix(QStringLiteral("^\\s*\\d+[.)]\\s*"));
+    QVector<SummaryTopic> out;
+    SummaryTopic cur; QStringList summaryLines; bool have = false;
+    auto flush = [&]() {
+        if (have && !cur.title.trimmed().isEmpty()) {
+            cur.summary = summaryLines.join(QLatin1Char(' ')).simplified();
+            cur.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            out.append(cur);
+        }
+        cur = SummaryTopic{}; summaryLines.clear(); have = false;
+    };
+    for (const QString& line : raw.split(QLatin1Char('\n'))) {
+        const QRegularExpressionMatch m = head.match(line);
+        if (m.hasMatch()) {
+            flush();
+            QString title = m.captured(1);
+            title.remove(numPrefix);
+            title.remove(QLatin1Char('*'));   // **félkövér** cím-jelölés levétele
+            cur.title = title.trimmed();
+            have = true;
+        } else if (have) {
+            const QString t = line.trimmed();
+            if (!t.isEmpty()) summaryLines << t;
+        }
+    }
+    flush();
+    return out;
+}
+
+// Fallback: ha a modell mégis JSON-t adott (vagy egyedi JSON-prompt van mentve), abból is
+// kinyerjük a témákat. Üres, ha nem értelmezhető.
+QVector<SummaryTopic> parseTopicsJson(const QString& raw)
+{
+    QVector<SummaryTopic> out;
+    QJsonParseError perr{};
+    const QJsonDocument doc = QJsonDocument::fromJson(extractJson(raw), &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isObject()) return out;
+    for (const QJsonValue& v : doc.object().value(QStringLiteral("topics")).toArray()) {
+        const QJsonObject o = v.toObject();
+        SummaryTopic t;
+        t.id      = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        t.title   = o.value(QStringLiteral("title")).toString().trimmed();
+        t.summary = o.value(QStringLiteral("summary")).toString().trimmed();
+        if (!t.title.isEmpty()) out.append(t);
+    }
+    return out;
+}
+
 // Egy reduce-prompt belső, fix (nem user-szerkeszthető): a per-téma elemzésekből globális
 // összefoglalót + összevont teendőket kér.
 QString reduceSystemPrompt()
@@ -91,14 +148,19 @@ QString ComplexSummaryService::defaultTopicPrompt()
     return QStringLiteral(
         "Te egy magyar nyelvű elemző vagy. A kapott beszéd-átiratból azonosítsd a KÜLÖNÁLLÓ "
         "TÉMÁKAT (témakörök, amelyekről ténylegesen szó volt).\n"
+        "KIMENETI FORMÁTUM — pontosan ez, semmi más (se bevezető, se JSON, se kódkerítés): "
+        "minden témát egy `## ` kezdetű sor vezet be a téma rövid CÍMÉVEL, alatta 1-2 mondatos "
+        "összegzés a témáról. Példa:\n"
+        "## Szállítási határidők\n"
+        "A csapat egyeztette a Q3-as csúszást és a pótlási tervet.\n\n"
+        "## Költségkeret\n"
+        "Áttekintették a keret túllépését és a fedezeti lehetőségeket.\n\n"
         "Szabályok:\n"
-        "1. KIZÁRÓLAG egyetlen érvényes JSON objektumot adj vissza, kódkerítés (```) nélkül.\n"
-        "2. Szerkezet pontosan: {\"topics\": [{\"title\": string, \"summary\": string}]}. "
-        "A title rövid téma-cím; a summary 1-2 mondatos összegzés a témáról.\n"
-        "3. A témák száma legyen ARÁNYOS a tartalommal: kötetlen/információ-szegény "
+        "1. A témák száma legyen ARÁNYOS a tartalommal: kötetlen/információ-szegény "
         "beszélgetésnél kevés téma (akár 1), információ-intenzív megbeszélésnél több. Ne darabolj "
         "túl, és NE találj ki nem létező témát.\n"
-        "4. Minden mezőt MAGYARUL tölts ki.\n");
+        "2. Csak a `## Cím` + összegzés blokkokat add vissza, mást ne.\n"
+        "3. Minden szöveg MAGYARUL.\n");
 }
 
 QString ComplexSummaryService::defaultAnalysisPrompt()
@@ -139,21 +201,15 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
     connect(job, &LlmJob::finished, this, [self, job](const QString& text) {
         job->deleteLater();
         if (!self) return;
-        QJsonParseError perr{};
-        const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
-        if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-            emit self->failed(QStringLiteral("Nem sikerült a témákat JSON-ként értelmezni: %1")
-                                  .arg(perr.errorString()));
+        // Elsődlegesen markdown (`## cím` + összegzés) — hibatűrő; ha üres, JSON-fallback.
+        QVector<SummaryTopic> topics = parseTopicsMarkdown(text);
+        if (topics.isEmpty()) topics = parseTopicsJson(text);
+        if (topics.isEmpty()) {
+            qWarning().noquote() << "[ComplexSummary] téma-parse ÜRES — nyers válasz:\n"
+                                 << text.left(2000);
+            emit self->failed(QStringLiteral(
+                "Nem sikerült témát kinyerni a válaszból (sem `## cím` szakasz, sem JSON)."));
             return;
-        }
-        QVector<SummaryTopic> topics;
-        for (const QJsonValue& v : doc.object().value(QStringLiteral("topics")).toArray()) {
-            const QJsonObject o = v.toObject();
-            SummaryTopic t;
-            t.id      = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            t.title   = o.value(QStringLiteral("title")).toString().trimmed();
-            t.summary = o.value(QStringLiteral("summary")).toString().trimmed();
-            if (!t.title.isEmpty()) topics.append(t);
         }
         emit self->topicsReady(topics);
     });
@@ -193,6 +249,8 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning().noquote() << "[ComplexSummary] elemzés-parse hiba (" << cap.title
+                                 << ") — nyers válasz:\n" << text.left(2000);
             emit self->failed(QStringLiteral("Nem sikerült a téma-elemzést értelmezni („%1”): %2")
                                   .arg(cap.title, perr.errorString()));
             return;
@@ -251,6 +309,8 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning().noquote() << "[ComplexSummary] reduce-parse hiba — nyers válasz:\n"
+                                 << text.left(2000);
             emit self->failed(QStringLiteral("Nem sikerült az összegzést értelmezni: %1")
                                   .arg(perr.errorString()));
             return;
