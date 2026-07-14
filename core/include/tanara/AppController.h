@@ -180,6 +180,11 @@ signals:
     void errorOccurred(QString message);
 
 private:
+    // A kész (friss) mixdownt egyetlen Soniox-kéréssel írja át; a transcribeMeeting ehhez
+    // láncolja a lekeverés elkészültét. A beszélő-szeparációt a Soniox diarizációja adja
+    // („Beszélő N" címkék) — a nevet utólag a voice-ID / kézi átnevezés oldja fel.
+    void transcribeFromMixdown(const QString& meetingId);
+
     struct Impl;
     std::unique_ptr<Impl> d;
 };

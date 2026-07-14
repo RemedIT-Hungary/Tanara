@@ -213,16 +213,15 @@ const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
 
 // Egy beszélő reprezentatív embeddingje: a leghosszabb utterance-eiből ~3–12 s hangot
 // gyűjt a megadott sávból, és egyetlen embeddinget számol. Üres = nincs elég hang/hiba.
-QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& folder,
-                                 const MergedTranscript& mt, const QString& rawLabel,
-                                 const Track& track) {
+QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath,
+                                 const MergedTranscript& mt, const QString& rawLabel) {
     QVector<Utterance> utts;
     for (const Utterance& u : mt.segments())
         if (u.speaker == rawLabel) utts.append(u);
     std::sort(utts.begin(), utts.end(), [](const Utterance& a, const Utterance& b) {
         return (a.endMs - a.startMs) > (b.endMs - b.startMs);
     });
-    const QString path = QDir(folder).filePath(track.file);
+    const QString& path = audioPath;
     QVector<float> pcm;
     qint64 accMs = 0;
     for (const Utterance& u : utts) {
@@ -238,15 +237,31 @@ QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& folder,
 // "track_fájl#startMs-endMs" (a leghosszabb utterance). Lejátszáshoz a People-panel
 // a sourceMeetingId-ből oldja fel a mappát.
 QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLabel,
-                                const Track& track) {
+                                const QString& fileRel) {
     qint64 bestS = -1, bestE = -1, bestDur = -1;
     for (const Utterance& u : mt.segments())
         if (u.speaker == rawLabel && (u.endMs - u.startMs) > bestDur) {
             bestDur = u.endMs - u.startMs; bestS = u.startMs; bestE = u.endMs;
         }
     if (bestS < 0)
-        return track.file;
-    return QStringLiteral("%1#%2-%3").arg(track.file).arg(bestS).arg(bestE);
+        return fileRel;
+    return QStringLiteral("%1#%2-%3").arg(fileRel).arg(bestS).arg(bestE);
+}
+
+// A voice-ID hangforrása: MOST a mixdown (a leirat is abból készül, így a diarizált
+// „Beszélő N" címkék időablakai közvetlenül a mixre illeszkednek). Ha nincs mixdown
+// (régi, per-sáv meeting), back-compat: a címke feloldott sávjára esünk vissza.
+struct VoiceSource { QString absPath; QString fileRel; QString trackId; QString device; };
+VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
+                               const QString& rawLabel) {
+    const QString mixRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
+                                                   : m.mixdownFile;
+    const QString mixAbs = QDir(m.folder).filePath(mixRel);
+    if (QFile::exists(mixAbs))
+        return { mixAbs, mixRel, QStringLiteral("mixdown"), QString() };
+    if (const Track* t = resolveTrackForLabel(m, mt, rawLabel))
+        return { QDir(m.folder).filePath(t->file), t->file, t->id, t->deviceName };
+    return {};
 }
 
 // Agglomeratív klaszterezés cosine-centroid alapján: minden embedding-hez klaszter-címke
@@ -447,18 +462,18 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return;
-    const Track* track = resolveTrackForLabel(m, merged, rawLabel);
-    if (!track) return;
+    const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
+    if (src.absPath.isEmpty()) return;
 
-    const QVector<float> embedding = embeddingForLabel(*emb, m.folder, merged, rawLabel, *track);
+    const QVector<float> embedding = embeddingForLabel(*emb, src.absPath, merged, rawLabel);
     if (embedding.isEmpty()) return;
 
     Voiceprint vp;
     vp.embedding = embedding;
     vp.sourceMeetingId = m.id;
-    vp.sourceTrack = track->id;
-    vp.device = track->deviceName;
-    vp.sampleRef = representativeSampleRef(merged, rawLabel, *track);
+    vp.sourceTrack = src.trackId;
+    vp.device = src.device;
+    vp.sampleRef = representativeSampleRef(merged, rawLabel, src.fileRel);
     vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
     d->voiceprints->addPrint(nm, vp);
     emit voiceprintsChanged();
@@ -501,9 +516,9 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
             break;   // a felhasználó megszakította → a már megtalált matchek mentődnek
         if (m.speakerMap.contains(label))
             continue;   // már nevesített (kézzel vagy korábbi match)
-        const Track* track = resolveTrackForLabel(m, merged, label);
-        if (!track) continue;
-        const QVector<float> e = embeddingForLabel(*emb, m.folder, merged, label, *track);
+        const VoiceSource src = resolveVoiceSource(m, merged, label);
+        if (src.absPath.isEmpty()) continue;
+        const QVector<float> e = embeddingForLabel(*emb, src.absPath, merged, label);
         if (e.isEmpty()) continue;
         const VoiceMatch match = d->voiceprints->bestMatch(e);
         if (match.score >= kVoiceMatchThreshold && !match.name.isEmpty()) {
@@ -535,9 +550,9 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return none;
-    const Track* track = resolveTrackForLabel(m, merged, rawLabel);
-    if (!track) return none;
-    const QVector<float> e = embeddingForLabel(*d->embedder, m.folder, merged, rawLabel, *track);
+    const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
+    if (src.absPath.isEmpty()) return none;
+    const QVector<float> e = embeddingForLabel(*d->embedder, src.absPath, merged, rawLabel);
     if (e.isEmpty()) return none;
     return d->voiceprints->bestMatch(e);
 }
@@ -1041,6 +1056,34 @@ void AppController::transcribeMeeting(const QString& meetingId)
     ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
     if (!res.runnable) { emit errorOccurred(res.detail); return; }
 
+    // A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs sávonkénti átfedés-
+    // összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a mixdown hiányzik vagy
+    // elavult, előbb legyártjuk, és a mixdownUpdated jelre indítjuk az átírást.
+    const QString mixPath =
+        QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
+                                                        : m.mixdownFile);
+    if (m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath)) {
+        auto conn = std::make_shared<QMetaObject::Connection>();
+        *conn = connect(this, &AppController::mixdownUpdated, this,
+            [this, meetingId, conn](const QString& id, bool ok) {
+                if (id != meetingId) return;
+                QObject::disconnect(*conn);
+                if (ok) transcribeFromMixdown(meetingId);
+                else emit errorOccurred(
+                    QStringLiteral("A lekeverés sikertelen — az átírás nem indult."));
+            });
+        emit jobProgress(m.id, QStringLiteral("Lekeverés az átíráshoz…"));
+        regenerateMixdown(meetingId);
+        return;
+    }
+    transcribeFromMixdown(meetingId);
+}
+
+void AppController::transcribeFromMixdown(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+
     const AppSettings s = d->settings->settings();
     const QString sttId = s.sttProviderId;
     ProviderConfig cfg = s.sttSelected();
@@ -1054,100 +1097,63 @@ void AppController::transcribeMeeting(const QString& meetingId)
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     emit jobProgress(m.id, QStringLiteral("Átírás indítása…"));
 
-    // Csak az AKTÍV sávokat írjuk át (az eldobott/csendes sávokra nem pazarlunk Soniox-időt).
-    // (Hogy van-e legalább egy aktív sáv, azt a fenti canRun() már garantálta.)
-    QVector<int> activeIdx;
-    for (int i = 0; i < m.tracks.size(); ++i)
-        if (m.tracks[i].active) activeIdx << i;
-
-    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms),
-    // hogy a kétes részeknél jobban döntsön. Forrás: cím (general) + a felhasználó pár
-    // szavas leírása (text) + a résztvevő-nevek (terms; később naptár-bejegyzés is).
+    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms).
+    // Forrás: cím (general) + a felhasználó pár szavas leírása (text) + a résztvevő-nevek
+    // (terms; az aktív sávok fix beszélői — később naptár-bejegyzés is).
     QMap<QString, QString> ctxGeneral;
     if (!m.title.trimmed().isEmpty())
         ctxGeneral.insert(QStringLiteral("Megbeszélés"), m.title.trimmed());
     QStringList participants;
-    for (int i : activeIdx) {
-        const QString lbl = m.tracks[i].speakerLabel.trimmed();
-        if (!lbl.isEmpty() && !participants.contains(lbl))
+    for (const Track& t : m.tracks) {
+        const QString lbl = t.speakerLabel.trimmed();
+        if (t.active && !lbl.isEmpty() && !participants.contains(lbl))
             participants << lbl;
     }
-    const QString ctxText = m.contextNote.trimmed();
 
-    struct Ctx { int remaining; QVector<TrackTranscript> results; bool failed = false; };
-    auto ctx = std::make_shared<Ctx>();
-    ctx->remaining = activeIdx.size();
-    ctx->results.resize(m.tracks.size());
+    const QString mixPath =
+        QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
+                                                        : m.mixdownFile);
 
-    for (int i : activeIdx) {
-        const Track& t = m.tracks[i];
-        SttRequest req;
-        req.audioFilePath = QDir(m.folder).filePath(t.file);
-        req.trackId = t.id;
-        req.speakerLabel = t.speakerLabel;
-        req.languageHints = s.languageHints;
-        // Per-sáv context: a közös general (cím) + melyik beszélő/sáv ez (per-track .ogg-t
-        // küldünk, NEM a mixdownt) → a Soniox tudja, kinek a hangját hallja.
-        req.contextGeneral = ctxGeneral;
-        if (!t.speakerLabel.trimmed().isEmpty())
-            req.contextGeneral.insert(QStringLiteral("Aktuális hangsáv beszélője"),
-                                      t.speakerLabel.trimmed());
-        req.context = ctxText;
-        req.contextTerms = participants;
-        // Diarizáció MINDEN sávra: a mikrofonba is beszélhet egyszerre több ember,
-        // ezért a mic-sávot is fel kell bontani beszélőkre (nem fix egy beszélő).
-        req.diarization = true;
+    // EGYETLEN kérés a mixdownnal. A beszélő-szeparációt a Soniox diarizációja adja
+    // („Beszélő N" címkék); a NEVET utólag a voice-ID / kézi átnevezés oldja fel.
+    SttRequest req;
+    req.audioFilePath = mixPath;
+    req.trackId = QStringLiteral("mixdown");
+    req.languageHints = s.languageHints;
+    req.contextGeneral = ctxGeneral;
+    req.context = m.contextNote.trimmed();
+    req.contextTerms = participants;
+    req.diarization = true;
 
-        SttJob* job = provider->transcribe(req);
-        connect(job, &SttJob::stateChanged, this,
-                [this, id = m.id, label = t.speakerLabel](JobState st) {
-                    emit jobProgress(id, sttPhase(st) + QStringLiteral(" — ") + label);
-                });
-        connect(job, &SttJob::finished, this, [this, ctx, i, m, providerObj](const TrackTranscript& tr) mutable {
-            if (ctx->failed) return;
-            TrackTranscript res = tr;
-            // A Soniox diarizációs id-ket (1,2,…) emberi címkére fordítjuk.
-            if (i < m.tracks.size()) {
-                const Track& trk = m.tracks[i];
-                if (trk.kind == TrackKind::Loopback) {
-                    // Távoli oldal: minden id külön „Távoli N".
-                    for (TranscriptToken& tok : res.tokens)
-                        tok.speaker = tok.speaker.isEmpty()
-                            ? trk.speakerLabel
-                            : QStringLiteral("Távoli %1").arg(tok.speaker);
-                } else {
-                    // Mic: a diarizált beszélők semleges „Mikrofon N" címkét kapnak —
-                    // a NEVET a voice-ID adja (nem hangerő/pozíció). Egy beszélő esetén
-                    // is így megy; a fingerprint dönti el, ki az (te is).
-                    for (TranscriptToken& tok : res.tokens)
-                        tok.speaker = tok.speaker.isEmpty()
-                            ? trk.speakerLabel
-                            : QStringLiteral("Mikrofon %1").arg(tok.speaker);
-                }
-            }
-            ctx->results[i] = res;
-            if (--ctx->remaining != 0) return;
+    SttJob* job = provider->transcribe(req);
+    connect(job, &SttJob::stateChanged, this,
+            [this, id = m.id](JobState st) { emit jobProgress(id, sttPhase(st)); });
+    connect(job, &SttJob::finished, this, [this, m, providerObj](const TrackTranscript& tr) mutable {
+        TrackTranscript res = tr;
+        // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.
+        for (TranscriptToken& tok : res.tokens)
+            tok.speaker = tok.speaker.isEmpty()
+                ? QStringLiteral("Beszélő")
+                : QStringLiteral("Beszélő %1").arg(tok.speaker);
 
-            MergedTranscript merged = mergeTranscripts(ctx->results);
-            const QString mdPath = QDir(m.folder).filePath(QStringLiteral("transcript.md"));
-            writeTextFile(mdPath, merged.renderMarkdown());
-            writeTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
-            writeSegmentsJson(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
-            d->mergedCache.insert(m.id, merged);
-            m.hasTranscript = true;
-            d->store->saveMeeting(m);
-            if (providerObj) providerObj->deleteLater();
-            emit transcriptReady(m.id, mdPath);
-            // Voice-ID: ismert mic-beszélő rögzítése + távoli beszélők auto-párosítása.
-            autoIdentifyMeeting(m.id);
-        });
-        connect(job, &SttJob::failed, this, [this, ctx, providerObj](QString e) {
-            if (ctx->failed) return;
-            ctx->failed = true;
-            if (providerObj) providerObj->deleteLater();
-            emit errorOccurred(QStringLiteral("Soniox hiba: %1").arg(e));
-        });
-    }
+        QVector<TrackTranscript> single{res};
+        MergedTranscript merged = mergeTranscripts(single);
+        const QString mdPath = QDir(m.folder).filePath(QStringLiteral("transcript.md"));
+        writeTextFile(mdPath, merged.renderMarkdown());
+        writeTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
+        writeSegmentsJson(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
+        d->mergedCache.insert(m.id, merged);
+        m.hasTranscript = true;
+        d->store->saveMeeting(m);
+        if (providerObj) providerObj->deleteLater();
+        emit transcriptReady(m.id, mdPath);
+        // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen.
+        autoIdentifyMeeting(m.id);
+    });
+    connect(job, &SttJob::failed, this, [this, providerObj](QString e) {
+        if (providerObj) providerObj->deleteLater();
+        emit errorOccurred(QStringLiteral("Soniox hiba: %1").arg(e));
+    });
 }
 
 void AppController::summarizeMeeting(const QString& meetingId)
