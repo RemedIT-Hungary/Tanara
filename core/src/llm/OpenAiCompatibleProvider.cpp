@@ -9,6 +9,7 @@
 #include <QJsonValue>
 #include <QUrl>
 #include <QTimer>
+#include <QDebug>
 
 namespace tanara {
 
@@ -134,6 +135,17 @@ void OpenAiCompatibleJob::onFinished()
         emit failed(QStringLiteral("Üres LLM-válasz (sem content, sem reasoning_content)."));
         return;
     }
+    // Debug-életjel (--debug mellett látszik): a válasz-metaadatok azonnal megmutatják, ha
+    // a modell csonkolt (finish=length) vagy a reasoning-fallback aktivált (üres content).
+    const QJsonObject usage = root.value(QStringLiteral("usage")).toObject();
+    const bool reasoningFallback = message.value(QStringLiteral("content")).toString().trimmed().isEmpty();
+    qInfo().noquote().nospace()
+        << "[LLM] model=" << (m_req.model.isEmpty() ? m_cfg.model : m_req.model)
+        << " finish=" << first.value(QStringLiteral("finish_reason")).toString()
+        << " prompt=" << usage.value(QStringLiteral("prompt_tokens")).toInt()
+        << " completion=" << usage.value(QStringLiteral("completion_tokens")).toInt()
+        << " content=" << content.trimmed().size() << "ch"
+        << (reasoningFallback ? " [reasoning-fallback]" : "");
     emit finished(content);
 }
 
