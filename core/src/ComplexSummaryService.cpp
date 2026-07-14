@@ -115,18 +115,115 @@ QVector<SummaryTopic> parseTopicsJson(const QString& raw)
     return out;
 }
 
+// Egy markdown teendő-sor → ActionItem: "- szöveg — Felelős (határidő)". A „ — Felelős" és a
+// „(határidő)" opcionális; több gondolatjel-variánst (—, –, -) elfogad elválasztónak.
+ActionItem parseActionItemLine(QString line)
+{
+    static const QRegularExpression bullet(QStringLiteral("^\\s*(?:[-*•]|\\d+[.)])\\s+"));
+    static const QRegularExpression dueRe(QStringLiteral("\\s*[（(]([^)）]*)[)）]\\s*$"));
+    line.remove(bullet);
+    ActionItem ai;
+    const QRegularExpressionMatch dm = dueRe.match(line);
+    if (dm.hasMatch()) { ai.due = dm.captured(1).trimmed(); line = line.left(dm.capturedStart()).trimmed(); }
+    for (const QString& sep : {QStringLiteral(" — "), QStringLiteral(" – "), QStringLiteral(" - ")}) {
+        const int i = line.lastIndexOf(sep);
+        if (i >= 0) { ai.owner = line.mid(i + sep.size()).trimmed(); line = line.left(i).trimmed(); break; }
+    }
+    ai.text = line.trimmed();
+    return ai;
+}
+
+enum class MdSection { Detail, Decisions, Actions };
+
+// Egy téma-elemzés MARKDOWNból: bevezető bekezdés = detail; `## Döntések` bulletjei =
+// decisions; `## Teendők` bulletjei = actionItems. Hibatűrő: egy csonka/elrontott sor nem
+// dönti be az egészet (szemben a JSON-nal).
+TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topic)
+{
+    static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
+    static const QRegularExpression bullet(QStringLiteral("^\\s*(?:[-*•]|\\d+[.)])\\s+(.+)$"));
+    TopicAnalysis a; a.topicId = topic.id; a.title = topic.title;
+    QStringList detail;
+    MdSection sec = MdSection::Detail;
+    for (const QString& line : raw.split(QLatin1Char('\n'))) {
+        const QRegularExpressionMatch hm = head.match(line);
+        if (hm.hasMatch()) {
+            const QString h = hm.captured(1).toLower();
+            if (h.contains(QStringLiteral("dönt")))        sec = MdSection::Decisions;
+            else if (h.contains(QStringLiteral("teendő")) || h.contains(QStringLiteral("feladat")))
+                                                           sec = MdSection::Actions;
+            else                                           sec = MdSection::Detail;
+            continue;
+        }
+        const QString t = line.trimmed();
+        if (t.isEmpty()) continue;
+        if (sec == MdSection::Detail) { detail << t; continue; }
+        const QRegularExpressionMatch bm = bullet.match(line);
+        if (sec == MdSection::Decisions) {
+            const QString d = bm.hasMatch() ? bm.captured(1).trimmed() : t;
+            if (!d.isEmpty()) a.decisions << d;
+        } else if (bm.hasMatch()) {   // Actions — csak a bulletek számítanak
+            const ActionItem ai = parseActionItemLine(t);
+            if (!ai.text.isEmpty()) a.actionItems << ai;
+        }
+    }
+    a.detail = detail.join(QLatin1Char(' ')).simplified();
+    return a;
+}
+
+// Fallback: régi JSON-elemzés (egyedi JSON-prompt / ha a modell mégis JSON-t ad). ok=false, ha
+// nem értelmezhető.
+TopicAnalysis parseAnalysisJson(const QString& raw, const SummaryTopic& topic, bool* ok)
+{
+    TopicAnalysis a; a.topicId = topic.id; a.title = topic.title;
+    QJsonParseError perr{};
+    const QJsonDocument doc = QJsonDocument::fromJson(extractJson(raw), &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isObject()) { if (ok) *ok = false; return a; }
+    const QJsonObject o = doc.object();
+    a.detail      = o.value(QStringLiteral("detail")).toString().trimmed();
+    a.decisions   = parseStringArray(o.value(QStringLiteral("decisions")).toArray());
+    a.actionItems = parseActionItems(o.value(QStringLiteral("actionItems")).toArray());
+    if (ok) *ok = true;
+    return a;
+}
+
+// Reduce MARKDOWNból: bevezető bekezdés = execSummary; `## Teendők` bulletjei = actionItems.
+void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<ActionItem>* items)
+{
+    static const QRegularExpression head(QStringLiteral("^\\s*#{1,6}\\s+(.+)$"));
+    static const QRegularExpression bullet(QStringLiteral("^\\s*(?:[-*•]|\\d+[.)])\\s+(.+)$"));
+    QStringList summary; bool inActions = false;
+    for (const QString& line : raw.split(QLatin1Char('\n'))) {
+        const QRegularExpressionMatch hm = head.match(line);
+        if (hm.hasMatch()) {
+            const QString h = hm.captured(1).toLower();
+            inActions = h.contains(QStringLiteral("teendő")) || h.contains(QStringLiteral("feladat"));
+            continue;
+        }
+        const QString t = line.trimmed();
+        if (t.isEmpty()) continue;
+        if (!inActions) { summary << t; continue; }
+        if (bullet.match(line).hasMatch()) {
+            const ActionItem ai = parseActionItemLine(t);
+            if (!ai.text.isEmpty()) items->append(ai);
+        }
+    }
+    *execSummary = summary.join(QLatin1Char(' ')).simplified();
+}
+
 // Egy reduce-prompt belső, fix (nem user-szerkeszthető): a per-téma elemzésekből globális
 // összefoglalót + összevont teendőket kér.
 QString reduceSystemPrompt()
 {
     return QStringLiteral(
-        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből készíts: "
-        "(1) egy rövid, 2-4 mondatos GLOBÁLIS vezetői összefoglalót az egész beszélgetésről, és "
-        "(2) egy ÖSSZEVONT, duplikátum-mentes teendő-listát.\n"
-        "KIZÁRÓLAG egyetlen érvényes JSON objektumot adj vissza, kódkerítés (```) nélkül: "
-        "{\"execSummary\": string, \"actionItems\": [{\"text\": string, \"owner\": string, "
-        "\"due\": string}]}. Minden MAGYARUL. Ne találj ki új teendőt — csak a megadottakat vond "
-        "össze és deduplikáld.\n");
+        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből készíts "
+        "markdownt (se JSON, se kódkerítés):\n"
+        "Először 1 bekezdés, 2-4 mondatos GLOBÁLIS vezetői összefoglaló az egész beszélgetésről "
+        "(cím nélkül). Utána egy szakasz:\n"
+        "## Teendők\n"
+        "- a teendő szövege — Felelős (határidő)\n"
+        "az ÖSSZEVONT, duplikátum-mentes teendőkkel (a felelős és a határidő opcionális).\n"
+        "Minden MAGYARUL. Ne találj ki új teendőt — csak a megadottakat vond össze és deduplikáld.\n");
 }
 
 // Egy context-blokk a user-prompt elejére (ha van).
@@ -168,15 +265,18 @@ QString ComplexSummaryService::defaultAnalysisPrompt()
     return QStringLiteral(
         "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott TELJES átiratból KIZÁRÓLAG a "
         "megadott TÉMÁRA vonatkozó részeket elemezd.\n"
+        "KIMENETI FORMÁTUM — markdown, pontosan így (se JSON, se kódkerítés):\n"
+        "Először 1 bekezdés összegzés a témáról (cím nélkül). Utána — CSAK ha van valódi tartalom "
+        "— ezek a szakaszok jöhetnek:\n"
+        "## Döntések\n"
+        "- egy döntés soronként\n"
+        "## Teendők\n"
+        "- a teendő szövege — Felelős (határidő)\n"
+        "(A felelős és a határidő rész opcionális; ha nincs rá adat, hagyd el.)\n"
         "Szabályok:\n"
-        "1. KIZÁRÓLAG egyetlen érvényes JSON objektumot adj vissza, kódkerítés nélkül.\n"
-        "2. Szerkezet pontosan: {\"detail\": string, \"decisions\": [string], \"actionItems\": "
-        "[{\"text\": string, \"owner\": string, \"due\": string}]}. A detail a témára vonatkozó "
-        "összegzés; a decisions a témához tartozó döntések; az actionItems a teendők "
-        "(owner=felelős, due=határidő, ha nincs adat üres string).\n"
-        "3. NE TALÁLJ KI semmit. Ha a témához nincs valódi döntés vagy teendő, hagyd ÜRESEN a "
-        "megfelelő tömböt. Csak a megadott témára fókuszálj, a többi témát hagyd figyelmen kívül.\n"
-        "4. Minden mezőt MAGYARUL tölts ki.\n");
+        "1. NE TALÁLJ KI semmit. Ha a témához nincs valódi döntés vagy teendő, hagyd EL az adott "
+        "szakaszt (ne írj üres címet). Csak a megadott témára fókuszálj.\n"
+        "2. Minden szöveg MAGYARUL.\n");
 }
 
 void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QString& contextNotes,
@@ -246,22 +346,20 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
     connect(job, &LlmJob::finished, this, [self, job, cap](const QString& text) {
         job->deleteLater();
         if (!self) return;
-        QJsonParseError perr{};
-        const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
-        if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-            qWarning().noquote() << "[ComplexSummary] elemzés-parse hiba (" << cap.title
+        // Elsődlegesen markdown (összegző + `## Döntések` / `## Teendők`); ha üres, JSON-fallback.
+        TopicAnalysis a = parseAnalysisMarkdown(text, cap);
+        if (a.detail.isEmpty() && a.decisions.isEmpty() && a.actionItems.isEmpty()) {
+            bool ok = false;
+            const TopicAnalysis j = parseAnalysisJson(text, cap, &ok);
+            if (ok) a = j;
+        }
+        if (a.detail.isEmpty() && a.decisions.isEmpty() && a.actionItems.isEmpty()) {
+            qWarning().noquote() << "[ComplexSummary] elemzés ÜRES (" << cap.title
                                  << ") — nyers válasz:\n" << text.left(2000);
-            emit self->failed(QStringLiteral("Nem sikerült a téma-elemzést értelmezni („%1”): %2")
-                                  .arg(cap.title, perr.errorString()));
+            emit self->failed(QStringLiteral("Nem sikerült a téma-elemzést értelmezni („%1”).")
+                                  .arg(cap.title));
             return;
         }
-        const QJsonObject o = doc.object();
-        TopicAnalysis a;
-        a.topicId     = cap.id;
-        a.title       = cap.title;
-        a.detail      = o.value(QStringLiteral("detail")).toString().trimmed();
-        a.decisions   = parseStringArray(o.value(QStringLiteral("decisions")).toArray());
-        a.actionItems = parseActionItems(o.value(QStringLiteral("actionItems")).toArray());
         emit self->topicAnalysisReady(a);
     });
     connect(job, &LlmJob::failed, this, [self, job](const QString& e) {
@@ -306,18 +404,23 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
     connect(job, &LlmJob::finished, this, [self, job](const QString& text) {
         job->deleteLater();
         if (!self) return;
-        QJsonParseError perr{};
-        const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
-        if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-            qWarning().noquote() << "[ComplexSummary] reduce-parse hiba — nyers válasz:\n"
-                                 << text.left(2000);
-            emit self->failed(QStringLiteral("Nem sikerült az összegzést értelmezni: %1")
-                                  .arg(perr.errorString()));
+        QString execSummary; QVector<ActionItem> items;
+        parseReduceMarkdown(text, &execSummary, &items);
+        if (execSummary.isEmpty() && items.isEmpty()) {   // JSON-fallback
+            QJsonParseError perr{};
+            const QJsonDocument doc = QJsonDocument::fromJson(extractJson(text), &perr);
+            if (perr.error == QJsonParseError::NoError && doc.isObject()) {
+                const QJsonObject o = doc.object();
+                execSummary = o.value(QStringLiteral("execSummary")).toString().trimmed();
+                items = parseActionItems(o.value(QStringLiteral("actionItems")).toArray());
+            }
+        }
+        if (execSummary.isEmpty() && items.isEmpty()) {
+            qWarning().noquote() << "[ComplexSummary] reduce ÜRES — nyers válasz:\n" << text.left(2000);
+            emit self->failed(QStringLiteral("Nem sikerült az összegzést értelmezni."));
             return;
         }
-        const QJsonObject o = doc.object();
-        emit self->reduceReady(o.value(QStringLiteral("execSummary")).toString().trimmed(),
-                               parseActionItems(o.value(QStringLiteral("actionItems")).toArray()));
+        emit self->reduceReady(execSummary, items);
     });
     connect(job, &LlmJob::failed, this, [self, job](const QString& e) {
         job->deleteLater();
