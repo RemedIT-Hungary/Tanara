@@ -159,7 +159,7 @@ private:
     QPushButton*  m_startAnalysisBtn = nullptr;  // „Témánkénti elemzés indítása →"
     QString       m_topicsMeetingId;             // melyik meetinghez tartozik a szerkesztő
     struct TopicRow { QString id; QWidget* row = nullptr;
-                      QLineEdit* title = nullptr; QLineEdit* summary = nullptr; };
+                      QLineEdit* title = nullptr; QPlainTextEdit* summary = nullptr; };
     QVector<TopicRow> m_topicRows;
 
     QProgressBar* m_busyBar = nullptr;

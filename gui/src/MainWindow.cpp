@@ -37,6 +37,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPlainTextEdit>
+#include <QFont>
 #include <QCoreApplication>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -939,32 +940,44 @@ void MainWindow::onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> 
 void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     if (!m_topicRowsLayout)
         return;
-    auto* row = new QWidget(m_topicEditorPage);
-    auto* h = new QHBoxLayout(row);
-    h->setContentsMargins(0, 0, 0, 0);
-    auto* title = new QLineEdit(t.title, row);
+    // Kártyás elrendezés témánként: fent a CÍM (teljes szélesség, félkövér) + törlés, alatta
+    // a többsoros ÖSSZEGZŐ — sokkal olvashatóbb/szerkeszthetőbb, mint két QLineEdit egymás mellett.
+    auto* card = new QFrame(m_topicEditorPage);
+    card->setFrameShape(QFrame::StyledPanel);
+    auto* v = new QVBoxLayout(card);
+    v->setContentsMargins(8, 8, 8, 8);
+    v->setSpacing(4);
+
+    auto* top = new QHBoxLayout();
+    auto* title = new QLineEdit(t.title, card);
     title->setPlaceholderText(QStringLiteral("Téma címe"));
-    auto* summary = new QLineEdit(t.summary, row);
-    summary->setPlaceholderText(QStringLiteral("Rövid összegző (opcionális)"));
-    auto* del = new QPushButton(QStringLiteral("🗑"), row);
+    QFont tf = title->font(); tf.setBold(true); title->setFont(tf);
+    auto* del = new QPushButton(QStringLiteral("🗑"), card);
     del->setFixedWidth(36);
     del->setToolTip(QStringLiteral("Téma törlése"));
-    h->addWidget(title, 2);
-    h->addWidget(summary, 3);
-    h->addWidget(del, 0);
-    // A sort a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
-    m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, row);
+    top->addWidget(title, 1);
+    top->addWidget(del, 0);
+    v->addLayout(top);
 
-    TopicRow tr{ t.id, row, title, summary };
+    auto* summary = new QPlainTextEdit(t.summary, card);
+    summary->setPlaceholderText(QStringLiteral("Rövid összegző (1-2 mondat, opcionális)"));
+    summary->setTabChangesFocus(true);        // Tab a következő mezőre lép, nem tabot szúr be
+    summary->setFixedHeight(64);              // ~3 sor; hosszabb szöveg görgethető
+    v->addWidget(summary);
+
+    // A kártyát a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
+    m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, card);
+
+    TopicRow tr{ t.id, card, title, summary };
     m_topicRows.append(tr);
-    connect(del, &QPushButton::clicked, this, [this, row]() {
+    connect(del, &QPushButton::clicked, this, [this, card]() {
         for (int i = 0; i < m_topicRows.size(); ++i) {
-            if (m_topicRows[i].row == row) {
+            if (m_topicRows[i].row == card) {
                 m_topicRows.removeAt(i);
                 break;
             }
         }
-        row->deleteLater();
+        card->deleteLater();
     });
 }
 
@@ -985,7 +998,7 @@ void MainWindow::onStartAnalysis() {
         tanara::SummaryTopic t;
         t.id = r.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : r.id;
         t.title = title;
-        t.summary = r.summary ? r.summary->text().trimmed() : QString();
+        t.summary = r.summary ? r.summary->toPlainText().trimmed() : QString();
         topics.append(t);
     }
     if (topics.isEmpty()) {
