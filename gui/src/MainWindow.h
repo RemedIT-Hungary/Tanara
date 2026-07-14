@@ -59,6 +59,7 @@ private slots:
     void onSummarizeClicked();
     void onComplexClicked();    // komplex összefoglaló indítása (téma-kinyerés → szerkesztő)
     void onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // 1. kör kész
+    void onTopicAnalysisProgress(QString meetingId, int completed, int total);    // 2. kör haladás/téma
     void onStartAnalysis();     // a szerkesztett témákra a 2. kör + reduce
     // EGYETLEN „Résztvevők azonosítása" akció: átirat előtt előnézet (hang-klaszterek +
     // DB-találatok), átirat után a speakerMap kitöltése a biztos találatokkal — majd
@@ -159,8 +160,10 @@ private:
     QPushButton*  m_startAnalysisBtn = nullptr;  // „Témánkénti elemzés indítása →"
     QString       m_topicsMeetingId;             // melyik meetinghez tartozik a szerkesztő
     struct TopicRow { QString id; QWidget* row = nullptr;
-                      QLineEdit* title = nullptr; QPlainTextEdit* summary = nullptr; };
+                      QLineEdit* title = nullptr; QPlainTextEdit* summary = nullptr;
+                      QProgressBar* prog = nullptr; QLabel* status = nullptr; };
     QVector<TopicRow> m_topicRows;
+    QStringList       m_analyzingOrder;   // a beküldött témák id-jai sorrendben (2. kör haladás-map)
 
     QProgressBar* m_busyBar = nullptr;
     QProgressBar* m_convertBar = nullptr;   // állapotsoros, determinisztikus lekeverés-progress

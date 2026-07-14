@@ -127,6 +127,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onSummaryReady);
         connect(m_controller, &tanara::AppController::topicsReady,
                 this, &MainWindow::onTopicsReady);
+        connect(m_controller, &tanara::AppController::topicAnalysisProgress,
+                this, &MainWindow::onTopicAnalysisProgress);
         connect(m_controller, &tanara::AppController::errorOccurred,
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::jobProgress,
@@ -965,10 +967,24 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     summary->setFixedHeight(64);              // ~3 sor; hosszabb szöveg görgethető
     v->addWidget(summary);
 
+    // Per-téma állapot a 2. kör (elemzés) alatt: státusz-címke + busy progress bar. Kezdetben
+    // rejtve; az onTopicAnalysisProgress kapcsolja (várakozik / elemzés… / ✓ kész).
+    auto* statRow = new QHBoxLayout();
+    auto* status = new QLabel(card);
+    status->setVisible(false);
+    auto* prog = new QProgressBar(card);
+    prog->setRange(0, 0);            // indeterminate (busy) — az épp elemzett téma „dolgozik" animációja
+    prog->setTextVisible(false);
+    prog->setFixedHeight(6);
+    prog->setVisible(false);
+    statRow->addWidget(status, 0);
+    statRow->addWidget(prog, 1);
+    v->addLayout(statRow);
+
     // A kártyát a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
     m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, card);
 
-    TopicRow tr{ t.id, card, title, summary };
+    TopicRow tr{ t.id, card, title, summary, prog, status };
     m_topicRows.append(tr);
     connect(del, &QPushButton::clicked, this, [this, card]() {
         for (int i = 0; i < m_topicRows.size(); ++i) {
@@ -985,21 +1001,49 @@ void MainWindow::clearTopicRows() {
     for (const TopicRow& r : m_topicRows)
         if (r.row) r.row->deleteLater();
     m_topicRows.clear();
+    m_analyzingOrder.clear();
+}
+
+// A 2. kör (témánkénti elemzés) SZEKVENCIÁLIS — minden téma-kártyán jelezzük az állapotot:
+// a már kész témák „✓ Kész", az épp elemzett „Elemzés…" + busy progress bar, a többi „Várakozik".
+void MainWindow::onTopicAnalysisProgress(QString meetingId, int completed, int total) {
+    if (meetingId != m_topicsMeetingId)
+        return;
+    for (TopicRow& r : m_topicRows) {
+        if (!r.status || !r.prog)
+            continue;
+        const int idx = m_analyzingOrder.indexOf(r.id);
+        if (idx < 0) { r.status->setVisible(false); r.prog->setVisible(false); continue; }
+        if (idx < completed) {                              // kész
+            r.status->setText(QStringLiteral("✓ Kész"));
+            r.prog->setVisible(false);
+        } else if (idx == completed && completed < total) { // épp elemzés alatt
+            r.status->setText(QStringLiteral("Elemzés…"));
+            r.prog->setVisible(true);
+        } else {                                            // várakozik
+            r.status->setText(QStringLiteral("⏳ Várakozik"));
+            r.prog->setVisible(false);
+        }
+        r.status->setVisible(true);
+    }
 }
 
 void MainWindow::onStartAnalysis() {
     if (!m_controller || m_topicsMeetingId.isEmpty())
         return;
     QVector<tanara::SummaryTopic> topics;
-    for (const TopicRow& r : m_topicRows) {
+    m_analyzingOrder.clear();
+    for (TopicRow& r : m_topicRows) {
         const QString title = r.title ? r.title->text().trimmed() : QString();
         if (title.isEmpty())
             continue;   // üres című sorokat kihagyjuk
         tanara::SummaryTopic t;
         t.id = r.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : r.id;
+        r.id = t.id;   // az id-t visszaírjuk, hogy a per-téma haladás a helyes kártyára illeszkedjen
         t.title = title;
         t.summary = r.summary ? r.summary->toPlainText().trimmed() : QString();
         topics.append(t);
+        m_analyzingOrder << t.id;
     }
     if (topics.isEmpty()) {
         statusBar()->showMessage(QStringLiteral("Adj meg legalább egy témát."), 5000);

@@ -1316,6 +1316,7 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
             [this, svc, ctx](const TopicAnalysis& a) {
         ctx->results.append(a);
         ++ctx->idx;
+        emit topicAnalysisProgress(ctx->m.id, ctx->idx, ctx->topics.size());
         if (ctx->idx < ctx->topics.size()) {
             emit jobProgress(ctx->m.id, QStringLiteral("Téma %1/%2 elemzése…")
                                             .arg(ctx->idx + 1).arg(ctx->topics.size()));
@@ -1343,6 +1344,7 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
         emit summaryReady(mm.id, mdPath);
     });
 
+    emit topicAnalysisProgress(meetingId, 0, topics.size());
     emit jobProgress(meetingId, QStringLiteral("Téma 1/%1 elemzése…").arg(topics.size()));
     svc->requestTopicAnalysis(ctx->transcriptMd, topics[0], ctx->context,
                               ctx->analysisPrompt, ctx->model, ctx->temp, ctx->maxTokens);

@@ -168,6 +168,7 @@ signals:
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
     void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör
+    void topicAnalysisProgress(QString meetingId, int completed, int total);    // komplex 2. kör haladás
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
