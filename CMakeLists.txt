@@ -21,6 +21,7 @@ target_include_directories(miniaudio INTERFACE ${CMAKE_SOURCE_DIR}/third_party/m
 enable_testing()
 
 option(TANARA_BUILD_GUI "Build the Qt Widgets GUI" ON)
+option(TANARA_BUILD_WATCHER "Build the tray meeting-watcher" ON)
 # A beszélő-ujjlenyomat (voice-ID) ONNX Runtime-ot + KISS FFT-t igényel. Kikapcsolva
 # (OFF) a core/cli/gui ezek nélkül fordul (gyors Windows bring-up); a VoiceEmbedder
 # ilyenkor stub (isValid()==false → az app automatikusan kihagyja a beszélő-címkézést).
@@ -74,5 +75,8 @@ add_subdirectory(core)
 add_subdirectory(cli)
 if(TANARA_BUILD_GUI)
     add_subdirectory(gui)
+endif()
+if(TANARA_BUILD_WATCHER)
+    add_subdirectory(watcher)
 endif()
 add_subdirectory(tests)
