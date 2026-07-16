@@ -4,19 +4,25 @@
 //   list                             meetingek
 //   transcribe <meetingId>           átírás (Soniox kulcs kell)
 //   summarize <meetingId>            összefoglaló (LM Studio)
+//   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
 //
 #include "tanara/AppController.h"
 #include "tanara/Logging.h"
+#include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
+#include "tanara/detect/DetectorRegistry.h"
+#include "tanara/detect/IMeetingDetector.h"
 
 #include <QCoreApplication>
 #include <QTextStream>
 #include <QTimer>
 #include <QSocketNotifier>
 #include <QDateTime>
+
+#include <memory>
 
 using namespace tanara;
 
@@ -84,6 +90,57 @@ int main(int argc, char** argv) {
         out << "Index újraépítve a lemezről — " << ms.size() << " meeting.\n";
         out.flush();
         return 0;
+    }
+
+    if (cmd == "detect") {
+        // Smoke: a figyelő MOTORJA külön folyamat/tray nélkül. Egyszeri poll, vagy
+        // --watch esetén időzített (a settings intervallumával / --interval N mp).
+        registerBuiltinDetectors();
+        const AppSettings s = app.settings()->settings();
+        std::unique_ptr<IMeetingDetector> det(
+            s.detectorId.isEmpty()
+                ? MeetingDetectorRegistry::instance().createBest()
+                : MeetingDetectorRegistry::instance().create(s.detectorId));
+        if (!det) {
+            err << "Nincs elérhető meeting-detektor ezen a platformon (pw-dump?).\n";
+            err.flush();
+            return 1;
+        }
+        det->configure(s.knownCallApps, QStringLiteral("tanara"));
+
+        bool watch = false;
+        int interval = s.detectorIntervalSec;
+        for (int i = 2; i < args.size(); ++i) {
+            if (args[i] == "--watch") watch = true;
+            else if (args[i] == "--interval" && i + 1 < args.size()) interval = args[++i].toInt();
+        }
+        if (interval < 1) interval = 1;
+
+        out << "Detektor: " << det->id() << "  (ismert appok: "
+            << s.knownCallApps.join(QStringLiteral(", ")) << ")\n";
+        out.flush();
+
+        auto pollOnce = [&det]() {
+            const MeetingSignal sig = det->poll();
+            if (sig.active)
+                out << "  ● MEETING: " << sig.appName
+                    << "  [appId=" << sig.appId
+                    << ", ablak=\"" << sig.windowTitle << "\""
+                    << ", forrás=" << sig.sourceRef << "]\n";
+            else
+                out << "  ○ nincs aktív hívás\n";
+            out.flush();
+        };
+
+        if (!watch) { pollOnce(); return 0; }
+
+        pollOnce();
+        out << "(figyelés " << interval << " mp-enként — Ctrl-C a leállításhoz)\n";
+        out.flush();
+        auto* timer = new QTimer(&qapp);
+        QObject::connect(timer, &QTimer::timeout, &qapp, [&pollOnce]() { pollOnce(); });
+        timer->start(interval * 1000);
+        return qapp.exec();
     }
 
     if (cmd == "record") {
