@@ -1,11 +1,102 @@
 // Tanara GUI (Qt Widgets) — belépési pont.
+//   tanara                 az elemző/könyvtár (MainWindow)
+//   tanara --record …      csak a lebegő felvevő, azonnali rögzítéssel (a figyelő indítja)
+//                          opciók: --title T  --context C  --device IDX (ismételhető)
 #include "MainWindow.h"
+#include "RecordBar.h"
+#include "FloatingRecorder.h"
 #include "AppIcon.h"
 
 #include "tanara/AppController.h"
 #include "tanara/Logging.h"
+#include "tanara/SettingsManager.h"
+#include "tanara/audio/DeviceManager.h"
+#include "tanara/detect/RecordingLock.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QDateTime>
+#include <QMessageBox>
+
+#include <memory>
+
+using namespace tanara;
+using namespace tanara_gui;
+
+// --record mód: csak a lebegő felvevő (nincs MainWindow), és azonnal indul a rögzítés
+// a kapott címmel/kontextussal/eszközökkel. A figyelő ezt indítja, ha a user rábólint.
+// A ~/.tanara/recording.lock jelzi a figyelőnek, hogy megy a felvétel.
+static int runRecorderMode(QApplication& app, AppController& controller, const QStringList& args)
+{
+    QString title, context;
+    QList<int> deviceIdx;
+    for (int i = 0; i < args.size(); ++i) {
+        if (args[i] == QStringLiteral("--title") && i + 1 < args.size()) title = args[++i];
+        else if (args[i] == QStringLiteral("--context") && i + 1 < args.size()) context = args[++i];
+        else if (args[i] == QStringLiteral("--device") && i + 1 < args.size()) deviceIdx << args[++i].toInt();
+    }
+    if (title.trimmed().isEmpty())
+        title = QStringLiteral("Felvétel %1")
+                    .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+
+    controller.refreshDevices();
+    const QVector<AudioDeviceInfo> all = controller.devices()->captureDevices();
+    QVector<AudioDeviceInfo> sel;
+    if (deviceIdx.isEmpty())
+        sel = controller.devices()->autoRecordDevices();   // line-in/AUX kimarad
+    else
+        for (int idx : deviceIdx)
+            if (idx >= 0 && idx < all.size()) sel << all[idx];
+    if (sel.isEmpty()) {
+        QMessageBox::critical(nullptr, QStringLiteral("Tanara — Felvétel"),
+                              QStringLiteral("Nincs rögzíthető hangeszköz."));
+        return 1;
+    }
+
+    // Lock-fájl a metaDir-ben (~/.tanara). A settings nyers ~-t adhat → kifejtjük.
+    QString metaDir = controller.settings()->settings().metadataDir;
+    if (metaDir.startsWith(QLatin1Char('~')))
+        metaDir = QDir::homePath() + metaDir.mid(1);
+    auto lock = std::make_shared<RecordingLock>(QDir(metaDir).filePath(QStringLiteral("recording.lock")));
+
+    // Lebegő felvevő (a RecordBar-t a FloatingRecorder reparentálja magába).
+    auto* recordBar = new RecordBar(&controller, nullptr);
+    recordBar->setViewMode(RecordBar::ViewMode::Full);
+    auto* recorder = new FloatingRecorder(&controller, recordBar, nullptr);
+    recordBar->refreshFromSettings();
+    recordBar->show();
+
+    // Felvétel-indulás → lock felvétele a friss meeting-mappával.
+    QObject::connect(&controller, &AppController::recordingStateChanged, &app,
+                     [&controller, lock](RecordingState st) {
+                         if (st == RecordingState::Recording)
+                             lock->acquire(controller.currentMeetingFolder());
+                     });
+    // Felvétel vége → a detektált kontextus mentése + lock elengedése + kilépés (frugális).
+    QObject::connect(&controller, &AppController::recordingFinished, &app,
+                     [&controller, lock, context](Meeting m) {
+                         if (!context.trimmed().isEmpty())
+                             controller.setMeetingContextNote(m.id, context.trimmed());
+                         lock->release();
+                         qApp->quit();
+                     });
+    QObject::connect(&controller, &AppController::errorOccurred, &app,
+                     [lock](const QString& e) {
+                         lock->release();
+                         QMessageBox::critical(nullptr, QStringLiteral("Tanara — Felvétel"), e);
+                         qApp->exit(1);
+                     });
+    // A lebegő ablak bezárása: ha megy felvétel, állítsuk le (a finished kiléptet), különben kilépés.
+    QObject::connect(recorder, &FloatingRecorder::dockRequested, &app, [&controller]() {
+        if (controller.recordingState() == RecordingState::Recording)
+            controller.stopRecording();
+        else
+            qApp->quit();
+    });
+
+    controller.startRecording(title, sel);
+    return app.exec();
+}
 
 int main(int argc, char** argv) {
     // Logolás MIELŐTT bármi más (hogy a korai üzenetek is beessenek). Szint a
@@ -36,6 +127,11 @@ int main(int argc, char** argv) {
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // minden ablakra + tálcára
 
     tanara::AppController controller;
+
+    // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs MainWindow.
+    const QStringList cleanArgs = tanara::stripLogArgs(rawArgs);
+    if (cleanArgs.contains(QStringLiteral("--record")))
+        return runRecorderMode(app, controller, cleanArgs);
 
     tanara_gui::MainWindow window(&controller);
     window.show();
