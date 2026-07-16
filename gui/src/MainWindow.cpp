@@ -23,6 +23,8 @@
 #include <QSplitter>
 #include <QFrame>
 #include <QWidget>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QMenuBar>
@@ -31,6 +33,7 @@
 #include <QAction>
 #include <QStyle>
 #include <QLabel>
+#include <QPalette>
 #include <QSignalBlocker>
 #include <QStatusBar>
 #include <QProgressBar>
@@ -57,6 +60,53 @@
 #include <QCloseEvent>
 
 namespace tanara_gui {
+
+// Másodlagos/hint felirat: téma-adaptív halvány szín a QPalette::PlaceholderText szerepből
+// (NEM stylesheet + NEM palette(mid) — a Mid szín dark témában sötét szürke → olvashatatlan).
+static void makeHintLabel(QLabel* l, bool small = false) {
+    if (!l) return;
+    l->setForegroundRole(QPalette::PlaceholderText);
+    if (small) {
+        QFont f = l->font();
+        f.setPointSizeF(qMax(1.0, f.pointSizeF() - 1.0));
+        l->setFont(f);
+    }
+}
+
+// Húzható méretező-fogantyú egy cél-widget (pl. az elemzés-doboz) alá: lefelé húzva
+// magasabb, felfelé alacsonyabb lesz. A célnak fix magasságot ad (min==max), így a
+// húzott méret marad. Rajzol egy diszkrét grip-jelet, a kurzor függőleges átméretező.
+class HeightGrip : public QWidget {
+public:
+    explicit HeightGrip(QWidget* target, int minH = 80, QWidget* parent = nullptr)
+        : QWidget(parent), m_target(target), m_minH(minH) {
+        setCursor(Qt::SizeVerCursor);
+        setFixedHeight(9);
+        setToolTip(QStringLiteral("Húzd az elemzés-doboz átméretezéséhez"));
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setPen(QPen(palette().color(QPalette::PlaceholderText), 1));
+        const int cx = width() / 2, cy = height() / 2;
+        for (int dx : {-8, 0, 8}) {          // három rövid vonal középen (grip-jelzés)
+            p.drawLine(cx + dx - 3, cy - 1, cx + dx + 3, cy - 1);
+            p.drawLine(cx + dx - 3, cy + 1, cx + dx + 3, cy + 1);
+        }
+    }
+    void mousePressEvent(QMouseEvent* e) override {
+        m_pressY = e->globalPosition().y();
+        m_startH = m_target ? m_target->height() : 0;
+    }
+    void mouseMoveEvent(QMouseEvent* e) override {
+        if (!m_target || !(e->buttons() & Qt::LeftButton)) return;
+        const int h = qMax(m_minH, m_startH + int(e->globalPosition().y() - m_pressY));
+        m_target->setMinimumHeight(h);
+        m_target->setMaximumHeight(h);
+    }
+private:
+    QWidget* m_target; int m_minH; qreal m_pressY = 0; int m_startH = 0;
+};
 
 static QString participantsSummary(QStringList named, int unknownCount, int totalDistinct);
 
@@ -127,8 +177,16 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 this, &MainWindow::onSummaryReady);
         connect(m_controller, &tanara::AppController::topicsReady,
                 this, &MainWindow::onTopicsReady);
-        connect(m_controller, &tanara::AppController::topicAnalysisProgress,
-                this, &MainWindow::onTopicAnalysisProgress);
+        connect(m_controller, &tanara::AppController::topicAnalysisQueued,
+                this, &MainWindow::onTopicQueued);
+        connect(m_controller, &tanara::AppController::topicAnalysisStarted,
+                this, &MainWindow::onTopicStarted);
+        connect(m_controller, &tanara::AppController::topicAnalysisReady,
+                this, &MainWindow::onTopicReady);
+        connect(m_controller, &tanara::AppController::topicAnalysisFailed,
+                this, &MainWindow::onTopicFailed);
+        connect(m_controller, &tanara::AppController::topicAnalysisQueueFinished,
+                this, &MainWindow::onTopicQueueFinished);
         connect(m_controller, &tanara::AppController::errorOccurred,
                 this, &MainWindow::onError);
         connect(m_controller, &tanara::AppController::jobProgress,
@@ -256,7 +314,7 @@ void MainWindow::buildUi() {
     ctxHelp->setText(QStringLiteral(
         "Ez a kontextus segíti a pontosabb átiratot: az átíró (Soniox) ezzel jobban "
         "dönt a kétes/félreérthető részeknél — nevek, szakszavak, téma."));
-    ctxHelp->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); font-size: 11px; }"));
+    makeHintLabel(ctxHelp, /*small*/ true);
 
     // (Eddig tudott) résztvevők sora — sáv-címkékből, ill. az azonosítás eredményéből.
     m_participantsResult = new QLabel(this);
@@ -326,9 +384,9 @@ void MainWindow::buildUi() {
     m_summaryView->setOpenExternalLinks(true);
     m_tracksPanel->setController(m_controller);
 
-    // Az Összefoglaló-fül kétállapotú: ha van összefoglaló → summaryView; ha nincs →
-    // középen „✨ Összefoglaló generálása" gomb (canRun(Summarize) szerint kapuzva).
-    // A summaryView-t kivesszük a tab-ból, és egy QStackedWidget-be tesszük helyette.
+    // Az Összefoglaló-fül újratervezve: EGY közös, kompakt akció-sáv (mód-választó: Gyors /
+    // Témánként, + összecsukható Kontextus + Újragenerálás), alatta egy háromállapotú stack
+    // (üres hint / kész összefoglaló / téma-munkaterület). A summaryView-t kivesszük a tabból.
     {
         const int summaryIdx = m_tabs->indexOf(m_summaryView);
         const QString summaryTitle = (summaryIdx >= 0)
@@ -336,50 +394,93 @@ void MainWindow::buildUi() {
         if (summaryIdx >= 0)
             m_tabs->removeTab(summaryIdx);
 
-        m_summaryStack = new QStackedWidget(m_tabs);
-        m_summaryStack->addWidget(m_summaryView);     // page 0: kész összefoglaló
+        m_summaryTab  = new QWidget(m_tabs);
+        QWidget* sumTab = m_summaryTab;
+        auto* sumWrap = new QVBoxLayout(sumTab);
+        sumWrap->setContentsMargins(0, 0, 0, 0);
+        sumWrap->setSpacing(6);
+
+        // --- akció-sáv: [✨ Gyors] [🧩 Témánként] ……… [⚙ Kontextus] [↻ Újragenerálás] ---
+        auto* actionBar = new QHBoxLayout();
+        actionBar->setContentsMargins(0, 0, 0, 0);
+        m_generateSummaryBtn = new QPushButton(QStringLiteral("✨  Gyors összefoglaló"), sumTab);
+        m_generateSummaryBtn->setStyleSheet(QStringLiteral("QPushButton { font-weight: bold; }"));
+        m_generateSummaryBtn->setToolTip(QStringLiteral(
+            "Egy lépésben, egy modell-hívással készít vezetői összefoglalót + teendőket."));
+        m_complexBtn = new QPushButton(QStringLiteral("🧩  Témánként"), sumTab);
+        m_complexBtn->setToolTip(QStringLiteral(
+            "Több körös: a modell kigyűjti a témákat, te szerkeszted, majd témánként részletes "
+            "elemzést készít. Pontosabb hosszú/összetett felvételekhez."));
+        m_contextToggleBtn = new QPushButton(QStringLiteral("⚙  Kontextus"), sumTab);
+        m_contextToggleBtn->setCheckable(true);
+        m_contextToggleBtn->setToolTip(QStringLiteral(
+            "Pár szó a témáról/nevekről — pontosabb összefoglalót ad. Átirat után is módosítható."));
+        m_regenSummaryBtn = new QPushButton(QStringLiteral("↻  Újragenerálás"), sumTab);
+        m_regenSummaryBtn->setToolTip(QStringLiteral(
+            "A gyors összefoglaló újragenerálása a (módosított) kontextussal — az átiratot nem érinti."));
+        actionBar->addWidget(m_generateSummaryBtn);
+        actionBar->addWidget(m_complexBtn);
+        actionBar->addStretch(1);
+        actionBar->addWidget(m_contextToggleBtn);
+        actionBar->addWidget(m_regenSummaryBtn);
+        sumWrap->addLayout(actionBar);
+
+        // --- összecsukható kontextus-doboz (alapból rejtve; a ⚙ gomb hajtja ki) ---
+        m_contextPanel = new QWidget(sumTab);
+        auto* ctxLay = new QHBoxLayout(m_contextPanel);
+        ctxLay->setContentsMargins(0, 0, 0, 0);
+        m_summaryContextEdit = new QPlainTextEdit(m_contextPanel);
+        m_summaryContextEdit->setPlaceholderText(QStringLiteral(
+            "Miről szólt? (téma, nevek, szakszavak…) — a pontosabb összefoglalóhoz"));
+        m_summaryContextEdit->setMaximumHeight(56);
+        ctxLay->addWidget(m_summaryContextEdit);
+        m_contextPanel->setVisible(false);
+        sumWrap->addWidget(m_contextPanel);
+        connect(m_contextToggleBtn, &QPushButton::toggled, m_contextPanel, &QWidget::setVisible);
+
+        // --- tartalom-stack: üres hint / kész összefoglaló / téma-munkaterület ---
+        m_summaryStack = new QStackedWidget(sumTab);
+        m_summaryStack->addWidget(m_summaryView);       // page 0: kész összefoglaló
 
         m_summaryEmptyPage = new QWidget(m_summaryStack);
         auto* el = new QVBoxLayout(m_summaryEmptyPage);
         el->addStretch(1);
-        auto* emptyLbl = new QLabel(
-            QStringLiteral("Még nincs összefoglaló ehhez a megbeszéléshez."),
-            m_summaryEmptyPage);
+        auto* emptyLbl = new QLabel(QStringLiteral(
+            "Még nincs összefoglaló.\nVálassz fent: „Gyors összefoglaló” egy lépésben, "
+            "vagy „Témánként” a részletes, szerkeszthető elemzéshez."), m_summaryEmptyPage);
         emptyLbl->setAlignment(Qt::AlignCenter);
-        emptyLbl->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
-        m_generateSummaryBtn = new QPushButton(
-            QStringLiteral("✨  Összefoglaló generálása"), m_summaryEmptyPage);
-        m_generateSummaryBtn->setStyleSheet(
-            QStringLiteral("QPushButton { font-weight: bold; padding: 8px 18px; }"));
-        m_complexEmptyBtn = new QPushButton(
-            QStringLiteral("🧩  Komplex (témánként)"), m_summaryEmptyPage);
-        m_complexEmptyBtn->setStyleSheet(QStringLiteral("QPushButton { padding: 8px 18px; }"));
-        m_complexEmptyBtn->setToolTip(QStringLiteral(
-            "Több körös, témánkénti összefoglaló: kigyűjti a témákat (szerkeszthető), majd "
-            "témánként részletes elemzést készít."));
-        auto* btnRow = new QHBoxLayout();
-        btnRow->addStretch(1);
-        btnRow->addWidget(m_generateSummaryBtn);
-        btnRow->addWidget(m_complexEmptyBtn);
-        btnRow->addStretch(1);
+        emptyLbl->setWordWrap(true);
+        makeHintLabel(emptyLbl);
         el->addWidget(emptyLbl);
-        el->addSpacing(10);
-        el->addLayout(btnRow);
         el->addStretch(1);
-        m_summaryStack->addWidget(m_summaryEmptyPage);  // page 1: üres + generálás-gomb
-        connect(m_complexEmptyBtn, &QPushButton::clicked, this, &MainWindow::onComplexClicked);
+        m_summaryStack->addWidget(m_summaryEmptyPage);  // page 1: üres hint
 
-        // page 2: téma-szerkesztő (a komplex 1. kör eredménye — szerkeszthető téma-lista).
+        // page 2: téma-munkaterület (kigyűjtött témák — szerkeszthető cím/gist + per-téma elemzés).
         m_topicEditorPage = new QWidget(m_summaryStack);
         auto* tl = new QVBoxLayout(m_topicEditorPage);
-        auto* tHdr = new QLabel(QStringLiteral(
-            "<b>Témák</b> — szerkeszd (cím + rövid összegző), törölj/adj hozzá, majd indítsd az "
-            "elemzést. Minden témára külön, részletes elemzés készül."), m_topicEditorPage);
-        tHdr->setWordWrap(true);
-        tl->addWidget(tHdr);
+        tl->setContentsMargins(0, 0, 0, 0);
+        auto* topRow = new QHBoxLayout();
+        m_backToSummaryBtn = new QPushButton(QStringLiteral("‹  Vissza az összefoglalóhoz"),
+                                             m_topicEditorPage);
+        m_backToSummaryBtn->setFlat(true);
+        m_backToSummaryBtn->setVisible(false);
+        auto* tHint = new QLabel(QStringLiteral(
+            "Szerkeszd a témákat (cím + gist), majd „Elemzés indítása”. Minden elemzés azonnal "
+            "mentődik; a ▶/↻ gombbal témánként is futtatható."), m_topicEditorPage);
+        tHint->setWordWrap(true);
+        makeHintLabel(tHint);
+        topRow->addWidget(m_backToSummaryBtn, 0);
+        topRow->addWidget(tHint, 1);
+        tl->addLayout(topRow);
+        connect(m_backToSummaryBtn, &QPushButton::clicked, this, [this]() {
+            m_topicEditorActive = false;
+            bool ok = false; const tanara::Meeting m = selectedMeeting(&ok);
+            if (ok) reloadSummaryView(m);
+        });
 
         auto* tScroll = new QScrollArea(m_topicEditorPage);
         tScroll->setWidgetResizable(true);
+        tScroll->setFrameShape(QFrame::NoFrame);
         auto* tRowsHost = new QWidget(tScroll);
         m_topicRowsLayout = new QVBoxLayout(tRowsHost);
         m_topicRowsLayout->setContentsMargins(0, 0, 0, 0);
@@ -387,66 +488,25 @@ void MainWindow::buildUi() {
         tScroll->setWidget(tRowsHost);
         tl->addWidget(tScroll, 1);
 
-        auto* addRow = new QHBoxLayout();
-        auto* addTopicBtn = new QPushButton(QStringLiteral("➕  Új téma"), m_topicEditorPage);
-        addRow->addWidget(addTopicBtn);
-        addRow->addStretch(1);
-        tl->addLayout(addRow);
-        connect(addTopicBtn, &QPushButton::clicked, this, [this]() {
-            tanara::SummaryTopic t;   // üres sor (id-t a mentéskor kap, ha kell)
-            addTopicRow(t);
-        });
-
         auto* actRow = new QHBoxLayout();
-        auto* cancelBtn = new QPushButton(QStringLiteral("Mégse"), m_topicEditorPage);
-        m_startAnalysisBtn = new QPushButton(
-            QStringLiteral("Témánkénti elemzés indítása →"), m_topicEditorPage);
+        auto* addTopicBtn = new QPushButton(QStringLiteral("➕  Új téma"), m_topicEditorPage);
+        connect(addTopicBtn, &QPushButton::clicked, this, [this]() {
+            addTopicRow(tanara::SummaryTopic{});   // üres sor (id-t a mentéskor kap, ha kell)
+        });
+        m_startAnalysisBtn = new QPushButton(QStringLiteral("Elemzés indítása →"), m_topicEditorPage);
         m_startAnalysisBtn->setStyleSheet(QStringLiteral("QPushButton { font-weight: bold; }"));
-        actRow->addWidget(cancelBtn);
+        m_startAnalysisBtn->setToolTip(QStringLiteral(
+            "A hiányzó témák elemzése lefut, majd elkészül a végső vezetői összefoglaló."));
+        actRow->addWidget(addTopicBtn, 0);
         actRow->addStretch(1);
-        actRow->addWidget(m_startAnalysisBtn);
+        actRow->addWidget(m_startAnalysisBtn, 0);
         tl->addLayout(actRow);
         connect(m_startAnalysisBtn, &QPushButton::clicked, this, &MainWindow::onStartAnalysis);
-        connect(cancelBtn, &QPushButton::clicked, this, [this]() {
-            bool ok = false; const tanara::Meeting m = selectedMeeting(&ok);
-            if (ok) reloadSummaryView(m);   // vissza a kész/üres lapra
-        });
         m_summaryStack->addWidget(m_topicEditorPage);   // page 2
 
-        // Fejléc a stack FÖLÉ: a kontextus átirat után is szerkeszthető + „Újragenerálás".
-        // Így az átirat birtokában finomíthatod a context-et / promptot, és újrafuttathatod.
-        m_summaryTab  = new QWidget(m_tabs);
-        QWidget* sumTab = m_summaryTab;
-        auto* sumWrap = new QVBoxLayout(sumTab);
-        sumWrap->setContentsMargins(0, 0, 0, 0);
-
-        auto* ctxRow = new QHBoxLayout();
-        auto* ctxLbl = new QLabel(QStringLiteral("Kontextus:"), sumTab);
-        ctxLbl->setToolTip(QStringLiteral(
-            "Pár szó a témáról/nevekről — pontosabb összefoglalót ad. Az átirat után is "
-            "módosítható; az „Újragenerálás\" ezzel futtatja újra."));
-        m_summaryContextEdit = new QPlainTextEdit(sumTab);
-        m_summaryContextEdit->setPlaceholderText(QStringLiteral(
-            "Miről szólt? (téma, nevek, szakszavak…) — a pontosabb összefoglalóhoz"));
-        m_summaryContextEdit->setMaximumHeight(56);
-        m_regenSummaryBtn = new QPushButton(QStringLiteral("🔄  Újragenerálás"), sumTab);
-        m_regenSummaryBtn->setToolTip(QStringLiteral(
-            "Az összefoglaló újragenerálása a (módosított) kontextussal és a beállított "
-            "prompttal — az átiratot nem érinti."));
-        m_complexBtn = new QPushButton(QStringLiteral("🧩  Komplex"), sumTab);
-        m_complexBtn->setToolTip(QStringLiteral(
-            "Több körös, témánkénti összefoglaló: a modell kigyűjti a témákat, te szerkeszted, "
-            "majd témánként részletes elemzést készít. Pontosabb hosszú/összetett felvételekhez."));
-        auto* btnCol = new QVBoxLayout();
-        btnCol->setContentsMargins(0, 0, 0, 0);
-        btnCol->addWidget(m_regenSummaryBtn);
-        btnCol->addWidget(m_complexBtn);
-        ctxRow->addWidget(ctxLbl, 0, Qt::AlignTop);
-        ctxRow->addWidget(m_summaryContextEdit, 1);
-        ctxRow->addLayout(btnCol, 0);
-        sumWrap->addLayout(ctxRow);
         sumWrap->addWidget(m_summaryStack, 1);
 
+        connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onShowOrGenerateSummary);
         connect(m_regenSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
         connect(m_complexBtn, &QPushButton::clicked, this, &MainWindow::onComplexClicked);
 
@@ -495,7 +555,7 @@ void MainWindow::buildUi() {
     //  megszűnt, redundáns volt.)
     connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyParticipants);
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
-    connect(m_generateSummaryBtn, &QPushButton::clicked, this, &MainWindow::onSummarizeClicked);
+    // (a Gyors összefoglaló gombja már az Összefoglaló-fül akció-sávjában kötve — lásd buildUi)
 
     // Üres induló állapot (nincs kiválasztott meeting).
     m_titleLabel->clear();
@@ -623,28 +683,58 @@ void MainWindow::reloadTranscriptView(const tanara::Meeting& m) {
 }
 
 void MainWindow::reloadSummaryView(const tanara::Meeting& m) {
-    // A fejléc context-mezője a meetinghez mentett leírást tükrözi (átirat után is
-    // szerkeszthető; a State A doboz ekkor már nem látszik).
+    // A kontextus-doboz a meetinghez mentett leírást tükrözi (átirat után is szerkeszthető).
     if (m_summaryContextEdit && m_summaryContextEdit->toPlainText() != m.contextNote) {
         const QSignalBlocker block(m_summaryContextEdit);
         m_summaryContextEdit->setPlainText(m.contextNote);
     }
 
+    // Amíg a téma-munkaterület aktív (2. kör fut / vár), a köztes reload-ok (setBusy(false),
+    // store-jelek) ne rántsák el a lapot a szerkesztőről.
+    if (m_topicEditorActive && m.id == m_topicsMeetingId) {
+        m_summaryStack->setCurrentWidget(m_topicEditorPage);
+        updateSummaryActionBar(m);
+        return;
+    }
+
     const QString path = QDir(m.folder).filePath(QStringLiteral("summary.md"));
     const QString md = readMarkdownFile(path);
     if (md.isEmpty()) {
-        // Üres állapot: a kétállapotú stack a „✨ generálás" gomb oldalára vált.
-        // A gomb kapuzását az updateReviewGating(canRun(Summarize)) intézi. Az „Újragenerálás"
-        // fejléc-gomb ilyenkor rejtve (az üres-lap középső generálás-gombja a belépő).
         m_summaryStack->setCurrentWidget(m_summaryEmptyPage);
-        if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(false);
-        if (m_complexBtn)      m_complexBtn->setVisible(false);   // az üres-lap saját gombja a belépő
     } else {
         m_summaryView->setMarkdown(md);
         m_summaryStack->setCurrentWidget(m_summaryView);
-        if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(true);
-        if (m_complexBtn)      m_complexBtn->setVisible(true);
     }
+    updateSummaryActionBar(m);
+}
+
+// Az akció-sáv gombjainak kapuzása/láthatósága a meeting állapota szerint:
+//  - Gyors / Témánként: engedélyezve, ha az összefoglaló futtatható (canRun Summarize);
+//  - Újragenerálás: csak akkor látszik, ha VAN már kész gyors/komplex összefoglaló;
+//  - a nem-futtatható ok tooltipbe kerül (a gomb megnyitja a beállításokat, ha az a blokkoló).
+void MainWindow::updateSummaryActionBar(const tanara::Meeting& m) {
+    if (!m_controller) return;
+    const tanara::ReadinessResult rs = m_controller->canRun(tanara::WorkflowStep::Summarize, m.id);
+    const bool hasSummary = !readMarkdownFile(
+        QDir(m.folder).filePath(QStringLiteral("summary.md"))).isEmpty();
+    const bool inWorkspace = (m_summaryStack->currentWidget() == m_topicEditorPage);
+
+    // Provider-konfig/auth blokknál a gomb ENGEDÉLYEZVE marad, de a Beállításokat nyitja
+    // (az onSummarizeClicked/onComplexClicked kapuz) — a többi blokknál (nincs átirat) tiltva.
+    const bool cfgBlock = !rs.runnable
+        && (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+            || rs.blockerKind == tanara::BlockerKind::Auth);
+    const bool actionsEnabled = rs.runnable || cfgBlock;
+    if (m_generateSummaryBtn) {
+        m_generateSummaryBtn->setEnabled(actionsEnabled);
+        m_generateSummaryBtn->setToolTip(rs.runnable
+            ? QStringLiteral("Egy lépésben, egy modell-hívással készít vezetői összefoglalót + teendőket.")
+            : (cfgBlock ? QStringLiteral("Beállítás szükséges: %1").arg(rs.detail)
+                        : QStringLiteral("Nem futtatható: %1").arg(rs.detail)));
+    }
+    if (m_complexBtn) m_complexBtn->setEnabled(actionsEnabled);
+    // Az Újragenerálás a kész gyors-összefoglalóra vonatkozik; a téma-munkaterületen elrejtjük.
+    if (m_regenSummaryBtn) m_regenSummaryBtn->setVisible(hasSummary && !inWorkspace);
 }
 
 QString MainWindow::humanDate(const tanara::Meeting& m) {
@@ -789,28 +879,10 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
         return;
     }
 
-    // Van átirat → fülek. Az Összefoglaló generálás-gombja canRun(Summarize) szerint.
+    // Van átirat → fülek. Az Összefoglaló-fül akció-sávját külön kezeli az
+    // updateSummaryActionBar (a reloadSummaryView hívja) — itt csak a lapra váltunk.
     m_reviewStack->setCurrentWidget(ui->tabsPage);
-    const tanara::ReadinessResult rs =
-        m_controller ? m_controller->canRun(tanara::WorkflowStep::Summarize, m.id)
-                     : tanara::ReadinessResult{};
-    if (rs.runnable) {
-        m_generateSummaryBtn->setText(QStringLiteral("✨  Összefoglaló generálása"));
-        m_generateSummaryBtn->setEnabled(true);
-        m_generateSummaryBtn->setToolTip(QString());
-    } else if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
-               || rs.blockerKind == tanara::BlockerKind::Auth) {
-        // Provider-konfig/auth blokk → „⚙ Beállítás…" CTA (mint az Átírásnál), a
-        // gomb engedélyezve, és a Beállításokat nyitja (onSummarizeClicked kapuz).
-        m_generateSummaryBtn->setText(QStringLiteral("⚙  Beállítás…"));
-        m_generateSummaryBtn->setEnabled(true);
-        m_generateSummaryBtn->setToolTip(rs.detail);
-    } else {
-        // MeetingState (pl. nincs átirat) → marad a tiltott + tooltip viselkedés.
-        m_generateSummaryBtn->setText(QStringLiteral("✨  Összefoglaló generálása"));
-        m_generateSummaryBtn->setEnabled(false);
-        m_generateSummaryBtn->setToolTip(QStringLiteral("Előbb: %1").arg(rs.detail));
-    }
+    updateSummaryActionBar(m);
 }
 
 void MainWindow::loadSelectedMeetingViews() {
@@ -874,6 +946,24 @@ void MainWindow::onTranscribeClicked() {
     m_controller->transcribeMeeting(m.id);
 }
 
+void MainWindow::onShowOrGenerateSummary() {
+    bool ok = false;
+    const tanara::Meeting m = selectedMeeting(&ok);
+    if (!ok || !m_controller)
+        return;
+    // Fül-szerű viselkedés: ha MÁR van kész gyors/komplex összefoglaló, csak megjelenítjük —
+    // NEM generálunk újra (arra a ↻ Újragenerálás való). Ha nincs, indítjuk a generálást.
+    const QString md = readMarkdownFile(QDir(m.folder).filePath(QStringLiteral("summary.md")));
+    if (!md.isEmpty()) {
+        m_topicEditorActive = false;   // ha épp a téma-munkaterületen voltunk, kilépünk
+        reloadSummaryView(m);
+        m_reviewStack->setCurrentWidget(ui->tabsPage);
+        m_tabs->setCurrentWidget(m_summaryTab);
+        return;
+    }
+    onSummarizeClicked();
+}
+
 void MainWindow::onSummarizeClicked() {
     bool ok = false;
     const tanara::Meeting m = selectedMeeting(&ok);
@@ -932,99 +1022,268 @@ void MainWindow::onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> 
         addTopicRow(t);
     if (topics.isEmpty())
         addTopicRow(tanara::SummaryTopic{});   // legalább egy üres sor a szerkesztéshez
+    // A már lemezen lévő (korábbi futásból megőrzött) elemzések kártyái „✓ Kész"-t kapnak,
+    // a törzsük lenyitható — a batch ezeket kihagyja, a ↻ gombbal egyenként újrafuttathatók.
+    if (m_controller)
+        for (const tanara::TopicAnalysis& a : m_controller->topicAnalyses(meetingId))
+            if (TopicRow* r = topicRowById(a.topicId)) {
+                setTopicRowState(*r, TopicState::Done);
+                if (r->result)      r->result->setMarkdown(a.renderMarkdown());
+                if (r->resultBlock) r->resultBlock->setVisible(true);
+            }
     if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(true);
-    // A téma-szerkesztő lapra váltunk (a setBusy(false) az imént a kész/üres lapra állította).
+    // A „Vissza az összefoglalóhoz" csak akkor kell, ha van már kész (gyors/komplex) summary.
+    if (m_backToSummaryBtn) {
+        bool ok = false; const tanara::Meeting mm = selectedMeeting(&ok);
+        const bool hasSummary = ok && !readMarkdownFile(
+            QDir(mm.folder).filePath(QStringLiteral("summary.md"))).isEmpty();
+        m_backToSummaryBtn->setVisible(hasSummary);
+    }
+    // A téma-munkaterületre váltunk (a setBusy(false) az imént a kész/üres lapra állította),
+    // és ott is tartjuk a köztes reload-ok alatt (lásd reloadSummaryView).
+    m_topicEditorActive = true;
     m_reviewStack->setCurrentWidget(ui->tabsPage);
     m_tabs->setCurrentWidget(m_summaryTab);
     m_summaryStack->setCurrentWidget(m_topicEditorPage);
+    bool ok2 = false; const tanara::Meeting mm2 = selectedMeeting(&ok2);
+    if (ok2) updateSummaryActionBar(mm2);   // Újragenerálás elrejtése a munkaterületen
 }
 
 void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     if (!m_topicRowsLayout)
         return;
-    // Kártyás elrendezés témánként: fent a CÍM (teljes szélesség, félkövér) + törlés, alatta
-    // a többsoros ÖSSZEGZŐ — sokkal olvashatóbb/szerkeszthetőbb, mint két QLineEdit egymás mellett.
+    // Kompakt kártya: egy soros FEJLÉC (állapot-pötty · cím · státusz · futtat/kinyit/törlés),
+    // alatta egy vékony progress, és EGY összecsukható RÉSZLETEK-panel (gist-szerkesztő + a
+    // kész elemzés törzse). Így 5-10 téma is átlátható marad — a kész témák csukott csíkok.
     auto* card = new QFrame(m_topicEditorPage);
     card->setFrameShape(QFrame::StyledPanel);
     auto* v = new QVBoxLayout(card);
-    v->setContentsMargins(8, 8, 8, 8);
+    v->setContentsMargins(8, 6, 8, 6);
     v->setSpacing(4);
 
-    auto* top = new QHBoxLayout();
+    // --- fejléc-sor (glyph-mentes vezérlők: CSS-pötty, stílusnyíl, téma-ikonok) ---
+    auto* head = new QHBoxLayout();
+    head->setSpacing(6);
+    auto* dot = new QLabel(card);
+    dot->setFixedSize(10, 10);       // CSS-rajzolt kör; a színt a setTopicRowState állítja
+    dot->setToolTip(QStringLiteral("Állapot"));
     auto* title = new QLineEdit(t.title, card);
     title->setPlaceholderText(QStringLiteral("Téma címe"));
     QFont tf = title->font(); tf.setBold(true); title->setFont(tf);
-    auto* del = new QPushButton(QStringLiteral("🗑"), card);
-    del->setFixedWidth(36);
-    del->setToolTip(QStringLiteral("Téma törlése"));
-    top->addWidget(title, 1);
-    top->addWidget(del, 0);
-    v->addLayout(top);
-
-    auto* summary = new QPlainTextEdit(t.summary, card);
-    summary->setPlaceholderText(QStringLiteral("Rövid összegző (1-2 mondat, opcionális)"));
-    summary->setTabChangesFocus(true);        // Tab a következő mezőre lép, nem tabot szúr be
-    summary->setFixedHeight(64);              // ~3 sor; hosszabb szöveg görgethető
-    v->addWidget(summary);
-
-    // Per-téma állapot a 2. kör (elemzés) alatt: státusz-címke + busy progress bar. Kezdetben
-    // rejtve; az onTopicAnalysisProgress kapcsolja (várakozik / elemzés… / ✓ kész).
-    auto* statRow = new QHBoxLayout();
+    title->setFrame(false);   // tisztább fejléc — a cím inline szerkeszthető, keret nélkül
     auto* status = new QLabel(card);
-    status->setVisible(false);
+    status->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
+    auto* run = new QPushButton(card);
+    run->setFixedWidth(32);
+    run->setToolTip(QStringLiteral("Ennek a témának az elemzése (a kész eredmény mentődik)"));
+    auto* expand = new QToolButton(card);
+    expand->setArrowType(Qt::RightArrow);
+    expand->setAutoRaise(true); expand->setCheckable(true);
+    expand->setToolTip(QStringLiteral("Részletek: leírás + elemzés"));
+    head->addWidget(dot, 0);
+    head->addWidget(title, 1);
+    head->addWidget(status, 0);
+    head->addWidget(run, 0);
+    head->addWidget(expand, 0);
+    v->addLayout(head);
+
+    // --- vékony busy-progress (csak elemzés közben) ---
     auto* prog = new QProgressBar(card);
-    prog->setRange(0, 0);            // indeterminate (busy) — az épp elemzett téma „dolgozik" animációja
+    prog->setRange(0, 0);            // indeterminate — az épp elemzett téma „dolgozik" jelzése
     prog->setTextVisible(false);
-    prog->setFixedHeight(6);
+    prog->setFixedHeight(3);
     prog->setVisible(false);
-    statRow->addWidget(status, 0);
-    statRow->addWidget(prog, 1);
-    v->addLayout(statRow);
+    v->addWidget(prog);
+
+    // --- lenyíló részletek-panel: gist-szerkesztő + (kész esetén) az elemzés eredménye ---
+    auto* details = new QWidget(card);
+    auto* dv = new QVBoxLayout(details);
+    dv->setContentsMargins(0, 2, 0, 0);
+    dv->setSpacing(3);
+    auto* gistLbl = new QLabel(QStringLiteral("Rövid leírás a modellnek (opcionális):"), details);
+    makeHintLabel(gistLbl, /*small*/ true);
+    auto* summary = new QPlainTextEdit(t.summary, details);
+    summary->setPlaceholderText(QStringLiteral("Miről szól ez a téma — 1-2 mondat"));
+    summary->setTabChangesFocus(true);
+    summary->setFixedHeight(52);
+    dv->addWidget(gistLbl);
+    dv->addWidget(summary);
+
+    auto* resultBlock = new QWidget(details);
+    auto* rv = new QVBoxLayout(resultBlock);
+    rv->setContentsMargins(0, 4, 0, 0);
+    rv->setSpacing(3);
+    auto* resLbl = new QLabel(QStringLiteral("Elemzés eredménye:"), resultBlock);
+    makeHintLabel(resLbl, /*small*/ true);
+    auto* result = new QTextBrowser(resultBlock);
+    result->setOpenExternalLinks(true);
+    // Fix kezdő magasság (a húzható fogantyú állítja) — nem görgető 260px-be szorítva.
+    result->setMinimumHeight(180);
+    result->setMaximumHeight(180);
+    rv->addWidget(resLbl);
+    rv->addWidget(result);
+    rv->addWidget(new HeightGrip(result, /*minH*/ 90, resultBlock));   // húzható méretező-gutter
+    resultBlock->setVisible(false);   // csak kész elemzésnél
+    dv->addWidget(resultBlock);
+
+    // A törlés a részletek-panel alján (nem a fejlécben) — szándékos, nehezebben elvéthető,
+    // és megerősítést kér, mert a téma + a kész elemzése is véglegesen elvész.
+    auto* delRow = new QHBoxLayout();
+    auto* del = new QPushButton(QStringLiteral("Téma törlése"), details);
+    del->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    del->setStyleSheet(QStringLiteral("QPushButton { color: #d64545; }"));
+    delRow->addStretch(1);
+    delRow->addWidget(del, 0);
+    dv->addLayout(delRow);
+
+    details->setVisible(false);
+    v->addWidget(details);
 
     // A kártyát a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
     m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, card);
 
-    TopicRow tr{ t.id, card, title, summary, prog, status };
+    TopicRow tr{ t.id, card, dot, title, summary, prog, status, run, expand, details, resultBlock, result };
     m_topicRows.append(tr);
+    // Új/üres téma alapból NYITVA (hogy szerkeszd); betöltött téma csukva marad (kompakt lista).
+    setTopicRowState(m_topicRows.last(), TopicState::Draft);
+    setTopicRowExpanded(m_topicRows.last(), t.title.trimmed().isEmpty());
+
+    connect(expand, &QPushButton::toggled, this, [this, card](bool on) {
+        if (TopicRow* r = topicRowByCard(card)) setTopicRowExpanded(*r, on);
+    });
     connect(del, &QPushButton::clicked, this, [this, card]() {
-        for (int i = 0; i < m_topicRows.size(); ++i) {
-            if (m_topicRows[i].row == card) {
-                m_topicRows.removeAt(i);
-                break;
-            }
-        }
+        TopicRow* r = topicRowByCard(card);
+        const QString name = (r && r->title) ? r->title->text().trimmed() : QString();
+        const auto btn = QMessageBox::question(this, QStringLiteral("Téma törlése"),
+            name.isEmpty()
+                ? QStringLiteral("Biztosan törlöd ezt a témát? A kész elemzése is elvész.")
+                : QStringLiteral("Biztosan törlöd a(z) „%1” témát? A kész elemzése is elvész.").arg(name),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (btn != QMessageBox::Yes)
+            return;
+        for (int i = 0; i < m_topicRows.size(); ++i)
+            if (m_topicRows[i].row == card) { m_topicRows.removeAt(i); break; }
         card->deleteLater();
     });
+    connect(run, &QPushButton::clicked, this, [this, card]() {
+        if (!m_controller || m_topicsMeetingId.isEmpty())
+            return;
+        TopicRow* r = topicRowByCard(card);
+        if (!r) return;
+        const QString title = r->title ? r->title->text().trimmed() : QString();
+        if (title.isEmpty()) {
+            statusBar()->showMessage(QStringLiteral("A témához cím kell az elemzéshez."), 5000);
+            return;
+        }
+        tanara::SummaryTopic t;
+        if (r->id.isEmpty())
+            r->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        t.id = r->id;
+        t.title = title;
+        t.summary = r->summary ? r->summary->toPlainText().trimmed() : QString();
+        m_controller->analyzeTopic(m_topicsMeetingId, t);   // → queued/started/ready/failed
+    });
+}
+
+// A kártya vizuális állapota egy helyen: pötty-szín + státusz-szöveg + futtat-ikon + progress.
+// A státusz-szöveg elején egy ASCII-jelző (font-független), a run beépített téma-ikon.
+void MainWindow::setTopicRowState(TopicRow& r, TopicState st, const QString& tip) {
+    struct V { const char* color; const char* text; bool reload; bool busy; bool runEnabled; };
+    V vis;
+    switch (st) {
+        case TopicState::Draft:   vis = {"#9aa0a6", "",         false, false, true}; break;
+        case TopicState::Queued:  vis = {"#c99a00", "Sorban",   false, false, false}; break;
+        case TopicState::Running: vis = {"#2d7ff9", "Elemzés…", false, true,  false}; break;
+        case TopicState::Done:    vis = {"#2fa84f", "Kész",     true,  false, true}; break;
+        case TopicState::Failed:  vis = {"#d64545", "Hiba",     true,  false, true}; break;
+    }
+    // FIGYELEM: a vis.text UTF-8 (ékezetes) — QString::fromUtf8 kell, a QLatin1String mojibake-t ad.
+    const QString stText = QString::fromUtf8(vis.text);
+    if (r.dot) {
+        r.dot->setStyleSheet(QStringLiteral(
+            "background-color: %1; border-radius: 5px;").arg(QLatin1String(vis.color)));
+        r.dot->setToolTip(tip.isEmpty() ? stText : tip);
+    }
+    if (r.status) { r.status->setText(stText);
+                    r.status->setVisible(!stText.isEmpty());
+                    r.status->setStyleSheet(QStringLiteral("QLabel { color: %1; }").arg(QLatin1String(vis.color)));
+                    r.status->setToolTip(tip); }
+    if (r.run)    { r.run->setIcon(style()->standardIcon(
+                        vis.reload ? QStyle::SP_BrowserReload : QStyle::SP_MediaPlay));
+                    r.run->setEnabled(vis.runEnabled); }
+    if (r.prog)   r.prog->setVisible(vis.busy);
+}
+
+void MainWindow::setTopicRowExpanded(TopicRow& r, bool on) {
+    if (r.details) r.details->setVisible(on);
+    if (r.expand) {
+        const QSignalBlocker block(r.expand);
+        r.expand->setChecked(on);
+        r.expand->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+    }
 }
 
 void MainWindow::clearTopicRows() {
     for (const TopicRow& r : m_topicRows)
         if (r.row) r.row->deleteLater();
     m_topicRows.clear();
-    m_analyzingOrder.clear();
 }
 
-// A 2. kör (témánkénti elemzés) SZEKVENCIÁLIS — minden téma-kártyán jelezzük az állapotot:
-// a már kész témák „✓ Kész", az épp elemzett „Elemzés…" + busy progress bar, a többi „Várakozik".
-void MainWindow::onTopicAnalysisProgress(QString meetingId, int completed, int total) {
-    if (meetingId != m_topicsMeetingId)
-        return;
-    for (TopicRow& r : m_topicRows) {
-        if (!r.status || !r.prog)
-            continue;
-        const int idx = m_analyzingOrder.indexOf(r.id);
-        if (idx < 0) { r.status->setVisible(false); r.prog->setVisible(false); continue; }
-        if (idx < completed) {                              // kész
-            r.status->setText(QStringLiteral("✓ Kész"));
-            r.prog->setVisible(false);
-        } else if (idx == completed && completed < total) { // épp elemzés alatt
-            r.status->setText(QStringLiteral("Elemzés…"));
-            r.prog->setVisible(true);
-        } else {                                            // várakozik
-            r.status->setText(QStringLiteral("⏳ Várakozik"));
-            r.prog->setVisible(false);
-        }
-        r.status->setVisible(true);
+MainWindow::TopicRow* MainWindow::topicRowById(const QString& topicId) {
+    for (TopicRow& r : m_topicRows)
+        if (r.id == topicId)
+            return &r;
+    return nullptr;
+}
+
+MainWindow::TopicRow* MainWindow::topicRowByCard(const QWidget* card) {
+    for (TopicRow& r : m_topicRows)
+        if (r.row == card)
+            return &r;
+    return nullptr;
+}
+
+// A 2. kör per-téma életciklusa a kártyákon: sorban áll → elemzés (busy bar) → ✓ kész
+// (perzisztálva) / ⚠ hiba. Egy téma bukása a többit nem érinti; a ↻ gombbal újrafuttatható.
+void MainWindow::onTopicQueued(QString meetingId, QString topicId) {
+    if (meetingId != m_topicsMeetingId) return;
+    if (TopicRow* r = topicRowById(topicId))
+        setTopicRowState(*r, TopicState::Queued);
+}
+
+void MainWindow::onTopicStarted(QString meetingId, QString topicId) {
+    if (meetingId != m_topicsMeetingId) return;
+    if (TopicRow* r = topicRowById(topicId))
+        setTopicRowState(*r, TopicState::Running);
+}
+
+void MainWindow::onTopicReady(QString meetingId, tanara::TopicAnalysis analysis) {
+    if (meetingId != m_topicsMeetingId) return;
+    if (TopicRow* r = topicRowById(analysis.topicId)) {
+        setTopicRowState(*r, TopicState::Done);
+        if (r->result)      r->result->setMarkdown(analysis.renderMarkdown());
+        if (r->resultBlock) r->resultBlock->setVisible(true);
+    }
+}
+
+void MainWindow::onTopicFailed(QString meetingId, QString topicId, QString error) {
+    if (meetingId != m_topicsMeetingId) return;
+    if (TopicRow* r = topicRowById(topicId))
+        setTopicRowState(*r, TopicState::Failed, error);
+    statusBar()->showMessage(QStringLiteral("Téma-elemzés hiba: %1").arg(error), 8000);
+}
+
+void MainWindow::onTopicQueueFinished(QString meetingId, int okCount, int failCount) {
+    if (meetingId != m_topicsMeetingId) return;
+    if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(true);
+    // Ha batch után reduce következik, a controller rögtön jobProgress-t ad (busy vissza);
+    // egyedi (kártyás) futás vagy hibás batch után itt áll le a busy.
+    setBusy(false);
+    if (failCount == 0) {
+        statusBar()->showMessage(QStringLiteral("%1 téma elemzése kész.").arg(okCount), 5000);
+    } else {
+        statusBar()->showMessage(QStringLiteral("%1 téma kész, %2 hibázott — a hibásak a kártyájukon "
+                                                "újrafuttathatók.").arg(okCount).arg(failCount), 10000);
     }
 }
 
@@ -1032,18 +1291,16 @@ void MainWindow::onStartAnalysis() {
     if (!m_controller || m_topicsMeetingId.isEmpty())
         return;
     QVector<tanara::SummaryTopic> topics;
-    m_analyzingOrder.clear();
     for (TopicRow& r : m_topicRows) {
         const QString title = r.title ? r.title->text().trimmed() : QString();
         if (title.isEmpty())
             continue;   // üres című sorokat kihagyjuk
         tanara::SummaryTopic t;
         t.id = r.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : r.id;
-        r.id = t.id;   // az id-t visszaírjuk, hogy a per-téma haladás a helyes kártyára illeszkedjen
+        r.id = t.id;   // az id-t visszaírjuk, hogy a per-téma állapot a helyes kártyára illeszkedjen
         t.title = title;
         t.summary = r.summary ? r.summary->toPlainText().trimmed() : QString();
         topics.append(t);
-        m_analyzingOrder << t.id;
     }
     if (topics.isEmpty()) {
         statusBar()->showMessage(QStringLiteral("Adj meg legalább egy témát."), 5000);
@@ -1051,7 +1308,8 @@ void MainWindow::onStartAnalysis() {
     }
     if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(false);
     setBusy(true, QStringLiteral("Témánkénti elemzés…"));
-    m_controller->generateComplexSummary(m_topicsMeetingId, topics);   // → summaryReady → page0
+    // Csak a még elemzetlen témák futnak; ha mind kész, egyből a reduce jön → summaryReady.
+    m_controller->generateComplexSummary(m_topicsMeetingId, topics);
 }
 
 // Emberi összegző mondat: nincs név → „N különböző partner azonosítva";
@@ -1150,6 +1408,8 @@ void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) 
 }
 
 void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
+    if (meetingId == m_topicsMeetingId)
+        m_topicEditorActive = false;   // a kész összefoglaló lapja jöhet a szerkesztő helyére
     setBusy(false);
     statusBar()->showMessage(QStringLiteral("Összefoglaló elkészült."), 5000);
     if (meetingId != m_currentMeetingId)

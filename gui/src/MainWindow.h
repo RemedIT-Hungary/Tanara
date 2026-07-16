@@ -56,11 +56,17 @@ protected:
 private slots:
     void onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onTranscribeClicked();
-    void onSummarizeClicked();
+    void onSummarizeClicked();           // a gyors összefoglaló (újra)generálása
+    void onShowOrGenerateSummary();      // ✨ Gyors gomb: ha van kész, csak megmutatja; különben generál
     void onComplexClicked();    // komplex összefoglaló indítása (téma-kinyerés → szerkesztő)
     void onTopicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // 1. kör kész
-    void onTopicAnalysisProgress(QString meetingId, int completed, int total);    // 2. kör haladás/téma
-    void onStartAnalysis();     // a szerkesztett témákra a 2. kör + reduce
+    // Komplex 2. kör — per-téma életciklus (a kártyák állapotát a topicId címzi):
+    void onTopicQueued(QString meetingId, QString topicId);
+    void onTopicStarted(QString meetingId, QString topicId);
+    void onTopicReady(QString meetingId, tanara::TopicAnalysis analysis);
+    void onTopicFailed(QString meetingId, QString topicId, QString error);
+    void onTopicQueueFinished(QString meetingId, int okCount, int failCount);
+    void onStartAnalysis();     // a hiányzó témák elemzése + reduce (batch)
     // EGYETLEN „Résztvevők azonosítása" akció: átirat előtt előnézet (hang-klaszterek +
     // DB-találatok), átirat után a speakerMap kitöltése a biztos találatokkal — majd
     // emberi összegzés („3 különböző partner" / „Dompa, Béla és 1 ismeretlen partner").
@@ -89,6 +95,7 @@ private:
     tanara::Meeting selectedMeeting(bool* ok = nullptr) const;
     void reloadTranscriptView(const tanara::Meeting& m);
     void reloadSummaryView(const tanara::Meeting& m);
+    void updateSummaryActionBar(const tanara::Meeting& m);  // az akció-sáv gombjainak kapuzása/láthatósága
     void addTopicRow(const tanara::SummaryTopic& t);    // egy szerkeszthető téma-sor
     void clearTopicRows();                              // a téma-szerkesztő sorainak ürítése
     void reloadHeader(const tanara::Meeting& m);        // cím + meta (dátum · hossz)
@@ -143,27 +150,42 @@ private:
     QPushButton*  m_convertBtn = nullptr;           // „🎧 Lekeverés készítése" (kézi mód)
     QSet<QString> m_converting;                     // épp lekeverés alatt álló meetingId-k
 
-    // --- az Összefoglaló-fül üres állapotának generálás-gombja (kódból injektálva) ---
-    QPushButton*  m_generateSummaryBtn = nullptr;
+    // --- Összefoglaló-fül: EGY közös akció-sáv (mód-választó + kontextus-toggle + újragen.)
+    //     fölötte, alatta egy háromállapotú stack (üres / kész összefoglaló / téma-munkaterület).
+    QPushButton*  m_generateSummaryBtn = nullptr;   // „✨ Gyors összefoglaló"
+    QPushButton*  m_complexBtn = nullptr;           // „🧩 Témánként"
+    QPushButton*  m_regenSummaryBtn = nullptr;      // „↻ Újragenerálás" (a kész gyors-summaryt)
+    QPushButton*  m_contextToggleBtn = nullptr;     // „⚙ Kontextus" — a doboz be-/kihajtása
+    QWidget*      m_contextPanel = nullptr;         // a lenyíló kontextus-doboz konténere
+    QPlainTextEdit* m_summaryContextEdit = nullptr; // a meeting kontextus-jegyzete (átirat után is)
     QWidget*      m_summaryEmptyPage = nullptr; // a summaryView helyén üres állapotban
-    QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres+gomb
-    QWidget*      m_summaryTab = nullptr;        // a fül-lap (fejléc + stack) — ezt rakjuk tabba
-    // Az Összefoglaló-fül fejléce: a kontextus átirat UTÁN is szerkeszthető (a State A
-    // doboz ekkor már nem látszik), + „Újragenerálás" a finomított context/prompt alapján.
-    QPlainTextEdit* m_summaryContextEdit = nullptr;
-    QPushButton*  m_regenSummaryBtn = nullptr;
-    // Komplex (több körös) összefoglaló: belépő gombok + a téma-szerkesztő lap (page2).
-    QPushButton*  m_complexBtn = nullptr;        // belépő a summary-fejlécben (kész állapot)
-    QPushButton*  m_complexEmptyBtn = nullptr;   // belépő az üres-lapon
-    QWidget*      m_topicEditorPage = nullptr;   // a stack 3. lapja (téma-review)
+    QStackedWidget* m_summaryStack = nullptr;   // page0 = summaryView, page1 = üres, page2 = témák
+    QWidget*      m_summaryTab = nullptr;        // a fül-lap (akció-sáv + stack) — ezt rakjuk tabba
+    QWidget*      m_topicEditorPage = nullptr;   // a stack téma-munkaterület lapja
     QVBoxLayout*  m_topicRowsLayout = nullptr;   // ide kerülnek a dinamikus téma-sorok
-    QPushButton*  m_startAnalysisBtn = nullptr;  // „Témánkénti elemzés indítása →"
+    QPushButton*  m_startAnalysisBtn = nullptr;  // „Elemzés indítása / Végső összegzés"
+    QPushButton*  m_backToSummaryBtn = nullptr;  // „‹ Vissza az összefoglalóhoz" (ha van kész)
     QString       m_topicsMeetingId;             // melyik meetinghez tartozik a szerkesztő
+    bool          m_topicEditorActive = false;   // a téma-munkaterület maradjon elöl a reload-ok alatt
+    // Egy téma-kártya kompakt: fejléc-sor (pötty + cím + státusz + futtat/kinyit/törlés),
+    // alatta EGY összecsukható részletek-panel (gist-szerkesztő + a kész elemzés törzse).
+    // A kártya-gombok GLYPH-MENTESek (a rendszer font-fallback esetleges): a pötty CSS-kör,
+    // az expand Qt-stílusnyíl (QToolButton::setArrowType), a run/törlés beépített téma-ikon.
     struct TopicRow { QString id; QWidget* row = nullptr;
+                      QLabel* dot = nullptr;            // állapot-pötty (CSS-színezett kör)
                       QLineEdit* title = nullptr; QPlainTextEdit* summary = nullptr;
-                      QProgressBar* prog = nullptr; QLabel* status = nullptr; };
+                      QProgressBar* prog = nullptr; QLabel* status = nullptr;
+                      QPushButton* run = nullptr;       // elemzés (play) / újra (reload) ikon
+                      QToolButton* expand = nullptr;    // részletek (jobbra/le stílusnyíl)
+                      QWidget* details = nullptr;       // a lenyíló panel
+                      QWidget* resultBlock = nullptr;   // „Elemzés eredménye" rész (míg nincs, rejtve)
+                      QTextBrowser* result = nullptr; };
+    enum class TopicState { Draft, Queued, Running, Done, Failed };
+    void setTopicRowState(TopicRow& r, TopicState st, const QString& tip = QString());
+    void setTopicRowExpanded(TopicRow& r, bool on);
     QVector<TopicRow> m_topicRows;
-    QStringList       m_analyzingOrder;   // a beküldött témák id-jai sorrendben (2. kör haladás-map)
+    TopicRow* topicRowById(const QString& topicId);   // nullptr, ha nincs ilyen kártya
+    TopicRow* topicRowByCard(const QWidget* card);    // nullptr, ha nincs ilyen kártya
 
     QProgressBar* m_busyBar = nullptr;
     QProgressBar* m_convertBar = nullptr;   // állapotsoros, determinisztikus lekeverés-progress
