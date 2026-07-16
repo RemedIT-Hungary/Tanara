@@ -217,6 +217,18 @@ struct AppSettings {
     // A hívóhelyek nagy része ezekre cserélhető (s.stt → s.sttSelected()).
     ProviderConfig sttSelected() const { return sttConfigs.value(sttProviderId); }
     ProviderConfig llmSelected() const { return llmConfigs.value(llmProviderId); }
+
+    // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
+    // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.
+    bool detectorEnabled = true;              // aktív-hívás észlelés be/ki
+    int  detectorIntervalSec = 8;             // poll-intervallum (mp); épkézláb tartomány 5–30
+    bool watcherAutostart = false;            // a figyelő induljon-e bejelentkezéskor
+    QString detectorId;                       // üres → MeetingDetectorRegistry::createBest()
+    // Ismert hívás-appok (bináris/app-név részletek) — ezekre jelez a detektor.
+    QStringList knownCallApps{
+        QStringLiteral("zoom"), QStringLiteral("teams"), QStringLiteral("webex"),
+        QStringLiteral("slack"), QStringLiteral("discord"), QStringLiteral("meet"),
+        QStringLiteral("skype"), QStringLiteral("chromium"), QStringLiteral("firefox")};
 };
 
 // A felvételi hangminőség-fokozat → per-sáv Opus bitráta (kbps). Ismeretlen → 64 ("best").

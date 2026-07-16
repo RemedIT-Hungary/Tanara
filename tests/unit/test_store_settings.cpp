@@ -91,6 +91,36 @@ private slots:
         QVERIFY(r.llmSelected().apiKey.isEmpty());
     }
 
+    // Meeting-figyelő mezők JSON round-tripje (nem-default értékekkel).
+    void appSettings_detectorRoundTrip()
+    {
+        AppSettings s;
+        s.detectorEnabled     = false;
+        s.detectorIntervalSec = 15;
+        s.watcherAutostart    = true;
+        s.detectorId          = QStringLiteral("linux-capture");
+        s.knownCallApps       = QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")};
+
+        const AppSettings r = appSettingsFromJson(toJson(s));
+
+        QCOMPARE(r.detectorEnabled, false);
+        QCOMPARE(r.detectorIntervalSec, 15);
+        QCOMPARE(r.watcherAutostart, true);
+        QCOMPARE(r.detectorId, QStringLiteral("linux-capture"));
+        QCOMPARE(r.knownCallApps, (QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")}));
+    }
+
+    // Back-compat: a figyelő-mezők nélküli (régi) JSON a defaultokkal tölt.
+    void appSettings_detectorDefaultsWhenAbsent()
+    {
+        const AppSettings d;                          // beépített defaultok
+        const AppSettings r = appSettingsFromJson(QJsonObject{});   // üres JSON
+        QCOMPARE(r.detectorEnabled, d.detectorEnabled);
+        QCOMPARE(r.detectorIntervalSec, d.detectorIntervalSec);
+        QCOMPARE(r.watcherAutostart, d.watcherAutostart);
+        QVERIFY(!r.knownCallApps.isEmpty());          // a default lista megmarad
+    }
+
     // Régi {stt:{...},llm:{...}} shape migrálódik az ÚJ map-ekbe.
     void appSettings_migratesOldShape()
     {

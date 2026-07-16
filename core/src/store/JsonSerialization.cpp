@@ -253,6 +253,13 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("llmProviderId")] = s.llmProviderId;
     o[QStringLiteral("sttProviders")]  = providerConfigsToJson(s.sttConfigs);
     o[QStringLiteral("llmProviders")]  = providerConfigsToJson(s.llmConfigs);
+
+    // Meeting-figyelő (háttér-detektor + tray).
+    o[QStringLiteral("detectorEnabled")]     = s.detectorEnabled;
+    o[QStringLiteral("detectorIntervalSec")] = s.detectorIntervalSec;
+    o[QStringLiteral("watcherAutostart")]    = s.watcherAutostart;
+    o[QStringLiteral("detectorId")]          = s.detectorId;
+    o[QStringLiteral("knownCallApps")]       = stringListToArray(s.knownCallApps);
     return o;
 }
 
@@ -303,6 +310,14 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
         s.llmProviderId = id;
         s.llmConfigs.insert(id, cfg);
     }
+
+    // Meeting-figyelő — safe-merge a defaultokkal (a régi settings.json e nélkül tölt).
+    s.detectorEnabled     = o.value(QStringLiteral("detectorEnabled")).toBool(s.detectorEnabled);
+    s.detectorIntervalSec = o.value(QStringLiteral("detectorIntervalSec")).toInt(s.detectorIntervalSec);
+    s.watcherAutostart    = o.value(QStringLiteral("watcherAutostart")).toBool(s.watcherAutostart);
+    s.detectorId          = o.value(QStringLiteral("detectorId")).toString(s.detectorId);
+    if (o.contains(QStringLiteral("knownCallApps")))
+        s.knownCallApps = arrayToStringList(o.value(QStringLiteral("knownCallApps")).toArray());
     return s;
 }
 

@@ -208,6 +208,59 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     });
     tabs->addTab(recPage, QStringLiteral("Rögzítés"));
 
+    // ============================ Fül: Figyelő ===============================
+    // Háttér-detektor: érzékeli, ha aktív hívásban vagy (egy hívás-app fogja a
+    // mikrofont), és a tálcáról felajánlja a rögzítést. A figyelő külön, könnyű
+    // folyamat; ezek a beállítások közösek (~/.tanara/settings.json).
+    auto* watchPage = new QWidget(this);
+    auto* wl = new QVBoxLayout(watchPage);
+
+    m_detectorEnabled = new QCheckBox(
+        QStringLiteral("Aktív hívás észlelése (a tálca-figyelő felajánlja a rögzítést)"), watchPage);
+    m_detectorEnabled->setToolTip(QStringLiteral(
+        "Bekapcsolva a háttér-figyelő időnként megnézi, fogja-e egy ismert hívás-app a "
+        "mikrofont, és értesítéssel felajánlja a felvétel indítását. Csak figyel — a "
+        "rögzítéshez a felvevőt indítja."));
+    wl->addWidget(m_detectorEnabled);
+
+    auto* watchForm = new QFormLayout();
+    m_detectorInterval = new QSpinBox(watchPage);
+    m_detectorInterval->setRange(3, 60);
+    m_detectorInterval->setSuffix(QStringLiteral(" mp"));
+    m_detectorInterval->setToolTip(QStringLiteral(
+        "Milyen gyakran nézzen körül a figyelő. Rövidebb = gyorsabb felajánlás, több CPU."));
+    watchForm->addRow(QStringLiteral("Ellenőrzés gyakorisága:"), m_detectorInterval);
+
+    m_watcherAutostart = new QCheckBox(
+        QStringLiteral("A figyelő induljon bejelentkezéskor"), watchPage);
+    m_watcherAutostart->setToolTip(QStringLiteral(
+        "Bejelentkezéskor automatikusan elindul a háttér-figyelő (a rendszertálcára dokkolva)."));
+    watchForm->addRow(QString(), m_watcherAutostart);
+    wl->addLayout(watchForm);
+
+    auto* appsBox = new QGroupBox(QStringLiteral("Ismert hívás-appok"), watchPage);
+    auto* abl = new QVBoxLayout(appsBox);
+    auto* appsHint = new QLabel(QStringLiteral(
+        "Soronként egy app (bináris- vagy név-részlet, pl. „zoom”, „teams”). A figyelő "
+        "ezekre jelez, ha aktívan fogják a mikrofont."), appsBox);
+    appsHint->setWordWrap(true);
+    applyMuted(appsHint);
+    abl->addWidget(appsHint);
+    m_knownCallApps = new QPlainTextEdit(appsBox);
+    m_knownCallApps->setPlaceholderText(QStringLiteral("zoom\nteams\nmeet\ndiscord…"));
+    m_knownCallApps->setFixedHeight(120);
+    abl->addWidget(m_knownCallApps);
+    wl->addWidget(appsBox);
+    wl->addStretch(1);
+
+    // Kikapcsolt észlelésnél a többi mező moot → letiltjuk.
+    connect(m_detectorEnabled, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_detectorInterval) m_detectorInterval->setEnabled(on);
+        if (m_watcherAutostart) m_watcherAutostart->setEnabled(on);
+        if (m_knownCallApps)    m_knownCallApps->setEnabled(on);
+    });
+    tabs->addTab(watchPage, QStringLiteral("Figyelő"));
+
     // ===================== Fül 3: Külső szolgáltatások ========================
     // Az átírás + összefoglaló NEM a Tanarában fut — külső szolgáltatás a saját
     // kulcsoddal / végpontoddal. Lock-in nincs: bármikor válthatsz.
@@ -617,6 +670,18 @@ void SettingsDialog::loadGeneral() {
         m_curPromptId = m_promptSelect->currentData().toString();   // "simple"
         m_summaryPrompt->setPlainText(m_promptText.value(m_curPromptId));
     }
+
+    // Figyelő fül.
+    if (m_detectorEnabled) {
+        m_detectorEnabled->setChecked(s.detectorEnabled);
+        if (m_detectorInterval)  m_detectorInterval->setValue(s.detectorIntervalSec);
+        if (m_watcherAutostart)  m_watcherAutostart->setChecked(s.watcherAutostart);
+        if (m_knownCallApps)     m_knownCallApps->setPlainText(s.knownCallApps.join(QLatin1Char('\n')));
+        // a többi mező engedélyezése az észlelés-kapcsoló szerint
+        if (m_detectorInterval)  m_detectorInterval->setEnabled(s.detectorEnabled);
+        if (m_watcherAutostart)  m_watcherAutostart->setEnabled(s.detectorEnabled);
+        if (m_knownCallApps)     m_knownCallApps->setEnabled(s.detectorEnabled);
+    }
     // A provider-mezőket a rebuildFields() tölti (ctorban + váltáskor).
 }
 
@@ -715,6 +780,23 @@ void SettingsDialog::onAccept() {
         s.summaryPrompt          = store(QStringLiteral("simple"));
         s.topicExtractionPrompt  = store(QStringLiteral("topic"));
         s.topicAnalysisPrompt    = store(QStringLiteral("analysis"));
+    }
+
+    // Figyelő fül.
+    if (m_detectorEnabled) {
+        s.detectorEnabled = m_detectorEnabled->isChecked();
+        if (m_detectorInterval)  s.detectorIntervalSec = m_detectorInterval->value();
+        if (m_watcherAutostart)  s.watcherAutostart = m_watcherAutostart->isChecked();
+        if (m_knownCallApps) {
+            QStringList apps;
+            const QStringList lines = m_knownCallApps->toPlainText().split(QLatin1Char('\n'));
+            for (const QString& line : lines) {
+                const QString a = line.trimmed();
+                if (!a.isEmpty()) apps << a;
+            }
+            if (!apps.isEmpty())   // üres lista → megtartjuk a defaultot
+                s.knownCallApps = apps;
+        }
     }
     m_controller->settings()->setSettings(s);
 

@@ -20,6 +20,7 @@ class QVBoxLayout;
 class QGroupBox;
 class QCheckBox;
 class QPlainTextEdit;
+class QSpinBox;
 
 namespace tanara {
 class AppController;
@@ -91,6 +92,12 @@ private:
     // Rögzítés fül — eszköz-policy.
     QWidget* m_devicesGroup = nullptr;
     QHash<QString, QCheckBox*> m_deviceChecks;   // eszköznév → checkbox
+
+    // Figyelő fül — háttér-detektor (aktív hívás észlelése) + tray.
+    QCheckBox*      m_detectorEnabled = nullptr;
+    QSpinBox*       m_detectorInterval = nullptr;   // poll-intervallum (mp)
+    QCheckBox*      m_watcherAutostart = nullptr;
+    QPlainTextEdit* m_knownCallApps = nullptr;      // soronként egy app (bináris/név-részlet)
 
     ProviderSection m_stt;
     ProviderSection m_llm;
