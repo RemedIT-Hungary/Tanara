@@ -1065,8 +1065,12 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
                                       opusBitrateKbps(s.audioQuality), this);
     d->session = sess;
 
-    connect(sess, &RecordingSession::stateChanged, this, [this](RecordingState st) {
+    connect(sess, &RecordingSession::stateChanged, this, [this, sess](RecordingState st) {
         d->state = st;
+        // A meeting-mappa a start()-ban már létrejött → a felvétel ELEJÉN elérhető
+        // (nem csak a finished-nél). Kell a --record lockhoz + a currentMeetingFolder()-höz.
+        if (st == RecordingState::Recording)
+            d->currentFolder = sess->folder();
         emit recordingStateChanged(st);
     });
     connect(sess, &RecordingSession::levelMeterUpdated, this, &AppController::levelMeterUpdated);

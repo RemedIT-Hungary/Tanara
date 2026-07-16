@@ -62,9 +62,27 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     // Lebegő felvevő (a RecordBar-t a FloatingRecorder reparentálja magába).
     auto* recordBar = new RecordBar(&controller, nullptr);
     recordBar->setViewMode(RecordBar::ViewMode::Full);
+
+    // A RecordBar-t a controller jeleire kötjük (állapot/szintek/idő) — ugyanúgy, ahogy a
+    // MainWindow teszi; e nélkül a felvevő nem váltana Stop-módra és a szintek se mozognának.
+    QObject::connect(&controller, &AppController::devicesChanged,
+                     recordBar, &RecordBar::onDevicesChanged);
+    QObject::connect(&controller, &AppController::recordingStateChanged,
+                     recordBar, &RecordBar::onRecordingStateChanged);
+    QObject::connect(&controller, &AppController::elapsedChanged,
+                     recordBar, &RecordBar::onElapsedChanged);
+    QObject::connect(&controller, &AppController::levelMeterUpdated,
+                     recordBar, &RecordBar::onLevelMeterUpdated);
+    QObject::connect(&controller, &AppController::deviceLevel,
+                     recordBar, &RecordBar::onDeviceLevel);
+
     auto* recorder = new FloatingRecorder(&controller, recordBar, nullptr);
     recordBar->refreshFromSettings();
-    recordBar->show();
+    // FONTOS: a top-level ablakot (a FloatingRecordert) kell megmutatni — a beágyazott
+    // RecordBar önmagában nem hoz fel ablakot. E nélkül nincs Stop-gomb → nincs leállítás.
+    recorder->show();
+    recorder->raise();
+    recorder->activateWindow();
 
     // Felvétel-indulás → lock felvétele a friss meeting-mappával.
     QObject::connect(&controller, &AppController::recordingStateChanged, &app,
