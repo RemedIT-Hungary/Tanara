@@ -53,7 +53,8 @@ bool TrayWatcher::start()
     // --- tálca-ikon + menü ---
     m_tray = new QSystemTrayIcon(tanara_gui::makeTanaraIcon(), this);
     auto* menu = new QMenu();
-    menu->addAction(QStringLiteral("Felvétel indítása"), this, &TrayWatcher::startRecordingNow);
+    menu->addAction(QStringLiteral("Rögzítés azonnali indítása"), this, &TrayWatcher::startRecordingNow);
+    menu->addAction(QStringLiteral("Rögzítő megnyitása…"), this, &TrayWatcher::openRecorder);
     menu->addAction(QStringLiteral("Elemző megnyitása"), this, &TrayWatcher::openAnalyzer);
     menu->addSeparator();
     menu->addAction(QStringLiteral("Kilépés"), qApp, &QCoreApplication::quit);
@@ -61,8 +62,9 @@ bool TrayWatcher::start()
     updateTrayTooltip(false, QString());
     m_tray->show();
 
-    // Az értesítésre kattintva induljon a felvétel.
-    connect(m_tray, &QSystemTrayIcon::messageClicked, this, &TrayWatcher::startRecordingNow);
+    // Az értesítésre kattintva NYISSA meg a rögzítőt (a user keresztel + indít). Linux/SNI-n
+    // a messageClicked megbízhatatlan → a fő út a tálca-menü; ez csak bónusz.
+    connect(m_tray, &QSystemTrayIcon::messageClicked, this, &TrayWatcher::openRecorder);
 
     // --- poll-hurok ---
     connect(m_timer, &QTimer::timeout, this, &TrayWatcher::poll);
@@ -94,13 +96,30 @@ void TrayWatcher::poll()
             m_lastOfferedRef = sig.sourceRef;
             m_tray->showMessage(
                 QStringLiteral("Hívás észlelve — %1").arg(sig.appName),
-                QStringLiteral("Kattints ide a rögzítés indításához (vagy a tálca-ikon menüjéből)."),
+                QStringLiteral("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
+                               "(azonnali indítás vagy a rögzítő megnyitása)."),
                 QSystemTrayIcon::Information, 8000);
         }
     } else {
         m_lastOfferedRef.clear();   // inaktív → a következő hívás újra ajánlható
     }
     m_wasActive = sig.active;
+}
+
+QStringList TrayWatcher::recordArgs(bool immediate) const
+{
+    QStringList args{ QStringLiteral("--record") };
+    if (!immediate)
+        args << QStringLiteral("--no-start");   // csak megnyit, a user keresztel + indít
+    if (!m_detAppName.isEmpty()) {
+        QString title = m_detAppName;
+        if (!m_detWindowTitle.isEmpty() && m_detWindowTitle != m_detAppName)
+            title += QStringLiteral(" — ") + m_detWindowTitle;
+        args << QStringLiteral("--title") << title;
+        args << QStringLiteral("--context")
+             << QStringLiteral("Automatikusan észlelt hívás: %1").arg(m_detAppName);
+    }
+    return args;
 }
 
 void TrayWatcher::startRecordingNow()
@@ -113,16 +132,15 @@ void TrayWatcher::startRecordingNow()
                                 QSystemTrayIcon::Information, 4000);
         return;
     }
-    QStringList args{ QStringLiteral("--record") };
-    if (!m_detAppName.isEmpty()) {
-        QString title = m_detAppName;
-        if (!m_detWindowTitle.isEmpty() && m_detWindowTitle != m_detAppName)
-            title += QStringLiteral(" — ") + m_detWindowTitle;
-        args << QStringLiteral("--title") << title;
-        args << QStringLiteral("--context")
-             << QStringLiteral("Automatikusan észlelt hívás: %1").arg(m_detAppName);
-    }
-    launch(args);
+    launch(recordArgs(/*immediate*/ true));
+}
+
+void TrayWatcher::openRecorder()
+{
+    // A rögzítő ablakot nyitja meg (nem indít) — a user elkeresztel és maga indít.
+    // Felvétel közben is megnyitható (a futó felvevő ablakát a --record maga hozza elő,
+    // de biztonságból itt nem indítunk másodikat: --no-start úgyis csak megnyit).
+    launch(recordArgs(/*immediate*/ false));
 }
 
 void TrayWatcher::openAnalyzer()

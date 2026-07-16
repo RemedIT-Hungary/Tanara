@@ -30,10 +30,12 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
 {
     QString title, context;
     QList<int> deviceIdx;
+    bool noStart = false;   // --no-start → csak megnyitja a felvevőt (nem indít azonnal)
     for (int i = 0; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--title") && i + 1 < args.size()) title = args[++i];
         else if (args[i] == QStringLiteral("--context") && i + 1 < args.size()) context = args[++i];
         else if (args[i] == QStringLiteral("--device") && i + 1 < args.size()) deviceIdx << args[++i].toInt();
+        else if (args[i] == QStringLiteral("--no-start")) noStart = true;
     }
     if (title.trimmed().isEmpty())
         title = QStringLiteral("Felvétel %1")
@@ -112,7 +114,10 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
             qApp->quit();
     });
 
-    controller.startRecording(title, sel);
+    // Azonnali indítás (a figyelő „Rögzítés azonnali indítása" útja), VAGY --no-start
+    // esetén csak megnyitjuk a felvevőt: a user elkeresztel + a felvevő Start-gombjával indít.
+    if (!noStart)
+        controller.startRecording(title, sel);
     return app.exec();
 }
 

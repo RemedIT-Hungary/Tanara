@@ -7,6 +7,7 @@
 //
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 class QSystemTrayIcon;
 class QTimer;
@@ -29,10 +30,12 @@ public:
 
 private slots:
     void poll();                 // időzített detektor-lekérdezés
-    void startRecordingNow();    // menü/értesítés → tanara --record indítása
+    void startRecordingNow();    // menü → tanara --record (azonnal rögzít)
+    void openRecorder();         // menü/értesítés → tanara --record --no-start (megnyit, nem indít)
     void openAnalyzer();         // menü → a sima tanara (elemző) megnyitása
 
 private:
+    QStringList recordArgs(bool immediate) const;  // --record [+ --no-start] + a detektált cím/kontextus
     QString tanaraBinary() const;             // a sibling `tanara` binary feloldása
     QString lockPath() const;                 // ~/.tanara/recording.lock (a settings metaDir-jéből)
     void launch(const QStringList& args) const;
