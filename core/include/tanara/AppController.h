@@ -55,6 +55,10 @@ public:
     // "Cím (yyyy-MM-dd)" formátumú sorok, legújabb elöl — az azonosítást segíti.
     QStringList meetingsForPerson(const QString& name) const;
 
+    // A meeting eddig elkészült (perzisztált) téma-elemzései (summary.analyses.json).
+    // A UI ebből tölti a téma-kártyák „✓ Kész" állapotát a szerkesztő megnyitásakor.
+    QVector<tanara::TopicAnalysis> topicAnalyses(const QString& meetingId) const;
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
@@ -112,10 +116,19 @@ public slots:
     // topicsReady(meetingId, topics)-szal adja vissza (a UI szerkesztésre megjeleníti).
     // Ha már létezik summary.topics.json, azt adja vissza (nincs újrakinyerés).
     void extractMeetingTopics(const QString& meetingId);
-    // 2. kör + reduce: a (felhasználó által szerkesztett) témákra SZEKVENCIÁLISAN elemzést
-    // futtat, majd globális összegzéssel a summary.md-be írja; a végén summaryReady-t emittál.
+    // 2. kör + reduce (batch): a (szerkesztett) témákból CSAK a még elemzetleneket sorolja
+    // be a téma-elemzés job-sorba, majd ha minden téma elemzése megvan, reduce → summary.md
+    // (summaryReady). Minden kész elemzés AZONNAL a summary.analyses.json-ba perzisztálódik,
+    // így megszakítás/hiba után az újraindítás onnan folytatja, ahol tartott.
     void generateComplexSummary(const QString& meetingId,
                                 const QVector<tanara::SummaryTopic>& topics);
+    // EGY téma elemzésének (újra)indítása — a job-sorba kerül (a lokális modell parallel=1,
+    // ezért egyszerre egy fut). A topic a summary.topics.json-ba is átvezetődik (szerkesztés).
+    // Eredmény: topicAnalysisReady/Failed; a kész elemzés felülírja a korábbit a JSON-ban.
+    void analyzeTopic(const QString& meetingId, const tanara::SummaryTopic& topic);
+    // Reduce a LEMEZEN lévő elemzésekből (summary.analyses.json, a topics.json sorrendjében)
+    // → summary.md + summaryReady. Külön hívható, pl. egy hibás téma újrafuttatása után.
+    void finalizeComplexSummary(const QString& meetingId);
 
     // Egy beszélő átnevezése egy meetingben (nyers címke → valódi név). Perzisztál
     // (Meeting.speakerMap + people.json), újragenerálja a transcript.md-t a nevekkel,
@@ -168,7 +181,12 @@ signals:
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
     void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör
-    void topicAnalysisProgress(QString meetingId, int completed, int total);    // komplex 2. kör haladás
+    // Komplex 2. kör — PER-TÉMA életciklus (a UI a topicId-vel címzi a kártyát):
+    void topicAnalysisQueued(QString meetingId, QString topicId);    // sorba került
+    void topicAnalysisStarted(QString meetingId, QString topicId);   // elemzés fut
+    void topicAnalysisReady(QString meetingId, tanara::TopicAnalysis analysis);  // kész + perzisztálva
+    void topicAnalysisFailed(QString meetingId, QString topicId, QString error); // csak ez a téma bukott
+    void topicAnalysisQueueFinished(QString meetingId, int okCount, int failCount); // a sor kiürült
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
@@ -185,6 +203,13 @@ private:
     // láncolja a lekeverés elkészültét. A beszélő-szeparációt a Soniox diarizációja adja
     // („Beszélő N" címkék) — a nevet utólag a voice-ID / kézi átnevezés oldja fel.
     void transcribeFromMixdown(const QString& meetingId);
+
+    // Téma-elemzés job-sor: a témák sorba kerülnek (topicAnalysisQueued), egyszerre EGY fut
+    // (lokális modell), a kész eredmény azonnal perzisztálódik. Egy téma hibája nem állítja
+    // le a sort. reduceWhenDone=true → a sor kiürülésekor (ha nincs bukás) finalize.
+    void enqueueTopicAnalyses(const QString& meetingId,
+                              const QVector<tanara::SummaryTopic>& topics, bool reduceWhenDone);
+    void startNextTopicJob();
 
     struct Impl;
     std::unique_ptr<Impl> d;

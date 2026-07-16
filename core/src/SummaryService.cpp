@@ -238,4 +238,30 @@ QString Summary::renderMarkdown() const
     return md;
 }
 
+// ---- TopicAnalysis::renderMarkdown (a Types.h-ban deklarálva) ---------------
+
+QString TopicAnalysis::renderMarkdown() const
+{
+    QString md;
+    if (!detail.isEmpty())
+        md += detail + QStringLiteral("\n\n");
+    if (!decisions.isEmpty()) {
+        md += QStringLiteral("**Döntések:**\n\n");
+        for (const QString& d : decisions)
+            md += QStringLiteral("- ") + d + QStringLiteral("\n");
+        md += QStringLiteral("\n");
+    }
+    if (!actionItems.isEmpty()) {
+        md += QStringLiteral("**Teendők:**\n\n");
+        for (const ActionItem& ai : actionItems) {
+            md += QStringLiteral("- [ ] ") + ai.text;
+            if (!ai.owner.isEmpty()) md += QStringLiteral(" — ") + ai.owner;
+            if (!ai.due.isEmpty())   md += QStringLiteral(" (") + ai.due + QStringLiteral(")");
+            md += QStringLiteral("\n");
+        }
+        md += QStringLiteral("\n");
+    }
+    return md;
+}
+
 } // namespace tanara

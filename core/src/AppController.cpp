@@ -25,6 +25,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QHash>
+#include <QSet>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -148,6 +149,66 @@ QVector<SummaryTopic> readTopicsJson(const QString& path) {
     return topics;
 }
 
+// A komplex összefoglaló 2. körének KÉSZ elemzései (summary.analyses.json) — témánként
+// AZONNAL perzisztálva, hogy megszakítás/hiba után ne vesszen el a már kifizetett munka.
+void writeAnalysesJson(const QString& path, const QVector<TopicAnalysis>& analyses) {
+    QJsonArray arr;
+    for (const auto& a : analyses) {
+        QJsonObject o;
+        o["topicId"] = a.topicId;
+        o["title"]   = a.title;
+        o["detail"]  = a.detail;
+        o["decisions"] = QJsonArray::fromStringList(a.decisions);
+        QJsonArray items;
+        for (const ActionItem& ai : a.actionItems) {
+            QJsonObject io;
+            io["text"] = ai.text; io["owner"] = ai.owner; io["due"] = ai.due;
+            items.append(io);
+        }
+        o["actionItems"] = items;
+        arr.append(o);
+    }
+    QSaveFile f(path);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+        f.commit();
+    }
+}
+
+QVector<TopicAnalysis> readAnalysesJson(const QString& path) {
+    QVector<TopicAnalysis> analyses;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return analyses;
+    for (const auto& v : QJsonDocument::fromJson(f.readAll()).array()) {
+        const auto o = v.toObject();
+        TopicAnalysis a;
+        a.topicId = o["topicId"].toString();
+        a.title   = o["title"].toString();
+        a.detail  = o["detail"].toString();
+        for (const auto& dv : o["decisions"].toArray()) a.decisions << dv.toString();
+        for (const auto& iv : o["actionItems"].toArray()) {
+            const auto io = iv.toObject();
+            ActionItem ai;
+            ai.text = io["text"].toString(); ai.owner = io["owner"].toString();
+            ai.due = io["due"].toString();
+            a.actionItems.append(ai);
+        }
+        if (!a.topicId.isEmpty())
+            analyses.append(a);
+    }
+    return analyses;
+}
+
+// Egy kész elemzés beírása/felülírása a summary.analyses.json-ba (topicId szerint).
+void upsertAnalysisJson(const QString& path, const TopicAnalysis& a) {
+    QVector<TopicAnalysis> all = readAnalysesJson(path);
+    bool replaced = false;
+    for (TopicAnalysis& existing : all)
+        if (existing.topicId == a.topicId) { existing = a; replaced = true; break; }
+    if (!replaced) all.append(a);
+    writeAnalysesJson(path, all);
+}
+
 // A komplex összefoglaló markdown-ja: globális fej (vezetői összefoglaló + összevont
 // teendők) + témánkénti szekciók (összegző + döntések + teendők). A Summary::renderMarkdown
 // stílusát követi (`- [ ]` teendő-checklisták).
@@ -172,17 +233,7 @@ QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionIt
         int n = 1;
         for (const TopicAnalysis& t : topics) {
             md += QStringLiteral("### %1. %2\n\n").arg(n++).arg(t.title);
-            if (!t.detail.isEmpty()) md += t.detail + QStringLiteral("\n\n");
-            if (!t.decisions.isEmpty()) {
-                md += QStringLiteral("**Döntések:**\n\n");
-                for (const QString& d : t.decisions) md += QStringLiteral("- ") + d + QStringLiteral("\n");
-                md += QStringLiteral("\n");
-            }
-            if (!t.actionItems.isEmpty()) {
-                md += QStringLiteral("**Teendők:**\n\n");
-                for (const ActionItem& ai : t.actionItems) md += renderItem(ai);
-                md += QStringLiteral("\n");
-            }
+            md += t.renderMarkdown();   // detail + döntések + teendők (Types/SummaryService)
         }
     }
     return md;
@@ -355,6 +406,16 @@ struct AppController::Impl {
     QStringList      lastDevices;
     QString          currentFolder;
     QHash<QString, MergedTranscript> mergedCache;
+
+    // Téma-elemzés job-sor (komplex 2. kör): egyszerre EGY LLM-hívás fut (lokális modell,
+    // parallel=1), a többi téma sorban áll. Témánként külön (újra)indítható.
+    struct TopicJob { QString meetingId; SummaryTopic topic; };
+    QVector<TopicJob> topicJobQueue;
+    bool    topicJobActive = false;
+    QString activeTopicMeetingId;   // az épp futó job címzése (dedup + életciklus-jelek)
+    QString activeTopicId;
+    QSet<QString> reduceWhenDone;             // meetingId-k, ahol a sor végén auto-reduce jön
+    QHash<QString, QPair<int,int>> jobCounts; // meetingId → (ok, fail) az aktuális batch-ben
 };
 
 AppController::AppController(QObject* parent)
@@ -1266,6 +1327,13 @@ void AppController::extractMeetingTopics(const QString& meetingId)
                        cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
+QVector<TopicAnalysis> AppController::topicAnalyses(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return {};
+    return readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+}
+
 void AppController::generateComplexSummary(const QString& meetingId, const QVector<SummaryTopic>& topics)
 {
     Meeting m = d->store->load(meetingId);
@@ -1275,11 +1343,175 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     // A (szerkesztett) téma-lista perzisztálása — folytatható marad.
     writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
 
-    MergedTranscript merged = d->mergedCache.value(meetingId);
+    // Csak a MÉG ELEMZETLEN témák mennek a sorba (a kész elemzés a lemezen van) —
+    // megszakítás/hiba után az újraindítás így onnan folytat, ahol tartott. Egy már kész
+    // téma újrafuttatása a kártya saját gombjával (analyzeTopic) kérhető.
+    const QVector<TopicAnalysis> existing =
+        readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+    QSet<QString> doneIds;
+    for (const TopicAnalysis& a : existing) doneIds.insert(a.topicId);
+
+    QVector<SummaryTopic> missing;
+    for (const SummaryTopic& t : topics)
+        if (!doneIds.contains(t.id)) missing.append(t);
+
+    if (missing.isEmpty()) { finalizeComplexSummary(meetingId); return; }
+    enqueueTopicAnalyses(meetingId, missing, /*reduceWhenDone*/ true);
+}
+
+void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& topic)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (topic.id.isEmpty() || topic.title.trimmed().isEmpty()) {
+        emit errorOccurred(QStringLiteral("A témához cím kell az elemzéshez."));
+        return;
+    }
+
+    // A (szerkesztett) téma átvezetése a topics.json-ba — a reduce sorrendje/tartalma innen jön.
+    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
+    QVector<SummaryTopic> topics = readTopicsJson(topicsPath);
+    bool found = false;
+    for (SummaryTopic& t : topics)
+        if (t.id == topic.id) { t = topic; found = true; break; }
+    if (!found) topics.append(topic);
+    writeTopicsJson(topicsPath, topics);
+
+    enqueueTopicAnalyses(meetingId, { topic }, /*reduceWhenDone*/ false);
+}
+
+void AppController::enqueueTopicAnalyses(const QString& meetingId,
+                                         const QVector<SummaryTopic>& topics, bool reduceWhenDone)
+{
+    if (reduceWhenDone) d->reduceWhenDone.insert(meetingId);
+    if (!d->jobCounts.contains(meetingId)) d->jobCounts.insert(meetingId, {0, 0});
+
+    for (const SummaryTopic& t : topics) {
+        // Dedup: ha ugyanez a téma már fut vagy sorban áll, nem kerül be még egyszer.
+        if (d->topicJobActive && d->activeTopicMeetingId == meetingId && d->activeTopicId == t.id)
+            continue;
+        const bool queued = std::any_of(d->topicJobQueue.cbegin(), d->topicJobQueue.cend(),
+            [&](const Impl::TopicJob& j) { return j.meetingId == meetingId && j.topic.id == t.id; });
+        if (queued)
+            continue;
+        d->topicJobQueue.append({ meetingId, t });
+        emit topicAnalysisQueued(meetingId, t.id);
+    }
+    if (!d->topicJobActive)
+        startNextTopicJob();
+}
+
+void AppController::startNextTopicJob()
+{
+    // A sor végére értünk? Meetingenként lezárjuk a batch-et: queueFinished + (ha kérték
+    // és nem volt bukás) auto-reduce. Több meeting jobjai elvben keveredhetnek a sorban,
+    // ezért csak akkor zárunk le egy meetinget, ha már nincs rá váró job.
+    if (d->topicJobQueue.isEmpty()) {
+        d->topicJobActive = false;
+        d->activeTopicMeetingId.clear();
+        d->activeTopicId.clear();
+        const auto counts = d->jobCounts;
+        d->jobCounts.clear();
+        for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
+            const QString& id = it.key();
+            const int ok = it.value().first, fail = it.value().second;
+            emit topicAnalysisQueueFinished(id, ok, fail);
+            const bool wantReduce = d->reduceWhenDone.remove(id);
+            if (wantReduce && fail == 0)
+                finalizeComplexSummary(id);
+            else if (wantReduce)
+                emit jobProgress(id, QStringLiteral(
+                    "%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.")
+                    .arg(fail));
+        }
+        return;
+    }
+
+    const Impl::TopicJob job = d->topicJobQueue.takeFirst();
+    Meeting m = d->store->load(job.meetingId);
+    if (m.id.isEmpty()) {
+        d->jobCounts[job.meetingId].second++;
+        emit topicAnalysisFailed(job.meetingId, job.topic.id, QStringLiteral("Ismeretlen meeting."));
+        startNextTopicJob();
+        return;
+    }
+
+    MergedTranscript merged = d->mergedCache.value(m.id);
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
-    if (merged.tokens.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást.")); return; }
+    if (merged.tokens.isEmpty()) {
+        d->jobCounts[m.id].second++;
+        emit topicAnalysisFailed(m.id, job.topic.id, QStringLiteral("Nincs átirat — előbb futtass átírást."));
+        startNextTopicJob();
+        return;
+    }
     applySpeakerMap(merged, m.speakerMap);
+
+    const AppSettings s = d->settings->settings();
+    ProviderConfig cfg = s.llmSelected();
+    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
+    if (!provider) {
+        d->jobCounts[m.id].second++;
+        emit topicAnalysisFailed(m.id, job.topic.id,
+                                 QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId));
+        startNextTopicJob();
+        return;
+    }
+    QObject* providerObj = dynamic_cast<QObject*>(provider);
+    auto* svc = new ComplexSummaryService(provider, this);
+
+    d->topicJobActive = true;
+    d->activeTopicMeetingId = m.id;
+    d->activeTopicId = job.topic.id;
+    emit topicAnalysisStarted(m.id, job.topic.id);
+    emit jobProgress(m.id, QStringLiteral("„%1” téma elemzése…").arg(job.topic.title));
+
+    const QString analysesPath = QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"));
+    auto cleanup = [providerObj, svc]() {
+        if (providerObj) providerObj->deleteLater();
+        svc->deleteLater();
+    };
+
+    connect(svc, &ComplexSummaryService::topicAnalysisReady, this,
+            [this, meetingId = m.id, analysesPath, cleanup](const TopicAnalysis& a) {
+        upsertAnalysisJson(analysesPath, a);   // AZONNAL lemezre — a munka nem veszhet el
+        d->jobCounts[meetingId].first++;
+        cleanup();
+        emit topicAnalysisReady(meetingId, a);
+        startNextTopicJob();
+    });
+    connect(svc, &ComplexSummaryService::failed, this,
+            [this, meetingId = m.id, topicId = job.topic.id, cleanup](const QString& e) {
+        d->jobCounts[meetingId].second++;
+        cleanup();
+        emit topicAnalysisFailed(meetingId, topicId, e);   // a többi téma megy tovább
+        startNextTopicJob();
+    });
+
+    svc->requestTopicAnalysis(merged.renderMarkdown(), job.topic, m.contextNote.trimmed(),
+                              s.topicAnalysisPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
+}
+
+void AppController::finalizeComplexSummary(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+
+    // A lemezen lévő elemzések, a topics.json (szerkesztett) sorrendjében; az árva
+    // (törölt témához tartozó) elemzések kimaradnak.
+    const QVector<SummaryTopic> topics =
+        readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+    const QVector<TopicAnalysis> all =
+        readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json")));
+    QVector<TopicAnalysis> ordered;
+    for (const SummaryTopic& t : topics)
+        for (const TopicAnalysis& a : all)
+            if (a.topicId == t.id) { ordered.append(a); break; }
+    if (ordered.isEmpty()) {
+        emit errorOccurred(QStringLiteral("Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést."));
+        return;
+    }
 
     const AppSettings s = d->settings->settings();
     ProviderConfig cfg = s.llmSelected();
@@ -1288,20 +1520,7 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     if (!provider) { emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
-
-    // SZEKVENCIÁLIS 2. kör (a lokális modell parallel=1) — témánként egyesével, majd reduce.
-    struct Ctx {
-        Meeting m; QString transcriptMd; QString context; QString analysisPrompt;
-        QString model; double temp; int maxTokens;
-        QVector<SummaryTopic> topics; QVector<TopicAnalysis> results; int idx = 0;
-    };
-    auto ctx = std::make_shared<Ctx>();
-    ctx->m = m;
-    ctx->transcriptMd = merged.renderMarkdown();
-    ctx->context = m.contextNote.trimmed();
-    ctx->analysisPrompt = s.topicAnalysisPrompt;
-    ctx->model = cfg.model; ctx->temp = cfg.temperature; ctx->maxTokens = cfg.maxTokens;
-    ctx->topics = topics;
+    emit jobProgress(meetingId, QStringLiteral("Összegzés (vezetői összefoglaló + teendők)…"));
 
     auto cleanup = [providerObj, svc]() {
         if (providerObj) providerObj->deleteLater();
@@ -1312,26 +1531,11 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
         emit errorOccurred(QStringLiteral("Komplex összefoglaló hiba: %1").arg(e));
         cleanup();
     });
-    connect(svc, &ComplexSummaryService::topicAnalysisReady, this,
-            [this, svc, ctx](const TopicAnalysis& a) {
-        ctx->results.append(a);
-        ++ctx->idx;
-        emit topicAnalysisProgress(ctx->m.id, ctx->idx, ctx->topics.size());
-        if (ctx->idx < ctx->topics.size()) {
-            emit jobProgress(ctx->m.id, QStringLiteral("Téma %1/%2 elemzése…")
-                                            .arg(ctx->idx + 1).arg(ctx->topics.size()));
-            svc->requestTopicAnalysis(ctx->transcriptMd, ctx->topics[ctx->idx], ctx->context,
-                                      ctx->analysisPrompt, ctx->model, ctx->temp, ctx->maxTokens);
-        } else {
-            emit jobProgress(ctx->m.id, QStringLiteral("Összegzés (vezetői összefoglaló + teendők)…"));
-            svc->requestReduce(ctx->results, ctx->context, ctx->model, ctx->temp, ctx->maxTokens);
-        }
-    });
     connect(svc, &ComplexSummaryService::reduceReady, this,
-            [this, ctx, cleanup](const QString& execSummary, const QVector<ActionItem>& items) {
-        const QString md = renderComplexMarkdown(execSummary, items, ctx->results);
-        Meeting mm = d->store->load(ctx->m.id);
-        if (mm.id.isEmpty()) mm = ctx->m;
+            [this, m, ordered, cleanup](const QString& execSummary, const QVector<ActionItem>& items) {
+        const QString md = renderComplexMarkdown(execSummary, items, ordered);
+        Meeting mm = d->store->load(m.id);
+        if (mm.id.isEmpty()) mm = m;
         const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
         QDir().mkpath(d->notesDir);
@@ -1344,10 +1548,7 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
         emit summaryReady(mm.id, mdPath);
     });
 
-    emit topicAnalysisProgress(meetingId, 0, topics.size());
-    emit jobProgress(meetingId, QStringLiteral("Téma 1/%1 elemzése…").arg(topics.size()));
-    svc->requestTopicAnalysis(ctx->transcriptMd, topics[0], ctx->context,
-                              ctx->analysisPrompt, ctx->model, ctx->temp, ctx->maxTokens);
+    svc->requestReduce(ordered, m.contextNote.trimmed(), cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
 } // namespace tanara

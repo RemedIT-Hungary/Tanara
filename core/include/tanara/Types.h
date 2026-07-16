@@ -108,6 +108,9 @@ struct TopicAnalysis {
     QString detail;
     QStringList decisions;
     QVector<ActionItem> actionItems;
+    // A törzs markdownja CÍM NÉLKÜL (detail + döntések + teendők) — a téma-kártya
+    // eredmény-nézete és a komplex summary.md témaszekciói is ebből épülnek.
+    QString renderMarkdown() const;      // impl: SummaryService modul
 };
 
 // ---- meeting --------------------------------------------------------------
