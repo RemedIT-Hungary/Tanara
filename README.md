@@ -19,6 +19,7 @@ structured summary. All output is plain files next to the audio.
 - **Meeting watcher:** a tray app detects an active call and offers to record it
   with one click. Detection also runs locally.
 - **Open formats:** the transcript and the summary are Markdown files beside the audio.
+- **Bilingual UI:** Hungarian and English. The default follows the system locale.
 
 Status: **Tanara works on Linux and Windows.** On Windows, Tanara captures system
 audio with WASAPI loopback (playback devices appear as "loopback" capture
@@ -152,10 +153,22 @@ works. It only skips the automatic speaker labels.
 
 Open **Settings** in the GUI to set:
 
+- the UI language (system / Magyar / English) — a change applies at the next start
 - the folders for recordings, notes, and metadata, plus your own speaker name
 - automatic recording (record all devices, then drop the silent tracks)
 - the Soniox API key and base URL
 - the LLM endpoint, model, temperature, and max tokens
+
+The language of the transcript follows the meeting audio. The language of the
+summary follows the LLM prompt. Both are independent from the UI language.
+
+### Translations (for contributors)
+
+The source language of the code is Hungarian. The English translation lives in
+`i18n/tanara_en.ts`. After you change UI strings, run
+`cmake --build build --target update_translations` to refresh the file, then
+fill the new entries (Qt Linguist or a text editor). The build compiles the
+`.ts` file and embeds it into each executable.
 
 ## Usage
 
