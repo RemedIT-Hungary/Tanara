@@ -1536,8 +1536,21 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         cleanup();
     });
     connect(svc, &ComplexSummaryService::reduceReady, this,
-            [this, m, ordered, cleanup](const QString& execSummary, const QVector<ActionItem>& items) {
-        const QString md = renderComplexMarkdown(execSummary, items, ordered);
+            [this, m, ordered, cleanup](const QString& execSummary, const QVector<ActionItem>&) {
+        // Teendők KÓDBÓL (nem az LLM-től): a per-téma elemzések teendőit gyűjtjük össze,
+        // normalizált szöveg-dedup. Determinisztikus, modellfüggetlen — az LLM reduce-ának
+        // csak a vezetői összefoglaló marad (kevesebb hely a „hangos gondolkodásra").
+        QVector<ActionItem> mergedItems;
+        QSet<QString> seen;
+        for (const TopicAnalysis& a : ordered)
+            for (const ActionItem& ai : a.actionItems) {
+                const QString key = ai.text.simplified().toLower();
+                if (key.isEmpty() || seen.contains(key))
+                    continue;
+                seen.insert(key);
+                mergedItems.append(ai);
+            }
+        const QString md = renderComplexMarkdown(execSummary, mergedItems, ordered);
         Meeting mm = d->store->load(m.id);
         if (mm.id.isEmpty()) mm = m;
         const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));

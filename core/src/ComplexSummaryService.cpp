@@ -211,19 +211,16 @@ void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<Actio
     *execSummary = summary.join(QLatin1Char(' ')).simplified();
 }
 
-// Egy reduce-prompt belső, fix (nem user-szerkeszthető): a per-téma elemzésekből globális
-// összefoglalót + összevont teendőket kér.
+// A reduce-prompt belső, fix. SZŰK feladat: KIZÁRÓLAG egy rövid vezetői összefoglaló —
+// a teendők összevonását NEM az LLM végzi (azt a kód deduplikálja a per-téma elemzésekből),
+// így nincs mit „hangosan gondolkodnia", és a kimenet modellfüggetlenül stabil marad.
 QString reduceSystemPrompt()
 {
     return QStringLiteral(
-        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből készíts "
-        "markdownt (se JSON, se kódkerítés):\n"
-        "Először 1 bekezdés, 2-4 mondatos GLOBÁLIS vezetői összefoglaló az egész beszélgetésről "
-        "(cím nélkül). Utána egy szakasz:\n"
-        "## Teendők\n"
-        "- a teendő szövege — Felelős (határidő)\n"
-        "az ÖSSZEVONT, duplikátum-mentes teendőkkel (a felelős és a határidő opcionális).\n"
-        "Minden MAGYARUL. Ne találj ki új teendőt — csak a megadottakat vond össze és deduplikáld.\n");
+        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből írj "
+        "EGYETLEN, 2-4 mondatos GLOBÁLIS vezetői összefoglalót az egész beszélgetésről.\n"
+        "KIZÁRÓLAG ezt a bekezdést add vissza — semmi mást: se cím, se felsorolás, se teendők, "
+        "se döntések, se JSON, se kódkerítés, se magyarázat, se gondolatmenet. Magyarul.\n");
 }
 
 // Egy context-blokk a user-prompt elejére (ha van).

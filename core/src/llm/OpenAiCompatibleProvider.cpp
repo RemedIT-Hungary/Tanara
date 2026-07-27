@@ -146,6 +146,10 @@ void OpenAiCompatibleJob::onFinished()
         << " completion=" << usage.value(QStringLiteral("completion_tokens")).toInt()
         << " content=" << content.trimmed().size() << "ch"
         << (reasoningFallback ? " [reasoning-fallback]" : "");
+    // --debug mellett a NYERS válasz (első ~4000 karakter) is a logba kerül — így élőben
+    // látszik, ha a (reasoning-)modell hangosan gondolkodik a válaszba (nem a prompt hibája).
+    qDebug().noquote().nospace()
+        << "[LLM] nyers válasz (első 4000ch):\n" << content.left(4000);
     emit finished(content);
 }
 
