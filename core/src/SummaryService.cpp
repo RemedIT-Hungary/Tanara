@@ -143,7 +143,7 @@ void SummaryService::summarize(const MergedTranscript& transcript,
                                int maxTokens)
 {
     if (!m_provider) {
-        emit summaryFailed(QStringLiteral("Nincs beállított LLM provider."));
+        emit summaryFailed(tr("Nincs beállított LLM provider."));
         return;
     }
 
@@ -166,7 +166,7 @@ void SummaryService::summarize(const MergedTranscript& transcript,
 
     LlmJob* job = m_provider->chat(req);
     if (!job) {
-        emit summaryFailed(QStringLiteral("A provider nem adott vissza jobot."));
+        emit summaryFailed(tr("A provider nem adott vissza jobot."));
         return;
     }
 
@@ -182,7 +182,7 @@ void SummaryService::summarize(const MergedTranscript& transcript,
         const QJsonDocument doc = QJsonDocument::fromJson(json, &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
             emit self->summaryFailed(
-                QStringLiteral("Nem sikerült JSON-ként értelmezni a választ: %1")
+                tr("Nem sikerült JSON-ként értelmezni a választ: %1")
                     .arg(perr.errorString()));
             return;
         }

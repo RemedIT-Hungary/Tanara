@@ -16,6 +16,7 @@
 #include "tanara/ComplexSummaryService.h"
 #include "tanara/TranscriptMerger.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QProcess>
@@ -368,11 +369,11 @@ void saveLastDevices(const QString& path, const QStringList& names) {
 
 QString sttPhase(JobState s) {
     switch (s) {
-    case JobState::Uploading:  return QStringLiteral("Hang feltöltése…");
-    case JobState::Queued:     return QStringLiteral("Várakozás a Soniox sorban…");
-    case JobState::Processing: return QStringLiteral("Átírás folyamatban…");
-    case JobState::Completed:  return QStringLiteral("Sáv kész");
-    case JobState::Failed:     return QStringLiteral("Hiba");
+    case JobState::Uploading:  return QCoreApplication::translate("AppController", "Hang feltöltése…");
+    case JobState::Queued:     return QCoreApplication::translate("AppController", "Várakozás a Soniox sorban…");
+    case JobState::Processing: return QCoreApplication::translate("AppController", "Átírás folyamatban…");
+    case JobState::Completed:  return QCoreApplication::translate("AppController", "Sáv kész");
+    case JobState::Failed:     return QCoreApplication::translate("AppController", "Hiba");
     default:                   return QStringLiteral("…");
     }
 }
@@ -476,7 +477,7 @@ QStringList AppController::knownPeople() const {
 void AppController::renameSpeaker(const QString& meetingId, const QString& rawLabel,
                                  const QString& displayName, bool enroll) {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     const QString name = displayName.trimmed();
     if (name.isEmpty() || name == rawLabel) {
@@ -822,7 +823,7 @@ void AppController::renameMeeting(const QString& meetingId, const QString& newTi
     const QString t = newTitle.trimmed();
     if (t.isEmpty()) return;
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
     m.title = t;
     d->store->saveMeeting(m);   // meeting.json + index frissül → meetingUpdated jel
 }
@@ -890,7 +891,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         ++inputs;
     }
     if (inputs == 0) {
-        emit errorOccurred(QStringLiteral("Nincs aktív hangsáv a lekeveréshez."));
+        emit errorOccurred(tr("Nincs aktív hangsáv a lekeveréshez."));
         emit mixdownUpdated(meetingId, false);
         return;
     }
@@ -963,7 +964,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             }
             emit mixdownProgress(meetingId, 100);
         } else {
-            emit errorOccurred(QStringLiteral("A lekeverés (ffmpeg) sikertelen."));
+            emit errorOccurred(tr("A lekeverés (ffmpeg) sikertelen."));
         }
         emit mixdownUpdated(meetingId, ok);
         emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
@@ -1041,7 +1042,7 @@ bool AppController::hasSecret(const QString& name) const { return !d->keyStore.g
 void AppController::startRecording(const QString& title, const QVector<AudioDeviceInfo>& devices)
 {
     if (d->state == RecordingState::Recording || d->state == RecordingState::Stopping) {
-        emit errorOccurred(QStringLiteral("Már folyik felvétel."));
+        emit errorOccurred(tr("Már folyik felvétel."));
         return;
     }
     stopLevelMonitoring();   // a monitor felszabadítja az eszközöket a felvétel előtt
@@ -1051,7 +1052,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         use = d->devices->autoRecordDevices();   // line-in/AUX kihagyva az auto-halmazból
     }
     if (use.isEmpty()) {
-        emit errorOccurred(QStringLiteral("Nincs felvehető hangeszköz."));
+        emit errorOccurred(tr("Nincs felvehető hangeszköz."));
         return;
     }
 
@@ -1116,7 +1117,7 @@ ReadinessResult AppController::canRun(WorkflowStep step, const QString& meetingI
 void AppController::transcribeMeeting(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
     if (!res.runnable) { emit errorOccurred(res.detail); return; }
@@ -1135,9 +1136,9 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 QObject::disconnect(*conn);
                 if (ok) transcribeFromMixdown(meetingId);
                 else emit errorOccurred(
-                    QStringLiteral("A lekeverés sikertelen — az átírás nem indult."));
+                    tr("A lekeverés sikertelen — az átírás nem indult."));
             });
-        emit jobProgress(m.id, QStringLiteral("Lekeverés az átíráshoz…"));
+        emit jobProgress(m.id, tr("Lekeverés az átíráshoz…"));
         regenerateMixdown(meetingId);
         return;
     }
@@ -1156,11 +1157,11 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 
     ISttProvider* provider = SttProviderRegistry::instance().create(sttId, cfg, this);
     if (!provider) {
-        emit errorOccurred(QStringLiteral("Ismeretlen STT-provider: %1.").arg(sttId));
+        emit errorOccurred(tr("Ismeretlen STT-provider: %1.").arg(sttId));
         return;
     }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
-    emit jobProgress(m.id, QStringLiteral("Átírás indítása…"));
+    emit jobProgress(m.id, tr("Átírás indítása…"));
 
     // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms).
     // Forrás: cím (general) + a felhasználó pár szavas leírása (text) + a résztvevő-nevek
@@ -1221,14 +1222,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
     connect(job, &SttJob::failed, this, [this, providerObj](QString e) {
         if (providerObj) providerObj->deleteLater();
-        emit errorOccurred(QStringLiteral("Soniox hiba: %1").arg(e));
+        emit errorOccurred(tr("Soniox hiba: %1").arg(e));
     });
 }
 
 void AppController::summarizeMeeting(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     ReadinessResult res = canRun(WorkflowStep::Summarize, meetingId);
     if (!res.runnable) { emit errorOccurred(res.detail); return; }
@@ -1240,7 +1241,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     // tokens.json hiányzik/üres (kézzel törölt, részleges írás, rosszul bemásolt meeting),
     // ne induljon összefoglaló üres átiratra — tükrözi az eredeti tartalom-alapú guardot.
     if (merged.tokens.isEmpty()) {
-        emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást."));
+        emit errorOccurred(tr("Nincs átirat — előbb futtass átírást."));
         return;
     }
     applySpeakerMap(merged, m.speakerMap);   // a Gemma a valódi neveket lássa
@@ -1251,12 +1252,12 @@ void AppController::summarizeMeeting(const QString& meetingId)
     cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
     ILlmProvider* provider = LlmProviderRegistry::instance().create(llmId, cfg, this);
     if (!provider) {
-        emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(llmId));
+        emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
         return;
     }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new SummaryService(provider, this);
-    emit jobProgress(meetingId, QStringLiteral("Összefoglalás a helyi modellel (Gemma)…"));
+    emit jobProgress(meetingId, tr("Összefoglalás a helyi modellel (Gemma)…"));
 
     connect(svc, &SummaryService::summaryReady, this, [this, m, providerObj, svc](const Summary& sum) mutable {
         const QString md = sum.renderMarkdown();
@@ -1276,7 +1277,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     connect(svc, &SummaryService::summaryFailed, this, [this, providerObj, svc](const QString& e) {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        emit errorOccurred(QStringLiteral("Összefoglaló hiba: %1").arg(e));
+        emit errorOccurred(tr("Összefoglaló hiba: %1").arg(e));
     });
 
     svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
@@ -1288,7 +1289,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
 void AppController::extractMeetingTopics(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     // Ha már van (esetleg szerkesztett) téma-lista, azt adjuk vissza — nincs újrakinyerés.
     const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
@@ -1301,7 +1302,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     MergedTranscript merged = d->mergedCache.value(meetingId);
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
-    if (merged.tokens.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs átirat — előbb futtass átírást.")); return; }
+    if (merged.tokens.isEmpty()) { emit errorOccurred(tr("Nincs átirat — előbb futtass átírást.")); return; }
     applySpeakerMap(merged, m.speakerMap);
     const QString transcriptMd = merged.renderMarkdown();
 
@@ -1309,10 +1310,10 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     ProviderConfig cfg = s.llmSelected();
     cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) { emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
-    emit jobProgress(meetingId, QStringLiteral("Témák kigyűjtése a helyi modellel…"));
+    emit jobProgress(meetingId, tr("Témák kigyűjtése a helyi modellel…"));
 
     connect(svc, &ComplexSummaryService::topicsReady, this,
             [this, id = m.id, topicsPath, providerObj, svc](const QVector<SummaryTopic>& topics) {
@@ -1324,7 +1325,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc](const QString& e) {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        emit errorOccurred(QStringLiteral("Téma-kinyerés hiba: %1").arg(e));
+        emit errorOccurred(tr("Téma-kinyerés hiba: %1").arg(e));
     });
 
     svc->requestTopics(transcriptMd, m.contextNote.trimmed(), s.topicExtractionPrompt,
@@ -1341,8 +1342,8 @@ QVector<TopicAnalysis> AppController::topicAnalyses(const QString& meetingId) co
 void AppController::generateComplexSummary(const QString& meetingId, const QVector<SummaryTopic>& topics)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (topics.isEmpty()) { emit errorOccurred(QStringLiteral("Nincs téma a komplex összefoglalóhoz.")); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (topics.isEmpty()) { emit errorOccurred(tr("Nincs téma a komplex összefoglalóhoz.")); return; }
 
     // A (szerkesztett) téma-lista perzisztálása — folytatható marad.
     writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
@@ -1366,9 +1367,9 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
 void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& topic)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
     if (topic.id.isEmpty() || topic.title.trimmed().isEmpty()) {
-        emit errorOccurred(QStringLiteral("A témához cím kell az elemzéshez."));
+        emit errorOccurred(tr("A témához cím kell az elemzéshez."));
         return;
     }
 
@@ -1424,7 +1425,7 @@ void AppController::startNextTopicJob()
             if (wantReduce && fail == 0)
                 finalizeComplexSummary(id);
             else if (wantReduce)
-                emit jobProgress(id, QStringLiteral(
+                emit jobProgress(id, tr(
                     "%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.")
                     .arg(fail));
         }
@@ -1435,7 +1436,7 @@ void AppController::startNextTopicJob()
     Meeting m = d->store->load(job.meetingId);
     if (m.id.isEmpty()) {
         d->jobCounts[job.meetingId].second++;
-        emit topicAnalysisFailed(job.meetingId, job.topic.id, QStringLiteral("Ismeretlen meeting."));
+        emit topicAnalysisFailed(job.meetingId, job.topic.id, tr("Ismeretlen meeting."));
         startNextTopicJob();
         return;
     }
@@ -1445,7 +1446,7 @@ void AppController::startNextTopicJob()
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) {
         d->jobCounts[m.id].second++;
-        emit topicAnalysisFailed(m.id, job.topic.id, QStringLiteral("Nincs átirat — előbb futtass átírást."));
+        emit topicAnalysisFailed(m.id, job.topic.id, tr("Nincs átirat — előbb futtass átírást."));
         startNextTopicJob();
         return;
     }
@@ -1458,7 +1459,7 @@ void AppController::startNextTopicJob()
     if (!provider) {
         d->jobCounts[m.id].second++;
         emit topicAnalysisFailed(m.id, job.topic.id,
-                                 QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId));
+                                 tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId));
         startNextTopicJob();
         return;
     }
@@ -1469,7 +1470,7 @@ void AppController::startNextTopicJob()
     d->activeTopicMeetingId = m.id;
     d->activeTopicId = job.topic.id;
     emit topicAnalysisStarted(m.id, job.topic.id);
-    emit jobProgress(m.id, QStringLiteral("„%1” téma elemzése…").arg(job.topic.title));
+    emit jobProgress(m.id, tr("„%1” téma elemzése…").arg(job.topic.title));
 
     const QString analysesPath = QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"));
     auto cleanup = [providerObj, svc]() {
@@ -1500,7 +1501,7 @@ void AppController::startNextTopicJob()
 void AppController::finalizeComplexSummary(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(QStringLiteral("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
     // A lemezen lévő elemzések, a topics.json (szerkesztett) sorrendjében; az árva
     // (törölt témához tartozó) elemzések kimaradnak.
@@ -1513,7 +1514,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         for (const TopicAnalysis& a : all)
             if (a.topicId == t.id) { ordered.append(a); break; }
     if (ordered.isEmpty()) {
-        emit errorOccurred(QStringLiteral("Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést."));
+        emit errorOccurred(tr("Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést."));
         return;
     }
 
@@ -1521,10 +1522,10 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     ProviderConfig cfg = s.llmSelected();
     cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) { emit errorOccurred(QStringLiteral("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
+    if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
-    emit jobProgress(meetingId, QStringLiteral("Összegzés (vezetői összefoglaló + teendők)…"));
+    emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
     auto cleanup = [providerObj, svc]() {
         if (providerObj) providerObj->deleteLater();
@@ -1532,7 +1533,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     };
 
     connect(svc, &ComplexSummaryService::failed, this, [this, cleanup](const QString& e) {
-        emit errorOccurred(QStringLiteral("Komplex összefoglaló hiba: %1").arg(e));
+        emit errorOccurred(tr("Komplex összefoglaló hiba: %1").arg(e));
         cleanup();
     });
     connect(svc, &ComplexSummaryService::reduceReady, this,

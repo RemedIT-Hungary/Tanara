@@ -280,7 +280,7 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
                                           const QString& systemPrompt, const QString& model,
                                           double temperature, int maxTokens)
 {
-    if (!m_provider) { emit failed(QStringLiteral("Nincs beállított LLM provider.")); return; }
+    if (!m_provider) { emit failed(tr("Nincs beállított LLM provider.")); return; }
 
     LlmRequest req;
     req.model = model;
@@ -293,7 +293,7 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
         contextBlock(contextNotes) + QStringLiteral("----\n") + transcriptMd});
 
     LlmJob* job = m_provider->chat(req);
-    if (!job) { emit failed(QStringLiteral("A provider nem adott vissza jobot.")); return; }
+    if (!job) { emit failed(tr("A provider nem adott vissza jobot.")); return; }
     QPointer<ComplexSummaryService> self(this);
     connect(job, &LlmJob::finished, this, [self, job](const QString& text) {
         job->deleteLater();
@@ -304,7 +304,7 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
         if (topics.isEmpty()) {
             qWarning().noquote() << "[ComplexSummary] téma-parse ÜRES — nyers válasz:\n"
                                  << text.left(2000);
-            emit self->failed(QStringLiteral(
+            emit self->failed(tr(
                 "Nem sikerült témát kinyerni a válaszból (sem `## cím` szakasz, sem JSON)."));
             return;
         }
@@ -320,7 +320,7 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
                                                  const QString& contextNotes, const QString& systemPrompt,
                                                  const QString& model, double temperature, int maxTokens)
 {
-    if (!m_provider) { emit failed(QStringLiteral("Nincs beállított LLM provider.")); return; }
+    if (!m_provider) { emit failed(tr("Nincs beállított LLM provider.")); return; }
 
     LlmRequest req;
     req.model = model;
@@ -337,7 +337,7 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
     req.messages.append({QStringLiteral("user"), usr});
 
     LlmJob* job = m_provider->chat(req);
-    if (!job) { emit failed(QStringLiteral("A provider nem adott vissza jobot.")); return; }
+    if (!job) { emit failed(tr("A provider nem adott vissza jobot.")); return; }
     QPointer<ComplexSummaryService> self(this);
     const SummaryTopic cap = topic;   // a topicId/title az eredménybe öröklődik
     connect(job, &LlmJob::finished, this, [self, job, cap](const QString& text) {
@@ -353,7 +353,7 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
         if (a.detail.isEmpty() && a.decisions.isEmpty() && a.actionItems.isEmpty()) {
             qWarning().noquote() << "[ComplexSummary] elemzés ÜRES (" << cap.title
                                  << ") — nyers válasz:\n" << text.left(2000);
-            emit self->failed(QStringLiteral("Nem sikerült a téma-elemzést értelmezni („%1”).")
+            emit self->failed(tr("Nem sikerült a téma-elemzést értelmezni („%1”).")
                                   .arg(cap.title));
             return;
         }
@@ -369,7 +369,7 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
                                           const QString& contextNotes, const QString& model,
                                           double temperature, int maxTokens)
 {
-    if (!m_provider) { emit failed(QStringLiteral("Nincs beállított LLM provider.")); return; }
+    if (!m_provider) { emit failed(tr("Nincs beállított LLM provider.")); return; }
 
     // A per-téma elemzések szöveges összefoglalása a reduce bemenetéhez.
     QString usr = contextBlock(contextNotes);
@@ -396,7 +396,7 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
     req.messages.append({QStringLiteral("user"), usr});
 
     LlmJob* job = m_provider->chat(req);
-    if (!job) { emit failed(QStringLiteral("A provider nem adott vissza jobot.")); return; }
+    if (!job) { emit failed(tr("A provider nem adott vissza jobot.")); return; }
     QPointer<ComplexSummaryService> self(this);
     connect(job, &LlmJob::finished, this, [self, job](const QString& text) {
         job->deleteLater();
@@ -414,7 +414,7 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
         }
         if (execSummary.isEmpty() && items.isEmpty()) {
             qWarning().noquote() << "[ComplexSummary] reduce ÜRES — nyers válasz:\n" << text.left(2000);
-            emit self->failed(QStringLiteral("Nem sikerült az összegzést értelmezni."));
+            emit self->failed(tr("Nem sikerült az összegzést értelmezni."));
             return;
         }
         emit self->reduceReady(execSummary, items);

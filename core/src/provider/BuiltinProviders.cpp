@@ -5,6 +5,7 @@
 #include "tanara/stt/SonioxProvider.h"
 #include "tanara/llm/OpenAiCompatibleProvider.h"
 
+#include <QCoreApplication>
 #include <QObject>
 
 namespace tanara {
@@ -25,19 +26,19 @@ ProviderDescriptor sonioxDescriptor()
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
-    baseUrl.label        = QStringLiteral("Alap URL");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Alap URL");
     baseUrl.type         = ConfigFieldType::Url;
     baseUrl.defaultValue = QStringLiteral("https://api.soniox.com/v1");
 
     ConfigField model;
     model.key          = QStringLiteral("model");
-    model.label        = QStringLiteral("Modell");
+    model.label        = QCoreApplication::translate("BuiltinProviders", "Modell");
     model.type         = ConfigFieldType::Text;
     model.defaultValue = QStringLiteral("stt-async-v5");
 
     ConfigField apiKey;
     apiKey.key       = QStringLiteral("apiKey");
-    apiKey.label     = QStringLiteral("API-kulcs");
+    apiKey.label     = QCoreApplication::translate("BuiltinProviders", "API-kulcs");
     apiKey.type      = ConfigFieldType::Secret;
     apiKey.required  = true;
     apiKey.isSecret  = true;
@@ -52,40 +53,40 @@ ProviderDescriptor openAiCompatDescriptor()
 {
     ProviderDescriptor d;
     d.id                = QStringLiteral("openai-compat");
-    d.displayName       = QStringLiteral("OpenAI-kompatibilis végpont");
+    d.displayName       = QCoreApplication::translate("BuiltinProviders", "OpenAI-kompatibilis végpont");
     d.kind              = ProviderKind::Llm;
     d.authMode          = AuthMode::ApiKey;
     d.supportsStreaming = false;
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
-    baseUrl.label        = QStringLiteral("Alap URL");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Alap URL");
     baseUrl.type         = ConfigFieldType::Url;
     baseUrl.required     = true;
     baseUrl.defaultValue = QStringLiteral("http://localhost:1234/v1");
 
     ConfigField model;
     model.key            = QStringLiteral("model");
-    model.label          = QStringLiteral("Modell");
+    model.label          = QCoreApplication::translate("BuiltinProviders", "Modell");
     model.type           = ConfigFieldType::Combo;
     model.dynamicOptions = true;
     model.defaultValue   = QStringLiteral("google/gemma-4-12b"); // #27: üres config se legyen üres mező
 
     ConfigField temperature;
     temperature.key          = QStringLiteral("temperature");
-    temperature.label        = QStringLiteral("Hőmérséklet");
+    temperature.label        = QCoreApplication::translate("BuiltinProviders", "Hőmérséklet");
     temperature.type         = ConfigFieldType::Number;
     temperature.defaultValue = QStringLiteral("0.2");
 
     ConfigField maxTokens;
     maxTokens.key          = QStringLiteral("maxTokens");
-    maxTokens.label        = QStringLiteral("Max. tokenek");
+    maxTokens.label        = QCoreApplication::translate("BuiltinProviders", "Max. tokenek");
     maxTokens.type         = ConfigFieldType::Number;
     maxTokens.defaultValue = QStringLiteral("8000");
 
     ConfigField apiKey;
     apiKey.key       = QStringLiteral("apiKey");
-    apiKey.label     = QStringLiteral("API-kulcs");
+    apiKey.label     = QCoreApplication::translate("BuiltinProviders", "API-kulcs");
     apiKey.type      = ConfigFieldType::Secret;
     apiKey.required  = false;
     apiKey.isSecret  = true;

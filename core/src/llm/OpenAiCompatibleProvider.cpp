@@ -91,7 +91,7 @@ void OpenAiCompatibleJob::onFinished()
 
     QNetworkReply* reply = m_reply;
     if (!reply) {
-        emit failed(QStringLiteral("Nincs hálózati válasz (reply == null)."));
+        emit failed(tr("Nincs hálózati válasz (reply == null)."));
         return;
     }
     reply->deleteLater();
@@ -107,22 +107,22 @@ void OpenAiCompatibleJob::onFinished()
         }
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         emit failed(apiMsg.isEmpty()
-            ? QStringLiteral("Hálózati hiba: %1").arg(reply->errorString())
-            : QStringLiteral("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));
+            ? tr("Hálózati hiba: %1").arg(reply->errorString())
+            : tr("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));
         return;
     }
 
     QJsonParseError perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &perr);
     if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-        emit failed(QStringLiteral("Érvénytelen JSON válasz: %1").arg(perr.errorString()));
+        emit failed(tr("Érvénytelen JSON válasz: %1").arg(perr.errorString()));
         return;
     }
 
     const QJsonObject root = doc.object();
     const QJsonArray choices = root.value(QStringLiteral("choices")).toArray();
     if (choices.isEmpty()) {
-        emit failed(QStringLiteral("A válasz nem tartalmaz 'choices' tömböt."));
+        emit failed(tr("A válasz nem tartalmaz 'choices' tömböt."));
         return;
     }
 
@@ -132,7 +132,7 @@ void OpenAiCompatibleJob::onFinished()
     if (content.trimmed().isEmpty())   // reasoning-modell: a tartalom a reasoning_content-ben lehet
         content = message.value(QStringLiteral("reasoning_content")).toString();
     if (content.trimmed().isEmpty()) {
-        emit failed(QStringLiteral("Üres LLM-válasz (sem content, sem reasoning_content)."));
+        emit failed(tr("Üres LLM-válasz (sem content, sem reasoning_content)."));
         return;
     }
     // Debug-életjel (--debug mellett látszik): a válasz-metaadatok azonnal megmutatják, ha

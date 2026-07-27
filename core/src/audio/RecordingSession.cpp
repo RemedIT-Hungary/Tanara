@@ -212,11 +212,11 @@ QString RecordingSession::folder() const { return impl_->folder; }
 
 void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     if (impl_->state != RecordingState::Idle) {
-        emit failed(QStringLiteral("RecordingSession már fut vagy nem üresjáratban van."));
+        emit failed(tr("RecordingSession már fut vagy nem üresjáratban van."));
         return;
     }
     if (devices.isEmpty()) {
-        emit failed(QStringLiteral("Nincs felvételre kijelölt eszköz."));
+        emit failed(tr("Nincs felvételre kijelölt eszköz."));
         return;
     }
 
@@ -226,7 +226,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     const QString dirName = stamp + QStringLiteral("_") + slugify(impl_->title);
     QDir base(impl_->audioDir);
     if ((!base.exists() && !base.mkpath(QStringLiteral("."))) || !base.mkpath(dirName)) {
-        emit failed(QStringLiteral("Nem hozható létre a meeting-mappa: ") + dirName);
+        emit failed(tr("Nem hozható létre a meeting-mappa: ") + dirName);
         return;
     }
     impl_->folder = base.absoluteFilePath(dirName);
@@ -235,7 +235,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     // 2) AudioEngine.
     impl_->engine = std::make_unique<AudioEngine>();
     if (!impl_->engine->start(devices)) {
-        emit failed(QStringLiteral("Az audio motor nem indult el (nincs elérhető eszköz/backend)."));
+        emit failed(tr("Az audio motor nem indult el (nincs elérhető eszköz/backend)."));
         impl_->engine.reset();
         return;
     }
@@ -290,7 +290,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     QMetaObject::invokeMethod(impl_->worker, "startEncoders",
                               Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, ok));
     if (!ok) {
-        emit failed(QStringLiteral("Nem indult el az ffmpeg encoder."));
+        emit failed(tr("Nem indult el az ffmpeg encoder."));
         impl_->engine->stop();
         impl_->teardownWorker();
         impl_->engine.reset();
@@ -305,7 +305,7 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
 
 void RecordingSession::stop() {
     if (impl_->state != RecordingState::Recording) {
-        emit failed(QStringLiteral("Nincs futó felvétel a leállításhoz."));
+        emit failed(tr("Nincs futó felvétel a leállításhoz."));
         return;
     }
 

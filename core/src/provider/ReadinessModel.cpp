@@ -1,6 +1,8 @@
 #include "tanara/provider/ReadinessModel.h"
 #include "tanara/provider/ProviderRegistry.h"
 
+#include <QCoreApplication>
+
 namespace tanara {
 
 namespace {
@@ -45,7 +47,7 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
             ReadinessResult r;
             r.runnable        = false;
             r.blockerKind     = BlockerKind::ProviderConfig;
-            r.detail          = QStringLiteral("Hiányzik: %1 (%2)")
+            r.detail          = QCoreApplication::translate("ReadinessModel", "Hiányzik: %1 (%2)")
                                     .arg(field.label, desc.displayName);
             r.fixActionHint   = QStringLiteral("settings:%1:%2")
                                     .arg(providerId, field.key);
@@ -61,7 +63,7 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
         ReadinessResult r;
         r.runnable      = false;
         r.blockerKind   = BlockerKind::Auth;
-        r.detail        = QStringLiteral("Nincs bejelentkezve.");
+        r.detail        = QCoreApplication::translate("ReadinessModel", "Nincs bejelentkezve.");
         r.fixActionHint = QStringLiteral("login:%1").arg(providerId);
         r.providerId    = providerId;
         return r;
@@ -98,7 +100,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::MeetingState;
-            r.detail        = QStringLiteral("Nincs hangsáv az átíráshoz.");
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Nincs hangsáv az átíráshoz.");
             r.fixActionHint = QStringLiteral("record");
             return r;
         }
@@ -111,7 +113,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::ProviderConfig;
-            r.detail        = QStringLiteral("Ismeretlen vagy nem regisztrált STT-provider: %1").arg(sttId);
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Ismeretlen vagy nem regisztrált STT-provider: %1").arg(sttId);
             r.fixActionHint = QStringLiteral("settings:%1:").arg(sttId);
             r.providerId    = sttId;
             return r;
@@ -126,7 +128,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::MeetingState;
-            r.detail        = QStringLiteral("Nincs átirat — előbb futtass átírást.");
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Nincs átirat — előbb futtass átírást.");
             r.fixActionHint = QStringLiteral("transcribe");
             return r;
         }
@@ -138,7 +140,7 @@ ReadinessResult ReadinessModel::check(WorkflowStep step, const Meeting& meeting)
             ReadinessResult r;
             r.runnable      = false;
             r.blockerKind   = BlockerKind::ProviderConfig;
-            r.detail        = QStringLiteral("Ismeretlen vagy nem regisztrált LLM-provider: %1").arg(llmId);
+            r.detail        = QCoreApplication::translate("ReadinessModel", "Ismeretlen vagy nem regisztrált LLM-provider: %1").arg(llmId);
             r.fixActionHint = QStringLiteral("settings:%1:").arg(llmId);
             r.providerId    = llmId;
             return r;

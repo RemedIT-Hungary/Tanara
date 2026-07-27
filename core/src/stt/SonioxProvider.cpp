@@ -119,12 +119,12 @@ void SonioxJob::start() {
 // --- 1) POST /files (multipart) -> file_id ---
 void SonioxJob::uploadFile() {
     setState(JobState::Uploading);
-    emit progress(0, QStringLiteral("Fájl feltöltése…"));
+    emit progress(0, tr("Fájl feltöltése…"));
 
     auto* file = new QFile(m_req.audioFilePath);
     if (!file->open(QIODevice::ReadOnly)) {
         delete file;
-        fail(QStringLiteral("Nem nyitható meg az audiofájl: %1").arg(m_req.audioFilePath));
+        fail(tr("Nem nyitható meg az audiofájl: %1").arg(m_req.audioFilePath));
         return;
     }
 
@@ -158,13 +158,13 @@ void SonioxJob::uploadFile() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(QStringLiteral("Feltöltés hiba: %1").arg(reply->errorString()));
+            fail(tr("Feltöltés hiba: %1").arg(reply->errorString()));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
         m_fileId = obj.value(QStringLiteral("id")).toString();
         if (m_fileId.isEmpty()) {
-            fail(QStringLiteral("Nincs file id a válaszban: %1")
+            fail(tr("Nincs file id a válaszban: %1")
                      .arg(QString::fromUtf8(body)));
             return;
         }
@@ -177,7 +177,7 @@ void SonioxJob::createTranscription() {
     if (m_finished)
         return;
     setState(JobState::Queued);
-    emit progress(20, QStringLiteral("Átírás indítása…"));
+    emit progress(20, tr("Átírás indítása…"));
 
     QJsonObject payload;
     payload.insert(QStringLiteral("model"), m_cfg.model);
@@ -238,18 +238,18 @@ void SonioxJob::createTranscription() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(QStringLiteral("Átírás létrehozási hiba: %1").arg(reply->errorString()));
+            fail(tr("Átírás létrehozási hiba: %1").arg(reply->errorString()));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
         m_transcriptionId = obj.value(QStringLiteral("id")).toString();
         if (m_transcriptionId.isEmpty()) {
-            fail(QStringLiteral("Nincs transcription id a válaszban: %1")
+            fail(tr("Nincs transcription id a válaszban: %1")
                      .arg(QString::fromUtf8(body)));
             return;
         }
         setState(JobState::Processing);
-        emit progress(40, QStringLiteral("Feldolgozás…"));
+        emit progress(40, tr("Feldolgozás…"));
         m_pollTimer->start();
     });
 }
@@ -282,7 +282,7 @@ void SonioxJob::pollStatus() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(QStringLiteral("Státusz lekérdezési hiba: %1").arg(reply->errorString()));
+            fail(tr("Státusz lekérdezési hiba: %1").arg(reply->errorString()));
             return;
         }
         const QJsonObject obj = QJsonDocument::fromJson(body).object();
@@ -290,13 +290,13 @@ void SonioxJob::pollStatus() {
 
         if (status == QLatin1String("completed")) {
             m_pollTimer->stop();
-            emit progress(80, QStringLiteral("Átirat letöltése…"));
+            emit progress(80, tr("Átirat letöltése…"));
             fetchTranscript();
         } else if (status == QLatin1String("error")) {
             m_pollTimer->stop();
             QString msg = obj.value(QStringLiteral("error_message")).toString();
             if (msg.isEmpty())
-                msg = QStringLiteral("ismeretlen Soniox hiba");
+                msg = tr("ismeretlen Soniox hiba");
             fail(msg);
         } else {
             // queued / processing / running stb. — maradunk a poll-ban. Minden sikeres
@@ -304,7 +304,7 @@ void SonioxJob::pollStatus() {
             // nem tűnik befagyottnak, és látszik, hogy a kapcsolat él.
             ++m_pollCount;
             setState(JobState::Processing);
-            emit progress(60, QStringLiteral("Feldolgozás (%1)… %2 · %3. életjel")
+            emit progress(60, tr("Feldolgozás (%1)… %2 · %3. életjel")
                                   .arg(status, formatElapsed(m_clock.elapsed()))
                                   .arg(m_pollCount));
         }
@@ -334,7 +334,7 @@ void SonioxJob::fetchTranscript() {
         if (m_finished)
             return;
         if (err != QNetworkReply::NoError) {
-            fail(QStringLiteral("Átirat letöltési hiba: %1").arg(reply->errorString()));
+            fail(tr("Átirat letöltési hiba: %1").arg(reply->errorString()));
             return;
         }
 
@@ -374,7 +374,7 @@ void SonioxJob::fetchTranscript() {
 
         m_finished = true;
         setState(JobState::Completed);
-        emit progress(100, QStringLiteral("Kész"));
+        emit progress(100, tr("Kész"));
         emit finished(tt);
     });
 }
