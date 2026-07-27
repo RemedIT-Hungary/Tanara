@@ -1282,10 +1282,12 @@ void MainWindow::onTopicQueueFinished(QString meetingId, int okCount, int failCo
     // egyedi (kártyás) futás vagy hibás batch után itt áll le a busy.
     setBusy(false);
     if (failCount == 0) {
-        statusBar()->showMessage(tr("%1 téma elemzése kész.").arg(okCount), 5000);
+        statusBar()->showMessage(tr("%n téma elemzése kész.", nullptr, okCount), 5000);
     } else {
-        statusBar()->showMessage(tr("%1 téma kész, %2 hibázott — a hibásak a kártyájukon "
-                                    "újrafuttathatók.").arg(okCount).arg(failCount), 10000);
+        // Két számláló — a %n csak egyszer szerepelhet, ezért két plural-frázisból áll össze.
+        statusBar()->showMessage(tr("%1, %2 — a hibásak a kártyájukon újrafuttathatók.")
+                                     .arg(tr("%n téma kész", nullptr, okCount),
+                                          tr("%n hibázott", nullptr, failCount)), 10000);
     }
 }
 
@@ -1319,12 +1321,12 @@ void MainWindow::onStartAnalysis() {
 static QString participantsSummary(QStringList named, int unknownCount, int totalDistinct) {
     named.removeDuplicates();
     if (named.isEmpty())
-        return QCoreApplication::translate("MainWindow", "%1 különböző partner azonosítva")
-            .arg(totalDistinct);
+        return QCoreApplication::translate("MainWindow", "%n különböző partner azonosítva",
+                                           nullptr, totalDistinct);
     QString s = named.join(QStringLiteral(", "));
     if (unknownCount > 0)
-        s += QCoreApplication::translate("MainWindow", " és %1 ismeretlen partner")
-                 .arg(unknownCount);
+        s += QCoreApplication::translate("MainWindow", " és %n ismeretlen partner",
+                                         nullptr, unknownCount);
     return s;
 }
 

@@ -243,7 +243,7 @@ void RecordBar::updateVoicesLabel() {
     // azonos a bepipált eszközökkel — a valós halmazt a m_recordingDeviceNames tartja).
     if (m_state == tanara::RecordingState::Recording) {
         m_voicesLabel->setText(
-            tr("● Rögzítés — %1 hangforrás").arg(m_recordingDeviceNames.size()));
+            tr("● Rögzítés — %n hangforrás", nullptr, m_recordingDeviceNames.size()));
         return;
     }
     // Üresjáratban: a rögzítésre KIVÁLASZTOTT hangforrások száma. (Korábban „N hangot
@@ -254,7 +254,7 @@ void RecordBar::updateVoicesLabel() {
             ++n;
     m_voicesLabel->setText(n == 0
         ? tr("Nincs kiválasztott hangforrás")
-        : tr("🎙 %1 hangforrás kiválasztva").arg(n));
+        : tr("🎙 %n hangforrás kiválasztva", nullptr, n));
 }
 
 void RecordBar::rebuildDeviceList() {

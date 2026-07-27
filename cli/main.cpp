@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
 
         if (sel.isEmpty()) { err << QCoreApplication::translate("cli", "Nincs kiválasztható eszköz.") << "\n"; return 1; }
 
-        out << QCoreApplication::translate("cli", "Felvétel: \"%1\" — %2 sáv").arg(title).arg(sel.size()) << "\n";
+        out << QCoreApplication::translate("cli", "Felvétel: \"%1\" — %n sáv", nullptr, sel.size()).arg(title) << "\n";
         for (const auto& dvc : sel) out << "  • " << dvc.name << "\n";
         out.flush();
 
@@ -250,8 +250,9 @@ int main(int argc, char** argv) {
             const QString who = g.name.isEmpty()
                 ? QCoreApplication::translate("cli", "ISMERETLEN")
                 : QStringLiteral("%1 (%2%)").arg(g.name).arg(int(g.score * 100 + 0.5));
-            out << QCoreApplication::translate("cli", "  • %1  →  %2   [%3 ablak, minta: %4]")
-                       .arg(g.deviceName, who).arg(g.windows).arg(g.sampleRef)
+            out << QCoreApplication::translate("cli", "  • %1  →  %2   [%n ablak, minta: %3]",
+                                               nullptr, g.windows)
+                       .arg(g.deviceName, who, g.sampleRef)
                 << "\n";
         }
         out.flush();
@@ -260,11 +261,15 @@ int main(int argc, char** argv) {
 
     if (cmd == "voiceprints") {
         auto* vp = app.voiceprints();
-        out << QCoreApplication::translate("cli", "Hang-lenyomatok (%1 személy, %2 lenyomat):")
-                   .arg(vp->people().size()).arg(vp->totalPrintCount())
+        // Két számláló — a %n frázisonként csak egyszer szerepelhet, ezért két plural-frázis.
+        out << QCoreApplication::translate("cli", "Hang-lenyomatok (%1, %2):")
+                   .arg(QCoreApplication::translate("cli", "%n személy", nullptr, vp->people().size()),
+                        QCoreApplication::translate("cli", "%n lenyomat", nullptr, vp->totalPrintCount()))
             << "\n";
         for (const QString& name : vp->people())
-            out << QCoreApplication::translate("cli", "  %1: %2 lenyomat").arg(name).arg(vp->printCount(name)) << "\n";
+            out << QStringLiteral("  %1: %2").arg(name,
+                       QCoreApplication::translate("cli", "%n lenyomat", nullptr, vp->printCount(name)))
+                << "\n";
         out.flush();
         return 0;
     }

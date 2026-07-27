@@ -169,13 +169,19 @@
         <source>Húzd az elemzés-doboz átméretezéséhez</source>
         <translation>Drag to resize the analysis box</translation>
     </message>
-    <message>
-        <source>%1 különböző partner azonosítva</source>
-        <translation>%1 distinct partners identified</translation>
+    <message numerus="yes">
+        <source>%n különböző partner azonosítva</source>
+        <translation>
+            <numerusform>%n distinct partner identified</numerusform>
+            <numerusform>%n distinct partners identified</numerusform>
+        </translation>
     </message>
-    <message>
-        <source> és %1 ismeretlen partner</source>
-        <translation> and %1 unknown partners</translation>
+    <message numerus="yes">
+        <source> és %n ismeretlen partner</source>
+        <translation>
+            <numerusform> and %n unknown partner</numerusform>
+            <numerusform> and %n unknown partners</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -363,9 +369,12 @@
         <source>Nincs kiválasztható eszköz.</source>
         <translation>No selectable device.</translation>
     </message>
-    <message>
-        <source>Felvétel: &quot;%1&quot; — %2 sáv</source>
-        <translation>Recording: &quot;%1&quot; — %2 tracks</translation>
+    <message numerus="yes">
+        <source>Felvétel: &quot;%1&quot; — %n sáv</source>
+        <translation>
+            <numerusform>Recording: &quot;%1&quot; — %n track</numerusform>
+            <numerusform>Recording: &quot;%1&quot; — %n tracks</numerusform>
+        </translation>
     </message>
     <message>
         <source>KÉSZ. Mappa: %1</source>
@@ -431,17 +440,30 @@
         <source>ISMERETLEN</source>
         <translation>UNKNOWN</translation>
     </message>
-    <message>
-        <source>  • %1  →  %2   [%3 ablak, minta: %4]</source>
-        <translation>  • %1  →  %2   [%3 windows, sample: %4]</translation>
+    <message numerus="yes">
+        <source>  • %1  →  %2   [%n ablak, minta: %3]</source>
+        <translation>
+            <numerusform>  • %1  →  %2   [%n window, sample: %3]</numerusform>
+            <numerusform>  • %1  →  %2   [%n windows, sample: %3]</numerusform>
+        </translation>
     </message>
     <message>
-        <source>Hang-lenyomatok (%1 személy, %2 lenyomat):</source>
-        <translation>Voiceprints (%1 people, %2 voiceprints):</translation>
+        <source>Hang-lenyomatok (%1, %2):</source>
+        <translation>Voiceprints (%1, %2):</translation>
     </message>
-    <message>
-        <source>  %1: %2 lenyomat</source>
-        <translation>  %1: %2 voiceprints</translation>
+    <message numerus="yes">
+        <source>%n személy</source>
+        <translation>
+            <numerusform>%n person</numerusform>
+            <numerusform>%n people</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n lenyomat</source>
+        <translation>
+            <numerusform>%n voiceprint</numerusform>
+            <numerusform>%n voiceprints</numerusform>
+        </translation>
     </message>
     <message>
         <source>Parancsok: devices | record [--title T --seconds N --device IDX] | list | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;nyersCímke&gt; &lt;név&gt; | identify &lt;id&gt; | voiceprints</source>
@@ -547,7 +569,7 @@
     </message>
     <message>
         <source>„%1” téma elemzése…</source>
-        <translation>Analyzing topic "%1"…</translation>
+        <translation>Analyzing topic &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Nincs kész téma-elemzés — előbb futtasd a témánkénti elemzést.</source>
@@ -578,7 +600,7 @@
     </message>
     <message>
         <source>Nem sikerült a téma-elemzést értelmezni („%1”).</source>
-        <translation>Could not parse the topic analysis ("%1").</translation>
+        <translation>Could not parse the topic analysis (&quot;%1&quot;).</translation>
     </message>
     <message>
         <source>Nem sikerült az összegzést értelmezni.</source>
@@ -802,7 +824,7 @@
         <source>Még nincs összefoglaló.
 Válassz fent: „Gyors összefoglaló” egy lépésben, vagy „Témánként” a részletes, szerkeszthető elemzéshez.</source>
         <translation>No summary yet.
-Choose above: "Quick summary" in one step, or "By topic" for a detailed, editable analysis.</translation>
+Choose above: &quot;Quick summary&quot; in one step, or &quot;By topic&quot; for a detailed, editable analysis.</translation>
     </message>
     <message>
         <source>‹  Vissza az összefoglalóhoz</source>
@@ -810,7 +832,7 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     </message>
     <message>
         <source>Szerkeszd a témákat (cím + gist), majd „Elemzés indítása”. Minden elemzés azonnal mentődik; a ▶/↻ gombbal témánként is futtatható.</source>
-        <translation>Edit the topics (title + gist), then "Start analysis". Every analysis is saved immediately; the ▶/↻ button runs it per topic, too.</translation>
+        <translation>Edit the topics (title + gist), then &quot;Start analysis&quot;. Every analysis is saved immediately; the ▶/↻ button runs it per topic, too.</translation>
     </message>
     <message>
         <source>➕  Új téma</source>
@@ -990,7 +1012,7 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     </message>
     <message>
         <source>Biztosan törlöd a(z) „%1” témát? A kész elemzése is elvész.</source>
-        <translation>Delete topic "%1"? Its finished analysis will be lost, too.</translation>
+        <translation>Delete topic &quot;%1&quot;? Its finished analysis will be lost, too.</translation>
     </message>
     <message>
         <source>A témához cím kell az elemzéshez.</source>
@@ -1016,13 +1038,30 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
         <source>Téma-elemzés hiba: %1</source>
         <translation>Topic analysis error: %1</translation>
     </message>
-    <message>
-        <source>%1 téma elemzése kész.</source>
-        <translation>%1 topics analyzed.</translation>
+    <message numerus="yes">
+        <source>%n téma elemzése kész.</source>
+        <translation>
+            <numerusform>%n topic analyzed.</numerusform>
+            <numerusform>%n topics analyzed.</numerusform>
+        </translation>
     </message>
     <message>
-        <source>%1 téma kész, %2 hibázott — a hibásak a kártyájukon újrafuttathatók.</source>
-        <translation>%1 topics done, %2 failed — failed ones can be rerun on their cards.</translation>
+        <source>%1, %2 — a hibásak a kártyájukon újrafuttathatók.</source>
+        <translation>%1, %2 — rerun the failed ones from their cards.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n téma kész</source>
+        <translation>
+            <numerusform>%n topic done</numerusform>
+            <numerusform>%n topics done</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n hibázott</source>
+        <translation>
+            <numerusform>%n failed</numerusform>
+            <numerusform>%n failed</numerusform>
+        </translation>
     </message>
     <message>
         <source>Adj meg legalább egy témát.</source>
@@ -1082,7 +1121,7 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     </message>
     <message>
         <source>Biztosan törlöd: „%1”?</source>
-        <translation>Delete "%1"?</translation>
+        <translation>Delete &quot;%1&quot;?</translation>
     </message>
     <message>
         <source>A felvétel (hangsávok), az átirat és az összefoglaló is VÉGLEGESEN törlődik. Ez nem visszavonható.</source>
@@ -1196,7 +1235,7 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     </message>
     <message>
         <source>Biztosan törlöd a(z) „%1” személyt minden meetingből?</source>
-        <translation>Delete person "%1" from all meetings?</translation>
+        <translation>Delete person &quot;%1&quot; from all meetings?</translation>
     </message>
     <message>
         <source>Összevonás</source>
@@ -1204,7 +1243,7 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     </message>
     <message>
         <source>„%1” összevonása ezzel a személlyel:</source>
-        <translation>Merge "%1" into this person:</translation>
+        <translation>Merge &quot;%1&quot; into this person:</translation>
     </message>
     <message>
         <source>Összevonás megerősítése</source>
@@ -1213,8 +1252,8 @@ Choose above: "Quick summary" in one step, or "By topic" for a detailed, editabl
     <message>
         <source>Biztosan összevonod: „%1” → „%2”?
 A(z) „%1” hang-lenyomatai és minden meeting-címkézése átkerül „%2” alá, és „%1” megszűnik.</source>
-        <translation>Merge "%1" → "%2"?
-All voiceprints and meeting labels of "%1" will be transferred to "%2", and "%1" will be removed.</translation>
+        <translation>Merge &quot;%1&quot; → &quot;%2&quot;?
+All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quot;%2&quot;, and &quot;%1&quot; will be removed.</translation>
     </message>
     <message>
         <source>Törlöd ezt a hang-lenyomatot? (A személy és a címkézés megmarad.)</source>
@@ -1246,16 +1285,22 @@ All voiceprints and meeting labels of "%1" will be transferred to "%2", and "%1"
         <translation> Change audio sources to record</translation>
     </message>
     <message>
-        <source>● Rögzítés — %1 hangforrás</source>
-        <translation>● Recording — %1 audio sources</translation>
-    </message>
-    <message>
         <source>Nincs kiválasztott hangforrás</source>
         <translation>No audio source selected</translation>
     </message>
-    <message>
-        <source>🎙 %1 hangforrás kiválasztva</source>
-        <translation>🎙 %1 audio sources selected</translation>
+    <message numerus="yes">
+        <source>● Rögzítés — %n hangforrás</source>
+        <translation>
+            <numerusform>● Recording — %n audio source</numerusform>
+            <numerusform>● Recording — %n audio sources</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>🎙 %n hangforrás kiválasztva</source>
+        <translation>
+            <numerusform>🎙 %n audio source selected</numerusform>
+            <numerusform>🎙 %n audio sources selected</numerusform>
+        </translation>
     </message>
     <message>
         <source>  (alapértelmezett)</source>
@@ -1452,7 +1497,7 @@ All voiceprints and meeting labels of "%1" will be transferred to "%2", and "%1"
     </message>
     <message>
         <source>Soronként egy app (bináris- vagy név-részlet, pl. „zoom”, „teams”). A figyelő ezekre jelez, ha aktívan fogják a mikrofont.</source>
-        <translation>One app per line (binary or name fragment, e.g. "zoom", "teams"). The watcher alerts on these when they are actively holding the microphone.</translation>
+        <translation>One app per line (binary or name fragment, e.g. &quot;zoom&quot;, &quot;teams&quot;). The watcher alerts on these when they are actively holding the microphone.</translation>
     </message>
     <message>
         <source>Figyelő</source>
@@ -1551,7 +1596,7 @@ All voiceprints and meeting labels of "%1" will be transferred to "%2", and "%1"
     <name>tanara_gui::TracksPanel</name>
     <message>
         <source>A felvétel sávjai. A csendesnek ítélt sávok automatikusan „eldobott” állapotba kerülnek (a fájl megmarad). Visszaállíthatod, vagy véglegesen törölheted (fájllal együtt).</source>
-        <translation>Tracks of the recording. Tracks judged silent are automatically put into "discarded" state (the file is kept). You can restore them, or delete them permanently (file included).</translation>
+        <translation>Tracks of the recording. Tracks judged silent are automatically put into &quot;discarded&quot; state (the file is kept). You can restore them, or delete them permanently (file included).</translation>
     </message>
     <message>
         <source>▶ Meghallgatás</source>
@@ -1636,11 +1681,11 @@ All voiceprints and meeting labels of "%1" will be transferred to "%2", and "%1"
     </message>
     <message>
         <source>„%1” — átnevezés / kezelés</source>
-        <translation>"%1" — rename / manage</translation>
+        <translation>&quot;%1&quot; — rename / manage</translation>
     </message>
     <message>
         <source>„%1” — ki ez a beszélő?</source>
-        <translation>"%1" — who is this speaker?</translation>
+        <translation>&quot;%1&quot; — who is this speaker?</translation>
     </message>
     <message>
         <source>✏  Új név…</source>
