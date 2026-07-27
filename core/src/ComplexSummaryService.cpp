@@ -1,4 +1,5 @@
 #include "tanara/ComplexSummaryService.h"
+#include "tanara/PromptLibrary.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -211,17 +212,8 @@ void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<Actio
     *execSummary = summary.join(QLatin1Char(' ')).simplified();
 }
 
-// A reduce-prompt belső, fix. SZŰK feladat: KIZÁRÓLAG egy rövid vezetői összefoglaló —
-// a teendők összevonását NEM az LLM végzi (azt a kód deduplikálja a per-téma elemzésekből),
-// így nincs mit „hangosan gondolkodnia", és a kimenet modellfüggetlenül stabil marad.
-QString reduceSystemPrompt()
-{
-    return QStringLiteral(
-        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből írj "
-        "EGYETLEN, 2-4 mondatos GLOBÁLIS vezetői összefoglalót az egész beszélgetésről.\n"
-        "KIZÁRÓLAG ezt a bekezdést add vissza — semmi mást: se cím, se felsorolás, se teendők, "
-        "se döntések, se JSON, se kódkerítés, se magyarázat, se gondolatmenet. Magyarul.\n");
-}
+// A reduce-prompt beépített defaultja a PromptLibrary-ben él ("reduce"); az AppController
+// a setReducePrompt()-tal adhat feloldott (fájl-override-os) promptot.
 
 // Egy context-blokk a user-prompt elejére (ha van).
 QString contextBlock(const QString& contextNotes)
@@ -239,41 +231,12 @@ ComplexSummaryService::~ComplexSummaryService() = default;
 
 QString ComplexSummaryService::defaultTopicPrompt()
 {
-    return QStringLiteral(
-        "Te egy magyar nyelvű elemző vagy. A kapott beszéd-átiratból azonosítsd a KÜLÖNÁLLÓ "
-        "TÉMÁKAT (témakörök, amelyekről ténylegesen szó volt).\n"
-        "KIMENETI FORMÁTUM — pontosan ez, semmi más (se bevezető, se JSON, se kódkerítés): "
-        "minden témát egy `## ` kezdetű sor vezet be a téma rövid CÍMÉVEL, alatta 1-2 mondatos "
-        "összegzés a témáról. Példa:\n"
-        "## Szállítási határidők\n"
-        "A csapat egyeztette a Q3-as csúszást és a pótlási tervet.\n\n"
-        "## Költségkeret\n"
-        "Áttekintették a keret túllépését és a fedezeti lehetőségeket.\n\n"
-        "Szabályok:\n"
-        "1. A témák száma legyen ARÁNYOS a tartalommal: kötetlen/információ-szegény "
-        "beszélgetésnél kevés téma (akár 1), információ-intenzív megbeszélésnél több. Ne darabolj "
-        "túl, és NE találj ki nem létező témát.\n"
-        "2. Csak a `## Cím` + összegzés blokkokat add vissza, mást ne.\n"
-        "3. Minden szöveg MAGYARUL.\n");
+    return promptBuiltin(QStringLiteral("topic"));
 }
 
 QString ComplexSummaryService::defaultAnalysisPrompt()
 {
-    return QStringLiteral(
-        "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott TELJES átiratból KIZÁRÓLAG a "
-        "megadott TÉMÁRA vonatkozó részeket elemezd.\n"
-        "KIMENETI FORMÁTUM — markdown, pontosan így (se JSON, se kódkerítés):\n"
-        "Először 1 bekezdés összegzés a témáról (cím nélkül). Utána — CSAK ha van valódi tartalom "
-        "— ezek a szakaszok jöhetnek:\n"
-        "## Döntések\n"
-        "- egy döntés soronként\n"
-        "## Teendők\n"
-        "- a teendő szövege — Felelős (határidő)\n"
-        "(A felelős és a határidő rész opcionális; ha nincs rá adat, hagyd el.)\n"
-        "Szabályok:\n"
-        "1. NE TALÁLJ KI semmit. Ha a témához nincs valódi döntés vagy teendő, hagyd EL az adott "
-        "szakaszt (ne írj üres címet). Csak a megadott témára fókuszálj.\n"
-        "2. Minden szöveg MAGYARUL.\n");
+    return promptBuiltin(QStringLiteral("analysis"));
 }
 
 void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QString& contextNotes,
@@ -392,7 +355,9 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
     req.stream = false;
     req.temperature = temperature;
     req.maxTokens = maxTokens > 0 ? maxTokens : 2000;
-    req.messages.append({QStringLiteral("system"), reduceSystemPrompt()});
+    req.messages.append({QStringLiteral("system"),
+        m_reducePrompt.trimmed().isEmpty() ? promptBuiltin(QStringLiteral("reduce"))
+                                           : m_reducePrompt});
     req.messages.append({QStringLiteral("user"), usr});
 
     LlmJob* job = m_provider->chat(req);

@@ -2,6 +2,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/PromptLibrary.h"
 #include "tanara/SummaryService.h"
 #include "tanara/ComplexSummaryService.h"
 #include "tanara/Types.h"
@@ -31,12 +32,12 @@
 
 namespace tanara_gui {
 
-// Az összefoglaló-prompt id-jához tartozó beépített default (egyetlen igazságforrás a
+// Az összefoglaló-prompt id-jához tartozó default (egyetlen igazságforrás a
 // betöltés/reset/mentés számára). id: "simple" | "topic" | "analysis".
-static QString summaryPromptDefault(const QString& id) {
-    if (id == QStringLiteral("topic"))    return tanara::ComplexSummaryService::defaultTopicPrompt();
-    if (id == QStringLiteral("analysis")) return tanara::ComplexSummaryService::defaultAnalysisPrompt();
-    return tanara::SummaryService::defaultSystemPrompt();   // "simple"
+// FÁJL-TUDATOS: a ~/.tanara/prompts/<id>.md override-ot is látja (PromptLibrary) —
+// így a fájllal hangolt default nem mentődik el tévesen „saját promptként".
+static QString summaryPromptDefault(const QString& id, const QString& metadataDir) {
+    return tanara::promptDefault(id, metadataDir);
 }
 
 using tanara::ConfigField;
@@ -373,7 +374,8 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     });
     // Reset csak a KIVÁLASZTOTT prompt defaultjára.
     connect(resetBtn, &QPushButton::clicked, this, [this]() {
-        m_summaryPrompt->setPlainText(summaryPromptDefault(m_curPromptId));
+        const QString metaDir = m_controller->settings()->settings().metadataDir;
+        m_summaryPrompt->setPlainText(summaryPromptDefault(m_curPromptId, metaDir));
     });
     tabs->addTab(sumPage, tr("Összefoglaló"));
 
@@ -672,9 +674,10 @@ void SettingsDialog::loadGeneral() {
         m_mixdownMode->setCurrentIndex(mi >= 0 ? mi : 0);
     }
     if (m_summaryPrompt && m_promptSelect) {
-        // A három prompt-puffer feltöltése (üres beállítás → a beépített default).
+        // A három prompt-puffer feltöltése (üres beállítás → a default: fájl-override
+        // ha van, különben beépített).
         auto initBuf = [&](const QString& id, const QString& stored) {
-            m_promptText[id] = stored.isEmpty() ? summaryPromptDefault(id) : stored;
+            m_promptText[id] = stored.isEmpty() ? summaryPromptDefault(id, s.metadataDir) : stored;
         };
         initBuf(QStringLiteral("simple"),   s.summaryPrompt);
         initBuf(QStringLiteral("topic"),    s.topicExtractionPrompt);
@@ -790,7 +793,7 @@ void SettingsDialog::onAccept() {
             m_promptText[m_curPromptId] = m_summaryPrompt->toPlainText();
         auto store = [&](const QString& id) -> QString {
             const QString p = m_promptText.value(id);
-            return p.trimmed() == summaryPromptDefault(id).trimmed() ? QString() : p;
+            return p.trimmed() == summaryPromptDefault(id, s.metadataDir).trimmed() ? QString() : p;
         };
         s.summaryPrompt          = store(QStringLiteral("simple"));
         s.topicExtractionPrompt  = store(QStringLiteral("topic"));

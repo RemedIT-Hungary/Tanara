@@ -43,6 +43,10 @@ public:
     static QString defaultTopicPrompt();
     static QString defaultAnalysisPrompt();
 
+    // A reduce rendszer-promptja. Üres (default) → a beépített ("reduce" a PromptLibrary-ből).
+    // Az AppController a fájl-override-dal feloldott promptot adja itt át.
+    void setReducePrompt(const QString& prompt) { m_reducePrompt = prompt; }
+
 signals:
     void topicsReady(const QVector<tanara::SummaryTopic>& topics);
     void topicAnalysisReady(const tanara::TopicAnalysis& analysis);
@@ -51,6 +55,7 @@ signals:
 
 private:
     ILlmProvider* m_provider;  // not owned
+    QString m_reducePrompt;    // üres → beépített default
 };
 
 } // namespace tanara

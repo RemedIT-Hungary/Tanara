@@ -1,5 +1,6 @@
 #include "tanara/AppController.h"
 
+#include "tanara/PromptLibrary.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/audio/DeviceMonitor.h"
@@ -1226,6 +1227,15 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
 }
 
+// A ténylegesen küldendő rendszer-prompt: settings-override → fájl-override
+// (<metadataDir>/prompts/<id>.md) → beépített default (PromptLibrary).
+static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id)
+{
+    return userOverride.trimmed().isEmpty()
+        ? promptDefault(QLatin1String(id), s.metadataDir)
+        : userOverride;
+}
+
 void AppController::summarizeMeeting(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
@@ -1281,7 +1291,8 @@ void AppController::summarizeMeeting(const QString& meetingId)
     });
 
     svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
-                   /*systemPrompt*/ s.summaryPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
+                   /*systemPrompt*/ resolvedPrompt(s, s.summaryPrompt, "simple"),
+                   cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
 // ---- komplex (több körös) összefoglaló ------------------------------------
@@ -1328,7 +1339,8 @@ void AppController::extractMeetingTopics(const QString& meetingId)
         emit errorOccurred(tr("Téma-kinyerés hiba: %1").arg(e));
     });
 
-    svc->requestTopics(transcriptMd, m.contextNote.trimmed(), s.topicExtractionPrompt,
+    svc->requestTopics(transcriptMd, m.contextNote.trimmed(),
+                       resolvedPrompt(s, s.topicExtractionPrompt, "topic"),
                        cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
@@ -1495,7 +1507,8 @@ void AppController::startNextTopicJob()
     });
 
     svc->requestTopicAnalysis(merged.renderMarkdown(), job.topic, m.contextNote.trimmed(),
-                              s.topicAnalysisPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
+                              resolvedPrompt(s, s.topicAnalysisPrompt, "analysis"),
+                              cfg.model, cfg.temperature, cfg.maxTokens);
 }
 
 void AppController::finalizeComplexSummary(const QString& meetingId)
@@ -1525,6 +1538,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
+    svc->setReducePrompt(resolvedPrompt(s, QString(), "reduce"));
     emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
     auto cleanup = [providerObj, svc]() {
