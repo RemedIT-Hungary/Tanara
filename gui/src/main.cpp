@@ -8,6 +8,7 @@
 #include "AppIcon.h"
 
 #include "tanara/AppController.h"
+#include "tanara/Localization.h"
 #include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
@@ -148,6 +149,9 @@ int main(int argc, char** argv) {
     QApplication::setApplicationName(QStringLiteral("Tanara"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // minden ablakra + tálcára
+
+    // UI-nyelv (settings.json uiLanguage) — minden widget megkonstruálása ELŐTT.
+    tanara::installAppTranslator();
 
     tanara::AppController controller;
 

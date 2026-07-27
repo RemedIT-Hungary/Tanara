@@ -7,6 +7,7 @@
 //   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
 //
 #include "tanara/AppController.h"
+#include "tanara/Localization.h"
 #include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
@@ -68,6 +69,7 @@ int main(int argc, char** argv) {
     tanara::initLogging(tanara::parseLogOptions(rawArgs));
 
     QCoreApplication qapp(argc, argv);
+    tanara::installAppTranslator();   // UI-nyelv a kimenetekhez (settings.json uiLanguage)
     const QStringList args = tanara::stripLogArgs(rawArgs);
     const QString cmd = args.value(1);
 

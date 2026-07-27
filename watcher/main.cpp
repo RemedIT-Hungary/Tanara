@@ -2,6 +2,7 @@
 // Nincs ablak: a tálca-ikonon él, és a `tanara --record` / `tanara` folyamatokat indítja.
 #include "TrayWatcher.h"
 
+#include "tanara/Localization.h"
 #include "tanara/Logging.h"
 #include "tanara/detect/DetectorRegistry.h"
 
@@ -32,6 +33,9 @@ int main(int argc, char** argv)
         qCInfo(tanara::lcApp).noquote() << "A tanara-watcher már fut — kilépés.";
         return 0;
     }
+
+    // UI-nyelv (settings.json uiLanguage) — a tray-menü/notification szövegek előtt.
+    tanara::installAppTranslator();
 
     tanara::registerBuiltinDetectors();
 

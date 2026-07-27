@@ -184,6 +184,10 @@ struct AppSettings {
     bool autoRecordAllDevices = true;  // true → minden eszközt rögzít (csendeseket utólag eldobja)
     QStringList languageHints{QStringLiteral("hu")};
 
+    // UI-nyelv: "auto" (rendszer-locale dönt) | "hu" | "en". A forrásnyelv a magyar;
+    // váltás után újraindítás kell (nincs futásidejű retranslate). Lásd Localization.h.
+    QString uiLanguage{QStringLiteral("auto")};
+
     // Felvételi hangminőség (per-sáv Opus bitráta). A nyers per-sáv .ogg-kat az STT is
     // használja, ezért a legalsó fokozat is „STT-biztos" (24 kbps). Gyengébb fokozat =
     // kisebb fájlok. Értékek: "best"|"high"|"medium"|"low".

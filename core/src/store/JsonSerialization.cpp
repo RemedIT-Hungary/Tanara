@@ -242,6 +242,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("userSpeakerName")] = s.userSpeakerName;
     o[QStringLiteral("autoRecordAllDevices")] = s.autoRecordAllDevices;
     o[QStringLiteral("languageHints")]  = stringListToArray(s.languageHints);
+    o[QStringLiteral("uiLanguage")]     = s.uiLanguage;
     o[QStringLiteral("audioQuality")]   = s.audioQuality;
     o[QStringLiteral("mixdownMode")]    = s.mixdownMode;
     o[QStringLiteral("summaryPrompt")]  = s.summaryPrompt;
@@ -310,6 +311,8 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
         s.llmProviderId = id;
         s.llmConfigs.insert(id, cfg);
     }
+
+    s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);
 
     // Meeting-figyelő — safe-merge a defaultokkal (a régi settings.json e nélkül tölt).
     s.detectorEnabled     = o.value(QStringLiteral("detectorEnabled")).toBool(s.detectorEnabled);

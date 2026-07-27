@@ -11,7 +11,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Network Sql Widgets Multimedia MultimediaWidgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Network Sql Widgets Multimedia MultimediaWidgets Test LinguistTools)
 find_package(Threads REQUIRED)
 
 # third-party (header-only)
@@ -80,3 +80,20 @@ if(TANARA_BUILD_WATCHER)
     add_subdirectory(watcher)
 endif()
 add_subdirectory(tests)
+
+# i18n — a FORRÁSNYELV MAGYAR, az angol az i18n/tanara_en.ts fordításból épül.
+#  - stringek frissítése a .ts-be:  cmake --build build --target update_translations
+#  - a .qm build-időben készül (lrelease) és minden futtatható targetbe beágyazódik
+#    (:/i18n/tanara_en.qm) — betöltés: tanara::installAppTranslator().
+set(TANARA_I18N_TARGETS tanara-cli)
+if(TANARA_BUILD_GUI)
+    list(APPEND TANARA_I18N_TARGETS tanara)
+endif()
+if(TANARA_BUILD_WATCHER)
+    list(APPEND TANARA_I18N_TARGETS tanara-watcher)
+endif()
+qt_add_translations(TARGETS ${TANARA_I18N_TARGETS}
+    SOURCE_TARGETS tanara_core ${TANARA_I18N_TARGETS}
+    TS_FILES ${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts
+    RESOURCE_PREFIX "/i18n"
+    LUPDATE_OPTIONS -no-obsolete -locations none)
