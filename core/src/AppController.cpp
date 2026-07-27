@@ -1228,12 +1228,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 }
 
 // A ténylegesen küldendő rendszer-prompt: settings-override → fájl-override
-// (<metadataDir>/prompts/<id>.md) → beépített default (PromptLibrary).
+// (<metadataDir>/prompts/<id>.md) → beépített default (PromptLibrary), a végén a
+// célnyelv alkalmazásával ({{NYELV}} placeholder / direktíva).
 static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id)
 {
-    return userOverride.trimmed().isEmpty()
+    const QString base = userOverride.trimmed().isEmpty()
         ? promptDefault(QLatin1String(id), s.metadataDir)
         : userOverride;
+    return applySummaryLanguage(base, s.summaryLanguage);
 }
 
 void AppController::summarizeMeeting(const QString& meetingId)

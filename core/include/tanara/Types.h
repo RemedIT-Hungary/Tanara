@@ -209,6 +209,12 @@ struct AppSettings {
     QString topicExtractionPrompt;   // 1. kör: téma-kinyerés
     QString topicAnalysisPrompt;     // 2. kör: témánkénti elemzés
 
+    // Az összefoglaló CÉLNYELVE (szabad szöveg, pl. "magyar", "angol", "német") — a
+    // promptok {{NYELV}} placeholderébe kerül (PromptLibrary::applySummaryLanguage).
+    // Független a UI-nyelvtől. A strukturális szakaszcímek (## Döntések/## Teendők)
+    // nyelvtől függetlenül magyarok maradnak (a parser ezekre illeszt).
+    QString summaryLanguage{QStringLiteral("magyar")};
+
     // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
     // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
     // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).

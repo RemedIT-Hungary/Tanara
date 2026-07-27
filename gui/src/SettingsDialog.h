@@ -86,6 +86,7 @@ private:
     QLabel*    m_qualityHint = nullptr;    // a választott fokozat méret-becslése
     // Összefoglaló-promptok: egy szerkesztő + választó (Egyszerű / Téma-kinyerés / Téma-elemzés).
     QComboBox*      m_promptSelect = nullptr;     // melyik promptot szerkesztjük (userData=id)
+    QComboBox*      m_summaryLanguage = nullptr;  // összefoglaló célnyelve (szabad szöveg)
     QPlainTextEdit* m_summaryPrompt = nullptr;    // a kiválasztott prompt szerkesztője
     QHash<QString, QString> m_promptText;         // id → aktuális szöveg (váltáskor megőrizve)
     QString        m_curPromptId;                 // épp szerkesztett prompt id-ja

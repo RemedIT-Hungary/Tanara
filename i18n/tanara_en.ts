@@ -1528,6 +1528,14 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>System prompts of the model that creates the summary (instructions + JSON schema). Use the selector to switch between the simple, single-round prompt and the two prompts of the complex (multi-round) mode. The transcript and the context are automatically sent to the model AFTER the prompt.</translation>
     </message>
     <message>
+        <source>Összefoglaló nyelve:</source>
+        <translation>Summary language:</translation>
+    </message>
+    <message>
+        <source>Az elkészülő összefoglaló nyelve — bármilyen nyelvet beírhatsz szabad szöveggel. Független a felület nyelvétől. A szerkezeti szakaszcímek (## Döntések, ## Teendők) mindig magyarok maradnak.</source>
+        <translation>The language of the generated summary — you can type any language as free text. Independent from the UI language. The structural section headers (## Döntések, ## Teendők) always stay Hungarian.</translation>
+    </message>
+    <message>
         <source>Prompt:</source>
         <translation>Prompt:</translation>
     </message>

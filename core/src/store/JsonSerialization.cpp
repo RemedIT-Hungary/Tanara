@@ -248,6 +248,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("summaryPrompt")]  = s.summaryPrompt;
     o[QStringLiteral("topicExtractionPrompt")] = s.topicExtractionPrompt;
     o[QStringLiteral("topicAnalysisPrompt")]   = s.topicAnalysisPrompt;
+    o[QStringLiteral("summaryLanguage")]       = s.summaryLanguage;
 
     // Új multi-provider shape: kiválasztott id + providerenkénti config.
     o[QStringLiteral("sttProviderId")] = s.sttProviderId;
@@ -313,6 +314,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     }
 
     s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);
+    s.summaryLanguage = o.value(QStringLiteral("summaryLanguage")).toString(s.summaryLanguage);
 
     // Meeting-figyelő — safe-merge a defaultokkal (a régi settings.json e nélkül tölt).
     s.detectorEnabled     = o.value(QStringLiteral("detectorEnabled")).toBool(s.detectorEnabled);

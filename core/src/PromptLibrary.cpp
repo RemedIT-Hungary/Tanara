@@ -11,7 +11,7 @@ QString promptBuiltin(const QString& id)
         // A modell egy értekezlet-jegyzetelő, és KIZÁRÓLAG egy JSON objektumot adhat
         // vissza a megadott kulcsokkal. A felhasználó felülírhatja a Beállításokban.
         return QStringLiteral(
-            "Te egy precíz magyar nyelvű értekezlet-jegyzetelő asszisztens vagy. "
+            "Te egy precíz értekezlet-jegyzetelő asszisztens vagy. "
             "A feladatod, hogy a kapott beszéd-átiratból strukturált összefoglalót készíts.\n"
             "FONTOS szabályok:\n"
             "1. KIZÁRÓLAG egyetlen érvényes JSON objektumot adj vissza, semmilyen más szöveget, "
@@ -23,7 +23,7 @@ QString promptBuiltin(const QString& id)
             "\"due\": string} alakú — a teendő szövege, a felelős neve, és a határidő "
             "(ha nincs adat, üres string).\n"
             "   - \"participants\": string tömb — a beszélgetés résztvevőinek nevei.\n"
-            "3. Minden mezőt MAGYARUL tölts ki.\n"
+            "3. Minden mezőt {{NYELV}} nyelven tölts ki.\n"
             "4. Használd a megadott szójegyzéket (glossary) a beszédfelismerés (STT) "
             "valószínű hibáinak javítására: tulajdonneveknél, cégneveknél és szakkifejezéseknél "
             "a szójegyzék helyes alakját preferáld.\n"
@@ -38,7 +38,7 @@ QString promptBuiltin(const QString& id)
 
     if (id == QStringLiteral("topic")) {
         return QStringLiteral(
-            "Te egy magyar nyelvű elemző vagy. A kapott beszéd-átiratból azonosítsd a KÜLÖNÁLLÓ "
+            "Te egy elemző vagy. A kapott beszéd-átiratból azonosítsd a KÜLÖNÁLLÓ "
             "TÉMÁKAT (témakörök, amelyekről ténylegesen szó volt).\n"
             "KIMENETI FORMÁTUM — pontosan ez, semmi más (se bevezető, se JSON, se kódkerítés): "
             "minden témát egy `## ` kezdetű sor vezet be a téma rövid CÍMÉVEL, alatta 1-2 mondatos "
@@ -52,12 +52,12 @@ QString promptBuiltin(const QString& id)
             "beszélgetésnél kevés téma (akár 1), információ-intenzív megbeszélésnél több. Ne darabolj "
             "túl, és NE találj ki nem létező témát.\n"
             "2. Csak a `## Cím` + összegzés blokkokat add vissza, mást ne.\n"
-            "3. Minden szöveg MAGYARUL.\n");
+            "3. Minden szöveg {{NYELV}} nyelven.\n");
     }
 
     if (id == QStringLiteral("analysis")) {
         return QStringLiteral(
-            "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott TELJES átiratból KIZÁRÓLAG a "
+            "Te egy precíz jegyzetelő vagy. A kapott TELJES átiratból KIZÁRÓLAG a "
             "megadott TÉMÁRA vonatkozó részeket elemezd.\n"
             "KIMENETI FORMÁTUM — markdown, pontosan így (se JSON, se kódkerítés):\n"
             "Először 1 bekezdés összegzés a témáról (cím nélkül). Utána — CSAK ha van valódi tartalom "
@@ -70,7 +70,8 @@ QString promptBuiltin(const QString& id)
             "Szabályok:\n"
             "1. NE TALÁLJ KI semmit. Ha a témához nincs valódi döntés vagy teendő, hagyd EL az adott "
             "szakaszt (ne írj üres címet). Csak a megadott témára fókuszálj.\n"
-            "2. Minden szöveg MAGYARUL.\n");
+            "2. Minden szöveg {{NYELV}} nyelven — de a `## Döntések` és `## Teendők` "
+            "szakaszcímek PONTOSAN így, magyarul maradnak.\n");
     }
 
     if (id == QStringLiteral("reduce")) {
@@ -78,10 +79,11 @@ QString promptBuiltin(const QString& id)
         // NEM az LLM végzi (azt a kód deduplikálja a per-téma elemzésekből), így nincs mit
         // „hangosan gondolkodnia", és a kimenet modellfüggetlenül stabil marad.
         return QStringLiteral(
-            "Te egy precíz magyar nyelvű jegyzetelő vagy. A kapott témánkénti elemzésekből írj "
+            "Te egy precíz jegyzetelő vagy. A kapott témánkénti elemzésekből írj "
             "EGYETLEN, 2-4 mondatos GLOBÁLIS vezetői összefoglalót az egész beszélgetésről.\n"
             "KIZÁRÓLAG ezt a bekezdést add vissza — semmi mást: se cím, se felsorolás, se teendők, "
-            "se döntések, se JSON, se kódkerítés, se magyarázat, se gondolatmenet. Magyarul.\n");
+            "se döntések, se JSON, se kódkerítés, se magyarázat, se gondolatmenet. "
+            "{{NYELV}} nyelven.\n");
     }
 
     return QString();
@@ -106,6 +108,25 @@ QString promptDefault(const QString& id, const QString& metadataDir)
             return text;
     }
     return promptBuiltin(id);
+}
+
+QString applySummaryLanguage(QString prompt, const QString& language)
+{
+    QString lang = language.trimmed();
+    if (lang.isEmpty())
+        lang = QStringLiteral("magyar");
+
+    if (prompt.contains(QStringLiteral("{{NYELV}}")))
+        return prompt.replace(QStringLiteral("{{NYELV}}"), lang);
+
+    // Placeholder nélküli (saját/fájl) prompt: magyar célnyelvnél nem nyúlunk hozzá
+    // (visszafelé kompatibilis), más célnyelvnél direktívát fűzünk a végére.
+    if (lang.compare(QStringLiteral("magyar"), Qt::CaseInsensitive) == 0)
+        return prompt;
+    return prompt + QStringLiteral(
+        "\nFONTOS: a kimenet szövege KIZÁRÓLAG %1 nyelven íródjon. A strukturális "
+        "szakaszcímek (pl. `## Döntések`, `## Teendők`) változatlanul magyarul maradnak.\n")
+        .arg(lang);
 }
 
 } // namespace tanara

@@ -158,9 +158,18 @@ Open **Settings** in the GUI to set:
 - automatic recording (record all devices, then drop the silent tracks)
 - the Soniox API key and base URL
 - the LLM endpoint, model, temperature, and max tokens
+- the summary language — free text, independent from the UI language
 
-The language of the transcript follows the meeting audio. The language of the
-summary follows the LLM prompt. Both are independent from the UI language.
+The language of the transcript follows the meeting audio. The summary language
+is a setting: type any target language, and the LLM writes the summary in it.
+
+### Prompt tuning (without a rebuild)
+
+The built-in LLM prompts have a file override. Put your version in
+`~/.tanara/prompts/<id>.md`, where `<id>` is `simple`, `topic`, `analysis`, or
+`reduce`. The app reads the file at use time, so a change needs no rebuild and
+no restart. The `{{NYELV}}` placeholder in a prompt receives the summary
+language. A prompt saved in Settings has priority over the file.
 
 ### Translations (for contributors)
 

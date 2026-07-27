@@ -24,4 +24,10 @@ QString promptFilePath(const QString& id, const QString& metadataDir = QString()
 // Fájl-override, ha létezik és nem üres, különben a beépített default.
 QString promptDefault(const QString& id, const QString& metadataDir = QString());
 
+// Az összefoglaló CÉLNYELVÉNEK alkalmazása egy rendszer-promptra:
+//  - a {{NYELV}} placeholdert (a beépített promptokban) a nyelvre cseréli,
+//  - placeholder nélküli (saját) promptnál nem-magyar célnyelv esetén direktívát fűz hozzá.
+// language üres → "magyar". A ## Döntések / ## Teendők szakaszcímek magyarok maradnak.
+QString applySummaryLanguage(QString prompt, const QString& language);
+
 } // namespace tanara

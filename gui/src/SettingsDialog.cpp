@@ -347,6 +347,21 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     applyMuted(sumIntro);
     sumL->addWidget(sumIntro);
 
+    // Az összefoglaló CÉLNYELVE (szabad szöveg is beírható) — a UI-nyelvtől független.
+    auto* langRow = new QHBoxLayout();
+    langRow->addWidget(new QLabel(tr("Összefoglaló nyelve:"), sumPage), 0);
+    m_summaryLanguage = new QComboBox(sumPage);
+    m_summaryLanguage->setEditable(true);
+    m_summaryLanguage->addItems({QStringLiteral("magyar"), QStringLiteral("angol"),
+                                 QStringLiteral("német"), QStringLiteral("francia"),
+                                 QStringLiteral("spanyol")});
+    m_summaryLanguage->setToolTip(tr(
+        "Az elkészülő összefoglaló nyelve — bármilyen nyelvet beírhatsz szabad szöveggel. "
+        "Független a felület nyelvétől. A szerkezeti szakaszcímek (## Döntések, ## Teendők) "
+        "mindig magyarok maradnak."));
+    langRow->addWidget(m_summaryLanguage, 1);
+    sumL->addLayout(langRow);
+
     auto* selRow = new QHBoxLayout();
     selRow->addWidget(new QLabel(tr("Prompt:"), sumPage), 0);
     m_promptSelect = new QComboBox(sumPage);
@@ -673,6 +688,8 @@ void SettingsDialog::loadGeneral() {
         int mi = m_mixdownMode->findData(s.mixdownMode);
         m_mixdownMode->setCurrentIndex(mi >= 0 ? mi : 0);
     }
+    if (m_summaryLanguage)
+        m_summaryLanguage->setCurrentText(s.summaryLanguage);
     if (m_summaryPrompt && m_promptSelect) {
         // A három prompt-puffer feltöltése (üres beállítás → a default: fájl-override
         // ha van, különben beépített).
@@ -785,6 +802,10 @@ void SettingsDialog::onAccept() {
         s.audioQuality = m_audioQuality->currentData().toString();
     if (m_mixdownMode && m_mixdownMode->currentIndex() >= 0)
         s.mixdownMode = m_mixdownMode->currentData().toString();
+    if (m_summaryLanguage) {
+        const QString lang = m_summaryLanguage->currentText().trimmed();
+        s.summaryLanguage = lang.isEmpty() ? QStringLiteral("magyar") : lang;
+    }
     if (m_summaryPrompt && m_promptSelect) {
         // A jelenleg szerkesztett prompt szövegét a pufferbe szinkronizáljuk, majd mindhárom
         // promptot mentjük: ha a szöveg == a beépített default, ÜRESEN (a kód-default jövőbeli
