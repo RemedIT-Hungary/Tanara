@@ -33,13 +33,13 @@ static QTextStream err(stderr);
 static QString kindStr(TrackKind k) {
     switch (k) { case TrackKind::Mic: return "mic";
                  case TrackKind::Loopback: return "loopback";
-                 default: return "egyéb"; }
+                 default: return QCoreApplication::translate("cli", "egyéb"); }
 }
 
 static int cmdDevices(AppController& app) {
     app.refreshDevices();
     const auto devs = app.devices()->captureDevices();
-    out << "Felvehető eszközök (" << devs.size() << "):\n";
+    out << QCoreApplication::translate("cli", "Felvehető eszközök (%1):").arg(devs.size()) << "\n";
     for (int i = 0; i < devs.size(); ++i)
         out << "  [" << i << "] " << devs[i].name << "  (" << kindStr(devs[i].kind)
             << (devs[i].isDefault ? ", default" : "") << ")\n";
@@ -49,7 +49,7 @@ static int cmdDevices(AppController& app) {
 
 static int cmdList(AppController& app) {
     const auto ms = app.store()->loadAll();
-    out << "Meetingek (" << ms.size() << "):\n";
+    out << QCoreApplication::translate("cli", "Meetingek (%1):").arg(ms.size()) << "\n";
     for (const auto& m : ms)
         out << "  " << m.id << "  " << m.startedAt.toString(Qt::ISODate)
             << "  \"" << m.title << "\""
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         // Hasznos, ha kézzel másoltunk be felvétel-mappát (pl. másik gépről).
         app.store()->rebuildIndexFromDisk();
         const auto ms = app.store()->loadAll();
-        out << "Index újraépítve a lemezről — " << ms.size() << " meeting.\n";
+        out << QCoreApplication::translate("cli", "Index újraépítve a lemezről — %1 meeting.").arg(ms.size()) << "\n";
         out.flush();
         return 0;
     }
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
                 ? MeetingDetectorRegistry::instance().createBest()
                 : MeetingDetectorRegistry::instance().create(s.detectorId));
         if (!det) {
-            err << "Nincs elérhető meeting-detektor ezen a platformon (pw-dump?).\n";
+            err << QCoreApplication::translate("cli", "Nincs elérhető meeting-detektor ezen a platformon (pw-dump?).") << "\n";
             err.flush();
             return 1;
         }
@@ -118,26 +118,27 @@ int main(int argc, char** argv) {
         }
         if (interval < 1) interval = 1;
 
-        out << "Detektor: " << det->id() << "  (ismert appok: "
-            << s.knownCallApps.join(QStringLiteral(", ")) << ")\n";
+        out << QCoreApplication::translate("cli", "Detektor: %1  (ismert appok: %2)")
+                   .arg(det->id(), s.knownCallApps.join(QStringLiteral(", ")))
+            << "\n";
         out.flush();
 
         auto pollOnce = [&det]() {
             const MeetingSignal sig = det->poll();
             if (sig.active)
-                out << "  ● MEETING: " << sig.appName
-                    << "  [appId=" << sig.appId
-                    << ", ablak=\"" << sig.windowTitle << "\""
-                    << ", forrás=" << sig.sourceRef << "]\n";
+                out << QCoreApplication::translate("cli",
+                           "  ● MEETING: %1  [appId=%2, ablak=\"%3\", forrás=%4]")
+                           .arg(sig.appName, sig.appId, sig.windowTitle, sig.sourceRef)
+                    << "\n";
             else
-                out << "  ○ nincs aktív hívás\n";
+                out << QCoreApplication::translate("cli", "  ○ nincs aktív hívás") << "\n";
             out.flush();
         };
 
         if (!watch) { pollOnce(); return 0; }
 
         pollOnce();
-        out << "(figyelés " << interval << " mp-enként — Ctrl-C a leállításhoz)\n";
+        out << QCoreApplication::translate("cli", "(figyelés %1 mp-enként — Ctrl-C a leállításhoz)").arg(interval) << "\n";
         out.flush();
         auto* timer = new QTimer(&qapp);
         QObject::connect(timer, &QTimer::timeout, &qapp, [&pollOnce]() { pollOnce(); });
@@ -162,21 +163,22 @@ int main(int argc, char** argv) {
         if (deviceIdx.isEmpty()) sel = app.devices()->autoRecordDevices();
         else for (int idx : deviceIdx) if (idx >= 0 && idx < all.size()) sel << all[idx];
 
-        if (sel.isEmpty()) { err << "Nincs kiválasztható eszköz.\n"; return 1; }
+        if (sel.isEmpty()) { err << QCoreApplication::translate("cli", "Nincs kiválasztható eszköz.") << "\n"; return 1; }
 
-        out << "Felvétel: \"" << title << "\" — " << sel.size() << " sáv\n";
+        out << QCoreApplication::translate("cli", "Felvétel: \"%1\" — %2 sáv").arg(title).arg(sel.size()) << "\n";
         for (const auto& dvc : sel) out << "  • " << dvc.name << "\n";
         out.flush();
 
         QObject::connect(&app, &AppController::recordingFinished, &qapp, [&](Meeting m) {
-            out << "KÉSZ. Mappa: " << m.folder << "\n";
-            for (const auto& t : m.tracks) out << "  sáv: " << t.file << "  (" << t.speakerLabel << ")\n";
+            out << QCoreApplication::translate("cli", "KÉSZ. Mappa: %1").arg(m.folder) << "\n";
+            for (const auto& t : m.tracks)
+                out << QCoreApplication::translate("cli", "  sáv: %1  (%2)").arg(t.file, t.speakerLabel) << "\n";
             if (!m.mixdownFile.isEmpty()) out << "  mixdown: " << m.mixdownFile << "\n";
             out.flush();
             qapp.quit();
         });
         QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
-            err << "HIBA: " << e << "\n"; err.flush(); qapp.exit(1);
+            err << QCoreApplication::translate("cli", "HIBA: %1").arg(e) << "\n"; err.flush(); qapp.exit(1);
         });
         QObject::connect(&app, &AppController::elapsedChanged, &qapp, [&](qint64 ms) {
             out << "\r  " << (ms / 1000) << " s..."; out.flush();
@@ -187,7 +189,7 @@ int main(int argc, char** argv) {
         if (seconds > 0) {
             QTimer::singleShot(seconds * 1000, &app, [&] { out << "\n"; app.stopRecording(); });
         } else {
-            out << "(Felvétel folyik — nyomj ENTER-t a leállításhoz)\n"; out.flush();
+            out << QCoreApplication::translate("cli", "(Felvétel folyik — nyomj ENTER-t a leállításhoz)") << "\n"; out.flush();
             auto* sn = new QSocketNotifier(0, QSocketNotifier::Read, &qapp);
             QObject::connect(sn, &QSocketNotifier::activated, &qapp, [&, sn] {
                 sn->setEnabled(false);
@@ -200,13 +202,13 @@ int main(int argc, char** argv) {
 
     if (cmd == "transcribe" || cmd == "summarize") {
         const QString id = args.value(2);
-        if (id.isEmpty()) { err << "Hiányzó meetingId.\n"; return 1; }
+        if (id.isEmpty()) { err << QCoreApplication::translate("cli", "Hiányzó meetingId.") << "\n"; return 1; }
         QObject::connect(&app, &AppController::transcriptReady, &qapp, [&](QString, QString p) {
-            out << "Átirat kész: " << p << "\n"; out.flush(); qapp.quit(); });
+            out << QCoreApplication::translate("cli", "Átirat kész: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
         QObject::connect(&app, &AppController::summaryReady, &qapp, [&](QString, QString p) {
-            out << "Összefoglaló kész: " << p << "\n"; out.flush(); qapp.quit(); });
+            out << QCoreApplication::translate("cli", "Összefoglaló kész: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
         QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
-            err << "HIBA: " << e << "\n"; err.flush(); qapp.exit(1); });
+            err << QCoreApplication::translate("cli", "HIBA: %1").arg(e) << "\n"; err.flush(); qapp.exit(1); });
         if (cmd == "transcribe") app.transcribeMeeting(id); else app.summarizeMeeting(id);
         return qapp.exec();
     }
@@ -214,24 +216,24 @@ int main(int argc, char** argv) {
     if (cmd == "rename") {
         const QString id = args.value(2), raw = args.value(3), name = args.value(4);
         if (id.isEmpty() || raw.isEmpty()) {
-            err << "Használat: rename <meetingId> <nyersCímke> <név>\n"; return 1;
+            err << QCoreApplication::translate("cli", "Használat: rename <meetingId> <nyersCímke> <név>") << "\n"; return 1;
         }
         QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
-            err << "HIBA: " << e << "\n"; err.flush();
+            err << QCoreApplication::translate("cli", "HIBA: %1").arg(e) << "\n"; err.flush();
         });
         app.renameSpeaker(id, raw, name);   // szinkron
-        out << "Átnevezve: \"" << raw << "\" → \"" << name << "\"\n"; out.flush();
+        out << QCoreApplication::translate("cli", "Átnevezve: \"%1\" → \"%2\"").arg(raw, name) << "\n"; out.flush();
         return 0;
     }
 
     if (cmd == "identify") {
         const QString id = args.value(2);
-        if (id.isEmpty()) { err << "Használat: identify <meetingId>\n"; return 1; }
+        if (id.isEmpty()) { err << QCoreApplication::translate("cli", "Használat: identify <meetingId>") << "\n"; return 1; }
         app.autoIdentifyMeeting(id);   // szinkron (ffmpeg + onnx)
         const Meeting m = app.store()->load(id);
-        out << "Auto-azonosítás kész. Leképezés (speakerMap):\n";
+        out << QCoreApplication::translate("cli", "Auto-azonosítás kész. Leképezés (speakerMap):") << "\n";
         if (m.speakerMap.isEmpty())
-            out << "  (üres — nincs küszöb feletti találat, vagy nincs modell/lenyomat)\n";
+            out << QCoreApplication::translate("cli", "  (üres — nincs küszöb feletti találat, vagy nincs modell/lenyomat)") << "\n";
         for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
             out << "  " << it.key() << " → " << it.value() << "\n";
         out.flush();
@@ -240,16 +242,17 @@ int main(int argc, char** argv) {
 
     if (cmd == "participants") {
         const QString id = args.value(2);
-        if (id.isEmpty()) { err << "Használat: participants <meetingId>\n"; return 1; }
-        out << "Résztvevők azonosítása (átírás előtt, lokálisan)…\n"; out.flush();
+        if (id.isEmpty()) { err << QCoreApplication::translate("cli", "Használat: participants <meetingId>") << "\n"; return 1; }
+        out << QCoreApplication::translate("cli", "Résztvevők azonosítása (átírás előtt, lokálisan)…") << "\n"; out.flush();
         const auto guesses = app.identifyParticipants(id);
-        if (guesses.isEmpty()) { out << "  (nincs találat — nincs modell/aktív sáv, vagy csend)\n"; out.flush(); return 0; }
+        if (guesses.isEmpty()) { out << QCoreApplication::translate("cli", "  (nincs találat — nincs modell/aktív sáv, vagy csend)") << "\n"; out.flush(); return 0; }
         for (const auto& g : guesses) {
             const QString who = g.name.isEmpty()
-                ? QStringLiteral("ISMERETLEN")
+                ? QCoreApplication::translate("cli", "ISMERETLEN")
                 : QStringLiteral("%1 (%2%)").arg(g.name).arg(int(g.score * 100 + 0.5));
-            out << "  • " << g.deviceName << "  →  " << who
-                << "   [" << g.windows << " ablak, minta: " << g.sampleRef << "]\n";
+            out << QCoreApplication::translate("cli", "  • %1  →  %2   [%3 ablak, minta: %4]")
+                       .arg(g.deviceName, who).arg(g.windows).arg(g.sampleRef)
+                << "\n";
         }
         out.flush();
         return 0;
@@ -257,10 +260,11 @@ int main(int argc, char** argv) {
 
     if (cmd == "voiceprints") {
         auto* vp = app.voiceprints();
-        out << "Hang-lenyomatok (" << vp->people().size() << " személy, "
-            << vp->totalPrintCount() << " lenyomat):\n";
+        out << QCoreApplication::translate("cli", "Hang-lenyomatok (%1 személy, %2 lenyomat):")
+                   .arg(vp->people().size()).arg(vp->totalPrintCount())
+            << "\n";
         for (const QString& name : vp->people())
-            out << "  " << name << ": " << vp->printCount(name) << " lenyomat\n";
+            out << QCoreApplication::translate("cli", "  %1: %2 lenyomat").arg(name).arg(vp->printCount(name)) << "\n";
         out.flush();
         return 0;
     }
@@ -276,18 +280,20 @@ int main(int argc, char** argv) {
         if (args.size() > 7) cfg.subtractMean = args.value(7).toInt() != 0;
         if (args.size() > 8) cfg.snipEdges = args.value(8).toInt() != 0;
         VoiceEmbedder emb(model, cfg);
-        if (!emb.isValid()) { err << "HIBA: " << emb.lastError() << "\n"; err.flush(); return 1; }
+        if (!emb.isValid()) { err << QCoreApplication::translate("cli", "HIBA: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }
         const QVector<float> v = emb.embedFile(path, s, e);
-        if (v.isEmpty()) { err << "HIBA: " << emb.lastError() << "\n"; err.flush(); return 1; }
+        if (v.isEmpty()) { err << QCoreApplication::translate("cli", "HIBA: %1").arg(emb.lastError()) << "\n"; err.flush(); return 1; }
         QStringList parts; for (float x : v) parts << QString::number(x, 'g', 8);
         out << parts.join(QLatin1Char(' ')) << "\n"; out.flush();
         return 0;
     }
 
     out << "tanara-cli " << libraryVersion() << "\n"
-        << "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
-           "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
-           "identify <id> | voiceprints\n";
+        << QCoreApplication::translate("cli",
+               "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
+               "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
+               "identify <id> | voiceprints")
+        << "\n";
     out.flush();
     return 0;
 }

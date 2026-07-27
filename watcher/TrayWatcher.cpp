@@ -53,11 +53,11 @@ bool TrayWatcher::start()
     // --- tálca-ikon + menü ---
     m_tray = new QSystemTrayIcon(tanara_gui::makeTanaraIcon(), this);
     auto* menu = new QMenu();
-    menu->addAction(QStringLiteral("Rögzítés azonnali indítása"), this, &TrayWatcher::startRecordingNow);
-    menu->addAction(QStringLiteral("Rögzítő megnyitása…"), this, &TrayWatcher::openRecorder);
-    menu->addAction(QStringLiteral("Elemző megnyitása"), this, &TrayWatcher::openAnalyzer);
+    menu->addAction(tr("Rögzítés azonnali indítása"), this, &TrayWatcher::startRecordingNow);
+    menu->addAction(tr("Rögzítő megnyitása…"), this, &TrayWatcher::openRecorder);
+    menu->addAction(tr("Elemző megnyitása"), this, &TrayWatcher::openAnalyzer);
     menu->addSeparator();
-    menu->addAction(QStringLiteral("Kilépés"), qApp, &QCoreApplication::quit);
+    menu->addAction(tr("Kilépés"), qApp, &QCoreApplication::quit);
     m_tray->setContextMenu(menu);
     updateTrayTooltip(false, QString());
     m_tray->show();
@@ -95,9 +95,9 @@ void TrayWatcher::poll()
         if (newSession && !recording) {
             m_lastOfferedRef = sig.sourceRef;
             m_tray->showMessage(
-                QStringLiteral("Hívás észlelve — %1").arg(sig.appName),
-                QStringLiteral("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
-                               "(azonnali indítás vagy a rögzítő megnyitása)."),
+                tr("Hívás észlelve — %1").arg(sig.appName),
+                tr("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
+                   "(azonnali indítás vagy a rögzítő megnyitása)."),
                 QSystemTrayIcon::Information, 8000);
         }
     } else {
@@ -127,8 +127,8 @@ void TrayWatcher::startRecordingNow()
     // Ne indítsunk másodikat, ha már megy felvétel.
     if (tanara::RecordingLock::read(lockPath()).active) {
         if (m_tray)
-            m_tray->showMessage(QStringLiteral("Már folyik felvétel"),
-                                QStringLiteral("Egy rögzítés már fut."),
+            m_tray->showMessage(tr("Már folyik felvétel"),
+                                tr("Egy rögzítés már fut."),
                                 QSystemTrayIcon::Information, 4000);
         return;
     }
@@ -186,11 +186,11 @@ void TrayWatcher::updateTrayTooltip(bool recording, const QString& detectedApp)
     if (!m_tray)
         return;
     if (recording)
-        m_tray->setToolTip(QStringLiteral("Tanara — felvétel folyamatban"));
+        m_tray->setToolTip(tr("Tanara — felvétel folyamatban"));
     else if (!detectedApp.isEmpty())
-        m_tray->setToolTip(QStringLiteral("Tanara — hívás észlelve: %1").arg(detectedApp));
+        m_tray->setToolTip(tr("Tanara — hívás észlelve: %1").arg(detectedApp));
     else
-        m_tray->setToolTip(QStringLiteral("Tanara — figyel"));
+        m_tray->setToolTip(tr("Tanara — figyel"));
 }
 
 void TrayWatcher::applyAutostart(bool on) const
