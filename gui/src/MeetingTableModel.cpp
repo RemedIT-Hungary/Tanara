@@ -1,5 +1,6 @@
 #include "MeetingTableModel.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 
 namespace tanara_gui {
@@ -29,7 +30,8 @@ QString statusLine(const tanara::Meeting& m) {
     const QChar yes(QChar(0x2713)); // ✓
     const QChar no(QChar(0x25CB));  // ○
     const QChar dot(QChar(0x25CF)); // ●
-    return QStringLiteral("%1 átirat   %2 össz   %3 azonosítva")
+    return QCoreApplication::translate("MeetingTableModel",
+                                       "%1 átirat   %2 össz   %3 azonosítva")
         .arg(m.hasTranscript ? yes : no)
         .arg(m.hasSummary ? yes : no)
         .arg(hasIdentifiedSpeaker(m) ? dot : no);
@@ -100,9 +102,9 @@ QVariant MeetingTableModel::headerData(int section, Qt::Orientation orientation,
     if (role != Qt::DisplayRole || orientation != Qt::Horizontal)
         return QAbstractTableModel::headerData(section, orientation, role);
     switch (section) {
-    case ColTime:     return QStringLiteral("Idő");
-    case ColDuration: return QStringLiteral("Hossz");
-    case ColName:     return QStringLiteral("Név");
+    case ColTime:     return tr("Idő");
+    case ColDuration: return tr("Hossz");
+    case ColName:     return tr("Név");
     default:          return {};
     }
 }

@@ -113,7 +113,7 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_playerBar = new QWidget(this);
     auto* bar = new QHBoxLayout(m_playerBar);
     bar->setContentsMargins(0, 0, 0, 0);
-    m_playPauseBtn = new QPushButton(QStringLiteral("▶ Lejátszás"), m_playerBar);
+    m_playPauseBtn = new QPushButton(tr("▶ Lejátszás"), m_playerBar);
     m_seekSlider = new QSlider(Qt::Horizontal, m_playerBar);
     m_seekSlider->setRange(0, 0);
     m_timeLabel = new QLabel(QStringLiteral("00:00 / 00:00"), m_playerBar);
@@ -125,7 +125,7 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);   // unity (a QAudioOutput 1.0 = nincs app-oldali csillapítás)
     m_volumeSlider->setMaximumWidth(90);
-    m_volumeSlider->setToolTip(QStringLiteral("Hangerő"));
+    m_volumeSlider->setToolTip(tr("Hangerő"));
 
     bar->addWidget(m_playPauseBtn);
     bar->addWidget(m_seekSlider, 1);
@@ -136,7 +136,7 @@ TranscriptPlayer::TranscriptPlayer(QWidget* parent) : QWidget(parent) {
 
     // --- beszélők: KOMPAKT legenda-chipek (ki van a meetingen) ---
     auto* speakersRow = new QHBoxLayout();
-    m_speakersLabel = new QLabel(QStringLiteral("Beszélők:"), this);
+    m_speakersLabel = new QLabel(tr("Beszélők:"), this);
     speakersRow->addWidget(m_speakersLabel);
     m_legendPanel = new QWidget(this);
     m_legendLayout = new QHBoxLayout(m_legendPanel);
@@ -359,9 +359,9 @@ void TranscriptPlayer::rebuildLegend() {
         const bool unknown = (disp == raw);
 
         auto* chip = new QToolButton(m_legendPanel);
-        chip->setText(disp + (isOwn ? QStringLiteral(" (én)") : QString()));
+        chip->setText(disp + (isOwn ? tr(" (én)") : QString()));
         chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip(QStringLiteral("Kattints a névadáshoz / átnevezéshez"));
+        chip->setToolTip(tr("Kattints a névadáshoz / átnevezéshez"));
         // Chip-stílus (téma-követő rgba): saját = kiemelt; ismeretlen = szaggatott/halvány; ismert = kitöltött.
         if (isOwn)
             chip->setStyleSheet(QStringLiteral(
@@ -398,8 +398,8 @@ void TranscriptPlayer::showSpeakerMenu(const QString& rawLabel, const QPoint& gl
 
     QMenu menu(this);
     QAction* header = menu.addAction(named
-        ? QStringLiteral("„%1” — átnevezés / kezelés").arg(current)
-        : QStringLiteral("„%1” — ki ez a beszélő?").arg(rawLabel));
+        ? tr("„%1” — átnevezés / kezelés").arg(current)
+        : tr("„%1” — ki ez a beszélő?").arg(rawLabel));
     header->setEnabled(false);
     menu.addSeparator();
 
@@ -414,13 +414,13 @@ void TranscriptPlayer::showSpeakerMenu(const QString& rawLabel, const QPoint& gl
         });
     }
 
-    QAction* newName = menu.addAction(QStringLiteral("✏  Új név…"));
+    QAction* newName = menu.addAction(tr("✏  Új név…"));
     menu.addSeparator();
-    QAction* listen = m_hasAudio ? menu.addAction(QStringLiteral("▶  Meghallgatás")) : nullptr;
+    QAction* listen = m_hasAudio ? menu.addAction(tr("▶  Meghallgatás")) : nullptr;
     QAction* clear = nullptr;
     if (named) {
         menu.addSeparator();
-        clear = menu.addAction(QStringLiteral("✖  Név törlése (ismeretlen)"));
+        clear = menu.addAction(tr("✖  Név törlése (ismeretlen)"));
     }
 
     QAction* chosen = menu.exec(globalPos);
@@ -428,8 +428,8 @@ void TranscriptPlayer::showSpeakerMenu(const QString& rawLabel, const QPoint& gl
         return;
     if (chosen == newName) {
         bool ok = false;
-        const QString name = QInputDialog::getText(this, QStringLiteral("Új név"),
-            QStringLiteral("Ki ez a beszélő? (a hangja a személy-adatbázisba kerül)"),
+        const QString name = QInputDialog::getText(this, tr("Új név"),
+            tr("Ki ez a beszélő? (a hangja a személy-adatbázisba kerül)"),
             QLineEdit::Normal, QString(), &ok).trimmed();
         if (ok && !name.isEmpty())
             onSpeakerRenamed(rawLabel, name);   // renameSpeaker enroll=true → fingerprint a DB-be
@@ -472,7 +472,7 @@ void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
         m_player->stop();
         m_player->setSource(QUrl());
     }
-    m_playPauseBtn->setText(QStringLiteral("▶ Lejátszás"));
+    m_playPauseBtn->setText(tr("▶ Lejátszás"));
     m_seekSlider->setRange(0, 0);
     updateTimeLabel(0, 0);
 
@@ -485,7 +485,7 @@ void TranscriptPlayer::loadMeeting(const tanara::Meeting& meeting,
         m_lineMeta.clear();
         m_highlightedRow = -1;
         m_view->setExtraSelections({});
-        m_view->setPlainText(QStringLiteral("Nincs átirat — futtass Átírást.\n\n"
+        m_view->setPlainText(tr("Nincs átirat — futtass Átírást.\n\n"
             "(A felvételbe addig is belehallgathatsz lent a lejátszóval.)"));
         if (m_highlighter) m_highlighter->rehighlight();
         rebuildLegend();   // nincs szegmens → üres panel, elrejti magát
@@ -534,7 +534,7 @@ void TranscriptPlayer::clearMeeting() {
     rebuildLegend();
     m_seekSlider->setRange(0, 0);
     updateTimeLabel(0, 0);
-    m_playPauseBtn->setText(QStringLiteral("▶ Lejátszás"));
+    m_playPauseBtn->setText(tr("▶ Lejátszás"));
     setBarEnabled(false);
     m_hasAudio = false;
     m_audioPath.clear();
@@ -654,8 +654,8 @@ void TranscriptPlayer::onPlaybackStateChanged() {
     if (!m_player)
         return;
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
-    m_playPauseBtn->setText(playing ? QStringLiteral("⏸ Szünet")
-                                    : QStringLiteral("▶ Lejátszás"));
+    m_playPauseBtn->setText(playing ? tr("⏸ Szünet")
+                                    : tr("▶ Lejátszás"));
 }
 
 void TranscriptPlayer::onSliderPressed() {

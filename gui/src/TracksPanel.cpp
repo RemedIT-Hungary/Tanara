@@ -2,6 +2,7 @@
 
 #include "tanara/AppController.h"
 
+#include <QCoreApplication>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
@@ -24,9 +25,9 @@ constexpr int RoleActive  = Qt::UserRole + 1;
 
 QString kindStr(tanara::TrackKind k) {
     switch (k) {
-    case tanara::TrackKind::Mic:      return QStringLiteral("🎤 mikrofon");
-    case tanara::TrackKind::Loopback: return QStringLiteral("🔊 hangkimenet");
-    default:                          return QStringLiteral("egyéb");
+    case tanara::TrackKind::Mic:      return QCoreApplication::translate("TracksPanel", "🎤 mikrofon");
+    case tanara::TrackKind::Loopback: return QCoreApplication::translate("TracksPanel", "🔊 hangkimenet");
+    default:                          return QCoreApplication::translate("TracksPanel", "egyéb");
     }
 }
 } // namespace
@@ -34,9 +35,9 @@ QString kindStr(tanara::TrackKind k) {
 TracksPanel::TracksPanel(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     m_hint = new QLabel(
-        QStringLiteral("A felvétel sávjai. A csendesnek ítélt sávok automatikusan "
-                       "„eldobott” állapotba kerülnek (a fájl megmarad). Visszaállíthatod, "
-                       "vagy véglegesen törölheted (fájllal együtt)."), this);
+        tr("A felvétel sávjai. A csendesnek ítélt sávok automatikusan "
+           "„eldobott” állapotba kerülnek (a fájl megmarad). Visszaállíthatod, "
+           "vagy véglegesen törölheted (fájllal együtt)."), this);
     m_hint->setWordWrap(true);
     root->addWidget(m_hint);
 
@@ -45,14 +46,14 @@ TracksPanel::TracksPanel(QWidget* parent) : QWidget(parent) {
     root->addWidget(m_list, 1);
 
     auto* btnRow = new QHBoxLayout();
-    m_playBtn = new QPushButton(QStringLiteral("▶ Meghallgatás"), this);
-    m_playBtn->setToolTip(QStringLiteral("A kijelölt sáv lejátszása (eldobott sávé is, "
-                                         "hogy törlés előtt ellenőrizhető legyen)."));
+    m_playBtn = new QPushButton(tr("▶ Meghallgatás"), this);
+    m_playBtn->setToolTip(tr("A kijelölt sáv lejátszása (eldobott sávé is, "
+                             "hogy törlés előtt ellenőrizhető legyen)."));
     m_stopBtn = new QPushButton(QStringLiteral("⏹"), this);
-    m_restoreBtn = new QPushButton(QStringLiteral("Visszaállítás"), this);
-    m_deleteBtn  = new QPushButton(QStringLiteral("🗑 Törlés (végleges)"), this);
-    m_remixBtn   = new QPushButton(QStringLiteral("🔀 Lekeverés frissítése"), this);
-    m_remixBtn->setToolTip(QStringLiteral(
+    m_restoreBtn = new QPushButton(tr("Visszaállítás"), this);
+    m_deleteBtn  = new QPushButton(tr("🗑 Törlés (végleges)"), this);
+    m_remixBtn   = new QPushButton(tr("🔀 Lekeverés frissítése"), this);
+    m_remixBtn->setToolTip(tr(
         "A kevert hang (mixdown.mp3) újragenerálása az AKTÍV sávokból — a lejátszó "
         "ezt használja. Sáv eldobása/törlése után érdemes frissíteni."));
     btnRow->addWidget(m_playBtn);
@@ -101,9 +102,9 @@ void TracksPanel::clearMeeting() {
 void TracksPanel::populate() {
     m_list->clear();
     for (const tanara::Track& t : m_tracks) {
-        QString label = QStringLiteral("%1  (%2)").arg(t.deviceName, kindStr(t.kind));
+        QString label = tr("%1  (%2)").arg(t.deviceName, kindStr(t.kind));
         if (!t.active)
-            label += QStringLiteral("  —  ELDOBOTT (csendes)");
+            label += tr("  —  ELDOBOTT (csendes)");
         auto* item = new QListWidgetItem(label, m_list);
         item->setData(RoleTrackId, t.id);
         item->setData(RoleActive, t.active);
@@ -134,9 +135,9 @@ void TracksPanel::updateButtons() {
     rf.setBold(m_mixdownDirty && !m_remixRunning);
     m_remixBtn->setFont(rf);
     m_remixBtn->setText(m_remixRunning
-        ? QStringLiteral("⏳ Lekeverés folyamatban…")
-        : (m_mixdownDirty ? QStringLiteral("🔀 Lekeverés frissítése (elavult)")
-                          : QStringLiteral("🔀 Lekeverés frissítése")));
+        ? tr("⏳ Lekeverés folyamatban…")
+        : (m_mixdownDirty ? tr("🔀 Lekeverés frissítése (elavult)")
+                          : tr("🔀 Lekeverés frissítése")));
 }
 
 void TracksPanel::onRemixClicked() {
@@ -164,8 +165,8 @@ void TracksPanel::onPlayClicked() {
         return;
     const QString path = QDir(m_folder).filePath(file);
     if (!QFileInfo::exists(path)) {
-        QMessageBox::information(this, QStringLiteral("Meghallgatás"),
-            QStringLiteral("A hangsáv-fájl nem található:\n%1").arg(path));
+        QMessageBox::information(this, tr("Meghallgatás"),
+            tr("A hangsáv-fájl nem található:\n%1").arg(path));
         return;
     }
     if (!m_player) {
@@ -197,9 +198,9 @@ void TracksPanel::onDeleteClicked() {
         return;
 
     const auto ans = QMessageBox::question(
-        this, QStringLiteral("Sáv törlése"),
-        QStringLiteral("Véglegesen törlöd ezt a hangsávot? A hangfájl fizikailag törlődik, "
-                       "ez nem visszavonható."),
+        this, tr("Sáv törlése"),
+        tr("Véglegesen törlöd ezt a hangsávot? A hangfájl fizikailag törlődik, "
+           "ez nem visszavonható."),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ans != QMessageBox::Yes)
         return;

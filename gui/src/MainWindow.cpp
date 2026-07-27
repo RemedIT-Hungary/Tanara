@@ -82,7 +82,8 @@ public:
         : QWidget(parent), m_target(target), m_minH(minH) {
         setCursor(Qt::SizeVerCursor);
         setFixedHeight(9);
-        setToolTip(QStringLiteral("Húzd az elemzés-doboz átméretezéséhez"));
+        setToolTip(QCoreApplication::translate("MainWindow",
+                                               "Húzd az elemzés-doboz átméretezéséhez"));
     }
 protected:
     void paintEvent(QPaintEvent*) override {
@@ -210,8 +211,8 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                     m_converting.remove(id);
                     if (m_convertBar) m_convertBar->setVisible(false);
                     statusBar()->showMessage(
-                        ok ? QStringLiteral("Lekeverés kész.")
-                           : QStringLiteral("A lekeverés sikertelen."), 4000);
+                        ok ? tr("Lekeverés kész.")
+                           : tr("A lekeverés sikertelen."), 4000);
                     if (id == m_currentMeetingId) loadSelectedMeetingViews();
                 });
         connect(m_controller, &tanara::AppController::recordingFinished,
@@ -301,17 +302,17 @@ void MainWindow::buildUi() {
     // State A — context-doboz az ② Átirat (transcribe gomb) FÖLÖTT: a felhasználó pár
     // szóban megadja, miről szólt → a Soniox context-envelope-ba megy (pontosabb átirat),
     // és az LLM-összefoglaló is megkapja. Alatta a (tudott) résztvevők + az azonosítás-gomb.
-    auto* ctxTitle = new QLabel(QStringLiteral("Miről szólt a meeting?"), this);
+    auto* ctxTitle = new QLabel(tr("Miről szólt a meeting?"), this);
     ctxTitle->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
 
     m_contextEdit = new QPlainTextEdit(this);
-    m_contextEdit->setPlaceholderText(QStringLiteral(
+    m_contextEdit->setPlaceholderText(tr(
         "Pár szóban a téma, fontos nevek, szakszavak… (opcionális)"));
     m_contextEdit->setMaximumHeight(72);
 
     auto* ctxHelp = new QLabel(this);
     ctxHelp->setWordWrap(true);
-    ctxHelp->setText(QStringLiteral(
+    ctxHelp->setText(tr(
         "Ez a kontextus segíti a pontosabb átiratot: az átíró (Soniox) ezzel jobban "
         "dönt a kétes/félreérthető részeknél — nevek, szakszavak, téma."));
     makeHintLabel(ctxHelp, /*small*/ true);
@@ -323,16 +324,16 @@ void MainWindow::buildUi() {
     m_participantsResult->setVisible(false);
 
     m_identifyParticipantsBtn =
-        new QPushButton(QStringLiteral("👥  Résztvevők azonosítása (hang alapján)"), this);
-    m_identifyParticipantsBtn->setToolTip(QStringLiteral(
+        new QPushButton(tr("👥  Résztvevők azonosítása (hang alapján)"), this);
+    m_identifyParticipantsBtn->setToolTip(tr(
         "A résztvevők megtippelése a hangsávok alapján — átirat nélkül is futtatható; "
         "a felismert neveket a context-be is beépíti."));
 
     // Lekeverés (mixdown) kézi indítója — csak akkor látszik, ha még nincs kevert fájl és
     // nem fut épp a lekeverés. A lekevert, normalizált fájl KÉNYELMES HALLGATÁSRA kell; az
     // átíráshoz nem szükséges (az a per-sáv felvételekből megy).
-    m_convertBtn = new QPushButton(QStringLiteral("🎧  Lekeverés készítése (hallgatáshoz)"), this);
-    m_convertBtn->setToolTip(QStringLiteral(
+    m_convertBtn = new QPushButton(tr("🎧  Lekeverés készítése (hallgatáshoz)"), this);
+    m_convertBtn->setToolTip(tr(
         "Egyetlen, hangosságra normalizált hangfájlt készít a sávokból — kényelmes "
         "visszahallgatáshoz. Opcionális: az átíráshoz nem kell."));
     m_convertBtn->setVisible(false);
@@ -390,7 +391,7 @@ void MainWindow::buildUi() {
     {
         const int summaryIdx = m_tabs->indexOf(m_summaryView);
         const QString summaryTitle = (summaryIdx >= 0)
-            ? m_tabs->tabText(summaryIdx) : QStringLiteral("Összefoglaló");
+            ? m_tabs->tabText(summaryIdx) : tr("Összefoglaló");
         if (summaryIdx >= 0)
             m_tabs->removeTab(summaryIdx);
 
@@ -403,20 +404,20 @@ void MainWindow::buildUi() {
         // --- akció-sáv: [✨ Gyors] [🧩 Témánként] ……… [⚙ Kontextus] [↻ Újragenerálás] ---
         auto* actionBar = new QHBoxLayout();
         actionBar->setContentsMargins(0, 0, 0, 0);
-        m_generateSummaryBtn = new QPushButton(QStringLiteral("✨  Gyors összefoglaló"), sumTab);
+        m_generateSummaryBtn = new QPushButton(tr("✨  Gyors összefoglaló"), sumTab);
         m_generateSummaryBtn->setStyleSheet(QStringLiteral("QPushButton { font-weight: bold; }"));
-        m_generateSummaryBtn->setToolTip(QStringLiteral(
+        m_generateSummaryBtn->setToolTip(tr(
             "Egy lépésben, egy modell-hívással készít vezetői összefoglalót + teendőket."));
-        m_complexBtn = new QPushButton(QStringLiteral("🧩  Témánként"), sumTab);
-        m_complexBtn->setToolTip(QStringLiteral(
+        m_complexBtn = new QPushButton(tr("🧩  Témánként"), sumTab);
+        m_complexBtn->setToolTip(tr(
             "Több körös: a modell kigyűjti a témákat, te szerkeszted, majd témánként részletes "
             "elemzést készít. Pontosabb hosszú/összetett felvételekhez."));
-        m_contextToggleBtn = new QPushButton(QStringLiteral("⚙  Kontextus"), sumTab);
+        m_contextToggleBtn = new QPushButton(tr("⚙  Kontextus"), sumTab);
         m_contextToggleBtn->setCheckable(true);
-        m_contextToggleBtn->setToolTip(QStringLiteral(
+        m_contextToggleBtn->setToolTip(tr(
             "Pár szó a témáról/nevekről — pontosabb összefoglalót ad. Átirat után is módosítható."));
-        m_regenSummaryBtn = new QPushButton(QStringLiteral("↻  Újragenerálás"), sumTab);
-        m_regenSummaryBtn->setToolTip(QStringLiteral(
+        m_regenSummaryBtn = new QPushButton(tr("↻  Újragenerálás"), sumTab);
+        m_regenSummaryBtn->setToolTip(tr(
             "A gyors összefoglaló újragenerálása a (módosított) kontextussal — az átiratot nem érinti."));
         actionBar->addWidget(m_generateSummaryBtn);
         actionBar->addWidget(m_complexBtn);
@@ -430,7 +431,7 @@ void MainWindow::buildUi() {
         auto* ctxLay = new QHBoxLayout(m_contextPanel);
         ctxLay->setContentsMargins(0, 0, 0, 0);
         m_summaryContextEdit = new QPlainTextEdit(m_contextPanel);
-        m_summaryContextEdit->setPlaceholderText(QStringLiteral(
+        m_summaryContextEdit->setPlaceholderText(tr(
             "Miről szólt? (téma, nevek, szakszavak…) — a pontosabb összefoglalóhoz"));
         m_summaryContextEdit->setMaximumHeight(56);
         ctxLay->addWidget(m_summaryContextEdit);
@@ -445,7 +446,7 @@ void MainWindow::buildUi() {
         m_summaryEmptyPage = new QWidget(m_summaryStack);
         auto* el = new QVBoxLayout(m_summaryEmptyPage);
         el->addStretch(1);
-        auto* emptyLbl = new QLabel(QStringLiteral(
+        auto* emptyLbl = new QLabel(tr(
             "Még nincs összefoglaló.\nVálassz fent: „Gyors összefoglaló” egy lépésben, "
             "vagy „Témánként” a részletes, szerkeszthető elemzéshez."), m_summaryEmptyPage);
         emptyLbl->setAlignment(Qt::AlignCenter);
@@ -460,11 +461,11 @@ void MainWindow::buildUi() {
         auto* tl = new QVBoxLayout(m_topicEditorPage);
         tl->setContentsMargins(0, 0, 0, 0);
         auto* topRow = new QHBoxLayout();
-        m_backToSummaryBtn = new QPushButton(QStringLiteral("‹  Vissza az összefoglalóhoz"),
+        m_backToSummaryBtn = new QPushButton(tr("‹  Vissza az összefoglalóhoz"),
                                              m_topicEditorPage);
         m_backToSummaryBtn->setFlat(true);
         m_backToSummaryBtn->setVisible(false);
-        auto* tHint = new QLabel(QStringLiteral(
+        auto* tHint = new QLabel(tr(
             "Szerkeszd a témákat (cím + gist), majd „Elemzés indítása”. Minden elemzés azonnal "
             "mentődik; a ▶/↻ gombbal témánként is futtatható."), m_topicEditorPage);
         tHint->setWordWrap(true);
@@ -489,13 +490,13 @@ void MainWindow::buildUi() {
         tl->addWidget(tScroll, 1);
 
         auto* actRow = new QHBoxLayout();
-        auto* addTopicBtn = new QPushButton(QStringLiteral("➕  Új téma"), m_topicEditorPage);
+        auto* addTopicBtn = new QPushButton(tr("➕  Új téma"), m_topicEditorPage);
         connect(addTopicBtn, &QPushButton::clicked, this, [this]() {
             addTopicRow(tanara::SummaryTopic{});   // üres sor (id-t a mentéskor kap, ha kell)
         });
-        m_startAnalysisBtn = new QPushButton(QStringLiteral("Elemzés indítása →"), m_topicEditorPage);
+        m_startAnalysisBtn = new QPushButton(tr("Elemzés indítása →"), m_topicEditorPage);
         m_startAnalysisBtn->setStyleSheet(QStringLiteral("QPushButton { font-weight: bold; }"));
-        m_startAnalysisBtn->setToolTip(QStringLiteral(
+        m_startAnalysisBtn->setToolTip(tr(
             "A hiányzó témák elemzése lefut, majd elkészül a végső vezetői összefoglaló."));
         actRow->addWidget(addTopicBtn, 0);
         actRow->addStretch(1);
@@ -527,7 +528,7 @@ void MainWindow::buildUi() {
     ui->splitter->setStretchFactor(0, 0);
     ui->splitter->setStretchFactor(1, 1);
 
-    statusBar()->showMessage(QStringLiteral("Készen áll"));
+    statusBar()->showMessage(tr("Készen áll"));
     m_busyBar = new QProgressBar(this);
     m_busyBar->setRange(0, 0);            // indeterminált (pörgő) busy-jelző
     m_busyBar->setMaximumWidth(160);
@@ -541,7 +542,7 @@ void MainWindow::buildUi() {
     m_convertBar = new QProgressBar(this);
     m_convertBar->setRange(0, 100);
     m_convertBar->setMaximumWidth(200);
-    m_convertBar->setFormat(QStringLiteral("🎧 Lekeverés %p%"));
+    m_convertBar->setFormat(tr("🎧 Lekeverés %p%"));
     m_convertBar->setVisible(false);
     statusBar()->addPermanentWidget(m_convertBar);
 
@@ -569,30 +570,30 @@ void MainWindow::buildUi() {
 
 void MainWindow::buildMenu() {
     // A gyakori akciók a felső sávon élnek; a menü a teljességhez marad meg.
-    auto* fileMenu = menuBar()->addMenu(QStringLiteral("&Fájl"));
-    QAction* newRecAct = fileMenu->addAction(QStringLiteral("🔴  Új felvétel…"));
+    auto* fileMenu = menuBar()->addMenu(tr("&Fájl"));
+    QAction* newRecAct = fileMenu->addAction(tr("🔴  Új felvétel…"));
     connect(newRecAct, &QAction::triggered, this, &MainWindow::popOutRecorder);
     fileMenu->addSeparator();
-    QAction* settingsAct = fileMenu->addAction(QStringLiteral("Beállítások…"));
+    QAction* settingsAct = fileMenu->addAction(tr("Beállítások…"));
     connect(settingsAct, &QAction::triggered, this, &MainWindow::openSettings);
-    QAction* peopleAct = fileMenu->addAction(QStringLiteral("Személyek…"));
+    QAction* peopleAct = fileMenu->addAction(tr("Személyek…"));
     connect(peopleAct, &QAction::triggered, this, &MainWindow::openPeopleManager);
     fileMenu->addSeparator();
-    QAction* quitAct = fileMenu->addAction(QStringLiteral("Kilépés"));
+    QAction* quitAct = fileMenu->addAction(tr("Kilépés"));
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
-    auto* viewMenu = menuBar()->addMenu(QStringLiteral("&Nézet"));
-    QAction* tracksAct = viewMenu->addAction(QStringLiteral("Sávok"));
-    tracksAct->setToolTip(QStringLiteral("A kiválasztott megbeszélés hangsávjai."));
+    auto* viewMenu = menuBar()->addMenu(tr("&Nézet"));
+    QAction* tracksAct = viewMenu->addAction(tr("Sávok"));
+    tracksAct->setToolTip(tr("A kiválasztott megbeszélés hangsávjai."));
     connect(tracksAct, &QAction::triggered, this, &MainWindow::onTracksToggleClicked);
     QAction* participantsAct =
-        viewMenu->addAction(QStringLiteral("Résztvevők azonosítása (hang alapján)…"));
-    participantsAct->setToolTip(QStringLiteral(
+        viewMenu->addAction(tr("Résztvevők azonosítása (hang alapján)…"));
+    participantsAct->setToolTip(tr(
         "A kiválasztott felvétel résztvevőinek megtippelése a hangsávok alapján "
         "(átirat nélkül is)."));
     connect(participantsAct, &QAction::triggered, this, &MainWindow::onIdentifyParticipants);
-    QAction* recWinAct = viewMenu->addAction(QStringLiteral("Felvétel-ablak előtérbe"));
-    recWinAct->setToolTip(QStringLiteral(
+    QAction* recWinAct = viewMenu->addAction(tr("Felvétel-ablak előtérbe"));
+    recWinAct->setToolTip(tr(
         "A leválasztott felvétel-vezérlő ablakot előtérbe hozza (vagy megnyitja)."));
     connect(recWinAct, &QAction::triggered, this, &MainWindow::popOutRecorder);
 }
@@ -728,9 +729,9 @@ void MainWindow::updateSummaryActionBar(const tanara::Meeting& m) {
     if (m_generateSummaryBtn) {
         m_generateSummaryBtn->setEnabled(actionsEnabled);
         m_generateSummaryBtn->setToolTip(rs.runnable
-            ? QStringLiteral("Egy lépésben, egy modell-hívással készít vezetői összefoglalót + teendőket.")
-            : (cfgBlock ? QStringLiteral("Beállítás szükséges: %1").arg(rs.detail)
-                        : QStringLiteral("Nem futtatható: %1").arg(rs.detail)));
+            ? tr("Egy lépésben, egy modell-hívással készít vezetői összefoglalót + teendőket.")
+            : (cfgBlock ? tr("Beállítás szükséges: %1").arg(rs.detail)
+                        : tr("Nem futtatható: %1").arg(rs.detail)));
     }
     if (m_complexBtn) m_complexBtn->setEnabled(actionsEnabled);
     // Az Újragenerálás a kész gyors-összefoglalóra vonatkozik; a téma-munkaterületen elrejtjük.
@@ -750,8 +751,8 @@ QString MainWindow::durationHuman(qint64 ms) {
     const qint64 hh = totalSec / 3600;
     const qint64 mm = (totalSec % 3600) / 60;
     if (hh > 0)
-        return QStringLiteral("%1ó %2p").arg(hh).arg(mm);
-    return QStringLiteral("%1p").arg(mm);
+        return tr("%1ó %2p").arg(hh).arg(mm);
+    return tr("%1p").arg(mm);
 }
 
 void MainWindow::reloadHeader(const tanara::Meeting& m) {
@@ -781,9 +782,9 @@ void MainWindow::reloadSpeakersBar(const tanara::Meeting& m) {
     named.removeDuplicates();
     QStringList parts = named;
     if (unknown > 0)
-        parts << QStringLiteral("%1 ismeretlen").arg(unknown);
+        parts << tr("%1 ismeretlen").arg(unknown);
     m_speakersSummary->setText(parts.isEmpty()
-        ? QStringLiteral("még nincs azonosítva — a neveket az Átiraton add meg")
+        ? tr("még nincs azonosítva — a neveket az Átiraton add meg")
         : parts.join(QStringLiteral(" · ")));
 
     // A beszélők-sáv csak akkor érdemi, ha van átirat (abból jönnek a beszélők).
@@ -807,9 +808,9 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
             m_identifyParticipantsBtn->setEnabled(hasActiveTrack);
             m_identifyParticipantsBtn->setToolTip(
                 hasActiveTrack
-                    ? QStringLiteral("A résztvevők megtippelése a hangsávok alapján — "
-                                     "átirat nélkül is futtatható.")
-                    : QStringLiteral("Nincs aktív hangsáv ehhez a felvételhez."));
+                    ? tr("A résztvevők megtippelése a hangsávok alapján — "
+                         "átirat nélkül is futtatható.")
+                    : tr("Nincs aktív hangsáv ehhez a felvételhez."));
         }
 
         // Lekeverés-gomb (kézi mód / discoverability): csak ha még nincs kevert fájl ÉS
@@ -830,7 +831,7 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
             QString line;
             const QString cached = m_participantsCache.value(m.id);
             if (!cached.isEmpty()) {
-                line = QStringLiteral("🔎 Résztvevők: %1").arg(cached);
+                line = tr("🔎 Résztvevők: %1").arg(cached);
             } else {
                 QStringList named;
                 int unknown = 0;
@@ -845,7 +846,7 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
                     }
                 }
                 if (!named.isEmpty() || unknown > 0)
-                    line = QStringLiteral("Résztvevők: %1")
+                    line = tr("Résztvevők: %1")
                                .arg(participantsSummary(named, unknown, named.size() + unknown));
             }
             m_participantsResult->setText(line);
@@ -858,20 +859,20 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
                          : tanara::ReadinessResult{};
         m_transcribeBtn->setEnabled(r.runnable);
         if (r.runnable) {
-            m_step2label->setText(QStringLiteral("<b>② Átirat</b>"));
-            m_transcribeBtn->setText(QStringLiteral("Átírás indítása ▸"));
+            m_step2label->setText(tr("<b>② Átirat</b>"));
+            m_transcribeBtn->setText(tr("Átírás indítása ▸"));
             m_transcribeBtn->setToolTip(QString());
         } else {
             // Blokkolt (jellemzően provider-konfig) → „Előbb: <detail>" + Beállítás CTA.
             m_step2label->setText(
-                QStringLiteral("<b>② Átirat</b><br><span style='color:#b35900;'>Előbb: %1</span>")
+                tr("<b>② Átirat</b><br><span style='color:#b35900;'>Előbb: %1</span>")
                     .arg(r.detail.toHtmlEscaped()));
             if (r.blockerKind == tanara::BlockerKind::ProviderConfig
                 || r.blockerKind == tanara::BlockerKind::Auth) {
-                m_transcribeBtn->setText(QStringLiteral("⚙ Beállítás…"));
+                m_transcribeBtn->setText(tr("⚙ Beállítás…"));
                 m_transcribeBtn->setEnabled(true);   // a Beállítás-nyitás mindig megy
             } else {
-                m_transcribeBtn->setText(QStringLiteral("Átírás indítása ▸"));
+                m_transcribeBtn->setText(tr("Átírás indítása ▸"));
                 m_transcribeBtn->setEnabled(false);
             }
             m_transcribeBtn->setToolTip(r.detail);
@@ -932,7 +933,7 @@ void MainWindow::onTranscribeClicked() {
             openSettings();
         } else {
             statusBar()->showMessage(
-                QStringLiteral("Nem indítható: ") + r.detail, 6000);
+                tr("Nem indítható: ") + r.detail, 6000);
         }
         return;
     }
@@ -942,7 +943,7 @@ void MainWindow::onTranscribeClicked() {
     if (m_contextEdit)
         m_controller->setMeetingContextNote(m.id, m_contextEdit->toPlainText());
 
-    setBusy(true, QStringLiteral("Átírás indítása…"));
+    setBusy(true, tr("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
 }
 
@@ -979,7 +980,7 @@ void MainWindow::onSummarizeClicked() {
             openSettings();
         } else {
             statusBar()->showMessage(
-                QStringLiteral("Nem indítható: ") + rs.detail, 6000);
+                tr("Nem indítható: ") + rs.detail, 6000);
         }
         return;
     }
@@ -987,7 +988,7 @@ void MainWindow::onSummarizeClicked() {
     // (újra)generálunk — így a modell a frissített leírást kapja.
     if (m_summaryContextEdit)
         m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
-    setBusy(true, QStringLiteral("Összefoglaló készítése…"));
+    setBusy(true, tr("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
 }
 
@@ -1003,12 +1004,12 @@ void MainWindow::onComplexClicked() {
             || rs.blockerKind == tanara::BlockerKind::Auth)
             openSettings();
         else
-            statusBar()->showMessage(QStringLiteral("Nem indítható: ") + rs.detail, 6000);
+            statusBar()->showMessage(tr("Nem indítható: ") + rs.detail, 6000);
         return;
     }
     if (m_summaryContextEdit)
         m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
-    setBusy(true, QStringLiteral("Témák kigyűjtése…"));
+    setBusy(true, tr("Témák kigyűjtése…"));
     m_controller->extractMeetingTopics(m.id);   // → topicsReady → onTopicsReady (szerkesztő)
 }
 
@@ -1066,20 +1067,20 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     head->setSpacing(6);
     auto* dot = new QLabel(card);
     dot->setFixedSize(10, 10);       // CSS-rajzolt kör; a színt a setTopicRowState állítja
-    dot->setToolTip(QStringLiteral("Állapot"));
+    dot->setToolTip(tr("Állapot"));
     auto* title = new QLineEdit(t.title, card);
-    title->setPlaceholderText(QStringLiteral("Téma címe"));
+    title->setPlaceholderText(tr("Téma címe"));
     QFont tf = title->font(); tf.setBold(true); title->setFont(tf);
     title->setFrame(false);   // tisztább fejléc — a cím inline szerkeszthető, keret nélkül
     auto* status = new QLabel(card);
     status->setStyleSheet(QStringLiteral("QLabel { color: palette(mid); }"));
     auto* run = new QPushButton(card);
     run->setFixedWidth(32);
-    run->setToolTip(QStringLiteral("Ennek a témának az elemzése (a kész eredmény mentődik)"));
+    run->setToolTip(tr("Ennek a témának az elemzése (a kész eredmény mentődik)"));
     auto* expand = new QToolButton(card);
     expand->setArrowType(Qt::RightArrow);
     expand->setAutoRaise(true); expand->setCheckable(true);
-    expand->setToolTip(QStringLiteral("Részletek: leírás + elemzés"));
+    expand->setToolTip(tr("Részletek: leírás + elemzés"));
     head->addWidget(dot, 0);
     head->addWidget(title, 1);
     head->addWidget(status, 0);
@@ -1100,10 +1101,10 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     auto* dv = new QVBoxLayout(details);
     dv->setContentsMargins(0, 2, 0, 0);
     dv->setSpacing(3);
-    auto* gistLbl = new QLabel(QStringLiteral("Rövid leírás a modellnek (opcionális):"), details);
+    auto* gistLbl = new QLabel(tr("Rövid leírás a modellnek (opcionális):"), details);
     makeHintLabel(gistLbl, /*small*/ true);
     auto* summary = new QPlainTextEdit(t.summary, details);
-    summary->setPlaceholderText(QStringLiteral("Miről szól ez a téma — 1-2 mondat"));
+    summary->setPlaceholderText(tr("Miről szól ez a téma — 1-2 mondat"));
     summary->setTabChangesFocus(true);
     summary->setFixedHeight(52);
     dv->addWidget(gistLbl);
@@ -1113,7 +1114,7 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     auto* rv = new QVBoxLayout(resultBlock);
     rv->setContentsMargins(0, 4, 0, 0);
     rv->setSpacing(3);
-    auto* resLbl = new QLabel(QStringLiteral("Elemzés eredménye:"), resultBlock);
+    auto* resLbl = new QLabel(tr("Elemzés eredménye:"), resultBlock);
     makeHintLabel(resLbl, /*small*/ true);
     auto* result = new QTextBrowser(resultBlock);
     result->setOpenExternalLinks(true);
@@ -1129,7 +1130,7 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     // A törlés a részletek-panel alján (nem a fejlécben) — szándékos, nehezebben elvéthető,
     // és megerősítést kér, mert a téma + a kész elemzése is véglegesen elvész.
     auto* delRow = new QHBoxLayout();
-    auto* del = new QPushButton(QStringLiteral("Téma törlése"), details);
+    auto* del = new QPushButton(tr("Téma törlése"), details);
     del->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
     del->setStyleSheet(QStringLiteral("QPushButton { color: #d64545; }"));
     delRow->addStretch(1);
@@ -1142,8 +1143,9 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     // A kártyát a záró stretch ELÉ szúrjuk (az utolsó elem a stretch).
     m_topicRowsLayout->insertWidget(m_topicRowsLayout->count() - 1, card);
 
-    TopicRow tr{ t.id, card, dot, title, summary, prog, status, run, expand, details, resultBlock, result };
-    m_topicRows.append(tr);
+    // A lokális neve NEM lehet `tr` — az kitakarná a QObject::tr()-t a lenti lambdákban.
+    TopicRow newRow{ t.id, card, dot, title, summary, prog, status, run, expand, details, resultBlock, result };
+    m_topicRows.append(newRow);
     // Új/üres téma alapból NYITVA (hogy szerkeszd); betöltött téma csukva marad (kompakt lista).
     setTopicRowState(m_topicRows.last(), TopicState::Draft);
     setTopicRowExpanded(m_topicRows.last(), t.title.trimmed().isEmpty());
@@ -1154,10 +1156,10 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
     connect(del, &QPushButton::clicked, this, [this, card]() {
         TopicRow* r = topicRowByCard(card);
         const QString name = (r && r->title) ? r->title->text().trimmed() : QString();
-        const auto btn = QMessageBox::question(this, QStringLiteral("Téma törlése"),
+        const auto btn = QMessageBox::question(this, tr("Téma törlése"),
             name.isEmpty()
-                ? QStringLiteral("Biztosan törlöd ezt a témát? A kész elemzése is elvész.")
-                : QStringLiteral("Biztosan törlöd a(z) „%1” témát? A kész elemzése is elvész.").arg(name),
+                ? tr("Biztosan törlöd ezt a témát? A kész elemzése is elvész.")
+                : tr("Biztosan törlöd a(z) „%1” témát? A kész elemzése is elvész.").arg(name),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (btn != QMessageBox::Yes)
             return;
@@ -1172,7 +1174,7 @@ void MainWindow::addTopicRow(const tanara::SummaryTopic& t) {
         if (!r) return;
         const QString title = r->title ? r->title->text().trimmed() : QString();
         if (title.isEmpty()) {
-            statusBar()->showMessage(QStringLiteral("A témához cím kell az elemzéshez."), 5000);
+            statusBar()->showMessage(tr("A témához cím kell az elemzéshez."), 5000);
             return;
         }
         tanara::SummaryTopic t;
@@ -1191,14 +1193,14 @@ void MainWindow::setTopicRowState(TopicRow& r, TopicState st, const QString& tip
     struct V { const char* color; const char* text; bool reload; bool busy; bool runEnabled; };
     V vis;
     switch (st) {
-        case TopicState::Draft:   vis = {"#9aa0a6", "",         false, false, true}; break;
-        case TopicState::Queued:  vis = {"#c99a00", "Sorban",   false, false, false}; break;
-        case TopicState::Running: vis = {"#2d7ff9", "Elemzés…", false, true,  false}; break;
-        case TopicState::Done:    vis = {"#2fa84f", "Kész",     true,  false, true}; break;
-        case TopicState::Failed:  vis = {"#d64545", "Hiba",     true,  false, true}; break;
+        case TopicState::Draft:   vis = {"#9aa0a6", "",                     false, false, true}; break;
+        case TopicState::Queued:  vis = {"#c99a00", QT_TR_NOOP("Sorban"),   false, false, false}; break;
+        case TopicState::Running: vis = {"#2d7ff9", QT_TR_NOOP("Elemzés…"), false, true,  false}; break;
+        case TopicState::Done:    vis = {"#2fa84f", QT_TR_NOOP("Kész"),     true,  false, true}; break;
+        case TopicState::Failed:  vis = {"#d64545", QT_TR_NOOP("Hiba"),     true,  false, true}; break;
     }
-    // FIGYELEM: a vis.text UTF-8 (ékezetes) — QString::fromUtf8 kell, a QLatin1String mojibake-t ad.
-    const QString stText = QString::fromUtf8(vis.text);
+    // A vis.text UTF-8 forrás-szöveg (QT_TR_NOOP-pal jelölve) — a tr() fordítja/konvertálja.
+    const QString stText = vis.text[0] ? tr(vis.text) : QString();
     if (r.dot) {
         r.dot->setStyleSheet(QStringLiteral(
             "background-color: %1; border-radius: 5px;").arg(QLatin1String(vis.color)));
@@ -1270,7 +1272,7 @@ void MainWindow::onTopicFailed(QString meetingId, QString topicId, QString error
     if (meetingId != m_topicsMeetingId) return;
     if (TopicRow* r = topicRowById(topicId))
         setTopicRowState(*r, TopicState::Failed, error);
-    statusBar()->showMessage(QStringLiteral("Téma-elemzés hiba: %1").arg(error), 8000);
+    statusBar()->showMessage(tr("Téma-elemzés hiba: %1").arg(error), 8000);
 }
 
 void MainWindow::onTopicQueueFinished(QString meetingId, int okCount, int failCount) {
@@ -1280,10 +1282,10 @@ void MainWindow::onTopicQueueFinished(QString meetingId, int okCount, int failCo
     // egyedi (kártyás) futás vagy hibás batch után itt áll le a busy.
     setBusy(false);
     if (failCount == 0) {
-        statusBar()->showMessage(QStringLiteral("%1 téma elemzése kész.").arg(okCount), 5000);
+        statusBar()->showMessage(tr("%1 téma elemzése kész.").arg(okCount), 5000);
     } else {
-        statusBar()->showMessage(QStringLiteral("%1 téma kész, %2 hibázott — a hibásak a kártyájukon "
-                                                "újrafuttathatók.").arg(okCount).arg(failCount), 10000);
+        statusBar()->showMessage(tr("%1 téma kész, %2 hibázott — a hibásak a kártyájukon "
+                                    "újrafuttathatók.").arg(okCount).arg(failCount), 10000);
     }
 }
 
@@ -1303,11 +1305,11 @@ void MainWindow::onStartAnalysis() {
         topics.append(t);
     }
     if (topics.isEmpty()) {
-        statusBar()->showMessage(QStringLiteral("Adj meg legalább egy témát."), 5000);
+        statusBar()->showMessage(tr("Adj meg legalább egy témát."), 5000);
         return;
     }
     if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(false);
-    setBusy(true, QStringLiteral("Témánkénti elemzés…"));
+    setBusy(true, tr("Témánkénti elemzés…"));
     // Csak a még elemzetlen témák futnak; ha mind kész, egyből a reduce jön → summaryReady.
     m_controller->generateComplexSummary(m_topicsMeetingId, topics);
 }
@@ -1317,10 +1319,12 @@ void MainWindow::onStartAnalysis() {
 static QString participantsSummary(QStringList named, int unknownCount, int totalDistinct) {
     named.removeDuplicates();
     if (named.isEmpty())
-        return QStringLiteral("%1 különböző partner azonosítva").arg(totalDistinct);
+        return QCoreApplication::translate("MainWindow", "%1 különböző partner azonosítva")
+            .arg(totalDistinct);
     QString s = named.join(QStringLiteral(", "));
     if (unknownCount > 0)
-        s += QStringLiteral(" és %1 ismeretlen partner").arg(unknownCount);
+        s += QCoreApplication::translate("MainWindow", " és %1 ismeretlen partner")
+                 .arg(unknownCount);
     return s;
 }
 
@@ -1333,9 +1337,9 @@ void MainWindow::onIdentifyParticipants() {
     // Megszakítható progress: a számítás a fő szálon fut (a store-mutáció miatt), de a
     // callback minden lépésnél frissíti a dialógust + processEvents-szel életben tartja
     // a UI-t és figyeli a „Megszakítás"-t. A core UI-mentes marad.
-    QProgressDialog dlg(QStringLiteral("Résztvevők azonosítása a hang alapján…"),
-                        QStringLiteral("Megszakítás"), 0, 0, this);
-    dlg.setWindowTitle(QStringLiteral("Résztvevők azonosítása"));
+    QProgressDialog dlg(tr("Résztvevők azonosítása a hang alapján…"),
+                        tr("Megszakítás"), 0, 0, this);
+    dlg.setWindowTitle(tr("Résztvevők azonosítása"));
     dlg.setWindowModality(Qt::WindowModal);
     dlg.setMinimumDuration(0);
     dlg.setAutoClose(false);
@@ -1353,7 +1357,7 @@ void MainWindow::onIdentifyParticipants() {
         // (tartós) Beszélők-sáv frissülése.
         m_controller->autoIdentifyMeeting(m.id, progress);
         if (dlg.wasCanceled()) {
-            statusBar()->showMessage(QStringLiteral("Azonosítás megszakítva."), 4000);
+            statusBar()->showMessage(tr("Azonosítás megszakítva."), 4000);
             return;
         }
         const tanara::Meeting fresh = m_controller->store()->load(m.id);
@@ -1371,7 +1375,7 @@ void MainWindow::onIdentifyParticipants() {
         // panel eredmény-sora (+ session-cache), nem egy eltűnő popup.
         const auto guesses = m_controller->identifyParticipants(m.id, progress);
         if (dlg.wasCanceled()) {
-            statusBar()->showMessage(QStringLiteral("Azonosítás megszakítva."), 4000);
+            statusBar()->showMessage(tr("Azonosítás megszakítva."), 4000);
             return;
         }
         QStringList named;
@@ -1383,7 +1387,7 @@ void MainWindow::onIdentifyParticipants() {
         summary = participantsSummary(named, unknown, guesses.size());
         m_participantsCache.insert(m.id, summary);
         if (m_participantsResult) {
-            m_participantsResult->setText(QStringLiteral("🔎 Résztvevők: %1").arg(summary));
+            m_participantsResult->setText(tr("🔎 Résztvevők: %1").arg(summary));
             m_participantsResult->setVisible(true);
         }
     }
@@ -1393,7 +1397,7 @@ void MainWindow::onIdentifyParticipants() {
 
 void MainWindow::onTranscriptReady(QString meetingId, QString /*markdownPath*/) {
     setBusy(false);
-    statusBar()->showMessage(QStringLiteral("Átirat elkészült."), 5000);
+    statusBar()->showMessage(tr("Átirat elkészült."), 5000);
     if (meetingId != m_currentMeetingId)
         return;
     bool ok = false;
@@ -1411,7 +1415,7 @@ void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
     if (meetingId == m_topicsMeetingId)
         m_topicEditorActive = false;   // a kész összefoglaló lapja jöhet a szerkesztő helyére
     setBusy(false);
-    statusBar()->showMessage(QStringLiteral("Összefoglaló elkészült."), 5000);
+    statusBar()->showMessage(tr("Összefoglaló elkészült."), 5000);
     if (meetingId != m_currentMeetingId)
         return;
     bool ok = false;
@@ -1425,8 +1429,8 @@ void MainWindow::onSummaryReady(QString meetingId, QString /*markdownPath*/) {
 
 void MainWindow::onError(QString message) {
     setBusy(false);
-    statusBar()->showMessage(QStringLiteral("Hiba: ") + message, 8000);
-    QMessageBox::warning(this, QStringLiteral("Hiba"), message);
+    statusBar()->showMessage(tr("Hiba: ") + message, 8000);
+    QMessageBox::warning(this, tr("Hiba"), message);
 }
 
 void MainWindow::onJobProgress(QString /*meetingId*/, QString message) {
@@ -1474,7 +1478,7 @@ void MainWindow::onTracksToggleClicked() {
 
 void MainWindow::onRecordingFinished(tanara::Meeting meeting) {
     statusBar()->showMessage(
-        QStringLiteral("Felvétel kész: %1").arg(meeting.title), 5000);
+        tr("Felvétel kész: %1").arg(meeting.title), 5000);
     // A modell a store jelzéseire magától frissül; ettől függetlenül friss.
 }
 
@@ -1487,10 +1491,10 @@ void MainWindow::onTableContextMenu(const QPoint& pos) {
         return;
 
     QMenu menu(this);
-    QAction* renameAct = menu.addAction(QStringLiteral("Átnevezés…"));
+    QAction* renameAct = menu.addAction(tr("Átnevezés…"));
     connect(renameAct, &QAction::triggered, this, &MainWindow::renameSelectedMeeting);
 
-    QAction* openFolderAct = menu.addAction(QStringLiteral("📂  Mappa megnyitása"));
+    QAction* openFolderAct = menu.addAction(tr("📂  Mappa megnyitása"));
     connect(openFolderAct, &QAction::triggered, this, [this]() {
         bool ok = false;
         const tanara::Meeting m = selectedMeeting(&ok);
@@ -1501,7 +1505,7 @@ void MainWindow::onTableContextMenu(const QPoint& pos) {
     });
 
     menu.addSeparator();
-    QAction* deleteAct = menu.addAction(QStringLiteral("🗑  Törlés…"));
+    QAction* deleteAct = menu.addAction(tr("🗑  Törlés…"));
     // Vörös, „veszélyes” kiemelés a törlés-akcióhoz.
     deleteAct->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
     menu.setStyleSheet(QStringLiteral(
@@ -1523,13 +1527,13 @@ void MainWindow::deleteSelectedMeeting() {
 
     QMessageBox box(this);
     box.setIcon(QMessageBox::Warning);
-    box.setWindowTitle(QStringLiteral("Megbeszélés törlése"));
-    box.setText(QStringLiteral("Biztosan törlöd: „%1”?").arg(m.title));
-    box.setInformativeText(QStringLiteral(
+    box.setWindowTitle(tr("Megbeszélés törlése"));
+    box.setText(tr("Biztosan törlöd: „%1”?").arg(m.title));
+    box.setInformativeText(tr(
         "A felvétel (hangsávok), az átirat és az összefoglaló is VÉGLEGESEN törlődik. "
         "Ez nem visszavonható."));
-    QPushButton* del = box.addButton(QStringLiteral("Törlés"), QMessageBox::DestructiveRole);
-    box.addButton(QStringLiteral("Mégse"), QMessageBox::RejectRole);
+    QPushButton* del = box.addButton(tr("Törlés"), QMessageBox::DestructiveRole);
+    box.addButton(tr("Mégse"), QMessageBox::RejectRole);
     box.setDefaultButton(qobject_cast<QPushButton*>(box.buttons().last()));
     box.exec();
     if (box.clickedButton() != del)
@@ -1547,8 +1551,8 @@ void MainWindow::renameSelectedMeeting() {
     bool accepted = false;
     const QString newTitle = QInputDialog::getText(
         this,
-        QStringLiteral("Megbeszélés átnevezése"),
-        QStringLiteral("Új cím:"),
+        tr("Megbeszélés átnevezése"),
+        tr("Új cím:"),
         QLineEdit::Normal,
         m.title,
         &accepted);

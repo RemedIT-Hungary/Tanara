@@ -3,6 +3,7 @@
 
 #include <QPainter>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFontMetrics>
 #include <QLocale>
 #include <QDateTime>
@@ -24,7 +25,8 @@ QString badgeText(const QModelIndex& idx) {
     const bool tr  = idx.data(MeetingTableModel::HasTranscriptRole).toBool();
     const bool sum = idx.data(MeetingTableModel::HasSummaryRole).toBool();
     const bool spk = idx.data(MeetingTableModel::SpeakersIdentifiedRole).toBool();
-    return QStringLiteral("%1 átirat   %2 össz   %3 azonosítva")
+    return QCoreApplication::translate("MeetingItemDelegate",
+                                       "%1 átirat   %2 össz   %3 azonosítva")
         .arg(tr ? yes : no)
         .arg(sum ? yes : no)
         .arg(spk ? dot : no);
@@ -49,8 +51,9 @@ QString humanLine(const QModelIndex& nameIdx) {
         const qint64 totalSec = ms / 1000;
         const qint64 hh = totalSec / 3600;
         const qint64 mm = (totalSec % 3600) / 60;
-        dur = (hh > 0) ? QStringLiteral("%1ó %2p").arg(hh).arg(mm)
-                       : QStringLiteral("%1p").arg(mm);
+        dur = (hh > 0) ? QCoreApplication::translate("MeetingItemDelegate", "%1ó %2p")
+                             .arg(hh).arg(mm)
+                       : QCoreApplication::translate("MeetingItemDelegate", "%1p").arg(mm);
     }
 
     if (!date.isEmpty() && !dur.isEmpty())

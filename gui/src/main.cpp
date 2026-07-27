@@ -15,6 +15,7 @@
 #include "tanara/detect/RecordingLock.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
 #include <QMessageBox>
@@ -39,7 +40,7 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
         else if (args[i] == QStringLiteral("--no-start")) noStart = true;
     }
     if (title.trimmed().isEmpty())
-        title = QStringLiteral("Felvétel %1")
+        title = QCoreApplication::translate("main", "Felvétel %1")
                     .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 
     controller.refreshDevices();
@@ -51,8 +52,9 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
         for (int idx : deviceIdx)
             if (idx >= 0 && idx < all.size()) sel << all[idx];
     if (sel.isEmpty()) {
-        QMessageBox::critical(nullptr, QStringLiteral("Tanara — Felvétel"),
-                              QStringLiteral("Nincs rögzíthető hangeszköz."));
+        QMessageBox::critical(nullptr,
+                              QCoreApplication::translate("main", "Tanara — Felvétel"),
+                              QCoreApplication::translate("main", "Nincs rögzíthető hangeszköz."));
         return 1;
     }
 
@@ -104,7 +106,8 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     QObject::connect(&controller, &AppController::errorOccurred, &app,
                      [lock](const QString& e) {
                          lock->release();
-                         QMessageBox::critical(nullptr, QStringLiteral("Tanara — Felvétel"), e);
+                         QMessageBox::critical(
+                             nullptr, QCoreApplication::translate("main", "Tanara — Felvétel"), e);
                          qApp->exit(1);
                      });
     // A lebegő ablak bezárása: ha megy felvétel, állítsuk le (a finished kiléptet), különben kilépés.

@@ -68,7 +68,7 @@ QString wellKnownValue(const ProviderConfig& cfg, const QString& key) {
 SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* parent)
     : QDialog(parent), m_controller(controller) {
 
-    setWindowTitle(QStringLiteral("Beállítások"));
+    setWindowTitle(tr("Beállítások"));
     setModal(true);
 
     auto* root = new QVBoxLayout(this);
@@ -80,7 +80,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         auto* h = new QHBoxLayout(container);
         h->setContentsMargins(0, 0, 0, 0);
         field = new QLineEdit(container);
-        auto* browse = new QPushButton(QStringLiteral("Tallózás…"), container);
+        auto* browse = new QPushButton(tr("Tallózás…"), container);
         h->addWidget(field, 1);
         h->addWidget(browse, 0);
         wireFolderPicker(field, browse, caption);
@@ -108,41 +108,50 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     // „ki vagy + hova ment" — ritkán nyúlsz hozzá.
     auto* generalPage = new QWidget(this);
     auto* gl = new QVBoxLayout(generalPage);
-    auto* idBox = new QGroupBox(QStringLiteral("Azonosítás"), generalPage);
+    auto* idBox = new QGroupBox(tr("Azonosítás"), generalPage);
     auto* idForm = new QFormLayout(idBox);
     m_userSpeakerName = new QLineEdit(idBox);
-    idForm->addRow(QStringLiteral("Saját beszélő neve:"), m_userSpeakerName);
+    idForm->addRow(tr("Saját beszélő neve:"), m_userSpeakerName);
+
+    // UI-nyelv. A nyelv-nevek szándékosan a saját nyelvükön állnak (nem tr()-esek) —
+    // így a user a számára idegen nyelvű UI-ban is megtalálja a sajátját.
+    m_uiLanguage = new QComboBox(idBox);
+    m_uiLanguage->addItem(tr("Rendszer nyelve (automatikus)"), QStringLiteral("auto"));
+    m_uiLanguage->addItem(QStringLiteral("Magyar"), QStringLiteral("hu"));
+    m_uiLanguage->addItem(QStringLiteral("English"), QStringLiteral("en"));
+    m_uiLanguage->setToolTip(tr("A nyelv váltása a következő indításkor lép életbe."));
+    idForm->addRow(tr("Nyelv / Language:"), m_uiLanguage);
     gl->addWidget(idBox);
 
-    auto* dirsBox = new QGroupBox(QStringLiteral("Mappák"), generalPage);
+    auto* dirsBox = new QGroupBox(tr("Mappák"), generalPage);
     auto* dirsForm = new QFormLayout(dirsBox);
     // A címke a mező FÖLÉ, külön sorba — a hosszú út + „Tallózás…" gombbal így nem zsúfolt.
     dirsForm->setRowWrapPolicy(QFormLayout::WrapAllRows);
-    dirsForm->addRow(QStringLiteral("Felvételek mappája:"),
-                     makeDirRow(dirsBox, m_audioDir, QStringLiteral("Felvételek mappája")));
-    dirsForm->addRow(QStringLiteral("Jegyzetek mappája:"),
-                     makeDirRow(dirsBox, m_notesDir, QStringLiteral("Jegyzetek mappája")));
-    dirsForm->addRow(QStringLiteral("Metaadat mappája:"),
-                     makeDirRow(dirsBox, m_metadataDir, QStringLiteral("Metaadat mappája")));
+    dirsForm->addRow(tr("Felvételek mappája:"),
+                     makeDirRow(dirsBox, m_audioDir, tr("Felvételek mappája")));
+    dirsForm->addRow(tr("Jegyzetek mappája:"),
+                     makeDirRow(dirsBox, m_notesDir, tr("Jegyzetek mappája")));
+    dirsForm->addRow(tr("Metaadat mappája:"),
+                     makeDirRow(dirsBox, m_metadataDir, tr("Metaadat mappája")));
     gl->addWidget(dirsBox);
     gl->addStretch(1);
-    tabs->addTab(generalPage, QStringLiteral("Általános"));
+    tabs->addTab(generalPage, tr("Általános"));
 
     // ============================ Fül 2: Rögzítés =============================
     // Minden a hangfelvételről: auto-rögzítés + mely eszközöket (sávokat) vegyük fel.
     auto* recPage = new QWidget(this);
     auto* rl = new QVBoxLayout(recPage);
     m_autoRecord = new QCheckBox(
-        QStringLiteral("Automatikus rögzítés (minden eszköz)"), recPage);
-    m_autoRecord->setToolTip(QStringLiteral(
+        tr("Automatikus rögzítés (minden eszköz)"), recPage);
+    m_autoRecord->setToolTip(tr(
         "Bekapcsolva minden bemenetet rögzít; a csendes sávokat a felvétel után "
         "automatikusan eldobja (a fájl megmarad, visszaállítható). Kikapcsolva az "
         "alább kijelölt eszközöket rögzíti."));
     rl->addWidget(m_autoRecord);
 
-    m_devicesGroup = new QGroupBox(QStringLiteral("Rögzítendő eszközök (alapértelmezés)"), recPage);
+    m_devicesGroup = new QGroupBox(tr("Rögzítendő eszközök (alapértelmezés)"), recPage);
     auto* dvl = new QVBoxLayout(m_devicesGroup);
-    auto* devHint = new QLabel(QStringLiteral(
+    auto* devHint = new QLabel(tr(
         "Mely eszközöket (sávokat) vegye fel alapból kézi módban. A vonalbemenet/AUX "
         "alapból kimarad (kézzel bepipálható). Auto-rögzítésnél ez a választás nem számít."),
         m_devicesGroup);
@@ -153,18 +162,18 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     rl->addWidget(m_devicesGroup);
 
     // --- Hangminőség + lekeverés ---
-    auto* qualBox  = new QGroupBox(QStringLiteral("Hangminőség és lekeverés"), recPage);
+    auto* qualBox  = new QGroupBox(tr("Hangminőség és lekeverés"), recPage);
     auto* qualForm = new QFormLayout(qualBox);
     qualForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
     // Per-sáv Opus bitráta. A legalsó fokozat is „STT-biztos" (24 kbps); lejjebb nem megyünk,
     // hogy a per-sáv .ogg-ból dolgozó átírás pontossága ne romoljon.
     m_audioQuality = new QComboBox(qualBox);
-    m_audioQuality->addItem(QStringLiteral("Legjobb (64 kbps)"),  QStringLiteral("best"));
-    m_audioQuality->addItem(QStringLiteral("Magas (48 kbps)"),    QStringLiteral("high"));
-    m_audioQuality->addItem(QStringLiteral("Közepes (32 kbps)"),  QStringLiteral("medium"));
-    m_audioQuality->addItem(QStringLiteral("Takarékos (24 kbps)"),QStringLiteral("low"));
-    qualForm->addRow(QStringLiteral("Hangminőség:"), m_audioQuality);
+    m_audioQuality->addItem(tr("Legjobb (64 kbps)"),  QStringLiteral("best"));
+    m_audioQuality->addItem(tr("Magas (48 kbps)"),    QStringLiteral("high"));
+    m_audioQuality->addItem(tr("Közepes (32 kbps)"),  QStringLiteral("medium"));
+    m_audioQuality->addItem(tr("Takarékos (24 kbps)"),QStringLiteral("low"));
+    qualForm->addRow(tr("Hangminőség:"), m_audioQuality);
 
     m_qualityHint = new QLabel(qualBox);
     m_qualityHint->setWordWrap(true);
@@ -173,10 +182,10 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
 
     auto sizeHintFor = [](const QString& id) -> QString {
         // ~1,5 órás felvétel egy sávra; egy meetingben jellemzően 2-4 sáv.
-        if (id == QStringLiteral("low"))    return QStringLiteral("~16 MB / sáv / 1,5h — a legkisebb, STT-talp.");
-        if (id == QStringLiteral("medium")) return QStringLiteral("~22 MB / sáv / 1,5h — jó beszédre.");
-        if (id == QStringLiteral("high"))   return QStringLiteral("~32 MB / sáv / 1,5h.");
-        return QStringLiteral("~43 MB / sáv / 1,5h — a legjobb (jelenlegi alap).");
+        if (id == QStringLiteral("low"))    return tr("~16 MB / sáv / 1,5h — a legkisebb, STT-talp.");
+        if (id == QStringLiteral("medium")) return tr("~22 MB / sáv / 1,5h — jó beszédre.");
+        if (id == QStringLiteral("high"))   return tr("~32 MB / sáv / 1,5h.");
+        return tr("~43 MB / sáv / 1,5h — a legjobb (jelenlegi alap).");
     };
     connect(m_audioQuality, &QComboBox::currentIndexChanged, this,
             [this, sizeHintFor]() {
@@ -189,15 +198,15 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     // Lekeverés időzítése. A mixdown CSAK hallgatásra kell (az átírás a per-sáv .ogg-kból
     // megy), ezért a leállítás sosem várja meg → nincs UI-fagyás.
     m_mixdownMode = new QComboBox(qualBox);
-    m_mixdownMode->addItem(QStringLiteral("Automatikusan, a felvétel után (háttérben)"),
+    m_mixdownMode->addItem(tr("Automatikusan, a felvétel után (háttérben)"),
                            QStringLiteral("auto"));
-    m_mixdownMode->addItem(QStringLiteral("Kézzel, később (a felvétel paneljéből)"),
+    m_mixdownMode->addItem(tr("Kézzel, később (a felvétel paneljéből)"),
                            QStringLiteral("manual"));
-    m_mixdownMode->setToolTip(QStringLiteral(
+    m_mixdownMode->setToolTip(tr(
         "A lekevert, normalizált fájl csak kényelmes hallgatásra kell — az átíráshoz nem. "
         "Automatikus módban a felvétel után a háttérben készül el (nem fagyaszt, közben új "
         "felvétel is indítható). Kézi módban a felvétel review-paneljén indíthatod."));
-    qualForm->addRow(QStringLiteral("Lekeverés:"), m_mixdownMode);
+    qualForm->addRow(tr("Lekeverés:"), m_mixdownMode);
 
     rl->addWidget(qualBox);
     rl->addStretch(1);
@@ -206,7 +215,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     connect(m_autoRecord, &QCheckBox::toggled, this, [this](bool on) {
         if (m_devicesGroup) m_devicesGroup->setEnabled(!on);
     });
-    tabs->addTab(recPage, QStringLiteral("Rögzítés"));
+    tabs->addTab(recPage, tr("Rögzítés"));
 
     // ============================ Fül: Figyelő ===============================
     // Háttér-detektor: érzékeli, ha aktív hívásban vagy (egy hívás-app fogja a
@@ -216,8 +225,8 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     auto* wl = new QVBoxLayout(watchPage);
 
     m_detectorEnabled = new QCheckBox(
-        QStringLiteral("Aktív hívás észlelése (a tálca-figyelő felajánlja a rögzítést)"), watchPage);
-    m_detectorEnabled->setToolTip(QStringLiteral(
+        tr("Aktív hívás észlelése (a tálca-figyelő felajánlja a rögzítést)"), watchPage);
+    m_detectorEnabled->setToolTip(tr(
         "Bekapcsolva a háttér-figyelő időnként megnézi, fogja-e egy ismert hívás-app a "
         "mikrofont, és értesítéssel felajánlja a felvétel indítását. Csak figyel — a "
         "rögzítéshez a felvevőt indítja."));
@@ -226,21 +235,21 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     auto* watchForm = new QFormLayout();
     m_detectorInterval = new QSpinBox(watchPage);
     m_detectorInterval->setRange(3, 60);
-    m_detectorInterval->setSuffix(QStringLiteral(" mp"));
-    m_detectorInterval->setToolTip(QStringLiteral(
+    m_detectorInterval->setSuffix(tr(" mp"));
+    m_detectorInterval->setToolTip(tr(
         "Milyen gyakran nézzen körül a figyelő. Rövidebb = gyorsabb felajánlás, több CPU."));
-    watchForm->addRow(QStringLiteral("Ellenőrzés gyakorisága:"), m_detectorInterval);
+    watchForm->addRow(tr("Ellenőrzés gyakorisága:"), m_detectorInterval);
 
     m_watcherAutostart = new QCheckBox(
-        QStringLiteral("A figyelő induljon bejelentkezéskor"), watchPage);
-    m_watcherAutostart->setToolTip(QStringLiteral(
+        tr("A figyelő induljon bejelentkezéskor"), watchPage);
+    m_watcherAutostart->setToolTip(tr(
         "Bejelentkezéskor automatikusan elindul a háttér-figyelő (a rendszertálcára dokkolva)."));
     watchForm->addRow(QString(), m_watcherAutostart);
     wl->addLayout(watchForm);
 
-    auto* appsBox = new QGroupBox(QStringLiteral("Ismert hívás-appok"), watchPage);
+    auto* appsBox = new QGroupBox(tr("Ismert hívás-appok"), watchPage);
     auto* abl = new QVBoxLayout(appsBox);
-    auto* appsHint = new QLabel(QStringLiteral(
+    auto* appsHint = new QLabel(tr(
         "Soronként egy app (bináris- vagy név-részlet, pl. „zoom”, „teams”). A figyelő "
         "ezekre jelez, ha aktívan fogják a mikrofont."), appsBox);
     appsHint->setWordWrap(true);
@@ -259,14 +268,14 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         if (m_watcherAutostart) m_watcherAutostart->setEnabled(on);
         if (m_knownCallApps)    m_knownCallApps->setEnabled(on);
     });
-    tabs->addTab(watchPage, QStringLiteral("Figyelő"));
+    tabs->addTab(watchPage, tr("Figyelő"));
 
     // ===================== Fül 3: Külső szolgáltatások ========================
     // Az átírás + összefoglaló NEM a Tanarában fut — külső szolgáltatás a saját
     // kulcsoddal / végpontoddal. Lock-in nincs: bármikor válthatsz.
     auto* extPage = new QWidget(this);
     auto* el = new QVBoxLayout(extPage);
-    auto* extIntro = new QLabel(QStringLiteral(
+    auto* extIntro = new QLabel(tr(
         "Az átírást és az összefoglalót KÜLSŐ szolgáltatások végzik a saját kulcsoddal / "
         "végpontoddal — ezeket nem a Tanara futtatja. Bármikor válthatsz, nincs lock-in."),
         extPage);
@@ -292,7 +301,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
             idx = 0;
         if (idx >= 0)
             section.selector->setCurrentIndex(idx);
-        selRow->addRow(QStringLiteral("Szolgáltató:"), section.selector);
+        selRow->addRow(tr("Szolgáltató:"), section.selector);
         outer->addLayout(selRow);
 
         section.fieldsForm = new QFormLayout();
@@ -315,20 +324,20 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     };
 
     el->addWidget(buildProviderBox(
-        m_stt, ProviderKind::Stt, QStringLiteral("Átírás (STT)"),
+        m_stt, ProviderKind::Stt, tr("Átírás (STT)"),
         tanara::SttProviderRegistry::instance().all(), s.sttProviderId));
     el->addWidget(buildProviderBox(
-        m_llm, ProviderKind::Llm, QStringLiteral("Összefoglaló (LLM)"),
+        m_llm, ProviderKind::Llm, tr("Összefoglaló (LLM)"),
         tanara::LlmProviderRegistry::instance().all(), s.llmProviderId));
     el->addStretch(1);
-    tabs->addTab(extPage, QStringLiteral("Külső szolgáltatások"));
+    tabs->addTab(extPage, tr("Külső szolgáltatások"));
 
     // ======================== Fül 4: Összefoglaló ============================
     // Az összefoglaló LLM rendszer-promptja — szabadon hangolható (séma + szabályok).
     // Üresen hagyva / alapértelmezettel megegyezve a beépített default érvényes.
     auto* sumPage = new QWidget(this);
     auto* sumL = new QVBoxLayout(sumPage);
-    auto* sumIntro = new QLabel(QStringLiteral(
+    auto* sumIntro = new QLabel(tr(
         "Az összefoglalót készítő modell rendszer-promptjai (utasítások + JSON-séma). A "
         "választóval válthatsz az egyszerű, egy-körös prompt és a komplex (több körös) mód két "
         "prompt-ja között. A kapott átirat és a kontextus automatikusan a prompt UTÁN kerül a modellhez."),
@@ -338,21 +347,21 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     sumL->addWidget(sumIntro);
 
     auto* selRow = new QHBoxLayout();
-    selRow->addWidget(new QLabel(QStringLiteral("Prompt:"), sumPage), 0);
+    selRow->addWidget(new QLabel(tr("Prompt:"), sumPage), 0);
     m_promptSelect = new QComboBox(sumPage);
-    m_promptSelect->addItem(QStringLiteral("Egyszerű összefoglaló"),  QStringLiteral("simple"));
-    m_promptSelect->addItem(QStringLiteral("Komplex — Téma-kinyerés (1. kör)"), QStringLiteral("topic"));
-    m_promptSelect->addItem(QStringLiteral("Komplex — Téma-elemzés (2. kör)"),  QStringLiteral("analysis"));
+    m_promptSelect->addItem(tr("Egyszerű összefoglaló"),  QStringLiteral("simple"));
+    m_promptSelect->addItem(tr("Komplex — Téma-kinyerés (1. kör)"), QStringLiteral("topic"));
+    m_promptSelect->addItem(tr("Komplex — Téma-elemzés (2. kör)"),  QStringLiteral("analysis"));
     selRow->addWidget(m_promptSelect, 1);
     sumL->addLayout(selRow);
 
     m_summaryPrompt = new QPlainTextEdit(sumPage);
-    m_summaryPrompt->setPlaceholderText(QStringLiteral("Rendszer-prompt…"));
+    m_summaryPrompt->setPlaceholderText(tr("Rendszer-prompt…"));
     sumL->addWidget(m_summaryPrompt, 1);
 
     auto* resetRow = new QHBoxLayout();
     resetRow->addStretch(1);
-    auto* resetBtn = new QPushButton(QStringLiteral("Visszaállítás alapértelmezettre"), sumPage);
+    auto* resetBtn = new QPushButton(tr("Visszaállítás alapértelmezettre"), sumPage);
     resetRow->addWidget(resetBtn);
     sumL->addLayout(resetRow);
     // Váltáskor a jelenlegi szerkesztő-tartalmat elmentjük a régi promptba, és betöltjük az újat.
@@ -366,7 +375,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     connect(resetBtn, &QPushButton::clicked, this, [this]() {
         m_summaryPrompt->setPlainText(summaryPromptDefault(m_curPromptId));
     });
-    tabs->addTab(sumPage, QStringLiteral("Összefoglaló"));
+    tabs->addTab(sumPage, tr("Összefoglaló"));
 
     root->addWidget(tabs);
 
@@ -408,7 +417,7 @@ void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
             : QVector<tanara::AudioDeviceInfo>{};
 
     if (devs.isEmpty()) {
-        auto* none = new QLabel(QStringLiteral("Nincs észlelt hangeszköz."), m_devicesGroup);
+        auto* none = new QLabel(tr("Nincs észlelt hangeszköz."), m_devicesGroup);
         none->setForegroundRole(QPalette::PlaceholderText);
         into->addWidget(none);
         return;
@@ -416,9 +425,9 @@ void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
 
     struct KindRow { tanara::TrackKind kind; QString title; };
     const KindRow order[] = {
-        { tanara::TrackKind::Mic,      QStringLiteral("Mikrofonok") },
-        { tanara::TrackKind::Loopback, QStringLiteral("Rendszerhang (loopback)") },
-        { tanara::TrackKind::Other,    QStringLiteral("Egyéb (vonalbemenet/AUX)") },
+        { tanara::TrackKind::Mic,      tr("Mikrofonok") },
+        { tanara::TrackKind::Loopback, tr("Rendszerhang (loopback)") },
+        { tanara::TrackKind::Other,    tr("Egyéb (vonalbemenet/AUX)") },
     };
     for (const KindRow& kr : order) {
         QVector<tanara::AudioDeviceInfo> group;
@@ -435,7 +444,7 @@ void SettingsDialog::buildDevicePolicy(QVBoxLayout* into) {
         into->addWidget(header);
         for (const auto& d : group) {
             auto* cb = new QCheckBox(
-                d.name + (d.isDefault ? QStringLiteral("  (alapértelmezett)") : QString()),
+                d.name + (d.isDefault ? tr("  (alapértelmezett)") : QString()),
                 m_devicesGroup);
             // Előpipálás: a perzisztens default-halmaz (lastUsed); ha üres, a rendszer-
             // alapértelmezett (de a line-in/AUX alapból kimarad).
@@ -455,7 +464,7 @@ QWidget* SettingsDialog::makeWidgetFor(ProviderSection& section, const ConfigFie
     case ConfigFieldType::Secret: {
         auto* le = new QLineEdit(parent);
         le->setEchoMode(QLineEdit::Password);
-        le->setPlaceholderText(QStringLiteral("(változatlan, ha üresen hagyod)"));
+        le->setPlaceholderText(tr("(változatlan, ha üresen hagyod)"));
         return le;
     }
     case ConfigFieldType::Number: {
@@ -483,7 +492,7 @@ QWidget* SettingsDialog::makeWidgetFor(ProviderSection& section, const ConfigFie
             combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             for (const ConfigOption& o : field.options)
                 combo->addItem(o.label.isEmpty() ? o.value : o.label, o.value);
-            auto* fetchBtn = new QPushButton(QStringLiteral("Modellek lekérése"), container);
+            auto* fetchBtn = new QPushButton(tr("Modellek lekérése"), container);
             h->addWidget(combo, 1);
             h->addWidget(fetchBtn, 0);
 
@@ -493,7 +502,7 @@ QWidget* SettingsDialog::makeWidgetFor(ProviderSection& section, const ConfigFie
                     if (section.statusLabel)
                         section.statusLabel->setVisible(false);
                     fetchBtn->setEnabled(false);
-                    fetchBtn->setText(QStringLiteral("Lekérés…"));
+                    fetchBtn->setText(tr("Lekérés…"));
                     m_controller->fetchLlmModels();
                 });
             } else {
@@ -636,7 +645,7 @@ void SettingsDialog::onLlmModelsFetched(const QStringList& models) {
 void SettingsDialog::onLlmModelsFailed(const QString& error) {
     if (m_llm.statusLabel) {
         m_llm.statusLabel->setText(
-            QStringLiteral("Nem sikerült lekérni a modelleket: %1").arg(error));
+            tr("Nem sikerült lekérni a modelleket: %1").arg(error));
         m_llm.statusLabel->setVisible(true);
     }
 }
@@ -649,6 +658,10 @@ void SettingsDialog::loadGeneral() {
     m_notesDir->setText(s.notesDir);
     m_metadataDir->setText(s.metadataDir);
     m_userSpeakerName->setText(s.userSpeakerName);
+    if (m_uiLanguage) {
+        int li = m_uiLanguage->findData(s.uiLanguage);
+        m_uiLanguage->setCurrentIndex(li >= 0 ? li : 0);
+    }
     m_autoRecord->setChecked(s.autoRecordAllDevices);
     if (m_audioQuality) {
         int qi = m_audioQuality->findData(s.audioQuality);
@@ -762,6 +775,8 @@ void SettingsDialog::onAccept() {
     s.notesDir = m_notesDir->text().trimmed();
     s.metadataDir = m_metadataDir->text().trimmed();
     s.userSpeakerName = m_userSpeakerName->text().trimmed();
+    if (m_uiLanguage && m_uiLanguage->currentIndex() >= 0)
+        s.uiLanguage = m_uiLanguage->currentData().toString();
     s.autoRecordAllDevices = m_autoRecord->isChecked();
     if (m_audioQuality && m_audioQuality->currentIndex() >= 0)
         s.audioQuality = m_audioQuality->currentData().toString();

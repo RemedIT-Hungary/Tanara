@@ -79,6 +79,7 @@ private:
     QLineEdit* m_notesDir = nullptr;
     QLineEdit* m_metadataDir = nullptr;
     QLineEdit* m_userSpeakerName = nullptr;
+    QComboBox* m_uiLanguage = nullptr;     // UI-nyelv, userData = "auto"|"hu"|"en"
     QCheckBox* m_autoRecord = nullptr;
     QComboBox* m_audioQuality = nullptr;   // hangminőség (per-sáv Opus bitráta), userData = id
     QComboBox* m_mixdownMode = nullptr;    // lekeverés időzítése, userData = "auto"|"manual"

@@ -5,6 +5,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 
+#include <QCoreApplication>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QToolButton>
@@ -30,9 +31,9 @@ constexpr float kLevelVisualGain = 140.0f;
 
 QString groupTitle(tanara::TrackKind kind) {
     switch (kind) {
-    case tanara::TrackKind::Mic:      return QStringLiteral("🎤 Mikrofonok");
-    case tanara::TrackKind::Loopback: return QStringLiteral("🔊 Hangkimenetek");
-    default:                          return QStringLiteral("Egyéb");
+    case tanara::TrackKind::Mic:      return QCoreApplication::translate("RecordBar", "🎤 Mikrofonok");
+    case tanara::TrackKind::Loopback: return QCoreApplication::translate("RecordBar", "🔊 Hangkimenetek");
+    default:                          return QCoreApplication::translate("RecordBar", "Egyéb");
     }
 }
 } // namespace
@@ -57,7 +58,7 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
 
     // --- viselkedés / paraméterek (kódban) ---
     // Alap cím dátum NÉLKÜL (az időpont a meeting metaadatában úgyis ott van).
-    m_titleEdit->setText(QStringLiteral("Megbeszélés"));
+    m_titleEdit->setText(tr("Megbeszélés"));
     updateTitleDisplay();
     // A cím alapból label; dupla kattintásra / ✏-re vált szerkesztőre.
     if (m_titleLabel)
@@ -102,7 +103,7 @@ void RecordBar::updateTitleDisplay() {
     if (!m_titleLabel || !m_titleEdit)
         return;
     const QString t = m_titleEdit->text().trimmed();
-    m_titleLabel->setText(t.isEmpty() ? QStringLiteral("Megbeszélés") : t);
+    m_titleLabel->setText(t.isEmpty() ? tr("Megbeszélés") : t);
 }
 
 void RecordBar::enterTitleEdit() {
@@ -185,7 +186,7 @@ void RecordBar::applyViewMode() {
         if (r.check) r.check->setVisible(!compact);
     }
     if (m_levelsBox)
-        m_levelsBox->setTitle(QStringLiteral("Hangforrások"));
+        m_levelsBox->setTitle(tr("Hangforrások"));
 
     // A VU-doboz alap-láthatósága a nézettől függ: kompaktban (lebegő) felnyitva a
     // kiválasztott eszközök szintjével, teljes nézetben alapból összecsukva (a
@@ -201,7 +202,7 @@ void RecordBar::setLevelsVisible(bool on) {
     if (m_levelsBox) m_levelsBox->setVisible(on);
     const QString arrow = on ? QStringLiteral("▾") : QStringLiteral("▸");
     if (m_tracksToggle)
-        m_tracksToggle->setText(arrow + QStringLiteral(" Rögzítendő hangforrások módosítása"));
+        m_tracksToggle->setText(arrow + tr(" Rögzítendő hangforrások módosítása"));
     if (on)
         adjustDeviceListHeight();   // nyitáskor a tartalomra méretezzük a listát
     // FONTOS: a SAJÁT layoutunkat is újra kell számolni a levelsBox rejtése/mutatása
@@ -242,7 +243,7 @@ void RecordBar::updateVoicesLabel() {
     // azonos a bepipált eszközökkel — a valós halmazt a m_recordingDeviceNames tartja).
     if (m_state == tanara::RecordingState::Recording) {
         m_voicesLabel->setText(
-            QStringLiteral("● Rögzítés — %1 hangforrás").arg(m_recordingDeviceNames.size()));
+            tr("● Rögzítés — %1 hangforrás").arg(m_recordingDeviceNames.size()));
         return;
     }
     // Üresjáratban: a rögzítésre KIVÁLASZTOTT hangforrások száma. (Korábban „N hangot
@@ -252,8 +253,8 @@ void RecordBar::updateVoicesLabel() {
         if (it.value().check && it.value().check->isChecked())
             ++n;
     m_voicesLabel->setText(n == 0
-        ? QStringLiteral("Nincs kiválasztott hangforrás")
-        : QStringLiteral("🎙 %1 hangforrás kiválasztva").arg(n));
+        ? tr("Nincs kiválasztott hangforrás")
+        : tr("🎙 %1 hangforrás kiválasztva").arg(n));
 }
 
 void RecordBar::rebuildDeviceList() {
@@ -322,7 +323,7 @@ void RecordBar::rebuildDeviceList() {
 
             QString nameText = d.name;
             if (d.isDefault)
-                nameText += QStringLiteral("  (alapértelmezett)");
+                nameText += tr("  (alapértelmezett)");
             auto* nameLbl = new QLabel(nameText, rowWidget);
             nameLbl->setMinimumWidth(160);
             // SZÍN: nincs felülírás → öröklött paletta-szövegszín (sötét témán is olvasható).
@@ -409,7 +410,7 @@ void RecordBar::onStartStopClicked() {
         commitTitleEdit();
     QString title = m_titleEdit->text().trimmed();
     if (title.isEmpty())
-        title = QStringLiteral("Megbeszélés");   // dátum nélkül (a metaadatban ott van)
+        title = tr("Megbeszélés");   // dátum nélkül (a metaadatban ott van)
 
     // Auto-mód: MINDEN eszközt rögzítünk (a csendeseket a felvétel után eldobjuk);
     // kézi módban a bepipáltakat. A sáv-index → eszköznév leképezést is innen
@@ -485,7 +486,7 @@ void RecordBar::updateRecordButton() {
             .arg(totalSec / 60, 2, 10, QLatin1Char('0'))
             .arg(totalSec % 60, 2, 10, QLatin1Char('0'));
         m_recordBtn->setEnabled(true);
-        m_recordBtn->setText(QStringLiteral("⏹  Leállítás\n%1").arg(clock));
+        m_recordBtn->setText(tr("⏹  Leállítás\n%1").arg(clock));
         m_recordBtn->setStyleSheet(QStringLiteral(
             "QPushButton { background: #c0392b; color: white; font-weight: bold; "
             "padding: 6px 16px; border: none; border-radius: 5px; }"
@@ -494,17 +495,17 @@ void RecordBar::updateRecordButton() {
     }
     case tanara::RecordingState::Idle:
         m_recordBtn->setEnabled(true);
-        m_recordBtn->setText(QStringLiteral("⏺  Felvétel indítása"));
+        m_recordBtn->setText(tr("⏺  Felvétel indítása"));
         m_recordBtn->setStyleSheet(QString());   // semleges (rendszer-paletta)
         break;
     case tanara::RecordingState::Stopping:
         m_recordBtn->setEnabled(false);
-        m_recordBtn->setText(QStringLiteral("Leállítás…"));
+        m_recordBtn->setText(tr("Leállítás…"));
         m_recordBtn->setStyleSheet(QString());
         break;
     case tanara::RecordingState::Encoding:
         m_recordBtn->setEnabled(false);
-        m_recordBtn->setText(QStringLiteral("Kódolás…"));
+        m_recordBtn->setText(tr("Kódolás…"));
         m_recordBtn->setStyleSheet(QString());
         break;
     }

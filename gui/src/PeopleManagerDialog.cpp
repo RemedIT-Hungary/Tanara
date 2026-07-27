@@ -32,13 +32,13 @@ constexpr int RoleIsOwn        = Qt::UserRole + 1;   // bool: a saját (én) sor
 PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWidget* parent)
     : QDialog(parent), m_controller(controller) {
 
-    setWindowTitle(QStringLiteral("Személyek"));
+    setWindowTitle(tr("Személyek"));
     resize(560, 420);
 
     auto* root = new QVBoxLayout(this);
     root->addWidget(new QLabel(
-        QStringLiteral("Ismert személynevek (minden meetingre érvényes). "
-                       "A ceruzával (✎) átnevezhető a kijelölt sor."), this));
+        tr("Ismert személynevek (minden meetingre érvényes). "
+           "A ceruzával (✎) átnevezhető a kijelölt sor."), this));
 
     auto* mid = new QHBoxLayout();
 
@@ -53,23 +53,23 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
 
     // Jobb oldal: „Mely meetingeken” + „Hang-lenyomatok” panel.
     auto* rightCol = new QVBoxLayout();
-    rightCol->addWidget(new QLabel(QStringLiteral("Mely meetingeken:"), this));
+    rightCol->addWidget(new QLabel(tr("Mely meetingeken:"), this));
     m_meetingsList = new QListWidget(this);
     m_meetingsList->setSelectionMode(QAbstractItemView::NoSelection);
     m_meetingsList->setFocusPolicy(Qt::NoFocus);
     rightCol->addWidget(m_meetingsList, 1);
 
-    m_voiceprintLabel = new QLabel(QStringLiteral("Hang-lenyomatok:"), this);
+    m_voiceprintLabel = new QLabel(tr("Hang-lenyomatok:"), this);
     rightCol->addWidget(m_voiceprintLabel);
     m_voiceprintList = new QListWidget(this);
     m_voiceprintList->setSelectionMode(QAbstractItemView::SingleSelection);
     rightCol->addWidget(m_voiceprintList, 1);
     auto* printBtnRow = new QHBoxLayout();
-    m_playPrintBtn = new QPushButton(QStringLiteral("▶ Meghallgatás"), this);
-    m_playPrintBtn->setToolTip(QStringLiteral(
+    m_playPrintBtn = new QPushButton(tr("▶ Meghallgatás"), this);
+    m_playPrintBtn->setToolTip(tr(
         "A kijelölt hang-lenyomat reprezentatív szegmensének lejátszása "
         "(így törlés/azonosítás előtt ki lehet hallgatni, kié)."));
-    m_removePrintBtn = new QPushButton(QStringLiteral("Lenyomat törlése"), this);
+    m_removePrintBtn = new QPushButton(tr("Lenyomat törlése"), this);
     printBtnRow->addWidget(m_playPrintBtn);
     printBtnRow->addWidget(m_removePrintBtn);
     printBtnRow->addStretch(1);
@@ -79,13 +79,13 @@ PeopleManagerDialog::PeopleManagerDialog(tanara::AppController* controller, QWid
     root->addLayout(mid, 1);
 
     auto* btnRow = new QHBoxLayout();
-    m_editBtn   = new QPushButton(QStringLiteral("✎ Átnevezés"), this);
-    m_deleteBtn = new QPushButton(QStringLiteral("Törlés"), this);
-    m_mergeBtn  = new QPushButton(QStringLiteral("Összevonás…"), this);
-    m_mergeBtn->setToolTip(QStringLiteral(
+    m_editBtn   = new QPushButton(tr("✎ Átnevezés"), this);
+    m_deleteBtn = new QPushButton(tr("Törlés"), this);
+    m_mergeBtn  = new QPushButton(tr("Összevonás…"), this);
+    m_mergeBtn->setToolTip(tr(
         "A kijelölt személy összevonása egy másikkal (a hang-lenyomatok és a "
         "meeting-címkézések átkerülnek)."));
-    auto* closeBtn = new QPushButton(QStringLiteral("Bezárás"), this);
+    auto* closeBtn = new QPushButton(tr("Bezárás"), this);
     btnRow->addWidget(m_editBtn);
     btnRow->addWidget(m_deleteBtn);
     btnRow->addWidget(m_mergeBtn);
@@ -147,7 +147,7 @@ void PeopleManagerDialog::refreshList() {
     // 1) A saját (én) sor legfelülre, ha van neve.
     if (!m_ownName.isEmpty()) {
         auto* own = new QListWidgetItem(
-            QStringLiteral("%1  (én)").arg(m_ownName), m_list);
+            tr("%1  (én)").arg(m_ownName), m_list);
         own->setData(RoleOriginalName, m_ownName);
         own->setData(RoleIsOwn, true);
         own->setFlags(own->flags() | Qt::ItemIsEditable);
@@ -198,17 +198,17 @@ void PeopleManagerDialog::refreshVoiceprintPanel() {
     auto* vp = m_controller ? m_controller->voiceprints() : nullptr;
     const QString name = selectedName();
     if (!vp || name.isEmpty()) {
-        m_voiceprintLabel->setText(QStringLiteral("Hang-lenyomatok:"));
+        m_voiceprintLabel->setText(tr("Hang-lenyomatok:"));
         updateButtonState();
         return;
     }
     const QVector<tanara::Voiceprint> prints = vp->printsFor(name);
-    m_voiceprintLabel->setText(QStringLiteral("Hang-lenyomatok (%1):").arg(prints.size()));
+    m_voiceprintLabel->setText(tr("Hang-lenyomatok (%1):").arg(prints.size()));
     for (const tanara::Voiceprint& p : prints) {
-        const QString dev = p.device.isEmpty() ? QStringLiteral("ismeretlen eszköz") : p.device;
+        const QString dev = p.device.isEmpty() ? tr("ismeretlen eszköz") : p.device;
         const QString when = p.createdAt.left(10);   // yyyy-MM-dd
         auto* item = new QListWidgetItem(
-            QStringLiteral("%1 — %2").arg(dev, when), m_voiceprintList);
+            tr("%1 — %2").arg(dev, when), m_voiceprintList);
         item->setData(Qt::UserRole, p.id);                  // a törléshez
         item->setData(Qt::UserRole + 1, p.sourceMeetingId); // a lejátszáshoz: mappa-feloldás
         item->setData(Qt::UserRole + 2, p.sampleRef);       // "track#start-end"
@@ -226,7 +226,7 @@ void PeopleManagerDialog::refreshMeetingsPanel() {
     const QStringList meetings = m_controller->meetingsForPerson(name);
     if (meetings.isEmpty()) {
         auto* placeholder = new QListWidgetItem(
-            QStringLiteral("(nincs találat)"), m_meetingsList);
+            tr("(nincs találat)"), m_meetingsList);
         placeholder->setFlags(Qt::NoItemFlags);
     } else {
         m_meetingsList->addItems(meetings);
@@ -263,7 +263,9 @@ void PeopleManagerDialog::onItemChanged(QListWidgetItem* item) {
     // Az inline szerkesztő nyers szövege; a saját sornál levágjuk az „(én)” jelölést,
     // ha a felhasználó nem írta át teljesen.
     QString newName = item->text().trimmed();
-    const QString ownSuffix = QStringLiteral("(én)");
+    // FIGYELEM: ennek összhangban kell maradnia a refreshList() tr("%1  (én)")
+    // megjelenítésével — fordításkor a kettőt együtt kell tartani.
+    const QString ownSuffix = tr("(én)");
     if (own && newName.endsWith(ownSuffix))
         newName = newName.left(newName.size() - ownSuffix.size()).trimmed();
 
@@ -294,8 +296,8 @@ void PeopleManagerDialog::onDeleteClicked() {
         return;
 
     const auto ans = QMessageBox::question(
-        this, QStringLiteral("Törlés"),
-        QStringLiteral("Biztosan törlöd a(z) „%1” személyt minden meetingből?").arg(name),
+        this, tr("Törlés"),
+        tr("Biztosan törlöd a(z) „%1” személyt minden meetingből?").arg(name),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ans != QMessageBox::Yes)
         return;
@@ -326,17 +328,17 @@ void PeopleManagerDialog::onMergeClicked() {
 
     bool ok = false;
     const QString into = QInputDialog::getItem(
-        this, QStringLiteral("Összevonás"),
-        QStringLiteral("„%1” összevonása ezzel a személlyel:").arg(from),
+        this, tr("Összevonás"),
+        tr("„%1” összevonása ezzel a személlyel:").arg(from),
         targets, 0, false, &ok);
     if (!ok || into.isEmpty() || into == from)
         return;
 
     const auto ans = QMessageBox::question(
-        this, QStringLiteral("Összevonás megerősítése"),
-        QStringLiteral("Biztosan összevonod: „%1” → „%2”?\n"
-                       "A(z) „%1” hang-lenyomatai és minden meeting-címkézése átkerül "
-                       "„%2” alá, és „%1” megszűnik.").arg(from, into),
+        this, tr("Összevonás megerősítése"),
+        tr("Biztosan összevonod: „%1” → „%2”?\n"
+           "A(z) „%1” hang-lenyomatai és minden meeting-címkézése átkerül "
+           "„%2” alá, és „%1” megszűnik.").arg(from, into),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ans != QMessageBox::Yes)
         return;
@@ -357,8 +359,8 @@ void PeopleManagerDialog::onRemovePrintClicked() {
         return;
 
     const auto ans = QMessageBox::question(
-        this, QStringLiteral("Lenyomat törlése"),
-        QStringLiteral("Törlöd ezt a hang-lenyomatot? (A személy és a címkézés megmarad.)"),
+        this, tr("Lenyomat törlése"),
+        tr("Törlöd ezt a hang-lenyomatot? (A személy és a címkézés megmarad.)"),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ans != QMessageBox::Yes)
         return;
@@ -397,8 +399,8 @@ void PeopleManagerDialog::onPlayPrintClicked() {
         return;
     const QString audioPath = QDir(m.folder).filePath(file);
     if (!QFileInfo::exists(audioPath)) {
-        QMessageBox::information(this, QStringLiteral("Meghallgatás"),
-            QStringLiteral("A forrás-hangsáv nem található:\n%1").arg(audioPath));
+        QMessageBox::information(this, tr("Meghallgatás"),
+            tr("A forrás-hangsáv nem található:\n%1").arg(audioPath));
         return;
     }
 

@@ -21,7 +21,7 @@ FloatingRecorder::FloatingRecorder(tanara::AppController* controller,
     , m_controller(controller)
     , m_recordBar(recordBar) {
 
-    setWindowTitle(QStringLiteral("Tanara — Felvétel"));
+    setWindowTitle(tr("Tanara — Felvétel"));
     // Ne semmisüljön meg X-re magától: a MainWindow dokkolja vissza és törli.
     setAttribute(Qt::WA_DeleteOnClose, false);
 
