@@ -1,4 +1,5 @@
 #include "TracksPanel.h"
+#include "AudioOutputFactory.h"
 
 #include "tanara/AppController.h"
 
@@ -171,7 +172,7 @@ void TracksPanel::onPlayClicked() {
     }
     if (!m_player) {
         m_player = new QMediaPlayer(this);
-        m_audioOutput = new QAudioOutput(this);
+        m_audioOutput = makeFollowDefaultAudioOutput(this);
         m_player->setAudioOutput(m_audioOutput);
     }
     m_player->stop();

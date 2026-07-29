@@ -1,4 +1,5 @@
 #include "TranscriptPlayer.h"
+#include "AudioOutputFactory.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -195,7 +196,7 @@ void TranscriptPlayer::ensurePlayer() {
     // Lusta létrehozás — csak az első forrás-betöltéskor, hogy az app
     // indítása ne triggerelje a Qt Multimedia hwaccel-próbáit.
     m_player = new QMediaPlayer(this);
-    m_audioOutput = new QAudioOutput(this);
+    m_audioOutput = makeFollowDefaultAudioOutput(this);
     m_player->setAudioOutput(m_audioOutput);
     // A csúszka aktuális állását azonnal alkalmazzuk (a sáv a player előtt jön létre).
     if (m_volumeSlider)

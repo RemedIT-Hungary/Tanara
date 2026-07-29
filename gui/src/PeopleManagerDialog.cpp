@@ -1,4 +1,5 @@
 #include "PeopleManagerDialog.h"
+#include "AudioOutputFactory.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -406,7 +407,7 @@ void PeopleManagerDialog::onPlayPrintClicked() {
 
     if (!m_player) {
         m_player = new QMediaPlayer(this);
-        m_audioOutput = new QAudioOutput(this);
+        m_audioOutput = makeFollowDefaultAudioOutput(this);
         m_player->setAudioOutput(m_audioOutput);
         // A szegmens végén megállunk.
         connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
