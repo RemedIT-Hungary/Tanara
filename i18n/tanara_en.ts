@@ -50,6 +50,26 @@
         <source>Max. tokenek</source>
         <translation>Max tokens</translation>
     </message>
+    <message>
+        <source>Whisper (OpenAI-kompatibilis)</source>
+        <translation>Whisper (OpenAI-compatible)</translation>
+    </message>
+    <message>
+        <source>Lokális whisper-szerver (faster-whisper-server, speaches) vagy az OpenAI API (https://api.openai.com/v1 — ott 25 MB a fájllimit).</source>
+        <translation>A local whisper server (faster-whisper-server, speaches) or the OpenAI API (https://api.openai.com/v1 — with a 25 MB file limit).</translation>
+    </message>
+    <message>
+        <source>Lokális szervernél a betöltött modell neve (pl. Systran/faster-whisper-large-v3), az OpenAI API-nál whisper-1.</source>
+        <translation>On a local server, the name of the loaded model (e.g. Systran/faster-whisper-large-v3); on the OpenAI API, whisper-1.</translation>
+    </message>
+    <message>
+        <source>Nyelv</source>
+        <translation>Language</translation>
+    </message>
+    <message>
+        <source>ISO-639-1 nyelvkód (pl. en, de). Üresen hagyva a szerver automatikusan felismeri a nyelvet — vegyes/nem-magyar felvételekhez ezt hagyd üresen.</source>
+        <translation>ISO-639-1 language code (e.g. en, de). Leave it empty and the server detects the language — keep it empty for mixed or non-Hungarian recordings.</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -524,8 +544,8 @@
         <translation>Starting transcription…</translation>
     </message>
     <message>
-        <source>Soniox hiba: %1</source>
-        <translation>Soniox error: %1</translation>
+        <source>Átírás-hiba: %1</source>
+        <translation>Transcription error: %1</translation>
     </message>
     <message>
         <source>Nincs átirat — előbb futtass átírást.</source>
@@ -733,6 +753,45 @@
     <message>
         <source>Nem sikerült JSON-ként értelmezni a választ: %1</source>
         <translation>Could not parse the response as JSON: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::WhisperCompatJob</name>
+    <message>
+        <source>Megszakítva.</source>
+        <translation>Cancelled.</translation>
+    </message>
+    <message>
+        <source>Nem olvasható a hangfájl: %1</source>
+        <translation>Cannot read the audio file: %1</translation>
+    </message>
+    <message>
+        <source>Hang feltöltése…</source>
+        <translation>Uploading audio…</translation>
+    </message>
+    <message>
+        <source>Átírás folyamatban…</source>
+        <translation>Transcription in progress…</translation>
+    </message>
+    <message>
+        <source>A szerver hibát adott (HTTP %1).</source>
+        <translation>The server returned an error (HTTP %1).</translation>
+    </message>
+    <message>
+        <source>Hálózati hiba: %1</source>
+        <translation>Network error: %1</translation>
+    </message>
+    <message>
+        <source>Érvénytelen válasz a szervertől (nem JSON).</source>
+        <translation>Invalid response from the server (not JSON).</translation>
+    </message>
+    <message>
+        <source>A válaszban nincs időbélyeges átirat (words/segments).</source>
+        <translation>The response contains no timestamped transcript (words/segments).</translation>
+    </message>
+    <message>
+        <source>Kész</source>
+        <translation>Done</translation>
     </message>
 </context>
 <context>

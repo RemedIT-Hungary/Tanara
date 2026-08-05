@@ -1154,7 +1154,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     const AppSettings s = d->settings->settings();
     const QString sttId = s.sttProviderId;
     ProviderConfig cfg = s.sttSelected();
-    cfg.apiKey = d->keyStore.get(keys::SonioxApiKey);
+    // Az API-kulcs slotja provider-függő — a descriptor secretKey-e mondja meg
+    // (soniox.apiKey / stt.whisper.apiKey / …), nem hardcode-oljuk a Sonioxra.
+    const ProviderDescriptor sttDesc = SttProviderRegistry::instance().descriptor(sttId);
+    for (const ConfigField& f : sttDesc.fields)
+        if (f.isSecret && !f.secretKey.isEmpty()) {
+            cfg.apiKey = d->keyStore.get(f.secretKey);
+            break;
+        }
 
     ISttProvider* provider = SttProviderRegistry::instance().create(sttId, cfg, this);
     if (!provider) {
@@ -1223,7 +1230,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     });
     connect(job, &SttJob::failed, this, [this, providerObj](QString e) {
         if (providerObj) providerObj->deleteLater();
-        emit errorOccurred(tr("Soniox hiba: %1").arg(e));
+        emit errorOccurred(tr("Átírás-hiba: %1").arg(e));
     });
 }
 
