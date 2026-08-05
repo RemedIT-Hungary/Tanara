@@ -224,25 +224,41 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
     // a nevet a voice-ID / kézi átnevezés adja.
     const QString speaker = QStringLiteral("1");
 
+    auto wordToken = [&](const QJsonObject& w) {
+        TranscriptToken tok;
+        tok.text    = w.value(QStringLiteral("word")).toString();
+        tok.startMs = qint64(w.value(QStringLiteral("start")).toDouble() * 1000.0);
+        tok.endMs   = qint64(w.value(QStringLiteral("end")).toDouble() * 1000.0);
+        // faster-whisper: nincs confidence; whisper.cpp: "probability" (0..1).
+        tok.confidence = w.value(QStringLiteral("probability")).toDouble(1.0);
+        tok.speaker    = speaker;
+        tok.trackId    = m_req.trackId;
+        return tok;
+    };
+
+    // 1) OpenAI / faster-whisper alak: top-level "words".
     const QJsonArray words = obj.value(QStringLiteral("words")).toArray();
-    if (!words.isEmpty()) {
-        result.tokens.reserve(words.size());
-        for (const QJsonValue& v : words) {
-            const QJsonObject w = v.toObject();
-            TranscriptToken tok;
-            tok.text       = w.value(QStringLiteral("word")).toString();
-            tok.startMs    = qint64(w.value(QStringLiteral("start")).toDouble() * 1000.0);
-            tok.endMs      = qint64(w.value(QStringLiteral("end")).toDouble() * 1000.0);
-            tok.confidence = 1.0;
-            tok.speaker    = speaker;
-            tok.trackId    = m_req.trackId;
-            if (!tok.text.trimmed().isEmpty())
-                result.tokens.append(tok);
-        }
-    } else {
-        // Fallback: szó-szintű időbélyeg nélkül (némely szerver/modell) szegmensenként
-        // egy token — a kattintható átirat szegmens-felbontással működik tovább.
-        const QJsonArray segments = obj.value(QStringLiteral("segments")).toArray();
+    for (const QJsonValue& v : words) {
+        const TranscriptToken tok = wordToken(v.toObject());
+        if (!tok.text.trimmed().isEmpty())
+            result.tokens.append(tok);
+    }
+
+    const QJsonArray segments = obj.value(QStringLiteral("segments")).toArray();
+
+    // 2) whisper.cpp alak: a szavak a szegmenseken BELÜL vannak ("segments[].words").
+    if (result.tokens.isEmpty()) {
+        for (const QJsonValue& sv : segments)
+            for (const QJsonValue& wv : sv.toObject().value(QStringLiteral("words")).toArray()) {
+                const TranscriptToken tok = wordToken(wv.toObject());
+                if (!tok.text.trimmed().isEmpty())
+                    result.tokens.append(tok);
+            }
+    }
+
+    // 3) Fallback: szó-szintű időbélyeg nélkül szegmensenként egy token — a kattintható
+    // átirat szegmens-felbontással működik tovább.
+    if (result.tokens.isEmpty()) {
         for (const QJsonValue& v : segments) {
             const QJsonObject s = v.toObject();
             TranscriptToken tok;
