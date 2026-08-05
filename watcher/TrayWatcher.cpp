@@ -73,6 +73,14 @@ bool TrayWatcher::start()
     // út (showCallNotification), valódi akció-gombokkal.
     connect(m_tray, &QSystemTrayIcon::messageClicked, this, &TrayWatcher::openRecorder);
 
+    // Bal katt a tálca-ikonon (SNI: "Activate") → rögzítő megnyitása. A jobb katt a menü,
+    // azt a setContextMenu kezeli; a Trigger-en kívüli reasonökhöz nem nyúlunk.
+    connect(m_tray, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason reason) {
+                if (reason == QSystemTrayIcon::Trigger)
+                    openRecorder();
+            });
+
 #if defined(TANARA_HAVE_DBUS)
     // A notification-akciók visszajelzései a session-busról. A szűrés id-alapú
     // (onNotifyActionInvoked), így más appok értesítései nem zavarnak be.
