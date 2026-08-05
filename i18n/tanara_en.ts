@@ -1747,8 +1747,16 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>Quit</translation>
     </message>
     <message>
+        <source>Rögzítő megnyitása</source>
+        <translation>Open recorder</translation>
+    </message>
+    <message>
         <source>Hívás észlelve — %1</source>
         <translation>Call detected — %1</translation>
+    </message>
+    <message>
+        <source>Aktív hívást észleltem.</source>
+        <translation>An active call was detected.</translation>
     </message>
     <message>
         <source>A Tanara tálca-ikonra kattintva indíthatod a rögzítést (azonnali indítás vagy a rögzítő megnyitása).</source>

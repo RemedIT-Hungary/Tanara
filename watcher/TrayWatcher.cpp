@@ -17,6 +17,12 @@
 #include <QStandardPaths>
 #include <QTextStream>
 
+#if defined(TANARA_HAVE_DBUS)
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
+#endif
+
 namespace tanara_watcher {
 
 TrayWatcher::TrayWatcher(QObject* parent)
@@ -62,9 +68,27 @@ bool TrayWatcher::start()
     updateTrayTooltip(false, QString());
     m_tray->show();
 
-    // Az értesítésre kattintva NYISSA meg a rögzítőt (a user keresztel + indít). Linux/SNI-n
-    // a messageClicked megbízhatatlan → a fő út a tálca-menü; ez csak bónusz.
+    // Az értesítésre kattintva NYISSA meg a rögzítőt (a user keresztel + indít). Ez a
+    // showMessage-fallback útja (Windowson működik); Linuxon a D-Bus-os notification a fő
+    // út (showCallNotification), valódi akció-gombokkal.
     connect(m_tray, &QSystemTrayIcon::messageClicked, this, &TrayWatcher::openRecorder);
+
+#if defined(TANARA_HAVE_DBUS)
+    // A notification-akciók visszajelzései a session-busról. A szűrés id-alapú
+    // (onNotifyActionInvoked), így más appok értesítései nem zavarnak be.
+    QDBusConnection::sessionBus().connect(
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("/org/freedesktop/Notifications"),
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("ActionInvoked"),
+        this, SLOT(onNotifyActionInvoked(uint,QString)));
+    QDBusConnection::sessionBus().connect(
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("/org/freedesktop/Notifications"),
+        QStringLiteral("org.freedesktop.Notifications"),
+        QStringLiteral("NotificationClosed"),
+        this, SLOT(onNotifyClosed(uint,uint)));
+#endif
 
     // --- poll-hurok ---
     connect(m_timer, &QTimer::timeout, this, &TrayWatcher::poll);
@@ -94,11 +118,7 @@ void TrayWatcher::poll()
         const bool newSession = !m_wasActive || sig.sourceRef != m_lastOfferedRef;
         if (newSession && !recording) {
             m_lastOfferedRef = sig.sourceRef;
-            m_tray->showMessage(
-                tr("Hívás észlelve — %1").arg(sig.appName),
-                tr("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
-                   "(azonnali indítás vagy a rögzítő megnyitása)."),
-                QSystemTrayIcon::Information, 8000);
+            showCallNotification(sig.appName, sig.windowTitle);
         }
     } else {
         m_lastOfferedRef.clear();   // inaktív → a következő hívás újra ajánlható
@@ -179,6 +199,71 @@ QString TrayWatcher::lockPath() const
 void TrayWatcher::launch(const QStringList& args) const
 {
     QProcess::startDetached(tanaraBinary(), args);
+}
+
+void TrayWatcher::showCallNotification(const QString& appName, const QString& windowTitle)
+{
+#if defined(TANARA_HAVE_DBUS)
+    // freedesktop Notifications közvetlenül: a QSystemTrayIcon::showMessage kattintása
+    // Plasmán nem működik (nincs default akció), és gombokat sem tud. Itt két valódi
+    // akció-gomb megy ki, a test-kattintás pedig a "default" akció.
+    QDBusInterface iface(QStringLiteral("org.freedesktop.Notifications"),
+                         QStringLiteral("/org/freedesktop/Notifications"),
+                         QStringLiteral("org.freedesktop.Notifications"));
+    if (iface.isValid()) {
+        const QStringList actions{
+            QStringLiteral("default"),       tr("Rögzítő megnyitása"),
+            QStringLiteral("record-now"),    tr("Rögzítés azonnali indítása"),
+            QStringLiteral("open-recorder"), tr("Rögzítő megnyitása…"),
+        };
+        QVariantMap hints;
+        hints.insert(QStringLiteral("urgency"), 1);   // normal
+        const QDBusReply<uint> reply = iface.call(
+            QStringLiteral("Notify"),
+            QStringLiteral("Tanara"),
+            m_notifyId,                                   // replaces_id: az előzőt cseréli
+            QStringLiteral("audio-input-microphone"),     // téma-ikon név
+            tr("Hívás észlelve — %1").arg(appName),
+            windowTitle.trimmed().isEmpty() ? tr("Aktív hívást észleltem.") : windowTitle,
+            actions, hints, 8000);
+        if (reply.isValid()) {
+            m_notifyId = reply.value();
+            return;
+        }
+        // érvénytelen válasz → showMessage-fallback lent
+    }
+#endif
+    // Fallback (Windows / nincs D-Bus): a kattintást a messageClicked kezeli, ahol működik.
+    m_tray->showMessage(
+        tr("Hívás észlelve — %1").arg(appName),
+        tr("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
+           "(azonnali indítás vagy a rögzítő megnyitása)."),
+        QSystemTrayIcon::Information, 8000);
+}
+
+void TrayWatcher::onNotifyActionInvoked(uint id, const QString& actionKey)
+{
+#if defined(TANARA_HAVE_DBUS)
+    if (id != m_notifyId || m_notifyId == 0)
+        return;   // nem a mi értesítésünk
+    if (actionKey == QStringLiteral("record-now"))
+        startRecordingNow();
+    else   // "default" (test-kattintás) és "open-recorder" is megnyit
+        openRecorder();
+#else
+    Q_UNUSED(id); Q_UNUSED(actionKey);
+#endif
+}
+
+void TrayWatcher::onNotifyClosed(uint id, uint reason)
+{
+    Q_UNUSED(reason);
+#if defined(TANARA_HAVE_DBUS)
+    if (id == m_notifyId)
+        m_notifyId = 0;   // lezárult → a következő Notify ne "cseréljen" halott id-t
+#else
+    Q_UNUSED(id);
+#endif
 }
 
 void TrayWatcher::updateTrayTooltip(bool recording, const QString& detectedApp)
