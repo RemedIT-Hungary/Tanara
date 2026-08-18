@@ -111,6 +111,12 @@
              <property name="toolTip"><string>A beszélők azonosítása a hang-lenyomatok alapján; a biztos találatokat beírja, a többit „ismeretlen partner"-ként hagyja. A neveket az átiraton a névre kattintva adhatod meg.</string></property>
             </widget>
            </item>
+           <item>
+            <widget class="QPushButton" name="retranscribeBtn">
+             <property name="text"><string>⟳  Újra-átírás…</string></property>
+             <property name="toolTip"><string>Az átirat újrakészítése az aktuálisan beállított STT-providerrel. A mostani átirat és a beszélő-hozzárendelések felülíródnak.</string></property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>

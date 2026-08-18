@@ -1146,6 +1146,17 @@ void AppController::transcribeMeeting(const QString& meetingId)
     transcribeFromMixdown(meetingId);
 }
 
+void AppController::retranscribeMeeting(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (!m.speakerMap.isEmpty()) {
+        m.speakerMap.clear();
+        d->store->saveMeeting(m);
+    }
+    transcribeMeeting(meetingId);
+}
+
 void AppController::transcribeFromMixdown(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);

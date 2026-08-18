@@ -10,6 +10,8 @@
 #include "TracksPanel.h"
 
 #include "tanara/AppController.h"
+#include "tanara/SettingsManager.h"
+#include "tanara/provider/ProviderRegistry.h"
 #include "tanara/store/MeetingStore.h"
 
 #include <QTableView>
@@ -555,6 +557,20 @@ void MainWindow::buildUi() {
     // (A Sávok a fülön + a Nézet→Sávok menüből érhető el; a régi „Sávok…" fejléc-gomb
     //  megszűnt, redundáns volt.)
     connect(m_speakersEditBtn, &QPushButton::clicked, this, &MainWindow::onIdentifyParticipants);
+    connect(ui->retranscribeBtn, &QPushButton::clicked, this, [this]() {
+        if (m_currentMeetingId.isEmpty() || !m_controller)
+            return;
+        const QString sttId = m_controller->settings()->settings().sttProviderId;
+        const QString provName =
+            tanara::SttProviderRegistry::instance().descriptor(sttId).displayName;
+        const auto btn = QMessageBox::question(this, tr("Újra-átírás"),
+            tr("Újraírod az átiratot ezzel: %1?\n\nA mostani átirat és a "
+               "beszélő-hozzárendelések felülíródnak. Az összefoglaló a régi marad, "
+               "amíg újra nem futtatod.").arg(provName),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (btn == QMessageBox::Yes)
+            m_controller->retranscribeMeeting(m_currentMeetingId);
+    });
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     // (a Gyors összefoglaló gombja már az Összefoglaló-fül akció-sávjában kötve — lásd buildUi)
 

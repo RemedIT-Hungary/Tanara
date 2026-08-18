@@ -109,6 +109,10 @@ public slots:
     // mixdown hiányzik/elavult, előbb legyártja, és a kész jelére indítja az átírást.
     // Kulcs a KeyStore-ból.
     void transcribeMeeting(const QString& meetingId);
+
+    // Újra-átírás meglévő átirat mellett: törli a beszélő-hozzárendeléseket (más provider
+    // más beszélő-felosztást adhat — a nevek tévesen ragadnának át), majd transcribeMeeting.
+    void retranscribeMeeting(const QString& meetingId);
     // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
     void summarizeMeeting(const QString& meetingId);
 

@@ -126,6 +126,14 @@
         <translation>Identifies speakers based on their voiceprints; confident matches are filled in, the rest are left as &quot;unknown partner&quot;. You can assign names by clicking a name in the transcript.</translation>
     </message>
     <message>
+        <source>⟳  Újra-átírás…</source>
+        <translation>⟳  Re-transcribe…</translation>
+    </message>
+    <message>
+        <source>Az átirat újrakészítése az aktuálisan beállított STT-providerrel. A mostani átirat és a beszélő-hozzárendelések felülíródnak.</source>
+        <translation>Create the transcript again with the currently selected STT provider. The current transcript and the speaker assignments are overwritten.</translation>
+    </message>
+    <message>
         <source>Átirat</source>
         <translation>Transcript</translation>
     </message>
@@ -912,6 +920,18 @@ Choose above: &quot;Quick summary&quot; in one step, or &quot;By topic&quot; for
     <message>
         <source>🎧 Lekeverés %p%</source>
         <translation>🎧 Mixdown %p%</translation>
+    </message>
+    <message>
+        <source>Újra-átírás</source>
+        <translation>Re-transcribe</translation>
+    </message>
+    <message>
+        <source>Újraírod az átiratot ezzel: %1?
+
+A mostani átirat és a beszélő-hozzárendelések felülíródnak. Az összefoglaló a régi marad, amíg újra nem futtatod.</source>
+        <translation>Re-transcribe with %1?
+
+The current transcript and the speaker assignments are overwritten. The summary stays the old one until you run it again.</translation>
     </message>
     <message>
         <source>&amp;Fájl</source>
