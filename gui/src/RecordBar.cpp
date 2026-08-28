@@ -6,6 +6,7 @@
 #include "tanara/audio/DeviceManager.h"
 
 #include <QCoreApplication>
+#include <QMessageBox>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QToolButton>
@@ -87,6 +88,25 @@ RecordBar::RecordBar(tanara::AppController* controller, QWidget* parent)
     });
 
     rebuildDeviceList();
+    // Hívás-vég felvétel közben → rákérdezünk a leállításra (nem állítunk le magunktól).
+    if (m_controller) {
+        connect(m_controller, &tanara::AppController::callEnded, this, [this](const QString& app) {
+            if (m_state != tanara::RecordingState::Recording || m_askingStop)
+                return;
+            m_askingStop = true;
+            QWidget* win = window();
+            if (win) { win->show(); win->raise(); win->activateWindow(); }
+            const QString who = app.isEmpty() ? tr("a hívás") : app;
+            const auto btn = QMessageBox::question(win, tr("Vége a meetingnek?"),
+                tr("Úgy tűnik, véget ért: %1 (az app leállt vagy elengedte a mikrofont).\n\n"
+                   "Leállítsam a rögzítést?").arg(who),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+            m_askingStop = false;
+            if (btn == QMessageBox::Yes && m_controller
+                && m_controller->recordingState() == tanara::RecordingState::Recording)
+                m_controller->stopRecording();
+        });
+    }
     onRecordingStateChanged(m_controller ? m_controller->recordingState()
                                          : tanara::RecordingState::Idle);
     applyViewMode();

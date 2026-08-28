@@ -233,6 +233,9 @@ struct AppSettings {
     bool detectorEnabled = true;              // aktív-hívás észlelés be/ki
     int  detectorIntervalSec = 8;             // poll-intervallum (mp); épkézláb tartomány 5–30
     bool watcherAutostart = false;            // a figyelő induljon-e bejelentkezéskor
+    // Felvétel közben a rögzítő is figyeli a hívást: ha az véget ér (az app leáll / elengedi
+    // a mikrofont), rákérdez a leállításra. Nem állít le magától.
+    bool askStopOnCallEnd = true;
     QString detectorId;                       // üres → MeetingDetectorRegistry::createBest()
     // Ismert hívás-appok (bináris/app-név részletek) — ezekre jelez a detektor.
     QStringList knownCallApps{

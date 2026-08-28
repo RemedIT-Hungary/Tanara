@@ -246,6 +246,13 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     m_watcherAutostart->setToolTip(tr(
         "Bejelentkezéskor automatikusan elindul a háttér-figyelő (a rendszertálcára dokkolva)."));
     watchForm->addRow(QString(), m_watcherAutostart);
+
+    m_askStopOnCallEnd = new QCheckBox(
+        tr("Felvétel közben kérdezzen rá a leállításra, ha a hívás véget ér"), watchPage);
+    m_askStopOnCallEnd->setToolTip(tr(
+        "A rögzítő is figyeli a hívást: ha a hívás-app leáll vagy elengedi a mikrofont, "
+        "felugró kérdéssel ajánlja a rögzítés leállítását. Magától sosem állít le."));
+    watchForm->addRow(QString(), m_askStopOnCallEnd);
     wl->addLayout(watchForm);
 
     auto* appsBox = new QGroupBox(tr("Ismert hívás-appok"), watchPage);
@@ -709,6 +716,7 @@ void SettingsDialog::loadGeneral() {
         m_detectorEnabled->setChecked(s.detectorEnabled);
         if (m_detectorInterval)  m_detectorInterval->setValue(s.detectorIntervalSec);
         if (m_watcherAutostart)  m_watcherAutostart->setChecked(s.watcherAutostart);
+        if (m_askStopOnCallEnd)  m_askStopOnCallEnd->setChecked(s.askStopOnCallEnd);
         if (m_knownCallApps)     m_knownCallApps->setPlainText(s.knownCallApps.join(QLatin1Char('\n')));
         // a többi mező engedélyezése az észlelés-kapcsoló szerint
         if (m_detectorInterval)  m_detectorInterval->setEnabled(s.detectorEnabled);
@@ -826,6 +834,7 @@ void SettingsDialog::onAccept() {
         s.detectorEnabled = m_detectorEnabled->isChecked();
         if (m_detectorInterval)  s.detectorIntervalSec = m_detectorInterval->value();
         if (m_watcherAutostart)  s.watcherAutostart = m_watcherAutostart->isChecked();
+        if (m_askStopOnCallEnd)  s.askStopOnCallEnd = m_askStopOnCallEnd->isChecked();
         if (m_knownCallApps) {
             QStringList apps;
             const QStringList lines = m_knownCallApps->toPlainText().split(QLatin1Char('\n'));

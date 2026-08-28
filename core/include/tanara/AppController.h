@@ -182,6 +182,9 @@ signals:
     void levelMeterUpdated(int trackIndex, float rms);
     void elapsedChanged(qint64 ms);
     void recordingFinished(tanara::Meeting meeting);
+    // Felvétel közben a hívás véget ért (a detektor 2 egymást követő pollban inaktívat
+    // látott egy korábban aktív hívás után). A UI ebből kérdez rá a leállításra.
+    void callEnded(QString appName);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
     void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör
@@ -203,6 +206,10 @@ signals:
     void errorOccurred(QString message);
 
 private:
+    // Hívás-vég figyelés felvétel közben (askStopOnCallEnd) — a figyelő detektor-magjával.
+    void startCallEndMonitor();
+    void stopCallEndMonitor();
+    void pollCallEnd();
     // A kész (friss) mixdownt egyetlen Soniox-kéréssel írja át; a transcribeMeeting ehhez
     // láncolja a lekeverés elkészültét. A beszélő-szeparációt a Soniox diarizációja adja
     // („Beszélő N" címkék) — a nevet utólag a voice-ID / kézi átnevezés oldja fel.

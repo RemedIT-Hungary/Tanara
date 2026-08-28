@@ -1,6 +1,10 @@
 #include "tanara/AppController.h"
 
+#include "tanara/Logging.h"
 #include "tanara/PromptLibrary.h"
+#include "tanara/detect/DetectorRegistry.h"
+#include "tanara/detect/IMeetingDetector.h"
+#include <QTimer>
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/audio/DeviceMonitor.h"
@@ -408,6 +412,13 @@ struct AppController::Impl {
     QStringList      lastDevices;
     QString          currentFolder;
     QHash<QString, MergedTranscript> mergedCache;
+
+    // Hívás-vég figyelés felvétel közben (lásd startCallEndMonitor).
+    std::unique_ptr<IMeetingDetector> callDetector;
+    QTimer* callTimer = nullptr;
+    bool    callSeenActive = false;   // láttunk-e aktív hívást a felvétel alatt
+    int     callInactivePolls = 0;    // egymást követő inaktív pollok az aktív után
+    QString callAppName;
 
     // Téma-elemzés job-sor (komplex 2. kör): egyszerre EGY LLM-hívás fut (lokális modell,
     // parallel=1), a többi téma sorban áll. Témánként külön (újra)indítható.
@@ -1071,19 +1082,25 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->state = st;
         // A meeting-mappa a start()-ban már létrejött → a felvétel ELEJÉN elérhető
         // (nem csak a finished-nél). Kell a --record lockhoz + a currentMeetingFolder()-höz.
-        if (st == RecordingState::Recording)
+        if (st == RecordingState::Recording) {
             d->currentFolder = sess->folder();
+            startCallEndMonitor();
+        } else if (st == RecordingState::Idle) {
+            stopCallEndMonitor();
+        }
         emit recordingStateChanged(st);
     });
     connect(sess, &RecordingSession::levelMeterUpdated, this, &AppController::levelMeterUpdated);
     connect(sess, &RecordingSession::elapsedChanged, this, &AppController::elapsedChanged);
     connect(sess, &RecordingSession::failed, this, [this](QString e) {
+        stopCallEndMonitor();
         emit errorOccurred(e);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
         d->state = RecordingState::Idle;
         emit recordingStateChanged(d->state);
     });
     connect(sess, &RecordingSession::finished, this, [this](Meeting m) {
+        stopCallEndMonitor();
         d->currentFolder = m.folder;
         d->store->saveMeeting(m);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
@@ -1100,6 +1117,64 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     });
 
     sess->start(use);
+}
+
+// ---- hívás-vég figyelés felvétel közben ---------------------------------------------
+// Ugyanaz a detektor-mag, amit a tanara-watcher használ. A saját capture-t a detektor a
+// selfBinary alapján kizárja. Csak JELEZ (callEnded) — a leállításról a user dönt.
+void AppController::startCallEndMonitor()
+{
+    stopCallEndMonitor();
+    const AppSettings s = d->settings->settings();
+    if (!s.askStopOnCallEnd)
+        return;
+    registerBuiltinDetectors();
+    d->callDetector.reset(s.detectorId.isEmpty()
+        ? MeetingDetectorRegistry::instance().createBest()
+        : MeetingDetectorRegistry::instance().create(s.detectorId));
+    if (!d->callDetector) {
+        qCDebug(lcApp) << "Hívás-vég figyelés: nincs elérhető detektor ezen a platformon.";
+        return;
+    }
+    d->callDetector->configure(s.knownCallApps, QStringLiteral("tanara"));
+    d->callSeenActive = false;
+    d->callInactivePolls = 0;
+    d->callAppName.clear();
+    d->callTimer = new QTimer(this);
+    connect(d->callTimer, &QTimer::timeout, this, &AppController::pollCallEnd);
+    d->callTimer->start(qMax(1, s.detectorIntervalSec) * 1000);
+    pollCallEnd();
+}
+
+void AppController::stopCallEndMonitor()
+{
+    if (d->callTimer) { d->callTimer->stop(); d->callTimer->deleteLater(); d->callTimer = nullptr; }
+    d->callDetector.reset();
+    d->callSeenActive = false;
+    d->callInactivePolls = 0;
+}
+
+void AppController::pollCallEnd()
+{
+    if (!d->callDetector || d->state != RecordingState::Recording)
+        return;
+    const MeetingSignal sig = d->callDetector->poll();
+    if (sig.active) {
+        d->callSeenActive = true;
+        d->callInactivePolls = 0;
+        if (!sig.appName.isEmpty()) d->callAppName = sig.appName;
+        return;
+    }
+    if (!d->callSeenActive)
+        return;   // még nem is láttunk hívást (kézi felvétel hívás nélkül) — nincs mit jelezni
+    // Debounce: 2 egymást követő inaktív poll (egy pillanatnyi mikrofon-elengedés ne kérdezzen).
+    if (++d->callInactivePolls >= 2) {
+        const QString app = d->callAppName;
+        d->callSeenActive = false;   // újra-élesedik, ha később megint aktív lesz a hívás
+        d->callInactivePolls = 0;
+        qCInfo(lcApp).noquote() << "Hívás véget ért felvétel közben:" << app;
+        emit callEnded(app);
+    }
 }
 
 void AppController::stopRecording()

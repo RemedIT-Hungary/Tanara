@@ -1374,6 +1374,22 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
             <numerusform>● Recording — %n audio sources</numerusform>
         </translation>
     </message>
+    <message>
+        <source>a hívás</source>
+        <translation>the call</translation>
+    </message>
+    <message>
+        <source>Vége a meetingnek?</source>
+        <translation>Is the meeting over?</translation>
+    </message>
+    <message>
+        <source>Úgy tűnik, véget ért: %1 (az app leállt vagy elengedte a mikrofont).
+
+Leállítsam a rögzítést?</source>
+        <translation>It looks like it has ended: %1 (the app quit or released the microphone).
+
+Stop the recording?</translation>
+    </message>
     <message numerus="yes">
         <source>🎙 %n hangforrás kiválasztva</source>
         <translation>
@@ -1569,6 +1585,14 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     <message>
         <source>Bejelentkezéskor automatikusan elindul a háttér-figyelő (a rendszertálcára dokkolva).</source>
         <translation>The background watcher starts automatically at login (docked in the system tray).</translation>
+    </message>
+    <message>
+        <source>Felvétel közben kérdezzen rá a leállításra, ha a hívás véget ér</source>
+        <translation>While recording, ask whether to stop when the call ends</translation>
+    </message>
+    <message>
+        <source>A rögzítő is figyeli a hívást: ha a hívás-app leáll vagy elengedi a mikrofont, felugró kérdéssel ajánlja a rögzítés leállítását. Magától sosem állít le.</source>
+        <translation>The recorder also watches the call: when the call app quits or releases the microphone, a pop-up question offers to stop the recording. It never stops on its own.</translation>
     </message>
     <message>
         <source>Ismert hívás-appok</source>

@@ -92,6 +92,7 @@ private:
     Ui::RecordBar* ui = nullptr;
     tanara::AppController* m_controller = nullptr;
     tanara::RecordingState m_state = tanara::RecordingState::Idle;
+    bool m_askingStop = false;   // a hívás-vég kérdés épp nyitva (ne duplázzunk)
     ViewMode m_mode = ViewMode::Full;
 
     QLabel*      m_titleLabel = nullptr;    // a cím alapból label (egyben húzó-fogantyú)
