@@ -1376,6 +1376,17 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>Meeting</translation>
     </message>
     <message>
+        <source>Úgy tűnik, véget ért: %1 (az app leállt vagy elengedte a mikrofont).</source>
+        <translation>It looks like it has ended: %1 (the app quit or released the microphone).</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n perce egyik hangforráson sincs hang.</source>
+        <translation>
+            <numerusform>No audio source has had any sound for %n minute.</numerusform>
+            <numerusform>No audio source has had any sound for %n minutes.</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>Hangforrások</source>
         <translation>Audio sources</translation>
     </message>
@@ -1402,14 +1413,6 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <source>Vége a meetingnek?</source>
         <translation>Is the meeting over?</translation>
     </message>
-    <message>
-        <source>Úgy tűnik, véget ért: %1 (az app leállt vagy elengedte a mikrofont).
-
-Leállítsam a rögzítést?</source>
-        <translation>It looks like it has ended: %1 (the app quit or released the microphone).
-
-Stop the recording?</translation>
-    </message>
     <message numerus="yes">
         <source>🎙 %n hangforrás kiválasztva</source>
         <translation>
@@ -1420,6 +1423,10 @@ Stop the recording?</translation>
     <message>
         <source>  (alapértelmezett)</source>
         <translation>  (default)</translation>
+    </message>
+    <message>
+        <source>Leállítsam a rögzítést?</source>
+        <translation>Stop the recording?</translation>
     </message>
     <message>
         <source>⏹  Leállítás
@@ -1613,6 +1620,22 @@ Stop the recording?</translation>
     <message>
         <source>A rögzítő is figyeli a hívást: ha a hívás-app leáll vagy elengedi a mikrofont, felugró kérdéssel ajánlja a rögzítés leállítását. Magától sosem állít le.</source>
         <translation>The recorder also watches the call: when the call app quits or releases the microphone, a pop-up question offers to stop the recording. It never stops on its own.</translation>
+    </message>
+    <message>
+        <source> perc</source>
+        <translation> min</translation>
+    </message>
+    <message>
+        <source>kikapcsolva</source>
+        <translation>off</translation>
+    </message>
+    <message>
+        <source>Ha felvétel közben ennyi percig egyik hangforráson sincs hang, rákérdez a leállításra. A hívás-detektortól független háló (Teams/böngésző esetén a mikrofon-elengedés nem mindig látszik). 0 = kikapcsolva.</source>
+        <translation>If no audio source has any sound for this many minutes while recording, the app asks whether to stop. A safety net independent of the call detector (with Teams or a browser, releasing the microphone is not always visible). 0 = off.</translation>
+    </message>
+    <message>
+        <source>Csend után kérdezzen:</source>
+        <translation>Ask after silence:</translation>
     </message>
     <message>
         <source>Ismert hívás-appok</source>

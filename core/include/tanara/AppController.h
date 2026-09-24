@@ -185,6 +185,9 @@ signals:
     // Felvétel közben a hívás véget ért (a detektor 2 egymást követő pollban inaktívat
     // látott egy korábban aktív hívás után). A UI ebből kérdez rá a leállításra.
     void callEnded(QString appName);
+    // Felvétel közben minden sáv legalább `minutes` perce csendes (silenceAskMinutes).
+    // A UI ebből kérdez rá a leállításra; hang visszatértekor újra-élesedik.
+    void silenceDetected(int minutes);
     void transcriptReady(QString meetingId, QString markdownPath);
     void summaryReady(QString meetingId, QString markdownPath);
     void topicsReady(QString meetingId, QVector<tanara::SummaryTopic> topics);  // komplex 1. kör

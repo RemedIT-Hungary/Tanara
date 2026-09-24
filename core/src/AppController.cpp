@@ -420,6 +420,11 @@ struct AppController::Impl {
     int     callInactivePolls = 0;    // egymást követő inaktív pollok az aktív után
     QString callAppName;
 
+    // Csend-figyelés felvétel közben (silenceAskMinutes).
+    QTimer* silenceTimer = nullptr;
+    qint64  lastLoudMs = 0;        // utolsó „hangos” RMS időbélyege (monotonic)
+    bool    silenceAsked = false;  // már kérdeztünk erre a csend-szakaszra
+
     // Téma-elemzés job-sor (komplex 2. kör): egyszerre EGY LLM-hívás fut (lokális modell,
     // parallel=1), a többi téma sorban áll. Témánként külön (újra)indítható.
     struct TopicJob { QString meetingId; SummaryTopic topic; };
@@ -1093,6 +1098,33 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit recordingStateChanged(st);
     });
     connect(sess, &RecordingSession::levelMeterUpdated, this, &AppController::levelMeterUpdated);
+    // Csend-figyelés: bármely sáv beszéd-szintű RMS-e „hangos” → időbélyeg frissül,
+    // és a csend-kérdés újra-élesedik. Küszöb a RecordingSession kSilencePeak-jével összhangban.
+    connect(sess, &RecordingSession::levelMeterUpdated, this, [this](int, float rms) {
+        if (rms >= 0.008f) {
+            d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
+            d->silenceAsked = false;
+        }
+    });
+    {
+        const int minutes = d->settings->settings().silenceAskMinutes;
+        if (d->silenceTimer) { d->silenceTimer->stop(); d->silenceTimer->deleteLater(); d->silenceTimer = nullptr; }
+        if (minutes > 0) {
+            d->lastLoudMs = QDateTime::currentMSecsSinceEpoch();
+            d->silenceAsked = false;
+            d->silenceTimer = new QTimer(this);
+            connect(d->silenceTimer, &QTimer::timeout, this, [this, minutes]() {
+                if (d->state != RecordingState::Recording || d->silenceAsked) return;
+                const qint64 quiet = QDateTime::currentMSecsSinceEpoch() - d->lastLoudMs;
+                if (quiet >= qint64(minutes) * 60000) {
+                    d->silenceAsked = true;
+                    qCInfo(lcApp) << "Csend felvétel közben:" << minutes << "perc → rákérdezés";
+                    emit silenceDetected(minutes);
+                }
+            });
+            d->silenceTimer->start(10000);
+        }
+    }
     connect(sess, &RecordingSession::elapsedChanged, this, &AppController::elapsedChanged);
     connect(sess, &RecordingSession::failed, this, [this](QString e) {
         stopCallEndMonitor();
@@ -1150,6 +1182,7 @@ void AppController::startCallEndMonitor()
 
 void AppController::stopCallEndMonitor()
 {
+    if (d->silenceTimer) { d->silenceTimer->stop(); d->silenceTimer->deleteLater(); d->silenceTimer = nullptr; }
     if (d->callTimer) { d->callTimer->stop(); d->callTimer->deleteLater(); d->callTimer = nullptr; }
     d->callDetector.reset();
     d->callSeenActive = false;

@@ -100,6 +100,7 @@ private:
     QSpinBox*       m_detectorInterval = nullptr;   // poll-intervallum (mp)
     QCheckBox*      m_watcherAutostart = nullptr;
     QCheckBox*      m_askStopOnCallEnd = nullptr;   // felvétel közben kérdezzen a hívás végén
+    QSpinBox*       m_silenceAskMinutes = nullptr;  // csend-háló (perc, 0 = ki)
     QPlainTextEdit* m_knownCallApps = nullptr;      // soronként egy app (bináris/név-részlet)
 
     ProviderSection m_stt;

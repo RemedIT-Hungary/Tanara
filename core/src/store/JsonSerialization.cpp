@@ -261,6 +261,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("detectorIntervalSec")] = s.detectorIntervalSec;
     o[QStringLiteral("watcherAutostart")]    = s.watcherAutostart;
     o[QStringLiteral("askStopOnCallEnd")]    = s.askStopOnCallEnd;
+    o[QStringLiteral("silenceAskMinutes")]   = s.silenceAskMinutes;
     o[QStringLiteral("detectorId")]          = s.detectorId;
     o[QStringLiteral("knownCallApps")]       = stringListToArray(s.knownCallApps);
     return o;
@@ -322,6 +323,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.detectorIntervalSec = o.value(QStringLiteral("detectorIntervalSec")).toInt(s.detectorIntervalSec);
     s.watcherAutostart    = o.value(QStringLiteral("watcherAutostart")).toBool(s.watcherAutostart);
     s.askStopOnCallEnd    = o.value(QStringLiteral("askStopOnCallEnd")).toBool(s.askStopOnCallEnd);
+    s.silenceAskMinutes   = o.value(QStringLiteral("silenceAskMinutes")).toInt(s.silenceAskMinutes);
     s.detectorId          = o.value(QStringLiteral("detectorId")).toString(s.detectorId);
     if (o.contains(QStringLiteral("knownCallApps")))
         s.knownCallApps = arrayToStringList(o.value(QStringLiteral("knownCallApps")).toArray());

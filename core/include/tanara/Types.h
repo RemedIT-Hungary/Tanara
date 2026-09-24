@@ -236,6 +236,10 @@ struct AppSettings {
     // Felvétel közben a rögzítő is figyeli a hívást: ha az véget ér (az app leáll / elengedi
     // a mikrofont), rákérdez a leállításra. Nem állít le magától.
     bool askStopOnCallEnd = true;
+    // Csend-figyelés felvétel közben: ha MINDEN sáv ennyi percig csendes, rákérdez a
+    // leállításra (Teams/böngésző esetén a mikrofon-elengedés nem mindig látszik a
+    // detektornak — ez a detektortól FÜGGETLEN háló). 0 = kikapcsolva.
+    int  silenceAskMinutes = 3;
     QString detectorId;                       // üres → MeetingDetectorRegistry::createBest()
     // Ismert hívás-appok (bináris/app-név részletek) — ezekre jelez a detektor.
     QStringList knownCallApps{

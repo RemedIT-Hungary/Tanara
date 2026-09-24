@@ -253,6 +253,16 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         "A rögzítő is figyeli a hívást: ha a hívás-app leáll vagy elengedi a mikrofont, "
         "felugró kérdéssel ajánlja a rögzítés leállítását. Magától sosem állít le."));
     watchForm->addRow(QString(), m_askStopOnCallEnd);
+
+    m_silenceAskMinutes = new QSpinBox(watchPage);
+    m_silenceAskMinutes->setRange(0, 60);
+    m_silenceAskMinutes->setSuffix(tr(" perc"));
+    m_silenceAskMinutes->setSpecialValueText(tr("kikapcsolva"));
+    m_silenceAskMinutes->setToolTip(tr(
+        "Ha felvétel közben ennyi percig egyik hangforráson sincs hang, rákérdez a "
+        "leállításra. A hívás-detektortól független háló (Teams/böngésző esetén a "
+        "mikrofon-elengedés nem mindig látszik). 0 = kikapcsolva."));
+    watchForm->addRow(tr("Csend után kérdezzen:"), m_silenceAskMinutes);
     wl->addLayout(watchForm);
 
     auto* appsBox = new QGroupBox(tr("Ismert hívás-appok"), watchPage);
@@ -717,6 +727,7 @@ void SettingsDialog::loadGeneral() {
         if (m_detectorInterval)  m_detectorInterval->setValue(s.detectorIntervalSec);
         if (m_watcherAutostart)  m_watcherAutostart->setChecked(s.watcherAutostart);
         if (m_askStopOnCallEnd)  m_askStopOnCallEnd->setChecked(s.askStopOnCallEnd);
+        if (m_silenceAskMinutes) m_silenceAskMinutes->setValue(s.silenceAskMinutes);
         if (m_knownCallApps)     m_knownCallApps->setPlainText(s.knownCallApps.join(QLatin1Char('\n')));
         // a többi mező engedélyezése az észlelés-kapcsoló szerint
         if (m_detectorInterval)  m_detectorInterval->setEnabled(s.detectorEnabled);
@@ -835,6 +846,7 @@ void SettingsDialog::onAccept() {
         if (m_detectorInterval)  s.detectorIntervalSec = m_detectorInterval->value();
         if (m_watcherAutostart)  s.watcherAutostart = m_watcherAutostart->isChecked();
         if (m_askStopOnCallEnd)  s.askStopOnCallEnd = m_askStopOnCallEnd->isChecked();
+        if (m_silenceAskMinutes) s.silenceAskMinutes = m_silenceAskMinutes->value();
         if (m_knownCallApps) {
             QStringList apps;
             const QStringList lines = m_knownCallApps->toPlainText().split(QLatin1Char('\n'));

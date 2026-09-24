@@ -56,6 +56,9 @@ public:
     // ha épp üresjáratban vagyunk. Felvétel közben csak a cím marad érintetlen.
     void startWithTitle(const QString& title);
 
+    // Rákérdezés a leállításra (hívás-vég / csend); felvétel közben, egyszerre csak egy.
+    void askStopRecording(const QString& reason);
+
 signals:
     void viewModeChanged(ViewMode mode);
     void minimizeRequested();   // — gomb: tálcára (a FloatingRecorder showMinimized-et hív)
