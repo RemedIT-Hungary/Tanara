@@ -447,6 +447,8 @@ AppController::AppController(QObject* parent)
     d->keyStore = KeyStore(QDir(d->metaDir).filePath(QStringLiteral("secrets.json")));
     d->devices = new DeviceManager(this);
     d->store   = new MeetingStore(d->audioDir, d->metaDir, this);
+    // Crash után árván maradt felvételek (sávok meeting.json nélkül) visszahozása a listába.
+    d->store->recoverOrphanRecordings();
 
     connect(d->devices, &DeviceManager::devicesChanged, this, &AppController::devicesChanged);
 

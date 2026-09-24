@@ -9,6 +9,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
+#include <QProcess>
+#include <QDateTime>
 #include <QRegularExpression>
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -282,8 +284,70 @@ QVector<Meeting> MeetingStore::loadAll()
     return out;
 }
 
+namespace {
+qint64 probeDurationMs(const QString& path)
+{
+    QProcess p;
+    p.start(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"),
+        QStringLiteral("-show_entries"), QStringLiteral("format=duration"),
+        QStringLiteral("-of"), QStringLiteral("csv=p=0"), path});
+    if (!p.waitForFinished(5000)) { p.kill(); return 0; }
+    return qint64(QString::fromUtf8(p.readAllStandardOutput()).trimmed().toDouble() * 1000.0);
+}
+} // namespace
+
+int MeetingStore::recoverOrphanRecordings()
+{
+    QDir root(m_audioDir);
+    if (!root.exists()) return 0;
+    int recovered = 0;
+    const QFileInfoList dirs = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo& fi : dirs) {
+        const QString folder = fi.absoluteFilePath();
+        if (QFile::exists(meetingJsonPath(folder)))
+            continue;
+        const QStringList oggs = QDir(folder).entryList({QStringLiteral("track_*.ogg")}, QDir::Files, QDir::Name);
+        if (oggs.isEmpty())
+            continue;
+
+        Meeting m;
+        m.id     = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        m.folder = folder;
+        // Mappanév: "yyyy-MM-dd_HHmm_<cím-slug>" (RecordingSession::start írja így).
+        const QString name = fi.fileName();
+        m.startedAt = QDateTime::fromString(name.left(15), QStringLiteral("yyyy-MM-dd_HHmm"));
+        if (!m.startedAt.isValid()) m.startedAt = fi.birthTime().isValid() ? fi.birthTime() : fi.lastModified();
+        QString slug = name.size() > 16 ? name.mid(16) : name;
+        slug.replace(QLatin1Char('-'), QLatin1Char(' '));
+        m.title = slug.trimmed().isEmpty() ? QStringLiteral("Meeting") : slug.trimmed();
+        m.title += QStringLiteral(" (helyreállított)");
+
+        int micNo = 1;
+        for (const QString& f : oggs) {
+            Track t;
+            const QString stem = f.left(f.size() - 4).mid(6);   // "track_" + ".ogg" nélkül
+            t.id         = stem;
+            t.file       = f;
+            t.deviceName = QString(stem).replace(QLatin1Char('-'), QLatin1Char(' '));
+            const bool loop = stem.startsWith(QStringLiteral("monitor-of")) || stem.contains(QStringLiteral("loopback"));
+            t.kind         = loop ? TrackKind::Loopback : TrackKind::Mic;
+            t.speakerLabel = loop ? QStringLiteral("Rendszer")
+                                  : QStringLiteral("Mikrofon ") + QString::number(micNo++);
+            t.active = true;
+            m.durationMs = qMax(m.durationMs, probeDurationMs(QDir(folder).filePath(f)));
+            m.tracks.append(t);
+        }
+        saveMeeting(m);   // meeting.json + index
+        ++recovered;
+        qCInfo(lcStore).noquote() << "Árva felvétel helyreállítva:" << name
+                                  << "sávok:" << m.tracks.size() << "hossz(ms):" << m.durationMs;
+    }
+    return recovered;
+}
+
 void MeetingStore::rebuildIndexFromDisk()
 {
+    recoverOrphanRecordings();
     QSqlDatabase db = QSqlDatabase::database(m_connName);
 
     // Tabula rasa: a DB csak cache, nyugodtan üríthető.

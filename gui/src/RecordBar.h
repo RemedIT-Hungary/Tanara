@@ -52,6 +52,10 @@ public:
     // Beállítások és a felvevő ne csússzon szét.
     void refreshFromSettings();
 
+    // Külső (továbbított `--record`) kérés: cím beállítása + indítás a Start-gomb útján,
+    // ha épp üresjáratban vagyunk. Felvétel közben csak a cím marad érintetlen.
+    void startWithTitle(const QString& title);
+
 signals:
     void viewModeChanged(ViewMode mode);
     void minimizeRequested();   // — gomb: tálcára (a FloatingRecorder showMinimized-et hív)

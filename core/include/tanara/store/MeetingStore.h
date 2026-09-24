@@ -35,6 +35,11 @@ public:
     // A meeting.json kiírása a meeting mappájába + index frissítés.
     void saveMeeting(const Meeting& m);
 
+    // Árva felvétel-mappák (track_*.ogg VAN, meeting.json NINCS — pl. crash felvétel
+    // közben) helyreállítása: a sávokból újraépíti a Meetinget (hossz ffprobe-bal),
+    // kiírja a meeting.json-t és indexeli. Visszatér: helyreállított mappák száma.
+    int recoverOrphanRecordings();
+
     // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.
     QVector<Meeting> loadAll();
 

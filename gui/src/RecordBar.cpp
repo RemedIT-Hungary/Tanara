@@ -414,6 +414,16 @@ void RecordBar::resetDeviceLevelBars() {
     }
 }
 
+void RecordBar::startWithTitle(const QString& title) {
+    if (m_state != tanara::RecordingState::Idle)
+        return;
+    if (m_titleEdit && !title.trimmed().isEmpty()) {
+        m_titleEdit->setText(title.trimmed());
+        updateTitleDisplay();
+    }
+    onStartStopClicked();
+}
+
 void RecordBar::onStartStopClicked() {
     if (!m_controller)
         return;

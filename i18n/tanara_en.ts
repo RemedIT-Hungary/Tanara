@@ -820,6 +820,26 @@
         <translation>Mixdown failed.</translation>
     </message>
     <message>
+        <source>Felvétel fut</source>
+        <translation>Recording in progress</translation>
+    </message>
+    <message>
+        <source>Éppen felvétel megy. Mi legyen?</source>
+        <translation>A recording is running. What should happen?</translation>
+    </message>
+    <message>
+        <source>Háttérben folytatom</source>
+        <translation>Continue in the background</translation>
+    </message>
+    <message>
+        <source>Leállítom és kilépek</source>
+        <translation>Stop and quit</translation>
+    </message>
+    <message>
+        <source>Felvétel leállítása, kilépés utána…</source>
+        <translation>Stopping the recording, quitting afterwards…</translation>
+    </message>
+    <message>
         <source>Miről szólt a meeting?</source>
         <translation>What was the meeting about?</translation>
     </message>

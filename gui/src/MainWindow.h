@@ -84,9 +84,14 @@ private slots:
     void deleteSelectedMeeting();
     void popOutRecorder();   // a felvétel-vezérlő külön (lebegő) ablakba
     void dockRecorder();     // vissza a főablakba
+    // Továbbított `tanara --record …` kérés (RecorderSingleton): felvevő elő + opcionális indítás.
+    void handleRecorderRequest(const QStringList& args);
     void onTracksToggleClicked();      // a Sávok-fülre vált
 
 private:
+    bool m_quitAfterStop = false;
+    QString m_pendingContext;       // továbbított --context → recordingFinished-nél a meetingre   // closeEvent: „Leállítom és kilépek” → Idle-nél close()
+    class RecorderSingleton* m_singleton = nullptr;
     void buildUi();
     void buildMenu();
     void loadSelectedMeetingViews();

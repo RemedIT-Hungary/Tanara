@@ -7,6 +7,7 @@
 #include "TranscriptPlayer.h"
 #include "PeopleManagerDialog.h"
 #include "FloatingRecorder.h"
+#include "RecorderSingleton.h"
 #include "TracksPanel.h"
 
 #include "tanara/AppController.h"
@@ -167,6 +168,29 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
                 m_recordBar, &RecordBar::onDevicesChanged);
         connect(m_controller, &tanara::AppController::recordingStateChanged,
                 m_recordBar, &RecordBar::onRecordingStateChanged);
+        // Felvétel vége: (a) „Leállítom és kilépek” → tényleges bezárás; (b) háttér-módban
+        // (rejtett főablak) → a főablak visszajön; (c) singleton-figyelés újrapróbálása.
+        connect(m_controller, &tanara::AppController::recordingStateChanged, this,
+                [this](tanara::RecordingState st) {
+                    if (st != tanara::RecordingState::Idle) return;
+                    if (m_quitAfterStop) { close(); return; }
+                    if (isHidden()) { show(); raise(); activateWindow(); }
+                    if (m_singleton && !m_singleton->isListening()) m_singleton->listen();
+                });
+        // Singleton felvevő: amíg az elemző fut, MINDEN `tanara --record` kérés ide jön
+        // (a figyelő / tálca sosem nyit második felvevőt). Ha egy önálló felvevő-folyamat
+        // fogja a nevet, az marad a felvevő, mi nem figyelünk.
+        connect(m_controller, &tanara::AppController::recordingFinished, this,
+                [this](tanara::Meeting m) {
+                    if (!m_pendingContext.isEmpty()) {
+                        m_controller->setMeetingContextNote(m.id, m_pendingContext);
+                        m_pendingContext.clear();
+                    }
+                });
+        m_singleton = new RecorderSingleton(this);
+        connect(m_singleton, &RecorderSingleton::requestReceived,
+                this, &MainWindow::handleRecorderRequest);
+        m_singleton->listen();
         connect(m_controller, &tanara::AppController::elapsedChanged,
                 m_recordBar, &RecordBar::onElapsedChanged);
         connect(m_controller, &tanara::AppController::levelMeterUpdated,
@@ -257,6 +281,33 @@ void MainWindow::showEvent(QShowEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // FELVÉTEL KÖZBEN a kilépés megölné a RecordingSessiont: a meeting.json sosem íródna,
+    // a sávok árván maradnának (ez volt a 2026-09-22 „museumplus-tutorial” crash).
+    if (m_controller && !m_quitAfterStop
+        && m_controller->recordingState() != tanara::RecordingState::Idle) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Felvétel fut"));
+        box.setText(tr("Éppen felvétel megy. Mi legyen?"));
+        auto* bg = box.addButton(tr("Háttérben folytatom"), QMessageBox::AcceptRole);
+        auto* st = box.addButton(tr("Leállítom és kilépek"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(bg);
+        box.exec();
+        event->ignore();
+        if (box.clickedButton() == bg) {
+            // A lebegő felvevő önálló top-level ablak → az app életben marad; a főablak
+            // csak elrejtőzik, és a felvétel végén magától visszajön.
+            popOutRecorder();
+            hide();
+        } else if (box.clickedButton() == st) {
+            m_quitAfterStop = true;
+            statusBar()->showMessage(tr("Felvétel leállítása, kilépés utána…"));
+            m_controller->stopRecording();   // async (encoding) → Idle-nél close()
+        }
+        return;
+    }
+    if (m_singleton) { m_singleton->close(); }
     if (m_controller)
         m_controller->stopLevelMonitoring();
     // A különálló (parent nélküli) lebegő rögzítő-ablakot kézzel zárjuk, különben
@@ -1618,7 +1669,20 @@ void MainWindow::dockRecorder() {
     // egy esetleges futó felvétel/állapot megmarad; az „Új felvétel" újra előhozza.
     if (!m_floatingRecorder)
         return;
+    // Háttér-módban (rejtett főablak) a felvevő az utolsó látható ablak — ha az is
+    // eltűnne, a Qt kiléptetne felvétel közben. Ilyenkor előbb a főablak jön vissza.
+    if (isHidden()) { show(); raise(); }
     m_floatingRecorder->hide();
+}
+
+void MainWindow::handleRecorderRequest(const QStringList& args) {
+    const RecorderArgs r = parseRecorderArgs(args);
+    popOutRecorder();   // elő / előtérbe — mindig UGYANAZ a felvevő
+    if (!r.noStart && m_recordBar && m_controller
+        && m_controller->recordingState() == tanara::RecordingState::Idle) {
+        m_pendingContext = r.context.trimmed();
+        m_recordBar->startWithTitle(r.title);
+    }
 }
 
 void MainWindow::openSettings() {

@@ -6,6 +6,7 @@
 #include "RecordBar.h"
 #include "FloatingRecorder.h"
 #include "AppIcon.h"
+#include "RecorderSingleton.h"
 
 #include "tanara/AppController.h"
 #include "tanara/Localization.h"
@@ -30,15 +31,17 @@ using namespace tanara_gui;
 // A ~/.tanara/recording.lock jelzi a figyelőnek, hogy megy a felvétel.
 static int runRecorderMode(QApplication& app, AppController& controller, const QStringList& args)
 {
-    QString title, context;
-    QList<int> deviceIdx;
-    bool noStart = false;   // --no-start → csak megnyitja a felvevőt (nem indít azonnal)
-    for (int i = 0; i < args.size(); ++i) {
-        if (args[i] == QStringLiteral("--title") && i + 1 < args.size()) title = args[++i];
-        else if (args[i] == QStringLiteral("--context") && i + 1 < args.size()) context = args[++i];
-        else if (args[i] == QStringLiteral("--device") && i + 1 < args.size()) deviceIdx << args[++i].toInt();
-        else if (args[i] == QStringLiteral("--no-start")) noStart = true;
-    }
+    // SINGLETON: ha már fut felvevő (önálló vagy az elemzőé), a kérést átadjuk neki és
+    // kilépünk — nem nyílik második felvevő-ablak.
+    if (RecorderSingleton::forwardToExisting(args))
+        return 0;
+    auto* singleton = new RecorderSingleton(&app);
+    singleton->listen();
+
+    const RecorderArgs ra = parseRecorderArgs(args);
+    QString title = ra.title, context = ra.context;
+    const QList<int> deviceIdx = ra.deviceIdx;
+    const bool noStart = ra.noStart;
     if (title.trimmed().isEmpty())
         title = QCoreApplication::translate("main", "Felvétel %1")
                     .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
@@ -120,6 +123,16 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
 
     // Azonnali indítás (a figyelő „Rögzítés azonnali indítása" útja), VAGY --no-start
     // esetén csak megnyitjuk a felvevőt: a user elkeresztel + a felvevő Start-gombjával indít.
+    // Továbbított kérések (tálca/figyelő újabb hívásai) → ugyanez az ablak elő; azonnali
+    // kérésnél indítás is, ha üresjáratban vagyunk.
+    QObject::connect(singleton, &RecorderSingleton::requestReceived, recorder,
+                     [recorder, recordBar, &controller](const QStringList& fwd) {
+                         const RecorderArgs r = parseRecorderArgs(fwd);
+                         recorder->show(); recorder->raise(); recorder->activateWindow();
+                         if (!r.noStart && controller.recordingState() == RecordingState::Idle)
+                             recordBar->startWithTitle(r.title);
+                     });
+
     if (!noStart)
         controller.startRecording(title, sel);
     return app.exec();
