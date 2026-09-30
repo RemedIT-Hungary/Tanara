@@ -1,0 +1,1446 @@
+openapi: 3.1.0
+info:
+  title: Tanara Cloud Gateway API
+  version: 1.2.0
+  summary: Contract between the open-source Tanara desktop client and the Tanara Cloud gateway.
+  description: |
+    This is the contract between the Tanara client (desktop GUI and `tanara-cli`) and the
+    Tanara Cloud gateway. It replaces `tanara/docs/cloud-gateway-api-v1.md`. The mock gateway
+    (`tanara/tests/mock-gateway/mock-gateway.mjs`) must follow it.
+
+    ## Principles
+    - The gateway exposes the two interfaces the client already speaks: the **Soniox async STT
+      API shape** and the **OpenAI-compatible chat API shape**. Cloud mode is a configuration
+      difference in the client, not a new code path. Tanara-specific data is **additive**: extra
+      fields in a `tanara` object (or `usage.tanara_charge`, `error.*` extras), or `X-Tanara-*`
+      headers.
+    - The gateway streams audio and text through. It does not store them. The upstream file and
+      transcription are deleted after the client fetched the result, and after a failure. A
+      content-free job record (status, charge, refund, error code) stays readable for 30 days.
+    - **Money, not credits.** The user balance is money. In the first release the only currency is
+      `USD`, but every amount carries its currency (see `Money`).
+    - Prices live in the gateway only. The client never computes a price and never converts
+      between net and gross. It asks for an estimate and shows the actual charge that the gateway
+      reports.
+
+    ## Pricing and VAT (informational, the gateway enforces them)
+    - **Internal bookkeeping is net (VAT excluded).** Sale prices and the user balance are kept
+      net in the ledger.
+    - **Every amount the gateway returns is already in the user's `vat_mode`** (`Account.vat_mode`):
+      balances, catalog prices, estimates, charges, refunds, 402 amounts and the
+      `X-Tanara-*-Micros` headers.
+      - `gross` (default): net × (1 + VAT rate). In the first release the rate is the Hungarian
+        27% for every customer who is not reverse-charged, also for EU private persons. The client
+        labels amounts "VAT included".
+      - `reverse_charge`: an EU (non-Hungarian) company with a VIES-verified EU VAT number. Every
+        amount is net. The client labels amounts "VAT excluded, reverse charge" everywhere.
+    - The top-up options are the same amounts in both modes. `gross`: a $10 top-up credits $7.87
+      net, which shows as $10. `reverse_charge`: $10 credits $10 net.
+    - When the mode changes, the net balance stays the same. Only the displayed amounts change.
+    - **STT**: fixed hourly price per model, charged **per second, proportionally**, on the
+      recorded duration. The client always sends one mixdown per meeting (all tracks mixed), so
+      one meeting is one transcription and one charge. The track count never changes the price.
+    - **LLM**: the net token cost that the upstream provider bills, multiplied by a gateway-side
+      multiplier (default 3), then shown in the user's `vat_mode`.
+    - **Charging is per call.** There is no job-level hold. A job (for example a complex summary)
+      is several calls, each charged on its own. When a job fails part-way, the calls that already
+      succeeded stay charged; the client can continue and pays only for the remaining calls.
+    - **A non-2xx response never charges.** This holds for every status code (`4xx`, `5xx`).
+    - **Coverage rule (hold)**: before an LLM call the gateway checks the balance against the
+      price of the prompt + `max_tokens`. Before an STT call it checks the balance against the
+      exact charge. If the balance is lower, the answer is `402`.
+    - **Negative balance** (after a chargeback): every charging call returns `402`.
+
+    ## Headers
+    | Direction | Header | Value |
+    |---|---|---|
+    | request | `Authorization` | `Bearer <api_key>` |
+    | request | `X-Tanara-Client` | `<semver>/<platform>`, for example `0.2.0/linux` |
+    | request | `Accept-Language` | `hu` or `en`: language of every server-side `message` (errors, notices, terms summary) |
+    | request | `X-Tanara-Job-Id` | optional; one new random value per processing run (charging calls) |
+    | request | `X-Tanara-Summary-Mode` | optional; `quick` or `complex` (chat completions) |
+    | response | `X-Tanara-Min-Client` | lowest client version the gateway serves (on every response) |
+    | response | `X-Tanara-Request-Id` | request id (on every response); the client shows it on errors (support) |
+    | response | `X-Tanara-Charge-Micros` | amount charged by this call (only on charging calls) |
+    | response | `X-Tanara-Balance-Micros` | balance after this call (only on charging calls) |
+    | response | `X-Tanara-Currency` | currency of the two values above |
+
+    A client older than `X-Tanara-Min-Client` gets `426` on every call. The client checks the
+    header on each response and stops cloud calls when it is too old.
+
+    ## Errors
+    - Every error body has `error.code`, `error.message` (in the `Accept-Language` language) and
+      `error.request_id` (the same value as `X-Tanara-Request-Id`). `error.support_url` opens the
+      support form with the request id prefilled. `error.fields` holds field-level validation
+      codes.
+    - `403 account_suspended` (with `suspension_reason`): on every authenticated call, except
+      `logout`, the follow-up calls of an already created job (status, transcript, deletes) and,
+      when `suspension_reason` is `payment_dispute`, `createTopupLink` (to settle the balance).
+    - `403 terms_acceptance_required` (with `terms_version`, `terms_url`): after a new Terms
+      version took effect and the user did not accept it. Only these calls stay allowed: account,
+      models, logout, terms acceptance, the device flow and the follow-up calls of a job that
+      already runs (a running job is not interrupted). All processing calls (`estimate`,
+      `uploadFile`, `createTranscription`, `createChatCompletion`) and `createTopupLink` return
+      `403`.
+
+    ## Function references
+    `x-tanara-functions` lists the function IDs from `tanara-cloud/docs/funkciolista.md`.
+    Cross-cutting ones: CLI-11 = the `426` response of every operation, CLI-12 = the `503`
+    response, CLI-16 = the `X-Tanara-Request-Id` header, `error.request_id` and `error.support_url`,
+    CLI-19 = the `429` response (`rate_limited`, `spend_limit_reached`), AUTH-16 = the
+    `403 terms_acceptance_required` response.
+    Client-only functions without an API (CLI-01, CLI-02, CLI-15, CLI-17) are not listed.
+  license:
+    name: MIT
+servers:
+  - url: https://api.tanara.remedit.hu
+    description: prod
+  - url: https://api.uat.tanara.remedit.hu
+    description: uat
+  - url: https://api.dev.tanara.remedit.hu
+    description: dev
+  - url: http://127.0.0.1:8300
+    description: Mock gateway
+security:
+  - apiKey: []
+tags:
+  - name: auth
+    description: Device flow login and logout of the desktop client.
+  - name: account
+    description: Balance, VAT mode, trial and Terms state, notices, dashboard links.
+  - name: catalog
+    description: Model catalog (OpenAI list shape with Tanara metadata).
+  - name: estimate
+    description: Server-side cost estimate before processing.
+  - name: stt
+    description: Soniox-compatible async transcription passthrough.
+  - name: llm
+    description: OpenAI-compatible chat completions passthrough.
+
+paths:
+  /v1/auth/device/code:
+    post:
+      tags: [auth]
+      operationId: startDeviceFlow
+      summary: Start the device flow
+      description: |
+        The client shows `user_code` and opens `verification_uri` in the browser. The user
+        approves the device on the web dashboard, which shows the device name, platform and
+        client version sent here. The code is valid for **10 minutes** (`expires_in: 600`).
+      security: []
+      x-tanara-functions: [AUTH-06, AUTH-07]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCodeRequest'
+      responses:
+        '200':
+          description: Device code created.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceCodeResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/auth/device/token:
+    post:
+      tags: [auth]
+      operationId: pollDeviceToken
+      summary: Poll for the API key
+      description: |
+        The client polls every `interval` seconds. It gets `400 authorization_pending` until the
+        user approves, `400 access_denied` if the user denies or the client cancelled
+        (`cancelDeviceFlow`), `400 expired_token` after `expires_in`. On success the client stores
+        `api_key` in its KeyStore under `tanara.cloud.apiKey`. On `503` the client keeps polling
+        after `retry_after`.
+      security: []
+      x-tanara-functions: [AUTH-06]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_code]
+              properties:
+                device_code: { type: string }
+      responses:
+        '200':
+          description: Approved. The key is shown only once.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          description: '`authorization_pending`, `access_denied`, `expired_token` or `invalid_device_code`.'
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                pending:
+                  value: { error: { code: authorization_pending, message: Waiting for approval., request_id: req_01 } }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/auth/device/cancel:
+    post:
+      tags: [auth]
+      operationId: cancelDeviceFlow
+      summary: Cancel a pending device flow
+      description: |
+        The client calls this when the user presses "Cancel" while it waits for approval. After
+        the call the device code can no longer be approved (no orphan key is created), the web
+        approval page shows "the request was cancelled", and `pollDeviceToken` returns
+        `400 access_denied`. Idempotent: an unknown, expired, cancelled or already used code
+        also returns `204`.
+      security: []
+      x-tanara-functions: [AUTH-06, AUTH-07]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_code]
+              properties:
+                device_code: { type: string }
+      responses:
+        '204':
+          description: Cancelled (or nothing to cancel).
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the calling API key
+      description: |
+        The client deletes its local key after this call, also when the call fails. Allowed for
+        suspended accounts and without Terms acceptance.
+      x-tanara-functions: [AUTH-08]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '204':
+          description: Key revoked. Idempotent.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/account:
+    get:
+      tags: [account]
+      operationId: getAccount
+      summary: Account, balance, VAT mode, trial and Terms state, service notices
+      description: |
+        Allowed without Terms acceptance: the client reads `terms` here and shows the Terms
+        dialog (14 days before a new version takes effect, and after it took effect). Returns
+        `403 account_suspended` for a suspended account; `error.suspension_reason` tells the
+        client whether a top-up is possible (`payment_dispute`).
+      x-tanara-functions: [PAY-01, PAY-07, PAY-08, PAY-09, PAY-14, CLI-18, AUTH-15, AUTH-16]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Account data.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AccountSuspended' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/account/terms-acceptance:
+    post:
+      tags: [account]
+      operationId: acceptTerms
+      summary: Accept a Terms version
+      description: |
+        Records the explicit acceptance of a Terms (ÁSZF) version from the client: version, time,
+        channel (`client`), IP address and client version (from `X-Tanara-Client`). `version` is
+        either the current version or the announced upcoming one (early acceptance within the
+        14-day notice period). Idempotent for the same version. Always allowed, also when
+        `403 terms_acceptance_required` blocks the processing calls. The privacy notice does not
+        need acceptance.
+      x-tanara-functions: [AUTH-16]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string, example: '2026-11-01', description: 'The Terms version the user accepted (`terms.current_version` or `terms.upcoming.version`).' }
+      responses:
+        '200':
+          description: Acceptance recorded. Returns the new Terms state.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [terms]
+                properties:
+                  terms: { $ref: '#/components/schemas/TermsStatus' }
+        '400':
+          description: '`validation_error`: `version` is neither the current nor the upcoming version (`error.fields.version`).'
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AccountSuspended' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/account/topup-link:
+    post:
+      tags: [account]
+      operationId: createTopupLink
+      summary: One-time link to the top-up page
+      description: |
+        Returns a single-use URL, valid for **5 minutes**, that opens the dashboard top-up page
+        already logged in. The client opens it with the system browser and refreshes the account
+        when its window gets the focus again.
+
+        - `409 topup_unavailable`: there is no online top-up yet (`Account.topup_available` is
+          `false`). The client shows "Write to us" with `Account.contact_url` instead.
+        - `422 topup_limit_exceeded`: no top-up is possible now because of the fraud limits
+          (for example the new-account limit of the first 30 days is used up).
+        - `403 account_suspended`: suspended for a reason other than `payment_dispute`. With
+          `payment_dispute` the top-up stays allowed, to settle a negative balance.
+        - `403 terms_acceptance_required`: the current Terms version is not accepted.
+      x-tanara-functions: [PAY-07, PAY-14, PAY-15, AUTH-16]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Link created.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expires_at]
+                properties:
+                  url: { type: string, format: uri, description: 'Single use, valid for 5 minutes.' }
+                  expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`topup_unavailable`: no online top-up. Contact support (`error.contact_url`).'
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopupUnavailableError' }
+        '422':
+          description: '`topup_limit_exceeded`: a fraud limit blocks every top-up now.'
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopupLimitError' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/models:
+    get:
+      tags: [catalog]
+      operationId: listModels
+      summary: Model catalog
+      description: |
+        OpenAI list shape. Each model carries a `tanara` object. The client has no hard-coded
+        model list. Tier selection uses the virtual `tanara/*` models; Expert mode lists the
+        concrete models where `expert` is `true`. Prices are in the user's `vat_mode`. Allowed
+        without Terms acceptance.
+      x-tanara-functions: [CLI-03, CLI-04, CLI-05, CLI-06, PAY-01]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Catalog.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data]
+                properties:
+                  object: { type: string, const: list }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Model' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/AccountSuspended' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/estimate:
+    post:
+      tags: [estimate]
+      operationId: estimate
+      summary: Cost estimate before processing
+      description: |
+        The client calls this before Transcribe / Summarize and shows the result in a
+        confirmation dialog. The STT part is exact up to the duration (fixed hourly price). The
+        LLM part is estimated. The client never computes prices itself. Nothing is charged.
+
+        **Process-independent LLM part.** The summary pipeline may change, so the client describes
+        the planned LLM calls as call groups in `llm_calls` (`count`, `input_chars`,
+        `max_tokens`). `count: null` means the client does not know the number of calls yet (for
+        example the topic count before the first pass); the gateway estimates it from statistics.
+        For a continuation the client sends only the remaining calls. Without `llm_calls` the
+        gateway estimates the LLM part from `summary_mode` and `transcript_chars` statistics.
+
+        **Coverage.** `required` is the lowest balance with which the job runs through without a
+        `402` under the coverage rule (each LLM call is checked against prompt + `max_tokens`).
+        `enough = balance ≥ required`. When `estimate ≤ balance < required`, the client says
+        "Probably enough, but little reserve remains." There is no job-level hold; every call is
+        charged on its own.
+      x-tanara-functions: [CLI-07, SYS-02]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EstimateRequest' }
+      responses:
+        '200':
+          description: Estimate.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EstimateResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/files:
+    post:
+      tags: [stt]
+      operationId: uploadFile
+      summary: Upload an audio file (Soniox shape)
+      description: |
+        The gateway forwards the file to the upstream STT provider and measures its duration.
+        `duration_ms` is the billing base for the transcription. Nothing is charged here.
+      x-tanara-functions: [SYS-03, AUTH-16, CLI-20]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, size]
+                properties:
+                  id: { type: string }
+                  size: { type: integer, description: Bytes. }
+                  duration_ms: { type: integer, description: Measured audio duration. Additive Tanara field. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413':
+          description: File too large.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/files/{id}:
+    delete:
+      tags: [stt]
+      operationId: deleteFile
+      summary: Delete the upstream file
+      description: |
+        The client calls this after success and after failure. Idempotent. Allowed for suspended
+        accounts and without Terms acceptance.
+      x-tanara-functions: [SYS-03]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '204':
+          description: Deleted (or did not exist).
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/transcriptions:
+    post:
+      tags: [stt]
+      operationId: createTranscription
+      summary: Create a transcription (Soniox shape) — charging call
+      description: |
+        The body is the Soniox body. `model` accepts a virtual name (`tanara/stt-accurate`,
+        `tanara/stt-fast`) or a concrete catalog id.
+
+        **Charge**: booked here, `duration_ms × hourly price / 3600000`, proportional per second,
+        in the user's `vat_mode`. The response carries `X-Tanara-Charge-*` headers and a `tanara`
+        object. Any non-2xx response means nothing was booked. If the transcription later ends in
+        `error` because of an upstream failure, the charge is refunded automatically: the first
+        status response with `status: error` already carries `tanara.refunded` and
+        `tanara.refund`.
+
+        `X-Tanara-Job-Id` groups the calls of one processing run in the usage log.
+      x-tanara-functions: [CLI-03, CLI-09, CLI-10, SYS-01, SYS-02, AUTH-16, CLI-20]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TranscriptionRequest' }
+      responses:
+        '200':
+          description: Created and charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string }
+                  status: { $ref: '#/components/schemas/TranscriptionStatus' }
+                  tanara: { $ref: '#/components/schemas/ChargeInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/transcriptions/{id}:
+    get:
+      tags: [stt]
+      operationId: getTranscription
+      summary: Transcription status (Soniox shape)
+      description: |
+        Soniox status shape plus an additive `tanara` object.
+
+        - The refund is visible in the **same** response that first returns `status: error`
+          (`tanara.refunded`, `tanara.refund`, `tanara.balance`), so the client reads it before it
+          sends the DELETE.
+        - After the upstream transcription is deleted (after the client fetched it, or after a
+          failure), the gateway keeps a content-free job record (status, charge, refund, error
+          code) for **30 days** and returns it here instead of `404`
+          (`tanara.content_deleted: true`). The client stores the ids of running transcriptions
+          and queries them at start-up ("The previous transcription failed ... we refunded the
+          charge"). `404` only after 30 days or for an unknown id.
+        - Allowed for suspended accounts and without Terms acceptance (a running job is not
+          interrupted).
+      x-tanara-functions: [CLI-13, SYS-04]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Status.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string }
+                  status: { $ref: '#/components/schemas/TranscriptionStatus' }
+                  error_message: { type: [string, 'null'] }
+                  tanara: { $ref: '#/components/schemas/TranscriptionJobInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      tags: [stt]
+      operationId: deleteTranscription
+      summary: Delete the upstream transcription
+      description: |
+        The client calls this after success and after failure. Idempotent. It deletes the
+        upstream content only; the content-free job record stays readable for 30 days.
+      x-tanara-functions: [SYS-03]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '204':
+          description: Deleted (or did not exist).
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/transcriptions/{id}/transcript:
+    get:
+      tags: [stt]
+      operationId: getTranscript
+      summary: Transcript tokens (Soniox shape)
+      description: |
+        `404` when the content is already deleted (after it was fetched, or after a failure) or
+        the id is unknown. Allowed for suspended accounts and without Terms acceptance.
+      x-tanara-functions: [SYS-03]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Transcript.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  id: { type: string }
+                  tokens:
+                    type: array
+                    items: { $ref: '#/components/schemas/TranscriptToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Transcription not completed yet.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/chat/completions:
+    post:
+      tags: [llm]
+      operationId: createChatCompletion
+      summary: Chat completion (OpenAI shape) — charging call
+      description: |
+        OpenAI-compatible. Virtual names (`tanara/summary-accurate`, `tanara/summary-fast`) are
+        resolved by the gateway. `stream: false` in the first release.
+
+        **Charge**: before the upstream call the gateway checks the balance against a hold
+        (prompt tokens + `max_tokens` at the model price). If the balance is below the hold, it
+        returns `402` (`needed_basis: hold`) and nothing is booked. After the answer it books the
+        **actual** upstream token cost × multiplier, in the user's `vat_mode`. The actual charge
+        is in the `X-Tanara-Charge-*` headers and in `usage.tanara_charge`. Any non-2xx response
+        means nothing was booked for this call.
+
+        A complex summary is several calls. Each is charged on its own; the client adds up the
+        `usage.tanara_charge` values. `X-Tanara-Job-Id` groups them in the usage log (one line per
+        run), and `X-Tanara-Summary-Mode` is stored in the usage record (`summary_mode`).
+      x-tanara-functions: [CLI-03, CLI-04, CLI-09, CLI-10, SYS-01, SYS-02, AUTH-16, CLI-20]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/SummaryMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatCompletionRequest' }
+      responses:
+        '200':
+          description: Completion, charged.
+          headers:
+            X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+            X-Tanara-Charge-Micros: { $ref: '#/components/headers/ChargeMicros' }
+            X-Tanara-Balance-Micros: { $ref: '#/components/headers/BalanceMicros' }
+            X-Tanara-Currency: { $ref: '#/components/headers/Currency' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatCompletionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '426': { $ref: '#/components/responses/ClientTooOld' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: Per-device API key from the device flow, or a manual key from the dashboard.
+
+  parameters:
+    ClientHeader:
+      name: X-Tanara-Client
+      in: header
+      required: false
+      description: '`<semver>/<platform>`, for example `0.2.0/linux`. Required for the min-client check.'
+      schema: { type: string, example: 0.2.0/linux }
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: |
+        Language of every server-side text (`error.message`, `Notice.message`,
+        `TermsStatus.upcoming.summary`). `hu` or `en`; other values fall back to `en`. Without the
+        header the gateway uses the account language, else `en`.
+      schema: { type: string, enum: [hu, en] }
+    JobId:
+      name: X-Tanara-Job-Id
+      in: header
+      required: false
+      description: |
+        Processing-run id. The client generates a new random value (for example a UUID) for every
+        processing run and sends it on each call of that run. It is not a meeting id: the same
+        meeting processed again, or a continuation, gets a new value. Stored in the usage record
+        (`job_id`); the usage log groups the calls of a run into one line. Without it every call
+        is a separate line.
+      schema: { type: string, maxLength: 64, example: 7f3c2a9e-5d41-4b8e-9a61-0c2f1e8b7d34 }
+    SummaryMode:
+      name: X-Tanara-Summary-Mode
+      in: header
+      required: false
+      description: Summary mode of the run. Stored in the usage record (`summary_mode`) for the usage log.
+      schema: { type: string, enum: [quick, complex] }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  headers:
+    MinClient:
+      description: Lowest client version the gateway serves.
+      schema: { type: string, example: 0.2.0 }
+    RequestId:
+      description: Request id for support. On every response; equal to `error.request_id`.
+      schema: { type: string, example: req_01J9Z6 }
+    ChargeMicros:
+      description: Amount charged by this call, in millionths of `X-Tanara-Currency`, in the user's `vat_mode`.
+      schema: { type: integer, format: int64, example: 420000 }
+    BalanceMicros:
+      description: Balance after this call, in millionths of `X-Tanara-Currency`, in the user's `vat_mode`.
+      schema: { type: integer, format: int64 }
+    Currency:
+      description: Currency of the charge and balance headers.
+      schema: { type: string, enum: [USD] }
+    RetryAfter:
+      description: Seconds until the client may retry.
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Invalid request (`validation_error`). `error.fields` names the invalid fields.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing, invalid or revoked API key (`unauthorized`).
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    AccountSuspended:
+      description: |
+        `account_suspended`: the account is suspended. `error.suspension_reason` is `admin` or
+        `payment_dispute`; with `payment_dispute` the client still offers the top-up.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ForbiddenError' }
+    Forbidden:
+      description: |
+        `account_suspended` (see `AccountSuspended`), or `terms_acceptance_required`: a new Terms
+        version took effect and the user did not accept it (`error.terms_version`,
+        `error.terms_url`). The client shows the Terms dialog and calls `acceptTerms`.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ForbiddenError' }
+    NotFound:
+      description: Not found (`not_found`).
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InsufficientBalance:
+      description: |
+        Balance too low for this call, or negative (after a chargeback). Nothing was booked.
+        `needed` is the value of **this call**, not of the whole job (`needed_basis`). For a
+        job-level text the client uses its `estimate` result.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/InsufficientBalanceError' }
+    ClientTooOld:
+      description: Client older than the minimum version. The client stops cloud calls.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ClientTooOldError' }
+    RateLimited:
+      description: |
+        `rate_limited` (request rate; retry after `Retry-After`) or `spend_limit_reached` (the
+        spend limit of this device key; `error.limit` and `error.settings_url`). Nothing was
+        booked.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RateLimitError' }
+    ServiceUnavailable:
+      description: |
+        `upstream_unavailable` (provider down or provider wallet empty) or `maintenance`.
+        Nothing was booked. The client shows `message` and may retry after `retry_after`. For
+        `maintenance` the `window` gives the planned period, which the client shows in the local
+        time zone.
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ServiceUnavailableError' }
+    InternalError:
+      description: '`internal_error`: unexpected gateway error. Nothing was booked.'
+      headers:
+        X-Tanara-Min-Client: { $ref: '#/components/headers/MinClient' }
+        X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Money:
+      type: object
+      description: |
+        Money amount. Integer millionths of the currency unit, so per-second STT and per-token LLM
+        charges stay exact. `420000` USD = 0.42 USD. Every amount in this API is in the user's
+        `vat_mode` (gross or net, see `VatMode`). Negative for a negative balance (after a
+        chargeback).
+      required: [amount_micros, currency]
+      properties:
+        amount_micros: { type: integer, format: int64 }
+        currency: { type: string, enum: [USD] }
+      example: { amount_micros: 420000, currency: USD }
+
+    VatMode:
+      type: string
+      enum: [gross, reverse_charge]
+      description: |
+        How the user sees amounts. `gross`: net × (1 + VAT rate), 27% in the first release, label
+        "VAT included". `reverse_charge`: net, label "VAT excluded, reverse charge" (EU company
+        with a VIES-verified EU VAT number). The ledger is net; a mode change does not change the
+        net balance.
+
+    TrialStatus:
+      type: string
+      enum: [awaiting_email, awaiting_card, granted, denied_card_used, unavailable]
+      description: |
+        State of the trial balance. `awaiting_email`: e-mail not confirmed. `awaiting_card`: card
+        verification not done yet (on the web, W-03b). `granted`: trial balance credited.
+        `denied_card_used`: the card was already used by another account. `unavailable`: the
+        trial is switched off by an admin.
+
+    ErrorBase:
+      type: object
+      description: Common fields of every error body.
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+          description: Machine-readable code.
+          examples: [unauthorized, account_suspended, terms_acceptance_required, validation_error, not_found, rate_limited, spend_limit_reached, internal_error, topup_unavailable, topup_limit_exceeded, authorization_pending, access_denied, expired_token, invalid_device_code]
+        message: { type: string, description: 'Human-readable text in the `Accept-Language` language. The client may show it.' }
+        request_id: { type: string, description: 'Same value as the `X-Tanara-Request-Id` header.', example: req_01JA07 }
+        support_url:
+          type: string
+          format: uri
+          description: Support form with the request id prefilled.
+          example: https://app.tanara.remedit.hu/support?request_id=req_01JA07
+        fields:
+          type: object
+          description: '`400 validation_error` only: field-level errors keyed by field name. `code` is machine-readable, `message` is in the `Accept-Language` language.'
+          additionalProperties:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: '#/components/schemas/ErrorBase' }
+
+    ForbiddenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              properties:
+                code: { type: string, enum: [account_suspended, terms_acceptance_required] }
+                suspension_reason:
+                  type: string
+                  enum: [admin, payment_dispute]
+                  description: 'With `account_suspended`. `payment_dispute`: top-up is allowed.'
+                terms_version: { type: string, description: 'With `terms_acceptance_required`: the version to accept.' }
+                terms_url: { type: string, format: uri, description: 'With `terms_acceptance_required`: the Terms text.' }
+
+    InsufficientBalanceError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              required: [balance, needed, needed_basis, topup_url, contact_url]
+              properties:
+                code: { type: string, const: insufficient_balance }
+                balance: { $ref: '#/components/schemas/Money' }
+                needed: { $ref: '#/components/schemas/Money' }
+                needed_basis:
+                  type: string
+                  enum: [charge, hold]
+                  description: '`charge`: `needed` is the exact charge of this call (STT). `hold`: the coverage hold of this LLM call (prompt + `max_tokens`), not its real price.'
+                topup_url:
+                  type: [string, 'null']
+                  format: uri
+                  description: '`null` when there is no online top-up (`Account.topup_available: false`).'
+                contact_url: { type: string, format: uri, description: 'Contact page ("Write to us").' }
+
+    ClientTooOldError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              required: [min_client]
+              properties:
+                code: { type: string, const: client_too_old }
+                min_client: { type: string, example: 0.2.0 }
+                download_url: { type: string, format: uri }
+
+    RateLimitError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              properties:
+                code: { type: string, enum: [rate_limited, spend_limit_reached] }
+                retry_after: { type: integer, description: Seconds. }
+                limit:
+                  type: object
+                  description: 'With `spend_limit_reached`: the spend limit of the calling key.'
+                  required: [period, amount, resets_at]
+                  properties:
+                    period: { type: string, enum: [daily, monthly] }
+                    amount: { $ref: '#/components/schemas/Money' }
+                    resets_at: { type: string, format: date-time }
+                settings_url:
+                  type: string
+                  format: uri
+                  description: 'With `spend_limit_reached`: the key settings page on the web (W-13), with the `key_id` of the calling key.'
+
+    ServiceUnavailableError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              properties:
+                code: { type: string, enum: [upstream_unavailable, maintenance] }
+                retry_after: { type: integer, description: Seconds. }
+                window:
+                  type: [object, 'null']
+                  description: 'With `maintenance`: the planned maintenance period. The client shows it in the local time zone.'
+                  required: [starts_at, ends_at]
+                  properties:
+                    starts_at: { type: string, format: date-time }
+                    ends_at: { type: string, format: date-time }
+
+    TopupUnavailableError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              required: [contact_url]
+              properties:
+                code: { type: string, const: topup_unavailable }
+                contact_url: { type: string, format: uri }
+
+    TopupLimitError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          allOf:
+            - $ref: '#/components/schemas/ErrorBase'
+            - type: object
+              required: [limit, period]
+              properties:
+                code: { type: string, const: topup_limit_exceeded }
+                limit: { $ref: '#/components/schemas/Money' }
+                period:
+                  type: string
+                  enum: [single, new_account_30d]
+                  description: '`single`: limit of one top-up. `new_account_30d`: total limit in the first 30 days of a new account.'
+
+    DeviceCodeRequest:
+      type: object
+      properties:
+        device_name: { type: string, description: 'Shown on the approval page, for example the host name.' }
+        platform: { type: string, enum: [linux, windows, macos] }
+        client_version: { type: string }
+
+    DeviceCodeResponse:
+      type: object
+      required: [device_code, user_code, verification_uri, interval, expires_in]
+      properties:
+        device_code: { type: string }
+        user_code: { type: string, example: WDJB-MJHT }
+        verification_uri: { type: string, format: uri }
+        verification_uri_complete: { type: string, format: uri, description: URI with the code prefilled. }
+        interval: { type: integer, description: Poll interval in seconds. }
+        expires_in: { type: integer, description: 'Seconds. The code is valid for 10 minutes (600).', example: 600 }
+
+    DeviceTokenResponse:
+      type: object
+      required: [api_key, email]
+      properties:
+        api_key: { type: string }
+        key_id: { type: string }
+        email: { type: string, format: email }
+
+    Notice:
+      type: object
+      required: [id, level, message]
+      properties:
+        id: { type: string }
+        level: { type: string, enum: [info, warning, critical] }
+        message: { type: string, description: 'In the `Accept-Language` language.' }
+        url: { type: [string, 'null'], format: uri }
+
+    TermsStatus:
+      type: object
+      description: |
+        Terms (ÁSZF) versions of the account. The client shows the Terms dialog
+        ("[View] [Accept] [Later]") when `upcoming` is not `null` and
+        `accepted_version ≠ upcoming.version` (14-day notice period), and a blocking dialog when
+        `accepted_version ≠ current_version` (then the processing calls return
+        `403 terms_acceptance_required`).
+      required: [accepted_version, current_version, current_url, upcoming]
+      properties:
+        accepted_version: { type: [string, 'null'], description: 'Latest version the user accepted (early acceptance of `upcoming` included).' }
+        current_version: { type: string, description: The version in effect now. }
+        current_url: { type: string, format: uri }
+        upcoming:
+          type: [object, 'null']
+          description: A published version that takes effect later (at least 14 days after publication).
+          required: [version, effective_from, url]
+          properties:
+            version: { type: string }
+            effective_from: { type: string, format: date-time }
+            url: { type: string, format: uri }
+            summary: { type: string, description: 'Change summary in the `Accept-Language` language.' }
+
+    Account:
+      type: object
+      required: [email, balance, vat_mode, low_balance, balance_empty, hours_left, topup_available, contact_url, dashboard_url, usage_url, trial, terms]
+      properties:
+        email: { type: string, format: email }
+        balance: { $ref: '#/components/schemas/Money' }
+        vat_mode: { $ref: '#/components/schemas/VatMode' }
+        low_balance_threshold: { $ref: '#/components/schemas/Money' }
+        low_balance: { type: boolean, description: Balance is below the user threshold. The client shows a banner. }
+        low_balance_since:
+          type: [string, 'null']
+          format: date-time
+          description: 'When the balance last fell below the threshold; `null` when `low_balance` is `false`. The client compares its locally dismissed banner time with this value ("hidden until the next threshold crossing").'
+        balance_empty: { type: boolean, description: 'Balance is zero or less. The client shows the "balance used up" state (PAY-09).' }
+        hours_left:
+          type: object
+          description: Balance converted to transcription hours per STT tier.
+          required: [fast, accurate]
+          properties:
+            fast: { type: number }
+            accurate: { type: number }
+        topup_available: { type: boolean, description: 'Online top-up exists. When `false`, the client shows "Write to us" (`contact_url`) instead of "Top up".' }
+        contact_url: { type: string, format: uri, description: Contact / support page. }
+        dashboard_url: { type: string, format: uri }
+        usage_url: { type: string, format: uri, description: Usage log on the web (W-10). }
+        trial: { $ref: '#/components/schemas/TrialStatus' }
+        terms: { $ref: '#/components/schemas/TermsStatus' }
+        notices:
+          type: array
+          description: Service notices (maintenance, price change). The client shows them.
+          items: { $ref: '#/components/schemas/Notice' }
+
+    Model:
+      type: object
+      required: [id, object, owned_by, tanara]
+      properties:
+        id: { type: string, example: tanara/stt-accurate }
+        object: { type: string, const: model }
+        owned_by: { type: string }
+        tanara: { $ref: '#/components/schemas/ModelMeta' }
+
+    ModelMeta:
+      type: object
+      required: [kind, tier, virtual, price]
+      properties:
+        kind: { type: string, enum: [stt, llm] }
+        tier: { type: [string, 'null'], enum: [fast, accurate, null], description: '`null` for a concrete (Expert) model.' }
+        virtual: { type: boolean, description: '`true` for `tanara/*` names.' }
+        expert: { type: boolean, description: Offered in Expert mode. }
+        display_name: { type: string }
+        diarization: { type: boolean, description: STT only. When `false` the client warns and falls back to one speaker label. }
+        languages: { type: [array, 'null'], items: { type: string }, description: '`null` = all languages.' }
+        hidden_for_languages: { type: array, items: { type: string }, description: The client does not offer the model for these languages by default. }
+        price:
+          description: Informational, in the user's `vat_mode`. The gateway computes the real charge.
+          oneOf:
+            - type: object
+              required: [per_hour]
+              properties:
+                per_hour: { $ref: '#/components/schemas/Money' }
+            - type: object
+              required: [per_1m_input_tokens, per_1m_output_tokens]
+              properties:
+                per_1m_input_tokens: { $ref: '#/components/schemas/Money' }
+                per_1m_output_tokens: { $ref: '#/components/schemas/Money' }
+
+    LlmCallGroup:
+      type: object
+      description: A group of planned LLM calls with the same shape.
+      required: [count, input_chars, max_tokens]
+      properties:
+        count:
+          type: [integer, 'null']
+          minimum: 0
+          description: 'Number of calls. `null`: unknown yet; the gateway estimates it from statistics.'
+        input_chars: { type: integer, minimum: 0, description: Input size of one call in characters (prompt + transcript). }
+        max_tokens: { type: integer, minimum: 1, description: '`max_tokens` of one call (the coverage hold is based on it).' }
+
+    EstimateRequest:
+      type: object
+      required: [task, duration_ms]
+      properties:
+        task: { type: string, enum: [transcribe, summarize, both] }
+        duration_ms: { type: integer, description: Recorded duration (billing base for STT). }
+        tracks: { type: integer, description: 'Informational only. The client transcribes one mixdown, so the track count does not change the price.' }
+        stt_model: { type: string }
+        llm_model: { type: string }
+        summary_mode: { type: string, enum: [quick, complex] }
+        language: { type: string, example: hu }
+        transcript_chars: { type: integer, description: 'For summarize-only estimates without `llm_calls`.' }
+        llm_calls:
+          type: array
+          description: 'Planned LLM call groups. When present, the LLM part is computed from them. For a continuation: only the remaining calls.'
+          items: { $ref: '#/components/schemas/LlmCallGroup' }
+          example:
+            - { count: 1, input_chars: 48000, max_tokens: 4000 }
+            - { count: null, input_chars: 48000, max_tokens: 4000 }
+            - { count: 1, input_chars: 12000, max_tokens: 2000 }
+
+    EstimateResponse:
+      type: object
+      required: [estimate, low, high, balance, required, enough, balance_after, low_balance_after, vat_mode, breakdown]
+      description: All amounts in the user's `vat_mode`.
+      properties:
+        estimate: { $ref: '#/components/schemas/Money' }
+        low: { $ref: '#/components/schemas/Money' }
+        high: { $ref: '#/components/schemas/Money' }
+        balance: { $ref: '#/components/schemas/Money' }
+        required:
+          $ref: '#/components/schemas/Money'
+          description: The lowest balance with which the job runs through without `402` under the coverage rule.
+        enough: { type: boolean, description: '`balance ≥ required`.' }
+        balance_after:
+          $ref: '#/components/schemas/Money'
+          description: '`balance − estimate`.'
+        low_balance_after: { type: boolean, description: '`balance_after` is below the low-balance threshold (a faint warning in the dialog).' }
+        vat_mode: { $ref: '#/components/schemas/VatMode' }
+        breakdown:
+          type: array
+          items:
+            type: object
+            required: [item, model, tier, summary_mode, amount, exact]
+            properties:
+              item: { type: string, enum: [stt, llm] }
+              model: { type: string, description: 'The model id as requested (a virtual `tanara/*` name stays virtual).' }
+              tier: { type: [string, 'null'], enum: [fast, accurate, null], description: '`null` for a concrete (Expert) model.' }
+              summary_mode: { type: [string, 'null'], enum: [quick, complex, null], description: '`null` for STT.' }
+              amount: { $ref: '#/components/schemas/Money' }
+              exact: { type: boolean, description: '`true` for STT (fixed hourly price), `false` for LLM.' }
+
+    TranscriptionRequest:
+      type: object
+      required: [model, file_id]
+      description: Soniox body, passed through.
+      properties:
+        model: { type: string, example: tanara/stt-accurate }
+        file_id: { type: string }
+        language_hints: { type: array, items: { type: string } }
+        enable_speaker_diarization: { type: boolean }
+        context: { description: 'Soniox context envelope, passed through unchanged.' }
+      additionalProperties: true
+
+    TranscriptionStatus:
+      type: string
+      enum: [queued, processing, completed, error]
+
+    ChargeInfo:
+      type: object
+      description: Additive Tanara field on charging responses. Amounts in the user's `vat_mode`.
+      required: [charge_id, charge, balance, low_balance, balance_empty, vat_mode]
+      properties:
+        charge_id: { type: string }
+        charge: { $ref: '#/components/schemas/Money' }
+        balance: { $ref: '#/components/schemas/Money' }
+        low_balance: { type: boolean, description: 'Balance after this call is below the user threshold (same as `Account.low_balance`).' }
+        balance_empty: { type: boolean, description: 'Balance after this call is zero or less (same as `Account.balance_empty`).' }
+        vat_mode: { $ref: '#/components/schemas/VatMode' }
+        job_id: { type: [string, 'null'], description: 'The `X-Tanara-Job-Id` of the call, `null` without it.' }
+
+    TranscriptionJobInfo:
+      type: object
+      description: |
+        Additive Tanara field on the status response: the content-free job record. Kept for 30
+        days, also after the upstream content was deleted. Amounts in the user's `vat_mode`.
+      required: [refunded]
+      properties:
+        charge_id: { type: string }
+        charge: { $ref: '#/components/schemas/Money' }
+        refunded:
+          type: boolean
+          description: '`true` when the charge was refunded because of an upstream failure. Set in the same response that first returns `status: error`.'
+        refund: { $ref: '#/components/schemas/Money' }
+        balance:
+          $ref: '#/components/schemas/Money'
+          description: The current balance (after the refund, if any).
+        error_code: { type: [string, 'null'], description: 'Machine-readable failure code, `null` without error.' }
+        content_deleted: { type: boolean, description: '`true` when the upstream content is already deleted; only this record remains.' }
+        job_id: { type: [string, 'null'] }
+        record_expires_at: { type: string, format: date-time, description: 'When this record is deleted (30 days); after that `404`.' }
+
+    TranscriptToken:
+      type: object
+      required: [text, start_ms, end_ms]
+      properties:
+        text: { type: string }
+        start_ms: { type: integer }
+        end_ms: { type: integer }
+        confidence: { type: number }
+        speaker: { type: [integer, string], description: Only with diarization. }
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      description: OpenAI chat completion body, passed through.
+      properties:
+        model: { type: string, example: tanara/summary-accurate }
+        messages:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [system, user, assistant] }
+              content: { type: string }
+        temperature: { type: number }
+        max_tokens: { type: integer }
+        stream: { type: boolean, const: false }
+        response_format: { type: object }
+      additionalProperties: true
+
+    ChatCompletionResponse:
+      type: object
+      required: [id, object, model, choices, usage]
+      description: OpenAI chat completion object. `usage.tanara_charge` is additive.
+      properties:
+        id: { type: string }
+        object: { type: string, const: chat.completion }
+        model: { type: string }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              message:
+                type: object
+                properties:
+                  role: { type: string }
+                  content: { type: string }
+              finish_reason: { type: string }
+        usage:
+          type: object
+          required: [prompt_tokens, completion_tokens, total_tokens]
+          properties:
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer }
+            total_tokens: { type: integer }
+            tanara_charge: { $ref: '#/components/schemas/ChargeInfo' }
