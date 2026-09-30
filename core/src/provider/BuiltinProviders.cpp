@@ -147,7 +147,42 @@ ProviderDescriptor whisperCompatDescriptor()
     return d;
 }
 
+// --- Tanara Cloud (STT és LLM ugyanazzal az id-vel, a két registryben külön) ---
+ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
+{
+    ProviderDescriptor d;
+    d.id                  = QStringLiteral("tanara-cloud");
+    d.displayName         = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud — bejelentkezés");
+    d.kind                = kind;
+    d.authMode            = AuthMode::Login;
+    d.loginSecretKey      = QStringLiteral("tanara.cloud.apiKey");
+    d.supportsDiarization = true;    // a Pontos szint diarizál; a Gyors nem (katalógus-metaadat)
+    d.networkRequired     = true;
+    // Nincs kulcs-mező: egy bejelentkezés (device flow) mindkét providerhez; a szintet
+    // (Gyors / Pontos / Expert) a Tanara Cloud fiók-panel és a becslés-dialógus állítja.
+    return d;
+}
+
 } // namespace
+
+void registerCloudProviders()
+{
+    static bool registered = false;
+    if (registered)
+        return;
+    registered = true;
+
+    SttProviderRegistry::instance().registerProvider(
+        tanaraCloudDescriptor(ProviderKind::Stt),
+        [](const ProviderConfig& c, QObject* p) -> ISttProvider* {
+            return new SonioxProvider(c, p);           // a gateway Soniox-alakú
+        });
+    LlmProviderRegistry::instance().registerProvider(
+        tanaraCloudDescriptor(ProviderKind::Llm),
+        [](const ProviderConfig& c, QObject* p) -> ILlmProvider* {
+            return new OpenAiCompatibleProvider(c, p); // a gateway OpenAI-alakú
+        });
+}
 
 void registerBuiltinProviders()
 {

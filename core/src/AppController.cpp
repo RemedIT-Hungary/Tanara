@@ -20,6 +20,8 @@
 #include "tanara/SummaryService.h"
 #include "tanara/ComplexSummaryService.h"
 #include "tanara/TranscriptMerger.h"
+#include "tanara/Localization.h"
+#include "tanara/cloud/CloudAccount.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -37,6 +39,9 @@
 #include <QNetworkRequest>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QPointer>
+#include <QRegularExpression>
+#include <QUuid>
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -434,6 +439,41 @@ struct AppController::Impl {
     QString activeTopicId;
     QSet<QString> reduceWhenDone;             // meetingId-k, ahol a sor végén auto-reduce jön
     QHash<QString, QPair<int,int>> jobCounts; // meetingId → (ok, fail) az aktuális batch-ben
+
+    // Tanara Cloud.
+    CloudAccount* cloud = nullptr;
+    bool cloudLive = false;
+    bool cloudTeaser = false;
+    // Meetingenként a futó komplex köteg (téma-elemzések + reduce) cloud-futása: EGY
+    // X-Tanara-Job-Id, a hívásonkénti terhelések összesítve (K-07 „12 rész”).
+    QHash<QString, CloudRunPtr> complexRuns;
+};
+
+// Egy cloud feldolgozás-futás állapota. A providerek válasz-hookja (onExchange) tölti.
+struct AppController::CloudRun {
+    QString meetingId;
+    QString kind;            // transcribe | summary | topics | complex
+    QString jobId;           // X-Tanara-Job-Id — futásonként új véletlen érték
+    qint64  chargedMicros = 0;
+    QString currency;
+    int     calls = 0;       // sikeres terhelő hívások
+    Money   balance;         // az utolsó ismert egyenleg (terhelés / visszaírás után)
+    QString vatMode;
+    CloudError lastError;    // az utolsó nem-2xx (nem-DELETE) válasz
+    bool    refunded = false;
+    Money   refund;
+    QString fileId, transcriptionId;
+    QString lastRequestId;
+
+    Money charged() const { return Money{ chargedMicros, currency.isEmpty() ? QStringLiteral("USD") : currency }; }
+    void addCharge(const ChargeInfo& c) {
+        if (!c.valid) return;
+        chargedMicros += c.charge.micros;
+        if (currency.isEmpty()) currency = c.charge.currency;
+        if (c.balance.isValid()) balance = c.balance;
+        if (!c.vatMode.isEmpty()) vatMode = c.vatMode;
+        ++calls;
+    }
 };
 
 AppController::AppController(QObject* parent)
@@ -443,6 +483,17 @@ AppController::AppController(QObject* parent)
 
     d->settings = new SettingsManager(QString(), this);
     const AppSettings s = d->settings->settings();
+
+    // Tanara Cloud mód: TANARA_CLOUD=live|teaser|off felülírja a settings.cloudEnabled-et.
+    {
+        const QString mode = qEnvironmentVariable("TANARA_CLOUD").trimmed().toLower();
+        const bool off = mode == QLatin1String("off");
+        const bool wantLive = mode == QLatin1String("live") || (mode.isEmpty() && s.cloudEnabled);
+        d->cloudLive   = !off && cloud::clientCompiled() && wantLive;
+        d->cloudTeaser = !off && !d->cloudLive && cloud::teaserCompiled();
+        if (d->cloudLive)
+            registerCloudProviders();   // feature-flag: enélkül a „tanara-cloud” id nem is létezik
+    }
     d->audioDir = expandTilde(s.audioDir);
     d->metaDir  = expandTilde(s.metadataDir);
     d->notesDir = expandTilde(s.notesDir);
@@ -450,6 +501,13 @@ AppController::AppController(QObject* parent)
     QDir().mkpath(d->metaDir);
 
     d->keyStore = KeyStore(QDir(d->metaDir).filePath(QStringLiteral("secrets.json")));
+
+    d->cloud = new CloudAccount(&d->keyStore, d->metaDir, this);
+    {
+        const QString envUrl = qEnvironmentVariable("TANARA_CLOUD_URL").trimmed();
+        d->cloud->setBaseUrl(!envUrl.isEmpty() ? envUrl : s.cloudBaseUrl);
+        d->cloud->setLanguage(activeUiLanguage());
+    }
     d->devices = new DeviceManager(this);
     d->store   = new MeetingStore(d->audioDir, d->metaDir, this);
     // Crash után árván maradt felvételek (sávok meeting.json nélkül) visszahozása a listába.
@@ -1217,12 +1275,233 @@ void AppController::stopRecording()
     if (d->session) d->session->stop();
 }
 
+static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id);
+
 ReadinessResult AppController::canRun(WorkflowStep step, const QString& meetingId) const
 {
     const Meeting meeting = d->store->load(meetingId);
     ReadinessModel model(d->settings->settings(),
                          [this](const QString& k) { return !d->keyStore.get(k).isEmpty(); });
-    return model.check(step, meeting);
+    ReadinessResult r = model.check(step, meeting);
+    if (!r.runnable || !usesCloud(step))
+        return r;
+
+    // Tanara Cloud-specifikus akadályok (pontosan egy CTA a folyamat-sávban).
+    if (d->cloud->clientTooOld()) {
+        ReadinessResult c;
+        c.blockerKind   = BlockerKind::Cloud;
+        c.detail        = tr("A Tanara Cloudhoz frissítés kell (legalább %1).").arg(d->cloud->minClient());
+        c.fixActionHint = QStringLiteral("cloud:update");
+        c.providerId    = cloud::ProviderId;
+        return c;
+    }
+    const AccountInfo acc = d->cloud->account();
+    if (acc.valid && acc.balanceEmpty) {
+        ReadinessResult c;
+        c.blockerKind   = BlockerKind::Cloud;
+        c.detail        = tr("töltsd fel az egyenleged");
+        c.fixActionHint = QStringLiteral("cloud:topup");
+        c.providerId    = cloud::ProviderId;
+        return c;
+    }
+    return r;
+}
+
+// ---- Tanara Cloud ------------------------------------------------------------------------
+
+CloudAccount* AppController::cloud() const { return d->cloud; }
+bool AppController::cloudLive() const { return d->cloudLive; }
+bool AppController::cloudTeaser() const { return d->cloudTeaser; }
+
+bool AppController::usesCloud(WorkflowStep step) const
+{
+    if (!d->cloudLive) return false;
+    const AppSettings s = d->settings->settings();
+    if (step == WorkflowStep::Transcribe) return s.sttProviderId == cloud::ProviderId;
+    if (step == WorkflowStep::Summarize)  return s.llmProviderId == cloud::ProviderId;
+    return false;
+}
+
+QString AppController::cloudModelFor(WorkflowStep step) const
+{
+    const AppSettings s = d->settings->settings();
+    const bool stt = step == WorkflowStep::Transcribe;
+    const QString expert = stt ? s.cloudSttModel : s.cloudLlmModel;
+    // Az Expert-modell csak akkor érvényes, ha még a katalógusban van (kivezetett modell →
+    // vissza a tier virtuális modelljére; a UI jelzi).
+    if (!expert.isEmpty()) {
+        const QVector<CloudModel> cat = d->cloud->models();
+        if (cat.isEmpty() || findModel(cat, expert).has_value())
+            return expert;
+    }
+    return virtualModelId(stt ? QStringLiteral("stt") : QStringLiteral("llm"),
+                          stt ? s.cloudSttTier : s.cloudLlmTier);
+}
+
+namespace {
+// A cloud LLM-hívások max_tokens-e: a fedezet-szabály (prompt + max_tokens áron) miatt
+// mérsékelt érték — a JSON-összefoglaló és a téma-elemzés bőven belefér.
+constexpr int kCloudMaxTokens = 4000;
+constexpr int kReduceInputChars = 6000;   // a reduce bemenete: a téma-elemzések kivonata (becslés)
+}
+
+EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, const QString& task,
+                                                   const QString& summaryMode) const
+{
+    const Meeting m = d->store->load(meetingId);
+    const AppSettings s = d->settings->settings();
+    EstimateRequest r;
+    r.task = task;
+    r.durationMs = m.durationMs;
+    for (const Track& t : m.tracks) if (t.active) ++r.tracks;
+    r.language = s.languageHints.value(0);
+    if (task != QLatin1String("summarize"))
+        r.sttModel = cloudModelFor(WorkflowStep::Transcribe);
+    if (task != QLatin1String("transcribe")) {
+        r.llmModel = cloudModelFor(WorkflowStep::Summarize);
+        r.summaryMode = summaryMode.isEmpty() ? QStringLiteral("quick") : summaryMode;
+        // A tényleges bemenet: rendszer-prompt + kontextus + átirat (markdown).
+        MergedTranscript merged = d->mergedCache.value(meetingId);
+        if (merged.tokens.isEmpty() && !m.folder.isEmpty())
+            merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+        if (!merged.tokens.isEmpty()) {
+            applySpeakerMap(merged, m.speakerMap);
+            const int transcript = merged.renderMarkdown().size() + m.contextNote.size();
+            r.transcriptChars = transcript;
+            if (r.summaryMode == QLatin1String("complex")) {
+                const int topicIn    = transcript + resolvedPrompt(s, s.topicExtractionPrompt, "topic").size();
+                const int analysisIn = transcript + resolvedPrompt(s, s.topicAnalysisPrompt, "analysis").size() + 200;
+                // A témaszám a kinyerés előtt ismeretlen (null → a gateway statisztikája);
+                // ha már van szerkesztett téma-lista, csak a még elemzetleneket kérjük.
+                const QVector<SummaryTopic> topics =
+                    readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+                if (topics.isEmpty()) {
+                    r.llmCalls.append({ 1, topicIn, kCloudMaxTokens });
+                    r.llmCalls.append({ -1, analysisIn, kCloudMaxTokens });
+                } else {
+                    QSet<QString> done;
+                    for (const TopicAnalysis& a : readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"))))
+                        done.insert(a.topicId);
+                    int missing = 0;
+                    for (const SummaryTopic& t : topics) if (!done.contains(t.id)) ++missing;
+                    if (missing > 0) r.llmCalls.append({ missing, analysisIn, kCloudMaxTokens });
+                }
+                r.llmCalls.append({ 1, kReduceInputChars, kCloudMaxTokens });
+            } else {
+                const int in = transcript + resolvedPrompt(s, s.summaryPrompt, "simple").size();
+                r.llmCalls.append({ 1, in, kCloudMaxTokens });
+            }
+        }
+    }
+    return r;
+}
+
+AppController::CloudRunPtr AppController::newCloudRun(const QString& meetingId, const QString& kind) const
+{
+    auto run = std::make_shared<CloudRun>();
+    run->meetingId = meetingId;
+    run->kind = kind;
+    run->jobId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    return run;
+}
+
+ProviderConfig AppController::cloudConfig(WorkflowStep step, const CloudRunPtr& run,
+                                          const QString& summaryMode) const
+{
+    ProviderConfig cfg;
+    cfg.type = cloud::ProviderId;
+    cfg.baseUrl = d->cloud->apiBase();
+    cfg.apiKey = d->cloud->apiKey();
+    cfg.model = cloudModelFor(step);
+    cfg.temperature = 0.2;
+    cfg.maxTokens = kCloudMaxTokens;
+    cfg.extraHeaders = d->cloud->requestHeaders(run ? run->jobId : QString(),
+                                                step == WorkflowStep::Summarize ? summaryMode : QString());
+    QPointer<CloudAccount> acc = d->cloud;
+    cfg.onExchange = [acc, run](const HttpExchange& ex) {
+        if (acc) acc->observeExchange(ex);
+        if (!run) return;
+        const QString rid = QString::fromUtf8(ex.headers.value(QByteArrayLiteral("x-tanara-request-id")));
+        if (!rid.isEmpty()) run->lastRequestId = rid;
+        const bool ok = ex.status >= 200 && ex.status < 300;
+        if (!ok) {
+            if (ex.method != "DELETE")   // a takarító DELETE-ek hibája nem írja felül a valódi hibát
+                run->lastError = parseCloudError(ex.status, ex.headers, ex.body, ex.networkError);
+            return;
+        }
+        const QJsonObject o = QJsonDocument::fromJson(ex.body).object();
+        static const QRegularExpression statusPath(QStringLiteral("/transcriptions/[^/]+$"));
+        if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/files"))) {
+            run->fileId = o.value(QStringLiteral("id")).toString();
+        } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/transcriptions"))) {
+            run->transcriptionId = o.value(QStringLiteral("id")).toString();
+            ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("tanara")).toObject());
+            if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
+            run->addCharge(c);
+            // A folyamatban lévő átírás azonosítója (indításkori visszaírás-ellenőrzéshez).
+            if (acc) acc->addPendingTranscription(run->transcriptionId, run->fileId);
+        } else if (ex.method == "POST" && ex.path.endsWith(QLatin1String("/chat/completions"))) {
+            ChargeInfo c = chargeInfoFromJson(o.value(QStringLiteral("usage")).toObject()
+                                                  .value(QStringLiteral("tanara_charge")).toObject());
+            if (!c.valid) c = chargeInfoFromHeaders(ex.headers);
+            run->addCharge(c);
+        } else if (ex.method == "GET" && statusPath.match(ex.path).hasMatch()) {
+            // A visszaírás abban a válaszban látszik, amelyik először ad status: error-t —
+            // a provider a DELETE-et CSAK ez után küldi (a tanara-mezőt előbb kiolvassuk).
+            const TranscriptionJobInfo j = transcriptionJobInfoFromJson(o);
+            if (j.refunded) {
+                run->refunded = true;
+                run->refund = j.refund;
+                if (j.balance.isValid()) {
+                    run->balance = j.balance;
+                    if (acc) emit acc->balanceChanged(j.balance);
+                }
+            }
+        }
+    };
+    return cfg;
+}
+
+ProviderConfig AppController::llmConfigFor(CloudRunPtr& run, const QString& meetingId,
+                                           const QString& kind, const QString& summaryMode) const
+{
+    if (!usesCloud(WorkflowStep::Summarize)) {
+        ProviderConfig cfg = d->settings->settings().llmSelected();
+        cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
+        return cfg;
+    }
+    if (!run) run = newCloudRun(meetingId, kind);
+    return cloudConfig(WorkflowStep::Summarize, run, summaryMode);
+}
+
+void AppController::finishCloudRun(const CloudRunPtr& run)
+{
+    if (!run) return;
+    if (!run->transcriptionId.isEmpty())
+        d->cloud->removePendingTranscription(run->transcriptionId);
+    if (run->calls > 0)
+        emit cloudCharged(run->meetingId, run->kind, run->charged(), run->calls, run->balance, run->vatMode);
+    if (run->balance.isValid() || run->calls > 0)
+        d->cloud->refreshAccount();   // low_balance / hours_left / notices frissítése
+}
+
+void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage)
+{
+    if (run && !run->transcriptionId.isEmpty())
+        d->cloud->removePendingTranscription(run->transcriptionId);
+    if (run && run->refunded) {
+        emit cloudRefunded(run->meetingId, run->refund, run->balance, run->lastRequestId);
+        d->cloud->refreshAccount();
+        return;
+    }
+    if (run && run->lastError.isError()) {
+        if (run->lastError.kind == CloudErrorKind::ClientTooOld)
+            emit d->cloud->clientTooOldDetected(run->lastError.minClient);
+        emit cloudError(run->meetingId, run->kind, run->lastError, run->charged());
+        if (run->calls > 0) d->cloud->refreshAccount();
+        return;
+    }
+    emit errorOccurred(fallbackMessage);
 }
 
 void AppController::transcribeMeeting(const QString& meetingId)
@@ -1275,14 +1554,25 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     const AppSettings s = d->settings->settings();
     const QString sttId = s.sttProviderId;
     ProviderConfig cfg = s.sttSelected();
-    // Az API-kulcs slotja provider-függő — a descriptor secretKey-e mondja meg
-    // (soniox.apiKey / stt.whisper.apiKey / …), nem hardcode-oljuk a Sonioxra.
-    const ProviderDescriptor sttDesc = SttProviderRegistry::instance().descriptor(sttId);
-    for (const ConfigField& f : sttDesc.fields)
-        if (f.isSecret && !f.secretKey.isEmpty()) {
-            cfg.apiKey = d->keyStore.get(f.secretKey);
-            break;
-        }
+    // Tanara Cloud: ugyanaz a Soniox-provider a gateway-configgal; a futás (job id, terhelés,
+    // visszaírás, hiba) a válasz-hookból töltődik.
+    CloudRunPtr run;
+    bool cloudDiarization = true;
+    if (usesCloud(WorkflowStep::Transcribe)) {
+        run = newCloudRun(meetingId, QStringLiteral("transcribe"));
+        cfg = cloudConfig(WorkflowStep::Transcribe, run, QString());
+        const std::optional<CloudModel> cm = findModel(d->cloud->models(), cfg.model);
+        cloudDiarization = !cm.has_value() || cm->diarization;
+    } else {
+        // Az API-kulcs slotja provider-függő — a descriptor secretKey-e mondja meg
+        // (soniox.apiKey / stt.whisper.apiKey / …), nem hardcode-oljuk a Sonioxra.
+        const ProviderDescriptor sttDesc = SttProviderRegistry::instance().descriptor(sttId);
+        for (const ConfigField& f : sttDesc.fields)
+            if (f.isSecret && !f.secretKey.isEmpty()) {
+                cfg.apiKey = d->keyStore.get(f.secretKey);
+                break;
+            }
+    }
 
     ISttProvider* provider = SttProviderRegistry::instance().create(sttId, cfg, this);
     if (!provider) {
@@ -1319,6 +1609,12 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     req.context = m.contextNote.trimmed();
     req.contextTerms = participants;
     req.diarization = true;
+    if (run && !cloudDiarization) {
+        // A választott cloud-szint nem diarizál (pl. Gyors): mindenki „Beszélő 1” lesz
+        // (a felvétel sávjai megmaradnak; a K-04 figyelmeztetett).
+        req.diarization = false;
+        req.speakerLabel = QStringLiteral("1");
+    }
 
     SttJob* job = provider->transcribe(req);
     connect(job, &SttJob::stateChanged, this,
@@ -1327,7 +1623,7 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     // async feldolgozás alatt látszódjon: fut és a kapcsolat él.
     connect(job, &SttJob::progress, this,
             [this, id = m.id](int, const QString& msg) { emit jobProgress(id, msg); });
-    connect(job, &SttJob::finished, this, [this, m, providerObj](const TrackTranscript& tr) mutable {
+    connect(job, &SttJob::finished, this, [this, m, providerObj, run](const TrackTranscript& tr) mutable {
         TrackTranscript res = tr;
         // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.
         for (TranscriptToken& tok : res.tokens)
@@ -1346,12 +1642,13 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         d->store->saveMeeting(m);
         if (providerObj) providerObj->deleteLater();
         emit transcriptReady(m.id, mdPath);
+        finishCloudRun(run);   // K-07: „Ez az átírás $0,41 volt.” (csak cloud-futásnál)
         // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen.
         autoIdentifyMeeting(m.id);
     });
-    connect(job, &SttJob::failed, this, [this, providerObj](QString e) {
+    connect(job, &SttJob::failed, this, [this, providerObj, run](QString e) {
         if (providerObj) providerObj->deleteLater();
-        emit errorOccurred(tr("Átírás-hiba: %1").arg(e));
+        failCloudRun(run, tr("Átírás-hiba: %1").arg(e));
     });
 }
 
@@ -1388,8 +1685,8 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     const QString llmId = s.llmProviderId;
-    ProviderConfig cfg = s.llmSelected();
-    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);   // LM Studio: lehet üres
+    CloudRunPtr run;
+    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(llmId, cfg, this);
     if (!provider) {
         emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
@@ -1397,9 +1694,10 @@ void AppController::summarizeMeeting(const QString& meetingId)
     }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new SummaryService(provider, this);
-    emit jobProgress(meetingId, tr("Összefoglalás a helyi modellel (Gemma)…"));
+    emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
+                                    : tr("Összefoglalás a helyi modellel (Gemma)…"));
 
-    connect(svc, &SummaryService::summaryReady, this, [this, m, providerObj, svc](const Summary& sum) mutable {
+    connect(svc, &SummaryService::summaryReady, this, [this, m, providerObj, svc, run](const Summary& sum) mutable {
         const QString md = sum.renderMarkdown();
         const QString mdPath = QDir(m.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
@@ -1413,11 +1711,12 @@ void AppController::summarizeMeeting(const QString& meetingId)
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         emit summaryReady(m.id, mdPath);
+        finishCloudRun(run);
     });
-    connect(svc, &SummaryService::summaryFailed, this, [this, providerObj, svc](const QString& e) {
+    connect(svc, &SummaryService::summaryFailed, this, [this, providerObj, svc, run](const QString& e) {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        emit errorOccurred(tr("Összefoglaló hiba: %1").arg(e));
+        failCloudRun(run, tr("Összefoglaló hiba: %1").arg(e));
     });
 
     svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
@@ -1448,25 +1747,27 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     const QString transcriptMd = merged.renderMarkdown();
 
     const AppSettings s = d->settings->settings();
-    ProviderConfig cfg = s.llmSelected();
-    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    CloudRunPtr run;
+    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
-    emit jobProgress(meetingId, tr("Témák kigyűjtése a helyi modellel…"));
+    emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
+                                    : tr("Témák kigyűjtése a helyi modellel…"));
 
     connect(svc, &ComplexSummaryService::topicsReady, this,
-            [this, id = m.id, topicsPath, providerObj, svc](const QVector<SummaryTopic>& topics) {
+            [this, id = m.id, topicsPath, providerObj, svc, run](const QVector<SummaryTopic>& topics) {
         writeTopicsJson(topicsPath, topics);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         emit topicsReady(id, topics);
+        finishCloudRun(run);
     });
-    connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc](const QString& e) {
+    connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc, run](const QString& e) {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        emit errorOccurred(tr("Téma-kinyerés hiba: %1").arg(e));
+        failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(e));
     });
 
     svc->requestTopics(transcriptMd, m.contextNote.trimmed(),
@@ -1502,6 +1803,10 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     for (const SummaryTopic& t : topics)
         if (!doneIds.contains(t.id)) missing.append(t);
 
+    // Cloud: a köteg (téma-elemzések + reduce) EGY futás, új X-Tanara-Job-Id-vel —
+    // a folytatás (újraindítás hiba után) is új futás.
+    if (usesCloud(WorkflowStep::Summarize))
+        d->complexRuns.insert(meetingId, newCloudRun(meetingId, QStringLiteral("complex")));
     if (missing.isEmpty()) { finalizeComplexSummary(meetingId); return; }
     enqueueTopicAnalyses(meetingId, missing, /*reduceWhenDone*/ true);
 }
@@ -1564,12 +1869,19 @@ void AppController::startNextTopicJob()
             const int ok = it.value().first, fail = it.value().second;
             emit topicAnalysisQueueFinished(id, ok, fail);
             const bool wantReduce = d->reduceWhenDone.remove(id);
-            if (wantReduce && fail == 0)
-                finalizeComplexSummary(id);
-            else if (wantReduce)
+            if (wantReduce && fail == 0) {
+                finalizeComplexSummary(id);   // a cloud-futás a reduce-szal folytatódik
+                continue;
+            }
+            if (wantReduce)
                 emit jobProgress(id, tr(
                     "%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.")
                     .arg(fail));
+            // Reduce nélkül záruló cloud-futás (egy téma újrafuttatása, vagy nem-cloud hiba):
+            // az eddigi terhelések összege a K-07-be.
+            const CloudRunPtr run = d->complexRuns.take(id);
+            if (run && !run->lastError.isError())
+                finishCloudRun(run);
         }
         return;
     }
@@ -1595,8 +1907,12 @@ void AppController::startNextTopicJob()
     applySpeakerMap(merged, m.speakerMap);
 
     const AppSettings s = d->settings->settings();
-    ProviderConfig cfg = s.llmSelected();
-    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    CloudRunPtr run = d->complexRuns.value(m.id);
+    if (usesCloud(WorkflowStep::Summarize) && !run) {   // egy téma újrafuttatása köteg nélkül
+        run = newCloudRun(m.id, QStringLiteral("complex"));
+        d->complexRuns.insert(m.id, run);
+    }
+    const ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) {
         d->jobCounts[m.id].second++;
@@ -1629,10 +1945,26 @@ void AppController::startNextTopicJob()
         startNextTopicJob();
     });
     connect(svc, &ComplexSummaryService::failed, this,
-            [this, meetingId = m.id, topicId = job.topic.id, cleanup](const QString& e) {
+            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run](const QString& e) {
         d->jobCounts[meetingId].second++;
         cleanup();
-        emit topicAnalysisFailed(meetingId, topicId, e);   // a többi téma megy tovább
+        if (run && run->lastError.isError()) {
+            // Cloud-hiba (402 / 403 / 426 / 429 / 503 …): a meeting hátralévő témái ugyanezt
+            // kapnák → a sorból kivesszük őket; a K-12 részleges-hiba dialógus mutatja az eddig
+            // terhelt összeget és a „Folytatás”-t (csak a hátralévő részekért fizet).
+            emit topicAnalysisFailed(meetingId, topicId, run->lastError.message.isEmpty() ? e : run->lastError.message);
+            for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
+                if (d->topicJobQueue.at(i).meetingId != meetingId) continue;
+                const QString dropped = d->topicJobQueue.takeAt(i).topic.id;
+                d->jobCounts[meetingId].second++;
+                emit topicAnalysisFailed(meetingId, dropped, tr("Megszakítva"));
+            }
+            d->reduceWhenDone.remove(meetingId);
+            d->complexRuns.remove(meetingId);
+            failCloudRun(run, e);
+        } else {
+            emit topicAnalysisFailed(meetingId, topicId, e);   // a többi téma megy tovább
+        }
         startNextTopicJob();
     });
 
@@ -1662,8 +1994,8 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     }
 
     const AppSettings s = d->settings->settings();
-    ProviderConfig cfg = s.llmSelected();
-    cfg.apiKey = d->keyStore.get(keys::LlmApiKey);
+    CloudRunPtr run = d->complexRuns.take(meetingId);   // a köteg futása (ha volt) folytatódik
+    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
@@ -1676,12 +2008,12 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         svc->deleteLater();
     };
 
-    connect(svc, &ComplexSummaryService::failed, this, [this, cleanup](const QString& e) {
-        emit errorOccurred(tr("Komplex összefoglaló hiba: %1").arg(e));
+    connect(svc, &ComplexSummaryService::failed, this, [this, cleanup, run](const QString& e) {
         cleanup();
+        failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(e));
     });
     connect(svc, &ComplexSummaryService::reduceReady, this,
-            [this, m, ordered, cleanup](const QString& execSummary, const QVector<ActionItem>&) {
+            [this, m, ordered, cleanup, run](const QString& execSummary, const QVector<ActionItem>&) {
         // Teendők KÓDBÓL (nem az LLM-től): a per-téma elemzések teendőit gyűjtjük össze,
         // normalizált szöveg-dedup. Determinisztikus, modellfüggetlen — az LLM reduce-ának
         // csak a vezetői összefoglaló marad (kevesebb hely a „hangos gondolkodásra").
@@ -1708,6 +2040,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         d->store->saveMeeting(mm);
         cleanup();
         emit summaryReady(mm.id, mdPath);
+        finishCloudRun(run);   // K-07: „Az összefoglaló $0,46 volt (12 rész).”
     });
 
     svc->requestReduce(ordered, m.contextNote.trimmed(), cfg.model, cfg.temperature, cfg.maxTokens);

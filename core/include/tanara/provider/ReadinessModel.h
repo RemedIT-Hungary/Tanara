@@ -14,7 +14,9 @@
 namespace tanara {
 
 enum class WorkflowStep { Record, Transcribe, Summarize };   // az Identify SOFT → nincs itt
-enum class BlockerKind { MeetingState, ProviderConfig, Auth };
+// Cloud = Tanara Cloud-specifikus akadály (túl régi kliens, elfogyott egyenleg) —
+// a fixActionHint: "cloud:update" | "cloud:topup". Az AppController::canRun teszi hozzá.
+enum class BlockerKind { MeetingState, ProviderConfig, Auth, Cloud };
 
 struct ReadinessResult {
     bool runnable = false;

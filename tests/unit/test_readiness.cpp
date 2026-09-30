@@ -204,6 +204,31 @@ private slots:
         QCOMPARE(r.providerId, QStringLiteral("openai-compat"));
         QCOMPARE(r.missingFieldKey, QStringLiteral("baseUrl"));
     }
+
+    // Tanara Cloud (AuthMode::Login): a kulcs-mező nélküli provider bejelentkezés nélkül
+    // „Jelentkezz be a Tanara Cloudba” auth-blokkot ad (CTA: login:tanara-cloud); a login
+    // a descriptor loginSecretKey-e (tanara.cloud.apiKey) szerint dől el.
+    void cloud_blocksUntilLoggedIn()
+    {
+        registerCloudProviders();
+        AppSettings s = makeSettings();
+        s.sttProviderId = QStringLiteral("tanara-cloud");
+        s.llmProviderId = QStringLiteral("tanara-cloud");
+        const Meeting m = meetingWithActiveTrack();
+
+        ReadinessModel out(s, noSecrets());
+        const ReadinessResult r = out.check(WorkflowStep::Transcribe, m);
+        QVERIFY(!r.runnable);
+        QCOMPARE(r.blockerKind, BlockerKind::Auth);
+        QCOMPARE(r.fixActionHint, QStringLiteral("login:tanara-cloud"));
+        QCOMPARE(r.detail, QStringLiteral("Jelentkezz be a Tanara Cloudba"));
+
+        ReadinessModel in(s, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
+        QVERIFY(in.check(WorkflowStep::Transcribe, m).runnable);
+        // A régi "<id>.token" konvenció a cloudnál nem számít bejelentkezésnek.
+        ReadinessModel legacy(s, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
+        QVERIFY(!legacy.check(WorkflowStep::Transcribe, m).runnable);
+    }
 };
 
 QTEST_GUILESS_MAIN(ReadinessTests)

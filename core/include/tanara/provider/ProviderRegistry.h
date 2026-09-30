@@ -59,4 +59,11 @@ private:
 // többszöri hívás biztonságos. Az AppController ctora hívja.
 void registerBuiltinProviders();
 
+// A Tanara Cloud STT + LLM provider („tanara-cloud”, AuthMode::Login) regisztrációja.
+// Feature-flag (kill-kritérium): csak akkor hívódik, ha a cloud-kliens befordult
+// (TANARA_BUILD_CLOUD) ÉS a cloud-mód él (settings.cloudEnabled / TANARA_CLOUD_URL).
+// A factory a meglévő SonioxProvider / OpenAiCompatibleProvider — a gateway-configot
+// (baseUrl, kulcs, modell, fejlécek, hook) az AppController tölti. Idempotens.
+void registerCloudProviders();
+
 } // namespace tanara

@@ -264,6 +264,15 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("silenceAskMinutes")]   = s.silenceAskMinutes;
     o[QStringLiteral("detectorId")]          = s.detectorId;
     o[QStringLiteral("knownCallApps")]       = stringListToArray(s.knownCallApps);
+
+    // Tanara Cloud.
+    o[QStringLiteral("cloudEnabled")]  = s.cloudEnabled;
+    o[QStringLiteral("cloudBaseUrl")]  = s.cloudBaseUrl;
+    o[QStringLiteral("cloudSttTier")]  = s.cloudSttTier;
+    o[QStringLiteral("cloudLlmTier")]  = s.cloudLlmTier;
+    o[QStringLiteral("cloudSttModel")] = s.cloudSttModel;
+    o[QStringLiteral("cloudLlmModel")] = s.cloudLlmModel;
+    o[QStringLiteral("waitlistEmail")] = s.waitlistEmail;
     return o;
 }
 
@@ -327,6 +336,15 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.detectorId          = o.value(QStringLiteral("detectorId")).toString(s.detectorId);
     if (o.contains(QStringLiteral("knownCallApps")))
         s.knownCallApps = arrayToStringList(o.value(QStringLiteral("knownCallApps")).toArray());
+
+    // Tanara Cloud — safe-merge a defaultokkal.
+    s.cloudEnabled  = o.value(QStringLiteral("cloudEnabled")).toBool(s.cloudEnabled);
+    s.cloudBaseUrl  = o.value(QStringLiteral("cloudBaseUrl")).toString(s.cloudBaseUrl);
+    s.cloudSttTier  = o.value(QStringLiteral("cloudSttTier")).toString(s.cloudSttTier);
+    s.cloudLlmTier  = o.value(QStringLiteral("cloudLlmTier")).toString(s.cloudLlmTier);
+    s.cloudSttModel = o.value(QStringLiteral("cloudSttModel")).toString(s.cloudSttModel);
+    s.cloudLlmModel = o.value(QStringLiteral("cloudLlmModel")).toString(s.cloudLlmModel);
+    s.waitlistEmail = o.value(QStringLiteral("waitlistEmail")).toString(s.waitlistEmail);
     return s;
 }
 

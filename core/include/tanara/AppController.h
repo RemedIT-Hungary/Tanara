@@ -6,6 +6,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/provider/ReadinessModel.h"
+#include "tanara/cloud/CloudTypes.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -17,6 +18,7 @@ class SettingsManager;
 class DeviceManager;
 class MeetingStore;
 class VoiceprintStore;
+class CloudAccount;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -33,6 +35,23 @@ public:
 
     RecordingState recordingState() const;
     QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
+
+    // ---- Tanara Cloud ----------------------------------------------------------------
+    // A fiók (mindig létezik: a teaser-mód várólistája is ezen megy). Lásd CloudAccount.h.
+    CloudAccount* cloud() const;
+    // A bejelentkezős cloud-mód él: befordult (TANARA_BUILD_CLOUD) ÉS bekapcsolt
+    // (settings.cloudEnabled, vagy TANARA_CLOUD=live). TANARA_CLOUD=off mindent kikapcsol.
+    bool cloudLive() const;
+    // A „Hamarosan” (várólista) panel látszik: befordult (TANARA_CLOUD_TEASER) és a cloud még nem él.
+    bool cloudTeaser() const;
+    // Az adott lépés kiválasztott providere a Tanara Cloud.
+    bool usesCloud(WorkflowStep step) const;
+    // A ténylegesen küldött modell-azonosító (Expert-modell, különben a tier virtuális neve).
+    QString cloudModelFor(WorkflowStep step) const;
+    // Becslés-kérés összeállítása egy meetingre (task: transcribe | summarize; summaryMode:
+    // quick | complex). Az LLM-részt folyamat-függetlenül, hívás-csoportokban írja le (llm_calls).
+    EstimateRequest makeEstimateRequest(const QString& meetingId, const QString& task,
+                                        const QString& summaryMode) const;
 
     // Egy munkafolyamat-lépés kapuzása EGYETLEN igazságforrásból (ReadinessModel):
     // futtatható-e az adott meetingen, és ha nem, PONTOSAN mi hiányzik. Ugyanezt
@@ -203,6 +222,20 @@ signals:
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
     void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
+    // ---- Tanara Cloud feldolgozás visszajelzései (K-07, K-09…K-12) ----
+    // Egy futás (átírás / összefoglaló / komplex köteg) sikeres vége: a hívásonkénti
+    // terhelések összege (a gateway adta — a kliens nem számol), hívásszám, új egyenleg.
+    // kind: transcribe | summary | topics | complex.
+    void cloudCharged(QString meetingId, QString kind, tanara::Money total, int calls,
+                      tanara::Money balance, QString vatMode);
+    // Az átírás upstream-hibával zárult, a gateway automatikusan visszaírta a díjat.
+    void cloudRefunded(QString meetingId, tanara::Money refund, tanara::Money balance,
+                       QString requestId);
+    // Strukturált gateway-hiba egy futásban. chargedSoFar: a futás már terhelt hívásainak
+    // összege (részleges hibánál > 0; ilyenkor NEM igaz, hogy „semmit nem terheltünk”).
+    void cloudError(QString meetingId, QString kind, tanara::CloudError error,
+                    tanara::Money chargedSoFar);
+
     void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
     void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
@@ -224,6 +257,21 @@ private:
     void enqueueTopicAnalyses(const QString& meetingId,
                               const QVector<tanara::SummaryTopic>& topics, bool reduceWhenDone);
     void startNextTopicJob();
+
+    // Tanara Cloud feldolgozás-futás (X-Tanara-Job-Id, terhelés-összesítő, utolsó hiba).
+    struct CloudRun;
+    using CloudRunPtr = std::shared_ptr<CloudRun>;
+    CloudRunPtr newCloudRun(const QString& meetingId, const QString& kind) const;
+    // A futás gateway-configja (baseUrl, kulcs, modell, X-Tanara-* fejlécek, válasz-hook).
+    ProviderConfig cloudConfig(WorkflowStep step, const CloudRunPtr& run,
+                               const QString& summaryMode) const;
+    // BYO: a kiválasztott LLM config + kulcs (run marad null). Cloud: gateway-config; ha a
+    // run még null, új futás indul (kind / summaryMode szerint).
+    ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
+                                const QString& summaryMode) const;
+    void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
+    // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
+    void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 
     struct Impl;
     std::unique_ptr<Impl> d;

@@ -30,6 +30,30 @@ class SettingsTests : public QObject {
     Q_OBJECT
 private slots:
 
+    // Tanara Cloud beállítások round-trip + régi settings.json → defaultok.
+    void appSettings_cloudFieldsRoundTrip()
+    {
+        AppSettings s;
+        s.cloudEnabled  = true;
+        s.cloudBaseUrl  = QStringLiteral("http://127.0.0.1:8300");
+        s.cloudSttTier  = QStringLiteral("fast");
+        s.cloudLlmTier  = QStringLiteral("accurate");
+        s.cloudSttModel = QStringLiteral("soniox/stt-async-v5");
+        s.waitlistEmail = QStringLiteral("anna@example.com");
+        const AppSettings r = appSettingsFromJson(toJson(s));
+        QCOMPARE(r.cloudEnabled, true);
+        QCOMPARE(r.cloudBaseUrl, s.cloudBaseUrl);
+        QCOMPARE(r.cloudSttTier, QStringLiteral("fast"));
+        QCOMPARE(r.cloudSttModel, s.cloudSttModel);
+        QVERIFY(r.cloudLlmModel.isEmpty());
+        QCOMPARE(r.waitlistEmail, s.waitlistEmail);
+
+        const AppSettings old = appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
+        QCOMPARE(old.cloudEnabled, false);                       // indulás előtt: teaser
+        QCOMPARE(old.cloudSttTier, QStringLiteral("accurate"));
+        QVERIFY(old.waitlistEmail.isEmpty());
+    }
+
     // AppSettings JSON round-trip (ÚJ multi-provider shape).
     void appSettings_jsonRoundTrip()
     {

@@ -58,12 +58,15 @@ ReadinessResult checkProviderConfig(const ProviderDescriptor& desc,
     }
 
     // (c) Login-ág: a Login-provider „token" jellegű titka hiányzik → nincs bejelentkezve.
-    if (desc.authMode == AuthMode::Login
-        && !hasSecret(providerId + QStringLiteral(".token"))) {
+    const QString loginKey = desc.loginSecretKey.isEmpty()
+        ? providerId + QStringLiteral(".token") : desc.loginSecretKey;
+    if (desc.authMode == AuthMode::Login && !hasSecret(loginKey)) {
         ReadinessResult r;
         r.runnable      = false;
         r.blockerKind   = BlockerKind::Auth;
-        r.detail        = QCoreApplication::translate("ReadinessModel", "Nincs bejelentkezve.");
+        r.detail        = desc.id == QLatin1String("tanara-cloud")
+            ? QCoreApplication::translate("ReadinessModel", "Jelentkezz be a Tanara Cloudba")
+            : QCoreApplication::translate("ReadinessModel", "Nincs bejelentkezve.");
         r.fixActionHint = QStringLiteral("login:%1").arg(providerId);
         r.providerId    = providerId;
         return r;

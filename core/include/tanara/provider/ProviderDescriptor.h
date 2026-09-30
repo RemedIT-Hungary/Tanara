@@ -46,6 +46,9 @@ struct ProviderDescriptor {
     bool networkRequired = true;
     QStringList languages;              // pl. {"hu","en"}; üres = bármi
     QVector<ConfigField> fields;        // a deklaratív konfig-séma
+    // AuthMode::Login: a KeyStore-kulcs, amelynek megléte = „be van jelentkezve”.
+    // Üres → "<id>.token" (a korábbi konvenció).
+    QString loginSecretKey;
 };
 
 } // namespace tanara
