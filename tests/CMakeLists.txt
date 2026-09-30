@@ -11,3 +11,10 @@ endforeach()
 if(TARGET test_store_settings)
     target_compile_definitions(test_store_settings PRIVATE TANARA_STORE_SETTINGS_STANDALONE)
 endif()
+
+# A cloud-integrációs teszt a mock-gateway-t indítja (node). Node nélkül QSKIP.
+if(TARGET test_cloud_gateway)
+    target_compile_definitions(test_cloud_gateway PRIVATE
+        TANARA_MOCK_GATEWAY="${CMAKE_SOURCE_DIR}/tests/mock-gateway/mock-gateway.mjs")
+    set_tests_properties(test_cloud_gateway PROPERTIES TIMEOUT 120)
+endif()

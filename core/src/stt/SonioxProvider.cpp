@@ -1,4 +1,5 @@
 #include "tanara/stt/SonioxProvider.h"
+#include "tanara/cloud/CloudTypes.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -65,7 +66,15 @@ QNetworkRequest SonioxJob::makeRequest(const QString& path) const {
     QNetworkRequest r{QUrl(m_cfg.baseUrl + path)};
     r.setRawHeader("Authorization",
                    QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8());
+    // Gateway-mód (Tanara Cloud): additív X-Tanara-* / Accept-Language fejlécek.
+    for (const auto& h : m_cfg.extraHeaders)
+        r.setRawHeader(h.first, h.second);
     return r;
+}
+
+void SonioxJob::report(QNetworkReply* reply, const QByteArray& body) const {
+    if (m_cfg.onExchange)
+        m_cfg.onExchange(makeHttpExchange(reply, body));
 }
 
 void SonioxJob::setState(JobState state) {
@@ -157,6 +166,7 @@ void SonioxJob::uploadFile() {
         m_reply = nullptr;
         const QByteArray body = reply->readAll();
         const auto err = reply->error();
+        report(reply, body);
         reply->deleteLater();
         if (m_finished)
             return;
@@ -237,6 +247,7 @@ void SonioxJob::createTranscription() {
         m_reply = nullptr;
         const QByteArray body = reply->readAll();
         const auto err = reply->error();
+        report(reply, body);
         reply->deleteLater();
         if (m_finished)
             return;
@@ -281,6 +292,7 @@ void SonioxJob::pollStatus() {
         m_reply = nullptr;
         const QByteArray body = reply->readAll();
         const auto err = reply->error();
+        report(reply, body);
         reply->deleteLater();
         if (m_finished)
             return;
@@ -333,6 +345,7 @@ void SonioxJob::fetchTranscript() {
         m_reply = nullptr;
         const QByteArray body = reply->readAll();
         const auto err = reply->error();
+        report(reply, body);
         reply->deleteLater();
         if (m_finished)
             return;
@@ -388,8 +401,11 @@ void SonioxJob::cleanup() {
         if (path.isEmpty())
             return;
         QNetworkReply* r = m_nam->deleteResource(makeRequest(path));
-        // hibát figyelmen kívül hagyjuk, csak takarítunk
-        connect(r, &QNetworkReply::finished, r, &QNetworkReply::deleteLater);
+        // hibát figyelmen kívül hagyjuk, csak takarítunk (a gateway-hook megkapja a választ)
+        connect(r, &QNetworkReply::finished, r, [r, hook = m_cfg.onExchange]() {
+            if (hook) hook(makeHttpExchange(r, r->readAll()));
+            r->deleteLater();
+        });
     };
     if (!m_transcriptionId.isEmpty())
         fireDelete(QStringLiteral("/transcriptions/") + m_transcriptionId);

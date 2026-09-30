@@ -1,4 +1,5 @@
 #include "tanara/llm/OpenAiCompatibleProvider.h"
+#include "tanara/cloud/CloudTypes.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -71,6 +72,9 @@ void OpenAiCompatibleJob::start()
         const QByteArray auth = QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8();
         request.setRawHeader(QByteArrayLiteral("Authorization"), auth);
     }
+    // Gateway-mód (Tanara Cloud): additív X-Tanara-* / Accept-Language fejlécek.
+    for (const auto& h : m_cfg.extraHeaders)
+        request.setRawHeader(h.first, h.second);
 
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
     m_reply = m_nam->post(request, payload);
@@ -97,6 +101,8 @@ void OpenAiCompatibleJob::onFinished()
     reply->deleteLater();
 
     const QByteArray data = reply->readAll();   // a hibatörzset is kiolvassuk
+    if (m_cfg.onExchange)                        // gateway-hook: terhelés / strukturált hiba
+        m_cfg.onExchange(makeHttpExchange(reply, data));
     if (reply->error() != QNetworkReply::NoError) {
         QString apiMsg;
         const QJsonDocument edoc = QJsonDocument::fromJson(data);

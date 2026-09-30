@@ -27,6 +27,13 @@ option(TANARA_BUILD_WATCHER "Build the tray meeting-watcher" ON)
 # (OFF) a core/cli/gui ezek nélkül fordul (gyors Windows bring-up); a VoiceEmbedder
 # ilyenkor stub (isValid()==false → az app automatikusan kihagyja a beszélő-címkézést).
 option(TANARA_BUILD_VOICEID "Build with ONNX-based voice fingerprinting" ON)
+# Tanara Cloud (zárt, fizetős szolgáltatás) — a nyílt kliensben tisztán lekapcsolható:
+#  TANARA_BUILD_CLOUD  — a bejelentkezős cloud-kliens (tanara-cloud STT/LLM provider,
+#                        device flow, becslés, egyenleg). OFF → a kód nem regisztrál semmit
+#                        (kill-kritérium). Futásidőben: settings.cloudEnabled / TANARA_CLOUD.
+#  TANARA_CLOUD_TEASER — a „Hamarosan” (várólista) panel + a readiness-sor az indulás előtt.
+option(TANARA_BUILD_CLOUD "Build the Tanara Cloud client (login, cloud providers)" ON)
+option(TANARA_CLOUD_TEASER "Build the Tanara Cloud 'coming soon' waitlist panel" ON)
 
 if(TANARA_BUILD_VOICEID)
     # kaldi-native-fbank (vendorelt, Apache-2.0) — kaldi-pontos fbank a beszélő-embeddinghez.

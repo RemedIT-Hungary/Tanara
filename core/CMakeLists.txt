@@ -35,3 +35,11 @@ if(TANARA_BUILD_VOICEID)
     target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_VOICEID)
     target_link_libraries(tanara_core PRIVATE kaldi_native_fbank onnxruntime::onnxruntime)
 endif()
+
+# Tanara Cloud fordítási kapcsolók (lásd a gyökér CMakeLists.txt-t).
+if(TANARA_BUILD_CLOUD)
+    target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_CLOUD)
+endif()
+if(TANARA_CLOUD_TEASER)
+    target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_CLOUD_TEASER)
+endif()

@@ -43,6 +43,7 @@ private:
 
     // --- segédek ---
     QNetworkRequest makeRequest(const QString& path) const;
+    void report(QNetworkReply* reply, const QByteArray& body) const;   // gateway-hook (onExchange)
     void fail(const QString& error);
     void setState(JobState state);
     void abortInFlight();

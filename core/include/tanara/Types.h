@@ -11,8 +11,15 @@
 #include <QVariantMap>
 #include <QMap>
 #include <QMetaType>
+#include <QByteArray>
+#include <QList>
+#include <QPair>
+
+#include <functional>
 
 namespace tanara {
+
+struct HttpExchange;   // tanara/cloud/CloudTypes.h
 
 QString libraryVersion();   // definíció: core/src/Version.cpp
 
@@ -174,6 +181,13 @@ struct ProviderConfig {
     double temperature = 0.2; // LLM mintavételezési hőmérséklet (összefoglaló); STT nem használja
     int maxTokens = 8000;     // LLM válasz max tokenszáma (reasoning-modellnek bőven); STT nem használja
     QVariantMap extra;
+
+    // --- futásidejű (NEM perzisztált) gateway-hookok — csak a Tanara Cloud útvonal tölti ---
+    // Minden kéréshez hozzáadott fejlécek (X-Tanara-Client, Accept-Language, X-Tanara-Job-Id …).
+    QList<QPair<QByteArray, QByteArray>> extraHeaders;
+    // Minden HTTP-válasz (siker, hiba, hálózati hiba) visszajelzése a hívónak — ebből olvassa a
+    // cloud-réteg a terhelést, a visszaírást, a request id-t és a strukturált hibát.
+    std::function<void(const HttpExchange&)> onExchange;
 };
 
 struct AppSettings {
@@ -218,6 +232,22 @@ struct AppSettings {
     // Multi-provider: a kiválasztott provider id-ja típusonként + providerenkénti
     // config (így a váltás nem törli a másik provider beállításait). A régi egyetlen
     // `stt`/`llm` shape JSON-ből migrálódik (lásd JsonSerialization).
+    // Tanara Cloud (a gateway-szerződés: docs/cloud-gateway-api.yaml).
+    //  cloudEnabled — a bejelentkezős cloud-mód él („indulás után”); false → a Beállítások
+    //                 Tanara Cloud szekciója a „Hamarosan” (várólista) panelt mutatja.
+    //                 A TANARA_CLOUD_URL környezeti változó fejlesztéshez felülírja (bekapcsol).
+    //  cloudBaseUrl — gateway alap-URL (/v1 nélkül); üres → az éles alapértelmezés.
+    //  cloudSttTier / cloudLlmTier — Gyors / Pontos szint feladatonként (fast | accurate).
+    //  cloudSttModel / cloudLlmModel — Expert mód: konkrét katalógus-id; üres → a tier virtuális modellje.
+    //  waitlistEmail — a „Hamarosan” panelről feliratkozott cím (nem üres → nem kérdez újra).
+    bool    cloudEnabled = false;
+    QString cloudBaseUrl;
+    QString cloudSttTier{QStringLiteral("accurate")};
+    QString cloudLlmTier{QStringLiteral("accurate")};
+    QString cloudSttModel;
+    QString cloudLlmModel;
+    QString waitlistEmail;
+
     QString sttProviderId{QStringLiteral("soniox")};
     QString llmProviderId{QStringLiteral("openai-compat")};
     QMap<QString, ProviderConfig> sttConfigs;   // id -> config
