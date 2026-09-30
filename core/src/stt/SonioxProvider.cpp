@@ -80,6 +80,9 @@ void SonioxJob::fail(const QString& error) {
         return;
     m_finished = true;
     abortInFlight();
+    // Hibás/megszakított job után is takarítunk: a már feltöltött fájl / létrehozott
+    // transcription ne maradjon a Sonioxnál a 30 napos evictionig (tárolási kvóta + adat).
+    cleanup();
     setState(JobState::Failed);
     emit failed(error);
 }
