@@ -104,6 +104,8 @@ servers:
 security:
   - apiKey: []
 tags:
+  - name: marketing
+    description: '"Coming soon" waitlist sign-up from the client (before the cloud launch).'
   - name: auth
     description: Device flow login and logout of the desktop client.
   - name: account
@@ -792,6 +794,36 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
+  /v1/waitlist:
+    post:
+      tags: [marketing]
+      operationId: joinWaitlist
+      summary: Join the "coming soon" waitlist from the client
+      description: |
+        No authentication. The client sends this only when the user presses the button in the
+        "Hamarosan" panel (Settings → Tanara Cloud, or the readiness hint). Nothing else is sent
+        before that. Always `202` for a valid request (no enumeration); a confirmation e-mail
+        goes out (double opt-in). Same use case as `db:joinWaitlist` on the dashboard API.
+      security: []
+      x-tanara-functions: [MKT-02, MKT-04]
+      parameters:
+        - $ref: '#/components/parameters/ClientHeader'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaitlistSignup' }
+      responses:
+        '202':
+          description: Accepted. A confirmation e-mail was sent (or the address is already confirmed).
+          headers:
+            X-Tanara-Request-Id: { $ref: '#/components/headers/RequestId' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
 components:
   securitySchemes:
     apiKey:
@@ -958,6 +990,32 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    WaitlistSignup:
+      type: object
+      description: 'Sign-up for the "coming soon" waitlist (MKT-01, MKT-02). Only `email` and `consent` are required. Double opt-in: only confirmed addresses count.'
+      required: [email, consent]
+      properties:
+        email: { type: string, format: email }
+        consent:
+          type: boolean
+          const: true
+          description: '"Értesítést kérek a Tanara Cloud indulásáról. Bármikor leiratkozhatok." — must be true.'
+        ui_language: { type: string, enum: [hu, en], description: Language of the confirmation e-mail and later mails. }
+        use_case: { type: [string, 'null'], enum: [meetings, interviews, audio_files, other, null] }
+        meeting_languages:
+          type: array
+          items: { type: string, enum: [hu, en, other] }
+        platform: { type: string, enum: [windows, linux, macos, unknown] }
+        source: { type: string, enum: [web, client] }
+        client_version: { type: [string, 'null'], description: 'Only with `source: client`.' }
+        attribution:
+          type: object
+          description: 'Web only: UTM / ref of the landing visit.'
+          properties:
+            utm_source: { type: string }
+            utm_medium: { type: string }
+            utm_campaign: { type: string }
+            ref: { type: string }
     Money:
       type: object
       description: |
