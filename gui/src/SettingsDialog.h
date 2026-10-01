@@ -21,6 +21,7 @@ class QGroupBox;
 class QCheckBox;
 class QPlainTextEdit;
 class QSpinBox;
+class QTabWidget;
 
 namespace tanara {
 class AppController;
@@ -32,6 +33,10 @@ class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
     explicit SettingsDialog(tanara::AppController* controller, QWidget* parent = nullptr);
+
+    // A „Tanara Cloud” fül előre (a readiness „Érdekel” / „Bejelentkezés” CTA-jából).
+    // false, ha a fül nincs (a cloud és a teaser is ki van kapcsolva).
+    bool showCloudTab();
 
 private slots:
     void onAccept();
@@ -105,6 +110,9 @@ private:
 
     ProviderSection m_stt;
     ProviderSection m_llm;
+
+    QTabWidget* m_tabs = nullptr;
+    int m_cloudTab = -1;          // a „Tanara Cloud” fül indexe (−1: nincs)
 };
 
 } // namespace tanara_gui

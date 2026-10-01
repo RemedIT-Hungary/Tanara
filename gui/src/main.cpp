@@ -7,6 +7,7 @@
 #include "FloatingRecorder.h"
 #include "AppIcon.h"
 #include "RecorderSingleton.h"
+#include "cloud/CloudSnapshots.h"
 
 #include "tanara/AppController.h"
 #include "tanara/Localization.h"
@@ -177,6 +178,11 @@ int main(int argc, char** argv) {
         return runRecorderMode(app, controller, cleanArgs);
 
     tanara_gui::MainWindow window(&controller);
+
+    // Fejlesztői QA: a Tanara Cloud képernyők PNG-be mentése, majd kilépés.
+    if (const int i = cleanArgs.indexOf(QStringLiteral("--ui-snapshots")); i >= 0 && i + 1 < cleanArgs.size())
+        return tanara_gui::runCloudSnapshots(controller, window, cleanArgs.at(i + 1));
+
     window.show();
 
     // Eszközök felsorolása indításkor (→ devicesChanged → eszközlista feltöltése).

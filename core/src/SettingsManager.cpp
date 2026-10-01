@@ -93,7 +93,14 @@ void SettingsManager::load()
     const QString path = settingsFilePath();
     QFile f(path);
 
+    // Első indítás: a folyamat ELSŐ SettingsManager-e hozza létre a fájlt (a fordító-telepítés
+    // már az AppController előtt betölt) → a jelzés folyamatszintű.
+    static bool s_createdInThisProcess = false;
+    if (!f.exists()) s_createdInThisProcess = true;
+    m_firstRun = s_createdInThisProcess;
+
     if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
+
         // Nincs még config → defaultok + lemezre írás.
         m_settings = defaults(m_metadataDir);
         save();
@@ -102,6 +109,7 @@ void SettingsManager::load()
 
     const QByteArray data = f.readAll();
     f.close();
+
 
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
@@ -125,7 +133,8 @@ void SettingsManager::load()
     if (loaded.notesDir.isEmpty())        loaded.notesDir = def.notesDir;
     if (loaded.metadataDir.isEmpty())     loaded.metadataDir = def.metadataDir;
     if (loaded.userSpeakerName.isEmpty()) loaded.userSpeakerName = def.userSpeakerName;
-    if (loaded.languageHints.isEmpty())   loaded.languageHints = def.languageHints;
+    // languageHints: az ÜRES lista érvényes érték („Automatikus” nyelv, K-04) — csak a
+    // hiányzó kulcs kap defaultot (azt az appSettingsFromJson már megadta).
 
     // A provider-réteg már be van töltve+migrálva; csak a hiányokat pótoljuk.
     applyProviderDefaults(loaded, def);

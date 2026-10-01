@@ -27,6 +27,9 @@ public:
     // Lemezre ír (és létrehozza a hiányzó mappákat).
     void save() const;
 
+    // Első indítás: a settings.json ennél a betöltésnél még nem létezett (K-01 módválasztás).
+    bool isFirstRun() const { return m_firstRun; }
+
     // A használatban lévő settings.json abszolút útja.
     QString settingsFilePath() const;
 
@@ -47,6 +50,7 @@ private:
 
     QString     m_metadataDir;
     AppSettings m_settings;
+    bool        m_firstRun = false;
 };
 
 } // namespace tanara

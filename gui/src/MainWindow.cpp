@@ -9,11 +9,19 @@
 #include "FloatingRecorder.h"
 #include "RecorderSingleton.h"
 #include "TracksPanel.h"
+#include "cloud/CloudEstimateDialog.h"
+#include "cloud/CloudLoginDialog.h"
+#include "cloud/CloudModeDialog.h"
+#include "cloud/CloudTermsDialog.h"
+#include "cloud/CloudTierWidget.h"
+#include "cloud/CloudUi.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/cloud/CloudAccount.h"
+#include <QTimer>
 
 #include <QTableView>
 #include <QHeaderView>
@@ -58,6 +66,9 @@
 #include <QDir>
 #include <QTextStream>
 #include <QUrl>
+#include <QApplication>
+#include <QClipboard>
+#include <functional>
 
 #include <QShowEvent>
 #include <QCloseEvent>
@@ -259,6 +270,7 @@ MainWindow::MainWindow(tanara::AppController* controller, QWidget* parent)
         connect(m_controller, &tanara::AppController::summaryReady,
                 this, [this](const QString&, const QString&) { reloadMeetings(); });
     }
+    buildCloudUi();
 }
 
 MainWindow::~MainWindow() {
@@ -270,6 +282,10 @@ MainWindow::~MainWindow() {
 
 void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
+    if (!m_cloudStartupDone) {
+        m_cloudStartupDone = true;
+        QTimer::singleShot(0, this, &MainWindow::startupCloudChecks);
+    }
     // Ablak megjelenésekor — ha épp NEM veszünk fel — indítjuk az élő
     // szintfigyelést, hogy a VU-sávok mozogjanak és az eszközök azonosíthatók
     // legyenek. Csak egyszer (a recordingStateChanged kezeli az újraindítást).
@@ -619,8 +635,15 @@ void MainWindow::buildUi() {
                "beszélő-hozzárendelések felülíródnak. Az összefoglaló a régi marad, "
                "amíg újra nem futtatod.").arg(provName),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (btn == QMessageBox::Yes)
-            m_controller->retranscribeMeeting(m_currentMeetingId);
+        if (btn != QMessageBox::Yes)
+            return;
+        const tanara::ReadinessResult r =
+            m_controller->canRun(tanara::WorkflowStep::Transcribe, m_currentMeetingId);
+        if (!r.runnable && handleCloudBlocker(r))
+            return;
+        if (!confirmCloudEstimate(m_currentMeetingId, QStringLiteral("transcribe"), QString()))
+            return;
+        m_controller->retranscribeMeeting(m_currentMeetingId);
     });
     connect(m_transcribeBtn, &QPushButton::clicked, this, &MainWindow::onTranscribeClicked);
     // (a Gyors összefoglaló gombja már az Összefoglaló-fül akció-sávjában kötve — lásd buildUi)
@@ -791,7 +814,11 @@ void MainWindow::updateSummaryActionBar(const tanara::Meeting& m) {
     // (az onSummarizeClicked/onComplexClicked kapuz) — a többi blokknál (nincs átirat) tiltva.
     const bool cfgBlock = !rs.runnable
         && (rs.blockerKind == tanara::BlockerKind::ProviderConfig
-            || rs.blockerKind == tanara::BlockerKind::Auth);
+            || rs.blockerKind == tanara::BlockerKind::Auth
+            || rs.blockerKind == tanara::BlockerKind::Cloud);
+    if (m_teaserHintSummary)
+        m_teaserHintSummary->setVisible(!rs.runnable && rs.blockerKind == tanara::BlockerKind::ProviderConfig
+                                        && m_controller->cloudTeaser());
     const bool actionsEnabled = rs.runnable || cfgBlock;
     if (m_generateSummaryBtn) {
         m_generateSummaryBtn->setEnabled(actionsEnabled);
@@ -925,10 +952,32 @@ void MainWindow::updateReviewGating(const tanara::Meeting& m) {
             m_controller ? m_controller->canRun(tanara::WorkflowStep::Transcribe, m.id)
                          : tanara::ReadinessResult{};
         m_transcribeBtn->setEnabled(r.runnable);
+        // K-04: cloud-átírásnál a szint + nyelv közvetlenül a gomb fölött (bejelentkezve).
+        if (m_sttTierWidget) {
+            const bool show = m_controller && m_controller->usesCloud(tanara::WorkflowStep::Transcribe)
+                              && m_controller->cloud()->isLoggedIn();
+            m_sttTierWidget->setVisible(show);
+            if (show) m_sttTierWidget->refresh();
+        }
+        // MKT-02: halvány második sor a „⚙ Beállítás…” mellett, ha nincs beállítva a szolgáltató.
+        if (m_teaserHint)
+            m_teaserHint->setVisible(!r.runnable && r.blockerKind == tanara::BlockerKind::ProviderConfig
+                                     && m_controller && m_controller->cloudTeaser());
         if (r.runnable) {
             m_step2label->setText(tr("<b>② Átirat</b>"));
             m_transcribeBtn->setText(tr("Átírás indítása ▸"));
             m_transcribeBtn->setToolTip(QString());
+        } else if (r.blockerKind == tanara::BlockerKind::Cloud
+                   || (r.blockerKind == tanara::BlockerKind::Auth && r.providerId == tanara::cloud::ProviderId)) {
+            // Tanara Cloud: pontosan egy CTA (bejelentkezés / feltöltés / frissítés).
+            m_step2label->setText(
+                tr("<b>② Átirat</b><br><span style='color:#b35900;'>Előbb: %1</span>")
+                    .arg(r.detail.toHtmlEscaped()));
+            m_transcribeBtn->setText(r.fixActionHint == QLatin1String("cloud:topup") ? tr("Feltöltés ▸")
+                                   : r.fixActionHint == QLatin1String("cloud:update") ? tr("Frissítés ▸")
+                                                                                     : tr("Bejelentkezés ▸"));
+            m_transcribeBtn->setEnabled(true);
+            m_transcribeBtn->setToolTip(r.detail);
         } else {
             // Blokkolt (jellemzően provider-konfig) → „Előbb: <detail>" + Beállítás CTA.
             m_step2label->setText(
@@ -995,7 +1044,9 @@ void MainWindow::onTranscribeClicked() {
     const tanara::ReadinessResult r =
         m_controller->canRun(tanara::WorkflowStep::Transcribe, m.id);
     if (!r.runnable) {
-        if (r.blockerKind == tanara::BlockerKind::ProviderConfig
+        if (handleCloudBlocker(r)) {
+            loadSelectedMeetingViews();
+        } else if (r.blockerKind == tanara::BlockerKind::ProviderConfig
             || r.blockerKind == tanara::BlockerKind::Auth) {
             openSettings();
         } else {
@@ -1009,6 +1060,10 @@ void MainWindow::onTranscribeClicked() {
     // a STT (Soniox „context") és az összefoglaló is megkapja. Nincs külön popup.
     if (m_contextEdit)
         m_controller->setMeetingContextNote(m.id, m_contextEdit->toPlainText());
+
+    // Tanara Cloud: K-06 becslés + megerősítés (BYO-nál nincs).
+    if (!confirmCloudEstimate(m.id, QStringLiteral("transcribe"), QString()))
+        return;
 
     setBusy(true, tr("Átírás indítása…"));
     m_controller->transcribeMeeting(m.id);
@@ -1042,7 +1097,9 @@ void MainWindow::onSummarizeClicked() {
     const tanara::ReadinessResult rs =
         m_controller->canRun(tanara::WorkflowStep::Summarize, m.id);
     if (!rs.runnable) {
-        if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+        if (handleCloudBlocker(rs)) {
+            loadSelectedMeetingViews();
+        } else if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
             || rs.blockerKind == tanara::BlockerKind::Auth) {
             openSettings();
         } else {
@@ -1055,6 +1112,8 @@ void MainWindow::onSummarizeClicked() {
     // (újra)generálunk — így a modell a frissített leírást kapja.
     if (m_summaryContextEdit)
         m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
+    if (!confirmCloudEstimate(m.id, QStringLiteral("summarize"), QStringLiteral("quick")))
+        return;
     setBusy(true, tr("Összefoglaló készítése…"));
     m_controller->summarizeMeeting(m.id);
 }
@@ -1067,7 +1126,9 @@ void MainWindow::onComplexClicked() {
     const tanara::ReadinessResult rs =
         m_controller->canRun(tanara::WorkflowStep::Summarize, m.id);
     if (!rs.runnable) {
-        if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
+        if (handleCloudBlocker(rs))
+            loadSelectedMeetingViews();
+        else if (rs.blockerKind == tanara::BlockerKind::ProviderConfig
             || rs.blockerKind == tanara::BlockerKind::Auth)
             openSettings();
         else
@@ -1076,6 +1137,10 @@ void MainWindow::onComplexClicked() {
     }
     if (m_summaryContextEdit)
         m_controller->setMeetingContextNote(m.id, m_summaryContextEdit->toPlainText().trimmed());
+    // Ha már van (szerkesztett) téma-lista, a kinyerés nem hív modellt → nincs becslés.
+    const bool haveTopics = QFile::exists(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+    if (!haveTopics && !confirmCloudEstimate(m.id, QStringLiteral("summarize"), QStringLiteral("complex")))
+        return;
     setBusy(true, tr("Témák kigyűjtése…"));
     m_controller->extractMeetingTopics(m.id);   // → topicsReady → onTopicsReady (szerkesztő)
 }
@@ -1377,6 +1442,9 @@ void MainWindow::onStartAnalysis() {
         statusBar()->showMessage(tr("Adj meg legalább egy témát."), 5000);
         return;
     }
+    // Cloud: becslés a hátralévő (még elemzetlen) témákra + a reduce-ra.
+    if (!confirmCloudEstimate(m_topicsMeetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
+        return;
     if (m_startAnalysisBtn) m_startAnalysisBtn->setEnabled(false);
     setBusy(true, tr("Témánkénti elemzés…"));
     // Csak a még elemzetlen témák futnak; ha mind kész, egyből a reduce jön → summaryReady.
@@ -1689,6 +1757,17 @@ void MainWindow::openSettings() {
     SettingsDialog dlg(m_controller, this);
     if (dlg.exec() == QDialog::Accepted && m_recordBar)
         m_recordBar->refreshFromSettings();   // a felvevő tükrözze az új eszköz-policyt
+    refreshCloudChrome();
+    loadSelectedMeetingViews();
+}
+
+void MainWindow::openCloudSettings() {
+    SettingsDialog dlg(m_controller, this);
+    dlg.showCloudTab();
+    if (dlg.exec() == QDialog::Accepted && m_recordBar)
+        m_recordBar->refreshFromSettings();
+    refreshCloudChrome();
+    loadSelectedMeetingViews();
 }
 
 void MainWindow::openPeopleManager() {
@@ -1699,6 +1778,365 @@ void MainWindow::openPeopleManager() {
     dlg->show();
     dlg->raise();
     dlg->activateWindow();
+}
+
+
+// ============================================================================
+// Tanara Cloud — fő ablak (K-01, K-04, K-06…K-12, K-15; MKT-02 readiness-sor)
+// ============================================================================
+
+namespace {
+// Egy sáv (K-08 / K-10 / notice): szint = szín + ikon + szöveg (sosem csak szín).
+QFrame* makeCloudBanner(QWidget* parent, const QString& level, const QString& text,
+                        const QString& cta, std::function<void()> onCta, std::function<void()> onClose)
+{
+    auto* f = new QFrame(parent);
+    const QString css = level == QLatin1String("critical")
+        ? QStringLiteral("QFrame { background: rgba(200,50,50,0.14); border: 1px solid rgba(180,40,40,0.6); border-radius: 5px; }")
+        : level == QLatin1String("warning")
+        ? QStringLiteral("QFrame { background: rgba(230,160,40,0.18); border: 1px solid rgba(200,130,20,0.6); border-radius: 5px; }")
+        : QStringLiteral("QFrame { background: rgba(54,122,204,0.12); border: 1px solid rgba(54,122,204,0.5); border-radius: 5px; }");
+    f->setStyleSheet(css);
+    auto* h = new QHBoxLayout(f);
+    h->setContentsMargins(8, 4, 8, 4);
+    const QString glyph = level == QLatin1String("critical") ? QStringLiteral("■")
+                        : level == QLatin1String("warning")  ? QStringLiteral("▲") : QStringLiteral("ℹ");
+    auto* l = new QLabel(glyph + QStringLiteral("  ") + text, f);
+    l->setWordWrap(true);
+    l->setStyleSheet(QStringLiteral("QLabel { border: none; background: transparent; }"));
+    h->addWidget(l, 1);
+    if (!cta.isEmpty()) {
+        auto* b = new QPushButton(cta, f);
+        QObject::connect(b, &QPushButton::clicked, f, [onCta]() { if (onCta) onCta(); });
+        h->addWidget(b);
+    }
+    if (onClose) {
+        auto* x = new QToolButton(f);
+        x->setText(QStringLiteral("✕"));
+        x->setAutoRaise(true);
+        x->setToolTip(QCoreApplication::translate("MainWindow", "Elrejtés"));
+        QObject::connect(x, &QToolButton::clicked, f, [onClose]() { onClose(); });
+        h->addWidget(x);
+    }
+    return f;
+}
+} // namespace
+
+void MainWindow::buildCloudUi() {
+    if (!m_controller) return;
+    tanara::CloudAccount* acc = m_controller->cloud();
+
+    // MKT-02 (teaser): halvány sor a readiness „⚙ Beállítás…” útnál — csak a gombra kattintva
+    // visz a panelre; nincs felugró ablak, nincs hálózati kérés.
+    auto makeTeaser = [this](QWidget* parent) {
+        auto* l = new QLabel(QStringLiteral("%1 <a href=\"#\">%2</a>")
+                                 .arg(tr("Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön —").toHtmlEscaped(),
+                                      tr("Érdekel")), parent);
+        l->setWordWrap(true);
+        cloudui::mute(l);
+        l->setVisible(false);
+        connect(l, &QLabel::linkActivated, this, [this]() { openCloudSettings(); });
+        return l;
+    };
+    if (auto* stepLayout = qobject_cast<QVBoxLayout*>(ui->stepBox->layout())) {
+        int idx = stepLayout->indexOf(ui->step2box);
+        if (idx < 0) idx = stepLayout->count() - 1;
+        m_sttTierWidget = new tanara_gui::CloudTierWidget(m_controller, tanara::WorkflowStep::Transcribe,
+                                                          /*showLanguage*/ true, this);
+        m_sttTierWidget->setVisible(false);
+        stepLayout->insertWidget(idx, m_sttTierWidget);         // a gomb fölött (K-04)
+        m_teaserHint = makeTeaser(this);
+        stepLayout->insertWidget(stepLayout->indexOf(ui->step2box) + 1, m_teaserHint);
+    }
+    if (m_summaryEmptyPage) {
+        if (auto* el = qobject_cast<QVBoxLayout*>(m_summaryEmptyPage->layout())) {
+            m_teaserHintSummary = makeTeaser(m_summaryEmptyPage);
+            m_teaserHintSummary->setAlignment(Qt::AlignCenter);
+            el->insertWidget(el->count() - 1, m_teaserHintSummary);
+        }
+    }
+
+    if (!m_controller->cloudLive()) return;   // teaser-mód: nincs chip, sáv, hálózat
+
+    // Egyenleg-chip a felső sávban (K-08) — BYO módban nincs.
+    m_cloudChip = new QPushButton(this);
+    m_cloudChip->setFlat(true);
+    m_cloudChip->setVisible(false);
+    connect(m_cloudChip, &QPushButton::clicked, this, &MainWindow::openCloudSettings);
+    if (auto* top = ui->topBar) top->insertWidget(top->indexOf(ui->peopleBtn), m_cloudChip);
+
+    // Sávok (K-08 / K-10 / notice) + nem-modális költség-értesítés (K-07) a felső sáv alatt.
+    auto* holder = new QWidget(this);
+    auto* hv = new QVBoxLayout(holder);
+    hv->setContentsMargins(0, 0, 0, 0);
+    hv->setSpacing(4);
+    m_cloudBanners = new QWidget(holder);
+    auto* bl = new QVBoxLayout(m_cloudBanners);
+    bl->setContentsMargins(0, 0, 0, 0);
+    bl->setSpacing(4);
+    hv->addWidget(m_cloudBanners);
+    m_cloudToast = new QFrame(holder);
+    m_cloudToast->setFrameShape(QFrame::StyledPanel);
+    auto* th = new QHBoxLayout(m_cloudToast);
+    th->setContentsMargins(8, 4, 8, 4);
+    m_cloudToastText = new QLabel(m_cloudToast);
+    m_cloudToastText->setWordWrap(true);
+    m_cloudToastText->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    th->addWidget(m_cloudToastText, 1);
+    m_cloudToastId = new QWidget(m_cloudToast);
+    new QHBoxLayout(m_cloudToastId);
+    m_cloudToastId->layout()->setContentsMargins(0, 0, 0, 0);
+    th->addWidget(m_cloudToastId);
+    auto* usage = new QLabel(QStringLiteral("<a href=\"#\">%1</a>").arg(tr("Napló a weben ↗")), m_cloudToast);
+    usage->setObjectName(QStringLiteral("toastUsage"));
+    connect(usage, &QLabel::linkActivated, this, [this]() { cloudui::openUrl(m_controller->cloud()->account().usageUrl); });
+    th->addWidget(usage);
+    auto* close = new QToolButton(m_cloudToast);
+    close->setText(QStringLiteral("✕"));
+    close->setAutoRaise(true);
+    connect(close, &QToolButton::clicked, m_cloudToast, &QWidget::hide);
+    th->addWidget(close);
+    m_cloudToast->setVisible(false);
+    hv->addWidget(m_cloudToast);
+    ui->centralLayout->insertWidget(1, holder);
+    m_toastTimer = new QTimer(this);
+    m_toastTimer->setSingleShot(true);
+    m_toastTimer->setInterval(20000);
+    connect(m_toastTimer, &QTimer::timeout, m_cloudToast, &QWidget::hide);
+
+    // Jelek.
+    connect(m_controller, &tanara::AppController::cloudCharged, this, &MainWindow::onCloudCharged);
+    connect(m_controller, &tanara::AppController::cloudRefunded, this, &MainWindow::onCloudRefunded);
+    connect(m_controller, &tanara::AppController::cloudError, this, &MainWindow::onCloudError);
+    connect(acc, &tanara::CloudAccount::accountUpdated, this, [this](const tanara::AccountInfo&) {
+        m_lastCloudRefresh = QDateTime::currentDateTime();
+        refreshCloudChrome();
+        // K-15 előzetes: indításkor / frissítéskor, naponta legfeljebb egyszer.
+        if (!m_termsOffered && CloudTermsDialog::shouldOfferEarly(m_controller)) {
+            m_termsOffered = true;
+            if (CloudTermsDialog::offerEarly(m_controller, this))
+                showCloudToast(QStringLiteral("✓"), tr("Elfogadtad az ÁSZF %1 verzióját.")
+                                   .arg(m_controller->cloud()->account().terms.acceptedVersion), QString(), false);
+        }
+    });
+    connect(acc, &tanara::CloudAccount::balanceChanged, this, [this](const tanara::Money&) { refreshCloudChrome(); });
+    connect(acc, &tanara::CloudAccount::loggedIn, this, [this]() { refreshCloudChrome(); loadSelectedMeetingViews(); });
+    connect(acc, &tanara::CloudAccount::loggedOut, this, [this]() { refreshCloudChrome(); loadSelectedMeetingViews(); });
+    connect(acc, &tanara::CloudAccount::modelsUpdated, this, [this]() { loadSelectedMeetingViews(); });
+    connect(acc, &tanara::CloudAccount::clientTooOldDetected, this, [this](const QString& minClient) {
+        refreshCloudChrome();
+        loadSelectedMeetingViews();
+        if (m_tooOldShown) return;   // K-10: modális az első találkozáskor, utána tartós sáv
+        m_tooOldShown = true;
+        tanara::CloudError e;
+        e.kind = tanara::CloudErrorKind::ClientTooOld;
+        e.minClient = minClient;
+        e.downloadUrl = m_controller->cloud()->downloadUrl();
+        QTimer::singleShot(0, this, [this, e]() { cloudui::showCloudError(this, m_controller, e, QStringLiteral("account")); });
+    });
+    connect(acc, &tanara::CloudAccount::previousTranscriptionRefunded, this,
+            [this](const tanara::Money& refund, const tanara::Money&) {
+        showCloudToast(QStringLiteral("↺"), tr("Az előző átírás a szolgáltató hibája miatt nem sikerült. "
+                                                "A díjat (%1) visszaírtuk.").arg(cloudui::money(refund, tanara::MoneyStyle::Charge)));
+    });
+    connect(m_controller->settings(), &tanara::SettingsManager::settingsChanged, this, &MainWindow::refreshCloudChrome);
+    refreshCloudChrome();
+}
+
+void MainWindow::startupCloudChecks() {
+    if (!m_controller || !m_controller->cloudLive()) return;
+    tanara::CloudAccount* acc = m_controller->cloud();
+    // K-01 — csak az első indításkor (élő cloud-módban).
+    if (m_controller->settings()->isFirstRun()) {
+        CloudModeDialog dlg(m_controller, this);
+        dlg.exec();
+        if (dlg.choice() == CloudModeDialog::Byo) openSettings();
+        else if (dlg.choice() == CloudModeDialog::Cloud && cloudLogin()) {
+            tanara::AppSettings s = m_controller->settings()->settings();
+            s.sttProviderId = tanara::cloud::ProviderId;
+            s.llmProviderId = tanara::cloud::ProviderId;
+            s.sttConfigs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
+            s.llmConfigs[tanara::cloud::ProviderId].type = tanara::cloud::ProviderId;
+            m_controller->settings()->setSettings(s);
+            loadSelectedMeetingViews();
+        }
+    }
+    if (!acc->isLoggedIn()) return;
+    acc->refreshAccount();
+    acc->fetchModels();
+    acc->checkPendingTranscriptions();   // „Az előző átírás … visszaírtuk” (CLI-13)
+}
+
+void MainWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    // Feltöltés a böngészőben → az ablak újra fókuszt kap → az egyenleg frissül (brief 5.4).
+    if (event->type() == QEvent::ActivationChange && isActiveWindow() && m_controller
+        && m_controller->cloudLive() && m_controller->cloud()->isLoggedIn()
+        && (!m_lastCloudRefresh.isValid() || m_lastCloudRefresh.secsTo(QDateTime::currentDateTime()) > 60)) {
+        m_lastCloudRefresh = QDateTime::currentDateTime();
+        m_controller->cloud()->refreshAccount();
+    }
+}
+
+void MainWindow::refreshCloudChrome() {
+    if (!m_controller || !m_controller->cloudLive() || !m_cloudBanners) return;
+    tanara::CloudAccount* acc = m_controller->cloud();
+    const bool cloudUsed = m_controller->usesCloud(tanara::WorkflowStep::Transcribe)
+                           || m_controller->usesCloud(tanara::WorkflowStep::Summarize);
+    const tanara::AccountInfo a = acc->account();
+
+    // --- chip ---
+    if (m_cloudChip) {
+        m_cloudChip->setVisible(cloudUsed);
+        if (!acc->isLoggedIn()) {
+            m_cloudChip->setText(tr("Tanara Cloud: nincs bejelentkezve"));
+            m_cloudChip->setStyleSheet(QString());
+            m_cloudChip->setToolTip(tr("Bejelentkezés a Beállításokban"));
+        } else if (a.valid) {
+            m_cloudChip->setText(tr("● %1 · ≈ %2 Pontos").arg(cloudui::money(a.balance), cloudui::hours(a.hoursAccurate)));
+            m_cloudChip->setStyleSheet(a.balanceEmpty ? QStringLiteral("QPushButton { color: #c0392b; font-weight: bold; }")
+                                     : a.lowBalance   ? QStringLiteral("QPushButton { color: #b35900; font-weight: bold; }")
+                                                      : QString());
+            m_cloudChip->setToolTip(tr("Tanara Cloud egyenleg (%1)").arg(tanara::vatLabel(a.vatMode)));
+        } else {
+            m_cloudChip->setText(tr("Tanara Cloud: …"));
+        }
+    }
+
+    // --- sávok ---
+    auto* bl = qobject_cast<QVBoxLayout*>(m_cloudBanners->layout());
+    while (QLayoutItem* it = bl->takeAt(0)) { if (it->widget()) it->widget()->deleteLater(); delete it; }
+    if (!cloudUsed) return;
+    if (acc->clientTooOld()) {   // K-10 tartós sáv
+        bl->addWidget(makeCloudBanner(m_cloudBanners, QStringLiteral("critical"),
+            tr("A Tanara Cloudhoz frissítés kell (legalább %1). A saját kulcsos mód működik.").arg(acc->minClient()),
+            tr("Frissítés most"), [acc]() { cloudui::openUrl(acc->downloadUrl()); }, nullptr));
+    }
+    if (acc->isLoggedIn() && a.valid) {
+        if (a.balanceEmpty) {
+            bl->addWidget(makeCloudBanner(m_cloudBanners, QStringLiteral("critical"),
+                tr("Elfogyott az egyenleged. A Tanara Cloud feldolgozás a feltöltésig szünetel; a saját kulcsos "
+                   "mód továbbra is működik."),
+                a.topupAvailable ? tr("Feltöltés") : tr("Írj nekünk"),
+                [this]() { cloudui::startTopup(this, m_controller); }, nullptr));
+        } else if (a.lowBalance) {
+            // ✕ → elrejtve a következő küszöbátlépésig (low_balance_since > az elrejtés ideje).
+            const QDateTime dismissed = acc->lowBannerDismissedAt();
+            if (!dismissed.isValid() || (a.lowBalanceSince.isValid() && a.lowBalanceSince > dismissed))
+                bl->addWidget(makeCloudBanner(m_cloudBanners, QStringLiteral("warning"),
+                    tr("Kevés az egyenleged: %1 (≈ %2 Pontos átírás).").arg(cloudui::money(a.balance), cloudui::hours(a.hoursAccurate)),
+                    a.topupAvailable ? tr("Feltöltés") : tr("Írj nekünk"),
+                    [this]() { cloudui::startTopup(this, m_controller); },
+                    [this, acc]() { acc->dismissLowBanner(); refreshCloudChrome(); }));
+        }
+        for (const tanara::Notice& n : a.notices) {   // CLI-18
+            if (acc->isNoticeDismissed(n.id)) continue;
+            bl->addWidget(makeCloudBanner(m_cloudBanners, n.level, n.message,
+                n.url.isEmpty() ? QString() : tr("Részletek"), [url = n.url]() { cloudui::openUrl(url); },
+                [this, acc, id = n.id]() { acc->dismissNotice(id); refreshCloudChrome(); }));
+        }
+    }
+}
+
+void MainWindow::showCloudToast(const QString& glyph, const QString& text, const QString& requestId, bool withUsageLink) {
+    if (!m_cloudToast) { statusBar()->showMessage(text, 10000); return; }
+    m_cloudToastText->setText(glyph + QStringLiteral("  ") + text.toHtmlEscaped());
+    auto* idl = m_cloudToastId->layout();
+    while (QLayoutItem* it = idl->takeAt(0)) { if (it->widget()) it->widget()->deleteLater(); delete it; }
+    if (!requestId.isEmpty()) {
+        auto* id = new QLabel(tr("Hibaazonosító: %1").arg(requestId), m_cloudToastId);
+        id->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        auto* copy = new QPushButton(tr("Másolás"), m_cloudToastId);
+        connect(copy, &QPushButton::clicked, copy, [requestId]() { QApplication::clipboard()->setText(requestId); });
+        idl->addWidget(id);
+        idl->addWidget(copy);
+    }
+    if (auto* usage = m_cloudToast->findChild<QLabel*>(QStringLiteral("toastUsage")))
+        usage->setVisible(withUsageLink);
+    m_cloudToast->setVisible(true);
+    m_toastTimer->start();
+    statusBar()->showMessage(text, 8000);
+}
+
+void MainWindow::onCloudCharged(const QString&, const QString& kind, const tanara::Money& total, int calls,
+                                const tanara::Money& balance, const QString& vatMode) {
+    const QString sum = cloudui::money(total, tanara::MoneyStyle::Charge);
+    const QString bal = balance.isValid() ? cloudui::money(balance) : QStringLiteral("—");
+    QString text;
+    if (kind == QLatin1String("transcribe"))
+        text = tr("Ez az átírás %1 volt. Egyenleg: %2.").arg(sum, bal);
+    else if (kind == QLatin1String("complex"))
+        text = tr("Az összefoglaló %1 volt (%n rész). Egyenleg: %2.", nullptr, calls).arg(sum, bal);
+    else if (kind == QLatin1String("topics"))
+        text = tr("A témák kigyűjtése %1 volt. Egyenleg: %2.").arg(sum, bal);
+    else
+        text = tr("Az összefoglaló %1 volt. Egyenleg: %2.").arg(sum, bal);
+    if (!vatMode.isEmpty()) text += QStringLiteral(" (") + tanara::vatLabel(vatMode) + QLatin1Char(')');
+    showCloudToast(QStringLiteral("✓"), text);
+    refreshCloudChrome();
+}
+
+void MainWindow::onCloudRefunded(const QString&, const tanara::Money& refund, const tanara::Money&,
+                                 const QString& requestId) {
+    setBusy(false);
+    showCloudToast(QStringLiteral("↺"), tr("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.")
+                                            .arg(cloudui::money(refund, tanara::MoneyStyle::Charge)), requestId);
+    loadSelectedMeetingViews();
+}
+
+void MainWindow::onCloudError(const QString& meetingId, const QString& kind, const tanara::CloudError& e,
+                              const tanara::Money& charged) {
+    setBusy(false);
+    statusBar()->showMessage(cloudui::shortErrorText(e), 8000);
+    const bool canContinue = kind == QLatin1String("complex");
+    const cloudui::ErrorAction a = cloudui::showCloudError(this, m_controller, e, kind, charged, canContinue);
+    loadSelectedMeetingViews();
+    refreshCloudChrome();
+    if (a == cloudui::ErrorAction::Login) { cloudLogin(); return; }
+    if (a != cloudui::ErrorAction::Retry && a != cloudui::ErrorAction::Continue) return;
+    // Újra / Folytatás: ugyanaz a lépés — új futás, új X-Tanara-Job-Id (a folytatás csak a
+    // hátralévő részekért fizet: a kész téma-elemzések a lemezen vannak).
+    if (meetingId != m_currentMeetingId) return;
+    if (kind == QLatin1String("transcribe")) { setBusy(true, tr("Átírás indítása…")); m_controller->transcribeMeeting(meetingId); }
+    else if (kind == QLatin1String("summary")) onSummarizeClicked();
+    else if (kind == QLatin1String("topics")) onComplexClicked();
+    else if (kind == QLatin1String("complex")) onStartAnalysis();
+}
+
+bool MainWindow::confirmCloudEstimate(const QString& meetingId, const QString& task, const QString& mode) {
+    if (!m_controller) return false;
+    const tanara::WorkflowStep step = task == QLatin1String("transcribe") ? tanara::WorkflowStep::Transcribe
+                                                                           : tanara::WorkflowStep::Summarize;
+    if (!m_controller->usesCloud(step)) return true;   // BYO: nincs becslés
+    CloudEstimateDialog dlg(m_controller, meetingId, task, mode, this);
+    return dlg.exec() == QDialog::Accepted;
+}
+
+bool MainWindow::handleCloudBlocker(const tanara::ReadinessResult& r) {
+    if (!m_controller) return false;
+    if (r.blockerKind == tanara::BlockerKind::Auth && r.providerId == tanara::cloud::ProviderId) {
+        cloudLogin();
+        return true;
+    }
+    if (r.blockerKind != tanara::BlockerKind::Cloud) return false;
+    if (r.fixActionHint == QLatin1String("cloud:topup")) {
+        cloudui::startTopup(this, m_controller);
+    } else if (r.fixActionHint == QLatin1String("cloud:update")) {
+        tanara::CloudError e;
+        e.kind = tanara::CloudErrorKind::ClientTooOld;
+        e.minClient = m_controller->cloud()->minClient();
+        e.downloadUrl = m_controller->cloud()->downloadUrl();
+        cloudui::showCloudError(this, m_controller, e, QStringLiteral("account"));
+    }
+    return true;
+}
+
+bool MainWindow::cloudLogin() {
+    CloudLoginDialog dlg(m_controller, this);
+    const bool ok = dlg.exec() == QDialog::Accepted;
+    refreshCloudChrome();
+    loadSelectedMeetingViews();
+    return ok;
 }
 
 } // namespace tanara_gui

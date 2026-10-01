@@ -5,6 +5,7 @@
 //   középen:   record bar + lapfül (Átirat / Összefoglaló)
 //
 #include "tanara/Types.h"
+#include "tanara/provider/ReadinessModel.h"
 #include <QMainWindow>
 #include <QHash>
 #include <QSet>
@@ -26,9 +27,12 @@ class QItemSelection;
 class QVBoxLayout;
 class QHBoxLayout;
 class QAction;
+class QTimer;
 
 namespace tanara {
 class AppController;
+struct CloudError;
+struct Money;
 }
 
 QT_BEGIN_NAMESPACE
@@ -42,6 +46,7 @@ class MeetingTableModel;
 class TranscriptPlayer;
 class FloatingRecorder;
 class TracksPanel;
+class CloudTierWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -51,6 +56,7 @@ public:
 
 protected:
     void showEvent(QShowEvent* event) override;
+    void changeEvent(QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
@@ -77,6 +83,7 @@ private slots:
     void onJobProgress(QString meetingId, QString message);
     void onSpeakerMapChanged(QString meetingId);
     void openSettings();
+    void openCloudSettings();   // a Beállítások a „Tanara Cloud” fülön
     void openPeopleManager();
     void onRecordingFinished(tanara::Meeting meeting);
     void onTableContextMenu(const QPoint& pos);
@@ -89,6 +96,38 @@ private slots:
     void onTracksToggleClicked();      // a Sávok-fülre vált
 
 private:
+    // ---- Tanara Cloud (K-01…K-15) ----
+    void buildCloudUi();
+    void refreshCloudChrome();                 // egyenleg-chip + sávok (K-08, K-10, notice)
+    void showCloudToast(const QString& glyph, const QString& text, const QString& requestId = QString(),
+                        bool withUsageLink = true);
+    void onCloudCharged(const QString& meetingId, const QString& kind, const tanara::Money& total,
+                        int calls, const tanara::Money& balance, const QString& vatMode);
+    void onCloudRefunded(const QString& meetingId, const tanara::Money& refund,
+                         const tanara::Money& balance, const QString& requestId);
+    void onCloudError(const QString& meetingId, const QString& kind, const tanara::CloudError& e,
+                      const tanara::Money& charged);
+    // Cloud-futás előtt: K-06 becslés-dialógus (true = indítható). BYO-nál mindig true.
+    bool confirmCloudEstimate(const QString& meetingId, const QString& task, const QString& mode);
+    // Egy blokkolt lépés cloud-CTA-ja (bejelentkezés / feltöltés / frissítés). true = kezelte.
+    bool handleCloudBlocker(const tanara::ReadinessResult& r);
+    bool cloudLogin();
+    void startupCloudChecks();
+
+    QPushButton*  m_cloudChip = nullptr;
+    QWidget*      m_cloudBanners = nullptr;
+    QFrame*       m_cloudToast = nullptr;
+    QLabel*       m_cloudToastText = nullptr;
+    QWidget*      m_cloudToastId = nullptr;
+    QTimer*       m_toastTimer = nullptr;
+    CloudTierWidget* m_sttTierWidget = nullptr;   // State A: átírás szintje + nyelv (K-04)
+    QLabel*       m_teaserHint = nullptr;         // „Nem akarsz kulcsokkal bajlódni?…” (MKT-02)
+    QLabel*       m_teaserHintSummary = nullptr;
+    bool          m_tooOldShown = false;
+    bool          m_termsOffered = false;
+    bool          m_cloudStartupDone = false;
+    QDateTime     m_lastCloudRefresh;
+
     bool m_quitAfterStop = false;
     QString m_pendingContext;       // továbbított --context → recordingFinished-nél a meetingre   // closeEvent: „Leállítom és kilépek” → Idle-nél close()
     class RecorderSingleton* m_singleton = nullptr;

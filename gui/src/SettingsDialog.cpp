@@ -8,6 +8,12 @@
 #include "tanara/Types.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/audio/DeviceManager.h"
+#include "tanara/cloud/CloudAccount.h"
+#include "cloud/CloudAccountPanel.h"
+#include "cloud/CloudUi.h"
+#include "cloud/CloudWaitlistPanel.h"
+
+#include <QScrollArea>
 
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -411,6 +417,38 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     });
     tabs->addTab(sumPage, tr("Összefoglaló"));
 
+    // ===================== Fül: Tanara Cloud ==================================
+    // Egy szekció két állapota: indulás előtt a „Hamarosan” (várólista) panel, indulás után
+    // a fiók-panel (K-02). Build-flaggel mindkettő kikapcsolható (TANARA_BUILD_CLOUD /
+    // TANARA_CLOUD_TEASER); ilyenkor a fül nincs.
+    if (m_controller && (m_controller->cloudLive() || m_controller->cloudTeaser())) {
+        QWidget* panel = nullptr;
+        if (m_controller->cloudLive()) {
+            auto* acc = new CloudAccountPanel(m_controller, this);
+            connect(acc, &CloudAccountPanel::useCloudRequested, this, [this]() {
+                for (ProviderSection* sec : { &m_stt, &m_llm }) {
+                    const int i = sec->selector ? sec->selector->findData(tanara::cloud::ProviderId) : -1;
+                    if (i >= 0) sec->selector->setCurrentIndex(i);
+                    collectSection(*sec);   // azonnal érvényes (a fiók-panel is ezt mutatja)
+                }
+            });
+            connect(m_controller->cloud(), &tanara::CloudAccount::loggedIn, this, [this]() {
+                for (ProviderSection* sec : { &m_stt, &m_llm })
+                    if (sec->currentId == tanara::cloud::ProviderId) rebuildFields(*sec, sec->currentId);
+            });
+            panel = acc;
+        } else {
+            panel = new CloudWaitlistPanel(m_controller, this);
+        }
+        auto* scroll = new QScrollArea(this);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setWidget(panel);
+        m_cloudTab = tabs->addTab(scroll, tr("Tanara Cloud"));
+    }
+
+    m_tabs = tabs;
     root->addWidget(tabs);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -427,6 +465,12 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     }
 
     loadGeneral();
+}
+
+bool SettingsDialog::showCloudTab() {
+    if (!m_tabs || m_cloudTab < 0) return false;
+    m_tabs->setCurrentIndex(m_cloudTab);
+    return true;
 }
 
 void SettingsDialog::wireFolderPicker(QLineEdit* field, QPushButton* button,
@@ -647,6 +691,23 @@ void SettingsDialog::rebuildFields(ProviderSection& section, const QString& prov
         section.fieldsForm->addRow(label + QStringLiteral(":"), w);
 
         section.widgets.insert(field.key, editor);
+    }
+
+    // Tanara Cloud: nincs kulcs-mező — egy bejelentkezés mindkét feladathoz; a fiók-fülre visz.
+    if (providerId == tanara::cloud::ProviderId && m_controller) {
+        tanara::CloudAccount* acc = m_controller->cloud();
+        const tanara::AccountInfo a = acc->account();
+        const QString status = acc->isLoggedIn()
+            ? tr("Fiók: %1 · %2").arg((a.email.isEmpty() ? acc->email() : a.email).toHtmlEscaped(),
+                                      a.valid ? cloudui::money(a.balance) : QStringLiteral("…"))
+            : tr("Nincs bejelentkezve.");
+        auto* note = new QLabel(QStringLiteral("%1 — <a href=\"#\">%2</a><br><span style='color:gray;'>%3</span>")
+                                    .arg(status, tr("Tanara Cloud fiók ▸"),
+                                         tr("Egy bejelentkezés az átíráshoz és az összefoglalóhoz is. A szintet "
+                                            "(Gyors / Pontos) a fiók-fülön és a becslésnél választod.")), box);
+        note->setWordWrap(true);
+        connect(note, &QLabel::linkActivated, this, [this]() { showCloudTab(); });
+        section.fieldsForm->addRow(QString(), note);
     }
 
     // A dinamikus modell-lekérés státusz-sora (olvasható hibaszín).
