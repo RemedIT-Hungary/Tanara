@@ -444,8 +444,9 @@ struct AppController::Impl {
     CloudAccount* cloud = nullptr;
     bool cloudLive = false;
     bool cloudTeaser = false;
-    // Meetingenként a futó komplex köteg (téma-elemzések + reduce) cloud-futása: EGY
-    // X-Tanara-Job-Id, a hívásonkénti terhelések összesítve (K-07 „12 rész”).
+    // Meetingenként a nyitott komplex összefoglaló cloud-futása (témagyűjtés → téma-elemzések
+    // → reduce): EGY X-Tanara-Job-Id, a hívásonkénti terhelések összesítve (K-07 „12 rész”).
+    // Lezáráskor (kész / hiba / megszakítás) kikerül innen; a folytatás így új futás.
     QHash<QString, CloudRunPtr> complexRuns;
 };
 
@@ -1761,8 +1762,16 @@ void AppController::extractMeetingTopics(const QString& meetingId)
         writeTopicsJson(topicsPath, topics);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
+        // Cloud: a témagyűjtés a komplex futás ELSŐ része — a futás (és az X-Tanara-Job-Id)
+        // nyitva marad, a téma-elemzések és az összegzés ugyanezt használják; a K-07 a
+        // futás végén a teljes összeget mutatja (grill-döntés 29: egy futás = egy azonosító).
+        // Itt csak az egyenleg-chip frissül.
+        if (run) {
+            d->complexRuns.insert(id, run);
+            if (run->balance.isValid() || run->calls > 0)
+                d->cloud->refreshAccount();
+        }
         emit topicsReady(id, topics);
-        finishCloudRun(run);
     });
     connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc, run](const QString& e) {
         if (providerObj) providerObj->deleteLater();
@@ -1803,10 +1812,18 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
     for (const SummaryTopic& t : topics)
         if (!doneIds.contains(t.id)) missing.append(t);
 
-    // Cloud: a köteg (téma-elemzések + reduce) EGY futás, új X-Tanara-Job-Id-vel —
-    // a folytatás (újraindítás hiba után) is új futás.
-    if (usesCloud(WorkflowStep::Summarize))
-        d->complexRuns.insert(meetingId, newCloudRun(meetingId, QStringLiteral("complex")));
+    // Cloud: a komplex összefoglaló (témagyűjtés + téma-elemzések + reduce) EGY futás, egy
+    // X-Tanara-Job-Id-vel. Ha a témagyűjtés futása (vagy egy már futó köteg) még nyitva van,
+    // azt folytatjuk; különben — pl. megszakítás / hiba utáni folytatásnál, ahol a futás
+    // már lezárult — új futás indul, új azonosítóval.
+    if (usesCloud(WorkflowStep::Summarize)) {
+        CloudRunPtr run = d->complexRuns.value(meetingId);
+        if (!run) {
+            run = newCloudRun(meetingId, QStringLiteral("complex"));
+            d->complexRuns.insert(meetingId, run);
+        }
+        run->kind = QStringLiteral("complex");
+    }
     if (missing.isEmpty()) { finalizeComplexSummary(meetingId); return; }
     enqueueTopicAnalyses(meetingId, missing, /*reduceWhenDone*/ true);
 }
@@ -1912,6 +1929,7 @@ void AppController::startNextTopicJob()
         run = newCloudRun(m.id, QStringLiteral("complex"));
         d->complexRuns.insert(m.id, run);
     }
+    if (run) run->kind = QStringLiteral("complex");   // a témagyűjtés után az elemzés-szakasz
     const ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) {
