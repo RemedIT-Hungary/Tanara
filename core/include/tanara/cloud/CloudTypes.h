@@ -113,6 +113,11 @@ struct CloudError {
 CloudError parseCloudError(int httpStatus, const QHash<QByteArray, QByteArray>& headers,
                            const QByteArray& body, const QString& networkError = QString());
 
+// Ember-olvasható, többsoros leírás egy hibához (a CLI-nek; a szövegek a K-09…K-12 szerint).
+// chargedSoFar > 0 → részleges hiba („Az eddig elkészült részek díja…”), különben — ha volt
+// HTTP-válasz — „Nem terheltünk semmit.”. A végén a hibaazonosító, ha van.
+QString describeCloudError(const CloudError& e, const Money& chargedSoFar, const QString& lang);
+
 // ---- fiók ----------------------------------------------------------------------------
 struct TermsStatus {
     QString acceptedVersion;       // üres = null

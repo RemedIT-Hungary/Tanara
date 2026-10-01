@@ -5,8 +5,12 @@
 //   transcribe <meetingId>           átírás (Soniox kulcs kell)
 //   summarize <meetingId>            összefoglaló (LM Studio)
 //   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
+//   cloud <alparancs>                Tanara Cloud (status, login, estimate …) — CloudCommands.cpp
+//   transcribe|summarize <id> [--yes] [--complex]   cloud-módban előtte becslés + megerősítés
 //
 #include "tanara/AppController.h"
+#include "CloudCommands.h"
+#include "tanara/cloud/CloudAccount.h"
 #include "tanara/Localization.h"
 #include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
@@ -200,16 +204,64 @@ int main(int argc, char** argv) {
         return qapp.exec();
     }
 
+    if (cmd == "cloud") return runCloudCommand(app, args);
+
     if (cmd == "transcribe" || cmd == "summarize") {
         const QString id = args.value(2);
         if (id.isEmpty()) { err << QCoreApplication::translate("cli", "Hiányzó meetingId.") << "\n"; return 1; }
+        const bool complex = cmd == "summarize" && args.contains(QStringLiteral("--complex"));
+        const WorkflowStep step = cmd == "transcribe" ? WorkflowStep::Transcribe : WorkflowStep::Summarize;
+        // Tanara Cloud: becslés (K-06) + megerősítés; --yes nélkül rákérdez.
+        if (app.usesCloud(step)) {
+            const ReadinessResult r = app.canRun(step, id);
+            if (!r.runnable) { err << QCoreApplication::translate("cli", "Nem indítható: %1").arg(r.detail) << "\n"; return 1; }
+            bool enough = false;
+            if (!printCloudEstimate(app, id, cmd == "transcribe" ? QStringLiteral("transcribe") : QStringLiteral("summarize"),
+                                    complex ? QStringLiteral("complex") : QStringLiteral("quick"), &enough))
+                return 2;
+            if (!enough) return 2;
+            if (!args.contains(QStringLiteral("--yes"))) {
+                out << QCoreApplication::translate("cli", "Indítod? [i/N] "); out.flush();
+                char buf[16] = {0};
+                if (!fgets(buf, sizeof buf, stdin) || (buf[0] != 'i' && buf[0] != 'I' && buf[0] != 'y' && buf[0] != 'Y')) {
+                    out << QCoreApplication::translate("cli", "Megszakítva — nem terheltünk semmit.") << "\n"; return 1;
+                }
+            }
+        }
+        const QString lang = activeUiLanguage();
+        QObject::connect(&app, &AppController::cloudCharged, &qapp,
+                         [&](QString, QString kind, Money total, int calls, Money balance, QString vatMode) {
+            const QString sum = formatMoney(total, MoneyStyle::Charge, lang), bal = formatMoney(balance, MoneyStyle::Balance, lang);
+            if (kind == QLatin1String("transcribe"))
+                out << QCoreApplication::translate("cli", "Ez az átírás %1 volt. Egyenleg: %2.").arg(sum, bal);
+            else if (kind == QLatin1String("complex"))
+                out << QCoreApplication::translate("cli", "Az összefoglaló %1 volt (%n rész). Egyenleg: %2.", nullptr, calls).arg(sum, bal);
+            else if (kind == QLatin1String("topics"))
+                out << QCoreApplication::translate("cli", "A témák kigyűjtése %1 volt. Egyenleg: %2.").arg(sum, bal);
+            else
+                out << QCoreApplication::translate("cli", "Az összefoglaló %1 volt. Egyenleg: %2.").arg(sum, bal);
+            out << " (" << vatLabel(vatMode) << ")\n"; out.flush();
+        });
+        QObject::connect(&app, &AppController::cloudRefunded, &qapp, [&](QString, Money refund, Money, QString rid) {
+            err << QCoreApplication::translate("cli", "Az átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.")
+                       .arg(formatMoney(refund, MoneyStyle::Charge, lang)) << "\n"
+                << QCoreApplication::translate("cli", "Hibaazonosító: %1").arg(rid) << "\n";
+            err.flush(); qapp.exit(3); });
+        QObject::connect(&app, &AppController::cloudError, &qapp, [&](QString, QString, CloudError e, Money charged) {
+            err << describeCloudError(e, charged, lang) << "\n"; err.flush(); qapp.exit(2); });
         QObject::connect(&app, &AppController::transcriptReady, &qapp, [&](QString, QString p) {
             out << QCoreApplication::translate("cli", "Átirat kész: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
         QObject::connect(&app, &AppController::summaryReady, &qapp, [&](QString, QString p) {
             out << QCoreApplication::translate("cli", "Összefoglaló kész: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
+        // Komplex: 1. kör (témák) → minden téma elemzése + reduce, szerkesztés nélkül.
+        QObject::connect(&app, &AppController::topicsReady, &qapp, [&](QString mid, QVector<SummaryTopic> topics) {
+            out << QCoreApplication::translate("cli", "%n téma — elemzés indul…", nullptr, int(topics.size())) << "\n"; out.flush();
+            app.generateComplexSummary(mid, topics); });
         QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
             err << QCoreApplication::translate("cli", "HIBA: %1").arg(e) << "\n"; err.flush(); qapp.exit(1); });
-        if (cmd == "transcribe") app.transcribeMeeting(id); else app.summarizeMeeting(id);
+        if (cmd == "transcribe") app.transcribeMeeting(id);
+        else if (complex) app.extractMeetingTopics(id);
+        else app.summarizeMeeting(id);
         return qapp.exec();
     }
 
@@ -297,7 +349,7 @@ int main(int argc, char** argv) {
         << QCoreApplication::translate("cli",
                "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
                "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
-               "identify <id> | voiceprints")
+               "identify <id> | voiceprints | cloud <status|login|estimate|…>")
         << "\n";
     out.flush();
     return 0;
