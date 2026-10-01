@@ -95,6 +95,10 @@ Build options:
 - `-DTANARA_BUILD_VOICEID=OFF` — no speaker recognition, so ONNX Runtime and
   KISS FFT are not needed. The app still records, transcribes, and summarizes.
   It only skips speaker recognition.
+- `-DTANARA_BUILD_CLOUD=OFF` — no Tanara Cloud client (sign-in, cloud
+  providers, estimate, balance). Nothing cloud-related is registered.
+- `-DTANARA_CLOUD_TEASER=OFF` — no "coming soon" waitlist panel and no hint
+  line next to "⚙ Settings…".
 
 ### Build on Windows (MinGW)
 
@@ -244,6 +248,32 @@ participants <meetingId>        # local speaker guesses, before transcription
 voiceprints                     # list enrolled people / prints
 detect [--watch] [--interval N] # run the call detector (the watcher engine)
 embed-probe <model> <audio> <startMs> <endMs>   # dump one voice embedding (diagnostics)
+cloud status|login|logout|use|tier|lang|models|estimate|accept-terms|pending|waitlist
+```
+
+### Tanara Cloud (optional, paid service)
+
+Tanara Cloud is an optional hosted service for transcription and summaries
+without your own API keys. Your own keys (BYO) stay free and work as before.
+
+- Before the launch, Settings → Tanara Cloud shows a "coming soon" panel. You
+  can join the waitlist there. The app sends data only when you click the
+  button. There are no pop-ups and no telemetry.
+- After the launch (`"cloudEnabled": true` in `settings.json`, or
+  `TANARA_CLOUD=live`), the same place shows the sign-in (device code in the
+  browser), the balance, and the default tier (Fast / Accurate). Before each
+  cloud job, the app shows the cost estimate from the gateway. The app never
+  computes prices.
+- `TANARA_CLOUD_URL=<url>` sets the gateway address. `TANARA_CLOUD=off` turns
+  everything off at run time.
+- The contract is `docs/cloud-gateway-api.yaml` (a copy, do not edit). The mock
+  gateway for development and tests is `tests/mock-gateway/mock-gateway.mjs`:
+
+```bash
+node tests/mock-gateway/mock-gateway.mjs --port 8300 --auto-approve --llm off
+# error states: --maintenance --rate-limited --suspended admin --terms-required
+#               --min-client 9.9.9 --refund --fail-chat-after 2 --balance 0.01 …
+# at run time:  curl -X POST localhost:8300/__mock/config -d '{"maintenance":true}'
 ```
 
 ## Logging / debugging
@@ -285,7 +315,9 @@ file log, because the GUI has no console. Tanara also mirrors the messages to
 The audio, the transcripts, the summaries, the people list, and the voiceprints
 stay on your machine. The only network calls are the optional Soniox
 transcription request and your own LLM endpoint. FFmpeg runs locally, and the
-speaker-embedding model runs on-device.
+speaker-embedding model runs on-device. In Tanara Cloud mode, the audio file
+(transcription) and the transcript text (summary) pass through the Tanara Cloud
+gateway to the provider. The gateway does not store them.
 
 ## License
 
