@@ -13,7 +13,6 @@ namespace tanara {
 
 namespace {
 
-QString tr(const char* s) { return QCoreApplication::translate("Cloud", s); }
 
 QDateTime parseTime(const QJsonValue& v)
 {
@@ -105,15 +104,15 @@ QString formatHours(double hours, const QString& lang)
     const bool hu = lang == QLatin1String("hu");
     if (hours < 0) hours = 0;
     if (hours >= 10.0)
-        return tr("%1 óra").arg(static_cast<qint64>(std::floor(hours)));
+        return QCoreApplication::translate("Cloud", "%1 óra").arg(static_cast<qint64>(std::floor(hours)));
     if (hours >= 1.0) {
         const double t = std::floor(hours * 10.0) / 10.0;
         QString n = QString::number(t, 'f', 1);
         if (n.endsWith(QLatin1String(".0"))) n.chop(2);
         if (hu) n.replace(QLatin1Char('.'), QLatin1Char(','));
-        return tr("%1 óra").arg(n);
+        return QCoreApplication::translate("Cloud", "%1 óra").arg(n);
     }
-    return tr("%1 perc").arg(static_cast<int>(std::floor(hours * 60.0)));
+    return QCoreApplication::translate("Cloud", "%1 perc").arg(static_cast<int>(std::floor(hours * 60.0)));
 }
 
 QString formatDuration(qint64 ms)
@@ -129,8 +128,8 @@ QString formatDuration(qint64 ms)
 QString vatLabel(const QString& vatMode)
 {
     if (vatMode == QLatin1String("reverse_charge"))
-        return tr("ÁFA nélkül, fordított adózás");
-    return tr("ÁFA-t tartalmaz");
+        return QCoreApplication::translate("Cloud", "ÁFA nélkül, fordított adózás");
+    return QCoreApplication::translate("Cloud", "ÁFA-t tartalmaz");
 }
 
 bool semverLess(const QString& a, const QString& b)
@@ -246,59 +245,59 @@ QString describeCloudError(const CloudError& e, const Money& charged, const QStr
     auto m = [&](const Money& x, MoneyStyle st = MoneyStyle::Balance) { return formatMoney(x, st, lang); };
     switch (e.kind) {
     case CloudErrorKind::Network:
-        lines << tr("Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.");
+        lines << QCoreApplication::translate("Cloud", "Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.");
         break;
     case CloudErrorKind::InsufficientBalance:
-        lines << tr("Nincs elég egyenleg.");
+        lines << QCoreApplication::translate("Cloud", "Nincs elég egyenleg.");
         lines << (e.neededBasis == QLatin1String("hold")
-                      ? tr("Ehhez a lépéshez legalább %1 fedezet kell az egyenlegeden. A tényleges díj ennél kevesebb lehet.").arg(m(e.needed, MoneyStyle::Charge))
-                      : tr("Ehhez a lépéshez %1 kell.").arg(m(e.needed, MoneyStyle::Charge)));
-        lines << tr("Az egyenleged: %1.").arg(m(e.balance));
-        lines << (!e.topupUrl.isEmpty() ? tr("Feltöltés: %1").arg(e.topupUrl) : tr("A feltöltéshez írj nekünk: %1").arg(e.contactUrl));
+                      ? QCoreApplication::translate("Cloud", "Ehhez a lépéshez legalább %1 fedezet kell az egyenlegeden. A tényleges díj ennél kevesebb lehet.").arg(m(e.needed, MoneyStyle::Charge))
+                      : QCoreApplication::translate("Cloud", "Ehhez a lépéshez %1 kell.").arg(m(e.needed, MoneyStyle::Charge)));
+        lines << QCoreApplication::translate("Cloud", "Az egyenleged: %1.").arg(m(e.balance));
+        lines << (!e.topupUrl.isEmpty() ? QCoreApplication::translate("Cloud", "Feltöltés: %1").arg(e.topupUrl) : QCoreApplication::translate("Cloud", "A feltöltéshez írj nekünk: %1").arg(e.contactUrl));
         break;
     case CloudErrorKind::ClientTooOld:
-        lines << tr("Frissítsd a Tanarát a Tanara Cloudhoz: legalább %1 kell; neked %2 van. A saját kulcsos mód addig is működik.")
+        lines << QCoreApplication::translate("Cloud", "Frissítsd a Tanarát a Tanara Cloudhoz: legalább %1 kell; neked %2 van. A saját kulcsos mód addig is működik.")
                      .arg(e.minClient, libraryVersion());
-        if (!e.downloadUrl.isEmpty()) lines << tr("Letöltés: %1").arg(e.downloadUrl);
+        if (!e.downloadUrl.isEmpty()) lines << QCoreApplication::translate("Cloud", "Letöltés: %1").arg(e.downloadUrl);
         break;
     case CloudErrorKind::Maintenance:
-        lines << tr("Karbantartás miatt a Tanara Cloud most nem elérhető.") + (e.message.isEmpty() ? QString() : QStringLiteral(" ") + e.message);
+        lines << QCoreApplication::translate("Cloud", "Karbantartás miatt a Tanara Cloud most nem elérhető.") + (e.message.isEmpty() ? QString() : QStringLiteral(" ") + e.message);
         if (e.windowStart.isValid())
-            lines << tr("Tervezett karbantartás %1–%2 között.").arg(e.windowStart.toLocalTime().toString(QStringLiteral("HH:mm")),
+            lines << QCoreApplication::translate("Cloud", "Tervezett karbantartás %1–%2 között.").arg(e.windowStart.toLocalTime().toString(QStringLiteral("HH:mm")),
                                                                    e.windowEnd.toLocalTime().toString(QStringLiteral("HH:mm")));
         break;
     case CloudErrorKind::Upstream:
-        lines << tr("A feldolgozó szolgáltatás átmenetileg nem elérhető. Próbáld újra később.");
+        lines << QCoreApplication::translate("Cloud", "A feldolgozó szolgáltatás átmenetileg nem elérhető. Próbáld újra később.");
         break;
     case CloudErrorKind::RateLimited:
-        lines << tr("Túl sok kérés érkezett. Próbáld újra %1 mp múlva.").arg(qMax(1, e.retryAfterSec));
+        lines << QCoreApplication::translate("Cloud", "Túl sok kérés érkezett. Próbáld újra %1 mp múlva.").arg(qMax(1, e.retryAfterSec));
         break;
     case CloudErrorKind::SpendLimit:
-        lines << tr("Elérted ennek az eszköznek a költési limitjét.");
-        if (!e.settingsUrl.isEmpty()) lines << tr("Beállítások a weben: %1").arg(e.settingsUrl);
+        lines << QCoreApplication::translate("Cloud", "Elérted ennek az eszköznek a költési limitjét.");
+        if (!e.settingsUrl.isEmpty()) lines << QCoreApplication::translate("Cloud", "Beállítások a weben: %1").arg(e.settingsUrl);
         break;
     case CloudErrorKind::Unauthorized:
-        lines << tr("Ezt az eszközt leválasztották a fiókodról. Jelentkezz be újra.");
+        lines << QCoreApplication::translate("Cloud", "Ezt az eszközt leválasztották a fiókodról. Jelentkezz be újra.");
         break;
     case CloudErrorKind::Suspended:
         lines << (e.suspensionReason == QLatin1String("payment_dispute")
-                      ? tr("A fiókod fizetési vita miatt fel van függesztve. Részletek a weben.")
-                      : tr("A Tanara Cloud fiókod fel van függesztve. Kérdés esetén írj a supportnak."));
+                      ? QCoreApplication::translate("Cloud", "A fiókod fizetési vita miatt fel van függesztve. Részletek a weben.")
+                      : QCoreApplication::translate("Cloud", "A Tanara Cloud fiókod fel van függesztve. Kérdés esetén írj a supportnak."));
         break;
     case CloudErrorKind::TermsRequired:
-        lines << tr("A feldolgozáshoz el kell fogadnod az új ÁSZF-et (%1): %2").arg(e.termsVersion, e.termsUrl);
+        lines << QCoreApplication::translate("Cloud", "A feldolgozáshoz el kell fogadnod az új ÁSZF-et (%1): %2").arg(e.termsVersion, e.termsUrl);
         break;
     default:
-        lines << (e.message.isEmpty() ? tr("A feldolgozás hibával leállt.") : e.message);
+        lines << (e.message.isEmpty() ? QCoreApplication::translate("Cloud", "A feldolgozás hibával leállt.") : e.message);
         break;
     }
     if (charged.isValid() && charged.micros > 0)
-        lines << tr("Az eddig elkészült részek díja: %1. Folytathatod, ekkor csak a hátralévő részekért fizetsz.")
+        lines << QCoreApplication::translate("Cloud", "Az eddig elkészült részek díja: %1. Folytathatod, ekkor csak a hátralévő részekért fizetsz.")
                      .arg(m(charged, MoneyStyle::Charge));
     else if (e.kind != CloudErrorKind::Network)
-        lines << tr("Nem terheltünk semmit.");
+        lines << QCoreApplication::translate("Cloud", "Nem terheltünk semmit.");
     if (!e.requestId.isEmpty())
-        lines << tr("Hibaazonosító: %1 — ha írsz nekünk, küldd el ezt is. A meeting tartalmát nem látjuk.").arg(e.requestId);
+        lines << QCoreApplication::translate("Cloud", "Hibaazonosító: %1 — ha írsz nekünk, küldd el ezt is. A meeting tartalmát nem látjuk.").arg(e.requestId);
     return lines.join(QLatin1Char('\n'));
 }
 

@@ -104,6 +104,7 @@ void CloudEstimateDialog::requestEstimate()
     m_start->setText(tr("Indítás"));
     m_main->setText(QStringLiteral("≈ $ —"));
     m_range->setText(tr("Becslés készül…"));
+    m_range->setVisible(true);
     m_error->setVisible(false);
     const EstimateRequest req = m_app->makeEstimateRequest(m_meetingId, m_task, m_mode);
     QPointer<CloudEstimateDialog> self(this);
@@ -119,8 +120,11 @@ void CloudEstimateDialog::render(const EstimateResult& e)
     m_last = e;
     const auto level = estimateLevel(e);
     m_main->setText(QStringLiteral("≈ ") + cloudui::money(e.estimate, MoneyStyle::Charge));
-    m_range->setText(tr("%1 – %2 között").arg(cloudui::money(e.low, MoneyStyle::Charge),
-                                              cloudui::money(e.high, MoneyStyle::Charge)));
+    // Pontos (csak STT) becslésnél nincs sáv.
+    m_range->setText(e.low.micros == e.high.micros ? QString()
+                     : tr("%1 – %2 között").arg(cloudui::money(e.low, MoneyStyle::Charge),
+                                                cloudui::money(e.high, MoneyStyle::Charge)));
+    m_range->setVisible(!m_range->text().isEmpty());
     while (QLayoutItem* it = m_lines->takeAt(0)) { delete it->widget(); delete it; }
     const Meeting m = m_app->store()->load(m_meetingId);
     for (const EstimateLine& l : e.breakdown) {
