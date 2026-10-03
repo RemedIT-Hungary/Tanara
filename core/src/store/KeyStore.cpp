@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QStandardPaths>
 
 #ifdef Q_OS_UNIX
@@ -60,11 +61,15 @@ void KeyStore::persist() const
     for (auto it = m_cache.constBegin(); it != m_cache.constEnd(); ++it)
         o.insert(it.key(), it.value());
 
-    QFile f(m_filePath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    // Atomikus írás: megszakadt írásnál a korábbi kulcsok megmaradnak. Az ideiglenes fájl
+    // már a commit ELŐTT 0600 — a kulcsok egy pillanatra se legyenek mások által olvashatók.
+    QSaveFile f(m_filePath);
+    if (!f.open(QIODevice::WriteOnly))
         return;
+    f.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
     f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
-    f.close();
+    if (!f.commit())
+        return;
 
     // Titkos fájl: csak a tulajdonos olvashassa/írhassa (chmod 600).
     QFile::setPermissions(m_filePath,

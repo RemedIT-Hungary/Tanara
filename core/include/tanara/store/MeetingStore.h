@@ -38,6 +38,8 @@ public:
     // Árva felvétel-mappák (track_*.ogg VAN, meeting.json NINCS — pl. crash felvétel
     // közben) helyreállítása: a sávokból újraépíti a Meetinget (hossz ffprobe-bal),
     // kiírja a meeting.json-t és indexeli. Visszatér: helyreállított mappák száma.
+    // Kimarad, amibe MÉG ÍRNAK: a recording.lock (élő PID) mappája, ill. az a mappa,
+    // amelynek valamelyik sáv-fájlja az utolsó pár percben módosult.
     int recoverOrphanRecordings();
 
     // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.
@@ -48,6 +50,8 @@ public:
 
     // Egy meeting VÉGLEGES törlése: a mappa (audio + átirat + összefoglaló) +
     // az index-bejegyzés. meetingRemoved jel. true, ha volt mit törölni.
+    // A mappa a lemezen MARAD (csak az index-sor törlődik), ha másik listázott meeting is
+    // rá mutat, a meeting.json-ja más id-t tartalmaz, vagy élő felvétel megy bele.
     bool deleteMeeting(const QString& id);
 
     // Teljes index újraépítés az audioDir mappáit végigpásztázva.
@@ -67,6 +71,8 @@ private:
     void upsertIndex(const Meeting& m);
     QString dbConnectionName() const;
     QString meetingJsonPath(const QString& folder) const;
+    bool folderOwnedOnlyBy(const QString& id, const QString& folder) const;
+    bool isLiveRecordingFolder(const QString& folder) const;
 
     QString m_audioDir;
     QString m_metadataDir;

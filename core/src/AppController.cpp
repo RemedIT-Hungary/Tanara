@@ -500,6 +500,10 @@ struct AppController::Impl {
 
     QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId → futó ffmpeg
     QSet<QString> mixdownCancelled;
+    QHash<QString, QString> mixdownFailReason;   // az utolsó el sem indított keverés oka (hiányzó sáv)
+    // Meetingenként az átirat „nemzedéke”: minden új átirat-kiírás lépteti. A háttérben futó
+    // azonosítás ebből (és a tokens-fájl állapotából) látja, hogy közben új átirat érkezett.
+    QHash<QString, int> transcriptGen;
 
     // Futó LLM-hívás (összefoglaló / témagyűjtés / összegzés / aktív téma-elemzés).
     struct LlmRun { QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun; };
@@ -509,6 +513,12 @@ struct AppController::Impl {
 
     // Futó (háttérszálas) azonosítás.
     struct IdentifyRun { QThread* thread = nullptr; std::shared_ptr<std::atomic<bool>> cancel; bool asStage = false; };
+    // Az átirat állapota egy azonosítás indulásakor (lásd startIdentify): ha a végére más,
+    // az eredmény a RÉGI átirat címkéire vonatkozik → eldobjuk.
+    QString transcriptStamp(const QString& meetingId, const QString& folder) const {
+        const FileStamp fs = FileStamp::of(QDir(folder).filePath(QStringLiteral("transcript.tokens.json")));
+        return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
+    }
     QHash<QString, IdentifyRun> identifyRuns;
 
     static QString llmKey(const QString& meetingId, JobKind kind) {
@@ -1166,9 +1176,16 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
     bool removed = false;
     for (const Track& t : m.tracks) {
         if (t.id == trackId) {
-            // A hangfájl FIZIKAI törlése (explicit user-művelet).
-            QFile::remove(QDir(m.folder).filePath(t.file));
-            WaveformService::removeCache(QDir(m.folder).filePath(t.file));   // a hullámforma-cache is
+            // A hangfájl FIZIKAI törlése (explicit user-művelet) — kivéve, ha a fájl a
+            // LEKEVERÉS (régi meeting.json-ban sávként szerepelhet), vagy más sáv is erre a
+            // fájlra hivatkozik: ilyenkor csak a sáv-bejegyzés törlődik.
+            bool shared = t.file.isEmpty() || (!m.mixdownFile.isEmpty() && t.file == m.mixdownFile);
+            for (const Track& o : m.tracks)
+                if (o.id != trackId && o.file == t.file) shared = true;
+            if (!shared) {
+                QFile::remove(QDir(m.folder).filePath(t.file));
+                WaveformService::removeCache(QDir(m.folder).filePath(t.file));   // a hullámforma-cache is
+            }
             removed = true;
         } else {
             kept.push_back(t);
@@ -1188,15 +1205,38 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
 
+    d->mixdownFailReason.remove(meetingId);
+    const QString outRel = QStringLiteral("mixdown.mp3");
+    const QString outPath = QDir(m.folder).filePath(outRel);
+
     // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe.
     QStringList inArgs;
+    QStringList missing;   // aktív sávok, amelyeknek nincs meg a hangfájlja (megjelenített név)
     int inputs = 0;
-    for (const Track& t : m.tracks) {
+    const QVector<TrackView> views = TrackCatalog::tracks(m);
+    for (int i = 0; i < m.tracks.size(); ++i) {
+        const Track& t = m.tracks.at(i);
         if (!t.active) continue;
         const QString path = QDir(m.folder).filePath(t.file);
-        if (!QFile::exists(path)) continue;
+        if (t.file.isEmpty() || !QFileInfo(path).isFile()) {
+            missing << views.value(i).displayName;
+            continue;
+        }
         inArgs << QStringLiteral("-i") << path;
         ++inputs;
+    }
+    // Hiányzó aktív sáv mellett a MEGLÉVŐ (teljes) keveréket nem cseréljük le egy
+    // részlegesre — sem kézi újrakeverésnél, sem az átírás előtti automatikusnál.
+    const bool haveMixdown = QFileInfo(outPath).isFile()
+        || (!m.mixdownFile.isEmpty() && QFileInfo(QDir(m.folder).filePath(m.mixdownFile)).isFile());
+    if (!missing.isEmpty() && haveMixdown) {
+        const QString msg = tr("Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. "
+                               "Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.")
+                                .arg(missing.join(QStringLiteral("”, „")));
+        d->mixdownFailReason.insert(meetingId, msg);
+        emit errorOccurred(msg);
+        emit mixdownUpdated(meetingId, false);
+        return;
     }
     if (inputs == 0) {
         emit errorOccurred(tr("Nincs aktív hangsáv a lekeveréshez."));
@@ -1204,8 +1244,6 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         return;
     }
 
-    const QString outRel = QStringLiteral("mixdown.mp3");
-    const QString outPath = QDir(m.folder).filePath(outRel);
     // Félkész fájlba keverünk, és csak SIKER után cseréljük le a régit — megszakítás vagy
     // hiba esetén a korábbi (még lejátszható) keverék érintetlen marad.
     const QString partPath = QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"));
@@ -1276,10 +1314,9 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         d->mixdownProcs.remove(meetingId);
         const bool cancelled = d->mixdownCancelled.remove(meetingId);
         bool ok = exitedOk && !cancelled;
-        if (ok) {
-            QFile::remove(outPath);
-            ok = QFile::rename(partPath, outPath);
-        }
+        // Csere úgy, hogy a régi keverék hibánál megmarad (nem „töröld, aztán nevezd át”).
+        if (ok)
+            ok = replaceFile(partPath, outPath);
         if (!ok) QFile::remove(partPath);   // félkész fájl ne maradjon a mappában
         if (ok) {
             // Friss meeting (közben módosulhatott) → mixdownFile + dirty törlése.
@@ -1790,6 +1827,11 @@ void AppController::transcribeMeeting(const QString& meetingId)
         return;
     }
 
+    // Egy önállóan futó azonosítás a MOSTANI átirat címkéire vonatkozik: leállítjuk, hogy a
+    // nevei ne kerüljenek rá a hamarosan érkező ÚJ átiratra (az eredményét a befejezésekor
+    // az átirat-változás ellenőrzése is eldobja — lásd startIdentify).
+    cancelJob(meetingId, JobKind::Identify);
+
     // A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs sávonkénti átfedés-
     // összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a mixdown hiányzik vagy
     // elavult, előbb legyártjuk, és a mixdownUpdated jelre indítjuk az átírást.
@@ -1841,6 +1883,7 @@ void AppController::transcribeMeeting(const QString& meetingId)
                 const QString msg = tr("A lekeverés sikertelen — az átírás nem indult.");
                 JobError je;
                 je.message = msg;
+                je.detail = d->mixdownFailReason.take(meetingId);   // pl. melyik sáv fájlja hiányzik
                 d->jobs->fail(meetingId, JobKind::Transcribe, je);
                 emit errorOccurred(msg);
             });
@@ -2036,6 +2079,25 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             return;
         }
 
+        // ÜRES eredmény (a szolgáltató egyetlen szót sem adott vissza) = HIBA: nem írjuk rá a
+        // meglévő átiratra. A korábbi átirat, a beszélő-nevek és a kézi javítások érintetlenek.
+        if (result.tokens.isEmpty()) {
+            d->clearSpeakersOnTranscript.remove(meetingId);
+            const QString msg = mm.hasTranscript
+                ? tr("Az átírás üres eredményt adott (a szolgáltató nem talált beszédet a felvételen) — "
+                     "a korábbi átirat megmaradt.")
+                : tr("Az átírás üres eredményt adott: a szolgáltató nem talált beszédet a felvételen.");
+            JobError je;
+            je.message = msg;
+            d->jobs->fail(meetingId, JobKind::Transcribe, je);
+            finishCloudRun(run);   // a futás lezárul (az esetleges terhelés így is megjelenik)
+            emit errorOccurred(msg);
+            return;
+        }
+        // Volt-e már átirat EZELŐTT a futás előtt (a flag-től függetlenül — lásd lent).
+        const bool hadTranscript = mm.hasTranscript
+            || QFile::exists(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")));
+
         TrackTranscript res = result;
         // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.
         for (TranscriptToken& tok : res.tokens)
@@ -2050,9 +2112,13 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         writeTokensJson(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
         writeSegmentsJson(QDir(mm.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
         d->mergedCache.insert(mm.id, merged);
-        // Újra-átírás: más szolgáltató más beszélő-felosztást adhat — a régi hozzárendelések
-        // az ÚJ átirattal együtt törlődnek (lásd retranscribeMeeting).
-        if (d->clearSpeakersOnTranscript.remove(meetingId))
+        ++d->transcriptGen[meetingId];   // új átirat → a futó azonosítások eredménye elavult
+        // Újra-átírás: az új diarizáció „Beszélő N” címkéi MÁS embereket jelölhetnek — a régi
+        // hozzárendelések az ÚJ átirattal együtt törlődnek. NEM csak a retranscribeMeeting
+        // jelzőjére: az hibánál elvész, és az utána jövő sima (újrapróbált) átírás a régi
+        // neveket hagyná az új címkéken. Ezért: ha volt már átirat, mindig törlünk.
+        const bool flagged = d->clearSpeakersOnTranscript.remove(meetingId);
+        if (flagged || hadTranscript)
             mm.speakerMap.clear();
         mm.hasTranscript = true;
         d->store->saveMeeting(mm);
@@ -2991,12 +3057,18 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         }
     });
     d->identifyRuns.insert(meetingId, Impl::IdentifyRun{th, cancel, asStage});
-    connect(th, &QThread::finished, this, [this, th, meetingId, cancel, results, asStage, kind]() {
+    const QString stampAtStart = d->transcriptStamp(meetingId, m.folder);
+    connect(th, &QThread::finished, this,
+            [this, th, meetingId, cancel, results, asStage, kind, stampAtStart, folder = m.folder]() {
         d->identifyRuns.remove(meetingId);
         th->deleteLater();
-        const bool wasCancelled = cancel->load();
-        // Megszakításnál is mentjük, amit addig találtunk (ahogy a szinkron változat).
-        d->applyIdentification(meetingId, *results);
+        // Ha a futás alatt az átirat megváltozott (új átírás érkezett), az embeddingek a RÉGI
+        // átirat címkéihez tartoznak: nem írjuk a neveket az új átiratra — megszakítottnak
+        // számít. (Különben: megszakításnál is mentjük, amit addig találtunk.)
+        const bool stale = d->transcriptStamp(meetingId, folder) != stampAtStart;
+        const bool wasCancelled = cancel->load() || stale;
+        if (!stale)
+            d->applyIdentification(meetingId, *results);
         if (!wasCancelled)
             d->jobs->markIdentified(meetingId);
         if (asStage) {

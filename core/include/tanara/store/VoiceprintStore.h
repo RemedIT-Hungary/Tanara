@@ -4,7 +4,11 @@
 // Névhez több embedding tartozhat (más mikrofon/feltétel). A párosítás a személy
 // lenyomat-halmazán a LEGNAGYOBB cosine-hasonlóságot veszi. Minden lokális (privacy).
 //
+// Több folyamat is írhatja: minden módosítás zár alatt visszaolvassa a lemez friss állapotát
+// (ha változott), arra alkalmazza a változást, és atomikusan ír (lásd store/SharedFile.h).
+//
 #include "tanara/Types.h"
+#include "tanara/store/SharedFile.h"
 
 #include <QString>
 #include <QStringList>
@@ -49,10 +53,13 @@ public:
 
 private:
     void load();
-    void persist() const;
+    void reloadIfChanged();   // ha a fájl a lemezen megváltozott (másik folyamat írta)
+    void persist();
 
     QString m_filePath;
     QMap<QString, QVector<Voiceprint>> m_people;   // név → lenyomatok
+    FileStamp m_stamp;            // a fájl állapota az utolsó betöltéskor / mentéskor
+    bool      m_corrupt = false;  // a lemezen lévő fájl értelmezhetetlen (mentéskor félretesszük)
 };
 
 } // namespace tanara
