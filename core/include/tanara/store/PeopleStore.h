@@ -4,6 +4,11 @@
 // újrahasználható a beszélő-átnevezéshez (autocomplete-hez). A meeting-specifikus
 // nyers→név leképezés a Meeting.speakerMap-ben él, nem itt.
 //
+// Több folyamat is írhatja: minden módosítás zár alatt visszaolvassa a lemez friss állapotát
+// (ha változott), arra alkalmazza a változást, és atomikusan ír (lásd store/SharedFile.h).
+//
+#include "tanara/store/SharedFile.h"
+
 #include <QString>
 #include <QStringList>
 
@@ -22,10 +27,13 @@ public:
 
 private:
     void load();
-    void persist() const;
+    void reloadIfChanged();   // ha a fájl a lemezen megváltozott (másik folyamat írta)
+    void persist();
 
     QString     m_filePath;
     QStringList m_names;
+    FileStamp   m_stamp;            // a fájl állapota az utolsó betöltéskor / mentéskor
+    bool        m_corrupt = false;  // a lemezen lévő fájl értelmezhetetlen (mentéskor félretesszük)
 };
 
 } // namespace tanara

@@ -1,7 +1,10 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/Paths.h"
+#include "tanara/Logging.h"
 
+#include <QDateTime>
+#include <QSaveFile>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -89,11 +92,19 @@ void SettingsManager::load()
     if (!f.exists()) s_createdInThisProcess = true;
     m_firstRun = s_createdInThisProcess;
 
-    if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
-
+    m_loadFailed = false;
+    if (!f.exists()) {
         // Nincs még config → defaultok + lemezre írás.
         m_settings = defaults(m_metadataDir);
         save();
+        return;
+    }
+    if (!f.open(QIODevice::ReadOnly)) {
+        // VAN fájl, de nem nyitható: defaultok a memóriában, a fájlhoz NEM nyúlunk.
+        qCWarning(lcApp).noquote() << "settings.json nem olvasható — alapértelmezések a memóriában,"
+                                      " a fájl érintetlen:" << path << f.errorString();
+        m_settings = defaults(m_metadataDir);
+        m_loadFailed = true;
         return;
     }
 
@@ -104,8 +115,13 @@ void SettingsManager::load()
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        // Sérült / félkész fájl (pl. egy másik folyamat régi buildje épp írta): defaultok a
+        // memóriában, de a fájlt NEM írjuk felül csendben — a felhasználó beállításai abban
+        // vannak. Csak egy későbbi, kifejezett mentés teszi félre (lásd save()).
+        qCWarning(lcApp).noquote() << "settings.json nem értelmezhető (" << err.errorString()
+                                   << ") — alapértelmezések a memóriában, a fájl érintetlen:" << path;
         m_settings = defaults(m_metadataDir);
-        save();
+        m_loadFailed = true;
         return;
     }
 
@@ -173,11 +189,27 @@ void SettingsManager::save() const
     QFileInfo fi(path);
     QDir().mkpath(fi.absolutePath());
 
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return;
-    f.write(QJsonDocument(toJson(m_settings)).toJson(QJsonDocument::Indented));
-    f.close();
+    // A betöltéskor olvashatatlan fájlt mentés ELŐTT félretesszük (nem semmisítjük meg):
+    // kézzel még kimenthető belőle, amit a felhasználó beállított.
+    if (m_loadFailed && QFile::exists(path)) {
+        const QString aside = path + QStringLiteral(".corrupt-")
+            + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+        if (!QFile::rename(path, aside)) {
+            qCWarning(lcApp).noquote() << "settings.json: a sérült fájl nem tehető félre — a mentés"
+                                          " kimarad, a fájl érintetlen:" << path;
+            return;
+        }
+        qCWarning(lcApp).noquote() << "settings.json: a sérült fájl félretéve:" << aside;
+    }
+    m_loadFailed = false;
+
+    // Atomikus írás (ideiglenes fájl + átnevezés): több folyamat (elemző, felvevő, figyelő)
+    // olvassa ugyanezt a fájlt — egyik se lásson csonka tartalmat, és megszakadt írás után
+    // a korábbi fájl maradjon meg.
+    const QByteArray data = QJsonDocument(toJson(m_settings)).toJson(QJsonDocument::Indented);
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit())
+        qCWarning(lcApp).noquote() << "settings.json: a mentés nem sikerült:" << path << f.errorString();
 }
 
 void SettingsManager::setSettings(const AppSettings& s)

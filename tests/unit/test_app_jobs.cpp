@@ -22,6 +22,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/audio/TrackCatalog.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/store/MeetingStore.h"
@@ -166,6 +167,12 @@ private slots:
     void identifyRunsAsLastStage();
     void retranscribeSuccessClearsNamesAndCorrections();
     void staleSummaryShowsInStateAndPending();
+
+    // Adatbiztonság.
+    void retryAfterFailedRetranscribeClearsNames();
+    void emptySttResultKeepsOldTranscript();
+    void missingTrackKeepsExistingMixdown();
+    void identifyResultsDroppedWhenTranscriptChanges();
 
 private:
     void newApp();
@@ -920,6 +927,212 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(ready.wait(10000));
     QVERIFY(!m_app->processingState(m.id).summaryStale);
     QVERIFY(m_app->library()->pendingItems().isEmpty());
+}
+
+// ---- adatbiztonság ----------------------------------------------------------------------
+
+namespace {
+QByteArray fileBytes(const QString& path)
+{
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+} // namespace
+
+void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
+{
+    if (!m_ffmpeg) QSKIP("ffmpeg nem található");
+    Meeting m = transcribed("Újrapróbált újra-átírás");
+    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m_app->store()->saveMeeting(m);
+    MeetingJobTracker* jobs = m_app->jobs();
+
+    // 1) Az újra-átírás elbukik a szolgáltatónál: a régi átirat a nevével együtt megmarad.
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (r.method == "POST" && r.path.endsWith("/files")) return {500, R"({"message":"hiba"})"};
+        return {200, "{}"};
+    };
+    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    m_app->retranscribeMeeting(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+
+    // 2) Újrapróbálás a SIMA átírással (a hibakártya „Újra” gombja): az új diarizáció
+    //    „Beszélő 1”-e más ember lehet → a régi név NEM maradhat rajta.
+    m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
+    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    m_app->transcribeMeeting(m.id);
+    QVERIFY(ready.wait(30000));
+    QTRY_VERIFY(!jobs->isBusy(m.id));
+    QVERIFY(m_app->store()->load(m.id).speakerMap.isEmpty());
+    const QByteArray md = fileBytes(QDir(m.folder).filePath("transcript.md"));
+    QVERIFY(md.contains("Beszélő 1"));
+    QVERIFY(!md.contains("Ödön"));
+    QCOMPARE(m_app->retranscribeImpact(m.id).namedSpeakers, 0);
+}
+
+void AppJobsTest::emptySttResultKeepsOldTranscript()
+{
+    if (!m_ffmpeg) QSKIP("ffmpeg nem található");
+    // A szolgáltató „sikeresen” végez, de egyetlen szót sem ad vissza.
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (r.method == "GET" && r.path.endsWith("/transcript")) return {200, R"({"tokens":[]})"};
+        return sonioxOk(r);
+    };
+    Meeting m = transcribed("Üres eredmény");
+    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m_app->store()->saveMeeting(m);
+    {
+        SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        QVERIFY(ed);
+        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+        m_app->closeSpeakerEditor(m.id);
+    }
+    const QString tokensPath = QDir(m.folder).filePath("transcript.tokens.json");
+    const QString segmentsPath = QDir(m.folder).filePath("transcript.segments.json");
+    const QByteArray tokensBefore = fileBytes(tokensPath);
+    const QByteArray segmentsBefore = fileBytes(segmentsPath);
+    const QByteArray overlayBefore = fileBytes(speakeredit::overlayPath(m.folder));
+    QVERIFY(!tokensBefore.isEmpty() && !overlayBefore.isEmpty());
+
+    MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    m_app->retranscribeMeeting(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QCOMPARE(ready.count(), 0);
+
+    // Megmaradó, érthető hiba; a régi átirat, a nevek és a kézi javítások érintetlenek.
+    const MeetingProcessingState st = m_app->processingState(m.id);
+    QVERIFY(st.transcriptError.isValid());
+    QVERIFY2(st.transcriptError.message.contains("üres eredményt"), qPrintable(st.transcriptError.message));
+    QCOMPARE(m_errors.size(), 1);
+    QCOMPARE(fileBytes(tokensPath), tokensBefore);
+    QCOMPARE(fileBytes(segmentsPath), segmentsBefore);
+    QCOMPARE(fileBytes(speakeredit::overlayPath(m.folder)), overlayBefore);
+    const Meeting after = m_app->store()->load(m.id);
+    QVERIFY(after.hasTranscript);
+    QCOMPARE(after.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
+
+    // Első átírásnál is hiba (nem „kész, üres átirat”): nem keletkezik átirat-fájl.
+    const Meeting fresh = recording("Csendes felvétel", 2);
+    m_app->transcribeMeeting(fresh.id);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 30000);
+    QCOMPARE(finished.at(1).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QVERIFY(!m_app->store()->load(fresh.id).hasTranscript);
+    QVERIFY(!QDir(fresh.folder).exists("transcript.tokens.json"));
+    QVERIFY(!QDir(fresh.folder).exists("transcript.md"));
+    QCOMPARE(ready.count(), 0);
+}
+
+void AppJobsTest::missingTrackKeepsExistingMixdown()
+{
+    if (!m_ffmpeg) QSKIP("ffmpeg nem található");
+    m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
+    Meeting m = recording("Hiányzó sáv", 2);
+    Track sys;
+    sys.id = "sys"; sys.kind = TrackKind::Loopback; sys.deviceName = "Monitor of Kanto YU4";
+    sys.file = "track_sys.wav"; sys.active = true;            // a fájl NINCS a lemezen
+    m.tracks.append(sys);
+    // Van egy teljes (mindkét sávból készült) keverék, amely elavultnak van jelölve.
+    const QByteArray oldMix = "TELJES-KEVEREK";
+    const QString mixPath = QDir(m.folder).filePath("mixdown.mp3");
+    { QFile f(mixPath); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(oldMix); }
+    m.mixdownFile = "mixdown.mp3";
+    m.mixdownDirty = true;
+    m_app->store()->saveMeeting(m);
+    const QString sysName = m_app->tracks()->tracks(m.id).at(1).displayName;
+    QVERIFY(!sysName.isEmpty());
+
+    // Kézi újrakeverés: nem indul el, a hiba megnevezi a sávot, a régi keverék marad.
+    QSignalSpy mixDone(m_app.get(), &AppController::mixdownUpdated);
+    m_app->regenerateMixdown(m.id);
+    QCOMPARE(mixDone.count(), 1);
+    QCOMPARE(mixDone.at(0).at(1).toBool(), false);
+    QCOMPARE(m_errors.size(), 1);
+    QVERIFY2(m_errors.first().contains(sysName), qPrintable(m_errors.first()));
+    QCOMPARE(fileBytes(mixPath), oldMix);
+    QVERIFY(!m_app->jobs()->isBusy(m.id));
+
+    // Átírás előtti automatikus újrakeverés: ugyanígy — az átírás nem indul, semmi nem megy
+    // a szolgáltatóhoz, a megmaradó hiba megnevezi a sávot.
+    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    m_app->transcribeMeeting(m.id);
+    QCOMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QVERIFY(m_app->processingState(m.id).transcriptError.detail.contains(sysName));
+    QCOMPARE(fileBytes(mixPath), oldMix);
+    QTest::qWait(200);
+    QVERIFY(m_http->log.isEmpty());
+
+    // A sáv eldobása után a keverés lefut, és a régi fájlt a helyén cseréli (nem marad félkész
+    // vagy félretett fájl).
+    Meeting dropped = m_app->store()->load(m.id);
+    dropped.tracks[1].active = false;
+    m_app->store()->saveMeeting(dropped);
+    mixDone.clear();
+    m_app->regenerateMixdown(m.id);
+    QVERIFY(mixDone.wait(30000));
+    QCOMPARE(mixDone.at(0).at(1).toBool(), true);
+    QVERIFY(fileBytes(mixPath) != oldMix);
+    QVERIFY(fileBytes(mixPath).size() > 100);
+    QVERIFY(!QDir(m.folder).exists("mixdown.part.mp3"));
+    QVERIFY(!QDir(m.folder).exists("mixdown.mp3.old"));
+    QVERIFY(!m_app->store()->load(m.id).mixdownDirty);
+}
+
+void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
+{
+    // Ál-modellfájl: az azonosítás elindul (háttérszál), de embeddinget nem ad — a teszt a
+    // vezénylést nézi (leállítás / eldobás), nem a felismerést. Valódi modell nem kell hozzá.
+    QDir().mkpath(m_home->filePath("models"));
+    { QFile f(m_home->filePath("models/campplus_sv_zh_en_16k.onnx")); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("nem-onnx"); }
+    if (!m_app->voiceIdentificationAvailable()) QSKIP("a build nem tartalmaz voice-ID-t");
+
+    Meeting m = transcribed("Azonosítás közben");
+    { QFile f(QDir(m.folder).filePath("mixdown.mp3")); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("KEVEREK"); }
+    m.mixdownFile = "mixdown.mp3";
+    m.mixdownDirty = false;
+    m_app->store()->saveMeeting(m);
+    MeetingJobTracker* jobs = m_app->jobs();
+    QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
+
+    // Kontroll: változatlan átirat mellett az önálló azonosítás rendben lezárul.
+    QVERIFY(m_app->identifyMeetingAsync(m.id));
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
+    QCOMPARE(finished.at(0).at(1).value<JobKind>(), JobKind::Identify);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Done);
+    QVERIFY(jobs->identifiedAt(m.id).isValid());
+    jobs->markIdentified(m.id, false);
+
+    // 1) Az azonosítás alatt megváltozik az átirat a lemezen → az eredmény a RÉGI átirat
+    //    címkéire vonatkozik: eldobjuk, a meeting nem lesz „azonosítva”.
+    QVERIFY(m_app->identifyMeetingAsync(m.id));
+    {
+        QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(R"({"language":"hu","tokens":[{"text":"Más","speaker":"Beszélő 1","startMs":0,"endMs":200,"confidence":0.9,"trackId":"mixdown"}]})");
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 30000);
+    QCOMPARE(finished.at(1).at(1).value<JobKind>(), JobKind::Identify);
+    QCOMPARE(finished.at(1).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
+    QVERIFY(!jobs->identifiedAt(m.id).isValid());
+
+    // 2) Az átírás indítása leállítja a futó önálló azonosítást.
+    m_http->handler = [](const FakeRequest& r) { return sonioxOk(r, "processing"); };
+    QVERIFY(m_app->identifyMeetingAsync(m.id));
+    m_app->transcribeMeeting(m.id);
+    QVERIFY(jobs->job(m.id, JobKind::Identify).cancelling);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 3, 30000);
+    QCOMPARE(finished.at(2).at(1).value<JobKind>(), JobKind::Identify);
+    QCOMPARE(finished.at(2).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
+    QVERIFY(!jobs->identifiedAt(m.id).isValid());
+    QVERIFY(jobs->isRunning(m.id, JobKind::Transcribe));
+    QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
 }
 
 #endif // Q_MOC_RUN

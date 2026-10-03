@@ -1,4 +1,5 @@
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/Logging.h"
 #include "tanara/Paths.h"
 
 #include <QDir>
@@ -73,6 +74,9 @@ void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
     // Biztos, ami biztos: normalizálva tároljuk (a cosine így stabil marad).
     print.embedding = l2normalize(print.embedding);
 
+    // Zár + a lemez friss állapota: más folyamat időközben felvett lenyomatai megmaradnak.
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
     const QString key = findPersonByName(m_people, n);
     if (key.isEmpty())
         m_people[n].append(print);
@@ -85,6 +89,8 @@ bool VoiceprintStore::removePrint(const QString& printId)
 {
     if (printId.isEmpty())
         return false;
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
     bool removed = false;
     for (auto it = m_people.begin(); it != m_people.end(); ++it) {
         auto& prints = it.value();
@@ -110,6 +116,8 @@ void VoiceprintStore::renamePerson(const QString& oldName, const QString& newNam
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o.compare(n, Qt::CaseInsensitive) == 0)
         return;
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
     const QString srcKey = findPersonByName(m_people, o);
     if (srcKey.isEmpty())
         return;
@@ -124,6 +132,8 @@ void VoiceprintStore::renamePerson(const QString& oldName, const QString& newNam
 
 void VoiceprintStore::removePerson(const QString& name)
 {
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
     const QString key = findPersonByName(m_people, name.trimmed());
     if (!key.isEmpty() && m_people.remove(key) > 0)
         persist();
@@ -134,6 +144,8 @@ void VoiceprintStore::merge(const QString& from, const QString& into)
     const QString f = from.trimmed(), i = into.trimmed();
     if (f.isEmpty() || i.isEmpty() || f.compare(i, Qt::CaseInsensitive) == 0)
         return;
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
     const QString fKey = findPersonByName(m_people, f);
     if (fKey.isEmpty())
         return;
@@ -216,13 +228,29 @@ QVector<float> VoiceprintStore::l2normalize(const QVector<float>& v)
 
 // ---- persistence ----------------------------------------------------------
 
+void VoiceprintStore::reloadIfChanged()
+{
+    if (FileStamp::of(m_filePath) != m_stamp)
+        load();
+}
+
 void VoiceprintStore::load()
 {
+    m_stamp = FileStamp::of(m_filePath);
+    m_corrupt = false;
     QFile f(m_filePath);
     if (!f.open(QIODevice::ReadOnly))
         return;
-    const QJsonArray people =
-        QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("people")).toArray();
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        // Értelmezhetetlen fájl: a memóriabeli lenyomatok maradnak, a fájlt a következő
+        // mentés félreteszi (a lenyomatokat nem írjuk felül nyom nélkül).
+        qCWarning(lcVoice).noquote() << "voiceprints.json nem értelmezhető:" << m_filePath << err.errorString();
+        m_corrupt = true;
+        return;
+    }
+    const QJsonArray people = doc.object().value(QStringLiteral("people")).toArray();
     m_people.clear();
     for (const QJsonValue& pv : people) {
         const QJsonObject po = pv.toObject();
@@ -253,9 +281,15 @@ void VoiceprintStore::load()
     }
 }
 
-void VoiceprintStore::persist() const
+void VoiceprintStore::persist()
 {
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
+    if (m_corrupt && !setAsideCorrupt(m_filePath)) {
+        qCWarning(lcVoice).noquote() << "voiceprints.json: a sérült fájl nem tehető félre — a mentés kimarad:"
+                                     << m_filePath;
+        return;
+    }
+    m_corrupt = false;
     QJsonArray people;
     for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it) {
         QJsonObject po;
@@ -284,7 +318,8 @@ void VoiceprintStore::persist() const
     QSaveFile f(m_filePath);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-        f.commit();
+        if (f.commit())
+            m_stamp = FileStamp::of(m_filePath);   // a saját írásunkat nem kell visszaolvasni
     }
 }
 

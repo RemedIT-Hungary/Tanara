@@ -21,11 +21,18 @@ public:
     // Beállítja és perzisztálja, majd settingsChanged()-et emittál.
     void setSettings(const AppSettings& s);
 
-    // Betölt a settings.json-ból (ha nincs/hibás → defaultok + mentés).
+    // Betölt a settings.json-ból. Ha NINCS fájl → defaultok + mentés (első indítás). Ha VAN,
+    // de nem olvasható / nem értelmezhető → defaultok CSAK a memóriában: a fájlt nem írjuk
+    // felül csendben (a felhasználó beállításai és a másik folyamat épp írt fájlja ne vesszen).
     void load();
 
-    // Lemezre ír (és létrehozza a hiányzó mappákat).
+    // Lemezre ír, atomikusan (és létrehozza a hiányzó mappákat). Ha a betöltéskor a fájl
+    // olvashatatlan volt, előbb félreteszi „settings.json.corrupt-<időbélyeg>” néven.
     void save() const;
+
+    // A settings.json a betöltéskor létezett, de nem volt olvasható/értelmezhető (a futó
+    // értékek defaultok; az eredeti fájl a lemezen érintetlen).
+    bool loadFailed() const { return m_loadFailed; }
 
     // Első indítás: a settings.json ennél a betöltésnél még nem létezett (K-01 módválasztás).
     bool isFirstRun() const { return m_firstRun; }
@@ -51,6 +58,7 @@ private:
     QString     m_metadataDir;
     AppSettings m_settings;
     bool        m_firstRun = false;
+    mutable bool m_loadFailed = false;   // olvashatatlan fájl a lemezen (mentéskor félretesszük)
 };
 
 } // namespace tanara

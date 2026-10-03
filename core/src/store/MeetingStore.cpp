@@ -3,10 +3,13 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/Logging.h"
 #include "tanara/Paths.h"
+#include "tanara/detect/RecordingLock.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QSaveFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
@@ -48,6 +51,25 @@ QString slugify(const QString& title)
         s = s.left(48);
     return s;
 }
+
+// Mappa-utak összehasonlításához: tisztított abszolút út (záró perjel, „..” nélkül).
+QString normFolder(const QString& folder)
+{
+    return folder.isEmpty() ? QString() : QDir::cleanPath(QDir(folder).absolutePath());
+}
+
+// A mappában lévő meeting.json „id” mezője (üres, ha nincs / nem olvasható).
+QString idInMeetingJson(const QString& jsonPath)
+{
+    QFile f(jsonPath);
+    if (!f.open(QIODevice::ReadOnly))
+        return QString();
+    return QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("id")).toString();
+}
+
+// Ennyi ideig számít „frissnek” egy sáv-fájl: amibe ennél frissebben írtak, azt nagy
+// valószínűséggel MÉG ÍRJÁK (élő felvétel egy másik folyamatban) → nem árva.
+constexpr qint64 kLiveTrackGraceSecs = 5 * 60;
 
 } // namespace
 
@@ -133,6 +155,29 @@ QString MeetingStore::meetingJsonPath(const QString& folder) const
 void MeetingStore::upsertIndex(const Meeting& m)
 {
     QSqlDatabase db = QSqlDatabase::database(m_connName);
+    // EGY mappa = EGY sor: ha ugyanarra a mappára más id-vel maradt bejegyzés (pl. a mappa
+    // meeting.json-ját egy másik folyamat új id-vel írta felül), az a sor elavult. A törlése
+    // CSAK az indexet érinti, a lemezt nem.
+    if (!m.folder.isEmpty()) {
+        const QString mine = normFolder(m.folder);
+        QStringList staleIds;
+        QSqlQuery stale(db);
+        stale.prepare(QStringLiteral("SELECT id, folder FROM meetings WHERE id != :id"));
+        stale.bindValue(QStringLiteral(":id"), m.id);
+        if (stale.exec())
+            while (stale.next())
+                if (normFolder(stale.value(1).toString()) == mine)
+                    staleIds << stale.value(0).toString();
+        for (const QString& sid : std::as_const(staleIds)) {
+            QSqlQuery del(db);
+            del.prepare(QStringLiteral("DELETE FROM meetings WHERE id = :id"));
+            del.bindValue(QStringLiteral(":id"), sid);
+            del.exec();
+            qCWarning(lcStore).noquote()
+                << "MeetingStore: elavult index-sor törölve (ugyanaz a mappa, más id):"
+                << sid << "->" << m.id << m.folder;
+        }
+    }
     QSqlQuery q(db);
     q.prepare(QStringLiteral(
         "INSERT INTO meetings (id, title, folder, startedAt, durationMs, hasTranscript, hasSummary)"
@@ -183,14 +228,13 @@ void MeetingStore::saveMeeting(const Meeting& m)
 
     QDir().mkpath(m.folder);
 
+    // Atomikus írás (ideiglenes fájl + átnevezés): megszakadt írás / betelt lemez esetén a
+    // korábbi meeting.json sértetlen marad, és más folyamat sosem lát félkész fájlt.
     const QString path = meetingJsonPath(m.folder);
-    QFile f(path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.write(QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented));
-        f.close();
-    } else {
+    const QByteArray data = QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented);
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit())
         qCWarning(lcStore, "MeetingStore: nem sikerult irni a meeting.json-t: %s", qPrintable(path));
-    }
 
     upsertIndex(m);
     emit meetingUpdated(m.id);
@@ -241,7 +285,7 @@ bool MeetingStore::deleteMeeting(const QString& id)
         folder = q.value(0).toString();
 
     bool any = false;
-    if (!folder.isEmpty()) {
+    if (!folder.isEmpty() && folderOwnedOnlyBy(id, folder)) {
         QDir dir(folder);
         if (dir.exists() && dir.removeRecursively())
             any = true;
@@ -258,6 +302,52 @@ bool MeetingStore::deleteMeeting(const QString& id)
     return any;
 }
 
+// Törölhető-e a mappa a megadott meeting törlésekor? NEM, ha
+//  - egy másik, még listázott meeting-id is erre a mappára mutat,
+//  - a mappában lévő meeting.json már MÁS id-t tartalmaz (a mappa másé lett),
+//  - a mappába épp élő felvétel megy (recording.lock élő PID-del).
+// Ilyenkor csak az index-sor törlődik, a felvétel a lemezen marad.
+bool MeetingStore::folderOwnedOnlyBy(const QString& id, const QString& folder) const
+{
+    const QString mine = normFolder(folder);
+    QSqlDatabase db = QSqlDatabase::database(m_connName);
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT id, folder FROM meetings WHERE id != :id"));
+    q.bindValue(QStringLiteral(":id"), id);
+    if (q.exec()) {
+        while (q.next()) {
+            if (normFolder(q.value(1).toString()) != mine) continue;
+            qCWarning(lcStore).noquote()
+                << "MeetingStore: a mappa NEM törlődik — másik meeting is erre mutat:"
+                << q.value(0).toString() << folder;
+            return false;
+        }
+    }
+    const QString diskId = idInMeetingJson(meetingJsonPath(folder));
+    if (!diskId.isEmpty() && diskId != id) {
+        qCWarning(lcStore).noquote()
+            << "MeetingStore: a mappa NEM törlődik — a meeting.json más id-t tartalmaz:"
+            << diskId << "!=" << id << folder;
+        return false;
+    }
+    if (isLiveRecordingFolder(folder)) {
+        qCWarning(lcStore).noquote()
+            << "MeetingStore: a mappa NEM törlődik — élő felvétel megy bele:" << folder;
+        return false;
+    }
+    return true;
+}
+
+// Élő felvétel megy-e a mappába (bármelyik folyamatból): a recording.lock erre a mappára
+// mutat és a PID-je él. Elavult (halott PID-ű) lock nem számít.
+bool MeetingStore::isLiveRecordingFolder(const QString& folder) const
+{
+    const RecordingLock::Info lock =
+        RecordingLock::read(QDir(m_metadataDir).filePath(QStringLiteral("recording.lock")));
+    return lock.active && !lock.meetingFolder.isEmpty()
+        && normFolder(lock.meetingFolder) == normFolder(folder);
+}
+
 QVector<Meeting> MeetingStore::loadAll()
 {
     QVector<Meeting> out;
@@ -271,6 +361,7 @@ QVector<Meeting> MeetingStore::loadAll()
         return out;
     }
 
+    QHash<QString, int> byFolder;   // normalizált mappa → hely az out-ban
     while (q.next()) {
         Meeting m;
         m.id            = q.value(0).toString();
@@ -280,6 +371,18 @@ QVector<Meeting> MeetingStore::loadAll()
         m.durationMs    = q.value(4).toLongLong();
         m.hasTranscript = q.value(5).toInt() != 0;
         m.hasSummary    = q.value(6).toInt() != 0;
+        // Egy mappa SOSEM szerepelhet kétszer (régi indexben maradhatott ilyen): az a sor
+        // marad, amelyiknek az id-je a mappa meeting.json-jában áll; különben az első.
+        const QString key = normFolder(m.folder);
+        if (!key.isEmpty()) {
+            const auto dup = byFolder.constFind(key);
+            if (dup != byFolder.constEnd()) {
+                if (idInMeetingJson(meetingJsonPath(m.folder)) == m.id)
+                    out[*dup] = m;
+                continue;
+            }
+            byFolder.insert(key, int(out.size()));
+        }
         out.append(m);
     }
     return out;
@@ -310,6 +413,26 @@ int MeetingStore::recoverOrphanRecordings()
         const QStringList oggs = QDir(folder).entryList({QStringLiteral("track_*.ogg")}, QDir::Files, QDir::Name);
         if (oggs.isEmpty())
             continue;
+
+        // NEM árva, amit MÉG ÍRNAK: a RecordingSession csak a felvétel VÉGÉN ír meeting.json-t,
+        // így egy másik folyamat (tanara --record) élő felvétele ugyanúgy néz ki, mint egy
+        // összeomlott. Kimarad, ha a recording.lock (élő PID-del) erre a mappára mutat, vagy
+        // ha a legfrissebb sáv-fájlba pár percen belül még írtak. (A következő indításkor /
+        // index-újraépítéskor újra sorra kerül.)
+        if (isLiveRecordingFolder(folder)) {
+            qCInfo(lcStore).noquote() << "Felvétel folyamatban (recording.lock) — nem árva:" << fi.fileName();
+            continue;
+        }
+        QDateTime newest;
+        for (const QString& f : oggs) {
+            const QDateTime mt = QFileInfo(QDir(folder).filePath(f)).lastModified();
+            if (!newest.isValid() || mt > newest) newest = mt;
+        }
+        if (newest.isValid() && newest.secsTo(QDateTime::currentDateTime()) < kLiveTrackGraceSecs) {
+            qCInfo(lcStore).noquote()
+                << "Friss sáv-fájl (talán még íródik) — egyelőre nem állítjuk helyre:" << fi.fileName();
+            continue;
+        }
 
         Meeting m;
         m.id     = QUuid::createUuid().toString(QUuid::WithoutBraces);

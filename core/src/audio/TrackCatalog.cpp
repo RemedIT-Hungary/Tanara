@@ -206,13 +206,35 @@ bool TrackCatalog::relocateTrack(const QString& meetingId, const QString& trackI
     if (src.size() == 0)
         return fail(tr("A kiválasztott fájl üres: %1").arg(newFilePath));
 
+    // Csak hangfájl lehet sáv (a meeting.json, átirat, hullámforma-cache stb. nem). Kiterjesztés
+    // nélküli KÜLSŐ fájlt a régi viselkedés szerint ogg-nak veszünk.
+    static const QStringList kAudioExt{
+        QStringLiteral("ogg"), QStringLiteral("oga"), QStringLiteral("opus"), QStringLiteral("wav"),
+        QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("m4a"), QStringLiteral("aac"),
+        QStringLiteral("mp4"), QStringLiteral("wma"), QStringLiteral("webm"), QStringLiteral("mka"),
+        QStringLiteral("aif"), QStringLiteral("aiff"), QStringLiteral("amr"), QStringLiteral("3gp")};
+    const QString srcExt = src.suffix().toLower();
+    const bool inFolder = src.absoluteDir() == QDir(QDir(m.folder).absolutePath());
+    if (inFolder ? !kAudioExt.contains(srcExt) : (!srcExt.isEmpty() && !kAudioExt.contains(srcExt)))
+        return fail(tr("A kiválasztott fájl nem hangfájl: %1").arg(src.fileName()));
+
     const QDir folder(m.folder);
     QString rel;
-    if (src.absoluteDir() == QDir(folder.absolutePath())) {
-        // Már a meeting mappájában van → csak ráhivatkozunk. Másik sáv fájlját nem vesszük át.
+    if (inFolder) {
+        // Már a meeting mappájában van → csak ráhivatkozunk. Másik sáv fájlját nem vesszük át,
+        // és a LEKEVERÉST sem: sávként később (sáv-törléssel) a keverék is törlődne.
         rel = src.fileName();
+        const Qt::CaseSensitivity cs =
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+            Qt::CaseInsensitive;
+#else
+            Qt::CaseSensitive;
+#endif
+        const QString mixName = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
+        if (rel.compare(mixName, cs) == 0 || rel.startsWith(QStringLiteral("mixdown."), cs))
+            return fail(tr("A lekeverés fájlja nem választható sávnak."));
         for (const Track& t : std::as_const(m.tracks))
-            if (t.id != trackId && t.file == rel)
+            if (t.id != trackId && t.file.compare(rel, cs) == 0)
                 return fail(tr("Ez a fájl már egy másik sávhoz tartozik."));
     } else {
         // Bemásoljuk a meeting mappájába (az eredeti érintetlen marad). Az eredeti sáv-
@@ -247,7 +269,12 @@ int TrackCatalog::deleteDroppedTracks(const QString& meetingId)
     int removed = 0;
     for (const Track& t : std::as_const(m.tracks)) {
         if (t.active) { kept.append(t); continue; }
-        if (!t.file.isEmpty()) {
+        // A lekeverés fájlját sáv-törlés SOSEM törli (régi meeting.json-ban sávként
+        // szerepelhet — lásd relocateTrack), és olyat sem, amire megmaradó sáv hivatkozik.
+        bool shared = !m.mixdownFile.isEmpty() && t.file == m.mixdownFile;
+        for (const Track& o : std::as_const(m.tracks))
+            if (o.active && o.file == t.file) shared = true;
+        if (!t.file.isEmpty() && !shared) {
             const QString path = QDir(m.folder).filePath(t.file);
             QFile::remove(path);                  // a hangfájl FIZIKAI törlése (explicit kérés)
             WaveformService::removeCache(path);
