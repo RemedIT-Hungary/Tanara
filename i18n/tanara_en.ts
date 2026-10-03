@@ -1484,6 +1484,70 @@
     </message>
 </context>
 <context>
+    <name>tanara::SpeakerEditor</name>
+    <message>
+        <source>Új beszélő %1</source>
+        <translation>New speaker %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor áthelyezése ide: %1</source>
+        <translation>
+            <numerusform>Move %n line to %1</numerusform>
+            <numerusform>Move %n lines to %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Beszélő cseréje: %1 → %2</source>
+        <translation>Change speaker: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Névtelenre állítás: %1</source>
+        <translation>Make anonymous: %1</translation>
+    </message>
+    <message>
+        <source>Összevonás: %1 → %2</source>
+        <translation>Merge: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Résztvevő hozzáadása: %1</source>
+        <translation>Add participant: %1</translation>
+    </message>
+    <message>
+        <source>Résztvevő eltávolítása: %1</source>
+        <translation>Remove participant: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítése</source>
+        <translation>
+            <numerusform>Confirm %n line</numerusform>
+            <numerusform>Confirm %n lines</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Javaslat elfogadása: %n sor ide: %1</source>
+        <translation>
+            <numerusform>Accept suggestion: %n line to %1</numerusform>
+            <numerusform>Accept suggestion: %n lines to %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Ismeretlen beszélő.</source>
+        <translation>Unknown speaker.</translation>
+    </message>
+    <message>
+        <source>Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.</source>
+        <translation>Name the speaker first — a voiceprint cannot be created for an anonymous speaker.</translation>
+    </message>
+    <message>
+        <source>Nincs elég hanganyag a lenyomathoz: még kb. %1 mp beszéd kellene (legalább 3 mp-es sorokból).</source>
+        <translation>Not enough audio for a voiceprint: about %1 s more speech is needed (from lines of at least 3 s).</translation>
+    </message>
+    <message>
+        <source>A hangmodell vagy a megbeszélés hangja nem érhető el.</source>
+        <translation>The voice model or the meeting audio is not available.</translation>
+    </message>
+</context>
+<context>
     <name>tanara::SummaryService</name>
     <message>
         <source>Nincs beállított LLM provider.</source>
