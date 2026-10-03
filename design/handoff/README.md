@@ -16,6 +16,17 @@ The `design/*.dc.html` files are **design references built in HTML** — static 
 - `Tanara Transcript Editor.dc.html` — **section 3 / option 3a is the approved editor**. Sections 2a/2b are earlier explorations (2b is the basis of 3a; ignore 2a). Has a `lang` hu/en tweak.
 - `Tanara Main Window.dc.html` — screens M01–M10 (all main-window states). Has a `theme` tweak (mixed/light/dark).
 - `design-brief.md` — the original product brief (Hungarian), incl. principles and terminology.
+- `fonts/` — IBM Plex woff2 used by the HTML files (for QML, bundle the TTF/OTF of the same families).
+
+## Reference screenshots (`screenshots/`)
+Use these to compare the QML implementation visually (1280×820 unless noted):
+- `M01`–`M10` — main window states (names match the sections below).
+- `E01_editor_rail_on_name_menu` — editor, rail on, whole-speaker popover open.
+- `E02_editor_rail_hidden_dark` — reading mode, rail hidden, dark theme.
+- `E03_editor_two_speakers_multiselect` — 2 speakers, 3 lines selected, bottom move bar.
+- `E04_editor_uncertain_filter` — "Bizonytalan" filter on, dark.
+- `E05_editor_11_speakers_picker` — 11 speakers, collapsed "+5" lane, drag preview, person picker (editor area only).
+- `V01`/`V02` — visual language sheet (Print direction), light and dark.
 
 ## Design tokens
 All tokens are in `qml/theme/Theme.qml` (singleton, `Theme.dark` switches light/dark) and `tokens.json`. Hex values were converted from the OKLCH originals.

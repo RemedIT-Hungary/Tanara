@@ -101,6 +101,21 @@ QtObject {
     readonly property int iconSize: 16         // 15–16 in UI, 20 in icon grid, stroke 1.75
     readonly property int avatarSize: 24       // 20 in rail header, 28 in larger headers
 
+    // ---- Recorder & level meters ----
+    readonly property color successLine: dark ? "#2b6241" : "#acd7ba"
+    readonly property color recSoft: dark ? "#3b1c1a" : "#ffece9"
+    readonly property color recLine: dark ? "#742e2b" : "#fdc9c4"
+    readonly property color recInk: dark ? "#ffb7b0" : "#9b1e22"
+    readonly property color vuTrack: dark ? "#27292c" : "#e5e4e2"
+    readonly property color vuOff: dark ? "#7e8084" : "#84868a"
+    readonly property color vuLow: dark ? "#55c483" : "#389560"
+    readonly property color vuMid: dark ? "#f0ba59" : "#e1a035"
+    readonly property color vuHigh: dark ? "#ec5b57" : "#c53637"
+    // VU: 14 segments, 5×10 px, gap 2, radius 1. Segment i lit when i < level; 0–8 vuLow, 9–11 vuMid, 12–13 vuHigh.
+    // Unselected device: lit segments use vuOff. Peak-hold = 1px inset outline on segment (peak-1), decay ~1.5 s.
+    readonly property int vuSegments: 14
+    readonly property int recorderWidth: 380
+
     // ---- Elevation ----
     readonly property color shadowColor: dark ? "#80000000" : "#2e11161f"
     readonly property int shadowBlur: 32
