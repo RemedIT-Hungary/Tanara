@@ -141,12 +141,14 @@ QVector<TranscriptListModel::Row> TranscriptListModel::computeRows() const
         for (int i = 0; i < utts.size(); ++i) out.append(Row{false, i, 0});
         return out;
     }
-    // Szűrő: csak a bizonytalan sorok (és a javaslat horgonya, hogy a doboznak legyen helye);
-    // a köztük lévő biztos futamok egy-egy elválasztóvá csukódnak.
+    // Szűrő: a bizonytalan sorok, a szűrő bekapcsolása óta kézzel javítottak (ne tűnjenek el a
+    // kurzor alól), a javaslat horgonya, és — amíg a „Megmutatom" él — a javasolt sorok. A
+    // köztük lévő biztos futamok egy-egy elválasztóvá csukódnak.
     const int anchor = m_vm->suggestionAnchor();
     int runStart = -1;
     for (int i = 0; i < utts.size(); ++i) {
-        const bool show = utts[i].uncertain || i == anchor;
+        const bool show = utts[i].uncertain || i == anchor || m_vm->isSuggested(i)
+            || (utts[i].manuallyCorrected && m_vm->isSticky(i));
         if (!show) {
             if (runStart < 0) runStart = i;
             continue;

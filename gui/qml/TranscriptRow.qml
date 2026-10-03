@@ -3,7 +3,8 @@ import QtQuick
 // Az átirat-lista egy sora: megszólalás (névsor csak beszélőváltáskor, alatta a szöveg),
 // vagy a „Bizonytalan" szűrő „··· N biztos sor elrejtve" elválasztója. Bal oldalt (ha a sín
 // látszik) a beszélő-oszlopok ezen sorra eső szelete; a sín egérkezelése a TranscriptTab-ban
-// van (egy közös réteg, hogy a húzás több soron át is működjön).
+// van (egy közös réteg, hogy a húzás több soron át is működjön). A NÉVRE kattintva ennek a
+// sornak a beszélője javítható (a teljes beszélő a sáv-fejlécről / az áttekintőről).
 Item {
     id: row
 
@@ -42,7 +43,7 @@ Item {
     readonly property alias nameItem: nameBox
 
     width: ListView.view ? ListView.view.width : 0
-    height: gap ? 24 : body.height + (suggestionLoader.active ? suggestionLoader.height : 0)
+    height: gap ? 24 : body.height
 
     // ---- elválasztó (szűrő) ----
     Loader {
@@ -64,7 +65,7 @@ Item {
         }
     }
 
-    // A sín jobb széle (a javaslat-doboz mellett is végigfut).
+    // A sín jobb széle.
     Rectangle {
         visible: row.tab.railShown && !row.gap
         x: row.textX - 1
@@ -138,7 +139,8 @@ Item {
             width: body.width - x - 20
             spacing: 2
 
-            // Névsor: név (kattintható) · időbélyeg · pirula · (szűrőben) „Jó így" / „Meghallgatom".
+            // Névsor: név (kattintható: ez a sor kié) · időbélyeg · pirula · (szűrőben)
+            // „Meghallgatom" / „Jó így" / „Más mondta…".
             Item {
                 visible: row.head
                 width: parent.width
@@ -186,11 +188,13 @@ Item {
                             anchors.fill: parent
                             anchors.margins: -4
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: row.tab.openSpeakerPopover(row.speakerKey, nameBox, row.index)
+                            onClicked: row.tab.openLinePopover(row.index, nameBox)
                         }
                         TToolTip {
                             visible: nameHover.hovered && !row.nameOpen
-                            text: qsTr("A teljes beszélő átnevezése vagy összevonása")
+                            text: row.selected && row.vm.selectedCount > 1
+                                  ? qsTr("Más mondta? A kijelölt sorok beszélőjének javítása")
+                                  : qsTr("Más mondta? Ennek a sornak a beszélője javítható")
                         }
                     }
 
@@ -227,6 +231,21 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     sourceComponent: Row {
                         spacing: 6
+                        // A természetes sorrend: meghallgatom → jó így / más mondta.
+                        TButton {
+                            size: "small"
+                            variant: "ghost"
+                            height: 24
+                            leftPadding: 9; rightPadding: 9
+                            radius: 5
+                            iconName: "play"
+                            iconSize: 12
+                            spacing: 5
+                            font.pixelSize: Theme.fontCaption
+                            text: qsTr("Meghallgatom")
+                            enabled: row.tab.canPlay
+                            onClicked: row.tab.playLine(row.startMs, row.endMs)
+                        }
                         TButton {
                             size: "small"
                             height: 24
@@ -241,18 +260,19 @@ Item {
                             onClicked: row.vm.confirmRow(row.index)
                         }
                         TButton {
+                            id: fixButton
+                            objectName: "lineFix"
                             size: "small"
-                            variant: "ghost"
                             height: 24
                             leftPadding: 9; rightPadding: 9
                             radius: 5
-                            iconName: "play"
+                            iconName: "user"
                             iconSize: 12
                             spacing: 5
                             font.pixelSize: Theme.fontCaption
-                            text: qsTr("Meghallgatom")
-                            enabled: row.tab.canPlay
-                            onClicked: row.tab.playLine(row.startMs, row.endMs)
+                            text: qsTr("Más mondta…")
+                            toolTipText: qsTr("Csak ez a sor kerül át ahhoz, akit választasz")
+                            onClicked: row.tab.openLinePopover(row.index, fixButton)
                         }
                     }
                 }
@@ -296,68 +316,5 @@ Item {
             }
         }
         HoverHandler { id: rowHover }
-    }
-
-    // ---- javaslat a kézzel javított sor alatt ----
-    Loader {
-        id: suggestionLoader
-        active: !row.gap && row.suggestionAnchor && row.vm.suggestionActive
-        y: body.height
-        x: row.textX + 24
-        width: row.width - x - 20
-        sourceComponent: Item {
-            height: box.height + 14
-            Rectangle {
-                id: box
-                y: 4
-                width: parent.width
-                height: boxColumn.height + 24
-                radius: Theme.radiusControl
-                color: Theme.accentSoft
-                border.width: 1
-                border.color: Theme.accentLine
-                Column {
-                    id: boxColumn
-                    x: 14; y: 12
-                    width: parent.width - 28
-                    spacing: 10
-                    Item {
-                        width: parent.width
-                        height: suggestionText.height
-                        TIcon { y: 2; name: "wand-sparkles"; size: 16; color: Theme.accent }
-                        TLabel {
-                            id: suggestionText
-                            x: 26
-                            width: parent.width - 26
-                            wrapMode: Text.Wrap
-                            cssLineHeight: 1.45
-                            text: qsTr("Még %n sor hasonlít erre a hangra. Átrakjam őket ehhez: %1?", "",
-                                       row.vm.suggestionCount).arg(row.vm.suggestionTargetName)
-                        }
-                    }
-                    Row {
-                        x: 26
-                        spacing: 8
-                        TButton {
-                            size: "small"; variant: "primary"
-                            leftPadding: 12; rightPadding: 12
-                            text: qsTr("Átrakom")
-                            onClicked: row.vm.acceptSuggestion()
-                        }
-                        TButton {
-                            size: "small"
-                            text: row.vm.suggestionShown ? qsTr("Elrejtem") : qsTr("Megmutatom")
-                            toolTipText: qsTr("A hasonló sorok kiemelése a sávokon és az áttekintőn")
-                            onClicked: row.vm.suggestionShown = !row.vm.suggestionShown
-                        }
-                        TButton {
-                            size: "small"; variant: "ghost"
-                            text: qsTr("Nem")
-                            onClicked: row.vm.dismissSuggestion()
-                        }
-                    }
-                }
-            }
-        }
     }
 }

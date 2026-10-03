@@ -42,7 +42,7 @@ public:
         CorrectedRole,
         SelectedRole,
         SuggestedRole,                  // a „hasonló sorok" javaslat része, és épp mutatjuk
-        SuggestionAnchorRole,           // alatta jelenik meg a javaslat-doboz
+        SuggestionAnchorRole,           // a javaslatot kiváltó (kézzel javított) sor
         HiddenCountRole,                // elválasztó: ennyi biztos sor van elrejtve
     };
     Q_ENUM(Role)

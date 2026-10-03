@@ -4,14 +4,24 @@ import QtQuick.Templates as T
 
 // „Átirat" fül: az átirat-szerkesztő (3a). Felül eszköztár + áttekintő, alatta a
 // megszólalások listája; bal oldalt a bekapcsolható beszélő-sín (soronkénti átsorolás:
-// kattintás másik oszlopba, húzás, több sor kijelölése + alsó sáv / 1–9 billentyű). A névre
-// kattintva a teljes beszélő javítható. Az állapotot a TranscriptEditorViewModel adja.
+// kattintás másik oszlopba, húzás, több sor kijelölése + alsó sáv / 1–9 billentyű).
+//
+// A javítás hatóköre (a tulajdonossal egyeztetve, a tervezői spectől szándékosan eltérve):
+//  - egy sor NEVÉRE kattintva (vagy „Más mondta…") alapból CSAK AZ A SOR kerül át (több soros
+//    kijelölés részeként: a kijelölt sorok); a teljes beszélő ott kifejezett választás;
+//  - a TELJES beszélő a beszélő-szintű helyekről javítható: sáv-fejléc avatar, áttekintő név;
+//  - minden átsorolás után alul értesítő sáv: mi történt + Visszavonás / „Hasonló N sor is" /
+//    „<Forrás> mind a N sora";
+//  - két beszélő összevonása előtt számokkal megerősítő ablak (egy sor / kijelölés sosem kérdez).
+// Az állapotot a TranscriptEditorViewModel adja.
 //
 // Képernyőképhez (kitalált mintaadat, lásd TranscriptDemoSession):
 //   demoVariant: "" | "two" | "many" | "long" | "novoice" | "none"
 //   demoState:   "" | "rail" | "playing" | "selection" | "suggestion" | "suggestionShown" |
-//                "filter" | "search" | "searchEmpty" | "speakerPopover" | "personPicker" |
-//                "drag" | "expanded"
+//                "filter" | "search" | "searchEmpty" | "linePopover" | "selectionPopover" |
+//                "lineToSpeakerPopover" | "speakerPopover" | "personPicker" | "drag" |
+//                "expanded" | "changeLine" | "changeSelection" | "changeSpeaker" |
+//                "changeFilter" | "mergeConfirm"
 Item {
     id: root
 
@@ -121,13 +131,60 @@ Item {
         viewportStart = start
         viewportSize = Math.max(0, editorVm.rowEndFraction(last) - start)
     }
-    function openSpeakerPopover(speakerKey, anchorItem, rowIndex) {
+    // A TELJES beszélő panelje (sáv-fejléc avatar, áttekintő név).
+    function openSpeakerPopover(speakerKey, anchorItem) {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
         speakerPopover.speakerKey = speakerKey
+        speakerPopover.utteranceId = ""
+        speakerPopover.selectionCount = 0
         speakerPopover.x = Math.round(p.x - 7)
         speakerPopover.y = Math.round(p.y + 6)
-        speakerPopoverRow = rowIndex === undefined ? -1 : rowIndex
+        speakerPopoverRow = -1
         speakerPopover.open()
+    }
+    // EGY SOR panelje (a sor neve, „Más mondta…", helyi menü): alapból csak ez a sor megy;
+    // ha a sor egy több soros kijelölés része, a kijelölés.
+    function openLinePopover(row, anchorItem, px, py) {
+        const line = editorVm.rowInfo(row)
+        if (line.utteranceId === undefined) return
+        const p = px === undefined ? anchorItem.mapToItem(root, 0, anchorItem.height)
+                                   : anchorItem.mapToItem(root, px, py)
+        speakerPopover.speakerKey = line.speakerKey
+        speakerPopover.utteranceId = line.utteranceId
+        speakerPopover.lineTime = line.timeLabel
+        speakerPopover.lineStartMs = line.startMs
+        speakerPopover.lineEndMs = line.endMs
+        speakerPopover.selectionCount = editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
+                                        ? editorVm.selectedCount : 0
+        speakerPopover.x = Math.round(p.x - 7)
+        speakerPopover.y = Math.round(p.y + 6)
+        speakerPopoverRow = row
+        speakerPopover.open()
+    }
+    // Két beszélő összevonása előtt megerősítés, számokkal. request: { kind: "merge" |
+    // "reassign" | "rest", fromKey, intoKey, personName, fix }. Üres forrásnál nincs mit kérdezni.
+    function requestMerge(request) {
+        const from = editorVm.speakerInfo(request.fromKey)
+        const into = editorVm.speakerInfo(request.intoKey)
+        if (from.key === undefined || into.key === undefined) return
+        if ((from.utteranceCount || 0) === 0) { performMerge(request); return }
+        mergeDialog.request = request
+        mergeDialog.fromName = from.name
+        mergeDialog.fromCount = from.utteranceCount
+        mergeDialog.intoName = into.name
+        mergeDialog.intoCount = into.utteranceCount
+        mergeDialog.open()
+    }
+    function performMerge(request) {
+        if (request.kind === "reassign") editorVm.reassignSpeaker(request.fromKey, request.personName, request.fix === true)
+        else if (request.kind === "rest") editorVm.moveRestOfSource()
+        else editorVm.mergeSpeakers(request.fromKey, request.intoKey)
+    }
+    // A most javított sor maradjon látható, amikor az értesítő sáv megjelenik alatta.
+    property int keepVisibleRow: -1
+    function keepRowVisible() {
+        if (keepVisibleRow >= 0 && keepVisibleRow < list.count)
+            list.positionViewAtIndex(keepVisibleRow, ListView.Contain)
     }
     function openPicker(target, anchorItem, above) {
         pickerTarget = target
@@ -146,6 +203,10 @@ Item {
         timelineMs: (root.player && root.player.durationMs) || 0
 
         onRevealRequested: row => root.revealRow(row)
+        onChangeChanged: {
+            root.keepVisibleRow = changeActive ? changeRow : -1
+            if (root.keepVisibleRow >= 0) Qt.callLater(root.keepRowVisible)
+        }
         onNotice: text => { if (root.shell && root.shell.toast) root.shell.toast(text) }
         onOverviewChanged: Qt.callLater(root.updateViewport)
         onSessionChanged: {
@@ -153,6 +214,7 @@ Item {
             root.speakerPopoverRow = -1
             speakerPopover.close()
             picker.close()
+            mergeDialog.close()
             toolbar.searchOpen = false
             Qt.callLater(root.updateViewport)
         }
@@ -328,6 +390,7 @@ Item {
             }
             onSearchStepRequested: direction => editorVm.searchStep(direction)
             onNextUncertainRequested: root.nextUncertain(1)
+            onSpeakerClicked: (speakerKey, anchor) => root.openSpeakerPopover(speakerKey, anchor)
             // A kereső bezárása után a billentyűk újra a szerkesztőéi (ne a rejtett mezőéi).
             onSearchOpenChanged: if (!searchOpen) Qt.callLater(root.releaseHiddenFocus)
         }
@@ -430,6 +493,8 @@ Item {
                         root.pendingRevealRow = -1
                         Qt.callLater(root.revealRow, row)
                     }
+                    // A sáv megjelenésekor a lista alacsonyabb lesz: a javított sor ne csússzon ki.
+                    if (height > 0 && root.keepVisibleRow >= 0) Qt.callLater(root.keepRowVisible)
                     root.updateViewport()
                 }
                 onCountChanged: Qt.callLater(root.updateViewport)
@@ -584,6 +649,20 @@ Item {
             }
         }
 
+        // A legutóbbi átsorolás értesítése: a lista alatt (nem takarja a javított sort).
+        TranscriptChangeBar {
+            id: changeBar
+            objectName: "changeBar"
+            visible: editorVm.changeActive
+            Layout.fillWidth: true
+            Layout.leftMargin: 24
+            Layout.rightMargin: 24
+            Layout.bottomMargin: selectionBar.visible ? 6 : 10
+            vm: editorVm
+            onRestRequested: root.requestMerge({ kind: "rest", fromKey: editorVm.changeSourceKey,
+                                                 intoKey: editorVm.changeTargetKey })
+        }
+
         TranscriptSelectionBar {
             id: selectionBar
             objectName: "selectionBar"
@@ -619,10 +698,48 @@ Item {
         editor: editorVm
         canListen: root.canPlay
         onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
+        onMergeRequested: request => root.requestMerge(request)
         onClosed: {
             root.speakerPopoverRow = -1
-            root.forceActiveFocus()
+            if (!mergeDialog.visible) root.forceActiveFocus()
         }
+    }
+
+    // Két beszélő összevonása: megerősítés számokkal (M10 minta). Egy sor / kijelölés
+    // áthelyezése sosem kérdez — ez csak a teljes beszélőt érintő összeolvasztás előtt áll.
+    TDialog {
+        id: mergeDialog
+        objectName: "mergeDialog"
+        property var request: ({})
+        property string fromName: ""
+        property int fromCount: 0
+        property string intoName: ""
+        property int intoCount: 0
+        title: qsTr("Összevonod a két beszélőt?")
+        TLabel {
+            objectName: "mergeText"
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            cssLineHeight: 1.5
+            text: qsTr("%1 %n sora összeolvad ezzel: %2 (%3). Visszavonható: Ctrl+Z.", "", mergeDialog.fromCount)
+                      .arg(mergeDialog.fromName).arg(mergeDialog.intoName)
+                      .arg(qsTr("%n sor", "", mergeDialog.intoCount))
+        }
+        actions: [
+            TButton {
+                objectName: "mergeCancel"
+                text: qsTr("Mégse")
+                onClicked: mergeDialog.reject()
+            },
+            TButton {
+                objectName: "mergeAccept"
+                text: qsTr("Összevonás")
+                variant: "primary"
+                onClicked: mergeDialog.accept()
+            }
+        ]
+        onAccepted: root.performMerge(request)
+        onClosed: root.forceActiveFocus()
     }
 
     // A sor helyi menüje (jobb gomb): lejátszás, másolás.
@@ -631,12 +748,27 @@ Item {
         objectName: "rowMenu"
         property int row: -1
         readonly property bool inSelection: editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
-        onClosed: root.forceActiveFocus()
+        // „Más mondta…": a panel csak a menü bezárulta UTÁN nyílik (különben a menü záráskor
+        // visszavenné a fókuszt a panel keresőmezőjétől).
+        property bool fixPending: false
+        onClosed: {
+            if (fixPending) {
+                fixPending = false
+                root.openLinePopover(row, root, x, y - 6)
+            } else {
+                root.forceActiveFocus()
+            }
+        }
         TMenuItem {
             text: qsTr("Lejátszás innen")
             iconName: "play"
             enabled: root.canPlay
             onTriggered: root.playFrom(editorVm.rowStartMs(rowMenu.row))
+        }
+        TMenuItem {
+            text: rowMenu.inSelection ? qsTr("Más mondta… (a kijelölt sorok)") : qsTr("Más mondta… (ez a sor)")
+            iconName: "user"
+            onTriggered: rowMenu.fixPending = true
         }
         TMenuSeparator {}
         TMenuItem {
@@ -672,8 +804,20 @@ Item {
         onTriggered: {
             const s = root.demoState
             if (s === "speakerPopover") {
+                // A teljes beszélő: a sáv-fejléc első avatarjáról.
+                if (root.laneCount > 0) root.openSpeakerPopover(editorVm.lanes[0].key, railHeader)
+            } else if (s === "linePopover" || s === "lineToSpeakerPopover") {
                 const item = list.itemAtIndex(0)
-                if (item) root.openSpeakerPopover(item.speakerKey, item.nameItem, 0)
+                if (item) root.openLinePopover(0, item.nameItem)
+                if (s === "lineToSpeakerPopover") speakerPopover.setScope("speaker")
+            } else if (s === "selectionPopover") {
+                editorVm.selectRows(2, 4)
+                const item = list.itemAtIndex(2)
+                if (item) root.openLinePopover(2, item.nameItem)
+            } else if (s === "mergeConfirm") {
+                if (root.laneCount > 1)
+                    root.requestMerge({ kind: "merge", fromKey: editorVm.lanes[root.laneCount - 1].key,
+                                        intoKey: editorVm.lanes[1].key })
             } else if (s === "personPicker") {
                 picker.initialQuery = "Bal"
                 root.openPicker("participant", railHeader.addItem)
@@ -696,7 +840,8 @@ Item {
         } else if (s === "expanded") {
             editorVm.railVisible = true
             editorVm.lanesExpanded = true
-        } else if (s === "speakerPopover" || s === "personPicker" || s === "drag") {
+        } else if (s === "speakerPopover" || s === "linePopover" || s === "lineToSpeakerPopover"
+                   || s === "selectionPopover" || s === "mergeConfirm" || s === "personPicker" || s === "drag") {
             editorVm.railVisible = true
             demoTimer.start()
         } else {

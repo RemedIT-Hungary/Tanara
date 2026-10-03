@@ -193,7 +193,12 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
         m_uncertainCount = n;
         emit uncertainCountChanged();
     });
-    connect(editor, &SpeakerEditor::undoStateChanged, this, &TranscriptEditorViewModel::undoStateChanged);
+    connect(editor, &SpeakerEditor::undoStateChanged, this, [this] {
+        // Nem a saját (sávot kiíró) műveletünk: visszavonás, újra, megerősítés, résztvevő… —
+        // a legutóbbi átsorolás értesítése már nem érvényes.
+        if (m_opDepth == 0) clearChange();
+        emit undoStateChanged();
+    });
     connect(editor, &SpeakerEditor::suggestionChanged, this, &TranscriptEditorViewModel::onSuggestionChanged);
     connect(editor, &SpeakerEditor::embeddingRunningChanged, this, [this](bool running) {
         if (running) m_embeddingProgress = 0.0;
@@ -252,6 +257,8 @@ void TranscriptEditorViewModel::reloadAll()
     m_embeddingProgress = 0.0;
     m_uncertainCount = m_editor ? m_editor->uncertainCount() : 0;
     m_uncertainOnly = false;
+    m_sticky.clear();
+    m_change = Change();
     m_railVisible = loadRailState();
 
     rebuildSpeakers(/*recomputeCollapsed*/ true);
@@ -268,6 +275,7 @@ void TranscriptEditorViewModel::reloadAll()
     emit railVisibleChanged();
     emit selectionChanged();
     emit undoStateChanged();
+    emit changeChanged();
     emit playingRowChanged();
     emit voiceStateChanged();
     emit peopleChanged();
@@ -297,6 +305,9 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
         if (i < 0) continue;
         m_utts[i] = m_editor->utterance(id);
         changed.append(i);
+        // A szűrőben épp látható, most kézzel javított sor a helyén marad („javítva").
+        if (m_uncertainOnly && m_utts[i].manuallyCorrected && m_rows->rowOfUtterance(i) >= 0)
+            m_sticky.insert(i);
     }
     if (changed.isEmpty()) return;
     if (m_uncertainOnly) m_rows->syncFilter();
@@ -355,7 +366,7 @@ void TranscriptEditorViewModel::onSuggestionChanged()
     for (int i : std::as_const(m_suggested)) touched.append(i);
     if (m_suggestionAnchor >= 0) touched.append(m_suggestionAnchor);
 
-    if (m_uncertainOnly && oldAnchor != m_suggestionAnchor) m_rows->syncFilter();
+    if (m_uncertainOnly) m_rows->syncFilter();
     m_rows->notifyUtterances(touched, {TranscriptListModel::SuggestedRole,
                                        TranscriptListModel::SuggestionAnchorRole});
     emit suggestionChanged();
@@ -541,6 +552,7 @@ void TranscriptEditorViewModel::setUncertainOnly(bool on)
 {
     if (m_uncertainOnly == on) return;
     m_uncertainOnly = on;
+    m_sticky.clear();       // a szűrő újbóli alkalmazása: a javított sorok már nem maradnak
     m_rows->rebuild();
     updatePlayingRow();
     emit uncertainOnlyChanged();
@@ -569,6 +581,8 @@ void TranscriptEditorViewModel::setSuggestionShown(bool shown)
     if (m_suggestionAnchor < 0) shown = false;
     if (m_suggestionShown == shown) return;
     m_suggestionShown = shown;
+    // A szűrőben a megmutatott (javasolt) sorok is látszanak, amíg a kiemelés él.
+    if (m_uncertainOnly) m_rows->syncFilter();
     QVector<int> touched;
     for (int i : std::as_const(m_suggested)) touched.append(i);
     m_rows->notifyUtterances(touched, {TranscriptListModel::SuggestedRole});
@@ -586,7 +600,23 @@ void TranscriptEditorViewModel::setSuggestionShown(bool shown)
 
 bool TranscriptEditorViewModel::acceptSuggestion()
 {
-    return m_editor && m_editor->acceptSuggestion();
+    if (!m_editor || !m_editor->hasSuggestion()) return false;
+    const SpeakerSuggestion sg = m_editor->suggestion();
+    int moved = 0, last = -1;
+    for (const QString& id : sg.utteranceIds) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i < 0 || m_utts[i].speakerKey == sg.targetSpeaker) continue;
+        ++moved;
+        last = std::max(last, i);
+    }
+    ++m_opDepth;
+    const bool ok = m_editor->acceptSuggestion();
+    --m_opDepth;
+    if (!ok) return false;
+    afterMove(sg.targetSpeaker);
+    publishChange(tr("%n sor átkerült ide: %1", nullptr, moved).arg(m_views.value(sg.targetSpeaker).name),
+                  sg.sourceSpeakerKey, sg.targetSpeaker, last);
+    return true;
 }
 
 void TranscriptEditorViewModel::dismissSuggestion()
@@ -771,6 +801,18 @@ int TranscriptEditorViewModel::rowEndMs(int row) const
     return u >= 0 ? int(m_utts[u].endMs) : -1;
 }
 
+QVariantMap TranscriptEditorViewModel::rowInfo(int row) const
+{
+    const int u = m_rows->utteranceOfRow(row);
+    if (u < 0) return {};
+    const EditorUtterance& utt = m_utts[u];
+    return {{QStringLiteral("utteranceId"), utt.id},
+            {QStringLiteral("speakerKey"), utt.speakerKey},
+            {QStringLiteral("timeLabel"), timeLabel(utt.startMs)},
+            {QStringLiteral("startMs"), int(utt.startMs)},
+            {QStringLiteral("endMs"), int(utt.endMs)}};
+}
+
 qreal TranscriptEditorViewModel::rowStartFraction(int row) const
 {
     const auto& rows = m_rows->rows();
@@ -923,6 +965,50 @@ void TranscriptEditorViewModel::afterMove(const QString& targetKey)
     }
 }
 
+QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget kind, const QString& value)
+{
+    if (!m_editor || ids.isEmpty()) return {};
+    // A művelet előtti beszélők: ebből derül ki, hány sor mozdult ténylegesen, és honnan.
+    QVector<QPair<int, QString>> before;
+    before.reserve(ids.size());
+    for (const QString& id : ids) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0) before.append({i, m_utts[i].speakerKey});
+    }
+
+    QString key;
+    ++m_opDepth;
+    switch (kind) {
+    case MoveTarget::Speaker:
+        if (m_editor->moveUtterances(ids, value)) key = value;
+        break;
+    case MoveTarget::Person:
+        key = m_editor->moveUtterancesToPerson(ids, value);
+        break;
+    case MoveTarget::NewParticipant:
+        key = m_editor->moveUtterancesToNewParticipant(ids);
+        break;
+    }
+    --m_opDepth;
+    if (key.isEmpty()) return {};
+    afterMove(key);
+
+    int moved = 0, last = -1;
+    QString source;
+    bool mixed = false;
+    for (const auto& b : std::as_const(before)) {
+        if (b.second == key) continue;          // már ott volt
+        ++moved;
+        last = std::max(last, b.first);
+        if (source.isEmpty()) source = b.second;
+        else if (source != b.second) mixed = true;
+    }
+    if (moved > 0)
+        publishChange(tr("%n sor átkerült ide: %1", nullptr, moved).arg(m_views.value(key).name),
+                      mixed ? QString() : source, key, last);
+    return key;
+}
+
 bool TranscriptEditorViewModel::moveRowToLane(int row, int lane)
 {
     const int u = m_rows->utteranceOfRow(row);
@@ -930,7 +1016,7 @@ bool TranscriptEditorViewModel::moveRowToLane(int row, int lane)
     if (!m_editor || u < 0 || key.isEmpty()) return false;
     const bool wholeSelection = m_selected.size() > 1 && m_selected.contains(u);
     const QStringList ids = wholeSelection ? selectedIds() : QStringList{m_utts[u].id};
-    if (!m_editor->moveUtterances(ids, key)) return false;
+    if (moveLines(ids, MoveTarget::Speaker, key).isEmpty()) return false;
     if (wholeSelection) clearSelection();
     return true;
 }
@@ -939,8 +1025,7 @@ bool TranscriptEditorViewModel::moveRowsToLane(int fromRow, int toRow, int lane)
 {
     const QString key = laneKey(lane);
     if (!m_editor || key.isEmpty()) return false;
-    const QStringList ids = idsOfRows(fromRow, toRow);
-    return !ids.isEmpty() && m_editor->moveUtterances(ids, key);
+    return !moveLines(idsOfRows(fromRow, toRow), MoveTarget::Speaker, key).isEmpty();
 }
 
 bool TranscriptEditorViewModel::moveSelectionToLane(int lane)
@@ -951,21 +1036,16 @@ bool TranscriptEditorViewModel::moveSelectionToLane(int lane)
 bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey)
 {
     if (!m_editor || m_selected.isEmpty() || speakerKey.isEmpty()) return false;
-    const bool ok = m_editor->moveUtterances(selectedIds(), speakerKey);
-    if (ok) {
-        afterMove(speakerKey);
-        clearSelection();
-    }
-    return ok;
+    if (moveLines(selectedIds(), MoveTarget::Speaker, speakerKey).isEmpty()) return false;
+    clearSelection();
+    return true;
 }
 
 bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName)
 {
     const QString name = personName.trimmed();
     if (!m_editor || m_selected.isEmpty() || name.isEmpty()) return false;
-    const QString key = m_editor->moveUtterancesToPerson(selectedIds(), name);
-    if (key.isEmpty()) return false;
-    afterMove(key);
+    if (moveLines(selectedIds(), MoveTarget::Person, name).isEmpty()) return false;
     clearSelection();
     return true;
 }
@@ -973,10 +1053,101 @@ bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName)
 bool TranscriptEditorViewModel::moveSelectionToNewParticipant()
 {
     if (!m_editor || m_selected.isEmpty()) return false;
-    const QString key = m_editor->moveUtterancesToNewParticipant(selectedIds());
-    if (key.isEmpty()) return false;
+    if (moveLines(selectedIds(), MoveTarget::NewParticipant, QString()).isEmpty()) return false;
     clearSelection();
     return true;
+}
+
+bool TranscriptEditorViewModel::moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey)
+{
+    if (!m_uttIndex.contains(utteranceId) || speakerKey.isEmpty()) return false;
+    return !moveLines({utteranceId}, MoveTarget::Speaker, speakerKey).isEmpty();
+}
+
+bool TranscriptEditorViewModel::moveUtteranceToPerson(const QString& utteranceId, const QString& personName)
+{
+    const QString name = personName.trimmed();
+    if (!m_uttIndex.contains(utteranceId) || name.isEmpty()) return false;
+    return !moveLines({utteranceId}, MoveTarget::Person, name).isEmpty();
+}
+
+bool TranscriptEditorViewModel::moveUtteranceToNewParticipant(const QString& utteranceId)
+{
+    if (!m_uttIndex.contains(utteranceId)) return false;
+    return !moveLines({utteranceId}, MoveTarget::NewParticipant, QString()).isEmpty();
+}
+
+bool TranscriptEditorViewModel::moveRestOfSource()
+{
+    if (!m_change.active || m_change.restCount <= 0) return false;
+    return mergeSpeakers(m_change.sourceKey, m_change.targetKey);
+}
+
+// ---- a legutóbbi átsorolás értesítése (alsó sáv) ----------------------------
+
+bool TranscriptEditorViewModel::needsAz(int number)
+{
+    // „az" a magánhangzóval kezdődő számnevek előtt: egy, öt…, ötven…, ötszáz…, ezer…
+    if (number == 1 || (number >= 1000 && number < 2000)) return true;
+    return QString::number(number).startsWith(QLatin1Char('5'));
+}
+
+int TranscriptEditorViewModel::changeRow() const
+{
+    return m_change.active && m_change.utterance >= 0 ? m_rows->rowOfUtterance(m_change.utterance) : -1;
+}
+
+void TranscriptEditorViewModel::publishChange(const QString& text, const QString& sourceKey,
+                                              const QString& targetKey, int lastUtterance)
+{
+    Change c;
+    c.active = true;
+    c.text = text;
+    c.targetKey = targetKey;
+    c.utterance = lastUtterance;
+    // A tömeges folytatás csak akkor ajánlható, ha a forrásnak maradt sora.
+    if (!sourceKey.isEmpty() && sourceKey != targetKey) {
+        for (const EditorSpeaker& s : std::as_const(m_speakers)) {
+            if (s.key != sourceKey || s.utteranceCount <= 0) continue;
+            c.sourceKey = sourceKey;
+            c.restCount = s.utteranceCount;
+            c.restText = (needsAz(s.utteranceCount) ? tr("%1 mind az %n sora", nullptr, s.utteranceCount)
+                                                    : tr("%1 mind a %n sora", nullptr, s.utteranceCount))
+                             .arg(s.displayName);
+        }
+    }
+    m_change = c;
+    ++m_changeSerial;
+    emit changeChanged();
+}
+
+void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromName, int lines,
+                                                          const QString& targetKey)
+{
+    const QString target = m_views.value(targetKey).name;
+    QString text;
+    if (lines <= 0 || target.isEmpty()) text = m_editor ? m_editor->undoText() : QString();
+    else if (needsAz(lines)) text = tr("%1 mind az %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
+    else text = tr("%1 mind a %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
+    publishChange(text, QString(), targetKey, -1);
+}
+
+void TranscriptEditorViewModel::clearChange()
+{
+    if (!m_change.active) return;
+    m_change = Change();
+    emit changeChanged();
+}
+
+void TranscriptEditorViewModel::undoChange()
+{
+    undo();
+}
+
+void TranscriptEditorViewModel::dismissChange()
+{
+    clearChange();
+    dismissSuggestion();
 }
 
 QString TranscriptEditorViewModel::addParticipant(const QString& personName)
@@ -997,18 +1168,42 @@ bool TranscriptEditorViewModel::reassignSpeaker(const QString& speakerKey, const
 {
     const QString name = personName.trimmed();
     if (!m_editor || name.isEmpty()) return false;
-    return m_editor->reassignSpeaker(speakerKey, name, fixVoiceprints);
+    const QString fromName = m_views.value(speakerKey).name;
+    const int lines = speakerInfo(speakerKey).value(QStringLiteral("utteranceCount")).toInt();
+    ++m_opDepth;
+    const bool ok = m_editor->reassignSpeaker(speakerKey, name, fixVoiceprints);
+    --m_opDepth;
+    if (!ok) return false;
+    const QString target = speakerKeyForPerson(name);
+    afterMove(target);
+    publishWholeSpeakerChange(fromName, lines, target);
+    return true;
 }
 
 bool TranscriptEditorViewModel::revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints)
 {
-    return m_editor && m_editor->revertSpeakerToAnonymous(speakerKey, fixVoiceprints);
+    if (!m_editor) return false;
+    const QString fromName = m_views.value(speakerKey).name;
+    const int lines = speakerInfo(speakerKey).value(QStringLiteral("utteranceCount")).toInt();
+    ++m_opDepth;
+    const bool ok = m_editor->revertSpeakerToAnonymous(speakerKey, fixVoiceprints);
+    --m_opDepth;
+    if (!ok) return false;
+    publishWholeSpeakerChange(fromName, lines, speakerKey);
+    return true;
 }
 
 bool TranscriptEditorViewModel::mergeSpeakers(const QString& fromKey, const QString& intoKey)
 {
-    if (!m_editor || !m_editor->mergeSpeakers(fromKey, intoKey)) return false;
+    if (!m_editor) return false;
+    const QString fromName = m_views.value(fromKey).name;
+    const int lines = speakerInfo(fromKey).value(QStringLiteral("utteranceCount")).toInt();
+    ++m_opDepth;
+    const bool ok = m_editor->mergeSpeakers(fromKey, intoKey);
+    --m_opDepth;
+    if (!ok) return false;
     afterMove(intoKey);
+    publishWholeSpeakerChange(fromName, lines, intoKey);
     return true;
 }
 
@@ -1154,6 +1349,26 @@ QVariantMap TranscriptEditorViewModel::speakerInfo(const QString& speakerKey) co
     return {};
 }
 
+QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, const QString& excludeKey) const
+{
+    const QString needle = foldForSearch(query.trimmed());
+    QVariantList out;
+    for (const EditorSpeaker& s : m_speakers) {
+        if (s.key == excludeKey) continue;
+        if (!needle.isEmpty() && !foldForSearch(s.displayName).contains(needle)) continue;
+        out.append(speakerMap(s, m_views.value(s.key).lane));
+    }
+    return out;
+}
+
+QString TranscriptEditorViewModel::speakerKeyForPerson(const QString& personName) const
+{
+    const QString name = personName.trimmed();
+    for (const EditorSpeaker& s : m_speakers)
+        if (!s.anonymous && s.personName.compare(name, Qt::CaseInsensitive) == 0) return s.key;
+    return {};
+}
+
 QVariantMap TranscriptEditorViewModel::voiceprintMaterial(const QString& speakerKey) const
 {
     QVariantMap out{{QStringLiteral("supported"), voiceAvailable()},
@@ -1230,8 +1445,8 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     } else if (state == QLatin1String("suggestion") || state == QLatin1String("suggestionShown")) {
         setRailVisible(true);
         if (m_demoSession && !m_demoSession->suggestionSeedUtteranceId().isEmpty()) {
-            m_editor->moveUtterances({m_demoSession->suggestionSeedUtteranceId()},
-                                     m_demoSession->suggestionTargetKey());
+            moveUtteranceToSpeaker(m_demoSession->suggestionSeedUtteranceId(),
+                                   m_demoSession->suggestionTargetKey());
             if (state == QLatin1String("suggestionShown")) setSuggestionShown(true);
             const int row = m_rows->nearestRow(m_suggestionAnchor);
             if (row >= 0) emit revealRequested(row);
@@ -1245,6 +1460,34 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         setSearchQuery(QStringLiteral("zsiráf"));
     } else if (state == QLatin1String("rail")) {
         setRailVisible(true);
+    } else if (state == QLatin1String("changeLine")) {
+        // Egy sor átkerül a szomszéd oszlopba: nincs hasonló-sor javaslat, csak a „mind a N
+        // sora" folytatás.
+        setRailVisible(true);
+        if (m_utts.size() > 3 && m_laneKeys.size() > 1)
+            moveUtteranceToSpeaker(m_utts[3].id, m_laneKeys[m_utts[3].speakerKey == m_laneKeys[1] ? 0 : 1]);
+    } else if (state == QLatin1String("changeSelection")) {
+        setRailVisible(true);
+        QSet<int> sel;
+        for (int i = 2; i <= 4 && i < m_utts.size(); ++i) sel.insert(i);
+        setSelection(sel, 2);
+        moveSelectionToSpeaker(m_laneKeys.value(std::min<int>(2, int(m_laneKeys.size()) - 1)));
+    } else if (state == QLatin1String("changeSpeaker")) {
+        setRailVisible(true);
+        reassignSpeaker(m_laneKeys.value(0), QStringLiteral("Molnár Eszter"), false);
+    } else if (state == QLatin1String("changeFilter")) {
+        // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.
+        setUncertainOnly(true);
+        for (const TranscriptListModel::Row& r : m_rows->rows()) {
+            if (r.gap) continue;
+            const QString from = m_utts[r.utterance].speakerKey;
+            for (const QString& key : std::as_const(m_laneKeys)) {
+                if (key == from) continue;
+                moveUtteranceToSpeaker(m_utts[r.utterance].id, key);
+                break;
+            }
+            break;
+        }
     }
 }
 

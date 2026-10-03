@@ -27,6 +27,7 @@ Item {
             model: root.vm.lanes
             Item {
                 id: laneHead
+                objectName: "laneHead"
                 required property var modelData
                 required property int index
                 width: Theme.laneWidth

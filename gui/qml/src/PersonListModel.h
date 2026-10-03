@@ -27,6 +27,9 @@ class PersonListModel : public QAbstractListModel {
     Q_PROPERTY(QString excludeName READ excludeName WRITE setExcludeName NOTIFY excludeNameChanged)
     // Üres keresőnél a meeting mostani résztvevői kimaradnak (nekik már van oszlopuk).
     Q_PROPERTY(bool hideMeetingPeople READ hideMeetingPeople WRITE setHideMeetingPeople NOTIFY hideMeetingPeopleChanged)
+    // A meeting résztvevői kereséskor sem jelennek meg (a soronkénti panelen ők külön, a
+    // meeting beszélőiként szerepelnek).
+    Q_PROPERTY(bool excludeMeetingPeople READ excludeMeetingPeople WRITE setExcludeMeetingPeople NOTIFY excludeMeetingPeopleChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     // Igaz, ha a beírt név még nem létezik → „Új személy: „…"" sor.
     Q_PROPERTY(bool canCreate READ canCreate NOTIFY countChanged)
@@ -48,6 +51,8 @@ public:
     void setExcludeName(const QString& name);
     bool hideMeetingPeople() const { return m_hideMeeting; }
     void setHideMeetingPeople(bool hide);
+    bool excludeMeetingPeople() const { return m_excludeMeeting; }
+    void setExcludeMeetingPeople(bool exclude);
     int count() const { return int(m_shown.size()); }
     bool canCreate() const { return m_canCreate; }
 
@@ -60,6 +65,7 @@ signals:
     void queryChanged();
     void excludeNameChanged();
     void hideMeetingPeopleChanged();
+    void excludeMeetingPeopleChanged();
     void countChanged();
 
 private:
@@ -69,6 +75,7 @@ private:
     QString m_query;
     QString m_exclude;
     bool m_hideMeeting = true;
+    bool m_excludeMeeting = false;
     bool m_canCreate = false;
     QVector<tanara::PersonInfo> m_all;
     QVector<tanara::PersonInfo> m_shown;

@@ -16,6 +16,7 @@ Item {
     signal seekRequested(real fraction)     // kattintás az áttekintőn
     signal searchStepRequested(int direction)
     signal nextUncertainRequested()         // „Következő bizonytalan"
+    signal speakerClicked(string speakerKey, Item anchor)   // név az áttekintőn: a teljes beszélő
 
     implicitHeight: column.implicitHeight + 22
     height: implicitHeight
@@ -249,13 +250,30 @@ Item {
                         width: lanes.width
                         height: 12
                         TLabel {
+                            id: laneName
+                            objectName: "overviewName"
                             width: 110
                             anchors.verticalCenter: parent.verticalCenter
                             text: laneRow.modelData.name
                             color: laneRow.other ? Theme.textMuted : Theme.speakerInk(laneRow.modelData.colorIndex)
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightSemiBold
+                            font.underline: laneNameHover.hovered && !laneRow.other
                             elide: Text.ElideRight
+                            // A név a TELJES beszélőt jelenti: átnevezés, összevonás, hanglenyomat.
+                            HoverHandler {
+                                id: laneNameHover
+                                enabled: !laneRow.other
+                                cursorShape: Qt.PointingHandCursor
+                            }
+                            TapHandler {
+                                enabled: !laneRow.other
+                                onTapped: root.speakerClicked(laneRow.modelData.key, laneName)
+                            }
+                            TToolTip {
+                                visible: laneNameHover.hovered
+                                text: qsTr("A teljes beszélő átnevezése vagy összevonása")
+                            }
                         }
                         TranscriptLaneStrip {
                             x: overview.trackX

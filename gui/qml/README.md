@@ -196,6 +196,34 @@ is never disturbed) — a second `tanara --record …` / `tanara --meeting <id>`
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
 
+## Transcript editor: the scope of a speaker correction
+
+Agreed with the owner; it deliberately departs from the designer's spec, where a click on a
+line's speaker name meant the whole speaker.
+
+- **A name click on a line is line-scoped.** `TranscriptTab.openLinePopover(row, anchor)` opens
+  `SpeakerPopover` with a scope selector: "Csak ez a sor" (default) · "Kijelölt N sor" (default
+  when the row is part of a multi-selection) · "<Név> minden sora (N)". The same panel opens from
+  "Más mondta…" (uncertain filter, row context menu). Title and footer always state the scope
+  and the count.
+- **Whole-speaker operations** start at speaker-level places: the rail header avatar and the
+  overview name (`openSpeakerPopover(key, anchor)`), with "Meghallgatás", merge list, the
+  voiceprint checkbox and the voiceprint section.
+- **After every reassignment** `TranscriptChangeBar` appears below the list (view-model:
+  `changeActive`, `changeText`, `changeRestCount` …): Visszavonás · "Hasonló N sor is" +
+  "Megmutatom" (the similarity suggestion; there is no inline box any more) · "<Forrás> mind a N
+  sora". It goes away on the next edit, on dismissal, or after ~12 s — it does not expire while
+  a similarity suggestion is waiting for an answer.
+- **A merge of two speakers of the meeting asks first**, with numbers (`mergeDialog`,
+  `requestMerge()`); a line or a selection never asks.
+- In the uncertain filter a corrected line stays in place ("javítva") until the filter is
+  applied again.
+
+Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPopover`,
+`speakerPopover`, `changeLine`, `suggestion`, `suggestionShown`, `changeSelection`,
+`changeSpeaker`, `changeFilter`, `mergeConfirm`, e.g.
+`gui/qml/shoot.sh 'TranscriptTab:1004x640:demoState="changeLine"'`.
+
 ## C++ view-models
 
 1. Add `gui/qml/src/FooViewModel.h/.cpp` in namespace `tanara_qml`, a `QObject` with

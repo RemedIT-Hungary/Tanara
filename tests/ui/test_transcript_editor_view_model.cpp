@@ -343,8 +343,17 @@ private slots:
         QCOMPARE(inserted.count(), 1);
         QCOMPARE(resets.count(), 0);
 
-        // Kézzel a helyére téve sem bizonytalan többé.
+        // Kézzel a helyére téve sem bizonytalan többé — de a szűrőben a helyén marad
+        // („javítva"), hogy ne tűnjön el a kurzor alól; a szűrő újbóli alkalmazásáig.
         QVERIFY(vm.moveRowToLane(1, 0));
+        QCOMPARE(vm.uncertainCount(), 0);
+        QCOMPARE(vm.rows()->rowCount(), 2);
+        QCOMPARE(cell(vm, 1, Role::UtteranceIndexRole).toInt(), 17);
+        QVERIFY(cell(vm, 1, Role::CorrectedRole).toBool());
+        QVERIFY(!cell(vm, 1, Role::UncertainRole).toBool());
+        QCOMPARE(resets.count(), 0);
+        vm.setUncertainOnly(false);
+        vm.setUncertainOnly(true);
         QCOMPARE(vm.rows()->rowCount(), 1);
 
         // Szűrő ki: minden sor látszik (ez módváltás, itt megengedett a reset).
@@ -364,7 +373,7 @@ private slots:
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
 
         // A szűrőn kívüli sor javítása javaslatot hoz: a horgony sora megjelenik a szűrőben,
-        // hogy a javaslat-doboznak legyen helye.
+        // hogy a javított sor (amelyre a sáv javaslata vonatkozik) ne tűnjön el.
         QVERIFY(ed->moveUtterancesToPerson({uid(4)}, QStringLiteral("Cili")).size() > 0);
         QVERIFY(vm.suggestionActive());
         const int anchorRow = vm.rows()->rowOfUtterance(4);
@@ -381,6 +390,124 @@ private slots:
         vm.dismissSuggestion();
         QCOMPARE(vm.rows()->rowOfUtterance(4), -1);
         QCOMPARE(resets.count(), 0);
+    }
+
+    // Az értesítő sáv adatai: mi történt, a „mind a N sora" folytatás (egy további lépés), és
+    // hogy a visszavonás / más szerkesztés megszünteti.
+    void changeNotice_lineMove_restOfSource_undo()
+    {
+        Fixture fx;
+        auto ed = fx.editor(/*withEmbedder*/ false);
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(!vm.changeActive());
+        QSignalSpy changes(&vm, &TranscriptEditorViewModel::changeChanged);
+
+        // EGY sor (azonosítóval): csak az megy; a forrásnak (11-ből) 10 sora marad.
+        QVERIFY(vm.moveUtteranceToSpeaker(uid(4), kB2));
+        QCOMPARE(speakerOf(vm, 4), kB2);
+        QCOMPARE(vm.speakerInfo(kB1).value(QStringLiteral("utteranceCount")).toInt(), 10);
+        QVERIFY(vm.changeActive());
+        QCOMPARE(changes.count(), 1);
+        QCOMPARE(vm.changeText(), QStringLiteral("1 sor átkerült ide: Beszélő 2"));
+        QCOMPARE(vm.changeRow(), 4);
+        QCOMPARE(vm.changeRestCount(), 10);
+        QCOMPARE(vm.changeRestText(), QStringLiteral("Beszélő 1 mind a 10 sora"));
+        QCOMPARE(vm.changeSourceKey(), kB1);
+        QCOMPARE(vm.changeTargetKey(), kB2);
+        QVERIFY(!vm.moveUtteranceToSpeaker(uid(4), kB2));  // már ott van: nincs lépés, a sáv marad
+        QCOMPARE(changes.count(), 1);
+        QVERIFY(!vm.moveUtteranceToSpeaker(QStringLiteral("nincs-ilyen"), kB2));
+
+        // „Beszélő 1 mind a 10 sora": a megmaradt sorok is mennek — egy további lépés.
+        const int serial = vm.changeSerial();
+        QVERIFY(vm.moveRestOfSource());
+        QCOMPARE(vm.speakerCount(), 1);
+        QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("utteranceCount")).toInt(), 18);
+        QVERIFY(vm.changeSerial() > serial);
+        QCOMPARE(vm.changeText(), QStringLiteral("Beszélő 1 mind a 10 sora átkerült ide: Beszélő 2"));
+        QCOMPARE(vm.changeRestCount(), 0);                  // teljes beszélő után nincs folytatás
+        QVERIFY(!vm.moveRestOfSource());
+
+        vm.undoChange();                                    // csak a tömeges lépés
+        QVERIFY(!vm.changeActive());
+        QCOMPARE(vm.speakerCount(), 2);
+        QCOMPARE(vm.speakerInfo(kB1).value(QStringLiteral("utteranceCount")).toInt(), 10);
+        QCOMPARE(speakerOf(vm, 4), kB2);
+        vm.undo();
+        QCOMPARE(speakerOf(vm, 4), kB1);
+        QVERIFY(!vm.canUndo());
+
+        // Több sor vegyes forrásból: darabszám van, tömeges folytatás nincs.
+        vm.selectRows(0, 1);                                // B1 + B2
+        QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
+        QCOMPARE(vm.changeText(), QStringLiteral("2 sor átkerült ide: Cili"));
+        QCOMPARE(vm.changeRestCount(), 0);
+        QCOMPARE(vm.changeSourceKey(), QString());
+        // Más szerkesztés (megerősítés) megszünteti az értesítést; bezárni is lehet.
+        QVERIFY(vm.confirmRow(5));
+        QVERIFY(!vm.changeActive());
+        QVERIFY(vm.moveUtteranceToNewParticipant(uid(2)));
+        QVERIFY(vm.changeActive());
+        QCOMPARE(vm.changeRestCount(), 9);
+        vm.dismissChange();
+        QVERIFY(!vm.changeActive());
+        QVERIFY(vm.canUndo());
+
+        // Teljes beszélő: a név nem kap ragot, a darabszám névelője a számhoz igazodik.
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
+        QCOMPARE(vm.changeText(), QStringLiteral("Beszélő 2 mind a 6 sora átkerült ide: Béla"));
+        QCOMPARE(vm.speakerKeyForPerson(QStringLiteral("béla")), kB2);
+        QCOMPARE(vm.speakerKeyForPerson(QStringLiteral("Nincs Ilyen")), QString());
+        QVERIFY(vm.revertSpeakerToAnonymous(kB2, false));
+        QCOMPARE(vm.changeText(), QStringLiteral("Béla mind a 6 sora átkerült ide: Beszélő 2"));
+
+        QVERIFY(TranscriptEditorViewModel::needsAz(1));
+        QVERIFY(TranscriptEditorViewModel::needsAz(5));
+        QVERIFY(TranscriptEditorViewModel::needsAz(52));
+        QVERIFY(TranscriptEditorViewModel::needsAz(1000));
+        QVERIFY(!TranscriptEditorViewModel::needsAz(2));
+        QVERIFY(!TranscriptEditorViewModel::needsAz(11));
+        QVERIFY(!TranscriptEditorViewModel::needsAz(41));
+        QVERIFY(!TranscriptEditorViewModel::needsAz(100));
+    }
+
+    // A javaslat a sávból fogadható el (egy lépés, új értesítéssel); a szűrőben a „Megmutatom"
+    // a javasolt (nem bizonytalan) sorokat is láthatóvá teszi.
+    void changeNotice_suggestion_inFilter()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        vm.setUncertainOnly(true);
+        const int filtered = vm.rows()->rowCount();
+
+        // A 4. sor (C hangja a „Beszélő 1" címkén) új résztvevőhöz: javaslat a többi C-sorra.
+        QVERIFY(vm.moveUtteranceToPerson(uid(4), QStringLiteral("Cili")));
+        QVERIFY(vm.changeActive());
+        QVERIFY(vm.suggestionActive());
+        const int similar = vm.suggestionCount();
+        QVERIFY(similar >= 3);
+        QVERIFY(vm.rows()->rowOfUtterance(4) >= 0);         // a javított sor a szűrőben is látszik
+        const int withAnchor = vm.rows()->rowCount();
+        QVERIFY(withAnchor > filtered);
+
+        vm.setSuggestionShown(true);                        // a javasolt sorok megjelennek
+        QVERIFY(vm.rows()->rowOfUtterance(7) >= 0);
+        QVERIFY(cell(vm, vm.rows()->rowOfUtterance(7), Role::SuggestedRole).toBool());
+        vm.setSuggestionShown(false);
+        QCOMPARE(vm.rows()->rowCount(), withAnchor);
+
+        const QString target = vm.changeTargetKey();
+        QVERIFY(vm.acceptSuggestion());
+        QVERIFY(!vm.suggestionActive());
+        QCOMPARE(vm.changeText(), QStringLiteral("%1 sor átkerült ide: Cili").arg(similar));
+        QCOMPARE(vm.speakerInfo(target).value(QStringLiteral("utteranceCount")).toInt(), similar + 1);
+        vm.undo();                                          // egy lépés: csak a javasoltak
+        QCOMPARE(vm.speakerInfo(target).value(QStringLiteral("utteranceCount")).toInt(), 1);
+        QVERIFY(!vm.changeActive());
     }
 
     void search_accentInsensitive()

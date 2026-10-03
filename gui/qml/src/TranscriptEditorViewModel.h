@@ -91,6 +91,19 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // „Megmutatom": a javasolt sorok kiemelve a sínen és az áttekintőn.
     Q_PROPERTY(bool suggestionShown READ suggestionShown WRITE setSuggestionShown NOTIFY suggestionChanged)
 
+    // A legutóbbi átsorolás értesítése (az alsó sáv): mi történt, és mi folytatható belőle.
+    // Minden új átsorolás lecseréli; visszavonás / újra / más szerkesztés megszünteti.
+    Q_PROPERTY(bool changeActive READ changeActive NOTIFY changeChanged)
+    Q_PROPERTY(int changeSerial READ changeSerial NOTIFY changeChanged)     // sávonként nő (időzítő)
+    Q_PROPERTY(QString changeText READ changeText NOTIFY changeChanged)
+    // Az utoljára áthelyezett sor a listában (maradjon látható); -1 = nincs ilyen.
+    Q_PROPERTY(int changeRow READ changeRow NOTIFY changeChanged)
+    // „<Forrás> mind a N sora": a forrás-beszélő megmaradt sorai (0 = nincs ilyen folytatás).
+    Q_PROPERTY(int changeRestCount READ changeRestCount NOTIFY changeChanged)
+    Q_PROPERTY(QString changeRestText READ changeRestText NOTIFY changeChanged)
+    Q_PROPERTY(QString changeSourceKey READ changeSourceKey NOTIFY changeChanged)
+    Q_PROPERTY(QString changeTargetKey READ changeTargetKey NOTIFY changeChanged)
+
     // Hang-elemzés (megszólalás-embeddingek): a bizonytalanság és a javaslat alapja.
     Q_PROPERTY(bool voiceAvailable READ voiceAvailable NOTIFY voiceStateChanged)
     Q_PROPERTY(bool embeddingRunning READ embeddingRunning NOTIFY voiceStateChanged)
@@ -176,6 +189,15 @@ public:
     bool suggestionShown() const { return m_suggestionShown; }
     void setSuggestionShown(bool shown);
 
+    bool changeActive() const { return m_change.active; }
+    int changeSerial() const { return m_changeSerial; }
+    QString changeText() const { return m_change.text; }
+    int changeRow() const;
+    int changeRestCount() const { return m_change.restCount; }
+    QString changeRestText() const { return m_change.restText; }
+    QString changeSourceKey() const { return m_change.restCount > 0 ? m_change.sourceKey : QString(); }
+    QString changeTargetKey() const { return m_change.targetKey; }
+
     bool voiceAvailable() const;
     bool embeddingRunning() const;
     qreal embeddingProgress() const { return m_embeddingProgress; }
@@ -197,6 +219,9 @@ public:
     SpeakerView speakerView(const QString& key) const { return m_views.value(key); }
     bool isSelected(int utterance) const { return m_selected.contains(utterance); }
     bool isSuggested(int utterance) const { return m_suggestionShown && m_suggested.contains(utterance); }
+    // A „Bizonytalan" szűrőben frissen javított sor: a szűrő újbóli alkalmazásáig látható marad
+    // (ne tűnjön el a kurzor alól, és ne csússzon más sor a következő kattintás alá).
+    bool isSticky(int utterance) const { return m_sticky.contains(utterance); }
     int suggestionAnchor() const { return m_suggestionAnchor; }
     QString richText(int utterance) const;
     static QString timeLabel(qint64 ms);
@@ -211,6 +236,9 @@ public:
     Q_INVOKABLE int timeAtFraction(qreal fraction) const;
     Q_INVOKABLE int rowStartMs(int row) const;
     Q_INVOKABLE int rowEndMs(int row) const;
+    // A sor megszólalása a soronkénti panelhez: { utteranceId, speakerKey, timeLabel, startMs,
+    // endMs }; elválasztónál / érvénytelen sornál üres.
+    Q_INVOKABLE QVariantMap rowInfo(int row) const;
 
     // ---- kijelölés --------------------------------------------------------
     // Kattintás egy soron: sima → csak ez (újra rákattintva megszűnik); toggle (Ctrl) →
@@ -233,6 +261,16 @@ public:
     Q_INVOKABLE bool moveSelectionToSpeaker(const QString& speakerKey);
     Q_INVOKABLE bool moveSelectionToPerson(const QString& personName);
     Q_INVOKABLE bool moveSelectionToNewParticipant();           // névtelen új résztvevő
+    // EGY sor (a névre kattintva, „Csak ez a sor"): a megszólalás azonosítójával, hogy a
+    // panel nyitva tartása alatt változó sorszám (szűrő) ne vihessen el másik sort.
+    Q_INVOKABLE bool moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey);
+    Q_INVOKABLE bool moveUtteranceToPerson(const QString& utteranceId, const QString& personName);
+    Q_INVOKABLE bool moveUtteranceToNewParticipant(const QString& utteranceId);
+    // „<Forrás> mind a N sora": a legutóbbi soronkénti áthelyezés forrásának MEGMARADT sorai
+    // is a célhoz kerülnek (a két beszélő összevonása) — egy további visszavonási lépés.
+    Q_INVOKABLE bool moveRestOfSource();
+    Q_INVOKABLE void undoChange();                              // a sáv „Visszavonás" gombja
+    Q_INVOKABLE void dismissChange();                           // a sáv bezárása (a javaslat is megszűnik)
     Q_INVOKABLE QString addParticipant(const QString& personName = QString());
     Q_INVOKABLE bool removeParticipant(const QString& speakerKey);
     Q_INVOKABLE bool reassignSpeaker(const QString& speakerKey, const QString& personName,
@@ -267,6 +305,13 @@ public:
 
     // ---- beszélő / hanglenyomat -------------------------------------------
     Q_INVOKABLE QVariantMap speakerInfo(const QString& speakerKey) const;
+    // A meeting beszélői a keresőszövegre szűrve (ékezet- és kisbetű-függetlenül, mint a
+    // személylista), `excludeKey` nélkül — a `speakers` elemeivel.
+    Q_INVOKABLE QVariantList speakersMatching(const QString& query, const QString& excludeKey) const;
+    // A személy beszélő-kulcsa ebben a meetingben; üres, ha nem résztvevő.
+    Q_INVOKABLE QString speakerKeyForPerson(const QString& personName) const;
+    // Magyar névelő a szám elé: igaz → „az" (1, 5, 50…, 1000…), különben „a".
+    Q_INVOKABLE static bool needsAz(int number);
     // { supported, usableLines, usableSec, missingSec, sufficient }
     Q_INVOKABLE QVariantMap voiceprintMaterial(const QString& speakerKey) const;
     // { ok, message, usedLines, usedSec, missingSec } — csak kifejezett műveletre készül.
@@ -281,7 +326,8 @@ public:
     bool isMeetingPerson(const QString& name) const;
 
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
-    // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty".
+    // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
+    // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter".
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
 
@@ -297,6 +343,7 @@ signals:
     void selectionChanged();
     void undoStateChanged();
     void suggestionChanged();
+    void changeChanged();
     void voiceStateChanged();
     void searchChanged();
     void highlightColorChanged();
@@ -328,6 +375,14 @@ private:
     QStringList idsOfRows(int fromRow, int toRow) const;
     QString laneKey(int lane) const;
     void afterMove(const QString& targetKey);
+    enum class MoveTarget { Speaker, Person, NewParticipant };
+    // A soronkénti áthelyezések közös útja: művelet + oszlop-kibontás + értesítő sáv.
+    // Vissza: a cél-beszélő kulcsa (üres = nem történt semmi).
+    QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value);
+    void publishChange(const QString& text, const QString& sourceKey, const QString& targetKey,
+                       int lastUtterance);
+    void publishWholeSpeakerChange(const QString& fromName, int lines, const QString& targetKey);
+    void clearChange();
     bool loadRailState() const;
     void saveRailState() const;
     void applyPendingDemoState();
@@ -372,6 +427,20 @@ private:
     int m_suggestionAnchor = -1;
     QString m_suggestionTargetName;
     bool m_suggestionShown = false;
+
+    struct Change {
+        bool active = false;
+        QString text;
+        QString sourceKey;
+        QString targetKey;
+        int utterance = -1;
+        int restCount = 0;
+        QString restText;
+    };
+    Change m_change;
+    int m_changeSerial = 0;
+    int m_opDepth = 0;                  // > 0: saját művelet fut (a sávot utána mi írjuk ki)
+    QSet<int> m_sticky;
 
     qreal m_embeddingProgress = 0.0;
     bool m_cancelRequested = false;

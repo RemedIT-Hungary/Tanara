@@ -76,6 +76,14 @@ void PersonListModel::setHideMeetingPeople(bool hide)
     refilter();
 }
 
+void PersonListModel::setExcludeMeetingPeople(bool exclude)
+{
+    if (m_excludeMeeting == exclude) return;
+    m_excludeMeeting = exclude;
+    emit excludeMeetingPeopleChanged();
+    refilter();
+}
+
 void PersonListModel::refresh()
 {
     m_all = m_editor ? m_editor->people() : QVector<PersonInfo>();
@@ -109,7 +117,7 @@ void PersonListModel::refilter()
         if (!folded.isEmpty() && foldForSearch(p.name) == folded) exact = true;
         if (!m_exclude.isEmpty() && p.name.compare(m_exclude, Qt::CaseInsensitive) == 0) continue;
         const bool here = m_editor && m_editor->isMeetingPerson(p.name);
-        if (here && m_hideMeeting && needle.isEmpty()) continue;
+        if (here && (m_excludeMeeting || (m_hideMeeting && needle.isEmpty()))) continue;
         out.append(p);
         inMeeting.append(here);
     }

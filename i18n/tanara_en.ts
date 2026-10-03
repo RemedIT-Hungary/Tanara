@@ -1649,6 +1649,59 @@
         <translation>Merge within this meeting</translation>
     </message>
     <message>
+        <source>Ebben a megbeszélésben</source>
+        <translation>In this meeting</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor</source>
+        <translation>
+            <numerusform>%n line</numerusform>
+            <numerusform>%n lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Meghallgatás: ez a sor</source>
+        <translation>Listen: this line</translation>
+    </message>
+    <message>
+        <source>Kinek a sora ez?</source>
+        <translation>Whose line is this?</translation>
+    </message>
+    <message numerus="yes">
+        <source>Kié a kijelölt %n sor?</source>
+        <translation>
+            <numerusform>Whose is the %n selected line?</numerusform>
+            <numerusform>Whose are the %n selected lines?</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Most: %1 · %2</source>
+        <translation>Now: %1 · %2</translation>
+    </message>
+    <message>
+        <source>A kattintott sor most: %1</source>
+        <translation>The clicked line is now: %1</translation>
+    </message>
+    <message>
+        <source>Csak ez a sor</source>
+        <translation>Only this line</translation>
+    </message>
+    <message numerus="yes">
+        <source>Kijelölt %n sor</source>
+        <translation>
+            <numerusform>%n selected line</numerusform>
+            <numerusform>%n selected lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 minden sora (%2)</source>
+        <translation>All lines of %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Új névtelen résztvevő</source>
+        <translation>New unnamed participant</translation>
+    </message>
+    <message>
         <source>A sorok kerüljenek ki %1 hanglenyomatából (téves felismerés)</source>
         <translation>Remove these lines from %1&apos;s voiceprint (wrong match)</translation>
     </message>
@@ -1692,15 +1745,29 @@
         <source>Üres oszlop eltávolítása</source>
         <translation>Remove empty column</translation>
     </message>
+    <message numerus="yes">
+        <source>%n sor kerül át · visszavonható: Ctrl+Z</source>
+        <translation>
+            <numerusform>%n line will move · undo: Ctrl+Z</numerusform>
+            <numerusform>%n lines will move · undo: Ctrl+Z</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Visszavonható: Ctrl+Z</source>
         <translation>Undo with Ctrl+Z</translation>
     </message>
     <message numerus="yes">
-        <source>Minden sora (%n) átkerül · visszavonható: Ctrl+Z</source>
+        <source>Mind az %n sor átkerül · visszavonható: Ctrl+Z</source>
         <translation>
-            <numerusform>Its %n line moves · undo with Ctrl+Z</numerusform>
-            <numerusform>All %n lines move · undo with Ctrl+Z</numerusform>
+            <numerusform>All %n line will move · undo: Ctrl+Z</numerusform>
+            <numerusform>All %n lines will move · undo: Ctrl+Z</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Mind a %n sor átkerül · visszavonható: Ctrl+Z</source>
+        <translation>
+            <numerusform>All %n line will move · undo: Ctrl+Z</numerusform>
+            <numerusform>All %n lines will move · undo: Ctrl+Z</numerusform>
         </translation>
     </message>
 </context>
@@ -2280,6 +2347,51 @@
     </message>
 </context>
 <context>
+    <name>TranscriptChangeBar</name>
+    <message>
+        <source>Visszavonás</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <source>Az átsorolás visszavonása (Ctrl+Z)</source>
+        <translation>Undo the reassignment (Ctrl+Z)</translation>
+    </message>
+    <message numerus="yes">
+        <source>Hasonló %n sor is</source>
+        <translation>
+            <numerusform>%n similar line too</numerusform>
+            <numerusform>%n similar lines too</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Még %n sor hasonlít erre a hangra: ezek is átkerülnek ide: %1</source>
+        <translation>
+            <numerusform>%n more line resembles this voice: it will move to %1 as well</numerusform>
+            <numerusform>%n more lines resemble this voice: they will move to %1 as well</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Elrejtem</source>
+        <translation>Hide</translation>
+    </message>
+    <message>
+        <source>Megmutatom</source>
+        <translation>Show</translation>
+    </message>
+    <message>
+        <source>A hasonló sorok kiemelése a sávokon és az áttekintőn</source>
+        <translation>Highlight the similar lines on the lanes and the overview</translation>
+    </message>
+    <message>
+        <source>A beszélő összes megmaradt sora is átkerül (előbb megerősítést kér): %1</source>
+        <translation>Moves all remaining lines of the speaker as well (asks for confirmation first): %1</translation>
+    </message>
+    <message>
+        <source>Bezárás</source>
+        <translation>Close</translation>
+    </message>
+</context>
+<context>
     <name>TranscriptRow</name>
     <message numerus="yes">
         <source>··· %n biztos sor elrejtve</source>
@@ -2289,8 +2401,12 @@
         </translation>
     </message>
     <message>
-        <source>A teljes beszélő átnevezése vagy összevonása</source>
-        <translation>Rename or merge the whole speaker</translation>
+        <source>Más mondta? A kijelölt sorok beszélőjének javítása</source>
+        <translation>Someone else said it? Fix the speaker of the selected lines</translation>
+    </message>
+    <message>
+        <source>Más mondta? Ennek a sornak a beszélője javítható</source>
+        <translation>Someone else said it? Fix the speaker of this line</translation>
     </message>
     <message>
         <source>Lejátszás innen</source>
@@ -2313,35 +2429,16 @@
         <translation>The speaker is right: the line is no longer uncertain</translation>
     </message>
     <message>
+        <source>Más mondta…</source>
+        <translation>Someone else…</translation>
+    </message>
+    <message>
+        <source>Csak ez a sor kerül át ahhoz, akit választasz</source>
+        <translation>Only this line moves to the person you choose</translation>
+    </message>
+    <message>
         <source>Meghallgatom</source>
         <translation>Listen</translation>
-    </message>
-    <message numerus="yes">
-        <source>Még %n sor hasonlít erre a hangra. Átrakjam őket ehhez: %1?</source>
-        <translation>
-            <numerusform>%n more line sounds like this voice. Move it to %1?</numerusform>
-            <numerusform>%n more lines sound like this voice. Move them to %1?</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Átrakom</source>
-        <translation>Move</translation>
-    </message>
-    <message>
-        <source>Elrejtem</source>
-        <translation>Hide</translation>
-    </message>
-    <message>
-        <source>Megmutatom</source>
-        <translation>Show</translation>
-    </message>
-    <message>
-        <source>A hasonló sorok kiemelése a sávokon és az áttekintőn</source>
-        <translation>Highlight the similar lines on the lanes and the overview</translation>
-    </message>
-    <message>
-        <source>Nem</source>
-        <translation>No</translation>
     </message>
 </context>
 <context>
@@ -2413,8 +2510,42 @@
         <translation>New unnamed participant</translation>
     </message>
     <message>
+        <source>Összevonod a két beszélőt?</source>
+        <translation>Merge the two speakers?</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 %n sora összeolvad ezzel: %2 (%3). Visszavonható: Ctrl+Z.</source>
+        <translation>
+            <numerusform>%n line of %1 will be merged into %2 (%3). Undo: Ctrl+Z.</numerusform>
+            <numerusform>%n lines of %1 will be merged into %2 (%3). Undo: Ctrl+Z.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor</source>
+        <translation>
+            <numerusform>%n line</numerusform>
+            <numerusform>%n lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Összevonás</source>
+        <translation>Merge</translation>
+    </message>
+    <message>
         <source>Lejátszás innen</source>
         <translation>Play from here</translation>
+    </message>
+    <message>
+        <source>Más mondta… (a kijelölt sorok)</source>
+        <translation>Someone else said it… (the selected lines)</translation>
+    </message>
+    <message>
+        <source>Más mondta… (ez a sor)</source>
+        <translation>Someone else said it… (this line)</translation>
     </message>
     <message>
         <source>Sor másolása</source>
@@ -2514,6 +2645,10 @@
     <message>
         <source>Keresés az átiratban (Ctrl+Shift+F)</source>
         <translation>Search the transcript (Ctrl+Shift+F)</translation>
+    </message>
+    <message>
+        <source>A teljes beszélő átnevezése vagy összevonása</source>
+        <translation>Rename or merge the whole speaker</translation>
     </message>
 </context>
 <context>
@@ -6278,6 +6413,13 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <source>Egyéb (%1)</source>
         <translation>Other (%1)</translation>
     </message>
+    <message numerus="yes">
+        <source>%n sor átkerült ide: %1</source>
+        <translation>
+            <numerusform>%n line moved to %1</numerusform>
+            <numerusform>%n lines moved to %1</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Nincs letöltve a hangmodell, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>
         <translation>The voice model is not downloaded, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
@@ -6285,6 +6427,34 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     <message>
         <source>A megbeszélés lekevert hangja nem érhető el, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>
         <translation>The meeting&apos;s mixdown audio is not available, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 mind az %n sora</source>
+        <translation>
+            <numerusform>All %n line of %1</numerusform>
+            <numerusform>All %n lines of %1</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 mind a %n sora</source>
+        <translation>
+            <numerusform>All %n line of %1</numerusform>
+            <numerusform>All %n lines of %1</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 mind az %n sora átkerült ide: %2</source>
+        <translation>
+            <numerusform>All %n line of %1 moved to %2</numerusform>
+            <numerusform>All %n lines of %1 moved to %2</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 mind a %n sora átkerült ide: %2</source>
+        <translation>
+            <numerusform>All %n line of %1 moved to %2</numerusform>
+            <numerusform>All %n lines of %1 moved to %2</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>%n megszólalás a vágólapra másolva.</source>
