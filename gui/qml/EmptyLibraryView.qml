@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // M01 — üres könyvtár: mit csinál a Tanara, a három lépés (Felvétel → Átirat →
-// Összefoglaló), „Felvétel indítása” és „Hívásfigyelő beállítása” (Beállítások › Figyelő).
+// Összefoglaló), „Felvétel indítása”, „Hangfájl importálása” (a második út az első
+// megbeszéléshez) és „Hívásfigyelő beállítása” (Beállítások › Figyelő).
 Item {
     id: root
 
@@ -45,7 +46,7 @@ Item {
 
     ColumnLayout {
         anchors.centerIn: parent
-        width: Math.min(520, parent.width - 2 * Theme.space5)
+        width: Math.min(580, parent.width - 2 * Theme.space5)
         spacing: 0
 
         TLabel {
@@ -88,6 +89,14 @@ Item {
                 onClicked: if (root.shell) root.shell.openRecorder()
             }
             TButton {
+                objectName: "emptyImport"
+                implicitHeight: 40
+                text: qsTr("Hangfájl importálása")
+                iconName: "import"
+                font.weight: Theme.weightSemiBold
+                onClicked: if (root.shell) root.shell.openImport()
+            }
+            TButton {
                 implicitHeight: 40
                 text: qsTr("Hívásfigyelő beállítása")
                 iconName: "radar"
@@ -99,6 +108,16 @@ Item {
         TLabel {
             Layout.fillWidth: true
             Layout.topMargin: 26
+            text: qsTr("Már megvan a felvétel? Importálj hang- vagy videófájlt (ide is húzhatod): "
+                       + "ugyanúgy készül belőle átirat és összefoglaló.")
+            muted: true
+            font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.5
+            wrapMode: Text.Wrap
+        }
+        TLabel {
+            Layout.fillWidth: true
+            Layout.topMargin: 8
             text: qsTr("A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást "
                        + "észlel. A felvételt mindig te indítod.")
             muted: true

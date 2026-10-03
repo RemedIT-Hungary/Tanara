@@ -30,6 +30,8 @@ enum class JobKind {
     AnalyzeTopics,   // téma-elemzés sor (komplex 2. kör) — meetingenként egy feladat
     Mixdown,         // önálló lekeverés (nem az átírás része)
     Identify,        // résztvevők azonosítása hang alapján (átirat után)
+    Import,          // hangfájlok importálása új meetingbe — a feladat a LEENDŐ meeting
+                     // azonosítója alatt fut (a meeting csak a sikeres végén jön létre)
 };
 
 enum class StageState { Waiting, Running, Done, Failed, Skipped };

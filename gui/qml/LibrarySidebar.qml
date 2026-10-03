@@ -14,6 +14,9 @@ Item {
     property alias forceEmpty: libraryModel.forceEmpty
     property alias searchText: libraryModel.searchText
     readonly property alias library: libraryModel
+    property var importModel: null            // ShellImportModel: a háttérben futó importálás sávjához
+    // A futó importálás sávjára kattintottak (a Main.qml a párbeszédablakot hozza vissza).
+    signal importStripClicked()
 
     function focusSearch() {
         search.forceActiveFocus()
@@ -66,12 +69,31 @@ Item {
         anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 14 }
         spacing: 10
 
-        TButton {
+        RowLayout {
             Layout.fillWidth: true
-            text: qsTr("Új felvétel")
-            variant: "record"
-            toolTipText: qsTr("A felvevő megnyitása külön ablakban (Ctrl+N)")
-            onClicked: if (root.shell) root.shell.openRecorder()
+            spacing: 6
+            TButton {
+                Layout.fillWidth: true
+                text: qsTr("Új felvétel")
+                variant: "record"
+                toolTipText: qsTr("A felvevő megnyitása külön ablakban (Ctrl+N)")
+                onClicked: if (root.shell) root.shell.openRecorder()
+            }
+            // Másodlagos út egy megbeszéléshez: meglévő hangfájlból.
+            TIconButton {
+                objectName: "sidebarImport"
+                iconName: "import"
+                toolTipText: qsTr("Hangfájl importálása… (Ctrl+I)")
+                onClicked: if (root.shell) root.shell.openImport()
+            }
+        }
+
+        ShellImportStrip {
+            objectName: "importStrip"
+            visible: root.importModel ? root.importModel.running : false
+            Layout.fillWidth: true
+            model: root.importModel
+            onClicked: root.importStripClicked()
         }
 
         TSearchField {

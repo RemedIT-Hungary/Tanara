@@ -491,6 +491,7 @@ struct AppController::Impl {
     MeetingLibrary*    library = nullptr;
     TrackCatalog*      tracks = nullptr;
     WaveformService*   waveforms = nullptr;
+    AudioImporter*     importer = nullptr;
     std::unique_ptr<JobStats> jobStats;      // korábbi futások sebessége (becsléshez)
 
     // Futó átírás: megszakításhoz a job / a lekeverés-lánc kapcsolata.
@@ -716,6 +717,39 @@ AppController::AppController(QObject* parent)
     d->library   = new MeetingLibrary(d->store, d->jobs, this);
     d->tracks    = new TrackCatalog(d->store, this);
     d->waveforms = new WaveformService(this);
+    d->importer  = new AudioImporter(d->store, this);
+    // Importálás → strukturált feladat a LEENDŐ meeting azonosítóján (a könyvtárban még
+    // nincs ilyen meeting; a héj az activeJobs()-ból / a jelekből mutatja).
+    connect(d->importer, &AudioImporter::started, this, [this](const QString& id, const QString& title) {
+        d->jobs->begin(id, JobKind::Import, tr("Importálás"));
+        d->jobs->setMessage(id, JobKind::Import, title);
+    });
+    connect(d->importer, &AudioImporter::progress, this,
+            [this](const QString& id, int percent, int fileIndex, int fileCount) {
+        d->jobs->setPercent(id, JobKind::Import, percent);
+        if (fileCount > 1)
+            d->jobs->setCounts(id, JobKind::Import, fileIndex, fileCount);
+    });
+    connect(d->importer, &AudioImporter::finished, this, [this](const QString& id, const Meeting& m) {
+        d->jobs->finish(id, JobKind::Import);
+        emit importFinished(m);
+        // Lekeverés: pontosan úgy, mint egy felvétel végén (lásd a RecordingSession::finished ágat).
+        if (d->autoMixdown && d->settings->settings().mixdownMode != QStringLiteral("manual"))
+            regenerateMixdown(m.id);
+    });
+    connect(d->importer, &AudioImporter::failed, this,
+            [this](const QString& id, const QString& message, const QString& detail) {
+        JobError je;
+        je.kind = JobKind::Import;
+        je.message = message;
+        je.detail = detail;
+        d->jobs->fail(id, JobKind::Import, je);
+        emit importFailed(id, message, detail);
+    });
+    connect(d->importer, &AudioImporter::cancelled, this, [this](const QString& id) {
+        d->jobs->cancelled(id, JobKind::Import);
+        emit importCancelled(id);
+    });
     d->jobStats  = std::make_unique<JobStats>(QDir(d->metaDir).filePath(QStringLiteral("job-stats.json")));
     connect(d->tracks, &TrackCatalog::tracksChanged, this, &AppController::tracksChanged);
     // Az összefoglaló elavultsága (beszélő-szerkesztő réteg) a levezetett állapot része: a
@@ -2853,6 +2887,19 @@ MeetingJobTracker* AppController::jobs() const      { return d->jobs; }
 MeetingLibrary*    AppController::library() const   { return d->library; }
 TrackCatalog*      AppController::tracks() const    { return d->tracks; }
 WaveformService*   AppController::waveforms() const { return d->waveforms; }
+AudioImporter*     AppController::importer() const  { return d->importer; }
+
+QString AppController::importAudio(const ImportRequest& request)
+{
+    if (d->importer->busy()) {
+        emit errorOccurred(tr("Már fut egy importálás — várd meg, vagy szakítsd meg."));
+        return {};
+    }
+    const AppSettings s = d->settings->settings();
+    d->importer->setOpusBitrateKbps(opusBitrateKbps(s.audioQuality));
+    d->importer->setUserSpeakerName(s.userSpeakerName);
+    return d->importer->start(request);
+}
 
 MeetingProcessingState AppController::processingState(const QString& meetingId) const
 {
@@ -3067,6 +3114,12 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         d->jobs->setCancelling(meetingId, kind);
         d->mixdownCancelled.insert(meetingId);
         proc->kill();   // a finished-ág zár le: félkész fájl törölve, a régi keverék marad
+        return true;
+    }
+    case JobKind::Import: {
+        if (d->importer->currentId() != meetingId || !d->jobs->isRunning(meetingId, kind)) return false;
+        d->jobs->setCancelling(meetingId, kind);
+        d->importer->cancel();   // a cancelled-ág zár le: a félkész mappa törölve
         return true;
     }
     case JobKind::Identify: {

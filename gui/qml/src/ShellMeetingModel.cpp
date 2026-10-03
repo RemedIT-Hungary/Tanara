@@ -73,6 +73,7 @@ QString fallbackTitle(JobKind kind)
     case JobKind::AnalyzeTopics: return ShellMeetingModel::tr("Témánkénti elemzés");
     case JobKind::Mixdown:       return ShellMeetingModel::tr("Lekeverés");
     case JobKind::Identify:      return ShellMeetingModel::tr("Résztvevők azonosítása");
+    case JobKind::Import:        return ShellMeetingModel::tr("Importálás");
     }
     return {};
 }
@@ -86,6 +87,7 @@ QString iconFor(JobKind kind)
     case JobKind::AnalyzeTopics: return QStringLiteral("list-tree");
     case JobKind::Mixdown:       return QStringLiteral("audio-lines");
     case JobKind::Identify:      return QStringLiteral("fingerprint");
+    case JobKind::Import:        return QStringLiteral("file-audio");
     }
     return QStringLiteral("loader-circle");
 }

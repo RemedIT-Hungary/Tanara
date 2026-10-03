@@ -2,6 +2,8 @@
 //   devices                          eszközök listája
 //   record --title T [--seconds N] [--device IDX]...   felvétel (alapból minden eszköz)
 //   list                             meetingek
+//   import <fájl>… [--title T] [--date ISO] [--split-channels] [--own-track N]
+//                                    hangfájl(ok) importálása új meetingbe (fájlonként egy sáv)
 //   transcribe <meetingId>           átírás (Soniox kulcs kell)
 //   summarize <meetingId>            összefoglaló (LM Studio)
 //   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
@@ -15,6 +17,7 @@
 #include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
+#include "tanara/import/AudioImporter.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
@@ -204,6 +207,82 @@ int main(int argc, char** argv) {
         return qapp.exec();
     }
 
+    if (cmd == "import") {
+        // Hangfájl(ok) → új meeting, fájlonként egy sáv (--split-channels: csatornánként egy).
+        // A végén a meeting azonosítóját írja ki; átírás nem indul.
+        ImportRequest req;
+        bool split = false;
+        int ownTrack = 0;   // 1-től számozva; 0 = nincs
+        for (int i = 2; i < args.size(); ++i) {
+            if (args[i] == "--title" && i + 1 < args.size()) req.title = args[++i];
+            else if (args[i] == "--date" && i + 1 < args.size()) {
+                const QString text = args[++i];
+                req.startedAt = QDateTime::fromString(text, Qt::ISODate);
+                if (!req.startedAt.isValid()) {
+                    err << QCoreApplication::translate("cli", "Érvénytelen dátum: %1 (ISO formátum kell, pl. 2026-03-05T14:30)").arg(text) << "\n";
+                    return 1;
+                }
+            }
+            else if (args[i] == "--split-channels") split = true;
+            else if (args[i] == "--own-track" && i + 1 < args.size()) ownTrack = args[++i].toInt();
+            else if (args[i].startsWith("--")) {
+                err << QCoreApplication::translate("cli", "Ismeretlen kapcsoló: %1").arg(args[i]) << "\n"; return 1;
+            }
+            else req.sources.append({args[i], false});
+        }
+        if (req.sources.isEmpty()) {
+            err << QCoreApplication::translate("cli",
+                       "Használat: import <fájl>… [--title T] [--date ISO] [--split-channels] [--own-track N]") << "\n";
+            return 1;
+        }
+        // Előzetes ellenőrzés: minden fájlban legyen hang (érthető hibaüzenettel).
+        QVector<ImportFileInfo> infos;
+        for (ImportSource& s : req.sources) {
+            const ImportFileInfo info = audioimport::probe(s.path);
+            if (!info.ok) { err << QCoreApplication::translate("cli", "HIBA: %1").arg(info.error) << "\n"; err.flush(); return 1; }
+            s.splitChannels = split && info.channels >= 2;
+            infos.append(info);
+        }
+        const QVector<ImportPlannedTrack> plan = audioimport::planTracks(req.sources, infos);
+        if (ownTrack < 0 || ownTrack > plan.size()) {
+            err << QCoreApplication::translate("cli", "A --own-track értéke 1 és %1 közé essen.").arg(plan.size()) << "\n";
+            return 1;
+        }
+        req.ownTrack = ownTrack - 1;
+        if (req.title.trimmed().isEmpty()) {
+            QStringList paths;
+            for (const ImportSource& s : req.sources) paths << s.path;
+            req.title = audioimport::defaultTitle(paths);
+        }
+        out << QCoreApplication::translate("cli", "Importálás: \"%1\" — %n sáv", nullptr, int(plan.size())).arg(req.title) << "\n";
+        for (int i = 0; i < plan.size(); ++i)
+            out << "  • " << plan[i].name
+                << (i == req.ownTrack ? QCoreApplication::translate("cli", "  (saját mikrofon)") : QString()) << "\n";
+        out.flush();
+
+        // Ez a folyamat az importálás után kilép: a lekeverést nem indítjuk el (félbemaradna);
+        // az elemző készíti el, amikor kell (az átírás a hiányzó keveréket előbb legyártja).
+        app.setAutoMixdownAfterRecording(false);
+        QObject::connect(app.importer(), &AudioImporter::progress, &qapp, [&](QString, int pct, int, int) {
+            if (pct >= 0) { out << "\r  " << pct << "%"; out.flush(); }
+        });
+        QObject::connect(&app, &AppController::importFinished, &qapp, [&](Meeting m) {
+            out << "\r" << QCoreApplication::translate("cli", "KÉSZ. Mappa: %1").arg(m.folder) << "\n";
+            for (const auto& t : m.tracks)
+                out << QCoreApplication::translate("cli", "  sáv: %1  (%2)").arg(t.file, t.deviceName) << "\n";
+            out << QCoreApplication::translate("cli", "Meeting: %1").arg(m.id) << "\n";
+            out.flush();
+            qapp.quit();
+        });
+        QObject::connect(&app, &AppController::importFailed, &qapp, [&](QString, QString message, QString detail) {
+            err << "\n" << QCoreApplication::translate("cli", "HIBA: %1").arg(message) << "\n";
+            if (!detail.isEmpty()) err << "  " << detail << "\n";
+            err.flush(); qapp.exit(1);
+        });
+        if (app.importAudio(req).isEmpty()) return 1;
+        return qapp.exec();
+    }
+
     if (cmd == "cloud") return runCloudCommand(app, args);
 
     if (cmd == "transcribe" || cmd == "summarize") {
@@ -348,6 +427,7 @@ int main(int argc, char** argv) {
     out << "tanara-cli " << libraryVersion() << "\n"
         << QCoreApplication::translate("cli",
                "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
+               "import <fájl>… [--title T --date ISO --split-channels --own-track N] | "
                "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
                "identify <id> | voiceprints | cloud <status|login|estimate|…>")
         << "\n";

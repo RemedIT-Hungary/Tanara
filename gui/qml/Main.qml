@@ -21,7 +21,8 @@ ApplicationWindow {
     property string demoSearch: ""
     // Demóban / képernyőképhez: induláskor megnyíló felugró vagy állapot —
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
-    // "cloudToast" | "filters" | "rename" | "tracks"
+    // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
+    // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop"
     property string demoOverlay: ""
 
     // ---- állapot ----
@@ -43,6 +44,8 @@ ApplicationWindow {
     readonly property alias player: playerController
     readonly property alias library: sidebar.library
     readonly property alias meetingModel: currentMeeting
+    readonly property alias importModel: importModel
+    readonly property alias importDialog: importDialog
 
     property bool quitConfirmed: false
     property bool restoring: true
@@ -50,7 +53,7 @@ ApplicationWindow {
     // A Szóköz a lejátszóé, kivéve ha szövegmezőben vagyunk, billentyűzettel fókuszált
     // vezérlőn állunk (ott a Szóköz azt aktiválja), vagy párbeszédablak van nyitva.
     readonly property bool spaceTogglesPlayer: {
-        if (!hasMeeting || dialogs.anyOpen)
+        if (!hasMeeting || dialogs.anyOpen || importDialog.visible)
             return false
         const it = window.activeFocusItem
         if (!it)
@@ -93,7 +96,17 @@ ApplicationWindow {
         onRetranscribeDialogRequested: (meetingId) => dialogs.openRetranscribe(meetingId)
         onDeleteDialogRequested: (meetingId, title) => dialogs.openDelete(meetingId, title)
         onRenameRequested: Qt.callLater(header.startRename)
+        onImportDialogRequested: (files) => importDialog.openWith(files)
         onWindowActivationRequested: { window.show(); window.raise(); window.requestActivate() }
+    }
+    ShellImportModel {
+        id: importModel
+        // A háttérbe tett (bezárt ablakú) importálás hibája értesítésként jelenik meg; az
+        // ablak újranyitásakor a részletek is ott vannak.
+        onFailed: (message) => {
+            if (!importDialog.visible)
+                toast.show(qsTr("Az importálás nem sikerült: %1").arg(message), "danger", "", false)
+        }
     }
     ShellMeetingModel {
         id: currentMeeting
@@ -188,6 +201,15 @@ ApplicationWindow {
             break
         case "rename": header.startRename(); break
         case "tracks": shellActions.showTab(2); break
+        case "import": importModel.demoState = "files"; importDialog.open(); break
+        case "importSplit": importModel.demoState = "split"; importDialog.open(); break
+        case "importProbing": importModel.demoState = "probing"; importDialog.open(); break
+        case "importError": importModel.demoState = "error"; importDialog.open(); break
+        case "importEmpty": importDialog.open(); break
+        case "importFailed": importModel.demoState = "failed"; importDialog.open(); break
+        case "importProgress": importModel.demoState = "progress"; importDialog.open(); break
+        case "importStrip": importModel.demoState = "progress"; break
+        case "drop": dropOverlay.demo = true; break
         }
     }
 
@@ -209,6 +231,7 @@ ApplicationWindow {
         onActivated: { shellActions.showTab(0); transcriptTab.openSearch() }
     }
     Shortcut { sequence: "Ctrl+N"; onActivated: shellActions.openRecorder() }
+    Shortcut { sequence: "Ctrl+I"; enabled: !dialogs.anyOpen && !importDialog.visible; onActivated: shellActions.openImport() }
     Shortcut { sequence: "Ctrl+,"; onActivated: shellActions.openSettings("") }
     Shortcut { sequence: "Ctrl+1"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(0) }
     Shortcut { sequence: "Ctrl+2"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(1) }
@@ -255,6 +278,12 @@ ApplicationWindow {
                             iconName: "circle-dot"
                             shortcutText: "Ctrl+N"
                             onTriggered: shellActions.openRecorder()
+                        }
+                        TMenuItem {
+                            text: qsTr("Hangfájl importálása…")
+                            iconName: "import"
+                            shortcutText: "Ctrl+I"
+                            onTriggered: shellActions.openImport()
                         }
                         TMenuSeparator {}
                         TMenuItem {
@@ -384,6 +413,8 @@ ApplicationWindow {
                     anchors { fill: parent; rightMargin: 1 }
                     shell: shellActions
                     currentMeetingId: shellActions.currentMeetingId
+                    importModel: importModel
+                    onImportStripClicked: importDialog.open()
                 }
                 TDivider { vertical: true; anchors { top: parent.top; bottom: parent.bottom; right: parent.right } }
             }
@@ -544,6 +575,69 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    // ---- húzd-és-ejtsd: hang- / videófájl az ablakra → importálás ----
+    DropArea {
+        id: windowDrop
+        anchors.fill: parent
+        enabled: !dialogs.anyOpen && !importDialog.visible
+        onEntered: (drag) => { drag.accepted = drag.hasUrls }
+        onDropped: (drop) => {
+            if (!drop.hasUrls)
+                return
+            shellActions.openImport(drop.urls)
+            drop.accept()
+        }
+    }
+    Rectangle {
+        id: dropOverlay
+        property bool demo: false
+        anchors.fill: parent
+        visible: windowDrop.containsDrag || demo
+        color: Theme.scrim
+        TSurface {
+            anchors.centerIn: parent
+            width: Math.min(420, parent.width - 2 * Theme.space5)
+            height: dropColumn.implicitHeight + 2 * Theme.space6
+            radius: Theme.radiusDialog
+            TDashedRect {
+                anchors { fill: parent; margins: 10 }
+                radius: Theme.radiusPopup
+                color: Theme.accent
+            }
+            ColumnLayout {
+                id: dropColumn
+                anchors.centerIn: parent
+                width: parent.width - 2 * Theme.space6
+                spacing: 8
+                TIcon { Layout.alignment: Qt.AlignHCenter; name: "import"; size: 26; color: Theme.accent }
+                TLabel {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: importModel.running ? qsTr("Előbb fejeződjön be a futó importálás")
+                                              : qsTr("Engedd el az importáláshoz")
+                    font.pixelSize: Theme.fontHeading
+                    font.weight: Theme.weightSemiBold
+                    wrapMode: Text.Wrap
+                }
+                TLabel {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv.")
+                    muted: true
+                    font.pixelSize: Theme.fontSmall
+                    cssLineHeight: 1.5
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+    }
+
+    ShellImportDialog {
+        id: importDialog
+        model: importModel
+        shell: shellActions
     }
 
     ShellDialogs {

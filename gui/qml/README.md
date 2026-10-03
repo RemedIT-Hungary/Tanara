@@ -168,10 +168,26 @@ Overrides for `--demo` / `--qml-shot` (leave unset with a real controller):
 `shellState` (`"empty" | "noSelection" | "preTranscript" | "meeting"`, `""` = computed),
 `taskRunning` (sample task strip), `demoSearch` (sidebar search text), `demoOverlay`
 (`retranscribe | delete | close | stop | confirm | toast | toastError | cloudToast | filters |
-rename | tracks`).
+rename | tracks | import | importSplit | importProbing | importError | importEmpty | importFailed |
+importProgress | importStrip | drop`).
+
+### Audio file import
+
+"Fájl → Hangfájl importálása…" (`Ctrl+I`), the icon button next to "Új felvétel", the empty-library
+screen and dropping files on the window all end in `ShellActions.openImport(files)` →
+`ShellImportDialog` (a 560 px `TDialog`) fed by `ShellImportModel`: files with their probed data,
+per-file "split channels" switch, title / date, optional "my microphone" track, the resulting
+track count in words; then progress with cancel. "Háttérben folytatom" closes the dialog while
+the import goes on — `ShellImportStrip` in the sidebar shows it and reopens the dialog. On
+success `ShellActions` selects the new meeting (pre-transcript view); transcription never starts
+by itself. The work is `tanara::AudioImporter` behind `AppController::importAudio`
+(`core/include/tanara/import/AudioImporter.h`); the job runs as `JobKind::Import` under the id of
+the meeting-to-be. QA scripts reach it through `window.importModel` / `window.importDialog`
+(`addFiles([...])`, `setSplit(row, on)`, `ownTrack`, `start()`, `cancel()`) — the native file
+picker is only opened by `openImport()` without arguments, so pass the paths.
 
 Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (Settings,
-People, file picker, all Tanara Cloud dialogs and chrome); `ShellRecorderHost` is the only
+People, file pickers, all Tanara Cloud dialogs and chrome); `ShellRecorderHost` is the only
 place that knows the recorder (see "Recorder in the main window" below); `MediaPlayerBackend`
 is the Qt Multimedia engine behind `PlayerController` (the QML module itself does not link
 Multimedia).
