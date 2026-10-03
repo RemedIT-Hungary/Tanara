@@ -272,6 +272,10 @@ void RecorderWindowHost::request(const RecorderRequest& r)
         return;
     }
     if (!show() || !m_vm) return;
+    // Indítás-kérés az előző felvétel „Elmentve” állapotában: előbb új felvételre váltunk
+    // (különben a kérés indítás nélkül elveszne).
+    if (r.start && m_vm->state() == QLatin1String("done"))
+        m_vm->newRecording();
     m_vm->applyRequest(r.title, r.appName, r.context, r.deviceIndexes);
     if (r.start && m_vm->state() == QLatin1String("idle"))
         m_vm->start();

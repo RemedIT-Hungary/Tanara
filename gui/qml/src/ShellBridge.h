@@ -88,7 +88,12 @@ signals:
     // modellek) — a nézetek értékeljék újra a canRun-t.
     void readinessChanged();
     // Felvétel közben a hívás véget ért / csend van: a héj rákérdez („Vége a meetingnek?”).
+    // A QML-felvevővel a híd NEM küldi: a kérdést a felvevő saját doboza (R06) teszi fel,
+    // így a felhasználó egyszer kap kérdést. (Felvevő nélküli hídnak marad meg.)
     void stopPromptRequested(const QString& reason);
+    // Egy megbeszélést ki kell jelölni és a főablakot előre hozni (a felvevő „Megnyitás az
+    // elemzőben” gombja, `tanara --meeting <id>`). Üres azonosító: csak az ablak jön előre.
+    void showMeetingRequested(const QString& meetingId);
     // A főablakot újra meg kell mutatni (háttér-felvétel vége, felvevő bezárása).
     void showWindowRequested();
     // „Leállítom és kilépek” után a felvétel lezárult: a főablak bezárható.

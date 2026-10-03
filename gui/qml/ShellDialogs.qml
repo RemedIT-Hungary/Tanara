@@ -133,6 +133,8 @@ Item {
     }
 
     // ---- „Vége a meetingnek?” (hívás-vég / csend észlelve; magától nem állítunk le) ----
+    // A QML-felvevővel ezt a felvevő saját doboza (R06) kérdezi meg; ez az ablak csak akkor
+    // nyílik, ha egy híd stopPromptRequested jelet küld (a QmlShellBridge nem küld).
     TDialog {
         id: stopDialog
         objectName: "stopDialog"

@@ -1,23 +1,39 @@
 #include "ShellRecorderHost.h"
 
-#include "FloatingRecorder.h"
-#include "RecordBar.h"
 #include "RecorderSingleton.h"
+#include "RecorderViewModel.h"
+#include "RecorderWindowHost.h"
 
 #include "tanara/AppController.h"
+#include "tanara/Logging.h"
+
+#include <QQuickWindow>
+#include <QTimer>
 
 namespace tanara_gui {
+
+tanara_qml::RecorderRequest toRecorderRequest(const RecorderArgs& ra)
+{
+    tanara_qml::RecorderRequest r;
+    r.title = ra.title;
+    r.appName = ra.app;
+    r.context = ra.context;
+    r.deviceIndexes = ra.deviceIdx;
+    r.start = !ra.noStart;
+    r.stop = ra.stop;
+    return r;
+}
 
 ShellRecorderHost::ShellRecorderHost(tanara::AppController* controller, QObject* parent)
     : QObject(parent), m_controller(controller)
 {
-    // A továbbított --context a felvétel végén kerül a megbeszélésre.
-    connect(m_controller, &tanara::AppController::recordingFinished, this,
-            [this](const tanara::Meeting& m) {
-                if (!m_pendingContext.isEmpty()) {
-                    m_controller->setMeetingContextNote(m.id, m_pendingContext);
-                    m_pendingContext.clear();
-                }
+    // Felvétel vége rejtett felvevő mellett (pl. a tálcáról leállítva): a core a végén
+    // újraindítja a szintfigyelést (a felvevő kérte) — ha nincs, aki nézze, elengedjük a
+    // mikrofont. Sorba állítva, mert az újraindítás a jel UTÁN történik.
+    connect(m_controller, &tanara::AppController::recordingStateChanged, this,
+            [this](tanara::RecordingState st) {
+                if (st == tanara::RecordingState::Idle)
+                    QTimer::singleShot(0, this, &ShellRecorderHost::releaseMonitorIfUnused);
             });
 }
 
@@ -45,74 +61,92 @@ void ShellRecorderHost::retryListening()
         m_singleton->listen();
 }
 
-void ShellRecorderHost::ensureCreated()
+void ShellRecorderHost::ensureHost()
 {
-    if (m_recordBar)
+    if (m_host)
         return;
-    // A RecordBar parentless, a FloatingRecorder ctora reparentálja magába. A létrejöttekor
-    // (üresjáratban) elindítja az élő szintfigyelést, hogy a VU-sávok mozogjanak.
-    m_recordBar = new RecordBar(m_controller, nullptr);
-    m_recordBar->setViewMode(RecordBar::ViewMode::Full);
-    connect(m_controller, &tanara::AppController::devicesChanged,
-            m_recordBar, &RecordBar::onDevicesChanged);
-    connect(m_controller, &tanara::AppController::recordingStateChanged,
-            m_recordBar, &RecordBar::onRecordingStateChanged);
-    connect(m_controller, &tanara::AppController::elapsedChanged,
-            m_recordBar, &RecordBar::onElapsedChanged);
-    connect(m_controller, &tanara::AppController::levelMeterUpdated,
-            m_recordBar, &RecordBar::onLevelMeterUpdated);
-    connect(m_controller, &tanara::AppController::deviceLevel,
-            m_recordBar, &RecordBar::onDeviceLevel);
-
-    // parent=nullptr → ÖNÁLLÓ top-level ablak (saját tálca-bejegyzés, nem minimalizálódik a
-    // főablakkal).
-    m_floatingRecorder = new FloatingRecorder(m_controller, m_recordBar, nullptr);
-    connect(m_floatingRecorder, &FloatingRecorder::dockRequested, this, &ShellRecorderHost::dock);
+    // Saját QML-motor (nullptr): a felvevő élettartama ne függjön a főablak motorjától. A
+    // recording.lock-ot a gazda kezeli (alapértelmezés) — az elemzőben futó felvételt is
+    // látnia kell a figyelőnek. A „Háttérbe” elrejti az ablakot: a főablak „Felvétel
+    // folyamatban” gombja (vagy a figyelő tálca-ikonja) hozza vissza.
+    m_host = new tanara_qml::RecorderWindowHost(m_controller, nullptr, this);
+    m_host->setManageLock(true);
+    m_host->setHideToTrayEnabled(true);
+    using Host = tanara_qml::RecorderWindowHost;
+    connect(m_host, &Host::hiddenToTray, this, &ShellRecorderHost::hidden);
+    connect(m_host, &Host::closed, this, [this] {
+        // Bezárva (nem fut felvétel): ne fogjuk a mikrofont, amíg a felvevő nem látszik —
+        // újranyitáskor a szintfigyelés újraindul.
+        releaseMonitorIfUnused();
+        emit hidden();
+    });
+    connect(m_host, &Host::openMeetingRequested, this, &ShellRecorderHost::openMeetingRequested);
+    connect(m_host, &Host::settingsRequested, this, &ShellRecorderHost::settingsRequested);
+    // notificationRequested (R06 rejtett / pirula ablaknál): a gazda maga előhozza a felvevőt,
+    // a kérdés ott jelenik meg — a főablak NEM kérdez még egyszer.
+    // recordingFinished: a könyvtár az AppController::recordingFinished jelére frissül és
+    // jelöl ki (ShellActions) — itt nincs második kezelés.
 }
 
 void ShellRecorderHost::open()
 {
     if (m_shutDown)
         return;
-    ensureCreated();
-    m_recordBar->refreshFromSettings();   // a Beállítások közben változhattak
+    ensureHost();
+    // Egy korábbi (rejtett ablak mellett véget ért) felvétel „Elmentve” állapota helyett az
+    // újranyitott felvevő új felvételre kész.
+    if (!m_host->isVisible() && m_host->viewModel()
+        && m_host->viewModel()->state() == QLatin1String("done"))
+        m_host->viewModel()->newRecording();
+    if (!m_host->show()) {
+        qCCritical(tanara::lcApp) << "A felvevő felülete nem tölthető be.";
+        return;
+    }
     // A felvevő elrejtésekor a szintfigyelést leállítjuk (ne fogjuk a mikrofont, amíg csak
     // visszanézünk) — újranyitáskor, üresjáratban, újraindul.
     if (m_controller->recordingState() == tanara::RecordingState::Idle)
         m_controller->startLevelMonitoring();
-    m_recordBar->show();
-    m_floatingRecorder->show();
-    m_floatingRecorder->raise();
-    m_floatingRecorder->activateWindow();
-}
-
-void ShellRecorderHost::dock()
-{
-    // „Dokkolás” = a leválasztott felvétel-ablak elrejtése. A RecordBar a FloatingRecorderben
-    // marad, így egy futó felvétel / állapot megmarad; az „Új felvétel” újra előhozza.
-    if (!m_floatingRecorder)
-        return;
-    emit aboutToHide();
-    m_floatingRecorder->hide();
-    if (m_controller->recordingState() == tanara::RecordingState::Idle)
-        m_controller->stopLevelMonitoring();
 }
 
 void ShellRecorderHost::handleRequest(const QStringList& args)
 {
-    const RecorderArgs r = parseRecorderArgs(args);
-    open();   // elő / előtérbe — mindig UGYANAZ a felvevő
-    if (!r.noStart && m_recordBar
-        && m_controller->recordingState() == tanara::RecordingState::Idle) {
-        m_pendingContext = r.context.trimmed();
-        m_recordBar->startWithTitle(r.title);
+    if (m_shutDown)
+        return;
+    const RecorderArgs ra = parseRecorderArgs(args);
+    if (ra.stop) {
+        // A tálca-menü „Felvétel leállítása”: ablak-előhozás nélkül.
+        if (m_host)
+            m_host->request(toRecorderRequest(ra));
+        return;
     }
+    open();   // elő / előtérbe — mindig UGYANAZ a felvevő
+    if (m_host && m_host->isVisible())
+        m_host->request(toRecorderRequest(ra));   // cím / app / kontextus / források / indítás
+}
+
+void ShellRecorderHost::releaseMonitorIfUnused()
+{
+    if (m_shutDown || isVisible())
+        return;
+    if (m_controller->recordingState() == tanara::RecordingState::Idle)
+        m_controller->stopLevelMonitoring();
 }
 
 void ShellRecorderHost::refreshFromSettings()
 {
-    if (m_recordBar)
-        m_recordBar->refreshFromSettings();   // a felvevő tükrözze az új eszköz-policyt
+    // A felvevő eszközlistája tükrözze az új eszköz-policyt (devicesChanged → újraépül).
+    if (m_host)
+        m_controller->refreshDevices();
+}
+
+bool ShellRecorderHost::isVisible() const
+{
+    return m_host && m_host->isVisible();
+}
+
+QObject* ShellRecorderHost::window() const
+{
+    return m_host ? m_host->window() : nullptr;
 }
 
 void ShellRecorderHost::shutdown()
@@ -122,17 +156,15 @@ void ShellRecorderHost::shutdown()
     m_shutDown = true;
     if (m_singleton)
         m_singleton->close();
+    // A felvevő-ablakot (önálló top-level) kézzel zárjuk, különben a főablak bezárása után is
+    // kint maradna. A gazda destruktora a recording.lock-ot is elengedi.
+    if (m_host) {
+        m_host->disconnect(this);
+        delete m_host;
+        m_host = nullptr;
+    }
     // Biztosítjuk, hogy a capture-eszközök elengedésre kerüljenek kilépéskor.
     m_controller->stopLevelMonitoring();
-    // A különálló (parent nélküli) lebegő felvevőt kézzel zárjuk, különben a főablak
-    // bezárása után is kint maradna (és életben tartaná a folyamatot).
-    if (m_floatingRecorder) {
-        m_floatingRecorder->disconnect(this);
-        m_floatingRecorder->close();
-        delete m_floatingRecorder;   // a benne lévő RecordBar-t is elviszi
-        m_floatingRecorder = nullptr;
-        m_recordBar = nullptr;
-    }
 }
 
 } // namespace tanara_gui

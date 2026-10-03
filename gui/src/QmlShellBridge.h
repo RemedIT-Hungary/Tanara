@@ -5,8 +5,9 @@
 // Ami a régi MainWindow-ban Widgets-hez kötött viselkedés volt, itt él tovább:
 //  - Beállítások / Személyek párbeszédablak;
 //  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
-//    át (az burkolja a régi Widgets-felvevőt; az új QML-felvevőre cserélhető), valamint a
-//    felvétel végének ablak-kezelése (a rejtett főablak visszahozása, „Leállítom és kilépek”);
+//    át (az burkolja az új QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
+//    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
+//    visszahozása, „Leállítom és kilépek”);
 //  - a Tanara Cloud folyamatai a gui/src/cloud ablakaival: indulási ellenőrzések (K-01
 //    módválasztás, fiók / modellek frissítése, félbemaradt átírás), K-06 becslés-megerősítés,
 //    bejelentkezés, akadályok (feltöltés / frissítés), hibaablakok (részleges terheléssel),
@@ -44,6 +45,13 @@ public:
     void setMainWindow(QWindow* window);
     // A `tanara --record` továbbított kéréseinek fogadása (a main.cpp hívja; QA-módban nem).
     void startRecorderListening();
+    // Egy megbeszélés kijelölése + a főablak előtérbe hozása: a felvevő „Megnyitás az
+    // elemzőben” gombja és a `tanara --meeting <id>` (induláskor / másik folyamatból átadva).
+    // Üres azonosítóval csak a főablak jön előre.
+    void showMeeting(const QString& meetingId);
+    // A felvevő ablaka (RecorderWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
+    // A QA-szkripteknek (--shell-script): App.bridge.recorderWindow().
+    Q_INVOKABLE QObject* recorderWindow() const;
 
     // ---- ShellBridge ----
     bool cloudChipVisible() const override { return m_chipVisible; }
@@ -93,7 +101,7 @@ private:
     tanara::AppController* m_controller = nullptr;
     QPointer<QWindow> m_window;
 
-    ShellRecorderHost* m_recorder = nullptr;   // a felvevő-kötés (cserélhető)
+    ShellRecorderHost* m_recorder = nullptr;   // a felvevő-kötés
     QPointer<PeopleManagerDialog> m_peopleDialog;
     bool m_quitAfterStop = false;
     bool m_shutDown = false;

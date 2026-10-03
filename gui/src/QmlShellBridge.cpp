@@ -12,6 +12,7 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/cloud/CloudAccount.h"
+#include "tanara/library/MeetingLibrary.h"
 #include "tanara/store/MeetingStore.h"
 
 #include <QApplication>
@@ -50,13 +51,18 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
 {
     qApp->installEventFilter(this);
 
-    // A felvevő-kötés (régi Widgets-felvevő + singleton) külön, cserélhető osztályban él.
+    // A felvevő-kötés (az új QML-felvevő + singleton) külön osztályban él.
     m_recorder = new ShellRecorderHost(m_controller, this);
-    // Háttér-módban (rejtett főablak) a felvevő az utolsó látható ablak — ha az is eltűnne,
-    // a Qt kiléptetne felvétel közben. Ilyenkor előbb a főablak jön vissza.
-    connect(m_recorder, &ShellRecorderHost::aboutToHide, this, [this]() {
+    // Háttér-módban (rejtett főablak) a felvevő az utolsó látható ablak — ha az is eltűnik
+    // (háttérbe küldték / bezárták), a főablak jön vissza, hogy maradjon mihez nyúlni.
+    connect(m_recorder, &ShellRecorderHost::hidden, this, [this]() {
         if (mainWindowHidden()) emit showWindowRequested();
     });
+    // A felvevő „Megnyitás az elemzőben” gombja: a megbeszélés kijelölése + a főablak előre.
+    connect(m_recorder, &ShellRecorderHost::openMeetingRequested, this, &QmlShellBridge::showMeeting);
+    // A felvevő „Rögzítés beállításai” gombja (R10).
+    connect(m_recorder, &ShellRecorderHost::settingsRequested, this,
+            [this]() { openSettings(QStringLiteral("recording")); });
     // Felvétel vége: (a) „Leállítom és kilépek” → a főablak bezárható; (b) háttér-módban
     // (rejtett főablak) → a főablak visszajön; (c) singleton-figyelés újrapróbálása.
     connect(m_controller, &tanara::AppController::recordingStateChanged, this,
@@ -147,10 +153,26 @@ void QmlShellBridge::openRecorder()
     m_recorder->open();
 }
 
+QObject* QmlShellBridge::recorderWindow() const
+{
+    return m_recorder->window();
+}
+
+void QmlShellBridge::showMeeting(const QString& meetingId)
+{
+    // Másik folyamat (az önálló felvevő) által létrehozott megbeszélést a könyvtár még nem
+    // ismeri: az index közös (lemez), a könyvtár gyorsítótárát újratöltjük.
+    if (!meetingId.isEmpty() && m_controller->library()
+        && m_controller->library()->meeting(meetingId).id.isEmpty())
+        m_controller->library()->invalidate();
+    emit showMeetingRequested(meetingId);
+}
+
 void QmlShellBridge::continueRecordingInBackground()
 {
     // A lebegő felvevő önálló top-level ablak → az app életben marad; a főablakot a QML
-    // rejti el, és a felvétel végén magától visszajön (showWindowRequested).
+    // rejti el, és a felvétel végén (vagy ha a felvevő is eltűnik) magától visszajön
+    // (showWindowRequested).
     openRecorder();
 }
 
