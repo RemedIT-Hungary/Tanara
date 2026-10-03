@@ -143,19 +143,36 @@ Compare against the design: `design/handoff/renders/main-{light,dark}--m01…m10
 ## Shell (`Main.qml`)
 
 `ApplicationWindow` 1280×820 (minimum 960×600): menu row (Fájl / Nézet, native window
-decorations kept) · 276 px sidebar · content · 52 px player. Which content shows is driven
-by two properties, to be bound to view-models by the slices:
+decorations kept) · 276 px sidebar · content · 52 px player. `Main.qml` owns the view-models
+`ShellActions` (the `shell` of `CONTRACT.md`: navigation + gated actions), `PlayerController`,
+`ShellMeetingModel` (header, stale flag, task strip) and `ShellUiState` (window size, selection,
+theme, player volume in `<TANARA_HOME or ~/.tanara>/ui-state.json`). What shows is computed:
 
-- `shellState`: `"empty"` → `EmptyLibraryView` · `"noSelection"` → `NoSelectionView` ·
-  `"preTranscript"` → `MeetingHeader` + `PreTranscriptView` + `PlayerBar` ·
-  `"meeting"` → `MeetingHeader` + tabs (`TranscriptTab`, `SummaryTab`, `TracksTab`) + `PlayerBar`
-- `taskRunning`: shows `TaskStrip` under the header; `currentTab`: 0 / 1 / 2.
+- library empty → `EmptyLibraryView` · nothing selected → `NoSelectionView` · meeting without
+  transcript → `MeetingHeader` + `PreTranscriptView` + `PlayerBar` · otherwise `MeetingHeader` +
+  tabs (`TranscriptTab`, `SummaryTab`, `TracksTab`) + `PlayerBar`. `showTab(2)` before a
+  transcript shows `TracksTab` with a back button instead of `PreTranscriptView`.
+- Content components get `meetingId` / `player` / `shell` through `ShellContentBinder`.
 
-`LibrarySidebar`, `MeetingHeader`, `TaskStrip`, `TranscriptTab`, `SummaryTab`, `TracksTab`,
-`PreTranscriptView`, `EmptyLibraryView`, `NoSelectionView`, `PlayerBar` are placeholders:
-replace the **whole content** of the file, keep the name. `Main.qml` supplies the region
-backgrounds and dividers (sidebar surface + right border, player surface + top border);
-the header block has the 16/24/0 padding and 12 px gap of the spec.
+Overrides for `--demo` / `--qml-shot` (leave unset with a real controller):
+`shellState` (`"empty" | "noSelection" | "preTranscript" | "meeting"`, `""` = computed),
+`taskRunning` (sample task strip), `demoSearch` (sidebar search text), `demoOverlay`
+(`retranscribe | delete | close | stop | confirm | toast | toastError | cloudToast | filters |
+rename | tracks`).
+
+Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (Settings,
+People, file picker, all Tanara Cloud dialogs and chrome); `ShellRecorderHost` is the only
+place that knows the recorder (swap it for the new recorder host); `MediaPlayerBackend` is the
+Qt Multimedia engine behind `PlayerController` (the QML module itself does not link Multimedia).
+
+QA without touching the desktop: `TANARA_HOME=<sandbox>/home QT_QPA_PLATFORM=offscreen
+build/gui/tanara --shell-script script.qml` loads `script.qml` next to the real window with
+`window` (`window.shell`, `.player`, `.library`, `.meetingModel`) and `hook` (`grab(path)`,
+`log(text)`, `quit(code)`); see `gui/src/ShellQaHook.h`. In this mode the app rebuilds the
+meeting index from disk and does not listen on the recorder socket.
+
+Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
+about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
 
 ## C++ view-models
 

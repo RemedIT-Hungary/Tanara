@@ -5,6 +5,7 @@
 //                          opciók: --title T  --context C  --device IDX (ismételhető)
 //   tanara --gallery | --demo | --qml-shot ki.png [--qml-page T] [--theme …] [--size SZxM]
 //                          QML-fejlesztői módok AppController NÉLKÜL (lásd gui/qml/README.md)
+//   tanara --shell-script f.qml   fejlesztői QA: a főablak végigvezetése szkriptből (ShellQaHook.h)
 // A folyamat mindig QApplication: a Beállítások / Személyek / felvevő / cloud ablakok
 // egyelőre Widgetek maradnak, és a QML-ablak mellett nyílnak (App.bridge).
 #include "MainWindow.h"
@@ -20,10 +21,15 @@
 #include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
+#include "tanara/store/MeetingStore.h"
 #include "tanara/detect/RecordingLock.h"
 
 #include "AppContext.h"
+#include "MediaPlayerBackend.h"
+#include "PlayerController.h"
 #include "QmlApp.h"
+#include "QmlShellBridge.h"
+#include "ShellQaHook.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -31,6 +37,8 @@
 #include <QDateTime>
 #include <QMessageBox>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQuickWindow>
 #include <QTextStream>
 
 #include <memory>
@@ -247,9 +255,42 @@ int main(int argc, char** argv) {
     // controllert: tanara_qml::AppContext::instance()->controller().
     tanara_qml::applyOptions(qmlOpts);
     tanara_qml::AppContext::instance()->setController(&controller);
-    QQmlApplicationEngine engine;   // a controller UTÁN deklarálva → előbb szűnik meg
+    // A lejátszó valódi hang-motorja (a QML-modul nem linkel Qt Multimediát).
+    tanara_qml::PlayerController::setBackendFactory(
+        [](QObject* parent) -> tanara_qml::PlayerBackend* {
+            return new tanara_gui::MediaPlayerBackend(parent);
+        });
+    // A Widgets-híd: Beállítások / Személyek / felvevő / Tanara Cloud ablakok (App.bridge).
+    tanara_gui::QmlShellBridge bridge(&controller);
+    tanara_qml::AppContext::instance()->setBridge(&bridge);
+
+    // QA-szkript mód: friss homokozóban az index üres → a lemezről újraépítjük.
+    if (cleanArgs.contains(QStringLiteral("--shell-script")))
+        controller.store()->rebuildIndexFromDisk();
+
+    QQmlApplicationEngine engine;   // a controller és a híd UTÁN deklarálva → előbb szűnik meg
     if (!tanara_qml::loadPage(engine, QStringLiteral("Main")))
         return 1;
+    auto* mainWindow = engine.findChild<QQuickWindow*>();
+    bridge.setMainWindow(mainWindow);
+    // QA-szkript módban nem figyelünk a felvevő-socketen (ne zavarjuk a futó valódi példányt).
+    if (!cleanArgs.contains(QStringLiteral("--shell-script")))
+        bridge.startRecorderListening();
+
+    // Fejlesztői QA: a főablak végigvezetése egy QML-szkripttel (lásd ShellQaHook.h).
+    if (const int i = cleanArgs.indexOf(QStringLiteral("--shell-script"));
+        i >= 0 && i + 1 < cleanArgs.size()) {
+        auto* hook = new tanara_gui::ShellQaHook(mainWindow, &engine);
+        QQmlComponent script(&engine, QUrl::fromLocalFile(cleanArgs.at(i + 1)));
+        QObject* obj = script.createWithInitialProperties(
+            {{QStringLiteral("window"), QVariant::fromValue<QObject*>(mainWindow)},
+             {QStringLiteral("hook"), QVariant::fromValue<QObject*>(hook)}});
+        if (!obj) {
+            QTextStream(stderr) << "tanara: --shell-script: " << script.errorString() << Qt::endl;
+            return 2;
+        }
+        obj->setParent(&engine);
+    }
 
     controller.refreshDevices();
     tanara::logStartupDiagnostics(controller);
