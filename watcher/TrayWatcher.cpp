@@ -3,6 +3,7 @@
 
 #include "tanara/SettingsManager.h"
 #include "tanara/Paths.h"
+#include "tanara/detect/Autostart.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
 #include "tanara/detect/RecordingLock.h"
@@ -22,6 +23,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QTextStream>
 
@@ -61,6 +64,8 @@ bool TrayWatcher::start()
     m_detector->configure(s.knownCallApps, QStringLiteral("tanara"));
 
     applyAutostart(s.watcherAutostart);
+    m_autostartApplied = s.watcherAutostart;
+    m_settingsStamp = QFileInfo(m_settings->settingsFilePath()).lastModified();
 
     if (!QSystemTrayIcon::isSystemTrayAvailable())
         return false;
@@ -75,6 +80,7 @@ bool TrayWatcher::start()
     m_startAction = menu->addAction(tr("Felvétel indítása"), this, &TrayWatcher::startRecordingNow);
     m_stopAction  = menu->addAction(tr("Felvétel leállítása"), this, &TrayWatcher::stopRecording);
     menu->addAction(tr("Elemző megnyitása"), this, &TrayWatcher::openAnalyzer);
+    menu->addAction(tr("Beállítások…"), this, &TrayWatcher::openSettings);
     menu->addSeparator();
     menu->addAction(tr("Kilépés…"), this, &TrayWatcher::quitRequested);
     connect(menu, &QMenu::aboutToShow, this, &TrayWatcher::refreshState);
@@ -85,6 +91,8 @@ bool TrayWatcher::start()
     // Az ikon, a buborék (eltelt idő) és a menü másodpercenként frissül: a felvétel a
     // poll-intervallumtól függetlenül indulhat / állhat le.
     connect(m_stateTimer, &QTimer::timeout, this, &TrayWatcher::refreshState);
+    // A Beállítások mentése után a figyelő újraindítás nélkül átáll.
+    connect(m_stateTimer, &QTimer::timeout, this, &TrayWatcher::reloadSettingsIfChanged);
     m_stateTimer->start(1000);
 
     // Az értesítésre kattintva NYISSA meg a rögzítőt (a user keresztel + indít). Ez a
@@ -152,6 +160,45 @@ void TrayWatcher::poll()
     }
     m_wasActive = sig.active;
     refreshState();
+}
+
+void TrayWatcher::reloadSettingsIfChanged()
+{
+    const QDateTime stamp = QFileInfo(m_settings->settingsFilePath()).lastModified();
+    if (!stamp.isValid() || stamp == m_settingsStamp)
+        return;
+    // Előbb megnézzük, értelmezhető-e: a SettingsManager::load() hibás fájlnál alapértelmezésekre
+    // állna vissza (a futó állapot elveszne). Hibás fájlnál a bélyeget sem léptetjük → újrapróbáljuk.
+    QFile f(m_settings->settingsFilePath());
+    if (!f.open(QIODevice::ReadOnly) || !QJsonDocument::fromJson(f.readAll()).isObject())
+        return;
+    f.close();
+    m_settingsStamp = stamp;
+    m_settings->load();
+    applySettings();
+}
+
+void TrayWatcher::applySettings()
+{
+    const tanara::AppSettings s = m_settings->settings();
+    if (m_detector)
+        m_detector->configure(s.knownCallApps, QStringLiteral("tanara"));
+    if (s.watcherAutostart != m_autostartApplied) {
+        applyAutostart(s.watcherAutostart);
+        m_autostartApplied = s.watcherAutostart;
+    }
+    const int interval = qMax(1, s.detectorIntervalSec) * 1000;
+    if (s.detectorEnabled) {
+        if (!m_timer->isActive() || m_timer->interval() != interval)
+            m_timer->start(interval);
+        poll();
+    } else {
+        m_timer->stop();
+        m_callActive = false;
+        m_wasActive = false;
+        m_lastOfferedRef.clear();
+        refreshState();
+    }
 }
 
 QString TrayWatcher::formatElapsed(qint64 seconds)
@@ -245,6 +292,12 @@ void TrayWatcher::openAnalyzer()
     launch({});   // sima tanara → főablak
 }
 
+void TrayWatcher::openSettings()
+{
+    // Ha fut a főablak, az nyitja meg a Beállításokat; különben önálló Beállítások-ablak indul.
+    launch({ QStringLiteral("--settings"), QStringLiteral("watcher") });
+}
+
 void TrayWatcher::quitRequested()
 {
     // Felvétel közben rákérdezünk. A figyelő kilépése a felvételt NEM állítja le (az külön
@@ -306,8 +359,13 @@ QString TrayWatcher::callNotificationBody(const QString& appName, const QString&
 void TrayWatcher::showCallNotification(const QString& appName)
 {
     // Melyik kimenetre szól épp a hívás-app? (Linux/PipeWire; máshol üres → kimarad.)
-    const QString output = tanara::tracknames::shortDeviceName(
-        tanara::queryAudioGraph().outputForApp(appName));
+    // A kimenet neve a felhasználó által adott névvel (Beállítások → Rögzítés), ha van.
+    const QString rawOutput = tanara::queryAudioGraph().outputForApp(appName);
+    // A kimenetet a felvevő a monitorján át látja („Monitor of <leírás>”): az átnevezés azon a kulcson él.
+    const QString monitorKey = QStringLiteral("Monitor of ") + rawOutput;
+    const QString output = rawOutput.isEmpty() ? QString()
+        : tanara::devicenames::hasOverride(monitorKey) ? tanara::devicenames::displayName(monitorKey)
+                                                       : tanara::devicenames::displayName(rawOutput);
     const QString title = tr("Hívást észleltem: %1").arg(appName);
     const QString body = callNotificationBody(appName, output);
 
@@ -377,34 +435,9 @@ void TrayWatcher::onNotifyClosed(uint id, uint reason)
 
 void TrayWatcher::applyAutostart(bool on) const
 {
-    // Sandbox / teszt-példány (TANARA_HOME): a felhasználó VALÓDI automatikus indítását
-    // (~/.config/autostart) nem írjuk felül és nem töröljük.
-    if (!tanara::paths::homeOverride().isEmpty())
-        return;
-#if defined(Q_OS_LINUX)
-    // Freedesktop autostart (KDE/GNOME honorálja): ~/.config/autostart/tanara-watcher.desktop
-    const QString dir = QDir(QDir::homePath()).filePath(QStringLiteral(".config/autostart"));
-    const QString path = QDir(dir).filePath(QStringLiteral("tanara-watcher.desktop"));
-    if (!on) {
-        QFile::remove(path);
-        return;
-    }
-    QDir().mkpath(dir);
-    QFile f(path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        const QString exec = QCoreApplication::applicationFilePath();
-        QTextStream(&f)
-            << "[Desktop Entry]\n"
-            << "Type=Application\n"
-            << "Name=Tanara Watcher\n"
-            << "Comment=Meeting-figyelő a rendszertálcán\n"
-            << "Exec=" << exec << "\n"
-            << "Terminal=false\n"
-            << "X-GNOME-Autostart-enabled=true\n";
-    }
-#else
-    Q_UNUSED(on);   // Windows (HKCU\...\Run) / macOS (LaunchAgent): későbbi kör
-#endif
+    // A szabály EGY helyen él (tanara/detect/Autostart.h): TANARA_HOME (homokozó / teszt)
+    // mellett SOHA nem nyúl a valódi autostart-bejegyzéshez; Windows / macOS: későbbi kör.
+    tanara::autostart::applyWatcher(on, QCoreApplication::applicationFilePath());
 }
 
 } // namespace tanara_watcher

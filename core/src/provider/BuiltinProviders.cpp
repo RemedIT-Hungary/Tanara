@@ -27,7 +27,7 @@ ProviderDescriptor sonioxDescriptor()
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
-    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Alap URL");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Cím (URL)");
     baseUrl.type         = ConfigFieldType::Url;
     baseUrl.defaultValue = QStringLiteral("https://api.soniox.com/v1");
 
@@ -46,6 +46,8 @@ ProviderDescriptor sonioxDescriptor()
     apiKey.secretKey = QStringLiteral("soniox.apiKey");
 
     d.fields = { baseUrl, model, apiKey };
+    // GET /models: kulccsal védett, ingyenes lista-végpont (nem indít átírást).
+    d.probe = { QStringLiteral("/models"), true };
     return d;
 }
 
@@ -61,7 +63,7 @@ ProviderDescriptor openAiCompatDescriptor()
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
-    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Alap URL");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Cím (URL)");
     baseUrl.type         = ConfigFieldType::Url;
     baseUrl.required     = true;
     baseUrl.defaultValue = QStringLiteral("http://localhost:1234/v1");
@@ -78,12 +80,18 @@ ProviderDescriptor openAiCompatDescriptor()
     temperature.label        = QCoreApplication::translate("BuiltinProviders", "Hőmérséklet");
     temperature.type         = ConfigFieldType::Number;
     temperature.defaultValue = QStringLiteral("0.2");
+    temperature.advanced     = true;
+    temperature.minValue     = 0.0;
+    temperature.maxValue     = 1.0;   // összefoglaláshoz e fölött nincs értelme
 
     ConfigField maxTokens;
     maxTokens.key          = QStringLiteral("maxTokens");
     maxTokens.label        = QCoreApplication::translate("BuiltinProviders", "Max. tokenek");
     maxTokens.type         = ConfigFieldType::Number;
     maxTokens.defaultValue = QStringLiteral("8000");
+    maxTokens.advanced     = true;
+    maxTokens.minValue     = 256;
+    maxTokens.maxValue     = 1000000;
 
     ConfigField apiKey;
     apiKey.key       = QStringLiteral("apiKey");
@@ -94,6 +102,7 @@ ProviderDescriptor openAiCompatDescriptor()
     apiKey.secretKey = QStringLiteral("llm.apiKey");
 
     d.fields = { baseUrl, model, temperature, maxTokens, apiKey };
+    d.probe = { QStringLiteral("/models"), true };   // ugyanaz, amit a modell-lekérés használ
     return d;
 }
 
@@ -109,7 +118,7 @@ ProviderDescriptor whisperCompatDescriptor()
 
     ConfigField baseUrl;
     baseUrl.key          = QStringLiteral("baseUrl");
-    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Alap URL");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Cím (URL)");
     baseUrl.type         = ConfigFieldType::Url;
     baseUrl.required     = true;
     baseUrl.defaultValue = QStringLiteral("http://localhost:8000/v1");
@@ -144,6 +153,7 @@ ProviderDescriptor whisperCompatDescriptor()
     apiKey.secretKey = QStringLiteral("stt.whisper.apiKey");
 
     d.fields = {baseUrl, model, language, apiKey};
+    d.probe = { QStringLiteral("/models"), true };   // OpenAI API és a helyi whisper-szerverek is adják
     return d;
 }
 

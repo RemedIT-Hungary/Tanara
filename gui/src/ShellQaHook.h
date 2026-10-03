@@ -46,6 +46,16 @@ public:
         const QImage img = m_window->grabWindow();
         return !img.isNull() && img.save(path);
     }
+    // Egy MÁSIK QML-ablak (Beállítások: App.bridge.settingsWindow(), felvevő:
+    // App.bridge.recorderWindow()) képe PNG-be — ezek saját motorban élnek, a QML-ből az
+    // Item.grabToImage nem éri el őket.
+    Q_INVOKABLE bool grabWindow(QObject* window, const QString& path)
+    {
+        auto* w = qobject_cast<QQuickWindow*>(window);
+        if (!w || !w->isVisible()) return false;
+        const QImage img = w->grabWindow();
+        return !img.isNull() && img.save(path);
+    }
     Q_INVOKABLE bool fileExists(const QString& path) const { return QFileInfo::exists(path); }
     // Egy sor a szabványos kimenetre (a szkript naplója).
     Q_INVOKABLE void log(const QString& line) const { QTextStream(stdout) << line << Qt::endl; }

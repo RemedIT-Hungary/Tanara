@@ -243,6 +243,17 @@ void RecorderViewModel::attach()
         m_knownDevices = ini.value(QStringLiteral("devices/known")).toStringList();
     }
     connect(c, &AppController::devicesChanged, this, &RecorderViewModel::rebuildDevices);
+    // A Beállításokban átnevezett eszköz neve itt is azonnal frissül (devicenames).
+    if (c->settings())
+        connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
+            for (int i = 0; i < m_rows.size(); ++i) {
+                const QString name = devicenames::displayName(m_rows.at(i).info.name);
+                if (name == m_rows.at(i).friendly) continue;
+                m_rows[i].friendly = name;
+                const QModelIndex idx = m_model.index(i);
+                emit m_model.dataChanged(idx, idx, {RecorderDeviceModel::NameRole});
+            }
+        });
     connect(c, &AppController::deviceLevelPeak, this, &RecorderViewModel::onLevel);
     connect(c, &AppController::recordingStateChanged, this, &RecorderViewModel::onRecordingState);
     connect(c, &AppController::elapsedChanged, this, [this](qint64 ms) {
@@ -366,8 +377,7 @@ void RecorderViewModel::rebuildDevices()
         else r.silentSince = now;
         r.selected = wantSelected(d);
         r.info = d;
-        r.friendly = tracknames::shortDeviceName(d.name);
-        if (r.friendly.isEmpty()) r.friendly = d.name;
+        r.friendly = devicenames::displayName(d.name);   // a felhasználó neve, különben a rövidített
         r.group = d.kind == TrackKind::Mic ? 0 : d.kind == TrackKind::Loopback ? 1 : 2;
         r.recorded = recNames.contains(d.name);
         r.disconnected = false;
@@ -379,7 +389,7 @@ void RecorderViewModel::rebuildDevices()
         if (old >= 0) r = m_rows.at(old);
         else {
             r.info.name = name;
-            r.friendly = tracknames::shortDeviceName(name);
+            r.friendly = devicenames::displayName(name);
             r.info.kind = name.contains(QStringLiteral("monitor"), Qt::CaseInsensitive)
                               ? TrackKind::Loopback : TrackKind::Mic;
             r.group = r.info.kind == TrackKind::Mic ? 0 : 1;

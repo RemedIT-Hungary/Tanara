@@ -9,6 +9,7 @@
 // Felvétel fut. A buborék az appot, ill. az eltelt időt mutatja; a menü felvétel közben
 // fejlécet („Felvétel · 00:12:47”) és leállítást is ad. A „Kilépés…” felvétel közben rákérdez.
 //
+#include <QDateTime>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -45,6 +46,7 @@ private slots:
     void openRecorder();         // menü/értesítés → tanara --record --no-start (megnyit / előhoz)
     void stopRecording();        // menü → tanara --record --stop (a futó felvevőnek továbbítva)
     void openAnalyzer();         // menü → a sima tanara (elemző) megnyitása
+    void openSettings();         // menü → tanara --settings watcher (a Beállítások „Hívásfigyelő” lapja)
     void quitRequested();        // „Kilépés…” — felvétel közben rákérdez
     // A D-Bus notification akció-gombjai / test-kattintása (csak TANARA_HAVE_DBUS mellett él).
     void onNotifyActionInvoked(uint id, const QString& actionKey);
@@ -59,12 +61,18 @@ private:
     QString lockPath() const;                 // <metaadat-mappa>/recording.lock
     void launch(const QStringList& args) const;
     void applyAutostart(bool on) const;       // ~/.config/autostart/*.desktop (Linux)
+    // A settings.json megváltozott (a Beállítások mentett): újratöltés + a figyelő
+    // átállítása újraindítás nélkül (be/ki, gyakoriság, figyelt appok, autostart).
+    void reloadSettingsIfChanged();
+    void applySettings();
 
     tanara::SettingsManager*  m_settings = nullptr;
     tanara::IMeetingDetector* m_detector = nullptr;   // owned (delete a dtorban)
     QSystemTrayIcon* m_tray = nullptr;
     QTimer*          m_timer = nullptr;
     QTimer*          m_stateTimer = nullptr;   // 1 mp: eltelt idő + a lock figyelése
+    QDateTime        m_settingsStamp;          // a settings.json utolsó látott módosítási ideje
+    bool             m_autostartApplied = false;   // az utoljára alkalmazott autostart-állapot
 
     QAction* m_headerAction = nullptr;    // „Felvétel · 00:12:47” (csak felvétel közben)
     QAction* m_showAction = nullptr;      // Felvevő megjelenítése

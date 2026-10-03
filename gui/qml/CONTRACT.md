@@ -64,7 +64,7 @@ readiness check and the Tanara Cloud estimate confirmation that the old `MainWin
 
 | Invokable | Meaning |
 |---|---|
-| `openSettings(string page)` | page: `""`, `"providers"`, `"watcher"`, `"cloud"`, `"summary"` |
+| `openSettings(string page, string focusField = "")` | page: `""`, `"providers"`, `"watcher"`, `"cloud"`, `"summary"`, `"recording"`; opens the (non-modal) QML Settings window. focusField `"stt"` / `"llm"`: the missing provider's card highlighted, and back to the meeting after a successful save |
 | `openPeople()` | People management dialog |
 | `openRecorder()` | floating recorder |
 | `startTranscription(string meetingId)` | readiness + cloud estimate, then transcribe |

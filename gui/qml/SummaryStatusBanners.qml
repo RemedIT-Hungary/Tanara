@@ -23,6 +23,13 @@ ColumnLayout {
     visible: jobVisible || errorVisible || blockerVisible
     spacing: 10
 
+    // A hiányzó nyelvi modellhez a Beállítások az LLM-kártyát kiemelve nyílik (B04).
+    function openSettings(page) {
+        if (!root.shell) return
+        if (page === "providers") root.shell.openSettings(page, "llm")
+        else root.shell.openSettings(page)
+    }
+
     Rectangle {
         visible: root.jobVisible
         Layout.fillWidth: true
@@ -71,7 +78,7 @@ ColumnLayout {
             visible: root.vm.fixActionLabel !== ""
             text: root.vm.fixActionLabel
             size: "small"
-            onClicked: if (root.shell) root.shell.openSettings(root.vm.fixActionPage)
+            onClicked: root.openSettings(root.vm.fixActionPage)
         }
         TButton {
             text: qsTr("Rendben")
@@ -96,7 +103,7 @@ ColumnLayout {
             trailingIconName: "arrow-right"
             iconSize: 14
             spacing: 6
-            onClicked: if (root.shell) root.shell.openSettings(root.vm.blocker.actionPage || "")
+            onClicked: root.openSettings(root.vm.blocker.actionPage || "")
         }
     }
 }

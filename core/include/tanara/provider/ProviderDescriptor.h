@@ -33,6 +33,23 @@ struct ConfigField {
     bool isSecret = false;              // true → KeyStore (nem perzisztálódik a settings.json-be)
     QString secretKey;                  // KeyStore-kulcs, ha isSecret (pl. "soniox.apiKey")
     bool dynamicOptions = false;        // Combo, aminek opcióit futásidőben kérjük le (pl. modell-lista)
+    bool advanced = false;              // a UI a „Haladó” rész alá teszi (alapból összecsukva)
+    // Number: a UI által kínált tartomány (minValue == maxValue → nincs megkötés). A tárolt,
+    // tartományon kívüli érték megmarad, amíg a felhasználó nem nyúl hozzá.
+    double minValue = 0.0;
+    double maxValue = 0.0;
+};
+
+// „Kapcsolat tesztelése”: mit kérdez a tesztelő a szolgáltatótól (provider/ConnectionTester.h).
+// Deklaratív, hogy új provider csak leírót adjon. Üres `path` → a provider nem tesztelhető
+// így (a UI nem kínál gombot). A kérés: GET <baseUrl><path>, API-kulccsal „Authorization:
+// Bearer”. Fizetős / állapotot változtató hívás SOSEM lehet.
+struct ConnectionProbe {
+    QString path;                       // pl. "/models"
+    // A válasz modell-listát ad ({"data":[{"id":…}]} vagy {"models":[{"id":…}]}): a tesztelő
+    // ellenőrzi, hogy a beállított modell szerepel-e benne, és a lista a UI-nak is átadható.
+    bool listsModels = false;
+    bool isValid() const { return !path.isEmpty(); }
 };
 
 struct ProviderDescriptor {
@@ -49,6 +66,7 @@ struct ProviderDescriptor {
     // AuthMode::Login: a KeyStore-kulcs, amelynek megléte = „be van jelentkezve”.
     // Üres → "<id>.token" (a korábbi konvenció).
     QString loginSecretKey;
+    ConnectionProbe probe;              // „Kapcsolat tesztelése” (üres → nincs)
 };
 
 } // namespace tanara

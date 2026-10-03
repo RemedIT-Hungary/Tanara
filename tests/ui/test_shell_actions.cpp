@@ -47,6 +47,13 @@ public:
     QVariantList cloudBanners() const override { return {}; }
 
     void openSettings(const QString& page) override { calls << QStringLiteral("settings:") + page; }
+    // A mély hivatkozás (B04) mezője; a lap ugyanúgy naplózódik.
+    void openSettingsAt(const QString& page, const QString& focusField) override
+    {
+        lastFocusField = focusField;
+        openSettings(page);
+    }
+    QString lastFocusField;
     void openPeople() override { calls << QStringLiteral("people"); }
     void openRecorder() override { calls << QStringLiteral("recorder"); }
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
@@ -253,6 +260,7 @@ private slots:
         QCOMPARE(m_bridge->calls.size(), 2);
         QVERIFY(m_bridge->calls.at(0).startsWith(QStringLiteral("blocker:")));
         QCOMPARE(m_bridge->calls.at(1), QStringLiteral("settings:providers"));
+        QCOMPARE(m_bridge->lastFocusField, QStringLiteral("stt"));   // az átíró kártyája kiemelve nyílik
         QVERIFY(revisions.count() >= 1);
 
         // Hangsáv nélküli megbeszélés → nincs mit beállítani, csak értesítés.

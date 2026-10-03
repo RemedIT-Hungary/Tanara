@@ -6,6 +6,7 @@
 #include "JobSupport.h"
 
 #include "tanara/AppController.h"
+#include "tanara/SettingsManager.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
 
@@ -106,6 +107,18 @@ void TrackListModel::connectController()
     auto mine = [this](const QString& id) { return !m_meetingId.isEmpty() && id == m_meetingId; };
     m_connections << connect(c, &AppController::tracksChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
+    // Az eszközök átnevezése (Beállítások) a sávok barátságos nevét is megváltoztatja.
+    if (c->settings()) {
+        m_deviceNames = c->settings()->settings().deviceNames;
+        m_connections << connect(c->settings(), &tanara::SettingsManager::settingsChanged, this, [this] {
+            AppController* a = app();
+            if (!a || !a->settings()) return;
+            const QMap<QString, QString> names = a->settings()->settings().deviceNames;
+            if (names == m_deviceNames) return;
+            m_deviceNames = names;
+            reload();
+        });
+    }
     m_connections << connect(c, &AppController::mixdownUpdated, this,
                              [this, mine](const QString& id, bool ok) {
         if (!mine(id)) return;

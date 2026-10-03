@@ -3,7 +3,9 @@
 // QmlShellBridge — az új (Qt Quick) főablak hídja a Qt Widgets világhoz (App.bridge).
 //
 // Ami a régi MainWindow-ban Widgets-hez kötött viselkedés volt, itt él tovább:
-//  - Beállítások / Személyek párbeszédablak;
+//  - a Beállítások (már QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
+//    natív mappaválasztót és a cloud Widgets-ablakait a SettingsWidgetsDialogs adja) és a
+//    Személyek párbeszédablak;
 //  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
 //    át (az burkolja az új QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
 //    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
@@ -29,10 +31,13 @@ struct CloudError;
 struct Money;
 }
 
+namespace tanara_qml { class SettingsWindowHost; }
+
 namespace tanara_gui {
 
 class ShellRecorderHost;
 class PeopleManagerDialog;
+class SettingsWidgetsDialogs;
 
 class QmlShellBridge : public tanara_qml::ShellBridge {
     Q_OBJECT
@@ -52,6 +57,9 @@ public:
     // A felvevő ablaka (RecorderWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
     // A QA-szkripteknek (--shell-script): App.bridge.recorderWindow().
     Q_INVOKABLE QObject* recorderWindow() const;
+    // A Beállítások ablaka (SettingsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
+    // A QA-szkripteknek: App.bridge.settingsWindow().
+    Q_INVOKABLE QObject* settingsWindow() const;
 
     // ---- ShellBridge ----
     bool cloudChipVisible() const override { return m_chipVisible; }
@@ -61,6 +69,7 @@ public:
     QVariantList cloudBanners() const override { return m_banners; }
 
     void openSettings(const QString& page) override;
+    void openSettingsAt(const QString& page, const QString& focusField) override;
     void openPeople() override;
     void openRecorder() override;
     QString pickAudioFile() override;
@@ -103,6 +112,8 @@ private:
     QPointer<QWindow> m_window;
 
     ShellRecorderHost* m_recorder = nullptr;   // a felvevő-kötés
+    SettingsWidgetsDialogs* m_settingsDialogs = nullptr;
+    tanara_qml::SettingsWindowHost* m_settings = nullptr;   // a QML Beállítások-ablak gazdája
     QPointer<PeopleManagerDialog> m_peopleDialog;
     bool m_quitAfterStop = false;
     bool m_shutDown = false;

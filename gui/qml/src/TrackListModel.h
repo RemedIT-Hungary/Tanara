@@ -17,6 +17,7 @@
 
 #include <QAbstractListModel>
 #include <QList>
+#include <QMap>
 #include <QPointer>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
@@ -155,6 +156,7 @@ private:
     QPointer<QObject> m_injected;
     QPointer<tanara::AppController> m_connected;
     QList<QMetaObject::Connection> m_connections;
+    QMap<QString, QString> m_deviceNames;   // az eszköz-átnevezések utolsó látott állapota
 
     QString m_meetingId;
     QString m_demoState;

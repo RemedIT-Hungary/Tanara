@@ -1,7 +1,8 @@
 #include "QmlShellBridge.h"
 
 #include "PeopleManagerDialog.h"
-#include "SettingsDialog.h"
+#include "SettingsWidgetsDialogs.h"
+#include "SettingsWindowHost.h"
 #include "ShellRecorderHost.h"
 #include "cloud/CloudEstimateDialog.h"
 #include "cloud/CloudLoginDialog.h"
@@ -22,6 +23,7 @@
 #include <QFileDialog>
 #include <QProgressDialog>
 #include <QStandardPaths>
+#include <QQuickWindow>
 #include <QTimer>
 #include <QWindow>
 
@@ -73,6 +75,26 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
                 m_recorder->retryListening();
             });
 
+    // A Beállítások QML-ablaka: nem modális, a mentés jelre frissítjük, ami tőle függ.
+    m_settingsDialogs = new SettingsWidgetsDialogs(m_controller, this);
+    m_settingsDialogs->setPeopleOpener([this] { openPeople(); });
+    m_settings = new tanara_qml::SettingsWindowHost(m_controller, m_settingsDialogs, this);
+    m_settings->setPersistTheme(false);   // a témát a főablak jegyzi meg (themeModeSaved)
+    connect(m_settings, &tanara_qml::SettingsWindowHost::saved, this, [this] {
+        m_recorder->refreshFromSettings();    // a felvevő tükrözze az új eszköz-policyt / neveket
+        refreshCloudChrome();
+        emit readinessChanged();
+    });
+    connect(m_settings, &tanara_qml::SettingsWindowHost::themeModeSaved, this,
+            &QmlShellBridge::themeModeSaved);
+    // B04: a hiányzó beállítás megvan → vissza a megbeszéléshez (a kijelölés nem változott).
+    connect(m_settings, &tanara_qml::SettingsWindowHost::returnRequested, this,
+            [this] { emit readinessChanged(); emit showMeetingRequested(QString()); });
+    connect(m_settings, &tanara_qml::SettingsWindowHost::closed, this, [this] {
+        refreshCloudChrome();      // be- / kijelentkezés a Beállításokból mentés nélkül is hat
+        emit readinessChanged();
+    });
+
     wireCloud();
 }
 
@@ -111,13 +133,22 @@ bool QmlShellBridge::eventFilter(QObject* watched, QEvent* event)
 
 void QmlShellBridge::openSettings(const QString& page)
 {
-    SettingsDialog dlg(m_controller, nullptr);
-    if (!page.isEmpty())
-        dlg.showPage(page);
-    if (dlg.exec() == QDialog::Accepted)
-        m_recorder->refreshFromSettings();    // a felvevő tükrözze az új eszköz-policyt
-    refreshCloudChrome();
-    emit readinessChanged();
+    openSettingsAt(page, QString());
+}
+
+void QmlShellBridge::openSettingsAt(const QString& page, const QString& focusField)
+{
+    if (m_shutDown)
+        return;
+    m_settings->setTransientParent(m_window);
+    if (!m_settings->open(page, focusField))
+        return;
+    m_settingsDialogs->setOwnerWindow(m_settings->window());
+}
+
+QObject* QmlShellBridge::settingsWindow() const
+{
+    return m_settings ? m_settings->window() : nullptr;
 }
 
 void QmlShellBridge::openPeople()
@@ -204,6 +235,8 @@ void QmlShellBridge::shutdown()
     qApp->removeEventFilter(this);
     if (m_peopleDialog)
         m_peopleDialog->close();
+    if (m_settings)
+        m_settings->closeNow();
     m_recorder->shutdown();
 }
 
@@ -497,6 +530,11 @@ bool QmlShellBridge::confirmCloudEstimate(const QString& meetingId, const QStrin
         ? tanara::WorkflowStep::Transcribe : tanara::WorkflowStep::Summarize;
     if (!m_controller->usesCloud(step))
         return true;   // BYO: nincs becslés
+    // A felhasználó a Beállításokban kikapcsolta a „költségbecslés minden feldolgozás előtt”
+    // kapcsolót: kérdés nélkül indul. Az akadályok (elfogyott egyenleg, ÁSZF, frissítés) a
+    // futás hibaágán ugyanúgy megállítják (onCloudError).
+    if (!m_controller->settings()->settings().cloudEstimateBeforeRun)
+        return true;
     CloudEstimateDialog dlg(m_controller, meetingId, task, mode, nullptr);
     return dlg.exec() == QDialog::Accepted;
 }

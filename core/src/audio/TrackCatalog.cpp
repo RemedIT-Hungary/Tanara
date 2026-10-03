@@ -6,9 +6,59 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QReadWriteLock>
 #include <QRegularExpression>
 
 namespace tanara {
+
+namespace devicenames {
+
+namespace {
+QReadWriteLock g_lock;
+QMap<QString, QString>& table()
+{
+    static QMap<QString, QString> t;
+    return t;
+}
+} // namespace
+
+void setOverrides(const QMap<QString, QString>& rawToFriendly)
+{
+    QMap<QString, QString> clean;
+    for (auto it = rawToFriendly.constBegin(); it != rawToFriendly.constEnd(); ++it) {
+        const QString name = it.value().simplified();
+        if (!it.key().isEmpty() && !name.isEmpty()) clean.insert(it.key(), name);
+    }
+    QWriteLocker lock(&g_lock);
+    table() = clean;
+}
+
+QMap<QString, QString> overrides()
+{
+    QReadLocker lock(&g_lock);
+    return table();
+}
+
+bool hasOverride(const QString& rawDeviceName)
+{
+    QReadLocker lock(&g_lock);
+    return table().contains(rawDeviceName);
+}
+
+QString displayName(const QString& rawDeviceName, const QMap<QString, QString>& overrides)
+{
+    const QString own = overrides.value(rawDeviceName).simplified();
+    if (!own.isEmpty()) return own;
+    const QString s = tracknames::shortDeviceName(rawDeviceName);
+    return s.isEmpty() ? rawDeviceName : s;
+}
+
+QString displayName(const QString& rawDeviceName)
+{
+    return displayName(rawDeviceName, overrides());
+}
+
+} // namespace devicenames
 
 namespace tracknames {
 
@@ -75,9 +125,15 @@ QStringList friendlyNames(const QVector<Track>& all)
     QVector<TrackRole> roles;
     QStringList names;
     roles.reserve(all.size());
+    const QMap<QString, QString> own = devicenames::overrides();
     for (const Track& t : all) {
         const TrackRole r = classify(t, all);
         roles.append(r);
+        // A felhasználó által átnevezett eszköz sávja az ő nevét kapja (a szerep-név helyett).
+        if (const QString o = own.value(t.deviceName); !o.isEmpty()) {
+            names << o;
+            continue;
+        }
         switch (r) {
         case TrackRole::OwnMic:
             names << QCoreApplication::translate("TrackCatalog", "Saját mikrofon"); break;
@@ -100,6 +156,7 @@ QStringList friendlyNames(const QVector<Track>& all)
         if (same.size() < 2) continue;
         const QString base = names.at(i);
         for (int j : same) {
+            if (own.contains(all.at(j).deviceName)) continue;   // a saját név már egyedi szándék
             const QString s = shortDeviceName(all.at(j).deviceName);
             if (!s.isEmpty() && s != base)
                 names[j] = QStringLiteral("%1 (%2)").arg(base, s);

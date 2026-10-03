@@ -9,6 +9,7 @@
 //
 #include "tanara/Types.h"
 
+#include <QMap>
 #include <QObject>
 #include <QVector>
 
@@ -39,6 +40,27 @@ struct TrackView {
     qint64    durationMs = -1;
 };
 
+// ---- hangeszközök felhasználói nevei --------------------------------------------------
+// A felhasználó a Beállításokban átnevezheti az eszközeit (AppSettings::deviceNames: nyers
+// OS-név → barátságos név). EZ az egyetlen hely, ahol a név feloldódik: a felvevő, a „Sávok”
+// fül (tracknames::friendlyNames), a figyelő értesítése és a Beállítások is innen kérdez.
+// A táblát a SettingsManager tölti (betöltéskor és minden setSettings-nél), folyamat-szintű;
+// szálbiztos.
+namespace devicenames {
+
+void setOverrides(const QMap<QString, QString>& rawToFriendly);
+QMap<QString, QString> overrides();
+// Van-e a felhasználónak saját neve erre az eszközre.
+bool hasOverride(const QString& rawDeviceName);
+// A megjelenítendő név: a felhasználó neve, különben tracknames::shortDeviceName(raw)
+// (ha az üres, maga a nyers név). A monitor-előtagos alak („Monitor of X”) a saját kulcsán
+// kap nevet: a kimenet és a bemenet külön eszköz.
+QString displayName(const QString& rawDeviceName);
+// Ugyanez egy adott táblával (a Beállítások még nem mentett piszkozatához).
+QString displayName(const QString& rawDeviceName, const QMap<QString, QString>& overrides);
+
+} // namespace devicenames
+
 namespace tracknames {
 
 // A hívás (kommunikációs) eszközére utal-e a név — pl. a headsetek „Communication” /
@@ -58,6 +80,8 @@ TrackRole classify(const Track& track, const QVector<Track>& all);
 
 // Barátságos nevek a meeting összes sávjára (a `all` sorrendjében). Azonos szerepű sávoknál
 // a rövid eszköznév különböztet („Rendszerhang (Kanto YU4)”), végső esetben sorszám.
+// Ha a felhasználó az eszközt átnevezte (devicenames), a sáv azt a nevet kapja a szerep-név
+// helyett — amit ő adott, azt látja mindenhol.
 QStringList friendlyNames(const QVector<Track>& all);
 
 } // namespace tracknames

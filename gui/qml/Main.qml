@@ -120,6 +120,8 @@ ApplicationWindow {
         function onStopPromptRequested(reason) { dialogs.openStopPrompt(reason) }
         function onShowWindowRequested() { window.show(); window.raise(); window.requestActivate() }
         function onQuitRequested() { window.quitConfirmed = true; window.close() }
+        // A Beállításokban mentett téma: megjegyezzük a következő indításra.
+        function onThemeModeSaved(mode) { window.setTheme(mode) }
     }
 
     function saveGeometry() {

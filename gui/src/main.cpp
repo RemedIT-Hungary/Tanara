@@ -8,9 +8,14 @@
 //                                  --no-start  --stop;  --classic: a régi Widgets-felvevő
 //   tanara --gallery | --demo | --qml-shot ki.png [--qml-page T] [--theme …] [--size SZxM]
 //                          QML-fejlesztői módok AppController NÉLKÜL (lásd gui/qml/README.md)
+//   tanara --settings [LAP]  csak a Beállítások ablaka (a tálca-figyelő „Beállítások…” menüpontja
+//                          indítja); LAP: general | recording | watcher | providers | cloud | summary.
+//                          Ha fut főablak, a kérést annak adja át és kilép.
 //   tanara --shell-script f.qml   fejlesztői QA: a főablak végigvezetése szkriptből (ShellQaHook.h)
-// A folyamat mindig QApplication: a Beállítások / Személyek / cloud ablakok egyelőre Widgetek
-// maradnak, és a QML-ablak mellett nyílnak (App.bridge). A felvevő az új főablakban is a
+// A folyamat mindig QApplication: a Személyek és a cloud ablakok egyelőre Widgetek maradnak,
+// és a QML-ablakok mellett nyílnak (App.bridge / SettingsWidgetsDialogs). A Beállítások az új
+// felületen QML-ablak (SettingsWindowHost) a főablakban, az önálló felvevőben és a --settings
+// módban is; a --classic főablak és a --classic felvevő a régi SettingsDialog-ot nyitja. A felvevő az új főablakban is a
 // QML-felvevő (ShellRecorderHost); a --classic főablak a régi Widgets-felvevőt használja.
 #include "MainWindow.h"
 #include "RecordBar.h"
@@ -21,6 +26,8 @@
 #include "RecorderTrayIcon.h"
 #include "RecorderWindowHost.h"
 #include "SettingsDialog.h"
+#include "SettingsWidgetsDialogs.h"
+#include "SettingsWindowHost.h"
 #include "ShellRecorderHost.h"
 #include "cloud/CloudSnapshots.h"
 
@@ -44,6 +51,9 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLockFile>
 #include <QMenu>
 #include <QMessageBox>
@@ -81,6 +91,54 @@ static bool watcherRunning()
     return true;
 }
 
+// A `--settings [LAP]` értéke: a lap neve ("" ha nincs megadva / a következő elem kapcsoló).
+static QString settingsPageArg(const QStringList& args)
+{
+    const int i = args.indexOf(QStringLiteral("--settings"));
+    if (i < 0 || i + 1 >= args.size() || args.at(i + 1).startsWith(QLatin1String("--")))
+        return QString();
+    return args.at(i + 1);
+}
+
+// Főablak nélküli folyamatban (önálló felvevő, --settings) a megjegyzett téma betöltése a
+// közös ui-state.json-ból — a --theme / TANARA_THEME erősebb nála.
+static void applySavedTheme(AppController& controller, const tanara_qml::QmlOptions& opts)
+{
+    if (!opts.theme.isEmpty() || qEnvironmentVariableIsSet("TANARA_THEME"))
+        return;
+    QFile f(tanara::paths::metadataFile(QStringLiteral("ui-state.json"),
+                                        controller.settings()->settings().metadataDir));
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const QString mode = QJsonDocument::fromJson(f.readAll()).object()
+                             .value(QStringLiteral("themeMode")).toString();
+    if (!mode.isEmpty())
+        tanara_qml::AppContext::instance()->setThemeMode(mode);
+}
+
+// --settings mód: csak a Beállítások ablaka (a tálca-figyelő „Beállítások…” menüpontja). Akkor
+// fut így, ha nincs főablak, amelynek a kérést át lehetett adni; az ablak bezárásakor kilép.
+static int runSettingsMode(QApplication& app, AppController& controller,
+                           const tanara_qml::QmlOptions& opts, const QString& page)
+{
+    tanara_qml::applyOptions(opts);
+    tanara_qml::AppContext::instance()->setDemo(false);
+    tanara_qml::AppContext::instance()->setController(&controller);
+    applySavedTheme(controller, opts);
+    controller.refreshDevices();
+
+    auto* dialogs = new SettingsWidgetsDialogs(&controller, &app);
+    auto* settings = new tanara_qml::SettingsWindowHost(&controller, dialogs, &app);
+    QObject::connect(settings, &tanara_qml::SettingsWindowHost::closed, &app, [] { qApp->quit(); });
+    if (!settings->open(page.isEmpty() ? QStringLiteral("general") : page)) {
+        QMessageBox::critical(nullptr, QCoreApplication::translate("main", "Tanara — Beállítások"),
+                              QCoreApplication::translate("main", "A Beállítások felülete nem tölthető be."));
+        return 1;
+    }
+    dialogs->setOwnerWindow(settings->window());
+    return app.exec();
+}
+
 static int runRecorderMode(QApplication& app, AppController& controller, const QStringList& args)
 {
     const RecorderArgs ra = parseRecorderArgs(args);
@@ -94,7 +152,10 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     singleton->listen();
 
     QApplication::setQuitOnLastWindowClosed(false);   // rejtett ablakkal is fut a felvétel
-    tanara_qml::applyOptions(tanara_qml::parseQmlOptions(args));   // --theme / TANARA_THEME
+    const tanara_qml::QmlOptions recorderOpts = tanara_qml::parseQmlOptions(args);
+    tanara_qml::applyOptions(recorderOpts);                         // --theme / TANARA_THEME
+    tanara_qml::AppContext::instance()->setDemo(false);             // valódi controller van
+    applySavedTheme(controller, recorderOpts);                      // különben a megjegyzett téma
     // Ez a folyamat a felvétel után kilép: az automatikus lekeverést NEM indítja el (a
     // félbehagyott ffmpeg csak csonka mixdown.part.mp3-at hagyna). A lekeverést az elemző
     // készíti el, amikor kell.
@@ -168,11 +229,20 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
                                 {QStringLiteral("--meeting"), meetingId});
         qApp->quit();
     });
-    QObject::connect(host, &tanara_qml::RecorderWindowHost::settingsRequested, &app, [&controller] {
-        SettingsDialog dlg(&controller);
-        dlg.exec();
-        controller.refreshDevices();
+    // „Rögzítés beállításai” (R10): az új QML Beállítások-ablak a „Rögzítés” lapon, ebben a
+    // folyamatban (nem modális — a felvevő mellette használható, a felvételt nem érinti).
+    auto* settingsDialogs = new SettingsWidgetsDialogs(&controller, &app);
+    auto* settings = new tanara_qml::SettingsWindowHost(&controller, settingsDialogs, &app);
+    QObject::connect(host, &tanara_qml::RecorderWindowHost::settingsRequested, &app,
+                     [settings, settingsDialogs] {
+        if (settings->open(QStringLiteral("recording")))
+            settingsDialogs->setOwnerWindow(settings->window());
     });
+    QObject::connect(settings, &tanara_qml::SettingsWindowHost::saved, &app,
+                     [&controller] { controller.refreshDevices(); });
+    // A felvevő bezárásakor a folyamat kilép: a Beállítások ablaka se tartsa életben.
+    QObject::connect(host, &tanara_qml::RecorderWindowHost::closed, settings,
+                     [settings] { settings->closeNow(); });
 
     // Továbbított kérések (tálca / figyelő újabb hívásai) → ugyanez az ablak.
     QObject::connect(singleton, &RecorderSingleton::requestReceived, host,
@@ -314,6 +384,7 @@ int main(int argc, char** argv) {
     const bool classicMode = cleanArgs.contains(QStringLiteral("--classic"))
                              || cleanArgs.contains(QStringLiteral("--ui-snapshots"));
     const bool qmlMode = !recordMode && !classicMode;
+    const bool settingsMode = qmlMode && cleanArgs.contains(QStringLiteral("--settings"));
     tanara_qml::QmlOptions qmlOpts;
     if (qmlMode) {
         qmlOpts = tanara_qml::parseQmlOptions(cleanArgs);
@@ -384,7 +455,16 @@ int main(int argc, char** argv) {
         && analyzer_singleton::forwardToExisting({QStringLiteral("--meeting"), startMeetingId}))
         return 0;
 
+    // `tanara --settings [lap]` (a tálca-figyelő menüpontja): ha fut az új főablak, az nyitja meg
+    // a Beállításokat a kért lapon, és ez a folyamat kilép.
+    if (settingsMode && !qaScript
+        && analyzer_singleton::forwardToExisting({QStringLiteral("--settings"), settingsPageArg(cleanArgs)}))
+        return 0;
+
     tanara::AppController controller;
+
+    if (settingsMode)
+        return runSettingsMode(app, controller, qmlOpts, settingsPageArg(cleanArgs));
 
     // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs főablak.
     if (recordMode)
@@ -437,7 +517,11 @@ int main(int argc, char** argv) {
         bridge.startRecorderListening();
         // A `tanara --meeting <id>` átadott kérései → kijelölés + a főablak előre.
         analyzer_singleton::listen(&bridge, [&bridge](const QStringList& fwd) {
-            bridge.showMeeting(analyzer_singleton::meetingArg(fwd));
+            // `tanara --settings [lap]`: a Beállítások a kért lapon; különben megbeszélés-kijelölés.
+            if (const int i = fwd.indexOf(QStringLiteral("--settings")); i >= 0)
+                bridge.openSettings(fwd.value(i + 1));
+            else
+                bridge.showMeeting(analyzer_singleton::meetingArg(fwd));
         });
     }
     // Induláskor kért megbeszélés (a megjegyzett kijelölés helyett).

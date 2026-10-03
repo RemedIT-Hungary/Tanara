@@ -276,6 +276,13 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("cloudSttModel")] = s.cloudSttModel;
     o[QStringLiteral("cloudLlmModel")] = s.cloudLlmModel;
     o[QStringLiteral("waitlistEmail")] = s.waitlistEmail;
+    o[QStringLiteral("cloudEstimateBeforeRun")] = s.cloudEstimateBeforeRun;
+
+    // Hangeszközök felhasználói nevei (nyers név → barátságos név).
+    QJsonObject names;
+    for (auto it = s.deviceNames.constBegin(); it != s.deviceNames.constEnd(); ++it)
+        names[it.key()] = it.value();
+    o[QStringLiteral("deviceNames")] = names;
     return o;
 }
 
@@ -348,6 +355,16 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.cloudSttModel = o.value(QStringLiteral("cloudSttModel")).toString(s.cloudSttModel);
     s.cloudLlmModel = o.value(QStringLiteral("cloudLlmModel")).toString(s.cloudLlmModel);
     s.waitlistEmail = o.value(QStringLiteral("waitlistEmail")).toString(s.waitlistEmail);
+    s.cloudEstimateBeforeRun =
+        o.value(QStringLiteral("cloudEstimateBeforeRun")).toBool(s.cloudEstimateBeforeRun);
+
+    // Hangeszközök felhasználói nevei — az üres név nem felülírás (kimarad).
+    const QJsonObject names = o.value(QStringLiteral("deviceNames")).toObject();
+    for (auto it = names.constBegin(); it != names.constEnd(); ++it) {
+        const QString name = it.value().toString().simplified();
+        if (!it.key().isEmpty() && !name.isEmpty())
+            s.deviceNames.insert(it.key(), name);
+    }
     return s;
 }
 

@@ -32,7 +32,12 @@ public:
     bool confirmAnswer = true;
     QString pickedFile;
 
-    Q_INVOKABLE void openSettings(const QString& page) { calls << "openSettings:" + page; }
+    Q_INVOKABLE void openSettings(const QString& page, const QString& focusField = QString())
+    {
+        calls << "openSettings:" + page;
+        lastFocusField = focusField;
+    }
+    QString lastFocusField;
     Q_INVOKABLE void startTranscription(const QString& id) { calls << "startTranscription:" + id; }
     Q_INVOKABLE void startQuickSummary(const QString& id) { calls << "startQuickSummary:" + id; }
     Q_INVOKABLE void startTopicExtraction(const QString& id) { calls << "startTopicExtraction:" + id; }
@@ -184,6 +189,7 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(pre.get(), "start"));
         QVERIFY(QMetaObject::invokeMethod(pre.get(), "openSettings", Q_ARG(QVariant, QStringLiteral("providers"))));
         QCOMPARE(shell.calls, QStringList({"startTranscription:m1", "openSettings:providers"}));
+        QCOMPARE(shell.lastFocusField, QStringLiteral("stt"));   // B04: az átíró kártyájához visz
         shell.calls.clear();
 
         // Sávok: előnézet a lejátszón át (ugyanarra a sávra újra → leáll).

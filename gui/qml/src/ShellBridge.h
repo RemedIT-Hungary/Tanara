@@ -42,6 +42,14 @@ public:
     // ---- Widgets-párbeszédablakok ----
     // page: "" | "providers" | "watcher" | "cloud" | "summary" | "recording"
     Q_INVOKABLE virtual void openSettings(const QString& page) = 0;
+    // Ugyanez mély hivatkozással (B04): focusField "stt" | "llm" — a hiányzó szolgáltató
+    // kártyája kiemelve, sikeres mentés után vissza a megbeszéléshez. Az alapértelmezés a
+    // sima openSettings (a tesztek ál-hídjainak nem kell tudniuk róla).
+    Q_INVOKABLE virtual void openSettingsAt(const QString& page, const QString& focusField)
+    {
+        Q_UNUSED(focusField);
+        openSettings(page);
+    }
     Q_INVOKABLE virtual void openPeople() = 0;
     Q_INVOKABLE virtual void openRecorder() = 0;
     // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
@@ -90,6 +98,9 @@ signals:
     // Valami megváltozott, ami a lépések futtathatóságát érinti (beállítások, be-/kilépés,
     // modellek) — a nézetek értékeljék újra a canRun-t.
     void readinessChanged();
+    // A Beállításokban mentett téma ("system" | "light" | "dark"): a főablak megjegyzi
+    // (ui-state.json), hogy a következő indításkor is ez legyen.
+    void themeModeSaved(const QString& mode);
     // Felvétel közben a hívás véget ért / csend van: a héj rákérdez („Vége a meetingnek?”).
     // A QML-felvevővel a híd NEM küldi: a kérdést a felvevő saját doboza (R06) teszi fel,
     // így a felhasználó egyszer kap kérdést. (Felvevő nélküli hídnak marad meg.)

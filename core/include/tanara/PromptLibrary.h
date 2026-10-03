@@ -11,6 +11,8 @@
 //   3. a kódba égetett beépített default (promptBuiltin).
 //
 #include <QString>
+#include <QStringList>
+#include <QVector>
 
 namespace tanara {
 
@@ -29,5 +31,22 @@ QString promptDefault(const QString& id, const QString& metadataDir = QString())
 //  - placeholder nélküli (saját) promptnál nem-magyar célnyelv esetén direktívát fűz hozzá.
 // language üres → "magyar". A ## Döntések / ## Teendők szakaszcímek magyarok maradnak.
 QString applySummaryLanguage(QString prompt, const QString& language);
+
+// A promptokban a KÓD által behelyettesített változók (a Beállítások jelmagyarázata és a
+// szerkesztő kiemelése ebből dolgozik — csak az szerepel itt, amit tényleg cserélünk).
+struct PromptVariable {
+    QString token;         // pl. "{{NYELV}}"
+    QString description;   // mire cserélődik (a UI nyelvén)
+};
+QVector<PromptVariable> promptVariables();
+
+// Egy prompt KIMENETÉNEK alakja, ahogy a feldolgozó kód várja (nem szerkeszthető; a
+// Beállítások „Kimeneti séma” ablaka mutatja). id: simple | topic | analysis | reduce.
+struct PromptOutputFormat {
+    QString kind;          // "json" | "markdown" | "text"
+    QString summary;       // egysoros: „execSummary, decisions[], actionItems[], participants[]”
+    QString body;          // a teljes leírás (séma / minta), egyenközű betűvel megjelenítve
+};
+PromptOutputFormat promptOutputFormat(const QString& id);
 
 } // namespace tanara

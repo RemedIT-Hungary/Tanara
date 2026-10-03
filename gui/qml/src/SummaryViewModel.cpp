@@ -491,7 +491,7 @@ void SummaryViewModel::loadDemo()
             m_canRun = false;
             m_blocker = {
                 {QStringLiteral("title"), tr("Nincs beállítva összefoglaló szolgáltató")},
-                {QStringLiteral("text"), tr("Hiányzik: Alap URL (OpenAI-kompatibilis). Add meg a saját "
+                {QStringLiteral("text"), tr("Hiányzik: Cím (URL) (OpenAI-kompatibilis). Add meg a saját "
                                             "szolgáltatód adatait a Beállításokban.")},
                 {QStringLiteral("actionLabel"), tr("Szolgáltató beállítása")},
                 {QStringLiteral("actionPage"), QStringLiteral("providers")},

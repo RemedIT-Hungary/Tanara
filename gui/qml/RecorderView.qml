@@ -719,23 +719,11 @@ Item {
                             required property bool toggleable
                             width: devCol.width
 
-                            Row {                      // csoportfej
+                            RecorderGroupHeader {      // csoportfej (a Beállításokkal közös)
                                 visible: dev.groupFirst
                                 height: visible ? 26 : 0
                                 topPadding: 8
-                                spacing: 6
-                                TLabel {
-                                    text: dev.group === 0 ? qsTr("MIKROFONOK") : dev.group === 1 ? qsTr("HANGKIMENETEK") : qsTr("EGYÉB BEMENETEK")
-                                    muted: true
-                                    font.pixelSize: 11
-                                    font.weight: Theme.weightSemiBold
-                                    font.letterSpacing: 0.66
-                                }
-                                TLabel {
-                                    text: dev.group === 0 ? qsTr("amit mondasz") : dev.group === 1 ? qsTr("amit hallasz") : ""
-                                    muted: true
-                                    font.pixelSize: 11
-                                }
+                                group: dev.group
                             }
                             Rectangle {                // eszköz-sor
                                 x: -4
@@ -776,23 +764,9 @@ Item {
                                         id: metaRow
                                         width: parent.width
                                         spacing: 6
-                                        Rectangle {
+                                        RecorderDefaultPill {
                                             id: defPill
                                             visible: dev.isDefault
-                                            width: defText.implicitWidth + 10
-                                            height: 15
-                                            radius: 6
-                                            color: "transparent"
-                                            border.width: 1
-                                            border.color: Theme.borderStrong
-                                            TLabel {
-                                                id: defText
-                                                anchors.centerIn: parent
-                                                text: qsTr("alapért.")
-                                                muted: true
-                                                font.pixelSize: 10
-                                                font.weight: Theme.weightSemiBold
-                                            }
                                         }
                                         TLabel {
                                             id: appLabel

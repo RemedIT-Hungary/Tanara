@@ -331,6 +331,16 @@ public slots:
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
+    // A tárolt titok értéke ("" ha nincs) — a Beállítások kulcs-mezőjéhez (szem-gomb) és a
+    // „Kapcsolat tesztelése” próbához. Máshol ne jelenítsd meg.
+    QString secret(const QString& name) const;
+
+    // Számlált szintfigyelés több fogyasztónak (a Beállítások „Rögzítés” lapja a felvevő
+    // mellett): amíg legalább egy fogyasztó kéri — vagy a start/stopLevelMonitoring párosa
+    // (a felvevő) él —, a figyelés megy; az utolsó elengedésekor leáll. A megszűnő `owner`
+    // kérése magától elengedődik.
+    void retainLevelMonitoring(QObject* owner);
+    void releaseLevelMonitoring(QObject* owner);
 
 signals:
     void devicesChanged();
@@ -402,6 +412,8 @@ private:
     // A szintfigyelő (újra)indítása a megfelelő eszköz-halmazzal; force nélkül csak akkor,
     // ha a halmaz változott. Felvétel alatt a rögzített eszközök kimaradnak.
     void restartLevelMonitor(bool force);
+    void beginLevelMonitoring();
+    void endLevelMonitoring();
     // Eszköz-újrafelsorolás után: felvétel alatt az eltűnt rögzített eszköz sávjának lezárása.
     void handleDeviceSetChange();
     // A kész (friss) mixdownt egyetlen Soniox-kéréssel írja át; a transcribeMeeting ehhez

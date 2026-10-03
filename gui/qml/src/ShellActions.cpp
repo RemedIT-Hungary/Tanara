@@ -235,10 +235,13 @@ void ShellActions::toast(const QString& text)
 
 // ---- Widgets-ablakok -------------------------------------------------------------------
 
-void ShellActions::openSettings(const QString& page)
+void ShellActions::openSettings(const QString& page, const QString& focusField)
 {
     if (ShellBridge* b = bridge()) {
-        b->openSettings(page);
+        // A Beállítások külön, nem modális ablak: a mentés a híd readinessChanged jelén át
+        // frissíti a nézeteket (itt csak a régi, modális hidak kedvéért léptetünk).
+        if (focusField.isEmpty()) b->openSettings(page);
+        else b->openSettingsAt(page, focusField);
         bumpReadiness();
     } else {
         toast(tr("A Beállítások ebben a módban nem érhetők el."));
@@ -303,7 +306,8 @@ bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
     }
     if (r.blockerKind == BlockerKind::ProviderConfig || r.blockerKind == BlockerKind::Auth) {
         // Hiányzó szolgáltató-beállítás → a Beállítások „Külső szolgáltatások” lapja.
-        openSettings(QStringLiteral("providers"));
+        openSettings(QStringLiteral("providers"),
+                     step == WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"));
     } else {
         toast(tr("Nem indítható: %1").arg(r.detail));
     }

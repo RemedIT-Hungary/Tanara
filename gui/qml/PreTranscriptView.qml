@@ -29,7 +29,12 @@ Item {
         function onStateChanged() { if (Qt.application.state === Qt.ApplicationActive && root.visible) vm.refresh() }
     }
 
-    function openSettings(page) { if (root.shell) root.shell.openSettings(page) }
+    // A hiányzó átíró-szolgáltatóhoz a Beállítások az STT-kártyát kiemelve nyílik (B04).
+    function openSettings(page) {
+        if (!root.shell) return
+        if (page === "providers") root.shell.openSettings(page, "stt")
+        else root.shell.openSettings(page)
+    }
     function commitContext() { saveTimer.stop(); vm.commitContextDraft() }
     function start() {
         commitContext()

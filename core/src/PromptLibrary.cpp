@@ -1,6 +1,7 @@
 #include "tanara/PromptLibrary.h"
 #include "tanara/Paths.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 
@@ -125,5 +126,58 @@ QString applySummaryLanguage(QString prompt, const QString& language)
         "szakaszcímek (pl. `## Döntések`, `## Teendők`) változatlanul magyarul maradnak.\n")
         .arg(lang);
 }
+
+QVector<PromptVariable> promptVariables()
+{
+    return {
+        { QStringLiteral("{{NYELV}}"),
+          QCoreApplication::translate("PromptLibrary", "az összefoglaló nyelve") },
+    };
+}
+
+PromptOutputFormat promptOutputFormat(const QString& id)
+{
+    PromptOutputFormat f;
+    if (id == QStringLiteral("simple")) {
+        f.kind = QStringLiteral("json");
+        f.summary = QStringLiteral("execSummary, decisions[], actionItems[], participants[]");
+        f.body = QStringLiteral(
+            "{\n"
+            "  \"execSummary\": string,\n"
+            "  \"decisions\": [ string, … ],\n"
+            "  \"actionItems\": [\n"
+            "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
+            "  ],\n"
+            "  \"participants\": [ string, … ]\n"
+            "}");
+    } else if (id == QStringLiteral("topic")) {
+        f.kind = QStringLiteral("markdown");
+        f.summary = QCoreApplication::translate("PromptLibrary", "## Cím + 1–2 mondat, témánként");
+        f.body = QCoreApplication::translate("PromptLibrary",
+            "## <a téma címe>\n"
+            "<1–2 mondatos összegzés>\n"
+            "\n"
+            "## <a következő téma címe>\n"
+            "<1–2 mondatos összegzés>");
+    } else if (id == QStringLiteral("analysis")) {
+        f.kind = QStringLiteral("markdown");
+        f.summary = QCoreApplication::translate("PromptLibrary",
+                                                "összegzés, ## Döntések, ## Teendők");
+        f.body = QCoreApplication::translate("PromptLibrary",
+            "<egy bekezdés összegzés a témáról>\n"
+            "\n"
+            "## Döntések\n"
+            "- <egy döntés soronként>\n"
+            "\n"
+            "## Teendők\n"
+            "- <a teendő szövege> — <felelős> (<határidő>)");
+    } else if (id == QStringLiteral("reduce")) {
+        f.kind = QStringLiteral("text");
+        f.summary = QCoreApplication::translate("PromptLibrary", "egy bekezdés");
+        f.body = QCoreApplication::translate("PromptLibrary", "<2–4 mondatos vezetői összefoglaló>");
+    }
+    return f;
+}
+
 
 } // namespace tanara

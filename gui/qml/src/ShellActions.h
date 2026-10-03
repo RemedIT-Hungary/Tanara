@@ -64,7 +64,10 @@ public:
     int readinessRevision() const { return m_readinessRevision; }
 
     // ---- a szerződés műveletei ----
-    Q_INVOKABLE void openSettings(const QString& page = QString());
+    // page: "" | "providers" | "watcher" | "cloud" | "summary" | "recording";
+    // focusField: "" | "stt" | "llm" — a hiányzó szolgáltatóhoz vezető mély hivatkozás (B04).
+    Q_INVOKABLE void openSettings(const QString& page = QString(),
+                                  const QString& focusField = QString());
     Q_INVOKABLE void openPeople();
     Q_INVOKABLE void openRecorder();
     Q_INVOKABLE void startTranscription(const QString& meetingId);

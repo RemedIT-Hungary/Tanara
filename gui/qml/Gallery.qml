@@ -467,6 +467,95 @@ Item {
                 }
             }
 
+            // ------------------------------------------------- a Beállítások vezérlői
+            Section {
+                id: settingsSection
+                title: "Beállítások (Settings*): szegmentált választó, rádió, kapcsoló-sor, léptető, lenyíló, állapot-pirula, navigáció"
+                flowSpacing: 24
+                property string seg: "light"
+                property bool radio: true
+                property bool sw: true
+                property int minutes: 3
+                property string combo: "hu"
+
+                Column {
+                    spacing: 8
+                    SettingsSegmented {
+                        options: [{ value: "system", label: "Rendszer", iconName: "monitor" },
+                                  { value: "light", label: "Világos", iconName: "sun" },
+                                  { value: "dark", label: "Sötét", iconName: "moon" }]
+                        value: settingsSection.seg
+                        onPicked: (v) => settingsSection.seg = v
+                    }
+                    SettingsSegmented {
+                        width: 220
+                        stretch: true
+                        options: [{ value: "fast", label: "Gyors" }, { value: "accurate", label: "Pontos" }]
+                        value: "accurate"
+                    }
+                }
+                Column {
+                    spacing: 8
+                    SettingsRadio { text: "Automatikusan, a felvétel után"; checked: !settingsSection.radio; onClicked: settingsSection.radio = false }
+                    SettingsRadio { text: "Kézzel, a Sávok fülön"; checked: settingsSection.radio; onClicked: settingsSection.radio = true }
+                }
+                Column {
+                    width: 330
+                    spacing: 12
+                    SettingsSwitchRow {
+                        width: parent.width
+                        text: "Induljon el a bejelentkezéskor"
+                        helper: "Magyarázat a kapcsoló alatt, 13 px, halvány."
+                        checked: settingsSection.sw
+                        onToggled: (on) => settingsSection.sw = on
+                    }
+                    SettingsSwitchRow {
+                        width: parent.width
+                        large: true
+                        text: "Hívásfigyelés"
+                        checked: settingsSection.sw
+                        onToggled: (on) => settingsSection.sw = on
+                    }
+                }
+                Column {
+                    spacing: 8
+                    SettingsStepper {
+                        width: 132
+                        from: 0; to: 60
+                        value: settingsSection.minutes
+                        textFor: function(v) { return v === 0 ? "kikapcsolva" : v + " perc" }
+                        onMoved: (v) => settingsSection.minutes = v
+                    }
+                    SettingsCombo {
+                        width: 220
+                        options: [{ value: "auto", label: "Rendszer nyelve" }, { value: "hu", label: "Magyar", tag: "ajánlott" },
+                                  { value: "en", label: "English" }]
+                        value: settingsSection.combo
+                        onPicked: (v) => settingsSection.combo = v
+                    }
+                    SettingsCombo {
+                        width: 220
+                        editable: true
+                        mono: true
+                        fieldHeight: 32
+                        options: ["modell-a", "modell-b"]
+                        value: "modell-a"
+                    }
+                }
+                Column {
+                    spacing: 8
+                    SettingsStatusPill { status: "ok"; text: "Kapcsolódva · 210 ms" }
+                    SettingsStatusPill { status: "failed"; text: "Nem érhető el" }
+                    SettingsStatusPill { status: "testing"; text: "Tesztelés…" }
+                }
+                Column {
+                    width: 188
+                    spacing: 2
+                    SettingsNavItem { width: parent.width; text: "Általános"; iconName: "settings"; current: true }
+                    SettingsNavItem { width: parent.width; text: "Szolgáltatások"; iconName: "plug"; warn: true }
+                }
+            }
+
             // ------------------------------------------------- menü, popover, dialog
             Section {
                 title: "Menü · popover · párbeszédablak (helyben kirajzolva; valódi felugró: overlay property)"

@@ -4,9 +4,10 @@ The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), t
 application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
 `design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
 
-The process is still a `QApplication`: Settings, People and the cloud dialogs remain Qt
-Widgets and open next to the QML window. The floating recorder is QML in both the main
-window and `tanara --record` (only `--classic` keeps the old Widgets recorder).
+The process is still a `QApplication`: People and the Tanara Cloud dialogs remain Qt
+Widgets and open next to the QML windows. Settings is QML (`SettingsWindow.qml`, see
+"Settings window"); the floating recorder is QML in both the main window and
+`tanara --record` (only `--classic` keeps the old Widgets recorder and `SettingsDialog`).
 
 ## Layout
 
@@ -35,6 +36,8 @@ build/gui/tanara                      # new QML window (uses the real AppControl
 build/gui/tanara --meeting <id>       # same, with that meeting selected; handed over to a running main window
 build/gui/tanara --classic            # the old Widgets MainWindow, unchanged
 build/gui/tanara --record …           # the QML floating recorder (see "Recorder"); add --classic for the old Widgets one
+build/gui/tanara --settings [page]    # only the Settings window (general | recording | watcher | providers | cloud | summary);
+                                      # handed over to a running main window, otherwise a stand-alone process
 build/gui/tanara --gallery            # control gallery, interactive — no AppController
 build/gui/tanara --demo               # Main.qml with App.demo = true — no AppController
 build/gui/tanara --theme dark         # light | dark | system (default); env: TANARA_THEME
@@ -186,8 +189,9 @@ the meeting-to-be. QA scripts reach it through `window.importModel` / `window.im
 (`addFiles([...])`, `setSplit(row, on)`, `ownTrack`, `start()`, `cancel()`) — the native file
 picker is only opened by `openImport()` without arguments, so pass the paths.
 
-Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (Settings,
-People, file pickers, all Tanara Cloud dialogs and chrome); `ShellRecorderHost` is the only
+Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (People, file
+pickers, all Tanara Cloud dialogs and chrome; it owns the `SettingsWindowHost` and re-evaluates
+readiness, the recorder's device policy and the cloud chrome when Settings saves); `ShellRecorderHost` is the only
 place that knows the recorder (see "Recorder in the main window" below); `MediaPlayerBackend`
 is the Qt Multimedia engine behind `PlayerController` (the QML module itself does not link
 Multimedia).
@@ -200,14 +204,16 @@ window selects the meeting and comes to the front (`ShellBridge::showMeetingRequ
 
 QA without touching the desktop: `TANARA_HOME=<sandbox>/home QT_QPA_PLATFORM=offscreen
 build/gui/tanara --shell-script script.qml` loads `script.qml` next to the real window with
-`window` (`window.shell`, `.player`, `.library`, `.meetingModel`) and `hook` (`grab(path)`,
+`window` (`window.shell`, `.player`, `.library`, `.meetingModel`) and `hook` (`grab(path)`, `grabWindow(win, path)`,
 `log(text)`, `quit(code)`, `resize(w, h)`, `widgets()` / `clickButton()` / `fillLineEdit()` /
 `closeWidget()` for the Widgets dialogs, `clipboardText()`); see `gui/src/ShellQaHook.h`. In this
 mode the app rebuilds the meeting index from disk. It listens on the recorder / analyzer sockets
 only when `TANARA_HOME` is set (the socket names are then scoped to that folder, so a real instance
 is never disturbed) — a second `tanara --record …` / `tanara --meeting <id>` with the same
 `TANARA_HOME` drives the window under test. The script reaches the recorder window through
-`App.bridge.recorderWindow()` (`import Tanara`; `.visible`, `.sheetOpen`, `.vm.state` …).
+`App.bridge.recorderWindow()` (`import Tanara`; `.visible`, `.sheetOpen`, `.vm.state` …) and the
+Settings window through `App.bridge.settingsWindow()` (`.visible`, `.vm.page`, `.vm.save()` …;
+grab either with `hook.grabWindow(win, path)` — they live in their own engines).
 
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
@@ -269,11 +275,60 @@ Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPo
 ## Widgets dialogs from QML
 
 `App.bridge` is a `QObject*` slot for the object that opens the Widgets dialogs
-(Settings, People, recorder, cloud). The class belongs in `gui/src/` (it needs the Widgets
+(People, recorder, cloud) and the QML Settings window. The class belongs in `gui/src/` (it needs the Widgets
 classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 `tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
 `Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
 `QDialog` can be shown next to the QML window.
+
+## Settings window (`Settings*.qml`, `src/Settings*`)
+
+Spec: `design/handoff-settings/README.md` (B01–B07). A separate, resizable, **non-modal** window
+(900 × 680) with five pages; native decorations are kept, so the spec's own 36 px title bar is
+not drawn.
+
+| Piece | Role |
+|---|---|
+| `SettingsWindow.qml` | the window: navigation, scrolling content, footer (dirty indicator, Mégse / Mentés), the unsaved-changes / reset / logout / output-format dialogs |
+| `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 |
+| `SettingsSegmented`, `SettingsRadio`, `SettingsSwitchRow`, `SettingsStepper`, `SettingsCombo`, `SettingsTextField`, `SettingsNavItem`, `SettingsStatusPill` | the window's controls (the device rows reuse the recorder's `RecorderSwitch`, `VuMeter`, `RecorderGroupHeader`, `RecorderDefaultPill`) |
+| `SettingsViewModel` | the draft: a copy of `AppSettings` + secrets + default sources + theme. Pages write the draft; `save()` applies **only the difference** onto the core's current settings (so nothing this window does not show, or that changed meanwhile, is lost), `discard()` drops it. `dirty` / `changeCount` / `footerText`, `errors`, `servicesWarn`, `openPage(page, focusField)` |
+| `SettingsDeviceModel` (`vm.devices`) | B02 device rows: switch = default source, rename, live level (`AppController::retainLevelMonitoring`, only while the page is visible) |
+| `SettingsProviderModel` (`vm.stt`, `vm.llm`) | a provider card rendered from the provider registry (`ProviderDescriptor.fields`); "Kapcsolat tesztelése" and "Lekérés" through `tanara::ConnectionTester` with the *draft* address and key |
+| `SettingsCloudModel` (`vm.cloud`) | Tanara Cloud account panel (everything from `CloudAccount`) and the waitlist offer |
+| `SettingsPromptHighlighter` | `QSyntaxHighlighter` on the prompt editor's document (`{{VÁLTOZÓ}}`) |
+| `SettingsWindowHost` | C++ host with its own engine: `open(page, focusField)`, `saved()`, `themeModeSaved()`, `returnRequested()`, `closed()` |
+| `SettingsDialogs` | what the window needs from the desktop / Widgets (folder picker, open folder / URL, People, cloud login / top-up / Expert model / terms); implemented by `gui/src/SettingsWidgetsDialogs`, faked in tests |
+
+Where it opens: the main window (`ShellActions.openSettings(page, focusField)` →
+`QmlShellBridge` → host), the stand-alone recorder (`tanara --record`, R10 "Rögzítés
+beállításai" → the same window on the `recording` page, in the recorder's process) and
+`tanara --settings [page]` (the tray watcher's "Beállítások…"; forwarded to a running main window,
+otherwise a process of its own). `tanara --classic` keeps the Widgets `SettingsDialog`.
+
+Behaviour worth knowing:
+
+- **Apply on save.** The theme previews live and is restored by Mégse / Elvetés. Closing with
+  unsaved changes asks (Mentés / Elvetés / Mégse); Mentés keeps the window open.
+- **Deep link (B04).** `openSettings("providers", "stt" | "llm")` shows the info banner and
+  highlights the card; after a save that makes the step runnable the window closes and the main
+  window comes forward (`returnRequested`).
+- **Device names.** A rename is stored in `AppSettings::deviceNames` (raw OS name → name) and
+  resolved in one place, `tanara::devicenames` (`core/include/tanara/audio/TrackCatalog.h`); the
+  recorder, the Tracks tab and the watcher's notification follow on `settingsChanged`.
+- **Keys** stay in the `KeyStore` (`<metadata dir>/secrets.json`, mode 600); the OS keychain of the
+  spec is not implemented.
+- **Autostart** (`~/.config/autostart/tanara-watcher.desktop`) is written on save through
+  `tanara::autostart` — never under `TANARA_HOME` or in Qt test mode.
+
+Screenshots (fictional data, no controller):
+
+```bash
+build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --qml-prop 'demoState="B04"'
+```
+
+`demoState`: `B01` … `B07` · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
+`logout` · `reset`.
 
 ## Recorder (`Recorder*.qml`, `VuMeter.qml`, `src/Recorder*`)
 
@@ -338,6 +393,16 @@ the pin button is disabled with an explanation. `TANARA_RECORDER_X11=1 tanara --
 the standalone recorder through XWayland where all three work.
 
 ## Known gaps
+
+- Settings: closing the **main** window while Settings has unsaved changes drops them without a
+  question; two stand-alone `tanara --settings` processes are not prevented.
+- The software renderer does not clip `Shape` items (`TDashedRect`, so also a *disabled*
+  `TButton`) to a clipping `Flickable`: scrolled under the Settings footer they would paint over
+  it in offscreen QA shots. Hide such an item instead of disabling it there (see the locked
+  "Tallózás…" button). The hardware renderer clips correctly.
+- `--qml-shot` / `--demo` / `--gallery` create no `AppController`, but the process still installs
+  the translator first, which reads `settings.json` for the UI language (and creates the file on
+  a machine that has none). Set `TANARA_HOME` to a scratch folder to keep them fully isolated.
 
 - Custom title bar is not implemented (native decorations are kept, as the spec allows);
   the centred "Tanara" caption is therefore omitted.

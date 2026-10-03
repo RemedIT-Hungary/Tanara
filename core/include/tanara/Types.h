@@ -248,6 +248,16 @@ struct AppSettings {
     QString cloudSttModel;
     QString cloudLlmModel;
     QString waitlistEmail;
+    //  cloudEstimateBeforeRun — Tanara Cloud feldolgozás előtt mindig költségbecslés +
+    //                 megerősítés (alapból be). Kikapcsolva a futás becslés nélkül indul; a
+    //                 hibaágak (elfogyott egyenleg, ÁSZF) ugyanúgy megállítják.
+    bool    cloudEstimateBeforeRun = true;
+
+    // Hangeszközök felhasználói neve: nyers OS-eszköznév → barátságos név. Mindenhol ez
+    // látszik, ahol az eszköz vagy a sávja névvel szerepel (felvevő, Sávok fül, értesítés).
+    // A feloldás EGY helyen történik: tanara::devicenames (audio/TrackCatalog.h); a
+    // SettingsManager tölti be minden betöltéskor / mentéskor.
+    QMap<QString, QString> deviceNames;
 
     QString sttProviderId{QStringLiteral("soniox")};
     QString llmProviderId{QStringLiteral("openai-compat")};

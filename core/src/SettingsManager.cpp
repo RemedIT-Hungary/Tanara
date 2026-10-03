@@ -2,6 +2,7 @@
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/Paths.h"
 #include "tanara/Logging.h"
+#include "tanara/audio/TrackCatalog.h"
 
 #include <QDateTime>
 #include <QSaveFile>
@@ -96,6 +97,7 @@ void SettingsManager::load()
     if (!f.exists()) {
         // Nincs még config → defaultok + lemezre írás.
         m_settings = defaults(m_metadataDir);
+        devicenames::setOverrides(m_settings.deviceNames);
         save();
         return;
     }
@@ -149,6 +151,7 @@ void SettingsManager::load()
     applyProviderDefaults(loaded, def);
 
     m_settings = loaded;
+    devicenames::setOverrides(m_settings.deviceNames);   // az eszköznevek egyetlen feloldója
     ensureDirs();
 }
 
@@ -215,6 +218,7 @@ void SettingsManager::save() const
 void SettingsManager::setSettings(const AppSettings& s)
 {
     m_settings = s;
+    devicenames::setOverrides(m_settings.deviceNames);
     save();
     emit settingsChanged();
 }

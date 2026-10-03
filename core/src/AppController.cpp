@@ -442,6 +442,8 @@ struct AppController::Impl {
 
     // Szintfigyelés + felvétel közbeni sáv-kezelés (a lebegő felvevőhöz).
     bool        monitorWanted = false;          // a UI kérte a szintfigyelést
+    bool        monitorLegacy = false;          // start/stopLevelMonitoring (a felvevő) kérése
+    QHash<QObject*, QMetaObject::Connection> monitorHolders;   // retainLevelMonitoring fogyasztói (Beállítások)
     bool        monitorDuringRecording = false; // felvétel alatt is (a nem rögzített eszközökön)
     QStringList monitorNames;                   // a figyelő aktuális eszköz-halmaza
     QStringList recNames;                       // a felvétel sávjai (index → eszköznév)
@@ -1453,6 +1455,33 @@ void AppController::fetchLlmModels() {
 }
 
 void AppController::startLevelMonitoring() {
+    d->monitorLegacy = true;
+    beginLevelMonitoring();
+}
+
+void AppController::stopLevelMonitoring() {
+    d->monitorLegacy = false;
+    if (!d->monitorHolders.isEmpty()) return;   // egy másik fogyasztó (retain) még kéri
+    endLevelMonitoring();
+}
+
+void AppController::retainLevelMonitoring(QObject* owner) {
+    if (!owner || d->monitorHolders.contains(owner)) return;
+    // Ha a fogyasztó megszűnik, a kérése is: a mikrofon ne maradjon nyitva utána.
+    d->monitorHolders.insert(owner, connect(owner, &QObject::destroyed, this,
+                                            [this, owner] { releaseLevelMonitoring(owner); }));
+    if (!(d->monitorWanted && d->monitor && d->monitor->active()))
+        beginLevelMonitoring();
+}
+
+void AppController::releaseLevelMonitoring(QObject* owner) {
+    if (!d->monitorHolders.contains(owner)) return;
+    disconnect(d->monitorHolders.take(owner));
+    if (d->monitorHolders.isEmpty() && !d->monitorLegacy)
+        endLevelMonitoring();
+}
+
+void AppController::beginLevelMonitoring() {
     d->monitorWanted = true;
     if (d->state != RecordingState::Idle && !d->monitorDuringRecording) return;
     if (d->state == RecordingState::Stopping || d->state == RecordingState::Encoding) return;
@@ -1460,7 +1489,7 @@ void AppController::startLevelMonitoring() {
     restartLevelMonitor(/*force*/ true);
 }
 
-void AppController::stopLevelMonitoring() {
+void AppController::endLevelMonitoring() {
     d->monitorWanted = false;
     d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
@@ -1534,6 +1563,7 @@ bool AppController::addRecordingDevice(const AudioDeviceInfo& device) {
 
 void AppController::setSecret(const QString& name, const QString& value) { d->keyStore.set(name, value); }
 bool AppController::hasSecret(const QString& name) const { return !d->keyStore.get(name).isEmpty(); }
+QString AppController::secret(const QString& name) const { return d->keyStore.get(name); }
 
 void AppController::startRecording(const QString& title, const QVector<AudioDeviceInfo>& devices)
 {
