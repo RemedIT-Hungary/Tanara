@@ -32,7 +32,7 @@ cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --
 
 build/gui/tanara                      # new QML window (uses the real AppController / user data)
 build/gui/tanara --classic            # the old Widgets MainWindow, unchanged
-build/gui/tanara --record …           # floating recorder, unchanged
+build/gui/tanara --record …           # the QML floating recorder (see "Recorder"); add --classic for the old Widgets one
 build/gui/tanara --gallery            # control gallery, interactive — no AppController
 build/gui/tanara --demo               # Main.qml with App.demo = true — no AppController
 build/gui/tanara --theme dark         # light | dark | system (default); env: TANARA_THEME
@@ -191,6 +191,46 @@ classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 `tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
 `Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
 `QDialog` can be shown next to the QML window.
+
+## Recorder (`Recorder*.qml`, `VuMeter.qml`, `src/Recorder*`)
+
+Spec: `design/handoff-recorder/README.md` (states R01–R11).
+
+| Piece | Role |
+|---|---|
+| `RecorderView.qml` | the whole recorder as an **item** (title bar, title field, start / status + stop, source lines, device list, R06 box, R07 sheet, R09, R10); 380 px wide, height follows content |
+| `RecorderPill.qml` | pill mode (R05) |
+| `RecorderWindow.qml` | frameless always-on-top `Window` hosting the two; created by the host |
+| `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`) |
+| `VuMeter.qml`, `RecorderSwitch.qml`, `RecorderButton.qml` | 14-segment meter with peak hold, 30×18 switch with lock, the recorder's buttons |
+| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)`; without a controller it serves fictional data (`demoState`) |
+| `RecorderWindowHost` | C++ host: shows the window, executes `--record` requests, remembers position, snaps the pill, hide-to-tray, `recording.lock` |
+
+### Using the recorder from the main application
+
+```cpp
+#include "RecorderWindowHost.h"
+
+auto* recorder = new tanara_qml::RecorderWindowHost(&controller, &engine /* or nullptr */, parent);
+recorder->show();                                   // "Felvétel" button
+recorder->request({.title = t, .appName = app, .context = ctx, .deviceIndexes = {}, .start = true});
+// forwarded `tanara --record …` (RecorderSingleton::requestReceived → parseRecorderArgs → request)
+connect(recorder, &RecorderWindowHost::openMeetingRequested, …);   // "Megnyitás az elemzőben"
+connect(recorder, &RecorderWindowHost::settingsRequested, …);      // "Rögzítés beállításai"
+connect(recorder, &RecorderWindowHost::hiddenToTray, …);           // window hidden, recording goes on
+connect(recorder, &RecorderWindowHost::notificationRequested, …);  // R06 while hidden / pill
+connect(recorder, &RecorderWindowHost::closed, …);                 // closed while not recording
+```
+
+`request({.stop = true})` stops a running recording without showing the window (tray menu).
+The host never stops or closes a recording by itself: closing while recording opens the R07
+sheet. `setHideToTrayEnabled(false)` makes "Háttérbe" minimise instead (no tray to come back
+from). Window state lives in `<metadata dir>/recorder.ini` (never in the shared `QSettings`).
+
+Platform notes: always-on-top, remembered position and pill edge-snapping need a platform
+where the client may position its window (X11, Windows). On Wayland the compositor decides;
+the pin button is disabled with an explanation. `TANARA_RECORDER_X11=1 tanara --record` runs
+the standalone recorder through XWayland where all three work.
 
 ## Known gaps
 

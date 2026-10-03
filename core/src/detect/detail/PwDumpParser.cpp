@@ -6,8 +6,6 @@
 
 namespace tanara::detail {
 
-namespace {
-
 // A bináris-útból/névből ember-olvasható app-nevet és normalizált app-id-t képez.
 // pl. "/usr/bin/zoom" → appId "zoom". Az ismert appokra szép nevet ad.
 QString prettyAppName(const QString& binaryLower, const QString& appNameProp)
@@ -25,6 +23,8 @@ QString prettyAppName(const QString& binaryLower, const QString& appNameProp)
     // Ismeretlen: a props application.name-je, ha van, különben a bináris.
     return appNameProp.isEmpty() ? binaryLower : appNameProp;
 }
+
+namespace {
 
 QString normalizedAppId(const QString& binaryLower)
 {

@@ -12,6 +12,18 @@
 
 namespace tanara {
 
+// ---- példány-hatókör (sandbox-elszigetelés) ------------------------------------------
+// TANARA_HOME mellett egy „másik Tanara” fut (teszt / sandbox): a saját metaadat-mappájával,
+// saját lock-fájlokkal ÉS saját felvevő-singleton névvel. Így egy sandbox-példány soha nem
+// kap kérést a felhasználó valódi felvevőjétől, nem továbbít neki, és nem blokkolja azt.
+//
+// A hatókör-utótag: üres, ha nincs TANARA_HOME (a valódi példány neve változatlan);
+// különben "-<a feloldott mappa SHA-1-ének első 12 hex jegye>". Lokális socket / IPC nevekhez.
+QString instanceScopeSuffix();
+// A lock-fájlok a (feloldott) metaadat-mappában élnek → TANARA_HOME mellett a sandboxban.
+QString recordingLockPath(const QString& configuredMetadataDir = QString());
+QString watcherLockPath();
+
 class RecordingLock {
 public:
     explicit RecordingLock(const QString& lockPath);

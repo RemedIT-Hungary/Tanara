@@ -19,7 +19,8 @@ namespace tanara_gui {
 class RecorderSingleton : public QObject {
     Q_OBJECT
 public:
-    static QString serverName();   // "tanara-recorder-<uid>"
+    // "tanara-recorder-<uid>"; TANARA_HOME mellett "-<mappa-hash>" utótaggal (elszigetelés).
+    static QString serverName();
 
     // Átadja az args-ot egy futó példánynak. true = átadva (a hívó kiléphet).
     static bool forwardToExisting(const QStringList& args, int timeoutMs = 1500);
@@ -42,8 +43,10 @@ private:
 // A `--record` argumentumok közös értelmezése (main.cpp felvevő-mód + továbbított kérés).
 struct RecorderArgs {
     QString title, context;
+    QString app;           // --app: az észlelt hívás-app (az automatikus névhez)
     QList<int> deviceIdx;
     bool noStart = false;
+    bool stop = false;     // --stop: a futó felvétel leállítása (a tálca-menü küldi)
 };
 RecorderArgs parseRecorderArgs(const QStringList& args);
 

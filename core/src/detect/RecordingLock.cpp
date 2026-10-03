@@ -1,6 +1,10 @@
 #include "tanara/detect/RecordingLock.h"
 
+#include "tanara/Paths.h"
+
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QDir>
 #include <QDateTime>
 #include <QFile>
 #include <QJsonDocument>
@@ -39,6 +43,27 @@ bool pidAlive(qint64 pid)
 }
 
 } // namespace
+
+QString instanceScopeSuffix()
+{
+    const QString home = paths::homeOverride();
+    if (home.isEmpty())
+        return {};
+    const QString canonical = QDir::cleanPath(QDir(home).absolutePath());
+    return QLatin1Char('-') + QString::fromLatin1(
+        QCryptographicHash::hash(canonical.toUtf8(), QCryptographicHash::Sha1).toHex().left(12));
+}
+
+QString recordingLockPath(const QString& configuredMetadataDir)
+{
+    return QDir(paths::resolveMetadataDir(configuredMetadataDir))
+        .filePath(QStringLiteral("recording.lock"));
+}
+
+QString watcherLockPath()
+{
+    return QDir(paths::defaultMetadataDir()).filePath(QStringLiteral("watcher.lock"));
+}
 
 RecordingLock::RecordingLock(const QString& lockPath)
     : m_path(lockPath)

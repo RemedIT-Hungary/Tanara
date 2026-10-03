@@ -24,4 +24,9 @@ MeetingSignal parsePwDump(const QByteArray& json,
                           const QStringList& knownApps,
                           const QString& selfBinary);
 
+// Ember-olvasható app-név a (kisbetűs) binárisból, ill. az application.name-ből: az ismert
+// appokra szép nevet ad ("teams" → "Microsoft Teams"), különben az application.name, annak
+// híján a bináris. (A lejátszás-útvonal figyelő — audio/PlaybackRouting.h — is ezt használja.)
+QString prettyAppName(const QString& binaryLower, const QString& appNameProp);
+
 } // namespace tanara::detail

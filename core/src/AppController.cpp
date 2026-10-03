@@ -439,6 +439,15 @@ struct AppController::Impl {
     QString          statePath;
     QStringList      lastDevices;
     QString          currentFolder;
+
+    // Szintfigyelés + felvétel közbeni sáv-kezelés (a lebegő felvevőhöz).
+    bool        monitorWanted = false;          // a UI kérte a szintfigyelést
+    bool        monitorDuringRecording = false; // felvétel alatt is (a nem rögzített eszközökön)
+    QStringList monitorNames;                   // a figyelő aktuális eszköz-halmaza
+    QStringList recNames;                       // a felvétel sávjai (index → eszköznév)
+    QStringList recClosed;                      // menet közben leválasztott eszközök
+    QHash<QString, int> recMissing;             // hány egymást követő felsorolásból hiányzott
+    bool        autoMixdown = true;             // felvétel utáni automatikus lekeverés
     QHash<QString, MergedTranscript> mergedCache;
 
     // Hívás-vég figyelés felvétel közben (lásd startCallEndMonitor).
@@ -704,12 +713,14 @@ AppController::AppController(QObject* parent)
     });
     connect(this, &AppController::summaryStaleChanged, d->jobs, &MeetingJobTracker::notifyStateChanged);
 
+    connect(d->devices, &DeviceManager::devicesChanged, this, &AppController::handleDeviceSetChange);
     connect(d->devices, &DeviceManager::devicesChanged, this, &AppController::devicesChanged);
 
     d->statePath = QDir(d->metaDir).filePath(QStringLiteral("state.json"));
     d->lastDevices = loadLastDevices(d->statePath);
     d->monitor = new DeviceMonitor(this);
     connect(d->monitor, &DeviceMonitor::level, this, &AppController::deviceLevel);
+    connect(d->monitor, &DeviceMonitor::levelPeak, this, &AppController::deviceLevelPeak);
 
     d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
 
@@ -1368,13 +1379,83 @@ void AppController::fetchLlmModels() {
 }
 
 void AppController::startLevelMonitoring() {
-    if (d->state == RecordingState::Recording || d->state == RecordingState::Stopping) return;
+    d->monitorWanted = true;
+    if (d->state != RecordingState::Idle && !d->monitorDuringRecording) return;
+    if (d->state == RecordingState::Stopping || d->state == RecordingState::Encoding) return;
     d->devices->refresh();
-    d->monitor->start(d->devices->captureDevices());
+    restartLevelMonitor(/*force*/ true);
 }
 
 void AppController::stopLevelMonitoring() {
+    d->monitorWanted = false;
+    d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
+}
+
+void AppController::setMonitorDuringRecording(bool on) { d->monitorDuringRecording = on; }
+void AppController::setAutoMixdownAfterRecording(bool on) { d->autoMixdown = on; }
+
+void AppController::restartLevelMonitor(bool force) {
+    if (!d->monitor || !d->monitorWanted) return;
+    const bool recording = d->state == RecordingState::Recording;
+    if (d->state != RecordingState::Idle && !(recording && d->monitorDuringRecording)) return;
+    QVector<AudioDeviceInfo> list;
+    QStringList names;
+    for (const AudioDeviceInfo& dev : d->devices->captureDevices()) {
+        // Felvétel alatt a sávon lévő eszközöket a RecordingSession birtokolja és méri.
+        if (recording && d->recNames.contains(dev.name) && !d->recClosed.contains(dev.name))
+            continue;
+        list.push_back(dev);
+        names << dev.name;
+    }
+    if (!force && d->monitor->active() && names == d->monitorNames) return;
+    d->monitorNames = names;
+    d->monitor->start(list);   // üres listára leáll
+}
+
+void AppController::handleDeviceSetChange() {
+    const QVector<AudioDeviceInfo> present = d->devices->captureDevices();
+    if (d->state == RecordingState::Recording && d->session && !present.isEmpty()) {
+        // Hot-plug felvétel közben: a felsorolásból KÉTSZER egymás után hiányzó rögzített
+        // eszköz sávját biztonságosan lezárjuk (egyetlen átmeneti hiány ne zárjon sávot; az
+        // üres lista — elérhetetlen hangrendszer — pedig semmit nem zár le).
+        bool recheck = false;
+        const QStringList rec = d->recNames;
+        for (const QString& name : rec) {
+            if (d->recClosed.contains(name)) continue;
+            bool found = false;
+            for (const AudioDeviceInfo& dev : present)
+                if (dev.name == name) { found = true; break; }
+            if (found) { d->recMissing.remove(name); continue; }
+            if (++d->recMissing[name] >= 2) {
+                qCWarning(lcApp).noquote() << "Rögzített eszköz leválasztva, a sávja lezárul:" << name;
+                d->recMissing.remove(name);
+                d->session->closeTrack(name);
+            } else {
+                recheck = true;
+            }
+        }
+        if (recheck)
+            QTimer::singleShot(1200, this, [this] {
+                if (d->state == RecordingState::Recording) d->devices->refresh();
+            });
+    }
+    if (d->monitorWanted && d->monitor && d->monitor->active())
+        restartLevelMonitor(/*force*/ false);
+}
+
+QStringList AppController::recordingDeviceNames() const {
+    QStringList out;
+    for (const QString& n : d->recNames)
+        if (!d->recClosed.contains(n)) out << n;
+    return out;
+}
+
+QStringList AppController::disconnectedRecordingDeviceNames() const { return d->recClosed; }
+
+bool AppController::addRecordingDevice(const AudioDeviceInfo& device) {
+    if (d->state != RecordingState::Recording || !d->session) return false;
+    return d->session->addDevice(device);
 }
 
 void AppController::setSecret(const QString& name, const QString& value) { d->keyStore.set(name, value); }
@@ -1386,7 +1467,13 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit errorOccurred(tr("Már folyik felvétel."));
         return;
     }
-    stopLevelMonitoring();   // a monitor felszabadítja az eszközöket a felvétel előtt
+    // A monitor felszabadítja az eszközöket a felvétel előtt (a kérés — monitorWanted —
+    // megmarad: setMonitorDuringRecording mellett a felvétel alatt a maradékon újraindul).
+    d->monitorNames.clear();
+    if (d->monitor) d->monitor->stop();
+    d->recNames.clear();
+    d->recClosed.clear();
+    d->recMissing.clear();
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();
@@ -1413,13 +1500,39 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         // (nem csak a finished-nél). Kell a --record lockhoz + a currentMeetingFolder()-höz.
         if (st == RecordingState::Recording) {
             d->currentFolder = sess->folder();
+            d->recNames.clear();
+            for (const AudioDeviceInfo& dev : sess->trackDevices()) d->recNames << dev.name;
             startCallEndMonitor();
+            restartLevelMonitor(/*force*/ true);   // csak ha a UI kérte (monitorDuringRecording)
+        } else if (st == RecordingState::Stopping) {
+            // A lezárás alatt a figyelő is leáll; a felvétel végén (ha kell) újraindul.
+            d->monitorNames.clear();
+            if (d->monitor) d->monitor->stop();
         } else if (st == RecordingState::Idle) {
             stopCallEndMonitor();
         }
         emit recordingStateChanged(st);
     });
     connect(sess, &RecordingSession::levelMeterUpdated, this, &AppController::levelMeterUpdated);
+    connect(sess, &RecordingSession::trackLevel, this, [this](int idx, float rms, float peak) {
+        if (idx >= 0 && idx < d->recNames.size())
+            emit deviceLevelPeak(d->recNames.at(idx), rms, peak);
+    });
+    connect(sess, &RecordingSession::trackAdded, this, [this](int, const QString& name) {
+        d->recNames << name;
+        d->recClosed.removeAll(name);   // visszadugott, újra felvett eszköz
+        if (!d->lastDevices.contains(name)) {
+            QStringList names = d->lastDevices;
+            names << name;
+            setLastUsedDeviceNames(names);
+        }
+        restartLevelMonitor(/*force*/ false);
+        emit recordingTrackAdded(name);
+    });
+    connect(sess, &RecordingSession::trackClosed, this, [this](int, const QString& name) {
+        if (!d->recClosed.contains(name)) d->recClosed << name;
+        emit recordingTrackClosed(name);
+    });
     // Csend-figyelés: bármely sáv beszéd-szintű RMS-e „hangos” → időbélyeg frissül,
     // és a csend-kérdés újra-élesedik. Küszöb a RecordingSession kSilencePeak-jével összhangban.
     connect(sess, &RecordingSession::levelMeterUpdated, this, [this](int, float rms) {
@@ -1453,7 +1566,10 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit errorOccurred(e);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
         d->state = RecordingState::Idle;
+        d->recNames.clear();
+        d->recClosed.clear();
         emit recordingStateChanged(d->state);
+        restartLevelMonitor(/*force*/ true);
     });
     connect(sess, &RecordingSession::finished, this, [this](Meeting m) {
         stopCallEndMonitor();
@@ -1461,13 +1577,18 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->store->saveMeeting(m);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
         d->state = RecordingState::Idle;
+        d->recNames.clear();
+        d->recClosed.clear();
         emit recordingFinished(m);
         emit recordingStateChanged(d->state);
+        if (d->monitorDuringRecording) restartLevelMonitor(/*force*/ true);
         // Lekeverés (mixdown) leválasztva a stop()-ról: itt indítjuk ASZINKRON, csak ha a
         // beállítás "auto". Nem blokkol → azonnal indítható új felvétel. Kézi módban a
         // felhasználó a review-panel „Lekeverés" gombjával indítja. (A mixdown csak
         // hallgatásra kell; az átíráshoz a per-sáv .ogg-k elegendők.)
-        if (d->settings->settings().mixdownMode != QStringLiteral("manual")
+        // Az önálló felvevő-folyamatban (setAutoMixdownAfterRecording(false)) nem indul: az a
+        // folyamat kilép a felvétel után, a lekeverést az elemző készíti el, amikor kell.
+        if (d->autoMixdown && d->settings->settings().mixdownMode != QStringLiteral("manual")
             && m.mixdownFile.isEmpty())
             regenerateMixdown(m.id);
     });

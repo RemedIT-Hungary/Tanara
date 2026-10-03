@@ -1,5 +1,6 @@
 #include "RecorderSingleton.h"
 #include "tanara/Logging.h"
+#include "tanara/detect/RecordingLock.h"
 
 #include <QDataStream>
 #include <QLocalServer>
@@ -13,10 +14,14 @@ namespace tanara_gui {
 
 QString RecorderSingleton::serverName()
 {
+    // TANARA_HOME mellett (sandbox / teszt) a név a metaadat-mappa hash-ével egészül ki
+    // (tanara::instanceScopeSuffix), így a sandbox-példány és a felhasználó valódi felvevője
+    // SOHA nem látja egymást: nincs kérés-továbbítás és nincs név-ütközés egyik irányban sem.
+    const QString scope = tanara::instanceScopeSuffix();
 #if defined(Q_OS_WIN)
-    return QStringLiteral("tanara-recorder");
+    return QStringLiteral("tanara-recorder") + scope;
 #else
-    return QStringLiteral("tanara-recorder-%1").arg(getuid());
+    return QStringLiteral("tanara-recorder-%1").arg(getuid()) + scope;
 #endif
 }
 
@@ -98,9 +103,11 @@ RecorderArgs parseRecorderArgs(const QStringList& args)
     RecorderArgs r;
     for (int i = 0; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--title") && i + 1 < args.size()) r.title = args[++i];
+        else if (args[i] == QStringLiteral("--app") && i + 1 < args.size()) r.app = args[++i];
         else if (args[i] == QStringLiteral("--context") && i + 1 < args.size()) r.context = args[++i];
         else if (args[i] == QStringLiteral("--device") && i + 1 < args.size()) r.deviceIdx << args[++i].toInt();
         else if (args[i] == QStringLiteral("--no-start")) r.noStart = true;
+        else if (args[i] == QStringLiteral("--stop")) r.stop = true;
     }
     return r;
 }

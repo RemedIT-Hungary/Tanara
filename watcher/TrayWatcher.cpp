@@ -1,14 +1,21 @@
 #include "TrayWatcher.h"
-#include "AppIcon.h"   // tanara_gui::makeTanaraIcon (header-only, gui/src az include-path-on)
+#include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, gui/src az include-path-on)
 
 #include "tanara/SettingsManager.h"
 #include "tanara/Paths.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
 #include "tanara/detect/RecordingLock.h"
+#include "tanara/audio/PlaybackRouting.h"
+#include "tanara/audio/TrackCatalog.h"
 
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QAction>
+#include <QDateTime>
+#include <QFont>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QTimer>
 #include <QProcess>
 #include <QCoreApplication>
@@ -30,6 +37,7 @@ TrayWatcher::TrayWatcher(QObject* parent)
     : QObject(parent)
     , m_settings(new tanara::SettingsManager(QString(), this))
     , m_timer(new QTimer(this))
+    , m_stateTimer(new QTimer(this))
 {
 }
 
@@ -57,25 +65,35 @@ bool TrayWatcher::start()
     if (!QSystemTrayIcon::isSystemTrayAvailable())
         return false;
 
-    // --- tálca-ikon + menü ---
-    m_tray = new QSystemTrayIcon(tanara_gui::makeTanaraIcon(), this);
+    // --- tálca-ikon + menü (R11) ---
+    m_tray = new QSystemTrayIcon(tanara_gui::makeTrayIcon(tanara_gui::TrayState::Watching), this);
     auto* menu = new QMenu();
-    menu->addAction(tr("Rögzítés azonnali indítása"), this, &TrayWatcher::startRecordingNow);
-    menu->addAction(tr("Rögzítő megnyitása…"), this, &TrayWatcher::openRecorder);
+    m_headerAction = menu->addAction(QString());           // „Felvétel · 00:12:47”
+    m_headerAction->setEnabled(false);
+    { QFont f = m_headerAction->font(); f.setBold(true); m_headerAction->setFont(f); }
+    m_showAction  = menu->addAction(tr("Felvevő megjelenítése"), this, &TrayWatcher::openRecorder);
+    m_startAction = menu->addAction(tr("Felvétel indítása"), this, &TrayWatcher::startRecordingNow);
+    m_stopAction  = menu->addAction(tr("Felvétel leállítása"), this, &TrayWatcher::stopRecording);
     menu->addAction(tr("Elemző megnyitása"), this, &TrayWatcher::openAnalyzer);
     menu->addSeparator();
-    menu->addAction(tr("Kilépés"), qApp, &QCoreApplication::quit);
+    menu->addAction(tr("Kilépés…"), this, &TrayWatcher::quitRequested);
+    connect(menu, &QMenu::aboutToShow, this, &TrayWatcher::refreshState);
     m_tray->setContextMenu(menu);
-    updateTrayTooltip(false, QString());
+    refreshState();
     m_tray->show();
+
+    // Az ikon, a buborék (eltelt idő) és a menü másodpercenként frissül: a felvétel a
+    // poll-intervallumtól függetlenül indulhat / állhat le.
+    connect(m_stateTimer, &QTimer::timeout, this, &TrayWatcher::refreshState);
+    m_stateTimer->start(1000);
 
     // Az értesítésre kattintva NYISSA meg a rögzítőt (a user keresztel + indít). Ez a
     // showMessage-fallback útja (Windowson működik); Linuxon a D-Bus-os notification a fő
     // út (showCallNotification), valódi akció-gombokkal.
     connect(m_tray, &QSystemTrayIcon::messageClicked, this, &TrayWatcher::openRecorder);
 
-    // Bal katt a tálca-ikonon (SNI: "Activate") → rögzítő megnyitása. A jobb katt a menü,
-    // azt a setContextMenu kezeli; a Trigger-en kívüli reasonökhöz nem nyúlunk.
+    // Bal katt a tálca-ikonon (SNI: "Activate") → a felvevő megnyitása / előhozása. A jobb
+    // katt a menü, azt a setContextMenu kezeli; a Trigger-en kívüli reasonökhöz nem nyúlunk.
     connect(m_tray, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
                 if (reason == QSystemTrayIcon::Trigger)
@@ -117,7 +135,7 @@ void TrayWatcher::poll()
 
     const tanara::MeetingSignal sig = m_detector->poll();
     const bool recording = tanara::RecordingLock::read(lockPath()).active;
-    updateTrayTooltip(recording, sig.active ? sig.appName : QString());
+    m_callActive = sig.active;
 
     if (sig.active) {
         m_detAppName     = sig.appName;
@@ -127,12 +145,57 @@ void TrayWatcher::poll()
         const bool newSession = !m_wasActive || sig.sourceRef != m_lastOfferedRef;
         if (newSession && !recording) {
             m_lastOfferedRef = sig.sourceRef;
-            showCallNotification(sig.appName, sig.windowTitle);
+            showCallNotification(sig.appName);
         }
     } else {
         m_lastOfferedRef.clear();   // inaktív → a következő hívás újra ajánlható
     }
     m_wasActive = sig.active;
+    refreshState();
+}
+
+QString TrayWatcher::formatElapsed(qint64 seconds)
+{
+    const qint64 s = qMax<qint64>(0, seconds);
+    return QStringLiteral("%1:%2:%3")
+        .arg(s / 3600, 2, 10, QLatin1Char('0'))
+        .arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
+        .arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+
+void TrayWatcher::refreshState()
+{
+    if (!m_tray)
+        return;
+    const tanara::RecordingLock::Info lock = tanara::RecordingLock::read(lockPath());
+    const bool recording = lock.active;
+    QString elapsed;
+    if (recording) {
+        const QDateTime started = QDateTime::fromString(lock.startedAt, Qt::ISODate);
+        elapsed = formatElapsed(started.isValid() ? started.secsTo(QDateTime::currentDateTime()) : 0);
+    }
+
+    // Ikon: Felvétel fut > Hívás észlelve > Figyel. Csak váltáskor cseréljük.
+    const tanara_gui::TrayState st = recording ? tanara_gui::TrayState::Recording
+        : m_callActive ? tanara_gui::TrayState::CallDetected : tanara_gui::TrayState::Watching;
+    if (m_iconState != static_cast<int>(st)) {
+        m_iconState = static_cast<int>(st);
+        m_tray->setIcon(tanara_gui::makeTrayIcon(st));
+    }
+
+    // Buborék: az app, ill. az eltelt idő.
+    if (recording)
+        m_tray->setToolTip(tr("Tanara — felvétel fut · %1").arg(elapsed));
+    else if (m_callActive && !m_detAppName.isEmpty())
+        m_tray->setToolTip(tr("Tanara — hívás észlelve: %1").arg(m_detAppName));
+    else
+        m_tray->setToolTip(tr("Tanara — figyel · nincs hívás"));
+
+    // Menü: felvétel közben fejléc + leállítás, különben indítás.
+    m_headerAction->setVisible(recording);
+    m_headerAction->setText(tr("Felvétel · %1").arg(elapsed));
+    m_stopAction->setVisible(recording);
+    m_startAction->setVisible(!recording);
 }
 
 QStringList TrayWatcher::recordArgs(bool immediate) const
@@ -140,11 +203,10 @@ QStringList TrayWatcher::recordArgs(bool immediate) const
     QStringList args{ QStringLiteral("--record") };
     if (!immediate)
         args << QStringLiteral("--no-start");   // csak megnyit, a user keresztel + indít
-    if (!m_detAppName.isEmpty()) {
-        QString title = m_detAppName;
-        if (!m_detWindowTitle.isEmpty() && m_detWindowTitle != m_detAppName)
-            title += QStringLiteral(" — ") + m_detWindowTitle;
-        args << QStringLiteral("--title") << title;
+    if (m_callActive && !m_detAppName.isEmpty()) {
+        // Az app-névből a felvevő automatikus nevet képez („Teams-hívás · okt. 3. 14:02”),
+        // amit a user bármikor átírhat.
+        args << QStringLiteral("--app") << m_detAppName;
         args << QStringLiteral("--context")
              << QStringLiteral("Automatikusan észlelt hívás: %1").arg(m_detAppName);
     }
@@ -166,15 +228,42 @@ void TrayWatcher::startRecordingNow()
 
 void TrayWatcher::openRecorder()
 {
-    // A rögzítő ablakot nyitja meg (nem indít) — a user elkeresztel és maga indít.
-    // Felvétel közben is megnyitható (a futó felvevő ablakát a --record maga hozza elő,
-    // de biztonságból itt nem indítunk másodikat: --no-start úgyis csak megnyit).
+    // A felvevő ablakot nyitja meg / hozza elő (nem indít). Ha már fut felvevő (akár
+    // háttérbe küldve), a `--record` kérést az kapja meg és megmutatja magát.
     launch(recordArgs(/*immediate*/ false));
+}
+
+void TrayWatcher::stopRecording()
+{
+    // Kifejezett felhasználói művelet a menüből. A kérést a futó felvevő kapja meg
+    // (singleton-továbbítás); ha nincs futó felvevő, a parancs semmit nem csinál.
+    launch({ QStringLiteral("--record"), QStringLiteral("--stop") });
 }
 
 void TrayWatcher::openAnalyzer()
 {
-    launch({});   // sima tanara → MainWindow
+    launch({});   // sima tanara → főablak
+}
+
+void TrayWatcher::quitRequested()
+{
+    // Felvétel közben rákérdezünk. A figyelő kilépése a felvételt NEM állítja le (az külön
+    // folyamat) — ezt ki is mondjuk, és a leállítást külön gombon kínáljuk.
+    if (tanara::RecordingLock::read(lockPath()).active) {
+        QMessageBox box(QMessageBox::Question, tr("Tanara — kilépés"),
+                        tr("A felvétel még fut."), QMessageBox::NoButton);
+        box.setInformativeText(tr("A figyelő kilépése nem állítja le a felvételt: a felvevő tovább "
+                                  "rögzít, de a tálca-ikon eltűnik. Mit tegyek?"));
+        QPushButton* quitOnly = box.addButton(tr("Kilépés, a felvétel fusson"), QMessageBox::AcceptRole);
+        QPushButton* stopQuit = box.addButton(tr("Leállítás és kilépés"), QMessageBox::DestructiveRole);
+        box.addButton(tr("Mégse"), QMessageBox::RejectRole);
+        box.exec();
+        if (box.clickedButton() == stopQuit)
+            stopRecording();
+        else if (box.clickedButton() != quitOnly)
+            return;
+    }
+    QCoreApplication::quit();
 }
 
 QString TrayWatcher::tanaraBinary() const
@@ -197,8 +286,8 @@ QString TrayWatcher::tanaraBinary() const
 
 QString TrayWatcher::lockPath() const
 {
-    const QString metaDir = tanara::paths::resolveMetadataDir(m_settings->settings().metadataDir);
-    return QDir(metaDir).filePath(QStringLiteral("recording.lock"));
+    // A metaadat-mappában (TANARA_HOME mellett a sandboxban) — lásd tanara::recordingLockPath.
+    return tanara::recordingLockPath(m_settings->settings().metadataDir);
 }
 
 void TrayWatcher::launch(const QStringList& args) const
@@ -206,20 +295,36 @@ void TrayWatcher::launch(const QStringList& args) const
     QProcess::startDetached(tanaraBinary(), args);
 }
 
-void TrayWatcher::showCallNotification(const QString& appName, const QString& windowTitle)
+QString TrayWatcher::callNotificationBody(const QString& appName, const QString& outputName)
 {
+    QString body = tr("Elindítsam a felvételt?");
+    if (!outputName.isEmpty())
+        body += QLatin1Char(' ') + tr("%1 most ezen a kimeneten szól: %2.").arg(appName, outputName);
+    return body;
+}
+
+void TrayWatcher::showCallNotification(const QString& appName)
+{
+    // Melyik kimenetre szól épp a hívás-app? (Linux/PipeWire; máshol üres → kimarad.)
+    const QString output = tanara::tracknames::shortDeviceName(
+        tanara::queryAudioGraph().outputForApp(appName));
+    const QString title = tr("Hívást észleltem: %1").arg(appName);
+    const QString body = callNotificationBody(appName, output);
+
 #if defined(TANARA_HAVE_DBUS)
     // freedesktop Notifications közvetlenül: a QSystemTrayIcon::showMessage kattintása
-    // Plasmán nem működik (nincs default akció), és gombokat sem tud. Itt két valódi
-    // akció-gomb megy ki, a test-kattintás pedig a "default" akció.
+    // Plasmán nem működik (nincs default akció), és gombokat sem tud. Itt három valódi
+    // akció-gomb megy ki (a design 420 px-es egyedi kártyája helyett a rendszer natív
+    // értesítése), a test-kattintás pedig a "default" akció.
     QDBusInterface iface(QStringLiteral("org.freedesktop.Notifications"),
                          QStringLiteral("/org/freedesktop/Notifications"),
                          QStringLiteral("org.freedesktop.Notifications"));
     if (iface.isValid()) {
         const QStringList actions{
-            QStringLiteral("default"),       tr("Rögzítő megnyitása"),
-            QStringLiteral("record-now"),    tr("Rögzítés azonnali indítása"),
-            QStringLiteral("open-recorder"), tr("Rögzítő megnyitása…"),
+            QStringLiteral("default"),       tr("Felvevő megnyitása"),
+            QStringLiteral("record-now"),    tr("Felvétel indítása"),
+            QStringLiteral("open-recorder"), tr("Felvevő megnyitása"),
+            QStringLiteral("dismiss"),       tr("Nem most"),
         };
         QVariantMap hints;
         hints.insert(QStringLiteral("urgency"), 1);   // normal
@@ -228,9 +333,7 @@ void TrayWatcher::showCallNotification(const QString& appName, const QString& wi
             QStringLiteral("Tanara"),
             m_notifyId,                                   // replaces_id: az előzőt cseréli
             QStringLiteral("audio-input-microphone"),     // téma-ikon név
-            tr("Hívás észlelve — %1").arg(appName),
-            windowTitle.trimmed().isEmpty() ? tr("Aktív hívást észleltem.") : windowTitle,
-            actions, hints, 8000);
+            title, body, actions, hints, 12000);
         if (reply.isValid()) {
             m_notifyId = reply.value();
             return;
@@ -238,12 +341,11 @@ void TrayWatcher::showCallNotification(const QString& appName, const QString& wi
         // érvénytelen válasz → showMessage-fallback lent
     }
 #endif
-    // Fallback (Windows / nincs D-Bus): a kattintást a messageClicked kezeli, ahol működik.
-    m_tray->showMessage(
-        tr("Hívás észlelve — %1").arg(appName),
-        tr("A Tanara tálca-ikonra kattintva indíthatod a rögzítést "
-           "(azonnali indítás vagy a rögzítő megnyitása)."),
-        QSystemTrayIcon::Information, 8000);
+    // Fallback (Windows / nincs D-Bus): gombok nincsenek; a kattintást a messageClicked
+    // kezeli (a felvevő megnyitása), ahol a platform továbbítja.
+    m_tray->showMessage(title,
+                        body + QLatin1Char(' ') + tr("Kattints ide a felvevő megnyitásához."),
+                        QSystemTrayIcon::Information, 12000);
 }
 
 void TrayWatcher::onNotifyActionInvoked(uint id, const QString& actionKey)
@@ -253,6 +355,8 @@ void TrayWatcher::onNotifyActionInvoked(uint id, const QString& actionKey)
         return;   // nem a mi értesítésünk
     if (actionKey == QStringLiteral("record-now"))
         startRecordingNow();
+    else if (actionKey == QStringLiteral("dismiss"))
+        return;   // „Nem most”: semmi (erre a hívásra többet nem ajánlunk)
     else   // "default" (test-kattintás) és "open-recorder" is megnyit
         openRecorder();
 #else
@@ -271,20 +375,12 @@ void TrayWatcher::onNotifyClosed(uint id, uint reason)
 #endif
 }
 
-void TrayWatcher::updateTrayTooltip(bool recording, const QString& detectedApp)
-{
-    if (!m_tray)
-        return;
-    if (recording)
-        m_tray->setToolTip(tr("Tanara — felvétel folyamatban"));
-    else if (!detectedApp.isEmpty())
-        m_tray->setToolTip(tr("Tanara — hívás észlelve: %1").arg(detectedApp));
-    else
-        m_tray->setToolTip(tr("Tanara — figyel"));
-}
-
 void TrayWatcher::applyAutostart(bool on) const
 {
+    // Sandbox / teszt-példány (TANARA_HOME): a felhasználó VALÓDI automatikus indítását
+    // (~/.config/autostart) nem írjuk felül és nem töröljük.
+    if (!tanara::paths::homeOverride().isEmpty())
+        return;
 #if defined(Q_OS_LINUX)
     // Freedesktop autostart (KDE/GNOME honorálja): ~/.config/autostart/tanara-watcher.desktop
     const QString dir = QDir(QDir::homePath()).filePath(QStringLiteral(".config/autostart"));
