@@ -77,6 +77,8 @@ readiness check and the Tanara Cloud estimate confirmation that the old `MainWin
 | `cancelJob(string meetingId, int jobKind)` | `tanara::JobKind` value |
 | `revealInFolder(string meetingId)` | open the meeting folder |
 | `pickAudioFile()` → string | native file dialog; `""` if cancelled |
+| `pickAudioFiles()` → list<string> | native multi-file dialog (audio and video files, for import); `[]` if cancelled |
+| `openImport(list files = [])` | "Import audio file…": without files the native picker opens first (cancelling it does nothing); with files (e.g. dropped on the window) the import dialog opens right away; while an import is running, its progress dialog is shown instead |
 | `confirm(string title, string text, string confirmLabel, bool danger)` → bool | modal confirmation in the M10 style |
 | `showMeeting(string meetingId)`, `showTab(int index)` | navigation (0 transcript, 1 summary, 2 tracks) |
 | `seekTo(string meetingId, int ms)` | select meeting if needed, seek the player, show the transcript at that time |

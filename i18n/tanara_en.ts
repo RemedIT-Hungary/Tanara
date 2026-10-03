@@ -472,8 +472,16 @@
         <translation>Start recording</translation>
     </message>
     <message>
+        <source>Hangfájl importálása</source>
+        <translation>Import audio file</translation>
+    </message>
+    <message>
         <source>Hívásfigyelő beállítása</source>
         <translation>Set up call watcher</translation>
+    </message>
+    <message>
+        <source>Már megvan a felvétel? Importálj hang- vagy videófájlt (ide is húzhatod): ugyanúgy készül belőle átirat és összefoglaló.</source>
+        <translation>Already have a recording? Import an audio or video file (you can also drop it here): it gets a transcript and a summary just the same.</translation>
     </message>
     <message>
         <source>A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást észlel. A felvételt mindig te indítod.</source>
@@ -565,6 +573,10 @@
         <translation>Open the recorder in a separate window (Ctrl+N)</translation>
     </message>
     <message>
+        <source>Hangfájl importálása… (Ctrl+I)</source>
+        <translation>Import audio file… (Ctrl+I)</translation>
+    </message>
+    <message>
         <source>Keresés</source>
         <translation>Search</translation>
     </message>
@@ -632,6 +644,10 @@
         <translation>New recording…</translation>
     </message>
     <message>
+        <source>Hangfájl importálása…</source>
+        <translation>Import audio file…</translation>
+    </message>
+    <message>
         <source>Beállítások…</source>
         <translation>Settings…</translation>
     </message>
@@ -684,6 +700,18 @@
         <translation>Tracks of the recording — you can restore a discarded track before transcription, too.</translation>
     </message>
     <message>
+        <source>Előbb fejeződjön be a futó importálás</source>
+        <translation>Wait for the running import to finish first</translation>
+    </message>
+    <message>
+        <source>Engedd el az importáláshoz</source>
+        <translation>Drop to import</translation>
+    </message>
+    <message>
+        <source>A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv.</source>
+        <translation>The audio or video files become a new meeting: one track per file.</translation>
+    </message>
+    <message>
         <source>Felvétel leállítása, kilépés utána…</source>
         <translation>Stopping the recording, quitting afterwards…</translation>
     </message>
@@ -694,6 +722,10 @@
     <message>
         <source>Lejátszási hiba: %1</source>
         <translation>Playback error: %1</translation>
+    </message>
+    <message>
+        <source>Az importálás nem sikerült: %1</source>
+        <translation>Import failed: %1</translation>
     </message>
     <message>
         <source>Összefoglaló</source>
@@ -1559,6 +1591,116 @@
     <message>
         <source>%1 p</source>
         <translation>%1 min</translation>
+    </message>
+</context>
+<context>
+    <name>ShellImportDialog</name>
+    <message>
+        <source>Importálás folyamatban</source>
+        <translation>Import in progress</translation>
+    </message>
+    <message>
+        <source>Hangfájl importálása</source>
+        <translation>Import audio file</translation>
+    </message>
+    <message>
+        <source>Közben nyugodtan dolgozhatsz tovább: az importálás a háttérben is megy, a végén az új megbeszélés megjelenik a könyvtárban. Az eredeti fájlokhoz nem nyúlunk.</source>
+        <translation>Feel free to keep working: the import continues in the background, and the new meeting appears in the library when it is done. The original files are not touched.</translation>
+    </message>
+    <message>
+        <source>Az importálás nem sikerült</source>
+        <translation>Import failed</translation>
+    </message>
+    <message>
+        <source>Húzd ide a hang- vagy videófájlokat</source>
+        <translation>Drop audio or video files here</translation>
+    </message>
+    <message>
+        <source>Fájlok kiválasztása…</source>
+        <translation>Choose files…</translation>
+    </message>
+    <message>
+        <source>Adatok beolvasása…</source>
+        <translation>Reading file details…</translation>
+    </message>
+    <message>
+        <source>Kivétel a listából</source>
+        <translation>Remove from the list</translation>
+    </message>
+    <message>
+        <source>Csatornánként külön sávra</source>
+        <translation>Split channels into separate tracks</translation>
+    </message>
+    <message>
+        <source>Fájl hozzáadása…</source>
+        <translation>Add file…</translation>
+    </message>
+    <message>
+        <source>Több fájl egyszerre indul: mindegyik külön sáv, közös kezdettel.</source>
+        <translation>Multiple files start together: each is a separate track with a shared start.</translation>
+    </message>
+    <message>
+        <source>Cím</source>
+        <translation>Title</translation>
+    </message>
+    <message>
+        <source>A megbeszélés címe</source>
+        <translation>Meeting title</translation>
+    </message>
+    <message>
+        <source>Mikor készült?</source>
+        <translation>When was it recorded?</translation>
+    </message>
+    <message>
+        <source>Ez az én mikrofonom felvétele</source>
+        <translation>This is a recording of my microphone</translation>
+    </message>
+    <message>
+        <source>Melyik sáv a te mikrofonod?</source>
+        <translation>Which track is your microphone?</translation>
+    </message>
+    <message>
+        <source>Egyik sem</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>Elhagyható. A megjelölt sáv a te neveden szerepel majd; a többi sávon a beszélőket az átírás választja szét.</source>
+        <translation>Optional. The marked track will appear under your name; on the other tracks, transcription separates the speakers.</translation>
+    </message>
+    <message>
+        <source>Az eredeti fájlok érintetlenek maradnak. Az átírást utána te indítod.</source>
+        <translation>The original files are left untouched. You start transcription afterwards.</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Importálás</source>
+        <translation>Import</translation>
+    </message>
+    <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Háttérben folytatom</source>
+        <translation>Continue in the background</translation>
+    </message>
+</context>
+<context>
+    <name>ShellImportStrip</name>
+    <message>
+        <source>Importálás: %1</source>
+        <translation>Importing: %1</translation>
+    </message>
+    <message>
+        <source>Importálás megszakítása</source>
+        <translation>Cancel import</translation>
     </message>
 </context>
 <context>
@@ -2717,6 +2859,37 @@
         <translation>(Recording in progress — press ENTER to stop)</translation>
     </message>
     <message>
+        <source>Érvénytelen dátum: %1 (ISO formátum kell, pl. 2026-03-05T14:30)</source>
+        <translation>Invalid date: %1 (ISO format required, e.g. 2026-03-05T14:30)</translation>
+    </message>
+    <message>
+        <source>Ismeretlen kapcsoló: %1</source>
+        <translation>Unknown option: %1</translation>
+    </message>
+    <message>
+        <source>Használat: import &lt;fájl&gt;… [--title T] [--date ISO] [--split-channels] [--own-track N]</source>
+        <translation>Usage: import &lt;file&gt;… [--title T] [--date ISO] [--split-channels] [--own-track N]</translation>
+    </message>
+    <message>
+        <source>A --own-track értéke 1 és %1 közé essen.</source>
+        <translation>--own-track must be between 1 and %1.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Importálás: &quot;%1&quot; — %n sáv</source>
+        <translation>
+            <numerusform>Importing: &quot;%1&quot; — %n track</numerusform>
+            <numerusform>Importing: &quot;%1&quot; — %n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>  (saját mikrofon)</source>
+        <translation>  (my microphone)</translation>
+    </message>
+    <message>
+        <source>Meeting: %1</source>
+        <translation>Meeting: %1</translation>
+    </message>
+    <message>
         <source>Hiányzó meetingId.</source>
         <translation>Missing meetingId.</translation>
     </message>
@@ -2836,8 +3009,8 @@
         </translation>
     </message>
     <message>
-        <source>Parancsok: devices | record [--title T --seconds N --device IDX] | list | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;nyersCímke&gt; &lt;név&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</source>
-        <translation>Commands: devices | record [--title T --seconds N --device IDX] | list | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;rawLabel&gt; &lt;name&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</translation>
+        <source>Parancsok: devices | record [--title T --seconds N --device IDX] | list | import &lt;fájl&gt;… [--title T --date ISO --split-channels --own-track N] | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;nyersCímke&gt; &lt;név&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</source>
+        <translation>Commands: devices | record [--title T --seconds N --device IDX] | list | import &lt;file&gt;… [--title T --date ISO --split-channels --own-track N] | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;rawLabel&gt; &lt;name&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</translation>
     </message>
     <message>
         <source>Bejelentkezve: %1</source>
@@ -3126,6 +3299,10 @@
 <context>
     <name>tanara::AppController</name>
     <message>
+        <source>Importálás</source>
+        <translation>Import</translation>
+    </message>
+    <message>
         <source>Ismeretlen meeting: %1</source>
         <translation>Unknown meeting: %1</translation>
     </message>
@@ -3310,8 +3487,31 @@
         <translation>Complex summary error: %1</translation>
     </message>
     <message>
+        <source>Már fut egy importálás — várd meg, vagy szakítsd meg.</source>
+        <translation>An import is already running — wait for it to finish or cancel it.</translation>
+    </message>
+    <message>
         <source>%1 / %2 beszélő</source>
         <translation>%1 / %2 speakers</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::AudioImporter</name>
+    <message>
+        <source>Nincs importálható fájl.</source>
+        <translation>No file to import.</translation>
+    </message>
+    <message>
+        <source>Nem hozható létre mappa a felvételek helyén.</source>
+        <translation>Could not create a folder in the recordings location.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült beolvasni: %1</source>
+        <translation>Could not read: %1</translation>
+    </message>
+    <message>
+        <source>Nem sikerült elmenteni az importált felvételt.</source>
+        <translation>Could not save the imported recording.</translation>
     </message>
 </context>
 <context>
@@ -5026,6 +5226,14 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>Audio files (*.ogg *.opus *.flac *.wav *.mp3 *.m4a *.aac);;All files (*)</translation>
     </message>
     <message>
+        <source>Importálandó hangfájlok kiválasztása</source>
+        <translation>Choose audio files to import</translation>
+    </message>
+    <message>
+        <source>Hang- és videófájlok (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;Minden fájl (*)</source>
+        <translation>Audio and video files (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;All files (*)</translation>
+    </message>
+    <message>
         <source>Résztvevők azonosítása a hang alapján…</source>
         <translation>Identifying participants by voice…</translation>
     </message>
@@ -5940,6 +6148,10 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>Recording done: %1</translation>
     </message>
     <message>
+        <source>Importálva: %1</source>
+        <translation>Imported: %1</translation>
+    </message>
+    <message>
         <source>Elkészült az átirat: %1</source>
         <translation>Transcript ready: %1</translation>
     </message>
@@ -6068,6 +6280,102 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     </message>
 </context>
 <context>
+    <name>tanara_qml::ShellImportModel</name>
+    <message>
+        <source>mono</source>
+        <translation>mono</translation>
+    </message>
+    <message>
+        <source>sztereó</source>
+        <translation>stereo</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n csatorna</source>
+        <translation>
+            <numerusform>%n channel</numerusform>
+            <numerusform>%n channels</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>ismeretlen hossz</source>
+        <translation>unknown length</translation>
+    </message>
+    <message>
+        <source>videó hangja</source>
+        <translation>audio from video</translation>
+    </message>
+    <message>
+        <source>A bal és a jobb csatorna két külön sáv lesz.</source>
+        <translation>The left and right channels become two separate tracks.</translation>
+    </message>
+    <message>
+        <source>Akkor kapcsold be, ha a bal és a jobb csatornán más-más ember mikrofonja szól. Kikapcsolva a fájl egyetlen sztereó sáv marad.</source>
+        <translation>Turn this on if the left and right channels carry different people&apos;s microphones. When off, the file stays a single stereo track.</translation>
+    </message>
+    <message>
+        <source>Mind a(z) %1 csatorna külön sáv lesz.</source>
+        <translation>Each of the %1 channels becomes a separate track.</translation>
+    </message>
+    <message>
+        <source>Kikapcsolva a(z) %1 csatorna egyetlen sztereó sávba keveredik.</source>
+        <translation>When off, the %1 channels are mixed into a single stereo track.</translation>
+    </message>
+    <message>
+        <source>A fájlok adatainak beolvasása…</source>
+        <translation>Reading file details…</translation>
+    </message>
+    <message>
+        <source>Egyik fájl sem importálható.</source>
+        <translation>None of the files can be imported.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv lesz belőle.</source>
+        <translation>
+            <numerusform>This will create %n track.</numerusform>
+            <numerusform>This will create %n tracks.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n fájl kimarad.</source>
+        <translation>
+            <numerusform>%n file will be skipped.</numerusform>
+            <numerusform>%n files will be skipped.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Így írd: 2026-03-05 14:30</source>
+        <translation>Use this format: 2026-03-05 14:30</translation>
+    </message>
+    <message>
+        <source>A fájlba írt készítési időből.</source>
+        <translation>From the creation time stored in the file.</translation>
+    </message>
+    <message>
+        <source>A fájl módosítási idejéből — ha máskor készült, írd át.</source>
+        <translation>From the file&apos;s modification time — change it if it was recorded at another time.</translation>
+    </message>
+    <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>Előkészítés…</source>
+        <translation>Preparing…</translation>
+    </message>
+    <message>
+        <source>%1% · %2 / %3 fájl</source>
+        <translation>%1% · %2 / %3 files</translation>
+    </message>
+    <message>
+        <source>Nem hang- vagy videófájl (nem olvasható be): %1</source>
+        <translation>Not an audio or video file (cannot be read): %1</translation>
+    </message>
+    <message>
+        <source>Nem sikerült beolvasni: %1</source>
+        <translation>Could not read: %1</translation>
+    </message>
+</context>
+<context>
     <name>tanara_qml::ShellMeetingModel</name>
     <message>
         <source>Átírás</source>
@@ -6092,6 +6400,10 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     <message>
         <source>Résztvevők azonosítása</source>
         <translation>Identifying participants</translation>
+    </message>
+    <message>
+        <source>Importálás</source>
+        <translation>Import</translation>
     </message>
     <message numerus="yes">
         <source>%n beszélő</source>
