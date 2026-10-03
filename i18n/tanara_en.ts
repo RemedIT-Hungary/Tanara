@@ -446,6 +446,41 @@
     </message>
 </context>
 <context>
+    <name>EmptyLibraryView</name>
+    <message>
+        <source>Vegyük fel az első megbeszélést</source>
+        <translation>Let&apos;s record your first meeting</translation>
+    </message>
+    <message>
+        <source>A Tanara minden hangforrást külön sávra rögzít, utána átiratot és összefoglalót készít. A felvétel a gépeden marad.</source>
+        <translation>Tanara records every audio source on its own track, then creates a transcript and a summary. The recording stays on your computer.</translation>
+    </message>
+    <message>
+        <source>Felvétel</source>
+        <translation>Recording</translation>
+    </message>
+    <message>
+        <source>Átirat</source>
+        <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Felvétel indítása</source>
+        <translation>Start recording</translation>
+    </message>
+    <message>
+        <source>Hívásfigyelő beállítása</source>
+        <translation>Set up call watcher</translation>
+    </message>
+    <message>
+        <source>A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást észlel. A felvételt mindig te indítod.</source>
+        <translation>The call watcher runs in the tray and notifies you when it detects a Teams, Meet or Zoom call. You always start the recording yourself.</translation>
+    </message>
+</context>
+<context>
     <name>JobErrors</name>
     <message>
         <source>hálózat · nincs válasz</source>
@@ -505,10 +540,104 @@
     </message>
 </context>
 <context>
+    <name>JobStageRow</name>
+    <message>
+        <source>kihagyva</source>
+        <translation>skipped</translation>
+    </message>
+    <message>
+        <source>nem sikerült</source>
+        <translation>failed</translation>
+    </message>
+    <message>
+        <source>vár</source>
+        <translation>waiting</translation>
+    </message>
+</context>
+<context>
+    <name>LibrarySidebar</name>
+    <message>
+        <source>Új felvétel</source>
+        <translation>New recording</translation>
+    </message>
+    <message>
+        <source>A felvevő megnyitása külön ablakban (Ctrl+N)</source>
+        <translation>Open the recorder in a separate window (Ctrl+N)</translation>
+    </message>
+    <message>
+        <source>Keresés</source>
+        <translation>Search</translation>
+    </message>
+    <message>
+        <source>Nincs átirat</source>
+        <translation>No transcript</translation>
+    </message>
+    <message>
+        <source>Nincs összefoglaló</source>
+        <translation>No summary</translation>
+    </message>
+    <message>
+        <source>Szűrő</source>
+        <translation>Filter</translation>
+    </message>
+    <message>
+        <source>Még nincs megbeszélés</source>
+        <translation>No meetings yet</translation>
+    </message>
+    <message>
+        <source>A felvételek itt jelennek meg, legújabb felül.</source>
+        <translation>Recordings appear here, newest first.</translation>
+    </message>
+    <message>
+        <source>Nincs találat</source>
+        <translation>No results</translation>
+    </message>
+    <message>
+        <source>Próbálj más kifejezést, vagy vedd le a szűrőket.</source>
+        <translation>Try a different term, or clear the filters.</translation>
+    </message>
+    <message>
+        <source>Szűrők törlése</source>
+        <translation>Clear filters</translation>
+    </message>
+    <message>
+        <source>Személyek</source>
+        <translation>People</translation>
+    </message>
+    <message>
+        <source>Beállítások</source>
+        <translation>Settings</translation>
+    </message>
+    <message>
+        <source>Átnevezés</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>Megnyitás mappában</source>
+        <translation>Show in folder</translation>
+    </message>
+    <message>
+        <source>Törlés…</source>
+        <translation>Delete…</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
         <source>Fájl</source>
         <translation>File</translation>
+    </message>
+    <message>
+        <source>Új felvétel…</source>
+        <translation>New recording…</translation>
+    </message>
+    <message>
+        <source>Beállítások…</source>
+        <translation>Settings…</translation>
+    </message>
+    <message>
+        <source>Személyek…</source>
+        <translation>People…</translation>
     </message>
     <message>
         <source>Kilépés</source>
@@ -517,6 +646,14 @@
     <message>
         <source>Nézet</source>
         <translation>View</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása (hang alapján)</source>
+        <translation>Identify participants (by voice)</translation>
+    </message>
+    <message>
+        <source>Felvétel-ablak előtérbe</source>
+        <translation>Bring recording window to front</translation>
     </message>
     <message>
         <source>Téma: a rendszer szerint</source>
@@ -531,8 +668,32 @@
         <translation>Dark theme</translation>
     </message>
     <message>
+        <source>Felvétel folyamatban</source>
+        <translation>Recording in progress</translation>
+    </message>
+    <message>
+        <source>elavult</source>
+        <translation>outdated</translation>
+    </message>
+    <message>
+        <source>Vissza az előkészítéshez</source>
+        <translation>Back to preparation</translation>
+    </message>
+    <message>
+        <source>A felvétel sávjai — az átírás előtt is visszaállíthatsz eldobott sávot.</source>
+        <translation>Tracks of the recording — you can restore a discarded track before transcription, too.</translation>
+    </message>
+    <message>
+        <source>Felvétel leállítása, kilépés utána…</source>
+        <translation>Stopping the recording, quitting afterwards…</translation>
+    </message>
+    <message>
         <source>Átirat</source>
         <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>Lejátszási hiba: %1</source>
+        <translation>Playback error: %1</translation>
     </message>
     <message>
         <source>Összefoglaló</source>
@@ -689,6 +850,41 @@
     </message>
 </context>
 <context>
+    <name>MeetingHeader</name>
+    <message>
+        <source>A megbeszélés címe</source>
+        <translation>Meeting title</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identify participants</translation>
+    </message>
+    <message>
+        <source>A névtelen beszélők párosítása az ismert hanglenyomatokkal. Megszakítható, bármikor újrafuttatható.</source>
+        <translation>Matches unnamed speakers against known voiceprints. Can be cancelled and rerun at any time.</translation>
+    </message>
+    <message>
+        <source>További műveletek</source>
+        <translation>More actions</translation>
+    </message>
+    <message>
+        <source>Átnevezés</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>Megnyitás mappában</source>
+        <translation>Show in folder</translation>
+    </message>
+    <message>
+        <source>Újra-átírás…</source>
+        <translation>Re-transcribe…</translation>
+    </message>
+    <message>
+        <source>Törlés…</source>
+        <translation>Delete…</translation>
+    </message>
+</context>
+<context>
     <name>MeetingItemDelegate</name>
     <message>
         <source>%1 átirat   %2 össz   %3 azonosítva</source>
@@ -708,6 +904,250 @@
     <message>
         <source>%1 átirat   %2 össz   %3 azonosítva</source>
         <translation>%1 transcript   %2 summary   %3 identified</translation>
+    </message>
+</context>
+<context>
+    <name>NoSelectionView</name>
+    <message>
+        <source>Válassz egy megbeszélést</source>
+        <translation>Select a meeting</translation>
+    </message>
+    <message>
+        <source>Ezek várnak rád:</source>
+        <translation>Waiting for you:</translation>
+    </message>
+    <message>
+        <source>A bal oldali listából nyithatsz meg egyet. Most semmi nem vár rád.</source>
+        <translation>Open one from the list on the left. Nothing is waiting for you right now.</translation>
+    </message>
+</context>
+<context>
+    <name>PersonPicker</name>
+    <message>
+        <source>Névtelen résztvevő</source>
+        <translation>Unnamed participant</translation>
+    </message>
+    <message>
+        <source>Név keresése vagy új személy</source>
+        <translation>Search name or new person</translation>
+    </message>
+    <message>
+        <source>már résztvevő</source>
+        <translation>already a participant</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés</source>
+        <translation>
+            <numerusform>%n meeting</numerusform>
+            <numerusform>%n meetings</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs hanglenyomat</source>
+        <translation>no voiceprint</translation>
+    </message>
+    <message>
+        <source>Új személy: „%1”</source>
+        <translation>New person: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>A beszélő névtelenül is maradhat; később is elnevezheted.</source>
+        <translation>Speakers can stay unnamed; you can name them later.</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerBar</name>
+    <message>
+        <source>Ehhez a megbeszéléshez nincs lejátszható hang</source>
+        <translation>This meeting has no playable audio</translation>
+    </message>
+    <message>
+        <source>Szünet (Szóköz)</source>
+        <translation>Pause (Space)</translation>
+    </message>
+    <message>
+        <source>Lejátszás (Szóköz)</source>
+        <translation>Play (Space)</translation>
+    </message>
+    <message>
+        <source>Pozíció</source>
+        <translation>Position</translation>
+    </message>
+    <message>
+        <source>Lejátszási sebesség</source>
+        <translation>Playback speed</translation>
+    </message>
+    <message>
+        <source>Hangerő</source>
+        <translation>Volume</translation>
+    </message>
+    <message>
+        <source>Némítás feloldása</source>
+        <translation>Unmute</translation>
+    </message>
+    <message>
+        <source>Némítás</source>
+        <translation>Mute</translation>
+    </message>
+</context>
+<context>
+    <name>PreTranscriptView</name>
+    <message>
+        <source>Ehhez a felvételhez még nincs átirat. Három lépés:</source>
+        <translation>This recording has no transcript yet. Three steps:</translation>
+    </message>
+    <message>
+        <source>Miről szólt a megbeszélés?</source>
+        <translation>What was the meeting about?</translation>
+    </message>
+    <message>
+        <source>Nevek, szakszavak, témák: ezekből pontosabb átirat lesz. Elhagyható.</source>
+        <translation>Names, jargon, topics: these make the transcript more accurate. Optional.</translation>
+    </message>
+    <message>
+        <source>Például: negyedéves egyeztetés a partnerekkel; szóba kerül a számlázás és az új súgó.</source>
+        <translation>For example: quarterly sync with the partners; billing and the new help pages come up.</translation>
+    </message>
+    <message>
+        <source>Előkészítés</source>
+        <translation>Preparation</translation>
+    </message>
+    <message>
+        <source>opcionális</source>
+        <translation>optional</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása hang alapján</source>
+        <translation>Identify participants by voice</translation>
+    </message>
+    <message>
+        <source>Az ismert személyeket a hanglenyomatuk alapján előre megnevezi. Kihagyható: az átirat névtelen beszélőkkel is elkészül.</source>
+        <translation>Names known people in advance based on their voiceprints. Can be skipped: the transcript is created with unnamed speakers as well.</translation>
+    </message>
+    <message>
+        <source>Ezen a gépen nincs telepítve a hangfelismerő modell, ezért ez a lépés kimarad. Az átirat névtelen beszélőkkel készül el, a neveket utólag is megadhatod.</source>
+        <translation>The voice recognition model is not installed on this computer, so this step is skipped. The transcript is created with unnamed speakers; you can add the names later.</translation>
+    </message>
+    <message>
+        <source>Lekeverés készítése</source>
+        <translation>Create mixdown</translation>
+    </message>
+    <message>
+        <source>Kész: a sávokból egy fájl a visszahallgatáshoz. Az átírás is ebből dolgozik.</source>
+        <translation>Done: one file made from the tracks for playback. Transcription uses it too.</translation>
+    </message>
+    <message>
+        <source>Most készül a sávokból egy fájl a visszahallgatáshoz és az átíráshoz.</source>
+        <translation>Creating one file from the tracks for playback and transcription.</translation>
+    </message>
+    <message>
+        <source>A sávok változtak a legutóbbi lekeverés óta. Az átírás indításakor magától frissül, de előre is elkészítheted.</source>
+        <translation>The tracks have changed since the last mixdown. It is updated automatically when transcription starts, but you can create it in advance.</translation>
+    </message>
+    <message>
+        <source>A sávokból egy fájl a visszahallgatáshoz. Az átírás is ebből dolgozik, ezért az indításkor magától elkészül; előre is elkészítheted.</source>
+        <translation>One file made from the tracks for playback. Transcription uses it too, so it is created automatically when transcription starts; you can also create it in advance.</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Lekeverés frissítése</source>
+        <translation>Update mixdown</translation>
+    </message>
+    <message>
+        <source>Lekeverés most</source>
+        <translation>Mix down now</translation>
+    </message>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud · az átírás szintje:</source>
+        <translation>Tanara Cloud · transcription tier:</translation>
+    </message>
+    <message>
+        <source>Gyors</source>
+        <translation>Fast</translation>
+    </message>
+    <message>
+        <source>Pontos</source>
+        <translation>Accurate</translation>
+    </message>
+    <message>
+        <source>Expert: %1</source>
+        <translation>Expert: %1</translation>
+    </message>
+    <message>
+        <source>Nyelv és Expert mód…</source>
+        <translation>Language and Expert mode…</translation>
+    </message>
+    <message>
+        <source>Átírás indítása</source>
+        <translation>Start transcription</translation>
+    </message>
+    <message>
+        <source>Szolgáltató: %1</source>
+        <translation>Provider: %1</translation>
+    </message>
+    <message>
+        <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
+        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
+    </message>
+    <message>
+        <source>Érdekel</source>
+        <translation>I&apos;m interested</translation>
+    </message>
+    <message>
+        <source>az átírással egy menetben</source>
+        <translation>together with transcription</translation>
+    </message>
+    <message>
+        <source>Megszakítás folyamatban; a felvétel és a sávok érintetlenek maradnak.</source>
+        <translation>Cancelling; the recording and the tracks are left untouched.</translation>
+    </message>
+    <message>
+        <source>Közben nyugodtan dolgozz tovább; szólunk, ha kész.</source>
+        <translation>Feel free to keep working; we&apos;ll let you know when it&apos;s done.</translation>
+    </message>
+    <message>
+        <source>Az átírás nem sikerült</source>
+        <translation>Transcription failed</translation>
+    </message>
+    <message>
+        <source>A felvétel és a sávok érintetlenek.</source>
+        <translation>The recording and the tracks are untouched.</translation>
+    </message>
+    <message>
+        <source>Technikai részletek</source>
+        <translation>Technical details</translation>
+    </message>
+    <message>
+        <source>Újrapróbálás</source>
+        <translation>Try again</translation>
+    </message>
+    <message>
+        <source>Kontextus és előkészítés módosítása</source>
+        <translation>Edit context and preparation</translation>
+    </message>
+</context>
+<context>
+    <name>QmlShellBridge</name>
+    <message numerus="yes">
+        <source>%n különböző partner azonosítva</source>
+        <translation>
+            <numerusform>%n distinct partner identified</numerusform>
+            <numerusform>%n distinct partners identified</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source> és %n ismeretlen partner</source>
+        <translation>
+            <numerusform> and %n unknown partner</numerusform>
+            <numerusform> and %n unknown partners</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -821,6 +1261,856 @@
     </message>
 </context>
 <context>
+    <name>RecorderPill</name>
+    <message>
+        <source>Felvétel indítása</source>
+        <translation>Start recording</translation>
+    </message>
+    <message>
+        <source>Leállítás</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <source>Kinyitás</source>
+        <translation>Expand</translation>
+    </message>
+</context>
+<context>
+    <name>RecorderView</name>
+    <message>
+        <source>Tanara felvevő</source>
+        <translation>Tanara Recorder</translation>
+    </message>
+    <message>
+        <source>Mindig felül</source>
+        <translation>Always on top</translation>
+    </message>
+    <message>
+        <source>Mindig felül: ezen a rendszeren az ablakkezelő dönt (Wayland)</source>
+        <translation>Always on top: on this system the window manager decides (Wayland)</translation>
+    </message>
+    <message>
+        <source>Összecsukás</source>
+        <translation>Collapse</translation>
+    </message>
+    <message>
+        <source>Kinyitás</source>
+        <translation>Expand</translation>
+    </message>
+    <message>
+        <source>Pirula méret</source>
+        <translation>Pill size</translation>
+    </message>
+    <message>
+        <source>Háttérbe (tálcára)</source>
+        <translation>Send to background (tray)</translation>
+    </message>
+    <message>
+        <source>Bezárás</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>Vége a megbeszélésnek?</source>
+        <translation>Is the meeting over?</translation>
+    </message>
+    <message>
+        <source>Folytatom</source>
+        <translation>Keep recording</translation>
+    </message>
+    <message>
+        <source>Leállítom</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <source>Automatikus név · kattints az átnevezéshez</source>
+        <translation>Automatic name · click to rename</translation>
+    </message>
+    <message>
+        <source>Felvétel indítása</source>
+        <translation>Start recording</translation>
+    </message>
+    <message>
+        <source>Kapcsolj be legalább egy forrást</source>
+        <translation>Turn on at least one source</translation>
+    </message>
+    <message>
+        <source>LEZÁRÁS…</source>
+        <translation>FINISHING…</translation>
+    </message>
+    <message>
+        <source>FELVÉTEL</source>
+        <translation>RECORDING</translation>
+    </message>
+    <message>
+        <source>Leállítás</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <source>Elmentve, de hiányosan</source>
+        <translation>Saved, but incomplete</translation>
+    </message>
+    <message>
+        <source>Elmentve</source>
+        <translation>Saved</translation>
+    </message>
+    <message>
+        <source>Megnyitás az elemzőben</source>
+        <translation>Open in analyzer</translation>
+    </message>
+    <message>
+        <source>Új felvétel</source>
+        <translation>New recording</translation>
+    </message>
+    <message>
+        <source>Nem találok hangeszközt</source>
+        <translation>No audio device found</translation>
+    </message>
+    <message>
+        <source>Csatlakoztass mikrofont vagy fejhallgatót. Linuxon ellenőrizd, hogy fut-e a PipeWire vagy a PulseAudio.</source>
+        <translation>Connect a microphone or headphones. On Linux, check that PipeWire or PulseAudio is running.</translation>
+    </message>
+    <message>
+        <source>Csatlakoztass mikrofont vagy fejhallgatót, és ellenőrizd a rendszer hangbeállításait.</source>
+        <translation>Connect a microphone or headphones, and check the system sound settings.</translation>
+    </message>
+    <message>
+        <source>Újrakeresés</source>
+        <translation>Search again</translation>
+    </message>
+    <message>
+        <source>Rögzítés beállításai</source>
+        <translation>Recording settings</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 / %2 forrás rögzül</source>
+        <translation>Recording %1 of %2 sources</translation>
+    </message>
+    <message>
+        <source>Források</source>
+        <translation>Sources</translation>
+    </message>
+    <message>
+        <source>A kikapcsolt eszközök jelzője tájékoztató.</source>
+        <translation>Meters of switched-off devices are for information only.</translation>
+    </message>
+    <message>
+        <source>Beszélj vagy játssz le hangot: a mozgó jelző mutatja, melyik eszközön jön hang.</source>
+        <translation>Speak or play some audio: the moving meter shows which device carries sound.</translation>
+    </message>
+    <message>
+        <source>MIKROFONOK</source>
+        <translation>MICROPHONES</translation>
+    </message>
+    <message>
+        <source>HANGKIMENETEK</source>
+        <translation>AUDIO OUTPUTS</translation>
+    </message>
+    <message>
+        <source>EGYÉB BEMENETEK</source>
+        <translation>OTHER INPUTS</translation>
+    </message>
+    <message>
+        <source>amit mondasz</source>
+        <translation>what you say</translation>
+    </message>
+    <message>
+        <source>amit hallasz</source>
+        <translation>what you hear</translation>
+    </message>
+    <message>
+        <source>Az eszközt leválasztották; a sávja lezárult</source>
+        <translation>The device was disconnected; its track is closed</translation>
+    </message>
+    <message>
+        <source>Rögzített sáv: felvétel közben nem kapcsolható ki</source>
+        <translation>Track being recorded: cannot be turned off during recording</translation>
+    </message>
+    <message>
+        <source>Bekapcsolás: a sávja ettől a pillanattól indul</source>
+        <translation>Turn on: its track starts from this moment</translation>
+    </message>
+    <message>
+        <source>alapért.</source>
+        <translation>default</translation>
+    </message>
+    <message>
+        <source>A rögzített sávok felvétel közben nem kapcsolhatók ki. Új eszköz bekapcsolható: a sávja attól a pillanattól indul.</source>
+        <translation>Tracks being recorded cannot be turned off during recording. A new device can be turned on: its track starts from that moment.</translation>
+    </message>
+    <message>
+        <source>A felvétel még fut</source>
+        <translation>The recording is still running</translation>
+    </message>
+    <message>
+        <source>Bezárás helyett a háttérben is folytatódhat; a tálca-ikonról bármikor visszahozod.</source>
+        <translation>Instead of closing, it can continue in the background; bring it back from the tray icon at any time.</translation>
+    </message>
+    <message>
+        <source>Fusson a háttérben</source>
+        <translation>Run in the background</translation>
+    </message>
+    <message>
+        <source>Leállítás és bezárás</source>
+        <translation>Stop and close</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+</context>
+<context>
+    <name>RecorderWindow</name>
+    <message>
+        <source>Tanara felvevő</source>
+        <translation>Tanara Recorder</translation>
+    </message>
+</context>
+<context>
+    <name>ShellCloudBanners</name>
+    <message>
+        <source>Elrejtés</source>
+        <translation>Hide</translation>
+    </message>
+</context>
+<context>
+    <name>ShellDialogs</name>
+    <message>
+        <source>Újra-átírod a megbeszélést?</source>
+        <translation>Re-transcribe the meeting?</translation>
+    </message>
+    <message>
+        <source>A mostani átirat maradjon meg másolatként</source>
+        <translation>Keep the current transcript as a copy</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Újra-átírás</source>
+        <translation>Re-transcribe</translation>
+    </message>
+    <message>
+        <source>Törlöd a megbeszélést?</source>
+        <translation>Delete the meeting?</translation>
+    </message>
+    <message>
+        <source>„%1” felvétele (a hangsávok), az átirata és az összefoglalója véglegesen törlődik a gépedről. Ez nem vonható vissza.</source>
+        <translation>The recording (audio tracks), transcript and summary of &quot;%1&quot; will be permanently deleted from your computer. This cannot be undone.</translation>
+    </message>
+    <message>
+        <source>Törlés</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Éppen felvétel megy</source>
+        <translation>A recording is in progress</translation>
+    </message>
+    <message>
+        <source>Ha most kilépsz, a felvétel megszakadna. Folytathatod a háttérben (a felvevő ablaka nyitva marad, a főablak a felvétel végén visszajön), vagy leállíthatod a felvételt, és utána lépünk ki.</source>
+        <translation>If you quit now, the recording would be interrupted. You can continue in the background (the recorder window stays open and the main window returns when the recording ends), or stop the recording and quit afterwards.</translation>
+    </message>
+    <message>
+        <source>Leállítom és kilépek</source>
+        <translation>Stop and quit</translation>
+    </message>
+    <message>
+        <source>Háttérben folytatom</source>
+        <translation>Continue in the background</translation>
+    </message>
+    <message>
+        <source>Vége a meetingnek?</source>
+        <translation>Is the meeting over?</translation>
+    </message>
+    <message>
+        <source>Leállítsam a rögzítést? Ha nem válaszolsz, a felvétel megy tovább.</source>
+        <translation>Stop the recording? If you don&apos;t answer, the recording continues.</translation>
+    </message>
+    <message>
+        <source>Folytatom a felvételt</source>
+        <translation>Keep recording</translation>
+    </message>
+    <message>
+        <source>Leállítás</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <source>Rendben</source>
+        <translation>OK</translation>
+    </message>
+</context>
+<context>
+    <name>ShellFormat</name>
+    <message>
+        <source>&lt;1 p</source>
+        <translation>&lt;1 min</translation>
+    </message>
+    <message>
+        <source>%1 ó %2 p</source>
+        <translation>%1 h %2 min</translation>
+    </message>
+    <message>
+        <source>%1 p</source>
+        <translation>%1 min</translation>
+    </message>
+</context>
+<context>
+    <name>ShellToast</name>
+    <message>
+        <source>Hibaazonosító: %1</source>
+        <translation>Error ID: %1</translation>
+    </message>
+    <message>
+        <source>Másolás</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>Napló a weben</source>
+        <translation>Log on the web</translation>
+    </message>
+    <message>
+        <source>Bezárás</source>
+        <translation>Close</translation>
+    </message>
+</context>
+<context>
+    <name>SpeakerPopover</name>
+    <message>
+        <source>Meghallgatás: egy jellemző, hosszabb megszólalás ettől a beszélőtől</source>
+        <translation>Listen: a typical, longer utterance from this speaker</translation>
+    </message>
+    <message>
+        <source>%1 valójában…</source>
+        <translation>%1 is actually…</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megszólalás</source>
+        <translation>
+            <numerusform>%n utterance</numerusform>
+            <numerusform>%n utterances</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 · hang alapján felismerve (%2%)</source>
+        <translation>%1 · matched by voice (%2%)</translation>
+    </message>
+    <message>
+        <source>%1 · kézzel elnevezve</source>
+        <translation>%1 · named manually</translation>
+    </message>
+    <message>
+        <source>%1 · névtelen beszélő</source>
+        <translation>%1 · unnamed speaker</translation>
+    </message>
+    <message>
+        <source>Név keresése vagy új személy</source>
+        <translation>Search name or new person</translation>
+    </message>
+    <message>
+        <source>Másik személy</source>
+        <translation>Another person</translation>
+    </message>
+    <message>
+        <source>összevonás</source>
+        <translation>merge</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés</source>
+        <translation>
+            <numerusform>%n meeting</numerusform>
+            <numerusform>%n meetings</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs hanglenyomat</source>
+        <translation>no voiceprint</translation>
+    </message>
+    <message>
+        <source>Új személy: „%1”</source>
+        <translation>New person: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Névtelen beszélő</source>
+        <translation>Unnamed speaker</translation>
+    </message>
+    <message>
+        <source>%1 néven</source>
+        <translation>as %1</translation>
+    </message>
+    <message>
+        <source>Összevonás ebben a megbeszélésben</source>
+        <translation>Merge within this meeting</translation>
+    </message>
+    <message>
+        <source>A sorok kerüljenek ki %1 hanglenyomatából (téves felismerés)</source>
+        <translation>Remove these lines from %1&apos;s voiceprint (wrong match)</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat csak elnevezett beszélőhöz készíthető.</source>
+        <translation>A voiceprint can only be created for a named speaker.</translation>
+    </message>
+    <message>
+        <source>Van hanglenyomata.</source>
+        <translation>Has a voiceprint.</translation>
+    </message>
+    <message>
+        <source>Még nincs hanglenyomata.</source>
+        <translation>No voiceprint yet.</translation>
+    </message>
+    <message>
+        <source>Újat most nem lehet készíteni, mert a hang-elemzés nem érhető el.</source>
+        <translation>A new one cannot be created right now because voice analysis is not available.</translation>
+    </message>
+    <message>
+        <source>Itt %1 mp jól használható beszéde van.</source>
+        <translation>There are %1 s of usable speech here.</translation>
+    </message>
+    <message>
+        <source>Ebből a megbeszélésből nem készíthető: még kb. %1 mp tiszta beszéd kellene (legalább 3 másodperces sorokból).</source>
+        <translation>Cannot be created from this meeting: about %1 s more clean speech is needed (from lines of at least 3 seconds).</translation>
+    </message>
+    <message>
+        <source>Új készítése</source>
+        <translation>Create new</translation>
+    </message>
+    <message>
+        <source>Készítés</source>
+        <translation>Create</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat készítése a beszélő itteni, hosszabb soraiból</source>
+        <translation>Create a voiceprint from this speaker&apos;s longer lines in this meeting</translation>
+    </message>
+    <message>
+        <source>Üres oszlop eltávolítása</source>
+        <translation>Remove empty column</translation>
+    </message>
+    <message>
+        <source>Visszavonható: Ctrl+Z</source>
+        <translation>Undo with Ctrl+Z</translation>
+    </message>
+    <message numerus="yes">
+        <source>Minden sora (%n) átkerül · visszavonható: Ctrl+Z</source>
+        <translation>
+            <numerusform>Its %n line moves · undo with Ctrl+Z</numerusform>
+            <numerusform>All %n lines move · undo with Ctrl+Z</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>SpeakerRailHeader</name>
+    <message numerus="yes">
+        <source>%n megszólalás</source>
+        <translation>
+            <numerusform>%n utterance</numerusform>
+            <numerusform>%n utterances</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1-es billentyű</source>
+        <translation>key %1</translation>
+    </message>
+    <message>
+        <source>Van hanglenyomata.</source>
+        <translation>Has a voiceprint.</translation>
+    </message>
+    <message>
+        <source>Névtelen beszélő.</source>
+        <translation>Unnamed speaker.</translation>
+    </message>
+    <message>
+        <source>Nincs hanglenyomata.</source>
+        <translation>No voiceprint.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n keveset beszélő résztvevő — kattintásra külön oszlopot kapnak</source>
+        <translation>
+            <numerusform>%n participant who spoke little — click to give them their own column</numerusform>
+            <numerusform>%n participants who spoke little — click to give each their own column</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A keveset beszélők összecsukása</source>
+        <translation>Collapse participants who spoke little</translation>
+    </message>
+    <message>
+        <source>Résztvevő hozzáadása</source>
+        <translation>Add participant</translation>
+    </message>
+</context>
+<context>
+    <name>SummaryDocView</name>
+    <message numerus="yes">
+        <source>Az összefoglaló óta %n beszélőt javítottál, ezért a felelősök és a résztvevők elavultak lehetnek.</source>
+        <translation>
+            <numerusform>You have corrected %n speaker since the summary, so owners and participants may be outdated.</numerusform>
+            <numerusform>You have corrected %n speakers since the summary, so owners and participants may be outdated.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Az összefoglaló óta változtak a beszélők, ezért a felelősök és a résztvevők elavultak lehetnek.</source>
+        <translation>The speakers have changed since the summary, so owners and participants may be outdated.</translation>
+    </message>
+    <message>
+        <source>Témák újraelemzése</source>
+        <translation>Re-analyze topics</translation>
+    </message>
+    <message>
+        <source>Frissítés</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <source>Rendben így</source>
+        <translation>Keep as is</translation>
+    </message>
+    <message>
+        <source>Vezetői összefoglaló</source>
+        <translation>Executive summary</translation>
+    </message>
+    <message>
+        <source>Döntések</source>
+        <translation>Decisions</translation>
+    </message>
+    <message>
+        <source>Ugrás ide: %1</source>
+        <translation>Jump to %1</translation>
+    </message>
+    <message>
+        <source>Teendők</source>
+        <translation>Action items</translation>
+    </message>
+    <message>
+        <source>Témák</source>
+        <translation>Topics</translation>
+    </message>
+    <message>
+        <source>Résztvevők</source>
+        <translation>Participants</translation>
+    </message>
+    <message>
+        <source>Témánkénti elemzés</source>
+        <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>Újragenerálás</source>
+        <translation>Regenerate</translation>
+    </message>
+    <message>
+        <source>Másolás</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló a vágólapra került.</source>
+        <translation>Summary copied to the clipboard.</translation>
+    </message>
+    <message>
+        <source>Megnyitás mappában</source>
+        <translation>Show in folder</translation>
+    </message>
+</context>
+<context>
+    <name>SummaryEmptyView</name>
+    <message>
+        <source>Még nincs összefoglaló</source>
+        <translation>No summary yet</translation>
+    </message>
+    <message>
+        <source>Kétféle összefoglaló készülhet:</source>
+        <translation>There are two kinds of summary:</translation>
+    </message>
+    <message>
+        <source>Megszakítás folyamatban; az átirat érintetlen marad.</source>
+        <translation>Cancelling; the transcript is left untouched.</translation>
+    </message>
+    <message>
+        <source>Közben nyugodtan dolgozz tovább; szólunk, ha kész.</source>
+        <translation>Feel free to keep working; we&apos;ll let you know when it&apos;s done.</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Gyors összefoglaló</source>
+        <translation>Quick summary</translation>
+    </message>
+    <message>
+        <source>Egy lépésben: vezetői összefoglaló, döntések, teendők felelőssel, résztvevők.</source>
+        <translation>In one step: executive summary, decisions, action items with owners, participants.</translation>
+    </message>
+    <message>
+        <source>kb. 1 perc</source>
+        <translation>about 1 minute</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Create summary</translation>
+    </message>
+    <message>
+        <source>Témánkénti elemzés</source>
+        <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>A modell témákat javasol, te átírod, törlöd vagy kiegészíted őket, aztán témánként részletes elemzés készül.</source>
+        <translation>The model suggests topics; you edit, delete or add to them, then a detailed analysis is created for each topic.</translation>
+    </message>
+    <message>
+        <source>a téma-lista már megvan; onnan folytatható, ahol abbamaradt</source>
+        <translation>the topic list already exists; continue where you left off</translation>
+    </message>
+    <message>
+        <source>2 lépés, témánként 1–2 perc</source>
+        <translation>2 steps, 1–2 minutes per topic</translation>
+    </message>
+    <message>
+        <source>Témák megnyitása</source>
+        <translation>Open topics</translation>
+    </message>
+    <message>
+        <source>Témák javaslása</source>
+        <translation>Suggest topics</translation>
+    </message>
+    <message>
+        <source>Szolgáltató: %1 · %2</source>
+        <translation>Provider: %1 · %2</translation>
+    </message>
+    <message>
+        <source>Szolgáltató: %1 · a modell a Beállítások › Összefoglaló alatt cserélhető</source>
+        <translation>Provider: %1 · change the model under Settings › Summary</translation>
+    </message>
+    <message>
+        <source>Szint módosítása</source>
+        <translation>Change tier</translation>
+    </message>
+    <message>
+        <source>Megnyitás</source>
+        <translation>Open</translation>
+    </message>
+    <message>
+        <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
+        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
+    </message>
+    <message>
+        <source>Érdekel</source>
+        <translation>I&apos;m interested</translation>
+    </message>
+</context>
+<context>
+    <name>SummaryStatusBanners</name>
+    <message>
+        <source>Folyamatban…</source>
+        <translation>In progress…</translation>
+    </message>
+    <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló legutóbb nem készült el</source>
+        <translation>The last summary attempt did not complete</translation>
+    </message>
+    <message>
+        <source>Újra</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>Rendben</source>
+        <translation>OK</translation>
+    </message>
+</context>
+<context>
+    <name>SummaryTopicsView</name>
+    <message>
+        <source>Törlöd a témát?</source>
+        <translation>Delete the topic?</translation>
+    </message>
+    <message>
+        <source>„%1” elemzése kikerül az összegzésből. A többi téma eredménye megmarad.</source>
+        <translation>The analysis of &quot;%1&quot; is removed from the overall summary. The results of the other topics are kept.</translation>
+    </message>
+    <message>
+        <source>Téma törlése</source>
+        <translation>Delete topic</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Vissza</source>
+        <translation>Back</translation>
+    </message>
+    <message>
+        <source>Vissza az összefoglalóhoz</source>
+        <translation>Back to the summary</translation>
+    </message>
+    <message>
+        <source>Vissza a választáshoz</source>
+        <translation>Back to the options</translation>
+    </message>
+    <message>
+        <source>Témák</source>
+        <translation>Topics</translation>
+    </message>
+    <message>
+        <source>Téma hozzáadása</source>
+        <translation>Add topic</translation>
+    </message>
+    <message>
+        <source>Hiányzók elemzése</source>
+        <translation>Analyze missing</translation>
+    </message>
+    <message>
+        <source>Összegzés készítése</source>
+        <translation>Create overall summary</translation>
+    </message>
+    <message>
+        <source>Még nincs téma. Vegyél fel egyet kézzel, vagy térj vissza, és kérj javaslatot a modelltől.</source>
+        <translation>No topics yet. Add one manually, or go back and ask the model for suggestions.</translation>
+    </message>
+    <message>
+        <source>Az új téma címe</source>
+        <translation>Title of the new topic</translation>
+    </message>
+    <message>
+        <source>Rövid leírás: mire figyeljen az elemzés (elhagyható)</source>
+        <translation>Short description: what the analysis should focus on (optional)</translation>
+    </message>
+    <message>
+        <source>Az új téma leírása</source>
+        <translation>Description of the new topic</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Hozzáadás</source>
+        <translation>Add</translation>
+    </message>
+</context>
+<context>
+    <name>TaskStrip</name>
+    <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+</context>
+<context>
+    <name>TopicCard</name>
+    <message>
+        <source>Téma áthelyezése: %1</source>
+        <translation>Move topic: %1</translation>
+    </message>
+    <message>
+        <source>Húzd az átrendezéshez (Ctrl+↑ / Ctrl+↓)</source>
+        <translation>Drag to reorder (Ctrl+↑ / Ctrl+↓)</translation>
+    </message>
+    <message>
+        <source>Téma újraelemzése</source>
+        <translation>Re-analyze topic</translation>
+    </message>
+    <message>
+        <source>Téma elemzése</source>
+        <translation>Analyze topic</translation>
+    </message>
+    <message>
+        <source>Cím és leírás szerkesztése</source>
+        <translation>Edit title and description</translation>
+    </message>
+    <message>
+        <source>Téma törlése</source>
+        <translation>Delete topic</translation>
+    </message>
+    <message>
+        <source>kész</source>
+        <translation>done</translation>
+    </message>
+    <message>
+        <source>fut</source>
+        <translation>running</translation>
+    </message>
+    <message>
+        <source>sorban áll</source>
+        <translation>queued</translation>
+    </message>
+    <message>
+        <source>hibás</source>
+        <translation>failed</translation>
+    </message>
+    <message>
+        <source>vár</source>
+        <translation>waiting</translation>
+    </message>
+    <message>
+        <source>Kevesebb</source>
+        <translation>Less</translation>
+    </message>
+    <message>
+        <source>Teljes elemzés</source>
+        <translation>Full analysis</translation>
+    </message>
+    <message>
+        <source>Döntések</source>
+        <translation>Decisions</translation>
+    </message>
+    <message>
+        <source>Teendők</source>
+        <translation>Action items</translation>
+    </message>
+    <message>
+        <source>elemzés…</source>
+        <translation>analyzing…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Újra</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>A téma címe</source>
+        <translation>Topic title</translation>
+    </message>
+    <message>
+        <source>Rövid leírás: mire figyeljen az elemzés (elhagyható)</source>
+        <translation>Short description: what the analysis should focus on (optional)</translation>
+    </message>
+    <message>
+        <source>A téma leírása</source>
+        <translation>Topic description</translation>
+    </message>
+    <message>
+        <source>A meglévő elemzés megmarad; új szöveghez futtasd újra a témát.</source>
+        <translation>The existing analysis is kept; rerun the topic to get new text.</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Mentés</source>
+        <translation>Save</translation>
+    </message>
+</context>
+<context>
     <name>TrackCatalog</name>
     <message>
         <source>Saját mikrofon</source>
@@ -840,6 +2130,49 @@
     </message>
 </context>
 <context>
+    <name>TrackRow</name>
+    <message>
+        <source>A hangfájl hiányzik</source>
+        <translation>The audio file is missing</translation>
+    </message>
+    <message>
+        <source>Előnézet leállítása</source>
+        <translation>Stop preview</translation>
+    </message>
+    <message>
+        <source>Sáv meghallgatása</source>
+        <translation>Listen to track</translation>
+    </message>
+    <message>
+        <source>hiányzik a fájl</source>
+        <translation>file missing</translation>
+    </message>
+    <message>
+        <source>eldobott · csendes</source>
+        <translation>discarded · silent</translation>
+    </message>
+    <message>
+        <source>Sáv átnevezése</source>
+        <translation>Rename track</translation>
+    </message>
+    <message>
+        <source>A sáv neve</source>
+        <translation>Track name</translation>
+    </message>
+    <message>
+        <source>Enter: mentés · Esc: mégse · üresen: „%1”</source>
+        <translation>Enter: save · Esc: cancel · empty: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Megkeresés…</source>
+        <translation>Locate…</translation>
+    </message>
+    <message>
+        <source>Visszaállítás</source>
+        <translation>Restore</translation>
+    </message>
+</context>
+<context>
     <name>TracksPanel</name>
     <message>
         <source>🎤 mikrofon</source>
@@ -852,6 +2185,335 @@
     <message>
         <source>egyéb</source>
         <translation>other</translation>
+    </message>
+</context>
+<context>
+    <name>TracksTab</name>
+    <message>
+        <source>A sáv hangfájlja a megbeszélés mappájába került.</source>
+        <translation>The track&apos;s audio file was copied into the meeting folder.</translation>
+    </message>
+    <message>
+        <source>Végleg törlöd az eldobott sávokat?</source>
+        <translation>Permanently delete the discarded tracks?</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n eldobott sáv hangfájlja véglegesen törlődik a lemezről. Ez nem vonható vissza. Az aktív sávok és a lekeverés megmaradnak.</source>
+        <translation>
+            <numerusform>The audio file of %n discarded track will be permanently deleted from disk. This cannot be undone. The active tracks and the mixdown are kept.</numerusform>
+            <numerusform>The audio files of %n discarded tracks will be permanently deleted from disk. This cannot be undone. The active tracks and the mixdown are kept.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Végleges törlés</source>
+        <translation>Delete permanently</translation>
+    </message>
+    <message>
+        <source>Közben másik megbeszélésre váltottál, ezért semmi nem törlődött.</source>
+        <translation>You switched to another meeting in the meantime, so nothing was deleted.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n eldobott sáv törölve.</source>
+        <translation>
+            <numerusform>%n discarded track deleted.</numerusform>
+            <numerusform>%n discarded tracks deleted.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Ehhez a megbeszéléshez nem tartozik hangsáv.</source>
+        <translation>This meeting has no audio tracks.</translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
+        <source>elavult</source>
+        <translation>outdated</translation>
+    </message>
+    <message>
+        <source>nincs aktív sáv, amiből készülhetne</source>
+        <translation>no active track to create it from</translation>
+    </message>
+    <message>
+        <source>a sávok változtak azóta; a lejátszó még a régit szólaltatja meg</source>
+        <translation>the tracks have changed since; the player still plays the old one</translation>
+    </message>
+    <message>
+        <source>még nem készült el; ebből szól a lejátszó és ebből készül az átirat</source>
+        <translation>not created yet; the player and the transcript both use it</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n aktív sávból; ebből szól a lejátszó és ebből készül az átirat</source>
+        <translation>
+            <numerusform>from %n active track; the player and the transcript both use it</numerusform>
+            <numerusform>from %n active tracks; the player and the transcript both use it</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>az átírás részeként</source>
+        <translation>as part of transcription</translation>
+    </message>
+    <message>
+        <source>Lekeverés frissítése</source>
+        <translation>Update mixdown</translation>
+    </message>
+    <message>
+        <source>Lekeverés készítése</source>
+        <translation>Create mixdown</translation>
+    </message>
+    <message>
+        <source>Az eldobott sávok megmaradnak, amíg végleg nem törlöd őket.</source>
+        <translation>Discarded tracks are kept until you delete them permanently.</translation>
+    </message>
+    <message>
+        <source>Eldobott sávok végleges törlése</source>
+        <translation>Permanently delete discarded tracks</translation>
+    </message>
+</context>
+<context>
+    <name>TranscriptRow</name>
+    <message numerus="yes">
+        <source>··· %n biztos sor elrejtve</source>
+        <translation>
+            <numerusform>··· %n confident line hidden</numerusform>
+            <numerusform>··· %n confident lines hidden</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A teljes beszélő átnevezése vagy összevonása</source>
+        <translation>Rename or merge the whole speaker</translation>
+    </message>
+    <message>
+        <source>Lejátszás innen</source>
+        <translation>Play from here</translation>
+    </message>
+    <message>
+        <source>bizonytalan</source>
+        <translation>uncertain</translation>
+    </message>
+    <message>
+        <source>javítva</source>
+        <translation>corrected</translation>
+    </message>
+    <message>
+        <source>Jó így</source>
+        <translation>Looks right</translation>
+    </message>
+    <message>
+        <source>A beszélő rendben van: a sor többé nem bizonytalan</source>
+        <translation>The speaker is right: the line is no longer uncertain</translation>
+    </message>
+    <message>
+        <source>Meghallgatom</source>
+        <translation>Listen</translation>
+    </message>
+    <message numerus="yes">
+        <source>Még %n sor hasonlít erre a hangra. Átrakjam őket ehhez: %1?</source>
+        <translation>
+            <numerusform>%n more line sounds like this voice. Move it to %1?</numerusform>
+            <numerusform>%n more lines sound like this voice. Move them to %1?</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Átrakom</source>
+        <translation>Move</translation>
+    </message>
+    <message>
+        <source>Elrejtem</source>
+        <translation>Hide</translation>
+    </message>
+    <message>
+        <source>Megmutatom</source>
+        <translation>Show</translation>
+    </message>
+    <message>
+        <source>A hasonló sorok kiemelése a sávokon és az áttekintőn</source>
+        <translation>Highlight the similar lines on the lanes and the overview</translation>
+    </message>
+    <message>
+        <source>Nem</source>
+        <translation>No</translation>
+    </message>
+</context>
+<context>
+    <name>TranscriptSelectionBar</name>
+    <message numerus="yes">
+        <source>%n sor kijelölve</source>
+        <translation>
+            <numerusform>%n line selected</numerusform>
+            <numerusform>%n lines selected</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Áthelyezés:</source>
+        <translation>Move to:</translation>
+    </message>
+    <message>
+        <source>Új résztvevő…</source>
+        <translation>New participant…</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+</context>
+<context>
+    <name>TranscriptTab</name>
+    <message>
+        <source>Nincs bizonytalan sor.</source>
+        <translation>No uncertain lines.</translation>
+    </message>
+    <message>
+        <source>Ehhez a megbeszéléshez még nincs átirat.</source>
+        <translation>This meeting has no transcript yet.</translation>
+    </message>
+    <message>
+        <source>Ez az átirat régebbi formátumú: olvasható és másolható, de a beszélők itt nem javíthatók. Az újra-átírás új (a szolgáltatónál díjköteles) átírást indít, és lecseréli a mostani átiratot.</source>
+        <translation>This transcript is in an older format: you can read and copy it, but speakers cannot be corrected here. Re-transcribing starts a new transcription (billed by the provider) and replaces the current transcript.</translation>
+    </message>
+    <message>
+        <source>Újra-átírás…</source>
+        <translation>Re-transcribe…</translation>
+    </message>
+    <message>
+        <source>Az átirat szövegfájlja (transcript.md) nem található.</source>
+        <translation>The transcript text file (transcript.md) was not found.</translation>
+    </message>
+    <message>
+        <source>%1 megszólalás · %2 beszélő</source>
+        <translation>%1 utterances · %2 speakers</translation>
+    </message>
+    <message>
+        <source>Hangelemzés… %1%</source>
+        <translation>Analyzing voices… %1%</translation>
+    </message>
+    <message>
+        <source>Hangelemzés nélkül</source>
+        <translation>No voice analysis</translation>
+    </message>
+    <message>
+        <source>Nincs bizonytalan sor — minden megszólalás beszélője rendben van.</source>
+        <translation>No uncertain lines — the speaker of every utterance is confirmed.</translation>
+    </message>
+    <message>
+        <source>Névtelen résztvevő</source>
+        <translation>Unnamed participant</translation>
+    </message>
+    <message>
+        <source>Új névtelen résztvevő</source>
+        <translation>New unnamed participant</translation>
+    </message>
+    <message>
+        <source>Lejátszás innen</source>
+        <translation>Play from here</translation>
+    </message>
+    <message>
+        <source>Sor másolása</source>
+        <translation>Copy line</translation>
+    </message>
+    <message>
+        <source>Kijelölt sorok másolása (%1)</source>
+        <translation>Copy selected lines (%1)</translation>
+    </message>
+    <message>
+        <source>Teljes átirat másolása</source>
+        <translation>Copy full transcript</translation>
+    </message>
+    <message>
+        <source>Minden sor kijelölése</source>
+        <translation>Select all lines</translation>
+    </message>
+</context>
+<context>
+    <name>TranscriptToolbar</name>
+    <message>
+        <source>Áttekintés</source>
+        <translation>Overview</translation>
+    </message>
+    <message>
+        <source>Keresés az átiratban</source>
+        <translation>Search the transcript</translation>
+    </message>
+    <message>
+        <source>Nincs találat</source>
+        <translation>No results</translation>
+    </message>
+    <message>
+        <source>%1 / %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>Előző találat (Shift+Enter)</source>
+        <translation>Previous match (Shift+Enter)</translation>
+    </message>
+    <message>
+        <source>Következő találat (Enter)</source>
+        <translation>Next match (Enter)</translation>
+    </message>
+    <message>
+        <source>Bizonytalan</source>
+        <translation>Uncertain</translation>
+    </message>
+    <message>
+        <source>Minden sor mutatása</source>
+        <translation>Show all lines</translation>
+    </message>
+    <message>
+        <source>Csak azok a sorok, ahol a beszélő hang alapján kétséges</source>
+        <translation>Only the lines where the speaker is doubtful by voice</translation>
+    </message>
+    <message>
+        <source>Következő bizonytalan sor (B)</source>
+        <translation>Next uncertain line (B)</translation>
+    </message>
+    <message>
+        <source>Sávok</source>
+        <translation>Lanes</translation>
+    </message>
+    <message>
+        <source>Beszélő-sávok elrejtése</source>
+        <translation>Hide speaker lanes</translation>
+    </message>
+    <message>
+        <source>Beszélő-sávok mutatása a javításhoz</source>
+        <translation>Show speaker lanes for corrections</translation>
+    </message>
+    <message>
+        <source>Visszavonás</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <source>Visszavonás: %1</source>
+        <translation>Undo: %1</translation>
+    </message>
+    <message>
+        <source>Nincs mit visszavonni</source>
+        <translation>Nothing to undo</translation>
+    </message>
+    <message>
+        <source>Újra: %1 (Ctrl+Shift+Z)</source>
+        <translation>Redo: %1 (Ctrl+Shift+Z)</translation>
+    </message>
+    <message>
+        <source>Nincs mit újra végrehajtani</source>
+        <translation>Nothing to redo</translation>
+    </message>
+    <message>
+        <source>Keresés bezárása</source>
+        <translation>Close search</translation>
+    </message>
+    <message>
+        <source>Keresés az átiratban (Ctrl+Shift+F)</source>
+        <translation>Search the transcript (Ctrl+Shift+F)</translation>
     </message>
 </context>
 <context>
@@ -1302,6 +2964,26 @@
         <translation>Tanara — Recording</translation>
     </message>
     <message>
+        <source>Felvevő megjelenítése</source>
+        <translation>Show recorder</translation>
+    </message>
+    <message>
+        <source>Felvétel leállítása</source>
+        <translation>Stop recording</translation>
+    </message>
+    <message>
+        <source>Tanara — felvétel fut</source>
+        <translation>Tanara — recording</translation>
+    </message>
+    <message>
+        <source>Tanara felvevő</source>
+        <translation>Tanara Recorder</translation>
+    </message>
+    <message>
+        <source>A felvevő felülete nem tölthető be.</source>
+        <translation>The recorder interface could not be loaded.</translation>
+    </message>
+    <message>
         <source>Nincs rögzíthető hangeszköz.</source>
         <translation>No recordable audio device.</translation>
     </message>
@@ -1311,6 +2993,10 @@
     <message>
         <source>Ismeretlen meeting: %1</source>
         <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
+        <source>Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.</source>
+        <translation>The audio file of track &quot;%1&quot; is missing — the existing mixdown was kept. Locate the file on the Tracks tab, or discard the track and mix down again.</translation>
     </message>
     <message>
         <source>Nincs aktív hangsáv a lekeveréshez.</source>
@@ -1387,6 +3073,14 @@
     <message>
         <source>sorban áll</source>
         <translation>queued</translation>
+    </message>
+    <message>
+        <source>Az átírás üres eredményt adott (a szolgáltató nem talált beszédet a felvételen) — a korábbi átirat megmaradt.</source>
+        <translation>Transcription returned an empty result (the provider found no speech in the recording) — the previous transcript was kept.</translation>
+    </message>
+    <message>
+        <source>Az átírás üres eredményt adott: a szolgáltató nem talált beszédet a felvételen.</source>
+        <translation>Transcription returned an empty result: the provider found no speech in the recording.</translation>
     </message>
     <message>
         <source>Átírás-hiba: %1</source>
@@ -1740,6 +3434,14 @@
     <message>
         <source>A kiválasztott fájl üres: %1</source>
         <translation>The selected file is empty: %1</translation>
+    </message>
+    <message>
+        <source>A kiválasztott fájl nem hangfájl: %1</source>
+        <translation>The selected file is not an audio file: %1</translation>
+    </message>
+    <message>
+        <source>A lekeverés fájlja nem választható sávnak.</source>
+        <translation>The mixdown file cannot be chosen as a track.</translation>
     </message>
     <message>
         <source>Ez a fájl már egy másik sávhoz tartozik.</source>
@@ -3179,6 +4881,108 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     </message>
 </context>
 <context>
+    <name>tanara_gui::QmlShellBridge</name>
+    <message>
+        <source>Hangfájl kiválasztása</source>
+        <translation>Select audio file</translation>
+    </message>
+    <message>
+        <source>Hangfájlok (*.ogg *.opus *.flac *.wav *.mp3 *.m4a *.aac);;Minden fájl (*)</source>
+        <translation>Audio files (*.ogg *.opus *.flac *.wav *.mp3 *.m4a *.aac);;All files (*)</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása a hang alapján…</source>
+        <translation>Identifying participants by voice…</translation>
+    </message>
+    <message>
+        <source>Megszakítás</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
+    </message>
+    <message>
+        <source>Elfogadtad az ÁSZF %1 verzióját.</source>
+        <translation>You accepted Terms version %1.</translation>
+    </message>
+    <message>
+        <source>Az előző átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.</source>
+        <translation>Your previous transcription failed on the provider side. We refunded the %1 charge.</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud: nincs bejelentkezve</source>
+        <translation>Tanara Cloud: not signed in</translation>
+    </message>
+    <message>
+        <source>Bejelentkezés a Beállításokban</source>
+        <translation>Sign in from Settings</translation>
+    </message>
+    <message>
+        <source>%1 · ≈ %2 Pontos</source>
+        <translation>%1 · ≈ %2 Accurate</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud egyenleg (%1)</source>
+        <translation>Tanara Cloud balance (%1)</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud: …</source>
+        <translation>Tanara Cloud: …</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloudhoz frissítés kell (legalább %1). A saját kulcsos mód működik.</source>
+        <translation>Tanara Cloud requires an update (%1 or newer). Your own-keys mode works.</translation>
+    </message>
+    <message>
+        <source>Frissítés most</source>
+        <translation>Update now</translation>
+    </message>
+    <message>
+        <source>Feltöltés</source>
+        <translation>Top up</translation>
+    </message>
+    <message>
+        <source>Írj nekünk</source>
+        <translation>Contact us</translation>
+    </message>
+    <message>
+        <source>Elfogyott az egyenleged. A Tanara Cloud feldolgozás a feltöltésig szünetel; a saját kulcsos mód továbbra is működik.</source>
+        <translation>Your balance is used up. Tanara Cloud processing is paused until you top up; your own-keys mode keeps working.</translation>
+    </message>
+    <message>
+        <source>Kevés az egyenleged: %1 (≈ %2 Pontos átírás).</source>
+        <translation>Your balance is low: %1 (≈ %2 Accurate transcription).</translation>
+    </message>
+    <message>
+        <source>Részletek</source>
+        <translation>Details</translation>
+    </message>
+    <message>
+        <source>Ez az átírás %1 volt. Egyenleg: %2.</source>
+        <translation>This transcription cost %1. Balance: %2.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Az összefoglaló %1 volt (%n rész). Egyenleg: %2.</source>
+        <translation>
+            <numerusform>This summary cost %1 (%n part). Balance: %2.</numerusform>
+            <numerusform>This summary cost %1 (%n parts). Balance: %2.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A témák kigyűjtése %1 volt. Egyenleg: %2.</source>
+        <translation>Collecting the topics cost %1. Balance: %2.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló %1 volt. Egyenleg: %2.</source>
+        <translation>This summary cost %1. Balance: %2.</translation>
+    </message>
+    <message>
+        <source>Az átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.</source>
+        <translation>The transcription failed on the provider side. We refunded the %1 charge.</translation>
+    </message>
+</context>
+<context>
     <name>tanara_gui::RecordBar</name>
     <message>
         <source>Megbeszélés</source>
@@ -3704,38 +5508,829 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     </message>
 </context>
 <context>
+    <name>tanara_qml::LibraryListModel</name>
+    <message>
+        <source>Átirat: kész</source>
+        <translation>Transcript: done</translation>
+    </message>
+    <message>
+        <source>Átirat: készül…</source>
+        <translation>Transcript: in progress…</translation>
+    </message>
+    <message>
+        <source>Átirat: nem sikerült</source>
+        <translation>Transcript: failed</translation>
+    </message>
+    <message>
+        <source>Átirat: még nincs</source>
+        <translation>Transcript: none yet</translation>
+    </message>
+    <message>
+        <source>Összefoglaló: elavult (a beszélők változtak)</source>
+        <translation>Summary: outdated (speakers changed)</translation>
+    </message>
+    <message>
+        <source>Összefoglaló: kész</source>
+        <translation>Summary: done</translation>
+    </message>
+    <message>
+        <source>Összefoglaló: készül…</source>
+        <translation>Summary: in progress…</translation>
+    </message>
+    <message>
+        <source>Összefoglaló: nem sikerült</source>
+        <translation>Summary: failed</translation>
+    </message>
+    <message>
+        <source>Összefoglaló: még nincs</source>
+        <translation>Summary: none yet</translation>
+    </message>
+    <message>
+        <source>Résztvevők: azonosítva</source>
+        <translation>Participants: identified</translation>
+    </message>
+    <message>
+        <source>Résztvevők: azonosítás folyamatban…</source>
+        <translation>Participants: identifying…</translation>
+    </message>
+    <message>
+        <source>Résztvevők: nincs azonosítva</source>
+        <translation>Participants: not identified</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n találat a címekben és az átiratokban</source>
+        <translation>
+            <numerusform>%n result in titles and transcripts</numerusform>
+            <numerusform>%n results in titles and transcripts</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés a szűrő szerint</source>
+        <translation>
+            <numerusform>%n meeting matches the filter</numerusform>
+            <numerusform>%n meetings match the filter</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::LibraryPendingModel</name>
+    <message>
+        <source>Legutóbbi: %1</source>
+        <translation>Latest: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés átírásra vár</source>
+        <translation>
+            <numerusform>%n meeting awaiting transcription</numerusform>
+            <numerusform>%n meetings awaiting transcription</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Megnyitás</source>
+        <translation>Open</translation>
+    </message>
+    <message>
+        <source>Elavult összefoglaló</source>
+        <translation>Outdated summary</translation>
+    </message>
+    <message>
+        <source>a beszélők változtak</source>
+        <translation>speakers changed</translation>
+    </message>
+    <message>
+        <source>Frissítés</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <source>Sikertelen átírás</source>
+        <translation>Failed transcription</translation>
+    </message>
+    <message>
+        <source>Megnézem</source>
+        <translation>View</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::PlayerController</name>
+    <message>
+        <source>A hangfájl nem található: %1</source>
+        <translation>Audio file not found: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::PreTranscriptViewModel</name>
+    <message>
+        <source>automatikus nyelvfelismerés</source>
+        <translation>automatic language detection</translation>
+    </message>
+    <message>
+        <source>nyelv: %1</source>
+        <translation>language: %1</translation>
+    </message>
+    <message>
+        <source>Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg. Ha fontos, ki mit mondott, válaszd a Pontos szintet.</source>
+        <translation>This tier doesn&apos;t separate speakers: everyone appears as a single speaker in the transcript. If it matters who said what, choose the Accurate tier.</translation>
+    </message>
+    <message>
+        <source>Ehhez a nyelvhez ezt a szintet nem ajánljuk: a pontosság gyengébb lehet.</source>
+        <translation>We don&apos;t recommend this tier for this language: accuracy may be lower.</translation>
+    </message>
+    <message>
+        <source>A modell-lista még nem töltődött le; a szintek a bejelentkezés után frissülnek.</source>
+        <translation>The model list has not been downloaded yet; the tiers are updated after you sign in.</translation>
+    </message>
+    <message>
+        <source>MMM d. HH:mm</source>
+        <translation>MMM d, HH:mm</translation>
+    </message>
+    <message>
+        <source>Átírás folyamatban</source>
+        <translation>Transcription in progress</translation>
+    </message>
+    <message>
+        <source>Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.</source>
+        <translation>Support handover to the new team. Systems involved: ticket system, help pages, billing. Participants: Eszter Molnár, Bence Tóth.</translation>
+    </message>
+    <message>
+        <source>%1 · saját kulcs</source>
+        <translation>%1 · own key</translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
+        <source>Feltöltés</source>
+        <translation>Upload</translation>
+    </message>
+    <message>
+        <source>%1 perc, %2 sáv</source>
+        <translation>%1 min, %2 tracks</translation>
+    </message>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Beszélők szétválasztása</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld a kulcsot a Beállításokban.</source>
+        <translation>The provider rejected the API key. Check or replace the key in Settings.</translation>
+    </message>
+    <message>
+        <source>szept. 30. 16:42</source>
+        <translation>Sep 30, 16:42</translation>
+    </message>
+    <message>
+        <source>Kulcs módosítása</source>
+        <translation>Change key</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva átíró szolgáltató</source>
+        <translation>No transcription provider is set up</translation>
+    </message>
+    <message>
+        <source>Hiányzik: API-kulcs (Soniox). Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba.</source>
+        <translation>Missing: API key (Soniox). Enter your own key, or sign in to Tanara Cloud.</translation>
+    </message>
+    <message>
+        <source>Szolgáltató beállítása</source>
+        <translation>Set up provider</translation>
+    </message>
+    <message>
+        <source>A szolgáltató beállítása után indítható.</source>
+        <translation>Can be started once a provider is set up.</translation>
+    </message>
+    <message>
+        <source>Kontextus: „%1”</source>
+        <translation>Context: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Szolgáltató: %1</source>
+        <translation>Provider: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::RecorderViewModel</name>
+    <message>
+        <source>Megbeszélés</source>
+        <translation>Meeting</translation>
+    </message>
+    <message>
+        <source>%1-hívás</source>
+        <translation>%1 call</translation>
+    </message>
+    <message>
+        <source>Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.</source>
+        <translation>The call seems to have ended. I won&apos;t stop on my own.</translation>
+    </message>
+    <message>
+        <source>Úgy tűnik, véget ért: %1. Magamtól nem állítom le.</source>
+        <translation>This seems to have ended: %1. I won&apos;t stop on my own.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Minden sávon %n perce csend van. Magamtól nem állítom le.</source>
+        <translation>
+            <numerusform>Every track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
+            <numerusform>Every track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>leválasztva</source>
+        <translation>disconnected</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n perce nincs jel</source>
+        <translation>
+            <numerusform>no signal for %n minute</numerusform>
+            <numerusform>no signal for %n minutes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs jel</source>
+        <translation>no signal</translation>
+    </message>
+    <message>
+        <source>jel van · nincs rögzítve</source>
+        <translation>signal · not recorded</translation>
+    </message>
+    <message>
+        <source>Nincs bekapcsolt forrás. Kapcsolj be legalább egy eszközt.</source>
+        <translation>No source is turned on. Turn on at least one device.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült sávot indítani ezen az eszközön: %1</source>
+        <translation>Could not start a track on this device: %1</translation>
+    </message>
+    <message>
+        <source>Vége a megbeszélésnek?</source>
+        <translation>Is the meeting over?</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Egyetlen sáv hangfájlja sem jött létre.</source>
+        <translation>No audio file was created for any track.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv hangfájlja hiányzik.</source>
+        <translation>
+            <numerusform>The audio file of %n track is missing.</numerusform>
+            <numerusform>The audio files of %n tracks are missing.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>A hívás sávján %n perce csend van. Magamtól nem állítom le.</source>
+        <translation>
+            <numerusform>The call track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
+            <numerusform>The call track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::ShellActions</name>
+    <message>
+        <source>Felvétel kész: %1</source>
+        <translation>Recording done: %1</translation>
+    </message>
+    <message>
+        <source>Elkészült az átirat: %1</source>
+        <translation>Transcript ready: %1</translation>
+    </message>
+    <message>
+        <source>Elkészült az összefoglaló: %1</source>
+        <translation>Summary ready: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n téma elemzése kész.</source>
+        <translation>
+            <numerusform>%n topic analyzed.</numerusform>
+            <numerusform>%n topics analyzed.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1, %2 — a hibásak a kártyájukon újrafuttathatók.</source>
+        <translation>%1, %2 — rerun the failed ones from their cards.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n téma kész</source>
+        <translation>
+            <numerusform>%n topic done</numerusform>
+            <numerusform>%n topics done</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n hibázott</source>
+        <translation>
+            <numerusform>%n failed</numerusform>
+            <numerusform>%n failed</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A lekeverés nem sikerült.</source>
+        <translation>The mixdown failed.</translation>
+    </message>
+    <message>
+        <source>A Beállítások ebben a módban nem érhetők el.</source>
+        <translation>Settings are not available in this mode.</translation>
+    </message>
+    <message>
+        <source>A Személyek ebben a módban nem érhetők el.</source>
+        <translation>People are not available in this mode.</translation>
+    </message>
+    <message>
+        <source>A felvevő ebben a módban nem érhető el.</source>
+        <translation>The recorder is not available in this mode.</translation>
+    </message>
+    <message>
+        <source>Nem indítható: %1</source>
+        <translation>Cannot start: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>A mostani átirat és a benne lévő %n kézi javítás elvész, az összefoglaló elavulttá válik.</source>
+        <translation>
+            <numerusform>The current transcript and its %n manual correction will be lost, and the summary becomes outdated.</numerusform>
+            <numerusform>The current transcript and its %n manual corrections will be lost, and the summary becomes outdated.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A mostani átirat elvész, az összefoglaló elavulttá válik.</source>
+        <translation>The current transcript will be lost, and the summary becomes outdated.</translation>
+    </message>
+    <message numerus="yes">
+        <source>A beszélők elnevezése (%n beszélő) törlődik, mert az új átirat másképp oszthatja fel a beszélőket.</source>
+        <translation>
+            <numerusform>Speaker names (%n speaker) will be cleared, because the new transcript may split the speakers differently.</numerusform>
+            <numerusform>Speaker names (%n speakers) will be cleared, because the new transcript may split the speakers differently.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A hanglenyomatokba tanított javítások megmaradnak.</source>
+        <translation>Corrections already learned into voiceprints are kept.</translation>
+    </message>
+    <message>
+        <source>Adj meg legalább egy témát.</source>
+        <translation>Enter at least one topic.</translation>
+    </message>
+    <message>
+        <source>A témához cím kell az elemzéshez.</source>
+        <translation>The topic needs a title for analysis.</translation>
+    </message>
+    <message>
+        <source>Ez a téma már nem létezik.</source>
+        <translation>This topic no longer exists.</translation>
+    </message>
+    <message>
+        <source>Az azonosításhoz nincs telepítve a hangmodell.</source>
+        <translation>The voice model needed for identification is not installed.</translation>
+    </message>
+    <message>
+        <source>Az átírás még fut — a végén magától azonosítja a résztvevőket.</source>
+        <translation>Transcription is still running — it identifies the participants automatically when it finishes.</translation>
+    </message>
+    <message>
+        <source>A névtelen beszélőkhöz nem találtam használható hangot, ezért nincs mit azonosítani.</source>
+        <translation>No usable audio was found for the unnamed speakers, so there is nothing to identify.</translation>
+    </message>
+    <message>
+        <source>Nincs mit azonosítani: ebben a megbeszélésben már minden beszélőnek van neve. A neveket az átiratban, a névre kattintva javíthatod.</source>
+        <translation>Nothing to identify: every speaker in this meeting already has a name. You can correct names in the transcript by clicking a name.</translation>
+    </message>
+    <message>
+        <source>Azonosítás megszakítva.</source>
+        <translation>Identification cancelled.</translation>
+    </message>
+    <message>
+        <source>Résztvevők: %1</source>
+        <translation>Participants: %1</translation>
+    </message>
+    <message>
+        <source>Az azonosítás kész: egyik beszélő hangja sem ismert még. A neveket az átiratban adhatod meg.</source>
+        <translation>Identification done: none of the speakers&apos; voices is known yet. You can enter names in the transcript.</translation>
+    </message>
+    <message>
+        <source>Az azonosítás kész. Felismert résztvevők: %1.</source>
+        <translation>Identification done. Recognized participants: %1.</translation>
+    </message>
+    <message>
+        <source>Azonosítás megszakítva. A már megtalált nevek megmaradtak.</source>
+        <translation>Identification cancelled. The names already found were kept.</translation>
+    </message>
+    <message>
+        <source>Az ismétlés nem indult el, mert közben másik megbeszélésre váltottál: %1</source>
+        <translation>The retry was not started because you switched to another meeting in the meantime: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::ShellMeetingModel</name>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Creating summary</translation>
+    </message>
+    <message>
+        <source>Témák javaslása</source>
+        <translation>Suggesting topics</translation>
+    </message>
+    <message>
+        <source>Témánkénti elemzés</source>
+        <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n beszélő</source>
+        <translation>
+            <numerusform>%n speaker</numerusform>
+            <numerusform>%n speakers</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sáv</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 / %2 beszélő</source>
+        <translation>%1 / %2 speakers</translation>
+    </message>
+    <message>
+        <source>%1 / %2 téma</source>
+        <translation>%1 / %2 topics</translation>
+    </message>
+    <message>
+        <source>kevesebb mint 1 perc van hátra</source>
+        <translation>less than 1 minute left</translation>
+    </message>
+    <message numerus="yes">
+        <source>kb. %n perc van hátra</source>
+        <translation>
+            <numerusform>about %n minute left</numerusform>
+            <numerusform>about %n minutes left</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::SummaryViewModel</name>
+    <message>
+        <source>Gyors összefoglaló</source>
+        <translation>Quick summary</translation>
+    </message>
+    <message>
+        <source>Témánkénti elemzés</source>
+        <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Az átirat kész.</source>
+        <translation>The transcript is ready.</translation>
+    </message>
+    <message>
+        <source>Az átirat kész, %1 beszélő, %2 megszólalás.</source>
+        <translation>The transcript is ready: %1 speakers, %2 utterances.</translation>
+    </message>
+    <message>
+        <source>Expert-modell</source>
+        <translation>Expert model</translation>
+    </message>
+    <message>
+        <source>Gyors szint</source>
+        <translation>Fast tier</translation>
+    </message>
+    <message>
+        <source>Pontos szint</source>
+        <translation>Accurate tier</translation>
+    </message>
+    <message>
+        <source>MMM d. HH:mm</source>
+        <translation>MMM d, HH:mm</translation>
+    </message>
+    <message>
+        <source>saját kulcs</source>
+        <translation>own key</translation>
+    </message>
+    <message>
+        <source>%1 · saját kulcs</source>
+        <translation>%1 · own key</translation>
+    </message>
+    <message>
+        <source>Nincs beállítva összefoglaló szolgáltató</source>
+        <translation>No summary provider is set up</translation>
+    </message>
+    <message>
+        <source>Hiányzik: Alap URL (OpenAI-kompatibilis). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
+        <translation>Missing: Base URL (OpenAI-compatible). Enter your own provider&apos;s details in Settings.</translation>
+    </message>
+    <message>
+        <source>Szolgáltató beállítása</source>
+        <translation>Set up provider</translation>
+    </message>
+    <message>
+        <source>A szolgáltató beállítása után indítható.</source>
+        <translation>Can be started once a provider is set up.</translation>
+    </message>
+    <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Creating summary</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem válaszolt időben. Próbáld újra.</source>
+        <translation>The provider did not respond in time. Try again.</translation>
+    </message>
+    <message>
+        <source>Kovács Lilla</source>
+        <translation>Lilla Kovács</translation>
+    </message>
+    <message>
+        <source>Tóth Bence</source>
+        <translation>Bence Tóth</translation>
+    </message>
+    <message>
+        <source>Varga Nóra</source>
+        <translation>Nóra Varga</translation>
+    </message>
+    <message>
+        <source>Molnár Eszter</source>
+        <translation>Eszter Molnár</translation>
+    </message>
+    <message>
+        <source>Szabó Áron</source>
+        <translation>Áron Szabó</translation>
+    </message>
+    <message>
+        <source>Távoli 2</source>
+        <translation>Remote 2</translation>
+    </message>
+    <message>
+        <source>A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A dokumentációs létszámbővítésről a költségvetés dönt.</source>
+        <translation>The partners confirmed that support demand dropped by a third in the third quarter, mainly thanks to the new help pages. The help pages will be extended to the other products, but for billing the process is simplified first. The documentation headcount increase is decided in the budget.</translation>
+    </message>
+    <message>
+        <source>[12:52] A súgóoldalakat a többi termékre is kiterjesztik.</source>
+        <translation>[12:52] The help pages are extended to the other products.</translation>
+    </message>
+    <message>
+        <source>[31:10] A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
+        <translation>[31:10] For billing, the process is simplified first, then the documentation.</translation>
+    </message>
+    <message>
+        <source>[58:40] A dokumentációs létszámról a költségvetési tervezés dönt.</source>
+        <translation>[58:40] Documentation headcount is decided during budget planning.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalak kiterjesztése a további termékekre: ütemterv</source>
+        <translation>Extending the help pages to the other products: schedule</translation>
+    </message>
+    <message>
+        <source>okt. 15.</source>
+        <translation>Oct 15</translation>
+    </message>
+    <message>
+        <source>Számlázási elakadási pontok összegyűjtése</source>
+        <translation>Collect the points where people get stuck in billing</translation>
+    </message>
+    <message>
+        <source>okt. 10.</source>
+        <translation>Oct 10</translation>
+    </message>
+    <message>
+        <source>Dokumentációs létszámigény a költségvetési tervbe</source>
+        <translation>Add documentation headcount to the budget plan</translation>
+    </message>
+    <message>
+        <source>okt. 20.</source>
+        <translation>Oct 20</translation>
+    </message>
+    <message>
+        <source>Új-ügyfél bontás elküldése a partnereknek</source>
+        <translation>Send the new-customer breakdown to the partners</translation>
+    </message>
+    <message>
+        <source>okt. 4.</source>
+        <translation>Oct 4</translation>
+    </message>
+    <message>
+        <source>okt. 1. 17:05</source>
+        <translation>Oct 1, 17:05</translation>
+    </message>
+    <message>
+        <source>Támogatási igény alakulása</source>
+        <translation>Support demand trend</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó.</source>
+        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalakat a többi termékre is kiterjesztik.</source>
+        <translation>The help pages are extended to the other products.</translation>
+    </message>
+    <message>
+        <source>Ütemterv a kiterjesztéshez</source>
+        <translation>Schedule for the rollout</translation>
+    </message>
+    <message>
+        <source>Számlázási folyamat</source>
+        <translation>Billing process</translation>
+    </message>
+    <message>
+        <source>A partnerek szerint a gond nem a leírás, hanem maga a folyamat: túl sok lépés, kevés visszajelzés.</source>
+        <translation>According to the partners the problem is not the documentation but the process itself: too many steps, too little feedback.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::TopicListModel</name>
+    <message numerus="yes">
+        <source>%n téma</source>
+        <translation>
+            <numerusform>%n topic</numerusform>
+            <numerusform>%n topics</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 kész</source>
+        <translation>%1 done</translation>
+    </message>
+    <message>
+        <source>%1 fut</source>
+        <translation>%1 running</translation>
+    </message>
+    <message>
+        <source>%1 sorban áll</source>
+        <translation>%1 queued</translation>
+    </message>
+    <message>
+        <source>%1 hibás</source>
+        <translation>%1 failed</translation>
+    </message>
+    <message>
+        <source>%1 vár</source>
+        <translation>%1 waiting</translation>
+    </message>
+    <message>
+        <source>Támogatási igény alakulása</source>
+        <translation>Support demand trend</translation>
+    </message>
+    <message>
+        <source>Jegyszám, felhasználónkénti arány, okok</source>
+        <translation>Ticket count, per-user ratio, causes</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt tapasztalják.</source>
+        <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product; the partners are seeing the same.</translation>
+    </message>
+    <message>
+        <source>Súgóoldalak kiterjesztése</source>
+        <translation>Extending the help pages</translation>
+    </message>
+    <message>
+        <source>Melyik termékre, milyen sorrendben</source>
+        <translation>Which products, in what order</translation>
+    </message>
+    <message>
+        <source>A beállítási oldalak mintáját viszik tovább. A számlázás előtt a folyamatot egyszerűsítik.</source>
+        <translation>The pattern of the settings pages is carried over. For billing, the process is simplified first.</translation>
+    </message>
+    <message>
+        <source>Számlázási folyamat</source>
+        <translation>Billing process</translation>
+    </message>
+    <message>
+        <source>Termék vagy dokumentáció a gond?</source>
+        <translation>Is the problem the product or the documentation?</translation>
+    </message>
+    <message>
+        <source>Dokumentációs kapacitás</source>
+        <translation>Documentation capacity</translation>
+    </message>
+    <message>
+        <source>Létszámigény és költségvetés</source>
+        <translation>Headcount need and budget</translation>
+    </message>
+    <message>
+        <source>A szolgáltató időtúllépés miatt megszakította.</source>
+        <translation>The provider aborted it due to a timeout.</translation>
+    </message>
+    <message>
+        <source>Következő negyedév mérőszámai</source>
+        <translation>Next quarter&apos;s metrics</translation>
+    </message>
+    <message>
+        <source>Mit és hogyan mérünk</source>
+        <translation>What we measure and how</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::TrackListModel</name>
+    <message>
+        <source>Közben másik megbeszélésre váltottál, ezért a fájl nem lett hozzárendelve.</source>
+        <translation>You switched to another meeting in the meantime, so the file was not assigned.</translation>
+    </message>
+    <message>
+        <source>A fájlt nem sikerült a megbeszéléshez rendelni.</source>
+        <translation>Could not assign the file to the meeting.</translation>
+    </message>
+    <message>
+        <source>Saját mikrofon</source>
+        <translation>My microphone</translation>
+    </message>
+    <message>
+        <source>Hívás hangja</source>
+        <translation>Call audio</translation>
+    </message>
+    <message>
+        <source>Rendszerhang</source>
+        <translation>System audio</translation>
+    </message>
+    <message>
+        <source>Második mikrofon</source>
+        <translation>Second microphone</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::TranscriptEditorViewModel</name>
+    <message>
+        <source>Egyéb (%1)</source>
+        <translation>Other (%1)</translation>
+    </message>
+    <message>
+        <source>Nincs letöltve a hangmodell, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>
+        <translation>The voice model is not downloaded, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
+    </message>
+    <message>
+        <source>A megbeszélés lekevert hangja nem érhető el, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>
+        <translation>The meeting&apos;s mixdown audio is not available, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megszólalás a vágólapra másolva.</source>
+        <translation>
+            <numerusform>%n utterance copied to the clipboard.</numerusform>
+            <numerusform>%n utterances copied to the clipboard.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Hanglenyomat készült: %1 (%2 sorból, %3 mp beszédből).</source>
+        <translation>Voiceprint created: %1 (from %2 lines, %3 s of speech).</translation>
+    </message>
+</context>
+<context>
     <name>tanara_watcher::TrayWatcher</name>
-    <message>
-        <source>Rögzítés azonnali indítása</source>
-        <translation>Start recording immediately</translation>
-    </message>
-    <message>
-        <source>Rögzítő megnyitása…</source>
-        <translation>Open recorder…</translation>
-    </message>
     <message>
         <source>Elemző megnyitása</source>
         <translation>Open analyzer</translation>
     </message>
     <message>
-        <source>Kilépés</source>
-        <translation>Quit</translation>
+        <source>Felvevő megjelenítése</source>
+        <translation>Show recorder</translation>
     </message>
     <message>
-        <source>Rögzítő megnyitása</source>
-        <translation>Open recorder</translation>
+        <source>Felvétel indítása</source>
+        <translation>Start recording</translation>
     </message>
     <message>
-        <source>Hívás észlelve — %1</source>
-        <translation>Call detected — %1</translation>
+        <source>Felvétel leállítása</source>
+        <translation>Stop recording</translation>
     </message>
     <message>
-        <source>Aktív hívást észleltem.</source>
-        <translation>An active call was detected.</translation>
+        <source>Kilépés…</source>
+        <translation>Quit…</translation>
     </message>
     <message>
-        <source>A Tanara tálca-ikonra kattintva indíthatod a rögzítést (azonnali indítás vagy a rögzítő megnyitása).</source>
-        <translation>Click the Tanara tray icon to start recording (immediate start or open the recorder).</translation>
+        <source>Tanara — felvétel fut · %1</source>
+        <translation>Tanara — recording · %1</translation>
+    </message>
+    <message>
+        <source>Tanara — figyel · nincs hívás</source>
+        <translation>Tanara — watching · no call</translation>
+    </message>
+    <message>
+        <source>Felvétel · %1</source>
+        <translation>Recording · %1</translation>
     </message>
     <message>
         <source>Már folyik felvétel</source>
@@ -3746,16 +6341,56 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
         <translation>A recording is already running.</translation>
     </message>
     <message>
-        <source>Tanara — felvétel folyamatban</source>
-        <translation>Tanara — recording in progress</translation>
+        <source>Tanara — kilépés</source>
+        <translation>Tanara — Quit</translation>
+    </message>
+    <message>
+        <source>A felvétel még fut.</source>
+        <translation>The recording is still running.</translation>
+    </message>
+    <message>
+        <source>A figyelő kilépése nem állítja le a felvételt: a felvevő tovább rögzít, de a tálca-ikon eltűnik. Mit tegyek?</source>
+        <translation>Quitting the watcher does not stop the recording: the recorder keeps recording, but the tray icon disappears. What should I do?</translation>
+    </message>
+    <message>
+        <source>Kilépés, a felvétel fusson</source>
+        <translation>Quit, keep recording</translation>
+    </message>
+    <message>
+        <source>Leállítás és kilépés</source>
+        <translation>Stop and quit</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Elindítsam a felvételt?</source>
+        <translation>Start recording?</translation>
+    </message>
+    <message>
+        <source>%1 most ezen a kimeneten szól: %2.</source>
+        <translation>%1 is now playing on this output: %2.</translation>
+    </message>
+    <message>
+        <source>Hívást észleltem: %1</source>
+        <translation>Call detected: %1</translation>
+    </message>
+    <message>
+        <source>Felvevő megnyitása</source>
+        <translation>Open recorder</translation>
+    </message>
+    <message>
+        <source>Nem most</source>
+        <translation>Not now</translation>
+    </message>
+    <message>
+        <source>Kattints ide a felvevő megnyitásához.</source>
+        <translation>Click here to open the recorder.</translation>
     </message>
     <message>
         <source>Tanara — hívás észlelve: %1</source>
         <translation>Tanara — call detected: %1</translation>
-    </message>
-    <message>
-        <source>Tanara — figyel</source>
-        <translation>Tanara — watching</translation>
     </message>
 </context>
 </TS>
