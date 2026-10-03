@@ -18,6 +18,13 @@ DeviceMonitor::~DeviceMonitor() { stop(); }
 
 bool DeviceMonitor::active() const { return d_->engine != nullptr; }
 
+QStringList DeviceMonitor::deviceNames() const {
+    QStringList out;
+    const int n = d_->engine ? d_->engine->count() : 0;
+    for (int i = 0; i < n; ++i) out << d_->engine->deviceInfo(i).name;
+    return out;
+}
+
 void DeviceMonitor::start(const QVector<AudioDeviceInfo>& devices) {
     stop();
     if (devices.isEmpty()) return;
@@ -29,11 +36,15 @@ void DeviceMonitor::start(const QVector<AudioDeviceInfo>& devices) {
     }
 
     d_->timer = new QTimer(this);
-    d_->timer->setInterval(50);   // ~20 Hz
+    d_->timer->setInterval(33);   // ~30 Hz
     connect(d_->timer, &QTimer::timeout, this, [this] {
         const int n = d_->engine ? d_->engine->count() : 0;
-        for (int i = 0; i < n; ++i)
-            emit level(d_->engine->deviceInfo(i).name, d_->engine->rms(i));
+        for (int i = 0; i < n; ++i) {
+            const QString name = d_->engine->deviceInfo(i).name;
+            const float rms = d_->engine->rms(i);
+            emit level(name, rms);
+            emit levelPeak(name, rms, d_->engine->takePeak(i));
+        }
     });
     d_->timer->start();
 }

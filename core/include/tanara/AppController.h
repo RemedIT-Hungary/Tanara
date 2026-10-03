@@ -95,6 +95,12 @@ public:
     // ezeket érdemes előpipálni a UI-ban. Perzisztens (~/.tanara/state.json).
     QStringList lastUsedDeviceNames() const;
 
+    // ---- felvevő (lebegő felvevő-ablak) -------------------------------------------------
+    // A futó felvétel ÉLŐ sávjainak eszköznevei (sáv-sorrendben), ill. a felvétel közben
+    // leválasztott (biztonságosan lezárt) sávok eszköznevei. Felvételen kívül üresek.
+    QStringList recordingDeviceNames() const;
+    QStringList disconnectedRecordingDeviceNames() const;
+
     // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
     QStringList knownPeople() const;
 
@@ -139,6 +145,21 @@ public slots:
     // Felvétel indításakor automatikusan leáll.
     void startLevelMonitoring();
     void stopLevelMonitoring();
+    // Ha be van kapcsolva, a szintfigyelés a felvétel ALATT is megy — a sávra NEM kerülő
+    // eszközökön (a rögzítettek szintjét a felvétel adja). Így a felvevő minden eszköz
+    // mérőjét mozgatni tudja (deviceLevelPeak). Alapból ki: a régi felvevő viselkedése.
+    void setMonitorDuringRecording(bool on);
+
+    // Felvétel KÖZBEN egy további eszköz sávjának indítása (a sáv attól a pillanattól szól;
+    // a fájl elejét csend tölti ki, így együtt áll a többivel). false, ha nem megy felvétel
+    // vagy az eszköz nem nyitható. Siker: recordingTrackAdded + a kijelölés mentése.
+    bool addRecordingDevice(const tanara::AudioDeviceInfo& device);
+
+    // A felvétel utáni AUTOMATIKUS lekeverés engedélyezése ebben a folyamatban (alapból be).
+    // Az önálló felvevő-folyamat (tanara --record) kikapcsolja: az a felvétel után kilép, a
+    // félbehagyott ffmpeg csak csonka mixdown.part.mp3-at hagyna. A lekeverést ilyenkor az
+    // elemző készíti el, amikor kell (az átírás a hiányzó/elavult keveréket előbb legyártja).
+    void setAutoMixdownAfterRecording(bool on);
 
     // Az utoljára használt eszközök kézi felülírása/perzisztálása.
     void setLastUsedDeviceNames(const QStringList& names);
@@ -300,6 +321,11 @@ public slots:
 signals:
     void devicesChanged();
     void deviceLevel(QString deviceName, float rms);   // élő szint (monitoring)
+    // Élő szint ESZKÖZNÉV szerint, csúccsal (~30 Hz) — felvétel előtt minden figyelt eszközre,
+    // felvétel alatt a rögzített sávokra (és setMonitorDuringRecording mellett a többire is).
+    void deviceLevelPeak(QString deviceName, float rms, float peak);
+    void recordingTrackAdded(QString deviceName);    // felvétel közben új sáv indult
+    void recordingTrackClosed(QString deviceName);   // a rögzített eszközt leválasztották
     void recordingStateChanged(tanara::RecordingState state);
     void levelMeterUpdated(int trackIndex, float rms);
     void elapsedChanged(qint64 ms);
@@ -354,6 +380,11 @@ private:
     void startCallEndMonitor();
     void stopCallEndMonitor();
     void pollCallEnd();
+    // A szintfigyelő (újra)indítása a megfelelő eszköz-halmazzal; force nélkül csak akkor,
+    // ha a halmaz változott. Felvétel alatt a rögzített eszközök kimaradnak.
+    void restartLevelMonitor(bool force);
+    // Eszköz-újrafelsorolás után: felvétel alatt az eltűnt rögzített eszköz sávjának lezárása.
+    void handleDeviceSetChange();
     // A kész (friss) mixdownt egyetlen Soniox-kéréssel írja át; a transcribeMeeting ehhez
     // láncolja a lekeverés elkészültét. A beszélő-szeparációt a Soniox diarizációja adja
     // („Beszélő N" címkék) — a nevet utólag a voice-ID / kézi átnevezés oldja fel.

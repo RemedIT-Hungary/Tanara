@@ -31,6 +31,20 @@ public:
     // Leállít és felszabadít minden eszközt és puffert.
     void stop();
 
+    // Egy TOVÁBBI eszköz megnyitása a már futó motorban (felvétel közbeni sáv-hozzáadás).
+    // Visszaadja az új sáv indexét, hibára -1-et. A meglévő indexek nem változnak. Csak a
+    // motort birtokló szálról hívható (a callbackek és az olvasó szál közben futhatnak).
+    int addDevice(const AudioDeviceInfo& device);
+
+    // Egy eszköz lezárása menet közben (pl. leválasztották): a capture leáll, de a slot és a
+    // körpuffere megmarad (az index stabil, a maradék adat még kiolvasható).
+    void closeDevice(int trackIndex);
+    bool isOpen(int trackIndex) const;
+
+    // Legfeljebb ennyi eszköz nyitható (a slot-tömb rögzített méretű, hogy az olvasó szál
+    // zár nélkül, biztonságosan érhesse el, miközben új eszköz nyílik).
+    static constexpr int kMaxDevices = 64;
+
     int count() const;
 
     // A trackIndex-edik (elindult) eszköz körpuffere. Érvénytelen indexre egy
@@ -43,6 +57,10 @@ public:
 
     // Az adott sáv legutóbbi csúcsértéke (0..~1). Érvénytelen indexre 0.
     float peak(int trackIndex) const;
+
+    // A legutóbbi hívás óta mért legnagyobb csúcs (0..~1), majd nullázza — a szintmérő
+    // csúcstartásához (a peak() csak az utolsó blokkot látja, a rövid tüskék kimaradnának).
+    float takePeak(int trackIndex);
 
     // Az adott elindult eszköz csatornaszáma (a callback ezzel másol).
     int channels(int trackIndex) const;
