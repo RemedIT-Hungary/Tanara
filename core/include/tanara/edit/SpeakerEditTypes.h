@@ -1,0 +1,111 @@
+#pragma once
+//
+// Tanara — az átirat-szerkesztő (beszélő-javítás) value-típusai: a backend ⟷ UI szerződés.
+// Sima adat-struktúrák (QObject nélkül), queued signalban is átküldhetők.
+//
+// Fogalmak:
+//  - MEGSZÓLALÁS (utterance): a transcript.segments.json egy sora. Soron belüli vágás nincs.
+//  - BESZÉLŐ (speaker): a meeting egy résztvevője, stabil kulccsal. Vagy egy nyers
+//    diarizációs címke („Beszélő 1" — a kulcs maga a címke), vagy kézzel felvett résztvevő
+//    („participant:N"). Személyhez (névhez) köthető, vagy névtelen.
+//
+#include <QString>
+#include <QStringList>
+#include <QVector>
+#include <QMetaType>
+
+namespace tanara {
+
+// Egy megszólalás FELOLDOTT állapota (a UI lista-modelljének egy sora).
+struct EditorUtterance {
+    QString id;                 // stabil azonosító (amíg az átirat nem generálódik újra)
+    int     index = -1;         // sorszám a transcript.segments.json-ban (időrend)
+    qint64  startMs = 0;
+    qint64  endMs = 0;
+    QString text;
+    QString speakerKey;         // a feloldott beszélő kulcsa (EditorSpeaker::key)
+    QString rawLabel;           // a nyers diarizációs címke (érintetlen)
+    bool    uncertain = false;          // hangra gyengén illik a beszélőjéhez (sraffozott)
+    bool    manuallyCorrected = false;  // kézzel átsorolt („javítva")
+    bool    confirmed = false;          // a felhasználó megerősítette („Jó így")
+};
+
+// A meeting egy beszélője (a sáv/oszlop a szerkesztőben).
+struct EditorSpeaker {
+    QString key;                // stabil kulcs: nyers címke VAGY "participant:N"
+    QString displayName;        // személynév, vagy névtelen címke („Beszélő 2", „Új beszélő 1")
+    QString personName;         // a kötött személy neve; üres = névtelen
+    QString rawLabel;           // nyers címke (kézzel felvett résztvevőnél üres)
+    bool    anonymous = true;   // nincs személyhez kötve
+    bool    added = false;      // kézzel felvett résztvevő (nem a diarizációból jön)
+    bool    isSelf = false;     // a felhasználó saját maga (userSpeakerName)
+    int     colorIndex = 0;     // első megjelenés sorrendje a meetingben; szerkesztéstől független
+    int     utteranceCount = 0;
+    qint64  talkTimeMs = 0;
+    double  talkShare = 0.0;    // 0..1, a teljes beszédidő hányada
+    bool    hasVoiceprint = false;      // a kötött személynek van hanglenyomata
+    double  voiceConfidence = -1.0;     // hang-azonosítás cosine pontszáma; <0 = nem ismert
+};
+
+// Kézi átsorolás utáni javaslat: a forrás-beszélőnél maradt sorok, amelyek hangra a
+// célhoz állnak közelebb („Még 14 sor hasonlít erre a hangra. Átrakjam?").
+struct SpeakerSuggestion {
+    QString     sourceSpeakerKey;
+    QString     targetSpeaker;      // a cél-beszélő kulcsa
+    QString     anchorUtteranceId;  // a kézzel átsorolt sor (a UI ez alá teszi a dobozt)
+    QStringList utteranceIds;
+    bool isValid() const { return !targetSpeaker.isEmpty() && !utteranceIds.isEmpty(); }
+};
+
+// Egy ismert személy a személyválasztó panelhez.
+struct PersonInfo {
+    QString name;
+    bool    hasVoiceprint = false;
+    int     voiceprintCount = 0;
+    int     meetingCount = 0;       // hány meetingen szerepel
+};
+
+// Mennyi anyag van egy beszélő kézi hanglenyomatához ebben a meetingben.
+struct VoiceprintMaterial {
+    int    usableLines = 0;     // elég hosszú (és nem bizonytalan) sorok száma
+    qint64 usableMs = 0;        // ezek felhasználható hossza összesen
+    qint64 missingMs = 0;       // ennyi hiányzik a minimumhoz (0 = elég)
+    bool   sufficient = false;
+};
+
+// A kézi hanglenyomat-készítés eredménye.
+struct VoiceprintResult {
+    bool    ok = false;
+    QString printId;            // a létrejött lenyomat azonosítója
+    QString error;              // emberi hibaüzenet, ha !ok
+    int     usedLines = 0;
+    qint64  usedMs = 0;
+    qint64  missingMs = 0;      // ha nincs elég anyag: ennyi hiányzik
+};
+
+// Az összefoglaló elavultsága: a készítése óta változott a beszélő-hozzárendelés.
+struct SummaryStaleInfo {
+    bool stale = false;
+    int  correctedSpeakers = 0; // „Az összefoglaló óta N beszélőt javítottál"
+};
+
+// Mi vész el újra-átíráskor (a megerősítő párbeszédhez).
+struct RetranscribeImpact {
+    int correctedUtterances = 0;    // kézzel átsorolt sorok
+    int confirmedUtterances = 0;    // „Jó így" sorok (amelyek nem átsoroltak)
+    int namedSpeakers = 0;          // nevesített beszélők (speakerMap + nevesített résztvevők)
+    int addedParticipants = 0;      // kézzel felvett résztvevők
+    int manualCorrections() const { return correctedUtterances + confirmedUtterances; }
+    bool any() const { return manualCorrections() > 0 || namedSpeakers > 0 || addedParticipants > 0; }
+};
+
+} // namespace tanara
+
+Q_DECLARE_METATYPE(tanara::EditorUtterance)
+Q_DECLARE_METATYPE(tanara::EditorSpeaker)
+Q_DECLARE_METATYPE(tanara::SpeakerSuggestion)
+Q_DECLARE_METATYPE(tanara::PersonInfo)
+Q_DECLARE_METATYPE(tanara::VoiceprintMaterial)
+Q_DECLARE_METATYPE(tanara::VoiceprintResult)
+Q_DECLARE_METATYPE(tanara::SummaryStaleInfo)
+Q_DECLARE_METATYPE(tanara::RetranscribeImpact)

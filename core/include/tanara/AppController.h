@@ -6,6 +6,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/provider/ReadinessModel.h"
+#include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/cloud/CloudTypes.h"
 #include <QObject>
 #include <QVector>
@@ -18,6 +19,7 @@ class SettingsManager;
 class DeviceManager;
 class MeetingStore;
 class VoiceprintStore;
+class SpeakerEditor;
 class CloudAccount;
 
 class AppController : public QObject {
@@ -78,6 +80,24 @@ public:
     // A UI ebből tölti a téma-kártyák „✓ Kész" állapotát a szerkesztő megnyitásakor.
     QVector<tanara::TopicAnalysis> topicAnalyses(const QString& meetingId) const;
 
+    // ---- átirat-szerkesztő (beszélő-javítás) ------------------------------
+    // A meeting beszélő-szerkesztő munkamenete (lásd edit/SpeakerEditor.h). Meetingenként
+    // EGY példány él (az AppController a szülője); az undo-verem a bezárásig megmarad.
+    // Ismeretlen meeting → nullptr. A voice-ID modell megléte esetén az embedder be van kötve.
+    SpeakerEditor* speakerEditor(const QString& meetingId);
+    // A munkamenet lezárása (az undo-verem eldobva; a javítások a lemezen maradnak).
+    void closeSpeakerEditor(const QString& meetingId);
+
+    // Ismert személyek a választó panelhez: név, van-e hanglenyomat, hány meetingen szerepel.
+    // (Szűrés: edit/PeopleDirectory.h — filterPeople / matchesSearch.)
+    QVector<tanara::PersonInfo> peopleDirectory() const;
+
+    // Elavult-e az összefoglaló (a készítése óta változott a beszélő-hozzárendelés), és
+    // hány beszélőt javítottak azóta. Megnyitott szerkesztő nélkül is hívható.
+    tanara::SummaryStaleInfo summaryStale(const QString& meetingId) const;
+    // Mi vész el újra-átíráskor (kézi javítások száma a megerősítő párbeszédhez).
+    tanara::RetranscribeImpact retranscribeImpact(const QString& meetingId) const;
+
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
@@ -131,7 +151,12 @@ public slots:
 
     // Újra-átírás meglévő átirat mellett: törli a beszélő-hozzárendeléseket (más provider
     // más beszélő-felosztást adhat — a nevek tévesen ragadnának át), majd transcribeMeeting.
-    void retranscribeMeeting(const QString& meetingId);
+    // keepBackup: a mostani átirat-fájlok másolata megmarad a meeting-mappában
+    // (transcript-backup-<időbélyeg>/). A kézi sor-javítások (overlay) az új átirat
+    // elkészültekor törlődnek — a megszólalások határai megváltoznak.
+    void retranscribeMeeting(const QString& meetingId, bool keepBackup = false);
+    // „Rendben így": az összefoglaló elavult-jelzőjének elengedése újragenerálás nélkül.
+    void dismissSummaryStale(const QString& meetingId);
     // Egy meeting összefoglalása (LM Studio/Gemma → summary.md + másolat a notesDir-be).
     void summarizeMeeting(const QString& meetingId);
 
@@ -217,6 +242,7 @@ signals:
     void topicAnalysisFailed(QString meetingId, QString topicId, QString error); // csak ez a téma bukott
     void topicAnalysisQueueFinished(QString meetingId, int okCount, int failCount); // a sor kiürült
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
+    void summaryStaleChanged(QString meetingId);            // az összefoglaló elavult-jelzője változott
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve

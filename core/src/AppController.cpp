@@ -22,6 +22,9 @@
 #include "tanara/TranscriptMerger.h"
 #include "tanara/Localization.h"
 #include "tanara/cloud/CloudAccount.h"
+#include "tanara/edit/PeopleDirectory.h"
+#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/edit/SpeakerOverlay.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -99,13 +102,8 @@ void writeSegmentsJson(const QString& path, const QVector<Utterance>& segs) {
     if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented)); f.commit(); }
 }
 
-void applySpeakerMap(MergedTranscript& mt, const QMap<QString, QString>& map) {
-    if (map.isEmpty()) return;
-    for (TranscriptToken& t : mt.tokens) {
-        const auto it = map.constFind(t.speaker);
-        if (it != map.constEnd()) t.speaker = it.value();
-    }
-}
+// A nevek ráírása az átiratra: speakeredit::applyResolvedSpeakers(mt, meeting) — a
+// speakerMap MELLETT a kézi sor-javításokat (transcript.speakers.json) is alkalmazza.
 
 MergedTranscript readTokensJson(const QString& path) {
     MergedTranscript mt;
@@ -440,6 +438,10 @@ struct AppController::Impl {
     QSet<QString> reduceWhenDone;             // meetingId-k, ahol a sor végén auto-reduce jön
     QHash<QString, QPair<int,int>> jobCounts; // meetingId → (ok, fail) az aktuális batch-ben
 
+    // Átirat-szerkesztő munkamenetek (meetingenként egy; lásd speakerEditor()).
+    QHash<QString, QPointer<SpeakerEditor>> speakerEditors;
+    bool editorEmitting = false;   // a szerkesztő saját speakerMap-jele megy ki (ne töltsön vissza)
+
     // Tanara Cloud.
     CloudAccount* cloud = nullptr;
     bool cloudLive = false;
@@ -528,6 +530,24 @@ AppController::AppController(QObject* parent)
         QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
     d->voiceModelPath = QDir(d->metaDir).filePath(
         QStringLiteral("models/campplus_sv_zh_en_16k.onnx"));
+
+    // Átirat-szerkesztő: az új összefoglaló törli az elavult-jelzőt; az új átirat eldobja a
+    // kézi sor-javításokat (a megszólalások határai megváltoztak).
+    connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
+        if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
+            ed->notifySummaryRegenerated();
+        } else {
+            const Meeting m = d->store->load(meetingId);
+            if (!m.folder.isEmpty()) speakeredit::clearSummaryStale(m.folder);
+        }
+        emit summaryStaleChanged(meetingId);
+    });
+    connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
+        const Meeting m = d->store->load(meetingId);
+        if (m.folder.isEmpty()) return;
+        speakeredit::discardForNewTranscript(m.folder);
+        if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) ed->reloadTranscript();
+    });
 }
 
 AppController::~AppController() = default;
@@ -571,9 +591,10 @@ void AppController::renameSpeaker(const QString& meetingId, const QString& rawLa
     MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (!merged.tokens.isEmpty()) {
-        applySpeakerMap(merged, m.speakerMap);
+        speakeredit::applyResolvedSpeakers(merged, m);
         writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
     }
+    if (speakeredit::markSummaryStale(m, {rawLabel})) emit summaryStaleChanged(meetingId);
     emit speakerMapChanged(meetingId);
 
     // A kézi címkézés „tanítja" a voice-ID-t: lenyomatot rögzítünk a név alá.
@@ -650,6 +671,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
     // Nincs hangerő/pozíció-alapú feltételezés és nincs auto-enroll: a NÉV a fingerprint
     // (vagy a felhasználó egyszeri kézi átnevezése) alapján kerül a beszélőre.
     bool mapChanged = false;
+    QStringList identified;   // most nevet kapott nyers címkék
     int progressDone = 0;
     for (const QString& label : labels) {
         if (onProgress && !onProgress(++progressDone, labels.size()))
@@ -664,6 +686,8 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
         if (match.score >= kVoiceMatchThreshold && !match.name.isEmpty()) {
             m.speakerMap.insert(label, match.name);
             if (d->people) d->people->add(match.name);
+            speakeredit::recordIdentification(m.folder, label, match.name, match.score);
+            identified << label;
             mapChanged = true;
         }
     }
@@ -671,8 +695,9 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
     if (mapChanged) {
         d->store->saveMeeting(m);
         MergedTranscript md = merged;
-        applySpeakerMap(md, m.speakerMap);
+        speakeredit::applyResolvedSpeakers(md, m);
         writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), md.renderMarkdown());
+        if (speakeredit::markSummaryStale(m, identified)) emit summaryStaleChanged(m.id);
         emit speakerMapChanged(m.id);
     }
 }
@@ -841,12 +866,14 @@ void AppController::renamePerson(const QString& oldName, const QString& newName)
         for (Track& tr : m.tracks)
             if (tr.speakerLabel == o) { tr.speakerLabel = n; micHadOld = true; }
         if (micHadOld) { m.speakerMap.insert(o, n); changed = true; }
+        // 3) A kézzel felvett résztvevők (transcript.speakers.json) személyneve.
+        if (speakeredit::renamePersonInOverlay(m.folder, o, n)) changed = true;
 
         if (!changed) continue;
         d->store->saveMeeting(m);
         MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
         if (!merged.tokens.isEmpty()) {
-            applySpeakerMap(merged, m.speakerMap);
+            speakeredit::applyResolvedSpeakers(merged, m);
             writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
         }
         emit speakerMapChanged(m.id);
@@ -867,11 +894,12 @@ void AppController::removePerson(const QString& name) {
         const QList<QString> keys = m.speakerMap.keys();
         for (const QString& key : keys)
             if (m.speakerMap.value(key) == nm) { m.speakerMap.remove(key); changed = true; }
+        if (speakeredit::removePersonFromOverlay(m.folder, nm)) changed = true;
         if (!changed) continue;
         d->store->saveMeeting(m);
         MergedTranscript merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
         if (!merged.tokens.isEmpty()) {
-            applySpeakerMap(merged, m.speakerMap);
+            speakeredit::applyResolvedSpeakers(merged, m);
             writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
         }
         emit speakerMapChanged(m.id);
@@ -1366,7 +1394,7 @@ EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, con
         if (merged.tokens.isEmpty() && !m.folder.isEmpty())
             merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
         if (!merged.tokens.isEmpty()) {
-            applySpeakerMap(merged, m.speakerMap);
+            speakeredit::applyResolvedSpeakers(merged, m);
             const int transcript = merged.renderMarkdown().size() + m.contextNote.size();
             r.transcriptChars = transcript;
             if (r.summaryMode == QLatin1String("complex")) {
@@ -1536,10 +1564,13 @@ void AppController::transcribeMeeting(const QString& meetingId)
     transcribeFromMixdown(meetingId);
 }
 
-void AppController::retranscribeMeeting(const QString& meetingId)
+void AppController::retranscribeMeeting(const QString& meetingId, bool keepBackup)
 {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    // A mostani átirat (a nevekkel és a kézi javításokkal) másolatként megmarad, ha kérték.
+    // A kézi sor-javítások az ÚJ átirat elkészültekor törlődnek (transcriptReady horog).
+    if (keepBackup) speakeredit::backupTranscript(m);
     if (!m.speakerMap.isEmpty()) {
         m.speakerMap.clear();
         d->store->saveMeeting(m);
@@ -1682,7 +1713,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
         emit errorOccurred(tr("Nincs átirat — előbb futtass átírást."));
         return;
     }
-    applySpeakerMap(merged, m.speakerMap);   // a Gemma a valódi neveket lássa
+    speakeredit::applyResolvedSpeakers(merged, m);   // a Gemma a valódi neveket lássa
 
     const AppSettings s = d->settings->settings();
     const QString llmId = s.llmProviderId;
@@ -1744,7 +1775,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) { emit errorOccurred(tr("Nincs átirat — előbb futtass átírást.")); return; }
-    applySpeakerMap(merged, m.speakerMap);
+    speakeredit::applyResolvedSpeakers(merged, m);
     const QString transcriptMd = merged.renderMarkdown();
 
     const AppSettings s = d->settings->settings();
@@ -1921,7 +1952,7 @@ void AppController::startNextTopicJob()
         startNextTopicJob();
         return;
     }
-    applySpeakerMap(merged, m.speakerMap);
+    speakeredit::applyResolvedSpeakers(merged, m);
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.value(m.id);
@@ -2062,6 +2093,74 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     });
 
     svc->requestReduce(ordered, m.contextNote.trimmed(), cfg.model, cfg.temperature, cfg.maxTokens);
+}
+
+// ---- átirat-szerkesztő (beszélő-javítás) ----------------------------------
+
+SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
+{
+    if (SpeakerEditor* existing = d->speakerEditors.value(meetingId)) return existing;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return nullptr;
+
+    auto* ed = new SpeakerEditor(d->store, d->people.get(), d->voiceprints.get(), meetingId, this);
+    ed->setUserSpeakerName(d->settings->settings().userSpeakerName);
+    // Voice-ID nélkül (nincs modell / TANARA_BUILD_VOICEID=OFF) a szerkesztő bizonytalanság
+    // és javaslat nélkül is teljes értékű.
+    if (QFileInfo::exists(d->voiceModelPath))
+        ed->setEmbedderFactory(voiceUtteranceEmbedderFactory(d->voiceModelPath));
+    d->speakerEditors.insert(meetingId, ed);
+
+    // A szerkesztő mellékhatásai a megszokott jeleken mennek ki (régi UI, könyvtár).
+    connect(ed, &SpeakerEditor::speakerMapChanged, this, [this](const QString& id) {
+        d->editorEmitting = true;
+        emit speakerMapChanged(id);
+        d->editorEmitting = false;
+    });
+    connect(ed, &SpeakerEditor::peopleChanged, this, &AppController::peopleChanged);
+    connect(ed, &SpeakerEditor::voiceprintsChanged, this, &AppController::voiceprintsChanged);
+    connect(ed, &SpeakerEditor::summaryStaleChanged, this,
+            [this, meetingId] { emit summaryStaleChanged(meetingId); });
+    // Kívülről jövő változás (régi UI átnevezés, auto-azonosítás, személy-átnevezés) →
+    // a szerkesztő újraolvassa a lemezt.
+    connect(this, &AppController::speakerMapChanged, ed, [this, ed](const QString& id) {
+        if (!d->editorEmitting && id == ed->meetingId()) ed->refreshFromDisk();
+    });
+    connect(this, &AppController::voiceprintsChanged, ed, &SpeakerEditor::speakersChanged);
+    return ed;
+}
+
+void AppController::closeSpeakerEditor(const QString& meetingId)
+{
+    if (SpeakerEditor* ed = d->speakerEditors.take(meetingId)) ed->deleteLater();
+}
+
+QVector<PersonInfo> AppController::peopleDirectory() const
+{
+    return listPeople(d->people.get(), d->voiceprints.get(), d->store);
+}
+
+SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
+{
+    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) return ed->summaryStale();
+    return speakeredit::summaryStale(d->store->load(meetingId));
+}
+
+RetranscribeImpact AppController::retranscribeImpact(const QString& meetingId) const
+{
+    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) return ed->retranscribeImpact();
+    return speakeredit::retranscribeImpact(d->store->load(meetingId));
+}
+
+void AppController::dismissSummaryStale(const QString& meetingId)
+{
+    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
+        ed->dismissSummaryStale();   // a summaryStaleChanged a szerkesztő jeléből megy ki
+        return;
+    }
+    const Meeting m = d->store->load(meetingId);
+    if (!m.folder.isEmpty() && speakeredit::clearSummaryStale(m.folder))
+        emit summaryStaleChanged(meetingId);
 }
 
 } // namespace tanara
