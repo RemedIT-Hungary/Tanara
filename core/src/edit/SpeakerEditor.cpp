@@ -14,6 +14,7 @@
 #include <QPair>
 #include <QSet>
 #include <QThread>
+#include <QTimer>
 #include <QUuid>
 
 #include <algorithm>
@@ -27,6 +28,8 @@ using namespace speakeredit;
 namespace {
 
 constexpr int kMaxUndoSteps = 200;
+// A transcript.md ennyivel az utolsó névváltozás után íródik újra (kötegelve).
+constexpr int kMarkdownDelayMs = 1500;
 
 // A Meeting.speakerMap egy kulcsának változása (az undo csak az ÉRINTETT kulcsokat állítja
 // vissza, így a közben kívülről — régi UI, auto-azonosítás — érkező változást nem írja felül).
@@ -152,6 +155,10 @@ struct SpeakerEditor::Private {
     int embDone = 0;
     int embTotal = 0;
     QString embError;
+
+    // A transcript.md késleltetett újragenerálása (lásd persist()).
+    QTimer* markdownTimer = nullptr;
+    bool markdownPending = false;
 
     // ---- betöltés -----------------------------------------------------------
     void load()
@@ -479,8 +486,33 @@ struct SpeakerEditor::Private {
         }
         speakerMap = m.speakerMap;
         hasSummary = m.hasSummary;
-        // Az összefoglaló a feloldott nevű átiratból készül → azonnal frissítjük.
-        if (namesChanged) regenerateTranscriptMarkdown(m);
+        // A transcript.md (az ember által olvasható export) a feloldott nevekkel frissül — de
+        // KÉSLELTETVE: a tokenek újraolvasása + a teljes fájl kiírása a meeting hosszával nő
+        // (30–80 ms), és soronkénti javításnál minden lépésben fölösleges. Az összefoglaló nem
+        // ebből, hanem a tokenekből + az (azonnal mentett) overlay-ből dolgozik.
+        if (namesChanged) scheduleMarkdown();
+    }
+
+    void scheduleMarkdown()
+    {
+        markdownPending = true;
+        if (!markdownTimer) {
+            markdownTimer = new QTimer(q);
+            markdownTimer->setSingleShot(true);
+            markdownTimer->setInterval(kMarkdownDelayMs);
+            QObject::connect(markdownTimer, &QTimer::timeout, q, [this] { flushMarkdown(); });
+        }
+        markdownTimer->start();
+    }
+
+    void flushMarkdown()
+    {
+        if (!markdownPending) return;
+        markdownPending = false;
+        if (markdownTimer) markdownTimer->stop();
+        if (!store) return;
+        const Meeting m = store->load(meetingId);
+        if (!m.id.isEmpty() && QDir(m.folder).exists()) regenerateTranscriptMarkdown(m);
     }
 
     void clearSuggestion()
@@ -874,6 +906,12 @@ SpeakerEditor::SpeakerEditor(MeetingStore* store, PeopleStore* people, Voiceprin
 SpeakerEditor::~SpeakerEditor()
 {
     d->stopThread(/*notify*/ false);
+    d->flushMarkdown();
+}
+
+void SpeakerEditor::flushPendingWrites()
+{
+    d->flushMarkdown();
 }
 
 QString SpeakerEditor::meetingId() const { return d->meetingId; }
@@ -1342,6 +1380,9 @@ void SpeakerEditor::reloadTranscript()
 {
     const SummaryStaleInfo before = d->staleInfo();
     d->stopThread(/*notify*/ true);
+    // Az új átirattal a transcript.md is frissen készült: a függő újragenerálás tárgytalan.
+    d->markdownPending = false;
+    if (d->markdownTimer) d->markdownTimer->stop();
     d->load();
     d->undoStack.clear();
     d->redoStack.clear();

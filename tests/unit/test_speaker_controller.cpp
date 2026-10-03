@@ -154,6 +154,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QCOMPARE(ed->speaker(kB2).personName, QStringLiteral("Béla"));
     QCOMPARE(ed->utterance(QStringLiteral("u12000")).speakerKey, cili);
     QVERIFY(ed->canUndo());
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     const QString md = markdown(m);
     QVERIFY2(md.contains(QStringLiteral("**Anna** S0")), qPrintable(md));
     QVERIFY(md.contains(QStringLiteral("**Béla** S1")));
@@ -219,6 +220,7 @@ void SpeakerControllerTest::globalPersonRename_reachesParticipants()
 
     m_app->renamePerson(QStringLiteral("Emese"), QStringLiteral("Emőke"));
     QCOMPARE(ed->speaker(p).personName, QStringLiteral("Emőke"));
+    ed->flushPendingWrites();
     QVERIFY(markdown(m).contains(QStringLiteral("**Emőke** S0")));
     m_app->renamePerson(QStringLiteral("Feri"), QStringLiteral("Ferenc"));
     QCOMPARE(ed->speaker(kB2).personName, QStringLiteral("Ferenc"));

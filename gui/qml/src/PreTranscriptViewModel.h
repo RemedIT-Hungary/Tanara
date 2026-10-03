@@ -95,6 +95,11 @@ public:
 
     QString contextNote() const { return m_contextNote; }
     void setContextNote(const QString& note);
+    // A mező gépelés közbeni tartalma: a megbeszéléssel EGYÜTT jegyezzük meg, amelyhez írták.
+    // A késleltetett mentés (és a megbeszélés-váltás) ezt írja ki — mindig a saját
+    // megbeszélésébe, akkor is, ha közben másik lett a kijelölt (pl. véget ért egy felvétel).
+    Q_INVOKABLE void draftContextNote(const QString& note);
+    Q_INVOKABLE void commitContextDraft();
     bool identifyEnabled() const { return m_identifyEnabled; }
     void setIdentifyEnabled(bool enabled);
     bool identifyAvailable() const { return m_identifyAvailable; }
@@ -157,6 +162,9 @@ private:
     QString m_state = QStringLiteral("none");
 
     QString m_contextNote;
+    QString m_draftNote;
+    QString m_draftMeetingId;
+    bool m_hasDraft = false;
     bool m_identifyEnabled = true;
     bool m_identifyAvailable = true;
     QString m_mixdownState = QStringLiteral("ready");

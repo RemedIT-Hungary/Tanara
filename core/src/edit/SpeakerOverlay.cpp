@@ -468,6 +468,9 @@ RetranscribeImpact retranscribeImpact(const Meeting& m)
 QString backupTranscript(const Meeting& m)
 {
     if (m.folder.isEmpty()) return {};
+    // A szerkesztő a transcript.md-t késleltetve írja újra: a másolat mindig a MOSTANI
+    // (feloldott nevű) állapotot tartalmazza.
+    regenerateTranscriptMarkdown(m);
     QDir folder(m.folder);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
     QString name = QStringLiteral("transcript-backup-%1").arg(stamp);

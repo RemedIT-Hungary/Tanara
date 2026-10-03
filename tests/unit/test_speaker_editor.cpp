@@ -365,6 +365,7 @@ void SpeakerEditorTest::move_undoRedo_persist()
     QVERIFY(ed->undoText().startsWith(QStringLiteral("2 ")));
 
     // A transcript.md a feloldott nevekkel frissült; a segments.json nyers maradt.
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Béla** L4a L4b")));
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L0a L0b")));
     QCOMPARE(speakeredit::loadTranscriptLines(fx.meeting.folder)[4].rawLabel, kB1);
@@ -382,6 +383,7 @@ void SpeakerEditorTest::move_undoRedo_persist()
     QVERIFY(!ed->utterance(uid(4)).manuallyCorrected);
     QVERIFY(!ed->canUndo());
     QVERIFY(ed->canRedo());
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L4a L4b")));
     QVERIFY(!QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));   // üres overlay → nincs fájl
 
@@ -415,6 +417,7 @@ void SpeakerEditorTest::move_toNewPerson_andAnonymous()
     QCOMPARE(s.colorIndex, 2);                  // a két nyers címke után
     QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Cili** L4a L4b")));
 
     // Ugyanahhoz a személyhez újra: a meglévő beszélőhöz megy, nem lesz második oszlop.
@@ -452,6 +455,7 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
     QCOMPARE(ed->speaker(kB1).displayName, QStringLiteral("Anna"));
     QVERIFY(fx.people->names().contains(QStringLiteral("Anna")));
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L0a L0b")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);      // nincs automatikus tanítás
     QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("anna")));     // ugyanaz → nincs lépés
@@ -460,6 +464,7 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
     ed->undo();
     QVERIFY(!fx.diskMap().contains(kB1));
     QVERIFY(ed->speaker(kB1).anonymous);
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Beszélő 1** L0a L0b")));
     ed->redo();
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
@@ -574,6 +579,7 @@ void SpeakerEditorTest::merge_undo()
     QCOMPARE(ed->utterance(uid(4)).speakerKey, cili);   // a kézzel átrakott sor marad
     QVERIFY(!ed->utterance(uid(0)).manuallyCorrected);  // teljes-beszélő művelet nem „javítva"
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Béla"));
+    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
     QVERIFY(fx.markdown().contains(QStringLiteral("**Béla** L0a L0b")));
     QVERIFY(!ed->moveUtterances(uids({1}), kB1));       // megszűnt beszélő nem célpont
 

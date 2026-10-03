@@ -7,6 +7,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/edit/SpeakerEditor.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
 
@@ -406,11 +407,26 @@ void ShellActions::identifyParticipants(const QString& meetingId)
         // Átirat után: aszinkron, a feladat-sáv mutatja („3 / 5 beszélő”), megszakítható.
         if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Identify))
             return;
-        if (m_controller->identifyMeetingAsync(meetingId))
+        if (m_controller->identifyMeetingAsync(meetingId)) {
             m_identifyRequested.insert(meetingId);
-        else
-            toast(tr("Az azonosítás most nem indítható (nincs hang-modell telepítve, vagy a "
-                     "megbeszélésen épp fut egy feladat)."));
+            return;
+        }
+        // Nem indult: mondjuk meg, MIÉRT (a core csak igaz/hamisat ad).
+        if (!m_controller->voiceIdentificationAvailable()) {
+            toast(tr("Az azonosításhoz nincs telepítve a hangmodell."));
+        } else if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Transcribe)) {
+            toast(tr("Az átírás még fut — a végén magától azonosítja a résztvevőket."));
+        } else {
+            // Nincs névtelen beszélő (mindenkinek van már neve), vagy nincs hozzá hang.
+            bool anonymous = false;
+            if (tanara::SpeakerEditor* ed = m_controller->speakerEditor(meetingId))
+                for (const tanara::EditorSpeaker& sp : ed->speakers())
+                    anonymous = anonymous || (sp.anonymous && !sp.added && sp.utteranceCount > 0);
+            toast(anonymous
+                      ? tr("A névtelen beszélőkhöz nem találtam használható hangot, ezért nincs mit azonosítani.")
+                      : tr("Nincs mit azonosítani: ebben a megbeszélésben már minden beszélőnek van neve. "
+                           "A neveket az átiratban, a névre kattintva javíthatod."));
+        }
         return;
     }
     // Átirat előtt: előnézet a hangsávokból (nem ír a megbeszélésbe) — modális haladás-ablakkal.
@@ -466,12 +482,26 @@ void ShellActions::cancelJob(const QString& meetingId, int jobKind)
 void ShellActions::onRetry(const QString& meetingId, const QString& kind)
 {
     // Újra / Folytatás egy cloud-hiba után: ugyanaz a lépés, új futás (a folytatás csak a
-    // hátralévő részekért fizet — a kész téma-elemzések a lemezen vannak).
-    if (!m_controller)
+    // hátralévő részekért fizet — a kész téma-elemzések a lemezen vannak). A cél MINDIG az a
+    // megbeszélés, amelyikhez a hiba tartozik; ha már nem az van kijelölve (a hibaablak alatt
+    // váltott a kijelölés), nem indítunk a háttérben fizetős futást — ahogy a régi ablak sem.
+    if (!m_controller || meetingId.isEmpty())
         return;
-    if (kind == QLatin1String("transcribe"))
-        m_controller->transcribeMeeting(meetingId);
-    else if (kind == QLatin1String("summary"))
+    const tanara::Meeting m = meeting(meetingId);
+    if (m.id.isEmpty())
+        return;
+    if (meetingId != m_currentMeetingId) {
+        toast(tr("Az ismétlés nem indult el, mert közben másik megbeszélésre váltottál: %1").arg(m.title));
+        return;
+    }
+    // Minden ág a kapun és a költségbecslésen megy át (Tanara Cloud: a felhasználó újra látja
+    // az árat ehhez a megbeszéléshez).
+    if (kind == QLatin1String("transcribe")) {
+        // Ha a megbeszélésnek VAN átirata, a hiba egy újra-átírásé volt: az a megerősítő
+        // ablakon át indul újra (kézi javítások, másolat), nem sima átírásként.
+        if (m.hasTranscript) retranscribe(meetingId);
+        else startTranscription(meetingId);
+    } else if (kind == QLatin1String("summary"))
         startQuickSummary(meetingId);
     else if (kind == QLatin1String("topics"))
         startTopicExtraction(meetingId);

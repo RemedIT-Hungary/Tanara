@@ -22,14 +22,20 @@ class TestTrackListModel : public QObject {
 private slots:
     void waveformBarLevels()
     {
-        // Max-tartó újramintavételezés, közös skálára (reference) vetítve, 0..1 közé szorítva.
-        const QList<qreal> peaks{0.0, 0.5, 0.0, 0.0, 1.0, 0.25, 0.0, 0.0};
+        // Átlagoló újramintavételezés, közös skálára (reference) vetítve, 0..1 közé szorítva;
+        // a szintek enyhén széthúzva (kitevő > 1): a hangos rész telt, a halk alacsony marad.
+        const QList<qreal> peaks{1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5};
         const QList<qreal> bars = WaveformItem::barLevels(peaks, 4, 1.0);
         QCOMPARE(bars.size(), 4);
-        QCOMPARE(bars[0], 0.5);
+        QCOMPARE(bars[0], 1.0);
         QCOMPARE(bars[1], 0.0);
-        QCOMPARE(bars[2], 1.0);
-        QCOMPARE(bars[3], 0.0);
+        QVERIFY(bars[2] > 0.2 && bars[2] < 0.5);    // átlag 0,5 → széthúzva 0,5 alatt
+        QVERIFY(qAbs(bars[2] - bars[3]) < 1e-9);
+        // A viszonyítási szint a felső percentilis: egyetlen kiugró érték nem nyomja össze a képet.
+        QList<qreal> many(100, 0.1);
+        many[50] = 1.0;
+        QVERIFY(WaveformItem::referenceLevel(many) < 0.2);
+        QCOMPARE(WaveformItem::referenceLevel({}), 0.0);
         // Csendes sáv a hangos sáv skáláján laposnak látszik.
         const QList<qreal> quiet = WaveformItem::barLevels({0.004, 0.003}, 2, 0.9);
         QVERIFY(quiet[0] < 0.1);
@@ -109,6 +115,39 @@ private slots:
         QTRY_COMPARE(model.count(), 1);
         QVERIFY(!QFile::exists(droppedFile));
         QVERIFY(QFile::exists(QDir(m.folder).filePath("track_mic.wav")));
+    }
+
+    // A megerősítő / fájlválasztó ablak alatt a kijelölés másik megbeszélésre válthat: a törlés
+    // és a fájl-hozzárendelés csak arra a megbeszélésre hat, amelyre a felhasználó rábólintott.
+    void confirmedActionsNeverHitAnotherMeeting()
+    {
+        jobtest::Sandbox sb;
+        const Meeting a = sb.recording("Megerősített", 1, /*secondTrack*/ true);
+        const Meeting b = sb.recording("Közben kijelölt", 1, /*secondTrack*/ true, /*dropSecond*/ true);
+        const QString bDropped = QDir(b.folder).filePath(b.tracks[1].file);
+        QVERIFY(QFile::exists(bDropped));
+
+        TrackListModel model;
+        model.setController(sb.app.get());
+        model.setMeetingId(a.id);
+        const QString aTrack = model.trackIdAt(0);
+        QVERIFY(!aTrack.isEmpty());
+        QCOMPARE(model.trackIdAt(99), QString());
+
+        // …az ablak alatt a kijelölés B-re vált:
+        model.setMeetingId(b.id);
+        QCOMPARE(model.droppedCount(), 1);
+        QCOMPARE(model.deleteDroppedIn(a.id), -1);         // A-ra szólt a megerősítés → semmi
+        QVERIFY(QFile::exists(bDropped));
+        QCOMPARE(model.droppedCount(), 1);
+        const QString src = sb.home->filePath("masik.wav");
+        QVERIFY(QFile::copy(QDir(a.folder).filePath(a.tracks[0].file), src));
+        QVERIFY(!model.relocateTrack(a.id, aTrack, src).isEmpty());   // hibaüzenet, nincs másolás
+        QCOMPARE(sb.app->store()->load(b.id).tracks[0].file, b.tracks[0].file);
+
+        // Egyező megbeszélésnél a törlés megtörténik.
+        QCOMPARE(model.deleteDroppedIn(b.id), 1);
+        QVERIFY(!QFile::exists(bDropped));
     }
 
     void missingFileIsFoundAgain()

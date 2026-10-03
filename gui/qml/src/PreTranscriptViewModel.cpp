@@ -66,9 +66,37 @@ void PreTranscriptViewModel::setMeetingId(const QString& id)
 {
     if (id == m_meetingId)
         return;
+    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írjuk ki.
+    commitContextDraft();
     m_meetingId = id;
+    reload();                 // előbb az új adatok, hogy a jelre már az új megjegyzés látsszon
     emit meetingIdChanged();
-    reload();
+}
+
+void PreTranscriptViewModel::draftContextNote(const QString& note)
+{
+    m_draftNote = note;
+    m_draftMeetingId = m_meetingId;
+    m_hasDraft = true;
+}
+
+void PreTranscriptViewModel::commitContextDraft()
+{
+    if (!m_hasDraft)
+        return;
+    m_hasDraft = false;
+    const QString note = m_draftNote;
+    const QString target = m_draftMeetingId;
+    m_draftNote.clear();
+    m_draftMeetingId.clear();
+    if (target == m_meetingId) {
+        setContextNote(note);
+        return;
+    }
+    // A piszkozat egy már nem kijelölt megbeszélésé: közvetlenül oda mentjük.
+    AppController* c = app();
+    if (!jobsupport::demoMode(c) && !target.isEmpty())
+        c->setMeetingContextNote(target, note);
 }
 
 void PreTranscriptViewModel::setDemoState(const QString& state)

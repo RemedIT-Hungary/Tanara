@@ -15,6 +15,7 @@ Item {
 
     signal seekRequested(real fraction)     // kattintás az áttekintőn
     signal searchStepRequested(int direction)
+    signal nextUncertainRequested()         // „Következő bizonytalan"
 
     implicitHeight: column.implicitHeight + 22
     height: implicitHeight
@@ -129,6 +130,7 @@ Item {
                 spacing: 6
                 TSearchField {
                     id: searchField
+                    objectName: "transcriptSearch"
                     Layout.fillWidth: true
                     Layout.maximumWidth: 280
                     Layout.preferredHeight: 28
@@ -188,6 +190,12 @@ Item {
                 }
             }
             ToolButton {
+                visible: root.vm.uncertainCount > 0
+                iconName: "chevrons-down"
+                toolTipText: qsTr("Következő bizonytalan sor (B)")
+                onClicked: root.nextUncertainRequested()
+            }
+            ToolButton {
                 outlined: true
                 checked: root.vm.railVisible
                 iconName: "panel-left"
@@ -214,7 +222,7 @@ Item {
             ToolButton {
                 iconName: root.searchOpen ? "x" : "search"
                 checked: false
-                toolTipText: root.searchOpen ? qsTr("Keresés bezárása") : qsTr("Keresés az átiratban")
+                toolTipText: root.searchOpen ? qsTr("Keresés bezárása") : qsTr("Keresés az átiratban (Ctrl+Shift+F)")
                 onClicked: root.searchOpen ? root.closeSearch() : root.openSearch()
             }
         }

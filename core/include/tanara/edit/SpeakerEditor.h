@@ -120,6 +120,12 @@ public:
     SummaryStaleInfo summaryStale() const;
     RetranscribeImpact retranscribeImpact() const;
 
+    // A javítások (overlay, meeting.json) azonnal lemezre kerülnek; a transcript.md
+    // újragenerálása viszont rövid késleltetéssel, kötegelve fut (a meeting hosszával nő).
+    // Ez most azonnal kiírja, ha van függő frissítés (kilépés, export, teszt). A destruktor
+    // is meghívja.
+    void flushPendingWrites();
+
 public slots:
     void undo();
     void redo();

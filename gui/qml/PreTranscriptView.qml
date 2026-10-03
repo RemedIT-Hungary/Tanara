@@ -30,7 +30,7 @@ Item {
     }
 
     function openSettings(page) { if (root.shell) root.shell.openSettings(page) }
-    function commitContext() { vm.contextNote = contextArea.text }
+    function commitContext() { saveTimer.stop(); vm.commitContextDraft() }
     function start() {
         commitContext()
         if (root.shell) root.shell.startTranscription(root.meetingId)
@@ -88,7 +88,9 @@ Item {
                         placeholderText: qsTr("Például: negyedéves egyeztetés a partnerekkel; szóba kerül a számlázás és az új súgó.")
                         Component.onCompleted: text = vm.contextNote
                         onEditingFinished: root.commitContext()
-                        onTextChanged: if (activeFocus) saveTimer.restart()
+                        // A piszkozatot a nézetmodell a megbeszélés azonosítójával együtt őrzi: a
+                        // késleltetett mentés így sosem kerülhet másik megbeszélésbe.
+                        onTextChanged: if (activeFocus) { vm.draftContextNote(text); saveTimer.restart() }
                         Accessible.name: qsTr("Miről szólt a megbeszélés?")
                         Timer { id: saveTimer; interval: 900; onTriggered: root.commitContext() }
                         Connections {
@@ -97,7 +99,7 @@ Item {
                                 if (!contextArea.activeFocus && contextArea.text !== vm.contextNote)
                                     contextArea.text = vm.contextNote
                             }
-                            function onMeetingIdChanged() { contextArea.text = vm.contextNote }
+                            function onMeetingIdChanged() { saveTimer.stop(); contextArea.text = vm.contextNote }
                         }
                     }
                 }

@@ -152,7 +152,15 @@ theme, player volume in `<TANARA_HOME or ~/.tanara>/ui-state.json`). What shows 
   transcript → `MeetingHeader` + `PreTranscriptView` + `PlayerBar` · otherwise `MeetingHeader` +
   tabs (`TranscriptTab`, `SummaryTab`, `TracksTab`) + `PlayerBar`. `showTab(2)` before a
   transcript shows `TracksTab` with a back button instead of `PreTranscriptView`.
-- Content components get `meetingId` / `player` / `shell` through `ShellContentBinder`.
+- Content components get `meetingId` / `player` / `shell` as plain property bindings in `Main.qml`.
+
+Keyboard: `Ctrl+F` library search · `Ctrl+Shift+F` search in the transcript · `Ctrl+1/2/3` tabs ·
+`F2` rename · `Space` play / pause (never while a text field or a keyboard-focused control has
+focus). With the focus in the transcript: arrows, `Enter` (play from the line), `1`–`9` (move the
+selection), `B` / `Shift+B` (next / previous uncertain line), `Ctrl+C` (copy the selected lines),
+`Ctrl+A`, `Ctrl+L` (rail), `Ctrl+Z` / `Ctrl+Shift+Z`. Right click on a line: copy / play menu.
+An inline editor that hides itself must give the focus back (`releaseHiddenFocus()` pattern):
+an invisible `TextInput` keeps the active focus and would swallow every key.
 
 Overrides for `--demo` / `--qml-shot` (leave unset with a real controller):
 `shellState` (`"empty" | "noSelection" | "preTranscript" | "meeting"`, `""` = computed),
@@ -168,7 +176,8 @@ Qt Multimedia engine behind `PlayerController` (the QML module itself does not l
 QA without touching the desktop: `TANARA_HOME=<sandbox>/home QT_QPA_PLATFORM=offscreen
 build/gui/tanara --shell-script script.qml` loads `script.qml` next to the real window with
 `window` (`window.shell`, `.player`, `.library`, `.meetingModel`) and `hook` (`grab(path)`,
-`log(text)`, `quit(code)`); see `gui/src/ShellQaHook.h`. In this mode the app rebuilds the
+`log(text)`, `quit(code)`, `resize(w, h)`, `widgets()` / `clickButton()` / `fillLineEdit()` /
+`closeWidget()` for the Widgets dialogs, `clipboardText()`); see `gui/src/ShellQaHook.h`. In this mode the app rebuilds the
 meeting index from disk and does not listen on the recorder socket.
 
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors

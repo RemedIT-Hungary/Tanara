@@ -274,6 +274,18 @@ bool TopicListModel::updateTopic(int row, const QString& title, const QString& s
     return true;
 }
 
+bool TopicListModel::removeTopicById(const QString& topicId)
+{
+    if (topicId.isEmpty())
+        return false;
+    for (int row = 0; row < rowCount(); ++row) {
+        if (topicIdAt(row) != topicId) continue;
+        removeTopic(row);
+        return true;
+    }
+    return false;
+}
+
 void TopicListModel::removeTopic(int row)
 {
     if (row < 0 || row >= m_items.size())

@@ -18,6 +18,10 @@ namespace tanara {
 struct TrackPeaks {
     QString        trackId;
     QVector<float> peaks;          // vödrönként a |minta| maximuma, 0..1
+    // Vödrönként az effektív (RMS) szint, 0..1 — ugyanannyi elem, mint a peaks. Hosszú
+    // felvételnél a vödrönkénti csúcs szinte mindenhol közel maximális (egyenletesen magas
+    // kép); a rajzoláshoz ez adja a beszéd / csend valódi arányait.
+    QVector<float> rms;
     qint64         durationMs = 0; // a dekódolt hang hossza
     bool isValid() const { return !peaks.isEmpty(); }
 };

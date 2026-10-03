@@ -74,6 +74,8 @@ public:
     Q_INVOKABLE bool addTopic(const QString& title, const QString& summary);
     Q_INVOKABLE bool updateTopic(int row, const QString& title, const QString& summary);
     Q_INVOKABLE void removeTopic(int row);
+    // Azonosító szerint (megerősítő ablak után: a sor-index közben elcsúszhatott). false = nincs ilyen.
+    Q_INVOKABLE bool removeTopicById(const QString& topicId);
     Q_INVOKABLE void moveTopic(int from, int to);
     // Egyetlen téma futó / sorban álló elemzésének megszakítása.
     Q_INVOKABLE void cancelTopic(int row);

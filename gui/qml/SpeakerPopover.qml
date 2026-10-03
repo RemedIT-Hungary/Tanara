@@ -16,6 +16,9 @@ TPopover {
     property string voiceprintMessage: ""
     property bool voiceprintOk: false
     property string initialQuery: ""
+    // „Meghallgatás": reprezentatív minta a beszélőtől (a lejátszó a hívóé).
+    property bool canListen: false
+    signal listenRequested(int startMs, int endMs)
 
     width: 340
     padding: 0
@@ -42,9 +45,14 @@ TPopover {
         close()
         editor.reassignSpeaker(speakerKey, name, fix)
     }
+    // Enter a keresőben: a (nyíllal) kiemelt sor; beírt szövegnél a legjobb találat vagy az új
+    // személy. Üres keresővel, kiemelés nélkül SEMMI — egy véletlen Enter ne rendelje át a
+    // teljes beszélőt (és a hanglenyomatát) a lista első emberéhez.
     function chooseFirst() {
-        if (people.count > 0) reassign(people.nameAt(Math.max(0, currentIndex)))
-        else if (people.canCreate) reassign(search.text.trim())
+        const typed = search.text.trim() !== ""
+        if (currentIndex >= 0 && currentIndex < people.count) reassign(people.nameAt(currentIndex))
+        else if (typed && people.count > 0) reassign(people.nameAt(0))
+        else if (typed && people.canCreate) reassign(search.text.trim())
     }
 
     onAboutToShow: {
@@ -80,10 +88,27 @@ TPopover {
         Item {
             width: parent.width
             height: headColumn.height + 22
+            TIconButton {
+                id: listenButton
+                objectName: "listenButton"
+                visible: control.lineCount > 0
+                enabled: control.canListen
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                y: 9
+                size: "small"
+                iconName: "play"
+                iconSize: 14
+                toolTipText: qsTr("Meghallgatás: egy jellemző, hosszabb megszólalás ettől a beszélőtől")
+                onClicked: {
+                    const sample = control.editor.speakerSample(control.speakerKey)
+                    if (sample.ok === true) control.listenRequested(sample.startMs, sample.endMs)
+                }
+            }
             Column {
                 id: headColumn
                 x: 14; y: 12
-                width: parent.width - 28
+                width: parent.width - 28 - (listenButton.visible ? listenButton.width + 6 : 0)
                 spacing: 3
                 TLabel {
                     width: parent.width

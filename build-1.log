@@ -1,0 +1,450 @@
+[0/2] Re-checking globbed directories...
+[1/447] Generating tanara_en.qm
+Updating '/home/fiber/projektek/tanara/.claude/worktrees/agent-af0a118d45d057358/build/tanara_en.qm'...
+    Generated 889 translation(s) (889 finished and 0 unfinished)
+[2/447] Copying tanara_qml qml resources into build dir
+[3/447] Copying tanara_qml qml sources into build dir
+[4/447] Populating .qmlls.ini file at /home/fiber/projektek/tanara/.claude/worktrees/agent-af0a118d45d057358/build/.qt/.qmlls.build.ini
+[5/447] Automatic MOC and UIC for target tanara_qmlplugin_init
+[6/447] Running AUTOMOC file extraction for target tanara_qmlplugin_init
+[7/447] Building CXX object gui/qml/CMakeFiles/tanara_qml_resources_1.dir/.qt/rcc/qrc_qmake_Tanara_init.cpp.o
+[8/447] Building CXX object gui/qml/CMakeFiles/tanara_qml_resources_2.dir/.qt/rcc/qrc_tanara_qml_raw_qml_0_init.cpp.o
+[9/447] Building CXX object gui/qml/CMakeFiles/tanara_qml_resources_3.dir/.qt/rcc/qrc_tanara_qml_raw_res_0_init.cpp.o
+[10/447] Running moc --collect-json for target tanara_qmlplugin_init
+[11/447] Building CXX object gui/qml/CMakeFiles/tanara_qmlplugin_init.dir/tanara_qmlplugin_init_autogen/mocs_compilation.cpp.o
+[12/447] Running rcc for resource tanara_translations
+[13/447] Running rcc for resource tanara-cli_translations
+[14/447] Running rcc for resource tanara-watcher_translations
+[15/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/kaldi-math.cc.o
+[16/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/feature-functions.cc.o
+[17/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/log.cc.o
+[18/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/feature-raw-audio-samples.cc.o
+[19/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/feature-window.cc.o
+[20/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/whisper-feature.cc.o
+[21/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/rfft.cc.o
+[22/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/istft.cc.o
+[23/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/mel-computations.cc.o
+[24/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/stft.cc.o
+[25/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/feature-fbank.cc.o
+[26/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/feature-mfcc.cc.o
+[27/447] Building CXX object CMakeFiles/kaldi_native_fbank.dir/third_party/kaldi-native-fbank/csrc/online-feature.cc.o
+[28/447] Linking CXX static library libkaldi_native_fbank.a
+[29/447] Automatic MOC and UIC for target tanara_core
+[30/447] Building CXX object gui/qml/CMakeFiles/tanara_qmlplugin_init.dir/tanara_qmlplugin_init.cpp.o
+[31/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/detect/DetectorRegistry.cpp.o
+[32/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/detect/BuiltinDetectors.cpp.o
+[33/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/Paths.cpp.o
+[34/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/PromptLibrary.cpp.o
+[35/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/Version.cpp.o
+[36/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/detect/LinuxCaptureDetector.cpp.o
+[37/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/DeviceMonitor.cpp.o
+[38/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/Localization.cpp.o
+[39/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/detect/detail/PwDumpParser.cpp.o
+[40/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/detect/RecordingLock.cpp.o
+[41/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/AudioEngine.cpp.o
+[42/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/TranscriptMerger.cpp.o
+[43/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/SummaryService.cpp.o
+[44/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/WaveformService.cpp.o
+[45/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/ComplexSummaryService.cpp.o
+[46/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/edit/SpeakerAnalysis.cpp.o
+[47/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/RecordingSession.cpp.o
+[48/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/TrackCatalog.cpp.o
+[49/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/DeviceManager.cpp.o
+[50/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/cloud/CloudTypes.cpp.o
+[51/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/SettingsManager.cpp.o
+[52/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/edit/PeopleDirectory.cpp.o
+[53/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/Logging.cpp.o
+[54/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/audio/miniaudio_impl.cpp.o
+[55/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/cloud/CloudAccount.cpp.o
+[56/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/library/TextFold.cpp.o
+[57/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/jobs/JobStats.cpp.o
+[58/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/jobs/JobErrors.cpp.o
+[59/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/provider/ReadinessModel.cpp.o
+[60/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/edit/UtteranceEmbeddings.cpp.o
+[61/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/KeyStore.cpp.o
+[62/447] Building CXX object core/CMakeFiles/tanara_core.dir/tanara_core_autogen/mocs_compilation.cpp.o
+[63/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/llm/OpenAiCompatibleProvider.cpp.o
+[64/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/provider/ProviderRegistry.cpp.o
+[65/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/MeetingListModel.cpp.o
+[66/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/provider/BuiltinProviders.cpp.o
+[67/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/PeopleStore.cpp.o
+[68/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/jobs/MeetingJobTracker.cpp.o
+[69/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/MeetingStore.cpp.o
+[70/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/JsonSerialization.cpp.o
+[71/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/edit/SpeakerOverlay.cpp.o
+[72/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/summary/SummaryStore.cpp.o
+[73/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/store/VoiceprintStore.cpp.o
+[74/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/stt/WhisperCompatProvider.cpp.o
+[75/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/stt/SonioxProvider.cpp.o
+[76/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/library/MeetingLibrary.cpp.o
+[77/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/voiceid/VoiceEmbedder.cpp.o
+[78/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/edit/SpeakerEditor.cpp.o
+[79/447] Building CXX object core/CMakeFiles/tanara_core.dir/src/AppController.cpp.o
+[80/447] Linking CXX static library core/libtanara_core.a
+[81/447] Automatic MOC and UIC for target tanara-cli
+[82/447] Automatic MOC and UIC for target test_provider_registry
+[83/447] Building CXX object cli/CMakeFiles/tanara-cli.dir/tanara-cli_autogen/mocs_compilation.cpp.o
+[84/447] Automatic MOC and UIC for target test_speaker_sandbox
+[85/447] Automatic MOC and UIC for target test_store_settings
+[86/447] Automatic MOC and UIC for target test_ringbuffer
+[87/447] Automatic MOC and UIC for target tanara-watcher
+[88/447] Building CXX object cli/CMakeFiles/tanara-cli.dir/__/.qt/rcc/qrc_tanara-cli_translations.cpp.o
+[89/447] Automatic MOC and UIC for target test_cloud_job_id
+[90/447] Automatic MOC and UIC for target test_recording_lock
+[91/447] Building CXX object tests/CMakeFiles/test_provider_registry.dir/test_provider_registry_autogen/mocs_compilation.cpp.o
+[92/447] Automatic MOC and UIC for target test_tracks
+[93/447] Automatic MOC and UIC for target test_readiness
+[94/447] Automatic MOC and UIC for target test_cloud_gateway
+[95/447] Automatic MOC and UIC for target test_voiceprint
+[96/447] Automatic MOC and UIC for target test_app_jobs
+[97/447] Building CXX object watcher/CMakeFiles/tanara-watcher.dir/__/.qt/rcc/qrc_tanara-watcher_translations.cpp.o
+[98/447] Building CXX object tests/CMakeFiles/test_cloud_job_id.dir/test_cloud_job_id_autogen/mocs_compilation.cpp.o
+[99/447] Automatic MOC and UIC for target test_smoke
+[100/447] Automatic MOC and UIC for target test_job_tracker
+[101/447] Building CXX object tests/CMakeFiles/test_app_jobs.dir/test_app_jobs_autogen/mocs_compilation.cpp.o
+[102/447] Building CXX object tests/CMakeFiles/test_cloud_gateway.dir/test_cloud_gateway_autogen/mocs_compilation.cpp.o
+[103/447] Building CXX object tests/CMakeFiles/test_readiness.dir/test_readiness_autogen/mocs_compilation.cpp.o
+[104/447] Automatic MOC and UIC for target test_detector_registry
+[105/447] Automatic MOC and UIC for target test_speaker_editor
+[106/447] Automatic MOC and UIC for target test_speaker_controller
+[107/447] Building CXX object tests/CMakeFiles/test_job_tracker.dir/test_job_tracker_autogen/mocs_compilation.cpp.o
+[108/447] Automatic MOC and UIC for target test_library
+[109/447] Building CXX object tests/CMakeFiles/test_detector_registry.dir/test_detector_registry_autogen/mocs_compilation.cpp.o
+[110/447] Building CXX object tests/CMakeFiles/test_recording_lock.dir/test_recording_lock_autogen/mocs_compilation.cpp.o
+[111/447] Building CXX object tests/CMakeFiles/test_ringbuffer.dir/test_ringbuffer_autogen/mocs_compilation.cpp.o
+[112/447] Building CXX object tests/CMakeFiles/test_library.dir/test_library_autogen/mocs_compilation.cpp.o
+[113/447] Automatic MOC and UIC for target test_summary
+[114/447] Automatic MOC and UIC for target test_sandbox_smoke
+[115/447] Automatic MOC and UIC for target test_summary_store
+[116/447] Building CXX object tests/CMakeFiles/test_smoke.dir/test_smoke_autogen/mocs_compilation.cpp.o
+[117/447] Building CXX object tests/CMakeFiles/test_speaker_controller.dir/test_speaker_controller_autogen/mocs_compilation.cpp.o
+[118/447] Automatic MOC and UIC for target test_merger
+[119/447] Building CXX object tests/CMakeFiles/test_sandbox_smoke.dir/test_sandbox_smoke_autogen/mocs_compilation.cpp.o
+[120/447] Automatic MOC and UIC for target test_cloud_types
+[121/447] Automatic MOC and UIC for target test_paths
+[122/447] Building CXX object tests/CMakeFiles/test_speaker_editor.dir/test_speaker_editor_autogen/mocs_compilation.cpp.o
+[123/447] Automatic MOC and UIC for target test_pwdump_parser
+[124/447] Building CXX object tests/CMakeFiles/test_merger.dir/test_merger_autogen/mocs_compilation.cpp.o
+[125/447] Building CXX object tests/CMakeFiles/test_cloud_types.dir/test_cloud_types_autogen/mocs_compilation.cpp.o
+[126/447] Building CXX object tests/CMakeFiles/test_paths.dir/test_paths_autogen/mocs_compilation.cpp.o
+[127/447] Building CXX object tests/CMakeFiles/test_pwdump_parser.dir/test_pwdump_parser_autogen/mocs_compilation.cpp.o
+[128/447] Building CXX object tests/CMakeFiles/test_speaker_sandbox.dir/test_speaker_sandbox_autogen/mocs_compilation.cpp.o
+[129/447] Building CXX object tests/CMakeFiles/test_store_settings.dir/test_store_settings_autogen/mocs_compilation.cpp.o
+[130/447] Automatic MOC and UIC for target tanara_qml
+[131/447] Running AUTOMOC file extraction for target tanara_qml
+[132/447] Running moc --collect-json for target tanara_qml
+[133/447] Automatic QML type registration for target tanara_qml
+[134/447] Running rcc for resource qmake_Tanara
+[135/447] Generating .rcc/qmlcache/tanara_qml_qmlcache_loader.cpp
+[136/447] Generating .rcc/qmlcache/tanara_qml_EmptyLibraryView_qml.cpp, .rcc/qmlcache/tanara_qml_EmptyLibraryView_qml.cpp.aotstats
+[137/447] Generating .rcc/qmlcache/tanara_qml_Gallery_qml.cpp, .rcc/qmlcache/tanara_qml_Gallery_qml.cpp.aotstats
+[138/447] Generating .rcc/qmlcache/tanara_qml_JobStageRow_qml.cpp, .rcc/qmlcache/tanara_qml_JobStageRow_qml.cpp.aotstats
+[139/447] Building CXX object watcher/CMakeFiles/tanara-watcher.dir/tanara-watcher_autogen/mocs_compilation.cpp.o
+[140/447] Generating .rcc/qmlcache/tanara_qml_LibraryHighlightText_qml.cpp, .rcc/qmlcache/tanara_qml_LibraryHighlightText_qml.cpp.aotstats
+[141/447] Generating .rcc/qmlcache/tanara_qml_LibraryItem_qml.cpp, .rcc/qmlcache/tanara_qml_LibraryItem_qml.cpp.aotstats
+[142/447] Generating .rcc/qmlcache/tanara_qml_LibrarySidebar_qml.cpp, .rcc/qmlcache/tanara_qml_LibrarySidebar_qml.cpp.aotstats
+[143/447] Generating .rcc/qmlcache/tanara_qml_Main_qml.cpp, .rcc/qmlcache/tanara_qml_Main_qml.cpp.aotstats
+[144/447] Generating .rcc/qmlcache/tanara_qml_MeetingHeader_qml.cpp, .rcc/qmlcache/tanara_qml_MeetingHeader_qml.cpp.aotstats
+[145/447] Building CXX object watcher/CMakeFiles/tanara-watcher.dir/main.cpp.o
+[146/447] Generating .rcc/qmlcache/tanara_qml_NoSelectionView_qml.cpp, .rcc/qmlcache/tanara_qml_NoSelectionView_qml.cpp.aotstats
+[147/447] Generating .rcc/qmlcache/tanara_qml_PersonPicker_qml.cpp, .rcc/qmlcache/tanara_qml_PersonPicker_qml.cpp.aotstats
+[148/447] Generating .rcc/qmlcache/tanara_qml_PersonRow_qml.cpp, .rcc/qmlcache/tanara_qml_PersonRow_qml.cpp.aotstats
+[149/447] Generating .rcc/qmlcache/tanara_qml_PlayerBar_qml.cpp, .rcc/qmlcache/tanara_qml_PlayerBar_qml.cpp.aotstats
+[150/447] Generating .rcc/qmlcache/tanara_qml_PreTranscriptStep_qml.cpp, .rcc/qmlcache/tanara_qml_PreTranscriptStep_qml.cpp.aotstats
+[151/447] Generating .rcc/qmlcache/tanara_qml_ShellContentBinder_qml.cpp, .rcc/qmlcache/tanara_qml_ShellContentBinder_qml.cpp.aotstats
+[152/447] Generating .rcc/qmlcache/tanara_qml_ShellCloudBanners_qml.cpp, .rcc/qmlcache/tanara_qml_ShellCloudBanners_qml.cpp.aotstats
+[153/447] Generating .rcc/qmlcache/tanara_qml_PreTranscriptView_qml.cpp, .rcc/qmlcache/tanara_qml_PreTranscriptView_qml.cpp.aotstats
+[154/447] Generating .rcc/qmlcache/tanara_qml_ShellDialogs_qml.cpp, .rcc/qmlcache/tanara_qml_ShellDialogs_qml.cpp.aotstats
+[155/447] Generating .rcc/qmlcache/tanara_qml_ShellSlider_qml.cpp, .rcc/qmlcache/tanara_qml_ShellSlider_qml.cpp.aotstats
+[156/447] Generating .rcc/qmlcache/tanara_qml_ShellToast_qml.cpp, .rcc/qmlcache/tanara_qml_ShellToast_qml.cpp.aotstats
+[157/447] Generating .rcc/qmlcache/tanara_qml_SpeakerPopover_qml.cpp, .rcc/qmlcache/tanara_qml_SpeakerPopover_qml.cpp.aotstats
+[158/447] Generating .rcc/qmlcache/tanara_qml_SpeakerRailHeader_qml.cpp, .rcc/qmlcache/tanara_qml_SpeakerRailHeader_qml.cpp.aotstats
+[159/447] Generating .rcc/qmlcache/tanara_qml_SummaryDocView_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryDocView_qml.cpp.aotstats
+[160/447] Generating .rcc/qmlcache/tanara_qml_SummaryOwnerChip_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryOwnerChip_qml.cpp.aotstats
+[161/447] Building CXX object cli/CMakeFiles/tanara-cli.dir/CloudCommands.cpp.o
+[162/447] Generating .rcc/qmlcache/tanara_qml_SummaryEmptyView_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryEmptyView_qml.cpp.aotstats
+[163/447] Generating .rcc/qmlcache/tanara_qml_TAvatar_qml.cpp, .rcc/qmlcache/tanara_qml_TAvatar_qml.cpp.aotstats
+[164/447] Generating .rcc/qmlcache/tanara_qml_SummaryStatusBanners_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryStatusBanners_qml.cpp.aotstats
+[165/447] Generating .rcc/qmlcache/tanara_qml_SummaryTab_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryTab_qml.cpp.aotstats
+[166/447] Generating .rcc/qmlcache/tanara_qml_SummaryTopicsView_qml.cpp, .rcc/qmlcache/tanara_qml_SummaryTopicsView_qml.cpp.aotstats
+[167/447] Generating .rcc/qmlcache/tanara_qml_TBanner_qml.cpp, .rcc/qmlcache/tanara_qml_TBanner_qml.cpp.aotstats
+[168/447] Building CXX object watcher/CMakeFiles/tanara-watcher.dir/TrayWatcher.cpp.o
+[169/447] Generating .rcc/qmlcache/tanara_qml_TCard_qml.cpp, .rcc/qmlcache/tanara_qml_TCard_qml.cpp.aotstats
+[170/447] Generating .rcc/qmlcache/tanara_qml_TButton_qml.cpp, .rcc/qmlcache/tanara_qml_TButton_qml.cpp.aotstats
+[171/447] Generating .rcc/qmlcache/tanara_qml_TChip_qml.cpp, .rcc/qmlcache/tanara_qml_TChip_qml.cpp.aotstats
+[172/447] Generating .rcc/qmlcache/tanara_qml_TCheckBox_qml.cpp, .rcc/qmlcache/tanara_qml_TCheckBox_qml.cpp.aotstats
+[173/447] Building CXX object cli/CMakeFiles/tanara-cli.dir/main.cpp.o
+[174/447] Generating .rcc/qmlcache/tanara_qml_TDashedRect_qml.cpp, .rcc/qmlcache/tanara_qml_TDashedRect_qml.cpp.aotstats
+[175/447] Generating .rcc/qmlcache/tanara_qml_TDialog_qml.cpp, .rcc/qmlcache/tanara_qml_TDialog_qml.cpp.aotstats
+[176/447] Generating .rcc/qmlcache/tanara_qml_TDivider_qml.cpp, .rcc/qmlcache/tanara_qml_TDivider_qml.cpp.aotstats
+[177/447] Generating .rcc/qmlcache/tanara_qml_TIcon_qml.cpp, .rcc/qmlcache/tanara_qml_TIcon_qml.cpp.aotstats
+[178/447] Generating .rcc/qmlcache/tanara_qml_TFocusRing_qml.cpp, .rcc/qmlcache/tanara_qml_TFocusRing_qml.cpp.aotstats
+[179/447] Generating .rcc/qmlcache/tanara_qml_TIconButton_qml.cpp, .rcc/qmlcache/tanara_qml_TIconButton_qml.cpp.aotstats
+[180/447] Generating .rcc/qmlcache/tanara_qml_TLabel_qml.cpp, .rcc/qmlcache/tanara_qml_TLabel_qml.cpp.aotstats
+[181/447] Generating .rcc/qmlcache/tanara_qml_TMenu_qml.cpp, .rcc/qmlcache/tanara_qml_TMenu_qml.cpp.aotstats
+[182/447] Generating .rcc/qmlcache/tanara_qml_TMenuItem_qml.cpp, .rcc/qmlcache/tanara_qml_TMenuItem_qml.cpp.aotstats
+[183/447] Generating .rcc/qmlcache/tanara_qml_TPill_qml.cpp, .rcc/qmlcache/tanara_qml_TPill_qml.cpp.aotstats
+[184/447] Generating .rcc/qmlcache/tanara_qml_TMenuSeparator_qml.cpp, .rcc/qmlcache/tanara_qml_TMenuSeparator_qml.cpp.aotstats
+[185/447] Generating .rcc/qmlcache/tanara_qml_TPopover_qml.cpp, .rcc/qmlcache/tanara_qml_TPopover_qml.cpp.aotstats
+[186/447] Generating .rcc/qmlcache/tanara_qml_TPlaceholder_qml.cpp, .rcc/qmlcache/tanara_qml_TPlaceholder_qml.cpp.aotstats
+[187/447] Generating .rcc/qmlcache/tanara_qml_TProgressBar_qml.cpp, .rcc/qmlcache/tanara_qml_TProgressBar_qml.cpp.aotstats
+[188/447] Generating .rcc/qmlcache/tanara_qml_TScrollBar_qml.cpp, .rcc/qmlcache/tanara_qml_TScrollBar_qml.cpp.aotstats
+[189/447] Generating .rcc/qmlcache/tanara_qml_TSearchField_qml.cpp, .rcc/qmlcache/tanara_qml_TSearchField_qml.cpp.aotstats
+[190/447] Generating .rcc/qmlcache/tanara_qml_TSectionLabel_qml.cpp, .rcc/qmlcache/tanara_qml_TSectionLabel_qml.cpp.aotstats
+[191/447] Generating .rcc/qmlcache/tanara_qml_TSpinner_qml.cpp, .rcc/qmlcache/tanara_qml_TSpinner_qml.cpp.aotstats
+[192/447] Generating .rcc/qmlcache/tanara_qml_TShadow_qml.cpp, .rcc/qmlcache/tanara_qml_TShadow_qml.cpp.aotstats
+[193/447] Generating .rcc/qmlcache/tanara_qml_TSplitHandle_qml.cpp, .rcc/qmlcache/tanara_qml_TSplitHandle_qml.cpp.aotstats
+[194/447] Generating .rcc/qmlcache/tanara_qml_TSurface_qml.cpp, .rcc/qmlcache/tanara_qml_TSurface_qml.cpp.aotstats
+[195/447] Generating .rcc/qmlcache/tanara_qml_TStatusIcon_qml.cpp, .rcc/qmlcache/tanara_qml_TStatusIcon_qml.cpp.aotstats
+[196/447] Generating .rcc/qmlcache/tanara_qml_TSwitch_qml.cpp, .rcc/qmlcache/tanara_qml_TSwitch_qml.cpp.aotstats
+[197/447] Generating .rcc/qmlcache/tanara_qml_TTextArea_qml.cpp, .rcc/qmlcache/tanara_qml_TTextArea_qml.cpp.aotstats
+[198/447] Generating .rcc/qmlcache/tanara_qml_TTabBar_qml.cpp, .rcc/qmlcache/tanara_qml_TTabBar_qml.cpp.aotstats
+[199/447] Building CXX object tests/CMakeFiles/test_detector_registry.dir/unit/test_detector_registry.cpp.o
+[200/447] Generating .rcc/qmlcache/tanara_qml_TTextField_qml.cpp, .rcc/qmlcache/tanara_qml_TTextField_qml.cpp.aotstats
+[201/447] Generating .rcc/qmlcache/tanara_qml_TToolTip_qml.cpp, .rcc/qmlcache/tanara_qml_TToolTip_qml.cpp.aotstats
+[202/447] Generating .rcc/qmlcache/tanara_qml_TTabButton_qml.cpp, .rcc/qmlcache/tanara_qml_TTabButton_qml.cpp.aotstats
+[203/447] Building CXX object tests/CMakeFiles/test_ringbuffer.dir/unit/test_ringbuffer.cpp.o
+[204/447] Generating .rcc/qmlcache/tanara_qml_TaskStrip_qml.cpp, .rcc/qmlcache/tanara_qml_TaskStrip_qml.cpp.aotstats
+[205/447] Generating .rcc/qmlcache/tanara_qml_Theme_qml.cpp, .rcc/qmlcache/tanara_qml_Theme_qml.cpp.aotstats
+[206/447] Building CXX object tests/CMakeFiles/test_recording_lock.dir/unit/test_recording_lock.cpp.o
+[207/447] Generating .rcc/qmlcache/tanara_qml_TrackRow_qml.cpp, .rcc/qmlcache/tanara_qml_TrackRow_qml.cpp.aotstats
+[208/447] Generating .rcc/qmlcache/tanara_qml_TranscriptSelectionBar_qml.cpp, .rcc/qmlcache/tanara_qml_TranscriptSelectionBar_qml.cpp.aotstats
+[209/447] Building CXX object tests/CMakeFiles/test_summary.dir/test_summary_autogen/mocs_compilation.cpp.o
+[210/447] Generating .rcc/qmlcache/tanara_qml_TranscriptRow_qml.cpp, .rcc/qmlcache/tanara_qml_TranscriptRow_qml.cpp.aotstats
+[211/447] Generating .rcc/qmlcache/tanara_qml_TopicCard_qml.cpp, .rcc/qmlcache/tanara_qml_TopicCard_qml.cpp.aotstats
+[212/447] Building CXX object tests/CMakeFiles/test_pwdump_parser.dir/unit/test_pwdump_parser.cpp.o
+[213/447] Building CXX object tests/CMakeFiles/test_summary_store.dir/test_summary_store_autogen/mocs_compilation.cpp.o
+[214/447] Building CXX object tests/CMakeFiles/test_tracks.dir/test_tracks_autogen/mocs_compilation.cpp.o
+[215/447] Building CXX object tests/CMakeFiles/test_voiceprint.dir/test_voiceprint_autogen/mocs_compilation.cpp.o
+[216/447] Generating .rcc/qmlcache/tanara_qml_TracksTab_qml.cpp, .rcc/qmlcache/tanara_qml_TracksTab_qml.cpp.aotstats
+[217/447] Running rcc for resource tanara_qml_raw_qml_0
+[218/447] Generating .rcc/qmlcache/tanara_qml_TranscriptToolbar_qml.cpp, .rcc/qmlcache/tanara_qml_TranscriptToolbar_qml.cpp.aotstats
+[219/447] Building CXX object tests/CMakeFiles/test_smoke.dir/unit/test_smoke.cpp.o
+[220/447] Generating .rcc/qmlcache/tanara_qml_TranscriptTab_qml.cpp, .rcc/qmlcache/tanara_qml_TranscriptTab_qml.cpp.aotstats
+[221/447] Building CXX object tests/CMakeFiles/test_provider_registry.dir/unit/test_provider_registry.cpp.o
+[222/447] Running rcc for resource tanara_qml_raw_res_0
+[223/447] Linking CXX executable tests/test_pwdump_parser
+[224/447] Linking CXX executable tests/test_detector_registry
+[225/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.qt/rcc/qrc_qmake_Tanara.cpp.o
+[226/447] Linking CXX executable tests/test_ringbuffer
+[227/447] Linking CXX executable tests/test_recording_lock
+[228/447] Building CXX object tests/CMakeFiles/test_readiness.dir/unit/test_readiness.cpp.o
+[229/447] Building CXX object tests/CMakeFiles/test_merger.dir/unit/test_merger.cpp.o
+[230/447] Building CXX object tests/CMakeFiles/test_store_settings.dir/unit/test_store_settings.cpp.o
+[231/447] Linking CXX executable cli/tanara-cli
+[232/447] Building CXX object tests/CMakeFiles/test_cloud_types.dir/unit/test_cloud_types.cpp.o
+[233/447] Building CXX object tests/CMakeFiles/test_speaker_controller.dir/unit/test_speaker_controller.cpp.o
+[234/447] Building CXX object tests/CMakeFiles/test_paths.dir/unit/test_paths.cpp.o
+[235/447] Building CXX object tests/CMakeFiles/test_job_tracker.dir/unit/test_job_tracker.cpp.o
+[236/447] Linking CXX executable watcher/tanara-watcher
+[237/447] Building CXX object tests/CMakeFiles/test_speaker_sandbox.dir/unit/test_speaker_sandbox.cpp.o
+[238/447] Building CXX object tests/CMakeFiles/test_sandbox_smoke.dir/unit/test_sandbox_smoke.cpp.o
+[239/447] Building CXX object tests/CMakeFiles/test_cloud_gateway.dir/unit/test_cloud_gateway.cpp.o
+[240/447] Linking CXX executable tests/test_provider_registry
+[241/447] Building CXX object tests/CMakeFiles/test_library.dir/unit/test_library.cpp.o
+[242/447] Building CXX object tests/CMakeFiles/test_cloud_job_id.dir/unit/test_cloud_job_id.cpp.o
+[243/447] Building CXX object tests/CMakeFiles/test_speaker_editor.dir/unit/test_speaker_editor.cpp.o
+[244/447] Building CXX object tests/CMakeFiles/test_app_jobs.dir/unit/test_app_jobs.cpp.o
+[245/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/ShellFormat.cpp.o
+[246/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/ImageProviders.cpp.o
+[247/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/AppContext.cpp.o
+[248/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/PersonListModel.cpp.o
+[249/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/JobSupport.cpp.o
+[250/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/LibraryDemoData.cpp.o
+[251/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/LibraryPendingModel.cpp.o
+[252/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/SpeakerRailCells.cpp.o
+[253/447] Building CXX object tests/CMakeFiles/test_voiceprint.dir/unit/test_voiceprint.cpp.o
+[254/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/PlayerController.cpp.o
+[255/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/ShellUiState.cpp.o
+[256/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/ShellMeetingModel.cpp.o
+[257/447] Building CXX object tests/CMakeFiles/test_summary_store.dir/unit/test_summary_store.cpp.o
+[258/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/LibraryListModel.cpp.o
+[259/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/QmlApp.cpp.o
+[260/447] Building CXX object tests/CMakeFiles/test_summary.dir/unit/test_summary.cpp.o
+[261/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/ShellActions.cpp.o
+[262/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/PreTranscriptViewModel.cpp.o
+[263/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/tanara_qml_qmltyperegistrations.cpp.o
+[264/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TopicListModel.cpp.o
+[265/447] Building CXX object tests/CMakeFiles/test_tracks.dir/unit/test_tracks.cpp.o
+[266/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/tanara_qml_autogen/mocs_compilation.cpp.o
+[267/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TrackListModel.cpp.o
+[268/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TranscriptDemoSession.cpp.o
+[269/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/SummaryViewModel.cpp.o
+[270/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TranscriptLaneStrip.cpp.o
+[271/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TranscriptListModel.cpp.o
+[272/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_EmptyLibraryView_qml.cpp.o
+[273/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_qmlcache_loader.cpp.o
+[274/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/WaveformItem.cpp.o
+[275/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_JobStageRow_qml.cpp.o
+[276/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_LibraryHighlightText_qml.cpp.o
+[277/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_LibraryItem_qml.cpp.o
+[278/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_MeetingHeader_qml.cpp.o
+[279/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_NoSelectionView_qml.cpp.o
+[280/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_PersonRow_qml.cpp.o
+[281/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_ShellCloudBanners_qml.cpp.o
+[282/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_LibrarySidebar_qml.cpp.o
+[283/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_PlayerBar_qml.cpp.o
+[284/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_PersonPicker_qml.cpp.o
+[285/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_PreTranscriptStep_qml.cpp.o
+[286/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_ShellContentBinder_qml.cpp.o
+[287/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_Gallery_qml.cpp.o
+[288/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/src/TranscriptEditorViewModel.cpp.o
+[289/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_ShellDialogs_qml.cpp.o
+[290/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_Main_qml.cpp.o
+[291/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_ShellSlider_qml.cpp.o
+[292/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_ShellToast_qml.cpp.o
+[293/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryOwnerChip_qml.cpp.o
+[294/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SpeakerRailHeader_qml.cpp.o
+[295/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryEmptyView_qml.cpp.o
+[296/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_PreTranscriptView_qml.cpp.o
+[297/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryTab_qml.cpp.o
+[298/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryStatusBanners_qml.cpp.o
+[299/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryDocView_qml.cpp.o
+[300/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SpeakerPopover_qml.cpp.o
+[301/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TAvatar_qml.cpp.o
+[302/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_SummaryTopicsView_qml.cpp.o
+[303/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TBanner_qml.cpp.o
+[304/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TCard_qml.cpp.o
+[305/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TFocusRing_qml.cpp.o
+[306/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TDivider_qml.cpp.o
+[307/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TDialog_qml.cpp.o
+[308/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TIcon_qml.cpp.o
+[309/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TButton_qml.cpp.o
+[310/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TChip_qml.cpp.o
+[311/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TCheckBox_qml.cpp.o
+[312/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TMenu_qml.cpp.o
+[313/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TLabel_qml.cpp.o
+[314/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TIconButton_qml.cpp.o
+[315/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TDashedRect_qml.cpp.o
+[316/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TMenuSeparator_qml.cpp.o
+[317/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TMenuItem_qml.cpp.o
+[318/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TPill_qml.cpp.o
+[319/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TPlaceholder_qml.cpp.o
+[320/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TPopover_qml.cpp.o
+[321/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.qt/rcc/qrc_tanara_qml_raw_qml_0.cpp.o
+[322/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TScrollBar_qml.cpp.o
+[323/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.qt/rcc/qrc_tanara_qml_raw_res_0.cpp.o
+[324/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TProgressBar_qml.cpp.o
+[325/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSectionLabel_qml.cpp.o
+[326/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TShadow_qml.cpp.o
+[327/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSplitHandle_qml.cpp.o
+[328/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSearchField_qml.cpp.o
+[329/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSpinner_qml.cpp.o
+[330/447] Linking CXX executable tests/test_cloud_types
+[331/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSurface_qml.cpp.o
+[332/447] Linking CXX executable tests/test_merger
+[333/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TStatusIcon_qml.cpp.o
+[334/447] Linking CXX executable tests/test_app_jobs
+[335/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TTabBar_qml.cpp.o
+[336/447] Linking CXX executable tests/test_smoke
+[337/447] Linking CXX executable tests/test_cloud_gateway
+[338/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TTabButton_qml.cpp.o
+[339/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TTextArea_qml.cpp.o
+[340/447] Linking CXX executable tests/test_cloud_job_id
+[341/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TSwitch_qml.cpp.o
+[342/447] Linking CXX executable tests/test_library
+[343/447] Linking CXX executable tests/test_paths
+[344/447] Linking CXX executable tests/test_job_tracker
+[345/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TTextField_qml.cpp.o
+[346/447] Linking CXX executable tests/test_readiness
+[347/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TaskStrip_qml.cpp.o
+[348/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TToolTip_qml.cpp.o
+[349/447] Linking CXX executable tests/test_voiceprint
+[350/447] Linking CXX executable tests/test_sandbox_smoke
+[351/447] Linking CXX executable tests/test_speaker_controller
+[352/447] Linking CXX executable tests/test_store_settings
+[353/447] Linking CXX executable tests/test_speaker_editor
+[354/447] Linking CXX executable tests/test_speaker_sandbox
+[355/447] Linking CXX executable tests/test_summary_store
+[356/447] Linking CXX executable tests/test_summary
+[357/447] Linking CXX executable tests/test_tracks
+[358/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_Theme_qml.cpp.o
+[359/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TopicCard_qml.cpp.o
+[360/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TranscriptSelectionBar_qml.cpp.o
+[361/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TrackRow_qml.cpp.o
+[362/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TracksTab_qml.cpp.o
+[363/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TranscriptRow_qml.cpp.o
+[364/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TranscriptTab_qml.cpp.o
+[365/447] Building CXX object gui/qml/CMakeFiles/tanara_qml.dir/.rcc/qmlcache/tanara_qml_TranscriptToolbar_qml.cpp.o
+[366/447] Linking CXX static library gui/qml/libtanara_qml.a
+[367/447] Automatic MOC and UIC for target tanara_qmlplugin
+[368/447] Building CXX object gui/qml/CMakeFiles/tanara_qmlplugin.dir/tanara_qmlplugin_autogen/mocs_compilation.cpp.o
+[369/447] Building CXX object gui/qml/CMakeFiles/tanara_qmlplugin.dir/tanara_qmlplugin_TanaraPlugin.cpp.o
+[370/447] Linking CXX static library gui/qml/Tanara/libtanara_qmlplugin.a
+[371/447] Automatic MOC and UIC for target test_app_context
+[372/447] Automatic MOC and UIC for target test_shell_actions
+[373/447] Automatic MOC and UIC for target test_summary_view_model
+[374/447] Building CXX object tests/CMakeFiles/test_app_context.dir/test_app_context_autogen/mocs_compilation.cpp.o
+[375/447] Automatic MOC and UIC for target test_library_list_model
+[376/447] Building CXX object tests/CMakeFiles/test_summary_view_model.dir/test_summary_view_model_autogen/mocs_compilation.cpp.o
+[377/447] Building CXX object tests/CMakeFiles/test_shell_actions.dir/test_shell_actions_autogen/mocs_compilation.cpp.o
+[378/447] Automatic MOC and UIC for target test_transcript_editor_view_model
+[379/447] Automatic MOC and UIC for target test_player_controller
+[380/447] Building CXX object tests/CMakeFiles/test_library_list_model.dir/test_library_list_model_autogen/mocs_compilation.cpp.o
+[381/447] Building CXX object tests/CMakeFiles/test_transcript_editor_view_model.dir/test_transcript_editor_view_model_autogen/mocs_compilation.cpp.o
+[382/447] Building CXX object tests/CMakeFiles/test_player_controller.dir/test_player_controller_autogen/mocs_compilation.cpp.o
+[383/447] Automatic MOC and UIC for target test_pretranscript_view_model
+[384/447] Building CXX object tests/CMakeFiles/test_pretranscript_view_model.dir/test_pretranscript_view_model_autogen/mocs_compilation.cpp.o
+[385/447] Automatic MOC and UIC for target test_track_list_model
+[386/447] Automatic MOC and UIC for target tanara
+[387/447] Building CXX object tests/CMakeFiles/test_track_list_model.dir/test_track_list_model_autogen/mocs_compilation.cpp.o
+[388/447] Automatic MOC and UIC for target test_transcript_sandbox
+[389/447] Automatic MOC and UIC for target test_transcript_tab
+[390/447] Automatic MOC and UIC for target test_qml_smoke
+[391/447] Automatic MOC and UIC for target test_job_views_render
+[392/447] Building CXX object gui/CMakeFiles/tanara.dir/src/RecorderSingleton.cpp.o
+[393/447] Building CXX object gui/CMakeFiles/tanara.dir/src/MediaPlayerBackend.cpp.o
+[394/447] Building CXX object gui/CMakeFiles/tanara.dir/src/MeetingTableModel.cpp.o
+[395/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudModeDialog.cpp.o
+[396/447] Building CXX object gui/CMakeFiles/tanara.dir/src/MeetingItemDelegate.cpp.o
+[397/447] Building CXX object gui/CMakeFiles/tanara.dir/src/ShellRecorderHost.cpp.o
+[398/447] Building CXX object gui/CMakeFiles/tanara.dir/src/FloatingRecorder.cpp.o
+[399/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudEstimateDialog.cpp.o
+[400/447] Building CXX object gui/CMakeFiles/tanara.dir/__/.qt/rcc/qrc_tanara_translations.cpp.o
+[401/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudAccountPanel.cpp.o
+[402/447] Building CXX object tests/CMakeFiles/test_job_views_render.dir/test_job_views_render_autogen/mocs_compilation.cpp.o
+[403/447] Building CXX object tests/CMakeFiles/test_qml_smoke.dir/test_qml_smoke_autogen/mocs_compilation.cpp.o
+[404/447] Building CXX object gui/CMakeFiles/tanara.dir/src/TracksPanel.cpp.o
+[405/447] Building CXX object gui/CMakeFiles/tanara.dir/src/PeopleManagerDialog.cpp.o
+[406/447] Building CXX object tests/CMakeFiles/test_transcript_sandbox.dir/test_transcript_sandbox_autogen/mocs_compilation.cpp.o
+[407/447] Building CXX object tests/CMakeFiles/test_transcript_tab.dir/test_transcript_tab_autogen/mocs_compilation.cpp.o
+[408/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudLoginDialog.cpp.o
+[409/447] Building CXX object gui/CMakeFiles/tanara.dir/src/QmlShellBridge.cpp.o
+[410/447] Building CXX object gui/CMakeFiles/tanara.dir/src/RecordBar.cpp.o
+[411/447] Building CXX object tests/CMakeFiles/test_app_context.dir/ui/test_app_context.cpp.o
+[412/447] Building CXX object gui/CMakeFiles/tanara.dir/src/SettingsDialog.cpp.o
+[413/447] Building CXX object gui/CMakeFiles/tanara.dir/tanara_autogen/mocs_compilation.cpp.o
+[414/447] Building CXX object gui/CMakeFiles/tanara.dir/src/TranscriptPlayer.cpp.o
+[415/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudTermsDialog.cpp.o
+[416/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudModelPickerDialog.cpp.o
+[417/447] Building CXX object tests/CMakeFiles/test_transcript_editor_view_model.dir/ui/test_transcript_editor_view_model.cpp.o
+[418/447] Building CXX object tests/CMakeFiles/test_player_controller.dir/ui/test_player_controller.cpp.o
+[419/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudTierWidget.cpp.o
+[420/447] Building CXX object tests/CMakeFiles/test_pretranscript_view_model.dir/ui/test_pretranscript_view_model.cpp.o
+[421/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudSnapshots.cpp.o
+[422/447] Building CXX object tests/CMakeFiles/test_shell_actions.dir/ui/test_shell_actions.cpp.o
+[423/447] Building CXX object tests/CMakeFiles/test_summary_view_model.dir/ui/test_summary_view_model.cpp.o
+[424/447] Building CXX object tests/CMakeFiles/test_library_list_model.dir/ui/test_library_list_model.cpp.o
+[425/447] Building CXX object tests/CMakeFiles/test_track_list_model.dir/ui/test_track_list_model.cpp.o
+[426/447] Building CXX object gui/CMakeFiles/tanara.dir/src/MainWindow.cpp.o
+[427/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudUi.cpp.o
+[428/447] Building CXX object gui/CMakeFiles/tanara.dir/src/cloud/CloudWaitlistPanel.cpp.o
+[429/447] Linking CXX executable tests/test_app_context
+[430/447] Building CXX object gui/CMakeFiles/tanara.dir/src/main.cpp.o
+[431/447] Linking CXX executable tests/test_player_controller
+[432/447] Building CXX object tests/CMakeFiles/test_qml_smoke.dir/ui/test_qml_smoke.cpp.o
+[433/447] Linking CXX executable tests/test_transcript_editor_view_model
+[434/447] Linking CXX executable tests/test_pretranscript_view_model
+[435/447] Linking CXX executable tests/test_summary_view_model
+[436/447] Linking CXX executable tests/test_library_list_model
+[437/447] Linking CXX executable tests/test_track_list_model
+[438/447] Linking CXX executable tests/test_shell_actions
+[439/447] Building CXX object tests/CMakeFiles/test_job_views_render.dir/ui/test_job_views_render.cpp.o
+[440/447] Building CXX object tests/CMakeFiles/test_transcript_tab.dir/ui/test_transcript_tab.cpp.o
+[441/447] Building CXX object tests/CMakeFiles/test_transcript_sandbox.dir/ui/test_transcript_sandbox.cpp.o
+[442/447] Linking CXX executable gui/tanara
+[443/447] Linking CXX executable tests/test_qml_smoke
+[444/447] Linking CXX executable tests/test_job_views_render
+[445/447] Linking CXX executable tests/test_transcript_tab
+[446/447] Linking CXX executable tests/test_transcript_sandbox
+exit 0

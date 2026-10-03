@@ -123,8 +123,12 @@ Item {
             width: body.width - x
             height: body.height
             preventStealing: true
-            onClicked: mouse => row.tab.rowClicked(row.index, mouse.modifiers)
-            onDoubleClicked: row.tab.playFrom(row.startMs)
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: mouse => {
+                if (mouse.button === Qt.RightButton) row.tab.openRowMenu(row.index, this, mouse.x, mouse.y)
+                else row.tab.rowClicked(row.index, mouse.modifiers)
+            }
+            onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) row.tab.playFrom(row.startMs) }
         }
 
         Column {

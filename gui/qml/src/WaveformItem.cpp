@@ -7,6 +7,10 @@
 
 namespace tanara_qml {
 
+namespace {
+constexpr qreal kLevelGamma = 1.6;
+}
+
 WaveformItem::WaveformItem(QQuickItem* parent) : QQuickPaintedItem(parent)
 {
     setAntialiasing(true);
@@ -70,6 +74,16 @@ void WaveformItem::setBarGap(qreal g)
     update();
 }
 
+qreal WaveformItem::referenceLevel(const QList<qreal>& levels)
+{
+    if (levels.isEmpty())
+        return 0.0;
+    QList<qreal> sorted = levels;
+    const qsizetype k = std::min<qsizetype>(sorted.size() - 1, qsizetype(double(sorted.size()) * 0.97));
+    std::nth_element(sorted.begin(), sorted.begin() + k, sorted.end());
+    return sorted.at(k);
+}
+
 QList<qreal> WaveformItem::barLevels(const QList<qreal>& peaks, int bars, qreal reference)
 {
     QList<qreal> out;
@@ -82,19 +96,23 @@ QList<qreal> WaveformItem::barLevels(const QList<qreal>& peaks, int bars, qreal 
     }
     qreal ref = reference;
     if (ref <= 0.0)
-        ref = *std::max_element(peaks.cbegin(), peaks.cend());
+        ref = referenceLevel(peaks);
     if (ref <= 0.0)
         ref = 1.0;
     const qsizetype n = peaks.size();
     for (int i = 0; i < bars; ++i) {
-        // Max-tartó újramintavételezés: az oszlopra eső vödrök csúcsa (nagyításnál ismétel).
+        // Az oszlopra eső vödrök ÁTLAGA (nagyításnál ismétel). A max-tartás hosszú felvételnél
+        // mindent egyformán magasra húzna: egy oszlop 10–20 másodpercet fed le.
         const qsizetype a = qsizetype(i) * n / bars;
         const qsizetype b = std::max<qsizetype>(a + 1, qsizetype(i + 1) * n / bars);
-        qreal v = 0.0;
-        for (qsizetype k = a; k < b && k < n; ++k)
-            v = std::max(v, peaks.at(k));
-        // Lineáris skála: a vödrönkénti csúcs eleve „telt” képet ad, a gyökös skála tovább lapítaná.
-        out.append(std::clamp(v / ref, 0.0, 1.0));
+        qreal sum = 0.0;
+        int cnt = 0;
+        for (qsizetype k = a; k < b && k < n; ++k, ++cnt)
+            sum += peaks.at(k);
+        const qreal v = cnt > 0 ? sum / cnt : 0.0;
+        // Enyhe széthúzás (kitevő > 1): a hangos és a halk szakaszok különbsége a kis
+        // magasságú rajzon is látszik — így olvasható le, hol volt beszéd.
+        out.append(std::pow(std::clamp(v / ref, 0.0, 1.0), kLevelGamma));
     }
     return out;
 }

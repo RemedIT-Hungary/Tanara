@@ -8,6 +8,8 @@
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -377,6 +379,165 @@ private slots:
         QVERIFY(ok);
         click(center(ok));
         QCOMPARE(m_vm->uncertainCount(), before - 1);
+    }
+
+    // Egy véletlen Enter az üres keresőben NEM rendelheti át a teljes beszélőt (és a
+    // hanglenyomatát) a lista első emberéhez; nyíllal kiemelve viszont választ.
+    void speakerPopover_strayEnterDoesNothing()
+    {
+        load();
+        QQuickItem* name = rowItem(0)->findChild<QQuickItem*>(QStringLiteral("speakerName"));
+        QVERIFY(name);
+        click(center(name));
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        QTest::keyClick(m_window.get(), Qt::Key_Return);
+        QTest::keyClick(m_window.get(), Qt::Key_Enter);
+        pump();
+        QVERIFY(popupOpen("speakerPopover"));
+        QCOMPARE(cell(0, Role::SpeakerNameRole).toString(), QStringLiteral("Kovács Lilla"));
+        QVERIFY(!m_vm->canUndo());
+
+        // Le-nyíl kiemeli az első személyt → Enter őt választja.
+        QTest::keyClick(m_window.get(), Qt::Key_Down);
+        QTest::keyClick(m_window.get(), Qt::Key_Return);
+        QTRY_VERIFY(!popupOpen("speakerPopover"));
+        QVERIFY(cell(0, Role::SpeakerNameRole).toString() != QStringLiteral("Kovács Lilla"));
+        QVERIFY(m_vm->canUndo());
+    }
+
+    void personPicker_strayEnterDoesNothing()
+    {
+        load();
+        m_vm->setRailVisible(true);
+        pump();
+        QQuickItem* add = m_window->findChild<QQuickItem*>(QStringLiteral("addParticipant"));
+        QVERIFY(add);
+        const int lanes = int(m_vm->lanes().size());
+        click(center(add));
+        QTRY_VERIFY(popupOpen("personPicker"));
+        QTest::keyClick(m_window.get(), Qt::Key_Return);
+        pump();
+        QVERIFY(popupOpen("personPicker"));
+        QCOMPARE(int(m_vm->lanes().size()), lanes);
+        QVERIFY(!m_vm->canUndo());
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(!popupOpen("personPicker"));
+    }
+
+    // „Meghallgatás" a beszélő-panelen: egy jellemző sor szól (a panel nyitva marad).
+    void speakerPopover_listenPlaysSample()
+    {
+        load();
+        QQuickItem* name = rowItem(0)->findChild<QQuickItem*>(QStringLiteral("speakerName"));
+        click(center(name));
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        QQuickItem* listen = m_window->findChild<QQuickItem*>(QStringLiteral("listenButton"));
+        QVERIFY(listen);
+        const QVariantMap sample = m_vm->speakerSample(speakerOf(0));
+        QVERIFY(sample.value(QStringLiteral("ok")).toBool());
+        const int start = sample.value(QStringLiteral("startMs")).toInt();
+        const int end = sample.value(QStringLiteral("endMs")).toInt();
+        QVERIFY(end > start && end - start <= 12000);
+        QCOMPARE(m_vm->utterances().at(m_vm->utteranceForTime(start)).speakerKey, speakerOf(0));
+        click(center(listen));
+        QCOMPARE(m_player->property("log").toString(), QStringLiteral("range:%1-%2;").arg(start).arg(end));
+        QVERIFY(popupOpen("speakerPopover"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+    }
+
+    // Másolás: Ctrl+C a kijelölt sorokat teszi a vágólapra (név + időbélyeg + szöveg); jobb
+    // gombbal helyi menü; a kattintás-kijelölés és az időbélyeg-ugrás változatlan.
+    void copy_selectionAndContextMenu()
+    {
+        load();
+        QGuiApplication::clipboard()->clear();
+        click(textPoint(1));
+        QCOMPARE(m_vm->selectedCount(), 1);
+        QTest::keyClick(m_window.get(), Qt::Key_C, Qt::ControlModifier);
+        const QString one = QGuiApplication::clipboard()->text();
+        QVERIFY(one.contains(cell(1, Role::TextRole).toString()));
+        QVERIFY(one.startsWith(cell(1, Role::SpeakerNameRole).toString()));
+        QVERIFY(one.contains(cell(1, Role::TimeLabelRole).toString()));
+
+        // Több sor: beszélőváltáskor fejsor, a sorok szövege sorban.
+        click(textPoint(3), Qt::ShiftModifier);
+        QCOMPARE(m_vm->selectedCount(), 3);
+        QTest::keyClick(m_window.get(), Qt::Key_C, Qt::ControlModifier);
+        const QString many = QGuiApplication::clipboard()->text();
+        for (int r = 1; r <= 3; ++r) QVERIFY(many.contains(cell(r, Role::TextRole).toString()));
+        QVERIFY(many.indexOf(cell(1, Role::TextRole).toString()) < many.indexOf(cell(3, Role::TextRole).toString()));
+        QCOMPARE(m_vm->selectionText(), many);
+
+        // Jobb gomb: helyi menü; a kijelölés nem változik tőle.
+        QTest::mouseClick(m_window.get(), Qt::RightButton, Qt::NoModifier, textPoint(2));
+        QTRY_VERIFY(popupOpen("rowMenu"));
+        QCOMPARE(m_vm->selectedCount(), 3);
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(!popupOpen("rowMenu"));
+        QTRY_VERIFY(m_tab->hasActiveFocus());                // a menü zárása után a fókusz visszajön
+
+        // Ctrl+A: minden sor; a teljes átirat másolható.
+        QTest::keyClick(m_window.get(), Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(m_vm->selectedCount(), m_vm->utteranceCount());
+        QCOMPARE(m_vm->copyAll(), m_vm->utteranceCount());
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QCOMPARE(m_vm->selectedCount(), 0);
+    }
+
+    // „Következő bizonytalan": a B billentyű (és az eszköztár gombja) a következő bizonytalan
+    // sorra lép, körbefordulva; szövegmezőbe gépelve a betű nem lép.
+    void nextUncertain_jumps()
+    {
+        load();
+        QVERIFY(m_vm->uncertainCount() > 0);
+        click(textPoint(0));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTest::keyClick(m_window.get(), Qt::Key_B);
+        const int first = m_vm->currentRow();
+        QVERIFY(first >= 0);
+        QVERIFY(cell(first, Role::UncertainRole).toBool());
+        QVERIFY(rowItem(first) != nullptr);
+        QSet<int> seen{first};
+        for (int i = 1; i < m_vm->uncertainCount(); ++i) {
+            QTest::keyClick(m_window.get(), Qt::Key_B);
+            QVERIFY(cell(m_vm->currentRow(), Role::UncertainRole).toBool());
+            seen.insert(m_vm->currentRow());
+        }
+        QCOMPARE(int(seen.size()), m_vm->uncertainCount());
+        QTest::keyClick(m_window.get(), Qt::Key_B);
+        QCOMPARE(m_vm->currentRow(), first);                 // körbefordult
+        QTest::keyClick(m_window.get(), Qt::Key_B, Qt::ShiftModifier);
+        QVERIFY(m_vm->currentRow() != first);                // visszafelé
+
+        // A keresőmezőben a „b" betű szöveg, nem ugrás; a Ctrl+Z ott a mezőé.
+        const int before = m_vm->currentRow();
+        QMetaObject::invokeMethod(m_tab, "openSearch");
+        pump();
+        QTest::keyClick(m_window.get(), Qt::Key_B);
+        QTest::keyClick(m_window.get(), Qt::Key_1);
+        pump();
+        QCOMPARE(m_vm->searchQuery(), QStringLiteral("b1"));
+        QCOMPARE(m_vm->currentRow(), before);
+        QVERIFY(!m_vm->canUndo());
+    }
+
+    // Szövegmezőbe gépelve a szerkesztő billentyűi (1–9, Szóköz, Ctrl+Y) nem sülnek el.
+    void typingInSearchNeverTriggersEditorKeys()
+    {
+        load();
+        m_vm->setRailVisible(true);
+        click(textPoint(1));
+        const QString speaker = speakerOf(1);
+        QMetaObject::invokeMethod(m_tab, "openSearch");
+        pump();
+        QTest::keyClick(m_window.get(), Qt::Key_2);
+        QTest::keyClick(m_window.get(), Qt::Key_Space);
+        QTest::keyClick(m_window.get(), Qt::Key_1);
+        pump();
+        QCOMPARE(m_vm->searchQuery(), QStringLiteral("2 1"));
+        QCOMPARE(speakerOf(1), speaker);                     // nem került át másik oszlopba
+        QCOMPARE(m_player->property("log").toString(), QString());   // a Szóköz nem indított lejátszást
+        QVERIFY(!m_vm->canUndo());
     }
 
     void statesLoadWithoutWarnings_data()

@@ -338,6 +338,56 @@ private slots:
         QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
     }
 
+    // „Újra" egy cloud-hiba után: csak a hibához tartozó, MÉG KIJELÖLT megbeszélésre indul,
+    // és ugyanúgy a kapun + költségbecslésen megy át, mint az első indítás.
+    void retryTargetsTheFailedMeetingAndGoesThroughTheGate()
+    {
+        configureProviders(true);
+        const tanara::Meeting a = recording(QStringLiteral("Hibázott"));
+        const tanara::Meeting b = transcribed(QStringLiteral("Másik"));
+        QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
+        QSignalSpy asked(m_shell.get(), &ShellActions::retranscribeDialogRequested);
+
+        // Közben másik megbeszélés lett kijelölve → nem indul semmi, értesítés jön.
+        m_shell->showMeeting(b.id);
+        emit m_bridge->retryRequested(a.id, QStringLiteral("transcribe"));
+        QCOMPARE(started.count(), 0);
+        QVERIFY(!m_toasts.isEmpty() && m_toasts.last().contains(QStringLiteral("Hibázott")));
+
+        // Átirattal rendelkező megbeszélésnél a „transcribe" ismétlés újra-átírás: megerősítő
+        // ablak jön, nem indul csendben sima átírás.
+        emit m_bridge->retryRequested(b.id, QStringLiteral("transcribe"));
+        QCOMPARE(asked.count(), 1);
+        QCOMPARE(asked.last().at(0).toString(), b.id);
+        QCOMPARE(started.count(), 0);
+
+        // A kijelölt, átirat nélküli megbeszélésre az átírás elindul (a kapun át).
+        m_shell->showMeeting(a.id);
+        emit m_bridge->retryRequested(a.id, QStringLiteral("transcribe"));
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(started.last().at(0).toString(), a.id);
+        m_app->cancelAllJobs(a.id);
+        QTRY_VERIFY(!m_app->jobs()->isBusy(a.id));
+
+        // Ismeretlen / üres azonosítóra semmi.
+        emit m_bridge->retryRequested(QString(), QStringLiteral("transcribe"));
+        emit m_bridge->retryRequested(QStringLiteral("nincs-ilyen"), QStringLiteral("summary"));
+        QCOMPARE(started.count(), 1);
+    }
+
+    // Átirat után az azonosítás gombja mindig ad látható választ: ha nem indítható, megmondja, miért.
+    void identifyAfterTranscriptExplainsWhyItDidNotStart()
+    {
+        tanara::Meeting m = transcribed(QStringLiteral("Azonosítandó"));
+        m_shell->identifyParticipants(m.id);
+        QCOMPARE(m_toasts.size(), 1);
+        if (!m_app->voiceIdentificationAvailable())
+            QVERIFY(m_toasts.last().contains(QStringLiteral("hangmodell")));
+        m_toasts.clear();
+        m_shell->identifyParticipants(m.id);
+        QCOMPARE(m_toasts.size(), 1);                  // minden kattintásra van válasz
+    }
+
     void identifyBeforeTranscriptUsesThePreview()
     {
         const tanara::Meeting m = recording(QStringLiteral("Előnézet"));

@@ -10,9 +10,11 @@
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/store/MeetingStore.h"
 
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
@@ -156,8 +158,18 @@ void TranscriptEditorViewModel::resolveSession()
                                                 m_controller->settings()->settings().metadataDir);
         m_demoSession.reset();
         SpeakerEditor* ed = m_meetingId.isEmpty() ? nullptr : m_controller->speakerEditor(m_meetingId);
-        m_legacyTranscript = ed && !ed->hasTranscript()
-            && m_controller->store()->load(m_meetingId).hasTranscript;
+        const Meeting meeting = ed ? m_controller->store()->load(m_meetingId) : Meeting();
+        m_legacyTranscript = ed && !ed->hasTranscript() && meeting.hasTranscript;
+        m_legacyText.clear();
+        if (m_legacyTranscript) {
+            // A régi átirat olvasható marad: a transcript.md szövege (felső korláttal).
+            QFile md(QDir(meeting.folder).filePath(QStringLiteral("transcript.md")));
+            if (md.open(QIODevice::ReadOnly)) {
+                m_legacyText = QString::fromUtf8(md.read(4 * 1024 * 1024));
+                // Sima szövegként mutatjuk: a Markdown jelölői (`[00:06]`, **Név**) nélkül.
+                m_legacyText.remove(QLatin1Char('`')).remove(QStringLiteral("**"));
+            }
+        }
         if (ed == m_editor && ed) return;
         detach();
         if (ed) attach(ed);
@@ -1004,6 +1016,133 @@ bool TranscriptEditorViewModel::confirmRow(int row)
 {
     const int u = m_rows->utteranceOfRow(row);
     return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id});
+}
+
+// ---- másolás ----------------------------------------------------------------
+
+QString TranscriptEditorViewModel::textOfUtterances(QVector<int> utterances) const
+{
+    std::sort(utterances.begin(), utterances.end());
+    utterances.erase(std::unique(utterances.begin(), utterances.end()), utterances.end());
+    if (utterances.size() == 1) {
+        const EditorUtterance& u = m_utts[utterances.first()];
+        return QStringLiteral("%1 (%2): %3").arg(m_views.value(u.speakerKey).name, timeLabel(u.startMs), u.text);
+    }
+    QString out;
+    QString lastKey;
+    int last = -2;
+    for (int i : std::as_const(utterances)) {
+        const EditorUtterance& u = m_utts[i];
+        // Új fejsor beszélőváltáskor, vagy ha a kijelölés nem folytonos (kimaradt sorok).
+        if (u.speakerKey != lastKey || i != last + 1) {
+            if (!out.isEmpty()) out += QLatin1Char('\n');
+            out += QStringLiteral("%1 (%2)\n").arg(m_views.value(u.speakerKey).name, timeLabel(u.startMs));
+        }
+        out += u.text + QLatin1Char('\n');
+        lastKey = u.speakerKey;
+        last = i;
+    }
+    return out;
+}
+
+QString TranscriptEditorViewModel::textOfRows(const QVariantList& rows) const
+{
+    QVector<int> utts;
+    for (const QVariant& r : rows) {
+        const int u = m_rows->utteranceOfRow(r.toInt());
+        if (u >= 0) utts.append(u);
+    }
+    return utts.isEmpty() ? QString() : textOfUtterances(utts);
+}
+
+QString TranscriptEditorViewModel::selectionText() const
+{
+    if (m_selected.isEmpty()) return QString();
+    return textOfUtterances(QVector<int>(m_selected.cbegin(), m_selected.cend()));
+}
+
+int TranscriptEditorViewModel::copyUtterances(const QVector<int>& utterances)
+{
+    if (utterances.isEmpty()) return 0;
+    if (QClipboard* cb = QGuiApplication::clipboard()) cb->setText(textOfUtterances(utterances));
+    emit notice(tr("%n megszólalás a vágólapra másolva.", nullptr, int(utterances.size())));
+    return int(utterances.size());
+}
+
+int TranscriptEditorViewModel::copyRow(int row)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 ? copyUtterances({u}) : 0;
+}
+
+int TranscriptEditorViewModel::copySelection()
+{
+    return copyUtterances(QVector<int>(m_selected.cbegin(), m_selected.cend()));
+}
+
+int TranscriptEditorViewModel::copyAll()
+{
+    QVector<int> all(m_utts.size());
+    for (int i = 0; i < all.size(); ++i) all[i] = i;
+    return copyUtterances(all);
+}
+
+void TranscriptEditorViewModel::selectAll()
+{
+    // A látható sorok (a „Bizonytalan" szűrőben csak a mutatottak).
+    QSet<int> sel;
+    for (const TranscriptListModel::Row& r : m_rows->rows())
+        if (!r.gap) sel.insert(r.utterance);
+    setSelection(sel, m_anchor >= 0 && sel.contains(m_anchor) ? m_anchor : -1);
+}
+
+// ---- „Következő bizonytalan" ------------------------------------------------
+
+int TranscriptEditorViewModel::stepUncertain(int fromRow, int direction)
+{
+    const auto& rows = m_rows->rows();
+    const int n = int(rows.size());
+    if (n == 0) return -1;
+    const int step = direction < 0 ? -1 : 1;
+    int start = fromRow;
+    if (start < 0 || start >= n) start = step > 0 ? -1 : n;
+    for (int k = 1; k <= n; ++k) {
+        const int r = ((start + step * k) % n + n) % n;
+        if (rows[r].gap || !m_utts[rows[r].utterance].uncertain) continue;
+        setSelection({rows[r].utterance}, rows[r].utterance);
+        emit revealRequested(r);
+        return r;
+    }
+    return -1;
+}
+
+// ---- „Meghallgatás" ---------------------------------------------------------
+
+QVariantMap TranscriptEditorViewModel::speakerSample(const QString& speakerKey) const
+{
+    // A legjobb minta: nem bizonytalan, 4–15 mp közötti sorok közül a leghosszabb; ha nincs
+    // ilyen, a leghosszabb sor (hosszú monológból az első ~12 mp).
+    constexpr qint64 kMin = 4000, kMax = 15000, kCut = 12000;
+    int best = -1;
+    qint64 bestScore = -1;
+    for (int i = 0; i < m_utts.size(); ++i) {
+        const EditorUtterance& u = m_utts[i];
+        if (u.speakerKey != speakerKey) continue;
+        const qint64 len = u.endMs - u.startMs;
+        if (len <= 0) continue;
+        qint64 score = std::min(len, kMax);
+        if (len >= kMin && len <= kMax) score += 100000;    // ideális hossz
+        if (!u.uncertain) score += 50000;
+        if (score > bestScore) {
+            bestScore = score;
+            best = i;
+        }
+    }
+    if (best < 0) return {{QStringLiteral("ok"), false}};
+    const EditorUtterance& u = m_utts[best];
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("startMs"), int(u.startMs)},
+            {QStringLiteral("endMs"), int(std::min(u.endMs, u.startMs + kCut))}};
 }
 
 // ---- beszélő / hanglenyomat -------------------------------------------------

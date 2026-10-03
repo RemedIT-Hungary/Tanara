@@ -106,9 +106,22 @@ public:
     Q_INVOKABLE void restore(int row);
     // Hiányzó fájl megkeresése: a kiválasztott fájl a meeting mappájába másolódik. Üres
     // visszatérés = siker; különben az emberi hibaüzenet.
-    Q_INVOKABLE QString relocate(int row, const QString& filePath);
+    QString relocate(int row, const QString& filePath);
     // MINDEN eldobott sáv végleges törlése (a megerősítés a hívó dolga). Vissza: hány törlődött.
-    Q_INVOKABLE int deleteDropped();
+    int deleteDropped();
+    // A QML ezeket hívja. A megerősítő / fájlválasztó ablak beágyazott eseményhurkot futtat,
+    // közben a kijelölés másik megbeszélésre válthat (pl. véget ér egy felvétel): ezért a
+    // hívó az ablak ELŐTT megjegyzi a megbeszélést (és a sáv azonosítóját, nem a sorát), és
+    // itt adja vissza. Ha a modell közben másik megbeszélésre váltott, NEM történik semmi
+    // (-1, ill. hibaüzenet).
+    // Egy sáv rajzolási skálája: a saját felső szintje, de legalább a közös skála 30%-a —
+    // a halk sáv (pl. a ritkán megszólaló saját mikrofon) is olvasható, a csendes mégsem
+    // nagyítódik zajjá.
+    Q_INVOKABLE qreal rowReference(int row) const;
+    Q_INVOKABLE QString trackIdAt(int row) const;
+    Q_INVOKABLE QString relocateTrack(const QString& meetingId, const QString& trackId,
+                                      const QString& filePath);
+    Q_INVOKABLE int deleteDroppedIn(const QString& meetingId);
     // A lekeverés (újra)készítése az aktív sávokból.
     Q_INVOKABLE void refreshMixdown();
 
@@ -136,6 +149,7 @@ private:
     void loadDemo();
     void applyPeaks(const QString& trackId, const tanara::TrackPeaks& peaks, bool failed);
     static QList<qreal> toList(const QVector<float>& v);
+    static QList<qreal> levelsOf(const tanara::TrackPeaks& peaks);
     static QString iconFor(tanara::TrackRole role);
 
     QPointer<QObject> m_injected;
