@@ -1,0 +1,201 @@
+# Tanara QML module (`import Tanara`)
+
+The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), the
+application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
+`design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
+
+The process is still a `QApplication`: Settings, People, the floating recorder and the
+cloud dialogs remain Qt Widgets and open next to the QML window.
+
+## Layout
+
+| Path | Content | Picked up by |
+|---|---|---|
+| `gui/qml/*.qml` | QML types, **flat**; file name = type name | glob |
+| `gui/qml/src/*.h`, `*.cpp` | C++ types of the module (view-models, `App`, image provider) | glob |
+| `gui/qml/icons/*.svg` | Lucide icons (ISC) → `:/qt/qml/Tanara/icons/` | glob |
+| `gui/qml/fonts/*.ttf` | IBM Plex Sans / Mono (OFL) → `:/qt/qml/Tanara/fonts/` | glob |
+| `tests/ui/*.cpp` | Qt Test, one executable per file, links `tanara_qml` | glob |
+| `gui/src/` | Widgets UI + `main.cpp` (may include module headers) | glob |
+
+**Adding a file never needs a CMake edit.** The globs use `CONFIGURE_DEPENDS`, so the
+next `cmake --build build` re-configures by itself. Targets: `tanara_qml` (static
+library with the C++ and the compiled QML), `tanara_qmlplugin` (linked into `tanara`).
+
+A QML file whose first lines contain `pragma Singleton` is registered as a singleton
+automatically (re-run cmake if you add the pragma to an existing file).
+
+## Run
+
+```bash
+cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
+
+build/gui/tanara                      # new QML window (uses the real AppController / user data)
+build/gui/tanara --classic            # the old Widgets MainWindow, unchanged
+build/gui/tanara --record …           # floating recorder, unchanged
+build/gui/tanara --gallery            # control gallery, interactive — no AppController
+build/gui/tanara --demo               # Main.qml with App.demo = true — no AppController
+build/gui/tanara --theme dark         # light | dark | system (default); env: TANARA_THEME
+```
+
+`--gallery`, `--demo` and `--qml-shot` never construct an `AppController` and never open a
+log file, so they do not touch `~/.tanara` or `~/Tanara`.
+
+## Screenshots without a window
+
+```bash
+build/gui/tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x2900
+build/gui/tanara --qml-shot out.png --qml-page Main --theme light --size 1280x820 \
+    --qml-prop 'shellState="empty"'
+build/gui/tanara --qml-shot out.png --qml-page SummaryTab --size 1004x640 --scale 2
+build/gui/tanara --qml-shot out.png --qml-page Gallery --qml-prop 'overlay="dialog"'
+
+gui/qml/shoot.sh                      # gallery + all Main states, both themes → build/shots/
+gui/qml/shoot.sh TranscriptTab:1004x640 'Main:1280x820:shellState="noSelection"'
+```
+
+| Switch | Meaning |
+|---|---|
+| `--qml-shot <png>` | render and exit (forces `QT_QPA_PLATFORM=offscreen` + the software renderer) |
+| `--qml-page <Type>` | any QML type of the module; default `Main`. Non-window roots are wrapped in an `ApplicationWindow` with `Theme.bg` |
+| `--size WxH` | logical size, default `1280x820` |
+| `--scale <f>` | device pixel ratio (1.5, 2 …) — output is `W·f × H·f` pixels |
+| `--theme light\|dark` | theme |
+| `--qml-prop name=value` | initial property, repeatable; value is JSON (`true`, `3`, `"text"`) or plain text |
+| `--delay <ms>` | wait before grabbing (default 300) — raise it for long transitions |
+
+The log line reports the number of QML warnings; treat anything above 0 as a bug.
+`shoot.sh` takes `Type[:WxH[:name=value,…]]` specs and always renders both themes.
+
+The software renderer is used on purpose: the module uses **no shader effects**, so the
+PNG matches the live window. Keep it that way — no `MultiEffect`, `layer.effect`,
+`ShaderEffect` or `OpacityMask`. Shadows come from `TShadow`, icon tinting from `TIcon`,
+dashed outlines from `TDashedRect`, stripes from `Shape` / `Canvas`.
+
+Compare against the design: `design/handoff/renders/main-{light,dark}--m01…m10-*.png`,
+`editor--3a-*.png`, `visual-language--nyomat-*.png` (regenerate with
+`node design/handoff/renders/render.mjs`; needs `google-chrome` and network).
+
+## Conventions
+
+- **Names.** Design-system controls are prefixed `T` (`TButton`) so they never collide
+  with Qt Quick Controls. Screens and view parts have plain names (`SummaryTab`). C++
+  view-models end in `ViewModel` / `Model`. One type per file.
+- **Imports.** Files of the module see each other, `Theme` and `App` without importing
+  `Tanara`. Controls are built on `QtQuick.Templates as T`; do not import
+  `QtQuick.Controls` for controls (only `Main.qml` does, for `ApplicationWindow`).
+- **Text.** Use `TLabel` (or a control), not raw `Text`, so the family and colour are
+  right. User-visible strings are `qsTr("…")` with **Hungarian source text**; English goes
+  to `i18n/tanara_en.ts` (`cmake --build build --target update_translations`, then fill in
+  the new `<translation>` entries). `Gallery.qml` sample text is intentionally not translated.
+- **Line height.** `TLabel.cssLineHeight: 1.55` gives CSS-like line height (a multiple of
+  the pixel size). Qt's own `lineHeight` multiplies the font's natural spacing and comes
+  out too loose.
+- **Theme.** Every colour, size and radius comes from `Theme` (`Theme.accent`,
+  `Theme.space4`, `Theme.radiusControl`, `Theme.speakerInk(i)` …). No hex literals in
+  screens. Never write `Theme.dark`; set `App.themeMode` (`"system" | "light" | "dark"`).
+  Two tokens are renamed versus the spec: `onAccent` → `Theme.textOnAccent`,
+  `onSpeaker` → `Theme.textOnSpeaker` (a QML property called `on…` is parsed as a signal
+  handler and silently evaluates to black).
+- **Icons.** `TIcon { name: "search"; size: 15; color: Theme.textMuted }`. Names are the
+  Lucide file names in `gui/qml/icons/`. To add one: `gui/qml/fetch-assets.sh <name>` and
+  commit the SVG. `TIcon` renders at `size × devicePixelRatio`, so it stays crisp at 125 % /
+  150 %. An unknown name logs a warning and renders nothing.
+- **Popups** use `popupType: Popup.Item` (already set in `TMenu`, `TPopover`, `TDialog`,
+  `TToolTip`) so they appear in screenshots and inside the window overlay.
+- **States in the gallery.** Controls expose `stateHovered` / `stateFocused` (default bound
+  to the real `hovered` / `visualFocus`) so `Gallery.qml` can show them statically; set
+  `down: true` for pressed. Add every new reusable control to `Gallery.qml`.
+- **Keyboard.** All controls take focus by Tab, show a 3 px ring on keyboard focus and
+  activate with Space / Return. Give every `TIconButton` and `TStatusIcon` a `toolTipText`
+  (it is also the accessible name).
+
+## Controls
+
+| Type | Main properties |
+|---|---|
+| `TButton` | `text`, `variant`: `primary` \| `secondary` (default) \| `ghost` \| `danger` (solid) \| `dangerSoft` \| `dangerGhost` \| `record`; `size`: `normal` (34) \| `small` (28); `iconName`, `trailingIconName`, `muted`, `horizontalAlignment`, `radius`, `toolTipText` |
+| `TIconButton` | `iconName`, `iconSize`, `variant`: `outline` \| `flat` \| `solid`; `size`; `checkable`/`checked`; `radius`, `toolTipText` |
+| `TTextField` | `text`, `placeholderText`, `hasError`, `mono` |
+| `TSearchField` | `text`, `placeholderText`, `hint` (e.g. `"Ctrl+F"`); Esc clears |
+| `TTextArea` | `text`, `placeholderText`, `hasError` |
+| `TSwitch`, `TCheckBox` | `text`, `checked` |
+| `TPill` | `text`, `tone`: `warn` \| `success` \| `danger` \| `accent` \| `neutral` |
+| `TChip` | `text`, `speakerIndex` (person chip), `removable` + `removed()`, `dashed` ("add"), `checkable`/`checked` (filter), `tone`, `iconName` |
+| `TAvatar` | `name` (→ monogram) or `monogram`, `speakerIndex`, `variant`: `soft` \| `solid`, `size` |
+| `TStatusIcon` | `kind`: `transcript` \| `summary` \| `identified`; `state`: `done` \| `running` \| `error` \| `stale` \| `missing`; `toolTipText` |
+| `TTabBar` + `TTabButton` | `currentIndex`; per tab `text`, `pillText`, `pillTone` |
+| `TMenu` + `TMenuItem` + `TMenuSeparator` | item: `text`, `iconName`, `shortcutText`, `danger`, `checked`, `onTriggered` |
+| `TPopover` | anchored panel; set `width`, `x`/`y`; content as children |
+| `TDialog` | modal with scrim (M10 pattern): `title`, children (column, 14 px gap), `actions: [TButton…]`; `accept()` / `reject()` |
+| `TToolTip` | `text`, `visible` (controls create their own from `toolTipText`) |
+| `TProgressBar` | `value`, `thickness` (4 \| 6), `indeterminate`, `trackColor` |
+| `TBanner` | `tone`: `warn` \| `accent` \| `danger`; `title`, `text`, `iconName`; children = action buttons |
+| `TCard` | `tone`: `default` \| `raised` \| `accent` \| `danger`; `padding`, `radius` |
+| `TSurface` | raised panel with border + shadow (`elevated`), the popup background |
+| `TLabel`, `TSectionLabel` | `text`, `mono`, `muted`, `cssLineHeight` |
+| `TIcon`, `TSpinner` | `name`, `size`, `color`, `strokeWidth` |
+| `TScrollBar` | `T.ScrollBar.vertical: TScrollBar {}` |
+| `TSplitHandle` | `SplitView { handle: TSplitHandle {} }` |
+| `TDivider`, `TDashedRect`, `TShadow`, `TFocusRing` | building blocks |
+| `TPlaceholder` | dashed box for not-yet-built regions |
+
+## Shell (`Main.qml`)
+
+`ApplicationWindow` 1280×820 (minimum 960×600): menu row (Fájl / Nézet, native window
+decorations kept) · 276 px sidebar · content · 52 px player. Which content shows is driven
+by two properties, to be bound to view-models by the slices:
+
+- `shellState`: `"empty"` → `EmptyLibraryView` · `"noSelection"` → `NoSelectionView` ·
+  `"preTranscript"` → `MeetingHeader` + `PreTranscriptView` + `PlayerBar` ·
+  `"meeting"` → `MeetingHeader` + tabs (`TranscriptTab`, `SummaryTab`, `TracksTab`) + `PlayerBar`
+- `taskRunning`: shows `TaskStrip` under the header; `currentTab`: 0 / 1 / 2.
+
+`LibrarySidebar`, `MeetingHeader`, `TaskStrip`, `TranscriptTab`, `SummaryTab`, `TracksTab`,
+`PreTranscriptView`, `EmptyLibraryView`, `NoSelectionView`, `PlayerBar` are placeholders:
+replace the **whole content** of the file, keep the name. `Main.qml` supplies the region
+backgrounds and dividers (sidebar surface + right border, player surface + top border);
+the header block has the 16/24/0 padding and 12 px gap of the spec.
+
+## C++ view-models
+
+1. Add `gui/qml/src/FooViewModel.h/.cpp` in namespace `tanara_qml`, a `QObject` with
+   `QML_ELEMENT` (or `QML_SINGLETON`) and `#include <QtQml/qqmlregistration.h>`. It is
+   then usable in QML as `FooViewModel { id: vm }` — no registration call, no CMake edit.
+2. Reach the core through the `App` singleton:
+
+   ```cpp
+   #include "AppContext.h"
+   #include "tanara/AppController.h"
+
+   tanara::AppController* c = tanara_qml::AppContext::instance()->controller();
+   if (!c) { /* --demo, --gallery, --qml-shot, tests: no controller */ }
+   ```
+
+   `controller()` is **null** in demo / gallery / screenshot mode and in tests. A view-model
+   must work without it; when `AppContext::instance()->demo()` is true it should serve
+   built-in **fictional** sample data, so its screen can be rendered with `--qml-shot`
+   and `--demo` without touching user data. Prefer taking the controller through a
+   settable property / constructor argument so tests can inject one.
+3. From QML: `App.controller` (as `QObject`), `App.demo`, `App.dark`, `App.themeMode`,
+   `App.bridge`.
+4. Test it in `tests/ui/test_foo_view_model.cpp` (`QTEST_MAIN`, see
+   `tests/ui/test_app_context.cpp`). Tests run with `QT_QPA_PLATFORM=offscreen`. Never
+   point a test at `~/.tanara`; use `QTemporaryDir`.
+
+## Widgets dialogs from QML
+
+`App.bridge` is a `QObject*` slot for the object that opens the Widgets dialogs
+(Settings, People, recorder, cloud). The class belongs in `gui/src/` (it needs the Widgets
+classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
+`tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
+`Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
+`QDialog` can be shown next to the QML window.
+
+## Known gaps
+
+- Custom title bar is not implemented (native decorations are kept, as the spec allows);
+  the centred "Tanara" caption is therefore omitted.
+- `TDialog` / `TMenu` are in-window popups (`Popup.Item`); they cannot extend beyond the
+  window.
+- Windows packaging (`windeployqt --qmldir gui/qml`) has not been updated or tested.

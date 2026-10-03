@@ -35,6 +35,12 @@ option(TANARA_BUILD_VOICEID "Build with ONNX-based voice fingerprinting" ON)
 option(TANARA_BUILD_CLOUD "Build the Tanara Cloud client (login, cloud providers)" ON)
 option(TANARA_CLOUD_TEASER "Build the Tanara Cloud 'coming soon' waitlist panel" ON)
 
+# Az új (Qt Quick / QML) felülethez — gui/qml, URI „Tanara”. A Svg a Lucide ikonok
+# futásidejű színezéséhez/rasztereléséhez kell (kép-provider).
+if(TANARA_BUILD_GUI)
+    find_package(Qt6 REQUIRED COMPONENTS Qml Quick QuickControls2 Svg)
+endif()
+
 if(TANARA_BUILD_VOICEID)
     # kaldi-native-fbank (vendorelt, Apache-2.0) — kaldi-pontos fbank a beszélő-embeddinghez.
     # Az FFT-t a kissfft-float adja (a knf rfft.cc a kiss_fftr-t float-tal hívja).
@@ -94,14 +100,17 @@ add_subdirectory(tests)
 #  - a .qm build-időben készül (lrelease) és minden futtatható targetbe beágyazódik
 #    (:/i18n/tanara_en.qm) — betöltés: tanara::installAppTranslator().
 set(TANARA_I18N_TARGETS tanara-cli)
+set(TANARA_I18N_SOURCE_TARGETS tanara_core)
 if(TANARA_BUILD_GUI)
     list(APPEND TANARA_I18N_TARGETS tanara)
+    # A QML-modul (gui/qml) qsTr() szövegei is a közös .ts-be kerülnek; a .qm a tanara exe-be.
+    list(APPEND TANARA_I18N_SOURCE_TARGETS tanara_qml)
 endif()
 if(TANARA_BUILD_WATCHER)
     list(APPEND TANARA_I18N_TARGETS tanara-watcher)
 endif()
 qt_add_translations(TARGETS ${TANARA_I18N_TARGETS}
-    SOURCE_TARGETS tanara_core ${TANARA_I18N_TARGETS}
+    SOURCE_TARGETS ${TANARA_I18N_SOURCE_TARGETS} ${TANARA_I18N_TARGETS}
     TS_FILES ${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts
     RESOURCE_PREFIX "/i18n"
     LUPDATE_OPTIONS -no-obsolete -locations none)

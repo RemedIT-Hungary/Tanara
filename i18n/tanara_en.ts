@@ -446,6 +446,45 @@
     </message>
 </context>
 <context>
+    <name>Main</name>
+    <message>
+        <source>Fájl</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>Kilépés</source>
+        <translation>Quit</translation>
+    </message>
+    <message>
+        <source>Nézet</source>
+        <translation>View</translation>
+    </message>
+    <message>
+        <source>Téma: a rendszer szerint</source>
+        <translation>Theme: follow system</translation>
+    </message>
+    <message>
+        <source>Világos téma</source>
+        <translation>Light theme</translation>
+    </message>
+    <message>
+        <source>Sötét téma</source>
+        <translation>Dark theme</translation>
+    </message>
+    <message>
+        <source>Átirat</source>
+        <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Sávok</source>
+        <translation>Tracks</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <source>Tanara</source>
