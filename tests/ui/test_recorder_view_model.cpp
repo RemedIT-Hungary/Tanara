@@ -20,7 +20,11 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <QQmlError>
+#include <QQmlExpression>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -182,6 +186,49 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(host.window(), "closeRequested"));
         QCOMPARE(closed.count(), 1);
         QVERIFY(!host.isVisible());
+    }
+
+    // A főalkalmazásban a felvevő SAJÁT QML-motort kap a főablak motorja mellett. Az `App`
+    // singleton folyamat-szintű, ezért a téma váltása mindkét motor Theme-jében megjelenik,
+    // és a második motor sem ad figyelmeztetést.
+    void hostWithOwnEngineFollowsTheme()
+    {
+        AppContext::instance()->setThemeMode(QStringLiteral("light"));
+        QStringList warnings;
+        auto collect = [&warnings](const QList<QQmlError>& l) {
+            for (const QQmlError& e : l) warnings << e.toString();
+        };
+        QQmlApplicationEngine mainEngine;            // a főablak motorja
+        connect(&mainEngine, &QQmlEngine::warnings, &mainEngine, collect);
+        QVERIFY(loadPage(mainEngine, QStringLiteral("RecorderPreview"), {}, QSize(420, 640)));
+        QQmlComponent comp(&mainEngine);
+        comp.loadFromModule("Tanara", "TDivider");
+        std::unique_ptr<QObject> mainScope(comp.create());
+        QVERIFY2(mainScope, qPrintable(comp.errorString()));
+
+        RecorderWindowHost host(nullptr);            // engine = nullptr → saját motor
+        QVERIFY(host.show());
+        QQmlEngine* recEngine = qmlEngine(host.window());
+        QVERIFY(recEngine && recEngine != &mainEngine);
+        connect(recEngine, &QQmlEngine::warnings, recEngine, collect);
+
+        auto bg = [](QObject* scope) {
+            QQmlExpression e(qmlContext(scope), scope, QStringLiteral("Theme.bg"));
+            return e.evaluate().value<QColor>();
+        };
+        const QColor light = bg(host.window());
+        QVERIFY(light.isValid());
+        QCOMPARE(bg(mainScope.get()), light);
+
+        AppContext::instance()->setThemeMode(QStringLiteral("dark"));
+        QTest::qWait(50);
+        const QColor dark = bg(host.window());
+        QVERIFY(dark != light);
+        QCOMPARE(bg(mainScope.get()), dark);
+
+        AppContext::instance()->setThemeMode(QStringLiteral("light"));
+        QCOMPARE(bg(host.window()), light);
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
     void liveRecording()

@@ -405,6 +405,17 @@ private slots:
         QCOMPARE(m_shell->currentMeetingId(), b.id);
         QCOMPARE(m_toasts.size(), 1);
 
+        // A felvevő „Megnyitás az elemzőben” gombja / `tanara --meeting <id>` (a híd jele):
+        // kijelölés + a főablak előre; ismeretlen azonosítónál a kijelölés marad.
+        m_shell->setCurrentMeetingId(QString());
+        QSignalSpy activated(m_shell.get(), &ShellActions::windowActivationRequested);
+        emit m_bridge->showMeetingRequested(b.id);
+        QCOMPARE(m_shell->currentMeetingId(), b.id);
+        QCOMPARE(activated.count(), 1);
+        emit m_bridge->showMeetingRequested(QStringLiteral("nincs-ilyen"));
+        QCOMPARE(m_shell->currentMeetingId(), b.id);
+        QCOMPARE(activated.count(), 2);
+
         // A hibák nem modális ablakban, hanem értesítésként jelennek meg.
         QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
         emit m_app->errorOccurred(QStringLiteral("Nincs rögzíthető hangeszköz."));

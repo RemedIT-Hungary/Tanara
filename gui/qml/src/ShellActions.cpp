@@ -133,6 +133,11 @@ void ShellActions::attachBridge()
     });
     connect(b, &ShellBridge::retryRequested, this, &ShellActions::onRetry);
     connect(b, &ShellBridge::readinessChanged, this, &ShellActions::bumpReadiness);
+    connect(b, &ShellBridge::showMeetingRequested, this, [this](const QString& meetingId) {
+        if (meetingExists(meetingId))
+            showMeeting(meetingId);
+        activateWindow();
+    });
 }
 
 bool ShellActions::recording() const

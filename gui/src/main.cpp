@@ -1,5 +1,7 @@
 // Tanara GUI — belépési pont.
 //   tanara                 az elemző/könyvtár az új Qt Quick / QML felülettel (gui/qml, Main.qml)
+//   tanara --meeting ID    ugyanez, a megadott megbeszélést kijelölve; ha már fut elemző, a
+//                          kérést annak adja át és kilép (AnalyzerSingleton.h)
 //   tanara --classic       ugyanez a régi Qt Widgets főablakkal (MainWindow), változatlanul
 //   tanara --record …      csak a lebegő felvevő (QML), azonnali rögzítéssel (a figyelő indítja)
 //                          opciók: --title T | --app A  --context C  --device IDX (ismételhető)
@@ -7,16 +9,19 @@
 //   tanara --gallery | --demo | --qml-shot ki.png [--qml-page T] [--theme …] [--size SZxM]
 //                          QML-fejlesztői módok AppController NÉLKÜL (lásd gui/qml/README.md)
 //   tanara --shell-script f.qml   fejlesztői QA: a főablak végigvezetése szkriptből (ShellQaHook.h)
-// A folyamat mindig QApplication: a Beállítások / Személyek / felvevő / cloud ablakok
-// egyelőre Widgetek maradnak, és a QML-ablak mellett nyílnak (App.bridge).
+// A folyamat mindig QApplication: a Beállítások / Személyek / cloud ablakok egyelőre Widgetek
+// maradnak, és a QML-ablak mellett nyílnak (App.bridge). A felvevő az új főablakban is a
+// QML-felvevő (ShellRecorderHost); a --classic főablak a régi Widgets-felvevőt használja.
 #include "MainWindow.h"
 #include "RecordBar.h"
 #include "FloatingRecorder.h"
+#include "AnalyzerSingleton.h"
 #include "AppIcon.h"
 #include "RecorderSingleton.h"
 #include "RecorderTrayIcon.h"
 #include "RecorderWindowHost.h"
 #include "SettingsDialog.h"
+#include "ShellRecorderHost.h"
 #include "cloud/CloudSnapshots.h"
 
 #include "tanara/AppController.h"
@@ -64,18 +69,6 @@ using namespace tanara_gui;
 // akkor lép ki, amikor a felhasználó bezárja az ablakot (felvétel közben a bezárás nem állít
 // le: a „háttérben fusson” / „leállítás és bezárás” lapot nyitja), vagy ha a felvétel rejtett
 // ablak mellett ért véget.
-static tanara_qml::RecorderRequest toRequest(const RecorderArgs& ra)
-{
-    tanara_qml::RecorderRequest r;
-    r.title = ra.title;
-    r.appName = ra.app;
-    r.context = ra.context;
-    r.deviceIndexes = ra.deviceIdx;
-    r.start = !ra.noStart;
-    r.stop = ra.stop;
-    return r;
-}
-
 // Fut-e a figyelő (tanara-watcher)? A watcher.lock-ot tartja; ha mi meg tudjuk fogni, nem fut.
 static bool watcherRunning()
 {
@@ -183,14 +176,14 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
 
     // Továbbított kérések (tálca / figyelő újabb hívásai) → ugyanez az ablak.
     QObject::connect(singleton, &RecorderSingleton::requestReceived, host,
-                     [host](const QStringList& fwd) { host->request(toRequest(parseRecorderArgs(fwd))); });
+                     [host](const QStringList& fwd) { host->request(toRecorderRequest(parseRecorderArgs(fwd))); });
 
     if (!host->show()) {
         QMessageBox::critical(nullptr, QCoreApplication::translate("main", "Tanara — Felvétel"),
                               QCoreApplication::translate("main", "A felvevő felülete nem tölthető be."));
         return 1;
     }
-    host->request(toRequest(ra));
+    host->request(toRecorderRequest(ra));
     return app.exec();
 }
 
@@ -377,6 +370,20 @@ int main(int argc, char** argv) {
         return app.exec();
     }
 
+    // Fejlesztői QA (--shell-script): a lokális socketeken (felvevő / elemző) csak akkor
+    // veszünk részt, ha TANARA_HOME homokozó van beállítva — ott a nevek a mappa hash-ével
+    // elkülönülnek, így a futó valódi példányt nem zavarjuk.
+    const bool qaScript = cleanArgs.contains(QStringLiteral("--shell-script"));
+    const bool useSockets = !qaScript || !tanara::instanceScopeSuffix().isEmpty();
+
+    // `tanara --meeting <id>` (az önálló felvevő „Megnyitás az elemzőben” gombja): ha már fut
+    // az új főablak, a kérést annak adjuk át és kilépünk — nem nyílik második elemző
+    // ugyanazon az adaton.
+    const QString startMeetingId = analyzer_singleton::meetingArg(cleanArgs);
+    if (qmlMode && !qaScript && !startMeetingId.isEmpty()
+        && analyzer_singleton::forwardToExisting({QStringLiteral("--meeting"), startMeetingId}))
+        return 0;
+
     tanara::AppController controller;
 
     // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs főablak.
@@ -417,7 +424,7 @@ int main(int argc, char** argv) {
     tanara_qml::AppContext::instance()->setBridge(&bridge);
 
     // QA-szkript mód: friss homokozóban az index üres → a lemezről újraépítjük.
-    if (cleanArgs.contains(QStringLiteral("--shell-script")))
+    if (qaScript)
         controller.store()->rebuildIndexFromDisk();
 
     QQmlApplicationEngine engine;   // a controller és a híd UTÁN deklarálva → előbb szűnik meg
@@ -425,9 +432,17 @@ int main(int argc, char** argv) {
         return 1;
     auto* mainWindow = engine.findChild<QQuickWindow*>();
     bridge.setMainWindow(mainWindow);
-    // QA-szkript módban nem figyelünk a felvevő-socketen (ne zavarjuk a futó valódi példányt).
-    if (!cleanArgs.contains(QStringLiteral("--shell-script")))
+    if (useSockets) {
+        // A `tanara --record …` továbbított kérései → a főablak felvevője.
         bridge.startRecorderListening();
+        // A `tanara --meeting <id>` átadott kérései → kijelölés + a főablak előre.
+        analyzer_singleton::listen(&bridge, [&bridge](const QStringList& fwd) {
+            bridge.showMeeting(analyzer_singleton::meetingArg(fwd));
+        });
+    }
+    // Induláskor kért megbeszélés (a megjegyzett kijelölés helyett).
+    if (!startMeetingId.isEmpty())
+        bridge.showMeeting(startMeetingId);
 
     // Fejlesztői QA: a főablak végigvezetése egy QML-szkripttel (lásd ShellQaHook.h).
     if (const int i = cleanArgs.indexOf(QStringLiteral("--shell-script"));

@@ -4,8 +4,9 @@ The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), t
 application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
 `design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
 
-The process is still a `QApplication`: Settings, People, the floating recorder and the
-cloud dialogs remain Qt Widgets and open next to the QML window.
+The process is still a `QApplication`: Settings, People and the cloud dialogs remain Qt
+Widgets and open next to the QML window. The floating recorder is QML in both the main
+window and `tanara --record` (only `--classic` keeps the old Widgets recorder).
 
 ## Layout
 
@@ -31,6 +32,7 @@ automatically (re-run cmake if you add the pragma to an existing file).
 cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
 
 build/gui/tanara                      # new QML window (uses the real AppController / user data)
+build/gui/tanara --meeting <id>       # same, with that meeting selected; handed over to a running main window
 build/gui/tanara --classic            # the old Widgets MainWindow, unchanged
 build/gui/tanara --record …           # the QML floating recorder (see "Recorder"); add --classic for the old Widgets one
 build/gui/tanara --gallery            # control gallery, interactive — no AppController
@@ -162,14 +164,25 @@ rename | tracks`).
 
 Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (Settings,
 People, file picker, all Tanara Cloud dialogs and chrome); `ShellRecorderHost` is the only
-place that knows the recorder (swap it for the new recorder host); `MediaPlayerBackend` is the
-Qt Multimedia engine behind `PlayerController` (the QML module itself does not link Multimedia).
+place that knows the recorder (see "Recorder in the main window" below); `MediaPlayerBackend`
+is the Qt Multimedia engine behind `PlayerController` (the QML module itself does not link
+Multimedia).
+
+`tanara --meeting <id>` selects that meeting at startup. If a QML main window is already
+running, the second process hands the request over through a local socket and exits
+(`gui/src/AnalyzerSingleton.h`, name scoped by `TANARA_HOME` like the recorder's); the running
+window selects the meeting and comes to the front (`ShellBridge::showMeetingRequested` →
+`ShellActions.showMeeting` + `activateWindow`). `--classic` ignores the argument.
 
 QA without touching the desktop: `TANARA_HOME=<sandbox>/home QT_QPA_PLATFORM=offscreen
 build/gui/tanara --shell-script script.qml` loads `script.qml` next to the real window with
 `window` (`window.shell`, `.player`, `.library`, `.meetingModel`) and `hook` (`grab(path)`,
 `log(text)`, `quit(code)`); see `gui/src/ShellQaHook.h`. In this mode the app rebuilds the
-meeting index from disk and does not listen on the recorder socket.
+meeting index from disk. It listens on the recorder / analyzer sockets only when `TANARA_HOME`
+is set (the socket names are then scoped to that folder, so a real instance is never
+disturbed) — a second `tanara --record …` / `tanara --meeting <id>` with the same
+`TANARA_HOME` drives the window under test. The script reaches the recorder window through
+`App.bridge.recorderWindow()` (`import Tanara`; `.visible`, `.sheetOpen`, `.vm.state` …).
 
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
@@ -223,7 +236,29 @@ Spec: `design/handoff-recorder/README.md` (states R01–R11).
 | `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)`; without a controller it serves fictional data (`demoState`) |
 | `RecorderWindowHost` | C++ host: shows the window, executes `--record` requests, remembers position, snaps the pill, hide-to-tray, `recording.lock` |
 
-### Using the recorder from the main application
+### Recorder in the main window
+
+`gui/src/ShellRecorderHost` wraps one `RecorderWindowHost` for the QML main window (the host
+creates **its own QML engine**, as in the standalone process; the theme still follows because
+`App` is one process-wide object shared by both engines — `tests/ui/test_recorder_view_model.cpp`
+`hostWithOwnEngineFollowsTheme`). Who does what:
+
+| Event | Handled by |
+|---|---|
+| "Új felvétel", Ctrl+N, "Felvétel folyamatban" | `ShellActions.openRecorder` → `ShellRecorderHost::open` (a hidden recorder left in "done" is reset to idle) |
+| forwarded `tanara --record …` (title / app / context / devices / start / stop) | `RecorderSingleton` → `ShellRecorderHost` → `RecorderWindowHost::request` |
+| `recording.lock`, context note, rename while recording | the recorder (`setManageLock(true)`, `RecorderViewModel`) |
+| automatic mixdown after the recording | `AppController` — stays ON in the main application; only the standalone `--record` process turns it off |
+| new meeting appears and is selected, "Felvétel kész" toast | `ShellActions` on `AppController::recordingFinished` (the host's `recordingFinished` is not handled a second time) |
+| "Megnyitás az elemzőben" (R09) | `openMeetingRequested` → `QmlShellBridge::showMeeting` |
+| "Rögzítés beállításai" (R10) | `settingsRequested` → Settings on the `recording` page |
+| "Vége a megbeszélésnek?" | only the recorder's box (R06); the bridge never emits `stopPromptRequested`, so the shell dialog does not open as well |
+| closing the **recorder** while recording | the recorder's sheet (R07) |
+| closing the **main window** while recording | the shell dialog (background / stop and quit / cancel) |
+| recorder hidden ("Háttérbe") or closed while the main window is hidden | the main window comes back (`showWindowRequested`) |
+| level monitoring | runs while the recorder is visible or a recording runs; released when it is closed, or when a recording ends with the recorder hidden |
+
+### Using the recorder host directly
 
 ```cpp
 #include "RecorderWindowHost.h"

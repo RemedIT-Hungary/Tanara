@@ -5,8 +5,9 @@
 // Egy folyamatban EGY példány elég. Kétféleképp használható:
 //  - önállóan (`tanara --record …`): a main.cpp létrehozza, request()-tel átadja a
 //    parancssori kérést, és a closed() jelre kilép;
-//  - a főalkalmazásban: a főablak ugyanígy létrehozza (a saját QML-motorját átadva), a
-//    „Felvétel” gombra show()-t, a továbbított `--record` kérésre request()-et hív.
+//  - a főalkalmazásban: a gui/src ShellRecorderHost ugyanígy létrehozza (ott is saját
+//    motorral — a téma az `App` singletonon át közös), a „Felvétel” gombra show()-t, a
+//    továbbított `--record` kérésre request()-et hív.
 //
 // A gazda intézi, amit a QML nem tud: mindig-felül, pozíció megjegyzése képernyőnként,
 // a pirula él-illesztése, háttérbe küldés, a recording.lock, és hogy a felvétel-kérdés
