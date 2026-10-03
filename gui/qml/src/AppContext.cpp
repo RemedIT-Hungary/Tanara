@@ -1,3 +1,4 @@
+#include "tanara/Types.h"
 #include "AppContext.h"
 
 #include "tanara/AppController.h"
@@ -66,6 +67,8 @@ void AppContext::updateDark()
     m_dark = dark;
     emit darkChanged();
 }
+
+QString AppContext::version() const { return tanara::libraryVersion(); }
 
 void AppContext::setDemo(bool demo)
 {

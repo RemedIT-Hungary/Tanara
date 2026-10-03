@@ -35,6 +35,8 @@ class AppContext : public QObject {
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
     // Igaz: nincs AppController, a nézetmodellek kitalált mintaadattal dolgoznak.
     Q_PROPERTY(bool demo READ demo NOTIFY demoChanged)
+    // A program verziója (tanara::libraryVersion(), pl. "0.5.0a") — a Beállítások alján látszik.
+    Q_PROPERTY(QString version READ version CONSTANT)
     // A core egyetlen UI-felé néző objektuma (tanara::AppController) — QML-ből QObject-ként.
     Q_PROPERTY(QObject* controller READ controllerObject NOTIFY controllerChanged)
     // A Widgets-párbeszédablakokat (Beállítások, Személyek, felvevő, cloud) nyitó híd.
@@ -51,6 +53,7 @@ public:
     void setThemeMode(const QString& mode);
 
     bool demo() const { return m_demo; }
+    QString version() const;
     void setDemo(bool demo);
 
     tanara::AppController* controller() const;

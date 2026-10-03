@@ -139,6 +139,17 @@ ApplicationWindow {
                         }
                     }
                 }
+                // Verzió a navigáció alján (hibajelentésnél ebből látszik, melyik build fut).
+                TLabel {
+                    objectName: "versionLabel"
+                    x: 20
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 14
+                    text: "Tanara " + App.version
+                    mono: true
+                    muted: true
+                    font.pixelSize: Theme.fontMicro
+                }
             }
 
             // ---- tartalom ----

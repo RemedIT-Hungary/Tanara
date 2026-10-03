@@ -8,6 +8,10 @@ file(GLOB_RECURSE TANARA_CORE_HEADERS CONFIGURE_DEPENDS include/*.h)
 add_library(tanara_core STATIC ${TANARA_CORE_SOURCES} ${TANARA_CORE_HEADERS})
 
 target_include_directories(tanara_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# A verzió a gyökér CMakeLists-ből (TANARA_VERSION) — csak a Version.cpp kapja, így verzióváltáskor
+# egyetlen fájl fordul újra.
+set_source_files_properties(src/Version.cpp PROPERTIES
+    COMPILE_DEFINITIONS "TANARA_VERSION=\"${TANARA_VERSION}\"")
 target_compile_features(tanara_core PUBLIC cxx_std_20)
 
 # Csak headless/backend Qt-modulok. Widgets TILOS.
