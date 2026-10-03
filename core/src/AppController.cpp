@@ -494,6 +494,9 @@ struct AppController::Impl {
     };
     QHash<QString, TranscribeRun> transcribeRuns;
     QSet<QString> clearSpeakersOnTranscript;   // újra-átírás: a régi nevek az új átirattal törlődnek
+    // Azok a meetingek, amelyeknél a felhasználó KIKAPCSOLTA az átírás utáni automatikus
+    // hang-azonosítást (M03 kapcsoló). Folyamat-szintű (nem perzisztált) választás.
+    QSet<QString> skipIdentifyAfterTranscribe;
 
     QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId → futó ffmpeg
     QSet<QString> mixdownCancelled;
@@ -1809,7 +1812,10 @@ void AppController::transcribeMeeting(const QString& meetingId)
         stages.append({QStringLiteral("transcribe"), tr("Átírás"), StageState::Waiting, -1, QString()});
         stages.append({QStringLiteral("diarize"), tr("Beszélők szétválasztása"), StageState::Waiting, -1, QString()});
         if (d->voiceModelUsable())
-            stages.append({QStringLiteral("identify"), tr("Résztvevők azonosítása"), StageState::Waiting, -1, QString()});
+            stages.append({QStringLiteral("identify"), tr("Résztvevők azonosítása"),
+                           d->skipIdentifyAfterTranscribe.contains(meetingId) ? StageState::Skipped
+                                                                              : StageState::Waiting,
+                           -1, QString()});
         d->jobs->begin(meetingId, JobKind::Transcribe, tr("Átírás folyamatban"), stages);
     }
     d->transcribeRuns.insert(meetingId, Impl::TranscribeRun{});
@@ -2064,7 +2070,9 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         finishCloudRun(run);   // K-07: „Ez az átírás $0,41 volt.” (csak cloud-futásnál)
         // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen — háttérszálon,
         // az átírás-feladat utolsó szakaszaként (a UI közben használható, megszakítható).
-        if (!startIdentify(meetingId, /*asTranscribeStage*/ true))
+        // (Ha a felhasználó az M03 kapcsolóval kihagyta, az átirat névtelen beszélőkkel kész.)
+        if (d->skipIdentifyAfterTranscribe.contains(meetingId)
+            || !startIdentify(meetingId, /*asTranscribeStage*/ true))
             d->jobs->finish(meetingId, JobKind::Transcribe);
     });
     connect(job, &SttJob::failed, this, [this, meetingId, providerObj, run, job, sink](QString e) {
@@ -2890,6 +2898,22 @@ void AppController::cancelAllJobs(const QString& meetingId)
     for (JobKind k : {JobKind::Transcribe, JobKind::Summarize, JobKind::ExtractTopics,
                       JobKind::AnalyzeTopics, JobKind::Mixdown, JobKind::Identify})
         cancelJob(meetingId, k);
+}
+
+void AppController::setIdentifyAfterTranscription(const QString& meetingId, bool enabled)
+{
+    if (enabled) d->skipIdentifyAfterTranscribe.remove(meetingId);
+    else         d->skipIdentifyAfterTranscribe.insert(meetingId);
+}
+
+bool AppController::identifyAfterTranscription(const QString& meetingId) const
+{
+    return !d->skipIdentifyAfterTranscribe.contains(meetingId);
+}
+
+bool AppController::voiceIdentificationAvailable() const
+{
+    return d->voiceModelUsable();
 }
 
 bool AppController::identifyMeetingAsync(const QString& meetingId)
