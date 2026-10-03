@@ -13,19 +13,30 @@ Item {
     property string meetingId: ""
     property var shell: null
     property bool adding: false
+    // A mező elrejtése után a fókusz ne maradjon a (láthatatlan) szövegmezőben: különben a
+    // billentyűk (Szóköz, nyilak, gyorsbillentyűk) oda mennének.
+    onAddingChanged: if (!adding) Qt.callLater(root.releaseHiddenFocus)
+    function releaseHiddenFocus() {
+        const it = root.Window.activeFocusItem
+        if (it && !it.visible) root.forceActiveFocus()
+    }
 
     readonly property var topics: vm.topics
 
     function analyzeMissing() { if (root.shell) root.shell.startTopicAnalysis(root.meetingId) }
     function runTopic(topicId) { if (root.shell) root.shell.analyzeTopic(root.meetingId, topicId) }
     function removeTopic(row, title, hasResult) {
+        const meeting = root.meetingId
+        const topicId = root.topics.topicIdAt(row)
         // Kész elemzésű témánál megerősítést kérünk (az elemzés kikerül az összegzésből).
         if (hasResult && root.shell
                 && !root.shell.confirm(qsTr("Törlöd a témát?"),
                                        qsTr("„%1” elemzése kikerül az összegzésből. A többi téma eredménye megmarad.").arg(title),
                                        qsTr("Téma törlése"), true))
             return
-        root.topics.removeTopic(row)
+        // A megerősítés alatt a kijelölés (vagy a téma-lista) megváltozhatott: csak ugyanabban
+        // a megbeszélésben, azonosító szerint törlünk.
+        if (root.meetingId === meeting) root.topics.removeTopicById(topicId)
     }
     function beginAdd() {
         root.adding = true

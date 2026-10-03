@@ -50,6 +50,9 @@ public:
 
     // Az oszlop-magasságok (0..1) adott oszlopszámra — a rajz és a teszt közös számítása.
     static QList<qreal> barLevels(const QList<qreal>& peaks, int bars, qreal reference);
+    // A „telt magasság" szintje: a szintek 97. percentilise (egyetlen kiugró érték ne nyomja
+    // össze a képet). Üres listára 0.
+    static qreal referenceLevel(const QList<qreal>& levels);
 
 signals:
     void peaksChanged();

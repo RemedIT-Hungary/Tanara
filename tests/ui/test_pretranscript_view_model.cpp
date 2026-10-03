@@ -70,6 +70,24 @@ private slots:
         QVERIFY(noteSpy.count() >= 1);
         QVERIFY(vm.footerLine().contains("Negyedéves"));
 
+        // A gépelés közbeni piszkozat a SAJÁT megbeszélésébe mentődik akkor is, ha a kijelölés
+        // a késleltetett mentés előtt másik megbeszélésre vált (pl. véget ér egy felvétel).
+        const Meeting other = sb.recording("Közben kijelölt", 1);
+        const QString otherNote = sb.app->store()->load(other.id).contextNote;
+        vm.draftContextNote(QStringLiteral("Félbehagyott megjegyzés"));
+        QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Negyedéves egyeztetés"));
+        vm.setMeetingId(other.id);
+        QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Félbehagyott megjegyzés"));
+        QCOMPARE(sb.app->store()->load(other.id).contextNote, otherNote);
+        QCOMPARE(vm.contextNote(), otherNote);
+        vm.commitContextDraft();                           // nincs függő piszkozat → nem ír semmit
+        QCOMPARE(sb.app->store()->load(other.id).contextNote, otherNote);
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.contextNote(), QStringLiteral("Félbehagyott megjegyzés"));
+        vm.draftContextNote(QStringLiteral("Negyedéves egyeztetés"));
+        vm.commitContextDraft();
+        QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Negyedéves egyeztetés"));
+
         // Hang-modell nélkül az azonosítás kapcsoló nem elérhető (és nem állítható).
         QVERIFY(!vm.identifyAvailable());
         QVERIFY(!vm.identifyEnabled());

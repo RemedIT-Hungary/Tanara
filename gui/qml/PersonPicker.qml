@@ -22,10 +22,12 @@ TPopover {
 
     readonly property int rowHeight: 44
     // A kiemelt sor: 0…count-1 = személy; count = az alsó („Új személy" / névtelen) sor.
-    property int currentIndex: 0
+    // -1 = nincs kiemelés (üres keresővel így nyílik: egy véletlen Enter ne válasszon senkit).
+    property int currentIndex: -1
     readonly property bool bottomRowShown: people.canCreate || (search.text.trim() === "" && anonymousText !== "")
 
     function choose(index) {
+        if (index < 0) return
         if (index >= 0 && index < people.count) {
             const name = people.nameAt(index)
             close()
@@ -43,7 +45,7 @@ TPopover {
     onAboutToShow: {
         people.refresh()
         search.text = initialQuery
-        currentIndex = 0
+        currentIndex = search.text.trim() !== "" ? (people.count > 0 ? 0 : people.count) : -1
         search.forceActiveFocus()
     }
 
@@ -51,7 +53,7 @@ TPopover {
         id: people
         editor: control.editor
         query: search.text
-        onCountChanged: control.currentIndex = count > 0 ? 0 : count
+        onCountChanged: control.currentIndex = search.text.trim() === "" ? -1 : count > 0 ? 0 : count
     }
 
     contentItem: Column {

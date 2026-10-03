@@ -55,6 +55,37 @@ Item {
 
     focus: true
 
+    // Szövegmezőben (kereső, személyválasztó) a szerkesztő billentyűi nem élnek.
+    readonly property bool textInputFocused: {
+        const it = root.Window.activeFocusItem
+        return !!it && (it instanceof TextInput || it instanceof TextEdit)
+    }
+
+    function openSearch() { toolbar.openSearch() }
+    function releaseHiddenFocus() {
+        const it = root.Window.activeFocusItem
+        if (it && !it.visible) root.forceActiveFocus()
+    }
+    // „Következő bizonytalan": a kijelölt (különben az első látható) sortól lép tovább.
+    function nextUncertain(direction) {
+        let from = editorVm.currentRow
+        if (from < 0) from = list.indexAt(list.width / 2, list.contentY + 1) - (direction < 0 ? 0 : 1)
+        root.forceActiveFocus()
+        if (editorVm.stepUncertain(from, direction) < 0 && root.shell)
+            root.shell.toast(qsTr("Nincs bizonytalan sor."))
+    }
+    function copySelectionOrCurrent() {
+        if (editorVm.selectedCount > 0) editorVm.copySelection()
+        else if (editorVm.playingRow >= 0) editorVm.copyRow(editorVm.playingRow)
+    }
+    function openRowMenu(row, item, x, y) {
+        const p = item.mapToItem(root, x, y)
+        rowMenu.row = row
+        rowMenu.x = Math.round(Math.min(p.x, root.width - rowMenu.implicitWidth - 8))
+        rowMenu.y = Math.round(Math.min(p.y, root.height - rowMenu.implicitHeight - 8))
+        rowMenu.open()
+    }
+
     function rowClicked(index, modifiers) {
         root.forceActiveFocus()
         editorVm.selectRow(index, (modifiers & Qt.ControlModifier) !== 0, (modifiers & Qt.ShiftModifier) !== 0)
@@ -156,18 +187,28 @@ Item {
     }
     Shortcut {
         sequences: ["Ctrl+Z"]
-        enabled: root.visible && editorVm.canUndo
+        enabled: root.visible && editorVm.canUndo && !root.textInputFocused
         onActivated: editorVm.undo()
     }
     Shortcut {
         sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]
-        enabled: root.visible && editorVm.canRedo
+        enabled: root.visible && editorVm.canRedo && !root.textInputFocused
         onActivated: editorVm.redo()
     }
     Keys.onPressed: event => {
         if (!editorVm.hasTranscript) return
         const plain = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+        const ctrlOnly = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier | Qt.ShiftModifier)) === Qt.ControlModifier
+        if (ctrlOnly && event.key === Qt.Key_C) {
+            root.copySelectionOrCurrent()
+            event.accepted = true
+        } else if (ctrlOnly && event.key === Qt.Key_A) {
+            editorVm.selectAll()
+            event.accepted = true
+        } else if (plain && event.key === Qt.Key_B && editorVm.uncertainCount > 0) {
+            root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
             const row = editorVm.stepSelection(event.key === Qt.Key_Down ? 1 : -1)
             if (row >= 0) list.positionViewAtIndex(row, ListView.Contain)
             event.accepted = true
@@ -191,7 +232,7 @@ Item {
 
     // ---- nincs átirat ----
     Column {
-        visible: !editorVm.hasTranscript
+        visible: !editorVm.hasTranscript && !editorVm.legacyTranscript
         anchors.centerIn: parent
         spacing: 10
         TIcon { anchors.horizontalCenter: parent.horizontalCenter; name: "file-text"; size: 28; color: Theme.borderStrong }
@@ -200,17 +241,72 @@ Item {
             width: Math.min(implicitWidth, root.width - 48)
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
-            text: editorVm.legacyTranscript
-                  ? qsTr("Ez az átirat régebbi formátumú, ezért itt nem szerkeszthető. Újra-átírás után a megszólalások itt jelennek meg.")
-                  : qsTr("Ehhez a megbeszéléshez még nincs átirat.")
+            text: qsTr("Ehhez a megbeszéléshez még nincs átirat.")
             muted: true
         }
-        TButton {
-            visible: editorVm.legacyTranscript && !!root.shell && root.meetingId !== ""
-            anchors.horizontalCenter: parent.horizontalCenter
-            iconName: "rotate-ccw"
-            text: qsTr("Újra-átírás…")
-            onClicked: root.shell.retranscribe(root.meetingId)
+    }
+
+    // ---- régi formátumú átirat: olvasható (és másolható), de itt nem szerkeszthető ----
+    ColumnLayout {
+        visible: !editorVm.hasTranscript && editorVm.legacyTranscript
+        anchors.fill: parent
+        spacing: 0
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.space5
+            Layout.rightMargin: Theme.space5
+            Layout.topMargin: 12
+            Layout.bottomMargin: 10
+            spacing: Theme.space3
+            TIcon { name: "info"; size: 15; color: Theme.textMuted; Layout.alignment: Qt.AlignTop; Layout.topMargin: 2 }
+            TLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                muted: true
+                font.pixelSize: Theme.fontSmall
+                cssLineHeight: 1.45
+                text: qsTr("Ez az átirat régebbi formátumú: olvasható és másolható, de a beszélők itt nem javíthatók. Az újra-átírás új (a szolgáltatónál díjköteles) átírást indít, és lecseréli a mostani átiratot.")
+            }
+            TButton {
+                objectName: "legacyRetranscribe"
+                visible: !!root.shell && root.meetingId !== ""
+                Layout.alignment: Qt.AlignTop
+                size: "small"
+                variant: "ghost"
+                iconName: "rotate-ccw"
+                text: qsTr("Újra-átírás…")
+                onClicked: root.shell.retranscribe(root.meetingId)
+            }
+        }
+        TDivider { Layout.fillWidth: true }
+        Flickable {
+            id: legacyFlick
+            objectName: "legacyTranscript"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            contentWidth: width
+            contentHeight: legacyEdit.implicitHeight + 32
+            boundsBehavior: Flickable.StopAtBounds
+            T.ScrollBar.vertical: TScrollBar {}
+            TextEdit {
+                id: legacyEdit
+                x: Theme.space5
+                y: 14
+                width: legacyFlick.width - 2 * Theme.space5
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
+                text: editorVm.legacyText !== "" ? editorVm.legacyText
+                                                  : qsTr("Az átirat szövegfájlja (transcript.md) nem található.")
+                color: Theme.text
+                selectionColor: Theme.accentSoft
+                selectedTextColor: Theme.text
+                font.family: Theme.fontSans
+                font.pixelSize: Theme.fontBody
+            }
         }
     }
 
@@ -231,6 +327,9 @@ Item {
                 if (root.player) { root.followNext = false; root.player.seek(ms) }
             }
             onSearchStepRequested: direction => editorVm.searchStep(direction)
+            onNextUncertainRequested: root.nextUncertain(1)
+            // A kereső bezárása után a billentyűk újra a szerkesztőéi (ne a rejtett mezőéi).
+            onSearchOpenChanged: if (!searchOpen) Qt.callLater(root.releaseHiddenFocus)
         }
 
         // Rögzített fejléc: a sín oszlopfejei + a megszólalás-számláló + a hang-elemzés állapota.
@@ -518,9 +617,51 @@ Item {
         id: speakerPopover
         objectName: "speakerPopover"
         editor: editorVm
+        canListen: root.canPlay
+        onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
         onClosed: {
             root.speakerPopoverRow = -1
             root.forceActiveFocus()
+        }
+    }
+
+    // A sor helyi menüje (jobb gomb): lejátszás, másolás.
+    TMenu {
+        id: rowMenu
+        objectName: "rowMenu"
+        property int row: -1
+        readonly property bool inSelection: editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
+        onClosed: root.forceActiveFocus()
+        TMenuItem {
+            text: qsTr("Lejátszás innen")
+            iconName: "play"
+            enabled: root.canPlay
+            onTriggered: root.playFrom(editorVm.rowStartMs(rowMenu.row))
+        }
+        TMenuSeparator {}
+        TMenuItem {
+            text: qsTr("Sor másolása")
+            iconName: "copy"
+            onTriggered: editorVm.copyRow(rowMenu.row)
+        }
+        TMenuItem {
+            text: qsTr("Kijelölt sorok másolása (%1)").arg(editorVm.selectedCount)
+            iconName: "copy"
+            shortcutText: "Ctrl+C"
+            enabled: editorVm.selectedCount > 0
+            onTriggered: editorVm.copySelection()
+        }
+        TMenuItem {
+            text: qsTr("Teljes átirat másolása")
+            reserveIconSpace: true
+            onTriggered: editorVm.copyAll()
+        }
+        TMenuSeparator {}
+        TMenuItem {
+            text: qsTr("Minden sor kijelölése")
+            reserveIconSpace: true
+            shortcutText: "Ctrl+A"
+            onTriggered: editorVm.selectAll()
         }
     }
 

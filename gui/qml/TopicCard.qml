@@ -21,6 +21,13 @@ Rectangle {
     property bool canRun: true                // a szolgáltató kész (különben a futtatás tiltva)
     property string blockedReason: ""
     property bool editing: false
+    // A mező elrejtése után a fókusz ne maradjon a (láthatatlan) szövegmezőben: különben a
+    // billentyűk (Szóköz, nyilak, gyorsbillentyűk) oda mennének.
+    onEditingChanged: if (!editing) Qt.callLater(root.releaseHiddenFocus)
+    function releaseHiddenFocus() {
+        const it = root.Window.activeFocusItem
+        if (it && !it.visible) root.forceActiveFocus()
+    }
     property bool dragging: false
     property bool expanded: false             // a hosszú elemzés teljes szövege látszik
 

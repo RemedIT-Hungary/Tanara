@@ -27,7 +27,9 @@ Item {
     // A hullámformákat a fül első megjelenésekor (és meeting-váltáskor) kérjük.
     function ensureWaveforms() { if (visible) tracks.requestWaveforms() }
     onVisibleChanged: ensureWaveforms()
-    onMeetingIdChanged: ensureWaveforms()
+    // A következő körben: addigra a modell meetingId-kötése is lefutott (különben a kérés még
+    // az ELŐZŐ megbeszélésre menne, és az új sávjai hullámforma nélkül maradnának).
+    onMeetingIdChanged: Qt.callLater(ensureWaveforms)
     Component.onCompleted: ensureWaveforms()
 
     function togglePreview(path) {
@@ -35,24 +37,34 @@ Item {
         if (root.previewPath === path) root.player.stopPreview()
         else root.player.playFile(path)
     }
+    // A fájlválasztó és a megerősítés beágyazott eseményhurkot futtat: közben a kijelölés
+    // másik megbeszélésre válthat (pl. véget ér egy felvétel). Ezért a megbeszélést és a sáv
+    // azonosítóját ELŐTTE jegyezzük meg, és a modell csak akkor hajtja végre, ha még egyezik.
     function locate(row) {
         if (!root.shell) return
+        const meeting = tracks.meetingId
+        const trackId = tracks.trackIdAt(row)
         const file = root.shell.pickAudioFile()
         if (!file) return
-        const error = tracks.relocate(row, file)
+        const error = tracks.relocateTrack(meeting, trackId, file)
         root.shell.toast(error !== "" ? error : qsTr("A sáv hangfájlja a megbeszélés mappájába került."))
     }
     function deleteDropped() {
         const n = tracks.droppedCount
         if (n === 0 || !root.shell) return
+        const meeting = tracks.meetingId
         if (!root.shell.confirm(qsTr("Végleg törlöd az eldobott sávokat?"),
                                 qsTr("%n eldobott sáv hangfájlja véglegesen törlődik a lemezről. Ez nem vonható vissza. Az aktív sávok és a lekeverés megmaradnak.", "", n),
                                 qsTr("Végleges törlés"), true))
             return
+        if (tracks.meetingId !== meeting) {
+            root.shell.toast(qsTr("Közben másik megbeszélésre váltottál, ezért semmi nem törlődött."))
+            return
+        }
         // Ha épp egy törlendő sáv szól előnézetként, előbb elengedjük a fájlt.
         if (root.player && root.previewPath !== "") root.player.stopPreview()
-        const removed = tracks.deleteDropped()
-        root.shell.toast(qsTr("%n eldobott sáv törölve.", "", removed))
+        const removed = tracks.deleteDroppedIn(meeting)
+        if (removed >= 0) root.shell.toast(qsTr("%n eldobott sáv törölve.", "", removed))
     }
 
     Flickable {
@@ -102,7 +114,7 @@ Item {
                             durationText: model.durationText
                             peaks: model.peaks
                             peaksState: model.peaksState
-                            peakReference: tracks.peakReference
+                            peakReference: { model.peaks; tracks.peakReference; return tracks.rowReference(index) }
                             colorIndex: model.colorIndex
                             canPlay: !model.missing && (root.player !== null || tracks.demo)
                             playing: root.previewPath !== "" && root.previewPath === model.path

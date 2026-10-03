@@ -101,12 +101,6 @@ ApplicationWindow {
         demoTask: App.demo && window.taskRunning
     }
 
-    // A szerződés bemenetei a tartalom-komponenseknek (meetingId / player / shell).
-    ShellContentBinder { target: transcriptTab; meetingId: window.contentMeetingId; player: playerController; shell: shellActions }
-    ShellContentBinder { target: summaryTab; meetingId: window.contentMeetingId; player: playerController; shell: shellActions }
-    ShellContentBinder { target: tracksTab; meetingId: window.contentMeetingId; player: playerController; shell: shellActions }
-    ShellContentBinder { target: preTranscriptView; meetingId: window.contentMeetingId; player: playerController; shell: shellActions }
-
     Connections {
         target: App.bridge
         ignoreUnknownSignals: true
@@ -206,7 +200,14 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Quit]; onActivated: window.close() }
     Shortcut { sequence: "Alt+F"; onActivated: fileMenu.open() }
     Shortcut { sequence: "Alt+N"; onActivated: viewMenu.open() }
+    // Ctrl+F: a könyvtár keresője (a mező ezt a tippet mutatja); Ctrl+Shift+F: keresés a
+    // megnyitott átiratban.
     Shortcut { sequences: [StandardKey.Find]; onActivated: sidebar.focusSearch() }
+    Shortcut {
+        sequence: "Ctrl+Shift+F"
+        enabled: window.viewState === "meeting"
+        onActivated: { shellActions.showTab(0); transcriptTab.openSearch() }
+    }
     Shortcut { sequence: "Ctrl+N"; onActivated: shellActions.openRecorder() }
     Shortcut { sequence: "Ctrl+,"; onActivated: shellActions.openSettings("") }
     Shortcut { sequence: "Ctrl+1"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(0) }
@@ -488,12 +489,30 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         currentIndex: shellActions.currentTab
-                        TranscriptTab { id: transcriptTab }
-                        SummaryTab { id: summaryTab }
-                        TracksTab { id: tracksTab }
+                        TranscriptTab {
+                            id: transcriptTab
+                            meetingId: window.contentMeetingId
+                            player: playerController
+                            shell: shellActions
+                        }
+                        SummaryTab {
+                            id: summaryTab
+                            meetingId: window.contentMeetingId
+                            player: playerController
+                            shell: shellActions
+                        }
+                        TracksTab {
+                            id: tracksTab
+                            meetingId: window.contentMeetingId
+                            player: playerController
+                            shell: shellActions
+                        }
                     }
                     PreTranscriptView {
                         id: preTranscriptView
+                        meetingId: window.contentMeetingId
+                        player: playerController
+                        shell: shellActions
                         visible: window.viewState === "preTranscript" && !window.tracksBeforeTranscript
                         Layout.fillWidth: true
                         Layout.fillHeight: true

@@ -159,6 +159,74 @@ private slots:
         root->setParentItem(nullptr);
     }
 
+    // A héj és a szerkesztő gyorsbillentyűi: minden billentyű egy dolgot tesz, a fókusztól
+    // függően; szövegmezőbe gépelve egyik sem sül el.
+    void shellShortcutsDependOnFocus()
+    {
+        QStringList warnings;
+        QQmlApplicationEngine engine;
+        QObject::connect(&engine, &QQmlEngine::warnings, &engine, [&warnings](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) warnings << e.toString();
+        });
+        QVERIFY(loadPage(engine, QStringLiteral("Main"), {{"shellState", "meeting"}}, QSize(1280, 820)));
+        auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));
+        if (!window) window = engine.findChild<QQuickWindow*>();
+        QVERIFY(window);
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        QTest::qWait(150);
+        auto* search = window->findChild<QQuickItem*>(QStringLiteral("librarySearch"));
+        auto* list = window->findChild<QQuickItem*>(QStringLiteral("transcriptList"));
+        auto* transcriptSearch = window->findChild<QQuickItem*>(QStringLiteral("transcriptSearch"));
+        QVERIFY(search && list && transcriptSearch);
+        auto tab = [window] { return window->property("currentTab").toInt(); };
+
+        // Ctrl+1/2/3: fülváltás — bárhol áll a fókusz.
+        QTest::keyClick(window, Qt::Key_2, Qt::ControlModifier);
+        QCOMPARE(tab(), 1);
+        QTest::keyClick(window, Qt::Key_3, Qt::ControlModifier);
+        QCOMPARE(tab(), 2);
+        QTest::keyClick(window, Qt::Key_1, Qt::ControlModifier);
+        QCOMPARE(tab(), 0);
+
+        // Ctrl+F a könyvtár keresőjébe visz; ott a számok, a Szóköz és a betűk szöveg.
+        QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier);
+        QVERIFY(search->hasActiveFocus());
+        QTest::keyClick(window, Qt::Key_2);
+        QTest::keyClick(window, Qt::Key_Space);
+        QTest::keyClick(window, Qt::Key_B);
+        QCOMPARE(search->property("text").toString(), QStringLiteral("2 b"));
+        QCOMPARE(tab(), 0);
+        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: a kereső kiürül
+        QCOMPARE(search->property("text").toString(), QString());
+
+        // Ctrl+Shift+F: keresés a megnyitott átiratban (bármelyik fülről oda vált).
+        QTest::keyClick(window, Qt::Key_2, Qt::ControlModifier);
+        QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier | Qt::ShiftModifier);
+        QCOMPARE(tab(), 0);
+        QTRY_VERIFY(transcriptSearch->hasActiveFocus());
+        QTest::keyClick(window, Qt::Key_A);
+        QTest::keyClick(window, Qt::Key_Space);
+        QCOMPARE(transcriptSearch->property("text").toString(), QStringLiteral("a "));
+        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: az átirat-kereső bezárul
+        QTRY_VERIFY(!transcriptSearch->isVisible());
+
+        // F2: a cím szerkesztése; a mezőben a Ctrl+1 nem szöveg, de a betűk igen, a Szóköz is.
+        QTest::keyClick(window, Qt::Key_F2);
+        auto* title = window->findChild<QQuickItem*>(QStringLiteral("meetingTitleEdit"));
+        QVERIFY(title);
+        QTRY_VERIFY(title->hasActiveFocus());
+        const QString before = title->property("text").toString();
+        QTest::keyClick(window, Qt::Key_End);
+        QTest::keyClick(window, Qt::Key_Space);
+        QTest::keyClick(window, Qt::Key_X);
+        QCOMPARE(title->property("text").toString(), before + QStringLiteral(" x"));
+        QTest::keyClick(window, Qt::Key_Escape);                 // elvetés
+        QTRY_VERIFY(!title->hasActiveFocus());
+
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+    }
+
     void widgetsDialogShowsNextToQmlWindow()
     {
         QQmlApplicationEngine engine;

@@ -54,6 +54,8 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // A meetingnek VAN átirata, de régi formátumú (nincs megszólalás-lista), ezért itt nem
     // szerkeszthető — újra-átírás után jelenik meg.
     Q_PROPERTY(bool legacyTranscript READ legacyTranscript NOTIFY sessionChanged)
+    // Régi formátumú átiratnál a transcript.md szövege (csak olvasásra; üres, ha nincs fájl).
+    Q_PROPERTY(QString legacyText READ legacyText NOTIFY sessionChanged)
     Q_PROPERTY(tanara_qml::TranscriptListModel* rows READ rows CONSTANT)
 
     Q_PROPERTY(int utteranceCount READ utteranceCount NOTIFY sessionChanged)
@@ -129,6 +131,7 @@ public:
     bool demo() const { return m_demoSession != nullptr; }
     bool hasTranscript() const { return !m_utts.isEmpty(); }
     bool legacyTranscript() const { return m_legacyTranscript && m_utts.isEmpty(); }
+    QString legacyText() const { return legacyTranscript() ? m_legacyText : QString(); }
     TranscriptListModel* rows() const { return m_rows; }
 
     // Tesztekhez / beágyazáshoz: a szerkesztő és a személylista közvetlen megadása. A
@@ -242,6 +245,26 @@ public:
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
 
+    // ---- másolás (vágólap) -------------------------------------------------
+    // A sorok szövege a beszélő nevével és az időbélyeggel; beszélőváltáskor új fejsor.
+    Q_INVOKABLE QString textOfRows(const QVariantList& rows) const;
+    Q_INVOKABLE QString selectionText() const;
+    // Vágólapra tesz; vissza: hány megszólalás került rá (0 = semmi).
+    Q_INVOKABLE int copyRow(int row);
+    Q_INVOKABLE int copySelection();
+    Q_INVOKABLE int copyAll();
+    Q_INVOKABLE void selectAll();
+
+    // ---- „Következő bizonytalan" -------------------------------------------
+    // A `fromRow` utáni (direction < 0: előtti) első bizonytalan sorra lép — körbefordul —,
+    // kijelöli és odagörget. Vissza: a sor; -1 = nincs bizonytalan sor.
+    Q_INVOKABLE int stepUncertain(int fromRow, int direction = 1);
+
+    // ---- „Meghallgatás": reprezentatív minta egy beszélőtől ----------------
+    // { ok, startMs, endMs } — a beszélő egy hosszabb, nem bizonytalan megszólalása
+    // (legfeljebb ~12 mp-re vágva).
+    Q_INVOKABLE QVariantMap speakerSample(const QString& speakerKey) const;
+
     // ---- beszélő / hanglenyomat -------------------------------------------
     Q_INVOKABLE QVariantMap speakerInfo(const QString& speakerKey) const;
     // { supported, usableLines, usableSec, missingSec, sufficient }
@@ -300,6 +323,8 @@ private:
     void updatePlayingRow();
     void setSelection(const QSet<int>& selection, int anchor);
     QStringList selectedIds() const;
+    QString textOfUtterances(QVector<int> utterances) const;
+    int copyUtterances(const QVector<int>& utterances);
     QStringList idsOfRows(int fromRow, int toRow) const;
     QString laneKey(int lane) const;
     void afterMove(const QString& targetKey);
@@ -309,6 +334,7 @@ private:
 
     bool m_deferred = false;
     bool m_legacyTranscript = false;
+    QString m_legacyText;
     QString m_meetingId;
     QString m_demoVariant;
     QPointer<tanara::AppController> m_controller;

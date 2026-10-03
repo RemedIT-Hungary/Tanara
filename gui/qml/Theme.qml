@@ -136,7 +136,12 @@ QtObject {
     function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
     // Monogram egy névből: "Kovács Lilla" → "KL", "Távoli 2" → "T2".
     function monogram(name) {
-        const parts = String(name).trim().split(/\s+/).filter(p => p.length > 0)
+        // A becenév („Dompa", (Dompa)) nem számít névrésznek; az írásjelek sem kerülnek a monogramba.
+        const words = String(name).trim().split(/\s+/).filter(p => p.length > 0)
+        const isNick = p => /^["'„”“(\[].*["'”“)\]]$/.test(p)
+        const clean = p => p.replace(/^[^\p{L}\p{N}]+/u, "")
+        let parts = words.filter(p => !isNick(p)).map(clean).filter(p => p.length > 0)
+        if (parts.length === 0) parts = words.map(clean).filter(p => p.length > 0)
         if (parts.length === 0) return "?"
         if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
         return (parts[0][0] + parts[1][0]).toUpperCase()

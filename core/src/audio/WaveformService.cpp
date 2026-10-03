@@ -1,5 +1,6 @@
 #include "tanara/audio/WaveformService.h"
 
+#include <cmath>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -17,7 +18,8 @@ namespace {
 constexpr int kMaxConcurrent = 2;
 constexpr int kRate = 8000;            // dekódolási mintavétel (csúcsokhoz bőven elég)
 constexpr int kWindow = 400;           // finom ablak: 50 ms
-constexpr int kCacheVersion = 1;
+constexpr int kCacheVersion = 2;       // 2: + "rms" (vödrönkénti effektív szint)
+constexpr int kRmsScale = 10000;       // az RMS kvantálása a gyorsítótárban (halk sávhoz is elég finom)
 
 // Finom ablak-csúcsok → pontosan `buckets` (vagy kevesebb, ha nincs annyi ablak) vödör.
 QVector<float> reduceMax(const QVector<float>& fine, int buckets)
@@ -35,6 +37,24 @@ QVector<float> reduceMax(const QVector<float>& fine, int buckets)
     }
     return out;
 }
+
+// Ablakonkénti átlag-négyzetek → vödrönkénti RMS (ugyanaz a felosztás, mint a reduceMax-é).
+QVector<float> reduceRms(const QVector<float>& fineSq, int buckets)
+{
+    const int n = int(fineSq.size());
+    if (n == 0 || buckets <= 0) return {};
+    const int outN = qMin(n, buckets);
+    QVector<float> out(outN, 0.0f);
+    for (int b = 0; b < outN; ++b) {
+        const int from = n <= buckets ? b : int(qint64(b) * n / buckets);
+        const int to   = n <= buckets ? b + 1 : qMax(from + 1, int(qint64(b + 1) * n / buckets));
+        double sum = 0.0;
+        int cnt = 0;
+        for (int i = from; i < to && i < n; ++i, ++cnt) sum += double(fineSq.at(i));
+        out[b] = cnt > 0 ? float(std::sqrt(sum / cnt)) : 0.0f;
+    }
+    return out;
+}
 } // namespace
 
 struct WaveformService::Job {
@@ -44,6 +64,8 @@ struct WaveformService::Job {
     QProcess* proc = nullptr;
     QByteArray carry;            // páratlan bájt a darabhatáron
     QVector<float> fine;         // 50 ms-os ablakok csúcsai
+    QVector<float> fineSq;       // 50 ms-os ablakok átlag-négyzete (0..1) — az RMS-hez
+    double winSq = 0.0;          // négyzetösszeg az aktuális ablakban
     int   winFill = 0;           // minták az aktuális ablakban
     int   winMax = 0;            // |minta| max az aktuális ablakban
     qint64 samples = 0;
@@ -58,14 +80,19 @@ struct WaveformService::Job {
         for (int i = 0; i < n; ++i) {
             const int a = std::abs(int(p[i]));
             if (a > winMax) winMax = a;
-            if (++winFill == kWindow) {
-                fine.append(float(winMax) / 32768.0f);
-                winFill = 0;
-                winMax = 0;
-            }
+            winSq += double(a) * double(a);
+            if (++winFill == kWindow) closeWindow();
         }
         samples += n;
         carry = data.mid(n * 2);
+    }
+    void closeWindow() {
+        if (winFill == 0) return;
+        fine.append(float(winMax) / 32768.0f);
+        fineSq.append(float(winSq / double(winFill) / (32768.0 * 32768.0)));
+        winFill = 0;
+        winMax = 0;
+        winSq = 0.0;
     }
 };
 
@@ -115,6 +142,11 @@ TrackPeaks WaveformService::loadCached(const QString& audioPath)
     out.peaks.reserve(arr.size());
     for (const QJsonValue& v : arr)
         out.peaks.append(float(qBound(0, v.toInt(), 1000)) / 1000.0f);
+    const QJsonArray rms = o.value(QStringLiteral("rms")).toArray();
+    out.rms.reserve(rms.size());
+    for (const QJsonValue& v : rms)
+        out.rms.append(float(qBound(0, v.toInt(), kRmsScale)) / float(kRmsScale));
+    if (out.rms.size() != out.peaks.size()) out.rms.clear();
     out.durationMs = qint64(o.value(QStringLiteral("durationMs")).toDouble());
     return out;
 }
@@ -217,17 +249,21 @@ void WaveformService::finishJob(Job* job, bool ok, const QString& error)
     if (!m_running.removeOne(job)) return;   // már lezárva
     if (!job->cancelled) {
         if (ok) {
-            if (job->winFill > 0)                // a csonka utolsó ablak
-                job->fine.append(float(job->winMax) / 32768.0f);
+            job->closeWindow();                  // a csonka utolsó ablak
             TrackPeaks tp;
             tp.trackId = job->trackId;
             tp.peaks = reduceMax(job->fine, kBuckets);
+            tp.rms = reduceRms(job->fineSq, kBuckets);
             tp.durationMs = job->samples * 1000 / kRate;
 
             QJsonArray arr;
             for (float v : std::as_const(tp.peaks))
                 arr.append(qBound(0, int(v * 1000.0f + 0.5f), 1000));
+            QJsonArray rmsArr;
+            for (float v : std::as_const(tp.rms))
+                rmsArr.append(qBound(0, int(v * float(kRmsScale) + 0.5f), kRmsScale));
             QJsonObject o;
+            o[QStringLiteral("rms")]        = rmsArr;
             o[QStringLiteral("version")]    = kCacheVersion;
             o[QStringLiteral("srcSize")]    = double(job->srcSize);
             o[QStringLiteral("srcMtimeMs")] = double(job->srcMtimeMs);
@@ -241,6 +277,8 @@ void WaveformService::finishJob(Job* job, bool ok, const QString& error)
             // A jel a gyorsítótárral egyező (kvantált) értékeket adja — így az első és a
             // későbbi megnyitás pontosan ugyanazt rajzolja.
             for (float& v : tp.peaks) v = float(qBound(0, int(v * 1000.0f + 0.5f), 1000)) / 1000.0f;
+            for (float& v : tp.rms)
+                v = float(qBound(0, int(v * float(kRmsScale) + 0.5f), kRmsScale)) / float(kRmsScale);
             emit peaksReady(job->meetingId, job->trackId, tp);
         } else {
             emit peaksFailed(job->meetingId, job->trackId, error);

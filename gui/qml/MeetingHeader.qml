@@ -27,6 +27,8 @@ Item {
         if (!titleEdit.visible)
             return
         titleEdit.visible = false
+        // A fókusz ne maradjon a (láthatatlan) mezőben: a Szóköz / nyilak oda mennének.
+        if (titleEdit.activeFocus) root.forceActiveFocus()
         if (commit && root.shell && titleEdit.text.trim() !== "" && titleEdit.text.trim() !== root.title)
             root.shell.renameMeeting(root.meetingId, titleEdit.text)
     }

@@ -1,5 +1,7 @@
 #include "TrackListModel.h"
 
+#include "WaveformItem.h"
+
 #include "AppContext.h"
 #include "JobSupport.h"
 
@@ -212,12 +214,28 @@ int TrackListModel::droppedCount() const
                              [](const Row& r) { return !r.view.track.active; }));
 }
 
+// A rajzolt szintek: az effektív (RMS) szint, ha van — hosszú felvételnél a vödrönkénti csúcs
+// mindenhol közel maximális, az RMS viszont megmutatja, hol van beszéd és hol csend.
+QList<qreal> TrackListModel::levelsOf(const TrackPeaks& peaks)
+{
+    return toList(peaks.rms.size() == peaks.peaks.size() && !peaks.rms.isEmpty() ? peaks.rms : peaks.peaks);
+}
+
 qreal TrackListModel::peakReference() const
 {
-    qreal ref = 0.0;
-    for (const Row& r : m_rows)
-        for (qreal p : r.peaks) ref = std::max(ref, p);
-    return std::max(ref, 0.05);   // teljesen csendes felvételnél se nagyítsuk fel a zajt
+    // Közös skála a sávokra: a szintek felső percentilise (nem a maximum — egyetlen hangos
+    // pillanat ne nyomja össze az egész képet). A leghangosabb részek így telt magasságúak.
+    QList<qreal> all;
+    for (const Row& r : m_rows) all += r.peaks;
+    return std::max(WaveformItem::referenceLevel(all), 0.004);   // csendes felvételnél se nagyítsuk fel a zajt
+}
+
+qreal TrackListModel::rowReference(int row) const
+{
+    const qreal common = peakReference();
+    if (row < 0 || row >= m_rows.size())
+        return common;
+    return std::max(WaveformItem::referenceLevel(m_rows[row].peaks), common * 0.3);
 }
 
 QString TrackListModel::mixdownDurationText() const
@@ -259,7 +277,7 @@ void TrackListModel::reload()
                 // Érvényes gyorsítótár → azonnal megvan (kicsi fájl, szinkron olvasás).
                 const TrackPeaks cached = WaveformService::loadCached(v.absolutePath);
                 if (cached.isValid()) {
-                    row.peaks = toList(cached.peaks);
+                    row.peaks = levelsOf(cached);
                     row.peaksState = QStringLiteral("ready");
                     if (row.durationMs < 0) row.durationMs = cached.durationMs;
                 } else if (m_waveformsRequested) {
@@ -271,7 +289,7 @@ void TrackListModel::reload()
         if (m_mixdownPeaks.isEmpty() && !m_mixdownPath.isEmpty() && QFileInfo::exists(m_mixdownPath)) {
             const TrackPeaks cached = WaveformService::loadCached(m_mixdownPath);
             if (cached.isValid()) {
-                m_mixdownPeaks = toList(cached.peaks);
+                m_mixdownPeaks = levelsOf(cached);
                 m_mixdownDurationMs = cached.durationMs;
                 m_mixdownPeaksLoading = false;
             }
@@ -332,7 +350,7 @@ void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks,
     if (trackId == kMixdownId) {
         m_mixdownPeaksLoading = false;
         if (!failed) {
-            m_mixdownPeaks = toList(peaks.peaks);
+            m_mixdownPeaks = levelsOf(peaks);
             m_mixdownDurationMs = peaks.durationMs;
         }
         emit peaksChanged();
@@ -344,7 +362,7 @@ void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks,
         if (failed) {
             r.peaksState = QStringLiteral("failed");
         } else {
-            r.peaks = toList(peaks.peaks);
+            r.peaks = levelsOf(peaks);
             r.peaksState = QStringLiteral("ready");
             r.durationMs = peaks.durationMs;
         }
@@ -413,15 +431,30 @@ void TrackListModel::restore(int row)
     c->restoreTrack(m_meetingId, m_rows[row].view.track.id);
 }
 
+QString TrackListModel::trackIdAt(int row) const
+{
+    return row >= 0 && row < m_rows.size() ? m_rows[row].view.track.id : QString();
+}
+
 QString TrackListModel::relocate(int row, const QString& filePath)
 {
     if (row < 0 || row >= m_rows.size() || filePath.isEmpty())
         return QString();
+    return relocateTrack(m_meetingId, m_rows[row].view.track.id, filePath);
+}
+
+QString TrackListModel::relocateTrack(const QString& meetingId, const QString& trackId,
+                                      const QString& filePath)
+{
+    if (filePath.isEmpty())
+        return QString();
     AppController* c = app();
     if (jobsupport::demoMode(c))
         return QString();
+    if (meetingId.isEmpty() || trackId.isEmpty() || meetingId != m_meetingId)
+        return tr("Közben másik megbeszélésre váltottál, ezért a fájl nem lett hozzárendelve.");
     QString error;
-    if (!c->tracks()->relocateTrack(m_meetingId, m_rows[row].view.track.id, filePath, &error))
+    if (!c->tracks()->relocateTrack(meetingId, trackId, filePath, &error))
         return error.isEmpty() ? tr("A fájlt nem sikerült a megbeszéléshez rendelni.") : error;
     return QString();
 }
@@ -441,9 +474,18 @@ int TrackListModel::deleteDropped()
         emit changed();
         return n;
     }
-    if (m_meetingId.isEmpty())
-        return 0;
-    return c->tracks()->deleteDroppedTracks(m_meetingId);
+    return m_meetingId.isEmpty() ? 0 : deleteDroppedIn(m_meetingId);
+}
+
+int TrackListModel::deleteDroppedIn(const QString& meetingId)
+{
+    AppController* c = app();
+    if (jobsupport::demoMode(c))
+        return deleteDropped();
+    // A megerősítés EHHEZ a megbeszéléshez szólt: ha közben másik lett a kijelölt, nem törlünk.
+    if (meetingId.isEmpty() || meetingId != m_meetingId)
+        return -1;
+    return c->tracks()->deleteDroppedTracks(meetingId);
 }
 
 void TrackListModel::refreshMixdown()

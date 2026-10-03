@@ -31,6 +31,13 @@ Item {
 
     readonly property bool dropped: !active
     property bool editing: false
+    // A mező elrejtése után a fókusz ne maradjon a (láthatatlan) szövegmezőben: különben a
+    // billentyűk (Szóköz, nyilak, gyorsbillentyűk) oda mennének.
+    onEditingChanged: if (!editing) Qt.callLater(root.releaseHiddenFocus)
+    function releaseHiddenFocus() {
+        const it = root.Window.activeFocusItem
+        if (it && !it.visible) root.forceActiveFocus()
+    }
 
     function beginRename() {
         nameField.text = root.displayName
