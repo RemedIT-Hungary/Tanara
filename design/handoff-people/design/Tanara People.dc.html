@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}body{margin:0;background:#e6e6e4;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}a{color:#2f5aa8}a:hover{color:#1d3d78}</style>
+</helmet>
+<section style="padding:48px;display:flex;flex-direction:column;gap:28px">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:1100px">
+    <div style="font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5d5f63">TANARA · SZEMÉLYEK</div>
+    <div style="font:600 30px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Személyek kezelése</div>
+    <div style="font:400 16px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">Külön, átméretezhető ablak (alapméret 960 × 660). Bal oldalt kereshető névsor, jobb oldalt a kiválasztott személy: becenevek, megjegyzés, hanglenyomat-minták egyenként meghallgatva, és a megbeszélései. A hosszú sorok törnek, nem vágódnak le.</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,960px);gap:56px 48px">
+    <sc-for list="{{ frames }}" as="f" hint-placeholder-count="6">
+      <div style="width:960px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ f.id }}</div><div style="flex:1;min-width:0;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ f.cap }}</div></div>
+          <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ f.note }}</div>
+        </div>
+        <div data-shot="{{ f.id }}" data-screen-label="{{ f.id }}" style="width:960px;min-height:660px;background:{{ f.t.bg }};color:{{ f.t.text }};font-family:'IBM Plex Sans',sans-serif;border-radius:10px;border:1px solid {{ f.t.borderStrong }};overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+          <div style="height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;background:{{ f.t.surface }};border-bottom:1px solid {{ f.t.border }}">
+            <div style="flex:1;font-size:13px;font-weight:600">Személyek</div>
+            <div style="width:36px;height:28px;display:flex;align-items:center;justify-content:center;color:{{ f.t.muted }}"><div style="width:14px;height:14px">{{ i.x }}</div></div>
+          </div>
+          <div style="flex:1;min-height:0;display:flex">
+            <div style="width:288px;flex:none;display:flex;flex-direction:column;background:{{ f.t.surface }};border-right:1px solid {{ f.t.border }}">
+              <div style="padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;gap:6px">
+                  <div style="flex:1;min-width:0;height:32px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.searchBg }};border:1px solid {{ f.searchBd }};box-shadow:{{ f.searchRing }}">
+                    <div style="width:15px;height:15px;flex:none;color:{{ f.t.muted }}">{{ i.search }}</div>
+                    <div style="flex:1;min-width:0;font-size:14px;color:{{ f.searchFg }};white-space:nowrap">{{ f.searchText }}</div>
+                    <sc-if value="{{ f.searching }}" hint-placeholder-val="{{ false }}"><div style="width:14px;height:14px;flex:none;color:{{ f.t.muted }}">{{ i.x }}</div></sc-if>
+                  </div>
+                  <div title="Új személy" style="width:32px;height:32px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }}"><div style="width:15px;height:15px">{{ i.userPlus }}</div></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:{{ f.t.muted }}"><div style="flex:1;white-space:nowrap">{{ f.countLabel }}</div><div style="display:flex;align-items:center;gap:4px;white-space:nowrap">{{ f.sortLabel }}<div style="width:12px;height:12px">{{ i.chev }}</div></div></div>
+              </div>
+              <div style="flex:1;padding:0 8px 10px;display:flex;flex-direction:column">
+                <sc-for list="{{ f.list }}" as="p" hint-placeholder-count="12">
+                  <div style="display:flex;flex-direction:column">
+                    <sc-if value="{{ p.isHeader }}" hint-placeholder-val="{{ false }}"><div style="padding:10px 8px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ p.h }}</div></sc-if>
+                    <sc-if value="{{ p.isRow }}" hint-placeholder-val="{{ true }}">
+                      <div style="width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;background:{{ p.bg }}">
+                        <div style="width:28px;height:28px;flex:none;border-radius:50%;background:{{ p.avBg }};color:{{ p.avFg }};border:1px solid {{ p.avBd }};box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:.02em">{{ p.mono }}</div>
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                          <div style="display:flex;align-items:center;gap:6px;min-width:0"><div style="flex:0 1 auto;min-width:0;padding-right:4px;font-size:14px;font-weight:{{ p.fw }};white-space:nowrap"><sc-for list="{{ p.seg }}" as="s" hint-placeholder-count="1"><span style="background:{{ s.bg }};border-radius:2px">{{ s.t }}</span></sc-for></div><sc-if value="{{ p.me }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:10px;font-weight:600;padding:0 5px;border-radius:6px;border:1px solid {{ f.t.borderStrong }};color:{{ f.t.muted }}">te</div></sc-if></div>
+                          <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden"><div style="width:12px;height:12px;flex:none;color:{{ p.fpFg }}">{{ p.fp }}</div><div style="padding-right:4px">{{ p.meta }}</div></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ f.emptyHint }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:14px 6px 0;padding:14px;border-radius:8px;border:1px dashed {{ f.t.borderStrong }};display:flex;flex-direction:column;gap:6px">
+                    <div style="font-size:13px;font-weight:600">Itt jelennek meg a résztvevők</div>
+                    <div style="font-size:13px;line-height:1.45;color:{{ f.t.muted }}">Amikor az átiratban elnevezel egy beszélőt, személy lesz belőle, és a következő megbeszéléseken hangja alapján felismerjük.</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ f.noResult }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:10px 6px 0;display:flex;flex-direction:column;gap:8px;font-size:13px;color:{{ f.t.muted }}"><div>Becenevekben is kerestem.</div><div style="display:flex;align-items:center;gap:6px;color:{{ f.t.accent }};font-weight:500"><div style="width:14px;height:14px">{{ i.userPlus }}</div>Új személy: „bár”</div></div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="flex:1;min-width:0;padding:22px 28px 24px;display:flex;flex-direction:column;gap:20px">
+              <sc-if value="{{ f.hasDetail }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:20px">
+                  <div style="display:flex;align-items:flex-start;gap:14px">
+                    <div style="width:44px;height:44px;flex:none;border-radius:50%;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">{{ f.d.mono }}</div>
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                      <sc-if value="{{ f.renaming }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;align-items:center;gap:6px">
+                          <div style="flex:1;max-width:320px;height:34px;padding:0 10px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:18px;font-weight:600;white-space:nowrap"><div style="flex:none;padding-right:2px">{{ f.d.renameTo }}</div><div style="width:1px;height:20px;background:{{ f.t.text }};margin-left:1px;flex:none"></div></div>
+                          <div style="white-space:nowrap;height:34px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:13px;font-weight:600">Mentés</div>
+                          <div style="white-space:nowrap;height:34px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px;font-weight:500">Mégse</div>
+                        </div>
+                        <div style="font-size:12px;color:{{ f.t.muted }};padding-top:4px">Enter: mentés · Esc: mégse. A régi név becenévként megmarad.</div>
+                      </sc-if>
+                      <sc-if value="{{ f.notRenaming }}" hint-placeholder-val="{{ true }}">
+                        <div style="font-size:20px;font-weight:600;line-height:1.25">{{ f.d.name }}</div>
+                        <div style="font-size:13px;color:{{ f.t.muted }};white-space:nowrap">{{ f.d.meta }}</div>
+                      </sc-if>
+                    </div>
+                    <sc-if value="{{ f.notRenaming }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;gap:6px;flex:none">
+                        <div style="white-space:nowrap;height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:14px;height:14px">{{ i.pencil }}</div>Átnevezés</div>
+                        <div style="white-space:nowrap;height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:14px;height:14px">{{ i.merge }}</div>Összevonás…</div>
+                        <div title="Törlés" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ f.t.border }};color:{{ f.t.dangerInk }}"><div style="width:14px;height:14px">{{ i.trash }}</div></div>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }};white-space:nowrap">Becenevek</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        <sc-for list="{{ f.d.aliases }}" as="a" hint-placeholder-count="2"><div style="white-space:nowrap;height:26px;padding:0 4px 0 10px;display:flex;align-items:center;gap:6px;border-radius:13px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};font-size:13px">{{ a }}<div style="width:12px;height:12px;color:{{ f.t.muted }}">{{ i.x }}</div></div></sc-for>
+                        <sc-if value="{{ f.aliasEditing }}" hint-placeholder-val="{{ false }}"><div style="height:26px;width:110px;padding:0 10px;display:flex;align-items:center;border-radius:13px;background:{{ f.t.raised }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:13px">Gergő<div style="width:1px;height:14px;background:{{ f.t.text }};margin-left:1px"></div></div></sc-if>
+                        <div style="white-space:nowrap;height:26px;padding:0 10px;display:flex;align-items:center;gap:5px;border-radius:13px;border:1px dashed {{ f.t.borderStrong }};font-size:13px;color:{{ f.t.muted }}"><div style="width:12px;height:12px">{{ i.plus }}</div>Becenév</div>
+                      </div>
+                      <div style="font-size:12px;line-height:1.4;color:{{ f.t.muted }}">A keresés és a személyválasztó ezekre is talál.</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }};white-space:nowrap">Megjegyzés</div>
+                      <div style="min-height:56px;padding:8px 10px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};font-size:13px;line-height:1.45;color:{{ f.d.noteFg }}">{{ f.d.note }}</div>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }};white-space:nowrap">Hanglenyomat</div><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ f.d.fpSub }}</div></div>
+                    <sc-if value="{{ f.d.hasSamples }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;flex-direction:column;border:1px solid {{ f.t.border }};border-radius:8px;background:{{ f.t.surface }};position:relative">
+                        <sc-for list="{{ f.d.samples }}" as="s" hint-placeholder-count="5">
+                          <div style="position:relative;display:grid;grid-template-columns:28px minmax(0,1fr) 86px 40px 28px;gap:12px;align-items:center;padding:8px 10px 8px 12px;border-top:{{ s.bt }};background:{{ s.bg }}">
+                            <div style="width:28px;height:28px;border-radius:50%;background:{{ s.playBg }};color:{{ s.playFg }};display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px">{{ s.playIc }}</div></div>
+                            <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+                              <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;white-space:nowrap"><div style="width:13px;height:13px;flex:none;color:{{ f.t.muted }}">{{ s.srcIc }}</div><div style="flex:1;min-width:0">{{ s.src }}</div></div>
+                              <div style="font-size:12px;line-height:1.35;color:{{ f.t.muted }};text-wrap:pretty">{{ s.mtg }}</div>
+                            </div>
+                            <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};white-space:nowrap">{{ s.date }}</div>
+                            <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};text-align:right">{{ s.len }}</div>
+                            <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:{{ s.menuBg }};color:{{ f.t.muted }}"><div style="width:14px;height:14px">{{ i.dots }}</div></div>
+                        <sc-if value="{{ s.menuOpen }}" hint-placeholder-val="{{ false }}">
+                          <div style="position:absolute;right:8px;top:calc(100% - 4px);width:270px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};padding:4px;display:flex;flex-direction:column;z-index:2">
+                            <sc-for list="{{ sampleMenu }}" as="m" hint-placeholder-count="5">
+                              <div style="display:flex;flex-direction:column">
+                                <sc-if value="{{ m.sep }}" hint-placeholder-val="{{ false }}"><div style="height:1px;margin:4px 6px;background:{{ f.t.border }}"></div></sc-if>
+                                <sc-if value="{{ m.item }}" hint-placeholder-val="{{ true }}"><div style="height:34px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:5px;font-size:14px;background:{{ m.hl }};color:{{ m.fg }}"><div style="width:15px;height:15px;flex:none">{{ m.u }}</div><div style="flex:1">{{ m.l }}</div></div></sc-if>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </sc-if>
+                          </div>
+                        </sc-for>
+                        <div style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-top:1px solid {{ f.t.border }};font-size:13px;font-weight:500;color:{{ f.t.accent }};white-space:nowrap">{{ f.d.moreSamples }}</div>
+
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ f.d.noSamples }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:8px;border:1px dashed {{ f.t.borderStrong }}">
+                        <div style="width:32px;height:32px;flex:none;border-radius:8px;background:{{ f.t.sunken }};display:flex;align-items:center;justify-content:center;color:{{ f.t.muted }}"><div style="width:16px;height:16px">{{ i.fpOff }}</div></div>
+                        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                          <div style="font-size:14px;font-weight:600">Még nincs hanglenyomata</div>
+                          <div style="font-size:13px;line-height:1.45;color:{{ f.t.muted }};text-wrap:pretty">Kézzel rendelted hozzá 3 megbeszélés sorait, ezért eddig nem ismerjük fel magától. A biztos sorokból mintát vehetünk.</div>
+                          <div style="display:flex;gap:8px;align-items:center"><div style="white-space:nowrap;height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:13px;font-weight:600"><div style="width:14px;height:14px">{{ i.fp }}</div>Minta a 3 megbeszélésből</div><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">kb. 2 perc hang, a gépen marad</div></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }};white-space:nowrap">Megbeszélések</div><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ f.d.mtgSub }}</div></div>
+                    <div style="display:flex;flex-direction:column;border:1px solid {{ f.t.border }};border-radius:8px;background:{{ f.t.surface }}">
+                      <sc-for list="{{ f.d.meetings }}" as="m" hint-placeholder-count="3">
+                        <div style="display:grid;grid-template-columns:minmax(0,1fr) 86px 56px;gap:12px;align-items:center;padding:8px 12px;border-top:{{ m.bt }}">
+                          <div style="font-size:13px;line-height:1.4;text-wrap:pretty">{{ m.t }}</div>
+                          <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};white-space:nowrap">{{ m.d }}</div>
+                          <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};text-align:right;white-space:nowrap">{{ m.s }}</div>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{ f.d.hasMoreMtg }}" hint-placeholder-val="{{ false }}"><div style="padding:8px 12px;border-top:1px solid {{ f.t.border }};font-size:13px;font-weight:500;color:{{ f.t.accent }};white-space:nowrap">{{ f.d.moreMtg }}</div></sc-if>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ f.noDetail }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1;display:flex;align-items:center;justify-content:center">
+                  <div style="max-width:380px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+                    <div style="width:40px;height:40px;border-radius:10px;background:{{ f.t.sunken }};display:flex;align-items:center;justify-content:center;color:{{ f.t.muted }}"><div style="width:20px;height:20px">{{ i.users }}</div></div>
+                    <div style="font-size:16px;font-weight:600">Még csak te vagy itt</div>
+                    <div style="font-size:14px;line-height:1.5;color:{{ f.t.muted }};text-wrap:pretty">Nevezd el a beszélőket egy megbeszélés átiratában, vagy vegyél fel valakit előre, hogy a személyválasztóban már szerepeljen.</div>
+                    <div style="white-space:nowrap;margin-top:4px;height:34px;padding:0 14px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:14px;font-weight:500"><div style="width:15px;height:15px">{{ i.userPlus }}</div>Új személy</div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <sc-if value="{{ f.toast }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:8px 8px 8px 14px;border-radius:8px;background:{{ f.t.text }};color:{{ f.t.bg }};font-size:13px;box-shadow:{{ f.t.shadow }};white-space:nowrap">{{ f.toastText }}<div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:5px;font-weight:600;background:oklch(1 0 0 / 0.12)">Visszavonás</div></div>
+          </sc-if>
+
+          <sc-if value="{{ f.merge }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;background:{{ f.t.scrim }};display:flex;align-items:center;justify-content:center;z-index:5">
+              <div style="width:500px;background:{{ f.t.raised }};border-radius:10px;border:1px solid {{ f.t.border }};box-shadow:{{ f.t.shadow }};display:flex;flex-direction:column">
+                <div style="padding:20px 22px 0;display:flex;flex-direction:column;gap:6px"><div style="font-size:16px;font-weight:600">Bárány Gergely összevonása</div><div style="font-size:13px;line-height:1.45;color:{{ f.t.muted }}">Ha ugyanaz az ember kétszer szerepel. A megbeszélések, minták és becenevek egy személyhez kerülnek.</div></div>
+                <div style="padding:16px 22px;display:flex;flex-direction:column;gap:12px">
+                  <div style="height:32px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:14px"><div style="width:15px;height:15px;color:{{ f.t.muted }}">{{ i.search }}</div>gerg<div style="width:1px;height:16px;background:{{ f.t.text }};margin-left:-7px"></div></div>
+                  <div style="display:flex;flex-direction:column;gap:2px">
+                    <sc-for list="{{ mergeCands }}" as="c" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:{{ c.bg }};border:{{ c.bd }}">
+                        <div style="width:16px;height:16px;flex:none;border-radius:50%;border:{{ c.radio }};box-sizing:border-box"></div>
+                        <div style="width:26px;height:26px;flex:none;border-radius:50%;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">{{ c.mono }}</div>
+                        <div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:14px;font-weight:600">{{ c.n }}</div><div style="font-size:12px;color:{{ f.t.muted }}">{{ c.m }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:8px;background:{{ f.t.sunken }}">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }};white-space:nowrap">Megmaradó név</div>
+                    <div style="display:flex;gap:20px;font-size:14px;white-space:nowrap">
+                      <div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border-radius:50%;border:5px solid {{ f.t.accent }};box-sizing:border-box;flex:none"></div><div style="flex:none">Bárány&nbsp;Gergely</div></div>
+                      <div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;border-radius:50%;border:1.5px solid {{ f.t.borderStrong }};box-sizing:border-box;flex:none"></div><div style="flex:none">B.&nbsp;Gergő</div></div>
+                    </div>
+                    <div style="font-size:13px;line-height:1.45;color:{{ f.t.text }}">Eredmény: <b>27 megbeszélés</b>, <b>11 minta</b>. „B. Gergő” becenév lesz. Az érintett összefoglalók elavultnak jelölődnek.</div>
+                  </div>
+                </div>
+                <div style="padding:14px 22px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid {{ f.t.border }}">
+                  <div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div>
+                  <div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:14px;font-weight:600">Összevonás</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ f.del }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;background:{{ f.t.scrim }};display:flex;align-items:center;justify-content:center;z-index:5">
+              <div style="width:440px;background:{{ f.t.raised }};border-radius:10px;border:1px solid {{ f.t.border }};box-shadow:{{ f.t.shadow }};display:flex;flex-direction:column">
+                <div style="padding:20px 22px 16px;display:flex;flex-direction:column;gap:10px">
+                  <div style="font-size:16px;font-weight:600">Törlöd Bárány Gergelyt?</div>
+                  <div style="font-size:14px;line-height:1.5;color:{{ f.t.muted }};text-wrap:pretty">23 megbeszélésen névtelen beszélőként marad meg (pl. „Távoli 2”), a szöveg nem változik. A 9 hangmintája törlődik, így többé nem ismerjük fel.</div>
+                  <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px;padding-top:2px"><div style="width:16px;height:16px;flex:none;margin-top:2px;border-radius:4px;border:1.5px solid {{ f.t.borderStrong }};box-sizing:border-box"></div><div style="white-space:nowrap">Hangminták megtartása névtelen személyként</div></div>
+                </div>
+                <div style="padding:14px 22px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid {{ f.t.border }}">
+                  <div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div>
+                  <div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.danger }};color:#fff;font-size:14px;font-weight:600">Törlés</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;'mixed'|'light'|'dark'&quot;}}">
+const ICONS = {"x":"<path d=\"M18 6 6 18\" /><path d=\"m6 6 12 12\" />","search":"<circle cx=\"11\" cy=\"11\" r=\"8\" /><path d=\"m21 21-4.3-4.3\" />","trash-2":"<path d=\"M3 6h18\" /><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\" /><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\" /><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\" /><line x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\" />","pencil":"<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /><path d=\"m15 5 4 4\" />","plus":"<path d=\"M5 12h14\" /><path d=\"M12 5v14\" />","ellipsis":"<circle cx=\"12\" cy=\"12\" r=\"1\" /><circle cx=\"19\" cy=\"12\" r=\"1\" /><circle cx=\"5\" cy=\"12\" r=\"1\" />","headphones":"<path d=\"M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3\" />","play":"<polygon points=\"6 3 20 12 6 21 6 3\" />","speaker":"<rect width=\"16\" height=\"20\" x=\"4\" y=\"2\" rx=\"2\" /><path d=\"M12 6h.01\" /><circle cx=\"12\" cy=\"14\" r=\"4\" /><path d=\"M12 14h.01\" />","chevron-down":"<path d=\"m6 9 6 6 6-6\" />","pause":"<rect x=\"14\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\" /><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\" />","minus":"<path d=\"M5 12h14\" />","mic":"<path d=\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\" /><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\" /><line x1=\"12\" x2=\"12\" y1=\"19\" y2=\"22\" />","users":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /><path d=\"M16 3.13a4 4 0 0 1 0 7.75\" />","fingerprint":"<path d=\"M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4\" /><path d=\"M14 13.12c0 2.38 0 6.38-1 8.88\" /><path d=\"M17.29 21.02c.12-.6.43-2.3.5-3.02\" /><path d=\"M2 12a10 10 0 0 1 18-6\" /><path d=\"M2 16h.01\" /><path d=\"M21.8 16c.2-2 .131-5.354 0-6\" /><path d=\"M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2\" /><path d=\"M8.65 22c.21-.66.45-1.32.57-2\" /><path d=\"M9 6.8a6 6 0 0 1 9 5.2v2\" />","user-plus":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\" /><line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\" />","arrow-right-left":"<path d=\"m16 3 4 4-4 4\" /><path d=\"M20 7H4\" /><path d=\"m8 21-4-4 4-4\" /><path d=\"M4 17h16\" />","merge":"<path d=\"m8 6 4-4 4 4\" /><path d=\"M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22\" /><path d=\"m20 22-5-5\" />"};
+const IC = n => React.createElement('svg', { viewBox: '0 0 24 24', width: '100%', height: '100%', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', style: { display: 'block' }, dangerouslySetInnerHTML: { __html: ICONS[n] || '' } });
+const L = { bg:'oklch(0.97 0.003 95)', surface:'oklch(0.987 0.002 95)', raised:'oklch(1 0 0)', sunken:'oklch(0.94 0.004 95)', border:'oklch(0.89 0.004 95)', borderStrong:'oklch(0.77 0.005 95)', text:'oklch(0.22 0.006 260)', muted:'oklch(0.47 0.007 260)', accent:'oklch(0.5 0.13 258)', onAccent:'oklch(0.99 0 0)', accentSoft:'oklch(0.94 0.025 258)', accentLine:'oklch(0.85 0.05 258)', warnSoft:'oklch(0.95 0.045 85)', successInk:'oklch(0.4 0.09 155)', danger:'oklch(0.53 0.17 25)', dangerInk:'oklch(0.45 0.16 25)', scrim:'oklch(0.2 0.01 260 / 0.35)', shadow:'0 12px 32px oklch(0.2 0.02 260 / 0.18), 0 1px 3px oklch(0.2 0.02 260 / 0.12)' };
+const D = { bg:'oklch(0.19 0.005 260)', surface:'oklch(0.22 0.006 260)', raised:'oklch(0.265 0.007 260)', sunken:'oklch(0.165 0.005 260)', border:'oklch(0.32 0.007 260)', borderStrong:'oklch(0.44 0.008 260)', text:'oklch(0.94 0.004 95)', muted:'oklch(0.74 0.006 95)', accent:'oklch(0.75 0.11 255)', onAccent:'oklch(0.18 0.03 258)', accentSoft:'oklch(0.3 0.05 258)', accentLine:'oklch(0.42 0.08 258)', warnSoft:'oklch(0.42 0.08 80)', successInk:'oklch(0.86 0.08 155)', danger:'oklch(0.62 0.17 25)', dangerInk:'oklch(0.85 0.08 25)', scrim:'oklch(0 0 0 / 0.5)', shadow:'0 12px 32px oklch(0 0 0 / 0.5), 0 1px 3px oklch(0 0 0 / 0.35)' };
+const PEOPLE = [['Kovács Lilla', 41, 23, true], ['Albert Noémi', 6, 3], ['Antal Benedek', 2, 0], ['Bárány Gergely', 23, 9], ['B. Gergő', 4, 2], ['Balogh Réka', 11, 5], ['Csonka Ferenc', 3, 0], ['Dénes Zsófia', 17, 6], ['Erdei Márton', 8, 4], ['Fazekas Ilona', 5, 2], ['Gál Bence', 12, 7], ['Halász Dóra', 9, 3], ['Szilágyi Bálint', 14, 5], ['Tóth Eszter', 3, 0]];
+const mono = n => n.replace(/^[A-Z]\. /, '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function listItems(t, sel, q) {
+  const out = []; let last = '';
+  const rows = PEOPLE.filter(p => !q || p[0].toLowerCase().includes(q) || (p[0] === 'Bárány Gergely' && 'gergő'.includes(q)));
+  rows.forEach(([n, m, s, me]) => {
+    const h = me ? 'Te' : n[0];
+    if (!q && h !== last) { out.push({ isHeader: true, isRow: false, h }); last = h; }
+    const on = n === sel;
+    let seg = [{ t: n, bg: 'transparent' }];
+    if (q) { const k = n.toLowerCase().indexOf(q); if (k >= 0) seg = [{ t: n.slice(0, k), bg: 'transparent' }, { t: n.slice(k, k + q.length), bg: t.warnSoft }, { t: n.slice(k + q.length), bg: 'transparent' }]; }
+    out.push({ isHeader: false, isRow: true, seg, me: !!me, mono: mono(n), fw: on ? 600 : 500, bg: on ? t.accentSoft : 'transparent', avBg: me ? t.accent : t.sunken, avFg: me ? t.onAccent : t.text, avBd: me ? t.accent : t.border, fp: IC(s ? 'fingerprint' : 'minus'), fpFg: s ? t.successInk : t.muted, meta: s ? `${m} megbeszélés · ${s} minta` : `${m} megbeszélés · nincs hanglenyomat` });
+  });
+  return out;
+}
+const SAMPLES = [['mic', 'Trust USB mikrofon', 'Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai', '2026-10-01', '0:42'], ['headphones', 'Hívás hangja · Teams', 'Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA', '2026-09-30', '1:15'], ['headphones', 'Hívás hangja · Zoom', 'Partnerdemó – adatimport', '2026-09-24', '0:38'], ['speaker', 'ismeretlen eszköz', 'Régi felvétel importálva (hangfájl)', '2026-08-28', '0:51'], ['mic', 'Trust USB mikrofon', 'Belső retró, szeptember', '2026-08-18', '0:27']];
+const MTGS = [['Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai', '2026-10-01', '18 p'], ['Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA', '2026-09-30', '31 p'], ['Partnerdemó – adatimport', '2026-09-24', '9 p']];
+function detail(t, kind, o) {
+  if (kind === 'gergely') return { mono: 'BG', name: 'Bárány Gergely', renameTo: 'Bárány\u00a0Gergő', meta: 'Utoljára: okt. 1. · 23 megbeszélés · 6 ó 12 p beszéd', aliases: o.aliases || ['Gergely', 'G. Bárány'], note: 'Northwind oldali projektvezető. Gyakran telefonról csatlakozik, ilyenkor halkabb.', noteFg: t.text, fpSub: '9 minta · 5 forrásból', hasSamples: true, noSamples: false,
+    samples: SAMPLES.map((s, k) => ({ srcIc: IC(s[0]), src: s[1], mtg: s[2], date: s[3], len: s[4], bt: k ? `1px solid ${t.border}` : 'none', bg: k === o.playing ? t.accentSoft : k === o.menuRow ? t.raised : 'transparent', playBg: k === o.playing ? t.accent : t.raised, playFg: k === o.playing ? t.onAccent : t.text, playIc: IC(k === o.playing ? 'pause' : 'play'), menuBg: k === o.menuRow ? t.sunken : 'transparent', menuOpen: k === o.menuRow })),
+    moreSamples: 'Mind a 9 minta', mtgSub: '23 · legújabb elöl', meetings: MTGS.map((m, k) => ({ t: m[0], d: m[1], s: m[2], bt: k ? `1px solid ${t.border}` : 'none' })), hasMoreMtg: true, moreMtg: 'Mind a 23 megbeszélés' };
+  return { mono: 'TE', name: 'Tóth Eszter', meta: 'Utoljára: szept. 26. · 3 megbeszélés · 22 p beszéd', aliases: ['Eszti'], note: 'Megjegyzés hozzáadása…', noteFg: t.muted, fpSub: '', hasSamples: false, noSamples: true, samples: [], moreSamples: '', mtgSub: '3', meetings: [['Pénzügyi zárás, szeptember', '2026-09-26', '8 p'], ['Beszállítói egyeztetés – Contoso', '2026-09-12', '11 p'], ['Kickoff: új számlázó', '2026-09-03', '3 p']].map((m, k) => ({ t: m[0], d: m[1], s: m[2], bt: k ? `1px solid ${t.border}` : 'none' })), hasMoreMtg: false, moreMtg: '' };
+}
+function build(def, force) {
+  const dark = force === 'dark' ? true : force === 'light' ? false : !!def.dark;
+  const t = dark ? D : L;
+  const q = def.q || '';
+  const f = { id: def.id, cap: def.cap, note: def.note, t, searching: !!q, searchText: q || 'Név vagy becenév', searchFg: q ? t.text : t.muted, searchBg: q ? t.raised : t.sunken, searchBd: q ? t.accent : t.border, searchRing: q ? `0 0 0 3px ${t.accentSoft}` : 'none',
+    sortLabel: 'ABC', emptyHint: !!def.empty, noResult: false, hasDetail: !def.empty, noDetail: !!def.empty, renaming: !!def.rename, notRenaming: !def.rename, aliasEditing: !!def.aliasEdit, sampleMenu: def.menuRow != null, menuY: 8 + (def.menuRow + 1) * 56, merge: !!def.merge, del: !!def.del, toast: !!def.toast, toastText: def.toast || '' };
+  if (def.empty) { f.list = listItems(t, null, '').slice(0, 2); f.countLabel = '1 személy'; f.d = detail(t, 'eszter', {}); }
+  else { f.list = listItems(t, def.sel, q); f.countLabel = q ? `${f.list.length} találat` : `${PEOPLE.length} személy`; f.d = detail(t, def.sel === 'Tóth Eszter' ? 'eszter' : 'gergely', def); }
+  return f;
+}
+class Component extends DCLogic {
+  renderVals() {
+    const force = this.props.theme ?? 'mixed';
+    const defs = [
+      { id: 'P01', cap: 'Alapnézet · minta menüje nyitva', note: 'Mintánként: forrás (eszköz), melyik megbeszélésből, dátum, hossz; lejátszás soronként. A „…” menüből új személy is lehet egy mintából, ha kiderül, hogy valaki más hangja.', sel: 'Bárány Gergely', playing: 1, menuRow: 2 },
+      { id: 'P02', cap: 'Keresés + átnevezés közben', note: 'A keresés becenevekben is talál, a találat kiemelve. Átnevezéskor a régi név becenévként megmarad, így a régi átiratokban is megtalálható.', sel: 'Bárány Gergely', dark: true, q: 'ger', rename: true, aliasEdit: true },
+      { id: 'P03', cap: 'Hanglenyomat nélküli személy', note: 'Akit csak kézzel rendeltél hozzá. Felajánlja a mintavételt a biztos sorokból. Alul visszavonható értesítés egy előző lépésről.', sel: 'Tóth Eszter', toast: 'Minta törölve: Partnerdemó – adatimport' },
+      { id: 'P04', cap: 'Összevonás', note: 'Kereshető célszemély, választható megmaradó név, a következmény számokkal. A másik név becenév lesz.', sel: 'Bárány Gergely', merge: true },
+      { id: 'P05', cap: 'Törlés megerősítése', note: 'Konkrét következmény: mi marad meg (átirat, névtelen beszélő), mi vész el (minták). Opció a minták megtartására.', sel: 'Bárány Gergely', dark: true, del: true },
+      { id: 'P06', cap: 'Üres lista (első indítás után)', note: 'Csak a saját személyed. Elmagyarázza, honnan lesznek személyek, és felajánlja az előzetes felvételt.', empty: true }
+    ];
+    return {
+      i: { x: IC('x'), search: IC('search'), userPlus: IC('user-plus'), chev: IC('chevron-down'), pencil: IC('pencil'), merge: IC('merge'), trash: IC('trash-2'), plus: IC('plus'), dots: IC('ellipsis'), fp: IC('fingerprint'), fpOff: IC('fingerprint'), users: IC('users') },
+      sampleMenu: [['Meghallgatás', 'play'], ['Új személy ebből a mintából…', 'user-plus', 1], ['Áthelyezés másik személyhez…', 'arrow-right-left'], null, ['Minta törlése', 'trash-2', 0, 1]].map(m => m ? { item: true, sep: false, l: m[0], u: IC(m[1]), hl: m[2] ? 'oklch(0.94 0.004 95)' : 'transparent', fg: m[3] ? 'oklch(0.45 0.16 25)' : 'inherit' } : { item: false, sep: true }),
+      mergeCands: [['B. Gergő', '4 megbeszélés · 2 minta · hang alapján hasonló (88%)', 1], ['Gál Bence', '12 megbeszélés · 7 minta', 0]].map(([n, m, on]) => ({ n, m, mono: mono(n), bg: on ? 'oklch(0.94 0.025 258)' : 'transparent', bd: on ? '1px solid oklch(0.85 0.05 258)' : '1px solid transparent', radio: on ? '5px solid oklch(0.5 0.13 258)' : '1.5px solid oklch(0.77 0.005 95)' })),
+      frames: defs.map(d => build(d, force))
+    };
+  }
+}
+</script>
+</body>
+</html>
