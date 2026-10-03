@@ -280,6 +280,15 @@ public slots:
     // speakerMapChanged (ha lett új név). false, ha nincs hang-modell / átirat / már fut.
     bool identifyMeetingAsync(const QString& meetingId);
 
+    // Az átírás utáni automatikus hang-azonosítás be/ki EGY meetingre (M03 „Résztvevők
+    // azonosítása hang alapján” kapcsoló). Alapértelmezés: be. Kikapcsolva az átírás-feladat
+    // „identify” szakasza Skipped, az átirat névtelen beszélőkkel készül el. A választás a
+    // folyamat életére szól (nem perzisztált); az utólagos identifyMeetingAsync-et nem érinti.
+    void setIdentifyAfterTranscription(const QString& meetingId, bool enabled);
+    bool identifyAfterTranscription(const QString& meetingId) const;
+    // Van-e használható hang-modell (nélküle nincs azonosítás-szakasz; a kapcsoló letiltható).
+    bool voiceIdentificationAvailable() const;
+
     // Hullámforma-csúcsok kérése a meeting összes meglévő sávjára (+ a keverékre, trackId
     // "mixdown"). Eredmény: waveforms()->peaksReady / peaksFailed.
     void requestWaveforms(const QString& meetingId);
