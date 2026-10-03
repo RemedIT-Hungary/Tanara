@@ -141,6 +141,16 @@ QString QmlShellBridge::pickAudioFile()
         tr("Hangfájlok (*.ogg *.opus *.flac *.wav *.mp3 *.m4a *.aac);;Minden fájl (*)"));
 }
 
+QStringList QmlShellBridge::pickAudioFiles()
+{
+    // Importáláshoz: bármi, amit az ffmpeg dekódol — a videók hangja is.
+    const QString start = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+    return QFileDialog::getOpenFileNames(
+        nullptr, tr("Importálandó hangfájlok kiválasztása"), start,
+        tr("Hang- és videófájlok (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif "
+           "*.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;Minden fájl (*)"));
+}
+
 // ---- felvevő (lásd ShellRecorderHost) ----------------------------------------------------
 
 void QmlShellBridge::startRecorderListening()

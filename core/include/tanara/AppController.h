@@ -10,6 +10,7 @@
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/jobs/JobTypes.h"
 #include "tanara/summary/SummaryStore.h"
+#include "tanara/import/AudioImporter.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -51,6 +52,8 @@ public:
     TrackCatalog*      tracks() const;
     // Hullámforma-csúcsok (aszinkron, gyorsítótárazva a meeting mappájában).
     WaveformService*   waveforms() const;
+    // Hangfájl-importálás motorja (fájl-adatok lekérése: probeAsync; indítás: importAudio).
+    AudioImporter*     importer() const;
     // Kényelmi: jobs()->state(meetingId).
     MeetingProcessingState processingState(const QString& meetingId) const;
 
@@ -188,6 +191,17 @@ public slots:
     // a végén mixdownUpdated(meetingId, ok) + tracksChanged jelet ad. jobProgress-t is
     // emittál az állapotról. Ha nincs aktív sáv vagy fut már egy keverés → no-op.
     void regenerateMixdown(const QString& meetingId);
+
+    // Hangfájlok importálása ÚJ meetingbe (lásd import/AudioImporter.h): forrásonként egy sáv,
+    // kérésre csatornánként bontva; aszinkron (ffmpeg), a UI nem áll meg. Visszaadja a leendő
+    // meeting azonosítóját (üres + errorOccurred, ha már fut egy importálás). A haladás a
+    // jobs()-ban JobKind::Import feladatként látszik EZEN az azonosítón (valós százalék,
+    // megszakítható: cancelJob(id, JobKind::Import)). A meeting csak a sikeres végén jön
+    // létre (importFinished); hiba / megszakítás után semmi nem marad a lemezen. A lekeverés
+    // ugyanúgy indul, mint felvétel után: mixdownMode "auto" → azonnal a háttérben, "manual"
+    // → kézre vár (és setAutoMixdownAfterRecording(false) mellett itt sem indul). Átírás
+    // NEM indul magától.
+    QString importAudio(const tanara::ImportRequest& request);
 
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
@@ -330,6 +344,11 @@ signals:
     void levelMeterUpdated(int trackIndex, float rms);
     void elapsedChanged(qint64 ms);
     void recordingFinished(tanara::Meeting meeting);
+    // Az importálás elkészült: a meeting a tárban van (a könyvtár felvette).
+    void importFinished(tanara::Meeting meeting);
+    // Az importálás nem sikerült (nem maradt utána semmi). detail: technikai sor, lehet üres.
+    void importFailed(QString importId, QString message, QString detail);
+    void importCancelled(QString importId);
     // Felvétel közben a hívás véget ért (a detektor 2 egymást követő pollban inaktívat
     // látott egy korábban aktív hívás után). A UI ebből kérdez rá a leállításra.
     void callEnded(QString appName);

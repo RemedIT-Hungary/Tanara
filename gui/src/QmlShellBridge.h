@@ -64,6 +64,7 @@ public:
     void openPeople() override;
     void openRecorder() override;
     QString pickAudioFile() override;
+    QStringList pickAudioFiles() override;
     bool handleCloudBlocker(const tanara::ReadinessResult& blocker) override;
     bool confirmCloudEstimate(const QString& meetingId, const QString& task,
                               const QString& mode) override;

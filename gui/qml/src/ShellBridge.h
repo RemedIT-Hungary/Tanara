@@ -13,6 +13,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 
 namespace tanara_qml {
@@ -45,6 +46,8 @@ public:
     Q_INVOKABLE virtual void openRecorder() = 0;
     // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
     Q_INVOKABLE virtual QString pickAudioFile() = 0;
+    // Ugyanez több fájlra (importálás): hang- és videófájlok; üres lista = visszalépett.
+    Q_INVOKABLE virtual QStringList pickAudioFiles() = 0;
 
     // ---- Tanara Cloud kapuk (a ShellActions hívja a feldolgozás indítása előtt) ----
     // Egy blokkolt lépés cloud-teendője (bejelentkezés / feltöltés / frissítés). true = a

@@ -20,6 +20,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QSet>
+#include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 namespace tanara {
@@ -76,6 +77,11 @@ public:
     Q_INVOKABLE void cancelJob(const QString& meetingId, int jobKind);
     Q_INVOKABLE void revealInFolder(const QString& meetingId);
     Q_INVOKABLE QString pickAudioFile();
+    Q_INVOKABLE QStringList pickAudioFiles();
+    // „Hangfájl importálása…”: fájlok nélkül előbb a natív választó nyílik (visszalépésre nem
+    // történik semmi); a megadott (pl. az ablakra ejtett) fájlokkal rögtön a párbeszédablak.
+    // Futó importálás mellett a haladását mutató ablak jön elő.
+    Q_INVOKABLE void openImport(const QVariantList& files = {});
     Q_INVOKABLE bool confirm(const QString& title, const QString& text,
                              const QString& confirmLabel, bool danger);
     Q_INVOKABLE void showMeeting(const QString& meetingId);
@@ -124,6 +130,7 @@ signals:
     void retranscribeDialogRequested(const QString& meetingId);
     void deleteDialogRequested(const QString& meetingId, const QString& title);
     void renameRequested(const QString& meetingId);
+    void importDialogRequested(const QVariantList& files);
     void windowActivationRequested();
     // Az átirat előtti résztvevő-tipp elkészült (PreTranscriptView megjelenítheti).
     void participantsGuessed(const QString& meetingId, const QString& summary);

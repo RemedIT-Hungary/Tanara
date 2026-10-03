@@ -22,6 +22,7 @@ public:
         AnalyzeTopics = int(tanara::JobKind::AnalyzeTopics),
         Mixdown       = int(tanara::JobKind::Mixdown),
         Identify      = int(tanara::JobKind::Identify),
+        Import        = int(tanara::JobKind::Import),
     };
     Q_ENUM(Kind)
 };

@@ -50,6 +50,8 @@ public:
     void openPeople() override { calls << QStringLiteral("people"); }
     void openRecorder() override { calls << QStringLiteral("recorder"); }
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
+    QStringList pickAudioFiles() override { calls << QStringLiteral("pickMany"); return pickedFiles; }
+    QStringList pickedFiles;
     bool handleCloudBlocker(const tanara::ReadinessResult& r) override
     {
         calls << QStringLiteral("blocker:%1:%2").arg(int(r.blockerKind)).arg(r.providerId);
@@ -194,6 +196,32 @@ private slots:
         QVERIFY(m_shell->meetingExists(a.id));
         QVERIFY(!m_shell->meetingExists(QStringLiteral("nincs-ilyen")));
         m_shell->setPlayer(nullptr);
+    }
+
+    void importOpensPickerThenDialog()
+    {
+        QSignalSpy requested(m_shell.get(), &ShellActions::importDialogRequested);
+        // Visszalépés a fájlválasztóból: nem nyílik ablak.
+        m_shell->openImport();
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("pickMany")});
+        QCOMPARE(requested.size(), 0);
+        // Kiválasztott fájlokkal az ablak azokkal nyílik.
+        m_bridge->pickedFiles = {QStringLiteral("/tmp/a.wav"), QStringLiteral("/tmp/b.mp3")};
+        m_shell->openImport();
+        QCOMPARE(requested.size(), 1);
+        QCOMPARE(requested.last().at(0).toList().size(), 2);
+        // Megadott (ejtett) fájlokkal nincs választó.
+        m_bridge->calls.clear();
+        m_shell->openImport({QStringLiteral("/tmp/c.flac")});
+        QVERIFY(m_bridge->calls.isEmpty());
+        QCOMPARE(requested.size(), 2);
+        QCOMPARE(requested.last().at(0).toList(), QVariantList{QStringLiteral("/tmp/c.flac")});
+        // Híd nélkül (demó) az üres ablak nyílik.
+        m_shell->setBridge(nullptr);
+        m_shell->openImport();
+        QCOMPARE(requested.size(), 3);
+        QVERIFY(requested.last().at(0).toList().isEmpty());
+        QCOMPARE(m_shell->pickAudioFiles(), QStringList());
     }
 
     void widgetsActionsGoThroughTheBridge()

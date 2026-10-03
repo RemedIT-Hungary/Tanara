@@ -79,6 +79,13 @@ void ShellActions::attachController()
         showMeeting(m.id);
         toast(tr("Felvétel kész: %1").arg(m.title));
     });
+    // Importálás kész: ugyanúgy, mint egy új felvétel — megjelenik és kijelölődik (az átirat
+    // előtti nézettel; átírás nem indul magától).
+    connect(c, &tanara::AppController::importFinished, this, [this](const tanara::Meeting& m) {
+        showMeeting(m.id);
+        setCurrentTab(0);
+        toast(tr("Importálva: %1").arg(m.title));
+    });
     // Kész az átirat / összefoglaló: értesítés; ha épp ez a megbeszélés van nyitva, a fülre vált.
     connect(c, &tanara::AppController::transcriptReady, this, [this](const QString& id, const QString&) {
         toast(tr("Elkészült az átirat: %1").arg(meeting(id).title));
@@ -258,6 +265,25 @@ QString ShellActions::pickAudioFile()
 {
     ShellBridge* b = bridge();
     return b ? b->pickAudioFile() : QString();
+}
+
+QStringList ShellActions::pickAudioFiles()
+{
+    ShellBridge* b = bridge();
+    return b ? b->pickAudioFiles() : QStringList();
+}
+
+void ShellActions::openImport(const QVariantList& files)
+{
+    QVariantList list = files;
+    const bool busy = m_controller && m_controller->importer() && m_controller->importer()->busy();
+    if (list.isEmpty() && !busy && bridge()) {
+        const QStringList picked = pickAudioFiles();
+        if (picked.isEmpty())
+            return;                       // visszalépett a választóból
+        for (const QString& p : picked) list << p;
+    }
+    emit importDialogRequested(list);
 }
 
 // ---- kapuzás ---------------------------------------------------------------------------
