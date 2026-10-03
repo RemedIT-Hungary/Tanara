@@ -1,3 +1,6 @@
+# Az új Qt Quick / QML felület (URI „Tanara”) — statikus modul, lásd gui/qml/README.md.
+add_subdirectory(qml)
+
 file(GLOB_RECURSE TANARA_GUI_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h src/*.ui)
 
 add_executable(tanara ${TANARA_GUI_SOURCES})
@@ -13,6 +16,8 @@ target_include_directories(tanara PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(tanara PRIVATE
     tanara_core
+    tanara_qml
+    tanara_qmlplugin      # a statikus QML-modul plugin-oldala (típus-regisztráció + qmldir)
     Qt6::Widgets
     Qt6::Multimedia
     Qt6::MultimediaWidgets

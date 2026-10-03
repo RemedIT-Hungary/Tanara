@@ -446,6 +446,104 @@
     </message>
 </context>
 <context>
+    <name>JobErrors</name>
+    <message>
+        <source>hálózat · nincs válasz</source>
+        <translation>network · no response</translation>
+    </message>
+    <message>
+        <source>hálózat · %1</source>
+        <translation>network · %1</translation>
+    </message>
+    <message>
+        <source>Ismeretlen hiba történt.</source>
+        <translation>An unknown error occurred.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült elérni a szolgáltatót. Ellenőrizd a hálózati kapcsolatot és a szolgáltató címét.</source>
+        <translation>Could not reach the provider. Check your network connection and the provider address.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld le a kulcsot a Beállításokban.</source>
+        <translation>The provider rejected the API key. Check or replace the key in Settings.</translation>
+    </message>
+    <message>
+        <source>A szolgáltatónál elfogyott az egyenleg vagy a keret.</source>
+        <translation>The provider account is out of balance or quota.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem ismeri a beállított modellt vagy címet.</source>
+        <translation>The provider does not recognise the configured model or address.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató nem válaszolt időben. Próbáld újra.</source>
+        <translation>The provider did not respond in time. Try again.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató szerint túl nagy a kérés (túl hosszú felvétel vagy átirat).</source>
+        <translation>The provider says the request is too large (the recording or transcript is too long).</translation>
+    </message>
+    <message>
+        <source>A szolgáltató átmenetileg korlátozza a kéréseket (túl sok kérés vagy elfogyott keret). Próbáld újra később.</source>
+        <translation>The provider is temporarily limiting requests (too many requests or the quota is used up). Try again later.</translation>
+    </message>
+    <message>
+        <source>A szolgáltatónál hiba történt. Próbáld újra később.</source>
+        <translation>The provider reported an error. Try again later.</translation>
+    </message>
+    <message>
+        <source>A szolgáltató elutasította a kérést.</source>
+        <translation>The provider rejected the request.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült elérni a Tanara Cloudot. Ellenőrizd a hálózati kapcsolatot.</source>
+        <translation>Could not reach Tanara Cloud. Check your network connection.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud hibát jelzett.</source>
+        <translation>Tanara Cloud reported an error.</translation>
+    </message>
+</context>
+<context>
+    <name>Main</name>
+    <message>
+        <source>Fájl</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>Kilépés</source>
+        <translation>Quit</translation>
+    </message>
+    <message>
+        <source>Nézet</source>
+        <translation>View</translation>
+    </message>
+    <message>
+        <source>Téma: a rendszer szerint</source>
+        <translation>Theme: follow system</translation>
+    </message>
+    <message>
+        <source>Világos téma</source>
+        <translation>Light theme</translation>
+    </message>
+    <message>
+        <source>Sötét téma</source>
+        <translation>Dark theme</translation>
+    </message>
+    <message>
+        <source>Átirat</source>
+        <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Sávok</source>
+        <translation>Tracks</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <source>Tanara</source>
@@ -720,6 +818,25 @@
     <message>
         <source>Egyéb</source>
         <translation>Other</translation>
+    </message>
+</context>
+<context>
+    <name>TrackCatalog</name>
+    <message>
+        <source>Saját mikrofon</source>
+        <translation>My microphone</translation>
+    </message>
+    <message>
+        <source>Hívás hangja</source>
+        <translation>Call audio</translation>
+    </message>
+    <message>
+        <source>Rendszerhang</source>
+        <translation>System audio</translation>
+    </message>
+    <message>
+        <source>Hangsáv</source>
+        <translation>Audio track</translation>
     </message>
 </context>
 <context>
@@ -1200,8 +1317,16 @@
         <translation>No active audio track for mixdown.</translation>
     </message>
     <message>
+        <source>Lekeverés</source>
+        <translation>Mixdown</translation>
+    </message>
+    <message>
         <source>A lekeverés (ffmpeg) sikertelen.</source>
         <translation>Mixdown (ffmpeg) failed.</translation>
+    </message>
+    <message>
+        <source>A lekeverés nem sikerült.</source>
+        <translation>The mixdown failed.</translation>
     </message>
     <message>
         <source>Már folyik felvétel.</source>
@@ -1220,6 +1345,30 @@
         <translation>top up your balance</translation>
     </message>
     <message>
+        <source>Feltöltés</source>
+        <translation>Upload</translation>
+    </message>
+    <message>
+        <source>%1 perc, %2 sáv</source>
+        <translation>%1 min, %2 tracks</translation>
+    </message>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Beszélők szétválasztása</source>
+        <translation>Speaker separation</translation>
+    </message>
+    <message>
+        <source>Résztvevők azonosítása</source>
+        <translation>Identifying participants</translation>
+    </message>
+    <message>
+        <source>Átírás folyamatban</source>
+        <translation>Transcription in progress</translation>
+    </message>
+    <message>
         <source>A lekeverés sikertelen — az átírás nem indult.</source>
         <translation>Mixdown failed — transcription was not started.</translation>
     </message>
@@ -1234,6 +1383,10 @@
     <message>
         <source>Átírás indítása…</source>
         <translation>Starting transcription…</translation>
+    </message>
+    <message>
+        <source>sorban áll</source>
+        <translation>queued</translation>
     </message>
     <message>
         <source>Átírás-hiba: %1</source>
@@ -1256,6 +1409,10 @@
         <translation>Summarizing with the local model (Gemma)…</translation>
     </message>
     <message>
+        <source>Összefoglaló készítése</source>
+        <translation>Creating summary</translation>
+    </message>
+    <message>
         <source>Összefoglaló hiba: %1</source>
         <translation>Summary error: %1</translation>
     </message>
@@ -1268,6 +1425,10 @@
         <translation>Extracting topics with the local model…</translation>
     </message>
     <message>
+        <source>Témák javaslása</source>
+        <translation>Suggesting topics</translation>
+    </message>
+    <message>
         <source>Téma-kinyerés hiba: %1</source>
         <translation>Topic extraction error: %1</translation>
     </message>
@@ -1278,6 +1439,14 @@
     <message>
         <source>A témához cím kell az elemzéshez.</source>
         <translation>The topic needs a title for analysis.</translation>
+    </message>
+    <message>
+        <source>Témák elemzése</source>
+        <translation>Analysing topics</translation>
+    </message>
+    <message>
+        <source>%1 téma elemzése nem sikerült.</source>
+        <translation>The analysis of %1 topic(s) failed.</translation>
     </message>
     <message>
         <source>%1 téma elemzése nem sikerült — futtasd újra a kártyáján, majd kérd a végső összegzést.</source>
@@ -1304,8 +1473,16 @@
         <translation>Synthesis (executive summary + action items)…</translation>
     </message>
     <message>
+        <source>Összegzés készítése</source>
+        <translation>Creating the overall summary</translation>
+    </message>
+    <message>
         <source>Komplex összefoglaló hiba: %1</source>
         <translation>Complex summary error: %1</translation>
+    </message>
+    <message>
+        <source>%1 / %2 beszélő</source>
+        <translation>%1 / %2 speakers</translation>
     </message>
 </context>
 <context>
@@ -1329,6 +1506,25 @@
     <message>
         <source>Nem sikerült az összegzést értelmezni.</source>
         <translation>Could not parse the synthesis.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::MeetingLibrary</name>
+    <message>
+        <source>Ma</source>
+        <translation>Today</translation>
+    </message>
+    <message>
+        <source>Tegnap</source>
+        <translation>Yesterday</translation>
+    </message>
+    <message>
+        <source>Ezen a héten</source>
+        <translation>This week</translation>
+    </message>
+    <message>
+        <source>Korábban</source>
+        <translation>Earlier</translation>
     </message>
 </context>
 <context>
@@ -1445,6 +1641,70 @@
     </message>
 </context>
 <context>
+    <name>tanara::SpeakerEditor</name>
+    <message>
+        <source>Új beszélő %1</source>
+        <translation>New speaker %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor áthelyezése ide: %1</source>
+        <translation>
+            <numerusform>Move %n line to %1</numerusform>
+            <numerusform>Move %n lines to %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Beszélő cseréje: %1 → %2</source>
+        <translation>Change speaker: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Névtelenre állítás: %1</source>
+        <translation>Make anonymous: %1</translation>
+    </message>
+    <message>
+        <source>Összevonás: %1 → %2</source>
+        <translation>Merge: %1 → %2</translation>
+    </message>
+    <message>
+        <source>Résztvevő hozzáadása: %1</source>
+        <translation>Add participant: %1</translation>
+    </message>
+    <message>
+        <source>Résztvevő eltávolítása: %1</source>
+        <translation>Remove participant: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor megerősítése</source>
+        <translation>
+            <numerusform>Confirm %n line</numerusform>
+            <numerusform>Confirm %n lines</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Javaslat elfogadása: %n sor ide: %1</source>
+        <translation>
+            <numerusform>Accept suggestion: %n line to %1</numerusform>
+            <numerusform>Accept suggestion: %n lines to %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Ismeretlen beszélő.</source>
+        <translation>Unknown speaker.</translation>
+    </message>
+    <message>
+        <source>Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.</source>
+        <translation>Name the speaker first — a voiceprint cannot be created for an anonymous speaker.</translation>
+    </message>
+    <message>
+        <source>Nincs elég hanganyag a lenyomathoz: még kb. %1 mp beszéd kellene (legalább 3 mp-es sorokból).</source>
+        <translation>Not enough audio for a voiceprint: about %1 s more speech is needed (from lines of at least 3 s).</translation>
+    </message>
+    <message>
+        <source>A hangmodell vagy a megbeszélés hangja nem érhető el.</source>
+        <translation>The voice model or the meeting audio is not available.</translation>
+    </message>
+</context>
+<context>
     <name>tanara::SummaryService</name>
     <message>
         <source>Nincs beállított LLM provider.</source>
@@ -1457,6 +1717,52 @@
     <message>
         <source>Nem sikerült JSON-ként értelmezni a választ: %1</source>
         <translation>Could not parse the response as JSON: %1</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::TrackCatalog</name>
+    <message>
+        <source>Nincs meeting-tár.</source>
+        <translation>No meeting store.</translation>
+    </message>
+    <message>
+        <source>Ismeretlen meeting: %1</source>
+        <translation>Unknown meeting: %1</translation>
+    </message>
+    <message>
+        <source>Ismeretlen sáv: %1</source>
+        <translation>Unknown track: %1</translation>
+    </message>
+    <message>
+        <source>A kiválasztott fájl nem olvasható: %1</source>
+        <translation>The selected file cannot be read: %1</translation>
+    </message>
+    <message>
+        <source>A kiválasztott fájl üres: %1</source>
+        <translation>The selected file is empty: %1</translation>
+    </message>
+    <message>
+        <source>Ez a fájl már egy másik sávhoz tartozik.</source>
+        <translation>This file already belongs to another track.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült a fájlt a megbeszélés mappájába másolni.</source>
+        <translation>Could not copy the file into the meeting folder.</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::WaveformService</name>
+    <message>
+        <source>A hangfájl nem található.</source>
+        <translation>The audio file was not found.</translation>
+    </message>
+    <message>
+        <source>Az ffmpeg nem indítható.</source>
+        <translation>Could not start ffmpeg.</translation>
+    </message>
+    <message>
+        <source>A hullámforma számítása nem sikerült.</source>
+        <translation>Could not compute the waveform.</translation>
     </message>
 </context>
 <context>

@@ -98,6 +98,11 @@ struct MeetingProcessingState {
     // látszik (a UI figyelmeztethet), amíg egy sikeres futás vagy clearError() nem törli.
     JobError  transcriptError;
     JobError  summaryError;
+    // Az összefoglaló ELAVULT: elkészülte óta beszélő-hozzárendelés változott (a könyvtár
+    // „elavult” ikon-állapota, az Összefoglaló fül pillje, M07 sáv). Csak summaryState==Done
+    // mellett lehet igaz. A számláló: hány beszélőt javítottak azóta.
+    bool      summaryStale = false;
+    int       staleCorrectedSpeakers = 0;
     QVector<JobProgress> jobs;   // a meeting épp futó feladatai (feladat-sáv)
 
     bool busy() const { return !jobs.isEmpty(); }

@@ -20,3 +20,18 @@ foreach(t test_cloud_gateway test_cloud_job_id)
         set_tests_properties(${t} PROPERTIES TIMEOUT 120)
     endif()
 endforeach()
+
+# UI-tesztek (tests/ui/*.cpp): a QML-modul C++ nézetmodelljei kijelző nélkül. Fájlonként
+# egy exe; a tanara_qml libet (és a plugint, ha a teszt QML-t is tölt) linkelik. Offscreen
+# platformon + szoftveres rendererrel futnak, így CI-n / ssh-n is mennek.
+if(TARGET tanara_qml)
+    file(GLOB TANARA_UI_TEST_FILES CONFIGURE_DEPENDS ui/*.cpp)
+    foreach(testfile ${TANARA_UI_TEST_FILES})
+        get_filename_component(tname ${testfile} NAME_WE)
+        add_executable(${tname} ${testfile})
+        target_link_libraries(${tname} PRIVATE tanara_qml tanara_qmlplugin Qt6::Widgets Qt6::Test)
+        add_test(NAME ${tname} COMMAND ${tname})
+        set_tests_properties(${tname} PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    endforeach()
+endif()

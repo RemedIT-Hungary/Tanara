@@ -282,6 +282,13 @@ MeetingProcessingState MeetingJobTracker::state(const Meeting& m) const
     s.summaryState = summarizing ? StepState::Running
                    : m.hasSummary ? StepState::Done
                    : s.summaryError.isValid() ? StepState::Failed : StepState::None;
+    if (s.summaryState == StepState::Done && m_staleProbe) {
+        const int corrected = m_staleProbe(m);
+        if (corrected >= 0) {
+            s.summaryStale = true;
+            s.staleCorrectedSpeakers = corrected;
+        }
+    }
     // Azonosítás: fut → Running; lefutott (jelölés a lemezen) → Done; régi meetingnél a jelölés
     // hiányzik, ott a nevesített beszélő a jel, hogy megtörtént.
     s.identifyState = identifying ? StepState::Running

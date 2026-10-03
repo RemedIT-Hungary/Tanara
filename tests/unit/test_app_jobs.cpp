@@ -25,6 +25,8 @@
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/edit/SpeakerOverlay.h"
 
 using namespace tanara;
 
@@ -162,6 +164,8 @@ private slots:
     void cancelTopicQueue();
     void renamedDuringTranscriptionSurvives();
     void identifyRunsAsLastStage();
+    void retranscribeSuccessClearsNamesAndCorrections();
+    void staleSummaryShowsInStateAndPending();
 
 private:
     void newApp();
@@ -242,6 +246,12 @@ Meeting AppJobsTest::transcribed(const QString& title)
     if (f.open(QIODevice::WriteOnly))
         f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
     f.close();
+    QFile seg(QDir(m.folder).filePath("transcript.segments.json"));
+    if (seg.open(QIODevice::WriteOnly))
+        seg.write(QJsonDocument(QJsonArray{
+            QJsonObject{{"startMs", 0}, {"endMs", 550}, {"speaker", "Beszélő 1"}, {"text", "Sziasztok, az"}},
+            QJsonObject{{"startMs", 600}, {"endMs", 1450}, {"speaker", "Beszélő 1"}, {"text", "árajánlatot Ödön küldi."}}}).toJson());
+    seg.close();
     m.hasTranscript = true;
     m_app->store()->saveMeeting(m);
     return m;
@@ -392,6 +402,17 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     m_app->store()->saveMeeting(m);
     const QByteArray tokensBefore = [&] { QFile f(QDir(m.folder).filePath("transcript.tokens.json")); return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray(); }();
 
+    // Kézi soronkénti javítás is van (overlay) — ennek is túl kell élnie a megszakítást.
+    {
+        SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        QVERIFY(ed);
+        QCOMPARE(ed->utteranceCount(), 2);
+        QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+        m_app->closeSpeakerEditor(m.id);
+    }
+    QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
+    QVERIFY(QFile::exists(speakeredit::overlayPath(m.folder)));
+
     MeetingJobTracker* jobs = m_app->jobs();
     QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
     m_app->retranscribeMeeting(m.id);
@@ -417,6 +438,9 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     QCOMPARE(f.readAll(), tokensBefore);
+    // A kézi sor-javítás is megvan (az overlay csak az ÚJ átirat megérkezésekor törlődne).
+    QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
+    QCOMPARE(m_app->retranscribeImpact(m.id).namedSpeakers, 2);
     QVERIFY(QDir(m.folder).exists("track_mic.wav"));          // a felvétel megvan
     // A szolgáltatónál a feltöltött hang és az átírás törlődik (Soniox cleanup).
     QTRY_COMPARE(m_http->count("DELETE", "/transcriptions/t1"), 1);
@@ -807,6 +831,95 @@ void AppJobsTest::identifyRunsAsLastStage()
     QCOMPARE(finished.at(1).at(1).value<JobKind>(), JobKind::Identify);
     QCOMPARE(finished.at(1).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
     QVERIFY(m_errors.isEmpty());
+}
+
+void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
+{
+    if (!m_ffmpeg) QSKIP("ffmpeg nem található");
+    m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
+    Meeting m = transcribed("Sikeres újra-átírás");
+    m.speakerMap.insert("Beszélő 1", "Ödön");
+    m_app->store()->saveMeeting(m);
+    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    QVERIFY(ed);
+    QVERIFY(!ed->moveUtterancesToPerson({ed->utteranceAt(1).id}, "Kovács Lilla").isEmpty());
+    QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
+
+    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    m_app->retranscribeMeeting(m.id, /*keepBackup*/ true);
+    // Amíg fut, a régi nevek és javítások élnek (nem törlődtek előre).
+    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
+    QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
+    QVERIFY(ready.wait(30000));
+    QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
+
+    // Siker: az új átirattal a nevek ÉS a soronkénti javítások is törlődtek.
+    QVERIFY(m_app->store()->load(m.id).speakerMap.isEmpty());
+    const RetranscribeImpact impact = m_app->retranscribeImpact(m.id);
+    QCOMPARE(impact.correctedUtterances, 0);
+    QCOMPARE(impact.namedSpeakers, 0);
+    QCOMPARE(impact.addedParticipants, 0);
+    // A nyitott szerkesztő az ÚJ átiratot mutatja (a mock két megszólalást ad, két beszélővel).
+    QCOMPARE(ed->utteranceCount(), 2);
+    QVERIFY(!ed->utteranceAt(0).manuallyCorrected && !ed->utteranceAt(1).manuallyCorrected);
+    // A kért másolat megvan, benne a régi átirat a javításokkal.
+    const QStringList backups = QDir(m.folder).entryList({"transcript-backup-*"}, QDir::Dirs);
+    QCOMPARE(backups.size(), 1);
+    QVERIFY(QDir(QDir(m.folder).filePath(backups.first())).exists("transcript.tokens.json"));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+
+    // Törlés nyitott szerkesztővel: a szerkesztő is záródik (új kérésre nincs meeting → null).
+    m_app->deleteMeeting(m.id);
+    QVERIFY(m_app->speakerEditor(m.id) == nullptr);
+    QVERIFY(!QDir(m.folder).exists());
+}
+
+void AppJobsTest::staleSummaryShowsInStateAndPending()
+{
+    const QString json = QStringLiteral(R"({"execSummary":"Rövid.","decisions":[],"actionItems":[],"participants":[]})");
+    m_http->handler = [json](const FakeRequest&) -> FakeReply { return {200, chat(json)}; };
+    const Meeting m = transcribed("Elavuló összefoglaló");
+    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    MeetingProcessingState st = m_app->processingState(m.id);
+    QCOMPARE(st.summaryState, StepState::Done);
+    QVERIFY(!st.summaryStale);
+    QVERIFY(m_app->library()->pendingItems().isEmpty());
+
+    // Beszélő-változás az összefoglaló után → elavult: állapot, könyvtár-bejegyzés, „várnak rád”.
+    QSignalSpy stateChanged(m_app->jobs(), &MeetingJobTracker::stateChanged);
+    QSignalSpy pendingChanged(m_app->library(), &MeetingLibrary::pendingItemsChanged);
+    QSignalSpy entryChanged(m_app->library(), &MeetingLibrary::meetingChanged);
+    m_app->renameSpeaker(m.id, "Beszélő 1", "Ödön", /*enroll*/ false);
+    QVERIFY(stateChanged.count() >= 1);
+    QVERIFY(pendingChanged.count() >= 1);
+    QVERIFY(entryChanged.count() >= 1);
+    st = m_app->processingState(m.id);
+    QCOMPARE(st.summaryState, StepState::Done);              // megvan, csak elavult
+    QVERIFY(st.summaryStale);
+    QCOMPARE(st.staleCorrectedSpeakers, 1);
+    QVERIFY(m_app->library()->entry(m.id).state.summaryStale);
+    QVector<PendingItem> pending = m_app->library()->pendingItems();
+    QCOMPARE(pending.size(), 1);
+    QCOMPARE(pending[0].kind, PendingKind::StaleSummary);
+    QCOMPARE(pending[0].meetingId, m.id);
+    QCOMPARE(pending[0].correctedSpeakers, 1);
+
+    // „Rendben így” → eltűnik.
+    const int before = pendingChanged.count();
+    m_app->dismissSummaryStale(m.id);
+    QVERIFY(pendingChanged.count() > before);
+    QVERIFY(!m_app->processingState(m.id).summaryStale);
+    QVERIFY(m_app->library()->pendingItems().isEmpty());
+
+    // Újra elavul, majd az összefoglaló újragenerálása törli.
+    m_app->renameSpeaker(m.id, "Beszélő 1", "Lilla", false);
+    QVERIFY(m_app->processingState(m.id).summaryStale);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY(!m_app->processingState(m.id).summaryStale);
+    QVERIFY(m_app->library()->pendingItems().isEmpty());
 }
 
 #endif // Q_MOC_RUN

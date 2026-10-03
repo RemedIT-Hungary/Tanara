@@ -72,7 +72,7 @@ struct PersonPresence {
 enum class PendingKind {
     AwaitingTranscription,   // van felvétel, még nincs átirat („Megnyitás”)
     TranscriptionFailed,     // az átírás elbukott („Megnézem”) — error kitöltve
-    StaleSummary,            // elavult összefoglaló („Frissítés”) — a beszélő-szerkesztő réteg tölti majd
+    StaleSummary,            // elavult összefoglaló („Frissítés”) — correctedSpeakers kitöltve
 };
 
 struct PendingItem {
@@ -82,6 +82,7 @@ struct PendingItem {
     QDateTime startedAt;
     qint64    durationMs = 0;
     JobError  error;         // TranscriptionFailed esetén
+    int       correctedSpeakers = 0;   // StaleSummary: hány beszélőt javítottak az összefoglaló óta
 };
 
 class MeetingLibrary : public QObject {

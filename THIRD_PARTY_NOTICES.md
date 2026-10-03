@@ -16,6 +16,17 @@ respective licenses.
   Single-header audio capture, vendored under `third_party/miniaudio/`.
   Upstream: https://github.com/mackron/miniaudio
 
+- **IBM Plex Sans / IBM Plex Mono** — SIL Open Font License 1.1.
+  Copyright © 2017 IBM Corp. with Reserved Font Name "Plex". TrueType files (Sans
+  Regular / Medium / SemiBold / Bold, Mono Regular / Medium / SemiBold) are embedded in
+  the GUI from `gui/qml/fonts/` (license text: `gui/qml/fonts/OFL.txt`), unmodified.
+  Upstream: https://github.com/IBM/plex
+
+- **Lucide icons** — ISC License (portions MIT, from Feather).
+  SVG icons from `lucide-static` 0.460.0 are embedded in the GUI from `gui/qml/icons/`
+  (license text: `gui/qml/icons/LICENSE`), recoloured at runtime.
+  Upstream: https://lucide.dev — https://github.com/lucide-icons/lucide
+
 ## Linked at build/runtime
 
 - **Qt 6** — LGPL v3 (open-source edition). Dynamically linked; Qt remains

@@ -1,7 +1,12 @@
-// Tanara GUI (Qt Widgets) — belépési pont.
-//   tanara                 az elemző/könyvtár (MainWindow)
+// Tanara GUI — belépési pont.
+//   tanara                 az elemző/könyvtár az új Qt Quick / QML felülettel (gui/qml, Main.qml)
+//   tanara --classic       ugyanez a régi Qt Widgets főablakkal (MainWindow), változatlanul
 //   tanara --record …      csak a lebegő felvevő, azonnali rögzítéssel (a figyelő indítja)
 //                          opciók: --title T  --context C  --device IDX (ismételhető)
+//   tanara --gallery | --demo | --qml-shot ki.png [--qml-page T] [--theme …] [--size SZxM]
+//                          QML-fejlesztői módok AppController NÉLKÜL (lásd gui/qml/README.md)
+// A folyamat mindig QApplication: a Beállítások / Személyek / felvevő / cloud ablakok
+// egyelőre Widgetek maradnak, és a QML-ablak mellett nyílnak (App.bridge).
 #include "MainWindow.h"
 #include "RecordBar.h"
 #include "FloatingRecorder.h"
@@ -17,11 +22,16 @@
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/detect/RecordingLock.h"
 
+#include "AppContext.h"
+#include "QmlApp.h"
+
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
 #include <QDateTime>
 #include <QMessageBox>
+#include <QQmlApplicationEngine>
+#include <QTextStream>
 
 #include <memory>
 
@@ -146,7 +156,28 @@ int main(int argc, char** argv) {
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
         rawArgs << QString::fromLocal8Bit(argv[i]);
-    tanara::initLogging(tanara::parseLogOptions(rawArgs));
+    const QStringList cleanArgs = tanara::stripLogArgs(rawArgs);
+
+    // Melyik felület indul? --record: lebegő felvevő; --classic (vagy a Widgets-képernyőkép
+    // QA): a régi MainWindow; különben az új QML-főablak, illetve annak fejlesztői módjai.
+    const bool recordMode = cleanArgs.contains(QStringLiteral("--record"));
+    const bool classicMode = cleanArgs.contains(QStringLiteral("--classic"))
+                             || cleanArgs.contains(QStringLiteral("--ui-snapshots"));
+    const bool qmlMode = !recordMode && !classicMode;
+    tanara_qml::QmlOptions qmlOpts;
+    if (qmlMode) {
+        qmlOpts = tanara_qml::parseQmlOptions(cleanArgs);
+        if (!qmlOpts.error.isEmpty()) {
+            QTextStream(stderr) << "tanara: " << qmlOpts.error << Qt::endl;
+            return 2;
+        }
+    }
+
+    // A galéria / demó / képernyőkép-mód nem ír a user ~/.tanara mappájába: logfájl sincs.
+    tanara::LogOptions logOpts = tanara::parseLogOptions(rawArgs);
+    if (qmlMode && qmlOpts.withoutController())
+        logOpts.toFile = false;
+    tanara::initLogging(logOpts);
 
     // Konzol-zaj csendesítése (külső libek). Audio-only lejátszás → ne próbáljon
     // videó-hardvergyorsítást (VDPAU/VAAPI/D3D) inicializálni az ffmpeg-backend.
@@ -162,6 +193,11 @@ int main(int argc, char** argv) {
            "optikai eszköz formátum-egyeztetés). Ezek NEM hibák.";
 #endif
 
+    // Qt Quick-beállítások (stílus, szövegrajzolás; képernyőkép-módban offscreen platform) —
+    // a QApplication ELŐTT. Klasszikus és felvevő-módban semmi nem változik.
+    if (qmlMode)
+        tanara_qml::prepareProcess(qmlOpts);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Tanara"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
@@ -170,26 +206,52 @@ int main(int argc, char** argv) {
     // UI-nyelv (settings.json uiLanguage) — minden widget megkonstruálása ELŐTT.
     tanara::installAppTranslator();
 
+    // QML-fejlesztői módok (képernyőkép / galéria / demó): AppController NÉLKÜL — a user
+    // valódi adataihoz (~/.tanara, ~/Tanara) nem nyúlunk, a nézetmodellek mintaadatot adnak.
+    if (qmlMode && qmlOpts.withoutController()) {
+        tanara_qml::applyOptions(qmlOpts);
+        if (qmlOpts.shotMode())
+            return tanara_qml::runShot(qmlOpts);
+        QQmlApplicationEngine engine;
+        if (!tanara_qml::loadPage(engine, qmlOpts.page, qmlOpts.props))
+            return 1;
+        return app.exec();
+    }
+
     tanara::AppController controller;
 
-    // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs MainWindow.
-    const QStringList cleanArgs = tanara::stripLogArgs(rawArgs);
-    if (cleanArgs.contains(QStringLiteral("--record")))
+    // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs főablak.
+    if (recordMode)
         return runRecorderMode(app, controller, cleanArgs);
 
-    tanara_gui::MainWindow window(&controller);
+    if (classicMode) {
+        tanara_gui::MainWindow window(&controller);
 
-    // Fejlesztői QA: a Tanara Cloud képernyők PNG-be mentése, majd kilépés.
-    if (const int i = cleanArgs.indexOf(QStringLiteral("--ui-snapshots")); i >= 0 && i + 1 < cleanArgs.size())
-        return tanara_gui::runCloudSnapshots(controller, window, cleanArgs.at(i + 1));
+        // Fejlesztői QA: a Tanara Cloud képernyők PNG-be mentése, majd kilépés.
+        if (const int i = cleanArgs.indexOf(QStringLiteral("--ui-snapshots")); i >= 0 && i + 1 < cleanArgs.size())
+            return tanara_gui::runCloudSnapshots(controller, window, cleanArgs.at(i + 1));
 
-    window.show();
+        window.show();
 
-    // Eszközök felsorolása indításkor (→ devicesChanged → eszközlista feltöltése).
+        // Eszközök felsorolása indításkor (→ devicesChanged → eszközlista feltöltése).
+        controller.refreshDevices();
+
+        // Induló diagnosztika (fejléc info, részletek debug szinten) — a refresh UTÁN,
+        // hogy a látott audio-eszközök is benne legyenek.
+        tanara::logStartupDiagnostics(controller);
+
+        return app.exec();
+    }
+
+    // Az új QML-főablak. A nézetmodellek (gui/qml/src) az App-singletonon át érik el a
+    // controllert: tanara_qml::AppContext::instance()->controller().
+    tanara_qml::applyOptions(qmlOpts);
+    tanara_qml::AppContext::instance()->setController(&controller);
+    QQmlApplicationEngine engine;   // a controller UTÁN deklarálva → előbb szűnik meg
+    if (!tanara_qml::loadPage(engine, QStringLiteral("Main")))
+        return 1;
+
     controller.refreshDevices();
-
-    // Induló diagnosztika (fejléc info, részletek debug szinten) — a refresh UTÁN,
-    // hogy a látott audio-eszközök is benne legyenek.
     tanara::logStartupDiagnostics(controller);
 
     return app.exec();

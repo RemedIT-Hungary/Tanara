@@ -380,12 +380,22 @@ QVector<PendingItem> MeetingLibrary::pendingItems(int limit) const
     QVector<PendingItem> out;
     for (const Meeting& m : std::as_const(d->meetings)) {
         if (limit > 0 && out.size() >= limit) break;
-        if (m.hasTranscript) continue;
         PendingItem it;
         it.meetingId = m.id;
         it.title = m.title;
         it.startedAt = m.startedAt;
         it.durationMs = m.durationMs;
+        if (m.hasTranscript) {
+            // Kész átirat: csak akkor „vár rád”, ha az összefoglalója elavult (és épp nem
+            // frissül). Az elavultságot a tracker szondája adja (beszélő-szerkesztő réteg).
+            if (!d->tracker || !m.hasSummary) continue;
+            const MeetingProcessingState st = d->tracker->state(m);
+            if (!st.summaryStale) continue;
+            it.kind = PendingKind::StaleSummary;
+            it.correctedSpeakers = st.staleCorrectedSpeakers;
+            out.append(it);
+            continue;
+        }
         if (d->tracker) {
             const MeetingProcessingState st = d->tracker->state(m);
             if (st.transcriptState == StepState::Running) continue;   // már dolgozunk rajta

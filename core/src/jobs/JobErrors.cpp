@@ -10,11 +10,6 @@ namespace tanara {
 
 namespace {
 
-QString trc(const char* text)
-{
-    return QCoreApplication::translate("JobErrors", text);
-}
-
 // Egysoros, rövidített szöveg a technikai sorba.
 QString oneLine(const QString& s, int maxLen = 200)
 {
@@ -71,8 +66,8 @@ QString httpFailureDetail(const HttpExchange& ex)
 {
     if (ex.status <= 0) {
         const QString net = oneLine(ex.networkError);
-        return net.isEmpty() ? trc("hálózat · nincs válasz")
-                             : trc("hálózat · %1").arg(net);
+        return net.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
+                             : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(net);
     }
     QString code, message;
     parseErrorBody(ex.body, &code, &message);
@@ -94,41 +89,41 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpE
     const QString raw = rawMessage.trimmed();
 
     if (!ex || !isProviderJob(kind)) {
-        e.message = raw.isEmpty() ? trc("Ismeretlen hiba történt.") : raw;
+        e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "Ismeretlen hiba történt.") : raw;
         return e;
     }
 
     e.detail = httpFailureDetail(*ex);
     const int st = ex->status;
     if (st <= 0) {
-        e.message = trc("Nem sikerült elérni a szolgáltatót. Ellenőrizd a hálózati kapcsolatot "
+        e.message = QCoreApplication::translate("JobErrors", "Nem sikerült elérni a szolgáltatót. Ellenőrizd a hálózati kapcsolatot "
                         "és a szolgáltató címét.");
         e.fixActionHint = settingsHint(kind);
     } else if (st == 401 || st == 403) {
-        e.message = trc("A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld "
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltató nem fogadta el az API-kulcsot. Ellenőrizd vagy cseréld "
                         "le a kulcsot a Beállításokban.");
         e.fixActionHint = settingsHint(kind);
     } else if (st == 402) {
-        e.message = trc("A szolgáltatónál elfogyott az egyenleg vagy a keret.");
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltatónál elfogyott az egyenleg vagy a keret.");
         e.fixActionHint = settingsHint(kind);
     } else if (st == 404) {
-        e.message = trc("A szolgáltató nem ismeri a beállított modellt vagy címet.");
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltató nem ismeri a beállított modellt vagy címet.");
         e.fixActionHint = settingsHint(kind);
     } else if (st == 408 || st == 504) {
-        e.message = trc("A szolgáltató nem válaszolt időben. Próbáld újra.");
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltató nem válaszolt időben. Próbáld újra.");
     } else if (st == 413) {
-        e.message = trc("A szolgáltató szerint túl nagy a kérés (túl hosszú felvétel vagy átirat).");
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltató szerint túl nagy a kérés (túl hosszú felvétel vagy átirat).");
     } else if (st == 429) {
-        e.message = trc("A szolgáltató átmenetileg korlátozza a kéréseket (túl sok kérés vagy "
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltató átmenetileg korlátozza a kéréseket (túl sok kérés vagy "
                         "elfogyott keret). Próbáld újra később.");
     } else if (st >= 500) {
-        e.message = trc("A szolgáltatónál hiba történt. Próbáld újra később.");
+        e.message = QCoreApplication::translate("JobErrors", "A szolgáltatónál hiba történt. Próbáld újra később.");
     } else if (st >= 400) {
-        e.message = raw.isEmpty() ? trc("A szolgáltató elutasította a kérést.") : raw;
+        e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "A szolgáltató elutasította a kérést.") : raw;
     } else {
         // 2xx válasz után bukott (pl. értelmezhetetlen tartalom): a nyers szöveg a magyarázat,
         // a HTTP-sor félrevezető lenne.
-        e.message = raw.isEmpty() ? trc("Ismeretlen hiba történt.") : raw;
+        e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "Ismeretlen hiba történt.") : raw;
         e.detail.clear();
     }
     return e;
@@ -140,12 +135,12 @@ JobError describeCloudFailure(JobKind kind, const CloudError& ce)
     e.kind = kind;
     e.when = QDateTime::currentDateTime();
     if (ce.kind == CloudErrorKind::Network || ce.httpStatus <= 0) {
-        e.message = trc("Nem sikerült elérni a Tanara Cloudot. Ellenőrizd a hálózati kapcsolatot.");
-        e.detail = ce.networkError.isEmpty() ? trc("hálózat · nincs válasz")
-                                             : trc("hálózat · %1").arg(oneLine(ce.networkError));
+        e.message = QCoreApplication::translate("JobErrors", "Nem sikerült elérni a Tanara Cloudot. Ellenőrizd a hálózati kapcsolatot.");
+        e.detail = ce.networkError.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
+                                             : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(oneLine(ce.networkError));
         return e;
     }
-    e.message = ce.message.isEmpty() ? trc("A Tanara Cloud hibát jelzett.") : ce.message;
+    e.message = ce.message.isEmpty() ? QCoreApplication::translate("JobErrors", "A Tanara Cloud hibát jelzett.") : ce.message;
     QStringList parts{QStringLiteral("HTTP %1").arg(ce.httpStatus)};
     if (!ce.code.isEmpty())
         parts << ce.code;

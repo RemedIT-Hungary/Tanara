@@ -17,6 +17,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <functional>
 
 namespace tanara {
 
@@ -47,12 +48,21 @@ public:
     // Lefutott-e (megszakítás nélkül) hang-alapú azonosítás a meetingen; mikor.
     QDateTime identifiedAt(const QString& meetingId) const;
 
+    // Az összefoglaló elavultságának forrása (a beszélő-szerkesztő réteg adja; az
+    // AppController köti be). A szonda a javított beszélők számát adja, vagy -1-et, ha az
+    // összefoglaló nem elavult. Szonda nélkül a summaryStale mindig hamis.
+    using StaleProbe = std::function<int(const Meeting&)>;
+    void setSummaryStaleProbe(StaleProbe probe) { m_staleProbe = std::move(probe); }
+
     // A meeting-mappában lévő állapotfájl neve.
     static QString stateFileName() { return QStringLiteral("processing.json"); }
 
 public slots:
     // A megmaradt hiba elvetése (pl. „Rendben” gomb). stateChanged + errorChanged jel.
     void clearError(const QString& meetingId, tanara::JobKind kind);
+    // A trackeren KÍVÜL változott valami, ami a levezetett állapotot érinti (pl. az
+    // összefoglaló elavult-jelzője) → stateChanged jel a modelleknek.
+    void notifyStateChanged(const QString& meetingId) { emit stateChanged(meetingId); }
 
 public:
     // ---- vezénylő API (az AppController hívja) ----------------------------------------
@@ -102,6 +112,7 @@ private:
     QString folderFor(const QString& meetingId) const;
 
     MeetingStore* m_store = nullptr;
+    StaleProbe    m_staleProbe;
     QVector<JobProgress> m_jobs;                       // indulási sorrendben
     mutable QHash<QString, Persisted*> m_persisted;    // meetingId → lemez-állapot (lusta)
 };
