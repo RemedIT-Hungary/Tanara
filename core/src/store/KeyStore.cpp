@@ -1,4 +1,5 @@
 #include "tanara/store/KeyStore.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -17,9 +18,8 @@ namespace {
 
 QString defaultSecretsPath()
 {
-    // ~/.tanara/secrets.json — összhangban a SettingsManager default metadataDir-rel.
-    const QString home = QDir::homePath();
-    return QDir(home).filePath(QStringLiteral(".tanara/secrets.json"));
+    // <metaadat-mappa>/secrets.json — ~/.tanara vagy TANARA_HOME (tanara/Paths.h).
+    return paths::metadataFile(QStringLiteral("secrets.json"));
 }
 
 } // namespace

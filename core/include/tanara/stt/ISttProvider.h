@@ -19,6 +19,9 @@ public:
 signals:
     void stateChanged(tanara::JobState state);
     void progress(int percent, const QString& message);
+    // A hang feltöltésének VALÓS haladása bájtban (a hálózati rétegből). Az átírás alatt a
+    // szolgáltatók nem adnak százalékot — ott csak a stateChanged állapotai vannak.
+    void uploadProgress(qint64 bytesSent, qint64 bytesTotal);
     void finished(const tanara::TrackTranscript& result);
     void failed(const QString& error);
 };

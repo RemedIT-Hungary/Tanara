@@ -12,6 +12,7 @@
 #include "tanara/AppController.h"
 #include "tanara/Localization.h"
 #include "tanara/Logging.h"
+#include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/detect/RecordingLock.h"
@@ -63,9 +64,8 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     }
 
     // Lock-fájl a metaDir-ben (~/.tanara). A settings nyers ~-t adhat → kifejtjük.
-    QString metaDir = controller.settings()->settings().metadataDir;
-    if (metaDir.startsWith(QLatin1Char('~')))
-        metaDir = QDir::homePath() + metaDir.mid(1);
+    const QString metaDir =
+        tanara::paths::resolveMetadataDir(controller.settings()->settings().metadataDir);
     auto lock = std::make_shared<RecordingLock>(QDir(metaDir).filePath(QStringLiteral("recording.lock")));
 
     // Lebegő felvevő (a RecordBar-t a FloatingRecorder reparentálja magába).

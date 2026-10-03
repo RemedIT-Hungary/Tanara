@@ -7,6 +7,8 @@
 #include "tanara/Types.h"
 #include "tanara/provider/ReadinessModel.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/jobs/JobTypes.h"
+#include "tanara/summary/SummaryStore.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -19,6 +21,10 @@ class DeviceManager;
 class MeetingStore;
 class VoiceprintStore;
 class CloudAccount;
+class MeetingJobTracker;
+class MeetingLibrary;
+class TrackCatalog;
+class WaveformService;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -32,6 +38,31 @@ public:
     DeviceManager*   devices() const;
     MeetingStore*    store() const;
     VoiceprintStore* voiceprints() const;   // hang-lenyomat DB (voice-ID)
+
+    // ---- az újratervezett főablak háttere (strukturált réteg) -------------------------
+    // Meetingenkénti feldolgozási állapot: futó feladatok (szakaszok, valós haladás),
+    // megmaradó hibák, levezetett ikon-állapotok. Lásd jobs/MeetingJobTracker.h.
+    MeetingJobTracker* jobs() const;
+    // A könyvtár-oldalsáv lekérdezései: dátum-szekciók, keresés, szűrők, „Ezek várnak rád”.
+    MeetingLibrary*    library() const;
+    // „Sávok” fül: barátságos nevek, átnevezés, hiányzó fájl megkeresése, eldobottak törlése.
+    TrackCatalog*      tracks() const;
+    // Hullámforma-csúcsok (aszinkron, gyorsítótárazva a meeting mappájában).
+    WaveformService*   waveforms() const;
+    // Kényelmi: jobs()->state(meetingId).
+    MeetingProcessingState processingState(const QString& meetingId) const;
+
+    // A meeting összefoglalója STRUKTURÁLTAN + a keletkezés metaadatai (mikor, melyik
+    // szolgáltató/modell, gyors vagy témánkénti). Régi (csak summary.md) összefoglalónál a
+    // struktúra a markdownból jön (fromMarkdown=true). exists=false, ha nincs összefoglaló.
+    SummaryDocument summaryDocument(const QString& meetingId) const;
+
+    // A meeting (szerkesztett) téma-listája a lemezről (summary.topics.json) — LLM-hívás nélkül.
+    QVector<tanara::SummaryTopic> meetingTopics(const QString& meetingId) const;
+    // Témánkénti állapot BÁRMIKOR lekérdezve (nem csak az átmeneti jelekből): a téma-lista
+    // sorrendjében vár / sorban áll / fut / kész / hibás (üzenettel; a hiba újraindítás után
+    // is megmarad). A lemezen lévő elemzésekből, a futó sorból és a megmaradt hibákból áll össze.
+    QVector<tanara::TopicStatus> topicStatuses(const QString& meetingId) const;
 
     RecordingState recordingState() const;
     QString currentMeetingFolder() const;   // épp felvett/utoljára felvett mappa
@@ -190,6 +221,43 @@ public slots:
     void enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
                                     const QString& trackId, qint64 startMs, qint64 endMs);
 
+    // ---- strukturált réteg: megszakítás, témák, azonosítás, hullámforma ----------------
+    // Egy futó feladat megszakítása. A meeting konzisztens állapotban marad, felvétel nem
+    // törlődik:
+    //  - Transcribe: a lekeverés-fázisban az ffmpeg leáll (a régi keverék érintetlen); a
+    //    szolgáltatónál a job megszakad és a feltöltött hang/átírás törlődik (Soniox cleanup);
+    //    a korábbi átirat (ha volt) megmarad. Az azonosítás-szakaszban: csak az azonosítás
+    //    marad ki, az átirat kész.
+    //  - Summarize / ExtractTopics: a futó LLM-kérés megszakad, a korábbi összefoglaló marad.
+    //  - AnalyzeTopics: a meeting sorban álló témái kikerülnek, a futó megszakad; a már kész
+    //    (perzisztált) elemzések megmaradnak, a folytatás onnan megy tovább.
+    //  - Mixdown: az ffmpeg leáll, a félkész fájl törlődik, a korábbi keverék érintetlen.
+    //  - Identify: a már megtalált egyezések mentődnek, a többi beszélő névtelen marad.
+    // true, ha volt mit megszakítani. Megszakításnál NINCS errorOccurred és nem marad hiba.
+    bool cancelJob(const QString& meetingId, tanara::JobKind kind);
+    // A meeting MINDEN futó feladatának megszakítása (pl. törlés előtt).
+    void cancelAllJobs(const QString& meetingId);
+    // Egyetlen téma kivétele a sorból / futó elemzésének megszakítása.
+    bool cancelTopicAnalysis(const QString& meetingId, const QString& topicId);
+
+    // A téma-lista mentése a megadott SORRENDBEN (hozzáadás / törlés / szerkesztés /
+    // átrendezés egyaránt ezzel perzisztál). Az üres id-jű (új) témák azonosítót kapnak, az
+    // üres című témák kimaradnak; a törölt témák megmaradt hibái törlődnek. A kész
+    // elemzések (summary.analyses.json) érintetlenek — a törölt témáké egyszerűen nem kerül
+    // az összegzésbe. Visszaadja a mentett listát. topicsChanged jel.
+    QVector<tanara::SummaryTopic> setMeetingTopics(const QString& meetingId,
+                                                   const QVector<tanara::SummaryTopic>& topics);
+
+    // Résztvevők azonosítása hang alapján ASZINKRON (az autoIdentifyMeeting nem-blokkoló
+    // párja): a hang dekódolása + embedding háttérszálon fut, a párosítás és a mentés a fő
+    // szálon. Haladás: jobs() (Identify feladat, „3 / 5 beszélő”); megszakítható. A végén
+    // speakerMapChanged (ha lett új név). false, ha nincs hang-modell / átirat / már fut.
+    bool identifyMeetingAsync(const QString& meetingId);
+
+    // Hullámforma-csúcsok kérése a meeting összes meglévő sávjára (+ a keverékre, trackId
+    // "mixdown"). Eredmény: waveforms()->peaksReady / peaksFailed.
+    void requestWaveforms(const QString& meetingId);
+
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
@@ -216,6 +284,10 @@ signals:
     void topicAnalysisReady(QString meetingId, tanara::TopicAnalysis analysis);  // kész + perzisztálva
     void topicAnalysisFailed(QString meetingId, QString topicId, QString error); // csak ez a téma bukott
     void topicAnalysisQueueFinished(QString meetingId, int okCount, int failCount); // a sor kiürült
+    // A téma-lista változott (javaslat érkezett / setMeetingTopics / analyzeTopic szerkesztés).
+    void topicsChanged(QString meetingId);
+    // Egy téma állapota változott (lásd topicStatuses) — a kártya inkrementális frissítéséhez.
+    void topicStatusChanged(QString meetingId, QString topicId);
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
@@ -270,6 +342,8 @@ private:
     ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
                                 const QString& summaryMode) const;
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
+    // Az átirat utáni automatikus azonosítás az átírás-feladat utolsó szakaszaként (aszinkron).
+    bool startIdentify(const QString& meetingId, bool asTranscribeStage);
     // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 

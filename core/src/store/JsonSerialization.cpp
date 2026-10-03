@@ -56,6 +56,8 @@ QJsonObject toJson(const Track& t)
     o[QStringLiteral("channels")]     = t.channels;
     o[QStringLiteral("active")]       = t.active;
     o[QStringLiteral("peakLevel")]    = t.peakLevel;
+    if (!t.customName.isEmpty())
+        o[QStringLiteral("customName")] = t.customName;
     return o;
 }
 
@@ -72,6 +74,7 @@ Track trackFromJson(const QJsonObject& o)
     t.channels     = o.value(QStringLiteral("channels")).toInt(1);
     t.active       = o.value(QStringLiteral("active")).toBool(true);   // régi felvétel → aktív
     t.peakLevel    = static_cast<float>(o.value(QStringLiteral("peakLevel")).toDouble(0.0));
+    t.customName   = o.value(QStringLiteral("customName")).toString();
     return t;
 }
 

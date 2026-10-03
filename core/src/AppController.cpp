@@ -1,6 +1,7 @@
 #include "tanara/AppController.h"
 
 #include "tanara/Logging.h"
+#include "tanara/Paths.h"
 #include "tanara/PromptLibrary.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
@@ -22,6 +23,12 @@
 #include "tanara/TranscriptMerger.h"
 #include "tanara/Localization.h"
 #include "tanara/cloud/CloudAccount.h"
+#include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/jobs/JobErrors.h"
+#include "tanara/jobs/JobStats.h"
+#include "tanara/library/MeetingLibrary.h"
+#include "tanara/audio/TrackCatalog.h"
+#include "tanara/audio/WaveformService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -42,7 +49,10 @@
 #include <QPointer>
 #include <QRegularExpression>
 #include <QUuid>
+#include <QElapsedTimer>
+#include <QThread>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <memory>
 
@@ -395,6 +405,21 @@ QString slugify(const QString& s) {
     return out.isEmpty() ? QStringLiteral("meeting") : out;
 }
 
+// Egy szolgáltató-hívás utolsó SIKERTELEN HTTP-váltása (a megmaradó hiba technikai sorához).
+struct FailureSink { bool has = false; HttpExchange ex; };
+using FailureSinkPtr = std::shared_ptr<FailureSink>;
+
+// A config válasz-hookját kiegészíti: a meglévő (cloud) hook mellett a nem-2xx válaszokat és
+// a hálózati hibákat a sinkbe is elteszi. A takarító DELETE-ek hibája nem számít.
+void captureFailures(ProviderConfig& cfg, const FailureSinkPtr& sink) {
+    const auto prev = cfg.onExchange;
+    cfg.onExchange = [prev, sink](const HttpExchange& ex) {
+        if (prev) prev(ex);
+        const bool ok = ex.status >= 200 && ex.status < 300;
+        if (!ok && ex.method != "DELETE") { sink->has = true; sink->ex = ex; }
+    };
+}
+
 } // namespace
 
 struct AppController::Impl {
@@ -448,6 +473,54 @@ struct AppController::Impl {
     // → reduce): EGY X-Tanara-Job-Id, a hívásonkénti terhelések összesítve (K-07 „12 rész”).
     // Lezáráskor (kész / hiba / megszakítás) kikerül innen; a folytatás így új futás.
     QHash<QString, CloudRunPtr> complexRuns;
+
+    // ---- strukturált réteg (újratervezett főablak) ----------------------------------
+    AppController*     q = nullptr;
+    MeetingJobTracker* jobs = nullptr;
+    MeetingLibrary*    library = nullptr;
+    TrackCatalog*      tracks = nullptr;
+    WaveformService*   waveforms = nullptr;
+    std::unique_ptr<JobStats> jobStats;      // korábbi futások sebessége (becsléshez)
+
+    // Futó átírás: megszakításhoz a job / a lekeverés-lánc kapcsolata.
+    struct TranscribeRun {
+        QPointer<SttJob> job;
+        std::shared_ptr<QMetaObject::Connection> mixConn;
+        bool mixPhase = false;         // még a lekeverésre várunk
+        bool ownsMixdown = false;      // a keverést ez az átírás indította
+        bool cancelRequested = false;
+    };
+    QHash<QString, TranscribeRun> transcribeRuns;
+    QSet<QString> clearSpeakersOnTranscript;   // újra-átírás: a régi nevek az új átirattal törlődnek
+
+    QHash<QString, QPointer<QProcess>> mixdownProcs;   // meetingId → futó ffmpeg
+    QSet<QString> mixdownCancelled;
+
+    // Futó LLM-hívás (összefoglaló / témagyűjtés / összegzés / aktív téma-elemzés).
+    struct LlmRun { QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun; };
+    QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) → futás
+    LlmRun activeTopicRun;
+    QHash<QString, int> topicBatchTotal;       // meetingId → az aktuális kötegbe sorolt témák száma
+
+    // Futó (háttérszálas) azonosítás.
+    struct IdentifyRun { QThread* thread = nullptr; std::shared_ptr<std::atomic<bool>> cancel; bool asStage = false; };
+    QHash<QString, IdentifyRun> identifyRuns;
+
+    static QString llmKey(const QString& meetingId, JobKind kind) {
+        return meetingId + QLatin1Char('|') + QString::number(int(kind));
+    }
+    bool transcribeInMixPhase(const QString& meetingId) const {
+        const auto it = transcribeRuns.constFind(meetingId);
+        return it != transcribeRuns.constEnd() && it->mixPhase;
+    }
+    bool voiceModelUsable() const;
+    void reportMixdownPercent(const QString& meetingId, int pct);
+    void updateTopicCounts(const QString& meetingId);
+    void abortLlmRun(const LlmRun& run);
+    JobError describeLlmFailure(JobKind kind, const QString& raw, const CloudRunPtr& run,
+                                const FailureSinkPtr& sink) const;
+    void applyIdentification(const QString& meetingId,
+                             const QVector<QPair<QString, QVector<float>>>& embeddings);
 };
 
 // Egy cloud feldolgozás-futás állapota. A providerek válasz-hookja (onExchange) tölti.
@@ -477,9 +550,88 @@ struct AppController::CloudRun {
     }
 };
 
+bool AppController::Impl::voiceModelUsable() const
+{
+#ifdef TANARA_HAVE_VOICEID
+    return QFileInfo::exists(voiceModelPath);
+#else
+    return false;   // a build nem tartalmaz voice-ID-t (TANARA_BUILD_VOICEID=OFF)
+#endif
+}
+
+// A futó ffmpeg valós százaléka a strukturált állapotba: önálló keverésnél a Mixdown feladat,
+// átírás részeként az átírás-feladat „mixdown” szakasza.
+void AppController::Impl::reportMixdownPercent(const QString& meetingId, int pct)
+{
+    if (jobs->isRunning(meetingId, JobKind::Mixdown))
+        jobs->setPercent(meetingId, JobKind::Mixdown, pct);
+    if (transcribeInMixPhase(meetingId))
+        jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
+                       StageState::Running, pct);
+}
+
+void AppController::Impl::updateTopicCounts(const QString& meetingId)
+{
+    if (!jobs->isRunning(meetingId, JobKind::AnalyzeTopics)) return;
+    const QPair<int, int> c = jobCounts.value(meetingId);
+    jobs->setCounts(meetingId, JobKind::AnalyzeTopics, c.first + c.second,
+                    topicBatchTotal.value(meetingId));
+}
+
+// Futó LLM-hívás megszakítása: a service jeleit leválasztjuk, a providert (vele a jobot és a
+// hálózati kérést) töröljük — a szolgáltató felé a kapcsolat bomlik, eredmény nem érkezik.
+void AppController::Impl::abortLlmRun(const LlmRun& run)
+{
+    if (run.svc) {
+        run.svc->disconnect(q);
+        run.svc->deleteLater();
+    }
+    if (run.provider) run.provider->deleteLater();
+}
+
+JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& raw,
+                                                 const CloudRunPtr& run,
+                                                 const FailureSinkPtr& sink) const
+{
+    if (run && run->lastError.isError())
+        return describeCloudFailure(kind, run->lastError);
+    return describeJobFailure(kind, raw, (sink && sink->has) ? &sink->ex : nullptr);
+}
+
+// A háttérszálon számolt beszélő-embeddingek párosítása a lenyomat-DB ellen + mentés (fő
+// szál). Ugyanaz a szabály, mint az autoIdentifyMeeting-ben: csak a még névtelen címkék,
+// küszöb felett; a transcript.md a nevekkel újragenerálódik; speakerMapChanged jel.
+void AppController::Impl::applyIdentification(
+    const QString& meetingId, const QVector<QPair<QString, QVector<float>>>& embeddings)
+{
+    if (embeddings.isEmpty() || !voiceprints) return;
+    Meeting m = store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    bool mapChanged = false;
+    for (const auto& pair : embeddings) {
+        if (pair.second.isEmpty() || m.speakerMap.contains(pair.first)) continue;
+        const VoiceMatch match = voiceprints->bestMatch(pair.second);
+        if (match.score >= kVoiceMatchThreshold && !match.name.isEmpty()) {
+            m.speakerMap.insert(pair.first, match.name);
+            if (people) people->add(match.name);
+            mapChanged = true;
+        }
+    }
+    if (!mapChanged) return;
+    store->saveMeeting(m);
+    MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (!merged.tokens.isEmpty()) {
+        applySpeakerMap(merged, m.speakerMap);
+        writeTextFile(QDir(m.folder).filePath(QStringLiteral("transcript.md")), merged.renderMarkdown());
+    }
+    emit q->speakerMapChanged(m.id);
+}
+
 AppController::AppController(QObject* parent)
     : QObject(parent), d(std::make_unique<Impl>())
 {
+    d->q = this;
     registerBuiltinProviders();
 
     d->settings = new SettingsManager(QString(), this);
@@ -496,7 +648,7 @@ AppController::AppController(QObject* parent)
             registerCloudProviders();   // feature-flag: enélkül a „tanara-cloud” id nem is létezik
     }
     d->audioDir = expandTilde(s.audioDir);
-    d->metaDir  = expandTilde(s.metadataDir);
+    d->metaDir  = paths::resolveMetadataDir(s.metadataDir);   // TANARA_HOME-tudatos
     d->notesDir = expandTilde(s.notesDir);
     QDir().mkpath(d->audioDir);
     QDir().mkpath(d->metaDir);
@@ -514,6 +666,14 @@ AppController::AppController(QObject* parent)
     // Crash után árván maradt felvételek (sávok meeting.json nélkül) visszahozása a listába.
     d->store->recoverOrphanRecordings();
 
+    // Strukturált réteg: feldolgozási állapot, könyvtár-lekérdezések, sávok, hullámforma.
+    d->jobs      = new MeetingJobTracker(d->store, this);
+    d->library   = new MeetingLibrary(d->store, d->jobs, this);
+    d->tracks    = new TrackCatalog(d->store, this);
+    d->waveforms = new WaveformService(this);
+    d->jobStats  = std::make_unique<JobStats>(QDir(d->metaDir).filePath(QStringLiteral("job-stats.json")));
+    connect(d->tracks, &TrackCatalog::tracksChanged, this, &AppController::tracksChanged);
+
     connect(d->devices, &DeviceManager::devicesChanged, this, &AppController::devicesChanged);
 
     d->statePath = QDir(d->metaDir).filePath(QStringLiteral("state.json"));
@@ -530,7 +690,20 @@ AppController::AppController(QObject* parent)
         QStringLiteral("models/campplus_sv_zh_en_16k.onnx"));
 }
 
-AppController::~AppController() = default;
+AppController::~AppController()
+{
+    // A háttérszálas azonosítások leállítása és bevárása (a szál a d-re hivatkozó
+    // eredményt már nem adja át: a QPointer addigra null).
+    for (auto it = d->identifyRuns.begin(); it != d->identifyRuns.end(); ++it) {
+        it->cancel->store(true);
+        if (it->thread) {
+            it->thread->disconnect(this);
+            it->thread->wait();
+            delete it->thread;
+        }
+    }
+    d->identifyRuns.clear();
+}
 
 SettingsManager* AppController::settings() const { return d->settings; }
 DeviceManager*   AppController::devices()  const { return d->devices; }
@@ -917,6 +1090,9 @@ void AppController::setMeetingContextNote(const QString& meetingId, const QStrin
 
 void AppController::deleteMeeting(const QString& meetingId) {
     if (meetingId.isEmpty()) return;
+    // Futó feladatok leállítása, mielőtt a mappa eltűnik alóluk.
+    cancelAllJobs(meetingId);
+    d->waveforms->cancel(meetingId);
     d->mergedCache.remove(meetingId);
     d->store->deleteMeeting(meetingId);   // meetingRemoved jel a store-ból
 }
@@ -942,6 +1118,7 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
         if (t.id == trackId) {
             // A hangfájl FIZIKAI törlése (explicit user-művelet).
             QFile::remove(QDir(m.folder).filePath(t.file));
+            WaveformService::removeCache(QDir(m.folder).filePath(t.file));   // a hullámforma-cache is
             removed = true;
         } else {
             kept.push_back(t);
@@ -955,6 +1132,9 @@ void AppController::deleteTrack(const QString& meetingId, const QString& trackId
 }
 
 void AppController::regenerateMixdown(const QString& meetingId) {
+    // Fut már egy keverés ezen a meetingen → no-op (a futó eredménye mindenkinek jó lesz).
+    if (d->mixdownProcs.contains(meetingId)) return;
+
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
 
@@ -976,6 +1156,9 @@ void AppController::regenerateMixdown(const QString& meetingId) {
 
     const QString outRel = QStringLiteral("mixdown.mp3");
     const QString outPath = QDir(m.folder).filePath(outRel);
+    // Félkész fájlba keverünk, és csak SIKER után cseréljük le a régit — megszakítás vagy
+    // hiba esetén a korábbi (még lejátszható) keverék érintetlen marad.
+    const QString partPath = QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"));
 
     QStringList args{QStringLiteral("-hide_banner"),
                      QStringLiteral("-loglevel"), QStringLiteral("error")};
@@ -999,7 +1182,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     // Valós haladás: az ffmpeg kulcs=érték sorokat ír a stdoutra (out_time_us=…), amiből a
     // felvétel hosszához mérve százalékot számolunk → mixdownProgress() a nem-modális UI-nak.
     args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats")
-         << QStringLiteral("-y") << outPath;
+         << QStringLiteral("-y") << partPath;
     const qint64 totalMs = m.durationMs;   // a százalék nevezője
 
     // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat), és nem
@@ -1007,6 +1190,12 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     auto* proc = new QProcess(this);
     proc->setProgram(QStringLiteral("ffmpeg"));
     proc->setArguments(args);
+    d->mixdownProcs.insert(meetingId, proc);
+    // Strukturált állapot: önálló keverés → saját (megszakítható) feladat; az átírás részeként
+    // futó keverés az átírás-feladat „mixdown” szakaszát mozgatja (lásd reportMixdownPercent).
+    if (!d->transcribeInMixPhase(meetingId))
+        d->jobs->begin(meetingId, JobKind::Mixdown, tr("Lekeverés"));
+
     // stdout-parse: out_time_us=<mikroszekundum> → százalék a felvétel hosszához mérve.
     connect(proc, &QProcess::readyReadStandardOutput, this,
             [this, proc, meetingId, totalMs]() {
@@ -1026,12 +1215,22 @@ void AppController::regenerateMixdown(const QString& meetingId) {
                 lastPct = static_cast<int>(p < 0 ? 0 : (p > 99 ? 99 : p));
             }
         }
-        if (lastPct >= 0)
+        if (lastPct >= 0) {
             emit mixdownProgress(meetingId, lastPct);
+            d->reportMixdownPercent(meetingId, lastPct);
+        }
     });
-    connect(proc, &QProcess::finished, this,
-            [this, proc, meetingId, outRel](int code, QProcess::ExitStatus status) {
-        const bool ok = (status == QProcess::NormalExit && code == 0);
+    // A lezárás EGY helyen (normál kilépés, hiba, megszakítás, el sem indult ffmpeg).
+    auto done = [this, proc, meetingId, outRel, outPath, partPath](bool exitedOk) {
+        if (d->mixdownProcs.value(meetingId) != proc) return;   // már lezártuk
+        d->mixdownProcs.remove(meetingId);
+        const bool cancelled = d->mixdownCancelled.remove(meetingId);
+        bool ok = exitedOk && !cancelled;
+        if (ok) {
+            QFile::remove(outPath);
+            ok = QFile::rename(partPath, outPath);
+        }
+        if (!ok) QFile::remove(partPath);   // félkész fájl ne maradjon a mappában
         if (ok) {
             // Friss meeting (közben módosulhatott) → mixdownFile + dirty törlése.
             Meeting mm = d->store->load(meetingId);
@@ -1041,18 +1240,35 @@ void AppController::regenerateMixdown(const QString& meetingId) {
                 d->store->saveMeeting(mm);
             }
             emit mixdownProgress(meetingId, 100);
-        } else {
+        } else if (!cancelled) {
             emit errorOccurred(tr("A lekeverés (ffmpeg) sikertelen."));
+        }
+        if (d->jobs->isRunning(meetingId, JobKind::Mixdown)) {
+            if (ok) d->jobs->finish(meetingId, JobKind::Mixdown);
+            else if (cancelled) d->jobs->cancelled(meetingId, JobKind::Mixdown);
+            else {
+                JobError je;
+                je.message = tr("A lekeverés nem sikerült.");
+                je.detail = QString::fromUtf8(proc->readAllStandardError()).simplified().left(200);
+                d->jobs->fail(meetingId, JobKind::Mixdown, je);
+            }
         }
         emit mixdownUpdated(meetingId, ok);
         emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
         proc->deleteLater();
+    };
+    connect(proc, &QProcess::finished, this, [done](int code, QProcess::ExitStatus status) {
+        done(status == QProcess::NormalExit && code == 0);
+    });
+    connect(proc, &QProcess::errorOccurred, this, [done](QProcess::ProcessError err) {
+        if (err == QProcess::FailedToStart) done(false);   // (ilyenkor nincs finished jel)
     });
 
     // A haladást a mixdownProgress (0..100) jelzi a nem-modális UI-nak — NEM a jobProgress
     // (az a globális busy-jelzőt kapcsolná be, ami egy háttér-lekeverés alatt feleslegesen
     // letiltaná az akció-gombokat). Indító 0%:
     emit mixdownProgress(meetingId, 0);
+    d->reportMixdownPercent(meetingId, 0);
     proc->start();
 }
 
@@ -1507,11 +1723,22 @@ void AppController::failCloudRun(const CloudRunPtr& run, const QString& fallback
 
 void AppController::transcribeMeeting(const QString& meetingId)
 {
+    if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
+        return;   // már fut ezen a meetingen (dupla kattintás / két nézet)
+
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
+    if (m.id.isEmpty()) {
+        d->clearSpeakersOnTranscript.remove(meetingId);
+        emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId));
+        return;
+    }
 
     ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
-    if (!res.runnable) { emit errorOccurred(res.detail); return; }
+    if (!res.runnable) {
+        d->clearSpeakersOnTranscript.remove(meetingId);
+        emit errorOccurred(res.detail);
+        return;
+    }
 
     // A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs sávonkénti átfedés-
     // összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a mixdown hiányzik vagy
@@ -1519,16 +1746,58 @@ void AppController::transcribeMeeting(const QString& meetingId)
     const QString mixPath =
         QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
                                                         : m.mixdownFile);
-    if (m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath)) {
+    const bool needMix = m.mixdownFile.isEmpty() || m.mixdownDirty || !QFile::exists(mixPath);
+
+    // Strukturált feladat: szakasz-lista (M04). A lekeverés csak akkor szakasz, ha kell;
+    // az azonosítás csak akkor, ha van hang-modell.
+    {
+        int activeTracks = 0;
+        for (const Track& t : m.tracks) if (t.active) ++activeTracks;
+        QVector<JobStage> stages;
+        if (needMix)
+            stages.append({QStringLiteral("mixdown"), tr("Lekeverés"), StageState::Waiting, -1, QString()});
+        stages.append({QStringLiteral("upload"), tr("Feltöltés"), StageState::Waiting, -1,
+                       tr("%1 perc, %2 sáv").arg(qMax<qint64>(1, (m.durationMs + 30000) / 60000))
+                                            .arg(activeTracks)});
+        stages.append({QStringLiteral("transcribe"), tr("Átírás"), StageState::Waiting, -1, QString()});
+        stages.append({QStringLiteral("diarize"), tr("Beszélők szétválasztása"), StageState::Waiting, -1, QString()});
+        if (d->voiceModelUsable())
+            stages.append({QStringLiteral("identify"), tr("Résztvevők azonosítása"), StageState::Waiting, -1, QString()});
+        d->jobs->begin(meetingId, JobKind::Transcribe, tr("Átírás folyamatban"), stages);
+    }
+    d->transcribeRuns.insert(meetingId, Impl::TranscribeRun{});
+
+    if (needMix) {
         auto conn = std::make_shared<QMetaObject::Connection>();
         *conn = connect(this, &AppController::mixdownUpdated, this,
             [this, meetingId, conn](const QString& id, bool ok) {
                 if (id != meetingId) return;
                 QObject::disconnect(*conn);
-                if (ok) transcribeFromMixdown(meetingId);
-                else emit errorOccurred(
-                    tr("A lekeverés sikertelen — az átírás nem indult."));
+                auto it = d->transcribeRuns.find(meetingId);
+                if (it == d->transcribeRuns.end()) return;   // közben megszakították
+                it->mixPhase = false;
+                it->mixConn.reset();
+                if (ok) {
+                    d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
+                                      StageState::Done);
+                    transcribeFromMixdown(meetingId);
+                    return;
+                }
+                d->transcribeRuns.erase(it);
+                d->clearSpeakersOnTranscript.remove(meetingId);
+                const QString msg = tr("A lekeverés sikertelen — az átírás nem indult.");
+                JobError je;
+                je.message = msg;
+                d->jobs->fail(meetingId, JobKind::Transcribe, je);
+                emit errorOccurred(msg);
             });
+        Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
+        tr_.mixPhase = true;
+        tr_.mixConn = conn;
+        // Ha már futott egy önálló keverés, arra várunk — megszakításkor azt nem állítjuk le.
+        tr_.ownsMixdown = !d->mixdownProcs.contains(meetingId);
+        d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("mixdown"),
+                          StageState::Running, 0);
         emit jobProgress(m.id, tr("Lekeverés az átíráshoz…"));
         regenerateMixdown(meetingId);
         return;
@@ -1540,17 +1809,32 @@ void AppController::retranscribeMeeting(const QString& meetingId)
 {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
-    if (!m.speakerMap.isEmpty()) {
-        m.speakerMap.clear();
-        d->store->saveMeeting(m);
-    }
+    // A beszélő-hozzárendeléseket az ÚJ átirat megérkezésekor töröljük (nem előre): ha az
+    // újra-átírás megszakad vagy elbukik, a régi átirat a neveivel együtt érintetlen marad.
+    if (!d->jobs->isRunning(meetingId, JobKind::Transcribe))
+        d->clearSpeakersOnTranscript.insert(meetingId);
     transcribeMeeting(meetingId);
 }
 
 void AppController::transcribeFromMixdown(const QString& meetingId)
 {
+    // A feladat lezárása hibával még a szolgáltató-hívás előtt (belső segéd).
+    auto abortJob = [this, meetingId](const QString& msg) {
+        d->transcribeRuns.remove(meetingId);
+        d->clearSpeakersOnTranscript.remove(meetingId);
+        JobError je;
+        je.message = msg;
+        d->jobs->fail(meetingId, JobKind::Transcribe, je);
+        emit errorOccurred(msg);
+    };
+
     Meeting m = d->store->load(meetingId);
-    if (m.id.isEmpty()) return;
+    if (m.id.isEmpty()) {
+        d->transcribeRuns.remove(meetingId);
+        d->clearSpeakersOnTranscript.remove(meetingId);
+        d->jobs->cancelled(meetingId, JobKind::Transcribe);
+        return;
+    }
 
     const AppSettings s = d->settings->settings();
     const QString sttId = s.sttProviderId;
@@ -1574,10 +1858,14 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
                 break;
             }
     }
+    // Az utolsó sikertelen HTTP-váltás megjegyzése (saját kulcsos módban is) — ebből lesz a
+    // megmaradó hiba technikai sora („HTTP 401 · invalid_api_key”).
+    const auto sink = std::make_shared<FailureSink>();
+    captureFailures(cfg, sink);
 
     ISttProvider* provider = SttProviderRegistry::instance().create(sttId, cfg, this);
     if (!provider) {
-        emit errorOccurred(tr("Ismeretlen STT-provider: %1.").arg(sttId));
+        abortJob(tr("Ismeretlen STT-provider: %1.").arg(sttId));
         return;
     }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
@@ -1616,16 +1904,81 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         req.diarization = false;
         req.speakerLabel = QStringLiteral("1");
     }
+    const bool diarizing = req.diarization;
 
     SttJob* job = provider->transcribe(req);
-    connect(job, &SttJob::stateChanged, this,
-            [this, id = m.id](JobState st) { emit jobProgress(id, sttPhase(st)); });
+
+    // Strukturált állapot: megszakításhoz a job, becsléshez a korábbi futások sebessége
+    // (ugyanazzal a szolgáltatóval/modellel); minta nélkül nincs becslés.
+    const QString statsKey = QStringLiteral("transcribe/%1/%2").arg(sttId, cfg.model);
+    {
+        Impl::TranscribeRun& tr_ = d->transcribeRuns[meetingId];
+        tr_.job = job;
+        tr_.mixPhase = false;
+        const int est = d->jobStats->estimateSec(statsKey, double(m.durationMs) / 1000.0);
+        if (est >= 0) {
+            const JobProgress jp = d->jobs->job(meetingId, JobKind::Transcribe);
+            const int elapsed = jp.startedAt.isValid()
+                ? int(jp.startedAt.secsTo(QDateTime::currentDateTime())) : 0;
+            d->jobs->setEstimate(meetingId, JobKind::Transcribe, elapsed + est);
+        }
+        if (!diarizing)
+            d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("diarize"), StageState::Skipped);
+        d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("upload"), StageState::Running, 0);
+    }
+    auto sttClock = std::make_shared<QElapsedTimer>();
+    sttClock->start();
+
+    connect(job, &SttJob::uploadProgress, this, [this, meetingId](qint64 sent, qint64 total) {
+        if (total <= 0) return;
+        // Valós bájt-arány. A 100% után a szolgáltató állapotváltása zárja le a szakaszt.
+        const JobProgress jp = d->jobs->job(meetingId, JobKind::Transcribe);
+        const JobStage* st = jp.stage(QStringLiteral("upload"));
+        if (st && st->state == StageState::Running)
+            d->jobs->setStagePercent(meetingId, JobKind::Transcribe, QStringLiteral("upload"),
+                                     int(sent * 100 / total));
+    });
+    connect(job, &SttJob::stateChanged, this, [this, id = m.id, diarizing](JobState st) {
+        emit jobProgress(id, sttPhase(st));
+        // A szolgáltatók az átírás alatt NEM adnak százalékot — csak állapotot (feltöltés /
+        // sorban áll / feldolgozás). A beszélő-szétválasztást a szolgáltató az átírással egy
+        // menetben végzi, ezért a két szakasz együtt fut és együtt zárul.
+        const JobKind k = JobKind::Transcribe;
+        if (st == JobState::Uploading) {
+            d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Running, 0);
+        } else if (st == JobState::Queued || st == JobState::Processing) {
+            d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Done);
+            d->jobs->setStage(id, k, QStringLiteral("transcribe"), StageState::Running);
+            d->jobs->setStageDetail(id, k, QStringLiteral("transcribe"),
+                                    st == JobState::Queued ? tr("sorban áll") : QString());
+            if (diarizing)
+                d->jobs->setStage(id, k, QStringLiteral("diarize"), StageState::Running);
+        }
+    });
     // A részletes poll-üzenet (eltelt idő + életjel) is jusson ki a UI-ra, hogy a hosszú
     // async feldolgozás alatt látszódjon: fut és a kapcsolat él.
-    connect(job, &SttJob::progress, this,
-            [this, id = m.id](int, const QString& msg) { emit jobProgress(id, msg); });
-    connect(job, &SttJob::finished, this, [this, m, providerObj, run](const TrackTranscript& tr) mutable {
-        TrackTranscript res = tr;
+    connect(job, &SttJob::progress, this, [this, id = m.id](int, const QString& msg) {
+        emit jobProgress(id, msg);
+        d->jobs->setMessage(id, JobKind::Transcribe, msg);
+    });
+    connect(job, &SttJob::finished, this,
+            [this, meetingId, providerObj, run, job, statsKey, sttClock, diarizing](const TrackTranscript& result) {
+        d->transcribeRuns.remove(meetingId);
+        if (providerObj) providerObj->deleteLater();
+        // A job a best-effort takarító DELETE-jeit még kiküldi; utána törölhető.
+        QTimer::singleShot(30000, job, &QObject::deleteLater);
+
+        // FRISS meeting: az átírás percekig futhat, közben a felhasználó átnevezhette,
+        // szerkeszthette (vagy törölhette) a meetinget — a régi példány mentése felülírná.
+        Meeting mm = d->store->load(meetingId);
+        if (mm.id.isEmpty()) {
+            d->clearSpeakersOnTranscript.remove(meetingId);
+            d->jobs->cancelled(meetingId, JobKind::Transcribe);
+            finishCloudRun(run);
+            return;
+        }
+
+        TrackTranscript res = result;
         // A Soniox diarizációs id-ket (1,2,…) semleges „Beszélő N" címkére fordítjuk.
         for (TranscriptToken& tok : res.tokens)
             tok.speaker = tok.speaker.isEmpty()
@@ -1634,21 +1987,56 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
 
         QVector<TrackTranscript> single{res};
         MergedTranscript merged = mergeTranscripts(single);
-        const QString mdPath = QDir(m.folder).filePath(QStringLiteral("transcript.md"));
+        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("transcript.md"));
         writeTextFile(mdPath, merged.renderMarkdown());
-        writeTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
-        writeSegmentsJson(QDir(m.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
-        d->mergedCache.insert(m.id, merged);
-        m.hasTranscript = true;
-        d->store->saveMeeting(m);
-        if (providerObj) providerObj->deleteLater();
-        emit transcriptReady(m.id, mdPath);
+        writeTokensJson(QDir(mm.folder).filePath(QStringLiteral("transcript.tokens.json")), merged);
+        writeSegmentsJson(QDir(mm.folder).filePath(QStringLiteral("transcript.segments.json")), merged.segments());
+        d->mergedCache.insert(mm.id, merged);
+        // Újra-átírás: más szolgáltató más beszélő-felosztást adhat — a régi hozzárendelések
+        // az ÚJ átirattal együtt törlődnek (lásd retranscribeMeeting).
+        if (d->clearSpeakersOnTranscript.remove(meetingId))
+            mm.speakerMap.clear();
+        mm.hasTranscript = true;
+        d->store->saveMeeting(mm);
+
+        d->jobStats->addSample(statsKey, double(sttClock->elapsed()) / 1000.0,
+                               double(mm.durationMs) / 1000.0);
+        const JobKind k = JobKind::Transcribe;
+        d->jobs->setStage(meetingId, k, QStringLiteral("upload"), StageState::Done);
+        d->jobs->setStage(meetingId, k, QStringLiteral("transcribe"), StageState::Done);
+        if (diarizing)
+            d->jobs->setStage(meetingId, k, QStringLiteral("diarize"), StageState::Done);
+        d->jobs->markIdentified(meetingId, false);   // az új átiratra még nem futott azonosítás
+
+        emit transcriptReady(mm.id, mdPath);
         finishCloudRun(run);   // K-07: „Ez az átírás $0,41 volt.” (csak cloud-futásnál)
-        // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen.
-        autoIdentifyMeeting(m.id);
+        // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen — háttérszálon,
+        // az átírás-feladat utolsó szakaszaként (a UI közben használható, megszakítható).
+        if (!startIdentify(meetingId, /*asTranscribeStage*/ true))
+            d->jobs->finish(meetingId, JobKind::Transcribe);
     });
-    connect(job, &SttJob::failed, this, [this, providerObj, run](QString e) {
+    connect(job, &SttJob::failed, this, [this, meetingId, providerObj, run, job, sink](QString e) {
+        const Impl::TranscribeRun info = d->transcribeRuns.take(meetingId);
+        d->clearSpeakersOnTranscript.remove(meetingId);
         if (providerObj) providerObj->deleteLater();
+        QTimer::singleShot(30000, job, &QObject::deleteLater);   // a takarító DELETE-ek után
+
+        if (info.cancelRequested) {
+            // Megszakítás: nincs hiba, nincs errorOccurred. A szolgáltatónál a job takarított
+            // (feltöltött hang + átírás törölve); a korábbi átirat (ha volt) érintetlen.
+            if (run) {
+                if (!run->transcriptionId.isEmpty())
+                    d->cloud->removePendingTranscription(run->transcriptionId);
+                if (run->calls > 0 || run->balance.isValid())
+                    d->cloud->refreshAccount();
+            }
+            d->jobs->cancelled(meetingId, JobKind::Transcribe);
+            return;
+        }
+        JobError je = (run && run->lastError.isError())
+            ? describeCloudFailure(JobKind::Transcribe, run->lastError)
+            : describeJobFailure(JobKind::Transcribe, e, sink->has ? &sink->ex : nullptr);
+        d->jobs->fail(meetingId, JobKind::Transcribe, je);
         failCloudRun(run, tr("Átírás-hiba: %1").arg(e));
     });
 }
@@ -1666,6 +2054,9 @@ static QString resolvedPrompt(const AppSettings& s, const QString& userOverride,
 
 void AppController::summarizeMeeting(const QString& meetingId)
 {
+    if (d->jobs->isRunning(meetingId, JobKind::Summarize))
+        return;   // már fut
+
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
@@ -1687,7 +2078,9 @@ void AppController::summarizeMeeting(const QString& meetingId)
     const AppSettings s = d->settings->settings();
     const QString llmId = s.llmProviderId;
     CloudRunPtr run;
-    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
+    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
+    const auto sink = std::make_shared<FailureSink>();
+    captureFailures(cfg, sink);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(llmId, cfg, this);
     if (!provider) {
         emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(llmId));
@@ -1698,25 +2091,62 @@ void AppController::summarizeMeeting(const QString& meetingId)
     emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
                                     : tr("Összefoglalás a helyi modellel (Gemma)…"));
 
-    connect(svc, &SummaryService::summaryReady, this, [this, m, providerObj, svc, run](const Summary& sum) mutable {
+    // Strukturált feladat (egyetlen, nem-streamelt LLM-hívás: köztes haladás nincs; becslés
+    // csak a korábbi, ugyanazzal a modellel mért futásokból — egység: az átirat hossza).
+    const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
+    const QString statsKey = QStringLiteral("summarize/%1/%2").arg(llmId, cfg.model);
+    const double units = double(merged.renderMarkdown().size());
+    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összefoglaló készítése"));
+    d->jobs->setEstimate(meetingId, JobKind::Summarize, d->jobStats->estimateSec(statsKey, units));
+    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
+    auto clock = std::make_shared<QElapsedTimer>();
+    clock->start();
+
+    connect(svc, &SummaryService::summaryReady, this,
+            [this, meetingId, providerObj, svc, run, key, statsKey, units, clock, llmId,
+             model = cfg.model](const Summary& sum) {
+        d->llmRuns.remove(key);
+        if (providerObj) providerObj->deleteLater();
+        svc->deleteLater();
+        // FRISS meeting (az összefoglalás alatt módosulhatott / törlődhetett).
+        Meeting mm = d->store->load(meetingId);
+        if (mm.id.isEmpty()) {
+            d->jobs->cancelled(meetingId, JobKind::Summarize);
+            finishCloudRun(run);
+            return;
+        }
         const QString md = sum.renderMarkdown();
-        const QString mdPath = QDir(m.folder).filePath(QStringLiteral("summary.md"));
+        const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
+        // A strukturált forma + a keletkezés metaadatai (summary.json) — az M07 ebből rajzol.
+        SummaryDocument doc;
+        doc.exists = true;
+        doc.summary = sum;
+        doc.markdown = md;
+        doc.meta.createdAt = QDateTime::currentDateTime();
+        doc.meta.providerId = llmId;
+        doc.meta.model = model;
+        doc.meta.mode = SummaryMode::Quick;
+        summarystore::save(mm.folder, doc);
         // másolat a notes (vault) mappába
         QDir().mkpath(d->notesDir);
         const QString noteName = QStringLiteral("%1 %2.md")
-            .arg(m.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(m.title));
+            .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
         writeTextFile(QDir(d->notesDir).filePath(noteName), md);
-        m.hasSummary = true;
-        d->store->saveMeeting(m);
-        if (providerObj) providerObj->deleteLater();
-        svc->deleteLater();
-        emit summaryReady(m.id, mdPath);
+        mm.hasSummary = true;
+        d->store->saveMeeting(mm);
+        d->jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
+        d->jobs->finish(meetingId, JobKind::Summarize);
+        emit summaryReady(mm.id, mdPath);
         finishCloudRun(run);
     });
-    connect(svc, &SummaryService::summaryFailed, this, [this, providerObj, svc, run](const QString& e) {
+    connect(svc, &SummaryService::summaryFailed, this,
+            [this, meetingId, providerObj, svc, run, key, sink](const QString& e) {
+        d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
+        d->jobs->fail(meetingId, JobKind::Summarize,
+                      d->describeLlmFailure(JobKind::Summarize, e, run, sink));
         failCloudRun(run, tr("Összefoglaló hiba: %1").arg(e));
     });
 
@@ -1729,6 +2159,9 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
 void AppController::extractMeetingTopics(const QString& meetingId)
 {
+    if (d->jobs->isRunning(meetingId, JobKind::ExtractTopics))
+        return;   // már fut
+
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
@@ -1749,7 +2182,9 @@ void AppController::extractMeetingTopics(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run;
-    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
+    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("topics"), QStringLiteral("complex"));
+    const auto sink = std::make_shared<FailureSink>();
+    captureFailures(cfg, sink);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
@@ -1757,9 +2192,21 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
                                     : tr("Témák kigyűjtése a helyi modellel…"));
 
+    const QString key = Impl::llmKey(meetingId, JobKind::ExtractTopics);
+    const QString statsKey = QStringLiteral("topics/%1/%2").arg(s.llmProviderId, cfg.model);
+    const double units = double(transcriptMd.size());
+    d->jobs->begin(meetingId, JobKind::ExtractTopics, tr("Témák javaslása"));
+    d->jobs->setEstimate(meetingId, JobKind::ExtractTopics, d->jobStats->estimateSec(statsKey, units));
+    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
+    auto clock = std::make_shared<QElapsedTimer>();
+    clock->start();
+
     connect(svc, &ComplexSummaryService::topicsReady, this,
-            [this, id = m.id, topicsPath, providerObj, svc, run](const QVector<SummaryTopic>& topics) {
-        writeTopicsJson(topicsPath, topics);
+            [this, id = m.id, topicsPath, providerObj, svc, run, key, statsKey, units, clock]
+            (const QVector<SummaryTopic>& topics) {
+        d->llmRuns.remove(key);
+        if (QFileInfo(topicsPath).absoluteDir().exists())   // (a meeting közben törlődhetett)
+            writeTopicsJson(topicsPath, topics);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
         // Cloud: a témagyűjtés a komplex futás ELSŐ része — a futás (és az X-Tanara-Job-Id)
@@ -1771,11 +2218,18 @@ void AppController::extractMeetingTopics(const QString& meetingId)
             if (run->balance.isValid() || run->calls > 0)
                 d->cloud->refreshAccount();
         }
+        d->jobStats->addSample(statsKey, double(clock->elapsed()) / 1000.0, units);
+        d->jobs->finish(id, JobKind::ExtractTopics);
+        emit topicsChanged(id);
         emit topicsReady(id, topics);
     });
-    connect(svc, &ComplexSummaryService::failed, this, [this, providerObj, svc, run](const QString& e) {
+    connect(svc, &ComplexSummaryService::failed, this,
+            [this, id = m.id, providerObj, svc, run, key, sink](const QString& e) {
+        d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
+        d->jobs->fail(id, JobKind::ExtractTopics,
+                      d->describeLlmFailure(JobKind::ExtractTopics, e, run, sink));
         failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(e));
     });
 
@@ -1799,6 +2253,7 @@ void AppController::generateComplexSummary(const QString& meetingId, const QVect
 
     // A (szerkesztett) téma-lista perzisztálása — folytatható marad.
     writeTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")), topics);
+    emit topicsChanged(meetingId);
 
     // Csak a MÉG ELEMZETLEN témák mennek a sorba (a kész elemzés a lemezen van) —
     // megszakítás/hiba után az újraindítás így onnan folytat, ahol tartott. Egy már kész
@@ -1845,6 +2300,7 @@ void AppController::analyzeTopic(const QString& meetingId, const SummaryTopic& t
         if (t.id == topic.id) { t = topic; found = true; break; }
     if (!found) topics.append(topic);
     writeTopicsJson(topicsPath, topics);
+    emit topicsChanged(meetingId);
 
     enqueueTopicAnalyses(meetingId, { topic }, /*reduceWhenDone*/ false);
 }
@@ -1855,6 +2311,7 @@ void AppController::enqueueTopicAnalyses(const QString& meetingId,
     if (reduceWhenDone) d->reduceWhenDone.insert(meetingId);
     if (!d->jobCounts.contains(meetingId)) d->jobCounts.insert(meetingId, {0, 0});
 
+    int added = 0;
     for (const SummaryTopic& t : topics) {
         // Dedup: ha ugyanez a téma már fut vagy sorban áll, nem kerül be még egyszer.
         if (d->topicJobActive && d->activeTopicMeetingId == meetingId && d->activeTopicId == t.id)
@@ -1864,7 +2321,17 @@ void AppController::enqueueTopicAnalyses(const QString& meetingId,
         if (queued)
             continue;
         d->topicJobQueue.append({ meetingId, t });
+        ++added;
+        d->jobs->clearTopicError(meetingId, t.id);   // új kísérlet → a régi hiba érvényét veszti
         emit topicAnalysisQueued(meetingId, t.id);
+        emit topicStatusChanged(meetingId, t.id);
+    }
+    // Strukturált feladat: meetingenként EGY „Témák elemzése” (darab-haladással).
+    if (added > 0 || d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics)) {
+        d->topicBatchTotal[meetingId] += added;
+        if (!d->jobs->isRunning(meetingId, JobKind::AnalyzeTopics))
+            d->jobs->begin(meetingId, JobKind::AnalyzeTopics, tr("Témák elemzése"));
+        d->updateTopicCounts(meetingId);
     }
     if (!d->topicJobActive)
         startNextTopicJob();
@@ -1879,11 +2346,24 @@ void AppController::startNextTopicJob()
         d->topicJobActive = false;
         d->activeTopicMeetingId.clear();
         d->activeTopicId.clear();
+        d->activeTopicRun = {};
         const auto counts = d->jobCounts;
         d->jobCounts.clear();
         for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
             const QString& id = it.key();
             const int ok = it.value().first, fail = it.value().second;
+            // Strukturált lezárás: bukott téma → az összefoglaló-lépés hibája (a témánkénti
+            // részletek a topicStatuses-ban); különben kész.
+            d->topicBatchTotal.remove(id);
+            if (d->jobs->isRunning(id, JobKind::AnalyzeTopics)) {
+                if (fail > 0) {
+                    JobError je;
+                    je.message = tr("%1 téma elemzése nem sikerült.").arg(fail);
+                    d->jobs->fail(id, JobKind::AnalyzeTopics, je);
+                } else {
+                    d->jobs->finish(id, JobKind::AnalyzeTopics);
+                }
+            }
             emit topicAnalysisQueueFinished(id, ok, fail);
             const bool wantReduce = d->reduceWhenDone.remove(id);
             if (wantReduce && fail == 0) {
@@ -1904,23 +2384,25 @@ void AppController::startNextTopicJob()
     }
 
     const Impl::TopicJob job = d->topicJobQueue.takeFirst();
-    Meeting m = d->store->load(job.meetingId);
-    if (m.id.isEmpty()) {
+    // Korai (szolgáltató-hívás előtti) bukás: megmaradó téma-hiba + a sor megy tovább.
+    auto failEarly = [this, &job](const QString& msg) {
         d->jobCounts[job.meetingId].second++;
-        emit topicAnalysisFailed(job.meetingId, job.topic.id, tr("Ismeretlen meeting."));
+        JobError je;
+        je.message = msg;
+        d->jobs->setTopicError(job.meetingId, job.topic.id, je);
+        d->updateTopicCounts(job.meetingId);
+        emit topicAnalysisFailed(job.meetingId, job.topic.id, msg);
+        emit topicStatusChanged(job.meetingId, job.topic.id);
         startNextTopicJob();
-        return;
-    }
+    };
+
+    Meeting m = d->store->load(job.meetingId);
+    if (m.id.isEmpty()) { failEarly(tr("Ismeretlen meeting.")); return; }
 
     MergedTranscript merged = d->mergedCache.value(m.id);
     if (merged.tokens.isEmpty())
         merged = readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
-    if (merged.tokens.isEmpty()) {
-        d->jobCounts[m.id].second++;
-        emit topicAnalysisFailed(m.id, job.topic.id, tr("Nincs átirat — előbb futtass átírást."));
-        startNextTopicJob();
-        return;
-    }
+    if (merged.tokens.isEmpty()) { failEarly(tr("Nincs átirat — előbb futtass átírást.")); return; }
     applySpeakerMap(merged, m.speakerMap);
 
     const AppSettings s = d->settings->settings();
@@ -1930,22 +2412,21 @@ void AppController::startNextTopicJob()
         d->complexRuns.insert(m.id, run);
     }
     if (run) run->kind = QStringLiteral("complex");   // a témagyűjtés után az elemzés-szakasz
-    const ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
+    ProviderConfig cfg = llmConfigFor(run, m.id, QStringLiteral("complex"), QStringLiteral("complex"));
+    const auto sink = std::make_shared<FailureSink>();
+    captureFailures(cfg, sink);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
-    if (!provider) {
-        d->jobCounts[m.id].second++;
-        emit topicAnalysisFailed(m.id, job.topic.id,
-                                 tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId));
-        startNextTopicJob();
-        return;
-    }
+    if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
 
     d->topicJobActive = true;
     d->activeTopicMeetingId = m.id;
     d->activeTopicId = job.topic.id;
+    d->activeTopicRun = Impl::LlmRun{svc, providerObj, run};
+    d->jobs->setMessage(m.id, JobKind::AnalyzeTopics, tr("„%1” téma elemzése…").arg(job.topic.title));
     emit topicAnalysisStarted(m.id, job.topic.id);
+    emit topicStatusChanged(m.id, job.topic.id);
     emit jobProgress(m.id, tr("„%1” téma elemzése…").arg(job.topic.title));
 
     const QString analysesPath = QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"));
@@ -1956,33 +2437,48 @@ void AppController::startNextTopicJob()
 
     connect(svc, &ComplexSummaryService::topicAnalysisReady, this,
             [this, meetingId = m.id, analysesPath, cleanup](const TopicAnalysis& a) {
-        upsertAnalysisJson(analysesPath, a);   // AZONNAL lemezre — a munka nem veszhet el
+        if (QFileInfo(analysesPath).absoluteDir().exists())
+            upsertAnalysisJson(analysesPath, a);   // AZONNAL lemezre — a munka nem veszhet el
         d->jobCounts[meetingId].first++;
         cleanup();
+        // A téma már nem „fut”: az állapot-lekérdezés (topicStatuses) innentől „kész”-t ad.
+        d->activeTopicId.clear();
+        d->activeTopicRun = {};
+        d->jobs->clearTopicError(meetingId, a.topicId);
+        d->updateTopicCounts(meetingId);
         emit topicAnalysisReady(meetingId, a);
+        emit topicStatusChanged(meetingId, a.topicId);
         startNextTopicJob();
     });
     connect(svc, &ComplexSummaryService::failed, this,
-            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run](const QString& e) {
+            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run, sink](const QString& e) {
         d->jobCounts[meetingId].second++;
         cleanup();
+        d->activeTopicId.clear();
+        d->activeTopicRun = {};
+        d->jobs->setTopicError(meetingId, topicId,
+                               d->describeLlmFailure(JobKind::AnalyzeTopics, e, run, sink));
         if (run && run->lastError.isError()) {
             // Cloud-hiba (402 / 403 / 426 / 429 / 503 …): a meeting hátralévő témái ugyanezt
             // kapnák → a sorból kivesszük őket; a K-12 részleges-hiba dialógus mutatja az eddig
             // terhelt összeget és a „Folytatás”-t (csak a hátralévő részekért fizet).
             emit topicAnalysisFailed(meetingId, topicId, run->lastError.message.isEmpty() ? e : run->lastError.message);
+            emit topicStatusChanged(meetingId, topicId);
             for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
                 if (d->topicJobQueue.at(i).meetingId != meetingId) continue;
                 const QString dropped = d->topicJobQueue.takeAt(i).topic.id;
                 d->jobCounts[meetingId].second++;
                 emit topicAnalysisFailed(meetingId, dropped, tr("Megszakítva"));
+                emit topicStatusChanged(meetingId, dropped);
             }
             d->reduceWhenDone.remove(meetingId);
             d->complexRuns.remove(meetingId);
             failCloudRun(run, e);
         } else {
             emit topicAnalysisFailed(meetingId, topicId, e);   // a többi téma megy tovább
+            emit topicStatusChanged(meetingId, topicId);
         }
+        d->updateTopicCounts(meetingId);
         startNextTopicJob();
     });
 
@@ -1993,6 +2489,9 @@ void AppController::startNextTopicJob()
 
 void AppController::finalizeComplexSummary(const QString& meetingId)
 {
+    if (d->jobs->isRunning(meetingId, JobKind::Summarize))
+        return;   // már fut egy összegzés
+
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return; }
 
@@ -2013,7 +2512,9 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     CloudRunPtr run = d->complexRuns.take(meetingId);   // a köteg futása (ha volt) folytatódik
-    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
+    ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("complex"), QStringLiteral("complex"));
+    const auto sink = std::make_shared<FailureSink>();
+    captureFailures(cfg, sink);
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
@@ -2021,17 +2522,27 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     svc->setReducePrompt(resolvedPrompt(s, QString(), "reduce"));
     emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
+    const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
+    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összegzés készítése"));
+    d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
+
     auto cleanup = [providerObj, svc]() {
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
     };
 
-    connect(svc, &ComplexSummaryService::failed, this, [this, cleanup, run](const QString& e) {
+    connect(svc, &ComplexSummaryService::failed, this,
+            [this, meetingId, cleanup, run, key, sink](const QString& e) {
+        d->llmRuns.remove(key);
         cleanup();
+        d->jobs->fail(meetingId, JobKind::Summarize,
+                      d->describeLlmFailure(JobKind::Summarize, e, run, sink));
         failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(e));
     });
     connect(svc, &ComplexSummaryService::reduceReady, this,
-            [this, m, ordered, cleanup, run](const QString& execSummary, const QVector<ActionItem>&) {
+            [this, m, ordered, cleanup, run, key, llmId = s.llmProviderId, model = cfg.model]
+            (const QString& execSummary, const QVector<ActionItem>&) {
+        d->llmRuns.remove(key);
         // Teendők KÓDBÓL (nem az LLM-től): a per-téma elemzések teendőit gyűjtjük össze,
         // normalizált szöveg-dedup. Determinisztikus, modellfüggetlen — az LLM reduce-ának
         // csak a vezetői összefoglaló marad (kevesebb hely a „hangos gondolkodásra").
@@ -2039,17 +2550,38 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         QSet<QString> seen;
         for (const TopicAnalysis& a : ordered)
             for (const ActionItem& ai : a.actionItems) {
-                const QString key = ai.text.simplified().toLower();
-                if (key.isEmpty() || seen.contains(key))
+                const QString norm = ai.text.simplified().toLower();
+                if (norm.isEmpty() || seen.contains(norm))
                     continue;
-                seen.insert(key);
+                seen.insert(norm);
                 mergedItems.append(ai);
             }
         const QString md = renderComplexMarkdown(execSummary, mergedItems, ordered);
         Meeting mm = d->store->load(m.id);
-        if (mm.id.isEmpty()) mm = m;
+        if (mm.id.isEmpty()) {   // a meeting közben törlődött
+            cleanup();
+            d->jobs->cancelled(m.id, JobKind::Summarize);
+            finishCloudRun(run);
+            return;
+        }
         const QString mdPath = QDir(mm.folder).filePath(QStringLiteral("summary.md"));
         writeTextFile(mdPath, md);
+        // Strukturált forma + metaadat (summary.json): vezetői összefoglaló, összevont
+        // teendők, a témák döntéseinek uniója és maguk a téma-elemzések, sorrendben.
+        SummaryDocument doc;
+        doc.exists = true;
+        doc.markdown = md;
+        doc.summary.execSummary = execSummary;
+        doc.summary.actionItems = mergedItems;
+        for (const TopicAnalysis& a : ordered)
+            for (const QString& dec : a.decisions)
+                if (!doc.summary.decisions.contains(dec)) doc.summary.decisions << dec;
+        doc.topics = ordered;
+        doc.meta.createdAt = QDateTime::currentDateTime();
+        doc.meta.providerId = llmId;
+        doc.meta.model = model;
+        doc.meta.mode = SummaryMode::Topics;
+        summarystore::save(mm.folder, doc);
         QDir().mkpath(d->notesDir);
         const QString noteName = QStringLiteral("%1 %2.md")
             .arg(mm.startedAt.toString(QStringLiteral("yyyy-MM-dd")), slugify(mm.title));
@@ -2057,11 +2589,368 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         mm.hasSummary = true;
         d->store->saveMeeting(mm);
         cleanup();
+        d->jobs->finish(mm.id, JobKind::Summarize);
         emit summaryReady(mm.id, mdPath);
         finishCloudRun(run);   // K-07: „Az összefoglaló $0,46 volt (12 rész).”
     });
 
     svc->requestReduce(ordered, m.contextNote.trimmed(), cfg.model, cfg.temperature, cfg.maxTokens);
+}
+
+// =========================================================================================
+// Strukturált réteg az újratervezett főablakhoz: állapot-lekérdezés, megszakítás, témák,
+// aszinkron azonosítás, hullámforma. (A régi jobProgress / errorOccurred mellett él.)
+// =========================================================================================
+
+MeetingJobTracker* AppController::jobs() const      { return d->jobs; }
+MeetingLibrary*    AppController::library() const   { return d->library; }
+TrackCatalog*      AppController::tracks() const    { return d->tracks; }
+WaveformService*   AppController::waveforms() const { return d->waveforms; }
+
+MeetingProcessingState AppController::processingState(const QString& meetingId) const
+{
+    return d->jobs->state(meetingId);
+}
+
+SummaryDocument AppController::summaryDocument(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return {};
+    return summarystore::load(m.folder);
+}
+
+QVector<SummaryTopic> AppController::meetingTopics(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return {};
+    return readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+}
+
+QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) const
+{
+    QVector<TopicStatus> out;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return out;
+    const QVector<SummaryTopic> topics =
+        readTopicsJson(QDir(m.folder).filePath(QStringLiteral("summary.topics.json")));
+    QSet<QString> done;
+    for (const TopicAnalysis& a : readAnalysesJson(QDir(m.folder).filePath(QStringLiteral("summary.analyses.json"))))
+        done.insert(a.topicId);
+    const QHash<QString, JobError> errors = d->jobs->topicErrors(meetingId);
+
+    out.reserve(topics.size());
+    for (const SummaryTopic& t : topics) {
+        TopicStatus st;
+        st.topicId = t.id;
+        const bool running = d->topicJobActive && d->activeTopicMeetingId == meetingId
+                             && d->activeTopicId == t.id;
+        const bool queued = std::any_of(d->topicJobQueue.cbegin(), d->topicJobQueue.cend(),
+            [&](const Impl::TopicJob& j) { return j.meetingId == meetingId && j.topic.id == t.id; });
+        if (running) {
+            st.state = TopicState::Running;
+        } else if (queued) {
+            st.state = TopicState::Queued;
+        } else if (errors.contains(t.id)) {
+            // Az UTOLSÓ kísérlet bukott (akkor is ez látszik, ha korábbról van kész elemzés —
+            // az megmarad a lemezen; új sikeres futás vagy újrapróbálás törli a hibát).
+            st.state = TopicState::Failed;
+            st.error = errors.value(t.id).message;
+            st.errorDetail = errors.value(t.id).detail;
+        } else if (done.contains(t.id)) {
+            st.state = TopicState::Done;
+        }
+        out.append(st);
+    }
+    return out;
+}
+
+QVector<SummaryTopic> AppController::setMeetingTopics(const QString& meetingId,
+                                                      const QVector<SummaryTopic>& topics)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) { emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId)); return {}; }
+
+    QVector<SummaryTopic> saved;
+    QSet<QString> ids;
+    for (SummaryTopic t : topics) {
+        t.title = t.title.trimmed();
+        t.summary = t.summary.trimmed();
+        if (t.title.isEmpty()) continue;                      // cím nélküli téma nem menthető
+        if (t.id.isEmpty() || ids.contains(t.id))             // új (vagy duplikált id-jű) téma
+            t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        ids.insert(t.id);
+        saved.append(t);
+    }
+    const QString topicsPath = QDir(m.folder).filePath(QStringLiteral("summary.topics.json"));
+    // A törölt témák: sorból ki / futó megszakítva, megmaradt hibájuk törölve.
+    for (const SummaryTopic& old : readTopicsJson(topicsPath)) {
+        if (ids.contains(old.id)) continue;
+        cancelTopicAnalysis(meetingId, old.id);
+        d->jobs->clearTopicError(meetingId, old.id);
+    }
+    writeTopicsJson(topicsPath, saved);
+    emit topicsChanged(meetingId);
+    return saved;
+}
+
+bool AppController::cancelTopicAnalysis(const QString& meetingId, const QString& topicId)
+{
+    bool any = false;
+    for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
+        const Impl::TopicJob& j = d->topicJobQueue.at(i);
+        if (j.meetingId != meetingId || j.topic.id != topicId) continue;
+        d->topicJobQueue.removeAt(i);
+        if (d->topicBatchTotal.value(meetingId) > 0) d->topicBatchTotal[meetingId]--;
+        any = true;
+    }
+    const bool active = d->topicJobActive && d->activeTopicMeetingId == meetingId
+                        && d->activeTopicId == topicId;
+    if (active) {
+        d->abortLlmRun(d->activeTopicRun);
+        d->activeTopicRun = {};
+        d->activeTopicId.clear();
+        if (d->topicBatchTotal.value(meetingId) > 0) d->topicBatchTotal[meetingId]--;
+        any = true;
+    }
+    if (!any) return false;
+    // Egy téma kivétele után a köteg már nem teljes → nincs automatikus záró összegzés.
+    d->reduceWhenDone.remove(meetingId);
+    d->updateTopicCounts(meetingId);
+    emit topicAnalysisFailed(meetingId, topicId, tr("Megszakítva"));
+    emit topicStatusChanged(meetingId, topicId);
+    if (active)
+        startNextTopicJob();   // a sor megy tovább (vagy lezárul)
+    return true;
+}
+
+bool AppController::cancelJob(const QString& meetingId, JobKind kind)
+{
+    switch (kind) {
+    case JobKind::Transcribe: {
+        auto it = d->transcribeRuns.find(meetingId);
+        if (it == d->transcribeRuns.end()) {
+            // Az átirat már kész, az utolsó (azonosítás) szakasz fut → csak az marad ki.
+            const auto ir = d->identifyRuns.constFind(meetingId);
+            if (ir == d->identifyRuns.constEnd() || !ir->asStage) return false;
+            ir->cancel->store(true);
+            d->jobs->setCancelling(meetingId, kind);
+            return true;
+        }
+        d->jobs->setCancelling(meetingId, kind);
+        if (it->mixPhase) {
+            // Lekeverés-fázis: a láncot bontjuk; a saját indítású ffmpeg-et leállítjuk (a
+            // félkész fájl törlődik, a korábbi keverék és a sávok érintetlenek).
+            if (it->mixConn) QObject::disconnect(*it->mixConn);
+            const bool owns = it->ownsMixdown;
+            d->transcribeRuns.erase(it);
+            d->clearSpeakersOnTranscript.remove(meetingId);
+            if (owns) {
+                if (QProcess* proc = d->mixdownProcs.value(meetingId)) {
+                    d->mixdownCancelled.insert(meetingId);
+                    proc->kill();
+                }
+            }
+            d->jobs->cancelled(meetingId, kind);
+            return true;
+        }
+        if (it->job) {
+            it->cancelRequested = true;
+            it->job->cancel();   // szinkron failed("cancelled") → a failed-ág zár le (hiba nélkül)
+            return true;
+        }
+        // (Elvileg nem fordul elő: sem keverés, sem job.)
+        d->transcribeRuns.erase(it);
+        d->clearSpeakersOnTranscript.remove(meetingId);
+        d->jobs->cancelled(meetingId, kind);
+        return true;
+    }
+    case JobKind::Summarize:
+    case JobKind::ExtractTopics: {
+        const QString key = Impl::llmKey(meetingId, kind);
+        const auto it = d->llmRuns.find(key);
+        if (it == d->llmRuns.end()) return false;
+        const Impl::LlmRun run = *it;
+        d->llmRuns.erase(it);
+        d->abortLlmRun(run);
+        // Cloud: a megszakított hívásért nincs terhelés; a futás eddigi (pl. témagyűjtés +
+        // elemzések) terhelései összesítve mennek a K-07-be.
+        if (run.cloudRun && !run.cloudRun->lastError.isError())
+            finishCloudRun(run.cloudRun);
+        d->jobs->cancelled(meetingId, kind);
+        return true;
+    }
+    case JobKind::AnalyzeTopics: {
+        bool any = false;
+        for (int i = d->topicJobQueue.size() - 1; i >= 0; --i) {
+            if (d->topicJobQueue.at(i).meetingId != meetingId) continue;
+            const QString dropped = d->topicJobQueue.takeAt(i).topic.id;
+            emit topicAnalysisFailed(meetingId, dropped, tr("Megszakítva"));
+            emit topicStatusChanged(meetingId, dropped);
+            any = true;
+        }
+        const bool activeMine = d->topicJobActive && d->activeTopicMeetingId == meetingId
+                                && !d->activeTopicId.isEmpty();
+        if (activeMine) {
+            const QString tid = d->activeTopicId;
+            d->abortLlmRun(d->activeTopicRun);
+            d->activeTopicRun = {};
+            d->activeTopicId.clear();
+            emit topicAnalysisFailed(meetingId, tid, tr("Megszakítva"));
+            emit topicStatusChanged(meetingId, tid);
+            any = true;
+        }
+        if (!any && !d->jobs->isRunning(meetingId, kind)) return false;
+        // A köteg lezárása: nincs auto-összegzés, nincs „N téma nem sikerült” üzenet; a már
+        // kész elemzések a lemezen maradnak, a folytatás onnan megy tovább.
+        const QPair<int, int> counts = d->jobCounts.take(meetingId);
+        d->reduceWhenDone.remove(meetingId);
+        d->topicBatchTotal.remove(meetingId);
+        const CloudRunPtr run = d->complexRuns.take(meetingId);
+        if (run && !run->lastError.isError())
+            finishCloudRun(run);
+        emit topicAnalysisQueueFinished(meetingId, counts.first, counts.second);
+        d->jobs->cancelled(meetingId, kind);
+        if (activeMine)
+            startNextTopicJob();   // más meetingek témái mennek tovább
+        return true;
+    }
+    case JobKind::Mixdown: {
+        QProcess* proc = d->mixdownProcs.value(meetingId);
+        if (!proc || !d->jobs->isRunning(meetingId, kind)) return false;
+        d->jobs->setCancelling(meetingId, kind);
+        d->mixdownCancelled.insert(meetingId);
+        proc->kill();   // a finished-ág zár le: félkész fájl törölve, a régi keverék marad
+        return true;
+    }
+    case JobKind::Identify: {
+        const auto ir = d->identifyRuns.constFind(meetingId);
+        if (ir == d->identifyRuns.constEnd() || ir->asStage) return false;
+        ir->cancel->store(true);   // a szál a következő beszélő előtt megáll
+        d->jobs->setCancelling(meetingId, kind);
+        return true;
+    }
+    }
+    return false;
+}
+
+void AppController::cancelAllJobs(const QString& meetingId)
+{
+    for (JobKind k : {JobKind::Transcribe, JobKind::Summarize, JobKind::ExtractTopics,
+                      JobKind::AnalyzeTopics, JobKind::Mixdown, JobKind::Identify})
+        cancelJob(meetingId, k);
+}
+
+bool AppController::identifyMeetingAsync(const QString& meetingId)
+{
+    if (d->jobs->isRunning(meetingId, JobKind::Transcribe))
+        return false;   // az átírás a végén maga azonosít
+    return startIdentify(meetingId, /*asTranscribeStage*/ false);
+}
+
+bool AppController::startIdentify(const QString& meetingId, bool asStage)
+{
+    if (d->identifyRuns.contains(meetingId) || !d->voiceModelUsable())
+        return false;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    const MergedTranscript merged =
+        readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (merged.tokens.isEmpty()) return false;
+
+    // A még névtelen (nem leképezett) nyers beszélő-címkék és a hangforrásuk.
+    struct Item { QString label; QString audioPath; };
+    QVector<Item> items;
+    QStringList seen;
+    for (const TranscriptToken& t : merged.tokens) {
+        if (t.speaker.isEmpty() || seen.contains(t.speaker)) continue;
+        seen << t.speaker;
+        if (m.speakerMap.contains(t.speaker)) continue;
+        const VoiceSource src = resolveVoiceSource(m, merged, t.speaker);
+        if (!src.absPath.isEmpty()) items.append({t.speaker, src.absPath});
+    }
+    if (items.isEmpty()) {
+        d->jobs->markIdentified(meetingId);   // nincs névtelen beszélő → nincs mit azonosítani
+        return false;
+    }
+
+    const int total = int(items.size());
+    const JobKind kind = asStage ? JobKind::Transcribe : JobKind::Identify;
+    if (asStage) {
+        d->jobs->setStage(meetingId, kind, QStringLiteral("identify"), StageState::Running, 0,
+                          tr("%1 / %2 beszélő").arg(0).arg(total));
+    } else {
+        d->jobs->begin(meetingId, kind, tr("Résztvevők azonosítása"));
+        d->jobs->setCounts(meetingId, kind, 0, total);
+    }
+
+    // A dekódolás (ffmpeg) + embedding (ONNX) háttérszálon fut, SAJÁT embedder-példánnyal
+    // (a fő szál embedderéhez nem nyúl). A párosítás a lenyomat-DB ellen és a mentés a fő
+    // szálon történik (applyIdentification) — a DB-t csak a fő szál éri el.
+    auto cancel = std::make_shared<std::atomic<bool>>(false);
+    auto results = std::make_shared<QVector<QPair<QString, QVector<float>>>>();
+    const QString modelPath = d->voiceModelPath;
+    QPointer<AppController> self(this);
+    QThread* th = QThread::create([self, items, merged, modelPath, cancel, results, meetingId,
+                                   total, kind, asStage]() {
+        VoiceEmbedder emb(modelPath);
+        if (!emb.isValid()) return;
+        int done = 0;
+        for (const Item& it : items) {
+            if (cancel->load()) break;
+            const QVector<float> e = embeddingForLabel(emb, it.audioPath, merged, it.label);
+            ++done;
+            // Eredmény + valós darab-haladás vissza a fő szálra.
+            QMetaObject::invokeMethod(qApp, [self, results, label = it.label, e, meetingId,
+                                             done, total, kind, asStage]() {
+                if (!self) return;
+                results->append({label, e});
+                if (asStage) {
+                    self->d->jobs->setStage(meetingId, kind, QStringLiteral("identify"),
+                                            StageState::Running, done * 100 / total,
+                                            AppController::tr("%1 / %2 beszélő").arg(done).arg(total));
+                } else {
+                    self->d->jobs->setCounts(meetingId, kind, done, total);
+                }
+            }, Qt::QueuedConnection);
+        }
+    });
+    d->identifyRuns.insert(meetingId, Impl::IdentifyRun{th, cancel, asStage});
+    connect(th, &QThread::finished, this, [this, th, meetingId, cancel, results, asStage, kind]() {
+        d->identifyRuns.remove(meetingId);
+        th->deleteLater();
+        const bool wasCancelled = cancel->load();
+        // Megszakításnál is mentjük, amit addig találtunk (ahogy a szinkron változat).
+        d->applyIdentification(meetingId, *results);
+        if (!wasCancelled)
+            d->jobs->markIdentified(meetingId);
+        if (asStage) {
+            d->jobs->setStage(meetingId, kind, QStringLiteral("identify"),
+                              wasCancelled ? StageState::Skipped : StageState::Done);
+            d->jobs->finish(meetingId, kind);   // az átirat kész — a feladat sikerrel zárul
+        } else if (wasCancelled) {
+            d->jobs->cancelled(meetingId, kind);
+        } else {
+            d->jobs->finish(meetingId, kind);
+        }
+    });
+    th->start();
+    return true;
+}
+
+void AppController::requestWaveforms(const QString& meetingId)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    for (const Track& t : m.tracks) {
+        const QString path = QDir(m.folder).filePath(t.file);
+        if (!t.file.isEmpty() && QFile::exists(path))
+            d->waveforms->request(meetingId, t.id, path);
+    }
+    if (!m.mixdownFile.isEmpty()) {
+        const QString mix = QDir(m.folder).filePath(m.mixdownFile);
+        if (QFile::exists(mix))
+            d->waveforms->request(meetingId, QStringLiteral("mixdown"), mix);
+    }
 }
 
 } // namespace tanara

@@ -177,8 +177,10 @@ void WhisperCompatJob::start()
 
     connect(m_reply, &QNetworkReply::uploadProgress, this,
             [this](qint64 sent, qint64 total) {
-                if (total > 0)
+                if (total > 0) {
                     emit progress(int(sent * 60 / total), tr("Hang feltöltése…"));
+                    emit uploadProgress(sent, total);
+                }
                 if (total > 0 && sent == total) {
                     setState(JobState::Processing);
                     emit progress(60, tr("Átírás folyamatban…"));

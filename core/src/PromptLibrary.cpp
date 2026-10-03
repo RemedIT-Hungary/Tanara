@@ -1,4 +1,5 @@
 #include "tanara/PromptLibrary.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -91,11 +92,7 @@ QString promptBuiltin(const QString& id)
 
 QString promptFilePath(const QString& id, const QString& metadataDir)
 {
-    QString dir = metadataDir.trimmed();
-    if (dir.isEmpty())
-        dir = QDir(QDir::homePath()).filePath(QStringLiteral(".tanara"));
-    else if (dir.startsWith(QLatin1Char('~')))
-        dir = QDir::homePath() + dir.mid(1);
+    const QString dir = paths::resolveMetadataDir(metadataDir);   // TANARA_HOME-tudatos
     return QDir(dir).filePath(QStringLiteral("prompts/%1.md").arg(id));
 }
 

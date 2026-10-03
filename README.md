@@ -57,6 +57,9 @@ The build produces four targets:
 - App data lives in `~/.tanara/`: `settings.json`, `index.db` (a cache that
   Tanara can rebuild), `people.json`, `voiceprints.json`, `secrets.json`, and
   `models/`.
+- Set `TANARA_HOME=<dir>` to use a different app-data directory. Tanara then
+  reads and writes nothing under `~/.tanara`, and a new `settings.json` puts
+  recordings and notes under `<dir>` too. Use it to test on a copy of your data.
 
 ## Requirements
 

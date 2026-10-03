@@ -2,6 +2,7 @@
 #include "AppIcon.h"   // tanara_gui::makeTanaraIcon (header-only, gui/src az include-path-on)
 
 #include "tanara/SettingsManager.h"
+#include "tanara/Paths.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
 #include "tanara/detect/RecordingLock.h"
@@ -196,11 +197,7 @@ QString TrayWatcher::tanaraBinary() const
 
 QString TrayWatcher::lockPath() const
 {
-    QString metaDir = m_settings->settings().metadataDir;
-    if (metaDir.isEmpty())
-        metaDir = QDir(QDir::homePath()).filePath(QStringLiteral(".tanara"));
-    else if (metaDir.startsWith(QLatin1Char('~')))
-        metaDir = QDir::homePath() + metaDir.mid(1);
+    const QString metaDir = tanara::paths::resolveMetadataDir(m_settings->settings().metadataDir);
     return QDir(metaDir).filePath(QStringLiteral("recording.lock"));
 }
 

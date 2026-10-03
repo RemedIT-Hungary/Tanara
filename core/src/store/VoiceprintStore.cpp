@@ -1,4 +1,5 @@
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -30,7 +31,7 @@ QString findPersonByName(const QMap<QString, QVector<Voiceprint>>& people, const
 VoiceprintStore::VoiceprintStore(const QString& filePath)
 {
     m_filePath = filePath.isEmpty()
-        ? QDir(QDir::homePath()).filePath(QStringLiteral(".tanara/voiceprints.json"))
+        ? paths::metadataFile(QStringLiteral("voiceprints.json"))
         : filePath;
     load();
 }

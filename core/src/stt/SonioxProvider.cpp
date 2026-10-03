@@ -157,6 +157,10 @@ void SonioxJob::uploadFile() {
     QNetworkReply* reply = m_nam->post(req, multi);
     multi->setParent(reply);    // a reply birtokolja a multipartot
     m_reply = reply;
+    // Valós feltöltés-haladás a strukturált folyamat-jelzéshez (M04 „Feltöltés” szakasz).
+    connect(reply, &QNetworkReply::uploadProgress, this, [this](qint64 sent, qint64 total) {
+        if (total > 0) emit uploadProgress(sent, total);
+    });
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (m_reply != reply) {          // megszakítva / lecserélve

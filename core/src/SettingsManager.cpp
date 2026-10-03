@@ -1,5 +1,6 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/store/JsonSerialization.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -12,19 +13,9 @@ namespace tanara {
 
 namespace {
 
-QString defaultMetadataDir()
-{
-    return QDir(QDir::homePath()).filePath(QStringLiteral(".tanara"));
-}
-
-QString expandHome(const QString& path)
-{
-    if (path.startsWith(QLatin1String("~/")))
-        return QDir(QDir::homePath()).filePath(path.mid(2));
-    if (path == QLatin1String("~"))
-        return QDir::homePath();
-    return path;
-}
+// A metaadat-mappa alapértelmezése és a TANARA_HOME felülírás EGY helyen: tanara/Paths.h.
+QString defaultMetadataDir() { return paths::defaultMetadataDir(); }
+QString expandHome(const QString& path) { return paths::expandHome(path); }
 
 } // namespace
 
@@ -38,11 +29,10 @@ SettingsManager::SettingsManager(const QString& metadataDir, QObject* parent)
 AppSettings SettingsManager::defaults(const QString& metadataDir)
 {
     const QString meta = metadataDir.isEmpty() ? defaultMetadataDir() : metadataDir;
-    const QString home = QDir::homePath();
 
     AppSettings s;
-    s.audioDir        = QDir(home).filePath(QStringLiteral("Tanara/recordings"));
-    s.notesDir        = QDir(home).filePath(QStringLiteral("Tanara/notes"));
+    s.audioDir        = paths::defaultAudioDir();   // TANARA_HOME mellett a sandboxba
+    s.notesDir        = paths::defaultNotesDir();
     s.metadataDir     = meta;
     s.userSpeakerName = QStringLiteral("Ádám");
     s.languageHints   = QStringList{QStringLiteral("hu")};
@@ -132,6 +122,9 @@ void SettingsManager::load()
     if (loaded.audioDir.isEmpty())        loaded.audioDir = def.audioDir;
     if (loaded.notesDir.isEmpty())        loaded.notesDir = def.notesDir;
     if (loaded.metadataDir.isEmpty())     loaded.metadataDir = def.metadataDir;
+    // TANARA_HOME: a settings.json-beli metadataDir NEM térítheti vissza az appot a valódi
+    // ~/.tanara-ba (pl. egy átmásolt minta-settings) — a futó érték mindig a felülírás.
+    if (!paths::homeOverride().isEmpty()) loaded.metadataDir = paths::homeOverride();
     if (loaded.userSpeakerName.isEmpty()) loaded.userSpeakerName = def.userSpeakerName;
     // languageHints: az ÜRES lista érvényes érték („Automatikus” nyelv, K-04) — csak a
     // hiányzó kulcs kap defaultot (azt az appSettingsFromJson már megadta).

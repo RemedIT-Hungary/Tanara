@@ -4,6 +4,7 @@
 
 #include "tanara/Localization.h"
 #include "tanara/Logging.h"
+#include "tanara/Paths.h"
 #include "tanara/detect/DetectorRegistry.h"
 
 #include <QApplication>
@@ -25,7 +26,7 @@ int main(int argc, char** argv)
     QApplication::setQuitOnLastWindowClosed(false);
 
     // Egy-példány: PID-alapú lock (a QLockFile a stale/halott PID-et maga kezeli).
-    const QString metaDir = QDir(QDir::homePath()).filePath(QStringLiteral(".tanara"));
+    const QString metaDir = tanara::paths::defaultMetadataDir();   // ~/.tanara vagy TANARA_HOME
     QDir().mkpath(metaDir);
     QLockFile instanceLock(QDir(metaDir).filePath(QStringLiteral("watcher.lock")));
     instanceLock.setStaleLockTime(0);   // csak PID-alapú stale-detektálás

@@ -49,6 +49,7 @@ struct Track {
     int channels = 1;
     bool active = true;     // false = felvétel után csendesnek ítélve, eldobva (fájl MARAD)
     float peakLevel = 0.0f; // a felvétel alatti csúcs-RMS (a megtartás-döntéshez)
+    QString customName;     // a felhasználó által adott sávnév; üres → barátságos név (TrackCatalog)
 };
 
 // ---- transcript ------------------------------------------------------------

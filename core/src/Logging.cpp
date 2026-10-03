@@ -1,4 +1,5 @@
 #include "tanara/Logging.h"
+#include "tanara/Paths.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -42,8 +43,8 @@ bool        g_installed = false;
 
 QString defaultLogDir()
 {
-    // Összhangban a KeyStore/SettingsManager default ~/.tanara metadataDir-jével.
-    return QDir(QDir::homePath()).filePath(QStringLiteral(".tanara/logs"));
+    // <metaadat-mappa>/logs — ~/.tanara vagy TANARA_HOME (tanara/Paths.h).
+    return paths::metadataFile(QStringLiteral("logs"));
 }
 
 const char* levelTag(QtMsgType t)

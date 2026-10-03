@@ -1,4 +1,5 @@
 #include "tanara/store/PeopleStore.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -13,7 +14,7 @@ namespace tanara {
 PeopleStore::PeopleStore(const QString& filePath)
 {
     m_filePath = filePath.isEmpty()
-        ? QDir(QDir::homePath()).filePath(QStringLiteral(".tanara/people.json"))
+        ? paths::metadataFile(QStringLiteral("people.json"))
         : filePath;
     load();
 }

@@ -2,6 +2,7 @@
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/Logging.h"
+#include "tanara/Paths.h"
 
 #include <QDir>
 #include <QFile>
@@ -55,7 +56,7 @@ MeetingStore::MeetingStore(const QString& audioDir,
                            QObject* parent)
     : QObject(parent)
     , m_audioDir(expandHome(audioDir))
-    , m_metadataDir(expandHome(metadataDir))
+    , m_metadataDir(metadataDir.isEmpty() ? paths::defaultMetadataDir() : expandHome(metadataDir))
 {
     m_connName = QStringLiteral("tanara_meetingstore_%1")
                      .arg(QUuid::createUuid().toString(QUuid::Id128));
@@ -67,7 +68,7 @@ MeetingStore::MeetingStore(SettingsManager* settings, QObject* parent)
 {
     if (settings) {
         m_audioDir    = expandHome(settings->settings().audioDir);
-        m_metadataDir = expandHome(settings->settings().metadataDir);
+        m_metadataDir = paths::resolveMetadataDir(settings->settings().metadataDir);
     }
     m_connName = QStringLiteral("tanara_meetingstore_%1")
                      .arg(QUuid::createUuid().toString(QUuid::Id128));
