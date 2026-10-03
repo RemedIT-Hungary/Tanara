@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e6e6e4;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}a{color:#2f5aa8}a:hover{color:#1d3d78}</style>
+</helmet>
+<sc-for list="{{ turns }}" as="tu" hint-placeholder-count="2">
+<section style="padding:48px;display:flex;flex-direction:column;gap:28px;border-bottom:1px solid #cfcfcc">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:1100px">
+    <div style="font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5d5f63">TANARA · {{ tu.num }}</div>
+    <div style="font:600 30px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">{{ tu.title }}</div>
+    <div style="font:400 16px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">{{ tu.sub }}</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start">
+    <sc-for list="{{ tu.dirs }}" as="d" hint-placeholder-count="2">
+      <div id="{{ d.id }}" style="display:flex;flex-direction:column;gap:18px;width:1280px">
+        <div style="display:flex;align-items:baseline;gap:14px">
+          <div style="font:600 14px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:6px 9px;border-radius:6px">{{ d.id }}</div>
+          <div style="font:600 24px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126;white-space:nowrap">{{ d.name }}</div>
+          <div style="font:400 15px/1.45 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">{{ d.desc }}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 32px;padding:0 2px">
+          <sc-for list="{{ d.notes }}" as="n" hint-placeholder-count="4">
+            <div style="display:flex;gap:10px;font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#2c2f34"><div style="font:500 12px/1.6 'IBM Plex Mono',monospace;color:#6a6d72">{{ n.k }}</div><div style="text-wrap:pretty">{{ n.t }}</div></div>
+          </sc-for>
+        </div>
+        <sc-for list="{{ d.frames }}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font:500 12px/1 'IBM Plex Mono',monospace;color:#5d5f63;letter-spacing:.04em">{{ f.caption }}</div>
+            <div data-screen-label="{{ f.label }}" style="width:{{ f.w }}px;height:{{ f.h }}px;background:{{ f.t.bg }};color:{{ f.t.text }};font-family:'IBM Plex Sans',sans-serif;border-radius:10px;border:1px solid {{ f.t.border }};overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+
+              <sc-if value="{{ f.chrome }}" hint-placeholder-val="{{ true }}">
+                <div style="height:36px;flex:none;display:flex;align-items:center;gap:16px;padding:0 6px 0 14px;background:{{ f.t.surface }};border-bottom:1px solid {{ f.t.border }};font-size:13px">
+                  <div style="width:14px;height:14px;border-radius:3px;background:{{ f.t.accent }}"></div>
+                  <div style="display:flex;gap:14px;color:{{ f.t.text }}"><div>{{ s.menuFile }}</div><div>{{ s.menuView }}</div></div>
+                  <div style="flex:1;text-align:center;color:{{ f.t.muted }}">Tanara</div>
+                  <div style="display:flex;gap:2px;color:{{ f.t.muted }}">
+                    <div style="width:36px;height:28px;display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.min }}) center/contain no-repeat;mask:url({{ i.min }}) center/contain no-repeat"></div></div>
+                    <div style="width:36px;height:28px;display:flex;align-items:center;justify-content:center"><div style="width:13px;height:13px;background:currentColor;-webkit-mask:url({{ i.max }}) center/contain no-repeat;mask:url({{ i.max }}) center/contain no-repeat"></div></div>
+                    <div style="width:36px;height:28px;display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.x }}) center/contain no-repeat;mask:url({{ i.x }}) center/contain no-repeat"></div></div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <div style="flex:1;display:flex;min-height:0">
+                <sc-if value="{{ f.chrome }}" hint-placeholder-val="{{ true }}">
+                  <div style="width:276px;flex:none;display:flex;flex-direction:column;gap:12px;padding:14px 12px;background:{{ f.t.surface }};border-right:1px solid {{ f.t.border }}">
+                    <div style="height:34px;padding:0 14px 0 12px;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:6px;background:{{ f.t.rec }};color:#fff;font-size:14px;font-weight:600"><div style="width:10px;height:10px;border-radius:50%;background:#fff"></div>{{ s.newRec }}</div>
+                    <div style="height:32px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};color:{{ f.t.muted }};font-size:13px"><div style="width:15px;height:15px;flex:none;background:currentColor;-webkit-mask:url({{ i.search }}) center/contain no-repeat;mask:url({{ i.search }}) center/contain no-repeat"></div>{{ s.search }}</div>
+                    <div style="flex:1;display:flex;flex-direction:column;gap:2px;overflow:hidden">
+                      <sc-for list="{{ f.lib }}" as="m" hint-placeholder-count="6">
+                        <div style="padding:9px 10px;border-radius:5px;background:{{ m.bg }};display:flex;flex-direction:column;gap:5px">
+                          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.title }}</div>
+                          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                            <div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ m.meta }}</div>
+                            <div style="display:flex;gap:5px;flex:none">
+                              <sc-for list="{{ m.st }}" as="x" hint-placeholder-count="3">
+                                <div style="width:20px;height:20px;border-radius:4px;background:{{ x.bg }};color:{{ x.fg }};display:flex;align-items:center;justify-content:center;border:1px solid {{ x.bd }}"><div style="width:12px;height:12px;background:currentColor;-webkit-mask:url({{ x.u }}) center/contain no-repeat;mask:url({{ x.u }}) center/contain no-repeat"></div></div>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;gap:4px;border-top:1px solid {{ f.t.border }};padding-top:10px;color:{{ f.t.muted }};font-size:13px">
+                      <div style="flex:1;height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:5px"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.users }}) center/contain no-repeat;mask:url({{ i.users }}) center/contain no-repeat"></div>{{ s.people }}</div>
+                      <div style="flex:1;height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:5px"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.settings }}) center/contain no-repeat;mask:url({{ i.settings }}) center/contain no-repeat"></div>{{ s.settings }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+                  <sc-if value="{{ f.chrome }}" hint-placeholder-val="{{ true }}">
+                    <div style="padding:16px 24px 0;display:flex;flex-direction:column;gap:12px;flex:none">
+                      <div style="display:flex;align-items:flex-start;gap:16px">
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                          <div style="font-size:20px;font-weight:600;line-height:1.25">{{ s.title }}</div>
+                          <div style="font-size:13px;color:{{ f.t.muted }}">{{ s.meta }}</div>
+                        </div>
+                        <div style="height:32px;padding:0 12px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.finger }}) center/contain no-repeat;mask:url({{ i.finger }}) center/contain no-repeat"></div>{{ s.identify }}</div>
+                        <div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ f.t.border }}"><div style="width:16px;height:16px;background:currentColor;-webkit-mask:url({{ i.more }}) center/contain no-repeat;mask:url({{ i.more }}) center/contain no-repeat"></div></div>
+                      </div>
+                      <div style="display:flex;gap:4px;border-bottom:1px solid {{ f.t.border }}">
+                        <div style="padding:8px 12px;font-size:14px;font-weight:600;box-shadow:inset 0 -2px 0 {{ f.t.accent }}">{{ s.tab1 }}</div>
+                        <div style="padding:8px 12px;font-size:14px;color:{{ f.t.muted }};display:flex;align-items:center;gap:6px">{{ s.tab2 }}<div style="font-size:11px;font-weight:600;color:{{ f.t.warnInk }};background:{{ f.t.warnSoft }};padding:2px 6px;border-radius:8px">{{ s.stale }}</div></div>
+                        <div style="padding:8px 12px;font-size:14px;color:{{ f.t.muted }}">{{ s.tab3 }}</div>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <div style="flex:none;padding:12px 24px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid {{ f.t.border }}">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <div style="flex:1;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ s.overview }}</div>
+                      <div style="height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:14px;border:1px solid {{ f.ucBd }};background:{{ f.ucBg }};color:{{ f.ucFg }};font-size:12px;font-weight:500"><div style="width:12px;height:12px;border-radius:2px;background:repeating-linear-gradient(135deg, {{ f.t.muted }} 0 2px, transparent 2px 4px)"></div>{{ s.uncertain }}<div style="font-family:'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ f.uncN }}</div></div>
+                      <sc-if value="{{ f.showToggle }}" hint-placeholder-val="{{ false }}"><div style="height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;border:1px solid {{ f.tgBd }};background:{{ f.tgBg }};color:{{ f.tgFg }};font-size:12px;font-weight:600"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.rail }}) center/contain no-repeat;mask:url({{ i.rail }}) center/contain no-repeat"></div>{{ s.railBtn }}<div style="font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:11px;opacity:.75">Ctrl+L</div></div></sc-if>
+                      <div style="height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;font-size:12px;font-weight:500"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.undo }}) center/contain no-repeat;mask:url({{ i.undo }}) center/contain no-repeat"></div>{{ s.undo }}<div style="font-family:'IBM Plex Mono',monospace;color:{{ f.t.muted }};font-size:11px">Ctrl+Z</div></div>
+                      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:{{ f.t.muted }}"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.redo }}) center/contain no-repeat;mask:url({{ i.redo }}) center/contain no-repeat"></div></div>
+                      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.search }}) center/contain no-repeat;mask:url({{ i.search }}) center/contain no-repeat"></div></div>
+                    </div>
+                    <sc-if value="{{ d.isA }}" hint-placeholder-val="{{ false }}">
+                      <div style="height:20px;position:relative;border-radius:3px;background:{{ f.t.sunken }};overflow:hidden">
+                        <sc-for list="{{ f.ov }}" as="o" hint-placeholder-count="20">
+                          <div style="position:absolute;left:{{ o.x }}%;width:{{ o.w }}%;top:3px;bottom:3px;border-radius:1px;background:{{ o.c }}"></div>
+                        </sc-for>
+                        <div style="position:absolute;left:{{ f.vpX }}%;width:{{ f.vpW }}%;top:0;bottom:0;border:1.5px solid {{ f.t.text }};border-radius:3px"></div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ d.isB }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:3px;position:relative">
+                        <sc-for list="{{ f.swim }}" as="w" hint-placeholder-count="4">
+                          <div style="display:flex;align-items:center;gap:10px;height:12px">
+                            <div style="width:110px;flex:none;font-size:11px;line-height:1;color:{{ w.ink }};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.name }}</div>
+                            <div style="flex:1;height:8px;position:relative;background:{{ f.t.sunken }};border-radius:2px">
+                              <sc-for list="{{ w.segs }}" as="o" hint-placeholder-count="6">
+                                <div style="position:absolute;left:{{ o.x }}%;width:{{ o.w }}%;top:0;bottom:0;border-radius:1px;background:{{ o.c }}"></div>
+                              </sc-for>
+                              <div style="position:absolute;left:{{ f.vpX }}%;width:{{ f.vpW }}%;top:-2px;bottom:-2px;background:{{ f.t.text }};opacity:.12;border-radius:2px"></div>
+                            </div>
+                            <div style="width:34px;flex:none;text-align:right;font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ w.pct }}%</div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+                    <sc-if value="{{ d.isA }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:none;display:flex;align-items:stretch;border-bottom:1px solid {{ f.t.border }};background:{{ f.t.surface }};padding-left:16px">
+                        <div style="display:flex;padding:0 4px;border-right:1px solid {{ f.t.border }}">
+                          <sc-for list="{{ f.lanes }}" as="L" hint-placeholder-count="5">
+                            <div style="width:{{ L.w }}px;padding:8px 0 6px;display:flex;flex-direction:column;align-items:center;gap:4px">
+                              <sc-if value="{{ L.isSpk }}" hint-placeholder-val="{{ true }}">
+                                <div style="position:relative;width:28px;height:28px;border-radius:50%;background:{{ L.soft }};color:{{ L.ink }};box-shadow:inset 0 0 0 2px {{ L.c }};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">{{ L.mono }}
+                                  <sc-if value="{{ L.vp }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;right:-4px;bottom:-3px;width:14px;height:14px;border-radius:50%;background:{{ f.t.surface }};color:{{ f.t.text }};display:flex;align-items:center;justify-content:center"><div style="width:10px;height:10px;background:currentColor;-webkit-mask:url({{ i.finger }}) center/contain no-repeat;mask:url({{ i.finger }}) center/contain no-repeat"></div></div></sc-if>
+                                </div>
+                                <div style="width:{{ L.w }}px;text-align:center;font-size:10px;line-height:1.2;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ L.short }}</div>
+                              </sc-if>
+                              <sc-if value="{{ L.isGroup }}" hint-placeholder-val="{{ false }}">
+                                <div style="width:24px;height:28px;border-radius:5px;border:1px solid {{ f.t.borderStrong }};display:flex;align-items:center;justify-content:center;font:600 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.text }}">{{ L.label }}</div>
+                                <div style="width:12px;height:12px;color:{{ f.t.muted }};background:currentColor;-webkit-mask:url({{ i.expand }}) center/contain no-repeat;mask:url({{ i.expand }}) center/contain no-repeat"></div>
+                              </sc-if>
+                              <sc-if value="{{ L.isAdd }}" hint-placeholder-val="{{ false }}">
+                                <div style="width:28px;height:28px;border-radius:50%;border:1px dashed {{ L.addBd }};background:{{ L.addBg }};color:{{ L.addFg }};display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div></div>
+                                <div style="font-size:10px;line-height:1.2;color:{{ f.t.muted }}">{{ s.add }}</div>
+                              </sc-if>
+                            </div>
+                          </sc-for>
+                        </div>
+                        <div style="flex:1;display:flex;align-items:flex-end;padding:0 24px 8px 16px;font-size:12px;color:{{ f.t.muted }}">{{ f.countLabel }}</div>
+                      </div>
+                      <div style="flex:1;overflow:hidden;padding-left:16px">
+                        <sc-for list="{{ f.rows }}" as="r" hint-placeholder-count="10">
+                          <div style="display:flex;background:{{ r.bg }};box-shadow:{{ r.sh }};border-radius:4px;margin-right:12px">
+                            <div style="display:flex;padding:0 4px;border-right:1px solid {{ f.t.border }}">
+                              <sc-for list="{{ r.cells }}" as="cl" hint-placeholder-count="5">
+                                <div style="width:{{ cl.w }}px;padding:3px {{ cl.pad }}px;display:flex"><div style="flex:1;border-radius:3px;background:{{ cl.f }};background-image:{{ cl.img }};outline:{{ cl.o }};outline-offset:-1px;opacity:{{ cl.op }}"></div></div>
+                              </sc-for>
+                            </div>
+                            <div style="flex:1;min-width:0;display:flex;gap:14px;padding:8px 12px 8px 16px;align-items:baseline">
+                              <div style="flex:none;width:44px;font:400 12px/1.5 'IBM Plex Mono',monospace;color:{{ r.tsC }}">{{ r.ts }}</div>
+                              <div style="flex:1;font-size:14px;line-height:1.55;text-wrap:pretty">{{ r.text }}</div>
+                              <sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:11px;font-weight:600;color:{{ r.tagC }};background:{{ r.tagBg }};padding:2px 7px;border-radius:8px">{{ r.tag }}</div></sc-if>
+                              <sc-if value="{{ r.hasDrag }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:12px;font-weight:600;color:{{ f.t.onAccent }};background:{{ f.t.accent }};padding:3px 9px;border-radius:10px;box-shadow:{{ f.t.shadow }}">{{ r.dragLabel }}</div></sc-if>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <sc-if value="{{ f.chrome }}" hint-placeholder-val="{{ true }}">
+                        <div style="flex:none;margin:0 24px 10px;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:6px;background:{{ f.t.accentSoft }};border:1px solid {{ f.t.accentLine }}">
+                          <div style="width:16px;height:16px;flex:none;color:{{ f.t.accent }};background:currentColor;-webkit-mask:url({{ i.wand }}) center/contain no-repeat;mask:url({{ i.wand }}) center/contain no-repeat"></div>
+                          <div style="flex:1;font-size:14px">{{ s.sug }}</div>
+                          <div style="height:30px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px;font-weight:500">{{ s.show }}</div>
+                          <div style="height:30px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:13px;font-weight:600">{{ s.accept }}</div>
+                          <div style="height:30px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px;font-weight:500">{{ s.dismiss }}</div>
+                        </div>
+                      </sc-if>
+                    </sc-if>
+
+                    <sc-if value="{{ d.isB }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:none;display:flex;align-items:stretch;border-bottom:1px solid {{ f.t.border }};background:{{ f.t.surface }}">
+                        <div style="order:1;flex:1;display:flex;align-items:flex-end;padding:0 24px 8px;font-size:12px;color:{{ f.t.muted }}">{{ f.countLabel }}</div>
+                        <div style="order:{{ f.railOrd }};display:{{ f.railDisp }};padding:0 4px;border-left:{{ f.rbl }};border-right:{{ f.rbr }};margin-left:{{ f.rml }}px;margin-right:{{ f.rmr }}px">
+                          <sc-for list="{{ f.lanes }}" as="L" hint-placeholder-count="5">
+                            <div style="width:{{ L.w }}px;padding:8px 0 6px;display:flex;flex-direction:column;align-items:center;gap:4px">
+                              <sc-if value="{{ L.isSpk }}" hint-placeholder-val="{{ true }}">
+                                <div style="width:20px;height:20px;border-radius:50%;background:{{ L.c }};color:{{ f.t.onSpk }};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;letter-spacing:-.02em">{{ L.mono }}</div>
+                                <div style="width:4px;height:4px;border-radius:50%;background:{{ L.vpDot }}"></div>
+                              </sc-if>
+                              <sc-if value="{{ L.isGroup }}" hint-placeholder-val="{{ false }}">
+                                <div style="width:18px;height:20px;border-radius:4px;border:1px solid {{ f.t.borderStrong }};display:flex;align-items:center;justify-content:center;font:600 9px/1 'IBM Plex Mono',monospace">{{ L.label }}</div>
+                              </sc-if>
+                              <sc-if value="{{ L.isAdd }}" hint-placeholder-val="{{ false }}">
+                                <div style="width:20px;height:20px;border-radius:50%;border:1px dashed {{ L.addBd }};background:{{ L.addBg }};color:{{ L.addFg }};display:flex;align-items:center;justify-content:center"><div style="width:11px;height:11px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div></div>
+                              </sc-if>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </div>
+                      <div style="flex:1;overflow:hidden">
+                        <sc-for list="{{ f.rows }}" as="r" hint-placeholder-count="10">
+                          <div style="display:flex;flex-direction:column">
+                            <sc-if value="{{ r.isGap }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:12px;padding:6px 20px 6px 24px;margin-left:{{ f.gapMl }}px;font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}"><div style="flex:1;height:1px;background:{{ f.t.border }}"></div>{{ r.gapLabel }}<div style="flex:1;height:1px;background:{{ f.t.border }}"></div></div></sc-if>
+                            <sc-if value="{{ r.notGap }}" hint-placeholder-val="{{ true }}">
+                            <div style="display:flex;background:{{ r.bg }};box-shadow:{{ r.sh }}">
+                              <div style="order:1;flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;padding:{{ r.padT }}px 20px 6px 24px">
+                                <sc-if value="{{ r.head }}" hint-placeholder-val="{{ false }}">
+                                  <div style="display:flex;align-items:baseline;gap:10px">
+                                    <div style="font-size:13px;font-weight:600;color:{{ r.ink }};display:flex;align-items:center;gap:4px;background:{{ r.nameBg }};box-shadow:{{ r.nameSh }};margin:-3px -7px;padding:3px 7px;border-radius:5px">{{ r.name }}<sc-if value="{{ r.nameOpen }}" hint-placeholder-val="{{ false }}"><div style="width:13px;height:13px;background:currentColor;-webkit-mask:url({{ i.chev }}) center/contain no-repeat;mask:url({{ i.chev }}) center/contain no-repeat"></div></sc-if></div>
+                                    <div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ r.tsC }}">{{ r.ts }}</div>
+                                    <sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;font-weight:600;color:{{ r.tagC }};background:{{ r.tagBg }};padding:1px 7px;border-radius:8px">{{ r.tag }}</div></sc-if>
+                                    <sc-if value="{{ r.hasOk }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:6px;margin-left:auto"><div style="height:24px;padding:0 9px;display:flex;align-items:center;gap:5px;border-radius:5px;border:1px solid {{ f.t.borderStrong }};font-size:12px;font-weight:500"><div style="width:12px;height:12px;background:currentColor;-webkit-mask:url({{ i.check }}) center/contain no-repeat;mask:url({{ i.check }}) center/contain no-repeat"></div>{{ s.okBtn }}</div><div style="height:24px;padding:0 9px;display:flex;align-items:center;gap:5px;border-radius:5px;font-size:12px;font-weight:500"><div style="width:12px;height:12px;background:currentColor;-webkit-mask:url({{ i.playS }}) center/contain no-repeat;mask:url({{ i.playS }}) center/contain no-repeat"></div>{{ s.listen }}</div></div></sc-if>
+                                  </div>
+                                </sc-if>
+                                <div style="display:flex;gap:10px;align-items:baseline">
+                                  <div style="flex:1;font-size:14px;line-height:1.55;text-wrap:pretty">{{ r.text }}</div>
+                                  <sc-if value="{{ r.hasDrag }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:12px;font-weight:600;color:{{ f.t.onAccent }};background:{{ f.t.accent }};padding:3px 9px;border-radius:10px;box-shadow:{{ f.t.shadow }}">{{ r.dragLabel }}</div></sc-if>
+                                </div>
+                              </div>
+                              <div style="order:{{ f.railOrd }};display:{{ f.railDisp }};padding:0 4px;border-left:{{ f.rbl }};border-right:{{ f.rbr }};margin-left:{{ f.rml }}px;margin-right:{{ f.rmr }}px">
+                                <sc-for list="{{ r.cells }}" as="cl" hint-placeholder-count="5">
+                                  <div style="width:{{ cl.w }}px;padding:3px {{ cl.pad }}px;display:flex"><div style="flex:1;border-radius:3px;background:{{ cl.f }};background-image:{{ cl.img }};outline:{{ cl.o }};outline-offset:-1px;opacity:{{ cl.op }}"></div></div>
+                                </sc-for>
+                              </div>
+                            </div>
+                            </sc-if>
+                            <sc-if value="{{ r.sug }}" hint-placeholder-val="{{ false }}">
+                              <div style="display:flex">
+                                <div style="order:1;flex:1;margin:4px 20px 10px 24px;display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:6px;background:{{ f.t.accentSoft }};border:1px solid {{ f.t.accentLine }}">
+                                  <div style="display:flex;gap:10px;align-items:flex-start">
+                                    <div style="width:16px;height:16px;flex:none;margin-top:2px;color:{{ f.t.accent }};background:currentColor;-webkit-mask:url({{ i.wand }}) center/contain no-repeat;mask:url({{ i.wand }}) center/contain no-repeat"></div>
+                                    <div style="flex:1;font-size:14px;line-height:1.45">{{ s.sug }}</div>
+                                  </div>
+                                  <div style="display:flex;gap:8px;padding-left:26px">
+                                    <div style="height:28px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:13px;font-weight:600">{{ s.accept }}</div>
+                                    <div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:500">{{ s.show }}</div>
+                                    <div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px;font-weight:500">{{ s.dismiss }}</div>
+                                  </div>
+                                </div>
+                                <div style="order:{{ f.railOrd }};display:{{ f.railDisp }};width:{{ f.railW }}px;flex:none;border-left:{{ f.rbl }};border-right:{{ f.rbr }};margin-left:{{ f.rml }}px;margin-right:{{ f.rmr }}px"></div>
+                              </div>
+                            </sc-if>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <sc-if value="{{ f.hasSelBar }}" hint-placeholder-val="{{ false }}">
+                    <div style="flex:none;margin:0 24px 10px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:8px;background:{{ f.t.text }};color:{{ f.t.bg }};box-shadow:{{ f.t.shadow }}">
+                      <div style="font-size:14px;font-weight:600;white-space:nowrap">{{ s.selN }}</div>
+                      <div style="font-size:13px;opacity:.75;white-space:nowrap">{{ s.moveTo }}</div>
+                      <div style="flex:1;display:flex;gap:6px">
+                        <sc-for list="{{ f.selTargets }}" as="tg" hint-placeholder-count="2">
+                          <div style="height:28px;padding:0 10px 0 4px;display:flex;align-items:center;gap:6px;border-radius:14px;background:{{ tg.soft }};color:{{ tg.ink }};font-size:13px;font-weight:600;box-shadow:{{ tg.ring }}"><div style="width:20px;height:20px;border-radius:50%;background:{{ tg.c }}"></div>{{ tg.name }}<div style="font:400 11px/1 'IBM Plex Mono',monospace;opacity:.7">{{ tg.key }}</div></div>
+                        </sc-for>
+                        <div style="height:28px;padding:0 10px;display:flex;align-items:center;gap:5px;border-radius:14px;border:1px dashed currentColor;font-size:13px;opacity:.85"><div style="width:13px;height:13px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div>{{ s.newP }}</div>
+                      </div>
+                      <div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px;font-weight:500">{{ s.cancelSel }}</div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ f.chrome }}" hint-placeholder-val="{{ true }}">
+                    <div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 24px;border-top:1px solid {{ f.t.border }};background:{{ f.t.surface }}">
+                      <div style="width:32px;height:32px;border-radius:50%;background:{{ f.t.text }};color:{{ f.t.bg }};display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.pause }}) center/contain no-repeat;mask:url({{ i.pause }}) center/contain no-repeat"></div></div>
+                      <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">00:17 / 30:34</div>
+                      <div style="flex:1;height:4px;border-radius:2px;background:{{ f.t.sunken }};position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:1%;background:{{ f.t.accent }};border-radius:2px"></div><div style="position:absolute;left:1%;top:-4px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:{{ f.t.raised }};border:2px solid {{ f.t.accent }}"></div></div>
+                      <div style="font:500 12px/1 'IBM Plex Mono',monospace;padding:4px 6px;border-radius:4px;border:1px solid {{ f.t.border }}">1×</div>
+                      <div style="width:16px;height:16px;color:{{ f.t.muted }};background:currentColor;-webkit-mask:url({{ i.vol }}) center/contain no-repeat;mask:url({{ i.vol }}) center/contain no-repeat"></div>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+
+              <sc-if value="{{ f.hasSpkPop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:{{ f.spX }}px;top:{{ f.spY }}px;width:340px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};display:flex;flex-direction:column;overflow:hidden">
+                  <div style="padding:12px 14px 10px;display:flex;flex-direction:column;gap:3px">
+                    <div style="font-size:12px;font-weight:600;color:{{ f.t.muted }}">{{ s.spLead }}</div>
+                    <div style="font-size:12px;color:{{ f.t.muted }}">{{ s.spSub }}</div>
+                  </div>
+                  <div style="padding:0 10px 8px">
+                    <div style="height:32px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.sunken }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:14px;color:{{ f.t.muted }}"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.search }}) center/contain no-repeat;mask:url({{ i.search }}) center/contain no-repeat"></div>{{ s.spSearch }}</div>
+                  </div>
+                  <div style="padding:4px 14px 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ s.spKnown }}</div>
+                  <div style="padding:0 4px;display:flex;flex-direction:column">
+                    <sc-for list="{{ f.spKnown }}" as="pk" hint-placeholder-count="3">
+                      <div style="height:38px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:5px;background:{{ pk.hl }}">
+                        <div style="width:24px;height:24px;flex:none;border-radius:50%;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:{{ f.t.muted }}">{{ pk.mono }}</div>
+                        <div style="flex:1;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ pk.name }}</div>
+                        <div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap;flex:none">{{ pk.sub }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="padding:8px 14px 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ s.spHere }}</div>
+                  <div style="padding:0 4px 4px;display:flex;flex-direction:column">
+                    <sc-for list="{{ f.spHere }}" as="pk" hint-placeholder-count="2">
+                      <div style="height:38px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:5px">
+                        <div style="width:24px;height:24px;flex:none;border-radius:50%;background:{{ pk.soft }};color:{{ pk.ink }};box-shadow:inset 0 0 0 2px {{ pk.c }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">{{ pk.mono }}</div>
+                        <div style="flex:1;min-width:0;font-size:14px">{{ pk.name }}</div>
+                        <div style="font-size:12px;color:{{ f.t.muted }}">{{ s.spMerge }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="padding:10px 14px;border-top:1px solid {{ f.t.border }};display:flex;gap:10px;align-items:flex-start">
+                    <div style="width:16px;height:16px;flex:none;margin-top:1px;border-radius:4px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;background:currentColor;-webkit-mask:url({{ i.check }}) center/contain no-repeat;mask:url({{ i.check }}) center/contain no-repeat"></div></div>
+                    <div style="font-size:13px;line-height:1.4;text-wrap:pretty">{{ s.spCheck }}</div>
+                  </div>
+                  <div style="padding:8px 14px;background:{{ f.t.surface }};border-top:1px solid {{ f.t.border }};font-size:12px;color:{{ f.t.muted }}">{{ s.spFoot }}</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ f.hasPop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:{{ f.popX }}px;top:{{ f.popY }}px;width:300px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};display:flex;flex-direction:column;overflow:hidden">
+                  <div style="padding:10px;border-bottom:1px solid {{ f.t.border }}">
+                    <div style="height:32px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.sunken }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:14px"><div style="width:15px;height:15px;color:{{ f.t.muted }};background:currentColor;-webkit-mask:url({{ i.search }}) center/contain no-repeat;mask:url({{ i.search }}) center/contain no-repeat"></div>Bal<div style="width:1px;height:16px;background:{{ f.t.text }};margin-left:-7px"></div></div>
+                  </div>
+                  <div style="padding:4px;display:flex;flex-direction:column">
+                    <sc-for list="{{ f.picker }}" as="pk" hint-placeholder-count="3">
+                      <div style="height:44px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:5px;background:{{ pk.hl }}">
+                        <div style="width:28px;height:28px;flex:none;border-radius:50%;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{{ f.t.muted }}">{{ pk.mono }}</div>
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                          <div style="font-size:14px;font-weight:500">{{ pk.name }}</div>
+                          <div style="font-size:12px;color:{{ f.t.muted }}">{{ pk.sub }}</div>
+                        </div>
+                        <sc-if value="{{ pk.vp }}" hint-placeholder-val="{{ false }}"><div style="width:15px;height:15px;color:{{ f.t.muted }};background:currentColor;-webkit-mask:url({{ i.finger }}) center/contain no-repeat;mask:url({{ i.finger }}) center/contain no-repeat"></div></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="padding:4px;border-top:1px solid {{ f.t.border }}">
+                    <div style="height:36px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:5px;color:{{ f.t.accent }};font-size:14px;font-weight:500"><div style="width:15px;height:15px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div>{{ s.pickerNew }}</div>
+                  </div>
+                  <div style="padding:9px 14px;background:{{ f.t.surface }};border-top:1px solid {{ f.t.border }};font-size:12px;line-height:1.4;color:{{ f.t.muted }}">{{ s.pickerHint }}</div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</sc-for>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;hu&quot;,&quot;en&quot;],&quot;default&quot;:&quot;hu&quot;,&quot;tsType&quot;:&quot;'hu'|'en'&quot;}}">
+const IC = n => 'https://unpkg.com/lucide-static@0.460.0/icons/' + n + '.svg';
+const HUES = [30, 230, 145, 330, 75, 270, 185, 0, 110, 300, 55];
+const PEOPLE = [['Kovács Lilla','KL',true],['Fehér Ádám','FÁ',true],['Varga Nóra','VN',true],['Tóth Bence','TB',true],['Molnár Eszter','ME',true],['Szabó Áron','SzÁ',false],['Németh Dávid','ND',true],['Horváth Gergő','HG',false],['Távoli 1','T1',false],['Távoli 2','T2',false],['Távoli 3','T3',false]];
+const BASE_L = { bg:'oklch(0.97 0.003 95)', surface:'oklch(0.987 0.002 95)', raised:'oklch(1 0 0)', sunken:'oklch(0.94 0.004 95)', border:'oklch(0.89 0.004 95)', borderStrong:'oklch(0.77 0.005 95)', text:'oklch(0.22 0.006 260)', muted:'oklch(0.47 0.007 260)', accent:'oklch(0.5 0.13 258)', onAccent:'oklch(0.99 0 0)', accentSoft:'oklch(0.94 0.025 258)', accentLine:'oklch(0.85 0.05 258)', warnSoft:'oklch(0.94 0.05 80)', warnInk:'oklch(0.45 0.1 70)', successSoft:'oklch(0.94 0.035 155)', successInk:'oklch(0.4 0.09 155)', rec:'oklch(0.57 0.2 25)', onSpk:'oklch(0.99 0 0)', shadow:'0 10px 28px oklch(0.2 0.02 260 / 0.16), 0 1px 3px oklch(0.2 0.02 260 / 0.12)' };
+const BASE_D = { bg:'oklch(0.19 0.005 260)', surface:'oklch(0.22 0.006 260)', raised:'oklch(0.265 0.007 260)', sunken:'oklch(0.165 0.005 260)', border:'oklch(0.32 0.007 260)', borderStrong:'oklch(0.44 0.008 260)', text:'oklch(0.94 0.004 95)', muted:'oklch(0.74 0.006 95)', accent:'oklch(0.75 0.11 255)', onAccent:'oklch(0.18 0.03 258)', accentSoft:'oklch(0.3 0.05 258)', accentLine:'oklch(0.42 0.08 258)', warnSoft:'oklch(0.32 0.05 80)', warnInk:'oklch(0.86 0.1 85)', successSoft:'oklch(0.31 0.05 155)', successInk:'oklch(0.86 0.08 155)', rec:'oklch(0.64 0.19 25)', onSpk:'oklch(0.18 0.01 260)', shadow:'0 12px 32px oklch(0 0 0 / 0.5), 0 1px 3px oklch(0 0 0 / 0.35)' };
+const pal = (dark, h) => dark
+  ? { c:`oklch(0.72 0.13 ${h})`, soft:`oklch(0.33 0.052 ${h})`, ink:`oklch(0.86 0.09 ${h})` }
+  : { c:`oklch(0.6 0.13 ${h})`, soft:`oklch(0.93 0.04 ${h})`, ink:`oklch(0.42 0.12 ${h})` };
+
+const STR = {
+  hu: {
+    turnTitle: 'Átirat-szerkesztő: két irány', turnSub: 'Mindkettő a „Nyomat" nyelven. Felül a főablakban, világos témában, 4 beszélővel; alatta egy sötét részlet 11 beszélővel: összecsukott sávok, húzás közbeni előnézet, új résztvevő felvétele. Kitalált mintaadat.',
+    aName: 'Sávok balra', aDesc: 'A brief vázlata szerint: beszélőnként egy oszlop a szöveg előtt, a blokk annak az oszlopában áll, aki mondta. A szövegben nincs név; a sáv maga a név.',
+    bName: 'Fordulók + sín', bDesc: 'A szöveg beszélőváltásonként tagolva, színes névvel, ahogy egy jegyzőkönyvet olvasunk. A sávok keskeny sínként a jobb szélen; az áttekintő beszélőnkénti sorokból áll, beszédidővel.',
+    notesA: ['Kattintás egy másik oszlopba: a sor átkerül oda. A kijelölt sorban szaggatott keret jelzi a célokat.', 'Shift/Ctrl + kattintással több sor, húzással egyszerre mozgatható.', 'A keveset beszélők egy „+5" oszlopba csukódnak; kattintásra kinyílnak.', 'A javaslat-sáv a lejátszó fölött áll, nem takarja a szöveget.'],
+    notesB: ['A szöveg olvasható magában is: a név csak beszélőváltáskor jelenik meg.', 'A sín ugyanúgy működik: kattintás vagy húzás egy másik oszlopba.', 'Az áttekintő egyben jelmagyarázat és beszédidő; a ritkák „Egyéb" sorba vonódnak.', 'A javaslat ott jelenik meg, ahol a javítás történt; a hasonló sorok a sínen kiemelve.'],
+    capMain: 'FŐABLAK · VILÁGOS · 4 BESZÉLŐ', capDetail: 'RÉSZLET · SÖTÉT · 11 BESZÉLŐ · ÖSSZECSUKOTT SÁVOK · HÚZÁS · ÚJ RÉSZTVEVŐ',
+    menuFile: 'Fájl', menuView: 'Nézet', newRec: 'Új felvétel', search: 'Keresés a megbeszélésekben', people: 'Személyek', settings: 'Beállítások',
+    title: 'Termékcsapat heti egyeztetés', meta: '2026. okt. 2. · 30:34 · 4 beszélő', identify: 'Résztvevők azonosítása',
+    tab1: 'Átirat', tab2: 'Összefoglaló', tab3: 'Sávok', stale: 'elavult',
+    overview: 'Áttekintés', uncertain: 'Bizonytalan', undo: 'Visszavonás', add: 'Új',
+    count: (n, k) => `${n} megszólalás · ${k} beszélő`, tagU: 'bizonytalan', tagC: 'javítva',
+    sug: 'Még 14 sor hasonlít erre a hangra. Átrakjam őket Fehér Ádámhoz?', show: 'Megmutatom', accept: 'Átrakom', dismiss: 'Nem',
+    pickerNew: 'Új személy: „Bal…"', pickerHint: 'A beszélő névtelenül is maradhat; később is elnevezheted.', mtg: n => `${n} megbeszélés`, noVp: 'nincs hanglenyomat',
+    other: n => `Egyéb (${n})`,
+    okBtn: 'Jó így', listen: 'Meghallgatom', gap: n => `··· ${n} biztos sor elrejtve`, selN: '3 sor kijelölve', moveTo: 'Áthelyezés:', newP: 'Új résztvevő…', cancelSel: 'Mégse',
+    capC4: 'FŐABLAK · VILÁGOS · 2 BESZÉLŐ · TÖBB SOR KIJELÖLVE (SHIFT+KATTINTÁS), ÁTHELYEZÉS BILLENTYŰVEL IS (1, 2)', capC5: 'FŐABLAK · SÖTÉT · „BIZONYTALAN" SZŰRŐ: CSAK AZ ELLENŐRIZENDŐ SOROK',
+    rowsI: ['Akkor kezdjük az elején: mióta használjátok a jelenlegi jegykezelőt?', 'Nagyjából három éve. Előtte e-mailből dolgoztunk, ami tíz ember fölött már követhetetlen volt.', 'Az első évben főleg a címkézéssel küzdöttünk, mindenki máshogy használta.', 'Aztán bevezettünk egy közös listát, és onnantól sokkal jobb lett.', 'Ma már az új kollégák is egy hét alatt beletanulnak.', 'És mi az, ami most a legjobban hiányzik belőle?', 'Hm, talán a jobb keresés.', 'Meg az, hogy a hívásokból ne nekünk kelljen kézzel jegyet írni. Ezért is néztük a Tanarát.'],
+    rowsF: ['Szerintem ez a szám így nem stimmel, de utánanézek.', 'Igen, igen, pontosan.'],
+    t3Title: 'Átirat-szerkesztő: 2b alapján, javítva', t3Sub: 'A sín a bal oldalra került, a szöveg jobbra; a sín elrejthető, csak javításhoz kell. A névre kattintva a teljes beszélő átnevezhető vagy összevonható, a téves hang-párosítás javításával együtt.',
+    t2Title: 'Átirat-szerkesztő: két irány', t2Sub: 'Mindkettő a „Nyomat" nyelven. Felül a főablakban, világos témában, 4 beszélővel; alatta egy sötét részlet 11 beszélővel. Kitalált mintaadat.',
+    cName: 'Sín balra, elrejthető', cDesc: 'Olvasáskor csak a szöveg látszik. Belehallgatáshoz és áthelyezéshez a „Sávok" gombbal (Ctrl+L) bekapcsolható a sín a szöveg bal oldalán.',
+    notesC: ['Alapból rejtve; a „Sávok" gomb vagy Ctrl+L kapcsolja be. A választás megbeszélésenként megmarad.', 'Egyes sorok áthelyezése a sínen: kattintás egy másik oszlopba, vagy húzás.', 'Névre kattintva a teljes beszélő más személyhez rendelhető, vagy összevonható egy másik beszélővel ebben a megbeszélésben.', 'Téves hang-párosításnál a sorok a rossz személy hanglenyomatából is kikerülnek, így a hiba nem ismétlődik.'],
+    capC1: 'FŐABLAK · VILÁGOS · SÍN BEKAPCSOLVA · NÉVRE KATTINTVA: A TELJES BESZÉLŐ JAVÍTÁSA', capC2: 'FŐABLAK · SÖTÉT · SÍN ELREJTVE (OLVASÁS)', railBtn: 'Sávok',
+    spLead: 'Kovács Lilla valójában…', spSub: '41 megszólalás · hang alapján felismerve (82%)', spSearch: 'Név keresése vagy új személy', spKnown: 'Másik személy', spHere: 'Összevonás ebben a megbeszélésben', spMerge: 'összevonás', spAnon: 'Névtelen beszélő', spAnonSub: 'Távoli 2 néven', spCheck: 'A sorok kerüljenek ki Kovács Lilla hanglenyomatából (téves felismerés)', spFoot: 'Mind a 41 sor átkerül · visszavonható: Ctrl+Z',
+    lib: [['Termékcsapat heti egyeztetés','okt. 2. · 30 p'],['Ügyféltámogatás átadás','okt. 1. · 52 p'],['Negyedéves partnertalálkozó','okt. 1. · 1 ó 16 p'],['Termékbemutató, 2. kör','szept. 30. · 44 p'],['Árazás egyeztetés','szept. 29. · 27 p'],['Belépő kolléga bevezetése','szept. 29. · 55 p'],['Infrastruktúra áttekintés','szept. 28. · 41 p']],
+    rowsA: ['Jó reggelt, kezdhetjük? Ádám, a kiadással indítanál?', 'Persze. A 2.4-es build tegnap este kiment a tesztelőknek, eddig két hibajegy jött.', 'Az egyik a bejelentkezésnél van, a másik csak kozmetikai.', 'A bejelentkezésest én nézem meg, az az enyém volt.', 'Bocsánat, itt vagyok, csak késett a vonat.', 'Semmi gond. Akkor Nóra viszi a bejelentkezést, Ádám a másikat?', 'Igen, a kozmetikait még ma lezárom.', 'A partnernek is jeleznünk kell, hogy csúszik a demó?', 'Szerintem nem csúszik, ha csütörtökig megvan a javítás.', 'Rendben, akkor nem írok nekik.', 'Akkor ezt rögzítem döntésként: a demó marad pénteken.', 'Aha.', 'Még egy dolog: a jövő heti tervezést áttehetnénk keddre?'],
+    rowsC: ["Köszönöm, hogy ilyen sokan eljöttetek. Röviden végigmegyek a harmadik negyedéven, utána szívesen válaszolok a kérdésekre. Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt. Ez azt jelenti, hogy egy felhasználóra most lényegesen kevesebb megkeresés jut, mint egy évvel ezelőtt, és ezt nem a csapat leépítése okozta, hanem az, hogy a leggyakoribb kérdéseket végre a termékben válaszoljuk meg.","A második pont az új súgóoldalak. Júliusban élesítettük őket, és az első hat hétben a keresések kétharmada már ott ért véget, nem a jegykezelőben. Ami külön érdekes: a legtöbb látogatás a beállítási oldalakról érkezik, tehát pont ott, ahol korábban a legtöbben elakadtak. A következő negyedévben ezt a mintát szeretnénk a számlázásra is átvinni.","Bocs, hogy közbeszólok, ez a szám az összes ügyfélre vonatkozik, vagy csak az újakra?","Az összesre.","Az újaknál egyébként még jobb az arány, de ott kicsi a minta, ezért nem tettem fel a diára. Ha érdekel, a végén megmutatom a bontást.","Mhm.","Ez egyezik azzal, amit a támogatás oldaláról látunk.","Egy kérdés a számlázáshoz: ott nem az a gond, hogy a súgó nem elég, hanem hogy maga a folyamat bonyolult? Szerintem ott a terméket kellene egyszerűsíteni, nem a leírást bővíteni.","Jó kérdés, erre a végén visszatérek, mert van róla egy külön diám.","Elnézést, megismételnéd az utolsó mondatot? Itt akadozott a hang.","Persze. Azt mondtam, hogy a számlázásra is átvinnénk a súgót, de Nórának igaza van abban, hogy ott a folyamat maga is túl hosszú. A terv ezért két lépésből áll: először összegyűjtjük, hol akadnak el a legtöbben, aztán eldöntjük, mit javítunk a termékben és mit a leírásban."],
+    rowsB: ['A második negyedévben a támogatási jegyek száma harmadával csökkent.', 'Ez az új súgóoldalaknak köszönhető, vagy annak, hogy kevesebb az ügyfél?', 'Mindkettőnek, de inkább a súgónak.', 'Nálunk is ezt látjuk.', 'Akkor a súgót a többi termékre is kiterjesztjük.', 'Ehhez kellene még egy fő a dokumentációra.', 'Ezt a költségvetésnél nézzük meg.', 'Rendben, felírom.']
+  },
+  en: {
+    turnTitle: 'Transcript editor: two directions', turnSub: 'Both in the "Print" language. Top: main window, light, 4 speakers. Below: a dark detail with 11 speakers — collapsed lanes, drag preview, adding a participant. Sample data is fictional.',
+    aName: 'Lanes left', aDesc: 'As sketched in the brief: one column per speaker before the text; each block sits in the column of whoever said it. No names in the text — the lane is the name.',
+    bName: 'Turns + rail', bDesc: 'Text grouped by speaker turn with a coloured name, read like minutes. Lanes become a narrow rail on the right; the overview has one row per speaker with talk time.',
+    notesA: ['Click another column to move the line there. The selected row shows dashed targets.', 'Shift/Ctrl-click for multiple lines; drag to move them together.', 'Rare speakers collapse into a "+5" column; click to expand.', 'Suggestion bar sits above the player and never covers text.'],
+    notesB: ['Text reads on its own: the name appears only when the speaker changes.', 'The rail works the same: click or drag into another column.', 'The overview doubles as legend and talk time; rare speakers fold into "Other".', 'Suggestions appear where the correction happened; similar lines are highlighted on the rail.'],
+    capMain: 'MAIN WINDOW · LIGHT · 4 SPEAKERS', capDetail: 'DETAIL · DARK · 11 SPEAKERS · COLLAPSED LANES · DRAG · NEW PARTICIPANT',
+    menuFile: 'File', menuView: 'View', newRec: 'New recording', search: 'Search meetings', people: 'People', settings: 'Settings',
+    title: 'Product team weekly', meta: 'Oct 2, 2026 · 30:34 · 4 speakers', identify: 'Identify participants',
+    tab1: 'Transcript', tab2: 'Summary', tab3: 'Tracks', stale: 'outdated',
+    overview: 'Overview', uncertain: 'Uncertain', undo: 'Undo', add: 'New',
+    count: (n, k) => `${n} utterances · ${k} speakers`, tagU: 'uncertain', tagC: 'corrected',
+    sug: '14 more lines sound like this voice. Move them to Ádám Fehér?', show: 'Show', accept: 'Move', dismiss: 'No',
+    pickerNew: 'New person: "Bal…"', pickerHint: 'Speakers can stay unnamed; you can name them later.', mtg: n => `${n} meetings`, noVp: 'no voiceprint',
+    other: n => `Other (${n})`,
+    okBtn: 'Looks right', listen: 'Listen', gap: n => `··· ${n} confident lines hidden`, selN: '3 lines selected', moveTo: 'Move to:', newP: 'New participant…', cancelSel: 'Cancel',
+    capC4: 'MAIN WINDOW · LIGHT · 2 SPEAKERS · MULTIPLE LINES SELECTED (SHIFT+CLICK), MOVE BY KEY TOO (1, 2)', capC5: 'MAIN WINDOW · DARK · "UNCERTAIN" FILTER: ONLY LINES TO CHECK',
+    rowsI: ['Let\'s start at the beginning: how long have you used the current ticket system?', 'About three years. Before that we worked from email, which was impossible to follow past ten people.', 'In the first year we mostly struggled with tagging; everyone used it differently.', 'Then we introduced a shared list, and things got much better.', 'Now new colleagues pick it up within a week.', 'And what do you miss most right now?', 'Hm, better search, maybe.', 'And not having to write tickets by hand from calls. That\'s partly why we looked at Tanara.'],
+    rowsF: ['I don\'t think that number is right, but I\'ll check.', 'Yes, yes, exactly.'],
+    t3Title: 'Transcript editor: based on 2b, revised', t3Sub: 'The rail moves left, the text right; the rail can be hidden — it is only needed for corrections. Clicking a name reassigns or merges the whole speaker, fixing wrong voice matches.',
+    t2Title: 'Transcript editor: two directions', t2Sub: 'Both in the "Print" language. Top: main window, light, 4 speakers. Below: a dark detail with 11 speakers. Sample data is fictional.',
+    cName: 'Rail left, hideable', cDesc: 'Reading shows only the text. To listen and move lines, toggle the rail on with "Lanes" (Ctrl+L), left of the text.',
+    notesC: ['Hidden by default; "Lanes" or Ctrl+L turns it on. Remembered per meeting.', 'Move single lines on the rail: click another column, or drag.', 'Click a name to reassign the whole speaker to another person, or merge with another speaker in this meeting.', 'For wrong voice matches, the lines are also removed from the wrong person\'s voiceprint so it does not repeat.'],
+    capC1: 'MAIN WINDOW · LIGHT · RAIL ON · NAME CLICKED: FIX WHOLE SPEAKER', capC2: 'MAIN WINDOW · DARK · RAIL HIDDEN (READING)', railBtn: 'Lanes',
+    spLead: 'Lilla Kovács is actually…', spSub: '41 utterances · matched by voice (82%)', spSearch: 'Search name or new person', spKnown: 'Another person', spHere: 'Merge within this meeting', spMerge: 'merge', spAnon: 'Unnamed speaker', spAnonSub: 'as Remote 2', spCheck: 'Remove these lines from Lilla Kovács\'s voiceprint (wrong match)', spFoot: 'All 41 lines move · undo with Ctrl+Z',
+    lib: [['Product team weekly','Oct 2 · 30 min'],['Support handover','Oct 1 · 52 min'],['Quarterly partner meeting','Oct 1 · 1 h 16 min'],['Product demo, round 2','Sep 30 · 44 min'],['Pricing sync','Sep 29 · 27 min'],['New hire onboarding','Sep 29 · 55 min'],['Infrastructure review','Sep 28 · 41 min']],
+    rowsA: ['Morning, shall we start? Ádám, could you open with the release?', 'Sure. Build 2.4 went out to testers last night; two tickets so far.', 'One is in sign-in, the other is cosmetic.', 'I\'ll take the sign-in one, that was mine.', 'Sorry, I\'m here, the train was late.', 'No worries. So Nóra takes sign-in and Ádám the other?', 'Yes, I\'ll close the cosmetic one today.', 'Should we tell the partner the demo is slipping?', 'I don\'t think it slips if the fix is in by Thursday.', 'OK, then I won\'t write to them.', 'Logging that as a decision: the demo stays on Friday.', 'Uh-huh.', 'One more thing: could we move next week\'s planning to Tuesday?'],
+    rowsC: ["Thanks for coming, so many of you. I'll run briefly through Q3 and then happily take questions. First and most important: support tickets dropped by a third while active users grew by roughly twelve percent. That means far fewer requests per user than a year ago, and it is not because we shrank the team — it is because we finally answer the most common questions inside the product.","Second point: the new help pages. We shipped them in July, and in the first six weeks two thirds of searches ended there instead of in the ticket system. What is especially interesting is that most visits come from the settings pages — exactly where people used to get stuck. Next quarter we want to bring the same pattern to billing.","Sorry to cut in — is that number for all customers or just new ones?","All of them.","For new customers the ratio is even better, but the sample is small, so I left it off the slide. Happy to show the breakdown at the end.","Mhm.","That matches what we see on the support side.","A question on billing: isn't the issue there that the process itself is complicated, not that the help is lacking? I think we should simplify the product, not extend the docs.","Good question, I'll come back to it at the end — I have a slide on that.","Sorry, could you repeat the last sentence? The audio dropped here.","Sure. I said we'd bring the help pages to billing too, but Nóra is right that the process itself is too long. So the plan has two steps: first we collect where most people get stuck, then we decide what to fix in the product and what in the docs."],
+    rowsB: ['Support tickets dropped by a third in Q2.', 'Is that the new help pages, or just fewer customers?', 'Both, but mostly the help pages.', 'We\'re seeing the same.', 'Then we extend the help pages to the other products.', 'We\'d need one more person on documentation for that.', 'Let\'s look at that in the budget.', 'OK, noting it.']
+  }
+};
+
+function rand(seed) { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; }
+
+function frame(def, kind, dark, s, lang) {
+  const t = dark ? BASE_D : BASE_L;
+  const nm = n => lang === 'en' ? n.replace('Távoli', 'Remote') : n;
+  const sp = def.spk.map((pi, k) => ({ k, name: nm(PEOPLE[pi][0]), mono: PEOPLE[pi][1], vp: PEOPLE[pi][2], ...pal(dark, HUES[k]) }));
+  const W = kind === 'a' ? { s: 40, g: 30, pad: 7, gpad: 9 } : { s: 24, g: 20, pad: 4, gpad: 6 };
+  const lanes = def.visible.map(k => ({ isSpk: true, isGroup: false, isAdd: false, k, w: W.s, ...sp[k], short: sp[k].name.split(' ').pop(), vpDot: sp[k].vp ? t.text : 'transparent' }));
+  if (def.group.length) lanes.push({ isSpk: false, isGroup: true, isAdd: false, w: W.g, label: '+' + def.group.length });
+  lanes.push({ isSpk: false, isGroup: false, isAdd: true, w: W.s, addBd: def.pop ? t.accent : t.borderStrong, addBg: def.pop ? t.accentSoft : 'transparent', addFg: def.pop ? t.accent : t.muted });
+  let prev = -1;
+  const rows = def.rows.map((row, ri) => {
+    if (row[0] === 'gap') { prev = -1; return { isGap: true, notGap: false, gapLabel: s.gap(row[1]), cells: [], head: false, sug: false, hasTag: false, hasDrag: false, hasOk: false, nameOpen: false }; }
+    const [ts, k, st, to] = row;
+    const similar = (def.similar || []).includes(ri);
+    const cells = lanes.map(L => {
+      const c = { w: L.w, pad: L.isGroup ? W.gpad : W.pad, f: 'transparent', img: 'none', o: 'none', op: 1 };
+      const owns = L.isSpk ? L.k === k : L.isGroup ? def.group.includes(k) : false;
+      if (st === 'drag' && L.isSpk && L.k === to) return { ...c, f: sp[to].soft, o: `2px dashed ${sp[to].c}` };
+      if (owns) {
+        const p = sp[k];
+        c.f = p.c;
+        if (st === 'u') { c.f = p.soft; c.img = `repeating-linear-gradient(135deg, ${p.c} 0 3px, transparent 3px 6px)`; }
+        if (st === 'sel') c.o = `2px solid ${t.text}`;
+        if (st === 'drag') c.op = 0.3;
+        if (similar) c.o = `2px solid ${t.accent}`;
+        return c;
+      }
+      if (st === 'sel' && L.isSpk) return { ...c, o: `1px dashed ${t.borderStrong}` };
+      return c;
+    });
+    const head = k !== prev; prev = k;
+    const tag = st === 'u' ? s.tagU : st === 'c' ? s.tagC : '';
+    return {
+      ts, text: def.texts[ri], cells, head,
+      padT: head && ri > 0 ? 14 : 6,
+      name: sp[k].name, ink: sp[k].ink,
+      bg: st === 'play' ? t.accentSoft : st === 'sel' ? t.raised : 'transparent',
+      sh: st === 'sel' ? `inset 0 0 0 1.5px ${t.accent}` : 'none',
+      tsC: st === 'play' ? t.accent : t.muted,
+      hasTag: !!tag, tag, tagC: st === 'u' ? t.warnInk : t.successInk, tagBg: st === 'u' ? t.warnSoft : t.successSoft,
+      isGap: false, notGap: true, hasOk: !!def.uncOn && st === 'u', hasDrag: st === 'drag', dragLabel: st === 'drag' ? '→ ' + sp[to].name : '',
+      sug: kind !== 'a' && ri === def.sugAfter,
+      nameOpen: def.spkPopRow === ri, nameBg: def.spkPopRow === ri ? t.raised : 'transparent', nameSh: def.spkPopRow === ri ? `inset 0 0 0 1.5px ${t.accent}` : 'none'
+    };
+  });
+  if (kind !== 'a') rows.forEach((r, ri) => { if (!r.isGap && !r.head && r.hasTag) r.head = true; });
+  const R = rand(def.seed);
+  const ov = []; let x = 0, last = -1;
+  const wt = k => def.visible.includes(k) ? 3 - k * 0.25 : 0.35;
+  while (x < 100) {
+    let k; do { const tot = sp.reduce((a, p) => a + wt(p.k), 0); let r = R() * tot; k = sp.find(p => (r -= wt(p.k)) < 0)?.k ?? 0; } while (k === last);
+    last = k; const w = Math.min(1.2 + R() * 5.5, 100 - x);
+    ov.push({ x: +x.toFixed(2), w: +(w - 0.35).toFixed(2), c: sp[k].c, k }); x += w;
+  }
+  const total = ov.reduce((a, o) => a + o.w, 0);
+  const swim = def.visible.map(k => { const segs = ov.filter(o => o.k === k); return { name: sp[k].name, ink: sp[k].ink, segs, pct: Math.round(segs.reduce((a, o) => a + o.w, 0) / total * 100) }; });
+  if (def.group.length) { const segs = ov.filter(o => def.group.includes(o.k)); swim.push({ name: s.other(def.group.length), ink: t.muted, segs, pct: Math.round(segs.reduce((a, o) => a + o.w, 0) / total * 100) }); }
+  const stIc = ['file-text', 'sparkles', 'user-check'];
+  const stState = [['done','done','none'],['done','done','done'],['run','none','none'],['done','done','done'],['done','none','none'],['done','done','none'],['none','none','none']];
+  const lib = s.lib.map((m, li) => ({ title: m[0], meta: m[1], bg: li === 0 ? t.accentSoft : 'transparent', st: stState[li].map((v, j) => v === 'done' ? { u: IC(stIc[j]), bg: t.successSoft, fg: t.successInk, bd: 'transparent' } : v === 'run' ? { u: IC(stIc[j]), bg: t.accentSoft, fg: t.accent, bd: t.accent } : { u: IC(stIc[j]), bg: 'transparent', fg: t.muted, bd: t.borderStrong }) }));
+  const railW = lanes.reduce((a, L) => a + L.w, 0) + 8;
+  const side = def.railSide || 'right';
+  const rail = { railOrd: side === 'left' ? 0 : 2, railDisp: side === 'none' ? 'none' : 'flex', rbl: side === 'right' ? `1px solid ${t.border}` : 'none', rbr: side === 'left' ? `1px solid ${t.border}` : 'none', rml: side === 'left' ? 12 : 0, rmr: side === 'right' ? 12 : 0 };
+  const tgOn = side !== 'none';
+  return {
+    t, ...rail, gapMl: side === 'left' ? railW + 12 : 0,
+    ucBd: def.uncOn ? t.accent : t.borderStrong, ucBg: def.uncOn ? t.accentSoft : 'transparent', ucFg: def.uncOn ? t.accent : t.text,
+    hasSelBar: !!def.selBar, selTargets: def.selBar ? def.visible.map((k, j) => ({ name: sp[k].name, key: String(j + 1), soft: sp[k].soft, ink: sp[k].ink, c: sp[k].c, ring: k === def.selBar.target ? `0 0 0 2px ${t.bg}, 0 0 0 4px ${sp[k].c}` : 'none' })) : [], showToggle: !!def.toggle, tgBd: tgOn ? t.accent : t.borderStrong, tgBg: tgOn ? t.accentSoft : 'transparent', tgFg: tgOn ? t.accent : t.text,
+    hasSpkPop: def.spkPopRow != null, spX: def.spPos ? def.spPos[0] : 0, spY: def.spPos ? def.spPos[1] : 0,
+    spKnown: [['Molnár Eszter','ME',s.mtg(9)],['Baranyi Zsófia','BZs',s.mtg(7)],[s.spAnon,'?',s.spAnonSub]].map((p, j) => ({ name: p[0], mono: p[1], sub: p[2], hl: j === 0 ? t.sunken : 'transparent' })),
+    spHere: [sp[1], sp[2]].filter(Boolean),
+    label: def.label, caption: def.caption, w: def.w, h: def.h, chrome: def.chrome, lanes, rows, ov, swim, lib, railW,
+    vpX: def.vpX, vpW: def.vpW, uncN: def.uncN,
+    countLabel: s.count(def.nUtt, sp.length),
+    hasPop: !!def.pop, popX: def.pop ? def.pop[0] : 0, popY: def.pop ? def.pop[1] : 0,
+    picker: [['Balogh Kata','BK',true,s.mtg(12)],['Bálint Péter','BP',false,s.noVp],['Baranyi Zsófia','BZs',true,s.mtg(7)]].map((p, j) => ({ name: p[0], mono: p[1], vp: p[2], sub: p[3], hl: j === 0 ? t.sunken : 'transparent' }))
+  };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const lang = this.props.lang === 'en' ? 'en' : 'hu';
+    const s = STR[lang];
+    const mainRows = [['00:04',0,'n'],['00:09',1,'n'],['00:17',1,'play'],['00:22',2,'n'],['00:26',3,'u'],['00:31',0,'n'],['00:36',1,'c'],['00:40',3,'sel'],['00:46',2,'n'],['00:51',3,'u'],['00:54',0,'n'],['01:02',1,'n'],['01:03',2,'n']];
+    const detRows = [['12:40',3,'n'],['12:47',4,'n'],['12:52',3,'drag',5],['12:58',9,'u'],['13:01',0,'n'],['13:06',5,'n'],['13:12',6,'n'],['13:15',2,'u']];
+    const main = { spk: [0,1,2,8], visible: [0,1,2,3], group: [], rows: mainRows, texts: s.rowsA, chrome: true, w: 1280, h: 820, seed: 7, vpX: 0, vpW: 4, uncN: 3, nUtt: 412, similar: [4, 9], sugAfter: 6 };
+    const det = { spk: [0,1,2,3,4,5,6,7,8,9,10], visible: [0,1,2,3,4,5], group: [6,7,8,9,10], rows: detRows, texts: s.rowsB, chrome: false, w: 1280, h: 560, seed: 19, vpX: 41, vpW: 5, uncN: 9, nUtt: 968 };
+    const mainC = { ...main, rows: [['00:04',0,'n'],['00:41',0,'n'],['01:12',1,'n'],['01:16',0,'play'],['01:18',0,'n'],['01:39',3,'u'],['01:40',1,'c'],['02:02',2,'n'],['02:15',0,'n'],['02:18',3,'u'],['02:24',0,'n']], texts: s.rowsC, similar: [5, 9], sugAfter: 6 };
+    const mk = (kind) => [
+      frame({ ...main, label: kind + ' main', caption: s.capMain }, kind, false, s, lang),
+      frame({ ...det, label: kind + ' detail', caption: s.capDetail, pop: kind === 'a' ? [370, 150] : [1280 - 12 - 4 - 24 - 300 - 8, 170] }, kind, true, s, lang)
+    ];
+    const notes = arr => arr.map((t, k) => ({ k: String(k + 1).padStart(2, '0'), t }));
+    return {
+      s,
+      i: { min: IC('minus'), max: IC('square'), x: IC('x'), search: IC('search'), users: IC('users'), settings: IC('settings'), finger: IC('fingerprint'), more: IC('ellipsis'), undo: IC('undo-2'), redo: IC('redo-2'), plus: IC('plus'), rail: IC('panel-left'), chev: IC('chevron-down'), check: IC('check'), playS: IC('play'), expand: IC('chevrons-left-right'), wand: IC('wand-sparkles'), pause: IC('pause'), vol: IC('volume-2') },
+      turns: [
+        { num: 3, title: s.t3Title, sub: s.t3Sub, dirs: [
+          { id: '3a', isA: false, isB: true, name: s.cName, desc: s.cDesc, notes: notes(s.notesC), frames: [
+            frame({ ...mainC, label: '3a rail on', caption: s.capC1, railSide: 'left', toggle: true, spkPopRow: 0, spPos: [492, 352] }, 'c', false, s, lang),
+            frame({ ...mainC, label: '3a rail hidden', caption: s.capC2, railSide: 'none', toggle: true }, 'c', true, s, lang),
+            frame({ ...main, spk: [0,1], visible: [0,1], rows: [['00:03',0,'n'],['00:09',1,'n'],['00:21',0,'sel'],['00:27',0,'sel'],['00:33',0,'sel'],['00:38',0,'n'],['00:42',1,'u'],['00:45',1,'n']], texts: s.rowsI, similar: [], sugAfter: -1, uncN: 1, nUtt: 184, label: '3a two speakers', caption: s.capC4, railSide: 'left', toggle: true, selBar: { target: 1 } }, 'c', false, s, lang),
+            frame({ ...mainC, rows: [['01:39',3,'u'],['gap',6],['02:18',3,'u'],['gap',14],['04:51',2,'u'],['gap',22],['07:12',1,'u'],['gap',31]], texts: [s.rowsC[5], null, s.rowsC[9], null, s.rowsF[0], null, s.rowsF[1], null], similar: [], sugAfter: -1, uncOn: true, label: '3a uncertain filter', caption: s.capC5, railSide: 'left', toggle: true }, 'c', true, s, lang),
+            frame({ ...det, label: '3a detail', caption: s.capDetail, railSide: 'left', toggle: true, pop: [214, 170] }, 'c', true, s, lang)
+          ] }
+        ] },
+        { num: 2, title: s.t2Title, sub: s.t2Sub, dirs: [
+        { id: '2a', isA: true, isB: false, name: s.aName, desc: s.aDesc, notes: notes(s.notesA), frames: mk('a') },
+        { id: '2b', isA: false, isB: true, name: s.bName, desc: s.bDesc, notes: notes(s.notesB), frames: mk('b') }
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

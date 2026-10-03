@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Source+Code+Pro:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9e7e3;font-family:'Source Sans 3',sans-serif;-webkit-font-smoothing:antialiased}a{color:#8a4a2c}a:hover{color:#5e2f18}</style>
+</helmet>
+<section style="padding:48px;display:flex;flex-direction:column;gap:28px">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:1100px">
+    <div style="font:600 13px/1 'Source Code Pro',monospace;letter-spacing:.08em;color:#6b655c">TANARA · 1</div>
+    <div style="font:600 30px/1.2 'Source Sans 3',sans-serif;color:#2a2622">{{ s.turnTitle }}</div>
+    <div style="font:400 16px/1.5 'Source Sans 3',sans-serif;color:#4e4840;text-wrap:pretty">{{ s.turnSub }}</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+    <sc-for list="{{ dirs }}" as="d" hint-placeholder-count="2">
+      <div id="{{ d.id }}" style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:baseline;gap:14px">
+          <div style="font:700 14px/1 'Source Code Pro',monospace;background:#2a2622;color:#f4f1ea;padding:6px 9px;border-radius:6px">{{ d.id }}</div>
+          <div style="font:600 24px/1.2 'Source Sans 3',sans-serif;color:#2a2622">{{ d.name }}</div>
+          <div style="font:400 15px/1.4 'Source Sans 3',sans-serif;color:#4e4840;max-width:820px">{{ d.desc }}</div>
+          <sc-if value="{{ d.chosen }}" hint-placeholder-val="{{ false }}"><div style="font:600 12px/1 'Source Sans 3',sans-serif;color:#f4f1ea;background:oklch(0.5 0.13 258);padding:6px 10px;border-radius:12px;white-space:nowrap">{{ s.chosen }}</div></sc-if>
+        </div>
+        <div style="display:flex;gap:24px;align-items:stretch">
+          <sc-for list="{{ d.themes }}" as="t" hint-placeholder-count="2">
+            <div data-screen-label="{{ t.label }}" style="width:1120px;background:{{ t.bg }};color:{{ t.text }};font-family:{{ t.ui }};border-radius:10px;border:1px solid {{ t.border }};overflow:hidden;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid {{ t.border }};background:{{ t.surface }}">
+                <div style="font-size:15px;font-weight:600">{{ t.themeName }}</div>
+                <div style="font:400 12px/1 {{ t.mono }};color:{{ t.muted }}">Theme.qml · {{ t.fontsNote }}</div>
+              </div>
+              <div style="padding:28px;display:flex;flex-direction:column;gap:32px">
+
+                <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:32px">
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.colors }}</div>
+                    <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px">
+                      <sc-for list="{{ t.neutrals }}" as="c" hint-placeholder-count="12">
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                          <div style="height:44px;border-radius:6px;background:{{ c.v }};border:1px solid {{ t.border }}"></div>
+                          <div style="font:400 11px/1.3 {{ t.mono }};color:{{ t.muted }}">{{ c.n }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.speakers }}</div>
+                    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px 8px">
+                      <sc-for list="{{ t.speakers }}" as="p" hint-placeholder-count="10">
+                        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                          <div style="width:30px;height:30px;flex:none;border-radius:50%;background:{{ p.soft }};color:{{ p.ink }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:inset 0 0 0 2px {{ p.c }}">{{ p.mono }}</div>
+                          <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                            <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div>
+                            <div style="height:6px;width:36px;border-radius:2px;background:{{ p.c }}"></div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="font-size:12px;line-height:1.45;color:{{ t.muted }};text-wrap:pretty">{{ s.speakerNote }}</div>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px">
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.type }}</div>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">title 22/600</div><div style="font-size:22px;font-weight:600;line-height:1.2">{{ s.sampleTitle }}</div></div>
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">heading 16/600</div><div style="font-size:16px;font-weight:600">{{ s.sampleHeading }}</div></div>
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">body 14/400</div><div style="font-size:14px;line-height:1.45">{{ s.sampleBody }}</div></div>
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">reading {{ t.readSize }}</div><div style="font-family:{{ t.read }};font-size:16px;line-height:1.6;text-wrap:pretty">{{ s.sampleRead }}</div></div>
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">label 12/600</div><div style="font-size:12px;font-weight:600;color:{{ t.muted }}">{{ s.sampleLabel }}</div></div>
+                      <div style="display:flex;align-items:baseline;gap:16px"><div style="width:84px;flex:none;font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">mono 12</div><div style="font:500 12px/1 {{ t.mono }};color:{{ t.muted }}">00:13 · 30:34 · 2026-10-02</div></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.metrics }}</div>
+                    <div style="display:flex;align-items:flex-end;gap:14px">
+                      <sc-for list="{{ spacing }}" as="sp" hint-placeholder-count="7">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                          <div style="width:{{ sp }}px;height:{{ sp }}px;background:{{ t.accentSoft }};border:1px solid {{ t.accent }};border-radius:2px"></div>
+                          <div style="font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">{{ sp }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;gap:14px;align-items:center;font-size:12px;color:{{ t.muted }}">
+                      <div style="width:44px;height:30px;border:1px solid {{ t.borderStrong }};border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:{{ t.mono }};font-size:11px">3</div>
+                      <div style="width:44px;height:30px;border:1px solid {{ t.borderStrong }};border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:{{ t.mono }};font-size:11px">6</div>
+                      <div style="width:44px;height:30px;border:1px solid {{ t.borderStrong }};border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:{{ t.mono }};font-size:11px">10</div>
+                      <div style="flex:1;line-height:1.4;text-wrap:pretty">{{ s.radiusNote }}</div>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:14px;color:{{ t.text }};padding-top:4px">
+                      <sc-for list="{{ icons }}" as="ic" hint-placeholder-count="16">
+                        <div title="{{ ic.n }}" style="width:20px;height:20px;background:currentColor;-webkit-mask:url({{ ic.u }}) center/contain no-repeat;mask:url({{ ic.u }}) center/contain no-repeat"></div>
+                      </sc-for>
+                    </div>
+                    <div style="font:400 11px/1.3 {{ t.mono }};color:{{ t.muted }}">Lucide (ISC) · 20px · stroke 1.75</div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.controls }}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+                    <div style="height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ t.accent }};color:{{ t.onAccent }};font-size:14px;font-weight:600"><div style="width:16px;height:16px;background:currentColor;-webkit-mask:url({{ i.audio }}) center/contain no-repeat;mask:url({{ i.audio }}) center/contain no-repeat"></div>{{ s.btnPrimary }}</div>
+                    <div style="height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ t.raised }};border:1px solid {{ t.borderStrong }};font-size:14px;font-weight:500"><div style="width:16px;height:16px;background:currentColor;-webkit-mask:url({{ i.finger }}) center/contain no-repeat;mask:url({{ i.finger }}) center/contain no-repeat"></div>{{ s.btnSecondary }}</div>
+                    <div style="height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;font-size:14px;font-weight:500;color:{{ t.text }}">{{ s.btnGhost }}</div>
+                    <div style="height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ t.dangerSoft }};color:{{ t.dangerInk }};font-size:14px;font-weight:600"><div style="width:16px;height:16px;background:currentColor;-webkit-mask:url({{ i.trash }}) center/contain no-repeat;mask:url({{ i.trash }}) center/contain no-repeat"></div>{{ s.btnDanger }}</div>
+                    <div style="height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ t.sunken }};color:{{ t.muted }};font-size:14px;font-weight:500;border:1px dashed {{ t.borderStrong }}"><div style="width:16px;height:16px;background:currentColor;-webkit-mask:url({{ i.lock }}) center/contain no-repeat;mask:url({{ i.lock }}) center/contain no-repeat"></div>{{ s.btnDisabled }}</div>
+                    <div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ t.border }}"><div style="width:18px;height:18px;background:currentColor;-webkit-mask:url({{ i.undo }}) center/contain no-repeat;mask:url({{ i.undo }}) center/contain no-repeat"></div></div>
+                    <div style="height:34px;padding:0 16px 0 12px;display:flex;align-items:center;gap:9px;border-radius:17px;background:{{ t.rec }};color:#fff;font-size:14px;font-weight:600"><div style="width:10px;height:10px;border-radius:50%;background:#fff"></div>{{ s.btnRec }}</div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+                    <div style="height:34px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ t.sunken }};border:1px solid {{ t.border }};color:{{ t.muted }};font-size:14px"><div style="width:16px;height:16px;flex:none;background:currentColor;-webkit-mask:url({{ i.search }}) center/contain no-repeat;mask:url({{ i.search }}) center/contain no-repeat"></div><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.fieldSearch }}</div></div>
+                    <div style="height:34px;padding:0 10px;display:flex;align-items:center;border-radius:6px;background:{{ t.raised }};border:1px solid {{ t.accent }};box-shadow:0 0 0 3px {{ t.accentSoft }};font-size:14px">{{ s.fieldFocus }}<div style="width:1px;height:18px;background:{{ t.text }};margin-left:1px"></div></div>
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="height:34px;padding:0 10px;display:flex;align-items:center;border-radius:6px;background:{{ t.raised }};border:1px solid {{ t.danger }};font:400 13px/1 {{ t.mono }};color:{{ t.muted }}">sk-••••••••••••</div>
+                      <div style="font-size:12px;color:{{ t.dangerInk }}">{{ s.fieldError }}</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:center">
+                    <div style="display:flex;gap:4px;border-bottom:1px solid {{ t.border }}">
+                      <div style="padding:8px 12px;font-size:14px;font-weight:600;box-shadow:inset 0 -2px 0 {{ t.accent }}">{{ s.tab1 }}</div>
+                      <div style="padding:8px 12px;font-size:14px;color:{{ t.muted }};display:flex;align-items:center;gap:6px">{{ s.tab2 }}<div style="width:7px;height:7px;border-radius:50%;background:{{ t.warn }}"></div></div>
+                      <div style="padding:8px 12px;font-size:14px;color:{{ t.muted }}">{{ s.tab3 }}</div>
+                    </div>
+                    <div style="display:flex;gap:6px">
+                      <sc-for list="{{ t.chips }}" as="ch" hint-placeholder-count="3">
+                        <div style="height:26px;padding:0 10px 0 4px;display:flex;align-items:center;gap:6px;border-radius:13px;background:{{ ch.soft }};color:{{ ch.ink }};font-size:13px;font-weight:600"><div style="width:18px;height:18px;border-radius:50%;background:{{ ch.c }}"></div>{{ ch.name }}</div>
+                      </sc-for>
+                      <div style="height:26px;padding:0 10px;display:flex;align-items:center;gap:4px;border-radius:13px;border:1px dashed {{ t.borderStrong }};color:{{ t.muted }};font-size:13px"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div>{{ s.addPerson }}</div>
+                    </div>
+                    <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px">
+                      <div style="display:flex;justify-content:space-between;font-size:13px"><div>{{ s.progress }}</div><div style="font-family:{{ t.mono }};color:{{ t.muted }}">42%</div></div>
+                      <div style="height:6px;border-radius:3px;background:{{ t.sunken }};overflow:hidden"><div style="width:42%;height:100%;background:{{ t.accent }}"></div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:20px;align-items:start">
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.listTitle }}</div>
+                    <div style="background:{{ t.surface }};border:1px solid {{ t.border }};border-radius:6px;padding:4px;display:flex;flex-direction:column;gap:2px">
+                      <sc-for list="{{ t.meetings }}" as="m" hint-placeholder-count="3">
+                        <div style="padding:10px 10px;border-radius:4px;background:{{ m.bg }};display:flex;flex-direction:column;gap:6px">
+                          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.title }}</div>
+                          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                            <div style="font-size:12px;color:{{ t.muted }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ m.meta }}</div>
+                            <div style="display:flex;gap:6px;flex:none">
+                              <sc-for list="{{ m.st }}" as="x" hint-placeholder-count="3">
+                                <div title="{{ x.n }}" style="width:22px;height:22px;border-radius:4px;background:{{ x.bg }};color:{{ x.fg }};display:flex;align-items:center;justify-content:center;border:1px solid {{ x.bd }}"><div style="width:13px;height:13px;background:currentColor;-webkit-mask:url({{ x.u }}) center/contain no-repeat;mask:url({{ x.u }}) center/contain no-repeat"></div></div>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="font-size:12px;line-height:1.45;color:{{ t.muted }};text-wrap:pretty">{{ s.listNote }}</div>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.editorTitle }}</div>
+                    <div style="background:{{ t.surface }};border:1px solid {{ t.border }};border-radius:6px;overflow:hidden">
+                      <div style="display:flex;align-items:center;border-bottom:1px solid {{ t.border }};background:{{ t.raised }}">
+                        <div style="display:flex;gap:2px;padding:6px 8px;border-right:1px solid {{ t.border }}">
+                          <sc-for list="{{ t.chips }}" as="ch" hint-placeholder-count="3">
+                            <div style="width:30px;height:30px;border-radius:50%;background:{{ ch.soft }};color:{{ ch.ink }};box-shadow:inset 0 0 0 2px {{ ch.c }};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">{{ ch.mono }}</div>
+                          </sc-for>
+                          <div style="width:30px;height:30px;border-radius:50%;border:1px dashed {{ t.borderStrong }};color:{{ t.muted }};display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:currentColor;-webkit-mask:url({{ i.plus }}) center/contain no-repeat;mask:url({{ i.plus }}) center/contain no-repeat"></div></div>
+                        </div>
+                        <div style="flex:1;height:30px;margin:0 12px;position:relative;border-radius:3px;background:{{ t.sunken }};overflow:hidden">
+                          <sc-for list="{{ t.overview }}" as="o" hint-placeholder-count="12">
+                            <div style="position:absolute;left:{{ o.x }}%;width:{{ o.w }}%;top:{{ o.y }}px;height:7px;border-radius:1px;background:{{ o.c }}"></div>
+                          </sc-for>
+                          <div style="position:absolute;left:31%;top:0;bottom:0;width:2px;background:{{ t.text }}"></div>
+                        </div>
+                      </div>
+                      <sc-for list="{{ t.rows }}" as="r" hint-placeholder-count="6">
+                        <div style="display:flex;background:{{ r.bg }};box-shadow:{{ r.sh }}">
+                          <div style="display:flex;gap:2px;padding:0 8px;border-right:1px solid {{ t.border }}">
+                            <sc-for list="{{ r.cells }}" as="cl" hint-placeholder-count="4">
+                              <div style="width:30px;padding:3px 4px;display:flex"><div style="flex:1;border-radius:3px;background:{{ cl.f }};background-image:{{ cl.img }};outline:{{ cl.o }};outline-offset:-1px"></div></div>
+                            </sc-for>
+                          </div>
+                          <div style="flex:1;min-width:0;display:flex;gap:10px;padding:7px 12px;align-items:baseline">
+                            <div style="flex:none;width:58px;display:flex;flex-direction:column;gap:3px"><div style="font:400 11px/1.3 {{ t.mono }};color:{{ t.muted }}">{{ r.ts }}</div><div style="font-size:10px;color:{{ t.muted }};font-weight:600">{{ r.label }}</div></div>
+                            <div style="flex:1;font-family:{{ t.read }};font-size:14px;line-height:1.5;text-wrap:pretty">{{ r.text }}</div>
+                            
+                          </div>
+                        </div>
+                      </sc-for>
+                      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid {{ t.border }};background:{{ t.accentSoft }}">
+                        <div style="width:16px;height:16px;flex:none;color:{{ t.accent }};background:currentColor;-webkit-mask:url({{ i.wand }}) center/contain no-repeat;mask:url({{ i.wand }}) center/contain no-repeat"></div>
+                        <div style="flex:1;font-size:13px">{{ s.suggest }}</div>
+                        <div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:6px;background:{{ t.accent }};color:{{ t.onAccent }};font-size:13px;font-weight:600">{{ s.accept }}</div>
+                        <div style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:6px;font-size:13px">{{ s.dismiss }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="grid-column:1 / -1;display:grid;grid-template-columns:280px minmax(0,420px);gap:20px;align-items:start">
+                    <div style="grid-column:1 / -1;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ t.muted }}">{{ s.menuDialog }}</div>
+                    <div style="background:{{ t.raised }};border:1px solid {{ t.border }};border-radius:6px;padding:4px;box-shadow:{{ t.shadow }};display:flex;flex-direction:column">
+                      <sc-for list="{{ menu }}" as="mi" hint-placeholder-count="4">
+                        <div style="height:32px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:4px;font-size:14px;background:{{ mi.hl }}">
+                          <div style="width:16px;height:16px;flex:none;color:{{ t.muted }};background:currentColor;-webkit-mask:url({{ mi.u }}) center/contain no-repeat;mask:url({{ mi.u }}) center/contain no-repeat"></div>
+                          <div style="flex:1">{{ mi.label }}</div>
+                          <div style="font:400 11px/1 {{ t.mono }};color:{{ t.muted }}">{{ mi.k }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="background:{{ t.raised }};border:1px solid {{ t.border }};border-radius:10px;box-shadow:{{ t.shadow }};padding:18px;display:flex;flex-direction:column;gap:10px">
+                      <div style="display:flex;align-items:center;gap:8px"><div style="width:10px;height:10px;border-radius:50%;background:{{ t.rec }}"></div><div style="font-size:16px;font-weight:600">{{ s.dlgTitle }}</div></div>
+                      <div style="font-size:14px;line-height:1.45;color:{{ t.muted }};text-wrap:pretty">{{ s.dlgBody }}</div>
+                      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px">
+                        <div style="height:32px;padding:0 12px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ t.borderStrong }};font-size:14px;font-weight:500">{{ s.dlgKeep }}</div>
+                        <div style="height:32px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ t.accent }};color:{{ t.onAccent }};font-size:14px;font-weight:600">{{ s.dlgStop }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;hu&quot;,&quot;en&quot;],&quot;default&quot;:&quot;hu&quot;,&quot;tsType&quot;:&quot;'hu'|'en'&quot;}}">
+const IC = n => 'https://unpkg.com/lucide-static@0.460.0/icons/' + n + '.svg';
+const STR = {
+  hu: {
+    chosen: 'Választott irány', turnTitle: 'Vizuális nyelv: két irány a „papír" hangulaton belül',
+    turnSub: 'Mindkét irány ugyanazt a rendszert mutatja világos és sötét témában: színek, 10 beszélőszín, tipográfia, térközök, ikonok, vezérlők, és ezekből összerakva egy könyvtárlista, egy átirat-szerkesztő részlet, menü és párbeszédablak. A minta kitalált adat.',
+    aName: 'Papír', aDesc: 'Meleg tört fehér és meleg grafit. Az átirat serif betűvel, hosszú olvasásra hangolva; a felület Source Sans. Terrakotta akcentus.',
+    bName: 'Nyomat', bDesc: 'Semleges papírtónus, egy tintakék akcentus, csak groteszk + mono (IBM Plex). Szikárabb, eszközszerűbb.',
+    light: 'Világos', dark: 'Sötét',
+    colors: 'Felület és szöveg', speakers: 'Beszélők (10)', speakerNote: 'Hangonként fix sorrend, 36°-onként. Minden színnek három szintje van: vonal/blokk, lágy háttér, sötét felirat; mindhárom 4,5:1 fölött a saját hátterén.',
+    type: 'Tipográfia', metrics: 'Térköz · sarok · ikonok', radiusNote: '3 a sávblokkokon, 6 a vezérlőkön, 10 a párbeszédablakon.',
+    sampleTitle: 'Projekt heti egyeztetés', sampleHeading: 'Döntések és teendők', sampleBody: 'Az átirat elkészült, 4 beszélő, 30 perc 34 mp.', sampleRead: 'Rendben, akkor a szerződést péntekig átnézem, és küldök róla egy rövid összefoglalót.', sampleLabel: 'ÁTIRAT · 2026. OKT. 2.',
+    controls: 'Vezérlők',
+    btnPrimary: 'Átírás indítása', btnSecondary: 'Résztvevők azonosítása', btnGhost: 'Mégse', btnDanger: 'Végleges törlés', btnDisabled: 'Összefoglaló', btnRec: 'Felvétel indítása',
+    fieldSearch: 'Keresés a megbeszélések között', fieldFocus: 'Heti projekt-egyeztetés', fieldError: 'Hiányzik az API-kulcs. Add meg, vagy válassz másik szolgáltatót.',
+    tab1: 'Átirat', tab2: 'Összefoglaló', tab3: 'Sávok', addPerson: 'Résztvevő', progress: 'Átírás folyamatban…',
+    listTitle: 'Könyvtár', listNote: 'Állapot ikonnal: átirat · összefoglaló · azonosítva. Kész = kitöltött, folyamatban = akcentus, hiányzik = körvonal.',
+    editorTitle: 'Átirat-szerkesztő · blokkállapotok',
+    st: ['rendes', 'bizonytalan', 'javított', 'lejátszás', 'kijelölt', 'húzás'],
+    suggest: 'Még 14 sor hasonlít erre a hangra. Átrakjam Varga Nórához?', accept: 'Átrakom', dismiss: 'Nem',
+    menuDialog: 'Menü · párbeszédablak',
+    menu: ['Új felvétel', 'Megbeszélés mappája', 'Személyek kezelése', 'Beállítások'],
+    dlgTitle: 'Vége a megbeszélésnek?', dlgBody: 'Két perce csak csend van a hívás sávján. A felvétel addig fut, amíg nem döntesz.', dlgKeep: 'Folytatom', dlgStop: 'Leállítom',
+    meetings: [['Projekt heti egyeztetés', 'okt. 2. · 30 p'], ['Ügyféltámogatás átadás', 'okt. 1. · 52 p'], ['Termékbemutató, 2. kör', 'szept. 30. · 1 ó 16 p']],
+    stn: ['Átirat', 'Összefoglaló', 'Azonosítva'],
+    rows: ['És ő még kattint rá?', 'Nem, csak felraktam a meghívóra, hogy tudjon róla.', 'Igen, ezen én is csodálkoztam.', 'Aha.', 'Akkor péntekig átnézem a szerződést.', 'Jó, küldd át, ha kész.']
+  },
+  en: {
+    chosen: 'Chosen direction', turnTitle: 'Visual language: two directions within "paper"',
+    turnSub: 'Both directions show the same system in light and dark: colour, 10 speaker colours, type, spacing, icons, controls — then composed into a library list, a transcript-editor excerpt, a menu and a dialog. Sample data is fictional.',
+    aName: 'Paper', aDesc: 'Warm off-white and warm graphite. Transcript set in a serif tuned for long reading; UI in Source Sans. Terracotta accent.',
+    bName: 'Print', bDesc: 'Neutral paper tone, one ink-blue accent, grotesk + mono only (IBM Plex). Leaner, more tool-like.',
+    light: 'Light', dark: 'Dark',
+    colors: 'Surface & text', speakers: 'Speakers (10)', speakerNote: 'Fixed order, 36° apart. Each colour has three levels: line/block, soft fill, dark label — all above 4.5:1 on their own ground.',
+    type: 'Typography', metrics: 'Spacing · radius · icons', radiusNote: '3 on lane blocks, 6 on controls, 10 on dialogs.',
+    sampleTitle: 'Weekly project sync', sampleHeading: 'Decisions & action items', sampleBody: 'Transcript ready, 4 speakers, 30 min 34 s.', sampleRead: 'Right, I\'ll review the contract by Friday and send a short summary.', sampleLabel: 'TRANSCRIPT · OCT 2, 2026',
+    controls: 'Controls',
+    btnPrimary: 'Start transcription', btnSecondary: 'Identify participants', btnGhost: 'Cancel', btnDanger: 'Delete permanently', btnDisabled: 'Summary', btnRec: 'Start recording',
+    fieldSearch: 'Search meetings', fieldFocus: 'Weekly project sync', fieldError: 'API key missing. Add one or pick another provider.',
+    tab1: 'Transcript', tab2: 'Summary', tab3: 'Tracks', addPerson: 'Participant', progress: 'Transcribing…',
+    listTitle: 'Library', listNote: 'Status as icons: transcript · summary · identified. Done = filled, running = accent, missing = outline.',
+    editorTitle: 'Transcript editor · block states',
+    st: ['normal', 'uncertain', 'corrected', 'playing', 'selected', 'dragging'],
+    suggest: '14 more lines sound like this voice. Move them to Nóra Varga?', accept: 'Move', dismiss: 'No',
+    menuDialog: 'Menu · dialog',
+    menu: ['New recording', 'Open meeting folder', 'Manage people', 'Settings'],
+    dlgTitle: 'Has the meeting ended?', dlgBody: 'The call track has been silent for two minutes. Recording continues until you decide.', dlgKeep: 'Keep recording', dlgStop: 'Stop',
+    meetings: [['Weekly project sync', 'Oct 2 · 30 min'], ['Support handover', 'Oct 1 · 52 min'], ['Product demo, round 2', 'Sep 30 · 1 h 16 min']],
+    stn: ['Transcript', 'Summary', 'Identified'],
+    rows: ['And is he still clicking on it?', 'No, I just added him to the invite so he knows.', 'Yes, I was surprised by that too.', 'Uh-huh.', 'Then I\'ll review the contract by Friday.', 'Fine, send it over when done.']
+  }
+};
+const NAMES = [['Kovács Lilla','KL'],['Fehér Ádám','FÁ'],['Szabó Áron','SzÁ'],['Varga Nóra','VN'],['Tóth Bence','TB'],['Molnár Eszter','ME'],['Németh Dávid','ND'],['Balogh Kata','BK'],['Horváth Gergő','HG'],['Távoli 1','T1']];
+const HUES = [30, 230, 145, 330, 75, 270, 185, 0, 110, 300];
+
+function speakers(dark, chroma, lang) {
+  return HUES.map((h, k) => ({
+    name: k === 9 && lang === 'en' ? 'Remote 1' : NAMES[k][0], mono: NAMES[k][1],
+    c: dark ? `oklch(0.72 ${chroma} ${h})` : `oklch(0.6 ${chroma} ${h})`,
+    soft: dark ? `oklch(0.33 ${chroma * 0.4} ${h})` : `oklch(0.93 ${chroma * 0.3} ${h})`,
+    ink: dark ? `oklch(0.9 ${chroma * 0.6} ${h})` : `oklch(0.4 ${chroma * 0.9} ${h})`
+  }));
+}
+
+function build(base, dark, s, lang) {
+  const t = { ...base };
+  t.label = base.themeName;
+  t.speakers = speakers(dark, base.spkC, lang);
+  const sp = t.speakers;
+  t.chips = [sp[0], sp[1], sp[3]].map(p => ({ ...p, name: p.name.split(' ')[1] || p.name }));
+  t.neutrals = [['bg', t.bg], ['surface', t.surface], ['raised', t.raised], ['sunken', t.sunken], ['border', t.border], ['borderStrong', t.borderStrong], ['text', t.text], ['textMuted', t.muted], ['accent', t.accent], ['accentSoft', t.accentSoft], ['success', t.success], ['danger', t.danger]].map(([n, v]) => ({ n, v }));
+  const st = (state) => state.map((x, k) => {
+    const u = IC(['file-text', 'sparkles', 'user-check'][k]);
+    if (x === 'done') return { n: s.stn[k], u, bg: t.successSoft, fg: t.successInk, bd: 'transparent' };
+    if (x === 'run') return { n: s.stn[k], u, bg: t.accentSoft, fg: t.accent, bd: t.accent };
+    return { n: s.stn[k], u, bg: 'transparent', fg: t.muted, bd: t.borderStrong };
+  });
+  const states = [['done', 'done', 'none'], ['run', 'none', 'none'], ['done', 'done', 'done']];
+  t.meetings = s.meetings.map((m, k) => ({ title: m[0], meta: m[1], bg: k === 0 ? t.accentSoft : 'transparent', st: st(states[k]) }));
+  const cols = [0, 1, 0, 2, 1, 2];
+  const times = ['00:06', '00:07', '00:13', '00:19', '00:21', '00:26'];
+  const spk = [sp[0], sp[1], sp[3]];
+  t.rows = cols.map((col, k) => {
+    const cells = [0, 1, 2, 3].map(ci => {
+      const none = { f: 'transparent', img: 'none', o: 'none' };
+      if (k === 5 && ci === 0) return { f: 'transparent', img: 'none', o: `1.5px dashed ${spk[0].c}` };
+      if (ci !== col) return none;
+      const p = spk[col];
+      if (k === 1) return { f: p.soft, img: `repeating-linear-gradient(135deg, ${p.c} 0 3px, transparent 3px 6px)`, o: 'none' };
+      if (k === 2) return { f: p.c, img: 'none', o: `2px solid ${t.text}` };
+      if (k === 5) return { f: p.soft, img: 'none', o: 'none' };
+      return { f: p.c, img: 'none', o: 'none' };
+    });
+    const label = s.st[[0, 1, 2, 3, 4, 5][k]];
+    return {
+      ts: times[k], text: s.rows[k], label, cells,
+      bg: k === 3 ? t.accentSoft : k === 4 ? t.raised : 'transparent',
+      sh: k === 4 ? `inset 0 0 0 1.5px ${t.accent}` : k === 3 ? `inset 3px 0 0 ${t.accent}` : 'none'
+    };
+  });
+  // fix label/state mapping: row index 1 = uncertain, 2 = corrected (outlined), 3 = playing, 4 = selected, 5 = drag
+  t.rows[2].label = s.st[2];
+  const ov = [];
+  let x = 0, k = 0;
+  const seq = [0, 1, 0, 1, 3, 0, 1, 1, 0, 3, 1, 0, 1, 0, 3, 1];
+  const ws = [6, 9, 4, 7, 3, 8, 5, 6, 4, 3, 9, 7, 6, 5, 4, 8];
+  for (; k < seq.length && x < 100; k++) { ov.push({ x, w: ws[k] - 0.6, y: 3 + [0, 1, 0, 2][seq[k]] * 8, c: spk[[0, 1, 0, 2][seq[k]]].c }); x += ws[k]; }
+  t.overview = ov;
+  return t;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const lang = this.props.lang === 'en' ? 'en' : 'hu';
+    const s = STR[lang];
+    const A_L = { themeName: 'Papír · ' + s.light, fontsNote: 'Source Sans 3 / Serif 4 / Code Pro', ui: "'Source Sans 3', sans-serif", read: "'Source Serif 4', serif", mono: "'Source Code Pro', monospace", readSize: '16/1.6 serif',
+      bg: 'oklch(0.965 0.009 80)', surface: 'oklch(0.982 0.007 85)', raised: 'oklch(0.995 0.004 85)', sunken: 'oklch(0.935 0.011 78)', border: 'oklch(0.88 0.012 75)', borderStrong: 'oklch(0.76 0.015 70)', text: 'oklch(0.25 0.012 60)', muted: 'oklch(0.47 0.013 60)',
+      accent: 'oklch(0.52 0.13 42)', onAccent: 'oklch(0.98 0.01 80)', accentSoft: 'oklch(0.93 0.035 50)', success: 'oklch(0.55 0.1 150)', successSoft: 'oklch(0.93 0.04 150)', successInk: 'oklch(0.4 0.09 150)', warn: 'oklch(0.7 0.14 75)', danger: 'oklch(0.53 0.17 28)', dangerSoft: 'oklch(0.94 0.035 28)', dangerInk: 'oklch(0.45 0.16 28)', rec: 'oklch(0.57 0.2 27)',
+      shadow: '0 8px 24px oklch(0.3 0.03 60 / 0.14), 0 1px 2px oklch(0.3 0.03 60 / 0.1)', spkC: 0.12 };
+    const A_D = { ...A_L, themeName: 'Papír · ' + s.dark,
+      bg: 'oklch(0.2 0.008 60)', surface: 'oklch(0.235 0.009 62)', raised: 'oklch(0.28 0.01 62)', sunken: 'oklch(0.175 0.007 60)', border: 'oklch(0.34 0.01 60)', borderStrong: 'oklch(0.45 0.012 60)', text: 'oklch(0.93 0.011 80)', muted: 'oklch(0.74 0.012 75)',
+      accent: 'oklch(0.75 0.11 52)', onAccent: 'oklch(0.2 0.03 50)', accentSoft: 'oklch(0.33 0.05 45)', success: 'oklch(0.76 0.11 150)', successSoft: 'oklch(0.32 0.05 150)', successInk: 'oklch(0.86 0.08 150)', warn: 'oklch(0.8 0.12 80)', danger: 'oklch(0.7 0.15 28)', dangerSoft: 'oklch(0.32 0.06 28)', dangerInk: 'oklch(0.85 0.08 28)', rec: 'oklch(0.64 0.19 27)',
+      shadow: '0 8px 24px oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.3)' };
+    const B_L = { themeName: 'Nyomat · ' + s.light, fontsNote: 'IBM Plex Sans / Plex Mono', ui: "'IBM Plex Sans', sans-serif", read: "'IBM Plex Sans', sans-serif", mono: "'IBM Plex Mono', monospace", readSize: '16/1.6 sans',
+      bg: 'oklch(0.97 0.003 95)', surface: 'oklch(0.987 0.002 95)', raised: 'oklch(1 0 0)', sunken: 'oklch(0.94 0.004 95)', border: 'oklch(0.89 0.004 95)', borderStrong: 'oklch(0.77 0.005 95)', text: 'oklch(0.22 0.006 260)', muted: 'oklch(0.47 0.007 260)',
+      accent: 'oklch(0.5 0.13 258)', onAccent: 'oklch(0.99 0 0)', accentSoft: 'oklch(0.94 0.025 258)', success: 'oklch(0.55 0.1 155)', successSoft: 'oklch(0.94 0.035 155)', successInk: 'oklch(0.4 0.09 155)', warn: 'oklch(0.72 0.14 75)', danger: 'oklch(0.53 0.17 25)', dangerSoft: 'oklch(0.95 0.03 25)', dangerInk: 'oklch(0.45 0.16 25)', rec: 'oklch(0.57 0.2 25)',
+      shadow: '0 8px 24px oklch(0.2 0.02 260 / 0.12), 0 1px 2px oklch(0.2 0.02 260 / 0.1)', spkC: 0.13 };
+    const B_D = { ...B_L, themeName: 'Nyomat · ' + s.dark,
+      bg: 'oklch(0.19 0.005 260)', surface: 'oklch(0.22 0.006 260)', raised: 'oklch(0.265 0.007 260)', sunken: 'oklch(0.165 0.005 260)', border: 'oklch(0.32 0.007 260)', borderStrong: 'oklch(0.44 0.008 260)', text: 'oklch(0.94 0.004 95)', muted: 'oklch(0.74 0.006 95)',
+      accent: 'oklch(0.75 0.11 255)', onAccent: 'oklch(0.18 0.03 258)', accentSoft: 'oklch(0.32 0.06 258)', success: 'oklch(0.76 0.11 155)', successSoft: 'oklch(0.31 0.05 155)', successInk: 'oklch(0.86 0.08 155)', warn: 'oklch(0.8 0.12 80)', danger: 'oklch(0.7 0.15 25)', dangerSoft: 'oklch(0.31 0.06 25)', dangerInk: 'oklch(0.85 0.08 25)', rec: 'oklch(0.64 0.19 25)',
+      shadow: '0 8px 24px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.3)' };
+    const menuIcons = ['circle-dot', 'folder-open', 'users', 'settings'];
+    const keys = ['Ctrl+N', '', 'Ctrl+P', 'Ctrl+,'];
+    return {
+      s,
+      spacing: [4, 8, 12, 16, 24, 32, 48],
+      icons: ['mic', 'monitor-speaker', 'audio-lines', 'file-text', 'sparkles', 'user-check', 'users', 'fingerprint', 'search', 'settings', 'play', 'pause', 'undo-2', 'pencil', 'trash-2', 'triangle-alert', 'lock', 'folder-open'].map(n => ({ n, u: IC(n) })),
+      i: { audio: IC('audio-lines'), finger: IC('fingerprint'), trash: IC('trash-2'), lock: IC('lock'), undo: IC('undo-2'), search: IC('search'), plus: IC('plus'), wand: IC('wand-sparkles') },
+      menu: s.menu.map((label, k) => ({ label, u: IC(menuIcons[k]), k: keys[k], hl: 'transparent' })),
+      dirs: [
+        { id: '1a', name: s.aName, desc: s.aDesc, themes: [build(A_L, false, s, lang), build(A_D, true, s, lang)] },
+        { id: '1b', chosen: true, name: s.bName, desc: s.bDesc, themes: [build(B_L, false, s, lang), build(B_D, true, s, lang)] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
