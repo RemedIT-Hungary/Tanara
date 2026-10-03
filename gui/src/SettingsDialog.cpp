@@ -222,7 +222,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
     connect(m_autoRecord, &QCheckBox::toggled, this, [this](bool on) {
         if (m_devicesGroup) m_devicesGroup->setEnabled(!on);
     });
-    tabs->addTab(recPage, tr("Rögzítés"));
+    m_recTab = tabs->addTab(recPage, tr("Rögzítés"));
 
     // ============================ Fül: Figyelő ===============================
     // Háttér-detektor: érzékeli, ha aktív hívásban vagy (egy hívás-app fogja a
@@ -292,7 +292,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         if (m_watcherAutostart) m_watcherAutostart->setEnabled(on);
         if (m_knownCallApps)    m_knownCallApps->setEnabled(on);
     });
-    tabs->addTab(watchPage, tr("Figyelő"));
+    m_watchTab = tabs->addTab(watchPage, tr("Figyelő"));
 
     // ===================== Fül 3: Külső szolgáltatások ========================
     // Az átírás + összefoglaló NEM a Tanarában fut — külső szolgáltatás a saját
@@ -354,7 +354,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         m_llm, ProviderKind::Llm, tr("Összefoglaló (LLM)"),
         tanara::LlmProviderRegistry::instance().all(), s.llmProviderId));
     el->addStretch(1);
-    tabs->addTab(extPage, tr("Külső szolgáltatások"));
+    m_extTab = tabs->addTab(extPage, tr("Külső szolgáltatások"));
 
     // ======================== Fül 4: Összefoglaló ============================
     // Az összefoglaló LLM rendszer-promptja — szabadon hangolható (séma + szabályok).
@@ -415,7 +415,7 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
         const QString metaDir = m_controller->settings()->settings().metadataDir;
         m_summaryPrompt->setPlainText(summaryPromptDefault(m_curPromptId, metaDir));
     });
-    tabs->addTab(sumPage, tr("Összefoglaló"));
+    m_summaryTab = tabs->addTab(sumPage, tr("Összefoglaló"));
 
     // ===================== Fül: Tanara Cloud ==================================
     // Egy szekció két állapota: indulás előtt a „Hamarosan” (várólista) panel, indulás után
@@ -470,6 +470,19 @@ SettingsDialog::SettingsDialog(tanara::AppController* controller, QWidget* paren
 bool SettingsDialog::showCloudTab() {
     if (!m_tabs || m_cloudTab < 0) return false;
     m_tabs->setCurrentIndex(m_cloudTab);
+    return true;
+}
+
+bool SettingsDialog::showPage(const QString& page) {
+    if (!m_tabs) return false;
+    const int idx = page == QLatin1String("providers") ? m_extTab
+                  : page == QLatin1String("watcher")   ? m_watchTab
+                  : page == QLatin1String("summary")   ? m_summaryTab
+                  : page == QLatin1String("recording") ? m_recTab
+                  : page == QLatin1String("cloud")     ? m_cloudTab
+                                                       : -1;
+    if (idx < 0) return false;
+    m_tabs->setCurrentIndex(idx);
     return true;
 }
 

@@ -37,6 +37,10 @@ public:
     // A „Tanara Cloud” fül előre (a readiness „Érdekel” / „Bejelentkezés” CTA-jából).
     // false, ha a fül nincs (a cloud és a teaser is ki van kapcsolva).
     bool showCloudTab();
+    // Egy lap előre név szerint (az új főablak hídja hívja): "providers" (Külső
+    // szolgáltatások) | "watcher" (Figyelő) | "summary" | "recording" | "cloud".
+    // false, ha nincs ilyen lap (ismeretlen név, vagy a cloud-fül nincs befordítva).
+    bool showPage(const QString& page);
 
 private slots:
     void onAccept();
@@ -113,6 +117,7 @@ private:
 
     QTabWidget* m_tabs = nullptr;
     int m_cloudTab = -1;          // a „Tanara Cloud” fül indexe (−1: nincs)
+    int m_recTab = -1, m_watchTab = -1, m_extTab = -1, m_summaryTab = -1;   // showPage()-hez
 };
 
 } // namespace tanara_gui

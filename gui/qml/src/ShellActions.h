@@ -1,0 +1,163 @@
+#pragma once
+//
+// ShellActions — a héj művelet-felülete (gui/qml/CONTRACT.md): minden, amihez Widgets-ablak,
+// cloud-becslés / bejelentkezés / hibaág, vagy az ablak tartalmának váltása kell.
+//
+// A tartalom-komponensek `shell` property-ként kapják, és SOHA nem hívják közvetlenül az
+// AppController feldolgozás-indítóit: itt fut le a régi MainWindow kapuzása —
+//   canRun (ReadinessModel) → cloud-akadály (bejelentkezés / feltöltés / frissítés) →
+//   Beállítások a megfelelő lapon → K-06 becslés-megerősítés → indítás.
+// A Widgets-t igénylő lépések a ShellBridge-en (App.bridge) mennek át; a QML-ben élő
+// párbeszédablakokat (M10 minta) és az értesítő sávot jelekkel kéri a Main.qml-től.
+//
+#include "PlayerController.h"
+
+#include "tanara/Types.h"
+#include "tanara/jobs/JobTypes.h"
+#include "tanara/provider/ReadinessModel.h"
+
+#include <QHash>
+#include <QObject>
+#include <QPointer>
+#include <QSet>
+#include <QtQml/qqmlregistration.h>
+
+namespace tanara {
+class AppController;
+}
+
+namespace tanara_qml {
+
+class ShellBridge;
+
+class ShellActions : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+
+    // A kijelölt megbeszélés ("" = nincs) és az aktív fül (0 átirat, 1 összefoglaló, 2 sávok).
+    Q_PROPERTY(QString currentMeetingId READ currentMeetingId WRITE setCurrentMeetingId
+               NOTIFY currentMeetingIdChanged)
+    Q_PROPERTY(int currentTab READ currentTab WRITE setCurrentTab NOTIFY currentTabChanged)
+    // A Main.qml lejátszója (a seekTo ezt tekeri).
+    Q_PROPERTY(tanara_qml::PlayerController* player READ player WRITE setPlayer NOTIFY playerChanged)
+    // Fut-e felvétel (a bezárás-védelemhez). Controller nélkül mindig hamis.
+    Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
+    // Növekszik, ha a lépések futtathatósága megváltozhatott (beállítások, cloud be-/kilépés):
+    // a nézetek kötésbe véve újraértékelhetik a canRun-t.
+    Q_PROPERTY(int readinessRevision READ readinessRevision NOTIFY readinessRevisionChanged)
+
+public:
+    explicit ShellActions(QObject* parent = nullptr);
+
+    // Alapból az App-singleton controllere / hídja; tesztben injektálható.
+    void setController(tanara::AppController* controller);
+    void setBridge(ShellBridge* bridge);
+
+    QString currentMeetingId() const { return m_currentMeetingId; }
+    void setCurrentMeetingId(const QString& id);
+    int currentTab() const { return m_currentTab; }
+    void setCurrentTab(int index);
+    PlayerController* player() const { return m_player; }
+    void setPlayer(PlayerController* player);
+    bool recording() const;
+    int readinessRevision() const { return m_readinessRevision; }
+
+    // ---- a szerződés műveletei ----
+    Q_INVOKABLE void openSettings(const QString& page = QString());
+    Q_INVOKABLE void openPeople();
+    Q_INVOKABLE void openRecorder();
+    Q_INVOKABLE void startTranscription(const QString& meetingId);
+    Q_INVOKABLE void retranscribe(const QString& meetingId);
+    Q_INVOKABLE void startQuickSummary(const QString& meetingId);
+    Q_INVOKABLE void startTopicExtraction(const QString& meetingId);
+    Q_INVOKABLE void startTopicAnalysis(const QString& meetingId);
+    Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId);
+    Q_INVOKABLE void identifyParticipants(const QString& meetingId);
+    Q_INVOKABLE void cancelJob(const QString& meetingId, int jobKind);
+    Q_INVOKABLE void revealInFolder(const QString& meetingId);
+    Q_INVOKABLE QString pickAudioFile();
+    Q_INVOKABLE bool confirm(const QString& title, const QString& text,
+                             const QString& confirmLabel, bool danger);
+    Q_INVOKABLE void showMeeting(const QString& meetingId);
+    Q_INVOKABLE void showTab(int index);
+    Q_INVOKABLE void seekTo(const QString& meetingId, int ms);
+    Q_INVOKABLE void toast(const QString& text);
+
+    // ---- a héj saját műveletei (a szerződésen túl) ----
+    // Az újra-átírás megerősítő ablakának adatai: { title, text, corrections, any }.
+    Q_INVOKABLE QVariantMap retranscribeImpact(const QString& meetingId) const;
+    // A megerősítő ablak „Újra-átírás” gombja: kapuzás + becslés + indítás.
+    Q_INVOKABLE void confirmRetranscribe(const QString& meetingId, bool keepBackup);
+    // Törlés: megerősítő ablakot kér (deleteDialogRequested); a megerősítés után deleteMeeting.
+    Q_INVOKABLE void requestDelete(const QString& meetingId);
+    Q_INVOKABLE void deleteMeeting(const QString& meetingId);
+    Q_INVOKABLE void renameMeeting(const QString& meetingId, const QString& title);
+    // A fejléc címének helyben szerkesztése (a könyvtár helyi menüjéből is).
+    Q_INVOKABLE void requestRename(const QString& meetingId);
+    Q_INVOKABLE void stopRecording();
+    // A főablak előtérbe hozása (pl. a felvevő „Megnyitás az elemzőben” gombja:
+    // showMeeting(id) + activateWindow()).
+    Q_INVOKABLE void activateWindow();
+    // A confirm() QML-ablakának válasza.
+    Q_INVOKABLE void resolveConfirm(bool accepted);
+    // Az átirat előtti (hang-alapú) résztvevő-tipp utolsó eredménye erre a megbeszélésre.
+    Q_INVOKABLE QString participantsGuess(const QString& meetingId) const;
+    // Van-e a megbeszélésnek átirata / létezik-e (a QML gyors kérdései).
+    Q_INVOKABLE bool meetingExists(const QString& meetingId) const;
+
+signals:
+    void currentMeetingIdChanged();
+    void currentTabChanged();
+    void playerChanged();
+    void recordingChanged();
+    void readinessRevisionChanged();
+
+    // Az Editor a megadott időpontú megszólaláshoz görget (szerződés).
+    void transcriptPositionRequested(int ms);
+
+    // ---- a Main.qml-nek ----
+    // tone: "" (semleges) | "danger"; requestId / usageLink: cloud-értesítéseknél.
+    void toastRequested(const QString& text, const QString& tone, const QString& requestId,
+                        bool usageLink);
+    void confirmRequested(const QString& title, const QString& text,
+                          const QString& confirmLabel, bool danger);
+    void retranscribeDialogRequested(const QString& meetingId);
+    void deleteDialogRequested(const QString& meetingId, const QString& title);
+    void renameRequested(const QString& meetingId);
+    void windowActivationRequested();
+    // Az átirat előtti résztvevő-tipp elkészült (PreTranscriptView megjelenítheti).
+    void participantsGuessed(const QString& meetingId, const QString& summary);
+
+private:
+    void attachController();
+    void attachBridge();
+    ShellBridge* bridge() const;
+    tanara::Meeting meeting(const QString& meetingId) const;
+    // A lépés futtathatósága; ha nem megy, a megfelelő teendőhöz visz. true = indítható.
+    bool gate(tanara::WorkflowStep step, const QString& meetingId);
+    bool estimateOk(const QString& meetingId, const QString& task, const QString& mode);
+    void bumpReadiness();
+    void onRetry(const QString& meetingId, const QString& kind);
+    void onJobFinished(const QString& meetingId, tanara::JobKind kind, tanara::JobOutcome outcome);
+    QString speakerSummary(const QString& meetingId) const;
+
+    QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::AppController> m_attachedController;
+    QPointer<ShellBridge> m_bridge;
+    QPointer<ShellBridge> m_attachedBridge;
+    bool m_controllerInjected = false;
+    bool m_bridgeInjected = false;
+    QPointer<PlayerController> m_player;
+
+    QString m_currentMeetingId;
+    int m_currentTab = 0;
+    int m_readinessRevision = 0;
+    QSet<QString> m_identifyRequested;              // a felhasználó kérte az azonosítást
+    QHash<QString, QString> m_participantGuesses;   // meetingId → összegző mondat (munkamenet)
+
+    // confirm(): beágyazott eseményhurok, amíg a QML-ablak válaszol.
+    class QEventLoop* m_confirmLoop = nullptr;
+    bool m_confirmResult = false;
+};
+
+} // namespace tanara_qml

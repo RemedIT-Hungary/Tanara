@@ -1,0 +1,574 @@
+#include "ShellActions.h"
+
+#include "AppContext.h"
+#include "LibraryDemoData.h"
+#include "PlayerController.h"
+#include "ShellBridge.h"
+
+#include "tanara/AppController.h"
+#include "tanara/cloud/CloudTypes.h"
+#include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/store/MeetingStore.h"
+
+#include <QDesktopServices>
+#include <QEventLoop>
+#include <QMetaMethod>
+#include <QUrl>
+
+namespace tanara_qml {
+
+using tanara::BlockerKind;
+using tanara::JobKind;
+using tanara::WorkflowStep;
+
+ShellActions::ShellActions(QObject* parent) : QObject(parent)
+{
+    AppContext* ctx = AppContext::instance();
+    m_controller = ctx->controller();
+    m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
+    connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
+        if (m_controllerInjected) return;
+        m_controller = ctx->controller();
+        attachController();
+    });
+    connect(ctx, &AppContext::bridgeChanged, this, [this, ctx] {
+        if (m_bridgeInjected) return;
+        m_bridge = qobject_cast<ShellBridge*>(ctx->bridge());
+        attachBridge();
+    });
+    attachController();
+    attachBridge();
+}
+
+void ShellActions::setController(tanara::AppController* controller)
+{
+    m_controllerInjected = true;
+    m_controller = controller;
+    attachController();
+}
+
+void ShellActions::setBridge(ShellBridge* bridge)
+{
+    m_bridgeInjected = true;
+    m_bridge = bridge;
+    attachBridge();
+}
+
+ShellBridge* ShellActions::bridge() const
+{
+    return m_bridge.data();
+}
+
+void ShellActions::attachController()
+{
+    if (m_controller == m_attachedController)
+        return;
+    if (m_attachedController)
+        m_attachedController->disconnect(this);
+    m_attachedController = m_controller;
+    emit recordingChanged();
+    tanara::AppController* c = m_controller;
+    if (!c)
+        return;
+
+    connect(c, &tanara::AppController::recordingStateChanged, this,
+            [this](tanara::RecordingState) { emit recordingChanged(); });
+    // Új felvétel: megjelenik a könyvtárban (a modell a store jelére frissül) és kijelölődik.
+    connect(c, &tanara::AppController::recordingFinished, this, [this](const tanara::Meeting& m) {
+        showMeeting(m.id);
+        toast(tr("Felvétel kész: %1").arg(m.title));
+    });
+    // Kész az átirat / összefoglaló: értesítés; ha épp ez a megbeszélés van nyitva, a fülre vált.
+    connect(c, &tanara::AppController::transcriptReady, this, [this](const QString& id, const QString&) {
+        toast(tr("Elkészült az átirat: %1").arg(meeting(id).title));
+        if (id == m_currentMeetingId) setCurrentTab(0);
+    });
+    connect(c, &tanara::AppController::summaryReady, this, [this](const QString& id, const QString&) {
+        toast(tr("Elkészült az összefoglaló: %1").arg(meeting(id).title));
+        if (id == m_currentMeetingId) setCurrentTab(1);
+    });
+    connect(c, &tanara::AppController::topicsReady, this,
+            [this](const QString& id, const QVector<tanara::SummaryTopic>&) {
+        if (id == m_currentMeetingId) setCurrentTab(1);
+    });
+    connect(c, &tanara::AppController::topicAnalysisQueueFinished, this,
+            [this](const QString&, int okCount, int failCount) {
+        if (failCount == 0)
+            toast(tr("%n téma elemzése kész.", nullptr, okCount));
+        else
+            toast(tr("%1, %2 — a hibásak a kártyájukon újrafuttathatók.")
+                      .arg(tr("%n téma kész", nullptr, okCount), tr("%n hibázott", nullptr, failCount)));
+    });
+    connect(c, &tanara::AppController::mixdownUpdated, this, [this](const QString&, bool ok) {
+        if (!ok) emit toastRequested(tr("A lekeverés nem sikerült."), QStringLiteral("danger"), {}, false);
+    });
+    // Feladathoz nem köthető hibák (felvétel, eszköz …). A feladatok hibáit a tracker őrzi
+    // (a nézetek hibakártyája mutatja), de a szöveges jel itt is látszik, nem modálisan.
+    connect(c, &tanara::AppController::errorOccurred, this, [this](const QString& message) {
+        emit toastRequested(message, QStringLiteral("danger"), {}, false);
+    });
+    if (tanara::MeetingJobTracker* jobs = c->jobs())
+        connect(jobs, &tanara::MeetingJobTracker::jobFinished, this, &ShellActions::onJobFinished);
+    // A kijelölt megbeszélést törölték (innen vagy máshonnan) → nincs kijelölés.
+    if (tanara::MeetingStore* store = c->store())
+        connect(store, &tanara::MeetingStore::meetingRemoved, this, [this](const QString& id) {
+            m_participantGuesses.remove(id);
+            if (id == m_currentMeetingId) setCurrentMeetingId(QString());
+        });
+}
+
+void ShellActions::attachBridge()
+{
+    if (m_bridge == m_attachedBridge)
+        return;
+    if (m_attachedBridge)
+        m_attachedBridge->disconnect(this);
+    m_attachedBridge = m_bridge;
+    ShellBridge* b = m_bridge;
+    if (!b)
+        return;
+    connect(b, &ShellBridge::toastRequested, this,
+            [this](const QString& text, const QString& requestId, bool usageLink) {
+        emit toastRequested(text, QString(), requestId, usageLink);
+    });
+    connect(b, &ShellBridge::retryRequested, this, &ShellActions::onRetry);
+    connect(b, &ShellBridge::readinessChanged, this, &ShellActions::bumpReadiness);
+}
+
+bool ShellActions::recording() const
+{
+    return m_controller && m_controller->recordingState() != tanara::RecordingState::Idle;
+}
+
+void ShellActions::bumpReadiness()
+{
+    ++m_readinessRevision;
+    emit readinessRevisionChanged();
+}
+
+tanara::Meeting ShellActions::meeting(const QString& meetingId) const
+{
+    if (m_controller && m_controller->store() && !meetingId.isEmpty())
+        return m_controller->store()->load(meetingId);
+    return {};
+}
+
+bool ShellActions::meetingExists(const QString& meetingId) const
+{
+    if (meetingId.isEmpty())
+        return false;
+    if (m_controller)
+        return !meeting(meetingId).id.isEmpty();
+    return AppContext::instance()->demo() && demo::find(meetingId);
+}
+
+// ---- navigáció -------------------------------------------------------------------------
+
+void ShellActions::setCurrentMeetingId(const QString& id)
+{
+    if (id == m_currentMeetingId)
+        return;
+    m_currentMeetingId = id;
+    emit currentMeetingIdChanged();
+}
+
+void ShellActions::setCurrentTab(int index)
+{
+    index = qBound(0, index, 2);
+    if (index == m_currentTab)
+        return;
+    m_currentTab = index;
+    emit currentTabChanged();
+}
+
+void ShellActions::setPlayer(PlayerController* player)
+{
+    if (player == m_player)
+        return;
+    m_player = player;
+    emit playerChanged();
+}
+
+void ShellActions::showMeeting(const QString& meetingId)
+{
+    setCurrentMeetingId(meetingId);
+}
+
+void ShellActions::showTab(int index)
+{
+    setCurrentTab(index);
+}
+
+void ShellActions::seekTo(const QString& meetingId, int ms)
+{
+    if (!meetingId.isEmpty())
+        showMeeting(meetingId);
+    showTab(0);
+    if (m_player) {
+        // A lejátszó meetingId-je a Main.qml kötésén át követi a kijelölést; ha a kötés még
+        // nem futott le (vagy nincs), itt biztosítjuk, hogy a jó hangot tekerjük.
+        if (!m_currentMeetingId.isEmpty() && m_player->meetingId() != m_currentMeetingId)
+            m_player->setMeetingId(m_currentMeetingId);
+        m_player->seek(ms);
+    }
+    emit transcriptPositionRequested(ms);
+}
+
+void ShellActions::toast(const QString& text)
+{
+    if (!text.isEmpty())
+        emit toastRequested(text, QString(), QString(), false);
+}
+
+// ---- Widgets-ablakok -------------------------------------------------------------------
+
+void ShellActions::openSettings(const QString& page)
+{
+    if (ShellBridge* b = bridge()) {
+        b->openSettings(page);
+        bumpReadiness();
+    } else {
+        toast(tr("A Beállítások ebben a módban nem érhetők el."));
+    }
+}
+
+void ShellActions::openPeople()
+{
+    if (ShellBridge* b = bridge())
+        b->openPeople();
+    else
+        toast(tr("A Személyek ebben a módban nem érhetők el."));
+}
+
+void ShellActions::openRecorder()
+{
+    if (ShellBridge* b = bridge())
+        b->openRecorder();
+    else
+        toast(tr("A felvevő ebben a módban nem érhető el."));
+}
+
+QString ShellActions::pickAudioFile()
+{
+    ShellBridge* b = bridge();
+    return b ? b->pickAudioFile() : QString();
+}
+
+// ---- kapuzás ---------------------------------------------------------------------------
+
+bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
+{
+    if (!m_controller || meetingId.isEmpty())
+        return false;
+    const tanara::ReadinessResult r = m_controller->canRun(step, meetingId);
+    if (r.runnable)
+        return true;
+    ShellBridge* b = bridge();
+    // Tanara Cloud: pontosan egy teendő (bejelentkezés / feltöltés / frissítés).
+    if (b && b->handleCloudBlocker(r)) {
+        bumpReadiness();
+        return false;
+    }
+    if (r.blockerKind == BlockerKind::ProviderConfig || r.blockerKind == BlockerKind::Auth) {
+        // Hiányzó szolgáltató-beállítás → a Beállítások „Külső szolgáltatások” lapja.
+        openSettings(QStringLiteral("providers"));
+    } else {
+        toast(tr("Nem indítható: %1").arg(r.detail));
+    }
+    return false;
+}
+
+bool ShellActions::estimateOk(const QString& meetingId, const QString& task, const QString& mode)
+{
+    if (!m_controller)
+        return false;
+    const WorkflowStep step = task == QLatin1String("transcribe") ? WorkflowStep::Transcribe
+                                                                  : WorkflowStep::Summarize;
+    if (!m_controller->usesCloud(step))
+        return true;                      // saját kulcs: nincs becslés
+    ShellBridge* b = bridge();
+    // Híd nélkül cloud-futás NEM indulhat megerősítés nélkül.
+    return b && b->confirmCloudEstimate(meetingId, task, mode);
+}
+
+// ---- feldolgozás -----------------------------------------------------------------------
+
+void ShellActions::startTranscription(const QString& meetingId)
+{
+    if (!gate(WorkflowStep::Transcribe, meetingId))
+        return;
+    if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
+        return;
+    m_controller->transcribeMeeting(meetingId);
+}
+
+void ShellActions::retranscribe(const QString& meetingId)
+{
+    if (meetingId.isEmpty())
+        return;
+    emit retranscribeDialogRequested(meetingId);
+}
+
+QVariantMap ShellActions::retranscribeImpact(const QString& meetingId) const
+{
+    int corrections = 23;                 // demó: az M10 minta számai
+    int named = 0;
+    if (m_controller) {
+        const tanara::RetranscribeImpact imp = m_controller->retranscribeImpact(meetingId);
+        corrections = imp.manualCorrections();
+        named = imp.namedSpeakers + imp.addedParticipants;
+    }
+    QString text;
+    if (corrections > 0)
+        text = tr("A mostani átirat és a benne lévő %n kézi javítás elvész, az összefoglaló "
+                  "elavulttá válik.", nullptr, corrections);
+    else
+        text = tr("A mostani átirat elvész, az összefoglaló elavulttá válik.");
+    if (named > 0)
+        text += QLatin1Char(' ') + tr("A beszélők elnevezése (%n beszélő) törlődik, mert az új "
+                                      "átirat másképp oszthatja fel a beszélőket.", nullptr, named);
+    text += QLatin1Char(' ') + tr("A hanglenyomatokba tanított javítások megmaradnak.");
+    return {{QStringLiteral("text"), text},
+            {QStringLiteral("corrections"), corrections},
+            {QStringLiteral("namedSpeakers"), named}};
+}
+
+void ShellActions::confirmRetranscribe(const QString& meetingId, bool keepBackup)
+{
+    if (!gate(WorkflowStep::Transcribe, meetingId))
+        return;
+    if (!estimateOk(meetingId, QStringLiteral("transcribe"), QString()))
+        return;
+    m_controller->retranscribeMeeting(meetingId, keepBackup);
+}
+
+void ShellActions::startQuickSummary(const QString& meetingId)
+{
+    if (!gate(WorkflowStep::Summarize, meetingId))
+        return;
+    if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("quick")))
+        return;
+    m_controller->summarizeMeeting(meetingId);
+}
+
+void ShellActions::startTopicExtraction(const QString& meetingId)
+{
+    if (!gate(WorkflowStep::Summarize, meetingId))
+        return;
+    // Ha már van (szerkesztett) téma-lista, a kinyerés nem hív modellt → nincs becslés.
+    const bool haveTopics = !m_controller->meetingTopics(meetingId).isEmpty();
+    if (!haveTopics
+        && !estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
+        return;
+    m_controller->extractMeetingTopics(meetingId);
+}
+
+void ShellActions::startTopicAnalysis(const QString& meetingId)
+{
+    if (!gate(WorkflowStep::Summarize, meetingId))
+        return;
+    const QVector<tanara::SummaryTopic> topics = m_controller->meetingTopics(meetingId);
+    if (topics.isEmpty()) {
+        toast(tr("Adj meg legalább egy témát."));
+        return;
+    }
+    // Cloud: becslés a hátralévő (még elemzetlen) témákra + a záró összegzésre.
+    if (!estimateOk(meetingId, QStringLiteral("summarize"), QStringLiteral("complex")))
+        return;
+    m_controller->generateComplexSummary(meetingId, topics);
+}
+
+void ShellActions::analyzeTopic(const QString& meetingId, const QString& topicId)
+{
+    if (!gate(WorkflowStep::Summarize, meetingId))
+        return;
+    const QVector<tanara::SummaryTopic> topics = m_controller->meetingTopics(meetingId);
+    for (const tanara::SummaryTopic& t : topics) {
+        if (t.id != topicId) continue;
+        if (t.title.trimmed().isEmpty()) {
+            toast(tr("A témához cím kell az elemzéshez."));
+            return;
+        }
+        m_controller->analyzeTopic(meetingId, t);
+        return;
+    }
+    toast(tr("Ez a téma már nem létezik."));
+}
+
+void ShellActions::identifyParticipants(const QString& meetingId)
+{
+    if (!m_controller || meetingId.isEmpty())
+        return;
+    const tanara::Meeting m = meeting(meetingId);
+    if (m.id.isEmpty())
+        return;
+    if (m.hasTranscript) {
+        // Átirat után: aszinkron, a feladat-sáv mutatja („3 / 5 beszélő”), megszakítható.
+        if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Identify))
+            return;
+        if (m_controller->identifyMeetingAsync(meetingId))
+            m_identifyRequested.insert(meetingId);
+        else
+            toast(tr("Az azonosítás most nem indítható (nincs hang-modell telepítve, vagy a "
+                     "megbeszélésen épp fut egy feladat)."));
+        return;
+    }
+    // Átirat előtt: előnézet a hangsávokból (nem ír a megbeszélésbe) — modális haladás-ablakkal.
+    ShellBridge* b = bridge();
+    if (!b)
+        return;
+    bool cancelled = false;
+    const QString summary = b->identifyParticipantsPreview(meetingId, &cancelled);
+    if (cancelled) {
+        toast(tr("Azonosítás megszakítva."));
+        return;
+    }
+    m_participantGuesses.insert(meetingId, summary);
+    emit participantsGuessed(meetingId, summary);
+    toast(tr("Résztvevők: %1").arg(summary));
+}
+
+QString ShellActions::participantsGuess(const QString& meetingId) const
+{
+    return m_participantGuesses.value(meetingId);
+}
+
+QString ShellActions::speakerSummary(const QString& meetingId) const
+{
+    const tanara::Meeting m = meeting(meetingId);
+    QStringList named;
+    for (auto it = m.speakerMap.constBegin(); it != m.speakerMap.constEnd(); ++it)
+        if (!it.value().trimmed().isEmpty())
+            named << it.value().trimmed();
+    named.removeDuplicates();
+    if (named.isEmpty())
+        return tr("Az azonosítás kész: egyik beszélő hangja sem ismert még. A neveket az "
+                  "átiratban adhatod meg.");
+    return tr("Az azonosítás kész. Felismert résztvevők: %1.").arg(named.join(QStringLiteral(", ")));
+}
+
+void ShellActions::onJobFinished(const QString& meetingId, JobKind kind, tanara::JobOutcome outcome)
+{
+    if (kind != JobKind::Identify || !m_identifyRequested.remove(meetingId))
+        return;
+    if (outcome == tanara::JobOutcome::Cancelled)
+        toast(tr("Azonosítás megszakítva. A már megtalált nevek megmaradtak."));
+    else if (outcome == tanara::JobOutcome::Done)
+        toast(speakerSummary(meetingId));
+}
+
+void ShellActions::cancelJob(const QString& meetingId, int jobKind)
+{
+    if (m_controller)
+        m_controller->cancelJob(meetingId, static_cast<JobKind>(jobKind));
+}
+
+void ShellActions::onRetry(const QString& meetingId, const QString& kind)
+{
+    // Újra / Folytatás egy cloud-hiba után: ugyanaz a lépés, új futás (a folytatás csak a
+    // hátralévő részekért fizet — a kész téma-elemzések a lemezen vannak).
+    if (!m_controller)
+        return;
+    if (kind == QLatin1String("transcribe"))
+        m_controller->transcribeMeeting(meetingId);
+    else if (kind == QLatin1String("summary"))
+        startQuickSummary(meetingId);
+    else if (kind == QLatin1String("topics"))
+        startTopicExtraction(meetingId);
+    else if (kind == QLatin1String("complex"))
+        startTopicAnalysis(meetingId);
+}
+
+// ---- megbeszélés-műveletek -------------------------------------------------------------
+
+void ShellActions::revealInFolder(const QString& meetingId)
+{
+    const tanara::Meeting m = meeting(meetingId);
+    if (!m.folder.isEmpty())
+        QDesktopServices::openUrl(QUrl::fromLocalFile(m.folder));
+}
+
+void ShellActions::renameMeeting(const QString& meetingId, const QString& title)
+{
+    const QString trimmed = title.trimmed();
+    if (!m_controller || trimmed.isEmpty())
+        return;
+    if (meeting(meetingId).title != trimmed)
+        m_controller->renameMeeting(meetingId, trimmed);
+}
+
+void ShellActions::requestRename(const QString& meetingId)
+{
+    if (meetingId.isEmpty())
+        return;
+    showMeeting(meetingId);
+    emit renameRequested(meetingId);
+}
+
+void ShellActions::requestDelete(const QString& meetingId)
+{
+    if (meetingId.isEmpty())
+        return;
+    QString title = meeting(meetingId).title;
+    if (title.isEmpty())
+        if (const demo::DemoMeeting* d = demo::find(meetingId))
+            title = d->entry.title;
+    emit deleteDialogRequested(meetingId, title);
+}
+
+void ShellActions::deleteMeeting(const QString& meetingId)
+{
+    if (!m_controller || meetingId.isEmpty())
+        return;
+    // Törlés előtt a futó feladatok megszakadnak (ne írjanak a törölt mappába), a lejátszó
+    // pedig elengedi a hangfájlt.
+    m_controller->cancelAllJobs(meetingId);
+    if (m_player && m_player->meetingId() == meetingId)
+        m_player->setMeetingId(QString());
+    m_controller->closeSpeakerEditor(meetingId);
+    if (meetingId == m_currentMeetingId)
+        setCurrentMeetingId(QString());
+    m_controller->deleteMeeting(meetingId);
+}
+
+void ShellActions::stopRecording()
+{
+    if (m_controller && m_controller->recordingState() == tanara::RecordingState::Recording)
+        m_controller->stopRecording();
+}
+
+void ShellActions::activateWindow()
+{
+    emit windowActivationRequested();
+}
+
+// ---- confirm(): M10-mintájú, modális megerősítés a QML-ablakban --------------------------
+
+bool ShellActions::confirm(const QString& title, const QString& text, const QString& confirmLabel,
+                           bool danger)
+{
+    static const QMetaMethod sig = QMetaMethod::fromSignal(&ShellActions::confirmRequested);
+    // Nincs, aki megjelenítse (önállóan renderelt komponens, teszt) vagy már nyitva van egy.
+    if (!isSignalConnected(sig) || m_confirmLoop)
+        return false;
+    QEventLoop loop;
+    m_confirmLoop = &loop;
+    m_confirmResult = false;
+    emit confirmRequested(title, text, confirmLabel, danger);
+    if (m_confirmLoop)                    // a QML azonnal is válaszolhatott
+        loop.exec();
+    m_confirmLoop = nullptr;
+    return m_confirmResult;
+}
+
+void ShellActions::resolveConfirm(bool accepted)
+{
+    m_confirmResult = accepted;
+    if (m_confirmLoop) {
+        QEventLoop* loop = m_confirmLoop;
+        m_confirmLoop = nullptr;
+        loop->quit();
+    }
+}
+
+} // namespace tanara_qml
