@@ -1,0 +1,1112 @@
+#include "TranscriptEditorViewModel.h"
+
+#include "AppContext.h"
+#include "TranscriptDemoSession.h"
+
+#include "tanara/AppController.h"
+#include "tanara/Paths.h"
+#include "tanara/SettingsManager.h"
+#include "tanara/edit/PeopleDirectory.h"
+#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/store/MeetingStore.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSaveFile>
+
+#include <algorithm>
+#include <cmath>
+
+using namespace tanara;
+
+namespace tanara_qml {
+
+namespace {
+
+// Az összecsukási szabály: a 6 legtöbbet beszélő mindig látszik; azon túl az ennél kisebb
+// beszédidő-hányadúak a „+N" oszlopba / „Egyéb (N)" sorba csukódnak.
+constexpr int kAlwaysVisibleLanes = 6;
+constexpr double kCollapseShare = 0.03;
+
+// Karakterenkénti hajtogatás (kisbetű, ékezet nélkül) — a hossz megmarad, így a találat
+// pozíciója visszavetíthető az eredeti szövegre.
+QString foldKeepLength(const QString& text)
+{
+    QString out;
+    out.reserve(text.size());
+    for (const QChar c : text) {
+        const QString f = foldForSearch(QString(c));
+        out += f.size() == 1 ? f.at(0) : c.toLower();
+    }
+    return out;
+}
+
+QVariantMap speakerMap(const EditorSpeaker& s, int lane)
+{
+    return {
+        {QStringLiteral("key"), s.key},
+        {QStringLiteral("name"), s.displayName},
+        {QStringLiteral("personName"), s.personName},
+        {QStringLiteral("rawLabel"), s.rawLabel},
+        {QStringLiteral("colorIndex"), s.colorIndex},
+        {QStringLiteral("hasVoiceprint"), s.hasVoiceprint},
+        {QStringLiteral("anonymous"), s.anonymous},
+        {QStringLiteral("added"), s.added},
+        {QStringLiteral("isSelf"), s.isSelf},
+        {QStringLiteral("utteranceCount"), s.utteranceCount},
+        {QStringLiteral("pct"), int(std::lround(s.talkShare * 100.0))},
+        {QStringLiteral("voiceConfidence"), s.voiceConfidence},
+        {QStringLiteral("lane"), lane},
+    };
+}
+
+} // namespace
+
+TranscriptEditorViewModel::TranscriptEditorViewModel(QObject* parent)
+    : QObject(parent), m_rows(new TranscriptListModel(this))
+{
+    m_overviewTimer.setSingleShot(true);
+    m_overviewTimer.setInterval(0);
+    connect(&m_overviewTimer, &QTimer::timeout, this, &TranscriptEditorViewModel::rebuildOverview);
+}
+
+void TranscriptEditorViewModel::componentComplete()
+{
+    m_deferred = false;
+    resolveSession();
+}
+
+TranscriptEditorViewModel::~TranscriptEditorViewModel()
+{
+    detach();
+}
+
+// ---- munkamenet -------------------------------------------------------------
+
+void TranscriptEditorViewModel::setMeetingId(const QString& id)
+{
+    if (m_meetingId == id) return;
+    m_meetingId = id;
+    emit meetingIdChanged();
+    resolveSession();
+}
+
+void TranscriptEditorViewModel::setDemoVariant(const QString& variant)
+{
+    if (m_demoVariant == variant) return;
+    m_demoVariant = variant;
+    emit demoVariantChanged();
+    if (m_demoSession) {
+        detach();
+        m_demoSession.reset();
+    }
+    resolveSession();
+}
+
+void TranscriptEditorViewModel::setController(AppController* controller)
+{
+    m_controllerInjected = true;
+    if (m_controller == controller) return;
+    if (m_controller) m_controller->disconnect(this);
+    m_controller = controller;
+    resolveSession();
+}
+
+void TranscriptEditorViewModel::setPeopleProvider(std::function<QVector<PersonInfo>()> provider)
+{
+    m_peopleProvider = std::move(provider);
+    emit peopleChanged();
+}
+
+void TranscriptEditorViewModel::setUiStatePath(const QString& path)
+{
+    m_uiStatePath = path;
+    m_uiStatePathSet = true;
+}
+
+void TranscriptEditorViewModel::setEditor(SpeakerEditor* editor)
+{
+    m_editorInjected = editor != nullptr;
+    detach();
+    m_demoSession.reset();
+    if (editor) attach(editor);
+    else reloadAll();
+}
+
+void TranscriptEditorViewModel::resolveSession()
+{
+    if (m_deferred || m_editorInjected) return;
+    if (!m_controllerInjected) {
+        AppController* c = AppContext::instance()->controller();
+        if (m_controller != c) {
+            if (m_controller) m_controller->disconnect(this);
+            m_controller = c;
+        }
+    }
+    if (m_controller) {
+        connect(m_controller, &AppController::peopleChanged,
+                this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
+        connect(m_controller, &AppController::voiceprintsChanged,
+                this, &TranscriptEditorViewModel::peopleChanged, Qt::UniqueConnection);
+        if (!m_uiStatePathSet)
+            m_uiStatePath = paths::metadataFile(QStringLiteral("ui-transcript.json"),
+                                                m_controller->settings()->settings().metadataDir);
+        m_demoSession.reset();
+        SpeakerEditor* ed = m_meetingId.isEmpty() ? nullptr : m_controller->speakerEditor(m_meetingId);
+        m_legacyTranscript = ed && !ed->hasTranscript()
+            && m_controller->store()->load(m_meetingId).hasTranscript;
+        if (ed == m_editor && ed) return;
+        detach();
+        if (ed) attach(ed);
+        else reloadAll();
+        return;
+    }
+    // Nincs controller (demó / képernyőkép / galéria): a beépített kitalált meeting.
+    if (m_demoSession) return;
+    detach();
+    m_demoSession = std::make_unique<TranscriptDemoSession>(m_demoVariant);
+    attach(m_demoSession->editor());
+}
+
+void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
+{
+    m_editor = editor;
+    connect(editor, &SpeakerEditor::utterancesChanged, this, &TranscriptEditorViewModel::onUtterancesChanged);
+    connect(editor, &SpeakerEditor::speakersChanged, this, &TranscriptEditorViewModel::onSpeakersChanged);
+    connect(editor, &SpeakerEditor::uncertainCountChanged, this, [this](int n) {
+        if (m_uncertainCount == n) return;
+        m_uncertainCount = n;
+        emit uncertainCountChanged();
+    });
+    connect(editor, &SpeakerEditor::undoStateChanged, this, &TranscriptEditorViewModel::undoStateChanged);
+    connect(editor, &SpeakerEditor::suggestionChanged, this, &TranscriptEditorViewModel::onSuggestionChanged);
+    connect(editor, &SpeakerEditor::embeddingRunningChanged, this, [this](bool running) {
+        if (running) m_embeddingProgress = 0.0;
+        emit voiceStateChanged();
+    });
+    connect(editor, &SpeakerEditor::embeddingProgress, this, [this](int done, int total) {
+        m_embeddingProgress = total > 0 ? qreal(done) / qreal(total) : 0.0;
+        emit voiceStateChanged();
+    });
+    connect(editor, &SpeakerEditor::embeddingFinished, this, [this](bool complete) {
+        m_embeddingFailed = !complete && !m_cancelRequested;
+        m_cancelRequested = false;
+        if (complete) m_embeddingProgress = 1.0;
+        updateVoiceNote();
+        emit voiceStateChanged();
+        applyPendingDemoState();
+    });
+    connect(editor, &SpeakerEditor::reloaded, this, &TranscriptEditorViewModel::reloadAll);
+    connect(editor, &QObject::destroyed, this, [this] {
+        m_editor = nullptr;
+        reloadAll();
+    });
+    reloadAll();
+}
+
+void TranscriptEditorViewModel::detach()
+{
+    if (!m_editor) return;
+    m_editor->disconnect(this);
+    // A háttérben futó hang-elemzés ne dolgozzon egy már nem látszó meetingen (a kész rész
+    // a cache-ben marad; visszatéréskor onnan folytatódik).
+    if (!m_editorInjected && m_editor->isEmbeddingRunning()) m_editor->cancelEmbedding();
+    m_editor = nullptr;
+}
+
+void TranscriptEditorViewModel::reloadAll()
+{
+    m_utts = m_editor ? m_editor->utterances() : QVector<EditorUtterance>();
+    m_uttIndex.clear();
+    m_uttIndex.reserve(m_utts.size());
+    for (int i = 0; i < m_utts.size(); ++i) m_uttIndex.insert(m_utts[i].id, i);
+    m_durationMs = m_utts.isEmpty() ? 0 : m_utts.last().endMs;
+    for (const EditorUtterance& u : std::as_const(m_utts)) m_durationMs = std::max(m_durationMs, u.endMs);
+
+    m_selected.clear();
+    m_anchor = -1;
+    m_suggested.clear();
+    m_suggestionAnchor = -1;
+    m_suggestionShown = false;
+    m_suggestionTargetName.clear();
+    m_folded.clear();
+    m_playingUtt = -1;
+    m_playingRow = -1;
+    m_lanesExpanded = false;
+    m_embeddingFailed = false;
+    m_embeddingProgress = 0.0;
+    m_uncertainCount = m_editor ? m_editor->uncertainCount() : 0;
+    m_uncertainOnly = false;
+    m_railVisible = loadRailState();
+
+    rebuildSpeakers(/*recomputeCollapsed*/ true);
+    m_rows->rebuild();
+    onSuggestionChanged();
+    updateSearch();
+    rebuildOverview();
+    updateVoiceNote();
+
+    emit sessionChanged();
+    emit speakersChanged();
+    emit uncertainCountChanged();
+    emit uncertainOnlyChanged();
+    emit railVisibleChanged();
+    emit selectionChanged();
+    emit undoStateChanged();
+    emit playingRowChanged();
+    emit voiceStateChanged();
+    emit peopleChanged();
+
+    startEmbeddingIfNeeded();
+}
+
+void TranscriptEditorViewModel::startEmbeddingIfNeeded()
+{
+    if (!m_editor || m_utts.isEmpty()) return;
+    if (!m_editor->embeddingsSupported() || m_editor->embeddingsComplete()
+        || m_editor->isEmbeddingRunning())
+        return;
+    m_cancelRequested = false;
+    m_editor->startEmbedding();
+}
+
+// ---- a szerkesztő jelei -----------------------------------------------------
+
+void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
+{
+    if (!m_editor) return;
+    QVector<int> changed;
+    changed.reserve(ids.size());
+    for (const QString& id : ids) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i < 0) continue;
+        m_utts[i] = m_editor->utterance(id);
+        changed.append(i);
+    }
+    if (changed.isEmpty()) return;
+    if (m_uncertainOnly) m_rows->syncFilter();
+    m_rows->notifyUtterances(changed);
+    updatePlayingRow();
+    scheduleOverview();
+}
+
+void TranscriptEditorViewModel::onSpeakersChanged()
+{
+    const QHash<QString, SpeakerView> before = m_views;
+    rebuildSpeakers(/*recomputeCollapsed*/ false);
+    bool viewsChanged = before.size() != m_views.size();
+    for (auto it = m_views.constBegin(); !viewsChanged && it != m_views.constEnd(); ++it) {
+        const auto old = before.constFind(it.key());
+        viewsChanged = old == before.constEnd() || old->name != it->name
+            || old->colorIndex != it->colorIndex || old->lane != it->lane;
+    }
+    // Csak akkor nyúlunk a sorokhoz, ha név / szín / oszlop tényleg változott (egy sima
+    // áthelyezésnél csak a számlálók módosulnak).
+    if (viewsChanged)
+        m_rows->notifyAll({TranscriptListModel::SpeakerNameRole, TranscriptListModel::ColorIndexRole,
+                           TranscriptListModel::LaneRole, TranscriptListModel::HeadRole});
+    if (m_suggestionAnchor >= 0) {
+        const QString name = m_views.value(m_editor ? m_editor->suggestion().targetSpeaker : QString()).name;
+        if (name != m_suggestionTargetName) {
+            m_suggestionTargetName = name;
+            emit suggestionChanged();
+        }
+    }
+    emit speakersChanged();
+    scheduleOverview();
+}
+
+void TranscriptEditorViewModel::onSuggestionChanged()
+{
+    QVector<int> touched;
+    for (int i : std::as_const(m_suggested)) touched.append(i);
+    const int oldAnchor = m_suggestionAnchor;
+    if (oldAnchor >= 0) touched.append(oldAnchor);
+
+    m_suggested.clear();
+    m_suggestionAnchor = -1;
+    m_suggestionTargetName.clear();
+    if (m_editor && m_editor->hasSuggestion()) {
+        const SpeakerSuggestion s = m_editor->suggestion();
+        for (const QString& id : s.utteranceIds) {
+            const int i = m_uttIndex.value(id, -1);
+            if (i >= 0) m_suggested.insert(i);
+        }
+        m_suggestionAnchor = m_uttIndex.value(s.anchorUtteranceId, -1);
+        m_suggestionTargetName = m_views.value(s.targetSpeaker).name;
+        if (m_suggested.isEmpty()) m_suggestionAnchor = -1;
+    }
+    if (m_suggestionAnchor < 0) m_suggestionShown = false;
+    for (int i : std::as_const(m_suggested)) touched.append(i);
+    if (m_suggestionAnchor >= 0) touched.append(m_suggestionAnchor);
+
+    if (m_uncertainOnly && oldAnchor != m_suggestionAnchor) m_rows->syncFilter();
+    m_rows->notifyUtterances(touched, {TranscriptListModel::SuggestedRole,
+                                       TranscriptListModel::SuggestionAnchorRole});
+    emit suggestionChanged();
+    scheduleOverview();
+}
+
+// ---- beszélők / sávok -------------------------------------------------------
+
+void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
+{
+    m_speakers = m_editor ? m_editor->speakers() : QVector<EditorSpeaker>();
+    // Saját magam elöl; a többiek az első megjelenés (colorIndex) sorrendjében — ez a sorrend
+    // szerkesztés közben nem ugrál.
+    std::stable_sort(m_speakers.begin(), m_speakers.end(),
+                     [](const EditorSpeaker& a, const EditorSpeaker& b) { return a.isSelf && !b.isSelf; });
+
+    QSet<QString> keys;
+    for (const EditorSpeaker& s : std::as_const(m_speakers)) keys.insert(s.key);
+
+    if (recomputeCollapsed) {
+        m_collapsed.clear();
+        QVector<const EditorSpeaker*> byTime;
+        for (const EditorSpeaker& s : std::as_const(m_speakers)) byTime.append(&s);
+        std::stable_sort(byTime.begin(), byTime.end(), [](const EditorSpeaker* a, const EditorSpeaker* b) {
+            return a->talkTimeMs > b->talkTimeMs;
+        });
+        for (int i = kAlwaysVisibleLanes; i < byTime.size(); ++i)
+            if (byTime[i]->talkShare < kCollapseShare && !byTime[i]->isSelf) m_collapsed.insert(byTime[i]->key);
+        // Egyetlen beszélőt nem éri meg csoportba csukni (a „+1" oszlop sem keskenyebb érdemben).
+        if (m_collapsed.size() < 2) m_collapsed.clear();
+    } else {
+        // Szerkesztés közben a csoport nem rendeződik át: csak a megszűnt kulcsok esnek ki;
+        // az újonnan felvett résztvevő mindig látható oszlopot kap.
+        for (auto it = m_collapsed.begin(); it != m_collapsed.end();)
+            it = keys.contains(*it) ? std::next(it) : m_collapsed.erase(it);
+    }
+
+    m_laneKeys.clear();
+    m_views.clear();
+    m_lanes.clear();
+    m_speakerList.clear();
+    for (const EditorSpeaker& s : std::as_const(m_speakers)) {
+        const bool visible = m_lanesExpanded || !m_collapsed.contains(s.key);
+        int lane = -1;
+        if (visible) {
+            lane = int(m_laneKeys.size());
+            m_laneKeys << s.key;
+        }
+        m_views.insert(s.key, SpeakerView{s.displayName, s.colorIndex, lane});
+        const QVariantMap map = speakerMap(s, lane);
+        if (visible) m_lanes.append(map);
+        m_speakerList.append(map);
+    }
+    m_collapsedShown = int(m_collapsed.size());
+}
+
+void TranscriptEditorViewModel::setLanesExpanded(bool expanded)
+{
+    if (m_lanesExpanded == expanded) return;
+    m_lanesExpanded = expanded;
+    rebuildSpeakers(false);
+    m_rows->notifyAll({TranscriptListModel::LaneRole});
+    emit speakersChanged();
+    rebuildOverview();
+}
+
+QString TranscriptEditorViewModel::laneKey(int lane) const
+{
+    return lane >= 0 && lane < m_laneKeys.size() ? m_laneKeys[lane] : QString();
+}
+
+// ---- áttekintő --------------------------------------------------------------
+
+void TranscriptEditorViewModel::scheduleOverview()
+{
+    if (!m_overviewTimer.isActive()) m_overviewTimer.start();
+}
+
+void TranscriptEditorViewModel::setTimelineMs(int ms)
+{
+    if (m_timelineMs == ms) return;
+    m_timelineMs = ms;
+    rebuildOverview();
+}
+
+void TranscriptEditorViewModel::rebuildOverview()
+{
+    m_overviewTimer.stop();
+    const double total = double(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+    const bool other = !m_lanesExpanded && !m_collapsed.isEmpty();
+    const int rowCount = int(m_laneKeys.size()) + (other ? 1 : 0);
+    QVector<QList<qreal>> segs(rowCount), marks(rowCount);
+    QVector<int> lastEnd(rowCount, -1);     // az utolsó szegmens megszólalás-indexe (összevonáshoz)
+
+    for (int i = 0; i < m_utts.size(); ++i) {
+        const EditorUtterance& u = m_utts[i];
+        int row = m_views.value(u.speakerKey).lane;
+        if (row < 0) row = other ? rowCount - 1 : -1;
+        if (row < 0) continue;
+        const qreal x = qreal(u.startMs) / total;
+        const qreal w = qreal(std::max<qint64>(0, u.endMs - u.startMs)) / total;
+        QList<qreal>& s = segs[row];
+        // Az egymást követő megszólalások (ugyanaz a beszélő, köztük nincs más) egy sávvá olvadnak.
+        if (lastEnd[row] == i - 1 && s.size() >= 2 && x - (s[s.size() - 2] + s.last()) < 0.004) {
+            s.last() = x + w - s[s.size() - 2];
+        } else {
+            s << x << w;
+        }
+        lastEnd[row] = i;
+        if (m_suggestionShown && m_suggested.contains(i)) marks[row] << x << w;
+    }
+
+    m_overview.clear();
+    double otherShare = 0.0;
+    for (const EditorSpeaker& s : std::as_const(m_speakers)) {
+        const int lane = m_views.value(s.key).lane;
+        if (lane < 0) {
+            otherShare += s.talkShare;
+            continue;
+        }
+        m_overview.append(QVariantMap{
+            {QStringLiteral("key"), s.key},
+            {QStringLiteral("name"), s.displayName},
+            {QStringLiteral("colorIndex"), s.colorIndex},
+            {QStringLiteral("pct"), int(std::lround(s.talkShare * 100.0))},
+            {QStringLiteral("segments"), QVariant::fromValue(segs[lane])},
+            {QStringLiteral("marks"), QVariant::fromValue(marks[lane])},
+        });
+    }
+    if (other) {
+        m_overview.append(QVariantMap{
+            {QStringLiteral("key"), QString()},
+            {QStringLiteral("name"), tr("Egyéb (%1)").arg(m_collapsed.size())},
+            {QStringLiteral("colorIndex"), -1},
+            {QStringLiteral("pct"), int(std::lround(otherShare * 100.0))},
+            {QStringLiteral("segments"), QVariant::fromValue(segs[rowCount - 1])},
+            {QStringLiteral("marks"), QVariant::fromValue(marks[rowCount - 1])},
+        });
+    }
+    emit overviewChanged();
+}
+
+// ---- sín / szűrő ------------------------------------------------------------
+
+bool TranscriptEditorViewModel::loadRailState() const
+{
+    if (m_uiStatePath.isEmpty() || !m_editor) return false;
+    QFile f(m_uiStatePath);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    return QJsonDocument::fromJson(f.readAll()).object()
+        .value(QStringLiteral("rail")).toObject().value(m_editor->meetingId()).toBool(false);
+}
+
+void TranscriptEditorViewModel::saveRailState() const
+{
+    if (m_uiStatePath.isEmpty() || !m_editor || m_demoSession) return;
+    QJsonObject root;
+    {
+        QFile f(m_uiStatePath);
+        if (f.open(QIODevice::ReadOnly)) root = QJsonDocument::fromJson(f.readAll()).object();
+    }
+    QJsonObject rail = root.value(QStringLiteral("rail")).toObject();
+    // Az alapértelmezés a rejtett sín: csak a bekapcsoltakat tároljuk.
+    if (m_railVisible) rail.insert(m_editor->meetingId(), true);
+    else rail.remove(m_editor->meetingId());
+    root.insert(QStringLiteral("rail"), rail);
+    QDir().mkpath(QFileInfo(m_uiStatePath).absolutePath());
+    QSaveFile out(m_uiStatePath);
+    if (!out.open(QIODevice::WriteOnly)) return;
+    out.write(QJsonDocument(root).toJson());
+    out.commit();
+}
+
+void TranscriptEditorViewModel::setRailVisible(bool visible)
+{
+    if (m_railVisible == visible) return;
+    m_railVisible = visible;
+    saveRailState();
+    emit railVisibleChanged();
+}
+
+void TranscriptEditorViewModel::setUncertainOnly(bool on)
+{
+    if (m_uncertainOnly == on) return;
+    m_uncertainOnly = on;
+    m_rows->rebuild();
+    updatePlayingRow();
+    emit uncertainOnlyChanged();
+    emit selectionChanged();
+}
+
+// ---- undo / javaslat --------------------------------------------------------
+
+bool TranscriptEditorViewModel::canUndo() const { return m_editor && m_editor->canUndo(); }
+bool TranscriptEditorViewModel::canRedo() const { return m_editor && m_editor->canRedo(); }
+QString TranscriptEditorViewModel::undoText() const { return m_editor ? m_editor->undoText() : QString(); }
+QString TranscriptEditorViewModel::redoText() const { return m_editor ? m_editor->redoText() : QString(); }
+
+void TranscriptEditorViewModel::undo()
+{
+    if (m_editor) m_editor->undo();
+}
+
+void TranscriptEditorViewModel::redo()
+{
+    if (m_editor) m_editor->redo();
+}
+
+void TranscriptEditorViewModel::setSuggestionShown(bool shown)
+{
+    if (m_suggestionAnchor < 0) shown = false;
+    if (m_suggestionShown == shown) return;
+    m_suggestionShown = shown;
+    QVector<int> touched;
+    for (int i : std::as_const(m_suggested)) touched.append(i);
+    m_rows->notifyUtterances(touched, {TranscriptListModel::SuggestedRole});
+    emit suggestionChanged();
+    rebuildOverview();
+    if (shown) {
+        // A javasolt sorok a sínen látszanak: kapcsoljuk be, és ugorjunk az elsőre.
+        setRailVisible(true);
+        int first = -1;
+        for (int i : std::as_const(m_suggested)) first = first < 0 ? i : std::min(first, i);
+        const int row = m_rows->nearestRow(first);
+        if (row >= 0) emit revealRequested(row);
+    }
+}
+
+bool TranscriptEditorViewModel::acceptSuggestion()
+{
+    return m_editor && m_editor->acceptSuggestion();
+}
+
+void TranscriptEditorViewModel::dismissSuggestion()
+{
+    if (m_editor) m_editor->dismissSuggestion();
+}
+
+// ---- hang-elemzés -----------------------------------------------------------
+
+bool TranscriptEditorViewModel::voiceAvailable() const
+{
+    return m_editor && m_editor->embeddingsSupported() && !m_embeddingFailed;
+}
+
+bool TranscriptEditorViewModel::embeddingRunning() const
+{
+    return m_editor && m_editor->isEmbeddingRunning();
+}
+
+void TranscriptEditorViewModel::updateVoiceNote()
+{
+    QString note;
+    if (m_editor && !m_utts.isEmpty()) {
+        if (!m_editor->embeddingsSupported())
+            note = tr("Nincs letöltve a hangmodell, ezért a bizonytalan sorok jelölése, a hasonló sorok "
+                      "felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.");
+        else if (m_embeddingFailed)
+            note = tr("A megbeszélés lekevert hangja nem érhető el, ezért a bizonytalan sorok jelölése, a "
+                      "hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés "
+                      "enélkül is működik.");
+    }
+    m_voiceNote = note;
+}
+
+// ---- keresés ----------------------------------------------------------------
+
+void TranscriptEditorViewModel::setSearchQuery(const QString& query)
+{
+    if (m_searchQuery == query) return;
+    m_searchQuery = query;
+    updateSearch();
+    if (!m_matches.isEmpty()) {
+        m_searchCurrent = 0;
+        // Az első találat a mostani lejátszási / kijelölési hely után legyen, ha van ilyen.
+        m_rows->notifyUtterances({m_matches[0]}, {TranscriptListModel::RichTextRole});
+        const int row = m_rows->nearestRow(m_matches[0]);
+        emit searchChanged();
+        if (row >= 0) emit revealRequested(row);
+    }
+}
+
+void TranscriptEditorViewModel::updateSearch()
+{
+    const QString needle = foldKeepLength(m_searchQuery.trimmed());
+    m_matches.clear();
+    m_matchSet.clear();
+    m_searchCurrent = -1;
+    if (!needle.isEmpty()) {
+        if (m_folded.size() != m_utts.size()) {
+            m_folded.resize(m_utts.size());
+            for (int i = 0; i < m_utts.size(); ++i) m_folded[i] = foldKeepLength(m_utts[i].text);
+        }
+        for (int i = 0; i < m_utts.size(); ++i) {
+            if (!m_folded[i].contains(needle)) continue;
+            m_matches.append(i);
+            m_matchSet.insert(i);
+        }
+    }
+    m_rows->notifyAll({TranscriptListModel::RichTextRole});
+    emit searchChanged();
+}
+
+int TranscriptEditorViewModel::searchStep(int direction)
+{
+    if (m_matches.isEmpty()) return -1;
+    const int n = int(m_matches.size());
+    const int previous = m_searchCurrent;
+    m_searchCurrent = ((m_searchCurrent < 0 ? (direction >= 0 ? -1 : 0) : m_searchCurrent)
+                       + (direction >= 0 ? 1 : -1) + n) % n;
+    QVector<int> touched{m_matches[m_searchCurrent]};
+    if (previous >= 0 && previous < n) touched.append(m_matches[previous]);
+    m_rows->notifyUtterances(touched, {TranscriptListModel::RichTextRole});
+    emit searchChanged();
+    const int row = m_rows->nearestRow(m_matches[m_searchCurrent]);
+    if (row >= 0) emit revealRequested(row);
+    return row;
+}
+
+QString TranscriptEditorViewModel::richText(int utterance) const
+{
+    if (!m_matchSet.contains(utterance) || utterance >= m_folded.size()) return QString();
+    const QString needle = foldKeepLength(m_searchQuery.trimmed());
+    const QString& text = m_utts[utterance].text;
+    const QString& folded = m_folded[utterance];
+    const bool current = m_searchCurrent >= 0 && m_searchCurrent < m_matches.size()
+        && m_matches[m_searchCurrent] == utterance;
+    const QString open = QStringLiteral("<span style=\"background-color:%1\">")
+        .arg((current ? m_highlightCurrent : m_highlight).name());
+    QString out;
+    int pos = 0;
+    for (;;) {
+        const int hit = int(folded.indexOf(needle, pos));
+        if (hit < 0) break;
+        out += text.mid(pos, hit - pos).toHtmlEscaped();
+        out += open + text.mid(hit, needle.size()).toHtmlEscaped() + QStringLiteral("</span>");
+        pos = hit + int(needle.size());
+    }
+    out += text.mid(pos).toHtmlEscaped();
+    return out;
+}
+
+void TranscriptEditorViewModel::setHighlightColor(const QColor& c)
+{
+    if (m_highlight == c) return;
+    m_highlight = c;
+    if (!m_matches.isEmpty()) m_rows->notifyAll({TranscriptListModel::RichTextRole});
+    emit highlightColorChanged();
+}
+
+void TranscriptEditorViewModel::setHighlightCurrentColor(const QColor& c)
+{
+    if (m_highlightCurrent == c) return;
+    m_highlightCurrent = c;
+    if (!m_matches.isEmpty()) m_rows->notifyAll({TranscriptListModel::RichTextRole});
+    emit highlightColorChanged();
+}
+
+// ---- pozíció / lejátszás ----------------------------------------------------
+
+QString TranscriptEditorViewModel::timeLabel(qint64 ms)
+{
+    const qint64 s = ms / 1000;
+    if (s >= 3600)
+        return QStringLiteral("%1:%2:%3").arg(s / 3600).arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
+            .arg(s % 60, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2").arg(s / 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+
+int TranscriptEditorViewModel::utteranceForTime(int ms) const
+{
+    if (m_utts.isEmpty()) return -1;
+    // Az utolsó megszólalás, amely legkésőbb `ms`-kor kezdődik (a sorok időrendben állnak).
+    const auto it = std::upper_bound(m_utts.cbegin(), m_utts.cend(), qint64(ms),
+                                     [](qint64 t, const EditorUtterance& u) { return t < u.startMs; });
+    if (it == m_utts.cbegin()) return 0;
+    return int(std::distance(m_utts.cbegin(), it)) - 1;
+}
+
+int TranscriptEditorViewModel::rowForTime(int ms) const
+{
+    return m_rows->nearestRow(utteranceForTime(ms));
+}
+
+void TranscriptEditorViewModel::setPlaybackPosition(int ms, bool active)
+{
+    m_playbackMs = ms;
+    m_playbackActive = active;
+    updatePlayingRow();
+}
+
+void TranscriptEditorViewModel::updatePlayingRow()
+{
+    int utt = -1;
+    if (m_playbackActive && !m_utts.isEmpty() && m_playbackMs >= m_utts.first().startMs)
+        utt = utteranceForTime(m_playbackMs);
+    const int row = utt >= 0 ? m_rows->rowOfUtterance(utt) : -1;
+    if (utt == m_playingUtt && row == m_playingRow) return;
+    m_playingUtt = utt;
+    m_playingRow = row;
+    emit playingRowChanged();
+}
+
+int TranscriptEditorViewModel::rowStartMs(int row) const
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 ? int(m_utts[u].startMs) : -1;
+}
+
+int TranscriptEditorViewModel::rowEndMs(int row) const
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 ? int(m_utts[u].endMs) : -1;
+}
+
+qreal TranscriptEditorViewModel::rowStartFraction(int row) const
+{
+    const auto& rows = m_rows->rows();
+    if (row < 0 || row >= rows.size() || m_utts.isEmpty()) return 0.0;
+    const qreal total = qreal(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+    return qreal(m_utts[rows[row].utterance].startMs) / total;
+}
+
+qreal TranscriptEditorViewModel::rowEndFraction(int row) const
+{
+    const auto& rows = m_rows->rows();
+    if (row < 0 || row >= rows.size() || m_utts.isEmpty()) return 0.0;
+    const qreal total = qreal(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+    const TranscriptListModel::Row& r = rows[row];
+    const int last = r.gap ? r.utterance + r.hidden - 1 : r.utterance;
+    return qreal(m_utts[std::clamp(last, 0, int(m_utts.size()) - 1)].endMs) / total;
+}
+
+int TranscriptEditorViewModel::timeAtFraction(qreal fraction) const
+{
+    const qreal total = qreal(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+    return int(std::clamp(fraction, 0.0, 1.0) * total);
+}
+
+// ---- kijelölés --------------------------------------------------------------
+
+int TranscriptEditorViewModel::currentRow() const
+{
+    if (m_selected.isEmpty()) return -1;
+    if (m_anchor >= 0 && m_selected.contains(m_anchor)) return m_rows->rowOfUtterance(m_anchor);
+    int first = -1;
+    for (int i : m_selected) first = first < 0 ? i : std::min(first, i);
+    return m_rows->rowOfUtterance(first);
+}
+
+void TranscriptEditorViewModel::setSelection(const QSet<int>& selection, int anchor)
+{
+    QVector<int> touched;
+    for (int i : m_selected)
+        if (!selection.contains(i)) touched.append(i);
+    for (int i : selection)
+        if (!m_selected.contains(i)) touched.append(i);
+    m_anchor = anchor;
+    if (touched.isEmpty()) return;
+    m_selected = selection;
+    m_rows->notifyUtterances(touched, {TranscriptListModel::SelectedRole});
+    emit selectionChanged();
+}
+
+void TranscriptEditorViewModel::selectRow(int row, bool toggle, bool range)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    if (u < 0) return;
+    if (range && m_anchor >= 0) {
+        const int anchorRow = m_rows->rowOfUtterance(m_anchor);
+        if (anchorRow >= 0) {
+            QSet<int> sel = toggle ? m_selected : QSet<int>();
+            for (int r = std::min(anchorRow, row); r <= std::max(anchorRow, row); ++r) {
+                const int i = m_rows->utteranceOfRow(r);
+                if (i >= 0) sel.insert(i);
+            }
+            setSelection(sel, m_anchor);
+            return;
+        }
+    }
+    if (toggle) {
+        QSet<int> sel = m_selected;
+        if (sel.contains(u)) sel.remove(u);
+        else sel.insert(u);
+        setSelection(sel, u);
+        return;
+    }
+    // Sima kattintás: csak ez a sor; az egyetlen kijelölt sorra újra kattintva megszűnik.
+    if (m_selected.size() == 1 && m_selected.contains(u)) setSelection({}, -1);
+    else setSelection({u}, u);
+}
+
+void TranscriptEditorViewModel::selectOnly(int row)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    if (u >= 0) setSelection({u}, u);
+}
+
+void TranscriptEditorViewModel::selectRows(int fromRow, int toRow)
+{
+    QSet<int> sel;
+    for (int r = std::min(fromRow, toRow); r <= std::max(fromRow, toRow); ++r) {
+        const int i = m_rows->utteranceOfRow(r);
+        if (i >= 0) sel.insert(i);
+    }
+    setSelection(sel, m_rows->utteranceOfRow(fromRow));
+}
+
+void TranscriptEditorViewModel::clearSelection()
+{
+    setSelection({}, -1);
+}
+
+int TranscriptEditorViewModel::stepSelection(int delta)
+{
+    const auto& rows = m_rows->rows();
+    if (rows.isEmpty() || delta == 0) return -1;
+    int row = currentRow();
+    if (row < 0) row = m_playingRow >= 0 ? m_playingRow - (delta > 0 ? 1 : -1) : (delta > 0 ? -1 : int(rows.size()));
+    const int step = delta > 0 ? 1 : -1;
+    for (int r = row + step; r >= 0 && r < rows.size(); r += step) {
+        if (rows[r].gap) continue;
+        setSelection({rows[r].utterance}, rows[r].utterance);
+        return r;
+    }
+    return -1;
+}
+
+bool TranscriptEditorViewModel::isRowSelected(int row) const
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 && m_selected.contains(u);
+}
+
+QStringList TranscriptEditorViewModel::selectedIds() const
+{
+    QVector<int> sorted(m_selected.cbegin(), m_selected.cend());
+    std::sort(sorted.begin(), sorted.end());
+    QStringList ids;
+    for (int i : std::as_const(sorted)) ids << m_utts[i].id;
+    return ids;
+}
+
+QStringList TranscriptEditorViewModel::idsOfRows(int fromRow, int toRow) const
+{
+    QStringList ids;
+    for (int r = std::min(fromRow, toRow); r <= std::max(fromRow, toRow); ++r) {
+        const int i = m_rows->utteranceOfRow(r);
+        if (i >= 0) ids << m_utts[i].id;
+    }
+    return ids;
+}
+
+// ---- műveletek --------------------------------------------------------------
+
+void TranscriptEditorViewModel::afterMove(const QString& targetKey)
+{
+    // Ha a cél épp összecsukott oszlopban volt, kapjon saját oszlopot (lássa a felhasználó,
+    // hova került a sor).
+    if (!targetKey.isEmpty() && m_collapsed.remove(targetKey)) {
+        rebuildSpeakers(false);
+        m_rows->notifyAll({TranscriptListModel::LaneRole});
+        emit speakersChanged();
+        rebuildOverview();
+    }
+}
+
+bool TranscriptEditorViewModel::moveRowToLane(int row, int lane)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    const QString key = laneKey(lane);
+    if (!m_editor || u < 0 || key.isEmpty()) return false;
+    const bool wholeSelection = m_selected.size() > 1 && m_selected.contains(u);
+    const QStringList ids = wholeSelection ? selectedIds() : QStringList{m_utts[u].id};
+    if (!m_editor->moveUtterances(ids, key)) return false;
+    if (wholeSelection) clearSelection();
+    return true;
+}
+
+bool TranscriptEditorViewModel::moveRowsToLane(int fromRow, int toRow, int lane)
+{
+    const QString key = laneKey(lane);
+    if (!m_editor || key.isEmpty()) return false;
+    const QStringList ids = idsOfRows(fromRow, toRow);
+    return !ids.isEmpty() && m_editor->moveUtterances(ids, key);
+}
+
+bool TranscriptEditorViewModel::moveSelectionToLane(int lane)
+{
+    return moveSelectionToSpeaker(laneKey(lane));
+}
+
+bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey)
+{
+    if (!m_editor || m_selected.isEmpty() || speakerKey.isEmpty()) return false;
+    const bool ok = m_editor->moveUtterances(selectedIds(), speakerKey);
+    if (ok) {
+        afterMove(speakerKey);
+        clearSelection();
+    }
+    return ok;
+}
+
+bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName)
+{
+    const QString name = personName.trimmed();
+    if (!m_editor || m_selected.isEmpty() || name.isEmpty()) return false;
+    const QString key = m_editor->moveUtterancesToPerson(selectedIds(), name);
+    if (key.isEmpty()) return false;
+    afterMove(key);
+    clearSelection();
+    return true;
+}
+
+bool TranscriptEditorViewModel::moveSelectionToNewParticipant()
+{
+    if (!m_editor || m_selected.isEmpty()) return false;
+    const QString key = m_editor->moveUtterancesToNewParticipant(selectedIds());
+    if (key.isEmpty()) return false;
+    clearSelection();
+    return true;
+}
+
+QString TranscriptEditorViewModel::addParticipant(const QString& personName)
+{
+    if (!m_editor) return QString();
+    const QString key = m_editor->addParticipant(personName.trimmed());
+    afterMove(key);
+    return key;
+}
+
+bool TranscriptEditorViewModel::removeParticipant(const QString& speakerKey)
+{
+    return m_editor && m_editor->removeParticipant(speakerKey);
+}
+
+bool TranscriptEditorViewModel::reassignSpeaker(const QString& speakerKey, const QString& personName,
+                                                bool fixVoiceprints)
+{
+    const QString name = personName.trimmed();
+    if (!m_editor || name.isEmpty()) return false;
+    return m_editor->reassignSpeaker(speakerKey, name, fixVoiceprints);
+}
+
+bool TranscriptEditorViewModel::revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints)
+{
+    return m_editor && m_editor->revertSpeakerToAnonymous(speakerKey, fixVoiceprints);
+}
+
+bool TranscriptEditorViewModel::mergeSpeakers(const QString& fromKey, const QString& intoKey)
+{
+    if (!m_editor || !m_editor->mergeSpeakers(fromKey, intoKey)) return false;
+    afterMove(intoKey);
+    return true;
+}
+
+bool TranscriptEditorViewModel::confirmRow(int row)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id});
+}
+
+// ---- beszélő / hanglenyomat -------------------------------------------------
+
+QVariantMap TranscriptEditorViewModel::speakerInfo(const QString& speakerKey) const
+{
+    for (const EditorSpeaker& s : m_speakers)
+        if (s.key == speakerKey) return speakerMap(s, m_views.value(s.key).lane);
+    return {};
+}
+
+QVariantMap TranscriptEditorViewModel::voiceprintMaterial(const QString& speakerKey) const
+{
+    QVariantMap out{{QStringLiteral("supported"), voiceAvailable()},
+                    {QStringLiteral("usableLines"), 0},
+                    {QStringLiteral("usableSec"), 0},
+                    {QStringLiteral("missingSec"), 0},
+                    {QStringLiteral("sufficient"), false}};
+    if (!m_editor) return out;
+    const VoiceprintMaterial m = m_editor->voiceprintMaterial(speakerKey);
+    out[QStringLiteral("usableLines")] = m.usableLines;
+    out[QStringLiteral("usableSec")] = int(m.usableMs / 1000);
+    out[QStringLiteral("missingSec")] = int((m.missingMs + 999) / 1000);
+    out[QStringLiteral("sufficient")] = m.sufficient;
+    return out;
+}
+
+QVariantMap TranscriptEditorViewModel::createVoiceprint(const QString& speakerKey)
+{
+    QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("message"), QString()}};
+    if (!m_editor) return out;
+    const QString name = m_views.value(speakerKey).name;
+    const VoiceprintResult r = m_editor->createVoiceprint(speakerKey);
+    out[QStringLiteral("ok")] = r.ok;
+    out[QStringLiteral("usedLines")] = r.usedLines;
+    out[QStringLiteral("usedSec")] = int(r.usedMs / 1000);
+    out[QStringLiteral("missingSec")] = int((r.missingMs + 999) / 1000);
+    out[QStringLiteral("message")] = r.ok
+        ? tr("Hanglenyomat készült: %1 (%2 sorból, %3 mp beszédből).").arg(name).arg(r.usedLines).arg(r.usedMs / 1000)
+        : r.error;
+    if (r.ok) {
+        emit peopleChanged();
+        emit notice(out.value(QStringLiteral("message")).toString());
+    }
+    return out;
+}
+
+// ---- személyek --------------------------------------------------------------
+
+QVector<PersonInfo> TranscriptEditorViewModel::people() const
+{
+    if (m_peopleProvider) return m_peopleProvider();
+    if (m_demoSession) return m_demoSession->people();
+    if (m_controller) return m_controller->peopleDirectory();
+    return {};
+}
+
+bool TranscriptEditorViewModel::isMeetingPerson(const QString& name) const
+{
+    for (const EditorSpeaker& s : m_speakers)
+        if (!s.anonymous && s.personName.compare(name, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+
+// ---- demó-állapotok ---------------------------------------------------------
+
+void TranscriptEditorViewModel::applyDemoState(const QString& state)
+{
+    m_pendingDemoState = state;
+    if (m_editor && m_editor->isEmbeddingRunning()) return;    // a hang-elemzés végén
+    applyPendingDemoState();
+}
+
+void TranscriptEditorViewModel::applyPendingDemoState()
+{
+    const QString state = m_pendingDemoState;
+    m_pendingDemoState.clear();
+    if (state.isEmpty() || !m_editor || m_utts.isEmpty()) return;
+
+    if (state == QLatin1String("selection")) {
+        setRailVisible(true);
+        QSet<int> sel;
+        for (int i = 2; i <= 4 && i < m_utts.size(); ++i) sel.insert(i);
+        setSelection(sel, 2);
+    } else if (state == QLatin1String("suggestion") || state == QLatin1String("suggestionShown")) {
+        setRailVisible(true);
+        if (m_demoSession && !m_demoSession->suggestionSeedUtteranceId().isEmpty()) {
+            m_editor->moveUtterances({m_demoSession->suggestionSeedUtteranceId()},
+                                     m_demoSession->suggestionTargetKey());
+            if (state == QLatin1String("suggestionShown")) setSuggestionShown(true);
+            const int row = m_rows->nearestRow(m_suggestionAnchor);
+            if (row >= 0) emit revealRequested(row);
+        }
+    } else if (state == QLatin1String("filter")) {
+        setRailVisible(true);
+        setUncertainOnly(true);
+    } else if (state == QLatin1String("search")) {
+        setSearchQuery(QStringLiteral("sugo"));
+    } else if (state == QLatin1String("searchEmpty")) {
+        setSearchQuery(QStringLiteral("zsiráf"));
+    } else if (state == QLatin1String("rail")) {
+        setRailVisible(true);
+    }
+}
+
+} // namespace tanara_qml
