@@ -7,6 +7,8 @@ import QtQuick.Templates as T
 //     választásra jön szóba (hatókör-választó a fejléc alatt);
 //   - a sáv-fejléc avatarjáról / az áttekintő nevéről: a TELJES beszélő (átnevezés,
 //     visszaállítás névtelenre, összevonás, téves hang-felismerés javítása, hanglenyomat).
+// A hanglenyomat-blokk (VoiceprintPanel) a teljes-beszélő hatókörben mindig ott van, sorról
+// nyitva is, ha a „<Név> minden sora" van kiválasztva.
 // A meeting egy másik beszélőjével való összevonást a panel nem hajtja végre: a hívó
 // megerősítést kér (mergeRequested). Minden művelet egy visszavonási lépés.
 TPopover {
@@ -25,9 +27,6 @@ TPopover {
     property string scope: "speaker"
     // A megnyitáskor frissül; a műveletek után a panel bezárul.
     property var info: ({})
-    property var material: ({})
-    property string voiceprintMessage: ""
-    property bool voiceprintOk: false
     property string initialQuery: ""
     // „Meghallgatás": a sor maga, vagy (teljes beszélőnél) egy jellemző minta. A lejátszó a hívóé.
     property bool canListen: false
@@ -41,6 +40,10 @@ TPopover {
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
 
     readonly property bool fromLine: utteranceId !== ""
+    // Alacsony ablakban a sorról nyitott teljes-beszélő nézet (a legmagasabb) listái rövidebbek,
+    // hogy a hanglenyomat-blokk és a lábléc is kiférjen.
+    readonly property bool tight: fromLine && wholeSpeaker && T.Overlay.overlay
+                                  && T.Overlay.overlay.height < 740
     readonly property bool wholeSpeaker: scope === "speaker"
     readonly property string speakerName: info.name || ""
     readonly property bool named: info.anonymous === false
@@ -62,7 +65,6 @@ TPopover {
 
     function refresh() {
         info = editor ? editor.speakerInfo(speakerKey) : ({})
-        material = editor ? editor.voiceprintMaterial(speakerKey) : ({})
     }
     function resetCurrent() {
         const total = (wholeSpeaker ? 0 : matchingOthers().length) + people.count
@@ -122,10 +124,9 @@ TPopover {
     }
 
     onAboutToShow: {
-        voiceprintMessage = ""
-        voiceprintOk = false
         scope = !fromLine ? "speaker" : selectionCount > 1 ? "selection" : "line"
         refresh()
+        voiceprintPanel.reset()
         people.refresh()
         search.text = initialQuery
         resetCurrent()
@@ -216,7 +217,7 @@ TPopover {
             objectName: block.merge ? "mergeList" : "meetingSpeakers"
             x: 4
             width: parent.width - 8
-            height: Math.min(count, block.merge ? 4 : 3) * 38
+            height: Math.min(count, control.tight ? 2 : block.merge ? 4 : 3) * 38
             clip: true
             model: block.visible ? control.others : []
             currentIndex: block.merge ? -1 : control.currentIndex
@@ -370,7 +371,7 @@ TPopover {
             id: peopleList
             x: 4
             width: parent.width - 8
-            height: Math.min(count, 3) * 38
+            height: Math.min(count, control.tight ? 2 : 3) * 38
             clip: true
             model: people
             currentIndex: control.currentIndex - control.otherCount
@@ -443,53 +444,17 @@ TPopover {
             }
         }
 
-        // ---- Hanglenyomat (csak kifejezett műveletre készül; beszélő-szintű helyről nyitva) ----
-        Item {
-            visible: !control.fromLine
+        // ---- Hanglenyomat (csak kifejezett műveletre készül): a teljes beszélő hatókörében,
+        // akár beszélő-szintű helyről nyílt a panel, akár egy sorról („X minden sora") ----
+        VoiceprintPanel {
+            id: voiceprintPanel
+            objectName: "voiceprintBlock"
+            visible: control.wholeSpeaker
             width: parent.width
-            height: visible ? Math.max(vpText.height, vpButton.visible ? vpButton.height : 0) + 20 : 0
-            TDivider { width: parent.width }
-            TIcon { x: 14; y: 11; name: "fingerprint"; size: 16; color: Theme.textMuted }
-            TLabel {
-                id: vpText
-                x: 40; y: 10
-                width: parent.width - 54 - (vpButton.visible ? vpButton.width + 10 : 0)
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSmall
-                cssLineHeight: 1.4
-                color: control.voiceprintMessage !== "" && !control.voiceprintOk ? Theme.dangerInk : Theme.text
-                text: {
-                    if (control.voiceprintMessage !== "") return control.voiceprintMessage
-                    if (!control.named)
-                        return qsTr("Hanglenyomat csak elnevezett beszélőhöz készíthető.")
-                    const has = control.info.hasVoiceprint === true ? qsTr("Van hanglenyomata.")
-                                                                    : qsTr("Még nincs hanglenyomata.")
-                    if (control.material.supported !== true)
-                        return has + " " + qsTr("Újat most nem lehet készíteni, mert a hang-elemzés nem érhető el.")
-                    if (control.material.sufficient === true)
-                        return has + " " + qsTr("Itt %1 mp jól használható beszéde van.").arg(control.material.usableSec)
-                    return has + " " + qsTr("Ebből a megbeszélésből nem készíthető: még kb. %1 mp tiszta beszéd "
-                                            + "kellene (legalább 3 másodperces sorokból).")
-                                          .arg(control.material.missingSec)
-                }
-            }
-            TButton {
-                id: vpButton
-                visible: control.named && control.material.supported === true
-                         && control.material.sufficient === true && !control.voiceprintOk
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                y: 10
-                size: "small"
-                text: control.info.hasVoiceprint === true ? qsTr("Új készítése") : qsTr("Készítés")
-                toolTipText: qsTr("Hanglenyomat készítése a beszélő itteni, hosszabb soraiból")
-                onClicked: {
-                    const result = control.editor.createVoiceprint(control.speakerKey)
-                    control.voiceprintOk = result.ok === true
-                    control.voiceprintMessage = result.message || ""
-                    control.refresh()
-                }
-            }
+            compact: true
+            editor: control.editor
+            speakerKey: control.speakerKey
+            onChanged: control.refresh()
         }
 
         // ---- Üres, kézzel felvett oszlop eltávolítása ----

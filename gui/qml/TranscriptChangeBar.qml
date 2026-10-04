@@ -3,6 +3,10 @@ import QtQuick
 // A legutóbbi átsorolás értesítő sávja a szerkesztő alján (a kijelölés sötét sávjának
 // formanyelvén): kimondja, mi történt („1 sor átkerült ide: …"), és innen folytatható:
 //   Visszavonás · Hasonló N sor is (+ Megmutatom) · „<Forrás> mind a N sora" · bezárás.
+// Ha egy TELJES beszélő most kapott nevet, a személynek még nincs hanglenyomata és itt van
+// hozzá elég anyag, a sáv felajánlja: „Hanglenyomat készítése" (magától sosem készül; sor /
+// kijelölés áthelyezése után nincs ajánlat). Elkészülte után a sáv ezt mondja ki, és a
+// „Visszavonás" ekkor pontosan a most készült lenyomatot törli (az elnevezés marad).
 // A sáv a lista ALATT foglal helyet (nem takar sort). Eltűnik a következő szerkesztésre,
 // bezárásra, vagy ~12 mp után — amíg hasonló-sor javaslat vár válaszra, addig nem jár le.
 Rectangle {
@@ -94,7 +98,7 @@ Rectangle {
         id: doneIcon
         x: 14
         anchors.verticalCenter: parent.verticalCenter
-        name: "circle-check"
+        name: root.vm.changeVoiceprintCreated ? "fingerprint" : "circle-check"
         size: 16
         color: Theme.bg
     }
@@ -123,11 +127,24 @@ Rectangle {
 
         BarAction {
             objectName: "changeUndo"
+            visible: root.vm.changeUndoable
             iconName: "undo-2"
             text: qsTr("Visszavonás")
             strong: true
-            toolTipText: qsTr("Az átsorolás visszavonása (Ctrl+Z)")
+            toolTipText: root.vm.changeVoiceprintCreated
+                         ? qsTr("A most készült hanglenyomat törlése (az elnevezés marad)")
+                         : qsTr("Az átsorolás visszavonása (Ctrl+Z)")
             onClicked: root.vm.undoChange()
+        }
+        BarAction {
+            objectName: "changeVoiceprint"
+            visible: root.vm.changeVoiceprintOffer
+            iconName: "fingerprint"
+            text: qsTr("Hanglenyomat készítése")
+            strong: true
+            toolTipText: qsTr("Még nincs hanglenyomata. Az itteni, hosszabb soraiból most készíthető — ebből "
+                              + "ismeri fel a program a következő megbeszéléseken")
+            onClicked: root.vm.createVoiceprintFromChange()
         }
         BarAction {
             objectName: "changeSimilar"

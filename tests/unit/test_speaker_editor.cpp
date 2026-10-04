@@ -858,6 +858,19 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     // Modell nélkül: érthető hiba.
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
     auto plain = fx.editor(/*withEmbedder*/ false);
+    // A kézi készítés visszavonása: pontosan az a lenyomat törlődik, a jelző visszaáll.
+    {
+        const VoiceprintResult again = ed->createVoiceprint(cili);
+        QVERIFY(again.ok && !again.printId.isEmpty());
+        const int before = fx.prints->printCount(QStringLiteral("Cili"));
+        QSignalSpy speakersSpy(ed.get(), &SpeakerEditor::speakersChanged);
+        QVERIFY(ed->removeVoiceprint(again.printId));
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), before - 1);
+        QCOMPARE(speakersSpy.count(), 1);
+        QVERIFY(!ed->removeVoiceprint(again.printId));
+        QVERIFY(!ed->removeVoiceprint(QString()));
+    }
+
     r = plain->createVoiceprint(kB2);
     QVERIFY(!r.ok);
     QCOMPARE(r.missingMs, 0);

@@ -61,13 +61,15 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(int utteranceCount READ utteranceCount NOTIFY sessionChanged)
     Q_PROPERTY(int speakerCount READ speakerCount NOTIFY speakersChanged)
     // A sín látható oszlopai: [{ key, name, personName, colorIndex, hasVoiceprint, anonymous,
-    // added, isSelf, utteranceCount, pct }] — saját magam elöl, utána első megjelenés szerint.
+    // added, isSelf, utteranceCount, pct, voiceprint }] — saját magam elöl, utána első megjelenés
+    // szerint. `voiceprint`: "has" | "none" (elnevezett, de nincs lenyomata) | "anonymous".
     Q_PROPERTY(QVariantList lanes READ lanes NOTIFY speakersChanged)
     // Minden beszélő (az összecsukottak is), ugyanilyen elemekkel + `lane` (-1 = összecsukva).
     Q_PROPERTY(QVariantList speakers READ speakers NOTIFY speakersChanged)
     Q_PROPERTY(int collapsedCount READ collapsedCount NOTIFY speakersChanged)
     Q_PROPERTY(bool lanesExpanded READ lanesExpanded WRITE setLanesExpanded NOTIFY speakersChanged)
-    // Áttekintő: [{ name, colorIndex (-1 = „Egyéb"), pct, segments: [x, w, …], marks: [x, w, …] }]
+    // Áttekintő: [{ key, name, colorIndex (-1 = „Egyéb"), pct, voiceprint ("has" | "none" |
+    // "anonymous"; „Egyéb"-nél üres), segments: [x, w, …], marks: [x, w, …] }]
     Q_PROPERTY(QVariantList overview READ overview NOTIFY overviewChanged)
     Q_PROPERTY(int durationMs READ durationMs NOTIFY overviewChanged)
     // A lejátszó hossza (ha hosszabb az utolsó megszólalásnál, az áttekintő ehhez igazodik).
@@ -103,6 +105,13 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(QString changeRestText READ changeRestText NOTIFY changeChanged)
     Q_PROPERTY(QString changeSourceKey READ changeSourceKey NOTIFY changeChanged)
     Q_PROPERTY(QString changeTargetKey READ changeTargetKey NOTIFY changeChanged)
+    // Hanglenyomat-ajánlat a sávon: egy TELJES beszélő most kapott nevet, a személynek még
+    // nincs lenyomata, és itt van hozzá elég anyag. Soronkénti áthelyezés után sosem igaz.
+    Q_PROPERTY(bool changeVoiceprintOffer READ changeVoiceprintOffer NOTIFY changeChanged)
+    // A sávról most készült lenyomat: a sáv „Visszavonás"-a ezt a lenyomatot törli.
+    Q_PROPERTY(bool changeVoiceprintCreated READ changeVoiceprintCreated NOTIFY changeChanged)
+    // Hamis: a sáv már csak tájékoztat (a most készült lenyomat visszavonása után).
+    Q_PROPERTY(bool changeUndoable READ changeUndoable NOTIFY changeChanged)
 
     // Hang-elemzés (megszólalás-embeddingek): a bizonytalanság és a javaslat alapja.
     Q_PROPERTY(bool voiceAvailable READ voiceAvailable NOTIFY voiceStateChanged)
@@ -197,6 +206,9 @@ public:
     QString changeRestText() const { return m_change.restText; }
     QString changeSourceKey() const { return m_change.restCount > 0 ? m_change.sourceKey : QString(); }
     QString changeTargetKey() const { return m_change.targetKey; }
+    bool changeVoiceprintOffer() const { return m_change.active && m_change.voiceprint == Change::Offer; }
+    bool changeVoiceprintCreated() const { return m_change.active && m_change.voiceprint == Change::Created; }
+    bool changeUndoable() const { return m_change.active && m_change.voiceprint != Change::Removed; }
 
     bool voiceAvailable() const;
     bool embeddingRunning() const;
@@ -269,7 +281,11 @@ public:
     // „<Forrás> mind a N sora": a legutóbbi soronkénti áthelyezés forrásának MEGMARADT sorai
     // is a célhoz kerülnek (a két beszélő összevonása) — egy további visszavonási lépés.
     Q_INVOKABLE bool moveRestOfSource();
-    Q_INVOKABLE void undoChange();                              // a sáv „Visszavonás" gombja
+    // A sáv „Visszavonás" gombja: az átsorolás visszavonása — vagy, ha a sávról épp
+    // hanglenyomat készült, PONTOSAN annak a lenyomatnak a törlése (az átsorolás marad).
+    Q_INVOKABLE void undoChange();
+    // A sáv „Hanglenyomat készítése" gombja (csak changeVoiceprintOffer mellett).
+    Q_INVOKABLE bool createVoiceprintFromChange();
     Q_INVOKABLE void dismissChange();                           // a sáv bezárása (a javaslat is megszűnik)
     Q_INVOKABLE QString addParticipant(const QString& personName = QString());
     Q_INVOKABLE bool removeParticipant(const QString& speakerKey);
@@ -312,10 +328,13 @@ public:
     Q_INVOKABLE QString speakerKeyForPerson(const QString& personName) const;
     // Magyar névelő a szám elé: igaz → „az" (1, 5, 50…, 1000…), különben „a".
     Q_INVOKABLE static bool needsAz(int number);
-    // { supported, usableLines, usableSec, missingSec, sufficient }
+    // { supported, reason, usableLines, usableSec, missingSec, sufficient } — reason: miért
+    // nem érhető el a hang-elemzés ("model" = nincs hangmodell, "audio" = nincs lekevert hang).
     Q_INVOKABLE QVariantMap voiceprintMaterial(const QString& speakerKey) const;
-    // { ok, message, usedLines, usedSec, missingSec } — csak kifejezett műveletre készül.
+    // { ok, message, printId, usedLines, usedSec, missingSec } — csak kifejezett műveletre készül.
     Q_INVOKABLE QVariantMap createVoiceprint(const QString& speakerKey);
+    // A most készített lenyomat visszavonása: pontosan az a lenyomat törlődik.
+    Q_INVOKABLE bool removeVoiceprint(const QString& printId);
 
     // ---- keresés ----------------------------------------------------------
     // A következő / előző találatra lép; vissza: a sora (-1 = nincs találat).
@@ -327,7 +346,9 @@ public:
 
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
-    // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter".
+    // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter" |
+    // "changeVoiceprint" | "changeVoiceprintDone" | "voiceprintHas" | "voiceprintNone" |
+    // "voiceprintDone" | "voiceprintShort".
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
 
@@ -380,8 +401,10 @@ private:
     // Vissza: a cél-beszélő kulcsa (üres = nem történt semmi).
     QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value);
     void publishChange(const QString& text, const QString& sourceKey, const QString& targetKey,
-                       int lastUtterance);
+                       int lastUtterance, bool offerVoiceprint = false);
     void publishWholeSpeakerChange(const QString& fromName, int lines, const QString& targetKey);
+    bool canOfferVoiceprint(const QString& speakerKey) const;
+    QString voiceprintMessage(const QString& name, const tanara::VoiceprintResult& result) const;
     void clearChange();
     bool loadRailState() const;
     void saveRailState() const;
@@ -436,6 +459,10 @@ private:
         int utterance = -1;
         int restCount = 0;
         QString restText;
+        // A hanglenyomat-ajánlat állapota: nincs / ajánlható / most készült / visszavonva.
+        enum Voiceprint { None, Offer, Created, Removed };
+        Voiceprint voiceprint = None;
+        QString printId;                // a sávról készült lenyomat (a visszavonásához)
     };
     Change m_change;
     int m_changeSerial = 0;

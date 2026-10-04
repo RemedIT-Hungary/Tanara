@@ -1304,6 +1304,14 @@ VoiceprintResult SpeakerEditor::createVoiceprint(const QString& speakerKey)
     return r;
 }
 
+bool SpeakerEditor::removeVoiceprint(const QString& printId)
+{
+    if (!d->voiceprints || printId.isEmpty() || !d->voiceprints->removePrint(printId)) return false;
+    emit voiceprintsChanged();
+    emit speakersChanged();
+    return true;
+}
+
 // ---- összefoglaló-elavultság / újra-átírás ----------------------------------
 
 SummaryStaleInfo SpeakerEditor::summaryStale() const { return d->staleInfo(); }

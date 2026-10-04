@@ -35,6 +35,15 @@ bool waitVoice(const TranscriptEditorViewModel& vm)
     return QTest::qWaitFor([&] { return !vm.embeddingRunning() && vm.editor()->embeddingsComplete(); }, 10000);
 }
 
+// A beszélő hanglenyomat-jelzője az áttekintőn ("has" | "none" | "anonymous").
+QString overviewVoiceprint(const TranscriptEditorViewModel& vm, const QString& key)
+{
+    for (const QVariant& row : vm.overview())
+        if (row.toMap().value(QStringLiteral("key")).toString() == key)
+            return row.toMap().value(QStringLiteral("voiceprint")).toString();
+    return QStringLiteral("?");
+}
+
 int laneOf(const TranscriptEditorViewModel& vm, const QString& key)
 {
     const QVariantList lanes = vm.lanes();
@@ -610,6 +619,159 @@ private slots:
         QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 1);
         QVERIFY(vm.speakerInfo(cili).value(QStringLiteral("hasVoiceprint")).toBool());
         QCOMPARE(notice.count(), 1);
+    }
+
+    // A jelző állapota beszélőnként (áttekintő + sáv-fejléc), készítés után, és a most készült
+    // lenyomat visszavonása: pontosan az az egy lenyomat törlődik.
+    void voiceprint_indicatorState_createAndUndo()
+    {
+        Fixture fx;
+        Voiceprint old;
+        old.embedding = {0.0f, 1.0f, 0.0f};
+        fx.prints->addPrint(QStringLiteral("Anna"), old);    // Annának már van egy régebbi mintája
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+
+        QTRY_COMPARE(overviewVoiceprint(vm, kB1), QStringLiteral("anonymous"));
+        QCOMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("anonymous"));
+
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
+        QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("none"));
+        QCOMPARE(vm.lanes().at(laneOf(vm, kB2)).toMap().value(QStringLiteral("voiceprint")).toString(),
+                 QStringLiteral("none"));
+        QCOMPARE(overviewVoiceprint(vm, kB1), QStringLiteral("anonymous"));
+
+        // Elég anyag: hány sor, hány másodperc — és nincs „hiányzik".
+        const QVariantMap mat = vm.voiceprintMaterial(kB2);
+        QVERIFY(mat.value(QStringLiteral("supported")).toBool());
+        QVERIFY(mat.value(QStringLiteral("sufficient")).toBool());
+        QVERIFY(mat.value(QStringLiteral("usableLines")).toInt() >= 3);
+        QVERIFY(mat.value(QStringLiteral("usableSec")).toInt() >= 15);
+        QCOMPARE(mat.value(QStringLiteral("missingSec")).toInt(), 0);
+        QCOMPARE(mat.value(QStringLiteral("reason")).toString(), QString());
+
+        // Készítés: a jelző azonnal „van"; az eredmény megmondja, miből készült.
+        const QVariantMap r = vm.createVoiceprint(kB2);
+        QVERIFY(r.value(QStringLiteral("ok")).toBool());
+        const QString printId = r.value(QStringLiteral("printId")).toString();
+        QVERIFY(!printId.isEmpty());
+        QVERIFY(r.value(QStringLiteral("usedLines")).toInt() >= 3);
+        QVERIFY(r.value(QStringLiteral("usedSec")).toInt() >= 15);
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
+        QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("has"));
+        QCOMPARE(vm.lanes().at(laneOf(vm, kB2)).toMap().value(QStringLiteral("voiceprint")).toString(),
+                 QStringLiteral("has"));
+
+        // Visszavonás: pontosan ez a lenyomat törlődik (más személyé érintetlen), kétszer nem megy.
+        QVERIFY(vm.removeVoiceprint(printId));
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Anna")), 1);
+        QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("none"));
+        QVERIFY(!vm.removeVoiceprint(printId));
+        QVERIFY(!vm.removeVoiceprint(QString()));
+        // A lenyomat nem része az undo-veremnek: az elnevezés megmaradt, és visszavonható.
+        QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("personName")).toString(), QStringLiteral("Béla"));
+        QVERIFY(vm.canUndo());
+    }
+
+    // Az értesítő sáv hanglenyomat-ajánlata: csak egy TELJES beszélő elnevezése / elnevezett
+    // személybe olvasztása után, ha a személynek nincs lenyomata és itt van elég anyag.
+    void changeBar_voiceprintOffer_onlyAfterNamingWholeSpeaker()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QSignalSpy notice(&vm, &TranscriptEditorViewModel::notice);
+
+        // Egy sor, több sor, hasonló sorok: sosem ajánl.
+        QVERIFY(vm.moveUtteranceToPerson(uid(4), QStringLiteral("Cili")));
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        const QString cili = speakerOf(vm, 4);
+        QVERIFY(vm.acceptSuggestion());                     // 7, 9, 14 is Cilihez: ez is soronkénti
+        QVERIFY(vm.voiceprintMaterial(cili).value(QStringLiteral("sufficient")).toBool());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        vm.selectRows(0, 2);
+        QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Dóra")));
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QVERIFY(!vm.createVoiceprintFromChange());          // ajánlat nélkül nem készül semmi
+        QCOMPARE(fx.prints->totalPrintCount(), 0);
+
+        // Teljes beszélő elnevezése, elég anyaggal: ajánlat.
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
+        QVERIFY(vm.changeVoiceprintOffer());
+        QVERIFY(vm.changeUndoable());
+        QVERIFY(!vm.changeVoiceprintCreated());
+        QCOMPARE(fx.prints->totalPrintCount(), 0);          // az ajánlat magától nem készít
+
+        // Elfogadva: a sáv kimondja, mi készült; a „Visszavonás" ekkor a lenyomatot törli.
+        const int serial = vm.changeSerial();
+        QVERIFY(vm.createVoiceprintFromChange());
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
+        QVERIFY(vm.changeActive());
+        QVERIFY(vm.changeVoiceprintCreated());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QVERIFY(vm.changeSerial() > serial);
+        QVERIFY2(vm.changeText().startsWith(QStringLiteral("Hanglenyomat készült: Béla (")), qPrintable(vm.changeText()));
+        QCOMPARE(notice.count(), 0);                        // a sáv maga a visszajelzés
+        const QString undoBefore = vm.undoText();
+        vm.undoChange();
+        QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.changeUndoable());
+        QVERIFY(!vm.changeVoiceprintCreated());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QCOMPARE(vm.changeText(), QStringLiteral("A most készült hanglenyomat törölve: Béla"));
+        QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("personName")).toString(), QStringLiteral("Béla"));
+        QCOMPARE(vm.undoText(), undoBefore);                // az undo-verem érintetlen
+
+        // Elnevezett, lenyomat nélküli személybe olvasztás (összevonás; „mind a N sora"): ajánlat.
+        QVERIFY(vm.moveUtteranceToSpeaker(uid(6), kB2));
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QVERIFY(vm.changeRestCount() > 0);
+        QVERIFY(vm.moveRestOfSource());
+        QVERIFY(vm.changeVoiceprintOffer());
+        vm.undo();
+        QVERIFY(!vm.changeActive());
+
+        // Kevés anyag: nincs ajánlat (nem nyaggatunk).
+        const QString fresh = ed->moveUtterancesToNewParticipant({uid(16)});
+        QVERIFY(!fresh.isEmpty());
+        QVERIFY(vm.reassignSpeaker(fresh, QStringLiteral("Emma"), false));
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.voiceprintMaterial(fresh).value(QStringLiteral("sufficient")).toBool());
+        QVERIFY(!vm.changeVoiceprintOffer());
+
+        // Akinek már van lenyomata: nincs ajánlat. Névtelenre állítás: nincs ajánlat.
+        QVERIFY(vm.createVoiceprint(kB2).value(QStringLiteral("ok")).toBool());
+        QVERIFY(vm.reassignSpeaker(cili, QStringLiteral("Béla"), false));    // Cili sorai Bélához olvadnak
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QVERIFY(vm.revertSpeakerToAnonymous(kB2, false));
+        QVERIFY(!vm.changeVoiceprintOffer());
+    }
+
+    // Hangmodell nélkül nincs ajánlat és nincs készítés: az ok egyszer, érthetően elhangzik.
+    void withoutVoiceModel_noVoiceprintOffer()
+    {
+        Fixture fx;
+        auto ed = fx.editor(/*withEmbedder*/ false);
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.changeVoiceprintOffer());
+        QVERIFY(!vm.createVoiceprintFromChange());
+        const QVariantMap mat = vm.voiceprintMaterial(kB2);
+        QVERIFY(!mat.value(QStringLiteral("supported")).toBool());
+        QCOMPARE(mat.value(QStringLiteral("reason")).toString(), QStringLiteral("model"));
+        QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("none"));
+        QVERIFY(!vm.createVoiceprint(kB2).value(QStringLiteral("ok")).toBool());
+        QCOMPARE(fx.prints->totalPrintCount(), 0);
     }
 
     void withoutVoiceModel_editingStillWorks()

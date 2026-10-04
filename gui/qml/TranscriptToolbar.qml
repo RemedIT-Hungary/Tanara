@@ -17,6 +17,7 @@ Item {
     signal searchStepRequested(int direction)
     signal nextUncertainRequested()         // „Következő bizonytalan"
     signal speakerClicked(string speakerKey, Item anchor)   // név az áttekintőn: a teljes beszélő
+    signal voiceprintClicked(string speakerKey, Item anchor) // ujjlenyomat-jel: a hanglenyomat panelje
 
     implicitHeight: column.implicitHeight + 22
     height: implicitHeight
@@ -29,6 +30,14 @@ Item {
     function closeSearch() {
         searchOpen = false
         vm.searchQuery = ""
+    }
+    // A beszélő ujjlenyomat-jele az áttekintőn (a panel horgonya); null, ha nincs ilyen sor.
+    function voiceprintMark(speakerKey) {
+        for (let i = 0; i < laneRepeater.count; ++i) {
+            const row = laneRepeater.itemAt(i)
+            if (row && row.modelData.key === speakerKey) return row.mark
+        }
+        return null
     }
 
     // Eszköztár-gomb (28 px): ikon + felirat + billentyű-tipp. `checked`: accent stílus.
@@ -228,7 +237,10 @@ Item {
             }
         }
 
-        // Áttekintő: beszélőnként egy 12 px-es sor (név · idővonal · beszédidő %).
+        // Áttekintő: beszélőnként egy 12 px-es sor (név · ujjlenyomat-jel · idővonal · beszédidő %).
+        // Az ujjlenyomat-jel a név-oszlop végén, rögzített helyen áll (az idővonal nem mozdul):
+        // teli zöld = a személynek van hanglenyomata; halvány körvonal = elnevezett, de még
+        // nincs; névtelennél áttetsző és nem kattintható. Kattintásra a hanglenyomat panelje.
         Item {
             id: overview
             Layout.fillWidth: true
@@ -242,37 +254,95 @@ Item {
                 width: parent.width
                 spacing: 3
                 Repeater {
+                    id: laneRepeater
                     model: root.vm.overview
                     Item {
                         id: laneRow
                         required property var modelData
                         readonly property bool other: modelData.colorIndex < 0
+                        readonly property string voiceprint: modelData.voiceprint || ""
+                        readonly property alias mark: voiceprintMark
                         width: lanes.width
                         height: 12
                         TLabel {
                             id: laneName
                             objectName: "overviewName"
-                            width: 110
+                            width: laneRow.other ? 110 : 94
                             anchors.verticalCenter: parent.verticalCenter
                             text: laneRow.modelData.name
                             color: laneRow.other ? Theme.textMuted : Theme.speakerInk(laneRow.modelData.colorIndex)
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightSemiBold
-                            font.underline: laneNameHover.hovered && !laneRow.other
+                            font.underline: laneNameHover.hovered
                             elide: Text.ElideRight
                             // A név a TELJES beszélőt jelenti: átnevezés, összevonás, hanglenyomat.
+                            // Az „Egyéb (N)" sor kattintásra kibomlik (a keveset beszélők külön sort
+                            // kapnak, így az ő hanglenyomatuk is elérhető).
                             HoverHandler {
                                 id: laneNameHover
-                                enabled: !laneRow.other
                                 cursorShape: Qt.PointingHandCursor
                             }
                             TapHandler {
-                                enabled: !laneRow.other
-                                onTapped: root.speakerClicked(laneRow.modelData.key, laneName)
+                                onTapped: {
+                                    if (laneRow.other) root.vm.lanesExpanded = true
+                                    else root.speakerClicked(laneRow.modelData.key, laneName)
+                                }
                             }
                             TToolTip {
                                 visible: laneNameHover.hovered
-                                text: qsTr("A teljes beszélő átnevezése vagy összevonása")
+                                text: laneRow.other
+                                      ? qsTr("%n keveset beszélő résztvevő — kattintásra külön sort kapnak", "",
+                                             root.vm.collapsedCount)
+                                      : qsTr("A teljes beszélő átnevezése vagy összevonása")
+                            }
+                        }
+                        Item {
+                            id: voiceprintMark
+                            objectName: "overviewVoiceprint"
+                            readonly property bool has: laneRow.voiceprint === "has"
+                            readonly property bool anonymous: laneRow.voiceprint === "anonymous"
+                            property string speakerKey: laneRow.modelData.key
+                            property string voiceprint: laneRow.voiceprint
+                            visible: laneRow.voiceprint !== ""
+                            x: 97
+                            width: 16; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            opacity: anonymous ? 0.4 : 1
+                            activeFocusOnTab: !anonymous
+                            Accessible.role: Accessible.Button
+                            Accessible.name: voiceprintTip.text
+                            Keys.onSpacePressed: if (!anonymous) root.voiceprintClicked(speakerKey, voiceprintMark)
+                            Keys.onReturnPressed: if (!anonymous) root.voiceprintClicked(speakerKey, voiceprintMark)
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 14; height: 14; radius: 7
+                                color: voiceprintMark.has ? Theme.success
+                                     : voiceprintHover.hovered && !voiceprintMark.anonymous
+                                       ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                                TFocusRing { visible: voiceprintMark.activeFocus; targetRadius: parent.radius }
+                            }
+                            TIcon {
+                                anchors.centerIn: parent
+                                name: "fingerprint"
+                                size: voiceprintMark.has ? 10 : 12
+                                strokeWidth: voiceprintMark.has ? 2.5 : 2
+                                color: voiceprintMark.has ? Theme.textOnSpeaker : Theme.textMuted
+                            }
+                            HoverHandler {
+                                id: voiceprintHover
+                                cursorShape: voiceprintMark.anonymous ? Qt.ArrowCursor : Qt.PointingHandCursor
+                            }
+                            TapHandler {
+                                enabled: !voiceprintMark.anonymous
+                                onTapped: root.voiceprintClicked(voiceprintMark.speakerKey, voiceprintMark)
+                            }
+                            TToolTip {
+                                id: voiceprintTip
+                                visible: voiceprintHover.hovered
+                                text: voiceprintMark.has ? qsTr("Van hanglenyomata — kattintásra a részletek")
+                                    : voiceprintMark.anonymous
+                                      ? qsTr("Névtelen beszélő: hanglenyomat csak elnevezett beszélőhöz készíthető")
+                                      : qsTr("Még nincs hanglenyomata — kattintásra itt készíthető")
                             }
                         }
                         TranscriptLaneStrip {
@@ -293,6 +363,24 @@ Item {
                             muted: true
                             font.pixelSize: Theme.fontMicro
                         }
+                    }
+                }
+                // Kibontott „Egyéb" mellett: vissza az összecsukott nézethez.
+                Item {
+                    visible: root.vm.collapsedCount > 0 && root.vm.lanesExpanded
+                    width: lanes.width
+                    height: 12
+                    TLabel {
+                        id: collapseLabel
+                        objectName: "overviewCollapse"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Keveset beszélők összecsukása")
+                        muted: true
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Theme.weightMedium
+                        font.underline: collapseHover.hovered
+                        HoverHandler { id: collapseHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.vm.lanesExpanded = false }
                     }
                 }
             }

@@ -233,7 +233,7 @@ line's speaker name meant the whole speaker.
   and the count.
 - **Whole-speaker operations** start at speaker-level places: the rail header avatar and the
   overview name (`openSpeakerPopover(key, anchor)`), with "Meghallgatás", merge list, the
-  voiceprint checkbox and the voiceprint section.
+  voiceprint checkbox and the voiceprint section (see "Voiceprints" below).
 - **After every reassignment** `TranscriptChangeBar` appears below the list (view-model:
   `changeActive`, `changeText`, `changeRestCount` …): Visszavonás · "Hasonló N sor is" +
   "Megmutatom" (the similarity suggestion; there is no inline box any more) · "<Forrás> mind a N
@@ -244,10 +244,45 @@ line's speaker name meant the whole speaker.
 - In the uncertain filter a corrected line stays in place ("javítva") until the filter is
   applied again.
 
+### Voiceprints in the transcript editor
+
+A voiceprint is made **only on an explicit user action**, never automatically, and only for a
+named speaker with enough material (the core decides: `SpeakerEditor::voiceprintMaterial`). The
+content is one component, `VoiceprintPanel.qml` (state in plain words, usable lines / seconds,
+what is missing and what helps, the create button, and "Visszavonás" for the print just made).
+When voice analysis is unavailable it says why once (`voiceprintMaterial().reason`: `model` /
+`audio`) and shows no button. Three entry points:
+
+- **The fingerprint mark on every overview row** (`TranscriptToolbar`, `overviewVoiceprint`):
+  filled green = the person has a voiceprint, muted outline = named but none yet, faded and not
+  clickable for anonymous speakers. It sits inside the name column, so the lane tracks do not
+  move. A click opens `voiceprintPopover` (`TranscriptTab.openVoiceprintPopover(key, anchor)`).
+  The "Egyéb (N)" row has no mark; a click on its name expands the collapsed speakers into their
+  own rows ("Keveset beszélők összecsukása" folds them back). The rail-header dot carries the
+  same state (green dot / hollow ring / none). View-model: `voiceprint` (`has` | `none` |
+  `anonymous`) in `overview`, `lanes` and `speakers`.
+- **`SpeakerPopover` in whole-speaker scope**, from a speaker-level place or from a line once
+  "<Név> minden sora (N)" is chosen (compact layout of the same panel). In a low window that
+  tallest variant shortens its lists (`tight`) so the block and the footer stay visible.
+- **An offer in `TranscriptChangeBar`** after a whole speaker was given a person (rename,
+  reassign, merge into a named person, "mind a N sora") when that person has no voiceprint and
+  the meeting has enough material: `changeVoiceprintOffer` → "Hanglenyomat készítése"
+  (`createVoiceprintFromChange()`). Never after a line / selection move or a similarity
+  suggestion, and not when the material is insufficient.
+
+Undo: a voiceprint is not part of the editor's undo stack. The print just made can be taken
+back where it was made — "Visszavonás" in the panel (`removeVoiceprint(printId)`), or on the
+bar, where after creation `undoChange()` removes exactly that print
+(`SpeakerEditor::removeVoiceprint`) and leaves the rename in place (the rename is still undone
+with Ctrl+Z; `changeUndoable` turns false once the print is removed).
+
 Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPopover`,
 `speakerPopover`, `changeLine`, `suggestion`, `suggestionShown`, `changeSelection`,
-`changeSpeaker`, `changeFilter`, `mergeConfirm`, e.g.
-`gui/qml/shoot.sh 'TranscriptTab:1004x640:demoState="changeLine"'`.
+`changeSpeaker`, `changeFilter`, `mergeConfirm`, `voiceprintHas`, `voiceprintNone`,
+`voiceprintDone`, `voiceprintShort`, `changeVoiceprint`, `changeVoiceprintDone`, e.g.
+`gui/qml/shoot.sh 'TranscriptTab:1004x640:demoState="changeLine"'`,
+`'TranscriptTab:1004x640:demoVariant="many",demoState="voiceprintNone"'` (the 11-speaker
+overview; `demoVariant="novoice"` shows the "no voice model" wording).
 
 ## C++ view-models
 

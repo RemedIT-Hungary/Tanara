@@ -6,6 +6,9 @@
 // CSAK az a sor (kijelölésnél a kijelölt sorok), teljes beszélő a sáv-fejlécről / áttekintőről,
 // összevonás előtt megerősítés, minden átsorolás után értesítő sáv (Visszavonás / Hasonló N
 // sor is / „mind a N sora"), és a „Bizonytalan" szűrő nem ugrik el a javított sor alól.
+// Hanglenyomat: jelző az áttekintő minden során + saját panel, a blokk a sorról nyitott panel
+// teljes-beszélő hatókörében, ajánlat a sávon egy teljes beszélő elnevezése után, és a most
+// készült lenyomat visszavonása.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
@@ -159,6 +162,30 @@ class TestTranscriptTab : public QObject {
             if (s.toMap().value(QStringLiteral("name")).toString() == name)
                 return s.toMap().value(QStringLiteral("key")).toString();
         return {};
+    }
+    // A beszélő ujjlenyomat-jele az áttekintőn.
+    QQuickItem* markOf(const QString& key) const
+    {
+        for (QQuickItem* item : visuals("overviewVoiceprint"))
+            if (item->property("speakerKey").toString() == key) return item;
+        return nullptr;
+    }
+    QString markState(const QString& key) const
+    {
+        QQuickItem* mark = markOf(key);
+        return mark ? mark->property("voiceprint").toString() : QStringLiteral("?");
+    }
+    QString textOf(const char* name) const
+    {
+        QQuickItem* item = visual(name);
+        return item ? item->property("text").toString() : QStringLiteral("<nincs>");
+    }
+    // A személy lenyomatainak száma a (kitalált) meeting lenyomat-tárában.
+    int printCount(const QString& person) const
+    {
+        for (const tanara::PersonInfo& p : m_vm->people())
+            if (p.name == person) return p.voiceprintCount;
+        return 0;
     }
     int linesOf(const QString& key) const
     {
@@ -1083,6 +1110,257 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
+    // Az áttekintő minden során ujjlenyomat-jel: van / nincs / névtelen. Kattintásra a
+    // hanglenyomat panelje: állapot, használható anyag, készítés, és a most készült visszavonása.
+    void overviewVoiceprint_indicatorAndPopover()
+    {
+        load();
+        const QString lilla = keyOfName(QStringLiteral("Kovács Lilla"));
+        const QString anon = keyOfName(QStringLiteral("Távoli 1"));
+        QCOMPARE(int(visuals("overviewVoiceprint").size()), int(m_vm->overview().size()));
+        QCOMPARE(markState(lilla), QStringLiteral("has"));
+        QCOMPARE(markState(anon), QStringLiteral("anonymous"));
+        // A jel nem tolja el az idővonalat: a név-oszlopon belül áll.
+        QQuickItem* mark = markOf(lilla);
+        QVERIFY(mark->x() + mark->width() <= 120);
+
+        // Névtelen beszélőnél nem nyit semmit (a súgó megmondja, miért).
+        click(center(markOf(anon)));
+        QVERIFY(!popupOpen("voiceprintPopover"));
+
+        // 1) Akinek van: kimondja, és új minta készíthető.
+        click(center(mark));
+        QTRY_VERIFY(popupOpen("voiceprintPopover"));
+        QVERIFY(!popupOpen("speakerPopover"));
+        QCOMPARE(textOf("voiceprintName"), QStringLiteral("Kovács Lilla"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Van hanglenyomata"));
+        QVERIFY2(textOf("voiceprintDetail").contains(QStringLiteral("hosszabb sora használható fel")),
+                 qPrintable(textOf("voiceprintDetail")));
+        QCOMPARE(textOf("voiceprintCreate"), QStringLiteral("Új minta készítése"));
+        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);     // megnyitásra semmi sem készül
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("voiceprintPopover"));
+
+        // 2) Elnevezett, még lenyomat nélküli beszélő, elég anyaggal: itt készíthető.
+        QVERIFY(m_vm->reassignSpeaker(anon, QStringLiteral("Bálint Péter"), false));
+        m_vm->dismissChange();
+        QTRY_COMPARE(markState(anon), QStringLiteral("none"));
+        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        click(center(markOf(anon)));
+        QTRY_VERIFY(popupOpen("voiceprintPopover"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
+        QCOMPARE(textOf("voiceprintCreate"), QStringLiteral("Hanglenyomat készítése"));
+        QVERIFY(!visual("voiceprintUndo"));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
+        click(center(visual("voiceprintCreate")));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 1);
+        QTRY_COMPARE(markState(anon), QStringLiteral("has"));       // a jelző frissül
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Van hanglenyomata"));
+        QVERIFY2(textOf("voiceprintResult").startsWith(QStringLiteral("Elkészült ")), qPrintable(textOf("voiceprintResult")));
+        QVERIFY(textOf("voiceprintResult").contains(QStringLiteral("mp beszédből")));
+        QVERIFY(!visual("voiceprintCreate"));
+        // …és a most készült visszavonható: pontosan az törlődik.
+        QVERIFY(visual("voiceprintUndo"));
+        click(center(visual("voiceprintUndo")));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
+        QTRY_COMPARE(markState(anon), QStringLiteral("none"));
+        QCOMPARE(textOf("voiceprintResult"), QStringLiteral("A most készült hanglenyomat törölve."));
+        QCOMPARE(textOf("voiceprintCreate"), QStringLiteral("Hanglenyomat készítése"));
+        QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Bálint Péter"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("voiceprintPopover"));
+
+        // 3) Kevés anyag: megmondja, mennyi hiányzik és mi segít — gomb nincs.
+        const QString id = m_vm->rowInfo(3).value(QStringLiteral("utteranceId")).toString();
+        QVERIFY(m_vm->moveUtteranceToPerson(id, QStringLiteral("Ördög Ödön")));
+        m_vm->dismissChange();
+        const QString odon = keyOfName(QStringLiteral("Ördög Ödön"));
+        QTRY_COMPARE(markState(odon), QStringLiteral("none"));
+        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        click(center(markOf(odon)));
+        QTRY_VERIFY(popupOpen("voiceprintPopover"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
+        QVERIFY2(textOf("voiceprintDetail").contains(QStringLiteral("Még kb. ")), qPrintable(textOf("voiceprintDetail")));
+        QVERIFY(textOf("voiceprintDetail").contains(QStringLiteral("legalább 3 másodperces sorát rendeled hozzá")));
+        QVERIFY(!visual("voiceprintCreate"));
+        QVERIFY(!visual("voiceprintUndo"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("voiceprintPopover"));
+        QTRY_VERIFY(m_tab->hasActiveFocus());
+    }
+
+    // 11 beszélő: az „Egyéb (N)" sornak nincs jele; a névre kattintva kibomlik, és a keveset
+    // beszélők is saját jelet (és panelt) kapnak; vissza is csukható.
+    void overviewVoiceprint_collapsedSpeakersAfterExpanding()
+    {
+        load(QStringLiteral("many"));
+        QVERIFY(m_vm->collapsedCount() > 0);
+        const int shown = int(m_vm->overview().size());
+        QCOMPARE(int(visuals("overviewVoiceprint").size()), shown - 1);
+        const QString gergo = keyOfName(QStringLiteral("Horváth Gergő"));
+        QVERIFY(!markOf(gergo));
+        // A sáv-fejléc pöttye ugyanazt az állapotot mutatja (elnevezett beszélőnél látszik).
+        m_vm->setRailVisible(true);
+        pump();
+        for (QQuickItem* dot : visuals("laneVoiceprint"))
+            QVERIFY(dot->property("voiceprint").toString() != QLatin1String("anonymous"));
+        m_vm->setRailVisible(false);
+        pump();
+
+        QQuickItem* other = visuals("overviewName").constLast();
+        click(other->mapToScene(QPointF(12, other->height() / 2)).toPoint());
+        QVERIFY(m_vm->lanesExpanded());
+        QVERIFY(!popupOpen("speakerPopover"));
+        QTRY_COMPARE(int(visuals("overviewVoiceprint").size()), m_vm->speakerCount());
+        pump();
+        QCOMPARE(markState(gergo), QStringLiteral("none"));
+        QCOMPARE(markState(keyOfName(QStringLiteral("Németh Dávid"))), QStringLiteral("has"));
+        QCOMPARE(markState(keyOfName(QStringLiteral("Távoli 3"))), QStringLiteral("anonymous"));
+        click(center(markOf(gergo)));
+        QTRY_VERIFY(popupOpen("voiceprintPopover"));
+        QCOMPARE(textOf("voiceprintName"), QStringLiteral("Horváth Gergő"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("voiceprintPopover"));
+
+        QVERIFY(visual("overviewCollapse"));
+        click(center(visual("overviewCollapse")));
+        QVERIFY(!m_vm->lanesExpanded());
+        QTRY_COMPARE(int(visuals("overviewVoiceprint").size()), shown - 1);
+    }
+
+    // A sorról nyitott panelben a hanglenyomat-blokk csak a „<Név> minden sora" hatókörben
+    // látszik — ott ugyanúgy készíthető (és visszavonható), mint a teljes beszélő paneljében.
+    void linePopover_wholeSpeakerScope_hasVoiceprintBlock()
+    {
+        load();
+        click(center(nameOf(0)));
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        QCOMPARE(popover()->property("scope").toString(), QStringLiteral("line"));
+        QVERIFY(!visual("voiceprintBlock"));
+        QVERIFY(!visual("voiceprintCreate"));
+        click(center(visual("scopeSpeaker")));
+        QVERIFY(visual("voiceprintBlock"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Van hanglenyomata"));
+        QVERIFY(textOf("voiceprintDetail").contains(QStringLiteral("hosszabb sora használható fel")));
+        QVERIFY(visual("popoverFooter"));
+        // A blokk és a lábléc az ablakon belül marad (alacsony ablakban a listák rövidebbek).
+        QQuickItem* footer = visual("popoverFooter");
+        QVERIFY(footer->mapToScene(QPointF(0, footer->height())).y() <= m_window->height());
+        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);
+        click(center(visual("voiceprintCreate")));
+        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 2);
+        QVERIFY(popupOpen("speakerPopover"));               // a panel nyitva marad: visszavonható
+        QVERIFY(textOf("voiceprintResult").startsWith(QStringLiteral("Elkészült ")));
+        click(center(visual("voiceprintUndo")));
+        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);
+        QVERIFY(!m_vm->canUndo());                          // átsorolás nem történt
+        // Vissza a soronkénti hatókörre: a blokk eltűnik.
+        click(center(visual("scopeLine")));
+        QVERIFY(!visual("voiceprintBlock"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("speakerPopover"));
+
+        // A teljes beszélő paneljében (áttekintő név) ugyanez a blokk áll.
+        const QList<QQuickItem*> names = visuals("overviewName");
+        click(names.at(0)->mapToScene(QPointF(12, names.at(0)->height() / 2)).toPoint());
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        QVERIFY(visual("voiceprintBlock"));
+        QVERIFY(visual("voiceprintCreate"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("speakerPopover"));
+    }
+
+    // Egy teljes beszélő elnevezése után a sáv felajánlja a hanglenyomatot; elkészülte után ezt
+    // mondja ki, és a „Visszavonás" pontosan azt a lenyomatot törli. Sor után nincs ajánlat.
+    void changeBar_offersVoiceprint_afterNamingWholeSpeaker()
+    {
+        load();
+        m_vm->setRailVisible(true);
+        pump();
+        click(railPoint(3, 1));                             // egy sor: nincs ajánlat
+        QTRY_VERIFY(barShown());
+        QVERIFY(visual("changeUndo"));
+        QVERIFY(!visual("changeVoiceprint"));
+        undoKey();
+        QVERIFY(!barShown());
+
+        // A névtelen beszélő nevet kap az áttekintő nevéről (a személynek nincs lenyomata).
+        const QString anon = keyOfName(QStringLiteral("Távoli 1"));
+        QQuickItem* anonName = nullptr;
+        for (QQuickItem* item : visuals("overviewName"))
+            if (item->property("text").toString() == QStringLiteral("Távoli 1")) anonName = item;
+        QVERIFY(anonName);
+        click(anonName->mapToScene(QPointF(12, anonName->height() / 2)).toPoint());
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        type(QStringLiteral("balint"));
+        QTest::keyClick(m_window.get(), Qt::Key_Return);
+        QTRY_VERIFY(popupGone("speakerPopover"));
+        QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Bálint Péter"));
+        QTRY_VERIFY(barShown());
+        QVERIFY(visual("changeVoiceprint"));
+        QCOMPARE(textOf("changeVoiceprint"), QStringLiteral("Hanglenyomat készítése"));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);    // magától nem készül
+        QTRY_COMPARE(markState(anon), QStringLiteral("none"));
+
+        click(center(visual("changeVoiceprint")));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 1);
+        QVERIFY(barShown());
+        QVERIFY2(barText().startsWith(QStringLiteral("Hanglenyomat készült: Bálint Péter (")), qPrintable(barText()));
+        QCOMPARE(textOf("changeText"), barText());
+        QVERIFY(!visual("changeVoiceprint"));
+        QTRY_COMPARE(markState(anon), QStringLiteral("has"));
+
+        // Visszavonás a sávon: a lenyomat törlődik, az elnevezés marad (az Ctrl+Z-vel megy).
+        click(center(visual("changeUndo")));
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
+        QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Bálint Péter"));
+        QVERIFY(barShown());
+        QCOMPARE(barText(), QStringLiteral("A most készült hanglenyomat törölve: Bálint Péter"));
+        QVERIFY(!visual("changeUndo"));
+        QVERIFY(!visual("changeVoiceprint"));
+        QTRY_COMPARE(markState(anon), QStringLiteral("none"));
+        QVERIFY(m_vm->canUndo());
+        undoKey();
+        QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Távoli 1"));
+
+        // Olyan személybe olvasztva, akinek már van lenyomata: nincs ajánlat.
+        QVERIFY(m_vm->mergeSpeakers(anon, keyOfName(QStringLiteral("Fehér Ádám"))));
+        QTRY_VERIFY(barShown());
+        QVERIFY(!visual("changeVoiceprint"));
+    }
+
+    // Hangmodell nélkül: nincs halott gomb — a panel egyszer megmondja az okot, a sáv nem ajánl.
+    void withoutVoiceModel_noDeadVoiceprintButton()
+    {
+        load(QStringLiteral("novoice"));
+        const QString anon = keyOfName(QStringLiteral("Távoli 1"));
+        QVERIFY(m_vm->reassignSpeaker(anon, QStringLiteral("Bálint Péter"), false));
+        QTRY_VERIFY(barShown());
+        QVERIFY(!visual("changeVoiceprint"));
+        m_vm->dismissChange();
+        QTRY_COMPARE(markState(anon), QStringLiteral("none"));
+        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        click(center(markOf(anon)));
+        QTRY_VERIFY(popupOpen("voiceprintPopover"));
+        QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
+        QCOMPARE(textOf("voiceprintDetail"),
+                 QStringLiteral("Nincs letöltve a hangmodell, ezért itt most nem készíthető hanglenyomat."));
+        QVERIFY(!visual("voiceprintCreate"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("voiceprintPopover"));
+
+        // A „Ki mondta?" panel blokkja ugyanígy.
+        click(center(nameOf(0)));
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        click(center(visual("scopeSpeaker")));
+        QVERIFY(visual("voiceprintBlock"));
+        QVERIFY(textOf("voiceprintDetail").startsWith(QStringLiteral("Nincs letöltve a hangmodell")));
+        QVERIFY(!visual("voiceprintCreate"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("speakerPopover"));
+    }
+
     void statesLoadWithoutWarnings_data()
     {
         QTest::addColumn<QString>("variant");
@@ -1090,7 +1368,9 @@ private slots:
         const char* states[] = {"", "rail", "playing", "selection", "suggestion", "suggestionShown", "filter",
                                 "search", "searchEmpty", "speakerPopover", "personPicker", "drag", "expanded",
                                 "linePopover", "selectionPopover", "lineToSpeakerPopover", "changeLine",
-                                "changeSelection", "changeSpeaker", "changeFilter", "mergeConfirm"};
+                                "changeSelection", "changeSpeaker", "changeFilter", "mergeConfirm",
+                                "changeVoiceprint", "changeVoiceprintDone", "voiceprintHas", "voiceprintNone",
+                                "voiceprintDone", "voiceprintShort"};
         for (const char* variant : {"", "two", "many", "long", "novoice", "none"})
             for (const char* state : states)
                 QTest::addRow("%s-%s", *variant ? variant : "default", *state ? state : "plain")

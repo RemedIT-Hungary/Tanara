@@ -1,7 +1,8 @@
 import QtQuick
 
 // A beszélő-sín rögzített fejléce: látható beszélőnként egy 24 px-es oszlop (20 px-es teli
-// avatar a beszélő színében, alatta 4 px-es pötty, ha a személynek van hanglenyomata), az
+// avatar a beszélő színében, alatta 5 px-es pötty: teli zöld, ha a személynek van hanglenyomata,
+// üres karika, ha elnevezett, de még nincs — ugyanaz a jelentés, mint az áttekintő jelénél), az
 // összecsukott „+N" csoport, és a „+" (új résztvevő) oszlop. A sorok oszlopai ehhez igazodnak.
 Item {
     id: root
@@ -44,9 +45,13 @@ Item {
                 Rectangle {
                     y: 32
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 4; height: 4; radius: 2
-                    color: Theme.text
-                    visible: laneHead.modelData.hasVoiceprint
+                    objectName: "laneVoiceprint"
+                    property string voiceprint: laneHead.modelData.voiceprint
+                    width: 5; height: 5; radius: 2.5
+                    color: laneHead.modelData.hasVoiceprint ? Theme.success : "transparent"
+                    border.width: laneHead.modelData.hasVoiceprint ? 0 : 1
+                    border.color: Theme.borderStrong
+                    visible: !laneHead.modelData.anonymous
                 }
                 HoverHandler { id: laneHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: root.speakerClicked(laneHead.modelData.key, avatar) }
