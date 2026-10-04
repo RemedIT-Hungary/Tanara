@@ -952,6 +952,11 @@ int SpeakerEditor::indexOf(const QString& id) const { return d->indexById.value(
 
 QVector<EditorSpeaker> SpeakerEditor::speakers() const { return d->buildSpeakers(); }
 
+QStringList SpeakerEditor::personAliases(const QString& personName) const
+{
+    return d->people && !personName.trimmed().isEmpty() ? d->people->aliases(personName) : QStringList();
+}
+
 EditorSpeaker SpeakerEditor::speaker(const QString& key) const
 {
     for (const EditorSpeaker& s : d->buildSpeakers())

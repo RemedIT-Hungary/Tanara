@@ -231,12 +231,14 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     sourceComponent: Row {
                         spacing: 6
-                        // A természetes sorrend: meghallgatom → jó így / más mondta.
+                        // A természetes sorrend: meghallgatom → jó így / más mondta. A MEGHALLGATÁS a
+                        // kiemelt (ez az első lépés); a döntés két gombja visszafogott és távolabb áll,
+                        // hogy ne lehessen véletlenül a „Jó így"-re kattintani hallgatás helyett.
                         TButton {
+                            objectName: "lineListen"
                             size: "small"
-                            variant: "ghost"
                             height: 24
-                            leftPadding: 9; rightPadding: 9
+                            leftPadding: 9; rightPadding: 10
                             radius: 5
                             iconName: "play"
                             iconSize: 12
@@ -246,8 +248,18 @@ Item {
                             enabled: row.tab.canPlay
                             onClicked: row.tab.playLine(row.startMs, row.endMs)
                         }
+                        Item {
+                            width: 22; height: 24
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 1; height: 14
+                                color: Theme.border
+                            }
+                        }
                         TButton {
+                            objectName: "lineConfirm"
                             size: "small"
+                            variant: "ghost"
                             height: 24
                             leftPadding: 9; rightPadding: 9
                             radius: 5
@@ -263,6 +275,7 @@ Item {
                             id: fixButton
                             objectName: "lineFix"
                             size: "small"
+                            variant: "ghost"
                             height: 24
                             leftPadding: 9; rightPadding: 9
                             radius: 5

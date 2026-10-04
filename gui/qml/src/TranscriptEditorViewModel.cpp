@@ -1412,8 +1412,17 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
     QVariantList out;
     for (const EditorSpeaker& s : m_speakers) {
         if (s.key == excludeKey) continue;
-        if (!needle.isEmpty() && !foldForSearch(s.displayName).contains(needle)) continue;
-        out.append(speakerMap(s, m_views.value(s.key).lane));
+        // Névre VAGY becenévre: a megbeszélésen szereplő személyt a beceneve is megtalálja.
+        QString matchedAlias;
+        if (!needle.isEmpty() && !foldForSearch(s.displayName).contains(needle)) {
+            if (m_editor && !s.anonymous)
+                for (const QString& a : m_editor->personAliases(s.personName))
+                    if (foldForSearch(a).contains(needle)) { matchedAlias = a; break; }
+            if (matchedAlias.isEmpty()) continue;
+        }
+        QVariantMap entry = speakerMap(s, m_views.value(s.key).lane);
+        entry.insert(QStringLiteral("matchedAlias"), matchedAlias);
+        out.append(entry);
     }
     return out;
 }

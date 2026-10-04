@@ -215,6 +215,30 @@ private slots:
         QCOMPARE(vm.currentRow(), 2);
     }
 
+    // A megbeszélésen szereplő személyt a BECENEVE is megtalálja a „Kinek a sora ez?" panelben
+    // (a név szerinti találat változatlan; névtelen beszélőnek nincs beceneve).
+    void meetingSpeakers_foundByAlias()
+    {
+        Fixture fx;
+        auto ed = fx.editor(false);
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Szabó Áron"), false));
+        fx.people->addAlias(QStringLiteral("Szabó Áron"), QStringLiteral("Dönci"));
+
+        const QVariantList byAlias = vm.speakersMatching(QStringLiteral("donci"), QString());
+        QCOMPARE(byAlias.size(), 1);
+        QCOMPARE(byAlias.first().toMap().value(QStringLiteral("key")).toString(), kB2);
+        QCOMPARE(byAlias.first().toMap().value(QStringLiteral("matchedAlias")).toString(),
+                 QStringLiteral("Dönci"));
+
+        const QVariantList byName = vm.speakersMatching(QStringLiteral("szabo"), QString());
+        QCOMPARE(byName.size(), 1);
+        QVERIFY(byName.first().toMap().value(QStringLiteral("matchedAlias")).toString().isEmpty());
+
+        QVERIFY(vm.speakersMatching(QStringLiteral("nincsilyen"), QString()).isEmpty());
+    }
+
     void wholeSpeaker_reassignMergeRevert()
     {
         Fixture fx;

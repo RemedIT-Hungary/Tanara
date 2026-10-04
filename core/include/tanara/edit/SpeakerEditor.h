@@ -56,7 +56,9 @@ public:
     // A meeting beszélői colorIndex szerint (első megjelenés sorrendje; a kézzel felvettek
     // a végén). Az üres, eltávolított vagy összevont nyers címkék nem szerepelnek.
     QVector<EditorSpeaker> speakers() const;
-    EditorSpeaker speaker(const QString& key) const;        // ismeretlen kulcs → üres key
+    EditorSpeaker speaker(const QString& key) const;
+    // Egy személy becenevei (a személy-tárból) — a választók becenévre is találnak.
+    QStringList personAliases(const QString& personName) const;        // ismeretlen kulcs → üres key
 
     int uncertainCount() const;
     QStringList uncertainUtteranceIds() const;

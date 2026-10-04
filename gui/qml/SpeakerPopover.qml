@@ -231,7 +231,9 @@ TPopover {
                 width: blockList.width
                 personName: modelData.name
                 speakerIndex: modelData.colorIndex
-                subText: block.merge ? qsTr("összevonás") : qsTr("%n sor", "", modelData.utteranceCount)
+                // Ha becenévre talált, a becenév is látszik (mint a személy-listában).
+                subText: (modelData.matchedAlias ? "„" + modelData.matchedAlias + "” · " : "")
+                         + (block.merge ? qsTr("összevonás") : qsTr("%n sor", "", modelData.utteranceCount))
                 highlighted: hovered || (!block.merge && control.currentIndex === index)
                 onClicked: control.chooseSpeaker(modelData.key)
             }
