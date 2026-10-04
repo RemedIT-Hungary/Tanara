@@ -39,8 +39,8 @@ class AppContext : public QObject {
     Q_PROPERTY(QString version READ version CONSTANT)
     // A core egyetlen UI-felé néző objektuma (tanara::AppController) — QML-ből QObject-ként.
     Q_PROPERTY(QObject* controller READ controllerObject NOTIFY controllerChanged)
-    // A Widgets-párbeszédablakokat (Beállítások, Személyek, felvevő, cloud) nyitó híd.
-    // A gui/src-ben él (az ismeri a Widgets-osztályokat), a main.cpp állítja be.
+    // A külön ablakokat (Beállítások, Személyek, felvevő) és a cloud Widgets-párbeszédablakait
+    // nyitó híd. A gui/src-ben él (az ismeri a Widgets-osztályokat), a main.cpp állítja be.
     Q_PROPERTY(QObject* bridge READ bridge NOTIFY bridgeChanged)
 
 public:

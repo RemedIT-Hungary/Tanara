@@ -1,6 +1,6 @@
 #pragma once
 //
-// AppController — az EGYETLEN objektum, amihez az UI köt (Widgets most, QML később).
+// AppController — az EGYETLEN objektum, amihez az UI köt (a QML-nézetmodellek, a CLI).
 // Összedrótozza a modulokat: beállítások, eszközök, felvétel, tár, STT, LLM, összefoglaló.
 // SZABÁLY: itt sincs Widgets-függőség — sima QObject API (signal/slot + value DTO-k).
 //
@@ -38,7 +38,7 @@ public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController() override;
 
-    // Alkomponensek (a UI ezekre köthet modellt/nézetet — pl. MeetingListModel::setStore(store())).
+    // Alkomponensek (a UI ezekre köthet modellt/nézetet).
     SettingsManager* settings() const;
     DeviceManager*   devices() const;
     MeetingStore*    store() const;
@@ -126,10 +126,6 @@ public:
     void renamePerson(const QString& oldName, const QString& newName);
     void removePerson(const QString& name);
 
-    // Mely meetingeken szerepel az adott személy (speakerMap-érték vagy mic-sáv neve).
-    // "Cím (yyyy-MM-dd)" formátumú sorok, legújabb elöl — az azonosítást segíti.
-    QStringList meetingsForPerson(const QString& name) const;
-
     // A meeting eddig elkészült (perzisztált) téma-elemzései (summary.analyses.json).
     // A UI ebből tölti a téma-kártyák „✓ Kész" állapotát a szerkesztő megnyitásakor.
     QVector<tanara::TopicAnalysis> topicAnalyses(const QString& meetingId) const;
@@ -157,15 +153,12 @@ public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
     void refreshDevices();
 
-    // Felvétel ELŐTTI élő szintfigyelés (VU-sávokhoz a UI-ban). Megnyitja az
-    // összes capture-eszközt, és deviceLevel(name, rms)-t emittál ~20 Hz-cel.
-    // Felvétel indításakor automatikusan leáll.
+    // Élő szintfigyelés (a felvevő szintmérőihez). Megnyitja az összes capture-eszközt, és
+    // deviceLevelPeak(name, rms, peak)-et emittál. A felvétel ALATT is megy — a sávra NEM
+    // kerülő eszközökön (a rögzítettek szintjét a felvétel adja), így a felvevő minden eszköz
+    // mérőjét mozgatni tudja.
     void startLevelMonitoring();
     void stopLevelMonitoring();
-    // Ha be van kapcsolva, a szintfigyelés a felvétel ALATT is megy — a sávra NEM kerülő
-    // eszközökön (a rögzítettek szintjét a felvétel adja). Így a felvevő minden eszköz
-    // mérőjét mozgatni tudja (deviceLevelPeak). Alapból ki: a régi felvevő viselkedése.
-    void setMonitorDuringRecording(bool on);
 
     // Felvétel KÖZBEN egy további eszköz sávjának indítása (a sáv attól a pillanattól szól;
     // a fájl elejét csend tölti ki, így együtt áll a többivel). false, ha nem megy felvétel
@@ -219,10 +212,6 @@ public slots:
 
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
-
-    // Az LLM-endpont (settings.llmSelected().baseUrl) elérhető modelljeinek lekérése (GET /models).
-    // Eredmény: llmModelsFetched(QStringList) vagy llmModelsFailed(QString).
-    void fetchLlmModels();
 
     // Egy meeting átírása. A leirat a MIXDOWNból készül (egyetlen hangfolyam → nincs
     // sávonkénti átfedés-összefésülés/duplikáció, ~N× helyett 1× Soniox-költség). Ha a
@@ -358,14 +347,12 @@ public slots:
 
 signals:
     void devicesChanged();
-    void deviceLevel(QString deviceName, float rms);   // élő szint (monitoring)
     // Élő szint ESZKÖZNÉV szerint, csúccsal (~30 Hz) — felvétel előtt minden figyelt eszközre,
-    // felvétel alatt a rögzített sávokra (és setMonitorDuringRecording mellett a többire is).
+    // felvétel alatt a rögzített sávokra és (a szintfigyelésből) a többire is.
     void deviceLevelPeak(QString deviceName, float rms, float peak);
     void recordingTrackAdded(QString deviceName);    // felvétel közben új sáv indult
     void recordingTrackClosed(QString deviceName);   // a rögzített eszközt leválasztották
     void recordingStateChanged(tanara::RecordingState state);
-    void levelMeterUpdated(int trackIndex, float rms);
     void elapsedChanged(qint64 ms);
     void recordingFinished(tanara::Meeting meeting);
     // Az importálás elkészült: a meeting a tárban van (a könyvtár felvette).
@@ -413,8 +400,6 @@ signals:
     void cloudError(QString meetingId, QString kind, tanara::CloudError error,
                     tanara::Money chargedSoFar);
 
-    void llmModelsFetched(QStringList models);             // fetchLlmModels eredménye
-    void llmModelsFailed(QString error);
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 

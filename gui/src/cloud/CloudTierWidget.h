@@ -4,7 +4,8 @@
 // összefoglaló). A katalógus (/v1/models) metaadatai alapján figyelmeztet: nem diarizáló
 // átírás, a nyelvhez nem ajánlott modell. Expert-modell kiválasztva → azt mutatja, és egy
 // kattintással vissza lehet állni a szintekre. A választás AZONNAL a beállításokba kerül
-// (egy igazságforrás: a fő ablak, a becslés-dialógus és a fiók-panel ugyanazt állítja).
+// (egy igazságforrás: a becslés-dialógus és a Beállítások Tanara Cloud panelje ugyanazt
+// állítja). A becslés-dialógus (CloudEstimateDialog) ágyazza be.
 //
 #include "tanara/provider/ReadinessModel.h"
 
@@ -28,7 +29,7 @@ public:
 
     void refresh();                       // beállítások / katalógus változása után
 
-    // A nyelv-választó feltöltése és kiolvasása (közös a fiók-panellel).
+    // A nyelv-választó feltöltése.
     static void fillLanguages(QComboBox* combo, const QString& current);
 
 signals:

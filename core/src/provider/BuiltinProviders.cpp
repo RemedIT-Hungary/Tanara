@@ -169,7 +169,7 @@ ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
     d.supportsDiarization = true;    // a Pontos szint diarizál; a Gyors nem (katalógus-metaadat)
     d.networkRequired     = true;
     // Nincs kulcs-mező: egy bejelentkezés (device flow) mindkét providerhez; a szintet
-    // (Gyors / Pontos / Expert) a Tanara Cloud fiók-panel és a becslés-dialógus állítja.
+    // (Gyors / Pontos / Expert) a Beállítások Tanara Cloud panelje és a becslés-dialógus állítja.
     return d;
 }
 

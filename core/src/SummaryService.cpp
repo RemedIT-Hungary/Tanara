@@ -105,7 +105,7 @@ SummaryService::SummaryService(ILlmProvider* provider, QObject* parent)
 SummaryService::~SummaryService() = default;
 
 // A beépített default a PromptLibrary-ben él ("simple") — ez a delegáció marad a
-// meglévő hívóhelyeknek (SettingsDialog „Visszaállítás", üres-prompt fallback).
+// meglévő hívóhelynek (üres-prompt fallback).
 QString SummaryService::defaultSystemPrompt()
 {
     return promptBuiltin(QStringLiteral("simple"));

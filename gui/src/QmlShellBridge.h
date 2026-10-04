@@ -1,13 +1,13 @@
 #pragma once
 //
-// QmlShellBridge — az új (Qt Quick) főablak hídja a Qt Widgets világhoz (App.bridge).
+// QmlShellBridge — a (Qt Quick) főablak hídja a Qt Widgets világhoz (App.bridge).
 //
-// Ami a régi MainWindow-ban Widgets-hez kötött viselkedés volt, itt él tovább:
-//  - a Beállítások (már QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
+// Ami Widgets-hez vagy külön ablakhoz kötött viselkedés, az itt él:
+//  - a Beállítások (QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
 //    natív mappaválasztót és a cloud Widgets-ablakait a SettingsWidgetsDialogs adja) és a
-//    Személyek párbeszédablak;
+//    Személyek ablak (QML: tanara_qml::PeopleWindowHost);
 //  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
-//    át (az burkolja az új QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
+//    át (az burkolja a QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
 //    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
 //    visszahozása, „Leállítom és kilépek”);
 //  - a Tanara Cloud folyamatai a gui/src/cloud ablakaival: indulási ellenőrzések (K-01

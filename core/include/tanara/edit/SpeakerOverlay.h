@@ -8,7 +8,7 @@
 //
 // A megjelenített név feloldási sorrendje:
 //   soronkénti felülírás → (összevont nyers címke átirányítása) → Meeting.speakerMap → nyers címke.
-// A Meeting.speakerMap szemantikája változatlan (régi Widgets UI + CLI ezt olvassa/írja).
+// A Meeting.speakerMap szemantikája változatlan (a CLI ezt olvassa/írja).
 //
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"

@@ -46,9 +46,6 @@
 #include <QJsonValue>
 #include <QHash>
 #include <QSet>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QFileInfo>
 #include <QDateTime>
 #include <QPointer>
@@ -435,7 +432,6 @@ struct AppController::Impl {
     std::unique_ptr<VoiceprintStore> voiceprints;
     std::unique_ptr<VoiceEmbedder>   embedder;   // lusta betöltés (első használatkor)
     QString          voiceModelPath;
-    QNetworkAccessManager* nam = nullptr;   // LLM-modellek lekéréséhez
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
     QString          metaDir;
@@ -448,7 +444,6 @@ struct AppController::Impl {
     bool        monitorWanted = false;          // a UI kérte a szintfigyelést
     bool        monitorLegacy = false;          // start/stopLevelMonitoring (a felvevő) kérése
     QHash<QObject*, QMetaObject::Connection> monitorHolders;   // retainLevelMonitoring fogyasztói (Beállítások)
-    bool        monitorDuringRecording = false; // felvétel alatt is (a nem rögzített eszközökön)
     QStringList monitorNames;                   // a figyelő aktuális eszköz-halmaza
     QStringList recNames;                       // a felvétel sávjai (index → eszköznév)
     QStringList recClosed;                      // menet közben leválasztott eszközök
@@ -772,7 +767,6 @@ AppController::AppController(QObject* parent)
     d->statePath = QDir(d->metaDir).filePath(QStringLiteral("state.json"));
     d->lastDevices = loadLastDevices(d->statePath);
     d->monitor = new DeviceMonitor(this);
-    connect(d->monitor, &DeviceMonitor::level, this, &AppController::deviceLevel);
     connect(d->monitor, &DeviceMonitor::levelPeak, this, &AppController::deviceLevelPeak);
 
     d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
@@ -1177,24 +1171,6 @@ void AppController::removePerson(const QString& name) {
     emit peopleChanged();
 }
 
-QStringList AppController::meetingsForPerson(const QString& name) const {
-    QStringList out;
-    const QString nm = name.trimmed();
-    if (nm.isEmpty()) return out;
-    const QVector<Meeting> all = d->store->loadAll();
-    for (const Meeting& idx : all) {
-        const Meeting m = d->store->load(idx.id);
-        bool present = false;
-        for (const QString& v : m.speakerMap) if (v == nm) { present = true; break; }
-        if (!present)
-            for (const Track& tr : m.tracks) if (tr.speakerLabel == nm) { present = true; break; }
-        if (present)
-            out << QStringLiteral("%1 (%2)")
-                       .arg(m.title, m.startedAt.toString(QStringLiteral("yyyy-MM-dd")));
-    }
-    return out;
-}
-
 void AppController::renameMeeting(const QString& meetingId, const QString& newTitle) {
     const QString t = newTitle.trimmed();
     if (t.isEmpty()) return;
@@ -1447,32 +1423,6 @@ void AppController::setUserSpeakerName(const QString& name) {
     }
 }
 
-void AppController::fetchLlmModels() {
-    if (!d->nam) d->nam = new QNetworkAccessManager(this);
-    QString base = d->settings->settings().llmSelected().baseUrl;
-    while (base.endsWith(QLatin1Char('/'))) base.chop(1);
-    QNetworkRequest req{QUrl(base + QStringLiteral("/models"))};
-    const QString key = d->keyStore.get(keys::LlmApiKey);
-    if (!key.isEmpty())
-        req.setRawHeader(QByteArrayLiteral("Authorization"), QByteArrayLiteral("Bearer ") + key.toUtf8());
-    QNetworkReply* reply = d->nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            emit llmModelsFailed(reply->errorString());
-            return;
-        }
-        const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
-        QStringList models;
-        for (const QJsonValue& v : root.value(QStringLiteral("data")).toArray()) {
-            const QString id = v.toObject().value(QStringLiteral("id")).toString();
-            if (!id.isEmpty()) models << id;
-        }
-        models.sort();
-        emit llmModelsFetched(models);
-    });
-}
-
 void AppController::startLevelMonitoring() {
     d->monitorLegacy = true;
     beginLevelMonitoring();
@@ -1502,7 +1452,6 @@ void AppController::releaseLevelMonitoring(QObject* owner) {
 
 void AppController::beginLevelMonitoring() {
     d->monitorWanted = true;
-    if (d->state != RecordingState::Idle && !d->monitorDuringRecording) return;
     if (d->state == RecordingState::Stopping || d->state == RecordingState::Encoding) return;
     d->devices->refresh();
     restartLevelMonitor(/*force*/ true);
@@ -1514,13 +1463,12 @@ void AppController::endLevelMonitoring() {
     if (d->monitor) d->monitor->stop();
 }
 
-void AppController::setMonitorDuringRecording(bool on) { d->monitorDuringRecording = on; }
 void AppController::setAutoMixdownAfterRecording(bool on) { d->autoMixdown = on; }
 
 void AppController::restartLevelMonitor(bool force) {
     if (!d->monitor || !d->monitorWanted) return;
     const bool recording = d->state == RecordingState::Recording;
-    if (d->state != RecordingState::Idle && !(recording && d->monitorDuringRecording)) return;
+    if (d->state != RecordingState::Idle && !recording) return;
     QVector<AudioDeviceInfo> list;
     QStringList names;
     for (const AudioDeviceInfo& dev : d->devices->captureDevices()) {
@@ -1591,7 +1539,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         return;
     }
     // A monitor felszabadítja az eszközöket a felvétel előtt (a kérés — monitorWanted —
-    // megmarad: setMonitorDuringRecording mellett a felvétel alatt a maradékon újraindul).
+    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul).
     d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
     d->recNames.clear();
@@ -1626,7 +1574,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
             d->recNames.clear();
             for (const AudioDeviceInfo& dev : sess->trackDevices()) d->recNames << dev.name;
             startCallEndMonitor();
-            restartLevelMonitor(/*force*/ true);   // csak ha a UI kérte (monitorDuringRecording)
+            restartLevelMonitor(/*force*/ true);   // csak ha a UI kérte (monitorWanted)
         } else if (st == RecordingState::Stopping) {
             // A lezárás alatt a figyelő is leáll; a felvétel végén (ha kell) újraindul.
             d->monitorNames.clear();
@@ -1636,7 +1584,6 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         }
         emit recordingStateChanged(st);
     });
-    connect(sess, &RecordingSession::levelMeterUpdated, this, &AppController::levelMeterUpdated);
     connect(sess, &RecordingSession::trackLevel, this, [this](int idx, float rms, float peak) {
         if (idx >= 0 && idx < d->recNames.size())
             emit deviceLevelPeak(d->recNames.at(idx), rms, peak);
@@ -1704,7 +1651,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->recClosed.clear();
         emit recordingFinished(m);
         emit recordingStateChanged(d->state);
-        if (d->monitorDuringRecording) restartLevelMonitor(/*force*/ true);
+        restartLevelMonitor(/*force*/ true);
         // Lekeverés (mixdown) leválasztva a stop()-ról: itt indítjuk ASZINKRON, csak ha a
         // beállítás "auto". Nem blokkol → azonnal indítható új felvétel. Kézi módban a
         // felhasználó a review-panel „Lekeverés" gombjával indítja. (A mixdown csak

@@ -2,7 +2,7 @@
 //
 // RecorderSingleton — EGYETLEN felvevő-példány gépenként.
 //
-// Aki felvevőt mutat (az elemző a lebegő felvevőjével, vagy a `tanara --record`
+// Aki felvevőt mutat (az elemző a felvevő-ablakával, vagy a `tanara --record`
 // folyamat), az figyel egy lokális socketen. Minden újabb `tanara --record …` hívás
 // (figyelő, tálca-katt, notification-gomb) ELŐBB megpróbálja átadni az argumentumait
 // a futó példánynak — ha sikerül, kilép. Így nem nyílik több felvevő, és a tálcáról

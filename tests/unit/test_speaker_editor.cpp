@@ -450,7 +450,7 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
     Fixture fx;
     auto ed = fx.editor();
 
-    // Nyers beszélő elnevezése = a régi speakerMap-bejegyzés (a Widgets UI / CLI ezt olvassa).
+    // Nyers beszélő elnevezése = a régi speakerMap-bejegyzés (a CLI ezt olvassa).
     QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
     QCOMPARE(ed->speaker(kB1).displayName, QStringLiteral("Anna"));

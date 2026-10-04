@@ -20,8 +20,6 @@ namespace tanara_gui::cloudui {
 QString lang();                                   // az aktív UI-nyelv (hu | en)
 QString money(const tanara::Money& m, tanara::MoneyStyle style = tanara::MoneyStyle::Balance);
 QString hours(double h);                          // „2,7 óra” / „45 perc”
-// „≈ 31 óra Pontos · ≈ 124 óra Gyors átírás”
-QString hoursLine(const tanara::AccountInfo& a);
 // A tier ember-olvasható neve: Gyors / Pontos (üres → Expert).
 QString tierName(const QString& tier);
 

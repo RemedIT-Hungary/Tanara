@@ -283,7 +283,7 @@ QString QmlShellBridge::identifyParticipantsPreview(const QString& meetingId, bo
 }
 
 // ============================================================================
-// Tanara Cloud — K-01, K-06…K-12, K-15 (a régi MainWindow cloud-ágának megfelelője)
+// Tanara Cloud — K-01, K-06…K-12, K-15
 // ============================================================================
 
 void QmlShellBridge::wireCloud()

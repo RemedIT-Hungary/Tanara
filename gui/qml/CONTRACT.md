@@ -60,7 +60,7 @@ Everything that needs a Widgets dialog, a cloud estimate / login / error flow, o
 change of what the window shows goes through here. Content components never call
 `AppController::transcribeMeeting` / `summarizeMeeting` / `extractMeetingTopics` /
 `generateComplexSummary` / `retranscribeMeeting` directly: the shell wraps them with the
-readiness check and the Tanara Cloud estimate confirmation that the old `MainWindow` does.
+readiness check and the Tanara Cloud estimate confirmation.
 
 | Invokable | Meaning |
 |---|---|

@@ -4,7 +4,7 @@
 // cloud-becslés / bejelentkezés / hibaág, vagy az ablak tartalmának váltása kell.
 //
 // A tartalom-komponensek `shell` property-ként kapják, és SOHA nem hívják közvetlenül az
-// AppController feldolgozás-indítóit: itt fut le a régi MainWindow kapuzása —
+// AppController feldolgozás-indítóit: itt fut le a kapuzás —
 //   canRun (ReadinessModel) → cloud-akadály (bejelentkezés / feltöltés / frissítés) →
 //   Beállítások a megfelelő lapon → K-06 becslés-megerősítés → indítás.
 // A Widgets-t igénylő lépések a ShellBridge-en (App.bridge) mennek át; a QML-ben élő

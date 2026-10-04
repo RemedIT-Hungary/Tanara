@@ -44,13 +44,12 @@ The build produces four targets:
 | Target | What it is |
 |---|---|
 | `tanara_core` | UI-independent core library (no Qt Widgets) — audio, stores, STT, LLM, speaker recognition, call detection |
-| `tanara` | Qt Widgets GUI — the main analyzer window, plus a floating-recorder mode (`tanara --record`) |
+| `tanara` | Qt Quick (QML) GUI — the main analyzer window, plus a floating-recorder mode (`tanara --record`); a few dialogs (Tanara Cloud, file pickers) are Qt Widgets |
 | `tanara-cli` | headless CLI on top of the same core |
 | `tanara-watcher` | lightweight tray app — watches for active calls and starts `tanara --record` |
 
 - **Architecture:** the GUI, the CLI, and the watcher all sit on `tanara_core`.
-  The linker boundary enforces the split between UI and backend. A QML front-end
-  can reuse the same core.
+  The linker boundary enforces the split between UI and backend.
 - Each meeting gets one folder under your recordings directory. The folder
   contains `meeting.json`, `track_*.ogg`, `mixdown.mp3`, `transcript.md`,
   `transcript.tokens.json`, `transcript.segments.json`, and `summary.md`.

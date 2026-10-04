@@ -313,7 +313,6 @@ void RecorderViewModel::attach()
         m_fallbackScan.start();
     }
 
-    c->setMonitorDuringRecording(true);
     c->startLevelMonitoring();   // refresh → devicesChanged → rebuildDevices
     if (m_rows.isEmpty()) rebuildDevices();
     onRecordingState(c->recordingState());

@@ -1,6 +1,6 @@
 #pragma once
 //
-// ShellQaHook — fejlesztői QA az új főablakhoz: `tanara --shell-script <fájl.qml>`.
+// ShellQaHook — fejlesztői QA a főablakhoz: `tanara --shell-script <fájl.qml>`.
 //
 // A megadott QML-fájl a VALÓDI főablak mellé töltődik (valódi AppController-rel — mindig
 // TANARA_HOME-os homokozóval futtasd!), és két property-t kap:
@@ -59,7 +59,7 @@ public:
     Q_INVOKABLE bool fileExists(const QString& path) const { return QFileInfo::exists(path); }
     // Egy sor a szabványos kimenetre (a szkript naplója).
     Q_INVOKABLE void log(const QString& line) const { QTextStream(stdout) << line << Qt::endl; }
-    // ---- Widgets-ablakok (Beállítások, Személyek, cloud-ablakok) vizsgálata ----
+    // ---- Widgets-ablakok (a Tanara Cloud párbeszédablakai) vizsgálata ----
     // A látható felső szintű widgetek: [{ cls, title, modal, tab (QTabWidget aktuális lapja) }].
     Q_INVOKABLE QVariantList widgets() const
     {

@@ -6,7 +6,7 @@
 // (task strip) és a fülek tartalma (M03–M09) ezekből rajzol.
 //
 // A régi, szabad szöveges AppController::jobProgress / errorOccurred jelek MEGMARADNAK
-// (Widgets-UI, CLI) — ez a réteg mellettük él.
+// (CLI) — ez a réteg mellettük él.
 //
 #include <QString>
 #include <QVector>

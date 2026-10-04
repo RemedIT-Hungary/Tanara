@@ -1,6 +1,6 @@
 // ShellActions + ShellMeetingModel + ShellUiState — a héj művelet- és állapot-rétege.
 // Valódi AppController, IZOLÁLT TANARA_HOME (QTemporaryDir), ál-híddal (a Widgets-ablakok
-// helyén): a kapuzás a régi MainWindow útját járja — futtathatóság → cloud-akadály →
+// helyén): a kapuzás útja — futtathatóság → cloud-akadály →
 // Beállítások a megfelelő lapon → indítás. Valódi szolgáltató-hívás NINCS (a feladatot az
 // indulás után rögtön megszakítjuk; a szolgáltató címe egy zárt helyi port).
 #include "AppContext.h"

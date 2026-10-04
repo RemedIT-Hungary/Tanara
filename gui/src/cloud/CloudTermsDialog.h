@@ -4,7 +4,7 @@
 //  - előzetes (14 napos időszak): [Megtekintés] [Elfogadom] [Később] — „Később” naponta
 //    legfeljebb egyszer kérdez újra (CloudAccount::postponeTerms);
 //  - kötelező (hatálybalépés után, 403 terms_acceptance_required): [Megtekintés] [Elfogadom]
-//    [Mégse]. A futó feldolgozás nem szakad meg; a fiók-panel, a modellek, a kijelentkezés megy.
+//    [Mégse]. A futó feldolgozás nem szakad meg; a fiók-adatok, a modellek, a kijelentkezés megy.
 // Mindkettőn: „Nem fogadom el, fiók törlése” → a dashboard a böngészőben.
 //
 #include "tanara/cloud/CloudTypes.h"

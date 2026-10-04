@@ -31,12 +31,6 @@ QString money(const Money& m, MoneyStyle style) { return formatMoney(m, style, l
 
 QString hours(double h) { return formatHours(h, lang()); }
 
-QString hoursLine(const AccountInfo& a)
-{
-    return QCoreApplication::translate("CloudUi", "≈ %1 Pontos · ≈ %2 Gyors átírás")
-        .arg(hours(a.hoursAccurate), hours(a.hoursFast));
-}
-
 QString tierName(const QString& tier)
 {
     if (tier == QLatin1String("fast")) return QCoreApplication::translate("CloudUi", "Gyors");

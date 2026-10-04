@@ -4,11 +4,12 @@ The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), t
 application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
 `design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
 
-The process is still a `QApplication`: the Tanara Cloud dialogs remain Qt Widgets and open
-next to the QML windows. Settings is QML (`SettingsWindow.qml`, see "Settings window"), People
-is QML (`PeopleWindow.qml`, see "People window"; `--classic` keeps the Widgets
-`PeopleManagerDialog`); the floating recorder is QML in both the main window and
-`tanara --record` (only `--classic` keeps the old Widgets recorder and `SettingsDialog`).
+The process is still a `QApplication`: the Tanara Cloud dialogs (sign-in, estimate
+confirmation, errors, top-up, terms, mode choice, Expert model picker), the native file / folder
+pickers and the tray icon are Qt Widgets and open next to the QML windows. Everything else is
+QML: the main window, Settings (`SettingsWindow.qml`, see "Settings window"), People
+(`PeopleWindow.qml`, see "People window") and the floating recorder, both in the main window
+and in `tanara --record`. The old Widgets main window (`tanara --classic`) is gone.
 
 ## Layout
 
@@ -19,7 +20,7 @@ is QML (`PeopleWindow.qml`, see "People window"; `--classic` keeps the Widgets
 | `gui/qml/icons/*.svg` | Lucide icons (ISC) → `:/qt/qml/Tanara/icons/` | glob |
 | `gui/qml/fonts/*.ttf` | IBM Plex Sans / Mono (OFL) → `:/qt/qml/Tanara/fonts/` | glob |
 | `tests/ui/*.cpp` | Qt Test, one executable per file, links `tanara_qml` | glob |
-| `gui/src/` | Widgets UI + `main.cpp` (may include module headers) | glob |
+| `gui/src/` | `main.cpp`, the bridge to the Widgets world and the remaining Widgets dialogs (`cloud/`); may include module headers | glob |
 
 **Adding a file never needs a CMake edit.** The globs use `CONFIGURE_DEPENDS`, so the
 next `cmake --build build` re-configures by itself. Targets: `tanara_qml` (static
@@ -33,10 +34,9 @@ automatically (re-run cmake if you add the pragma to an existing file).
 ```bash
 cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
 
-build/gui/tanara                      # new QML window (uses the real AppController / user data)
+build/gui/tanara                      # the main window (uses the real AppController / user data)
 build/gui/tanara --meeting <id>       # same, with that meeting selected; handed over to a running main window
-build/gui/tanara --classic            # the old Widgets MainWindow, unchanged
-build/gui/tanara --record …           # the QML floating recorder (see "Recorder"); add --classic for the old Widgets one
+build/gui/tanara --record …           # the floating recorder (see "Recorder")
 build/gui/tanara --settings [page]    # only the Settings window (general | recording | watcher | providers | cloud | summary);
                                       # handed over to a running main window, otherwise a stand-alone process
 build/gui/tanara --gallery            # control gallery, interactive — no AppController
@@ -201,7 +201,7 @@ Multimedia).
 running, the second process hands the request over through a local socket and exits
 (`gui/src/AnalyzerSingleton.h`, name scoped by `TANARA_HOME` like the recorder's); the running
 window selects the meeting and comes to the front (`ShellBridge::showMeetingRequested` →
-`ShellActions.showMeeting` + `activateWindow`). `--classic` ignores the argument.
+`ShellActions.showMeeting` + `activateWindow`).
 
 QA without touching the desktop: `TANARA_HOME=<sandbox>/home QT_QPA_PLATFORM=offscreen
 build/gui/tanara --shell-script script.qml` loads `script.qml` next to the real window with
@@ -278,7 +278,7 @@ Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPo
 ## Widgets dialogs from QML
 
 `App.bridge` is a `QObject*` slot for the object that opens the Widgets dialogs
-(recorder, cloud) and the QML Settings and People windows. The class belongs in `gui/src/` (it needs the Widgets
+(Tanara Cloud, native file pickers) and the QML recorder, Settings and People windows. The class belongs in `gui/src/` (it needs the Widgets
 classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 `tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
 `Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
@@ -307,7 +307,7 @@ Where it opens: the main window (`ShellActions.openSettings(page, focusField)` �
 `QmlShellBridge` → host), the stand-alone recorder (`tanara --record`, R10 "Rögzítés
 beállításai" → the same window on the `recording` page, in the recorder's process) and
 `tanara --settings [page]` (the tray watcher's "Beállítások…"; forwarded to a running main window,
-otherwise a process of its own). `tanara --classic` keeps the Widgets `SettingsDialog`.
+otherwise a process of its own).
 
 Behaviour worth knowing:
 

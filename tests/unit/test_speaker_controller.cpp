@@ -146,7 +146,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QCOMPARE(mapSig.count(), 1);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value(kB1), QStringLiteral("Anna"));
 
-    // A RÉGI útvonal (Widgets UI / CLI): nyers címke átnevezése. A szerkesztő átveszi, a
+    // A RÉGI útvonal (CLI): nyers címke átnevezése. A szerkesztő átveszi, a
     // soronkénti javítás megmarad, és a transcript.md mindkettőt tükrözi.
     QSignalSpy speakers(ed, &SpeakerEditor::speakersChanged);
     m_app->renameSpeaker(m.id, kB2, QStringLiteral("Béla"), /*enroll*/ false);
