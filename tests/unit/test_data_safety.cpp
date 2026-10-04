@@ -361,7 +361,7 @@ void DataSafetyTest::peopleFromTwoProcessesMerge()
     analyzer.rename("Lilla", "Kovács Lilla");
     QCOMPARE(PeopleStore(path).names(), QStringList({"Kovács Lilla", "Zsófi"}));
     QCOMPARE(analyzer.names(), QStringList({"Kovács Lilla", "Zsófi"}));
-    // A formátum változatlan ({"people":[…]}), és nem marad zár-fájl.
+    // Két rekord a fájlban, és nem marad zár-fájl.
     QCOMPARE(QJsonDocument::fromJson(readFile(path)).object().value("people").toArray().size(), 2);
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
 }

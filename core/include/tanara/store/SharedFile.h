@@ -9,7 +9,6 @@
 //    változását;
 //  - setAsideCorrupt: az értelmezhetetlen fájl félretétele felülírás előtt;
 //  - replaceFile: kész fájl a régi helyére úgy, hogy a régi hibánál megmarad (lekeverés).
-// Az adatfájl formátuma nem változik; régi build a .lock fájlt egyszerűen nem használja.
 //
 #include <QDateTime>
 #include <QFile>

@@ -348,12 +348,14 @@ pane's width is draggable (names are not elided in normal widths).
 | `PeopleViewModel` (+ `PeopleListModel`) | list (filter, sort, sections, match parts), the selected person's detail, operations, toast texts; fictional people without a controller (`demoState`) |
 | `PeopleWindowHost` | C++ host with its own engine: `open(person)`, `closed()` |
 
-Core behind it (`core/include/tanara/people/`, `store/PersonDetailsStore.h`):
+Core behind it (`core/include/tanara/people/`, `store/PeopleStore.h`):
 
-- **Storage.** `people.json` (name list) and `voiceprints.json` keep their shape — older builds
-  rewrite both files from their own model and would drop anything else. Aliases and notes live in
-  the sibling `people-details.json` (`PersonDetailsStore`, keyed by name like the other two, same
-  locked reload-merge-save pattern, unknown fields preserved).
+- **Storage.** `people.json` holds one record per person (`{"version": 2, "people": [{"name",
+  "aliases", "note"}], "unlisted": [...]}`, `PeopleStore`; keyed by name like `voiceprints.json`,
+  locked reload-merge-save, unknown fields preserved). `unlisted` keeps aliases / notes of a name
+  that is not on the list (a voiceprint-only person, or a name changed from outside); the record
+  returns to the list when the name does. The old shape (a plain name list plus the sibling
+  `people-details.json`) is migrated once, automatically, on load.
 - **`PeopleService`** (`AppController::peopleService()`): persons, samples with a friendly source
   (`TrackCatalog` / `devicenames`), rename (old name becomes an alias; through the global
   `renamePerson` / `setUserSpeakerName`), aliases, note, sample delete / move / new person from a

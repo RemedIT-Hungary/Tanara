@@ -120,9 +120,9 @@ public:
 
     // Személy átnevezése/törlése GLOBÁLISAN: a névlistában + MINDEN meeting
     // speakerMap-jében átvezetve (a transcript.md-k újragenerálva). peopleChanged jel.
-    // A becenevek / megjegyzés (people-details.json) követik: átnevezésnél az új névre
-    // kerülnek (ha a cél-név már létezik, a két személy adatai egyesülnek), törlésnél
-    // törlődnek. (A régi nevet becenévként a Személyek ablak művelete, a PeopleService őrzi meg.)
+    // A személy rekordja (becenevek, megjegyzés) egyben megy: átnevezésnél az új névre
+    // kerül (ha a cél-név már létezik, a két személy adatai egyesülnek), törlésnél
+    // törlődik. (A régi nevet becenévként a Személyek ablak művelete, a PeopleService őrzi meg.)
     void renamePerson(const QString& oldName, const QString& newName);
     void removePerson(const QString& name);
 

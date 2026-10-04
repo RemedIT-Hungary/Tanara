@@ -8,7 +8,6 @@
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/PersonDetailsStore.h"
 #include "tanara/store/VoiceprintStore.h"
 
 #include <QDir>
@@ -72,7 +71,6 @@ struct PeopleService::Private {
     MeetingStore* store = nullptr;
     PeopleStore* people = nullptr;
     VoiceprintStore* voiceprints = nullptr;
-    PersonDetailsStore* details = nullptr;
     PeopleStats* stats = nullptr;
     UtteranceEmbedderFactory factory;
     bool factoryInjected = false;
@@ -113,8 +111,8 @@ struct PeopleService::Private {
         PersonRecord r;
         r.name = name;
         r.isSelf = !self().isEmpty() && sameName(name, self());
-        if (details) {
-            const PersonDetails d = details->details(name);
+        if (people) {
+            const PersonDetails d = people->details(name);
             r.aliases = d.aliases;
             r.note = d.note;
         }
@@ -212,8 +210,7 @@ struct PeopleService::Private {
 };
 
 PeopleService::PeopleService(AppController* controller, MeetingStore* store, PeopleStore* people,
-                             VoiceprintStore* voiceprints, PersonDetailsStore* details,
-                             PeopleStats* stats, QObject* parent)
+                             VoiceprintStore* voiceprints, PeopleStats* stats, QObject* parent)
     : QObject(parent), d(std::make_unique<Private>())
 {
     d->q = this;
@@ -221,7 +218,6 @@ PeopleService::PeopleService(AppController* controller, MeetingStore* store, Peo
     d->store = store;
     d->people = people;
     d->voiceprints = voiceprints;
-    d->details = details;
     d->stats = stats;
 }
 
@@ -237,7 +233,6 @@ void PeopleService::reload()
 {
     if (d->people) d->people->refresh();
     if (d->voiceprints) d->voiceprints->refresh();
-    if (d->details) d->details->refresh();
 }
 
 QString PeopleService::selfName() const { return d->self(); }
@@ -403,16 +398,17 @@ PeopleOpResult PeopleService::renamePerson(const QString& oldName, const QString
     step.person = o;
     step.other = n;
     step.detail = n;
-    if (d->details)
-        for (const QString& a : d->details->aliases(o))
+    if (d->people)
+        for (const QString& a : d->people->aliases(o))
             if (sameName(a, n)) step.aliasWasPresent = true;
 
-    // A meglévő globális átnevezés: névlista, lenyomatok, minden megbeszélés. A saját névnél
-    // ugyanaz történik, mint a Beállítások „Saját neved” mezőjénél.
+    // A meglévő globális átnevezés: a személy rekordja (becenevekkel, megjegyzéssel együtt),
+    // lenyomatok, minden megbeszélés. A saját névnél ugyanaz történik, mint a Beállítások
+    // „Saját neved” mezőjénél.
     if (isSelf(o)) d->controller->setUserSpeakerName(n);
     else d->controller->renamePerson(o, n);
     // A régi név becenévként megmarad (a régi átiratokban szereplő néven is megtalálható).
-    if (d->details && !sameName(o, n)) d->details->addAlias(n, o);
+    if (d->people && !sameName(o, n)) d->people->addAlias(n, o);
 
     d->renameInUndo(o, n);
     step.person = o;
@@ -436,7 +432,7 @@ PeopleOpResult PeopleService::addAlias(const QString& name, const QString& alias
         r.error = tr("Ez a személy neve — becenévnek mást adj meg.");
         return r;
     }
-    if (!d->details || !d->details->addAlias(name, a)) {
+    if (!d->people || !d->people->addAlias(name, a)) {
         r.error = tr("Ez a becenév már szerepel.");
         return r;
     }
@@ -447,8 +443,8 @@ PeopleOpResult PeopleService::addAlias(const QString& name, const QString& alias
 
 bool PeopleService::removeAlias(const QString& name, const QString& alias)
 {
-    if (!d->details) return false;
-    const int index = d->details->removeAlias(name, alias);
+    if (!d->people) return false;
+    const int index = d->people->removeAlias(name, alias);
     if (index < 0) return false;
     UndoStep step;
     step.kind = PeopleUndoKind::AliasRemoved;
@@ -463,9 +459,9 @@ bool PeopleService::removeAlias(const QString& name, const QString& alias)
 
 void PeopleService::setNote(const QString& name, const QString& note)
 {
-    if (!d->details || name.trimmed().isEmpty()) return;
-    if (d->details->details(name).note == note) return;
-    d->details->setNote(name, note);
+    if (!d->people || name.trimmed().isEmpty()) return;
+    if (d->people->details(name).note == note) return;
+    d->people->setNote(name, note);
     emit changed();
 }
 
@@ -619,11 +615,12 @@ PeopleOpResult PeopleService::merge(const QString& loserName, const QString& sur
     // A megszűnő név megbeszélésein változik a beszélő neve: azok összefoglalója elavul.
     const QVector<StaleMark> marks = d->markStale(loser);
 
-    // A meglévő globális átnevezés létező cél-névre = egyesítés: a névlistában, a
-    // lenyomatoknál, minden megbeszélésben; a megszűnő név becenév lesz (people-details.json).
+    // A meglévő globális átnevezés létező cél-névre = egyesítés: a két rekord egy lesz
+    // (becenevek, megjegyzés), a lenyomatok és minden megbeszélés követi; a megszűnő név
+    // becenév lesz.
     if (isSelf(loser)) d->controller->setUserSpeakerName(survivor);
     else d->controller->renamePerson(loser, survivor);
-    if (d->details) d->details->addAlias(survivor, loser);
+    if (d->people) d->people->addAlias(survivor, loser);
 
     d->clearUndo();   // nem visszavonható, és a korábbi lépések nevei már nem érvényesek
     if (d->stats) d->stats->refreshNow();
@@ -730,7 +727,7 @@ PeopleUndoInfo PeopleService::undo()
         }
         // Ha a művelet hozta létre a cél-személyt, és azóta semmi nem kötődik hozzá, eltűnik.
         if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0
-            && (!d->details || d->details->details(s.other).isEmpty())
+            && d->people->details(s.other).isEmpty()
             && (!d->stats || d->stats->stats(s.other).meetingCount == 0))
             d->people->remove(s.other);
         QVector<StaleMark> undone;
@@ -741,7 +738,7 @@ PeopleUndoInfo PeopleService::undo()
         break;
     }
     case PeopleUndoKind::AliasRemoved:
-        if (d->details) d->details->insertAlias(s.person, s.alias, s.aliasIndex);
+        if (d->people) d->people->insertAlias(s.person, s.alias, s.aliasIndex);
         d->finish(true, false);
         break;
     case PeopleUndoKind::Renamed: {
@@ -752,7 +749,7 @@ PeopleUndoInfo PeopleService::undo()
         if (isSelf(current)) d->controller->setUserSpeakerName(s.person);
         else d->controller->renamePerson(current, s.person);
         // Ha az új név eredetileg becenév volt (az átnevezés levette), visszakerül.
-        if (d->details && s.aliasWasPresent) d->details->addAlias(s.person, s.other);
+        if (d->people && s.aliasWasPresent) d->people->addAlias(s.person, s.other);
         d->renameInUndo(s.other, s.person);
         d->finish(true, false);
         break;

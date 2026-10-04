@@ -1,7 +1,7 @@
 //
-// A Személyek ablak hátterének tesztjei: PersonDetailsStore (becenevek, megjegyzés a
-// people.json MELLETT), a régi fájlformátum sértetlensége mindkét irányban, becenév-keresés
-// a személyválasztóban, statisztika (megbeszélés-szám, beszédidő, utoljára látva),
+// A Személyek ablak hátterének tesztjei: a people.json rekordjai (név, becenevek,
+// megjegyzés), az egyszeri átállás a régi alakról (névlista + people-details.json),
+// becenév-keresés a személyválasztóban, statisztika (megbeszélés-szám, beszédidő, utoljára látva),
 // átnevezés / összevonás / törlés / minta-áthelyezés / új személy mintából a számaikkal, az
 // összefoglalók elavult-jelölése, visszavonás, és két FOLYAMAT egyidejű írása.
 //
@@ -25,10 +25,10 @@
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/PersonDetailsStore.h"
 #include "tanara/store/VoiceprintStore.h"
 
 #include <memory>
+#include <vector>
 
 using namespace tanara;
 
@@ -83,10 +83,17 @@ private slots:
     void init();
     void cleanup();
 
-    void detailsRoundTripKeepsUnknownFields();
-    void detailsCorruptFileIsSetAside();
-    void oldFormatFilesStayOldFormat();
-    void oldBuildWritesDoNotTouchDetails();
+    void recordRoundTripKeepsUnknownFields();
+    void corruptPeopleFileIsSetAside();
+    void unlistKeepsDetailsAndAddReattaches();
+    void migrateOldListOnly();
+    void migrateOldListWithDetails();
+    void migrateOrphanDetailsSurfaceWhenNameReturns();
+    void migrateCorruptDetailsIsSetAside();
+    void alreadyNewFileIsLeftAlone();
+    void failedMigrationLeavesOldFilesUntouched();
+    void twoProcessesMigrateAtOnce();
+    void oldFilesMigrateUnderTheApp();
     void aliasSearchInPersonPicker();
     void statsCountMeetingsTalkTimeAndLastSeen();
     void statsRefreshInBackgroundAndCache();
@@ -159,16 +166,41 @@ Meeting PeopleServiceTest::addMeeting(const QString& title, const QDateTime& whe
     return m_app->store()->load(m.id);
 }
 
-// ---- PersonDetailsStore ------------------------------------------------------
+// ---- PeopleStore: rekordok ---------------------------------------------------
 
-void PeopleServiceTest::detailsRoundTripKeepsUnknownFields()
+namespace {
+
+const char* kOldList = R"({"people":["B. Gergő","Bárány Gergely","Kovács Lilla"]})";
+const char* kOldDetails = R"({"version":1,"people":[
+    {"name":"Bárány Gergely","aliases":["Gergely","Főnök"],"note":"PM","color":"blue"},
+    {"name":"kovács lilla","aliases":[],"note":"én"}]})";
+
+QJsonObject readJson(const QString& path)
 {
-    const QString path = m_home->filePath("d/people-details.json");
+    return QJsonDocument::fromJson(readFile(path)).object();
+}
+
+// A "people" tömb egy rekordja név szerint (üres objektum, ha nincs).
+QJsonObject recordOf(const QJsonObject& root, const QString& name, const char* array = "people")
+{
+    for (const QJsonValue& v : root.value(QLatin1String(array)).toArray())
+        if (v.toObject().value("name").toString() == name) return v.toObject();
+    return {};
+}
+
+} // namespace
+
+void PeopleServiceTest::recordRoundTripKeepsUnknownFields()
+{
+    const QString path = m_home->filePath("d/people.json");
     // Egy JÖVŐBELI build mezői (gyökérben és személynél) nem veszhetnek el.
-    writeFile(path, R"({"version":1,"futureRoot":7,"people":[
-        {"name":"Bárány Gergely","aliases":["Gergely"],"note":"PM","color":"blue"}]})");
+    writeFile(path, R"({"version":2,"futureRoot":7,"people":[
+        {"name":"Bárány Gergely","aliases":["Gergely"],"note":"PM","color":"blue"},
+        {"name":"Tóth Eszter","aliases":[],"note":""}]})");
     {
-        PersonDetailsStore store(path);
+        PeopleStore store(path);
+        QVERIFY(!store.migrationPending());
+        QCOMPARE(store.names(), QStringList({kGergely, kEszter}));
         QCOMPARE(store.aliases(kGergely), QStringList{"Gergely"});
         QCOMPARE(store.details("bárány gergely").note, QStringLiteral("PM"));   // kisbetű-független
         QVERIFY(store.addAlias(kGergely, "G. Bárány"));
@@ -176,63 +208,355 @@ void PeopleServiceTest::detailsRoundTripKeepsUnknownFields()
         QVERIFY(!store.addAlias(kGergely, kGergely));         // a saját neve nem becenév
         store.setNote(kEszter, "Pénzügy");
     }
-    PersonDetailsStore fresh(path);
+    PeopleStore fresh(path);
     QCOMPARE(fresh.aliases(kGergely), QStringList({"Gergely", "G. Bárány"}));
     QCOMPARE(fresh.details(kEszter).note, QStringLiteral("Pénzügy"));
-    const QJsonObject root = QJsonDocument::fromJson(readFile(path)).object();
+    QJsonObject root = readJson(path);
+    QCOMPARE(root.value("version").toInt(), 2);
     QCOMPARE(root.value("futureRoot").toInt(), 7);
-    QCOMPARE(root.value("people").toArray().first().toObject().value("color").toString(), QStringLiteral("blue"));
+    QCOMPARE(recordOf(root, kGergely).value("color").toString(), QStringLiteral("blue"));
+    QVERIFY(!root.contains("unlisted"));
 
-    // Átnevezés létező névre = egyesítés; a régi név becenév lesz, a megjegyzések megmaradnak.
-    fresh.rename(kEszter, kGergely, true);
-    QCOMPARE(fresh.aliases(kGergely), QStringList({"Gergely", "G. Bárány", kEszter}));
-    QCOMPARE(fresh.details(kGergely).note, QStringLiteral("PM\nPénzügy"));
-    QVERIFY(fresh.details(kEszter).isEmpty());
-    // Üres bejegyzés nem marad a fájlban.
-    fresh.set(PersonDetails{kGergely, {}, QString()});
-    QCOMPARE(PersonDetailsStore(path).all().size(), 0);
+    // Átnevezés létező névre = egyesítés: a rekord EGYBEN megy — a régi név becenév lesz, a
+    // megjegyzések és az ismeretlen mezők megmaradnak, a régi néven nem marad semmi.
+    fresh.rename(kGergely, kEszter, true);
+    QCOMPARE(fresh.names(), QStringList{kEszter});
+    QCOMPARE(fresh.aliases(kEszter), QStringList({"Gergely", "G. Bárány", kGergely}));
+    QCOMPARE(fresh.details(kEszter).note, QStringLiteral("Pénzügy\nPM"));
+    QVERIFY(fresh.details(kGergely).isEmpty());
+    root = readJson(path);
+    QCOMPARE(root.value("people").toArray().size(), 1);
+    QCOMPARE(recordOf(root, kEszter).value("color").toString(), QStringLiteral("blue"));
+    // Sima átnevezés: a rekord az új néven, a régi név csak kérésre lesz becenév.
+    fresh.rename(kEszter, "Tóth Eszti");
+    QCOMPARE(PeopleStore(path).names(), QStringList{"Tóth Eszti"});
+    QCOMPARE(PeopleStore(path).aliases("Tóth Eszti"), QStringList({"Gergely", "G. Bárány", kGergely}));
+    // Törlés: a teljes rekord megszűnik.
+    fresh.remove("Tóth Eszti");
+    QVERIFY(PeopleStore(path).names().isEmpty());
+    QVERIFY(PeopleStore(path).details("Tóth Eszti").isEmpty());
 }
 
-void PeopleServiceTest::detailsCorruptFileIsSetAside()
+void PeopleServiceTest::corruptPeopleFileIsSetAside()
 {
-    const QString path = m_home->filePath("d/people-details.json");
-    writeFile(path, R"({"people":[{"name":"X","alia)");
-    PersonDetailsStore store(path);
+    const QString path = m_home->filePath("d/people.json");
+    writeFile(path, R"({"version":2,"people":[{"name":"X","alia)");
+    const QByteArray before = readFile(path);
+    PeopleStore store(path);
+    QCOMPARE(readFile(path), before);                       // betöltéstől nem változik
     QVERIFY(store.addAlias(kGergely, "Gergő"));
-    QCOMPARE(QDir(m_home->filePath("d")).entryList({"people-details.json.corrupt-*"}, QDir::Files).size(), 1);
-    QCOMPARE(PersonDetailsStore(path).aliases(kGergely), QStringList{"Gergő"});
+    QCOMPARE(QDir(m_home->filePath("d")).entryList({"people.json.corrupt-*"}, QDir::Files).size(), 1);
+    QCOMPARE(PeopleStore(path).aliases(kGergely), QStringList{"Gergő"});
 }
 
-// ---- kompatibilitás a régi buildekkel ----------------------------------------
-
-void PeopleServiceTest::oldFormatFilesStayOldFormat()
+void PeopleServiceTest::unlistKeepsDetailsAndAddReattaches()
 {
-    // RÉGI formátumú fájlok (ahogy egy korábbi build írta) → az új build mindent lát belőlük.
+    const QString path = m_home->filePath("d/people.json");
+    PeopleStore store(path);
+    // Listán nem szereplő név (pl. csak hanglenyomata van) is kaphat becenevet: listán kívüli
+    // rekord lesz, a névlistát nem bővíti.
+    QVERIFY(store.addAlias(kGergely, "Gergő"));
+    QVERIFY(store.names().isEmpty());
+    QCOMPARE(store.unlistedNames(), QStringList{kGergely});
+    QCOMPARE(recordOf(readJson(path), kGergely, "unlisted").value("aliases").toArray().size(), 1);
+    // Ha a név felkerül a listára, a rekord vele megy.
+    store.add("bárány gergely");
+    QCOMPARE(store.names(), QStringList{kGergely});
+    QVERIFY(store.unlistedNames().isEmpty());
+    QVERIFY(!readJson(path).contains("unlisted"));
+    // Levétel a listáról: az adatok megmaradnak; adat nélküli rekord nem marad a fájlban.
+    store.add(kEszter);
+    store.unlist(kGergely);
+    store.unlist(kEszter);
+    QVERIFY(store.names().isEmpty());
+    PeopleStore fresh(path);
+    QCOMPARE(fresh.unlistedNames(), QStringList{kGergely});
+    QCOMPARE(fresh.aliases(kGergely), QStringList{"Gergő"});
+    QCOMPARE(readJson(path).value("unlisted").toArray().size(), 1);
+}
+
+// ---- egyszeri átállás a régi alakról -----------------------------------------
+
+void PeopleServiceTest::migrateOldListOnly()
+{
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    writeFile(path, kOldList);
+    PeopleStore store(path);
+    QVERIFY(!store.migrationPending());
+    QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
+    // A betöltés maga átírta a fájlt az új alakra.
+    const QJsonObject root = readJson(path);
+    QCOMPARE(root.keys(), QStringList({"people", "version"}));
+    QCOMPARE(root.value("version").toInt(), 2);
+    const QJsonArray arr = root.value("people").toArray();
+    QCOMPARE(arr.size(), 3);
+    for (const QJsonValue& v : arr) {
+        QCOMPARE(v.toObject().keys(), QStringList({"aliases", "name", "note"}));
+        QVERIFY(v.toObject().value("aliases").toArray().isEmpty());
+        QVERIFY(v.toObject().value("note").toString().isEmpty());
+    }
+    QCOMPARE(arr.at(1).toObject().value("name").toString(), kGergely);     // a sorrend megmaradt
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
+}
+
+void PeopleServiceTest::migrateOldListWithDetails()
+{
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    writeFile(path, kOldList);
+    writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
+    {
+        PeopleStore store(path);
+        QVERIFY(!store.migrationPending());
+        QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
+        QCOMPARE(store.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
+        QCOMPARE(store.details(kGergely).note, QStringLiteral("PM"));
+        QCOMPARE(store.details(kSelf).note, QStringLiteral("én"));     // kisbetű-független egyezés
+        QVERIFY(store.unlistedNames().isEmpty());
+    }
+    // A details-fájl eltűnt, minden adata az új people.json-ban van (az ismeretlen mező is).
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
+    const QJsonObject root = readJson(path);
+    QCOMPARE(root.value("version").toInt(), 2);
+    QCOMPARE(root.value("people").toArray().size(), 3);
+    const QJsonObject g = recordOf(root, kGergely);
+    QCOMPARE(g.value("aliases").toArray(), QJsonArray({"Gergely", "Főnök"}));
+    QCOMPARE(g.value("note").toString(), QStringLiteral("PM"));
+    QCOMPARE(g.value("color").toString(), QStringLiteral("blue"));
+    QCOMPARE(recordOf(root, kSelf).value("note").toString(), QStringLiteral("én"));   // a lista írásmódja marad
+    // Újabb betöltés már nem ír.
+    const QByteArray after = readFile(path);
+    const FileStamp stamp = FileStamp::of(path);
+    PeopleStore again(path);
+    QCOMPARE(again.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
+    QCOMPARE(readFile(path), after);
+    QVERIFY(FileStamp::of(path) == stamp);
+}
+
+void PeopleServiceTest::migrateOrphanDetailsSurfaceWhenNameReturns()
+{
+    // A details-fájlban olyan név is van, amely már nincs a névlistán (kívülről átnevezték).
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    writeFile(path, R"({"people":["Bárány G.","Kovács Lilla"]})");
+    writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
+    PeopleStore store(path);
+    QCOMPARE(store.names(), QStringList({"Bárány G.", kSelf}));     // az árva név nem kerül a listára
+    QCOMPARE(store.unlistedNames(), QStringList{kGergely});
+    QVERIFY(store.aliases("Bárány G.").isEmpty());
+    // …de nem veszett el: a fájlban listán kívüli rekordként megvan,
+    QVERIFY(!QFile::exists(QDir(dir).filePath("people-details.json")));
+    const QJsonObject orphan = recordOf(readJson(path), kGergely, "unlisted");
+    QCOMPARE(orphan.value("aliases").toArray(), QJsonArray({"Gergely", "Főnök"}));
+    QCOMPARE(orphan.value("note").toString(), QStringLiteral("PM"));
+    QCOMPARE(orphan.value("color").toString(), QStringLiteral("blue"));
+    // név szerint lekérdezhető (pl. ha csak hanglenyomata van a névnek),
+    QCOMPARE(store.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
+    // és ha a személy újra felkerül a listára, a rekordja vele együtt visszatér.
+    PeopleStore other(path);
+    other.add(kGergely);
+    QCOMPARE(other.names(), QStringList({"Bárány G.", kGergely, kSelf}));
+    QCOMPARE(other.details(kGergely).note, QStringLiteral("PM"));
+    QVERIFY(other.unlistedNames().isEmpty());
+    QVERIFY(!readJson(path).contains("unlisted"));
+    QCOMPARE(recordOf(readJson(path), kGergely).value("aliases").toArray().size(), 2);
+    // Átnevezéssel is visszaköthető: a kívülről átnevezett személy megkapja a régi adatait.
+    store.refresh();
+    store.unlist(kGergely);
+    store.rename(kGergely, "Bárány G.", true);
+    QCOMPARE(store.names(), QStringList({"Bárány G.", kSelf}));
+    QCOMPARE(store.aliases("Bárány G."), QStringList({"Gergely", "Főnök", kGergely}));
+    QVERIFY(store.unlistedNames().isEmpty());
+}
+
+void PeopleServiceTest::migrateCorruptDetailsIsSetAside()
+{
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    const QByteArray broken = R"({"version":1,"people":[{"name":"Bárány Gergely","alia)";
+    writeFile(path, kOldList);
+    writeFile(QDir(dir).filePath("people-details.json"), broken);
+    PeopleStore store(path);
+    // A névlista ettől még átáll; a sérült details-fájl nem törlődik, hanem félre kerül.
+    QVERIFY(!store.migrationPending());
+    QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
+    QCOMPARE(readJson(path).value("version").toInt(), 2);
+    QVERIFY(!QFile::exists(QDir(dir).filePath("people-details.json")));
+    const QStringList aside = QDir(dir).entryList({"people-details.json.corrupt-*"}, QDir::Files);
+    QCOMPARE(aside.size(), 1);
+    QCOMPARE(readFile(QDir(dir).filePath(aside.first())), broken);
+    // Újabb betöltés nem csinál semmit.
+    const QByteArray after = readFile(path);
+    PeopleStore again(path);
+    QCOMPARE(readFile(path), after);
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden).size(), 2);
+}
+
+void PeopleServiceTest::alreadyNewFileIsLeftAlone()
+{
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    const QByteArray v2 = R"({"version":2,"people":[{"name":"Bárány Gergely","aliases":["Gergő"],"note":""}]})";
+    writeFile(path, v2);
+    {
+        PeopleStore store(path);
+        QVERIFY(!store.migrationPending());
+        QCOMPARE(store.aliases(kGergely), QStringList{"Gergő"});
+    }
+    QCOMPARE(readFile(path), v2);                                           // bájtra ugyanaz
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
+
+    // Új alak MELLETT maradt details-fájl (egy korábbi átállás a törlés előtt megszakadt):
+    // nem olvad be újra (nem támaszt fel azóta törölt becenevet), és nem is törlődik — félre kerül.
+    writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
+    PeopleStore store(path);
+    QCOMPARE(store.aliases(kGergely), QStringList{"Gergő"});
+    QCOMPARE(readFile(path), v2);
+    QVERIFY(!QFile::exists(QDir(dir).filePath("people-details.json")));
+    const QStringList aside = QDir(dir).entryList({"people-details.json.leftover-*"}, QDir::Files);
+    QCOMPARE(aside.size(), 1);
+    QCOMPARE(readFile(QDir(dir).filePath(aside.first())), QByteArray(kOldDetails));
+}
+
+void PeopleServiceTest::failedMigrationLeavesOldFilesUntouched()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("Az írásvédett mappa csak Unixon állítható elő megbízhatóan.");
+#else
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    const QString detailsPath = QDir(dir).filePath("people-details.json");
+    writeFile(path, kOldList);
+    writeFile(detailsPath, kOldDetails);
+    const QFile::Permissions rw = QFile::permissions(dir);
+    QVERIFY(QFile::setPermissions(dir, QFile::ReadOwner | QFile::ExeOwner));   // nem írható mappa
+    struct Restore {
+        QString dir; QFile::Permissions p;
+        ~Restore() { QFile::setPermissions(dir, p); }
+    } restore{dir, rw};
+    if (QFile(QDir(dir).filePath("probe")).open(QIODevice::WriteOnly))
+        QSKIP("A mappa írásvédelme nem érvényesül (root?).");
+
+    PeopleStore store(path);
+    // Az átállás nem sikerült: mindkét régi fájl bájtra ugyanaz, semmi más nem keletkezett…
+    QVERIFY(store.migrationPending());
+    QCOMPARE(readFile(path), QByteArray(kOldList));
+    QCOMPARE(readFile(detailsPath), QByteArray(kOldDetails));
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList({"people-details.json", "people.json"}));
+    // …a tár pedig a memóriában a teljes (egyesített) adattal dolgozik tovább.
+    QCOMPARE(store.names(), QStringList({kGergo, kGergely, kSelf}));
+    QCOMPARE(store.aliases(kGergely), QStringList({"Gergely", "Főnök"}));
+    store.add("Új Ember");
+    QVERIFY(store.addAlias(kGergely, "Geri"));
+    QVERIFY(store.names().contains("Új Ember"));
+    QVERIFY(store.migrationPending());
+    QCOMPARE(readFile(path), QByteArray(kOldList));
+    QCOMPARE(readFile(detailsPath), QByteArray(kOldDetails));
+
+    // Amint a mappa újra írható, a következő mentés befejezi az átállást (a memóriában
+    // közben felgyűlt változásokkal), és csak EKKOR törli a details-fájlt.
+    QVERIFY(QFile::setPermissions(dir, rw));
+    store.setNote(kGergo, "másik Gergő");
+    QVERIFY(!store.migrationPending());
+    QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
+    PeopleStore fresh(path);
+    QCOMPARE(fresh.names(), QStringList({kGergo, kGergely, kSelf, "Új Ember"}));
+    QCOMPARE(fresh.aliases(kGergely), QStringList({"Gergely", "Főnök", "Geri"}));
+    QCOMPARE(fresh.details(kGergo).note, QStringLiteral("másik Gergő"));
+#endif
+}
+
+void PeopleServiceTest::twoProcessesMigrateAtOnce()
+{
+    // Több FOLYAMAT (ez a teszt-exe gyerek-módban) egyszerre indul ugyanarra a régi alakú
+    // fájl-párra: mind megpróbál átállni, és utána rögtön ír is. A végén egyetlen, ép, új
+    // alakú fájl van, a details adatai pontosan egyszer, és minden folyamat írása megvan.
+    const QString dir = m_home->filePath("d");
+    const QString path = QDir(dir).filePath("people.json");
+    for (int round = 0; round < 3; ++round) {
+        QDir(dir).removeRecursively();
+        writeFile(path, kOldList);
+        writeFile(QDir(dir).filePath("people-details.json"), kOldDetails);
+        const int n = 6;
+        std::vector<std::unique_ptr<QProcess>> children;
+        for (int i = 0; i < n; ++i) {
+            auto child = std::make_unique<QProcess>();
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            env.insert("TANARA_PEOPLE_MIGRATE_CHILD", path);
+            env.insert("TANARA_PEOPLE_CHILD_NO", QString::number(i));
+            child->setProcessEnvironment(env);
+            child->start(QCoreApplication::applicationFilePath(), QStringList());
+            children.push_back(std::move(child));
+        }
+        for (auto& child : children) {
+            QVERIFY(child->waitForFinished(60000));
+            QCOMPARE(child->exitStatus(), QProcess::NormalExit);
+            QCOMPARE(child->exitCode(), 0);
+        }
+        // Csak a people.json maradt: se details, se félretett, se zár-fájl.
+        QCOMPARE(QDir(dir).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
+        const QJsonObject root = readJson(path);
+        QCOMPARE(root.value("version").toInt(), 2);
+        QVERIFY(!root.contains("unlisted"));
+        PeopleStore store(path);
+        QCOMPARE(store.names().size(), 3 + n);
+        for (int i = 0; i < n; ++i) {
+            QVERIFY2(store.names().contains(QStringLiteral("Gyerek %1").arg(i)), qPrintable(QString::number(i)));
+            QVERIFY2(store.aliases(kGergely).contains(QStringLiteral("gyerek-becenév %1").arg(i)),
+                     qPrintable(QString::number(i)));
+        }
+        QCOMPARE(store.aliases(kGergely).size(), 2 + n);                 // a régi kettő egyszer
+        QCOMPARE(store.aliases(kGergely).mid(0, 2), QStringList({"Gergely", "Főnök"}));
+        QCOMPARE(store.details(kGergely).note, QStringLiteral("PM"));    // nem duplázódott
+        QCOMPARE(recordOf(root, kGergely).value("color").toString(), QStringLiteral("blue"));
+    }
+}
+
+void PeopleServiceTest::oldFilesMigrateUnderTheApp()
+{
+    // RÉGI formátumú fájlok (ahogy egy korábbi build írta) → az alkalmazás indulása átállítja
+    // a people.json-t; a voiceprints.json alakja VÁLTOZATLAN (névhez kötött lenyomatok).
     m_app.reset();
     const QString home = m_home->path();
-    writeFile(QDir(home).filePath("people.json"), R"({"people":["B. Gergő","Bárány Gergely","Kovács Lilla"]})");
+    writeFile(QDir(home).filePath("people.json"), kOldList);
+    writeFile(QDir(home).filePath("people-details.json"), kOldDetails);
     writeFile(QDir(home).filePath("voiceprints.json"),
               R"({"people":[{"name":"Bárány Gergely","prints":[{"id":"p1","embedding":[1,0,0],"dim":3,
                  "sourceMeetingId":"","sourceTrack":"mic","device":"USB","sampleRef":"track_mic.ogg#0-4000",
                  "createdAt":"2026-09-01T10:00:00"}]}]})");
     m_app = std::make_unique<AppController>();
+    QVERIFY(!QFile::exists(metaFile("people-details.json")));
+    QCOMPARE(readJson(metaFile("people.json")).value("version").toInt(), 2);
     m_app->setUserSpeakerName(kSelf);
     QCOMPARE(svc()->persons().size(), 3);
     QCOMPARE(svc()->person(kGergely).sampleCount, 1);
-    QVERIFY(!QFile::exists(metaFile("people-details.json")));   // olvasástól nem jön létre
+    QCOMPARE(svc()->person(kGergely).aliases, QStringList({"Gergely", "Főnök"}));
+    QCOMPARE(svc()->person(kGergely).note, QStringLiteral("PM"));
+    // A személyválasztó is látja az átvett beceneveket.
+    const QVector<PersonInfo> hits = filterPeople(m_app->peopleDirectory(), "fonok");
+    QCOMPARE(hits.size(), 1);
+    QCOMPARE(hits.first().name, kGergely);
 
-    // Az új műveletek után is a RÉGI alak marad a két fájlban — egy régi build be tudja tölteni.
-    QVERIFY(svc()->addAlias(kGergely, "Gergely").ok);
     svc()->setNote(kGergely, "Projektvezető");
     QVERIFY(svc()->addPerson(kEszter).ok);
+    QVERIFY(svc()->addAlias(kEszter, "Eszti néni").ok);
     QVERIFY(svc()->moveSample("p1", kEszter).ok);
     QVERIFY(svc()->merge(kGergo, kGergely).ok);
     QVERIFY(svc()->renamePerson(kEszter, "Tóth Eszti").ok);
 
-    const QJsonObject people = QJsonDocument::fromJson(readFile(metaFile("people.json"))).object();
-    QCOMPARE(people.keys(), QStringList{"people"});
-    for (const QJsonValue& v : people.value("people").toArray()) QVERIFY(v.isString());
-    const QJsonObject prints = QJsonDocument::fromJson(readFile(metaFile("voiceprints.json"))).object();
+    // Az átnevezés a rekordot egyben vitte: az új néven minden megvan, a régin semmi.
+    const QJsonObject people = readJson(metaFile("people.json"));
+    QCOMPARE(people.keys(), QStringList({"people", "version"}));
+    QCOMPARE(recordOf(people, "Tóth Eszti").value("aliases").toArray(), QJsonArray({"Eszti néni", kEszter}));
+    QVERIFY(recordOf(people, kEszter).isEmpty());
+    QCOMPARE(recordOf(people, kGergely).value("aliases").toArray(), QJsonArray({"Gergely", "Főnök", kGergo}));
+    QCOMPARE(recordOf(people, kGergely).value("note").toString(), QStringLiteral("Projektvezető"));
+    QCOMPARE(recordOf(people, kGergely).value("color").toString(), QStringLiteral("blue"));
+    QCOMPARE(PeopleStore(metaFile("people.json")).names(), QStringList({kGergely, kSelf, "Tóth Eszti"}));
+    QVERIFY(!QFile::exists(metaFile("people-details.json")));
+
+    const QJsonObject prints = readJson(metaFile("voiceprints.json"));
     QCOMPARE(prints.keys(), QStringList{"people"});
     const QStringList printKeys{"createdAt", "device", "dim", "embedding", "id", "sampleRef",
                                 "sourceMeetingId", "sourceTrack"};
@@ -247,37 +571,6 @@ void PeopleServiceTest::oldFormatFilesStayOldFormat()
     QCOMPARE(moved.first().id, QStringLiteral("p1"));
     QCOMPARE(moved.first().device, QStringLiteral("USB"));
     QCOMPARE(moved.first().sampleRef, QStringLiteral("track_mic.ogg#0-4000"));
-    QCOMPARE(PeopleStore(metaFile("people.json")).names(), QStringList({kGergely, kSelf, "Tóth Eszti"}));
-}
-
-void PeopleServiceTest::oldBuildWritesDoNotTouchDetails()
-{
-    QVERIFY(svc()->addPerson(kGergely).ok);
-    QVERIFY(svc()->addAlias(kGergely, "Gergely").ok);
-    svc()->setNote(kGergely, "Projektvezető");
-    const QByteArray detailsBefore = readFile(metaFile("people-details.json"));
-
-    // Egy RÉGI build (csak a két régi tárolót ismeri) a teljes fájlokat újraírja.
-    {
-        PeopleStore oldPeople(metaFile("people.json"));
-        oldPeople.add("Régi Build Rozi");
-        VoiceprintStore oldPrints(metaFile("voiceprints.json"));
-        oldPrints.addPrint("Régi Build Rozi", print("old1", {0, 1, 0}));
-    }
-    QCOMPARE(readFile(metaFile("people-details.json")), detailsBefore);
-    svc()->reload();
-    QVERIFY(svc()->exists("Régi Build Rozi"));
-    QCOMPARE(svc()->person(kGergely).aliases, QStringList{"Gergely"});
-    QCOMPARE(svc()->person(kGergely).note, QStringLiteral("Projektvezető"));
-
-    // Ha a régi build nevez át valakit, a bejegyzés a régi néven megmarad (nem vész el).
-    {
-        PeopleStore oldPeople(metaFile("people.json"));
-        oldPeople.rename(kGergely, "Bárány G.");
-    }
-    svc()->reload();
-    QVERIFY(svc()->person("Bárány G.").aliases.isEmpty());
-    QCOMPARE(PersonDetailsStore(metaFile("people-details.json")).aliases(kGergely), QStringList{"Gergely"});
 }
 
 // ---- becenév-keresés ----------------------------------------------------------
@@ -468,7 +761,7 @@ void PeopleServiceTest::noteIsStored()
     QCOMPARE(changed.count(), 1);
     svc()->setNote(kGergely, "Northwind oldali projektvezető.\nGyakran telefonról csatlakozik.");
     QCOMPARE(changed.count(), 1);    // változatlan: nincs írás
-    QCOMPARE(PersonDetailsStore(metaFile("people-details.json")).details(kGergely).note,
+    QCOMPARE(PeopleStore(metaFile("people.json")).details(kGergely).note,
              QStringLiteral("Northwind oldali projektvezető.\nGyakran telefonról csatlakozik."));
 }
 
@@ -660,7 +953,7 @@ void PeopleServiceTest::deleteNumbersAndStale()
     QVERIFY(m_app->store()->load(a.id).speakerMap.isEmpty());       // névtelen beszélő marad
     QVERIFY(m_app->summaryStale(a.id).stale);
     QVERIFY(!m_app->summaryStale(b.id).stale);
-    QVERIFY(PersonDetailsStore(metaFile("people-details.json")).details(kGergely).isEmpty());
+    QVERIFY(PeopleStore(metaFile("people.json")).details(kGergely).isEmpty());
     QVERIFY(!svc()->canUndo());                                      // a törlés nem vonható vissza
     QVERIFY(!svc()->removePerson(kGergely, false).ok);
 }
@@ -782,7 +1075,7 @@ void PeopleServiceTest::sampleSourceDescription()
 
 void PeopleServiceTest::twoProcessesWriteConcurrently()
 {
-    // Egy MÁSIK folyamat (ez a teszt-exe gyerek-módban) ugyanabba a három fájlba ír, miközben
+    // Egy MÁSIK folyamat (ez a teszt-exe gyerek-módban) ugyanabba a két fájlba ír, miközben
     // mi is írunk: a végén mindkét fél minden változásának meg kell lennie.
     const QString meta = m_app->store()->metadataDir();
     QProcess child;
@@ -803,7 +1096,7 @@ void PeopleServiceTest::twoProcessesWriteConcurrently()
 
     svc()->reload();
     const QStringList names = PeopleStore(QDir(meta).filePath("people.json")).names();
-    const QStringList aliases = PersonDetailsStore(QDir(meta).filePath("people-details.json")).aliases(kGergely);
+    const QStringList aliases = PeopleStore(QDir(meta).filePath("people.json")).aliases(kGergely);
     const VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
     for (int i = 0; i < n; ++i) {
         QVERIFY2(names.contains(QStringLiteral("Szülő %1").arg(i)), qPrintable(QString::number(i)));
@@ -821,24 +1114,36 @@ void PeopleServiceTest::twoProcessesWriteConcurrently()
     QVERIFY(QDir(meta).entryList({"*.lock"}, QDir::Files | QDir::Hidden).isEmpty());
 }
 
-// A gyerek-folyamat: a megadott metaadat-mappa három fájljába ír (tárolókon át, ahogy egy
+// A gyerek-folyamat: a megadott metaadat-mappa két fájljába ír (tárolókon át, ahogy egy
 // másik Tanara-folyamat tenné).
 static int runChild(const QString& meta)
 {
     PeopleStore people(QDir(meta).filePath("people.json"));
-    PersonDetailsStore details(QDir(meta).filePath("people-details.json"));
     VoiceprintStore prints(QDir(meta).filePath("voiceprints.json"));
     for (int i = 0; i < 40; ++i) {
         people.add(QStringLiteral("Gyerek %1").arg(i));
-        if (!details.addAlias(kGergely, QStringLiteral("gyerek-becenév %1").arg(i))) return 2;
+        if (!people.addAlias(kGergely, QStringLiteral("gyerek-becenév %1").arg(i))) return 2;
         prints.addPrint("Gyerek", print(QStringLiteral("child-%1").arg(i), {0, 1, 0}));
     }
     return 0;
 }
 
+// A gyerek-folyamat az átállás-versenyhez: megnyitja a (régi alakú) tárat — ez maga az
+// átállás —, majd rögtön ír is bele.
+static int runMigrateChild(const QString& path, const QString& no)
+{
+    PeopleStore people(path);
+    people.add(QStringLiteral("Gyerek %1").arg(no));
+    if (!people.addAlias(kGergely, QStringLiteral("gyerek-becenév %1").arg(no))) return 2;
+    return people.migrationPending() ? 3 : 0;
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
+    const QString migratePath = qEnvironmentVariable("TANARA_PEOPLE_MIGRATE_CHILD");
+    if (!migratePath.isEmpty())
+        return runMigrateChild(migratePath, qEnvironmentVariable("TANARA_PEOPLE_CHILD_NO"));
     const QString childMeta = qEnvironmentVariable("TANARA_PEOPLE_CHILD");
     if (!childMeta.isEmpty()) return runChild(childMeta);
     PeopleServiceTest test;

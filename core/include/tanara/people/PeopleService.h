@@ -7,9 +7,9 @@
 // visszavonás.
 //
 // Mit hova ír:
-//  - people.json (névlista) és voiceprints.json (névhez kötött lenyomatok): VÁLTOZATLAN
-//    alakban, a meglévő tárolókon át (zár + visszaolvasás + atomikus írás);
-//  - people-details.json: becenevek, megjegyzés (PersonDetailsStore);
+//  - people.json: személyenként egy rekord — név, becenevek, megjegyzés (PeopleStore);
+//  - voiceprints.json: névhez kötött lenyomatok (VoiceprintStore);
+//    mindkettő a tárolókon át (zár + visszaolvasás + atomikus írás);
 //  - megbeszélések: az átnevezés / összevonás / törlés az AppController meglévő globális
 //    műveletein megy át (renamePerson / setUserSpeakerName / removePerson), amelyek minden
 //    megbeszélés speakerMap-jét, sáv-nevét és kézi résztvevőit átvezetik.
@@ -40,7 +40,6 @@ namespace tanara {
 class AppController;
 class MeetingStore;
 class PeopleStore;
-class PersonDetailsStore;
 class PeopleStats;
 class VoiceprintStore;
 
@@ -110,8 +109,7 @@ class PeopleService : public QObject {
     Q_OBJECT
 public:
     PeopleService(AppController* controller, MeetingStore* store, PeopleStore* people,
-                  VoiceprintStore* voiceprints, PersonDetailsStore* details, PeopleStats* stats,
-                  QObject* parent = nullptr);
+                  VoiceprintStore* voiceprints, PeopleStats* stats, QObject* parent = nullptr);
     ~PeopleService() override;
 
     // A megszólalás-embedder gyára a „minta a megbeszélésekből” művelethez. Alapból a valódi
@@ -119,7 +117,7 @@ public:
     void setEmbedderFactory(UtteranceEmbedderFactory factory);
 
     // ---- olvasás (gyors: nem olvas megbeszéléseket) ----
-    // A lemez friss állapota (másik folyamat is írhat a három fájlba).
+    // A lemez friss állapota (másik folyamat is írhat a két fájlba).
     void reload();
     QString selfName() const;
     bool isSelf(const QString& name) const;

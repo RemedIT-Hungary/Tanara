@@ -613,7 +613,7 @@ struct SpeakerEditor::Private {
         }
         if (people)
             for (const QString& name : c.peopleAdded) {
-                if (undoing) people->remove(name);
+                if (undoing) people->unlist(name);   // a becenevei / megjegyzése megmaradnak
                 else people->add(name);
             }
 

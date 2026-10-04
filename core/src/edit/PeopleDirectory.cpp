@@ -3,7 +3,6 @@
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/PersonDetailsStore.h"
 #include "tanara/store/VoiceprintStore.h"
 
 #include <QFile>
@@ -38,7 +37,7 @@ bool matchesSearch(const QString& text, const QString& needle)
 }
 
 QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore* voiceprints,
-                               MeetingStore* store, const PersonDetailsStore* details)
+                               MeetingStore* store)
 {
     // Név-egyesítés kisbetű-függetlenül (a people.json és a lenyomat-DB így kezeli).
     QVector<PersonInfo> out;
@@ -66,8 +65,8 @@ QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore*
             out[i].hasVoiceprint = out[i].voiceprintCount > 0;
         }
 
-    if (details)
-        for (PersonInfo& p : out) p.aliases = details->aliases(p.name);
+    if (people)
+        for (PersonInfo& p : out) p.aliases = people->aliases(p.name);
 
     if (store) {
         const QVector<Meeting> index = store->loadAll();

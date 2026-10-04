@@ -13,7 +13,6 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/KeyStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/PersonDetailsStore.h"
 #include "tanara/people/PeopleService.h"
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -431,7 +430,6 @@ struct AppController::Impl {
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     std::unique_ptr<PeopleStore> people;
-    std::unique_ptr<PersonDetailsStore> details;   // becenevek + megjegyzés (people-details.json)
     PeopleStats*   peopleStats = nullptr;
     PeopleService* peopleService = nullptr;
     std::unique_ptr<VoiceprintStore> voiceprints;
@@ -785,13 +783,11 @@ AppController::AppController(QObject* parent)
     d->voiceModelPath = QDir(d->metaDir).filePath(
         QStringLiteral("models/campplus_sv_zh_en_16k.onnx"));
 
-    // Személyek ablak: kiegészítő adatok a people.json MELLETT (a régi buildek érintetlenek),
-    // háttérben számolt statisztika, és a műveletek (összevonás, minta-áthelyezés …).
-    d->details = std::make_unique<PersonDetailsStore>(
-        QDir(d->metaDir).filePath(QStringLiteral("people-details.json")));
+    // Személyek ablak: háttérben számolt statisztika, és a műveletek (összevonás,
+    // minta-áthelyezés …). A becenevek / megjegyzés a people.json rekordjaiban élnek.
     d->peopleStats = new PeopleStats(d->store, this);
     d->peopleService = new PeopleService(this, d->store, d->people.get(), d->voiceprints.get(),
-                                         d->details.get(), d->peopleStats, this);
+                                         d->peopleStats, this);
     // Ami a résztvevőket vagy a beszédidőt érinti, az a statisztikát is (összevontan frissül).
     connect(this, &AppController::speakerMapChanged, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(this, &AppController::transcriptReady, d->peopleStats, &PeopleStats::scheduleRefresh);
@@ -1123,8 +1119,7 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
-    if (d->people) d->people->rename(o, n);
-    if (d->details) d->details->rename(o, n, /*oldNameAsAlias*/ false);
+    if (d->people) d->people->rename(o, n);   // a teljes rekord megy (becenevek, megjegyzés)
     if (d->voiceprints) { d->voiceprints->renamePerson(o, n); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
@@ -1160,7 +1155,6 @@ void AppController::removePerson(const QString& name) {
     const QString nm = name.trimmed();
     if (nm.isEmpty()) return;
     if (d->people) d->people->remove(nm);
-    if (d->details) d->details->remove(nm);
     if (d->voiceprints) { d->voiceprints->removePerson(nm); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
@@ -3372,8 +3366,8 @@ void AppController::closeSpeakerEditor(const QString& meetingId)
 
 QVector<PersonInfo> AppController::peopleDirectory() const
 {
-    if (d->details) d->details->refresh();
-    return listPeople(d->people.get(), d->voiceprints.get(), d->store, d->details.get());
+    if (d->people) d->people->refresh();
+    return listPeople(d->people.get(), d->voiceprints.get(), d->store);
 }
 
 SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
