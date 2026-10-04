@@ -1,6 +1,6 @@
 #include "SettingsWidgetsDialogs.h"
 
-#include "PeopleManagerDialog.h"
+#include "PeopleWindowHost.h"
 #include "cloud/CloudLoginDialog.h"
 #include "cloud/CloudModelPickerDialog.h"
 #include "cloud/CloudTermsDialog.h"
@@ -35,7 +35,7 @@ SettingsWidgetsDialogs::SettingsWidgetsDialogs(tanara::AppController* controller
 SettingsWidgetsDialogs::~SettingsWidgetsDialogs()
 {
     if (qApp) qApp->removeEventFilter(this);
-    if (m_people) m_people->close();
+    if (m_people) m_people->closeNow();
 }
 
 void SettingsWidgetsDialogs::setOwnerWindow(QWindow* window)
@@ -74,18 +74,18 @@ void SettingsWidgetsDialogs::openUrl(const QString& url)
 
 void SettingsWidgetsDialogs::openPeople()
 {
+    openPeopleAt(QString());
+}
+
+void SettingsWidgetsDialogs::openPeopleAt(const QString& person)
+{
     if (m_peopleOpener) {
-        m_peopleOpener();
+        m_peopleOpener(person);
         return;
     }
-    // Nem-modális, egy példány (mint a főablak hídjánál).
-    if (!m_people) {
-        m_people = new PeopleManagerDialog(m_controller, nullptr);
-        m_people->setAttribute(Qt::WA_DeleteOnClose);
-    }
-    m_people->show();
-    m_people->raise();
-    m_people->activateWindow();
+    // Főablak nélküli folyamat: saját (nem modális) QML Személyek-ablak, egy példány.
+    if (!m_people) m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
+    m_people->open(person);
 }
 
 bool SettingsWidgetsDialogs::cloudLogin()

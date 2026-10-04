@@ -50,6 +50,9 @@ public:
     using BackendFactory = std::function<PlayerBackend*(QObject* parent)>;
     // A valódi hang-motor gyára (a main.cpp állítja be). Üres → beépített néma motor.
     static void setBackendFactory(BackendFactory factory);
+    // Egy önálló hang-motor ugyanebből a gyárból (gyár nélkül a néma motor) — más ablak saját
+    // lejátszásához (Személyek: hangminta meghallgatása). A hívó a tulajdonosa (parent).
+    static PlayerBackend* createBackend(QObject* parent);
 
     explicit PlayerController(QObject* parent = nullptr);
     ~PlayerController() override;

@@ -68,7 +68,8 @@ public:
     // focusField: "" | "stt" | "llm" — a hiányzó szolgáltatóhoz vezető mély hivatkozás (B04).
     Q_INVOKABLE void openSettings(const QString& page = QString(),
                                   const QString& focusField = QString());
-    Q_INVOKABLE void openPeople();
+    // person: ez a személy legyen kijelölve a Személyek ablakban (üres: nincs kérés).
+    Q_INVOKABLE void openPeople(const QString& person = QString());
     Q_INVOKABLE void openRecorder();
     Q_INVOKABLE void startTranscription(const QString& meetingId);
     Q_INVOKABLE void retranscribe(const QString& meetingId);

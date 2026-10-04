@@ -382,12 +382,14 @@ TPopover {
                 required property bool hasVoiceprint
                 required property int meetingCount
                 required property bool inMeeting
+                required property string matchedAlias
                 objectName: "personChoice"
                 compact: true
                 width: peopleList.width
                 personName: name
-                subText: inMeeting ? qsTr("összevonás") : meetingCount > 0 ? qsTr("%n megbeszélés", "", meetingCount)
-                       : qsTr("nincs hanglenyomat")
+                subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
+                       + (inMeeting ? qsTr("összevonás") : meetingCount > 0 ? qsTr("%n megbeszélés", "", meetingCount)
+                       : qsTr("nincs hanglenyomat"))
                 highlighted: control.currentIndex - control.otherCount === index || hovered
                 onClicked: control.choosePerson(name)
             }

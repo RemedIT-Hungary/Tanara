@@ -23,6 +23,9 @@ public:
     void rename(const QString& oldName, const QString& newName);  // a névlistában átnevez
     void remove(const QString& name);           // törli a névlistából
 
+    // Ha a fájl a lemezen megváltozott (másik folyamat írta), újraolvassa.
+    void refresh() { reloadIfChanged(); }
+
     QString filePath() const { return m_filePath; }
 
 private:

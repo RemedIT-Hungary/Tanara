@@ -63,6 +63,8 @@ struct PersonInfo {
     bool    hasVoiceprint = false;
     int     voiceprintCount = 0;
     int     meetingCount = 0;       // hány meetingen szerepel
+    QStringList aliases;            // becenevek (people-details.json) — a keresés ezekre is talál
+    QString matchedAlias;           // szűrés után: ha a találat becenévből jött, az a becenév
 };
 
 // Mennyi anyag van egy beszélő kézi hanglenyomatához ebben a meetingben.

@@ -25,6 +25,12 @@ public:
     virtual void openUrl(const QString& url) = 0;
     // Személyek kezelése (nem-modális ablak).
     virtual void openPeople() = 0;
+    // Ugyanez egy személy kijelölésével (a Beállításokból: a saját személy).
+    virtual void openPeopleAt(const QString& person)
+    {
+        Q_UNUSED(person);
+        openPeople();
+    }
 
     // ---- Tanara Cloud: a meglévő (modális) Widgets-folyamatok ----
     virtual bool cloudLogin() = 0;                        // true = bejelentkezett

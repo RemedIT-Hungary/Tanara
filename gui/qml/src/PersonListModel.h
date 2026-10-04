@@ -35,7 +35,8 @@ class PersonListModel : public QAbstractListModel {
     Q_PROPERTY(bool canCreate READ canCreate NOTIFY countChanged)
 
 public:
-    enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole };
+    // MatchedAliasRole: ha a találat becenévből jött (nem a névből), az a becenév; különben üres.
+    enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole, MatchedAliasRole };
 
     explicit PersonListModel(QObject* parent = nullptr);
 

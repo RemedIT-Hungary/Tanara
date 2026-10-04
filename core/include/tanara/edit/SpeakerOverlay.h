@@ -119,6 +119,11 @@ SummaryStaleInfo summaryStale(const Meeting& m);
 // Beszélő-változás az overlay-en KÍVÜLRŐL (régi UI átnevezés, auto-azonosítás): ha van
 // összefoglaló, elavultnak jelöli. true, ha változott az állapot.
 bool markSummaryStale(const Meeting& m, const QStringList& speakerKeys);
+// Ugyanez, de megmondja, mely kulcsok kerültek ÚJONNAN a listára (a visszavonáshoz).
+QStringList markSummaryStaleKeys(const Meeting& m, const QStringList& speakerKeys);
+// Egy markSummaryStaleKeys visszavonása: a megadott kulcsok lekerülnek az elavult-listáról.
+// true, ha változott az állapot.
+bool unmarkSummaryStale(const QString& meetingFolder, const QStringList& speakerKeys);
 // Összefoglaló (újra)generálva VAGY a felhasználó elfogadta („Rendben így").
 bool clearSummaryStale(const QString& meetingFolder);
 

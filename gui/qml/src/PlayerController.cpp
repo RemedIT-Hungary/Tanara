@@ -116,6 +116,12 @@ void PlayerController::setBackendFactory(BackendFactory factory)
     backendFactory() = std::move(factory);
 }
 
+PlayerBackend* PlayerController::createBackend(QObject* parent)
+{
+    PlayerBackend* backend = backendFactory() ? backendFactory()(parent) : nullptr;
+    return backend ? backend : new SilentBackend(parent);
+}
+
 PlayerController::PlayerController(QObject* parent) : QObject(parent)
 {
     m_tick.setInterval(40);

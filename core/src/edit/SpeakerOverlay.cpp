@@ -387,6 +387,31 @@ bool markSummaryStale(const Meeting& m, const QStringList& speakerKeys)
     return true;
 }
 
+QStringList markSummaryStaleKeys(const Meeting& m, const QStringList& speakerKeys)
+{
+    QStringList added;
+    if (!m.hasSummary || speakerKeys.isEmpty()) return added;
+    SpeakerOverlay ov = loadOverlay(m.folder);
+    for (const QString& k : speakerKeys) {
+        if (k.isEmpty() || ov.changedSinceSummary.contains(k)) continue;
+        ov.changedSinceSummary.append(k);
+        added.append(k);
+    }
+    if (!added.isEmpty()) saveOverlay(m.folder, ov);
+    return added;
+}
+
+bool unmarkSummaryStale(const QString& meetingFolder, const QStringList& speakerKeys)
+{
+    if (speakerKeys.isEmpty() || !QFile::exists(overlayPath(meetingFolder))) return false;
+    SpeakerOverlay ov = loadOverlay(meetingFolder);
+    const int before = ov.changedSinceSummary.size();
+    for (const QString& k : speakerKeys) ov.changedSinceSummary.removeAll(k);
+    if (ov.changedSinceSummary.size() == before) return false;
+    saveOverlay(meetingFolder, ov);
+    return true;
+}
+
 bool clearSummaryStale(const QString& meetingFolder)
 {
     if (!QFile::exists(overlayPath(meetingFolder))) return false;

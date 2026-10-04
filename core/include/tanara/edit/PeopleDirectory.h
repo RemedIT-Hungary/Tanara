@@ -12,6 +12,7 @@ namespace tanara {
 
 class MeetingStore;
 class PeopleStore;
+class PersonDetailsStore;
 class VoiceprintStore;
 
 // Kereséshez hajtogatott alak: kisbetűs, ékezetek nélkül (ő→o, ű→u, é→e …).
@@ -23,10 +24,13 @@ bool matchesSearch(const QString& text, const QString& needle);
 
 // Az ismert személyek (people.json ∪ hanglenyomat-DB), név szerint rendezve.
 // meetingCount: speakerMap-érték, mic-sáv fix neve vagy kézzel felvett résztvevő alapján.
+// details (lehet nullptr): a becenevek forrása.
 QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore* voiceprints,
-                               MeetingStore* store);
+                               MeetingStore* store, const PersonDetailsStore* details = nullptr);
 
 // A lista szűrése a keresőmező szövegére; az elöl egyezők (névkezdet / szókezdet) előre.
+// A becenevekben is keres: aki csak a becenevével egyezik, a névre egyezők után jön, és a
+// matchedAlias mezője megmondja, melyik beceneve talált.
 QVector<PersonInfo> filterPeople(const QVector<PersonInfo>& all, const QString& needle);
 
 } // namespace tanara

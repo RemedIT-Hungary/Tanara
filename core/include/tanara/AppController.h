@@ -28,6 +28,8 @@ class MeetingJobTracker;
 class MeetingLibrary;
 class TrackCatalog;
 class WaveformService;
+class PeopleService;
+class PeopleStats;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -104,11 +106,23 @@ public:
     QStringList recordingDeviceNames() const;
     QStringList disconnectedRecordingDeviceNames() const;
 
+    // ---- Személyek ablak háttere ---------------------------------------------------------
+    // Személyek, becenevek / megjegyzés, hangminták, összevonás, törlés, visszavonás — lásd
+    // people/PeopleService.h. A személyenkénti statisztika (megbeszélés-szám, beszédidő,
+    // utoljára látva) háttérszálon számolódik: people/PeopleStats.h.
+    PeopleService* peopleService() const;
+    PeopleStats*   peopleStats() const;
+    // A hang-modell (CAM++ ONNX) várt helye; a megléte: voiceIdentificationAvailable().
+    QString voiceModelPath() const;
+
     // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
     QStringList knownPeople() const;
 
     // Személy átnevezése/törlése GLOBÁLISAN: a névlistában + MINDEN meeting
     // speakerMap-jében átvezetve (a transcript.md-k újragenerálva). peopleChanged jel.
+    // A becenevek / megjegyzés (people-details.json) követik: átnevezésnél az új névre
+    // kerülnek (ha a cél-név már létezik, a két személy adatai egyesülnek), törlésnél
+    // törlődnek. (A régi nevet becenévként a Személyek ablak művelete, a PeopleService őrzi meg.)
     void renamePerson(const QString& oldName, const QString& newName);
     void removePerson(const QString& name);
 

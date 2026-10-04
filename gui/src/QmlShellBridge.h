@@ -31,12 +31,11 @@ struct CloudError;
 struct Money;
 }
 
-namespace tanara_qml { class SettingsWindowHost; }
+namespace tanara_qml { class SettingsWindowHost; class PeopleWindowHost; }
 
 namespace tanara_gui {
 
 class ShellRecorderHost;
-class PeopleManagerDialog;
 class SettingsWidgetsDialogs;
 
 class QmlShellBridge : public tanara_qml::ShellBridge {
@@ -60,6 +59,9 @@ public:
     // A Beállítások ablaka (SettingsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
     // A QA-szkripteknek: App.bridge.settingsWindow().
     Q_INVOKABLE QObject* settingsWindow() const;
+    // A Személyek ablaka (PeopleWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
+    // A QA-szkripteknek: App.bridge.peopleWindow().
+    Q_INVOKABLE QObject* peopleWindow() const;
 
     // ---- ShellBridge ----
     bool cloudChipVisible() const override { return m_chipVisible; }
@@ -71,6 +73,7 @@ public:
     void openSettings(const QString& page) override;
     void openSettingsAt(const QString& page, const QString& focusField) override;
     void openPeople() override;
+    void openPeopleAt(const QString& person) override;
     void openRecorder() override;
     QString pickAudioFile() override;
     QStringList pickAudioFiles() override;
@@ -114,7 +117,7 @@ private:
     ShellRecorderHost* m_recorder = nullptr;   // a felvevő-kötés
     SettingsWidgetsDialogs* m_settingsDialogs = nullptr;
     tanara_qml::SettingsWindowHost* m_settings = nullptr;   // a QML Beállítások-ablak gazdája
-    QPointer<PeopleManagerDialog> m_peopleDialog;
+    tanara_qml::PeopleWindowHost* m_people = nullptr;       // a QML Személyek-ablak gazdája
     bool m_quitAfterStop = false;
     bool m_shutDown = false;
 

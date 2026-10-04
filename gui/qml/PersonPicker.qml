@@ -95,12 +95,15 @@ TPopover {
                     required property bool hasVoiceprint
                     required property int meetingCount
                     required property bool inMeeting
+                    required property string matchedAlias
                     width: list.width
                     height: control.rowHeight
                     personName: name
-                    subText: inMeeting ? qsTr("már résztvevő")
+                    // Becenévre talált: a becenév is látszik, hogy érthető legyen, miért van a listában.
+                    subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
+                           + (inMeeting ? qsTr("már résztvevő")
                            : hasVoiceprint ? qsTr("%n megbeszélés", "", meetingCount)
-                           : qsTr("nincs hanglenyomat")
+                           : qsTr("nincs hanglenyomat"))
                     voiceprint: hasVoiceprint
                     highlighted: control.currentIndex === index
                     onHoveredChanged: if (hovered) control.currentIndex = index

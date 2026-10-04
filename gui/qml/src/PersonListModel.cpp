@@ -22,7 +22,8 @@ QHash<int, QByteArray> PersonListModel::roleNames() const
     return {{NameRole, "name"},
             {HasVoiceprintRole, "hasVoiceprint"},
             {MeetingCountRole, "meetingCount"},
-            {InMeetingRole, "inMeeting"}};
+            {InMeetingRole, "inMeeting"},
+            {MatchedAliasRole, "matchedAlias"}};
 }
 
 QVariant PersonListModel::data(const QModelIndex& index, int role) const
@@ -35,6 +36,7 @@ QVariant PersonListModel::data(const QModelIndex& index, int role) const
     case HasVoiceprintRole: return p.hasVoiceprint;
     case MeetingCountRole: return p.meetingCount;
     case InMeetingRole: return m_inMeeting.value(row);
+    case MatchedAliasRole: return p.matchedAlias;
     default: return {};
     }
 }

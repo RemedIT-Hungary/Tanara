@@ -1,6 +1,6 @@
 #include "QmlShellBridge.h"
 
-#include "PeopleManagerDialog.h"
+#include "PeopleWindowHost.h"
 #include "SettingsWidgetsDialogs.h"
 #include "SettingsWindowHost.h"
 #include "ShellRecorderHost.h"
@@ -77,7 +77,8 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
 
     // A Beállítások QML-ablaka: nem modális, a mentés jelre frissítjük, ami tőle függ.
     m_settingsDialogs = new SettingsWidgetsDialogs(m_controller, this);
-    m_settingsDialogs->setPeopleOpener([this] { openPeople(); });
+    m_settingsDialogs->setPeopleOpener([this](const QString& person) { openPeopleAt(person); });
+    m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
     m_settings = new tanara_qml::SettingsWindowHost(m_controller, m_settingsDialogs, this);
     m_settings->setPersistTheme(false);   // a témát a főablak jegyzi meg (themeModeSaved)
     connect(m_settings, &tanara_qml::SettingsWindowHost::saved, this, [this] {
@@ -153,15 +154,22 @@ QObject* QmlShellBridge::settingsWindow() const
 
 void QmlShellBridge::openPeople()
 {
-    // Nem-modális, hogy a háttérben az átnevezés / törlés hatása (speakerMapChanged) azonnal
-    // látszódjon a nyitott átiraton. Egy példány: a második kérés az elsőt hozza előre.
-    if (!m_peopleDialog) {
-        m_peopleDialog = new PeopleManagerDialog(m_controller, nullptr);
-        m_peopleDialog->setAttribute(Qt::WA_DeleteOnClose);
-    }
-    m_peopleDialog->show();
-    m_peopleDialog->raise();
-    m_peopleDialog->activateWindow();
+    openPeopleAt(QString());
+}
+
+void QmlShellBridge::openPeopleAt(const QString& person)
+{
+    // Nem-modális QML-ablak, hogy a háttérben az átnevezés / összevonás / törlés hatása
+    // azonnal látszódjon a nyitott átiraton. Egy példány: a második kérés az elsőt hozza előre.
+    if (m_shutDown)
+        return;
+    m_people->setTransientParent(m_window);
+    m_people->open(person);
+}
+
+QObject* QmlShellBridge::peopleWindow() const
+{
+    return m_people ? m_people->window() : nullptr;
 }
 
 QString QmlShellBridge::pickAudioFile()
@@ -233,8 +241,8 @@ void QmlShellBridge::shutdown()
         return;
     m_shutDown = true;
     qApp->removeEventFilter(this);
-    if (m_peopleDialog)
-        m_peopleDialog->close();
+    if (m_people)
+        m_people->closeNow();
     if (m_settings)
         m_settings->closeNow();
     m_recorder->shutdown();

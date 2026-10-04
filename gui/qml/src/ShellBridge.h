@@ -51,6 +51,13 @@ public:
         openSettings(page);
     }
     Q_INVOKABLE virtual void openPeople() = 0;
+    // Ugyanez egy személy kijelölésével (üres név: a korábbi kijelölés marad). Az
+    // alapértelmezés a sima openPeople (a tesztek ál-hídjainak nem kell tudniuk róla).
+    Q_INVOKABLE virtual void openPeopleAt(const QString& person)
+    {
+        Q_UNUSED(person);
+        openPeople();
+    }
     Q_INVOKABLE virtual void openRecorder() = 0;
     // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
     Q_INVOKABLE virtual QString pickAudioFile() = 0;

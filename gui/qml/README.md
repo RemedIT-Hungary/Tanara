@@ -4,9 +4,10 @@ The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), t
 application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
 `design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
 
-The process is still a `QApplication`: People and the Tanara Cloud dialogs remain Qt
-Widgets and open next to the QML windows. Settings is QML (`SettingsWindow.qml`, see
-"Settings window"); the floating recorder is QML in both the main window and
+The process is still a `QApplication`: the Tanara Cloud dialogs remain Qt Widgets and open
+next to the QML windows. Settings is QML (`SettingsWindow.qml`, see "Settings window"), People
+is QML (`PeopleWindow.qml`, see "People window"; `--classic` keeps the Widgets
+`PeopleManagerDialog`); the floating recorder is QML in both the main window and
 `tanara --record` (only `--classic` keeps the old Widgets recorder and `SettingsDialog`).
 
 ## Layout
@@ -189,8 +190,8 @@ the meeting-to-be. QA scripts reach it through `window.importModel` / `window.im
 (`addFiles([...])`, `setSplit(row, on)`, `ownTrack`, `start()`, `cancel()`) — the native file
 picker is only opened by `openImport()` without arguments, so pass the paths.
 
-Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (People, file
-pickers, all Tanara Cloud dialogs and chrome; it owns the `SettingsWindowHost` and re-evaluates
+Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (file
+pickers, all Tanara Cloud dialogs and chrome; it owns the `PeopleWindowHost` and the `SettingsWindowHost` and re-evaluates
 readiness, the recorder's device policy and the cloud chrome when Settings saves); `ShellRecorderHost` is the only
 place that knows the recorder (see "Recorder in the main window" below); `MediaPlayerBackend`
 is the Qt Multimedia engine behind `PlayerController` (the QML module itself does not link
@@ -212,8 +213,10 @@ only when `TANARA_HOME` is set (the socket names are then scoped to that folder,
 is never disturbed) — a second `tanara --record …` / `tanara --meeting <id>` with the same
 `TANARA_HOME` drives the window under test. The script reaches the recorder window through
 `App.bridge.recorderWindow()` (`import Tanara`; `.visible`, `.sheetOpen`, `.vm.state` …) and the
-Settings window through `App.bridge.settingsWindow()` (`.visible`, `.vm.page`, `.vm.save()` …;
-grab either with `hook.grabWindow(win, path)` — they live in their own engines).
+Settings window through `App.bridge.settingsWindow()` (`.visible`, `.vm.page`, `.vm.save()` …)
+and the People window through `App.bridge.peopleWindow()` (`.visible`, `.vm`, `.mergeDialog`,
+`.deleteDialog`, `.toastItem` …; grab any of them with `hook.grabWindow(win, path)` — they live
+in their own engines).
 
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
@@ -275,7 +278,7 @@ Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPo
 ## Widgets dialogs from QML
 
 `App.bridge` is a `QObject*` slot for the object that opens the Widgets dialogs
-(People, recorder, cloud) and the QML Settings window. The class belongs in `gui/src/` (it needs the Widgets
+(recorder, cloud) and the QML Settings and People windows. The class belongs in `gui/src/` (it needs the Widgets
 classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 `tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
 `Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
@@ -329,6 +332,66 @@ build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --q
 
 `demoState`: `B01` … `B07` · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
 `logout` · `reset`.
+
+## People window (`People*.qml`, `src/People*`)
+
+Spec: `design/handoff-people/README.md` (P01–P06). A separate, resizable, **non-modal** window
+(960 × 660); native decorations are kept, so the spec's 36 px title bar is not drawn. The list
+pane's width is draggable (names are not elided in normal widths).
+
+| Piece | Role |
+|---|---|
+| `PeopleWindow.qml` | the window: list pane, detail pane, shortcuts, undo toast, the delete / new-person dialogs |
+| `PeopleListPane` + `PeopleListRow` | search (names and aliases), "Új személy", count, sort menu, list with section headers, the P06 hint and the no-result link |
+| `PeopleDetailPane` + `PeopleSampleRow` | header with inline rename, aliases, note (autosave on blur), voiceprint samples with play and the "…" menu, the no-voiceprint box (P03), meetings |
+| `PeopleMergeDialog`, `PeopleSampleTargetDialog`, `PeopleUndoToast` | merge (P04), "new person from this sample" / "move to another person", the inverted toast with "Visszavonás" (~8 s) |
+| `PeopleViewModel` (+ `PeopleListModel`) | list (filter, sort, sections, match parts), the selected person's detail, operations, toast texts; fictional people without a controller (`demoState`) |
+| `PeopleWindowHost` | C++ host with its own engine: `open(person)`, `closed()` |
+
+Core behind it (`core/include/tanara/people/`, `store/PersonDetailsStore.h`):
+
+- **Storage.** `people.json` (name list) and `voiceprints.json` keep their shape — older builds
+  rewrite both files from their own model and would drop anything else. Aliases and notes live in
+  the sibling `people-details.json` (`PersonDetailsStore`, keyed by name like the other two, same
+  locked reload-merge-save pattern, unknown fields preserved).
+- **`PeopleService`** (`AppController::peopleService()`): persons, samples with a friendly source
+  (`TrackCatalog` / `devicenames`), rename (old name becomes an alias; through the global
+  `renamePerson` / `setUserSpeakerName`), aliases, note, sample delete / move / new person from a
+  sample, voiceprint from the meetings with manually assigned lines (the per-meeting
+  `SpeakerEditor::createVoiceprint`), merge, delete, undo.
+- **`PeopleStats`** (`AppController::peopleStats()`): meeting count, talk time and last-seen per
+  person, computed on a worker thread and cached per meeting (key: mtime + size of
+  `meeting.json`, `transcript.segments.json`, `transcript.speakers.json`); the list shows names and
+  sample counts at once and fills the rest in (`vm.statsReady`).
+- **Undoable** (toast + `Ctrl+Z`): sample delete, sample move / new person from a sample, alias
+  removal, rename. **Not undoable** (the dialogs say so): merge, delete.
+- **Stale summaries.** Merge, delete and sample move mark the summaries of the affected meetings
+  stale (`speakeredit::markSummaryStale`) and emit the usual `AppController` signals, so the
+  library, an open transcript editor and Settings follow without a restart.
+- **"Keep samples as an anonymous person"** (delete dialog): the samples move to a new person
+  named "Névtelen N", who appears in the list and can be renamed or merged later.
+- Aliases are also found by the transcript editor's person pickers (`filterPeople`,
+  `PersonInfo::aliases` / `matchedAlias`).
+
+Keyboard: `Ctrl+F` search · `F2` rename · `Del` delete (asks) · `Space` plays the selected sample
+· `Ctrl+Z` undo (inside a text field the field's own undo applies) · `Ctrl+W` closes.
+
+Where it opens: `ShellActions.openPeople(person = "")` (sidebar footer, Fájl menu) →
+`QmlShellBridge::openPeopleAt` → host; the "Személyek kezelése →" link in Settings › Általános
+(`SettingsDialogs::openPeopleAt`, with the user's own person selected; in the stand-alone
+recorder / `tanara --settings` processes `SettingsWidgetsDialogs` owns a host of its own).
+
+Samples are played through a backend from the same factory as the main player
+(`PlayerController::createBackend`); without a factory (tests, screenshots) it is the silent one.
+
+Screenshots (fictional data, no controller):
+
+```bash
+build/gui/tanara --qml-shot out.png --qml-page PeopleWindow --size 960x1100 --qml-prop 'demoState="P04"'
+```
+
+`demoState`: `P01` … `P06` · `newPerson` · `sampleNew` · `sampleMove` · `noResult` · `sort` ·
+`allSamples` · `deleteKeep` · `creating` · `toastPlain`.
 
 ## Recorder (`Recorder*.qml`, `VuMeter.qml`, `src/Recorder*`)
 
@@ -404,6 +467,9 @@ the standalone recorder through XWayland where all three work.
   the translator first, which reads `settings.json` for the UI language (and creates the file on
   a machine that has none). Set `TANARA_HOME` to a scratch folder to keep them fully isolated.
 
+- People: creating a voiceprint from meetings decodes each meeting's audio on the UI thread (one
+  meeting per step, a few seconds each, with a progress line); meeting rows are not links; the
+  call-app name ("Hívás hangja · Teams") is not stored with a track, so it is not shown.
 - Custom title bar is not implemented (native decorations are kept, as the spec allows);
   the centred "Tanara" caption is therefore omitted.
 - `TDialog` / `TMenu` are in-window popups (`Popup.Item`); they cannot extend beyond the

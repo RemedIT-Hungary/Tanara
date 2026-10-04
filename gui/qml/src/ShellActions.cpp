@@ -248,10 +248,10 @@ void ShellActions::openSettings(const QString& page, const QString& focusField)
     }
 }
 
-void ShellActions::openPeople()
+void ShellActions::openPeople(const QString& person)
 {
     if (ShellBridge* b = bridge())
-        b->openPeople();
+        person.trimmed().isEmpty() ? b->openPeople() : b->openPeopleAt(person.trimmed());
     else
         toast(tr("A Személyek ebben a módban nem érhetők el."));
 }

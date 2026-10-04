@@ -718,7 +718,8 @@ void SettingsViewModel::openFolder(const QString& key)
 
 void SettingsViewModel::openPeople()
 {
-    if (m_dialogs) m_dialogs->openPeople();
+    // A hivatkozás a saját hanglenyomat sora mellett áll: a saját személy lesz kijelölve.
+    if (m_dialogs) m_dialogs->openPeopleAt(m_base.userSpeakerName.trimmed());
 }
 
 // ---- B02 Rögzítés ----------------------------------------------------------------------

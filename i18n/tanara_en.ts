@@ -1037,6 +1037,350 @@
     </message>
 </context>
 <context>
+    <name>PeopleDetailPane</name>
+    <message>
+        <source>Még csak te vagy itt</source>
+        <translation>It&apos;s just you here so far</translation>
+    </message>
+    <message>
+        <source>Nevezd el a beszélőket egy megbeszélés átiratában, vagy vegyél fel valakit előre, hogy a személyválasztóban már szerepeljen.</source>
+        <translation>Name the speakers in a meeting&apos;s transcript, or add someone in advance so they already appear in the person picker.</translation>
+    </message>
+    <message>
+        <source>Új személy</source>
+        <translation>New person</translation>
+    </message>
+    <message>
+        <source>A személy új neve</source>
+        <translation>The person&apos;s new name</translation>
+    </message>
+    <message>
+        <source>Mentés</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Enter: mentés · Esc: mégse. A régi név becenévként megmarad.</source>
+        <translation>Enter: save · Esc: cancel. The old name is kept as an alias.</translation>
+    </message>
+    <message>
+        <source>Átnevezés</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <source>Összevonás…</source>
+        <translation>Merge…</translation>
+    </message>
+    <message>
+        <source>Személy törlése</source>
+        <translation>Delete person</translation>
+    </message>
+    <message>
+        <source>Becenevek</source>
+        <translation>Aliases</translation>
+    </message>
+    <message>
+        <source>Becenév törlése: %1</source>
+        <translation>Remove alias: %1</translation>
+    </message>
+    <message>
+        <source>Új becenév</source>
+        <translation>New alias</translation>
+    </message>
+    <message>
+        <source>Becenév</source>
+        <translation>Alias</translation>
+    </message>
+    <message>
+        <source>A keresés és a személyválasztó ezekre is talál.</source>
+        <translation>Search and the person picker find these too.</translation>
+    </message>
+    <message>
+        <source>Megjegyzés</source>
+        <translation>Note</translation>
+    </message>
+    <message>
+        <source>Megjegyzés hozzáadása…</source>
+        <translation>Add a note…</translation>
+    </message>
+    <message>
+        <source>Megjegyzés a személyhez</source>
+        <translation>Note about the person</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat</source>
+        <translation>Voiceprint</translation>
+    </message>
+    <message>
+        <source>Csak a legutóbbiak</source>
+        <translation>Only the most recent</translation>
+    </message>
+    <message>
+        <source>Az összes minta (%1)</source>
+        <translation>All samples (%1)</translation>
+    </message>
+    <message>
+        <source>Még nincs hanglenyomata</source>
+        <translation>No voiceprint yet</translation>
+    </message>
+    <message>
+        <source>Megbeszélések átnézése…</source>
+        <translation>Checking the meetings…</translation>
+    </message>
+    <message>
+        <source>Minta készítése: %1</source>
+        <translation>Creating samples: %1</translation>
+    </message>
+    <message>
+        <source>Megbeszélések</source>
+        <translation>Meetings</translation>
+    </message>
+    <message>
+        <source>%1 · legújabb elöl</source>
+        <translation>%1 · newest first</translation>
+    </message>
+    <message>
+        <source>Megbeszélések számolása…</source>
+        <translation>Counting meetings…</translation>
+    </message>
+    <message>
+        <source>Még egy megbeszélésen sem szerepel.</source>
+        <translation>Does not appear in any meeting yet.</translation>
+    </message>
+    <message>
+        <source>Az összes megbeszélés (%1)</source>
+        <translation>All meetings (%1)</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleListPane</name>
+    <message>
+        <source>Név vagy becenév</source>
+        <translation>Name or alias</translation>
+    </message>
+    <message>
+        <source>Keresés a személyek között</source>
+        <translation>Search people</translation>
+    </message>
+    <message>
+        <source>Új személy</source>
+        <translation>New person</translation>
+    </message>
+    <message>
+        <source>Rendezés: %1</source>
+        <translation>Sort: %1</translation>
+    </message>
+    <message>
+        <source>ABC</source>
+        <translation>A–Z</translation>
+    </message>
+    <message>
+        <source>Legutóbb</source>
+        <translation>Most recent</translation>
+    </message>
+    <message>
+        <source>Legtöbb megbeszélés</source>
+        <translation>Most meetings</translation>
+    </message>
+    <message>
+        <source>Itt jelennek meg a résztvevők</source>
+        <translation>Participants will appear here</translation>
+    </message>
+    <message>
+        <source>Amikor az átiratban elnevezel egy beszélőt, személy lesz belőle, és a következő megbeszéléseken hangja alapján felismerjük.</source>
+        <translation>When you name a speaker in a transcript, they become a person, and we recognise them by voice in later meetings.</translation>
+    </message>
+    <message>
+        <source>Becenevekben is kerestem.</source>
+        <translation>I searched aliases too.</translation>
+    </message>
+    <message>
+        <source>Új személy: „%1”</source>
+        <translation>New person: &quot;%1&quot;</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleListRow</name>
+    <message>
+        <source>te</source>
+        <translation>you</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleMergeDialog</name>
+    <message>
+        <source>%1 összevonása</source>
+        <translation>Merge %1</translation>
+    </message>
+    <message>
+        <source>Ha ugyanaz az ember kétszer szerepel. A megbeszélések, minták és becenevek egy személyhez kerülnek.</source>
+        <translation>For when the same human appears twice. The meetings, samples and aliases end up with one person.</translation>
+    </message>
+    <message>
+        <source>Kivel vonod össze?</source>
+        <translation>Merge with whom?</translation>
+    </message>
+    <message>
+        <source>Nincs ilyen személy (becenevekben is kerestem).</source>
+        <translation>No such person (I searched aliases too).</translation>
+    </message>
+    <message>
+        <source>Nincs másik személy, akivel összevonható.</source>
+        <translation>There is no other person to merge with.</translation>
+    </message>
+    <message>
+        <source>Megmaradó név</source>
+        <translation>Name to keep</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Összevonás</source>
+        <translation>Merge</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleSampleRow</name>
+    <message>
+        <source>Szünet</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <source>Minta meghallgatása</source>
+        <translation>Listen to the sample</translation>
+    </message>
+    <message>
+        <source>A minta műveletei</source>
+        <translation>Sample actions</translation>
+    </message>
+    <message>
+        <source>Meghallgatás</source>
+        <translation>Listen</translation>
+    </message>
+    <message>
+        <source>Új személy ebből a mintából…</source>
+        <translation>New person from this sample…</translation>
+    </message>
+    <message>
+        <source>Áthelyezés másik személyhez…</source>
+        <translation>Move to another person…</translation>
+    </message>
+    <message>
+        <source>Minta törlése</source>
+        <translation>Delete sample</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleSampleTargetDialog</name>
+    <message>
+        <source>Minta áthelyezése</source>
+        <translation>Move sample</translation>
+    </message>
+    <message>
+        <source>Új személy ebből a mintából</source>
+        <translation>New person from this sample</translation>
+    </message>
+    <message>
+        <source>A minta kikerül a mostani hanglenyomatból, és a választott személyhez kerül.</source>
+        <translation>The sample leaves the current voiceprint and goes to the person you choose.</translation>
+    </message>
+    <message>
+        <source>Ha a minta valaki más hangja: add meg a nevét. A minta kikerül a mostani hanglenyomatból. Létező névnél a minta ahhoz a személyhez kerül.</source>
+        <translation>If the sample is someone else&apos;s voice, enter their name. The sample leaves the current voiceprint. If the name already exists, the sample goes to that person.</translation>
+    </message>
+    <message>
+        <source>Név vagy becenév</source>
+        <translation>Name or alias</translation>
+    </message>
+    <message>
+        <source>Az új személy neve</source>
+        <translation>The new person&apos;s name</translation>
+    </message>
+    <message>
+        <source>Nincs ilyen személy. Enter vagy „Új személy”: ezzel a névvel létrejön, és megkapja a mintát.</source>
+        <translation>No such person. Enter or &quot;New person&quot;: they are created with this name and get the sample.</translation>
+    </message>
+    <message>
+        <source>A minta most is ennél a személynél van.</source>
+        <translation>The sample already belongs to this person.</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Áthelyezés</source>
+        <translation>Move</translation>
+    </message>
+    <message>
+        <source>Új személy</source>
+        <translation>New person</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleUndoToast</name>
+    <message>
+        <source>Visszavonás</source>
+        <translation>Undo</translation>
+    </message>
+</context>
+<context>
+    <name>PeopleWindow</name>
+    <message>
+        <source>Személyek</source>
+        <translation>People</translation>
+    </message>
+    <message>
+        <source>Minta törölve: %1</source>
+        <translation>Sample deleted: %1</translation>
+    </message>
+    <message>
+        <source>A minta visszakerült.</source>
+        <translation>The sample is back.</translation>
+    </message>
+    <message>
+        <source>Adj meg egy nevet.</source>
+        <translation>Enter a name.</translation>
+    </message>
+    <message>
+        <source>%1 törlése</source>
+        <translation>Delete %1</translation>
+    </message>
+    <message>
+        <source>Hangminták megtartása névtelen személyként</source>
+        <translation>Keep the voice samples as an anonymous person</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Törlés</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Új személy</source>
+        <translation>New person</translation>
+    </message>
+    <message>
+        <source>Előre felvett személy: a személyválasztóban már szerepel, hanglenyomata az első hozzárendelés után lehet.</source>
+        <translation>A person added in advance: they already appear in the person picker; they can get a voiceprint after their first assignment.</translation>
+    </message>
+    <message>
+        <source>Név</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>Hozzáadás</source>
+        <translation>Add</translation>
+    </message>
+</context>
+<context>
     <name>PersonPicker</name>
     <message>
         <source>Névtelen résztvevő</source>
@@ -1045,6 +1389,10 @@
     <message>
         <source>Név keresése vagy új személy</source>
         <translation>Search name or new person</translation>
+    </message>
+    <message>
+        <source>„%1”</source>
+        <translation>&quot;%1&quot;</translation>
     </message>
     <message>
         <source>már résztvevő</source>
@@ -2655,6 +3003,10 @@
     <message>
         <source>%1 minden sora (%2)</source>
         <translation>All lines of %1 (%2)</translation>
+    </message>
+    <message>
+        <source>„%1”</source>
+        <translation>&quot;%1&quot;</translation>
     </message>
     <message>
         <source>Új névtelen résztvevő</source>
@@ -4406,6 +4758,69 @@
     <message>
         <source>Üres LLM-válasz (sem content, sem reasoning_content).</source>
         <translation>Empty LLM response (no content and no reasoning_content).</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::PeopleService</name>
+    <message>
+        <source>Névtelen %1</source>
+        <translation>Anonymous %1</translation>
+    </message>
+    <message>
+        <source>Adj meg egy nevet.</source>
+        <translation>Enter a name.</translation>
+    </message>
+    <message>
+        <source>Ilyen nevű személy már van.</source>
+        <translation>A person with this name already exists.</translation>
+    </message>
+    <message>
+        <source>Ez a személy már nem létezik.</source>
+        <translation>This person no longer exists.</translation>
+    </message>
+    <message>
+        <source>A név nem lehet üres.</source>
+        <translation>The name cannot be empty.</translation>
+    </message>
+    <message>
+        <source>Ilyen nevű személy már van. Ha ugyanaz az ember, használd az Összevonást.</source>
+        <translation>A person with this name already exists. If it is the same human, use Merge.</translation>
+    </message>
+    <message>
+        <source>Adj meg egy becenevet.</source>
+        <translation>Enter an alias.</translation>
+    </message>
+    <message>
+        <source>Ez a személy neve — becenévnek mást adj meg.</source>
+        <translation>This is the person&apos;s name — enter something else as an alias.</translation>
+    </message>
+    <message>
+        <source>Ez a becenév már szerepel.</source>
+        <translation>This alias is already listed.</translation>
+    </message>
+    <message>
+        <source>Ez a minta már nincs meg.</source>
+        <translation>This sample no longer exists.</translation>
+    </message>
+    <message>
+        <source>A minta már ennél a személynél van.</source>
+        <translation>The sample already belongs to this person.</translation>
+    </message>
+    <message>
+        <source>A hangmodell nincs telepítve, ezért nem készíthető hanglenyomat.</source>
+        <translation>The voice model is not installed, so a voiceprint cannot be created.</translation>
+    </message>
+    <message>
+        <source>Ezen a megbeszélésen nincs elég hosszú, biztos sora.</source>
+        <translation>There is no long enough, confident line of theirs in this meeting.</translation>
+    </message>
+    <message>
+        <source>Az összevonáshoz két különböző, létező személy kell.</source>
+        <translation>Merging needs two different, existing people.</translation>
+    </message>
+    <message>
+        <source>A saját személyed nem törölhető.</source>
+        <translation>Your own person cannot be deleted.</translation>
     </message>
 </context>
 <context>
@@ -6776,6 +7191,305 @@ All voiceprints and meeting labels of &quot;%1&quot; will be transferred to &quo
     <message>
         <source>Megnézem</source>
         <translation>View</translation>
+    </message>
+</context>
+<context>
+    <name>tanara_qml::PeopleViewModel</name>
+    <message>
+        <source>%1 / %2 megbeszélés…</source>
+        <translation>%1 / %2 meetings…</translation>
+    </message>
+    <message>
+        <source>„%1”</source>
+        <translation>&quot;%1&quot;</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélés</source>
+        <translation>
+            <numerusform>%n meeting</numerusform>
+            <numerusform>%n meetings</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minta</source>
+        <translation>
+            <numerusform>%n sample</numerusform>
+            <numerusform>%n samples</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>nincs hanglenyomat</source>
+        <translation>no voiceprint</translation>
+    </message>
+    <message>
+        <source>Te</source>
+        <translation>You</translation>
+    </message>
+    <message>
+        <source>Többiek</source>
+        <translation>Others</translation>
+    </message>
+    <message>
+        <source>Megbeszélések számolása…</source>
+        <translation>Counting meetings…</translation>
+    </message>
+    <message>
+        <source>Még egy megbeszélésen sem szerepel</source>
+        <translation>Does not appear in any meeting yet</translation>
+    </message>
+    <message>
+        <source>Utoljára: %1</source>
+        <translation>Last seen: %1</translation>
+    </message>
+    <message>
+        <source>%1 beszéd</source>
+        <translation>%1 of speech</translation>
+    </message>
+    <message>
+        <source>A megbeszélés lekevert hangja</source>
+        <translation>The meeting&apos;s mixed-down audio</translation>
+    </message>
+    <message>
+        <source>ismeretlen eszköz</source>
+        <translation>unknown device</translation>
+    </message>
+    <message>
+        <source>A megbeszélés már nincs meg</source>
+        <translation>The meeting no longer exists</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n forrásból</source>
+        <translation>
+            <numerusform>from %n source</numerusform>
+            <numerusform>from %n sources</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Kézzel rendelted hozzá %n megbeszélés sorait, ezért eddig nem ismerjük fel magától. A biztos sorokból mintát vehetünk.</source>
+        <translation>
+            <numerusform>You assigned the lines of %n meeting by hand, so we do not recognise them automatically yet. We can take a sample from the confident lines.</numerusform>
+            <numerusform>You assigned the lines of %n meetings by hand, so we do not recognise them automatically yet. We can take samples from the confident lines.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Minta %n megbeszélésből</source>
+        <translation>
+            <numerusform>Sample from %n meeting</numerusform>
+            <numerusform>Samples from %n meetings</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>kb. %1 hang, a gépen marad</source>
+        <translation>approx. %1 of audio, stays on this computer</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n perc</source>
+        <translation>
+            <numerusform>%n minute</numerusform>
+            <numerusform>%n minutes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Még egy megbeszélésen sincsenek sorai. Ha az átiratban hozzárendeled a sorait, azokból mintát vehetünk.</source>
+        <translation>They have no lines in any meeting yet. Once you assign their lines in a transcript, we can take a sample from them.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Kézzel rendelted hozzá %n megbeszélés sorait, de egyiken sincs elég hosszú, biztos sora egy mintához (megbeszélésenként legalább 15 másodpercnyi kell, 3 másodpercnél hosszabb sorokból).</source>
+        <translation>
+            <numerusform>You assigned the lines of %n meeting by hand, but it has no long enough, confident lines for a sample (at least 15 seconds per meeting are needed, from lines longer than 3 seconds).</numerusform>
+            <numerusform>You assigned the lines of %n meetings by hand, but none of them has long enough, confident lines for a sample (at least 15 seconds per meeting are needed, from lines longer than 3 seconds).</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Kézzel rendelted hozzá %n megbeszélés sorait. A hangfelismerő modell nincs telepítve ezen a gépen, ezért most nem készíthető hanglenyomat.</source>
+        <translation>
+            <numerusform>You assigned the lines of %n meeting by hand. The voice recognition model is not installed on this computer, so a voiceprint cannot be created now.</numerusform>
+            <numerusform>You assigned the lines of %n meetings by hand. The voice recognition model is not installed on this computer, so a voiceprint cannot be created now.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n másodperc</source>
+        <translation>
+            <numerusform>%n second</numerusform>
+            <numerusform>%n seconds</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélésen nincs elég hosszú sor</source>
+        <translation>
+            <numerusform>%n meeting has no long enough line</numerusform>
+            <numerusform>%n meetings have no long enough line</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minta készült.</source>
+        <translation>
+            <numerusform>%n sample created.</numerusform>
+            <numerusform>%n samples created.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Nem készült minta.</source>
+        <translation>No sample was created.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélésből nem sikerült.</source>
+        <translation>
+            <numerusform>Failed for %n meeting.</numerusform>
+            <numerusform>Failed for %n meetings.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Legutóbb</source>
+        <translation>Most recent</translation>
+    </message>
+    <message>
+        <source>Legtöbb megbeszélés</source>
+        <translation>Most meetings</translation>
+    </message>
+    <message>
+        <source>ABC</source>
+        <translation>A–Z</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n találat</source>
+        <translation>
+            <numerusform>%n result</numerusform>
+            <numerusform>%n results</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n személy</source>
+        <translation>
+            <numerusform>%n person</numerusform>
+            <numerusform>%n people</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Átnevezve: %1</source>
+        <translation>Renamed: %1</translation>
+    </message>
+    <message>
+        <source>Becenév törölve: %1</source>
+        <translation>Alias removed: %1</translation>
+    </message>
+    <message>
+        <source>Minta törölve</source>
+        <translation>Sample deleted</translation>
+    </message>
+    <message>
+        <source>Minta törölve: %1</source>
+        <translation>Sample deleted: %1</translation>
+    </message>
+    <message>
+        <source>Minta áthelyezve ide: %1</source>
+        <translation>Sample moved to: %1</translation>
+    </message>
+    <message>
+        <source>Új személy a mintából: %1</source>
+        <translation>New person from the sample: %1</translation>
+    </message>
+    <message>
+        <source>hang alapján hasonló (%1%)</source>
+        <translation>similar by voice (%1%)</translation>
+    </message>
+    <message>
+        <source>hang-egyezés: %1%</source>
+        <translation>voice match: %1%</translation>
+    </message>
+    <message>
+        <source>Eredmény: &lt;b&gt;%1&lt;/b&gt;, &lt;b&gt;%2&lt;/b&gt;. „%3” becenév lesz.</source>
+        <translation>Result: &lt;b&gt;%1&lt;/b&gt;, &lt;b&gt;%2&lt;/b&gt;. &quot;%3&quot; becomes an alias.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n érintett összefoglaló elavultnak jelölődik.</source>
+        <translation>
+            <numerusform>%n affected summary is marked outdated.</numerusform>
+            <numerusform>%n affected summaries are marked outdated.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Az összevonás nem vonható vissza.</source>
+        <translation>A merge cannot be undone.</translation>
+    </message>
+    <message>
+        <source>Összevonva: %1</source>
+        <translation>Merged: %1</translation>
+    </message>
+    <message>
+        <source>Egy megbeszélésen sem szerepel.</source>
+        <translation>Does not appear in any meeting.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélésen névtelen beszélőként marad meg (pl. „%1”), a szöveg nem változik.</source>
+        <translation>
+            <numerusform>They remain an unnamed speaker in %n meeting (e.g. &quot;%1&quot;); the text does not change.</numerusform>
+            <numerusform>They remain an unnamed speaker in %n meetings (e.g. &quot;%1&quot;); the text does not change.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n megbeszélésen névtelen beszélőként marad meg, a szöveg nem változik.</source>
+        <translation>
+            <numerusform>They remain an unnamed speaker in %n meeting; the text does not change.</numerusform>
+            <numerusform>They remain an unnamed speaker in %n meetings; the text does not change.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n hangmintája megmarad egy új, névtelen személynél, akit később átnevezhetsz vagy összevonhatsz.</source>
+        <translation>
+            <numerusform>Their %n voice sample is kept with a new, anonymous person that you can rename or merge later.</numerusform>
+            <numerusform>Their %n voice samples are kept with a new, anonymous person that you can rename or merge later.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n hangmintája törlődik, így hang alapján többé nem ismerjük fel.</source>
+        <translation>
+            <numerusform>Their %n voice sample is deleted, so we will no longer recognise them by voice.</numerusform>
+            <numerusform>Their %n voice samples are deleted, so we will no longer recognise them by voice.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n összefoglaló elavultnak jelölődik.</source>
+        <translation>
+            <numerusform>%n summary is marked outdated.</numerusform>
+            <numerusform>%n summaries are marked outdated.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A törlés nem vonható vissza.</source>
+        <translation>A deletion cannot be undone.</translation>
+    </message>
+    <message>
+        <source>Törölve: %1.</source>
+        <translation>Deleted: %1.</translation>
+    </message>
+    <message>
+        <source>A mintái itt maradtak: %1</source>
+        <translation>Their samples were kept here: %1</translation>
+    </message>
+    <message>
+        <source>Törölve: %1</source>
+        <translation>Deleted: %1</translation>
+    </message>
+    <message>
+        <source>A minta visszakerült.</source>
+        <translation>The sample is back.</translation>
+    </message>
+    <message>
+        <source>A minta visszakerült a korábbi helyére.</source>
+        <translation>The sample is back where it was.</translation>
+    </message>
+    <message>
+        <source>Becenév visszaállítva: %1</source>
+        <translation>Alias restored: %1</translation>
+    </message>
+    <message>
+        <source>Az átnevezés visszavonva.</source>
+        <translation>The rename was undone.</translation>
+    </message>
+    <message>
+        <source>A minta hangfájlja már nincs meg, ezért nem hallgatható meg.</source>
+        <translation>The sample&apos;s audio file no longer exists, so it cannot be played.</translation>
     </message>
 </context>
 <context>

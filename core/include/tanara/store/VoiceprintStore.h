@@ -45,6 +45,11 @@ public:
     // Minden személy pontszáma csökkenő sorrendben (UI/diagnosztika).
     QVector<VoiceMatch> rankedMatches(const QVector<float>& embedding) const;
 
+    // Egy lenyomat és a gazdája id alapján; false, ha nincs ilyen.
+    bool findPrint(const QString& printId, QString* owner, Voiceprint* print) const;
+    // Ha a fájl a lemezen megváltozott (másik folyamat írta), újraolvassa.
+    void refresh() { reloadIfChanged(); }
+
     QString filePath() const { return m_filePath; }
 
     // --- segéd-matek (publikus + statikus, hogy tesztelhető és újrahasznosítható) ---

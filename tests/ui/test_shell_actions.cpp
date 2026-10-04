@@ -55,6 +55,7 @@ public:
     }
     QString lastFocusField;
     void openPeople() override { calls << QStringLiteral("people"); }
+    void openPeopleAt(const QString& person) override { calls << QStringLiteral("people:") + person; }
     void openRecorder() override { calls << QStringLiteral("recorder"); }
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
     QStringList pickAudioFiles() override { calls << QStringLiteral("pickMany"); return pickedFiles; }
@@ -239,6 +240,11 @@ private slots:
         QCOMPARE(m_shell->pickAudioFile(), QStringLiteral("/tmp/x.ogg"));
         QCOMPARE(m_bridge->calls, (QStringList{QStringLiteral("settings:watcher"), QStringLiteral("people"),
                                                QStringLiteral("recorder"), QStringLiteral("pick")}));
+        // Személyek egy személy kijelölésével (mély hivatkozás); üres névvel a sima megnyitás.
+        m_shell->openPeople(QStringLiteral(" Bárány Gergely "));
+        QCOMPARE(m_bridge->calls.last(), QStringLiteral("people:Bárány Gergely"));
+        m_shell->openPeople(QStringLiteral("  "));
+        QCOMPARE(m_bridge->calls.last(), QStringLiteral("people"));
         // Híd nélkül (demó) nem omlik össze, értesít.
         m_shell->setBridge(nullptr);
         m_shell->openSettings(QString());

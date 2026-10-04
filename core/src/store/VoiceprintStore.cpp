@@ -111,6 +111,19 @@ bool VoiceprintStore::removePrint(const QString& printId)
     return removed;
 }
 
+bool VoiceprintStore::findPrint(const QString& printId, QString* owner, Voiceprint* print) const
+{
+    if (printId.isEmpty()) return false;
+    for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it)
+        for (const Voiceprint& p : it.value()) {
+            if (p.id != printId) continue;
+            if (owner) *owner = it.key();
+            if (print) *print = p;
+            return true;
+        }
+    return false;
+}
+
 void VoiceprintStore::renamePerson(const QString& oldName, const QString& newName)
 {
     const QString o = oldName.trimmed(), n = newName.trimmed();

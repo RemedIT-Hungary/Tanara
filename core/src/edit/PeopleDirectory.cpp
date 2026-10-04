@@ -3,6 +3,7 @@
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
+#include "tanara/store/PersonDetailsStore.h"
 #include "tanara/store/VoiceprintStore.h"
 
 #include <QFile>
@@ -37,7 +38,7 @@ bool matchesSearch(const QString& text, const QString& needle)
 }
 
 QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore* voiceprints,
-                               MeetingStore* store)
+                               MeetingStore* store, const PersonDetailsStore* details)
 {
     // Név-egyesítés kisbetű-függetlenül (a people.json és a lenyomat-DB így kezeli).
     QVector<PersonInfo> out;
@@ -64,6 +65,9 @@ QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore*
             out[i].voiceprintCount = voiceprints->printCount(n);
             out[i].hasVoiceprint = out[i].voiceprintCount > 0;
         }
+
+    if (details)
+        for (PersonInfo& p : out) p.aliases = details->aliases(p.name);
 
     if (store) {
         const QVector<Meeting> index = store->loadAll();
@@ -96,16 +100,26 @@ QVector<PersonInfo> filterPeople(const QVector<PersonInfo>& all, const QString& 
 {
     const QString n = foldForSearch(needle.trimmed());
     if (n.isEmpty()) return all;
-    QVector<PersonInfo> prefix, word, inner;
+    QVector<PersonInfo> prefix, word, inner, alias;
     for (const PersonInfo& p : all) {
         const QString folded = foldForSearch(p.name);
         const int pos = folded.indexOf(n);
-        if (pos < 0) continue;
+        if (pos < 0) {
+            // A névben nincs: a becenevek közt az első egyező.
+            for (const QString& a : p.aliases) {
+                if (!foldForSearch(a).contains(n)) continue;
+                PersonInfo hit = p;
+                hit.matchedAlias = a;
+                alias.append(hit);
+                break;
+            }
+            continue;
+        }
         if (pos == 0) prefix.append(p);
         else if (folded.at(pos - 1).isSpace() || folded.at(pos - 1) == QLatin1Char('-')) word.append(p);
         else inner.append(p);
     }
-    return prefix + word + inner;
+    return prefix + word + inner + alias;
 }
 
 } // namespace tanara
