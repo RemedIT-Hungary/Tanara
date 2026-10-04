@@ -2767,42 +2767,6 @@
         <translation>Remove these lines from %1&apos;s voiceprint (wrong match)</translation>
     </message>
     <message>
-        <source>Hanglenyomat csak elnevezett beszélőhöz készíthető.</source>
-        <translation>A voiceprint can only be created for a named speaker.</translation>
-    </message>
-    <message>
-        <source>Van hanglenyomata.</source>
-        <translation>Has a voiceprint.</translation>
-    </message>
-    <message>
-        <source>Még nincs hanglenyomata.</source>
-        <translation>No voiceprint yet.</translation>
-    </message>
-    <message>
-        <source>Újat most nem lehet készíteni, mert a hang-elemzés nem érhető el.</source>
-        <translation>A new one cannot be created right now because voice analysis is not available.</translation>
-    </message>
-    <message>
-        <source>Itt %1 mp jól használható beszéde van.</source>
-        <translation>There are %1 s of usable speech here.</translation>
-    </message>
-    <message>
-        <source>Ebből a megbeszélésből nem készíthető: még kb. %1 mp tiszta beszéd kellene (legalább 3 másodperces sorokból).</source>
-        <translation>Cannot be created from this meeting: about %1 s more clean speech is needed (from lines of at least 3 seconds).</translation>
-    </message>
-    <message>
-        <source>Új készítése</source>
-        <translation>Create new</translation>
-    </message>
-    <message>
-        <source>Készítés</source>
-        <translation>Create</translation>
-    </message>
-    <message>
-        <source>Hanglenyomat készítése a beszélő itteni, hosszabb soraiból</source>
-        <translation>Create a voiceprint from this speaker&apos;s longer lines in this meeting</translation>
-    </message>
-    <message>
         <source>Üres oszlop eltávolítása</source>
         <translation>Remove empty column</translation>
     </message>
@@ -3399,8 +3363,20 @@
         <translation>Undo</translation>
     </message>
     <message>
+        <source>A most készült hanglenyomat törlése (az elnevezés marad)</source>
+        <translation>Remove the voiceprint just created (the name stays)</translation>
+    </message>
+    <message>
         <source>Az átsorolás visszavonása (Ctrl+Z)</source>
         <translation>Undo the reassignment (Ctrl+Z)</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat készítése</source>
+        <translation>Create voiceprint</translation>
+    </message>
+    <message>
+        <source>Még nincs hanglenyomata. Az itteni, hosszabb soraiból most készíthető — ebből ismeri fel a program a következő megbeszéléseken</source>
+        <translation>No voiceprint yet. One can be created now from their longer lines here — this is how the app recognises them in later meetings</translation>
     </message>
     <message numerus="yes">
         <source>Hasonló %n sor is</source>
@@ -3692,9 +3668,108 @@
         <source>Keresés az átiratban (Ctrl+Shift+F)</source>
         <translation>Search the transcript (Ctrl+Shift+F)</translation>
     </message>
+    <message numerus="yes">
+        <source>%n keveset beszélő résztvevő — kattintásra külön sort kapnak</source>
+        <translation><numerusform>%n participant who spoke little — click to give them their own row</numerusform><numerusform>%n participants who spoke little — click to give them their own rows</numerusform></translation>
+    </message>
     <message>
         <source>A teljes beszélő átnevezése vagy összevonása</source>
         <translation>Rename or merge the whole speaker</translation>
+    </message>
+    <message>
+        <source>Van hanglenyomata — kattintásra a részletek</source>
+        <translation>Has a voiceprint — click for details</translation>
+    </message>
+    <message>
+        <source>Névtelen beszélő: hanglenyomat csak elnevezett beszélőhöz készíthető</source>
+        <translation>Unnamed speaker: a voiceprint can only be created for a named speaker</translation>
+    </message>
+    <message>
+        <source>Még nincs hanglenyomata — kattintásra itt készíthető</source>
+        <translation>No voiceprint yet — click to create one here</translation>
+    </message>
+    <message>
+        <source>Keveset beszélők összecsukása</source>
+        <translation>Collapse speakers who spoke little</translation>
+    </message>
+</context>
+<context>
+    <name>VoiceprintPanel</name>
+    <message numerus="yes">
+        <source>Elkészült %n sorból, %1 mp beszédből.</source>
+        <translation><numerusform>Created from %n line, %1 s of speech.</numerusform><numerusform>Created from %n lines, %1 s of speech.</numerusform></translation>
+    </message>
+    <message>
+        <source>A most készült hanglenyomat törölve.</source>
+        <translation>The voiceprint just created was removed.</translation>
+    </message>
+    <message>
+        <source>Névtelen beszélő</source>
+        <translation>Unnamed speaker</translation>
+    </message>
+    <message>
+        <source>Van hanglenyomata</source>
+        <translation>Has a voiceprint</translation>
+    </message>
+    <message>
+        <source>Még nincs hanglenyomata</source>
+        <translation>No voiceprint yet</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat csak elnevezett beszélőhöz készíthető. Előbb add meg, ki ő.</source>
+        <translation>A voiceprint can only be created for a named speaker. First say who this is.</translation>
+    </message>
+    <message>
+        <source>A megbeszélés lekevert hangja nem érhető el, ezért itt most nem készíthető hanglenyomat.</source>
+        <translation>The meeting's mixdown is not available, so a voiceprint cannot be created here right now.</translation>
+    </message>
+    <message>
+        <source>Nincs letöltve a hangmodell, ezért itt most nem készíthető hanglenyomat.</source>
+        <translation>The voice model is not downloaded, so a voiceprint cannot be created here right now.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Ebből a megbeszélésből %n hosszabb sora használható fel (%1 mp beszéd).</source>
+        <translation><numerusform>%n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform><numerusform>%n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform></translation>
+    </message>
+    <message numerus="yes">
+        <source>Ebből a megbeszélésből csak %n hosszabb sora használható (%1 mp beszéd).</source>
+        <translation><numerusform>Only %n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform><numerusform>Only %n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform></translation>
+    </message>
+    <message>
+        <source>Ebben a megbeszélésben nincs elég hosszú, jól használható sora.</source>
+        <translation>They have no line in this meeting that is long and clear enough.</translation>
+    </message>
+    <message>
+        <source>Még kb. %1 mp tiszta beszéd kellene: segít, ha több, legalább 3 másodperces sorát rendeled hozzá.</source>
+        <translation>About %1 s more clear speech is needed: it helps to assign more of their lines that are at least 3 seconds long.</translation>
+    </message>
+    <message>
+        <source>Új minta</source>
+        <translation>New sample</translation>
+    </message>
+    <message>
+        <source>Készítés</source>
+        <translation>Create</translation>
+    </message>
+    <message>
+        <source>Új minta készítése</source>
+        <translation>Create new sample</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat készítése</source>
+        <translation>Create voiceprint</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat készül a beszélő itteni, hosszabb soraiból — ebből ismeri fel a program a következő megbeszéléseken</source>
+        <translation>A voiceprint is made from the speaker's longer lines here — this is how the app recognises them in later meetings</translation>
+    </message>
+    <message>
+        <source>Visszavonás</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <source>A most készült hanglenyomat törlése</source>
+        <translation>Remove the voiceprint just created</translation>
     </message>
 </context>
 <context>
@@ -7045,6 +7120,10 @@
             <numerusform>All %n line of %1 moved to %2</numerusform>
             <numerusform>All %n lines of %1 moved to %2</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>A most készült hanglenyomat törölve: %1</source>
+        <translation>The voiceprint just created was removed: %1</translation>
     </message>
     <message numerus="yes">
         <source>%n megszólalás a vágólapra másolva.</source>
