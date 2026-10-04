@@ -227,6 +227,15 @@ void upsertAnalysisJson(const QString& path, const TopicAnalysis& a) {
     writeAnalysesJson(path, all);
 }
 
+// A témák nyitott kérdéseinek uniója (sorrendben, ismétlés nélkül, legfeljebb 5).
+QStringList openQuestionsOf(const QVector<TopicAnalysis>& topics) {
+    QStringList out;
+    for (const TopicAnalysis& a : topics)
+        for (const QString& q : a.openQuestions)
+            if (!out.contains(q) && out.size() < summarypipe::kMaxOpenQuestions) out << q;
+    return out;
+}
+
 // A komplex összefoglaló markdown-ja: globális fej (vezetői összefoglaló + összevont
 // teendők) + témánkénti szekciók (összegző + döntések + teendők). A Summary::renderMarkdown
 // stílusát követi (`- [ ]` teendő-checklisták).
@@ -241,6 +250,12 @@ QString renderComplexMarkdown(const QString& execSummary, const QVector<ActionIt
     QString md;
     if (!execSummary.isEmpty())
         md += QStringLiteral("## Vezetői összefoglaló\n\n") + execSummary + QStringLiteral("\n\n");
+    const QStringList open = openQuestionsOf(topics);
+    if (!open.isEmpty()) {
+        md += QStringLiteral("## Nyitott kérdések\n\n");
+        for (const QString& q : open) md += QStringLiteral("- ") + q + QStringLiteral("\n");
+        md += QStringLiteral("\n");
+    }
     if (!items.isEmpty()) {
         md += QStringLiteral("## Teendők (összevont)\n\n");
         for (const ActionItem& ai : items) md += renderItem(ai);
@@ -611,6 +626,8 @@ void AppController::Impl::updateTopicCounts(const QString& meetingId)
 // hálózati kérést) töröljük — a szolgáltató felé a kapcsolat bomlik, eredmény nem érkezik.
 void AppController::Impl::abortLlmRun(const LlmRun& run)
 {
+    if (auto* summary = qobject_cast<SummaryService*>(run.svc.data()))
+        summary->cancel();   // a futó hívás megszakad, a következő nem indul (a részjegyzetek maradnak)
     if (run.svc) {
         run.svc->disconnect(q);
         run.svc->deleteLater();
@@ -1731,6 +1748,8 @@ void AppController::stopRecording()
 }
 
 static QString resolvedPrompt(const AppSettings& s, const QString& userOverride, const char* id);
+static SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
+                                        const Meeting& m, const QString& model, int maxTokens);
 
 ReadinessResult AppController::canRun(WorkflowStep step, const QString& meetingId) const
 {
@@ -1798,6 +1817,7 @@ namespace {
 // mérsékelt érték — a JSON-összefoglaló és a téma-elemzés bőven belefér.
 constexpr int kCloudMaxTokens = 4000;
 constexpr int kReduceInputChars = 6000;   // a reduce bemenete: a téma-elemzések kivonata (becslés)
+constexpr int kNotesCharsPerPart = 3000;  // egy részjegyzet hossza az összegzés bemenetében (becslés)
 }
 
 EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, const QString& task,
@@ -1843,8 +1863,25 @@ EstimateRequest AppController::makeEstimateRequest(const QString& meetingId, con
                 }
                 r.llmCalls.append({ 1, kReduceInputChars, kCloudMaxTokens });
             } else {
-                const int in = transcript + resolvedPrompt(s, s.summaryPrompt, "simple").size();
-                r.llmCalls.append({ 1, in, kCloudMaxTokens });
+                // Gyors összefoglaló: 1 rész → egy hívás; n rész → a még kész jegyzet nélküli
+                // részek jegyzet-hívásai + egy összegző hívás (lásd SummaryService::plan).
+                const SummaryRequest req = summaryRequestFor(s, merged, m, r.llmModel, kCloudMaxTokens);
+                const SummaryPlan plan = SummaryService::plan(req);
+                const int ctx = int(m.contextNote.size()) + 200;
+                if (plan.singleCall) {
+                    r.llmCalls.append({ 1, transcript + int(req.singlePrompt.size()), kCloudMaxTokens });
+                } else if (plan.parts > 0) {
+                    const int missing = plan.parts - plan.cachedParts;
+                    if (missing > 0) {
+                        qint64 total = 0;
+                        for (int c : plan.partChars) total += c;
+                        const int perPart = int((total + plan.parts - 1) / plan.parts);
+                        r.llmCalls.append({ missing, perPart + int(req.notesPrompt.size()) + ctx,
+                                            req.notesMaxTokens });
+                    }
+                    r.llmCalls.append({ 1, int(req.mergePrompt.size()) + ctx + plan.parts * kNotesCharsPerPart,
+                                        kCloudMaxTokens });
+                }
             }
         }
     }
@@ -2354,7 +2391,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     const AppSettings s = d->settings->settings();
     const QString llmId = s.llmProviderId;
-    CloudRunPtr run;
+    CloudRunPtr run;   // cloud: EGY futás (egy job id) az összes jegyzet- és összegző hívásra
     ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("summary"), QStringLiteral("quick"));
     const auto sink = std::make_shared<FailureSink>();
     captureFailures(cfg, sink);
@@ -2366,19 +2403,57 @@ void AppController::summarizeMeeting(const QString& meetingId)
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new SummaryService(provider, this);
     emit jobProgress(meetingId, run ? tr("Összefoglalás a Tanara Cloudban…")
-                                    : tr("Összefoglalás a helyi modellel (Gemma)…"));
+                                    : tr("Összefoglalás a helyi modellel…"));
 
-    // Strukturált feladat (egyetlen, nem-streamelt LLM-hívás: köztes haladás nincs; becslés
-    // csak a korábbi, ugyanazzal a modellel mért futásokból — egység: az átirat hossza).
+    SummaryRequest req = summaryRequestFor(s, merged, m, cfg.model, cfg.maxTokens);
+    req.temperature = cfg.temperature;
+    const SummaryPlan plan = SummaryService::plan(req);
+
+    // Strukturált feladat: rövid megbeszélésnél egy szakasz (egy hívás), hosszabbnál
+    // „Jegyzetelés részenként” (k / n rész) + „Összegzés”. Becslés csak a korábbi, ugyanazzal
+    // a modellel mért futásokból (egység: az átirat hossza).
     const QString key = Impl::llmKey(meetingId, JobKind::Summarize);
-    const QString statsKey = QStringLiteral("summarize/%1/%2").arg(llmId, cfg.model);
+    const QString statsKey = QStringLiteral("summary-notes/%1/%2").arg(llmId, cfg.model);
     const double units = double(merged.renderMarkdown().size());
-    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összefoglaló készítése"));
+    QVector<JobStage> stages;
+    if (plan.singleCall) {
+        stages.append({ QStringLiteral("single"), tr("Összefoglalás"), StageState::Waiting, -1, QString() });
+    } else {
+        stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
+                        tr("%n rész", nullptr, plan.parts) });
+        stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
+    }
+    d->jobs->begin(meetingId, JobKind::Summarize, tr("Összefoglaló készítése"), stages);
+    if (!plan.singleCall)
+        d->jobs->setCounts(meetingId, JobKind::Summarize, plan.cachedParts, plan.parts);
     d->jobs->setEstimate(meetingId, JobKind::Summarize, d->jobStats->estimateSec(statsKey, units));
     d->llmRuns.insert(key, Impl::LlmRun{svc, providerObj, run});
     auto clock = std::make_shared<QElapsedTimer>();
     clock->start();
 
+    connect(svc, &SummaryService::progress, this,
+            [this, meetingId, cached = plan.cachedParts](const QString& stage, int done, int total) {
+        if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
+        if (stage == QLatin1String("single")) {
+            d->jobs->setStage(meetingId, JobKind::Summarize, stage, StageState::Running);
+            return;
+        }
+        if (stage == QLatin1String("notes")) {
+            QString detail = done < total ? tr("%1/%2. rész").arg(done + 1).arg(total)
+                                          : tr("%n rész kész", nullptr, total);
+            if (cached > 0) detail += tr(" · %n korábbi futásból", nullptr, cached);
+            d->jobs->setStage(meetingId, JobKind::Summarize, stage,
+                              done < total ? StageState::Running : StageState::Done, -1, detail);
+            d->jobs->setCounts(meetingId, JobKind::Summarize, done, total);
+            if (done < total)
+                emit jobProgress(meetingId, tr("Jegyzetelés: %1/%2. rész…").arg(done + 1).arg(total));
+            return;
+        }
+        if (stage == QLatin1String("merge")) {
+            d->jobs->setStage(meetingId, JobKind::Summarize, QStringLiteral("merge"), StageState::Running);
+            emit jobProgress(meetingId, tr("Összegzés a részjegyzetekből…"));
+        }
+    });
     connect(svc, &SummaryService::summaryReady, this,
             [this, meetingId, providerObj, svc, run, key, statsKey, units, clock, llmId,
              model = cfg.model](const Summary& sum) {
@@ -2427,9 +2502,29 @@ void AppController::summarizeMeeting(const QString& meetingId)
         failCloudRun(run, tr("Összefoglaló hiba: %1").arg(e));
     });
 
-    svc->summarize(merged, /*contextNotes*/ m.contextNote.trimmed(), /*glossary*/ QStringList(),
-                   /*systemPrompt*/ resolvedPrompt(s, s.summaryPrompt, "simple"),
-                   cfg.model, cfg.temperature, cfg.maxTokens);
+    svc->summarize(req);
+}
+
+// A gyors összefoglaló kérése a beállításokból: a három prompt (felülírás → fájl → beépített,
+// a célnyelvvel), a kontextus és a részjegyzet-gyorsítótár útja. model / maxTokens a ténylegesen
+// használt provider-configból jön (cloud: a fedezet-szabály miatt mérsékelt max_tokens).
+static SummaryRequest summaryRequestFor(const AppSettings& s, const MergedTranscript& merged,
+                                        const Meeting& m, const QString& model, int maxTokens)
+{
+    constexpr int kNotesMaxTokens = 3000;   // egy részjegyzet bőven belefér
+    SummaryRequest req;
+    req.transcript = merged;
+    req.contextNotes = m.contextNote.trimmed();
+    req.singlePrompt = resolvedPrompt(s, s.summaryPrompt, "single");
+    req.notesPrompt = resolvedPrompt(s, s.notesPrompt, "notes");
+    req.mergePrompt = resolvedPrompt(s, s.mergePrompt, "merge");
+    req.language = s.summaryLanguage;
+    req.model = model;
+    req.maxTokens = maxTokens > 0 ? maxTokens : 8000;
+    req.notesMaxTokens = qMin(req.maxTokens, kNotesMaxTokens);
+    if (!m.folder.isEmpty())
+        req.cachePath = QDir(m.folder).filePath(SummaryService::cacheFileName());
+    return req;
 }
 
 // ---- komplex (több körös) összefoglaló ------------------------------------
@@ -2466,6 +2561,7 @@ void AppController::extractMeetingTopics(const QString& meetingId)
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
+    svc->setLanguage(s.summaryLanguage);
     emit jobProgress(meetingId, run ? tr("Témák kigyűjtése a Tanara Cloudban…")
                                     : tr("Témák kigyűjtése a helyi modellel…"));
 
@@ -2696,6 +2792,7 @@ void AppController::startNextTopicJob()
     if (!provider) { failEarly(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
+    svc->setLanguage(s.summaryLanguage);
 
     d->topicJobActive = true;
     d->activeTopicMeetingId = m.id;
@@ -2796,6 +2893,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
     if (!provider) { emit errorOccurred(tr("Ismeretlen LLM-provider: %1.").arg(s.llmProviderId)); return; }
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     auto* svc = new ComplexSummaryService(provider, this);
+    svc->setLanguage(s.summaryLanguage);
     svc->setReducePrompt(resolvedPrompt(s, QString(), "reduce"));
     emit jobProgress(meetingId, tr("Összegzés (vezetői összefoglaló + teendők)…"));
 
@@ -2853,6 +2951,7 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         for (const TopicAnalysis& a : ordered)
             for (const QString& dec : a.decisions)
                 if (!doc.summary.decisions.contains(dec)) doc.summary.decisions << dec;
+        doc.summary.openQuestions = openQuestionsOf(ordered);
         doc.topics = ordered;
         doc.meta.createdAt = QDateTime::currentDateTime();
         doc.meta.providerId = llmId;

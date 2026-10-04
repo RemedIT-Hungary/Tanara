@@ -46,6 +46,8 @@ public:
     // A reduce rendszer-promptja. Üres (default) → a beépített ("reduce" a PromptLibrary-ből).
     // Az AppController a fájl-override-dal feloldott promptot adja itt át.
     void setReducePrompt(const QString& prompt) { m_reducePrompt = prompt; }
+    // A célnyelv (a beállítás szövege) — a felhasználói üzenet végi nyelvi emlékeztetőhöz.
+    void setLanguage(const QString& language) { m_language = language; }
 
 signals:
     void topicsReady(const QVector<tanara::SummaryTopic>& topics);
@@ -56,6 +58,7 @@ signals:
 private:
     ILlmProvider* m_provider;  // not owned
     QString m_reducePrompt;    // üres → beépített default
+    QString m_language;        // üres → magyar
 };
 
 } // namespace tanara

@@ -326,7 +326,7 @@ private slots:
         QCOMPARE(vm.promptTabs().size(), 3);
         QCOMPARE(vm.schemaKind(), QStringLiteral("json"));
         QVERIFY(vm.schemaBody().contains(QStringLiteral("actionItems")));
-        QCOMPARE(vm.promptVariables().size(), 1);          // csak amit a kód tényleg cserél
+        QCOMPARE(vm.promptVariables().size(), 2);          // csak amit a kód tényleg cserél ({{LANGUAGE}}, {{NYELV}})
 
         // Demóban a mentés csak a memóriában történik.
         vm.setDemoState(QStringLiteral("dirty"));
@@ -957,7 +957,7 @@ private slots:
         vm.setController(m_app.get());
         QCOMPARE(vm.promptIndex(), 0);
         const QString def = vm.promptText();
-        QVERIFY(def.contains(QStringLiteral("{{NYELV}}")));
+        QVERIFY(def.contains(QStringLiteral("{{LANGUAGE}}")));
         QVERIFY(!vm.promptModified());
         QVERIFY(live().summaryPrompt.isEmpty());
 

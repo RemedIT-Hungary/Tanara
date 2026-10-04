@@ -11,8 +11,29 @@
 
 class QNetworkAccessManager;
 class QNetworkReply;
+class QJsonObject;
 
 namespace tanara {
+
+// A „gondolkodás” kikapcsolásának módja egy kérésben (ProviderConfig::reasoning + modellnév).
+enum class ReasoningSwitch {
+    None,      // nem küldünk kapcsolót (reasoning = "on": a modell alapviselkedése)
+    Effort,    // "reasoning_effort": "none" a kérés törzsében (Gemma, ismeretlen modell)
+    Prefill,   // üres <think></think> blokkal előtöltött asszisztens-üzenet (Qwen 3+)
+};
+
+// A módszer a beállítás ("auto" | "off" | "on") és a modell-azonosító alapján. Az LM Studio
+// a többi ismert kapcsolót (enable_thinking, think:false, /no_think, chat_template_kwargs)
+// figyelmen kívül hagyja — mérés szerint csak ez a kettő hat.
+ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model);
+
+// A /chat/completions kérés törzse (a reasoning-kapcsolóval együtt) — tesztelhető tiszta függvény.
+QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req);
+
+// A válasz tartalmából a gondolkodás-maradék levétele: egy vezető <think>…</think> blokk
+// (vagy előtöltés után egy magányos, vezető </think>). Lezáratlan <think> → üres (az egész
+// gondolkodás volt, válasz nincs).
+QString stripThinking(const QString& content);
 
 // Egyetlen chat-kérést reprezentáló job. A finished(content) / failed(error)
 // signalokat az ILlmProvider::LlmJob bázis deklarálja.

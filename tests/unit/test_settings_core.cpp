@@ -261,8 +261,9 @@ private slots:
         static const QRegularExpression re(QStringLiteral("\\{\\{[^}]+\\}\\}"));
         QStringList known;
         for (const PromptVariable& v : vars) known << v.token;
-        for (const QString& id : {QStringLiteral("simple"), QStringLiteral("topic"),
-                                  QStringLiteral("analysis"), QStringLiteral("reduce")}) {
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge"),
+                                  QStringLiteral("topic"), QStringLiteral("analysis"), QStringLiteral("reduce")}) {
+            QVERIFY2(!promptBuiltin(id).isEmpty(), qPrintable(id));
             auto it = re.globalMatch(promptBuiltin(id));
             while (it.hasNext()) {
                 const QString token = it.next().captured();
@@ -273,15 +274,31 @@ private slots:
 
     void outputFormats()
     {
-        const PromptOutputFormat simple = promptOutputFormat(QStringLiteral("simple"));
-        QCOMPARE(simple.kind, QStringLiteral("json"));
-        for (const QString& key : {QStringLiteral("execSummary"), QStringLiteral("decisions"),
-                                   QStringLiteral("actionItems"), QStringLiteral("participants")}) {
-            QVERIFY2(simple.summary.contains(key), qPrintable(key));
-            QVERIFY2(simple.body.contains(key), qPrintable(key));
-            // A beépített prompt ugyanezeket a kulcsokat kéri.
-            QVERIFY2(promptBuiltin(QStringLiteral("simple")).contains(key), qPrintable(key));
+        // A rövid forma kulcsai: az egylépéses ("single", régi neve "simple") és az összegző
+        // ("merge") prompt ugyanezeket kéri, és a séma-leírás is ezeket mutatja.
+        for (const QString& id : {QStringLiteral("single"), QStringLiteral("simple"), QStringLiteral("merge")}) {
+            const PromptOutputFormat f = promptOutputFormat(id);
+            QCOMPARE(f.kind, QStringLiteral("json"));
+            for (const QString& key : {QStringLiteral("execSummary"), QStringLiteral("decisions"),
+                                       QStringLiteral("openQuestions"), QStringLiteral("actionItems")}) {
+                QVERIFY2(f.summary.contains(key), qPrintable(id + key));
+                QVERIFY2(f.body.contains(key), qPrintable(id + key));
+                QVERIFY2(promptBuiltin(id).contains(key), qPrintable(id + key));
+            }
         }
+        // A jegyzet-lépés négy fejlécét a parser angolul várja.
+        const PromptOutputFormat notes = promptOutputFormat(QStringLiteral("notes"));
+        QCOMPARE(notes.kind, QStringLiteral("text"));
+        for (const QString& h : {QStringLiteral("TOPICS"), QStringLiteral("DECISIONS"),
+                                 QStringLiteral("OPEN"), QStringLiteral("ACTIONS")}) {
+            QVERIFY2(notes.body.contains(h), qPrintable(h));
+            QVERIFY2(promptBuiltin(QStringLiteral("notes")).contains(h + QLatin1Char('\n')), qPrintable(h));
+        }
+        QVERIFY(promptBuiltin(QStringLiteral("single")).contains(QStringLiteral("\nSUMMARY\n")));
+        // Az elemzés magyar szakaszcímeire illeszt a parser — ezek az angol promptban is maradnak.
+        for (const QString& h : {QStringLiteral("## Döntések"), QStringLiteral("## Nyitott kérdések"),
+                                 QStringLiteral("## Teendők")})
+            QVERIFY2(promptBuiltin(QStringLiteral("analysis")).contains(h), qPrintable(h));
         const PromptOutputFormat analysis = promptOutputFormat(QStringLiteral("analysis"));
         QCOMPARE(analysis.kind, QStringLiteral("markdown"));
         QVERIFY(analysis.body.contains(QStringLiteral("## Döntések")));

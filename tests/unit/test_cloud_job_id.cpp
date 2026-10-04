@@ -8,7 +8,8 @@
 //   - komplex összefoglaló: témagyűjtés + téma-elemzések + összegzés = EGY job id,
 //     a K-07 (cloudCharged) egyszer, az összes hívással;
 //   - megszakítás (hiba) utáni folytatás: új job id, csak a hátralévő hívásokkal;
-//   - gyors összefoglaló: változatlanul egy hívás, saját job id.
+//   - gyors összefoglaló: rövid megbeszélésnél egy hívás, saját job id; hosszúnál a részenkénti
+//     jegyzetek + az összegzés EGY futás (egy job id, egy K-07); hiba utáni folytatás új futás.
 // Node nélkül QSKIP.
 //
 #include <QtTest>
@@ -50,11 +51,13 @@ private slots:
     void complex_oneRunOneJobId();
     void complex_continuationIsNewRun();
     void quick_ownJobId();
+    void quick_multiPartOneRun();
 
 private:
     void mockConfig(const QJsonObject& cfg);
     QJsonArray llmUsage();
     QString newMeetingWithTranscript(const QString& title);
+    QString newLongMeeting(const QString& title, int minutes);
 
     QProcess m_mock;
     QString m_base;
@@ -267,6 +270,92 @@ void TestCloudJobId::quick_ownJobId()
     QVERIFY(!earlier.contains(u.value("job_id").toString()));
     QCOMPARE(charged.size(), 1);
     QCOMPARE(charged.first().at(1).toString(), QStringLiteral("summary"));
+}
+
+// Hosszú (több részes) átirat: félpercenként egy bekezdés.
+QString TestCloudJobId::newLongMeeting(const QString& title, int minutes)
+{
+    Meeting m = m_app->store()->createMeeting(title);
+    m.hasTranscript = true;
+    m.durationMs = qint64(minutes) * 60000;
+    m_app->store()->saveMeeting(m);
+    QJsonArray toks;
+    for (int i = 0; i < minutes * 2; ++i)
+        toks.append(QJsonObject{{"text", QStringLiteral(" A MuseumPlus migráció %1. bekezdése: a csapat a "
+                                                        "szállítás ütemezését, a tesztelést és a felelősöket "
+                                                        "egyezteti, hosszan és részletesen.").arg(i)},
+                                {"speaker", i % 2 ? "Béla" : "Ádám"}, {"startMs", i * 30000},
+                                {"endMs", i * 30000 + 20000}, {"confidence", 0.99}, {"trackId", "mic"}});
+    QFile f(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
+    if (!f.open(QIODevice::WriteOnly)) return {};
+    f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
+    return m.id;
+}
+
+// Hosszú megbeszélés gyors összefoglalója: 3 jegyzet-hívás + 1 összegzés = EGY futás (egy job
+// id), a K-07 egyszer, mind a négy hívással. Hiba közben: a futás lezárul (részleges terheléssel),
+// a folytatás új futás, és csak a hátralévő hívásokat indítja.
+void TestCloudJobId::quick_multiPartOneRun()
+{
+    const QString id = newLongMeeting(QStringLiteral("Hosszú gyors"), 40);
+    QVERIFY(!id.isEmpty());
+    const EstimateRequest est = m_app->makeEstimateRequest(id, QStringLiteral("summarize"), QStringLiteral("quick"));
+    QCOMPARE(est.llmCalls.size(), 2);
+    QCOMPARE(est.llmCalls[0].count, 3);
+    QCOMPARE(est.llmCalls[1].count, 1);
+
+    int before = llmUsage().size();
+    QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
+    QSignalSpy done(m_app.get(), &AppController::summaryReady);
+    m_app->summarizeMeeting(id);
+    QVERIFY(done.wait(20000));
+    QJsonArray all = llmUsage();
+    QCOMPARE(all.size() - before, 4);
+    QSet<QString> jobs;
+    for (int i = before; i < all.size(); ++i) {
+        QCOMPARE(all[i].toObject().value("summary_mode").toString(), QStringLiteral("quick"));
+        jobs.insert(all[i].toObject().value("job_id").toString());
+    }
+    QCOMPARE(jobs.size(), 1);
+    QCOMPARE(charged.size(), 1);
+    QCOMPARE(charged.first().at(1).toString(), QStringLiteral("summary"));
+    QCOMPARE(charged.first().at(3).toInt(), 4);
+    const SummaryDocument doc = m_app->summaryDocument(id);
+    QCOMPARE(doc.summary.execSummary,
+             QStringLiteral("A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került."));
+    // A kannázott jegyzet minden részben az egész részt egy (hasonló című) tárgynak írja → az
+    // összevonás 20 percnél megáll: részenként egy szakasz.
+    QCOMPARE(doc.summary.memo.size(), 3);
+    QCOMPARE(doc.summary.memo[0].startMs, 0);
+    QCOMPARE(doc.summary.memo[2].startMs, 30 * 60000);
+
+    // Hiba a 2. jegyzet-hívásnál (az első sikeres, terhelt).
+    const QString id2 = newLongMeeting(QStringLiteral("Hosszú gyors — hiba"), 40);
+    before = llmUsage().size();
+    mockConfig({ { "fail_chat_after", 1 } });
+    QSignalSpy errors(m_app.get(), &AppController::cloudError);
+    m_app->summarizeMeeting(id2);
+    QVERIFY(errors.wait(20000));
+    QCOMPARE(errors.first().at(1).toString(), QStringLiteral("summary"));
+    QVERIFY(errors.first().at(3).value<Money>().micros > 0);    // részleges terhelés: nem „semmi”
+    all = llmUsage();
+    QCOMPARE(all.size() - before, 1);
+    const QString firstJob = all[before].toObject().value("job_id").toString();
+
+    // Folytatás: új futás, új job id; csak a 2–3. rész + az összegzés.
+    mockConfig({ { "fail_chat_after", QJsonValue() } });
+    charged.clear();
+    m_app->summarizeMeeting(id2);
+    QVERIFY(done.wait(20000));
+    all = llmUsage();
+    QCOMPARE(all.size() - before, 4);
+    const QString secondJob = all[before + 1].toObject().value("job_id").toString();
+    QVERIFY(!secondJob.isEmpty());
+    QVERIFY(secondJob != firstJob);
+    for (int i = before + 1; i < all.size(); ++i)
+        QCOMPARE(all[i].toObject().value("job_id").toString(), secondJob);
+    QCOMPARE(charged.size(), 1);
+    QCOMPARE(charged.first().at(3).toInt(), 3);
 }
 
 #endif // Q_MOC_RUN

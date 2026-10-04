@@ -2,8 +2,14 @@
 //
 // Tanara — a beépített LLM-promptok EGY helye + fájl-override.
 //
-// Prompt-azonosítók: "simple" (sima összefoglaló) | "topic" (téma-kinyerés) |
-// "analysis" (témánkénti elemzés) | "reduce" (záró vezetői összefoglaló).
+// Prompt-azonosítók:
+//   gyors összefoglaló (SummaryService): "notes" (részenkénti jegyzet) | "merge" (a
+//     részjegyzetek összegzése) | "single" (egy részből álló megbeszélés: jegyzet + összegzés
+//     egy hívásban; a régi "simple" azonosító ennek álneve),
+//   témánkénti elemzés: "topic" (téma-kinyerés) | "analysis" (témánkénti elemzés) |
+//     "reduce" (záró vezetői összefoglaló).
+// A beépített promptok angolok; a kimenet nyelvét a {{LANGUAGE}} (angol nyelvnév) ill. a
+// régi {{NYELV}} (a beállítás szövege) változó adja.
 //
 // Feloldási sorrend egy promptra:
 //   1. a Beállításokban tárolt user-override (az AppController kezeli, nem itt),
@@ -27,10 +33,20 @@ QString promptFilePath(const QString& id, const QString& metadataDir = QString()
 QString promptDefault(const QString& id, const QString& metadataDir = QString());
 
 // Az összefoglaló CÉLNYELVÉNEK alkalmazása egy rendszer-promptra:
-//  - a {{NYELV}} placeholdert (a beépített promptokban) a nyelvre cseréli,
+//  - a {{LANGUAGE}} placeholdert az angol nyelvnévre (summaryLanguageName), a {{NYELV}}-et a
+//    beállítás szövegére cseréli,
 //  - placeholder nélküli (saját) promptnál nem-magyar célnyelv esetén direktívát fűz hozzá.
 // language üres → "magyar". A ## Döntések / ## Teendők szakaszcímek magyarok maradnak.
 QString applySummaryLanguage(QString prompt, const QString& language);
+
+// A célnyelv (a felhasználó szabad szövege, pl. "magyar", "német") angol neve az angol
+// promptokhoz: a gyakori nyelveket leképezi (magyar → Hungarian), minden mást változatlanul ad.
+// Üres → "Hungarian".
+QString summaryLanguageName(const QString& language);
+
+// Rövid nyelvi emlékeztető, amit az átirat / jegyzet UTÁN fűzünk a felhasználói üzenethez
+// (a modell ezt olvassa utoljára — a Gemma angol prompttal hajlamos angolul válaszolni).
+QString languageReminder(const QString& language);
 
 // A promptokban a KÓD által behelyettesített változók (a Beállítások jelmagyarázata és a
 // szerkesztő kiemelése ebből dolgozik — csak az szerepel itt, amit tényleg cserélünk).

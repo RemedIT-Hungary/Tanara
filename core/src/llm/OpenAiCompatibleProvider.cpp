@@ -11,6 +11,7 @@
 #include <QUrl>
 #include <QTimer>
 #include <QDebug>
+#include <QRegularExpression>
 
 namespace tanara {
 
@@ -39,6 +40,65 @@ QJsonArray buildMessages(const QVector<ChatMessage>& msgs)
 
 } // namespace
 
+ReasoningSwitch reasoningSwitchFor(const QString& setting, const QString& model)
+{
+    if (setting.trimmed().compare(QLatin1String("on"), Qt::CaseInsensitive) == 0)
+        return ReasoningSwitch::None;
+    // "auto" / "off" / ismeretlen érték → kikapcsolás; a módszert a modellcsalád dönti el.
+    // Qwen 3.x (és a QwQ) a reasoning_effort-ot figyelmen kívül hagyja → előtöltés kell.
+    static const QRegularExpression qwen(QStringLiteral("qwen-?(\\d+)"),
+                                         QRegularExpression::CaseInsensitiveOption);
+    const QString m = model.toLower();
+    if (m.contains(QLatin1String("qwq")))
+        return ReasoningSwitch::Prefill;
+    const QRegularExpressionMatch qm = qwen.match(m);
+    if (qm.hasMatch() && qm.captured(1).toInt() >= 3)
+        return ReasoningSwitch::Prefill;
+    return ReasoningSwitch::Effort;   // Gemma és minden más: a nem ismerő szerver figyelmen kívül hagyja
+}
+
+QJsonObject buildChatCompletionBody(const ProviderConfig& cfg, const LlmRequest& req)
+{
+    const QString model = !req.model.isEmpty() ? req.model : cfg.model;
+    QVector<ChatMessage> msgs = req.messages;
+    QJsonObject body;
+    body.insert(QStringLiteral("model"), model);
+    body.insert(QStringLiteral("temperature"), req.temperature);
+    body.insert(QStringLiteral("max_tokens"), req.maxTokens);
+    body.insert(QStringLiteral("stream"), false);
+    switch (reasoningSwitchFor(cfg.reasoning, model)) {
+    case ReasoningSwitch::None:
+        break;
+    case ReasoningSwitch::Effort:
+        body.insert(QStringLiteral("reasoning_effort"), QStringLiteral("none"));
+        break;
+    case ReasoningSwitch::Prefill:
+        // Az üres gondolkodás-blokk után a modell rögtön a választ írja (csak ha a felhasználó
+        // üzenete az utolsó — egy meglévő asszisztens-előtöltést nem írunk felül).
+        if (!msgs.isEmpty() && msgs.last().role == QLatin1String("user"))
+            msgs.append({QStringLiteral("assistant"), QStringLiteral("<think>\n\n</think>\n\n")});
+        break;
+    }
+    body.insert(QStringLiteral("messages"), buildMessages(msgs));
+    return body;
+}
+
+QString stripThinking(const QString& content)
+{
+    QString s = content;
+    int i = 0;
+    while (i < s.size() && s.at(i).isSpace()) ++i;
+    if (s.mid(i, 7).compare(QLatin1String("<think>"), Qt::CaseInsensitive) == 0) {
+        const int end = s.indexOf(QLatin1String("</think>"), i, Qt::CaseInsensitive);
+        if (end < 0) return QString();          // csak gondolkodás, válasz nincs
+        return s.mid(end + 8).trimmed();
+    }
+    // Előtöltés után a modell néha a záró címkével folytat.
+    if (s.mid(i, 8).compare(QLatin1String("</think>"), Qt::CaseInsensitive) == 0)
+        return s.mid(i + 8).trimmed();
+    return s;
+}
+
 // ---- OpenAiCompatibleJob ---------------------------------------------------
 
 OpenAiCompatibleJob::OpenAiCompatibleJob(QNetworkAccessManager* nam,
@@ -56,14 +116,7 @@ OpenAiCompatibleJob::~OpenAiCompatibleJob() = default;
 
 void OpenAiCompatibleJob::start()
 {
-    const QString model = !m_req.model.isEmpty() ? m_req.model : m_cfg.model;
-
-    QJsonObject body;
-    body.insert(QStringLiteral("model"), model);
-    body.insert(QStringLiteral("messages"), buildMessages(m_req.messages));
-    body.insert(QStringLiteral("temperature"), m_req.temperature);
-    body.insert(QStringLiteral("max_tokens"), m_req.maxTokens);
-    body.insert(QStringLiteral("stream"), false);
+    const QJsonObject body = buildChatCompletionBody(m_cfg, m_req);
 
     QNetworkRequest request(chatCompletionsUrl(m_cfg.baseUrl));
     request.setHeader(QNetworkRequest::ContentTypeHeader,
@@ -134,26 +187,33 @@ void OpenAiCompatibleJob::onFinished()
 
     const QJsonObject first = choices.at(0).toObject();
     const QJsonObject message = first.value(QStringLiteral("message")).toObject();
-    QString content = message.value(QStringLiteral("content")).toString();
-    if (content.trimmed().isEmpty())   // reasoning-modell: a tartalom a reasoning_content-ben lehet
-        content = message.value(QStringLiteral("reasoning_content")).toString();
-    if (content.trimmed().isEmpty()) {
-        emit failed(tr("Üres LLM-válasz (sem content, sem reasoning_content)."));
-        return;
-    }
-    // Debug-életjel (--debug mellett látszik): a válasz-metaadatok azonnal megmutatják, ha
-    // a modell csonkolt (finish=length) vagy a reasoning-fallback aktivált (üres content).
+    const QString rawContent = message.value(QStringLiteral("content")).toString();
+    // A gondolkodás SOHA nem kerül a válaszba: a reasoning_content-et nem használjuk, a
+    // tartalom elejére szivárgott <think>…</think> blokkot levesszük.
+    const QString content = stripThinking(rawContent);
+    const QString finish = first.value(QStringLiteral("finish_reason")).toString();
     const QJsonObject usage = root.value(QStringLiteral("usage")).toObject();
-    const bool reasoningFallback = message.value(QStringLiteral("content")).toString().trimmed().isEmpty();
+    const int thinking = message.value(QStringLiteral("reasoning_content")).toString().size()
+                       + message.value(QStringLiteral("reasoning")).toString().size()
+                       + (rawContent.size() - content.size());
+    // Debug-életjel (--debug mellett látszik): a válasz-metaadatok azonnal megmutatják, ha
+    // a modell csonkolt (finish=length) vagy gondolkodott.
     qInfo().noquote().nospace()
         << "[LLM] model=" << (m_req.model.isEmpty() ? m_cfg.model : m_req.model)
-        << " finish=" << first.value(QStringLiteral("finish_reason")).toString()
+        << " finish=" << finish
         << " prompt=" << usage.value(QStringLiteral("prompt_tokens")).toInt()
         << " completion=" << usage.value(QStringLiteral("completion_tokens")).toInt()
         << " content=" << content.trimmed().size() << "ch"
-        << (reasoningFallback ? " [reasoning-fallback]" : "");
-    // --debug mellett a NYERS válasz (első ~4000 karakter) is a logba kerül — így élőben
-    // látszik, ha a (reasoning-)modell hangosan gondolkodik a válaszba (nem a prompt hibája).
+        << " thinking=" << thinking << "ch";
+    if (content.trimmed().isEmpty()) {
+        emit failed(thinking > 0
+            ? tr("A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). "
+                 "Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.")
+                  .arg(thinking).arg(finish)
+            : tr("Üres LLM-válasz (finish=%1).").arg(finish));
+        return;
+    }
+    // --debug mellett a NYERS válasz (első ~4000 karakter) is a logba kerül.
     qDebug().noquote().nospace()
         << "[LLM] nyers válasz (első 4000ch):\n" << content.left(4000);
     emit finished(content);

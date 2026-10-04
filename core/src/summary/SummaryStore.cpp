@@ -1,4 +1,5 @@
 #include "tanara/summary/SummaryStore.h"
+#include "tanara/summary/SummaryPipeline.h"
 #include "tanara/library/TextFold.h"
 #include "tanara/store/JsonSerialization.h"
 
@@ -15,7 +16,7 @@ namespace summarystore {
 
 namespace {
 
-constexpr int kVersion = 1;
+constexpr int kVersion = 2;   // 2: openQuestions + memo (a summary-ban), témánkénti openQuestions
 
 QJsonObject topicToJson(const TopicAnalysis& a)
 {
@@ -24,6 +25,8 @@ QJsonObject topicToJson(const TopicAnalysis& a)
     o[QStringLiteral("title")]   = a.title;
     o[QStringLiteral("detail")]  = a.detail;
     o[QStringLiteral("decisions")] = QJsonArray::fromStringList(a.decisions);
+    if (!a.openQuestions.isEmpty())
+        o[QStringLiteral("openQuestions")] = QJsonArray::fromStringList(a.openQuestions);
     QJsonArray items;
     for (const ActionItem& ai : a.actionItems) items.append(tanara::toJson(ai));
     o[QStringLiteral("actionItems")] = items;
@@ -37,6 +40,7 @@ TopicAnalysis topicFromJson(const QJsonObject& o)
     a.title   = o.value(QStringLiteral("title")).toString();
     a.detail  = o.value(QStringLiteral("detail")).toString();
     for (const QJsonValue& v : o.value(QStringLiteral("decisions")).toArray()) a.decisions << v.toString();
+    for (const QJsonValue& v : o.value(QStringLiteral("openQuestions")).toArray()) a.openQuestions << v.toString();
     for (const QJsonValue& v : o.value(QStringLiteral("actionItems")).toArray())
         a.actionItems.append(actionItemFromJson(v.toObject()));
     return a;
@@ -66,12 +70,14 @@ ActionItem parseActionItem(QString line)
     return ai;
 }
 
-enum class Section { Exec, Decisions, Actions, Participants, Topics, Unknown };
-enum class TopicPart { Detail, Decisions, Actions };
+enum class Section { Exec, Decisions, Open, Actions, Participants, Topics, Memo, Unknown };
+enum class TopicPart { Detail, Decisions, Open, Actions };
 
 Section classifyHeading(const QString& heading)
 {
     const QString h = textfold::foldQuery(heading);
+    if (h.startsWith(QStringLiteral("nyitott")))                    return Section::Open;
+    if (h.startsWith(QStringLiteral("memo")))                       return Section::Memo;
     if (h.contains(QStringLiteral("dontes")))                       return Section::Decisions;
     if (h.contains(QStringLiteral("teendo")) || h.contains(QStringLiteral("feladat")))
                                                                     return Section::Actions;
@@ -127,6 +133,8 @@ SummaryDocument parseMarkdown(const QString& markdown)
     static const QRegularExpression bullet(QStringLiteral("^\\s*(?:[-*+•]|\\d+[.)])\\s+(.*)$"));
     static const QRegularExpression checkbox(QStringLiteral("^\\[[ xX]\\]\\s*"));
     static const QRegularExpression boldLabel(QStringLiteral("^\\*\\*(.+?):?\\*\\*:?\\s*$"));
+    static const QRegularExpression memoRange(
+        QStringLiteral("\\s*\\((\\d{1,3}:\\d{2}(?::\\d{2})?)(?:\\s*[–—-]\\s*(\\d{1,3}:\\d{2}(?::\\d{2})?))?\\)\\s*$"));
 
     SummaryDocument doc;
     doc.markdown = markdown;
@@ -172,7 +180,19 @@ SummaryDocument parseMarkdown(const QString& markdown)
         const QRegularExpressionMatch m3 = h3.match(line);
         if (m3.hasMatch()) {
             flushPara();
-            if (sec == Section::Topics) {
+            if (sec == Section::Memo) {
+                // „### Cím (12:30–18:05)” → memó-szakasz; az időkeret a cím végéről.
+                MemoSection ms;
+                QString title = m3.captured(1).trimmed();
+                const QRegularExpressionMatch rm = memoRange.match(title);
+                if (rm.hasMatch()) {
+                    ms.startMs = summarypipe::parseTimestamp(rm.captured(1));
+                    ms.endMs = rm.captured(2).isEmpty() ? -1 : summarypipe::parseTimestamp(rm.captured(2));
+                    title = title.left(rm.capturedStart()).trimmed();
+                }
+                ms.title = title;
+                doc.summary.memo.append(ms);
+            } else if (sec == Section::Topics) {
                 TopicAnalysis a;
                 QString title = m3.captured(1).trimmed();
                 title.remove(numPrefix);
@@ -196,12 +216,15 @@ SummaryDocument parseMarkdown(const QString& markdown)
             if (bl.hasMatch()) {
                 const Section s = classifyHeading(bl.captured(1));
                 if (s == Section::Decisions) { flushPara(); part = TopicPart::Decisions; continue; }
+                if (s == Section::Open)      { flushPara(); part = TopicPart::Open;      continue; }
                 if (s == Section::Actions)   { flushPara(); part = TopicPart::Actions;   continue; }
             }
             TopicAnalysis& a = doc.topics.last();
             const QRegularExpressionMatch bm = bullet.match(line);
             if (part == TopicPart::Decisions && bm.hasMatch()) {
                 a.decisions << bm.captured(1).trimmed();
+            } else if (part == TopicPart::Open && bm.hasMatch()) {
+                a.openQuestions << bm.captured(1).trimmed();
             } else if (part == TopicPart::Actions && bm.hasMatch()) {
                 QString body = bm.captured(1).trimmed();
                 body.remove(checkbox);
@@ -222,6 +245,20 @@ SummaryDocument parseMarkdown(const QString& markdown)
                 doc.summary.decisions.last() += QLatin1Char(' ') + t;
             else doc.summary.decisions << t;
             break;
+        case Section::Open:
+            if (bm.hasMatch()) doc.summary.openQuestions << bm.captured(1).trimmed();
+            else if (!doc.summary.openQuestions.isEmpty())
+                doc.summary.openQuestions.last() += QLatin1Char(' ') + t;
+            else doc.summary.openQuestions << t;
+            break;
+        case Section::Memo: {
+            if (doc.summary.memo.isEmpty()) doc.summary.memo.append(MemoSection{});
+            QStringList& pts = doc.summary.memo.last().points;
+            if (bm.hasMatch()) pts << bm.captured(1).trimmed();
+            else if (!pts.isEmpty()) pts.last() += QLatin1Char(' ') + t;
+            else pts << t;
+            break;
+        }
         case Section::Actions: {
             if (!bm.hasMatch()) {
                 if (!doc.summary.actionItems.isEmpty())
@@ -257,6 +294,13 @@ SummaryDocument parseMarkdown(const QString& markdown)
         for (const TopicAnalysis& a : std::as_const(doc.topics))
             for (const QString& d : a.decisions)
                 if (!doc.summary.decisions.contains(d)) doc.summary.decisions << d;
+    }
+    if (doc.meta.mode == SummaryMode::Topics && doc.summary.openQuestions.isEmpty()) {
+        for (const TopicAnalysis& a : std::as_const(doc.topics))
+            for (const QString& q : a.openQuestions)
+                if (!doc.summary.openQuestions.contains(q)
+                    && doc.summary.openQuestions.size() < summarypipe::kMaxOpenQuestions)
+                    doc.summary.openQuestions << q;
     }
     return doc;
 }

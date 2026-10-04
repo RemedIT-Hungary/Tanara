@@ -161,6 +161,10 @@ private slots:
     void standaloneMixdownCancel();
     void summarizePersistsStructureAndMeta();
     void summarizeCancelAndFailure();
+    void summarizeLongMeetingInParts();
+    void summarizePartFailureResumes();
+    void summarizeCancelBetweenParts();
+    void estimateDescribesQuickSummaryCalls();
     void topicsEditReorderAndStatuses();
     void cancelTopicQueue();
     void renamedDuringTranscriptionSurvives();
@@ -178,6 +182,7 @@ private:
     void newApp();
     Meeting recording(const QString& title, int seconds);
     Meeting transcribed(const QString& title);
+    Meeting transcribedLong(const QString& title, int minutes);
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<FakeHttp> m_http;
@@ -555,7 +560,12 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QCOMPARE(doc.summary.decisions, QStringList({"Az árajánlat pénteken megy ki."}));
     QCOMPARE(doc.summary.actionItems.size(), 1);
     QCOMPARE(doc.summary.actionItems[0].owner, QStringLiteral("Ödön"));
-    QCOMPARE(doc.summary.participants, QStringList({"Ödön", "Ádám"}));
+    // A résztvevők az átirat beszélői (determinisztikusan, nem a modell válaszából).
+    QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1"}));
+    QVERIFY(doc.summary.memo.isEmpty());                      // csak-JSON válasz: nincs memó-jegyzet
+    // Rövid megbeszélés: egy hívás, egy szakasz.
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 1);
+    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));
     // Metaadat: mikor, melyik szolgáltató/modell, milyen módban.
     QCOMPARE(doc.meta.mode, SummaryMode::Quick);
     QCOMPARE(doc.meta.providerId, QStringLiteral("openai-compat"));
@@ -603,6 +613,179 @@ void AppJobsTest::summarizeCancelAndFailure()
     // A hiba elvethető.
     m_app->jobs()->clearError(m.id, JobKind::Summarize);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::None);
+}
+
+// Hosszú (több részes) átirat: félpercenként egy bekezdés, két beszélő váltakozva.
+Meeting AppJobsTest::transcribedLong(const QString& title, int minutes)
+{
+    Meeting m = recording(title, 1);
+    QJsonArray toks;
+    for (int i = 0; i < minutes * 2; ++i)
+        toks.append(QJsonObject{{"text", QStringLiteral(" A(z) %1. bekezdés szövege, elég hosszan ahhoz, hogy "
+                                                        "számítson: egy valódi megbeszélésen fél perc alatt "
+                                                        "ennél jóval több szó hangzik el.").arg(i)},
+                                {"speaker", i % 2 ? "Beszélő 2" : "Beszélő 1"}, {"startMs", i * 30000},
+                                {"endMs", i * 30000 + 20000}, {"confidence", 0.9}, {"trackId", "mixdown"}});
+    QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
+    f.close();
+    m.hasTranscript = true;
+    m.durationMs = qint64(minutes) * 60000;
+    m_app->store()->saveMeeting(m);
+    return m;
+}
+
+namespace {
+// A kérés-törzsből: jegyzet-hívás-e, és hányadik részé.
+int notesPart(const FakeRequest& r)
+{
+    const QJsonArray msgs = QJsonDocument::fromJson(r.body).object().value("messages").toArray();
+    if (!msgs.at(0).toObject().value("content").toString().contains("ONE PART")) return 0;
+    static const QRegularExpression re(QStringLiteral("^PART (\\d+) of"), QRegularExpression::MultilineOption);
+    return re.match(msgs.at(1).toObject().value("content").toString()).captured(1).toInt();
+}
+QString partNotes(int k)
+{
+    return QStringLiteral("TOPICS\n### [%1:00-%1:40] Tárgy %2\n- Egy pont a(z) %2. részből.\n"
+                          "DECISIONS\n- none\nOPEN\n- [%1:30] Nyitott ügy %2\nACTIONS\n- none\n")
+        .arg((k - 1) * 15).arg(k);
+}
+const char* kMergeOk =
+    R"({"execSummary":"Hosszú megbeszélés összegzése.","decisions":["Marad a terv."],)"
+    R"("openQuestions":["Nyitott ügy 3"],"actionItems":[]})";
+} // namespace
+
+void AppJobsTest::summarizeLongMeetingInParts()
+{
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+        const int k = notesPart(r);
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Hosszú megbeszélés", 40);   // 3 rész → 3 jegyzet + 1 összegzés
+    MeetingJobTracker* jobs = m_app->jobs();
+    QStringList trail;   // szakasz-állapotok + darab-haladás, ahogy a UI látja
+    connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
+        if (p.kind != JobKind::Summarize) return;
+        QString line;
+        for (const JobStage& st : p.stages) line += st.id + ":" + QString::number(int(st.state)) + " ";
+        line += QStringLiteral("%1/%2").arg(p.done).arg(p.total);
+        if (trail.isEmpty() || trail.last() != line) trail << line;
+    });
+    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    JobProgress jp = jobs->job(m.id, JobKind::Summarize);
+    QStringList ids;
+    for (const JobStage& st : jp.stages) ids << st.id;
+    QCOMPARE(ids, QStringList({"notes", "merge"}));
+    QCOMPARE(jp.total, 3);
+    QVERIFY(jp.stage("notes")->detail.contains("3"));
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 4);
+    // A jegyzetelés részenként haladt (0/3 → 3/3), utána az összegzés futott.
+    QVERIFY2(trail.contains("notes:1 merge:0 0/3"), qPrintable(trail.join(" | ")));
+    QVERIFY2(trail.contains("notes:1 merge:0 2/3"), qPrintable(trail.join(" | ")));
+    QVERIFY2(trail.contains("notes:2 merge:1 3/3"), qPrintable(trail.join(" | ")));
+
+    const SummaryDocument doc = m_app->summaryDocument(m.id);
+    QCOMPARE(doc.summary.execSummary, QStringLiteral("Hosszú megbeszélés összegzése."));
+    QCOMPARE(doc.summary.openQuestions, QStringList({"Nyitott ügy 3"}));
+    QCOMPARE(doc.summary.memo.size(), 3);
+    QCOMPARE(doc.summary.memo[2].title, QStringLiteral("Tárgy 3"));
+    QCOMPARE(doc.summary.memo[2].startMs, 30 * 60000);
+    QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1", "Beszélő 2"}));
+    QVERIFY(doc.markdown.contains("## Nyitott kérdések"));
+    QVERIFY(doc.markdown.contains("## Memó\n\n### Tárgy 1 (00:00–00:40)"));
+    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));      // siker → nincs maradék jegyzet
+    // A jegyzet-másolat a memót is tartalmazza.
+    const QStringList notes = QDir(m_home->filePath("notes")).entryList({"*.md"});
+    QCOMPARE(notes.size(), 1);
+    QFile nf(QDir(m_home->filePath("notes")).filePath(notes.first()));
+    QVERIFY(nf.open(QIODevice::ReadOnly));
+    QVERIFY(QString::fromUtf8(nf.readAll()).contains("### Tárgy 2"));
+}
+
+void AppJobsTest::summarizePartFailureResumes()
+{
+    bool broken = true;
+    m_http->handler = [&broken](const FakeRequest& r) -> FakeReply {
+        const int k = notesPart(r);
+        if (k == 2 && broken) return {500, R"({"error":{"message":"model crashed","type":"server_error"}})"};
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Elbukó rész", 40);
+    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    m_app->summarizeMeeting(m.id);
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QCOMPARE(ready.count(), 0);
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // a 3. rész már nem indult
+    // Tiszta hiba: nincs félkész összefoglaló, a megmaradó hiba technikai sorral.
+    QVERIFY(!QDir(m.folder).exists("summary.md"));
+    QVERIFY(!QDir(m.folder).exists("summary.json"));
+    QVERIFY(!m_app->store()->load(m.id).hasSummary);
+    MeetingProcessingState st = m_app->processingState(m.id);
+    QCOMPARE(st.summaryState, StepState::Failed);
+    QCOMPARE(st.summaryError.detail, QStringLiteral("HTTP 500 · server_error · model crashed"));
+    QVERIFY(QDir(m.folder).exists("summary.notes.json"));     // az 1. rész jegyzete megmaradt
+
+    // Újrapróbálás: az 1. rész nem fut újra; a szakasz jelzi a korábbi futásból átvett részt.
+    broken = false;
+    m_errors.clear();
+    const int before = m_http->count("POST", "/chat/completions");
+    m_app->summarizeMeeting(m.id);
+    const JobProgress jp = m_app->jobs()->job(m.id, JobKind::Summarize);
+    QCOMPARE(jp.done, 1);
+    QVERIFY(ready.wait(10000));
+    QCOMPARE(m_http->count("POST", "/chat/completions") - before, 3);   // 2. + 3. rész + összegzés
+    QCOMPARE(m_app->summaryDocument(m.id).summary.memo.size(), 3);
+    QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
+}
+
+void AppJobsTest::summarizeCancelBetweenParts()
+{
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        const int k = notesPart(r);
+        if (k == 2) { FakeReply h; h.hold = true; return h; }
+        return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
+    };
+    const Meeting m = transcribedLong("Megszakított hosszú", 40);
+    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    m_app->summarizeMeeting(m.id);
+    QTRY_COMPARE(m_http->count("POST", "/chat/completions"), 2);
+    QTRY_COMPARE(m_app->jobs()->job(m.id, JobKind::Summarize).done, 1);
+    QVERIFY(m_app->cancelJob(m.id, JobKind::Summarize));
+    QCOMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
+    QTest::qWait(300);
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // nem indult újabb hívás
+    QVERIFY(!QDir(m.folder).exists("summary.md"));
+    QCOMPARE(m_app->processingState(m.id).summaryState, StepState::None);
+    QVERIFY(QDir(m.folder).exists("summary.notes.json"));
+}
+
+void AppJobsTest::estimateDescribesQuickSummaryCalls()
+{
+    // Rövid megbeszélés: egy hívás.
+    const Meeting shortM = transcribed("Rövid");
+    EstimateRequest r = m_app->makeEstimateRequest(shortM.id, "summarize", "quick");
+    QCOMPARE(r.llmCalls.size(), 1);
+    QCOMPARE(r.llmCalls[0].count, 1);
+    QVERIFY(r.llmCalls[0].inputChars > r.transcriptChars);
+
+    // 40 perc: 3 jegyzet-hívás + 1 összegzés.
+    const Meeting longM = transcribedLong("Hosszú becslés", 40);
+    r = m_app->makeEstimateRequest(longM.id, "summarize", "quick");
+    QCOMPARE(r.llmCalls.size(), 2);
+    QCOMPARE(r.llmCalls[0].count, 3);
+    QCOMPARE(r.llmCalls[0].maxTokens, 3000);
+    QVERIFY(r.llmCalls[0].inputChars < r.transcriptChars);   // egy rész + prompt < az egész átirat
+    QCOMPARE(r.llmCalls[1].count, 1);
+    QCOMPARE(r.summaryMode, QStringLiteral("quick"));
 }
 
 void AppJobsTest::topicsEditReorderAndStatuses()

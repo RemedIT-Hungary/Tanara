@@ -150,11 +150,10 @@ private slots:
         QCOMPARE(vm.actions().at(0).toMap().value("ownerIndex").toInt(), 1);
         QVERIFY(vm.metaLine().contains("saját kulcs"));
         QCOMPARE(vm.modelLine(), QStringLiteral("teszt-modell"));
-        // Résztvevők: a két beszélő beszédidő-aránnyal + az összefoglalóban említett vendég arány nélkül.
-        QCOMPARE(vm.participants().size(), 3);
+        // Résztvevők: a két beszélő beszédidő-aránnyal. A résztvevő-listát a core az átirat
+        // beszélőiből állítja össze (nem a modell válaszából) → a csak említett „Vendég” nincs benne.
+        QCOMPARE(vm.participants().size(), 2);
         QVERIFY(vm.participants().at(0).toMap().value("percent").toInt() > 0);
-        QCOMPARE(vm.participants().at(2).toMap().value("name").toString(), QStringLiteral("Vendég"));
-        QCOMPARE(vm.participants().at(2).toMap().value("percent").toInt(), -1);
         QVERIFY(!vm.stale());
 
         // Beszélő-javítás az összefoglaló után → elavult, valós számmal; „Rendben így” elengedi.

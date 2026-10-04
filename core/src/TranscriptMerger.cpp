@@ -84,13 +84,17 @@ QVector<Utterance> MergedTranscript::segments() const {
     return out;
 }
 
-QString MergedTranscript::renderMarkdown() const {
+QString renderUtterancesMarkdown(const QVector<Utterance>& utterances) {
     // Formátum: `[mm:ss]` **Beszélő** szöveg — időbélyeg ELŐL (időre kereshető).
     QStringList paragraphs;
-    for (const Utterance& u : segments())
+    for (const Utterance& u : utterances)
         paragraphs << QStringLiteral("`[%1]` **%2** %3")
                           .arg(formatTimestamp(u.startMs), u.speaker, u.text);
     return paragraphs.join(QStringLiteral("\n\n"));
+}
+
+QString MergedTranscript::renderMarkdown() const {
+    return renderUtterancesMarkdown(segments());
 }
 
 } // namespace tanara

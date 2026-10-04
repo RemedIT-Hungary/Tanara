@@ -4,6 +4,8 @@
 //
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "tanara/summary/SummaryStore.h"
 #include "tanara/Types.h"
@@ -21,6 +23,9 @@ private slots:
     void loadLegacyMarkdownOnly();
     void saveAndLoadJsonWithMeta();
     void editedMarkdownWins();
+    void memoAndOpenQuestionsRoundTrip();
+    void oldJsonWithoutNewFieldsLoads();
+    void topicOpenQuestionsParsed();
 
 private:
     static void write(const QString& path, const QString& text) {
@@ -254,6 +259,86 @@ void SummaryStoreTest::editedMarkdownWins()
     QCOMPARE(back.summary.decisions, QStringList({"Kézzel átírt döntés."}));
     QCOMPARE(back.meta.model, QStringLiteral("m"));            // a keletkezés adatai megmaradnak
     QCOMPARE(back.meta.createdAt, doc.meta.createdAt);
+}
+
+void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
+{
+    Summary s = sample();
+    s.openQuestions = {QStringLiteral("Kell-e külön tesztszerver?"), QStringLiteral("Ki hagyja jóvá a keretet?")};
+    s.memo = {MemoSection{QStringLiteral("Pilot állása"), 0, 9 * 60000 + 5000,
+                          {QStringLiteral("Két helyszínen fut."), QStringLiteral("A hibák 80%-a javítva.")}},
+              MemoSection{QStringLiteral("Éles indulás (ütemezés)"), 95 * 60000, 101 * 60000 + 30000,
+                          {QStringLiteral("Október 15.")}}};
+
+    // Markdown → struktúra → markdown: veszteség nélkül.
+    const QString md = s.renderMarkdown();
+    const SummaryDocument doc = summarystore::parseMarkdown(md);
+    QCOMPARE(doc.summary.openQuestions, s.openQuestions);
+    QCOMPARE(doc.summary.memo.size(), 2);
+    QCOMPARE(doc.summary.memo[0].title, QStringLiteral("Pilot állása"));
+    QCOMPARE(doc.summary.memo[0].startMs, 0);
+    QCOMPARE(doc.summary.memo[0].endMs, 9 * 60000 + 5000);
+    QCOMPARE(doc.summary.memo[0].points, s.memo[0].points);
+    QCOMPARE(doc.summary.memo[1].title, QStringLiteral("Éles indulás (ütemezés)"));   // zárójel a címben marad
+    QCOMPARE(doc.summary.memo[1].startMs, 95 * 60000);
+    QCOMPARE(doc.summary.participants, s.participants);   // a memó nem keveredik a résztvevőkbe
+    QCOMPARE(doc.summary.renderMarkdown(), md);
+
+    // summary.json: ugyanez, a pontos időkkel.
+    QTemporaryDir dir;
+    SummaryDocument out;
+    out.exists = true;
+    out.summary = s;
+    out.meta.mode = SummaryMode::Quick;
+    out.meta.createdAt = QDateTime(QDate(2026, 10, 4), QTime(12, 0));
+    write(summarystore::markdownPath(dir.path()), md);
+    QVERIFY(summarystore::save(dir.path(), out));
+    const SummaryDocument back = summarystore::load(dir.path());
+    QVERIFY(!back.fromMarkdown);
+    QCOMPARE(back.summary.openQuestions, s.openQuestions);
+    QCOMPARE(back.summary.memo.size(), 2);
+    QCOMPARE(back.summary.memo[1].endMs, 101 * 60000 + 30000);
+    QCOMPARE(back.summary.memo[1].points, s.memo[1].points);
+    QFile jf(summarystore::jsonPath(dir.path()));
+    QVERIFY(jf.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(jf.readAll()).object().value("version").toInt(), 2);
+}
+
+void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()
+{
+    // Egy korábbi build summary.json-ja (version 1, openQuestions és memo nélkül).
+    QTemporaryDir dir;
+    write(summarystore::jsonPath(dir.path()), QStringLiteral(
+        R"({"version":1,"mode":"quick","createdAt":"2026-09-01T10:00:00","providerId":"openai-compat",)"
+        R"("model":"m","summary":{"execSummary":"Régi.","decisions":["d"],)"
+        R"("actionItems":[{"text":"t","owner":"o","due":""}],"participants":["Ádám"]}})"));
+    const SummaryDocument doc = summarystore::load(dir.path());
+    QVERIFY(doc.exists);
+    QVERIFY(!doc.fromMarkdown);
+    QCOMPARE(doc.summary.execSummary, QStringLiteral("Régi."));
+    QCOMPARE(doc.summary.actionItems.size(), 1);
+    QVERIFY(doc.summary.openQuestions.isEmpty());
+    QVERIFY(doc.summary.memo.isEmpty());
+    // A régi, nyitott kérdés és memó nélküli markdown is betölt (a sample ilyen).
+    QCOMPARE(summarystore::parseMarkdown(sample().renderMarkdown()).summary.memo.size(), 0);
+}
+
+void SummaryStoreTest::topicOpenQuestionsParsed()
+{
+    TopicAnalysis a;
+    a.title = QStringLiteral("Keret");
+    a.detail = QStringLiteral("A keretről szó esett.");
+    a.decisions = {QStringLiteral("Marad 12 millió.")};
+    a.openQuestions = {QStringLiteral("Lesz-e pótkeret?")};
+    a.actionItems = {{QStringLiteral("Kalkuláció"), QStringLiteral("Ödön"), QString()}};
+    const QString md = QStringLiteral("## Vezetői összefoglaló\n\nX\n\n## Témák\n\n### 1. Keret\n\n") + a.renderMarkdown();
+    const SummaryDocument doc = summarystore::parseMarkdown(md);
+    QCOMPARE(doc.meta.mode, SummaryMode::Topics);
+    QCOMPARE(doc.topics.size(), 1);
+    QCOMPARE(doc.topics[0].decisions, a.decisions);
+    QCOMPARE(doc.topics[0].openQuestions, a.openQuestions);
+    QCOMPARE(doc.topics[0].actionItems.size(), 1);
+    QCOMPARE(doc.summary.openQuestions, a.openQuestions);   // témánkénti módban a témák uniója
 }
 
 QTEST_GUILESS_MAIN(SummaryStoreTest)

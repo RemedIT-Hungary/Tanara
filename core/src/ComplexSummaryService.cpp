@@ -134,7 +134,7 @@ ActionItem parseActionItemLine(QString line)
     return ai;
 }
 
-enum class MdSection { Detail, Decisions, Actions };
+enum class MdSection { Detail, Decisions, Open, Actions };
 
 // Egy téma-elemzés MARKDOWNból: bevezető bekezdés = detail; `## Döntések` bulletjei =
 // decisions; `## Teendők` bulletjei = actionItems. Hibatűrő: egy csonka/elrontott sor nem
@@ -151,6 +151,8 @@ TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topi
         if (hm.hasMatch()) {
             const QString h = hm.captured(1).toLower();
             if (h.contains(QStringLiteral("dönt")))        sec = MdSection::Decisions;
+            else if (h.contains(QStringLiteral("nyitott")) || h.contains(QStringLiteral("open")))
+                                                           sec = MdSection::Open;
             else if (h.contains(QStringLiteral("teendő")) || h.contains(QStringLiteral("feladat")))
                                                            sec = MdSection::Actions;
             else                                           sec = MdSection::Detail;
@@ -163,6 +165,9 @@ TopicAnalysis parseAnalysisMarkdown(const QString& raw, const SummaryTopic& topi
         if (sec == MdSection::Decisions) {
             const QString d = bm.hasMatch() ? bm.captured(1).trimmed() : t;
             if (!d.isEmpty()) a.decisions << d;
+        } else if (sec == MdSection::Open) {
+            const QString q = bm.hasMatch() ? bm.captured(1).trimmed() : t;
+            if (!q.isEmpty()) a.openQuestions << q;
         } else if (bm.hasMatch()) {   // Actions — csak a bulletek számítanak
             const ActionItem ai = parseActionItemLine(t);
             if (!ai.text.isEmpty()) a.actionItems << ai;
@@ -183,6 +188,7 @@ TopicAnalysis parseAnalysisJson(const QString& raw, const SummaryTopic& topic, b
     const QJsonObject o = doc.object();
     a.detail      = o.value(QStringLiteral("detail")).toString().trimmed();
     a.decisions   = parseStringArray(o.value(QStringLiteral("decisions")).toArray());
+    a.openQuestions = parseStringArray(o.value(QStringLiteral("openQuestions")).toArray());
     a.actionItems = parseActionItems(o.value(QStringLiteral("actionItems")).toArray());
     if (ok) *ok = true;
     return a;
@@ -219,7 +225,7 @@ void parseReduceMarkdown(const QString& raw, QString* execSummary, QVector<Actio
 QString contextBlock(const QString& contextNotes)
 {
     if (contextNotes.trimmed().isEmpty()) return {};
-    return QStringLiteral("Kontextus / jegyzetek:\n") + contextNotes + QStringLiteral("\n\n");
+    return QStringLiteral("Context / notes:\n") + contextNotes + QStringLiteral("\n\n");
 }
 
 } // namespace
@@ -253,7 +259,8 @@ void ComplexSummaryService::requestTopics(const QString& transcriptMd, const QSt
     req.messages.append({QStringLiteral("system"),
         systemPrompt.trimmed().isEmpty() ? defaultTopicPrompt() : systemPrompt});
     req.messages.append({QStringLiteral("user"),
-        contextBlock(contextNotes) + QStringLiteral("----\n") + transcriptMd});
+        contextBlock(contextNotes) + QStringLiteral("----\n") + transcriptMd
+            + languageReminder(m_language)});
 
     LlmJob* job = m_provider->chat(req);
     if (!job) { emit failed(tr("A provider nem adott vissza jobot.")); return; }
@@ -293,10 +300,11 @@ void ComplexSummaryService::requestTopicAnalysis(const QString& transcriptMd, co
     req.messages.append({QStringLiteral("system"),
         systemPrompt.trimmed().isEmpty() ? defaultAnalysisPrompt() : systemPrompt});
     QString usr = contextBlock(contextNotes);
-    usr += QStringLiteral("ELEMZENDŐ TÉMA: %1\n").arg(topic.title);
+    usr += QStringLiteral("TOPIC TO ANALYSE: %1\n").arg(topic.title);
     if (!topic.summary.isEmpty())
-        usr += QStringLiteral("(A téma rövid leírása: %1)\n").arg(topic.summary);
-    usr += QStringLiteral("\n----\nTeljes átirat:\n") + transcriptMd;
+        usr += QStringLiteral("(Short description of the topic: %1)\n").arg(topic.summary);
+    usr += QStringLiteral("\n----\nFull transcript:\n") + transcriptMd;
+    usr += languageReminder(m_language);
     req.messages.append({QStringLiteral("user"), usr});
 
     LlmJob* job = m_provider->chat(req);
@@ -336,19 +344,22 @@ void ComplexSummaryService::requestReduce(const QVector<TopicAnalysis>& analyses
 
     // A per-téma elemzések szöveges összefoglalása a reduce bemenetéhez.
     QString usr = contextBlock(contextNotes);
-    usr += QStringLiteral("Témánkénti elemzések:\n\n");
+    usr += QStringLiteral("Analyses per topic:\n\n");
     for (const TopicAnalysis& a : analyses) {
         usr += QStringLiteral("## %1\n%2\n").arg(a.title, a.detail);
         if (!a.decisions.isEmpty())
-            usr += QStringLiteral("Döntések: ") + a.decisions.join(QStringLiteral("; ")) + QStringLiteral("\n");
+            usr += QStringLiteral("Decisions: ") + a.decisions.join(QStringLiteral("; ")) + QStringLiteral("\n");
+        if (!a.openQuestions.isEmpty())
+            usr += QStringLiteral("Open questions: ") + a.openQuestions.join(QStringLiteral("; ")) + QStringLiteral("\n");
         for (const ActionItem& ai : a.actionItems) {
-            usr += QStringLiteral("Teendő: %1").arg(ai.text);
+            usr += QStringLiteral("Task: %1").arg(ai.text);
             if (!ai.owner.isEmpty()) usr += QStringLiteral(" — %1").arg(ai.owner);
             if (!ai.due.isEmpty())   usr += QStringLiteral(" (%1)").arg(ai.due);
             usr += QStringLiteral("\n");
         }
         usr += QStringLiteral("\n");
     }
+    usr += languageReminder(m_language);
 
     LlmRequest req;
     req.model = model;

@@ -238,11 +238,16 @@ function cannedTokens(diarization) {
 // Kannázott LLM-válasz a kérés alakja szerint (a kliens parserei: JSON / téma-markdown / elemzés / reduce).
 function cannedCompletion(b, summaryMode) {
   const user = (b.messages || []).filter(m => m.role === 'user').map(m => m.content).join('\n');
-  if (user.includes('ELEMZENDŐ TÉMA:')) {
-    const t = (/ELEMZENDŐ TÉMA: (.*)/.exec(user) || [])[1] || 'Téma';
+  // Gyors összefoglaló, hosszú megbeszélés: részenkénti jegyzet ("PART k of n" a rész elején).
+  const part = /^PART (\d+) of (\d+)/m.exec(user);
+  if (part)
+    return `TOPICS\n### MuseumPlus migráció (${part[1]}. rész)\n- A migráció állapotát egyeztették.\n\nDECISIONS\n- Jövő héten szállítunk.\n\nOPEN\n- none\n\nACTIONS\n- Teszt megírása — Dompa`;
+  const topic = /(?:ELEMZENDŐ TÉMA|TOPIC TO ANALYSE): (.*)/.exec(user);
+  if (topic) {
+    const t = topic[1] || 'Téma';
     return `A(z) „${t}” témát a csapat röviden egyeztette.\n\n## Döntések\n- Jövő héten szállítunk.\n\n## Teendők\n- Teszt megírása — Dompa`;
   }
-  if (user.includes('Témánkénti elemzések:'))
+  if (user.includes('Témánkénti elemzések:') || user.includes('Analyses per topic:'))
     return 'A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került.\n\n## Teendők\n- Teszt megírása — Dompa';
   if (summaryMode === 'complex')
     return '## MuseumPlus migráció\nA migráció állapota és a szállítás időpontja.\n\n## Tesztelés\nKi írja meg a teszteket.';

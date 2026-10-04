@@ -92,11 +92,24 @@ struct ActionItem {
     QString due;
 };
 
+// A memó egy szakasza: egy tárgy, amiről a megbeszélésen szó volt, időrendben. A pontok a
+// konkrétumok (nevek, számok, dátumok; ki mondta, ha számít). Az idő -1, ha nem ismert.
+struct MemoSection {
+    QString     title;
+    qint64      startMs = -1;
+    qint64      endMs = -1;
+    QStringList points;
+};
+
+// Egy összefoglaló-futás eredménye: a RÖVID forma (vezetői összefoglaló + listák) és a
+// HOSSZÚ forma (memó) ugyanabból a részenkénti jegyzetből készül, így egymással konzisztensek.
 struct Summary {
     QString execSummary;
     QStringList decisions;
+    QStringList openQuestions;           // eldöntetlen, nyitva maradt ügyek (legfeljebb ~5)
     QVector<ActionItem> actionItems;
     QStringList participants;
+    QVector<MemoSection> memo;           // a megbeszélés részletes jegyzete, időrendben
     QString renderMarkdown() const;      // impl: SummaryService modul
 };
 
@@ -115,6 +128,7 @@ struct TopicAnalysis {
     QString title;
     QString detail;
     QStringList decisions;
+    QStringList openQuestions;           // a témában nyitva maradt kérdések (opcionális)
     QVector<ActionItem> actionItems;
     // A törzs markdownja CÍM NÉLKÜL (detail + döntések + teendők) — a téma-kártya
     // eredmény-nézete és a komplex summary.md témaszekciói is ebből épülnek.
@@ -181,6 +195,14 @@ struct ProviderConfig {
     QString model;
     double temperature = 0.2; // LLM mintavételezési hőmérséklet (összefoglaló); STT nem használja
     int maxTokens = 8000;     // LLM válasz max tokenszáma (reasoning-modellnek bőven); STT nem használja
+    // A modell „gondolkodása” (reasoning) — csak LLM. Mérés szerint az összefoglalóhoz KI kell
+    // kapcsolni (különben a kimeneti keret elfogy gondolkodásra, és 2–5× lassabb):
+    //  "auto" — kikapcsolva; a módszert a modellnév dönti el (Gemma: reasoning_effort "none";
+    //           Qwen 3+: üres <think> blokkal előtöltött asszisztens-üzenet; ismeretlen:
+    //           reasoning_effort "none", amit a nem ismerő szerverek figyelmen kívül hagynak),
+    //  "off"  — ugyanaz, mint az auto (kifejezett kikapcsolás),
+    //  "on"   — nem küldünk kapcsolót: a modell alapviselkedése (gondolkodó modell gondolkodik).
+    QString reasoning{QStringLiteral("auto")};
     QVariantMap extra;
 
     // --- futásidejű (NEM perzisztált) gateway-hookok — csak a Tanara Cloud útvonal tölti ---
@@ -214,10 +236,16 @@ struct AppSettings {
     // sosem várja meg — a fő szál nem fagy.
     QString mixdownMode{QStringLiteral("auto")};
 
-    // Az összefoglaló LLM rendszer-promptja (a séma + szabályok). ÜRES → a beépített
-    // SummaryService::defaultSystemPrompt() érvényes (így a kód-default jövőbeli javításai
-    // automatikusan érvényesülnek, amíg a felhasználó nem ír sajátot).
+    // Az összefoglaló LLM rendszer-promptjai. ÜRES → a fájl-override / beépített default
+    // (PromptLibrary) érvényes (így a kód-default jövőbeli javításai automatikusan
+    // érvényesülnek, amíg a felhasználó nem ír sajátot).
+    //  summaryPrompt — az EGY részből álló (rövid) megbeszélés egylépéses promptja ("single":
+    //                  memó-jegyzet + vezetői összefoglaló és listák egy hívásban),
+    //  notesPrompt   — hosszabb megbeszélésnél a részenkénti jegyzetelés ("notes"),
+    //  mergePrompt   — a részjegyzetek összegzése ("merge").
     QString summaryPrompt;
+    QString notesPrompt;
+    QString mergePrompt;
 
     // A komplex (több körös) összefoglaló két szerkeszthető prompt-ja. ÜRES → a kód-default
     // (ComplexSummaryService::defaultTopicPrompt() / defaultAnalysisPrompt()).
@@ -308,6 +336,7 @@ Q_DECLARE_METATYPE(tanara::TrackTranscript)
 Q_DECLARE_METATYPE(tanara::Utterance)
 Q_DECLARE_METATYPE(tanara::MergedTranscript)
 Q_DECLARE_METATYPE(tanara::ActionItem)
+Q_DECLARE_METATYPE(tanara::MemoSection)
 Q_DECLARE_METATYPE(tanara::Summary)
 Q_DECLARE_METATYPE(tanara::SummaryTopic)
 Q_DECLARE_METATYPE(QVector<tanara::SummaryTopic>)

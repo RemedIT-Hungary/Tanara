@@ -48,10 +48,11 @@ QString jsonPath(const QString& meetingFolder);       // <mappa>/summary.json
 QString markdownPath(const QString& meetingFolder);   // <mappa>/summary.md
 
 // Markdown → struktúra. Felismeri a gyors (## Vezetői összefoglaló / ## Döntések /
-// ## Teendők / ## Résztvevők) és a témánkénti (## Teendők (összevont) / ## Témák /
-// ### N. cím + **Döntések:** / **Teendők:**) formát; a címsorokat ékezet- és kisbetű-
-// függetlenül illeszti. Ismeretlen szakasz szövege nem vész el: a vezetői összefoglaló
-// végére kerül. Témánkénti módban a summary.decisions a témák döntéseinek uniója.
+// ## Nyitott kérdések / ## Teendők / ## Résztvevők / ## Memó + ### cím (mm:ss–mm:ss)) és a
+// témánkénti (## Teendők (összevont) / ## Témák / ### N. cím + **Döntések:** / **Nyitott
+// kérdések:** / **Teendők:**) formát; a címsorokat ékezet- és kisbetű-függetlenül illeszti.
+// Ismeretlen szakasz szövege nem vész el: a vezetői összefoglaló végére kerül. Témánkénti
+// módban a summary.decisions (és openQuestions) a témákéinak uniója.
 SummaryDocument parseMarkdown(const QString& markdown);
 
 // A meeting összefoglalójának betöltése (summary.json, különben summary.md értelmezve).

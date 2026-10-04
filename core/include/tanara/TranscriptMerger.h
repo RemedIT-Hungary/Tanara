@@ -13,4 +13,8 @@ namespace tanara {
 // első sávból veszi.
 MergedTranscript mergeTranscripts(const QVector<TrackTranscript>& tracks);
 
+// Beszéd-blokkok markdownja: bekezdésenként `[mm:ss]` **Beszélő** szöveg, üres sorral
+// elválasztva. A MergedTranscript::renderMarkdown() és az összefoglaló részei is ezt használják.
+QString renderUtterancesMarkdown(const QVector<Utterance>& utterances);
+
 } // namespace tanara

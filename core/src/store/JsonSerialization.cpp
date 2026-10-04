@@ -110,6 +110,19 @@ QJsonObject toJson(const Summary& s)
     o[QStringLiteral("actionItems")] = items;
 
     o[QStringLiteral("participants")] = stringListToArray(s.participants);
+    o[QStringLiteral("openQuestions")] = stringListToArray(s.openQuestions);
+
+    // A memó szakaszai időrendben (az idő ms-ban; -1 = ismeretlen).
+    QJsonArray memo;
+    for (const MemoSection& m : s.memo) {
+        QJsonObject mo;
+        mo[QStringLiteral("title")]   = m.title;
+        mo[QStringLiteral("startMs")] = static_cast<double>(m.startMs);
+        mo[QStringLiteral("endMs")]   = static_cast<double>(m.endMs);
+        mo[QStringLiteral("points")]  = stringListToArray(m.points);
+        memo.append(mo);
+    }
+    o[QStringLiteral("memo")] = memo;
     return o;
 }
 
@@ -124,6 +137,18 @@ Summary summaryFromJson(const QJsonObject& o)
         s.actionItems.append(actionItemFromJson(v.toObject()));
 
     s.participants = arrayToStringList(o.value(QStringLiteral("participants")).toArray());
+    // Régi summary.json-ban ezek a mezők hiányoznak → üresek maradnak.
+    s.openQuestions = arrayToStringList(o.value(QStringLiteral("openQuestions")).toArray());
+    for (const auto& v : o.value(QStringLiteral("memo")).toArray()) {
+        const QJsonObject mo = v.toObject();
+        MemoSection m;
+        m.title   = mo.value(QStringLiteral("title")).toString();
+        m.startMs = static_cast<qint64>(mo.value(QStringLiteral("startMs")).toDouble(-1));
+        m.endMs   = static_cast<qint64>(mo.value(QStringLiteral("endMs")).toDouble(-1));
+        m.points  = arrayToStringList(mo.value(QStringLiteral("points")).toArray());
+        if (!m.title.isEmpty() || !m.points.isEmpty())
+            s.memo.append(m);
+    }
     return s;
 }
 
@@ -193,6 +218,7 @@ QJsonObject toJson(const ProviderConfig& p)
     o[QStringLiteral("model")]   = p.model;
     o[QStringLiteral("temperature")] = p.temperature;
     o[QStringLiteral("maxTokens")]   = p.maxTokens;
+    o[QStringLiteral("reasoning")]   = p.reasoning;
     if (!p.extra.isEmpty())
         o[QStringLiteral("extra")] = QJsonObject::fromVariantMap(p.extra);
     return o;
@@ -207,6 +233,7 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
     // Visszafelé kompatibilis: hiányzó mezőnél a ProviderConfig-default marad.
     p.temperature = o.value(QStringLiteral("temperature")).toDouble(0.2);
     p.maxTokens   = o.value(QStringLiteral("maxTokens")).toInt(8000);
+    p.reasoning   = o.value(QStringLiteral("reasoning")).toString(p.reasoning);
     // apiKey-t SOHA nem olvasunk JSON-ből; futásidőben a KeyStore tölti.
     if (o.contains(QStringLiteral("extra")))
         p.extra = o.value(QStringLiteral("extra")).toObject().toVariantMap();
@@ -249,6 +276,8 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("audioQuality")]   = s.audioQuality;
     o[QStringLiteral("mixdownMode")]    = s.mixdownMode;
     o[QStringLiteral("summaryPrompt")]  = s.summaryPrompt;
+    o[QStringLiteral("notesPrompt")]    = s.notesPrompt;
+    o[QStringLiteral("mergePrompt")]    = s.mergePrompt;
     o[QStringLiteral("topicExtractionPrompt")] = s.topicExtractionPrompt;
     o[QStringLiteral("topicAnalysisPrompt")]   = s.topicAnalysisPrompt;
     o[QStringLiteral("summaryLanguage")]       = s.summaryLanguage;
@@ -299,6 +328,8 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.audioQuality = o.value(QStringLiteral("audioQuality")).toString(s.audioQuality);
     s.mixdownMode  = o.value(QStringLiteral("mixdownMode")).toString(s.mixdownMode);
     s.summaryPrompt = o.value(QStringLiteral("summaryPrompt")).toString(s.summaryPrompt);
+    s.notesPrompt   = o.value(QStringLiteral("notesPrompt")).toString(s.notesPrompt);
+    s.mergePrompt   = o.value(QStringLiteral("mergePrompt")).toString(s.mergePrompt);
     s.topicExtractionPrompt = o.value(QStringLiteral("topicExtractionPrompt")).toString(s.topicExtractionPrompt);
     s.topicAnalysisPrompt   = o.value(QStringLiteral("topicAnalysisPrompt")).toString(s.topicAnalysisPrompt);
 
