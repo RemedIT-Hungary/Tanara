@@ -46,6 +46,13 @@ QString foldKeepLength(const QString& text)
     return out;
 }
 
+// A hanglenyomat-jelző állapota egy beszélőnél (áttekintő, sáv-fejléc).
+QString voiceprintState(const EditorSpeaker& s)
+{
+    if (s.anonymous) return QStringLiteral("anonymous");
+    return s.hasVoiceprint ? QStringLiteral("has") : QStringLiteral("none");
+}
+
 QVariantMap speakerMap(const EditorSpeaker& s, int lane)
 {
     return {
@@ -62,6 +69,7 @@ QVariantMap speakerMap(const EditorSpeaker& s, int lane)
         {QStringLiteral("pct"), int(std::lround(s.talkShare * 100.0))},
         {QStringLiteral("voiceConfidence"), s.voiceConfidence},
         {QStringLiteral("lane"), lane},
+        {QStringLiteral("voiceprint"), voiceprintState(s)},
     };
 }
 
@@ -492,6 +500,7 @@ void TranscriptEditorViewModel::rebuildOverview()
             {QStringLiteral("name"), s.displayName},
             {QStringLiteral("colorIndex"), s.colorIndex},
             {QStringLiteral("pct"), int(std::lround(s.talkShare * 100.0))},
+            {QStringLiteral("voiceprint"), voiceprintState(s)},
             {QStringLiteral("segments"), QVariant::fromValue(segs[lane])},
             {QStringLiteral("marks"), QVariant::fromValue(marks[lane])},
         });
@@ -502,6 +511,7 @@ void TranscriptEditorViewModel::rebuildOverview()
             {QStringLiteral("name"), tr("Egyéb (%1)").arg(m_collapsed.size())},
             {QStringLiteral("colorIndex"), -1},
             {QStringLiteral("pct"), int(std::lround(otherShare * 100.0))},
+            {QStringLiteral("voiceprint"), QString()},
             {QStringLiteral("segments"), QVariant::fromValue(segs[rowCount - 1])},
             {QStringLiteral("marks"), QVariant::fromValue(marks[rowCount - 1])},
         });
@@ -1098,10 +1108,12 @@ int TranscriptEditorViewModel::changeRow() const
 }
 
 void TranscriptEditorViewModel::publishChange(const QString& text, const QString& sourceKey,
-                                              const QString& targetKey, int lastUtterance)
+                                              const QString& targetKey, int lastUtterance,
+                                              bool offerVoiceprint)
 {
     Change c;
     c.active = true;
+    if (offerVoiceprint && canOfferVoiceprint(targetKey)) c.voiceprint = Change::Offer;
     c.text = text;
     c.targetKey = targetKey;
     c.utterance = lastUtterance;
@@ -1129,7 +1141,39 @@ void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromNam
     if (lines <= 0 || target.isEmpty()) text = m_editor ? m_editor->undoText() : QString();
     else if (needsAz(lines)) text = tr("%1 mind az %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
     else text = tr("%1 mind a %n sora átkerült ide: %2", nullptr, lines).arg(fromName, target);
-    publishChange(text, QString(), targetKey, -1);
+    // Egy teljes beszélő most kapott (vagy váltott) személyt: ha annak még nincs hanglenyomata
+    // és itt van hozzá elég anyag, a sáv felajánlja — magától sosem készül.
+    publishChange(text, QString(), targetKey, -1, /*offerVoiceprint*/ true);
+}
+
+bool TranscriptEditorViewModel::canOfferVoiceprint(const QString& speakerKey) const
+{
+    if (!m_editor || !voiceAvailable()) return false;
+    const EditorSpeaker s = m_editor->speaker(speakerKey);
+    if (s.key.isEmpty() || s.anonymous || s.hasVoiceprint) return false;
+    return m_editor->voiceprintMaterial(speakerKey).sufficient;      // kevés anyagnál nem nyaggatunk
+}
+
+bool TranscriptEditorViewModel::createVoiceprintFromChange()
+{
+    if (!m_editor || !changeVoiceprintOffer()) return false;
+    const QString name = m_views.value(m_change.targetKey).name;
+    const VoiceprintResult r = m_editor->createVoiceprint(m_change.targetKey);
+    m_change.utterance = -1;
+    if (!r.ok) {
+        // Nem sikerült (pl. közben eltűnt a hang): az ajánlat megszűnik, az ok egyszer elhangzik.
+        m_change.voiceprint = Change::None;
+        emit changeChanged();
+        emit notice(r.error);
+        return false;
+    }
+    m_change.voiceprint = Change::Created;
+    m_change.printId = r.printId;
+    m_change.text = voiceprintMessage(name, r);
+    ++m_changeSerial;
+    emit changeChanged();
+    emit peopleChanged();
+    return true;
 }
 
 void TranscriptEditorViewModel::clearChange()
@@ -1141,7 +1185,20 @@ void TranscriptEditorViewModel::clearChange()
 
 void TranscriptEditorViewModel::undoChange()
 {
-    undo();
+    if (!changeVoiceprintCreated()) {
+        undo();
+        return;
+    }
+    // A lenyomat nem része az undo-veremnek: itt pontosan a most készült lenyomat törlődik,
+    // az átsorolás (elnevezés) marad — az továbbra is Ctrl+Z-vel vonható vissza.
+    const QString name = m_views.value(m_change.targetKey).name;
+    if (m_editor) m_editor->removeVoiceprint(m_change.printId);
+    m_change.voiceprint = Change::Removed;
+    m_change.printId.clear();
+    m_change.text = tr("A most készült hanglenyomat törölve: %1").arg(name);
+    ++m_changeSerial;
+    emit changeChanged();
+    emit peopleChanged();
 }
 
 void TranscriptEditorViewModel::dismissChange()
@@ -1372,11 +1429,14 @@ QString TranscriptEditorViewModel::speakerKeyForPerson(const QString& personName
 QVariantMap TranscriptEditorViewModel::voiceprintMaterial(const QString& speakerKey) const
 {
     QVariantMap out{{QStringLiteral("supported"), voiceAvailable()},
+                    {QStringLiteral("reason"), QString()},
                     {QStringLiteral("usableLines"), 0},
                     {QStringLiteral("usableSec"), 0},
                     {QStringLiteral("missingSec"), 0},
                     {QStringLiteral("sufficient"), false}};
     if (!m_editor) return out;
+    if (!m_editor->embeddingsSupported()) out[QStringLiteral("reason")] = QStringLiteral("model");
+    else if (m_embeddingFailed) out[QStringLiteral("reason")] = QStringLiteral("audio");
     const VoiceprintMaterial m = m_editor->voiceprintMaterial(speakerKey);
     out[QStringLiteral("usableLines")] = m.usableLines;
     out[QStringLiteral("usableSec")] = int(m.usableMs / 1000);
@@ -1392,17 +1452,28 @@ QVariantMap TranscriptEditorViewModel::createVoiceprint(const QString& speakerKe
     const QString name = m_views.value(speakerKey).name;
     const VoiceprintResult r = m_editor->createVoiceprint(speakerKey);
     out[QStringLiteral("ok")] = r.ok;
+    out[QStringLiteral("printId")] = r.printId;
     out[QStringLiteral("usedLines")] = r.usedLines;
     out[QStringLiteral("usedSec")] = int(r.usedMs / 1000);
     out[QStringLiteral("missingSec")] = int((r.missingMs + 999) / 1000);
-    out[QStringLiteral("message")] = r.ok
-        ? tr("Hanglenyomat készült: %1 (%2 sorból, %3 mp beszédből).").arg(name).arg(r.usedLines).arg(r.usedMs / 1000)
-        : r.error;
+    out[QStringLiteral("message")] = r.ok ? voiceprintMessage(name, r) : r.error;
     if (r.ok) {
         emit peopleChanged();
         emit notice(out.value(QStringLiteral("message")).toString());
     }
     return out;
+}
+
+QString TranscriptEditorViewModel::voiceprintMessage(const QString& name, const VoiceprintResult& r) const
+{
+    return tr("Hanglenyomat készült: %1 (%2 sorból, %3 mp beszédből).").arg(name).arg(r.usedLines).arg(r.usedMs / 1000);
+}
+
+bool TranscriptEditorViewModel::removeVoiceprint(const QString& printId)
+{
+    if (!m_editor || !m_editor->removeVoiceprint(printId)) return false;
+    emit peopleChanged();
+    return true;
 }
 
 // ---- személyek --------------------------------------------------------------
@@ -1475,6 +1546,29 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     } else if (state == QLatin1String("changeSpeaker")) {
         setRailVisible(true);
         reassignSpeaker(m_laneKeys.value(0), QStringLiteral("Molnár Eszter"), false);
+    } else if (state == QLatin1String("changeVoiceprint") || state == QLatin1String("changeVoiceprintDone")) {
+        // Egy névtelen beszélő nevet kap (a személynek nincs lenyomata): a sáv felajánlja.
+        setRailVisible(true);
+        for (const EditorSpeaker& s : std::as_const(m_speakers)) {
+            if (!s.anonymous || m_views.value(s.key).lane < 0) continue;
+            reassignSpeaker(s.key, QStringLiteral("Bálint Péter"), false);
+            break;
+        }
+        if (state == QLatin1String("changeVoiceprintDone")) createVoiceprintFromChange();
+    } else if (state == QLatin1String("voiceprintNone") || state == QLatin1String("voiceprintDone")) {
+        // Legyen elnevezett, lenyomat nélküli beszélő (a panelt a TranscriptTab nyitja).
+        bool exists = false;
+        for (const EditorSpeaker& s : std::as_const(m_speakers)) exists = exists || (!s.anonymous && !s.hasVoiceprint);
+        for (const EditorSpeaker& s : std::as_const(m_speakers)) {
+            if (exists || !s.anonymous) continue;
+            reassignSpeaker(s.key, QStringLiteral("Bálint Péter"), false);
+            break;
+        }
+        dismissChange();
+    } else if (state == QLatin1String("voiceprintShort")) {
+        // Egyetlen rövid sor egy új személynél: ebből nem készíthető lenyomat.
+        if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, QStringLiteral("Bálint Péter"));
+        dismissChange();
     } else if (state == QLatin1String("changeFilter")) {
         // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.
         setUncertainOnly(true);

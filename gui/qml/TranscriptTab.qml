@@ -10,6 +10,9 @@ import QtQuick.Templates as T
 //  - egy sor NEVÉRE kattintva (vagy „Más mondta…") alapból CSAK AZ A SOR kerül át (több soros
 //    kijelölés részeként: a kijelölt sorok); a teljes beszélő ott kifejezett választás;
 //  - a TELJES beszélő a beszélő-szintű helyekről javítható: sáv-fejléc avatar, áttekintő név;
+//  - hanglenyomat CSAK kifejezett műveletre készül, három helyről: az áttekintő ujjlenyomat-jele
+//    (saját panel), a „Ki mondta?" panel teljes-beszélő hatóköre, és — egy teljes beszélő
+//    elnevezése után, ha a személynek még nincs — az értesítő sáv „Hanglenyomat készítése" gombja;
 //  - minden átsorolás után alul értesítő sáv: mi történt + Visszavonás / „Hasonló N sor is" /
 //    „<Forrás> mind a N sora";
 //  - két beszélő összevonása előtt számokkal megerősítő ablak (egy sor / kijelölés sosem kérdez).
@@ -21,7 +24,8 @@ import QtQuick.Templates as T
 //                "filter" | "search" | "searchEmpty" | "linePopover" | "selectionPopover" |
 //                "lineToSpeakerPopover" | "speakerPopover" | "personPicker" | "drag" |
 //                "expanded" | "changeLine" | "changeSelection" | "changeSpeaker" |
-//                "changeFilter" | "mergeConfirm"
+//                "changeFilter" | "mergeConfirm" | "changeVoiceprint" | "changeVoiceprintDone" |
+//                "voiceprintHas" | "voiceprintNone" | "voiceprintDone" | "voiceprintShort"
 Item {
     id: root
 
@@ -142,6 +146,14 @@ Item {
         speakerPopoverRow = -1
         speakerPopover.open()
     }
+    // A hanglenyomat saját panelje (az áttekintő ujjlenyomat-jeléről).
+    function openVoiceprintPopover(speakerKey, anchorItem) {
+        const p = anchorItem.mapToItem(root, 0, anchorItem.height)
+        voiceprintPopover.speakerKey = speakerKey
+        voiceprintPopover.x = Math.round(p.x - 12)
+        voiceprintPopover.y = Math.round(p.y + 6)
+        voiceprintPopover.open()
+    }
     // EGY SOR panelje (a sor neve, „Más mondta…", helyi menü): alapból csak ez a sor megy;
     // ha a sor egy több soros kijelölés része, a kijelölés.
     function openLinePopover(row, anchorItem, px, py) {
@@ -213,6 +225,7 @@ Item {
             root.lastPlayingRow = -1
             root.speakerPopoverRow = -1
             speakerPopover.close()
+            voiceprintPopover.close()
             picker.close()
             mergeDialog.close()
             toolbar.searchOpen = false
@@ -391,6 +404,7 @@ Item {
             onSearchStepRequested: direction => editorVm.searchStep(direction)
             onNextUncertainRequested: root.nextUncertain(1)
             onSpeakerClicked: (speakerKey, anchor) => root.openSpeakerPopover(speakerKey, anchor)
+            onVoiceprintClicked: (speakerKey, anchor) => root.openVoiceprintPopover(speakerKey, anchor)
             // A kereső bezárása után a billentyűk újra a szerkesztőéi (ne a rejtett mezőéi).
             onSearchOpenChanged: if (!searchOpen) Qt.callLater(root.releaseHiddenFocus)
         }
@@ -705,6 +719,24 @@ Item {
         }
     }
 
+    // A hanglenyomat panelje: állapot, használható anyag, készítés (és a most készült
+    // visszavonása). Lenyomat csak az itteni gombra készül.
+    TPopover {
+        id: voiceprintPopover
+        objectName: "voiceprintPopover"
+        property string speakerKey: ""
+        width: 320
+        padding: 0
+        closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
+        onAboutToShow: voiceprintPanel.reset()
+        onClosed: root.forceActiveFocus()
+        contentItem: VoiceprintPanel {
+            id: voiceprintPanel
+            editor: editorVm
+            speakerKey: voiceprintPopover.speakerKey
+        }
+    }
+
     // Két beszélő összevonása: megerősítés számokkal (M10 minta). Egy sor / kijelölés
     // áthelyezése sosem kérdez — ez csak a teljes beszélőt érintő összeolvasztás előtt áll.
     TDialog {
@@ -801,9 +833,41 @@ Item {
     Timer {
         id: demoTimer
         interval: 120
+        property int tries: 0
+        // A hanglenyomat-panel demó-beszélője: az első, amelyik az állapotnak megfelel.
+        function voiceprintDemoKey(s) {
+            const list = editorVm.speakers
+            for (let i = 0; i < list.length; ++i) {
+                const sp = list[i]
+                if (s === "voiceprintHas") {
+                    if (sp.voiceprint === "has") return sp.key
+                    continue
+                }
+                if (sp.voiceprint !== "none") continue
+                const m = editorVm.voiceprintMaterial(sp.key)
+                const enough = m.sufficient === true || m.supported !== true
+                if ((s === "voiceprintShort") !== enough) return sp.key
+            }
+            return ""
+        }
         onTriggered: {
             const s = root.demoState
-            if (s === "speakerPopover") {
+            if (s.startsWith("voiceprint")) {
+                // A hang-elemzés végén áll elő az állapot: addig várunk (legfeljebb ~6 mp).
+                const key = editorVm.embeddingRunning ? "" : voiceprintDemoKey(s)
+                if (key === "") {
+                    if (++tries < 50) demoTimer.start()
+                    return
+                }
+                if (editorVm.speakerInfo(key).lane < 0) editorVm.lanesExpanded = true
+                const mark = toolbar.voiceprintMark(key)
+                if (!mark) {
+                    if (++tries < 50) demoTimer.start()
+                    return
+                }
+                root.openVoiceprintPopover(key, mark)
+                if (s === "voiceprintDone") voiceprintPanel.create()
+            } else if (s === "speakerPopover") {
                 // A teljes beszélő: a sáv-fejléc első avatarjáról.
                 if (root.laneCount > 0) root.openSpeakerPopover(editorVm.lanes[0].key, railHeader)
             } else if (s === "linePopover" || s === "lineToSpeakerPopover") {
@@ -846,6 +910,7 @@ Item {
             demoTimer.start()
         } else {
             editorVm.applyDemoState(s)
+            if (s.startsWith("voiceprint")) demoTimer.start()
         }
     }
 }
