@@ -417,6 +417,39 @@ QVector<TranscriptPart> splitTranscript(const QVector<Utterance>& segments, qint
     return parts;
 }
 
+QVector<TranscriptPart> splitTranscriptByChars(const QVector<Utterance>& segments, int maxChars)
+{
+    QVector<TranscriptPart> parts;
+    if (segments.isEmpty() || maxChars <= 0) return parts;
+    QVector<QVector<Utterance>> groups;
+    QVector<Utterance> cur;
+    qint64 curLen = 0;
+    for (const Utterance& u : segments) {
+        // A csoport hossza additív: bekezdésenként a saját sora + "\n\n" elválasztó.
+        const qint64 len = renderUtterancesMarkdown({u}).size();
+        if (len > maxChars) return {};
+        const qint64 next = cur.isEmpty() ? len : curLen + 2 + len;
+        if (!cur.isEmpty() && next > maxChars) {
+            groups.append(cur);
+            cur.clear();
+            curLen = len;
+        } else {
+            curLen = next;
+        }
+        cur.append(u);
+    }
+    if (!cur.isEmpty()) groups.append(cur);
+    for (int i = 0; i < groups.size(); ++i) {
+        TranscriptPart p;
+        p.index = i;
+        p.startMs = groups[i].first().startMs;
+        for (const Utterance& u : groups[i]) p.endMs = qMax(p.endMs, u.endMs);
+        p.markdown = renderUtterancesMarkdown(groups[i]);
+        parts.append(p);
+    }
+    return parts;
+}
+
 qint64 parseTimestamp(const QString& s)
 {
     static const QRegularExpression re(QStringLiteral("^\\s*(\\d{1,3}):(\\d{2})(?::(\\d{2}))?\\s*$"));

@@ -5,7 +5,8 @@
 //
 // A core szakaszai (AppController::summarizeMeeting):
 //   - rövid megbeszélés: egy szakasz, "single" — egy hívás, köztes haladás nincs (határozatlan);
-//   - hosszabb: "notes" (done / total rész kész) + "merge" (határozatlan).
+//   - hosszabb: "notes" (done / total rész kész) + "merge" (határozatlan);
+//   - LM Studiónál elöl, ha kell: "model" — a modell betöltése a szükséges kontextussal.
 // A felület ezekből:
 //   „Összefoglalás egy lépésben” · „Jegyzetek készítése: k / n rész” (valós csík k/n-ből) ·
 //   „Összefésülés”. Ha egy korábbi (elbukott / megszakított) futás kész részjegyzeteit
@@ -24,7 +25,7 @@ struct SummaryProgress {
     Q_DECLARE_TR_FUNCTIONS(SummaryProgress)
 
 public:
-    QString stage;          // "" | "single" | "notes" | "merge"
+    QString stage;          // "" | "model" | "single" | "notes" | "merge"
     QString label;          // a futó szakasz egy sorban (üres: a feladat címe a megjelenítendő)
     int percent = -1;       // 0..100 csak valós darab-haladásból (notes); -1 = határozatlan
     int done = -1;          // kész részek (notes / merge); -1 = nincs
@@ -42,6 +43,10 @@ public:
     // futásból átvett részek száma: az utolsó „ · ” utáni első szám; nincs ilyen → 0.
     // (A core a számot csak ebben a szövegben adja át.)
     static int reusedParts(const QString& notesDetail);
+
+private:
+    // A modell-szakasz nélküli leképezés (single / notes / merge).
+    static SummaryProgress fromWork(const tanara::JobProgress& job);
 };
 
 } // namespace tanara_qml

@@ -203,6 +203,11 @@ struct ProviderConfig {
     //  "off"  — ugyanaz, mint az auto (kifejezett kikapcsolás),
     //  "on"   — nem küldünk kapcsolót: a modell alapviselkedése (gondolkodó modell gondolkodik).
     QString reasoning{QStringLiteral("auto")};
+    // A modell kontextusa (tokenben) — csak LLM. 0 = automatikus: a Tanara a feladat indulásakor
+    // a legkisebb szabványos lépcsőt kéri (8k / 16k / 20k / 32k …), ami a feladatot lefedi
+    // (legfeljebb a modell maximumáig). Rögzített érték: mindig ekkorával töltjük be. Csak
+    // LM Studiónál hat (natív API-val betöltés), más szervernél a betöltést ott kell beállítani.
+    int contextLength = 0;
     QVariantMap extra;
 
     // --- futásidejű (NEM perzisztált) gateway-hookok — csak a Tanara Cloud útvonal tölti ---

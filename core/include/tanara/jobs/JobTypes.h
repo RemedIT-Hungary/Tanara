@@ -124,6 +124,7 @@ struct TopicStatus {
     TopicState state = TopicState::Waiting;
     QString    error;         // Failed: emberi üzenet
     QString    errorDetail;   // Failed: technikai sor
+    QString    fixActionHint; // Failed: gépi tipp a javító gombhoz (lásd JobError)
 };
 
 // A feladat lezárásának módja (jobFinished jel).

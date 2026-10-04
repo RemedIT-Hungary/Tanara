@@ -14,6 +14,11 @@ Rectangle {
     property string topicState: "waiting"     // waiting | queued | running | done | failed
     property string error: ""
     property string errorDetail: ""
+    // A hiba javító műveletei: Beállítások (fixActionLabel → fixActionPage), ill. kontextus-
+    // hibánál LM Studióval „Betöltés nagyobb kontextussal” (fixReloadContext token, 0 = nincs).
+    property string fixActionLabel: ""
+    property string fixActionPage: ""
+    property int fixReloadContext: 0
     property bool hasResult: false
     property string resultText: ""
     property var resultDecisions: []
@@ -33,6 +38,8 @@ Rectangle {
     property bool expanded: false             // a hosszú elemzés teljes szövege látszik
 
     signal runRequested()
+    signal reloadContextRequested(int tokens)   // újratöltés nagyobb kontextussal + újra
+    signal settingsRequested(string page)
     signal cancelRequested()
     signal removeRequested()
     signal saveRequested(string title, string summary)
@@ -315,6 +322,19 @@ Rectangle {
                     font.pixelSize: Theme.fontMicro
                     wrapMode: Text.WrapAnywhere
                 }
+            }
+            TButton {
+                visible: root.fixReloadContext > 0
+                text: qsTr("Betöltés nagyobb kontextussal")
+                size: "small"
+                enabled: root.canRun
+                onClicked: root.reloadContextRequested(root.fixReloadContext)
+            }
+            TButton {
+                visible: root.fixActionLabel !== ""
+                text: root.fixActionLabel
+                variant: "ghost"; size: "small"
+                onClicked: root.settingsRequested(root.fixActionPage)
             }
             TButton {
                 text: qsTr("Újra")

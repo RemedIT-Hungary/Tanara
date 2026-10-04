@@ -21,6 +21,29 @@ int SummaryProgress::reusedParts(const QString& notesDetail)
 
 SummaryProgress SummaryProgress::from(const JobProgress& job)
 {
+    SummaryProgress p = fromWork(job);
+    // A modell betöltése (LM Studio) a feladat első, látható szakasza: amíg tart, ez a futó
+    // szakasz, a többi vár.
+    const JobStage* model = job.stage(QStringLiteral("model"));
+    if (!model || model->state != StageState::Running)
+        return p;
+    p.stage = QStringLiteral("model");
+    p.label = model->detail.isEmpty() ? model->label : model->label + QStringLiteral(" · ") + model->detail;
+    p.percent = -1;
+    for (QVariant& v : p.stages) {
+        QVariantMap m = v.toMap();
+        m.insert(QStringLiteral("state"), jobsupport::stageStateName(StageState::Waiting));
+        m.insert(QStringLiteral("percent"), -1);
+        v = m;
+    }
+    p.stages.prepend(QVariantMap{{QStringLiteral("id"), model->id}, {QStringLiteral("label"), model->label},
+                                 {QStringLiteral("state"), jobsupport::stageStateName(StageState::Running)},
+                                 {QStringLiteral("percent"), -1}, {QStringLiteral("detail"), model->detail}});
+    return p;
+}
+
+SummaryProgress SummaryProgress::fromWork(const JobProgress& job)
+{
     SummaryProgress p;
     if (job.kind != JobKind::Summarize)
         return p;

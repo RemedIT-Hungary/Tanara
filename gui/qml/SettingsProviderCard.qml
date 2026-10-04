@@ -324,6 +324,16 @@ Rectangle {
             font.pixelSize: Theme.fontSmall
             wrapMode: Text.Wrap
         }
+        // Sikeres teszt után a szerver adatai (LM Studio: betöltött kontextus, párhuzamosság) —
+        // ha a Haladó rész nyitva van, ott látszik a kontextus-beállítás mellett.
+        TLabel {
+            visible: root.card && root.card.testState === "ok" && root.card.serverInfo !== "" && !advGrid.visible
+            Layout.fillWidth: true
+            text: root.card ? root.card.serverInfo : ""
+            muted: true
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.Wrap
+        }
 
         // ---- haladó mezők ----
         Rectangle {
@@ -366,6 +376,44 @@ Rectangle {
                 Layout.fillWidth: true
                 text: qsTr("Kikapcsolva gyorsabb, és a kis modellek nem élik fel a válaszkeretet gondolkodásra, mielőtt válaszolnának. Az Automatikus a modellcsaládnak megfelelő módon kapcsolja ki.")
                 muted: true
+                font.pixelSize: Theme.fontCaption
+                cssLineHeight: 1.4
+                wrapMode: Text.Wrap
+            }
+        }
+        // A modell kontextusa (csak saját kulcsos LLM): automatikus vagy rögzített tokenszám.
+        // LM Studiónál a Tanara a feladat előtt ekkorával (egy szálon) tölti be a modellt.
+        ColumnLayout {
+            visible: advGrid.visible && root.card && root.card.contextAvailable
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            spacing: 6
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("A modell kontextusa")
+                font.pixelSize: Theme.fontSmall
+                font.weight: Theme.weightMedium
+                wrapMode: Text.Wrap
+            }
+            SettingsCombo {
+                Layout.fillWidth: true
+                Layout.maximumWidth: 320
+                options: root.card ? root.card.contextOptions : []
+                value: root.card ? String(root.card.contextLength) : "0"
+                onPicked: (v) => root.card.contextLength = parseInt(v)
+            }
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("LM Studiónál a Tanara a feladat előtt ekkorával, egy szálon tölti be a modellt; más szervernél ott kell beállítani.")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+                cssLineHeight: 1.4
+                wrapMode: Text.Wrap
+            }
+            TLabel {
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: root.card ? root.card.serverInfo : ""
                 font.pixelSize: Theme.fontCaption
                 cssLineHeight: 1.4
                 wrapMode: Text.Wrap

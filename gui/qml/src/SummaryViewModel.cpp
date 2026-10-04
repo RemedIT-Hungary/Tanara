@@ -387,6 +387,7 @@ void SummaryViewModel::reload()
     m_errorDetail.clear();
     m_fixActionLabel.clear();
     m_fixActionPage.clear();
+    m_fixReloadContext = 0;
     m_errorKeptParts = false;
     m_hasSummary = false;
     m_stale = false;
@@ -458,6 +459,7 @@ void SummaryViewModel::reload()
         const jobsupport::FixAction fix = jobsupport::fixActionForError(ps.summaryError);
         m_fixActionLabel = fix.label;
         m_fixActionPage = fix.page;
+        m_fixReloadContext = fix.reloadContext;
         // A kész részek jegyzetei a gyorsítótárban: az újrapróbálás csak a hiányzókat futtatja.
         m_errorKeptParts = !m.folder.isEmpty()
             && QFileInfo::exists(QDir(m.folder).filePath(SummaryService::cacheFileName()));
@@ -639,6 +641,19 @@ void SummaryViewModel::loadDemo()
             m_errorMessage = tr("A szolgáltatónál hiba történt. Próbáld újra később.");
             m_errorDetail = QStringLiteral("HTTP 500 · server_error · model crashed");
             m_errorKeptParts = true;
+        } else if (st == QLatin1String("emptyErrorContext")) {
+            // A besorolt kontextus-hiba (LM Studio): javító gombok a tipp szerint.
+            JobError e;
+            e.message = tr("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. "
+                           "A Tanara újra tudja tölteni az LM Studióban legalább 16 384 tokenes kontextussal, és újraindítja a feladatot.");
+            e.detail = QStringLiteral("HTTP 400 · exceed_context_size_error · ") + tr("kérés 6042 token · kontextus 4096 token");
+            e.fixActionHint = QStringLiteral("llm:reload-context:16384");
+            const jobsupport::FixAction fix = jobsupport::fixActionForError(e);
+            m_errorMessage = e.message;
+            m_errorDetail = e.detail;
+            m_fixActionLabel = fix.label;
+            m_fixActionPage = fix.page;
+            m_fixReloadContext = fix.reloadContext;
         }
         return;
     }

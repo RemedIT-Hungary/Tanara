@@ -3,7 +3,8 @@ import QtQuick.Layouts
 
 // Az Összefoglaló fül közös állapot-sávjai, egymás alatt (csak ami épp érvényes):
 //   - futó feladat (összefoglaló / téma-javaslat / záró összegzés) megszakítással,
-//   - megmaradt hiba (emberi üzenet + technikai sor, újrapróbálás, javító művelet),
+//   - megmaradt hiba (emberi üzenet + technikai sor, újrapróbálás, javító művelet; kontextus-
+//     hibánál LM Studióval „Betöltés nagyobb kontextussal”: újratöltés + újra),
 //   - hiányzó beállítás (megnevezve; a gomb a Beállítások megfelelő oldalára visz).
 // showJob: az M06 üres állapot saját futás-kártyát rajzol, ott a futó sáv kikapcsolható.
 ColumnLayout {
@@ -98,6 +99,15 @@ ColumnLayout {
               + (root.vm.errorKeptParts
                  ? "\n" + qsTr("A már elkészült részek jegyzetei megmaradtak; a folytatás csak a hiányzó részeket és az összefésülést futtatja.")
                  : "")
+        TButton {
+            visible: root.vm.fixReloadContext > 0
+            text: qsTr("Betöltés nagyobb kontextussal")
+            size: "small"
+            onClicked: {
+                if (root.shell) root.shell.requestLlmContext(root.vm.fixReloadContext)
+                root.retryRequested()
+            }
+        }
         TButton {
             text: root.vm.errorKeptParts ? qsTr("Folytatás") : qsTr("Újra")
             size: "small"

@@ -15,6 +15,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/provider/ConnectionTester.h"
+#include "tanara/llm/LlmServer.h"
 #include "tanara/provider/ProviderDescriptor.h"
 
 #include <QObject>
@@ -61,6 +62,17 @@ class SettingsProviderModel : public QObject {
     // "on". Csak a saját kulcsos LLM-szolgáltatónál (a Haladó részben); a cloud maga dönt.
     Q_PROPERTY(bool reasoningAvailable READ reasoningAvailable NOTIFY providerChanged)
     Q_PROPERTY(QString reasoning READ reasoning WRITE setReasoning NOTIFY valuesChanged)
+    // A modell kontextusa (ProviderConfig::contextLength): 0 = automatikus, különben token.
+    // Csak a saját kulcsos LLM-szolgáltatónál (a Haladó részben). contextOptions:
+    // [{ value ("0" | "16384" …), label }] — a szabványos lépcsők (+ a tárolt egyedi érték).
+    Q_PROPERTY(bool contextAvailable READ contextAvailable NOTIFY providerChanged)
+    Q_PROPERTY(int contextLength READ contextLength WRITE setContextLength NOTIFY valuesChanged)
+    Q_PROPERTY(QVariantList contextOptions READ contextOptions NOTIFY valuesChanged)
+    // A szerver (LM Studio natív API) szerint: a betöltött kontextus, párhuzamosság, a modell
+    // maximuma — egy sor; üres, ha nem ismert (nem LM Studio, vagy még nem kérdeztük).
+    Q_PROPERTY(QString serverInfo READ serverInfo NOTIFY serverInfoChanged)
+    Q_PROPERTY(int serverLoadedContext READ serverLoadedContext NOTIFY serverInfoChanged)
+    Q_PROPERTY(int serverMaxContext READ serverMaxContext NOTIFY serverInfoChanged)
     // B04: ehhez a kártyához vezetett a mély hivatkozás.
     Q_PROPERTY(bool highlighted READ highlighted NOTIFY highlightedChanged)
 
@@ -89,6 +101,15 @@ public:
     bool reasoningAvailable() const;
     QString reasoning() const;
     void setReasoning(const QString& mode);
+    bool contextAvailable() const { return reasoningAvailable(); }
+    int contextLength() const;
+    void setContextLength(int tokens);
+    QVariantList contextOptions() const;
+    QString serverInfo() const { return m_serverText; }
+    int serverLoadedContext() const;
+    int serverMaxContext() const { return m_server.maxContext; }
+    // A szerver-adatok frissítése (csak olvasó GET; a Haladó rész nyitásakor magától is).
+    Q_INVOKABLE void refreshServerInfo();
 
     Q_INVOKABLE void setValue(const QString& key, const QVariant& value);
     Q_INVOKABLE QVariant value(const QString& key) const;
@@ -116,6 +137,8 @@ public:
     // Demó: rögzített teszt-eredmény.
     void setDemoResult(const QString& state, int latencyMs, const QString& message,
                        const QString& code);
+    // Demó: rögzített szerver-adat (LM Studio betöltött példánnyal).
+    void setDemoServerInfo(const tanara::llmctx::LlmServerInfo& info) { setServerInfo(info); }
     void setTester(tanara::ConnectionTester* tester);   // tesztekhez (pl. rövid időkorlát)
     tanara::ConnectionTester* tester() const { return m_tester; }
 
@@ -128,6 +151,7 @@ signals:
     void testChanged();
     void fetchChanged();
     void highlightedChanged();
+    void serverInfoChanged();
 
 private:
     QVariantList fieldList(bool advanced) const;
@@ -147,6 +171,13 @@ private:
     int m_testId = 0;
     int m_fetchId = 0;
     QString m_fetchError;
+    // withWarnings: a figyelmeztetések is a sorba kerülnek (a kapcsolat-tesztnél azok a
+    // warningText-ben látszanak, ott nem ismételjük).
+    void setServerInfo(const tanara::llmctx::LlmServerInfo& info, bool withWarnings = true);
+    void clearServerInfo();
+    tanara::LlmServerProbe* m_serverProbe = nullptr;
+    tanara::llmctx::LlmServerInfo m_server;
+    QString m_serverText;
     QStringList m_models;          // a lekért modell-lista (a kiválasztott szolgáltatóhoz)
     QString m_modelsFor;           // melyik szolgáltató + cím listája
 };

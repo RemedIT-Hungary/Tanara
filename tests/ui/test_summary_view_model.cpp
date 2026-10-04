@@ -570,6 +570,59 @@ private slots:
         QCOMPARE(vm->view(), QStringLiteral("topics"));
         QCOMPARE(vm->topics()->doneCount(), 2);
     }
+
+    // Kontextus-hiba LM Studióval: a hibasáv a besorolt üzenetet mutatja (egyszer, nyers JSON
+    // nélkül), a javító műveletek: „Betöltés nagyobb kontextussal” (token), Beállítások, Újra.
+    // Ugyanez a téma-kártyán (TopicListModel szerepek).
+    void contextOverflowFixActions()
+    {
+        jobtest::Sandbox sb;
+        const Meeting m = sb.transcribed("Kontextus");
+        SummaryViewModel vm;
+        vm.setController(sb.app.get());
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.fixReloadContext(), 0);
+
+        const QByteArray overflow =
+            "{\"error\":\"Engine protocol predict request returned 400: {\\\"error\\\":{\\\"code\\\":400,\\\"message\\\":\\\"request (40000 tokens) exceeds the available context size (32768 tokens), try increasing it\\\",\\\"type\\\":\\\"exceed_context_size_error\\\",\\\"n_prompt_tokens\\\":40000,\\\"n_ctx\\\":32768}}\"}";
+        sb.http->handler = [overflow](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (r.path == "/api/v1/models")   // LM Studio, a modell már jó kontextussal, egy szálon
+                return {200, "{\"models\":[{\"type\":\"llm\",\"key\":\"teszt-modell\",\"max_context_length\":131072,\"loaded_instances\":[{\"id\":\"teszt-modell\",\"config\":{\"context_length\":32768,\"parallel\":1}}]}]}"};
+            if (r.path.endsWith("/chat/completions")) return {400, overflow};
+            return {500, "{}"};   // betöltés / kivétel nem várt
+        };
+        sb.app->summarizeMeeting(m.id);
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty(), 10000);
+        QVERIFY(!vm.jobRunning());
+        QVERIFY2(vm.errorMessage().contains(QStringLiteral("token")), qPrintable(vm.errorMessage()));
+        QVERIFY(!vm.errorMessage().contains(QLatin1Char('{')));
+        QVERIFY(!vm.errorDetail().contains(QLatin1Char('{')));
+        QVERIFY(!vm.errorDetail().contains(QStringLiteral("Engine protocol")));
+        QCOMPARE(vm.fixReloadContext(), 49152);                // a betöltött 32 768 fölötti lépcső
+        QCOMPARE(vm.fixActionLabel(), QStringLiteral("Beállítások"));
+        QCOMPARE(vm.fixActionPage(), QStringLiteral("providers"));
+        for (const jobtest::FakeRequest& r : sb.http->log)
+            QVERIFY2(!r.path.startsWith(QStringLiteral("/api/v1/models/")), qPrintable(r.path));
+
+        // A téma-kártya ugyanígy.
+        const QVector<SummaryTopic> list = sb.app->setMeetingTopics(m.id, {{QString(), QStringLiteral("Árazás"), QString()}});
+        TopicListModel* topics = vm.topics();
+        sb.app->analyzeTopic(m.id, list[0]);
+        QTRY_COMPARE_WITH_TIMEOUT(topicState(topics, 0), QStringLiteral("failed"), 10000);
+        QCOMPARE(topics->data(topics->index(0), TopicListModel::FixReloadContextRole).toInt(), 49152);
+        QCOMPARE(topics->data(topics->index(0), TopicListModel::FixActionPageRole).toString(), QStringLiteral("providers"));
+        QVERIFY(!topics->data(topics->index(0), TopicListModel::ErrorRole).toString().contains(QLatin1Char('{')));
+
+        // Más hiba: nincs újratöltés-gomb.
+        sb.app->jobs()->clearError(m.id, JobKind::Summarize);
+        sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (r.path.endsWith("/chat/completions")) return {500, "{\"error\":{\"message\":\"model crashed\"}}"};
+            return {404, "{}"};
+        };
+        sb.app->summarizeMeeting(m.id);
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty() && !vm.jobRunning(), 10000);
+        QCOMPARE(vm.fixReloadContext(), 0);
+    }
 };
 
 QTEST_MAIN(TestSummaryViewModel)

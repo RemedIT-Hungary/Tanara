@@ -304,11 +304,85 @@ void SettingsProviderModel::setReasoning(const QString& mode)
     bumpValues();
 }
 
+int SettingsProviderModel::contextLength() const
+{
+    return qMax(0, configs().value(descriptor().id).contextLength);
+}
+
+void SettingsProviderModel::setContextLength(int tokens)
+{
+    if (!reasoningAvailable()) return;
+    const int v = qMax(0, tokens);
+    const ProviderDescriptor d = descriptor();
+    ProviderConfig cfg = configs().value(d.id);
+    if (cfg.contextLength == v) return;
+    cfg.type = d.id;
+    cfg.contextLength = v;
+    configs().insert(d.id, cfg);
+    m_vm->touch();          // a kapcsolat-tesztet nem érinti
+    bumpValues();
+}
+
+QVariantList SettingsProviderModel::contextOptions() const
+{
+    QVariantList out;
+    out << QVariantMap{{QStringLiteral("value"), QStringLiteral("0")},
+                       {QStringLiteral("label"), tr("Automatikus (a feladathoz igazítva)")}};
+    QList<int> steps;
+    for (int s : llmctx::contextSteps())
+        if (s <= 131072) steps << s;
+    const int cur = contextLength();
+    if (cur > 0 && !steps.contains(cur)) { steps << cur; std::sort(steps.begin(), steps.end()); }
+    const int max = m_server.maxContext;
+    for (int s : std::as_const(steps)) {
+        if (max > 0 && s > max && s != cur) continue;   // a modell maximuma fölé nem kínálunk
+        out << QVariantMap{{QStringLiteral("value"), QString::number(s)},
+                           {QStringLiteral("label"), tr("%1 token").arg(QLocale().toString(s))}};
+    }
+    return out;
+}
+
+int SettingsProviderModel::serverLoadedContext() const
+{
+    return m_server.loaded() ? m_server.instances.first().contextLength : -1;
+}
+
+void SettingsProviderModel::setServerInfo(const llmctx::LlmServerInfo& info, bool withWarnings)
+{
+    m_server = info;
+    QString text, warning;
+    describeLlmServer(info, &text, &warning);
+    m_serverText = !withWarnings || warning.isEmpty() ? text : text + QLatin1Char(' ') + warning;
+    emit serverInfoChanged();
+    bumpValues();   // a lépcső-lista a modell maximumához igazodik
+}
+
+void SettingsProviderModel::clearServerInfo()
+{
+    if (m_serverProbe) m_serverProbe->cancel();
+    if (!m_server.isLmStudio() && m_serverText.isEmpty()) return;
+    m_server = {};
+    m_serverText.clear();
+    emit serverInfoChanged();
+}
+
+void SettingsProviderModel::refreshServerInfo()
+{
+    if (!reasoningAvailable() || !m_vm->controller()) return;
+    if (!m_serverProbe) {
+        m_serverProbe = new LlmServerProbe(this);
+        connect(m_serverProbe, &LlmServerProbe::finished, this,
+                [this](const llmctx::LlmServerInfo& info) { setServerInfo(info); });
+    }
+    m_serverProbe->probe(runtimeConfig());
+}
+
 void SettingsProviderModel::setAdvancedOpen(bool open)
 {
     if (m_advancedOpen == open) return;
     m_advancedOpen = open;
     emit advancedOpenChanged();
+    if (open) refreshServerInfo();
 }
 
 QHash<QString, QString> SettingsProviderModel::fieldErrors() const
@@ -398,6 +472,7 @@ void SettingsProviderModel::invalidateTest()
     }
     if (m_testId && m_tester) m_tester->cancel(m_testId);
     m_testId = 0;
+    clearServerInfo();   // a cím / modell változhatott — a régi szerver-adat félrevezető
     if (m_testState.isEmpty()) return;
     m_testState.clear();
     m_result = {};
@@ -457,6 +532,7 @@ void SettingsProviderModel::onFinished(int id, const ConnectionTestResult& resul
     m_testId = 0;
     m_result = result;
     m_testState = result.ok() ? QStringLiteral("ok") : QStringLiteral("failed");
+    if (result.ok() && m_kind == ProviderKind::Llm) setServerInfo(result.server, /*withWarnings*/ false);
     // A sikeres próba modell-listája a „Lekérés” eredményét is frissíti (ugyanaz a kérés).
     if (result.ok() && !result.models.isEmpty()) {
         m_models = result.models;
@@ -489,6 +565,7 @@ void SettingsProviderModel::reset()
     m_fetchError.clear();
     m_models.clear();
     m_modelsFor.clear();
+    clearServerInfo();
     emit providersChanged();
     emit providerChanged();
     emit fieldsChanged();

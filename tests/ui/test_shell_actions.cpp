@@ -514,6 +514,22 @@ private slots:
         QCOMPARE(toasts.count(), 1);
         QCOMPARE(toasts.at(0).at(1).toString(), QStringLiteral("danger"));
         QVERIFY(!m_shell->recording());
+
+        // A megnyitott megbeszélés feladat-hibája a hibasávban látszik: ugyanaz a szöveg nem
+        // jön még egyszer toastban (más megbeszélésé igen).
+        m_shell->setCurrentMeetingId(b.id);
+        tanara::JobError je;
+        je.message = QStringLiteral("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele.");
+        m_app->jobs()->begin(b.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
+        m_app->jobs()->fail(b.id, tanara::JobKind::Summarize, je);
+        emit m_app->errorOccurred(QStringLiteral("Összefoglaló hiba: ") + je.message);
+        QCOMPARE(toasts.count(), 1);
+        QTest::qWait(10);
+        const tanara::Meeting c = recording(QStringLiteral("Harmadik"));
+        m_app->jobs()->begin(c.id, tanara::JobKind::Summarize, QStringLiteral("Összefoglaló"));
+        m_app->jobs()->fail(c.id, tanara::JobKind::Summarize, je);
+        emit m_app->errorOccurred(QStringLiteral("Összefoglaló hiba: ") + je.message);
+        QCOMPARE(toasts.count(), 2);
     }
 
     void meetingModelDescribesHeaderAndTasks()

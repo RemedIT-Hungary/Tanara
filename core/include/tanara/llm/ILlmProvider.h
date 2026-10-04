@@ -29,10 +29,19 @@ public:
     ~LlmJob() override = default;
     virtual void cancel() = 0;
 
+    // Sikertelen HTTP-válasz esetén (a failed jel előtt kitöltve): a státusz és a nyers
+    // hibatörzs — ebből ismerhető fel pl. a „nem fér a kontextusba” hiba (llm/LlmContext.h).
+    int errorStatus() const { return m_errorStatus; }
+    QByteArray errorBody() const { return m_errorBody; }
+
 signals:
     void delta(const QString& chunk);          // stream==true esetén
     void finished(const QString& fullText);
     void failed(const QString& error);
+
+protected:
+    int m_errorStatus = 0;
+    QByteArray m_errorBody;
 };
 
 class ILlmProvider {

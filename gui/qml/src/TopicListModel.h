@@ -52,6 +52,11 @@ public:
         ResultDecisionsRole,  // QStringList
         ResultActionsRole,    // [{ text, owner, due }]
         ResultOpenQuestionsRole,  // QStringList — a témában nyitva maradt kérdések
+        // A hiba javító műveletei (lásd jobsupport::FixAction): a Beállítások gomb felirata /
+        // oldala, ill. kontextus-hibánál LM Studióval az újratöltés tokenszáma (0 = nincs).
+        FixActionLabelRole,
+        FixActionPageRole,
+        FixReloadContextRole,
     };
 
     explicit TopicListModel(QObject* parent = nullptr);
@@ -93,6 +98,7 @@ private:
         tanara::TopicState state = tanara::TopicState::Waiting;
         QString error;
         QString errorDetail;
+        QString fixActionHint;
         bool hasResult = false;
         tanara::TopicAnalysis result;
         bool operator==(const Item& o) const;

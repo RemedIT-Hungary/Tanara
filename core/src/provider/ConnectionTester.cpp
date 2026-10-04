@@ -1,4 +1,5 @@
 #include "tanara/provider/ConnectionTester.h"
+#include "tanara/llm/LlmServer.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -98,6 +99,41 @@ QStringList parseModels(const QByteArray& body, bool* ok)
 }
 
 } // namespace
+
+void describeLlmServer(const llmctx::LlmServerInfo& info, QString* text, QString* warning)
+{
+    if (!info.isLmStudio()) return;
+    auto num = [](int n) { return QStringLiteral("%L1").arg(n); };
+    auto addWarning = [warning](const QString& w) {
+        if (!warning) return;
+        if (!warning->isEmpty()) *warning += QLatin1Char(' ');
+        *warning += w;
+    };
+    QString t;
+    if (!info.modelListed) {
+        t = QCoreApplication::translate("ConnectionTester", "LM Studio — a beállított modell nincs a letöltött modellek között.");
+    } else if (!info.loaded()) {
+        t = QCoreApplication::translate("ConnectionTester", "LM Studio — a modell nincs betöltve; a Tanara az első feladatnál betölti a szükséges kontextussal, egy szálon.");
+    } else {
+        const llmctx::LlmInstanceInfo& i = info.instances.first();
+        t = i.contextLength > 0
+            ? QCoreApplication::translate("ConnectionTester", "LM Studio — betöltve %1 tokenes kontextussal, párhuzamos kérések: %2.")
+                  .arg(num(i.contextLength)).arg(i.parallel > 0 ? i.parallel : 1)
+            : QCoreApplication::translate("ConnectionTester", "LM Studio — a modell be van töltve.");
+        if (i.parallel > 1)
+            addWarning(QCoreApplication::translate("ConnectionTester", "A modell %1 párhuzamos kérésre van betöltve — ez sok videómemóriát foglal, és instabil lehet. A Tanara a következő feladat előtt egy szálon tölti újra.")
+                           .arg(i.parallel));
+        const int typical = llmctx::typicalSummaryPartNeed();
+        if (i.contextLength > 0 && i.contextLength < typical)
+            addWarning(QCoreApplication::translate("ConnectionTester", "A betöltött kontextus (%1 token) kevés egy tipikus összefoglaló-részhez (kb. %2 token). A Tanara a feladat előtt nagyobb kontextussal tölti újra.")
+                           .arg(num(i.contextLength), num(typical)));
+    }
+    if (info.maxContext > 0)
+        t += QLatin1Char(' ') + QCoreApplication::translate("ConnectionTester", "A modell maximuma: %1 token.").arg(num(info.maxContext));
+    if (!info.otherLoaded.isEmpty())
+        t += QLatin1Char(' ') + QCoreApplication::translate("ConnectionTester", "Más betöltött modell: %1.").arg(info.otherLoaded.join(QStringLiteral(", ")));
+    if (text) *text = t;
+}
 
 bool isLocalEndpoint(const QString& baseUrl)
 {
@@ -228,6 +264,23 @@ void ConnectionTester::onFinished(int id, QNetworkReply* reply, qint64 startedMs
     } else {
         describeNetworkError(reply->error(), local, &r);
     }
+    // Saját kulcsos LLM: a natív szerver-API (LM Studio) — betöltött kontextus, párhuzamosság.
+    // Csak olvas (GET); ha nincs ilyen API, az eredmény változatlan.
+    if (r.ok() && d.kind == ProviderKind::Llm && d.authMode != AuthMode::Login) {
+        auto* probe = new LlmServerProbe(this);
+        probe->setTimeoutMs(qMin(m_timeoutMs, 3000));
+        m_probes.insert(id, probe);
+        connect(probe, &LlmServerProbe::finished, this, [this, id, probe, r](const llmctx::LlmServerInfo& info) mutable {
+            probe->deleteLater();
+            if (!m_probes.contains(id)) return;
+            m_probes.remove(id);
+            r.server = info;
+            describeLlmServer(info, &r.serverText, &r.warning);
+            emit finished(id, r);
+        });
+        probe->probe(cfg, /*useCache*/ false);
+        return;
+    }
     emit finished(id, r);
 }
 
@@ -235,12 +288,17 @@ void ConnectionTester::cancel(int id)
 {
     const QPointer<QNetworkReply> reply = m_replies.take(id);
     if (reply) reply->abort();
+    if (const QPointer<QObject> probe = m_probes.take(id)) probe->deleteLater();
 }
 
 void ConnectionTester::cancelAll()
 {
     const auto replies = m_replies;
     m_replies.clear();
+    const auto probes = m_probes;
+    m_probes.clear();
+    for (const QPointer<QObject>& p : probes)
+        if (p) p->deleteLater();
     for (const QPointer<QNetworkReply>& r : replies)
         if (r) r->abort();
 }

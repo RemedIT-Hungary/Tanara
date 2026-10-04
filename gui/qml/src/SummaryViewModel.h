@@ -22,6 +22,7 @@
 // "done" | "memo" (sok szakasz) | "memoShort" | "oldSummary" (memó nélkül) | "oldMemo" (ua., a
 // memó helye látszik) | "running" (újragenerálás fut) | "topicsDoc" | "empty" | "emptyBlocked" |
 // "emptyRunning" | "emptyRunningParts" | "emptyRunningMerge" | "emptyError" | "emptyErrorKept" |
+// "emptyErrorContext" (kontextus-hiba, LM Studio-javítással) |
 // "topics".
 //
 #include "TopicListModel.h"
@@ -93,6 +94,9 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(QString errorDetail READ errorDetail NOTIFY changed)
     Q_PROPERTY(QString fixActionLabel READ fixActionLabel NOTIFY changed)
     Q_PROPERTY(QString fixActionPage READ fixActionPage NOTIFY changed)
+    // Kontextus-hiba LM Studióval: „Betöltés nagyobb kontextussal” — ennyi tokennel töltődik
+    // újra a modell (shell.requestLlmContext), majd a feladat újraindul; 0 → nincs ilyen gomb.
+    Q_PROPERTY(int fixReloadContext READ fixReloadContext NOTIFY changed)
     // Az elbukott futás kész részjegyzetei megvannak (summary.notes.json): az újrapróbálás
     // onnan folytatja.
     Q_PROPERTY(bool errorKeptParts READ errorKeptParts NOTIFY changed)
@@ -166,6 +170,7 @@ public:
     QString errorDetail() const { return m_errorDetail; }
     QString fixActionLabel() const { return m_fixActionLabel; }
     QString fixActionPage() const { return m_fixActionPage; }
+    int fixReloadContext() const { return m_fixReloadContext; }
     bool errorKeptParts() const { return m_errorKeptParts; }
 
     bool stale() const { return m_stale; }
@@ -261,6 +266,7 @@ private:
     QString m_errorDetail;
     QString m_fixActionLabel;
     QString m_fixActionPage;
+    int m_fixReloadContext = 0;
     bool m_errorKeptParts = false;
 
     bool m_stale = false;

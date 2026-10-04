@@ -14,6 +14,7 @@
 #include <QDesktopServices>
 #include <QEventLoop>
 #include <QMetaMethod>
+#include <QTimer>
 #include <QUrl>
 
 namespace tanara_qml {
@@ -112,11 +113,23 @@ void ShellActions::attachController()
     });
     // Feladathoz nem köthető hibák (felvétel, eszköz …). A feladatok hibáit a tracker őrzi
     // (a nézetek hibakártyája mutatja), de a szöveges jel itt is látszik, nem modálisan.
+    // Ha a hiba a megnyitott megbeszélés hibasávjában már látszik, nem ismételjük toastban.
     connect(c, &tanara::AppController::errorOccurred, this, [this](const QString& message) {
+        if (!m_errorInBanner.isEmpty() && message.contains(m_errorInBanner))
+            return;
         emit toastRequested(message, QStringLiteral("danger"), {}, false);
     });
-    if (tanara::MeetingJobTracker* jobs = c->jobs())
+    if (tanara::MeetingJobTracker* jobs = c->jobs()) {
         connect(jobs, &tanara::MeetingJobTracker::jobFinished, this, &ShellActions::onJobFinished);
+        connect(jobs, &tanara::MeetingJobTracker::errorChanged, this,
+                [this, jobs](const QString& meetingId, JobKind kind) {
+            if (meetingId != m_currentMeetingId) return;
+            const tanara::JobError e = jobs->lastError(meetingId, kind);
+            if (!e.isValid()) return;
+            m_errorInBanner = e.message;
+            QTimer::singleShot(0, this, [this] { m_errorInBanner.clear(); });
+        });
+    }
     // A kijelölt megbeszélést törölték (innen vagy máshonnan) → nincs kijelölés.
     if (tanara::MeetingStore* store = c->store())
         connect(store, &tanara::MeetingStore::meetingRemoved, this, [this](const QString& id) {
@@ -506,6 +519,11 @@ void ShellActions::onJobFinished(const QString& meetingId, JobKind kind, tanara:
         toast(tr("Azonosítás megszakítva. A már megtalált nevek megmaradtak."));
     else if (outcome == tanara::JobOutcome::Done)
         toast(speakerSummary(meetingId));
+}
+
+void ShellActions::requestLlmContext(int tokens)
+{
+    if (m_controller) m_controller->requestLlmContext(tokens);
 }
 
 void ShellActions::cancelJob(const QString& meetingId, int jobKind)

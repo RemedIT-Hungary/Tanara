@@ -5,6 +5,7 @@
 // sikertelen HTTP-válaszából (ProviderConfig::onExchange) és a nyers hibaszövegből hívja.
 //
 #include "tanara/jobs/JobTypes.h"
+#include "tanara/llm/LlmContext.h"
 
 namespace tanara {
 
@@ -20,8 +21,32 @@ QString httpFailureDetail(const HttpExchange& ex);
 //  - detail: httpFailureDetail(), vagy — HTTP-váltás nélkül — üres (ha a message már a nyers
 //    szöveg), ill. a nyers szöveg (ha a message általános).
 //  - fixActionHint: "settings:stt" / "settings:llm" kulcs- és címhibáknál, különben üres.
+// A „nem fér a modell kontextusába” hiba javításához ismert körülmények (az AppController
+// tölti a feladat becsült igényéből és a szerver-próbából).
+struct ContextFailureHint {
+    int  recommendedContext = -1;   // a feladathoz ajánlott kontextus (token); -1 = nem tudjuk
+    bool lmStudio = false;          // a szerver LM Studio → a Tanara maga újratöltheti a modellt
+    bool cloud = false;             // Tanara Cloud: nincs mit betölteni, csak a magyarázat
+};
+
+// A kontextus-hiba javító tippjei (JobError::fixActionHint):
+//  "llm:reload-context:<N>"   — LM Studio: újratöltés legalább N tokenes kontextussal + újra,
+//  "settings:llm-context:<N>" — más szerver: a modellt ott kell nagyobb kontextussal betölteni
+//                               (a Beállítások LLM-kártyája); N lehet hiányzó.
+// A tippből a token-szám (0, ha nincs), ill. hogy újratöltés-e.
+int contextFixTokens(const QString& fixActionHint);
+bool isReloadContextHint(const QString& fixActionHint);
+
 JobError describeJobFailure(JobKind kind, const QString& rawMessage,
-                            const HttpExchange* failedExchange = nullptr);
+                            const HttpExchange* failedExchange = nullptr,
+                            const ContextFailureHint* context = nullptr);
+
+// A kontextus-túllépés emberi leírása: „A modell 4096 tokenes kontextussal van betöltve, a
+// kérés 6042 token volt — nem fér bele.” + mit tegyen a felhasználó; a technikai sor JSON
+// nélkül („HTTP 400 · exceed_context_size_error · kérés 6042 token · kontextus 4096 token”).
+// httpStatus: 0, ha nincs HTTP-válasz-adat.
+JobError describeContextOverflow(JobKind kind, const llmctx::ContextOverflow& overflow,
+                                 const ContextFailureHint& hint, int httpStatus = 0);
 
 // Tanara Cloud strukturált hibából (a gateway üzenete már a felhasználó nyelvén van).
 JobError describeCloudFailure(JobKind kind, const CloudError& error);

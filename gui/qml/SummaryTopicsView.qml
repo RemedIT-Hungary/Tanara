@@ -150,6 +150,9 @@ Item {
                 topicState: model.topicState
                 error: model.error
                 errorDetail: model.errorDetail
+                fixActionLabel: model.fixActionLabel
+                fixActionPage: model.fixActionPage
+                fixReloadContext: model.fixReloadContext
                 hasResult: model.hasResult
                 resultText: model.resultText
                 resultDecisions: model.resultDecisions
@@ -159,6 +162,15 @@ Item {
                 blockedReason: root.vm.blocker.reason || ""
 
                 onRunRequested: root.runTopic(topicId)
+                onReloadContextRequested: (tokens) => {
+                    if (root.shell) root.shell.requestLlmContext(tokens)
+                    root.runTopic(topicId)
+                }
+                onSettingsRequested: (page) => {
+                    if (!root.shell) return
+                    if (page === "providers") root.shell.openSettings(page, "llm")
+                    else root.shell.openSettings(page)
+                }
                 onCancelRequested: root.topics.cancelTopic(index)
                 onRemoveRequested: root.removeTopic(index, title, hasResult)
                 onSaveRequested: (newTitle, newSummary) => root.topics.updateTopic(index, newTitle, newSummary)

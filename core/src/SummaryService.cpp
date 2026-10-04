@@ -10,6 +10,8 @@
 #include <QStringList>
 #include <QDebug>
 
+#include <cmath>
+
 namespace tanara {
 
 using namespace summarypipe;
@@ -33,6 +35,30 @@ QString cacheKeyFor(const SummaryRequest& req, const QString& prompt, const QStr
         h.addData(QByteArrayLiteral("\x1f"));
     }
     return QString::fromLatin1(h.result().toHex());
+}
+
+// A felhasználói üzenet közös feje: kontextus + szójegyzék.
+QString headerFor(const SummaryRequest& req)
+{
+    QString out;
+    if (!req.contextNotes.trimmed().isEmpty())
+        out += QStringLiteral("Context / notes:\n") + req.contextNotes.trimmed() + QStringLiteral("\n\n");
+    if (!req.glossary.isEmpty())
+        out += QStringLiteral("Glossary (correct spellings, for fixing speech-recognition errors):\n")
+               + req.glossary.join(QStringLiteral(", ")) + QStringLiteral("\n\n");
+    return out;
+}
+
+// A jegyzet-hívás bemenete a rész nélkül: prompt + fej + rész-fejléc + emlékeztető.
+qint64 notesOverheadChars(const SummaryRequest& req)
+{
+    return resolvePrompt(req.notesPrompt, "notes", req.language).size() + headerFor(req).size()
+         + languageReminder(req.language).size() + 200;
+}
+qint64 singleOverheadChars(const SummaryRequest& req)
+{
+    return resolvePrompt(req.singlePrompt, "single", req.language).size() + headerFor(req).size()
+         + languageReminder(req.language).size() + 20;
 }
 
 QJsonObject readCache(const QString& path)
@@ -81,6 +107,26 @@ SummaryPlan SummaryService::plan(const SummaryRequest& req)
     return p;
 }
 
+int SummaryService::contextNeed(const SummaryRequest& req)
+{
+    const QVector<TranscriptPart> parts = splitTranscript(req.transcript.segments(), req.partMs);
+    if (parts.isEmpty()) return 0;
+    const SummaryPlan p = plan(req);
+    const int notesOut = req.notesMaxTokens > 0 ? req.notesMaxTokens : 3000;
+    const int out = req.maxTokens > 0 ? req.maxTokens : 8000;
+    if (p.singleCall)
+        return llmctx::callContextNeed(singleOverheadChars(req) + parts.first().markdown.size(), out);
+    int need = 0;
+    for (const TranscriptPart& part : parts)
+        need = qMax(need, llmctx::callContextNeed(notesOverheadChars(req) + part.markdown.size(), notesOut));
+    // Az összegzés bemenete a részjegyzetek: részenként jellemzően a jegyzet-keret fele.
+    const qint64 mergeChars = resolvePrompt(req.mergePrompt, "merge", req.language).size()
+                            + headerFor(req).size() + 400;
+    const int mergeNeed = llmctx::callContextNeed(mergeChars, out)
+                        + int(std::ceil(double(parts.size()) * notesOut / 2.0 * llmctx::kSafetyFactor));
+    return qMax(need, mergeNeed);
+}
+
 QString SummaryService::prompt(const QString& given, const char* id) const
 {
     return resolvePrompt(given, id, m_req.language);
@@ -88,8 +134,8 @@ QString SummaryService::prompt(const QString& given, const char* id) const
 
 QString SummaryService::cacheKey(int part) const
 {
-    const QString p = m_parts.size() == 1 ? prompt(m_req.singlePrompt, "single")
-                                          : prompt(m_req.notesPrompt, "notes");
+    const QString p = m_parts.size() == 1 && !m_forceNotes ? prompt(m_req.singlePrompt, "single")
+                                                           : prompt(m_req.notesPrompt, "notes");
     return cacheKeyFor(m_req, p, m_parts.at(part).markdown);
 }
 
@@ -141,15 +187,126 @@ void SummaryService::summarize(const SummaryRequest& req)
         emit summaryFailed(tr("Az átirat üres — nincs mit összefoglalni."));
         return;
     }
+    m_forceNotes = false;
+    m_resplitDone = false;
     m_notes = QVector<PartNotes>(m_parts.size());
     m_done = QVector<bool>(m_parts.size(), false);
     loadCache();
     m_running = true;
 
-    if (m_parts.size() == 1 && !m_done.at(0))
+    // Ismert kontextusnál a túl nagy részeket már most kisebbekre bontjuk (a kész részek
+    // jegyzetei a gyorsítótárból maradnak). Ha nem sikerül, a futás így indul — a szerver
+    // hibája úgyis érthetően besorolódik.
+    if (m_req.contextLimit > 0) {
+        const int before = int(m_parts.size());
+        if (m_parts.size() == 1 && !m_done.at(0) && !singleFits(m_req.contextLimit)) {
+            m_forceNotes = true;
+            loadCache();   // a jegyzet-prompt kulcsával egy korábbi futás jegyzete is jó
+        }
+        if (m_forceNotes || m_parts.size() > 1)
+            fitParts(llmctx::partBudgetChars(m_req.contextLimit, notesOverheadChars(m_req),
+                                             m_req.notesMaxTokens));
+        if (m_parts.size() != before || m_forceNotes) {
+            int cached = 0;
+            for (bool d : std::as_const(m_done)) cached += d ? 1 : 0;
+            emit partsChanged(int(m_parts.size()), cached);
+        }
+    }
+    startFlow();
+}
+
+void SummaryService::startFlow()
+{
+    if (m_parts.size() == 1 && !m_done.at(0) && !m_forceNotes)
         startSingle();
     else
         startNextNotes();
+}
+
+bool SummaryService::singleFits(int contextTokens) const
+{
+    const qint64 input = singleOverheadChars(m_req) + m_parts.value(0).markdown.size();
+    return llmctx::callContextNeed(input, m_req.maxTokens) <= contextTokens;
+}
+
+bool SummaryService::fitParts(int budgetChars)
+{
+    if (budgetChars <= 0) return false;
+    const QVector<Utterance> segs = m_req.transcript.segments();
+    QVector<TranscriptPart> parts;
+    QVector<PartNotes> notes;
+    QVector<bool> done;
+    bool changed = false;
+    for (int i = 0; i < m_parts.size(); ++i) {
+        const TranscriptPart& p = m_parts.at(i);
+        if (m_done.at(i) || p.markdown.size() <= budgetChars) {
+            parts.append(p);
+            notes.append(m_notes.at(i));
+            done.append(m_done.at(i));
+            continue;
+        }
+        QVector<Utterance> mine;
+        for (const Utterance& u : segs)
+            if (u.startMs >= p.startMs && u.endMs <= p.endMs) mine.append(u);
+        const QVector<TranscriptPart> sub = splitTranscriptByChars(mine, budgetChars);
+        if (sub.isEmpty()) return false;   // egy bekezdés önmagában sem fér bele
+        for (const TranscriptPart& sp : sub) {
+            parts.append(sp);
+            notes.append(PartNotes{});
+            done.append(false);
+        }
+        changed = true;
+    }
+    if (!changed) return true;
+    for (int i = 0; i < parts.size(); ++i) {
+        parts[i].index = i;
+        notes[i].index = i;
+    }
+    m_parts = parts;
+    m_notes = notes;
+    m_done = done;
+    loadCache();   // az új (kisebb) részek közül, ami egy korábbi futásból kész, az marad
+    return true;
+}
+
+bool SummaryService::recoverFromOverflow(const llmctx::ContextOverflow& ov, qint64 failedInputChars)
+{
+    if (!m_req.adaptToContext || m_resplitDone || !ov.matched || ov.contextTokens <= 0)
+        return false;
+    m_resplitDone = true;
+    emit contextLimitDetected(ov.contextTokens);
+    int budget = llmctx::partBudgetChars(ov.contextTokens, notesOverheadChars(m_req),
+                                         m_req.notesMaxTokens);
+    // A szerver a kérés valódi tokenszámát is megmondhatja: a mért karakter/token arány
+    // pontosabb a becslésnél (sűrű szövegnél kevesebb karakter jut egy tokenre).
+    if (budget > 0 && ov.promptTokens > 0 && failedInputChars > 0) {
+        const double ratio = double(failedInputChars) / ov.promptTokens;
+        const double room = double(ov.contextTokens - m_req.notesMaxTokens) / llmctx::kSafetyFactor
+                          - llmctx::kTemplateOverheadTokens;
+        const int measured = int(std::floor(room * ratio)) - int(notesOverheadChars(m_req));
+        budget = qMin(budget, measured);
+        if (budget < int(llmctx::kMinPartTokens * ratio)) budget = -1;
+    }
+    if (budget <= 0) {
+        qWarning().noquote() << "[Summary] a kontextus (" << ov.contextTokens
+                             << " token) a legkisebb részhez is kevés — nem bontunk tovább";
+        return false;
+    }
+    const int before = int(m_parts.size());
+    const bool wasSingle = m_parts.size() == 1 && !m_forceNotes;
+    if (wasSingle) m_forceNotes = true;
+    if (!fitParts(budget)) {
+        qWarning().noquote() << "[Summary] egy bekezdés önmagában sem fér a kontextusba";
+        return false;
+    }
+    if (m_parts.size() == before && !wasSingle) return false;   // nem lett kisebb: nem segít
+    int cached = 0;
+    for (bool d : std::as_const(m_done)) cached += d ? 1 : 0;
+    qInfo().noquote().nospace() << "[Summary] kontextus " << ov.contextTokens
+        << " token → újrabontás: " << before << " → " << m_parts.size() << " rész (keret "
+        << budget << " karakter)";
+    emit partsChanged(int(m_parts.size()), cached);
+    return true;
 }
 
 void SummaryService::cancel()
@@ -173,17 +330,11 @@ QString SummaryService::reminder() const
 // A felhasználói üzenet közös feje: kontextus + szójegyzék.
 QString SummaryService::userHeader() const
 {
-    QString out;
-    if (!m_req.contextNotes.trimmed().isEmpty())
-        out += QStringLiteral("Context / notes:\n") + m_req.contextNotes.trimmed() + QStringLiteral("\n\n");
-    if (!m_req.glossary.isEmpty())
-        out += QStringLiteral("Glossary (correct spellings, for fixing speech-recognition errors):\n")
-               + m_req.glossary.join(QStringLiteral(", ")) + QStringLiteral("\n\n");
-    return out;
+    return headerFor(m_req);
 }
 
 void SummaryService::call(const QString& system, const QString& user, int maxTokens,
-                          std::function<void(const QString&)> onText)
+                          std::function<void(const QString&)> onText, bool adaptive)
 {
     LlmRequest req;
     req.model = m_req.model;
@@ -203,10 +354,20 @@ void SummaryService::call(const QString& system, const QString& user, int maxTok
         self->m_job.clear();
         onText(text);
     });
-    connect(job, &LlmJob::failed, this, [self, job](const QString& error) {
+    const qint64 inputChars = system.size() + user.size();
+    connect(job, &LlmJob::failed, this, [self, job, adaptive, inputChars](const QString& error) {
         job->deleteLater();
         if (!self || self->m_cancelled) return;
         self->m_job.clear();
+        // Jegyzet- / egylépéses hívás „nem fér a kontextusba” hibája: a hátralévő részek
+        // kisebbekre bontva folytatódnak (egyszer). Az összegzés bemenetét nem lehet bontani.
+        if (adaptive) {
+            const llmctx::ContextOverflow ov = llmctx::parseContextOverflow(job->errorBody(), error);
+            if (self->recoverFromOverflow(ov, inputChars)) {
+                self->startFlow();
+                return;
+            }
+        }
         self->fail(error);
     });
 }
@@ -245,7 +406,7 @@ void SummaryService::startNextNotes()
         m_done[k] = true;
         storeCache(k, text);
         startNextNotes();
-    });
+    }, /*adaptive*/ true);
 }
 
 void SummaryService::startMerge()
@@ -295,7 +456,7 @@ void SummaryService::startSingle()
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         m_notes[0] = r.notes;
         emit summaryReady(buildSummary(r.merge, m_notes, m_speakers));
-    });
+    }, /*adaptive*/ true);
 }
 
 // ---- Summary::renderMarkdown (a Types.h-ban deklarálva) --------------------

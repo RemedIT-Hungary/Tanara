@@ -14,6 +14,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/provider/ProviderDescriptor.h"
+#include "tanara/llm/LlmContext.h"
 
 #include <QHash>
 #include <QObject>
@@ -42,7 +43,15 @@ struct ConnectionTestResult {
     QString message;             // emberi mondat a UI nyelvén (hiba esetén)
     QString warning;             // siker mellett: pl. a beállított modell nincs a listában
     QStringList models;          // ha a próba modell-listát ad (rendezve)
+    // Saját kulcsos LLM-nél, sikeres próba után: a natív szerver-API (LM Studio) adatai —
+    // betöltött kontextus, párhuzamosság, a modell maximuma. Más szervernél kind == Unknown.
+    llmctx::LlmServerInfo server;
+    QString serverText;          // emberi sor a fentiből (üres, ha nincs natív API)
 };
+
+// A szerver-próba emberi összefoglalója (serverText) és figyelmeztetései (parallel > 1, kevés
+// kontextus). Tiszta függvény — tesztelhető. *warning-hoz HOZZÁFŰZ (meglévő figyelmeztetés mögé).
+void describeLlmServer(const llmctx::LlmServerInfo& info, QString* text, QString* warning);
 
 // A cím a saját gépre / helyi hálózatra mutat-e (localhost, 127.0.0.0/8, ::1, RFC 1918,
 // *.local) — ilyenkor az API-kulcs jellemzően nem kell.
@@ -63,7 +72,7 @@ public:
     // Egy futó próba eldobása (nem jön rá finished).
     void cancel(int id);
     void cancelAll();
-    bool running(int id) const { return m_replies.contains(id); }
+    bool running(int id) const { return m_replies.contains(id) || m_probes.contains(id); }
 
     // Egy HTTP-státusz besorolása + emberi mondata és technikai kódja (tesztelhető).
     static void describeHttp(int httpStatus, bool hadKey, bool local, ConnectionTestResult* out);
@@ -77,6 +86,7 @@ private:
 
     QNetworkAccessManager* m_nam = nullptr;
     QHash<int, QPointer<QNetworkReply>> m_replies;
+    QHash<int, QPointer<QObject>> m_probes;   // a natív szerver-próba (LLM) futás közben
     int m_nextId = 1;
     int m_timeoutMs = 8000;
 };

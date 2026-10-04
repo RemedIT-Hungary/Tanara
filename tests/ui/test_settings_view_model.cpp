@@ -1114,6 +1114,51 @@ private slots:
         QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
     }
 
+    // A modell kontextusa (ProviderConfig::contextLength): automatikus vagy rögzített token.
+    void contextLengthRoundTrip()
+    {
+        startApp();
+        SettingsViewModel vm;
+        vm.setController(m_app.get());
+        QVERIFY(vm.llm()->contextAvailable());
+        QVERIFY(!vm.stt()->contextAvailable());
+        QCOMPARE(vm.llm()->contextLength(), 0);                // automatikus
+        const QVariantList opts = vm.llm()->contextOptions();
+        QCOMPARE(opts.first().toMap().value("value").toString(), QStringLiteral("0"));
+        bool has16k = false;
+        for (const QVariant& o : opts) has16k = has16k || o.toMap().value("value").toString() == QLatin1String("16384");
+        QVERIFY(has16k);
+        QSignalSpy values(vm.llm(), &SettingsProviderModel::valuesChanged);
+        vm.llm()->setContextLength(16384);
+        QCOMPARE(values.size(), 1);
+        QCOMPARE(vm.changeCount(), 1);
+        QVERIFY(vm.save());
+        QCOMPARE(live().llmSelected().contextLength, 16384);
+        vm.llm()->setContextLength(-5);                        // érvénytelen → automatikus
+        QCOMPARE(vm.llm()->contextLength(), 0);
+        QVERIFY(vm.save());
+        QCOMPARE(live().llmSelected().contextLength, 0);
+
+        // A fájlból jövő egyedi érték megmarad, és a választható értékek közé kerül.
+        AppSettings s = live();
+        s.llmConfigs[s.llmProviderId].contextLength = 12345;
+        m_app->settings()->setSettings(s);
+        SettingsViewModel again;
+        again.setController(m_app.get());
+        QCOMPARE(again.llm()->contextLength(), 12345);
+        bool hasCustom = false;
+        for (const QVariant& o : again.llm()->contextOptions())
+            hasCustom = hasCustom || o.toMap().value("value").toString() == QLatin1String("12345");
+        QVERIFY(hasCustom);
+        again.llm()->setContextLength(0);
+        QVERIFY(again.dirty());
+        again.discard();
+        QCOMPARE(again.llm()->contextLength(), 12345);
+        // A szerver-adat üres, amíg nem kérdeztük (nincs natív API a teszt-címen).
+        QVERIFY(again.llm()->serverInfo().isEmpty());
+        QCOMPARE(again.llm()->serverLoadedContext(), -1);
+    }
+
     // ---- mély hivatkozás (B04) -----------------------------------------------------------
 
     void deepLinkHighlightsAndReturnsAfterSave()

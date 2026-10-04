@@ -219,6 +219,7 @@ QJsonObject toJson(const ProviderConfig& p)
     o[QStringLiteral("temperature")] = p.temperature;
     o[QStringLiteral("maxTokens")]   = p.maxTokens;
     o[QStringLiteral("reasoning")]   = p.reasoning;
+    o[QStringLiteral("contextLength")] = p.contextLength;
     if (!p.extra.isEmpty())
         o[QStringLiteral("extra")] = QJsonObject::fromVariantMap(p.extra);
     return o;
@@ -234,6 +235,7 @@ ProviderConfig providerConfigFromJson(const QJsonObject& o)
     p.temperature = o.value(QStringLiteral("temperature")).toDouble(0.2);
     p.maxTokens   = o.value(QStringLiteral("maxTokens")).toInt(8000);
     p.reasoning   = o.value(QStringLiteral("reasoning")).toString(p.reasoning);
+    p.contextLength = qMax(0, o.value(QStringLiteral("contextLength")).toInt(0));
     // apiKey-t SOHA nem olvasunk JSON-ből; futásidőben a KeyStore tölti.
     if (o.contains(QStringLiteral("extra")))
         p.extra = o.value(QStringLiteral("extra")).toObject().toVariantMap();

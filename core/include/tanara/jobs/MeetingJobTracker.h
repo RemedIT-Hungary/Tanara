@@ -71,6 +71,9 @@ public:
                const QVector<JobStage>& stages = {}, bool cancellable = true);
     void setStage(const QString& meetingId, JobKind kind, const QString& stageId,
                   StageState state, int percent = -1, const QString& detail = QString());
+    // A teljes szakasz-lista cseréje futás közben (pl. „Modell betöltése” szakasz beszúrása,
+    // vagy a részek számának változása után).
+    void setStages(const QString& meetingId, JobKind kind, const QVector<JobStage>& stages);
     // Csak a szakasz százaléka / részlete (az állapota marad).
     void setStagePercent(const QString& meetingId, JobKind kind, const QString& stageId, int percent);
     void setStageDetail(const QString& meetingId, JobKind kind, const QString& stageId,

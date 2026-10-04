@@ -28,6 +28,8 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/jobs/JobErrors.h"
+#include "tanara/llm/LlmServer.h"
 
 using namespace tanara;
 
@@ -164,6 +166,11 @@ private slots:
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
     void summarizeCancelBetweenParts();
+    // LLM-kontextus (lásd llm/LlmContext.h, llm/LlmServer.h).
+    void summarizeAdaptsToSmallContext();
+    void summarizeContextTooSmall();
+    void summarizeLoadsModelOnLmStudio();
+    void summarizeLoadRefusedAndCancelDuringLoad();
     void estimateDescribesQuickSummaryCalls();
     void topicsEditReorderAndStatuses();
     void cancelTopicQueue();
@@ -183,6 +190,9 @@ private:
     Meeting recording(const QString& title, int seconds);
     Meeting transcribed(const QString& title);
     Meeting transcribedLong(const QString& title, int minutes);
+    // Mint a transcribedLong, de hosszú (~600 karakteres) bekezdésekkel — egy 15 perces rész
+    // így ~17 ezer karakter.
+    Meeting transcribedDense(const QString& title, int minutes);
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<FakeHttp> m_http;
@@ -205,6 +215,7 @@ void AppJobsTest::init()
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
     m_http = std::make_unique<FakeHttp>();
+    LlmServerProbe::invalidateCache();   // a port újrahasznosulhat: a régi szerver-adat ne maradjon
     newApp();
 }
 
@@ -580,7 +591,10 @@ void AppJobsTest::summarizeCancelAndFailure()
 {
     const Meeting m = transcribed("Megszakított összefoglaló");
     // 1) Függő LLM-hívás megszakítása.
-    m_http->handler = [](const FakeRequest&) -> FakeReply { FakeReply r; r.hold = true; return r; };
+    m_http->handler = [](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // nincs natív API
+        FakeReply h; h.hold = true; return h;
+    };
     QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
     QSignalSpy ready(m_app.get(), &AppController::summaryReady);
     m_app->summarizeMeeting(m.id);
@@ -743,6 +757,233 @@ void AppJobsTest::summarizePartFailureResumes()
     QCOMPARE(m_http->count("POST", "/chat/completions") - before, 3);   // 2. + 3. rész + összegzés
     QCOMPARE(m_app->summaryDocument(m.id).summary.memo.size(), 3);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
+}
+
+Meeting AppJobsTest::transcribedDense(const QString& title, int minutes)
+{
+    Meeting m = recording(title, 1);
+    QJsonArray toks;
+    const QString filler = QStringLiteral(" Ez a mondat azért van itt, hogy a bekezdés hosszú legyen, ahogy egy "
+                                          "valódi megbeszélésen is sok szó hangzik el fél perc alatt.");
+    for (int i = 0; i < minutes * 2; ++i)
+        toks.append(QJsonObject{{"text", QStringLiteral(" A(z) %1. bekezdés.").arg(i) + filler + filler + filler + filler},
+                                {"speaker", i % 2 ? "Beszélő 2" : "Beszélő 1"}, {"startMs", i * 30000},
+                                {"endMs", i * 30000 + 20000}, {"confidence", 0.9}, {"trackId", "mixdown"}});
+    QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
+    f.close();
+    m.hasTranscript = true;
+    m.durationMs = qint64(minutes) * 60000;
+    m_app->store()->saveMeeting(m);
+    return m;
+}
+
+namespace {
+// Natív API nélküli szerver (pl. llama.cpp), ami a túl hosszú jegyzet-kérést a llama.cpp
+// hibájával utasítja el. A szerver „tokenje” itt 2,5 karakter; a jegyzet-kérésbe a rendszer-
+// prompt mellett legfeljebb allowUser karakter fér (+ a 3000 tokenes kimeneti keret).
+struct SmallContextServer {
+    int allowUser = 8000;
+    int overflows = 0;
+    int notesCalls = 0;
+    int maxNotesUser = 0;
+    FakeReply operator()(const FakeRequest& r) {
+        if (!r.path.endsWith("/chat/completions")) return {404, R"({"error":"Unexpected endpoint"})"};
+        const QJsonArray msgs = QJsonDocument::fromJson(r.body).object().value("messages").toArray();
+        const int system = int(msgs.at(0).toObject().value("content").toString().size());
+        int input = 0;
+        for (const QJsonValue& v : msgs) input += int(v.toObject().value("content").toString().size());
+        const int k = notesPart(r);
+        if (k > 0) {
+            ++notesCalls;
+            const int allowed = system + allowUser;
+            if (input > allowed) {
+                ++overflows;
+                const int nCtx = 3000 + int(std::ceil(allowed / 2.5));
+                const int nPrompt = int(std::ceil(input / 2.5));
+                return {400, QStringLiteral(R"({"error":{"code":400,"message":"request (%1 tokens) exceeds the available context size (%2 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":%1,"n_ctx":%2}})")
+                                 .arg(nPrompt).arg(nCtx).toUtf8()};
+            }
+            maxNotesUser = qMax(maxNotesUser, input - system);
+            return {200, chat(partNotes(k))};
+        }
+        return {200, chat(QString::fromUtf8(kMergeOk))};
+    }
+};
+
+// LM Studio natív API-ja (GET /api/v1/models, POST load / unload) + chat, állapottal.
+struct FakeLmStudio {
+    QString model = QStringLiteral("teszt-modell");
+    int ctx = 4096;            // 0 = nincs betöltve
+    int parallel = 4;
+    bool refuseLoad = false;
+    bool holdLoad = false;
+    QVector<QJsonObject> loads;
+    QStringList order;         // a kérések sorrendje (models | unload | load | chat)
+    QString chatReply;
+    FakeReply operator()(const FakeRequest& r) {
+        if (r.path == "/api/v1/models") {
+            order << "models";
+            QJsonArray inst;
+            if (ctx > 0)
+                inst.append(QJsonObject{{"id", model}, {"config", QJsonObject{{"context_length", ctx}, {"parallel", parallel}}}});
+            const QJsonArray models{QJsonObject{{"type", "llm"}, {"key", model}, {"loaded_instances", inst},
+                                                {"max_context_length", 131072}}};
+            return {200, QJsonDocument(QJsonObject{{"models", models}}).toJson(QJsonDocument::Compact)};
+        }
+        if (r.path == "/api/v1/models/unload") { order << "unload"; ctx = 0; return {200, R"({"instance_id":"teszt-modell"})"}; }
+        if (r.path == "/api/v1/models/load") {
+            order << "load";
+            const QJsonObject b = QJsonDocument::fromJson(r.body).object();
+            loads << b;
+            if (holdLoad) { FakeReply h; h.hold = true; return h; }
+            if (refuseLoad)
+                return {500, R"({"error":{"type":"insufficient_resources","message":"Model loading was stopped due to insufficient system resources."}})"};
+            ctx = b.value("context_length").toInt();
+            parallel = b.value("parallel").toInt();
+            return {200, QStringLiteral(R"({"instance_id":"teszt-modell","status":"loaded","load_config":{"context_length":%1}})")
+                             .arg(ctx).toUtf8()};
+        }
+        if (r.path.endsWith("/chat/completions")) { order << "chat"; return {200, chat(chatReply)}; }
+        return {404, "{}"};
+    }
+};
+} // namespace
+
+// Natív API nélküli szerver, kicsi kontextus: a „nem fér bele” hibából a hátralévő részek
+// kisebbekre bontva folytatódnak (egyszer); a következő futás már eleve így bont.
+void AppJobsTest::summarizeAdaptsToSmallContext()
+{
+    const Meeting m = transcribedDense("Kis kontextus", 40);   // 3 rész, ~17 ezer karakter
+    auto srv = std::make_shared<SmallContextServer>();
+    m_http->handler = [srv](const FakeRequest& r) { return (*srv)(r); };
+    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy progress(m_app->jobs(), &MeetingJobTracker::jobProgressChanged);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(20000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(srv->overflows, 1);                    // csak az első kérés bukott
+    QVERIFY2(srv->notesCalls > 4, qPrintable(QString::number(srv->notesCalls)));
+    QVERIFY(srv->maxNotesUser <= srv->allowUser);
+    // A szakaszok a több részre váltottak (a darab-haladás az új részszámot mutatja).
+    int maxTotal = 0;
+    for (const auto& args : progress)
+        maxTotal = qMax(maxTotal, args.at(1).value<JobProgress>().total);
+    QVERIFY2(maxTotal > 3, qPrintable(QString::number(maxTotal)));
+    QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
+
+    // Újra: a megtanult kontextussal már nincs túllépés.
+    const int calls = srv->notesCalls;
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(20000));
+    QCOMPARE(srv->overflows, 1);
+    QVERIFY(srv->notesCalls > calls);
+}
+
+// Ha a kontextus a legkisebb részhez sem elég: érthető hiba a szükséges minimummal; nincs
+// ismétlés, nincs nyers JSON.
+void AppJobsTest::summarizeContextTooSmall()
+{
+    const Meeting m = transcribedDense("Túl kicsi kontextus", 40);
+    auto srv = std::make_shared<SmallContextServer>();
+    srv->allowUser = 1500;
+    m_http->handler = [srv](const FakeRequest& r) { return (*srv)(r); };
+    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    m_app->summarizeMeeting(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 15000);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QCOMPARE(srv->notesCalls, 1);
+    const JobError e = m_app->processingState(m.id).summaryError;
+    QVERIFY2(e.fixActionHint.startsWith(QStringLiteral("settings:llm-context:")), qPrintable(e.fixActionHint));
+    QVERIFY(contextFixTokens(e.fixActionHint) >= 8192);
+    QVERIFY2(e.message.contains(QStringLiteral("kontextussal")), qPrintable(e.message));
+    QVERIFY(!e.message.contains(QLatin1Char('{')));
+    QVERIFY(!e.detail.contains(QLatin1Char('{')));
+    QVERIFY(e.detail.contains(QStringLiteral("exceed_context_size_error")));
+    QCOMPARE(m_errors.size(), 1);
+    QVERIFY(!m_errors.first().contains(QLatin1Char('{')));
+}
+
+// LM Studio: 4096-os kontextus, parallel 4 (az incidens) → a feladat első szakaszában a modell
+// kivétele és újratöltése egy szálon, elég kontextussal; utána a hívás. A „Betöltés nagyobb
+// kontextussal” kérés a következő futásnál nagyobbra tölt; ha minden jó, nincs betöltés.
+void AppJobsTest::summarizeLoadsModelOnLmStudio()
+{
+    auto lm = std::make_shared<FakeLmStudio>();
+    lm->chatReply = QStringLiteral(R"({"execSummary":"Rövid.","decisions":[],"actionItems":[]})");
+    m_http->handler = [lm](const FakeRequest& r) { return (*lm)(r); };
+    const Meeting m = transcribed("LM Studio");
+    QSignalSpy ready(m_app.get(), &AppController::summaryReady);
+    QSignalSpy progress(m_app->jobs(), &MeetingJobTracker::jobProgressChanged);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QCOMPARE(lm->order, (QStringList{"models", "unload", "load", "chat"}));
+    QCOMPARE(lm->loads.size(), 1);
+    QCOMPARE(lm->loads[0].value("parallel").toInt(), 1);
+    const int first = lm->loads[0].value("context_length").toInt();
+    QVERIFY2(first >= 8192 && first <= 32768, qPrintable(QString::number(first)));
+    bool sawModelStage = false;
+    for (const auto& args : progress) {
+        const JobProgress p = args.at(1).value<JobProgress>();
+        if (const JobStage* st = p.stage(QStringLiteral("model")))
+            sawModelStage = sawModelStage || st->state == StageState::Running;
+    }
+    QVERIFY(sawModelStage);
+
+    // „Betöltés nagyobb kontextussal”: a következő futás előtt 65 536-tal tölt újra.
+    m_app->requestLlmContext(65536);
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QCOMPARE(lm->loads.size(), 2);
+    QCOMPARE(lm->loads[1].value("context_length").toInt(), 65536);
+
+    // A betöltött példány megfelel: nincs újratöltés (a kérés egyszer volt érvényes).
+    lm->order.clear();
+    m_app->summarizeMeeting(m.id);
+    QVERIFY(ready.wait(10000));
+    QCOMPARE(lm->loads.size(), 2);
+    QVERIFY(!lm->order.contains(QStringLiteral("load")));
+    QVERIFY(!lm->order.contains(QStringLiteral("unload")));
+}
+
+// A betöltés elutasítva (nem fér a videókártyára): egyetlen kísérlet, érthető hiba, nincs
+// chat-kérés. Betöltés közbeni megszakítás: nincs hiba, nincs chat.
+void AppJobsTest::summarizeLoadRefusedAndCancelDuringLoad()
+{
+    auto lm = std::make_shared<FakeLmStudio>();
+    lm->ctx = 0;
+    lm->refuseLoad = true;
+    m_http->handler = [lm](const FakeRequest& r) { return (*lm)(r); };
+    const Meeting m = transcribed("Nem fér");
+    QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
+    m_app->summarizeMeeting(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
+    QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
+    QTest::qWait(100);
+    QCOMPARE(lm->loads.size(), 1);
+    QVERIFY(!lm->order.contains(QStringLiteral("chat")));
+    const JobError e = m_app->processingState(m.id).summaryError;
+    QVERIFY2(e.message.contains(QStringLiteral("nem fér a videókártyára")), qPrintable(e.message));
+    QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-context"));
+    QCOMPARE(m_errors.size(), 1);
+
+    // Megszakítás betöltés közben.
+    m_app->jobs()->clearError(m.id, JobKind::Summarize);
+    m_errors.clear();
+    lm->refuseLoad = false;
+    lm->holdLoad = true;
+    m_app->summarizeMeeting(m.id);
+    QTRY_COMPARE_WITH_TIMEOUT(lm->loads.size(), 2, 10000);
+    QVERIFY(m_app->jobs()->job(m.id, JobKind::Summarize).stage(QStringLiteral("model")));
+    QVERIFY(m_app->cancelJob(m.id, JobKind::Summarize));
+    QCOMPARE(finished.count(), 2);
+    QCOMPARE(finished.at(1).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
+    QTest::qWait(200);
+    QVERIFY(!lm->order.contains(QStringLiteral("chat")));
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
+    QVERIFY(!m_app->processingState(m.id).summaryError.isValid());
 }
 
 void AppJobsTest::summarizeCancelBetweenParts()
@@ -910,9 +1151,10 @@ void AppJobsTest::cancelTopicQueue()
         {QString(), QStringLiteral("C"), QString()}});
     // Az első elemzés sikerül, a második „beragad”.
     int call = 0;
-    m_http->handler = [&call](const FakeRequest&) -> FakeReply {
+    m_http->handler = [&call](const FakeRequest& r) -> FakeReply {
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // nincs natív API
         if (++call == 1) return {200, chat(QStringLiteral("Elemzés.\n\n## Döntések\n- d\n"))};
-        FakeReply r; r.hold = true; return r;
+        FakeReply h; h.hold = true; return h;
     };
     QSignalSpy oneReady(m_app.get(), &AppController::topicAnalysisReady);
     QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);

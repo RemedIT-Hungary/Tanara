@@ -5,6 +5,7 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/jobs/JobErrors.h"
 #include "tanara/provider/ProviderRegistry.h"
 
 #include <QCoreApplication>
@@ -66,6 +67,14 @@ FixAction fixActionForError(const tanara::JobError& error)
         return {};
     if (hint.startsWith(QLatin1String("cloud")) || hint.startsWith(QLatin1String("login:")))
         return {trj("Tanara Cloud fiók"), QStringLiteral("cloud")};
+    // Kontextus-hiba: a Beállítások LLM-kártyája (kontextus-beállítás); LM Studiónál mellette
+    // az újratöltés-és-újra gomb is.
+    if (hint.contains(QLatin1String("-context"))) {
+        FixAction a{QCoreApplication::translate("JobSupport", "Beállítások"), QStringLiteral("providers")};
+        if (tanara::isReloadContextHint(hint))
+            a.reloadContext = tanara::contextFixTokens(hint);
+        return a;
+    }
     if (hint.startsWith(QLatin1String("settings"))) {
         // Kulcs-hibánál (401 / 403) a gomb a kulcsot nevezi meg; különben a szolgáltatót.
         const bool keyProblem = error.detail.contains(QLatin1String("HTTP 401"))

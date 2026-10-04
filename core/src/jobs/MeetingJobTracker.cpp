@@ -405,6 +405,15 @@ void MeetingJobTracker::setStagePercent(const QString& meetingId, JobKind kind,
     }
 }
 
+void MeetingJobTracker::setStages(const QString& meetingId, JobKind kind, const QVector<JobStage>& stages)
+{
+    JobProgress* j = find(meetingId, kind);
+    if (!j) return;
+    j->stages = stages;
+    emit jobProgressChanged(meetingId, *j);
+    emit stateChanged(meetingId);
+}
+
 void MeetingJobTracker::setStageDetail(const QString& meetingId, JobKind kind,
                                        const QString& stageId, const QString& detail)
 {

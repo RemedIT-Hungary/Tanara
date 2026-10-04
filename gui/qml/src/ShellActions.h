@@ -79,6 +79,9 @@ public:
     Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId);
     Q_INVOKABLE void identifyParticipants(const QString& meetingId);
     Q_INVOKABLE void cancelJob(const QString& meetingId, int jobKind);
+    // „Betöltés nagyobb kontextussal” (LM Studio): a következő LLM-feladat előtt a modell
+    // legalább ennyi tokenes kontextussal töltődik újra. A feladatot a hívó indítja újra.
+    Q_INVOKABLE void requestLlmContext(int tokens);
     Q_INVOKABLE void revealInFolder(const QString& meetingId);
     Q_INVOKABLE QString pickAudioFile();
     Q_INVOKABLE QStringList pickAudioFiles();
@@ -165,6 +168,9 @@ private:
     int m_readinessRevision = 0;
     QSet<QString> m_identifyRequested;              // a felhasználó kérte az azonosítást
     QHash<QString, QString> m_participantGuesses;   // meetingId → összegző mondat (munkamenet)
+    // Az épp most rögzített, a megnyitott megbeszélés hibasávjában LÁTHATÓ feladat-hiba
+    // üzenete (ugyanabban az esemény-körben érkező errorOccurred-ből nem lesz második toast).
+    QString m_errorInBanner;
 
     // confirm(): beágyazott eseményhurok, amíg a QML-ablak válaszol.
     class QEventLoop* m_confirmLoop = nullptr;

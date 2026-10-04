@@ -165,6 +165,8 @@ void OpenAiCompatibleJob::onFinished()
             else if (ev.isString()) apiMsg = ev.toString();
         }
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        m_errorStatus = status;
+        m_errorBody = data;
         emit failed(apiMsg.isEmpty()
             ? tr("Hálózati hiba: %1").arg(reply->errorString())
             : tr("LLM hiba (HTTP %1): %2").arg(status).arg(apiMsg));

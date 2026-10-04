@@ -1420,6 +1420,13 @@ void SettingsViewModel::loadDemo()
         m_page = QStringLiteral("services");
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
         m_llm->setAdvancedOpen(true);
+        llmctx::LlmServerInfo info;   // LM Studio: a modell betöltve, egy szálon
+        info.kind = llmctx::LlmServerInfo::Kind::LmStudio;
+        info.modelListed = true;
+        info.modelKey = QStringLiteral("google/gemma-4-12b-qat");
+        info.maxContext = 131072;
+        info.instances = {{info.modelKey, 20480, 1}};
+        m_llm->setDemoServerInfo(info);
     } else if (st == QLatin1String("B05")) {
         m_page = QStringLiteral("services");
         m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());

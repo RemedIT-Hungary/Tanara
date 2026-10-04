@@ -39,10 +39,14 @@ QString stageStateName(tanara::StageState state);
 struct FixAction {
     QString label;      // üres → nincs javító gomb
     QString page;       // "", "providers", "cloud", "summary", "watcher"
+    // Kontextus-hiba LM Studióval: a „Betöltés nagyobb kontextussal” gomb tokenszáma (a modell
+    // ennyivel töltődik újra, és a feladat újraindul); 0 → nincs ilyen gomb.
+    int reloadContext = 0;
     bool isValid() const { return !label.isEmpty(); }
 };
 
-// Bukott feladat fixActionHint-je ("settings:stt" | "settings:llm" | "cloud" | …) → gomb.
+// Bukott feladat fixActionHint-je ("settings:stt" | "settings:llm" | "settings:llm-context:N" |
+// "llm:reload-context:N" | "cloud" | …) → gomb(ok).
 FixAction fixActionForError(const tanara::JobError& error);
 
 // Kapuzás (canRun) → a figyelmeztető sáv tartalma: { title, text, actionLabel, actionPage,

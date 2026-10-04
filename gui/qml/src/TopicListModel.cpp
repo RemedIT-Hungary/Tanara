@@ -1,5 +1,7 @@
 #include "TopicListModel.h"
 
+#include "JobSupport.h"
+
 #include "tanara/AppController.h"
 
 #include <QHash>
@@ -13,6 +15,7 @@ bool TopicListModel::Item::operator==(const Item& o) const
 {
     return topic.id == o.topic.id && topic.title == o.topic.title && topic.summary == o.topic.summary
         && state == o.state && error == o.error && errorDetail == o.errorDetail
+        && fixActionHint == o.fixActionHint
         && hasResult == o.hasResult && result.detail == o.result.detail
         && result.decisions == o.result.decisions
         && result.openQuestions == o.result.openQuestions
@@ -51,6 +54,18 @@ QVariant TopicListModel::data(const QModelIndex& index, int role) const
     case StateRole:       return stateName(it.state);
     case ErrorRole:       return it.error;
     case ErrorDetailRole: return it.errorDetail;
+    case FixActionLabelRole:
+    case FixActionPageRole:
+    case FixReloadContextRole: {
+        JobError e;
+        e.message = it.error;
+        e.detail = it.errorDetail;
+        e.fixActionHint = it.fixActionHint;
+        const jobsupport::FixAction fix = jobsupport::fixActionForError(e);
+        if (role == FixActionLabelRole) return fix.label;
+        if (role == FixActionPageRole) return fix.page;
+        return fix.reloadContext;
+    }
     case HasResultRole:   return it.hasResult;
     case ResultTextRole:  return it.result.detail;
     case ResultDecisionsRole: return it.result.decisions;
@@ -75,6 +90,8 @@ QHash<int, QByteArray> TopicListModel::roleNames() const
         {HasResultRole, "hasResult"}, {ResultTextRole, "resultText"},
         {ResultDecisionsRole, "resultDecisions"}, {ResultActionsRole, "resultActions"},
         {ResultOpenQuestionsRole, "resultOpenQuestions"},
+        {FixActionLabelRole, "fixActionLabel"}, {FixActionPageRole, "fixActionPage"},
+        {FixReloadContextRole, "fixReloadContext"},
     };
 }
 
@@ -181,6 +198,7 @@ void TopicListModel::sync()
             it.state = st.state;
             it.error = st.error;
             it.errorDetail = st.errorDetail;
+            it.fixActionHint = st.fixActionHint;
             const auto a = analyses.constFind(t.id);
             if (a != analyses.constEnd()) {
                 it.hasResult = true;

@@ -301,6 +301,11 @@ public slots:
     bool cancelJob(const QString& meetingId, tanara::JobKind kind);
     // A meeting MINDEN futó feladatának megszakítása (pl. törlés előtt).
     void cancelAllJobs(const QString& meetingId);
+    // „Betöltés nagyobb kontextussal” (LM Studio): a KÖVETKEZŐ LLM-feladat előtt a modell
+    // legalább `tokens` tokenes kontextussal (és parallel = 1-gyel) töltődik újra, ha a betöltött
+    // példány ennél kisebb. Egyszer érvényes; a feladatot a hívó indítja újra. A Tanara Cloudnál
+    // nincs hatása.
+    void requestLlmContext(int tokens);
     // Egyetlen téma kivétele a sorból / futó elemzésének megszakítása.
     bool cancelTopicAnalysis(const QString& meetingId, const QString& topicId);
 

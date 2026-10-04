@@ -60,7 +60,77 @@ bool isProviderJob(JobKind kind)
         || kind == JobKind::ExtractTopics || kind == JobKind::AnalyzeTopics;
 }
 
+QString tokens(int n) { return QStringLiteral("%L1").arg(n); }
+
 } // namespace
+
+int contextFixTokens(const QString& hint)
+{
+    if (!hint.contains(QLatin1String("-context"))) return 0;
+    const int colon = hint.lastIndexOf(QLatin1Char(':'));
+    bool ok = false;
+    const int n = colon >= 0 ? hint.mid(colon + 1).toInt(&ok) : 0;
+    return ok && n > 0 ? n : 0;
+}
+
+bool isReloadContextHint(const QString& hint)
+{
+    return hint.startsWith(QLatin1String("llm:reload-context"));
+}
+
+JobError describeContextOverflow(JobKind kind, const llmctx::ContextOverflow& ov,
+                                 const ContextFailureHint& hint, int httpStatus)
+{
+    JobError e;
+    e.kind = kind;
+    e.when = QDateTime::currentDateTime();
+
+    // Az ajánlott kontextus: a hívó becslése, különben a kérés + egy szokásos kimeneti keret;
+    // mindenképp a mostaninál nagyobb lépcső.
+    int rec = hint.recommendedContext;
+    if (rec <= 0 && ov.promptTokens > 0) rec = llmctx::contextStepFor(ov.promptTokens + 4096);
+    if (ov.contextTokens > 0 && rec > 0 && rec <= ov.contextTokens)
+        rec = llmctx::contextStepFor(ov.contextTokens + 1);
+    if (rec > 0) rec = llmctx::contextStepFor(rec);
+
+    QString msg;
+    if (ov.contextTokens > 0 && ov.promptTokens > 0)
+        msg = QCoreApplication::translate("JobErrors", "A modell %1 tokenes kontextussal van betöltve, a kérés %2 token volt — nem fér bele.")
+                  .arg(tokens(ov.contextTokens), tokens(ov.promptTokens));
+    else if (ov.contextTokens > 0)
+        msg = QCoreApplication::translate("JobErrors", "A modell %1 tokenes kontextussal van betöltve, és a kérés nem fért bele.")
+                  .arg(tokens(ov.contextTokens));
+    else
+        msg = QCoreApplication::translate("JobErrors", "A kérés nem fért bele a modell kontextusába.");
+
+    if (hint.cloud) {
+        msg += QLatin1Char(' ') + QCoreApplication::translate("JobErrors", "A Tanara Cloud modellje ekkora kérést nem tud feldolgozni.");
+        e.fixActionHint = QStringLiteral("cloud");
+    } else if (hint.lmStudio) {
+        msg += QLatin1Char(' ') + (rec > 0
+            ? QCoreApplication::translate("JobErrors", "A Tanara újra tudja tölteni az LM Studióban legalább %1 tokenes kontextussal, és újraindítja a feladatot.").arg(tokens(rec))
+            : QCoreApplication::translate("JobErrors", "Töltsd be nagyobb kontextussal, és próbáld újra."));
+        e.fixActionHint = rec > 0 ? QStringLiteral("llm:reload-context:%1").arg(rec)
+                                  : QStringLiteral("settings:llm-context");
+    } else {
+        msg += QLatin1Char(' ') + (rec > 0
+            ? QCoreApplication::translate("JobErrors", "Töltsd be a modellt a szerveren legalább %1 tokenes kontextussal, vagy válassz nagyobb kontextusú modellt.").arg(tokens(rec))
+            : QCoreApplication::translate("JobErrors", "Töltsd be a modellt a szerveren nagyobb kontextussal, vagy válassz nagyobb kontextusú modellt."));
+        e.fixActionHint = rec > 0 ? QStringLiteral("settings:llm-context:%1").arg(rec)
+                                  : QStringLiteral("settings:llm-context");
+    }
+    e.message = msg;
+
+    QStringList parts;
+    if (httpStatus > 0) parts << QStringLiteral("HTTP %1").arg(httpStatus);
+    parts << (ov.code.isEmpty() ? QStringLiteral("context overflow") : ov.code);
+    if (ov.promptTokens > 0)
+        parts << QCoreApplication::translate("JobErrors", "kérés %1 token").arg(ov.promptTokens);
+    if (ov.contextTokens > 0)
+        parts << QCoreApplication::translate("JobErrors", "kontextus %1 token").arg(ov.contextTokens);
+    e.detail = parts.join(QStringLiteral(" · "));
+    return e;
+}
 
 QString httpFailureDetail(const HttpExchange& ex)
 {
@@ -81,12 +151,24 @@ QString httpFailureDetail(const HttpExchange& ex)
     return parts.join(QStringLiteral(" · "));
 }
 
-JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpExchange* ex)
+JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpExchange* ex,
+                            const ContextFailureHint* context)
 {
     JobError e;
     e.kind = kind;
     e.when = QDateTime::currentDateTime();
     const QString raw = rawMessage.trimmed();
+
+    // A „nem fér a kontextusba” hiba minden alakja (LM Studio / llama.cpp / OpenAI / vLLM)
+    // saját, számokkal kiírt magyarázatot kap — a nyers JSON nem kerül a felhasználó elé.
+    if (kind != JobKind::Transcribe && kind != JobKind::Mixdown && kind != JobKind::Import
+        && kind != JobKind::Identify) {
+        const llmctx::ContextOverflow ov =
+            llmctx::parseContextOverflow(ex ? ex->body : QByteArray(), raw);
+        if (ov.matched)
+            return describeContextOverflow(kind, ov, context ? *context : ContextFailureHint{},
+                                           ex ? ex->status : 0);
+    }
 
     if (!ex || !isProviderJob(kind)) {
         e.message = raw.isEmpty() ? QCoreApplication::translate("JobErrors", "Ismeretlen hiba történt.") : raw;
@@ -139,6 +221,15 @@ JobError describeCloudFailure(JobKind kind, const CloudError& ce)
         e.detail = ce.networkError.isEmpty() ? QCoreApplication::translate("JobErrors", "hálózat · nincs válasz")
                                              : QCoreApplication::translate("JobErrors", "hálózat · %1").arg(oneLine(ce.networkError));
         return e;
+    }
+    const llmctx::ContextOverflow ov =
+        llmctx::parseContextOverflow(QByteArray(), ce.code + QLatin1Char(' ') + ce.message);
+    if (ov.matched && kind != JobKind::Transcribe) {
+        ContextFailureHint hint;
+        hint.cloud = true;
+        JobError c = describeContextOverflow(kind, ov, hint, ce.httpStatus);
+        if (!ce.requestId.isEmpty()) c.detail += QStringLiteral(" · ") + ce.requestId;
+        return c;
     }
     e.message = ce.message.isEmpty() ? QCoreApplication::translate("JobErrors", "A Tanara Cloud hibát jelzett.") : ce.message;
     QStringList parts{QStringLiteral("HTTP %1").arg(ce.httpStatus)};

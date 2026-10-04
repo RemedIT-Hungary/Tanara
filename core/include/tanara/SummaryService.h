@@ -14,6 +14,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/llm/ILlmProvider.h"
+#include "tanara/llm/LlmContext.h"
 #include "tanara/summary/SummaryPipeline.h"
 
 #include <QObject>
@@ -41,6 +42,13 @@ struct SummaryRequest {
     int         notesMaxTokens = 3000;      // részenkénti jegyzet
     qint64      partMs = summarypipe::kDefaultPartMs;
     QString     cachePath;                  // részjegyzet-gyorsítótár; üres → nincs
+    // A modell ismert kontextusa (token); 0 = ismeretlen. Ha ismert, a túl nagy részeket már
+    // induláskor kisebbekre bontjuk (a részenkénti jegyzetnek és a kimeneti keretnek is
+    // bele kell férnie).
+    int         contextLimit = 0;
+    // „Nem fér a kontextusba” hibánál (ha a szerver megmondja a kontextust) a hátralévő
+    // részeket EGYSZER kisebbekre bontjuk és folytatjuk. A Tanara Cloudnál ki van kapcsolva.
+    bool        adaptToContext = true;
 };
 
 // A futás terve (a feladat-szakaszokhoz és a költségbecsléshez — LLM-hívás nélkül).
@@ -59,6 +67,10 @@ public:
     ~SummaryService() override;
 
     static SummaryPlan plan(const SummaryRequest& req);
+    // A futás legnagyobb hívásának becsült kontextus-igénye (token): a hátralévő jegyzet- /
+    // egylépéses hívások és az összegzés közül a legnagyobb (bemenet + kimeneti keret +
+    // ráhagyás; lásd llm/LlmContext.h). Üres átiratnál 0.
+    static int contextNeed(const SummaryRequest& req);
 
     // Elindítja a futást. Az eredmény a summaryReady / summaryFailed jelen jön (aszinkron).
     void summarize(const SummaryRequest& req);
@@ -74,6 +86,12 @@ public:
 signals:
     // Haladás. stage: "notes" (done / total rész kész), "merge" (0/1), "single" (0/1).
     void progress(const QString& stage, int done, int total);
+    // A részek száma menet közben változott (kontextushoz igazított újrabontás): parts a
+    // részek új száma, cached ebből a már kész részek száma.
+    void partsChanged(int parts, int cached);
+    // A szerver hibaüzenetéből megtudtuk a modell kontextusát (token) — a hívó megjegyezheti
+    // a következő futásokhoz (SummaryRequest::contextLimit).
+    void contextLimitDetected(int contextTokens);
     void summaryReady(const tanara::Summary& summary);
     void summaryFailed(const QString& error);
 
@@ -82,7 +100,15 @@ private:
     void startMerge();
     void startSingle();
     void call(const QString& system, const QString& user, int maxTokens,
-              std::function<void(const QString&)> onText);
+              std::function<void(const QString&)> onText, bool adaptive = false);
+    // A még nem kész, budgetChars-nál hosszabb részek kisebbekre bontása (a kész részek és
+    // jegyzeteik maradnak). false: egy bekezdés önmagában sem fér bele, vagy nincs keret.
+    bool fitParts(int budgetChars);
+    // Az egylépéses hívás helyett részenkénti jegyzetelés kell-e (a kontextus miatt).
+    bool singleFits(int contextTokens) const;
+    // Kontextus-hiba utáni újrabontás; true: folytatódik, false: nem segít.
+    bool recoverFromOverflow(const llmctx::ContextOverflow& ov, qint64 failedInputChars);
+    void startFlow();
     void fail(const QString& error);
     QString userHeader() const;
     QString reminder() const;
@@ -100,6 +126,8 @@ private:
     QPointer<LlmJob> m_job;
     bool m_cancelled = false;
     bool m_running = false;
+    bool m_forceNotes = false;     // 1 rész, de az egylépéses hívás nem fér a kontextusba
+    bool m_resplitDone = false;    // a hibából tanuló újrabontás futásonként egyszer
 };
 
 } // namespace tanara

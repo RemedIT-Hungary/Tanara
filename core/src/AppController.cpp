@@ -19,6 +19,7 @@
 #include "tanara/voiceid/VoiceEmbedder.h"
 #include "tanara/stt/ISttProvider.h"
 #include "tanara/llm/ILlmProvider.h"
+#include "tanara/llm/LlmServer.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/SummaryService.h"
 #include "tanara/ComplexSummaryService.h"
@@ -532,10 +533,36 @@ struct AppController::Impl {
     QHash<QString, int> transcriptGen;
 
     // Futó LLM-hívás (összefoglaló / témagyűjtés / összegzés / aktív téma-elemzés).
-    struct LlmRun { QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun; };
+    struct LlmRun {
+        QPointer<QObject> svc; QPointer<QObject> provider; CloudRunPtr cloudRun;
+        QPointer<LlmModelPreparer> preparer;   // a modell előkészítése (LM Studio), amíg tart
+    };
     QHash<QString, LlmRun> llmRuns;            // llmKey(meetingId, kind) → futás
     LlmRun activeTopicRun;
     QHash<QString, int> topicBatchTotal;       // meetingId → az aktuális kötegbe sorolt témák száma
+
+    // ---- LLM-kontextus (lásd llm/LlmContext.h, llm/LlmServer.h) ----
+    // Egy futás kontextus-ismerete a hibák besorolásához: a becsült igény, és amit a szerver-
+    // próba / a betöltés mondott.
+    struct LlmContextState { int need = 0; bool lmStudio = false; int loadedContext = -1; };
+    using LlmContextPtr = std::shared_ptr<LlmContextState>;
+    // A felhasználó által kért minimum („Betöltés nagyobb kontextussal”) — a következő
+    // előkészítés EGYSZER felhasználja. Kulcs: szerver-gyökér|modell.
+    QHash<QString, int> contextFloor;
+    // Natív API nélküli szervernél a hibaüzenetből megtudott kontextus — a következő
+    // összefoglaló már ehhez igazítja a részeket (csak memóriában).
+    QHash<QString, int> learnedContext;
+    static QString serverKey(const ProviderConfig& cfg) {
+        return llmctx::nativeApiRoot(cfg.baseUrl) + QLatin1Char('|') + cfg.model.trimmed();
+    }
+    // A Tanara épp egy MÁSIK LLM-kérést is futtat (ilyenkor modellt nem veszünk ki).
+    bool otherLlmBusy() const { return llmRuns.size() + (topicJobActive ? 1 : 0) > 1; }
+    // A modell előkészítése egy LLM-feladat előtt. Cloudnál (és ha nincs mit tenni) a `go`
+    // azonnal fut; LM Studiónál szükség esetén betöltés / újratöltés a feladat „model”
+    // szakaszaként. A visszaadott előkészítőt a hívó a futáshoz köti (megszakításhoz).
+    LlmModelPreparer* prepareLlm(const QString& meetingId, JobKind kind, const ProviderConfig& cfg,
+                                 bool cloud, const LlmContextPtr& ctx, std::function<void()> go,
+                                 std::function<void(const JobError&)> onFail);
 
     // Futó (háttérszálas) azonosítás.
     struct IdentifyRun { QThread* thread = nullptr; std::shared_ptr<std::atomic<bool>> cancel; bool asStage = false; };
@@ -559,7 +586,8 @@ struct AppController::Impl {
     void updateTopicCounts(const QString& meetingId);
     void abortLlmRun(const LlmRun& run);
     JobError describeLlmFailure(JobKind kind, const QString& raw, const CloudRunPtr& run,
-                                const FailureSinkPtr& sink) const;
+                                const FailureSinkPtr& sink,
+                                const std::shared_ptr<LlmContextState>& ctx = nullptr) const;
     void applyIdentification(const QString& meetingId,
                              const QVector<QPair<QString, QVector<float>>>& embeddings);
     bool matchSpeaker(Meeting& m, const QString& rawLabel, const QVector<float>& embedding);
@@ -626,6 +654,10 @@ void AppController::Impl::updateTopicCounts(const QString& meetingId)
 // hálózati kérést) töröljük — a szolgáltató felé a kapcsolat bomlik, eredmény nem érkezik.
 void AppController::Impl::abortLlmRun(const LlmRun& run)
 {
+    if (run.preparer) {
+        run.preparer->cancel();   // a lekérdezés / betöltés-kérés eldobva (jel nem jön)
+        run.preparer->deleteLater();
+    }
     if (auto* summary = qobject_cast<SummaryService*>(run.svc.data()))
         summary->cancel();   // a futó hívás megszakad, a következő nem indul (a részjegyzetek maradnak)
     if (run.svc) {
@@ -637,11 +669,60 @@ void AppController::Impl::abortLlmRun(const LlmRun& run)
 
 JobError AppController::Impl::describeLlmFailure(JobKind kind, const QString& raw,
                                                  const CloudRunPtr& run,
-                                                 const FailureSinkPtr& sink) const
+                                                 const FailureSinkPtr& sink,
+                                                 const LlmContextPtr& ctx) const
 {
     if (run && run->lastError.isError())
         return describeCloudFailure(kind, run->lastError);
-    return describeJobFailure(kind, raw, (sink && sink->has) ? &sink->ex : nullptr);
+    ContextFailureHint hint;
+    hint.cloud = bool(run);
+    if (ctx) {
+        hint.lmStudio = ctx->lmStudio && !run;
+        if (ctx->need > 0) hint.recommendedContext = llmctx::contextStepFor(ctx->need);
+    }
+    return describeJobFailure(kind, raw, (sink && sink->has) ? &sink->ex : nullptr, &hint);
+}
+
+LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobKind kind,
+                                                  const ProviderConfig& cfg, bool cloud,
+                                                  const LlmContextPtr& ctx, std::function<void()> go,
+                                                  std::function<void(const JobError&)> onFail)
+{
+    // A Tanara Cloud mögött nincs natív API: se próba, se betöltés.
+    if (cloud) { go(); return nullptr; }
+    auto* prep = new LlmModelPreparer(cfg, q);
+    prep->setBusyCheck([this] { return otherLlmBusy(); });
+    const int floor = contextFloor.take(serverKey(cfg));
+    QObject::connect(prep, &LlmModelPreparer::loadingStarted, prep, [this, prep, meetingId, kind](int ctxLen) {
+        // Látható első szakasz: „Modell betöltése” (megszakítható, mint a feladat többi része).
+        QVector<JobStage> stages = jobs->job(meetingId, kind).stages;
+        const QStringList others = prep->serverInfo().otherLoaded;
+        QString detail = AppController::tr("%1 tokenes kontextus, egy szálon").arg(QStringLiteral("%L1").arg(ctxLen));
+        if (!others.isEmpty())
+            detail += AppController::tr(" · a szerveren más modell is betöltve: %1").arg(others.join(QStringLiteral(", ")));
+        stages.prepend({ QStringLiteral("model"), AppController::tr("Modell betöltése"), StageState::Running, -1, detail });
+        jobs->setStages(meetingId, kind, stages);
+        jobs->setMessage(meetingId, kind, AppController::tr("Modell betöltése…"));
+        emit q->jobProgress(meetingId, AppController::tr("Modell betöltése (%1 tokenes kontextus)…")
+                                           .arg(QStringLiteral("%L1").arg(ctxLen)));
+    });
+    QObject::connect(prep, &LlmModelPreparer::ready, prep, [this, prep, meetingId, kind, ctx, go] {
+        ctx->lmStudio = prep->serverInfo().isLmStudio();
+        ctx->loadedContext = prep->loadedContext();
+        if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
+            jobs->setStage(meetingId, kind, QStringLiteral("model"), StageState::Done);
+        prep->deleteLater();
+        go();
+    });
+    QObject::connect(prep, &LlmModelPreparer::failed, prep, [this, prep, meetingId, kind, onFail](JobError e) {
+        e.kind = kind;
+        if (jobs->job(meetingId, kind).stage(QStringLiteral("model")))
+            jobs->setStage(meetingId, kind, QStringLiteral("model"), StageState::Failed);
+        prep->deleteLater();
+        onFail(e);
+    });
+    prep->start(ctx->need, floor);
+    return prep;
 }
 
 // A háttérszálon számolt beszélő-embeddingek párosítása a lenyomat-DB ellen + mentés (fő
@@ -2407,7 +2488,10 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     SummaryRequest req = summaryRequestFor(s, merged, m, cfg.model, cfg.maxTokens);
     req.temperature = cfg.temperature;
+    req.adaptToContext = !run;   // a Tanara Cloudnál a kontextus a gateway dolga
     const SummaryPlan plan = SummaryService::plan(req);
+    const auto ctx = std::make_shared<Impl::LlmContextState>();
+    ctx->need = SummaryService::contextNeed(req);
 
     // Strukturált feladat: rövid megbeszélésnél egy szakasz (egy hívás), hosszabbnál
     // „Jegyzetelés részenként” (k / n rész) + „Összegzés”. Becslés csak a korábbi, ugyanazzal
@@ -2419,8 +2503,11 @@ void AppController::summarizeMeeting(const QString& meetingId)
     if (plan.singleCall) {
         stages.append({ QStringLiteral("single"), tr("Összefoglalás"), StageState::Waiting, -1, QString() });
     } else {
+        // A korábbi futásból kész részek már induláskor látszanak (a modell betöltése alatt is).
+        QString notesDetail = tr("%n rész", nullptr, plan.parts);
+        if (plan.cachedParts > 0) notesDetail += tr(" · %n korábbi futásból", nullptr, plan.cachedParts);
         stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
-                        tr("%n rész", nullptr, plan.parts) });
+                        notesDetail });
         stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
     }
     d->jobs->begin(meetingId, JobKind::Summarize, tr("Összefoglaló készítése"), stages);
@@ -2431,6 +2518,21 @@ void AppController::summarizeMeeting(const QString& meetingId)
     auto clock = std::make_shared<QElapsedTimer>();
     clock->start();
 
+    // Kontextushoz igazított újrabontás: a szakaszok a részenkénti jegyzetelésre váltanak.
+    connect(svc, &SummaryService::partsChanged, this, [this, meetingId](int parts, int cached) {
+        if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
+        QVector<JobStage> stages;
+        if (const JobStage* model = d->jobs->job(meetingId, JobKind::Summarize).stage(QStringLiteral("model")))
+            stages.append(*model);
+        stages.append({ QStringLiteral("notes"), tr("Jegyzetelés részenként"), StageState::Waiting, -1,
+                        tr("%n rész (a modell kontextusához igazítva)", nullptr, parts) });
+        stages.append({ QStringLiteral("merge"), tr("Összegzés"), StageState::Waiting, -1, QString() });
+        d->jobs->setStages(meetingId, JobKind::Summarize, stages);
+        d->jobs->setCounts(meetingId, JobKind::Summarize, cached, parts);
+    });
+    connect(svc, &SummaryService::contextLimitDetected, this, [this, cfg, ctx](int tokens) {
+        if (!ctx->lmStudio) d->learnedContext.insert(Impl::serverKey(cfg), tokens);
+    });
     connect(svc, &SummaryService::progress, this,
             [this, meetingId, cached = plan.cachedParts](const QString& stage, int done, int total) {
         if (!d->jobs->isRunning(meetingId, JobKind::Summarize)) return;
@@ -2493,16 +2595,33 @@ void AppController::summarizeMeeting(const QString& meetingId)
         finishCloudRun(run);
     });
     connect(svc, &SummaryService::summaryFailed, this,
-            [this, meetingId, providerObj, svc, run, key, sink](const QString& e) {
+            [this, meetingId, providerObj, svc, run, key, sink, ctx](const QString& e) {
         d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        d->jobs->fail(meetingId, JobKind::Summarize,
-                      d->describeLlmFailure(JobKind::Summarize, e, run, sink));
-        failCloudRun(run, tr("Összefoglaló hiba: %1").arg(e));
+        const JobError je = d->describeLlmFailure(JobKind::Summarize, e, run, sink, ctx);
+        d->jobs->fail(meetingId, JobKind::Summarize, je);
+        failCloudRun(run, tr("Összefoglaló hiba: %1").arg(je.message));
     });
 
-    svc->summarize(req);
+    // A modell előkészítése (LM Studio: betöltés a szükséges kontextussal), utána indul.
+    LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
+        [this, svc = QPointer<SummaryService>(svc), req, ctx, cfg, clock]() mutable {
+            if (!svc) return;
+            clock->restart();   // a modell betöltése nem számít a futás sebességébe (becslés)
+            req.contextLimit = ctx->loadedContext > 0 ? ctx->loadedContext
+                                                      : d->learnedContext.value(Impl::serverKey(cfg));
+            svc->summarize(req);
+        },
+        [this, meetingId, providerObj = QPointer<QObject>(providerObj),
+         svc = QPointer<SummaryService>(svc), key](const JobError& je) {
+            d->llmRuns.remove(key);
+            if (providerObj) providerObj->deleteLater();
+            if (svc) svc->deleteLater();
+            d->jobs->fail(meetingId, JobKind::Summarize, je);
+            emit errorOccurred(tr("Összefoglaló hiba: %1").arg(je.message));
+        });
+    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
 }
 
 // A gyors összefoglaló kérése a beállításokból: a három prompt (felülírás → fájl → beépített,
@@ -2596,19 +2715,35 @@ void AppController::extractMeetingTopics(const QString& meetingId)
         emit topicsChanged(id);
         emit topicsReady(id, topics);
     });
+    const QString topicPrompt = resolvedPrompt(s, s.topicExtractionPrompt, "topic");
+    const auto ctx = std::make_shared<Impl::LlmContextState>();
+    ctx->need = llmctx::callContextNeed(topicPrompt.size() + transcriptMd.size()
+                                        + m.contextNote.size() + 300, cfg.maxTokens);
     connect(svc, &ComplexSummaryService::failed, this,
-            [this, id = m.id, providerObj, svc, run, key, sink](const QString& e) {
+            [this, id = m.id, providerObj, svc, run, key, sink, ctx](const QString& e) {
         d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
-        d->jobs->fail(id, JobKind::ExtractTopics,
-                      d->describeLlmFailure(JobKind::ExtractTopics, e, run, sink));
-        failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(e));
+        const JobError je = d->describeLlmFailure(JobKind::ExtractTopics, e, run, sink, ctx);
+        d->jobs->fail(id, JobKind::ExtractTopics, je);
+        failCloudRun(run, tr("Téma-kinyerés hiba: %1").arg(je.message));
     });
 
-    svc->requestTopics(transcriptMd, m.contextNote.trimmed(),
-                       resolvedPrompt(s, s.topicExtractionPrompt, "topic"),
-                       cfg.model, cfg.temperature, cfg.maxTokens);
+    LlmModelPreparer* prep = d->prepareLlm(m.id, JobKind::ExtractTopics, cfg, bool(run), ctx,
+        [svc = QPointer<ComplexSummaryService>(svc), transcriptMd, note = m.contextNote.trimmed(),
+         topicPrompt, cfg, clock]() {
+            clock->restart();   // a modell betöltése nem számít a futás sebességébe (becslés)
+            if (svc) svc->requestTopics(transcriptMd, note, topicPrompt, cfg.model, cfg.temperature, cfg.maxTokens);
+        },
+        [this, id = m.id, providerObj = QPointer<QObject>(providerObj),
+         svc = QPointer<ComplexSummaryService>(svc), key](const JobError& je) {
+            d->llmRuns.remove(key);
+            if (providerObj) providerObj->deleteLater();
+            if (svc) svc->deleteLater();
+            d->jobs->fail(id, JobKind::ExtractTopics, je);
+            emit errorOccurred(tr("Téma-kinyerés hiba: %1").arg(je.message));
+        });
+    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
 }
 
 QVector<TopicAnalysis> AppController::topicAnalyses(const QString& meetingId) const
@@ -2824,14 +2959,23 @@ void AppController::startNextTopicJob()
         emit topicStatusChanged(meetingId, a.topicId);
         startNextTopicJob();
     });
+    const QString transcriptMd = merged.renderMarkdown();
+    const QString analysisPrompt = resolvedPrompt(s, s.topicAnalysisPrompt, "analysis");
+    const auto ctx = std::make_shared<Impl::LlmContextState>();
+    const auto prepError = std::make_shared<JobError>();   // az előkészítés hibája (ha az bukott)
+    ctx->need = llmctx::callContextNeed(analysisPrompt.size() + transcriptMd.size() + m.contextNote.size()
+                                        + job.topic.title.size() + job.topic.summary.size() + 400,
+                                        cfg.maxTokens);
     connect(svc, &ComplexSummaryService::failed, this,
-            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run, sink](const QString& e) {
+            [this, meetingId = m.id, topicId = job.topic.id, cleanup, run, sink, ctx, prepError](const QString& raw) {
         d->jobCounts[meetingId].second++;
         cleanup();
         d->activeTopicId.clear();
         d->activeTopicRun = {};
-        d->jobs->setTopicError(meetingId, topicId,
-                               d->describeLlmFailure(JobKind::AnalyzeTopics, e, run, sink));
+        const JobError je = prepError->isValid()
+            ? *prepError : d->describeLlmFailure(JobKind::AnalyzeTopics, raw, run, sink, ctx);
+        const QString e = je.message;
+        d->jobs->setTopicError(meetingId, topicId, je);
         if (run && run->lastError.isError()) {
             // Cloud-hiba (402 / 403 / 426 / 429 / 503 …): a meeting hátralévő témái ugyanezt
             // kapnák → a sorból kivesszük őket; a K-12 részleges-hiba dialógus mutatja az eddig
@@ -2856,9 +3000,18 @@ void AppController::startNextTopicJob()
         startNextTopicJob();
     });
 
-    svc->requestTopicAnalysis(merged.renderMarkdown(), job.topic, m.contextNote.trimmed(),
-                              resolvedPrompt(s, s.topicAnalysisPrompt, "analysis"),
-                              cfg.model, cfg.temperature, cfg.maxTokens);
+    LlmModelPreparer* prep = d->prepareLlm(m.id, JobKind::AnalyzeTopics, cfg, bool(run), ctx,
+        [svc = QPointer<ComplexSummaryService>(svc), transcriptMd, topic = job.topic,
+         note = m.contextNote.trimmed(), analysisPrompt, cfg]() {
+            if (svc) svc->requestTopicAnalysis(transcriptMd, topic, note, analysisPrompt,
+                                               cfg.model, cfg.temperature, cfg.maxTokens);
+        },
+        [svc = QPointer<ComplexSummaryService>(svc), prepError](const JobError& je) {
+            // Ugyanaz az út, mint egy szolgáltató-hibánál: a téma hibája megmarad, a sor megy tovább.
+            *prepError = je;
+            if (svc) emit svc->failed(je.message);
+        });
+    if (prep) d->activeTopicRun.preparer = prep;
 }
 
 void AppController::finalizeComplexSummary(const QString& meetingId)
@@ -2906,13 +3059,19 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         svc->deleteLater();
     };
 
+    const auto ctx = std::make_shared<Impl::LlmContextState>();
+    {
+        qint64 chars = resolvedPrompt(s, QString(), "reduce").size() + m.contextNote.size() + 400;
+        for (const TopicAnalysis& a : ordered) chars += a.renderMarkdown().size() + a.title.size() + 40;
+        ctx->need = llmctx::callContextNeed(chars, cfg.maxTokens);
+    }
     connect(svc, &ComplexSummaryService::failed, this,
-            [this, meetingId, cleanup, run, key, sink](const QString& e) {
+            [this, meetingId, cleanup, run, key, sink, ctx](const QString& e) {
         d->llmRuns.remove(key);
         cleanup();
-        d->jobs->fail(meetingId, JobKind::Summarize,
-                      d->describeLlmFailure(JobKind::Summarize, e, run, sink));
-        failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(e));
+        const JobError je = d->describeLlmFailure(JobKind::Summarize, e, run, sink, ctx);
+        d->jobs->fail(meetingId, JobKind::Summarize, je);
+        failCloudRun(run, tr("Komplex összefoglaló hiba: %1").arg(je.message));
     });
     connect(svc, &ComplexSummaryService::reduceReady, this,
             [this, m, ordered, cleanup, run, key, llmId = s.llmProviderId, model = cfg.model]
@@ -2970,7 +3129,19 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         finishCloudRun(run);   // K-07: „Az összefoglaló $0,46 volt (12 rész).”
     });
 
-    svc->requestReduce(ordered, m.contextNote.trimmed(), cfg.model, cfg.temperature, cfg.maxTokens);
+    LlmModelPreparer* prep = d->prepareLlm(meetingId, JobKind::Summarize, cfg, bool(run), ctx,
+        [svc = QPointer<ComplexSummaryService>(svc), ordered, note = m.contextNote.trimmed(), cfg]() {
+            if (svc) svc->requestReduce(ordered, note, cfg.model, cfg.temperature, cfg.maxTokens);
+        },
+        [this, meetingId, key, providerObj = QPointer<QObject>(providerObj),
+         svc = QPointer<ComplexSummaryService>(svc)](const JobError& je) {
+            d->llmRuns.remove(key);
+            if (providerObj) providerObj->deleteLater();
+            if (svc) svc->deleteLater();
+            d->jobs->fail(meetingId, JobKind::Summarize, je);
+            emit errorOccurred(tr("Komplex összefoglaló hiba: %1").arg(je.message));
+        });
+    if (prep && d->llmRuns.contains(key)) d->llmRuns[key].preparer = prep;
 }
 
 // =========================================================================================
@@ -3045,6 +3216,7 @@ QVector<TopicStatus> AppController::topicStatuses(const QString& meetingId) cons
             st.state = TopicState::Failed;
             st.error = errors.value(t.id).message;
             st.errorDetail = errors.value(t.id).detail;
+            st.fixActionHint = errors.value(t.id).fixActionHint;
         } else if (done.contains(t.id)) {
             st.state = TopicState::Done;
         }
@@ -3110,6 +3282,13 @@ bool AppController::cancelTopicAnalysis(const QString& meetingId, const QString&
     if (active)
         startNextTopicJob();   // a sor megy tovább (vagy lezárul)
     return true;
+}
+
+void AppController::requestLlmContext(int tokens)
+{
+    if (tokens <= 0 || usesCloud(WorkflowStep::Summarize)) return;
+    const ProviderConfig cfg = d->settings->settings().llmSelected();
+    d->contextFloor.insert(Impl::serverKey(cfg), tokens);
 }
 
 bool AppController::cancelJob(const QString& meetingId, JobKind kind)

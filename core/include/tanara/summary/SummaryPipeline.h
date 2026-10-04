@@ -45,6 +45,11 @@ struct TranscriptPart {
 QVector<TranscriptPart> splitTranscript(const QVector<Utterance>& segments,
                                         qint64 partMs = kDefaultPartMs);
 
+// A beszéd-blokkok legfeljebb maxChars hosszú (markdown) részekre, sorrendben, bekezdés-
+// határon (a kontextushoz igazított újrabontáshoz). Az indexek 0-tól. Üres lista, ha egyetlen
+// bekezdés önmagában is hosszabb maxChars-nál (vagy üres a bemenet).
+QVector<TranscriptPart> splitTranscriptByChars(const QVector<Utterance>& segments, int maxChars);
+
 // Egy rész jegyzete (a "notes" lépés kimenete, értelmezve).
 struct PartNotes {
     int     index = 0;

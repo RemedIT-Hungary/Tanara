@@ -484,6 +484,38 @@
         <translation>The endpoint cannot be reached.</translation>
     </message>
     <message>
+        <source>LM Studio — a beállított modell nincs a letöltött modellek között.</source>
+        <translation>LM Studio — the configured model is not among the downloaded models.</translation>
+    </message>
+    <message>
+        <source>LM Studio — a modell nincs betöltve; a Tanara az első feladatnál betölti a szükséges kontextussal, egy szálon.</source>
+        <translation>LM Studio — the model is not loaded; Tanara loads it with the required context, single-threaded, at the first job.</translation>
+    </message>
+    <message>
+        <source>LM Studio — betöltve %1 tokenes kontextussal, párhuzamos kérések: %2.</source>
+        <translation>LM Studio — loaded with a %1-token context, parallel requests: %2.</translation>
+    </message>
+    <message>
+        <source>LM Studio — a modell be van töltve.</source>
+        <translation>LM Studio — the model is loaded.</translation>
+    </message>
+    <message>
+        <source>A modell %1 párhuzamos kérésre van betöltve — ez sok videómemóriát foglal, és instabil lehet. A Tanara a következő feladat előtt egy szálon tölti újra.</source>
+        <translation>The model is loaded for %1 parallel requests — this uses a lot of video memory and can be unstable. Tanara reloads it single-threaded before the next job.</translation>
+    </message>
+    <message>
+        <source>A betöltött kontextus (%1 token) kevés egy tipikus összefoglaló-részhez (kb. %2 token). A Tanara a feladat előtt nagyobb kontextussal tölti újra.</source>
+        <translation>The loaded context (%1 tokens) is too small for a typical summary part (about %2 tokens). Tanara reloads it with a larger context before the job.</translation>
+    </message>
+    <message>
+        <source>A modell maximuma: %1 token.</source>
+        <translation>The model&apos;s maximum: %1 tokens.</translation>
+    </message>
+    <message>
+        <source>Más betöltött modell: %1.</source>
+        <translation>Other loaded model: %1.</translation>
+    </message>
+    <message>
         <source>A szolgáltató elutasította a kulcsot. Ellenőrizd, hogy jól másoltad-e be, és nem járt-e le.</source>
         <translation>The provider rejected the key. Check that you pasted it correctly and that it has not expired.</translation>
     </message>
@@ -570,6 +602,46 @@
 <context>
     <name>JobErrors</name>
     <message>
+        <source>A modell %1 tokenes kontextussal van betöltve, a kérés %2 token volt — nem fér bele.</source>
+        <translation>The model is loaded with a %1-token context, the request was %2 tokens — it does not fit.</translation>
+    </message>
+    <message>
+        <source>A modell %1 tokenes kontextussal van betöltve, és a kérés nem fért bele.</source>
+        <translation>The model is loaded with a %1-token context, and the request did not fit.</translation>
+    </message>
+    <message>
+        <source>A kérés nem fért bele a modell kontextusába.</source>
+        <translation>The request did not fit into the model&apos;s context.</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud modellje ekkora kérést nem tud feldolgozni.</source>
+        <translation>The Tanara Cloud model cannot process a request this large.</translation>
+    </message>
+    <message>
+        <source>A Tanara újra tudja tölteni az LM Studióban legalább %1 tokenes kontextussal, és újraindítja a feladatot.</source>
+        <translation>Tanara can reload it in LM Studio with a context of at least %1 tokens and restart the job.</translation>
+    </message>
+    <message>
+        <source>Töltsd be nagyobb kontextussal, és próbáld újra.</source>
+        <translation>Load it with a larger context and try again.</translation>
+    </message>
+    <message>
+        <source>Töltsd be a modellt a szerveren legalább %1 tokenes kontextussal, vagy válassz nagyobb kontextusú modellt.</source>
+        <translation>Load the model on the server with a context of at least %1 tokens, or choose a model with a larger context.</translation>
+    </message>
+    <message>
+        <source>Töltsd be a modellt a szerveren nagyobb kontextussal, vagy válassz nagyobb kontextusú modellt.</source>
+        <translation>Load the model on the server with a larger context, or choose a model with a larger context.</translation>
+    </message>
+    <message>
+        <source>kérés %1 token</source>
+        <translation>request %1 tokens</translation>
+    </message>
+    <message>
+        <source>kontextus %1 token</source>
+        <translation>context %1 tokens</translation>
+    </message>
+    <message>
         <source>hálózat · nincs válasz</source>
         <translation>network · no response</translation>
     </message>
@@ -642,6 +714,13 @@
     </message>
 </context>
 <context>
+    <name>JobSupport</name>
+    <message>
+        <source>Beállítások</source>
+        <translation>Settings</translation>
+    </message>
+</context>
+<context>
     <name>LibrarySidebar</name>
     <message>
         <source>Új felvétel</source>
@@ -710,6 +789,41 @@
     <message>
         <source>Törlés…</source>
         <translation>Delete…</translation>
+    </message>
+</context>
+<context>
+    <name>LlmServer</name>
+    <message>
+        <source>A(z) „%1” modellt újra kellene tölteni (%2 tokenes kontextussal, egy szálon), de a Tanara épp egy másik kérést futtat rajta. Próbáld újra, ha az végzett.</source>
+        <translation>The model “%1” would have to be reloaded (with a %2-token context, single-threaded), but Tanara is running another request on it. Try again when that has finished.</translation>
+    </message>
+    <message>
+        <source>Nem sikerült kivenni a(z) „%1” modell régi példányát az LM Studióból, ezért nem tölthető be újra nagyobb kontextussal.</source>
+        <translation>Could not unload the old instance of the model “%1” from LM Studio, so it cannot be reloaded with a larger context.</translation>
+    </message>
+    <message>
+        <source>kivétel · %1</source>
+        <translation>unload · %1</translation>
+    </message>
+    <message>
+        <source>betöltés · %1</source>
+        <translation>load · %1</translation>
+    </message>
+    <message>
+        <source>Az LM Studio nem válaszolt a(z) „%1” modell betöltése közben.</source>
+        <translation>LM Studio did not respond while loading the model “%1”.</translation>
+    </message>
+    <message>
+        <source>Az LM Studio nem találja a beállított modellt (%1).</source>
+        <translation>LM Studio cannot find the configured model (%1).</translation>
+    </message>
+    <message>
+        <source>Az LM Studio nem tudta betölteni a(z) „%1” modellt %2 tokenes kontextussal. Valószínűleg ekkora kontextussal nem fér a videókártyára — állíts be kisebb kontextust a Beállításokban.</source>
+        <translation>LM Studio could not load the model “%1” with a %2-token context. With a context this large it probably does not fit on the graphics card — set a smaller context in Settings.</translation>
+    </message>
+    <message>
+        <source>A szerveren más modell is be van töltve (%1); azt a Tanara nem veszi ki.</source>
+        <translation>Another model is also loaded on the server (%1); Tanara does not unload it.</translation>
     </message>
 </context>
 <context>
@@ -1980,6 +2094,14 @@
         <translation>Off is faster, and small models do not use up their output budget on reasoning before they answer. Automatic switches it off in the way that suits the model family.</translation>
     </message>
     <message>
+        <source>A modell kontextusa</source>
+        <translation>Model context</translation>
+    </message>
+    <message>
+        <source>LM Studiónál a Tanara a feladat előtt ekkorával, egy szálon tölti be a modellt; más szervernél ott kell beállítani.</source>
+        <translation>With LM Studio, Tanara loads the model with this context, single-threaded, before the job; on other servers set it there.</translation>
+    </message>
+    <message>
         <source>Kapcsolat tesztelése</source>
         <translation>Test connection</translation>
     </message>
@@ -3128,6 +3250,10 @@
         <translation>The notes of the finished parts are kept; continuing runs only the missing parts and the merge.</translation>
     </message>
     <message>
+        <source>Betöltés nagyobb kontextussal</source>
+        <translation>Load with a larger context</translation>
+    </message>
+    <message>
         <source>Újra</source>
         <translation>Retry</translation>
     </message>
@@ -3295,6 +3421,10 @@
     <message>
         <source>Megszakítás</source>
         <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Betöltés nagyobb kontextussal</source>
+        <translation>Load with a larger context</translation>
     </message>
     <message>
         <source>Újra</source>
@@ -4567,6 +4697,33 @@
         <translation>
             <numerusform> · %n from an earlier run</numerusform>
             <numerusform> · %n from an earlier run</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 tokenes kontextus, egy szálon</source>
+        <translation>%1-token context, single-threaded</translation>
+    </message>
+    <message>
+        <source> · a szerveren más modell is betöltve: %1</source>
+        <translation> · another model is also loaded on the server: %1</translation>
+    </message>
+    <message>
+        <source>Modell betöltése</source>
+        <translation>Loading model</translation>
+    </message>
+    <message>
+        <source>Modell betöltése…</source>
+        <translation>Loading model…</translation>
+    </message>
+    <message>
+        <source>Modell betöltése (%1 tokenes kontextus)…</source>
+        <translation>Loading model (%1-token context)…</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész (a modell kontextusához igazítva)</source>
+        <translation>
+            <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
+            <numerusform>%n parts (fitted to the model&apos;s context)</numerusform>
         </translation>
     </message>
     <message>
@@ -6474,6 +6631,14 @@
         <translation>optional</translation>
     </message>
     <message>
+        <source>Automatikus (a feladathoz igazítva)</source>
+        <translation>Automatic (fitted to the job)</translation>
+    </message>
+    <message>
+        <source>%1 token</source>
+        <translation>%1 tokens</translation>
+    </message>
+    <message>
         <source>A cím kötelező.</source>
         <translation>The address is required.</translation>
     </message>
@@ -7142,6 +7307,14 @@
     <message>
         <source>A szolgáltatónál hiba történt. Próbáld újra később.</source>
         <translation>The provider reported an error. Try again later.</translation>
+    </message>
+    <message>
+        <source>A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele. A Tanara újra tudja tölteni az LM Studióban legalább 16 384 tokenes kontextussal, és újraindítja a feladatot.</source>
+        <translation>The model is loaded with a 4096-token context, the request was 6042 tokens — it does not fit. Tanara can reload it in LM Studio with a context of at least 16,384 tokens and restart the job.</translation>
+    </message>
+    <message>
+        <source>kérés 6042 token · kontextus 4096 token</source>
+        <translation>request 6042 tokens · context 4096 tokens</translation>
     </message>
     <message>
         <source>Kovács Lilla</source>
