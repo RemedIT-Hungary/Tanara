@@ -31,6 +31,10 @@ struct SummaryMeta {
     QString     providerId;    // pl. "openai-compat", "tanara-cloud"
     QString     model;         // a ténylegesen küldött modell-azonosító
     SummaryMode mode = SummaryMode::Unknown;
+    // A megbeszélés-megjegyzés, amellyel az összefoglaló készült (az Összefoglaló fül ebből
+    // jelzi szelíden, ha azóta változott). Régi összefoglalónál ismeretlen (Known = false).
+    QString     contextNote;
+    bool        contextNoteKnown = false;
 };
 
 struct SummaryDocument {

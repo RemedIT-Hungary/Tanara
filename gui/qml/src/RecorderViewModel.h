@@ -212,8 +212,8 @@ private:
     QString m_state = QStringLiteral("idle");
     QString m_title;
     bool m_titleAuto = true;
-    QString m_appName;                   // az automatikus névhez (a figyelőtől)
-    QString m_context;                   // a meeting kontextus-megjegyzése (a figyelőtől)
+    QString m_appName;                   // az észlelt hívás-app (a figyelőtől): automatikus név + a meeting detectedCallApp mezője
+    QString m_context;                   // kifejezett --context megjegyzés (a figyelő már nem küld ilyet)
     qint64 m_elapsedMs = 0;
     bool m_askVisible = false;
     QString m_askText;

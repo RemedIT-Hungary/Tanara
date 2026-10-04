@@ -12,8 +12,10 @@
 //
 // Controller nélkül vagy App.demo mellett beépített, KITALÁLT mintaadatot mutat; a
 // demoState választja ki, melyik állapotot ("steps" | "ready" | "cloud" | "running" |
-// "uploading" | "failed").
+// "uploading" | "failed" | "note" — lépések sablon-javaslatokkal és észlelt hívással).
 //
+#include "MeetingNoteModel.h"
+
 #include "tanara/jobs/JobTypes.h"
 
 #include <QObject>
@@ -44,6 +46,9 @@ class PreTranscriptViewModel : public QObject {
     Q_PROPERTY(QString state READ state NOTIFY changed)
 
     // ---- M03 ----
+    // A megjegyzés szerkesztése (piszkozat, mentés, sablon-javaslatok, észlelt hívás) — a
+    // MeetingNoteEditor ezt kapja. A contextNote ennek a mentett értéke (rövidítés).
+    Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
     Q_PROPERTY(QString contextNote READ contextNote WRITE setContextNote NOTIFY contextNoteChanged)
     Q_PROPERTY(bool identifyEnabled READ identifyEnabled WRITE setIdentifyEnabled NOTIFY changed)
     Q_PROPERTY(bool identifyAvailable READ identifyAvailable NOTIFY changed)
@@ -93,13 +98,15 @@ public:
 
     QString state() const { return m_state; }
 
-    QString contextNote() const { return m_contextNote; }
+    MeetingNoteModel* note() const { return m_note; }
+    QString contextNote() const { return m_note->note(); }
     void setContextNote(const QString& note);
     // A mező gépelés közbeni tartalma: a megbeszéléssel EGYÜTT jegyezzük meg, amelyhez írták.
     // A késleltetett mentés (és a megbeszélés-váltás) ezt írja ki — mindig a saját
     // megbeszélésébe, akkor is, ha közben másik lett a kijelölt (pl. véget ért egy felvétel).
-    Q_INVOKABLE void draftContextNote(const QString& note);
-    Q_INVOKABLE void commitContextDraft();
+    // (A MeetingNoteModel draft / commitDraft műveletei.)
+    Q_INVOKABLE void draftContextNote(const QString& note) { m_note->draft(note); }
+    Q_INVOKABLE void commitContextDraft() { m_note->commitDraft(); }
     bool identifyEnabled() const { return m_identifyEnabled; }
     void setIdentifyEnabled(bool enabled);
     bool identifyAvailable() const { return m_identifyAvailable; }
@@ -161,10 +168,7 @@ private:
     QString m_demoState;
     QString m_state = QStringLiteral("none");
 
-    QString m_contextNote;
-    QString m_draftNote;
-    QString m_draftMeetingId;
-    bool m_hasDraft = false;
+    MeetingNoteModel* m_note = nullptr;
     bool m_identifyEnabled = true;
     bool m_identifyAvailable = true;
     QString m_mixdownState = QStringLiteral("ready");

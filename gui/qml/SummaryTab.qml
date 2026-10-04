@@ -6,7 +6,7 @@ import QtQuick
 //   "topics"  M08 — témánkénti elemzés (SummaryTopicsView)
 // Képernyőképhez: --qml-prop 'demoState="stale|done|memo|memoShort|oldSummary|oldMemo|running|
 // topicsDoc|empty|emptyBlocked|emptyRunning|emptyRunningParts|emptyRunningMerge|emptyError|
-// emptyErrorKept|topics"' (alapértelmezés: "stale").
+// emptyErrorKept|emptyNote|noteOpen|noteChanged|topics"' (alapértelmezés: "stale").
 Item {
     id: root
 

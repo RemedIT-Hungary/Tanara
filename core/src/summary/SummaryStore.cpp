@@ -1,4 +1,5 @@
 #include "tanara/summary/SummaryStore.h"
+#include "tanara/library/MeetingNotes.h"
 #include "tanara/summary/SummaryPipeline.h"
 #include "tanara/library/TextFold.h"
 #include "tanara/store/JsonSerialization.h"
@@ -313,6 +314,8 @@ QJsonObject toJson(const SummaryDocument& doc)
     o[QStringLiteral("createdAt")] = doc.meta.createdAt.toString(Qt::ISODate);
     o[QStringLiteral("providerId")] = doc.meta.providerId;
     o[QStringLiteral("model")]     = doc.meta.model;
+    if (doc.meta.contextNoteKnown)
+        o[QStringLiteral("contextNote")] = doc.meta.contextNote;
     o[QStringLiteral("summary")]   = tanara::toJson(doc.summary);
     if (!doc.topics.isEmpty()) {
         QJsonArray arr;
@@ -330,6 +333,12 @@ SummaryDocument fromJson(const QJsonObject& o)
     doc.meta.createdAt  = QDateTime::fromString(o.value(QStringLiteral("createdAt")).toString(), Qt::ISODate);
     doc.meta.providerId = o.value(QStringLiteral("providerId")).toString();
     doc.meta.model      = o.value(QStringLiteral("model")).toString();
+    // A megjegyzés, amellyel készült (régi summary.json-ban nincs → ismeretlen). A figyelő
+    // régi automatikus mondata üres megjegyzésnek számít, mint a meeting.json-ban.
+    doc.meta.contextNoteKnown = o.contains(QStringLiteral("contextNote"));
+    doc.meta.contextNote = o.value(QStringLiteral("contextNote")).toString();
+    if (meetingnotes::parseAutoCallNote(doc.meta.contextNote))
+        doc.meta.contextNote.clear();
     doc.summary = summaryFromJson(o.value(QStringLiteral("summary")).toObject());
     for (const QJsonValue& v : o.value(QStringLiteral("topics")).toArray())
         doc.topics.append(topicFromJson(v.toObject()));

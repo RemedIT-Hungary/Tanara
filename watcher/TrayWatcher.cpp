@@ -252,10 +252,9 @@ QStringList TrayWatcher::recordArgs(bool immediate) const
         args << QStringLiteral("--no-start");   // csak megnyit, a user keresztel + indít
     if (m_callActive && !m_detAppName.isEmpty()) {
         // Az app-névből a felvevő automatikus nevet képez („Teams-hívás · okt. 3. 14:02”),
-        // amit a user bármikor átírhat.
+        // amit a user bármikor átírhat, és a meeting „észlelt hívás” mezőjébe is kerül. A
+        // megjegyzés üres marad: az a felhasználóé (nevek, szakszavak, javítások).
         args << QStringLiteral("--app") << m_detAppName;
-        args << QStringLiteral("--context")
-             << QStringLiteral("Automatikusan észlelt hívás: %1").arg(m_detAppName);
     }
     return args;
 }

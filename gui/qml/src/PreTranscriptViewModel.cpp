@@ -30,8 +30,13 @@ QVariantMap stageMap(const QString& id, const QString& label, const QString& sta
 
 } // namespace
 
-PreTranscriptViewModel::PreTranscriptViewModel(QObject* parent) : QObject(parent)
+PreTranscriptViewModel::PreTranscriptViewModel(QObject* parent)
+    : QObject(parent), m_note(new MeetingNoteModel(this))
 {
+    connect(m_note, &MeetingNoteModel::noteChanged, this, [this]() {
+        emit contextNoteChanged();
+        emit changed();   // a futás-nézet lábléce is ebből idéz
+    });
     // A hátralévő idő a falióra szerint fogy — futás közben időnként újraszámoljuk.
     m_etaTimer.setInterval(10000);
     connect(&m_etaTimer, &QTimer::timeout, this, &PreTranscriptViewModel::jobChanged);
@@ -55,6 +60,7 @@ void PreTranscriptViewModel::setController(QObject* controller)
     if (m_injected == controller)
         return;
     m_injected = controller;
+    m_note->setController(controller);
     connectController();
     emit controllerChanged();
     reload();
@@ -66,37 +72,11 @@ void PreTranscriptViewModel::setMeetingId(const QString& id)
 {
     if (id == m_meetingId)
         return;
-    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írjuk ki.
-    commitContextDraft();
+    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írja ki.
+    m_note->setMeetingId(id);
     m_meetingId = id;
     reload();                 // előbb az új adatok, hogy a jelre már az új megjegyzés látsszon
     emit meetingIdChanged();
-}
-
-void PreTranscriptViewModel::draftContextNote(const QString& note)
-{
-    m_draftNote = note;
-    m_draftMeetingId = m_meetingId;
-    m_hasDraft = true;
-}
-
-void PreTranscriptViewModel::commitContextDraft()
-{
-    if (!m_hasDraft)
-        return;
-    m_hasDraft = false;
-    const QString note = m_draftNote;
-    const QString target = m_draftMeetingId;
-    m_draftNote.clear();
-    m_draftMeetingId.clear();
-    if (target == m_meetingId) {
-        setContextNote(note);
-        return;
-    }
-    // A piszkozat egy már nem kijelölt megbeszélésé: közvetlenül oda mentjük.
-    AppController* c = app();
-    if (!jobsupport::demoMode(c) && !target.isEmpty())
-        c->setMeetingContextNote(target, note);
 }
 
 void PreTranscriptViewModel::setDemoState(const QString& state)
@@ -158,7 +138,6 @@ void PreTranscriptViewModel::refresh() { reload(); }
 
 void PreTranscriptViewModel::reload()
 {
-    const QString oldNote = m_contextNote;
     const int oldPct = m_mixdownPercent;
 
     m_blocker.clear();
@@ -185,13 +164,13 @@ void PreTranscriptViewModel::reload()
         loadDemo();
     } else if (m_meetingId.isEmpty()) {
         m_state = QStringLiteral("none");
-        m_contextNote.clear();
+        m_note->reload();
     } else {
         const Meeting m = c->store()->load(m_meetingId);
         const MeetingProcessingState ps = c->jobs()->state(m);
         const JobProgress job = c->jobs()->job(m_meetingId, JobKind::Transcribe);
 
-        m_contextNote = m.contextNote;
+        m_note->reload();
         m_providerLabel = jobsupport::providerLabel(c, WorkflowStep::Transcribe);
         m_identifyAvailable = c->voiceIdentificationAvailable();
         m_identifyEnabled = m_identifyAvailable && c->identifyAfterTranscription(m_meetingId);
@@ -267,8 +246,6 @@ void PreTranscriptViewModel::reload()
     else
         m_etaTimer.stop();
 
-    if (m_contextNote != oldNote)
-        emit contextNoteChanged();
     if (m_mixdownPercent != oldPct)
         emit mixdownPercentChanged();
     emit jobChanged();
@@ -291,8 +268,14 @@ void PreTranscriptViewModel::applyJob(const JobProgress& job)
 void PreTranscriptViewModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("steps") : m_demoState;
-    m_contextNote = tr("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
-                       "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.");
+    const QString note = tr("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
+                            "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.");
+    if (st == QLatin1String("note")) {
+        // Sablon-javaslatok a korábbi, hasonló című megbeszélésekből + az észlelt hívás.
+        m_note->setDemoContent(QString(), QStringLiteral("Microsoft Teams"), MeetingNoteModel::demoSuggestions());
+    } else {
+        m_note->setDemoContent(note, QString(), {});
+    }
     m_identifyAvailable = true;
     m_mixdownState = QStringLiteral("ready");
     m_mixdownPercent = -1;
@@ -354,14 +337,7 @@ void PreTranscriptViewModel::loadDemo()
 
 void PreTranscriptViewModel::setContextNote(const QString& note)
 {
-    if (note == m_contextNote)
-        return;
-    m_contextNote = note;
-    AppController* c = app();
-    if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
-        c->setMeetingContextNote(m_meetingId, note);
-    emit contextNoteChanged();
-    emit changed();   // a futás-nézet lábléce is ebből idéz
+    m_note->setNote(note);   // → noteChanged → contextNoteChanged + changed
 }
 
 void PreTranscriptViewModel::setIdentifyEnabled(bool enabled)
@@ -404,7 +380,7 @@ QString PreTranscriptViewModel::etaText() const
 QString PreTranscriptViewModel::footerLine() const
 {
     QStringList parts;
-    QString note = m_contextNote.simplified();
+    QString note = m_note->note().simplified();
     if (!note.isEmpty()) {
         if (note.size() > 42)
             note = note.left(40).trimmed() + QStringLiteral("…");

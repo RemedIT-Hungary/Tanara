@@ -1,4 +1,5 @@
 #include "tanara/store/JsonSerialization.h"
+#include "tanara/library/MeetingNotes.h"
 
 #include <QJsonValue>
 
@@ -179,6 +180,8 @@ QJsonObject toJson(const Meeting& m)
     o[QStringLiteral("speakerMap")] = sm;
     if (!m.contextNote.isEmpty())
         o[QStringLiteral("contextNote")] = m.contextNote;
+    if (!m.detectedCallApp.isEmpty())
+        o[QStringLiteral("detectedCallApp")] = m.detectedCallApp;
     return o;
 }
 
@@ -205,6 +208,10 @@ Meeting meetingFromJson(const QJsonObject& o)
     for (auto it = sm.constBegin(); it != sm.constEnd(); ++it)
         m.speakerMap.insert(it.key(), it.value().toString());
     m.contextNote = o.value(QStringLiteral("contextNote")).toString();
+    m.detectedCallApp = o.value(QStringLiteral("detectedCallApp")).toString();
+    // Régi meeting: a figyelő automatikus mondata („Automatikusan észlelt hívás: …”) nem
+    // megjegyzés → üres megjegyzés + észlelt hívás. A következő mentés már így írja ki.
+    meetingnotes::interpretLegacyNote(m);
     return m;
 }
 

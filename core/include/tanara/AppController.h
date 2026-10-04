@@ -184,6 +184,9 @@ public slots:
     // A meeting pár szavas kontextus-leírásának mentése (téma/résztvevők) — beépül a
     // STT context-envelope-jába és az LLM-összefoglaló kontextusába. Perzisztens.
     void setMeetingContextNote(const QString& meetingId, const QString& note);
+    // A figyelő által észlelt hívás-alkalmazás (pl. „Microsoft Teams”) — csak tájékoztató mező,
+    // a megjegyzést nem érinti, és az átírónak sem megy. Üres → törli.
+    void setMeetingDetectedCall(const QString& meetingId, const QString& appName);
 
     // Meeting VÉGLEGES törlése (mappa + index). A store meetingRemoved jelét adja.
     void deleteMeeting(const QString& meetingId);

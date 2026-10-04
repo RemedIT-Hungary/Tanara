@@ -7,7 +7,7 @@ import QtQuick.Templates as T
 //   "steps"   M03: kontextus → előkészítés → átírás (a hiány megnevezve, a gomb odavisz)
 //   "running" M04: szakasz-lista valós haladással, megszakítható
 //   "failed"  M05: hibakártya újrapróbálással és javító művelettel
-// Képernyőképhez: --qml-prop 'demoState="steps|ready|cloud|mixing|running|uploading|failed"'.
+// Képernyőképhez: --qml-prop 'demoState="steps|ready|cloud|mixing|running|uploading|failed|note"'.
 Item {
     id: root
 
@@ -35,7 +35,7 @@ Item {
         if (page === "providers") root.shell.openSettings(page, "stt")
         else root.shell.openSettings(page)
     }
-    function commitContext() { saveTimer.stop(); vm.commitContextDraft() }
+    function commitContext() { noteEditor.commit() }
     function start() {
         commitContext()
         if (root.shell) root.shell.startTranscription(root.meetingId)
@@ -80,32 +80,12 @@ Item {
                     tone: "current"
                     title: qsTr("Miről szólt a megbeszélés?")
 
-                    TLabel {
+                    MeetingNoteEditor {
+                        id: noteEditor
                         Layout.fillWidth: true
-                        text: qsTr("Nevek, szakszavak, témák: ezekből pontosabb átirat lesz. Elhagyható.")
-                        muted: true
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.Wrap
-                    }
-                    TTextArea {
-                        id: contextArea
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("Például: negyedéves egyeztetés a partnerekkel; szóba kerül a számlázás és az új súgó.")
-                        Component.onCompleted: text = vm.contextNote
-                        onEditingFinished: root.commitContext()
-                        // A piszkozatot a nézetmodell a megbeszélés azonosítójával együtt őrzi: a
-                        // késleltetett mentés így sosem kerülhet másik megbeszélésbe.
-                        onTextChanged: if (activeFocus) { vm.draftContextNote(text); saveTimer.restart() }
-                        Accessible.name: qsTr("Miről szólt a megbeszélés?")
-                        Timer { id: saveTimer; interval: 900; onTriggered: root.commitContext() }
-                        Connections {
-                            target: vm
-                            function onContextNoteChanged() {
-                                if (!contextArea.activeFocus && contextArea.text !== vm.contextNote)
-                                    contextArea.text = vm.contextNote
-                            }
-                            function onMeetingIdChanged() { saveTimer.stop(); contextArea.text = vm.contextNote }
-                        }
+                        model: vm.note
+                        accessibleName: qsTr("Miről szólt a megbeszélés?")
+                        helperText: qsTr("Témák, nevek, szakszavak és az ismert félrehallások: az átíró ebből pontosabb átiratot készít, és az összefoglaló is megkapja. Később, az Összefoglaló fülön is módosítható. Elhagyható.")
                     }
                 }
 

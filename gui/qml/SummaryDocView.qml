@@ -12,6 +12,10 @@ import QtQuick.Templates as T
 //   átiratban, pontok), sok szakasznál tartalomjegyzékkel.
 // A régi (memó előtti) összefoglalónál a memó helyén rövid magyarázat + „Újragenerálás”.
 // Témánkénti összefoglalónál nincs kapcsoló: a vezetői rész alatt a témaszekciók állnak.
+//
+// A jobb oszlopban a megbeszélés-megjegyzés összecsukható blokkja (alapból csukva: az eleje
+// látszik); nyitva szerkeszthető, sablon-javaslatokkal. Ha az összefoglaló óta változott, az
+// „Újragenerálás” alatt szelíd jelzés áll (a könyvtárban nem lesz tőle elavult).
 Flickable {
     id: root
 
@@ -39,6 +43,7 @@ Flickable {
     T.ScrollBar.vertical: TScrollBar {}
 
     function regenerate() {
+        noteEditor.commit()   // a függő megjegyzés-piszkozat már az új futásba kerüljön
         // Témánkénti összefoglalónál a témákat kell újraelemezni → a munkaterület nyílik meg.
         if (vm.mode === "topics" && vm.hasTopics) vm.topicsOpen = true
         else if (root.shell) root.shell.startQuickSummary(root.meetingId)
@@ -626,6 +631,78 @@ Flickable {
                     }
                 }
 
+                // ---- megbeszélés-megjegyzés (összecsukható) ----
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TDivider { Layout.fillWidth: true; Layout.bottomMargin: 2 }
+                    T.AbstractButton {
+                        id: noteToggle
+                        Layout.fillWidth: true
+                        implicitHeight: 28
+                        hoverEnabled: true
+                        Accessible.name: qsTr("Megjegyzés a megbeszéléshez")
+                        onClicked: root.vm.noteOpen = !root.vm.noteOpen
+                        background: Rectangle {
+                            radius: Theme.radiusControl
+                            color: Theme.stateLayer
+                            opacity: noteToggle.down ? Theme.pressedOpacity : noteToggle.hovered ? Theme.hoverOpacity : 0
+                            TFocusRing { visible: noteToggle.visualFocus }
+                        }
+                        contentItem: RowLayout {
+                            spacing: 8
+                            TIcon { name: "pencil"; size: 14; color: Theme.textMuted }
+                            TLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("Megjegyzés a megbeszéléshez")
+                                font.pixelSize: Theme.fontSmall
+                                font.weight: Theme.weightMedium
+                                elide: Text.ElideRight
+                            }
+                            TIcon {
+                                name: root.vm.noteOpen ? "chevron-up" : "chevron-down"
+                                size: 14
+                                color: Theme.textMuted
+                            }
+                        }
+                    }
+                    // Csukva: az eleje (vagy mire jó), és az észlelt hívás.
+                    TLabel {
+                        visible: !root.vm.noteOpen
+                        Layout.fillWidth: true
+                        text: root.vm.note.note.trim() !== ""
+                              ? root.vm.note.note.trim()
+                              : qsTr("Nincs megjegyzés. Ide írhatod a neveket, szakszavakat és a félrehallott szavak helyes alakját.")
+                        muted: true
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
+                    RowLayout {
+                        visible: !root.vm.noteOpen && root.vm.note.detectedCallApp !== ""
+                        Layout.fillWidth: true
+                        spacing: 6
+                        TIcon { name: "radar"; size: 13; color: Theme.textMuted }
+                        TLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("Észlelt hívás: %1").arg(root.vm.note.detectedCallApp)
+                            muted: true
+                            font.pixelSize: Theme.fontCaption
+                            elide: Text.ElideRight
+                        }
+                    }
+                    MeetingNoteEditor {
+                        id: noteEditor
+                        visible: root.vm.noteOpen
+                        Layout.fillWidth: true
+                        compact: true
+                        model: root.vm.note
+                        fieldHeight: 110
+                        helperText: qsTr("Nevek, szakszavak, ismert félrehallások (A „…” helyesen: …). Az újragenerált összefoglaló és egy újra-átírás is ezt kapja.")
+                    }
+                }
+
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
@@ -652,6 +729,26 @@ Flickable {
                         enabled: root.vm.canRun && !root.vm.jobRunning
                         toolTipText: root.vm.canRun ? "" : (root.vm.blocker.reason || "")
                         onClicked: root.regenerate()
+                    }
+                    // A megjegyzés az összefoglaló óta változott: szelíd jelzés, nem elavult-jel.
+                    RowLayout {
+                        visible: root.vm.noteChangedSinceSummary
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.bottomMargin: 2
+                        spacing: 6
+                        TIcon {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.topMargin: 2
+                            name: "info"; size: 13; color: Theme.textMuted
+                        }
+                        TLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("A megjegyzés azóta változott; újrageneráláskor már az új számít.")
+                            muted: true
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
                     }
                     // Memós összefoglalónál a menü választ: vezetői rész, memó vagy mindkettő.
                     TButton {

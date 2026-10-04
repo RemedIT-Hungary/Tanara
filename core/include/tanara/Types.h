@@ -150,8 +150,12 @@ struct Meeting {
     QMap<QString, QString> speakerMap;   // nyers beszélő-címke ("Távoli 1") → valódi név ("Béla")
     // A felhasználó pár szavas leírása a meetingről (téma/kontextus). Beépül a STT
     // context-envelope-jába (pontosabb átirat a kétes részeknél) ÉS az LLM-összefoglaló
-    // kontextusába is. Átíráskor a UI bekéri (előtöltve ezzel az értékkel).
+    // kontextusába is. Az átirat előtti nézetben és az Összefoglaló fülön szerkeszthető; ide
+    // valók a nevek, szakszavak és az ismert félrehallások („A „…” helyesen: …”).
     QString contextNote;
+    // A figyelő által észlelt hívás-alkalmazás (pl. „Microsoft Teams”); üres, ha kézi felvétel.
+    // Csak tájékoztató: sem az átírónak, sem az összefoglalónak nem megy.
+    QString detectedCallApp;
 };
 
 // ---- beszélő-azonosítás (voice fingerprint) -------------------------------

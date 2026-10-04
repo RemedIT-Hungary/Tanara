@@ -15,6 +15,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/jobs/JobTypes.h"
+#include "tanara/library/MeetingNotes.h"
 #include "tanara/library/TextFold.h"
 
 #include <QObject>
@@ -104,6 +105,12 @@ public:
     // A teljes (meeting.json-ból töltött) meeting a gyorsítótárból.
     Meeting meeting(const QString& meetingId) const;
     int meetingCount() const;
+
+    // Sablon-javaslatok a meeting megjegyzéséhez: a hasonló című korábbi megbeszélések nem
+    // üres, a jelenlegitől eltérő megjegyzései, legújabb elöl (lásd MeetingNotes.h).
+    QVector<meetingnotes::NoteSuggestion> noteSuggestions(const QString& meetingId,
+                                                          const QString& currentNote,
+                                                          int limit = 3) const;
 
     // A könyvtárban szereplő nevesített személyek, gyakoriság szerint (szűrő-chipekhez).
     QVector<PersonPresence> people() const;

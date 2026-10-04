@@ -123,10 +123,10 @@ private slots:
         QTest::addColumn<QString>("theme");
         QTest::addColumn<QString>("state");
         const QList<QPair<const char*, QStringList>> pages{
-            {"PreTranscriptView", {"steps", "ready", "cloud", "mixing", "running", "uploading", "failed"}},
+            {"PreTranscriptView", {"steps", "ready", "cloud", "mixing", "running", "uploading", "failed", "note"}},
             {"SummaryTab", {"stale", "done", "memo", "memoShort", "oldSummary", "oldMemo", "running", "topicsDoc", "empty",
                             "emptyBlocked", "emptyRunning", "emptyRunningParts", "emptyRunningMerge", "emptyError",
-                            "emptyErrorKept", "emptyErrorContext", "topics"}},
+                            "emptyErrorKept", "emptyErrorContext", "emptyNote", "noteOpen", "noteChanged", "topics"}},
             {"TracksTab", {"default", "loading", "idle"}},
         };
         for (const char* theme : {"light", "dark"})

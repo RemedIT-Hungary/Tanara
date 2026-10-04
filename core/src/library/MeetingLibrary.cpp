@@ -35,6 +35,7 @@ struct MeetingLibrary::Impl {
     QVector<Meeting>   meetings;            // startedAt szerint csökkenő
     QHash<QString, int> index;              // id → pozíció a meetings-ben
     QHash<QString, QString> foldedTitle;    // id → hajtogatott cím
+    QHash<QString, QStringList> titleWords; // id → a cím összehasonlítható szavai (javaslatokhoz)
     QHash<QString, TextDoc> texts;          // id → átirat-szöveg (lusta)
     QTimer* warmTimer = nullptr;
 
@@ -74,6 +75,7 @@ MeetingLibrary::MeetingLibrary(MeetingStore* store, MeetingJobTracker* tracker, 
             }
             d->texts.remove(id);
             d->foldedTitle.remove(id);
+            d->titleWords.remove(id);
             emit meetingRemoved(id);
             emit pendingItemsChanged();
         });
@@ -109,6 +111,7 @@ void MeetingLibrary::ensureLoaded() const
                      [](const Meeting& a, const Meeting& b) { return a.startedAt > b.startedAt; });
     d->reindex();
     d->foldedTitle.clear();
+    d->titleWords.clear();
     d->loaded = true;
 }
 
@@ -121,6 +124,7 @@ void MeetingLibrary::reloadMeeting(const QString& id)
     const Meeting full = d->store->load(id);
     if (full.id.isEmpty()) return;
     d->foldedTitle.remove(id);
+    d->titleWords.remove(id);
 
     // Az átirat-szöveg csak akkor érvénytelen, ha a fájl tényleg változott (egy átnevezés vagy
     // beszélő-hozzárendelés nem olvastatja újra a teljes átiratot).
@@ -155,6 +159,7 @@ void MeetingLibrary::invalidate(const QString& meetingId)
         d->index.clear();
         d->texts.clear();
         d->foldedTitle.clear();
+        d->titleWords.clear();
         emit reset();
         emit pendingItemsChanged();
         return;
@@ -355,6 +360,28 @@ int MeetingLibrary::meetingCount() const
 {
     ensureLoaded();
     return int(d->meetings.size());
+}
+
+QVector<meetingnotes::NoteSuggestion> MeetingLibrary::noteSuggestions(const QString& meetingId,
+                                                                      const QString& currentNote,
+                                                                      int limit) const
+{
+    ensureLoaded();
+    const int self = d->index.value(meetingId, -1);
+    if (self < 0)
+        return {};
+    // Csak a megjegyzéssel bíró meetingek jelöltek; a cím-szavak meetingenként gyorsítótárazva.
+    QVector<meetingnotes::NoteCandidate> candidates;
+    for (const Meeting& m : std::as_const(d->meetings)) {
+        if (m.id == meetingId || m.contextNote.trimmed().isEmpty())
+            continue;
+        auto w = d->titleWords.constFind(m.id);
+        if (w == d->titleWords.constEnd())
+            w = d->titleWords.insert(m.id, meetingnotes::titleWords(m.title));
+        candidates.append({m.id, m.title, m.startedAt, m.contextNote, *w});
+    }
+    return meetingnotes::suggestNotes(candidates, meetingId, d->meetings.at(self).title,
+                                      currentNote, limit);
 }
 
 QVector<PersonPresence> MeetingLibrary::people() const

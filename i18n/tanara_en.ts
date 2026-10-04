@@ -965,6 +965,49 @@
     </message>
 </context>
 <context>
+    <name>MeetingNoteEditor</name>
+    <message>
+        <source>Például: Résztvevők: Kovács Anna, Szabó Bence. A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul.</source>
+        <translation>For example: Participants: Anna Kovács, Bence Szabó. “Nordwig” is really Nordvik. “quark module” is really Qvarko module.</translation>
+    </message>
+    <message>
+        <source>Megjegyzés a megbeszéléshez</source>
+        <translation>Note on the meeting</translation>
+    </message>
+    <message>
+        <source>Korábbi, hasonló megbeszélések megjegyzései — kattintásra a mezőbe kerül:</source>
+        <translation>Notes from earlier, similar meetings — click to copy into the field:</translation>
+    </message>
+    <message>
+        <source>Javaslat: %1, %2</source>
+        <translation>Suggestion: %1, %2</translation>
+    </message>
+    <message>
+        <source>Észlelt hívás: %1</source>
+        <translation>Detected call: %1</translation>
+    </message>
+    <message>
+        <source>Már van megjegyzés</source>
+        <translation>There is already a note</translation>
+    </message>
+    <message>
+        <source>Lecseréled a mostanit a korábbi megbeszélés megjegyzésére, vagy hozzáfűzöd a végéhez?</source>
+        <translation>Replace the current note with the earlier meeting’s note, or append it to the end?</translation>
+    </message>
+    <message>
+        <source>Mégse</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Hozzáfűzés</source>
+        <translation>Append</translation>
+    </message>
+    <message>
+        <source>Csere</source>
+        <translation>Replace</translation>
+    </message>
+</context>
+<context>
     <name>NoSelectionView</name>
     <message>
         <source>Válassz egy megbeszélést</source>
@@ -1407,12 +1450,8 @@
         <translation>What was the meeting about?</translation>
     </message>
     <message>
-        <source>Nevek, szakszavak, témák: ezekből pontosabb átirat lesz. Elhagyható.</source>
-        <translation>Names, jargon, topics: these make the transcript more accurate. Optional.</translation>
-    </message>
-    <message>
-        <source>Például: negyedéves egyeztetés a partnerekkel; szóba kerül a számlázás és az új súgó.</source>
-        <translation>For example: quarterly sync with the partners; billing and the new help pages come up.</translation>
+        <source>Témák, nevek, szakszavak és az ismert félrehallások: az átíró ebből pontosabb átiratot készít, és az összefoglaló is megkapja. Később, az Összefoglaló fülön is módosítható. Elhagyható.</source>
+        <translation>Topics, names, jargon and known mishearings: the transcriber uses them for a more accurate transcript, and the summary gets them too. You can change it later on the Summary tab. Optional.</translation>
     </message>
     <message>
         <source>Előkészítés</source>
@@ -3078,6 +3117,22 @@
         <translation>Participants</translation>
     </message>
     <message>
+        <source>Megjegyzés a megbeszéléshez</source>
+        <translation>Note on the meeting</translation>
+    </message>
+    <message>
+        <source>Nincs megjegyzés. Ide írhatod a neveket, szakszavakat és a félrehallott szavak helyes alakját.</source>
+        <translation>No note. Write names, jargon and the correct form of misheard words here.</translation>
+    </message>
+    <message>
+        <source>Észlelt hívás: %1</source>
+        <translation>Detected call: %1</translation>
+    </message>
+    <message>
+        <source>Nevek, szakszavak, ismert félrehallások (A „…” helyesen: …). Az újragenerált összefoglaló és egy újra-átírás is ezt kapja.</source>
+        <translation>Names, jargon, known mishearings (“…” is really …). A regenerated summary and a re-transcription both get this note.</translation>
+    </message>
+    <message>
         <source>Témánkénti elemzés</source>
         <translation>Topic-by-topic analysis</translation>
     </message>
@@ -3092,6 +3147,10 @@
     <message>
         <source>Az összefoglaló a vágólapra került.</source>
         <translation>Summary copied to the clipboard.</translation>
+    </message>
+    <message>
+        <source>A megjegyzés azóta változott; újrageneráláskor már az új számít.</source>
+        <translation>The note has changed since; regenerating uses the new one.</translation>
     </message>
     <message>
         <source>Mindkettő</source>
@@ -3171,6 +3230,14 @@
     <message>
         <source>Témák javaslása</source>
         <translation>Suggest topics</translation>
+    </message>
+    <message>
+        <source>Megjegyzés a megbeszéléshez</source>
+        <translation>Note on the meeting</translation>
+    </message>
+    <message>
+        <source>Ide valók a nevek, szakszavak és az ismert félrehallások (például: A „…” helyesen: …). Az összefoglaló ezt megbízható kontextusként kapja, és egy újra-átírás is ezt küldi az átírónak.</source>
+        <translation>Names, jargon and known mishearings go here (for example: “…” is really …). The summary takes this as reliable context, and a re-transcription sends it to the transcriber too.</translation>
     </message>
     <message>
         <source>Szolgáltató: %1 · %2</source>
@@ -5919,6 +5986,33 @@
     </message>
 </context>
 <context>
+    <name>tanara_qml::MeetingNoteModel</name>
+    <message>
+        <source>Nordvik heti meeting</source>
+        <translation>Nordvik weekly meeting</translation>
+    </message>
+    <message>
+        <source>2026. szept. 29.</source>
+        <translation>Sep 29, 2026</translation>
+    </message>
+    <message>
+        <source>Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul. Téma: a bevezetés ütemezése.</source>
+        <translation>Participants: Anna Kovács, Bence Szabó, Réka Lantos. “Nordwig” is really Nordvik. “quark module” is really Qvarko module. Topic: rollout schedule.</translation>
+    </message>
+    <message>
+        <source>Nordvik heti meeting – demó előtt</source>
+        <translation>Nordvik weekly meeting – before the demo</translation>
+    </message>
+    <message>
+        <source>2026. szept. 22.</source>
+        <translation>Sep 22, 2026</translation>
+    </message>
+    <message>
+        <source>A „pixel tár” helyesen: PixelTár. Résztvevők: Kovács Anna, Szabó Bence.</source>
+        <translation>“pixel store” is really PixelTár. Participants: Anna Kovács, Bence Szabó.</translation>
+    </message>
+</context>
+<context>
     <name>tanara_qml::PeopleViewModel</name>
     <message>
         <source>%1 / %2 megbeszélés…</source>
@@ -7269,6 +7363,14 @@
     <message>
         <source>Összefoglaló készítése</source>
         <translation>Creating summary</translation>
+    </message>
+    <message>
+        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás. A „Szúgó Pont” helyesen: SúgóPont.</source>
+        <translation>Quarterly partner sync: support demand, help pages, billing. “Shoe Go Point” is really SúgóPont.</translation>
+    </message>
+    <message>
+        <source>Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás.</source>
+        <translation>Quarterly partner sync: support demand, help pages, billing.</translation>
     </message>
     <message>
         <source>Összefoglalás</source>

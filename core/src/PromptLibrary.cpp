@@ -34,7 +34,11 @@ const char* const kTopicsRules = R"PROMPT(- TOPICS is the memo someone reads to 
 - A subject is one theme of the discussion and usually lasts a few minutes, rarely more than 10. Split a long discussion into its parts (for example the goal, the cost, who does what, the schedule) instead of writing one long block, but do not start a new block when the same point merely continues after a short aside. 15 minutes of meeting usually contain 2 to 5 subjects. Write the titles in {{LANGUAGE}}. Each point is a short self-contained sentence with the specifics; do not write vague points such as "they discussed the details".
 - Things merely shown, explained or reported (for example during a demo or a status update) belong in TOPICS, not among the decisions or tasks.)PROMPT";
 
-const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.)PROMPT";
+const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.
+%CONTEXT_RULE%)PROMPT";
+
+// A felhasználó megjegyzése megbízható: a benne adott javítás („X helyesen: Y”) a kimenetben is érvényes.
+const char* const kContextRule = R"PROMPT(- The context notes come from the user and are reliable: when they correct a name or term ("X is really Y"), use the corrected form everywhere in your output.)PROMPT";
 
 const char* const kWriting = R"PROMPT(- Write fluent, correct {{LANGUAGE}}. Do not copy garbled or misheard words from the transcript: restore the intended word from context (and from the glossary when one is given), or leave the detail out when you cannot tell what was meant. Keep product names and technical terms in their original form.)PROMPT";
 
@@ -91,6 +95,7 @@ FIELD RULES
 
 QUALITY RULES
 - Use only what is in the notes. Do not add anything, do not turn an OPEN item into a decision, and do not invent owners or deadlines. A wrong decision is worse than a missing one.
+%CONTEXT_RULE%
 - Write fluent, correct {{LANGUAGE}}. Every string value is in {{LANGUAGE}}; the JSON keys stay exactly as shown above.
 - The JSON must be complete and valid: escape double quotes inside strings and use no trailing commas.)PROMPT";
 
@@ -145,7 +150,8 @@ They reviewed the budget overrun and the options to cover it.
 Rules:
 1. The number of topics follows the content: few topics (even 1) for a casual or thin conversation, more for an information-dense meeting. Do not over-split and do NOT invent topics.
 2. Return only the `## Title` + summary blocks, nothing else.
-3. Write all text in {{LANGUAGE}}.)PROMPT";
+3. Write all text in {{LANGUAGE}}.
+%CONTEXT_RULE%)PROMPT";
 
 // Témánkénti elemzés, 2. kör. A magyar szakaszcímekre illeszt a parser — ezért maradnak magyarul.
 const char* const kAnalysis = R"PROMPT(You are a precise note-taker. From the FULL transcript, analyse ONLY the parts about the given TOPIC.
@@ -161,12 +167,14 @@ First one paragraph that summarises the topic (without a heading). After it — 
 Rules:
 1. Do NOT invent anything. When the topic has no real decision, open question or task, leave that section out (no empty heading). Focus only on the given topic.
 2. A decision is only what the participants explicitly agreed on. Anything proposed, considered or pending goes under `## Nyitott kérdések`. The owner is the person who will DO the task, not the one who asked for it.
-3. Write all text in {{LANGUAGE}} — but the section headings `## Döntések`, `## Nyitott kérdések` and `## Teendők` stay EXACTLY like this, in Hungarian.)PROMPT";
+3. Write all text in {{LANGUAGE}} — but the section headings `## Döntések`, `## Nyitott kérdések` and `## Teendők` stay EXACTLY like this, in Hungarian.
+%CONTEXT_RULE%)PROMPT";
 
 // SZŰK feladat: KIZÁRÓLAG egy rövid vezetői összefoglaló — a teendők összevonását NEM az LLM
 // végzi (azt a kód deduplikálja a per-téma elemzésekből), így a kimenet modellfüggetlenül stabil.
 const char* const kReduce = R"PROMPT(You are a precise note-taker. From the per-topic analyses, write ONE global executive summary of the whole conversation in 2–4 sentences.
-Return ONLY this paragraph and nothing else: no heading, no list, no tasks, no decisions, no JSON, no code fence, no explanation, no reasoning. Write it in {{LANGUAGE}}.)PROMPT";
+Return ONLY this paragraph and nothing else: no heading, no list, no tasks, no decisions, no JSON, no code fence, no explanation, no reasoning. Write it in {{LANGUAGE}}.
+%CONTEXT_RULE%)PROMPT";
 
 QString compose(const char* tmpl)
 {
@@ -176,6 +184,7 @@ QString compose(const char* tmpl)
     s.replace(QStringLiteral("%TOPICS_RULES%"), QString::fromUtf8(kTopicsRules));
     s.replace(QStringLiteral("%EXAMPLES%"), QString::fromUtf8(kClassifyExamples));
     s.replace(QStringLiteral("%WRITING%"), QString::fromUtf8(kWriting));
+    s.replace(QStringLiteral("%CONTEXT_RULE%"), QString::fromUtf8(kContextRule));
     return s + QLatin1Char('\n');
 }
 

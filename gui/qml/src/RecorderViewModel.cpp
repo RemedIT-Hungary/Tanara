@@ -8,6 +8,7 @@
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/audio/PlaybackRouting.h"
 #include "tanara/audio/TrackCatalog.h"
+#include "tanara/library/MeetingNotes.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -527,13 +528,21 @@ void RecorderViewModel::applyRequest(const QString& title, const QString& appNam
 {
     if (m_state == QLatin1String("recording") || m_state == QLatin1String("stopping"))
         return;   // futó felvétel címéhez / forrásaihoz külső kérés nem nyúl
-    if (!context.trimmed().isEmpty()) m_context = context.trimmed();
+    // A régi figyelő az észlelt hívást megjegyzésként is küldte („Automatikusan észlelt hívás:
+    // …”): az nem megjegyzés, hanem az észlelt app — külön mezőbe kerül.
+    QString detectedApp = appName.trimmed();
+    QString autoApp;
+    if (tanara::meetingnotes::parseAutoCallNote(context, &autoApp)) {
+        if (detectedApp.isEmpty()) detectedApp = autoApp;
+    } else if (!context.trimmed().isEmpty()) {
+        m_context = context.trimmed();
+    }
+    if (!detectedApp.isEmpty()) m_appName = detectedApp;
     if (!title.trimmed().isEmpty()) {
         m_title = title.trimmed();
         m_titleAuto = false;
         emit titleChanged();
-    } else if (!appName.trimmed().isEmpty() && m_titleAuto) {
-        m_appName = appName.trimmed();
+    } else if (!detectedApp.isEmpty() && m_titleAuto) {
         m_title = automaticTitle(m_appName, QDateTime::currentDateTime());
         emit titleChanged();
     }
@@ -707,6 +716,8 @@ void RecorderViewModel::onFinished(const Meeting& m)
             m_controller->renameMeeting(m.id, m_title);     // felvétel közbeni átnevezés
         if (!m_context.isEmpty())
             m_controller->setMeetingContextNote(m.id, m_context);
+        if (!m_appName.isEmpty())
+            m_controller->setMeetingDetectedCall(m.id, m_appName);   // „Észlelt hívás: …”
     }
     for (Row& r : m_rows) { r.recorded = false; r.rms = r.peak = 0.f; }
     const bool hadDisconnected = std::any_of(m_rows.cbegin(), m_rows.cend(),

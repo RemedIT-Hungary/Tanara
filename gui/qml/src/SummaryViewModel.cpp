@@ -92,9 +92,10 @@ qint64 SummaryViewModel::splitTimestamp(const QString& text, QString* rest)
 }
 
 SummaryViewModel::SummaryViewModel(QObject* parent)
-    : QObject(parent), m_topics(new TopicListModel(this))
+    : QObject(parent), m_topics(new TopicListModel(this)), m_note(new MeetingNoteModel(this))
 {
     connect(m_topics, &TopicListModel::countsChanged, this, &SummaryViewModel::changed);
+    connect(m_note, &MeetingNoteModel::noteChanged, this, &SummaryViewModel::noteHintChanged);
 
     AppContext* ctx = AppContext::instance();
     connect(ctx, &AppContext::controllerChanged, this, [this]() { connectController(); reload(); });
@@ -112,6 +113,7 @@ void SummaryViewModel::setController(QObject* controller)
     if (m_injected == controller)
         return;
     m_injected = controller;
+    m_note->setController(controller);
     connectController();
     emit controllerChanged();
     reload();
@@ -122,6 +124,8 @@ void SummaryViewModel::setMeetingId(const QString& id)
     if (id == m_meetingId)
         return;
     const bool switching = !m_meetingId.isEmpty();
+    // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda kerül.
+    m_note->setMeetingId(id);
     m_meetingId = id;
     emit meetingIdChanged();
     // Másik meetingre váltva a munkaterület bezárul; ha az új meetingnek van téma-listája, de
@@ -130,6 +134,7 @@ void SummaryViewModel::setMeetingId(const QString& id)
     AppController* c = app();
     if (switching) {
         m_topicsOpen = false;
+        setNoteOpen(false);
         if (m_section != QLatin1String("exec")) {   // új meetingnél mindig a rövid forma látszik
             m_section = QStringLiteral("exec");
             emit sectionChanged();
@@ -151,7 +156,22 @@ void SummaryViewModel::setDemoState(const QString& state)
     const bool memo = state == QLatin1String("memo") || state == QLatin1String("memoShort")
                    || state == QLatin1String("oldMemo");
     setSection(memo ? QStringLiteral("memo") : QStringLiteral("exec"));
+    setNoteOpen(state == QLatin1String("noteOpen"));
     reload();
+}
+
+void SummaryViewModel::setNoteOpen(bool open)
+{
+    if (open == m_noteOpen)
+        return;
+    m_noteOpen = open;
+    emit noteOpenChanged();
+}
+
+bool SummaryViewModel::noteChangedSinceSummary() const
+{
+    return m_hasSummary && m_summaryNoteKnown
+        && m_summaryNote.simplified() != m_note->note().simplified();
 }
 
 void SummaryViewModel::setTopicsOpen(bool open)
@@ -238,6 +258,9 @@ void SummaryViewModel::connectController()
                              [this, mine](const QString& id) { if (mine(id)) reloadParticipants(); });
     m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
                              &SummaryViewModel::reload);
+    // A megjegyzés (és az észlelt hívás) a meeting.json-ban: mentés / másik nézet szerkesztése után.
+    m_connections << connect(c->store(), &MeetingStore::meetingUpdated, this,
+                             [this, mine](const QString& id) { if (mine(id)) m_note->reload(); });
     if (CloudAccount* acc = c->cloud()) {
         m_connections << connect(acc, &CloudAccount::loggedIn, this, &SummaryViewModel::reload);
         m_connections << connect(acc, &CloudAccount::loggedOut, this, &SummaryViewModel::reload);
@@ -404,6 +427,8 @@ void SummaryViewModel::reload()
     m_memo.clear();
     m_summary = Summary();
     m_summaryParticipants.clear();
+    m_summaryNote.clear();
+    m_summaryNoteKnown = false;
     m_jobKind = -1;
     m_jobTitle.clear();
     m_jobMessage.clear();
@@ -420,6 +445,7 @@ void SummaryViewModel::reload()
         emit participantsChanged();
         emit jobChanged();
         emit changed();
+        emit noteHintChanged();
         return;
     }
     if (m_meetingId.isEmpty()) {
@@ -427,6 +453,8 @@ void SummaryViewModel::reload()
         m_valid = false;
         m_participants.clear();
         m_topics->clear();
+        m_note->reload();
+        emit noteHintChanged();
         emit participantsChanged();
         emit jobChanged();
         emit changed();
@@ -437,6 +465,7 @@ void SummaryViewModel::reload()
     m_valid = !m.id.isEmpty();
     m_durationMs = m.durationMs;
     m_topics->bind(c, m_meetingId);
+    m_note->reload();
 
     // Kapuzás + szolgáltató.
     const ReadinessResult r = c->canRun(WorkflowStep::Summarize, m_meetingId);
@@ -506,6 +535,8 @@ void SummaryViewModel::reload()
         }
         m_metaLine = meta.join(QStringLiteral(" · "));
         m_modelLine = doc.meta.model;
+        m_summaryNote = doc.meta.contextNote;
+        m_summaryNoteKnown = doc.meta.contextNoteKnown;
 
         const SummaryStaleInfo st = c->summaryStale(m);
         m_stale = st.stale;
@@ -514,6 +545,7 @@ void SummaryViewModel::reload()
 
     reloadParticipants();   // beszélők → résztvevők, felelős-színek, átirat-sor (+ changed)
     reloadJobs();
+    emit noteHintChanged();
 }
 
 QString SummaryViewModel::markdownFor(const QString& part) const
@@ -583,6 +615,22 @@ void SummaryViewModel::loadDemo()
     m_participants.clear();
 
     const bool empty = st.startsWith(QLatin1String("empty"));
+
+    // A megjegyzés: kitalált, a helyesírás-javításokkal; az „emptyNote” / „noteOpen” állapot a
+    // korábbi, hasonló című megbeszélések javaslataival.
+    const QString demoNote = tr("Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás. "
+                                "A „Szúgó Pont” helyesen: SúgóPont.");
+    if (st == QLatin1String("emptyNote"))
+        m_note->setDemoContent(QString(), QStringLiteral("Microsoft Teams"),
+                               MeetingNoteModel::demoSuggestions());
+    else if (st == QLatin1String("noteOpen"))
+        m_note->setDemoContent(demoNote, QString(), MeetingNoteModel::demoSuggestions());
+    else
+        m_note->setDemoContent(demoNote, QString(), {});
+    m_summaryNoteKnown = true;
+    m_summaryNote = st == QLatin1String("noteChanged")
+        ? tr("Negyedéves partner-egyeztetés: támogatási igény, súgóoldalak, számlázás.")
+        : demoNote;
     if (st == QLatin1String("topics")) {
         m_topics->loadDemo();
         m_topicsOpen = true;

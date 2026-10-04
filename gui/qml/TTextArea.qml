@@ -10,7 +10,9 @@ T.TextArea {
     property bool stateFocused: activeFocus
 
     implicitWidth: 320
-    implicitHeight: Math.max(64, contentHeight + topPadding + bottomPadding)
+    // Üres mezőnél a (több soros) helykitöltő szöveg is beleférjen.
+    implicitHeight: Math.max(64, Math.max(contentHeight, placeholder.visible ? placeholder.implicitHeight : 0)
+                                 + topPadding + bottomPadding)
     leftPadding: 12; rightPadding: 12; topPadding: 10; bottomPadding: 10
     wrapMode: TextEdit.Wrap
     selectByMouse: true
@@ -23,6 +25,7 @@ T.TextArea {
     font.pixelSize: Theme.fontBody
 
     Text {
+        id: placeholder
         x: control.leftPadding
         y: control.topPadding
         width: control.width - control.leftPadding - control.rightPadding

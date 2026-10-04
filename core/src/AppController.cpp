@@ -30,6 +30,7 @@
 #include "tanara/jobs/JobErrors.h"
 #include "tanara/jobs/JobStats.h"
 #include "tanara/library/MeetingLibrary.h"
+#include "tanara/library/MeetingNotes.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/WaveformService.h"
 #include "tanara/edit/PeopleDirectory.h"
@@ -1287,6 +1288,15 @@ void AppController::setMeetingContextNote(const QString& meetingId, const QStrin
     d->store->saveMeeting(m);
 }
 
+void AppController::setMeetingDetectedCall(const QString& meetingId, const QString& appName) {
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    const QString a = appName.trimmed();
+    if (m.detectedCallApp == a) return;
+    m.detectedCallApp = a;
+    d->store->saveMeeting(m);
+}
+
 void AppController::deleteMeeting(const QString& meetingId) {
     if (meetingId.isEmpty()) return;
     // Futó feladatok leállítása, mielőtt a mappa eltűnik alóluk.
@@ -2241,19 +2251,6 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     QObject* providerObj = dynamic_cast<QObject*>(provider);
     emit jobProgress(m.id, tr("Átírás indítása…"));
 
-    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms).
-    // Forrás: cím (general) + a felhasználó pár szavas leírása (text) + a résztvevő-nevek
-    // (terms; az aktív sávok fix beszélői — később naptár-bejegyzés is).
-    QMap<QString, QString> ctxGeneral;
-    if (!m.title.trimmed().isEmpty())
-        ctxGeneral.insert(QStringLiteral("Megbeszélés"), m.title.trimmed());
-    QStringList participants;
-    for (const Track& t : m.tracks) {
-        const QString lbl = t.speakerLabel.trimmed();
-        if (t.active && !lbl.isEmpty() && !participants.contains(lbl))
-            participants << lbl;
-    }
-
     const QString mixPath =
         QDir(m.folder).filePath(m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
                                                         : m.mixdownFile);
@@ -2264,9 +2261,10 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
     req.audioFilePath = mixPath;
     req.trackId = QStringLiteral("mixdown");
     req.languageHints = s.languageHints;
-    req.contextGeneral = ctxGeneral;
-    req.context = m.contextNote.trimmed();
-    req.contextTerms = participants;
+    // Context-envelope → a Soniox strukturált „context" objektuma (general/text/terms):
+    // cím + a felhasználó megjegyzése (nevek, szakszavak, félrehallás-javítások) + a résztvevő-
+    // nevek. Az észlelt hívás-alkalmazás NEM megy (semmit nem mond az átírónak).
+    meetingnotes::fillSttContext(req, m);
     req.diarization = true;
     if (run && !cloudDiarization) {
         // A választott cloud-szint nem diarizál (pl. Gyors): mindenki „Beszélő 1” lesz
@@ -2558,7 +2556,7 @@ void AppController::summarizeMeeting(const QString& meetingId)
     });
     connect(svc, &SummaryService::summaryReady, this,
             [this, meetingId, providerObj, svc, run, key, statsKey, units, clock, llmId,
-             model = cfg.model](const Summary& sum) {
+             model = cfg.model, note = req.contextNotes](const Summary& sum) {
         d->llmRuns.remove(key);
         if (providerObj) providerObj->deleteLater();
         svc->deleteLater();
@@ -2581,6 +2579,8 @@ void AppController::summarizeMeeting(const QString& meetingId)
         doc.meta.providerId = llmId;
         doc.meta.model = model;
         doc.meta.mode = SummaryMode::Quick;
+        doc.meta.contextNote = note;            // a megjegyzés, amellyel készült
+        doc.meta.contextNoteKnown = true;
         summarystore::save(mm.folder, doc);
         // másolat a notes (vault) mappába
         QDir().mkpath(d->notesDir);
@@ -3116,6 +3116,8 @@ void AppController::finalizeComplexSummary(const QString& meetingId)
         doc.meta.providerId = llmId;
         doc.meta.model = model;
         doc.meta.mode = SummaryMode::Topics;
+        doc.meta.contextNote = m.contextNote.trimmed();   // a záró összegzés indulásakor
+        doc.meta.contextNoteKnown = true;
         summarystore::save(mm.folder, doc);
         QDir().mkpath(d->notesDir);
         const QString noteName = QStringLiteral("%1 %2.md")

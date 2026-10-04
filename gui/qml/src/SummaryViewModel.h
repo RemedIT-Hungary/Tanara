@@ -22,9 +22,16 @@
 // "done" | "memo" (sok szakasz) | "memoShort" | "oldSummary" (memó nélkül) | "oldMemo" (ua., a
 // memó helye látszik) | "running" (újragenerálás fut) | "topicsDoc" | "empty" | "emptyBlocked" |
 // "emptyRunning" | "emptyRunningParts" | "emptyRunningMerge" | "emptyError" | "emptyErrorKept" |
-// "emptyErrorContext" (kontextus-hiba, LM Studio-javítással) |
+// "emptyErrorContext" (kontextus-hiba, LM Studio-javítással) | "emptyNote" (üres, sablon-
+// javaslatokkal a megjegyzéshez) | "noteOpen" (kész, a megjegyzés-blokk nyitva, javaslatokkal) |
+// "noteChanged" (kész, a megjegyzés az összefoglaló óta változott) |
 // "topics".
 //
+// A megbeszélés-megjegyzés (note, MeetingNoteModel) itt is szerkeszthető: az összefoglaló és
+// egy újra-átírás is ezt kapja. Ha az összefoglaló óta változott (a summary.json rögzíti, mivel
+// készült), noteChangedSinceSummary szelíden jelzi — a könyvtárban NEM jelöli elavultnak.
+//
+#include "MeetingNoteModel.h"
 #include "TopicListModel.h"
 
 #include "tanara/Types.h"
@@ -127,6 +134,14 @@ class SummaryViewModel : public QObject {
     // A kész összefoglaló látható része: "exec" (vezetői összefoglaló) | "memo"
     Q_PROPERTY(QString section READ section WRITE setSection NOTIFY sectionChanged)
 
+    // ---- megbeszélés-megjegyzés ----
+    Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
+    // A kész összefoglaló melletti megjegyzés-blokk nyitva van-e (meeting-váltáskor bezárul).
+    Q_PROPERTY(bool noteOpen READ noteOpen WRITE setNoteOpen NOTIFY noteOpenChanged)
+    // A megjegyzés más, mint amivel a mostani összefoglaló készült (régi összefoglalónál,
+    // ahol ez nem ismert, mindig false).
+    Q_PROPERTY(bool noteChangedSinceSummary READ noteChangedSinceSummary NOTIFY noteHintChanged)
+
 public:
     explicit SummaryViewModel(QObject* parent = nullptr);
 
@@ -190,6 +205,11 @@ public:
     QString section() const { return m_section; }
     void setSection(const QString& section);
 
+    MeetingNoteModel* note() const { return m_note; }
+    bool noteOpen() const { return m_noteOpen; }
+    void setNoteOpen(bool open);
+    bool noteChangedSinceSummary() const;
+
     Q_INVOKABLE void refresh();
     // Az összefoglaló markdownja: part "exec" (vezetői összefoglaló + listák + résztvevők),
     // "memo" (csak a memó), "all" / üres (a teljes summary.md). Üres, ha nincs mit adni.
@@ -210,6 +230,8 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void sectionChanged();
+    void noteOpenChanged();
+    void noteHintChanged();
     void participantsChanged();
     void jobChanged();
     void changed();
@@ -236,6 +258,10 @@ private:
     QMetaObject::Connection m_editorConn;
 
     TopicListModel* m_topics = nullptr;
+    MeetingNoteModel* m_note = nullptr;
+    bool m_noteOpen = false;
+    QString m_summaryNote;              // a megjegyzés, amellyel az összefoglaló készült
+    bool m_summaryNoteKnown = false;
     QString m_meetingId;
     QString m_demoState;
     bool m_topicsOpen = false;

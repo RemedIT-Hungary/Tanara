@@ -3,8 +3,9 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // Összefoglaló fül — M06: még nincs összefoglaló. Két választó kártya (gyors: ajánlott;
-// témánkénti), alatta a szolgáltató; hiányzó beállításnál a sáv megnevezi és odavisz; futás
-// közben a kártyák helyén a folyamat látszik megszakítással.
+// témánkénti), alattuk a megbeszélés-megjegyzés (sablon-javaslatokkal) és a szolgáltató;
+// hiányzó beállításnál a sáv megnevezi és odavisz; futás közben a kártyák helyén a folyamat
+// látszik megszakítással.
 Flickable {
     id: root
 
@@ -18,8 +19,13 @@ Flickable {
     clip: true
     T.ScrollBar.vertical: TScrollBar {}
 
-    function startQuick() { if (root.shell) root.shell.startQuickSummary(root.meetingId) }
+    // Indítás előtt a függő megjegyzés-piszkozat mentése: a futás már az újat kapja.
+    function startQuick() {
+        noteEditor.commit()
+        if (root.shell) root.shell.startQuickSummary(root.meetingId)
+    }
     function startTopics() {
+        noteEditor.commit()
         if (root.vm.hasTopics) root.vm.topicsOpen = true
         else if (root.shell) root.shell.startTopicExtraction(root.meetingId)
     }
@@ -245,6 +251,22 @@ Flickable {
                                         : qsTr("2 lépés, témánként 1–2 perc")
                 actionText: root.vm.hasTopics ? qsTr("Témák megnyitása") : qsTr("Témák javaslása")
                 onTriggered: root.startTopics()
+            }
+        }
+
+        // ---- megbeszélés-megjegyzés: az összefoglaló (és egy újra-átírás) ezt kapja ----
+        ColumnLayout {
+            visible: !root.vm.jobRunning
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 8
+            TSectionLabel { text: qsTr("Megjegyzés a megbeszéléshez") }
+            MeetingNoteEditor {
+                id: noteEditor
+                Layout.fillWidth: true
+                model: root.vm.note
+                fieldHeight: 72
+                helperText: qsTr("Ide valók a nevek, szakszavak és az ismert félrehallások (például: A „…” helyesen: …). Az összefoglaló ezt megbízható kontextusként kapja, és egy újra-átírás is ezt küldi az átírónak.")
             }
         }
 
