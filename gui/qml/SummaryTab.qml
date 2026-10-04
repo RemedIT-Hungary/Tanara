@@ -2,10 +2,11 @@ import QtQuick
 
 // Összefoglaló fül. A SummaryViewModel.view szerint három nézet egyike látszik:
 //   "empty"   M06 — még nincs összefoglaló (SummaryEmptyView)
-//   "summary" M07 — kész összefoglaló, elavult-sávval (SummaryDocView)
+//   "summary" M07 — kész összefoglaló (vezetői összefoglaló + memó), elavult-sávval (SummaryDocView)
 //   "topics"  M08 — témánkénti elemzés (SummaryTopicsView)
-// Képernyőképhez: --qml-prop 'demoState="stale|done|topicsDoc|empty|emptyBlocked|emptyRunning|
-// emptyError|topics"' (alapértelmezés: "stale").
+// Képernyőképhez: --qml-prop 'demoState="stale|done|memo|memoShort|oldSummary|oldMemo|running|
+// topicsDoc|empty|emptyBlocked|emptyRunning|emptyRunningParts|emptyRunningMerge|emptyError|
+// emptyErrorKept|topics"' (alapértelmezés: "stale").
 Item {
     id: root
 

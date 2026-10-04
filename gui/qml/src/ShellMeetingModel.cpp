@@ -3,6 +3,7 @@
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 #include "ShellFormat.h"
+#include "SummaryProgress.h"
 
 #include "tanara/AppController.h"
 #include "tanara/jobs/MeetingJobTracker.h"
@@ -239,7 +240,14 @@ QVariantMap ShellMeetingModel::describeJob(const tanara::JobProgress& job)
     for (const tanara::JobStage& s : job.stages)
         if (s.state == tanara::StageState::Running) { running = &s; break; }
 
-    if (job.done >= 0 && job.total > 0) {
+    // Összefoglaló: a szakaszok szerint („Jegyzetek készítése: k / n rész” valós csíkkal, majd
+    // „Összefésülés” határozatlanul) — ugyanaz a leképezés, mint az Összefoglaló fülön (a
+    // korábbi futásból átvett részeket csak a fül mondja ki; a sáv rövid).
+    const SummaryProgress sp = SummaryProgress::from(job);
+    if (sp.isValid()) {
+        detail = sp.label;
+        percent = sp.percent;
+    } else if (job.done >= 0 && job.total > 0) {
         detail = job.kind == JobKind::Identify ? tr("%1 / %2 beszélő").arg(job.done).arg(job.total)
                : job.kind == JobKind::AnalyzeTopics ? tr("%1 / %2 téma").arg(job.done).arg(job.total)
                : QStringLiteral("%1 / %2").arg(job.done).arg(job.total);

@@ -153,6 +153,7 @@ Item {
                 hasResult: model.hasResult
                 resultText: model.resultText
                 resultDecisions: model.resultDecisions
+                resultOpenQuestions: model.resultOpenQuestions
                 resultActions: model.resultActions
                 canRun: root.vm.canRun
                 blockedReason: root.vm.blocker.reason || ""

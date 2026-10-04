@@ -16,7 +16,7 @@
 // provider-registryből), `cloud` (Tanara Cloud fiók / várólista).
 //
 // Controller nélkül (--qml-shot / --demo, tesztek) KITALÁLT adatot ad; a `demoState`
-// ("B01" … "B07", "dirty", "unsaved", "schema", "teaser", "cloudOut") a design-állapotokat
+// ("B01" … "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut") a design-állapotokat
 // állítja be.
 //
 #include "SettingsCloudModel.h"
@@ -123,7 +123,12 @@ class SettingsViewModel : public QObject {
     // ---- B07 Összefoglaló ----
     Q_PROPERTY(QString summaryLanguage READ summaryLanguage WRITE setSummaryLanguage NOTIFY summaryChanged)
     Q_PROPERTY(QStringList summaryLanguageOptions READ summaryLanguageOptions CONSTANT)
-    // [{ id, label, modified }]
+    // A promptok két csoportban: "quick" (gyors összefoglaló: single / notes / merge) és
+    // "topics" (témánkénti elemzés: topic / analysis). [{ value, label, note, tabs }] — a note egy
+    // mondat arról, mikor melyik prompt fut; a tabs a csoport promptjainak indexe (promptTabs).
+    Q_PROPERTY(QVariantList promptGroups READ promptGroups CONSTANT)
+    Q_PROPERTY(QString promptGroup READ promptGroup WRITE setPromptGroup NOTIFY promptIndexChanged)
+    // [{ id, label, group, modified }] — mind az öt prompt; a promptIndex ebben a listában indexel.
     Q_PROPERTY(QVariantList promptTabs READ promptTabs NOTIFY promptsChanged)
     Q_PROPERTY(int promptIndex READ promptIndex WRITE setPromptIndex NOTIFY promptIndexChanged)
     Q_PROPERTY(QString promptText READ promptText WRITE setPromptText NOTIFY promptTextChanged)
@@ -211,6 +216,9 @@ public:
     QString summaryLanguage() const { return m_draft.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
     QStringList summaryLanguageOptions() const;
+    QVariantList promptGroups() const;
+    QString promptGroup() const;
+    void setPromptGroup(const QString& group);
     QVariantList promptTabs() const;
     int promptIndex() const { return m_promptIndex; }
     void setPromptIndex(int index);

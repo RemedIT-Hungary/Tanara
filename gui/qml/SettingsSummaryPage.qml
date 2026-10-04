@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B07 — Összefoglaló: célnyelv, a három prompt fülekben („módosítva” jelzéssel és
+// B07 — Összefoglaló: célnyelv, az öt prompt két csoportban, fülekben („módosítva” jelzéssel és
 // visszaállítással), egyenközű szerkesztő sorszámokkal és {{VÁLTOZÓ}}-kiemeléssel, a
 // változók jelmagyarázata és a csak olvasható kimeneti séma.
 Column {
@@ -11,6 +11,13 @@ Column {
     property var vm: null
     signal resetRequested()            // megerősítést kér a befoglaló ablak
     signal schemaRequested()
+
+    readonly property var currentGroup: {
+        const groups = root.vm ? root.vm.promptGroups : []
+        for (let i = 0; i < groups.length; ++i)
+            if (groups[i].value === (root.vm ? root.vm.promptGroup : "")) return groups[i]
+        return null
+    }
 
     spacing: 14
 
@@ -72,18 +79,47 @@ Column {
             }
         }
 
-        TTabBar {
-            id: tabs
+        // Két csoport: gyors összefoglaló (egy lépésben / részjegyzet / összefésülés) és
+        // témánkénti elemzés; alatta egy mondat arról, mikor melyik utasítás fut.
+        SettingsSegmented {
+            options: root.vm ? root.vm.promptGroups : []
+            value: root.vm ? root.vm.promptGroup : "quick"
+            onPicked: (v) => root.vm.promptGroup = v
+        }
+        TLabel {
             width: parent.width
-            currentIndex: root.vm ? root.vm.promptIndex : 0
-            onCurrentIndexChanged: if (root.vm && root.vm.promptIndex !== currentIndex) root.vm.promptIndex = currentIndex
-            Repeater {
-                model: root.vm ? root.vm.promptTabs : []
-                TTabButton {
-                    required property var modelData
-                    text: modelData.label
-                    font.pixelSize: Theme.fontSmall
-                    pillText: modelData.modified ? "•" : ""
+            text: root.currentGroup ? root.currentGroup.note : ""
+            muted: true
+            font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.5
+            wrapMode: Text.Wrap
+        }
+
+        // Csoportonként egy fülsor; a fülek modellje állandó (a promptTabs indexei), így
+        // gépelés közben („módosítva” jelzés) nem épülnek újra.
+        Repeater {
+            model: root.vm ? root.vm.promptGroups : []
+            TTabBar {
+                id: groupTabs
+                required property var modelData
+                readonly property bool active: root.vm && root.vm.promptGroup === modelData.value
+                visible: active
+                width: parent.width
+                currentIndex: active ? Math.max(0, modelData.tabs.indexOf(root.vm.promptIndex)) : 0
+                onCurrentIndexChanged: {
+                    if (!active || currentIndex < 0 || currentIndex >= modelData.tabs.length) return
+                    const idx = modelData.tabs[currentIndex]
+                    if (root.vm.promptIndex !== idx) root.vm.promptIndex = idx
+                }
+                Repeater {
+                    model: groupTabs.modelData.tabs
+                    TTabButton {
+                        required property int modelData
+                        readonly property var tab: root.vm ? root.vm.promptTabs[modelData] : null
+                        text: tab ? tab.label : ""
+                        font.pixelSize: Theme.fontSmall
+                        pillText: tab && tab.modified ? "•" : ""
+                    }
                 }
             }
         }

@@ -339,6 +339,38 @@ Rectangle {
             fields: root.card ? root.card.advancedFields : []
             rowSpacing: 10
         }
+        // A modell „gondolkodása” az összefoglalónál (csak saját kulcsos LLM): alapból ki.
+        ColumnLayout {
+            visible: advGrid.visible && root.card && root.card.reasoningAvailable
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            spacing: 6
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("A modell gondolkodása az összefoglalónál")
+                font.pixelSize: Theme.fontSmall
+                font.weight: Theme.weightMedium
+                wrapMode: Text.Wrap
+            }
+            SettingsSegmented {
+                Layout.maximumWidth: parent.width
+                value: root.card ? root.card.reasoning : "auto"
+                options: [
+                    { value: "auto", label: qsTr("Automatikus (kikapcsolva)") },
+                    { value: "off", label: qsTr("Kikapcsolva") },
+                    { value: "on", label: qsTr("Bekapcsolva") },
+                ]
+                onPicked: (v) => root.card.reasoning = v
+            }
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("Kikapcsolva gyorsabb, és a kis modellek nem élik fel a válaszkeretet gondolkodásra, mielőtt válaszolnának. Az Automatikus a modellcsaládnak megfelelő módon kapcsolja ki.")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+                cssLineHeight: 1.4
+                wrapMode: Text.Wrap
+            }
+        }
 
         // ---- műveletek ----
         RowLayout {

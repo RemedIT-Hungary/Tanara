@@ -30,32 +30,60 @@ ColumnLayout {
         else root.shell.openSettings(page)
     }
 
+    // Futó feladat: cím, a futó szakasz („Jegyzetek készítése: 3 / 6 rész” — valós csík;
+    // „Összefésülés” / egy lépés — határozatlan), megszakítás; alatta, ha egy korábbi futás
+    // részjegyzeteit használja újra, az is.
     Rectangle {
         visible: root.jobVisible
         Layout.fillWidth: true
-        implicitHeight: 44
+        implicitHeight: Math.max(44, jobCol.implicitHeight + 16)
         radius: Theme.radiusControl
         color: Theme.accentSoft
         border.width: 1
         border.color: Theme.accentLine
-        RowLayout {
-            anchors { fill: parent; leftMargin: 14; rightMargin: 8 }
-            spacing: 12
-            TSpinner { size: 16 }
-            TLabel {
-                text: root.vm.jobTitle !== "" ? root.vm.jobTitle + "…" : qsTr("Folyamatban…")
-                font.weight: Theme.weightSemiBold
-            }
-            TProgressBar {
+        ColumnLayout {
+            id: jobCol
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                      leftMargin: 14; rightMargin: 8 }
+            spacing: 2
+            RowLayout {
                 Layout.fillWidth: true
-                indeterminate: true
-                trackColor: Theme.bg
+                spacing: 12
+                TSpinner { size: 16 }
+                TLabel {
+                    text: root.vm.jobTitle !== "" ? root.vm.jobTitle + "…" : qsTr("Folyamatban…")
+                    font.weight: Theme.weightSemiBold
+                }
+                TLabel {
+                    visible: root.vm.jobStage !== ""
+                    Layout.maximumWidth: root.width * 0.35
+                    text: root.vm.jobStageLabel
+                    muted: true
+                    font.pixelSize: Theme.fontSmall
+                    elide: Text.ElideRight
+                }
+                TProgressBar {
+                    Layout.fillWidth: true
+                    indeterminate: root.vm.jobPercent < 0
+                    value: root.vm.jobPercent < 0 ? 0 : root.vm.jobPercent / 100
+                    trackColor: Theme.bg
+                }
+                TButton {
+                    text: root.vm.jobCancelling ? qsTr("Megszakítás…") : qsTr("Megszakítás")
+                    enabled: !root.vm.jobCancelling
+                    variant: "ghost"; size: "small"
+                    onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, root.vm.jobKind)
+                }
             }
-            TButton {
-                text: root.vm.jobCancelling ? qsTr("Megszakítás…") : qsTr("Megszakítás")
-                enabled: !root.vm.jobCancelling
-                variant: "ghost"; size: "small"
-                onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, root.vm.jobKind)
+            TLabel {
+                visible: root.vm.jobReusedNote !== ""
+                Layout.fillWidth: true
+                Layout.leftMargin: 28
+                Layout.bottomMargin: 4
+                text: root.vm.jobReusedNote
+                muted: true
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.Wrap
             }
         }
     }
@@ -67,8 +95,11 @@ ColumnLayout {
         iconName: "triangle-alert"
         title: qsTr("Az összefoglaló legutóbb nem készült el")
         text: root.vm.errorMessage + (root.vm.errorDetail !== "" ? "\n" + root.vm.errorDetail : "")
+              + (root.vm.errorKeptParts
+                 ? "\n" + qsTr("A már elkészült részek jegyzetei megmaradtak; a folytatás csak a hiányzó részeket és az összefésülést futtatja.")
+                 : "")
         TButton {
-            text: qsTr("Újra")
+            text: root.vm.errorKeptParts ? qsTr("Folytatás") : qsTr("Újra")
             size: "small"
             iconName: "rotate-ccw"
             iconSize: 13

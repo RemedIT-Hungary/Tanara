@@ -279,6 +279,31 @@ void SettingsProviderModel::setValue(const QString& key, const QVariant& value)
     }
 }
 
+bool SettingsProviderModel::reasoningAvailable() const
+{
+    return m_kind == ProviderKind::Llm && !loginProvider();
+}
+
+QString SettingsProviderModel::reasoning() const
+{
+    const QString r = configs().value(descriptor().id).reasoning;
+    return r == QLatin1String("off") || r == QLatin1String("on") ? r : QStringLiteral("auto");
+}
+
+void SettingsProviderModel::setReasoning(const QString& mode)
+{
+    if (!reasoningAvailable()) return;
+    const QString m = mode == QLatin1String("off") || mode == QLatin1String("on") ? mode : QStringLiteral("auto");
+    const ProviderDescriptor d = descriptor();
+    ProviderConfig cfg = configs().value(d.id);
+    if (cfg.reasoning == m) return;
+    cfg.type = d.id;
+    cfg.reasoning = m;
+    configs().insert(d.id, cfg);
+    m_vm->touch();          // a kapcsolat-tesztet nem érinti (az csak a címet / kulcsot nézi)
+    bumpValues();
+}
+
 void SettingsProviderModel::setAdvancedOpen(bool open)
 {
     if (m_advancedOpen == open) return;

@@ -51,6 +51,7 @@ public:
         ResultTextRole,       // a kész elemzés szövege (markdown)
         ResultDecisionsRole,  // QStringList
         ResultActionsRole,    // [{ text, owner, due }]
+        ResultOpenQuestionsRole,  // QStringList — a témában nyitva maradt kérdések
     };
 
     explicit TopicListModel(QObject* parent = nullptr);

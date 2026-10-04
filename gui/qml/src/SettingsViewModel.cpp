@@ -43,8 +43,37 @@ namespace {
 const QStringList kPages{QStringLiteral("general"), QStringLiteral("recording"),
                          QStringLiteral("watcher"), QStringLiteral("services"),
                          QStringLiteral("summary")};
-const QStringList kPromptIds{QStringLiteral("simple"), QStringLiteral("topic"),
-                             QStringLiteral("analysis")};
+// A szerkeszthető promptok sorrendben: a gyors összefoglaló három promptja (egylépéses,
+// részenkénti jegyzet, összefésülés), majd a témánkénti elemzés kettő. A "reduce" (a
+// témánkénti elemzés záró összegzése) csak fájl-override-dal hangolható, itt nem szerepel.
+const QStringList kPromptIds{QStringLiteral("single"), QStringLiteral("notes"), QStringLiteral("merge"),
+                             QStringLiteral("topic"), QStringLiteral("analysis")};
+
+QString promptGroupOf(const QString& id)
+{
+    return id == QLatin1String("topic") || id == QLatin1String("analysis") ? QStringLiteral("topics")
+                                                                            : QStringLiteral("quick");
+}
+
+// A beállításokban tárolt felülírás az adott prompthoz (üres = a beépített / fájl-default él).
+QString storedPrompt(const AppSettings& s, const QString& id)
+{
+    if (id == QLatin1String("single"))   return s.summaryPrompt;
+    if (id == QLatin1String("notes"))    return s.notesPrompt;
+    if (id == QLatin1String("merge"))    return s.mergePrompt;
+    if (id == QLatin1String("topic"))    return s.topicExtractionPrompt;
+    if (id == QLatin1String("analysis")) return s.topicAnalysisPrompt;
+    return QString();
+}
+
+void setStoredPrompt(AppSettings& s, const QString& id, const QString& text)
+{
+    if (id == QLatin1String("single"))        s.summaryPrompt = text;
+    else if (id == QLatin1String("notes"))    s.notesPrompt = text;
+    else if (id == QLatin1String("merge"))    s.mergePrompt = text;
+    else if (id == QLatin1String("topic"))    s.topicExtractionPrompt = text;
+    else if (id == QLatin1String("analysis")) s.topicAnalysisPrompt = text;
+}
 
 QLocale uiLocale()
 {
@@ -320,11 +349,11 @@ void SettingsViewModel::loadFromCore()
 
     m_promptText.clear();
     m_promptDefault.clear();
-    const QStringList stored{m_base.summaryPrompt, m_base.topicExtractionPrompt, m_base.topicAnalysisPrompt};
-    for (int i = 0; i < kPromptIds.size(); ++i) {
-        const QString def = promptDefault(kPromptIds.at(i), m_base.metadataDir);
-        m_promptDefault.insert(kPromptIds.at(i), def);
-        m_promptText.insert(kPromptIds.at(i), stored.at(i).isEmpty() ? def : stored.at(i));
+    for (const QString& id : kPromptIds) {
+        const QString def = promptDefault(id, m_base.metadataDir);
+        const QString stored = storedPrompt(m_base, id);
+        m_promptDefault.insert(id, def);
+        m_promptText.insert(id, stored.isEmpty() ? def : stored);
     }
 
     const bool cloudLive = c->cloudLive();
@@ -387,12 +416,11 @@ void SettingsViewModel::onExternalSettingsChanged()
     if (typedName.trimmed() == m_draft.userSpeakerName) m_draft.userSpeakerName = typedName;
     {
         // A promptok szerkesztő-szövege az összefésült piszkozatból (külső prompt-változás is megjelenik).
-        const QStringList stored{m_draft.summaryPrompt, m_draft.topicExtractionPrompt, m_draft.topicAnalysisPrompt};
-        for (int i = 0; i < kPromptIds.size(); ++i)
-            if (!stored.at(i).isEmpty() || m_promptText.value(kPromptIds.at(i)).trimmed()
-                                               != m_promptDefault.value(kPromptIds.at(i)).trimmed())
-                m_promptText.insert(kPromptIds.at(i), stored.at(i).isEmpty()
-                                                          ? m_promptDefault.value(kPromptIds.at(i)) : stored.at(i));
+        for (const QString& id : kPromptIds) {
+            const QString stored = storedPrompt(m_draft, id);
+            if (!stored.isEmpty() || m_promptText.value(id).trimmed() != m_promptDefault.value(id).trimmed())
+                m_promptText.insert(id, stored.isEmpty() ? m_promptDefault.value(id) : stored);
+        }
     }
     m_devices->refreshFromDraft();
     m_stt->reset();
@@ -417,9 +445,8 @@ void SettingsViewModel::storePromptsInDraft()
         const QString text = m_promptText.value(id);
         return text.trimmed() == m_promptDefault.value(id).trimmed() ? QString() : text;
     };
-    m_draft.summaryPrompt = stored(QStringLiteral("simple"));
-    m_draft.topicExtractionPrompt = stored(QStringLiteral("topic"));
-    m_draft.topicAnalysisPrompt = stored(QStringLiteral("analysis"));
+    for (const QString& id : kPromptIds)
+        setStoredPrompt(m_draft, id, stored(id));
 }
 
 void SettingsViewModel::touch()
@@ -1049,14 +1076,59 @@ QString SettingsViewModel::promptId(int index) const
     return kPromptIds.value(index, kPromptIds.first());
 }
 
+QVariantList SettingsViewModel::promptGroups() const
+{
+    // tabs: a csoport promptjainak indexe a promptTabs-ban (állandó — a fülek nem épülnek újra).
+    auto indices = [](const QString& group) {
+        QVariantList out;
+        for (int i = 0; i < kPromptIds.size(); ++i)
+            if (promptGroupOf(kPromptIds.at(i)) == group) out << i;
+        return out;
+    };
+    QVariantList groups{
+        QVariantMap{{QStringLiteral("value"), QStringLiteral("quick")},
+                    {QStringLiteral("label"), tr("Gyors összefoglaló")},
+                    {QStringLiteral("note"),
+                     tr("Rövid megbeszélésnél (kb. 22 percig) egyetlen hívás fut az „Egy lépésben” "
+                        "utasítással; hosszabbnál az átirat kb. 15 perces részeire egyenként "
+                        "„Részjegyzet” készül, majd az „Összefésülés” írja meg belőlük a vezetői "
+                        "összefoglalót (a memó a részjegyzetekből áll össze).")}},
+        QVariantMap{{QStringLiteral("value"), QStringLiteral("topics")},
+                    {QStringLiteral("label"), tr("Témánkénti elemzés")},
+                    {QStringLiteral("note"),
+                     tr("Előbb a „Témajavaslat” gyűjti ki a megbeszélés témáit, majd a jóváhagyott "
+                        "témákra egyenként az „Elemzés” fut.")}},
+    };
+    for (QVariant& g : groups) {
+        QVariantMap m = g.toMap();
+        m.insert(QStringLiteral("tabs"), indices(m.value(QStringLiteral("value")).toString()));
+        g = m;
+    }
+    return groups;
+}
+
+QString SettingsViewModel::promptGroup() const
+{
+    return promptGroupOf(promptId(m_promptIndex));
+}
+
+void SettingsViewModel::setPromptGroup(const QString& group)
+{
+    if (group == promptGroup()) return;
+    for (int i = 0; i < kPromptIds.size(); ++i)
+        if (promptGroupOf(kPromptIds.at(i)) == group) { setPromptIndex(i); return; }
+}
+
 QVariantList SettingsViewModel::promptTabs() const
 {
-    const QStringList labels{tr("Gyors összefoglaló"), tr("Témajavaslat"), tr("Témánkénti elemzés")};
+    const QStringList labels{tr("Egy lépésben"), tr("Részjegyzet"), tr("Összefésülés"),
+                             tr("Témajavaslat"), tr("Elemzés")};
     QVariantList out;
     for (int i = 0; i < kPromptIds.size(); ++i) {
         const QString id = kPromptIds.at(i);
         out << QVariantMap{
             {QStringLiteral("id"), id}, {QStringLiteral("label"), labels.at(i)},
+            {QStringLiteral("group"), promptGroupOf(id)},
             {QStringLiteral("modified"),
              m_promptText.value(id).trimmed() != m_promptDefault.value(id).trimmed()}};
     }
@@ -1228,10 +1300,10 @@ void SettingsViewModel::discard()
         m_draftTheme = m_baseTheme;
         AppContext::instance()->setThemeMode(m_baseTheme);   // az előnézet visszaáll
     }
-    const QStringList stored{m_base.summaryPrompt, m_base.topicExtractionPrompt, m_base.topicAnalysisPrompt};
-    for (int i = 0; i < kPromptIds.size(); ++i)
-        m_promptText.insert(kPromptIds.at(i),
-                            stored.at(i).isEmpty() ? m_promptDefault.value(kPromptIds.at(i)) : stored.at(i));
+    for (const QString& id : kPromptIds) {
+        const QString stored = storedPrompt(m_base, id);
+        m_promptText.insert(id, stored.isEmpty() ? m_promptDefault.value(id) : stored);
+    }
     const bool cloudBoth = m_base.sttProviderId == cloud::ProviderId && m_base.llmProviderId == cloud::ProviderId;
     if (cloudAvailability() == QLatin1String("live"))
         m_serviceMode = cloudBoth ? QStringLiteral("cloud") : QStringLiteral("own");
@@ -1343,6 +1415,11 @@ void SettingsViewModel::loadDemo()
         m_page = QStringLiteral("services");
         m_focusField = QStringLiteral("stt");
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
+    } else if (st == QLatin1String("advanced")) {
+        // Az LLM-kártya „Haladó” része nyitva (hőmérséklet, max. tokenek, gondolkodás).
+        m_page = QStringLiteral("services");
+        m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
+        m_llm->setAdvancedOpen(true);
     } else if (st == QLatin1String("B05")) {
         m_page = QStringLiteral("services");
         m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());
@@ -1358,13 +1435,15 @@ void SettingsViewModel::loadDemo()
     } else if (st == QLatin1String("teaser")) {
         m_page = QStringLiteral("services");
         m_serviceMode = QStringLiteral("cloud");
-    } else if (st == QLatin1String("B07") || st == QLatin1String("schema")) {
+    } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
         m_page = QStringLiteral("summary");
         // Egy saját szabállyal bővített prompt → „módosítva”.
-        const QString custom = promptBuiltin(QStringLiteral("simple"))
-            + QStringLiteral("7. Teendőnél add meg a felelőst és a határidőt, ha elhangzott.\n");
-        m_promptText.insert(QStringLiteral("simple"), custom);
+        const QString custom = promptBuiltin(QStringLiteral("single"))
+            + QStringLiteral("\nFor each action item, name the owner and the deadline when they were said.\n");
+        m_promptText.insert(QStringLiteral("single"), custom);
         m_base.summaryPrompt = m_draft.summaryPrompt = custom;
+        if (st == QLatin1String("B07notes"))
+            m_promptIndex = 1;      // a részenkénti jegyzet promptja
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         m_draft.userSpeakerName = QStringLiteral("Kovács Lilla Anna");
     }

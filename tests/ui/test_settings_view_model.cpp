@@ -323,7 +323,9 @@ private slots:
         QCOMPARE(vm.page(), QStringLiteral("summary"));
         QVERIFY(vm.promptModified());
         QVERIFY(!vm.dirty());
-        QCOMPARE(vm.promptTabs().size(), 3);
+        QCOMPARE(vm.promptTabs().size(), 5);               // single / notes / merge + topic / analysis
+        QCOMPARE(vm.promptGroups().size(), 2);
+        QCOMPARE(vm.promptGroup(), QStringLiteral("quick"));
         QCOMPARE(vm.schemaKind(), QStringLiteral("json"));
         QVERIFY(vm.schemaBody().contains(QStringLiteral("actionItems")));
         QCOMPARE(vm.promptVariables().size(), 2);          // csak amit a kód tényleg cserél ({{LANGUAGE}}, {{NYELV}})
@@ -975,7 +977,7 @@ private slots:
         QCOMPARE(textChanged.size(), 0);                   // a szerkesztő saját írása nem jön vissza
 
         // Másik fül: a szöveg megmarad, a séma a fülhöz tartozik.
-        vm.setPromptIndex(2);
+        vm.setPromptIndex(4);                              // témánkénti elemzés
         QCOMPARE(textChanged.size(), 1);
         QVERIFY(!vm.promptModified());
         QCOMPARE(vm.schemaKind(), QStringLiteral("markdown"));
@@ -1004,6 +1006,112 @@ private slots:
         QCOMPARE(live().summaryLanguage, QStringLiteral("angol"));
         vm.setSummaryLanguage(QStringLiteral("   "));        // üres célnyelv nincs
         QCOMPARE(vm.summaryLanguage(), QStringLiteral("angol"));
+    }
+
+    // A gyors összefoglaló három promptja (egylépéses / részjegyzet / összefésülés) és a
+    // csoportok: minden prompt saját beállítás-kulcsba mentődik, és onnan töltődik vissza.
+    void promptGroupsAndNewOverrides()
+    {
+        startApp();
+        SettingsViewModel vm;
+        vm.setController(m_app.get());
+        const QVariantList tabs = vm.promptTabs();
+        QStringList ids, groups;
+        for (const QVariant& t : tabs) {
+            ids << t.toMap().value("id").toString();
+            groups << t.toMap().value("group").toString();
+        }
+        QCOMPARE(ids, QStringList({"single", "notes", "merge", "topic", "analysis"}));
+        QCOMPARE(groups, QStringList({"quick", "quick", "quick", "topics", "topics"}));
+        const QVariantList grp = vm.promptGroups();
+        QCOMPARE(grp.at(0).toMap().value("tabs").toList(), QVariantList({0, 1, 2}));
+        QCOMPARE(grp.at(1).toMap().value("tabs").toList(), QVariantList({3, 4}));
+        QVERIFY(!grp.at(0).toMap().value("note").toString().isEmpty());
+
+        // Csoport-váltás: a csoport első promptja; vissza: a gyors csoport első promptja.
+        vm.setPromptGroup(QStringLiteral("topics"));
+        QCOMPARE(vm.promptIndex(), 3);
+        QCOMPARE(vm.promptGroup(), QStringLiteral("topics"));
+        vm.setPromptGroup(QStringLiteral("quick"));
+        QCOMPARE(vm.promptIndex(), 0);
+
+        // Részjegyzet: saját kimeneti séma (jegyzet-fejlécek), a beépített szöveg a {{LANGUAGE}}-t használja.
+        vm.setPromptIndex(1);
+        QCOMPARE(vm.promptGroup(), QStringLiteral("quick"));
+        QVERIFY(vm.promptText().contains(QStringLiteral("{{LANGUAGE}}")));
+        QVERIFY(!vm.schemaSummary().isEmpty());
+        const QString notesDef = vm.promptText();
+        vm.setPromptText(notesDef + QStringLiteral("\nKeep every point short."));
+        QVERIFY(vm.promptModified());
+        vm.setPromptIndex(2);
+        QVERIFY(!vm.promptModified());
+        QVERIFY(!vm.schemaBody().isEmpty());
+        vm.setPromptText(vm.promptText() + QStringLiteral("\nAt most five decisions."));
+        QCOMPARE(vm.changeCount(), 2);
+        QVERIFY(vm.save());
+        QVERIFY(live().notesPrompt.endsWith(QStringLiteral("Keep every point short.")));
+        QVERIFY(live().mergePrompt.endsWith(QStringLiteral("At most five decisions.")));
+        QVERIFY(live().summaryPrompt.isEmpty());           // az egylépéses érintetlen
+
+        // Új nézetmodell: a felülírások visszatöltődnek, „módosítva” jelzéssel.
+        SettingsViewModel again;
+        again.setController(m_app.get());
+        QCOMPARE(again.promptTabs().at(1).toMap().value("modified").toBool(), true);
+        QCOMPARE(again.promptTabs().at(2).toMap().value("modified").toBool(), true);
+        QCOMPARE(again.promptTabs().at(0).toMap().value("modified").toBool(), false);
+        again.setPromptIndex(1);
+        QVERIFY(again.promptText().endsWith(QStringLiteral("Keep every point short.")));
+
+        // Visszaállítás → a beállítás újra üres (a beépített él).
+        again.resetPrompt();
+        QVERIFY(again.save());
+        QVERIFY(live().notesPrompt.isEmpty());
+        QVERIFY(!live().mergePrompt.isEmpty());
+
+        // Eldobás: a nem mentett szerkesztés eltűnik.
+        again.setPromptIndex(2);
+        again.setPromptText(QStringLiteral("eldobandó"));
+        QVERIFY(again.dirty());
+        again.discard();
+        QVERIFY(again.promptText().endsWith(QStringLiteral("At most five decisions.")));
+    }
+
+    // A modell „gondolkodása” (ProviderConfig::reasoning) az LLM-kártya Haladó részében.
+    void reasoningRoundTrip()
+    {
+        startApp();
+        SettingsViewModel vm;
+        vm.setController(m_app.get());
+        QVERIFY(vm.llm()->reasoningAvailable());
+        QVERIFY(!vm.stt()->reasoningAvailable());           // az átírásnál nincs ilyen
+        QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
+        QSignalSpy values(vm.llm(), &SettingsProviderModel::valuesChanged);
+        vm.llm()->setReasoning(QStringLiteral("on"));
+        QCOMPARE(values.size(), 1);
+        QCOMPARE(vm.llm()->reasoning(), QStringLiteral("on"));
+        QCOMPARE(vm.changeCount(), 1);
+        QVERIFY(vm.save());
+        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("on"));
+        vm.llm()->setReasoning(QStringLiteral("off"));
+        QVERIFY(vm.save());
+        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("off"));
+        // Ismeretlen érték → automatikus.
+        vm.llm()->setReasoning(QStringLiteral("valami"));
+        QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
+        QVERIFY(vm.save());
+        QCOMPARE(live().llmSelected().reasoning, QStringLiteral("auto"));
+
+        // Új nézetmodell a mentett értékkel; eldobás visszaállít.
+        AppSettings s = live();
+        s.llmConfigs[s.llmProviderId].reasoning = QStringLiteral("on");
+        m_app->settings()->setSettings(s);
+        SettingsViewModel again;
+        again.setController(m_app.get());
+        QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
+        again.llm()->setReasoning(QStringLiteral("auto"));
+        QVERIFY(again.dirty());
+        again.discard();
+        QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
     }
 
     // ---- mély hivatkozás (B04) -----------------------------------------------------------
@@ -1170,7 +1278,7 @@ private slots:
     void windowLoadsEveryDemoStateWithoutWarnings_data()
     {
         QTest::addColumn<QString>("state");
-        for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B06", "B07", "dirty", "unsaved",
+        for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B06", "B07", "B07notes", "advanced", "dirty", "unsaved",
                                "schema", "teaser", "cloudOut", "addApp", "logout", "reset"})
             QTest::addRow("%s", st) << QString::fromLatin1(st);
     }

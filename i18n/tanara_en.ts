@@ -1428,8 +1428,12 @@
 <context>
     <name>PromptLibrary</name>
     <message>
-        <source>az összefoglaló nyelve</source>
-        <translation>the language of the summary</translation>
+        <source>az összefoglaló nyelve angolul (pl. Hungarian)</source>
+        <translation>the summary language in English (e.g. Hungarian)</translation>
+    </message>
+    <message>
+        <source>az összefoglaló nyelve, ahogy a beállításban áll</source>
+        <translation>the summary language as written in the setting</translation>
     </message>
     <message>
         <source>## Cím + 1–2 mondat, témánként</source>
@@ -1448,14 +1452,17 @@
 &lt;1–2 sentence summary&gt;</translation>
     </message>
     <message>
-        <source>összegzés, ## Döntések, ## Teendők</source>
-        <translation>summary, ## Döntések, ## Teendők</translation>
+        <source>összegzés, ## Döntések, ## Nyitott kérdések, ## Teendők</source>
+        <translation>summary, ## Döntések, ## Nyitott kérdések, ## Teendők</translation>
     </message>
     <message>
         <source>&lt;egy bekezdés összegzés a témáról&gt;
 
 ## Döntések
 - &lt;egy döntés soronként&gt;
+
+## Nyitott kérdések
+- &lt;egy nyitott kérdés soronként&gt;
 
 ## Teendők
 - &lt;a teendő szövege&gt; — &lt;felelős&gt; (&lt;határidő&gt;)</source>
@@ -1464,8 +1471,11 @@
 ## Döntések
 - &lt;one decision per line&gt;
 
+## Nyitott kérdések
+- &lt;one open question per line&gt;
+
 ## Teendők
-- &lt;action item text&gt; — &lt;owner&gt; (&lt;due date&gt;)</translation>
+- &lt;the action item&gt; — &lt;owner&gt; (&lt;deadline&gt;)</translation>
     </message>
     <message>
         <source>egy bekezdés</source>
@@ -1948,6 +1958,26 @@
     <message>
         <source>Ezt a lépést a Tanara Cloud végzi: nincs kulcs, a fiókod egyenlegéből megy.</source>
         <translation>Tanara Cloud does this step: there is no key, it is charged to your account balance.</translation>
+    </message>
+    <message>
+        <source>A modell gondolkodása az összefoglalónál</source>
+        <translation>Model reasoning for summaries</translation>
+    </message>
+    <message>
+        <source>Automatikus (kikapcsolva)</source>
+        <translation>Automatic (off)</translation>
+    </message>
+    <message>
+        <source>Kikapcsolva</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>Bekapcsolva</source>
+        <translation>On</translation>
+    </message>
+    <message>
+        <source>Kikapcsolva gyorsabb, és a kis modellek nem élik fel a válaszkeretet gondolkodásra, mielőtt válaszolnának. Az Automatikus a modellcsaládnak megfelelő módon kapcsolja ki.</source>
+        <translation>Off is faster, and small models do not use up their output budget on reasoning before they answer. Automatic switches it off in the way that suits the model family.</translation>
     </message>
     <message>
         <source>Kapcsolat tesztelése</source>
@@ -2866,6 +2896,17 @@
         <source>Vezetői összefoglaló</source>
         <translation>Executive summary</translation>
     </message>
+    <message numerus="yes">
+        <source>Memó · %n szakasz</source>
+        <translation>
+            <numerusform>Memo · %n section</numerusform>
+            <numerusform>Memo · %n sections</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Memó</source>
+        <translation>Memo</translation>
+    </message>
     <message>
         <source>Döntések</source>
         <translation>Decisions</translation>
@@ -2875,12 +2916,40 @@
         <translation>Jump to %1</translation>
     </message>
     <message>
+        <source>A vezetői összefoglaló a vágólapra került.</source>
+        <translation>The executive summary was copied to the clipboard.</translation>
+    </message>
+    <message>
+        <source>A memó a vágólapra került.</source>
+        <translation>The memo was copied to the clipboard.</translation>
+    </message>
+    <message>
+        <source>Nyitott kérdések</source>
+        <translation>Open questions</translation>
+    </message>
+    <message>
         <source>Teendők</source>
         <translation>Action items</translation>
     </message>
     <message>
         <source>Témák</source>
         <translation>Topics</translation>
+    </message>
+    <message>
+        <source>Ehhez az összefoglalóhoz nincs memó</source>
+        <translation>This summary has no memo</translation>
+    </message>
+    <message>
+        <source>Ez az összefoglaló még a memó bevezetése előtt készült. Újragenerálva a vezetői összefoglaló mellé időrendi, szakaszonkénti memó is készül.</source>
+        <translation>This summary was made before memos existed. Regenerate it to get a chronological memo, section by section, next to the executive summary.</translation>
+    </message>
+    <message>
+        <source>Tartalom</source>
+        <translation>Contents</translation>
+    </message>
+    <message>
+        <source>Egyéb</source>
+        <translation>Other</translation>
     </message>
     <message>
         <source>Résztvevők</source>
@@ -2903,6 +2972,10 @@
         <translation>Summary copied to the clipboard.</translation>
     </message>
     <message>
+        <source>Mindkettő</source>
+        <translation>Both</translation>
+    </message>
+    <message>
         <source>Megnyitás mappában</source>
         <translation>Show in folder</translation>
     </message>
@@ -2918,6 +2991,10 @@
         <translation>There are two kinds of summary:</translation>
     </message>
     <message>
+        <source>Megszakítás folyamatban; a kész részek jegyzetei megmaradnak, a következő futás onnan folytatja.</source>
+        <translation>Cancelling; the notes of the finished parts are kept, and the next run continues from them.</translation>
+    </message>
+    <message>
         <source>Megszakítás folyamatban; az átirat érintetlen marad.</source>
         <translation>Cancelling; the transcript is left untouched.</translation>
     </message>
@@ -2930,16 +3007,20 @@
         <translation>Cancel</translation>
     </message>
     <message>
+        <source>Megszakítás…</source>
+        <translation>Cancelling…</translation>
+    </message>
+    <message>
         <source>Gyors összefoglaló</source>
         <translation>Quick summary</translation>
     </message>
     <message>
-        <source>Egy lépésben: vezetői összefoglaló, döntések, teendők felelőssel, résztvevők.</source>
-        <translation>In one step: executive summary, decisions, action items with owners, participants.</translation>
+        <source>Vezetői összefoglaló döntésekkel, nyitott kérdésekkel és teendőkkel, mellette időrendi memó a megbeszélés menetéről.</source>
+        <translation>An executive summary with decisions, open questions and action items, plus a chronological memo of how the meeting went.</translation>
     </message>
     <message>
-        <source>kb. 1 perc</source>
-        <translation>about 1 minute</translation>
+        <source>rövid megbeszélésnél kb. 1 perc; hosszabbnál részenként halad</source>
+        <translation>about 1 minute for a short meeting; longer ones go part by part</translation>
     </message>
     <message>
         <source>Összefoglaló készítése</source>
@@ -2995,6 +3076,36 @@
     </message>
 </context>
 <context>
+    <name>SummaryProgress</name>
+    <message>
+        <source>Összefoglalás egy lépésben</source>
+        <translation>Summarising in one step</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész jegyzete egy korábbi, félbemaradt futásból megvan; ezek nem futnak újra.</source>
+        <translation>
+            <numerusform>The notes of %n part are kept from an earlier, unfinished run; it does not run again.</numerusform>
+            <numerusform>The notes of %n parts are kept from an earlier, unfinished run; they do not run again.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 / %2 rész</source>
+        <translation>%1 / %2 parts</translation>
+    </message>
+    <message>
+        <source>Összefésülés</source>
+        <translation>Merging</translation>
+    </message>
+    <message>
+        <source>Jegyzetek készítése: %1 / %2 rész</source>
+        <translation>Taking notes: %1 / %2 parts</translation>
+    </message>
+    <message>
+        <source>Jegyzetek készítése</source>
+        <translation>Taking notes</translation>
+    </message>
+</context>
+<context>
     <name>SummaryStatusBanners</name>
     <message>
         <source>Folyamatban…</source>
@@ -3013,8 +3124,16 @@
         <translation>The last summary attempt did not complete</translation>
     </message>
     <message>
+        <source>A már elkészült részek jegyzetei megmaradtak; a folytatás csak a hiányzó részeket és az összefésülést futtatja.</source>
+        <translation>The notes of the finished parts are kept; continuing runs only the missing parts and the merge.</translation>
+    </message>
+    <message>
         <source>Újra</source>
         <translation>Retry</translation>
+    </message>
+    <message>
+        <source>Folytatás</source>
+        <translation>Continue</translation>
     </message>
     <message>
         <source>Rendben</source>
@@ -3160,6 +3279,10 @@
     <message>
         <source>Döntések</source>
         <translation>Decisions</translation>
+    </message>
+    <message>
+        <source>Nyitott kérdések</source>
+        <translation>Open questions</translation>
     </message>
     <message>
         <source>Teendők</source>
@@ -3670,7 +3793,10 @@
     </message>
     <message numerus="yes">
         <source>%n keveset beszélő résztvevő — kattintásra külön sort kapnak</source>
-        <translation><numerusform>%n participant who spoke little — click to give them their own row</numerusform><numerusform>%n participants who spoke little — click to give them their own rows</numerusform></translation>
+        <translation>
+            <numerusform>%n participant who spoke little — click to give them their own row</numerusform>
+            <numerusform>%n participants who spoke little — click to give them their own rows</numerusform>
+        </translation>
     </message>
     <message>
         <source>A teljes beszélő átnevezése vagy összevonása</source>
@@ -3697,7 +3823,10 @@
     <name>VoiceprintPanel</name>
     <message numerus="yes">
         <source>Elkészült %n sorból, %1 mp beszédből.</source>
-        <translation><numerusform>Created from %n line, %1 s of speech.</numerusform><numerusform>Created from %n lines, %1 s of speech.</numerusform></translation>
+        <translation>
+            <numerusform>Created from %n line, %1 s of speech.</numerusform>
+            <numerusform>Created from %n lines, %1 s of speech.</numerusform>
+        </translation>
     </message>
     <message>
         <source>A most készült hanglenyomat törölve.</source>
@@ -3721,7 +3850,7 @@
     </message>
     <message>
         <source>A megbeszélés lekevert hangja nem érhető el, ezért itt most nem készíthető hanglenyomat.</source>
-        <translation>The meeting's mixdown is not available, so a voiceprint cannot be created here right now.</translation>
+        <translation>The meeting&apos;s mixdown is not available, so a voiceprint cannot be created here right now.</translation>
     </message>
     <message>
         <source>Nincs letöltve a hangmodell, ezért itt most nem készíthető hanglenyomat.</source>
@@ -3729,11 +3858,17 @@
     </message>
     <message numerus="yes">
         <source>Ebből a megbeszélésből %n hosszabb sora használható fel (%1 mp beszéd).</source>
-        <translation><numerusform>%n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform><numerusform>%n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform></translation>
+        <translation>
+            <numerusform>%n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform>
+            <numerusform>%n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
         <source>Ebből a megbeszélésből csak %n hosszabb sora használható (%1 mp beszéd).</source>
-        <translation><numerusform>Only %n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform><numerusform>Only %n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform></translation>
+        <translation>
+            <numerusform>Only %n longer line of theirs from this meeting can be used (%1 s of speech).</numerusform>
+            <numerusform>Only %n longer lines of theirs from this meeting can be used (%1 s of speech).</numerusform>
+        </translation>
     </message>
     <message>
         <source>Ebben a megbeszélésben nincs elég hosszú, jól használható sora.</source>
@@ -3761,7 +3896,7 @@
     </message>
     <message>
         <source>Hanglenyomat készül a beszélő itteni, hosszabb soraiból — ebből ismeri fel a program a következő megbeszéléseken</source>
-        <translation>A voiceprint is made from the speaker's longer lines here — this is how the app recognises them in later meetings</translation>
+        <translation>A voiceprint is made from the speaker&apos;s longer lines here — this is how the app recognises them in later meetings</translation>
     </message>
     <message>
         <source>Visszavonás</source>
@@ -4390,12 +4525,57 @@
         <translation>Summarizing in Tanara Cloud…</translation>
     </message>
     <message>
-        <source>Összefoglalás a helyi modellel (Gemma)…</source>
-        <translation>Summarizing with the local model (Gemma)…</translation>
+        <source>Összefoglalás a helyi modellel…</source>
+        <translation>Summarising with the local model…</translation>
+    </message>
+    <message>
+        <source>Összefoglalás</source>
+        <translation>Summarising</translation>
+    </message>
+    <message>
+        <source>Jegyzetelés részenként</source>
+        <translation>Notes part by part</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész</source>
+        <translation>
+            <numerusform>%n part</numerusform>
+            <numerusform>%n parts</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Összegzés</source>
+        <translation>Summing up</translation>
     </message>
     <message>
         <source>Összefoglaló készítése</source>
         <translation>Creating summary</translation>
+    </message>
+    <message>
+        <source>%1/%2. rész</source>
+        <translation>Part %1/%2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész kész</source>
+        <translation>
+            <numerusform>%n part done</numerusform>
+            <numerusform>%n parts done</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source> · %n korábbi futásból</source>
+        <translation>
+            <numerusform> · %n from an earlier run</numerusform>
+            <numerusform> · %n from an earlier run</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Jegyzetelés: %1/%2. rész…</source>
+        <translation>Taking notes: part %1/%2…</translation>
+    </message>
+    <message>
+        <source>Összegzés a részjegyzetekből…</source>
+        <translation>Summing up the part notes…</translation>
     </message>
     <message>
         <source>Összefoglaló hiba: %1</source>
@@ -4558,8 +4738,12 @@
         <translation>The response contains no &apos;choices&apos; array.</translation>
     </message>
     <message>
-        <source>Üres LLM-válasz (sem content, sem reasoning_content).</source>
-        <translation>Empty LLM response (no content and no reasoning_content).</translation>
+        <source>A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.</source>
+        <translation>The model gave no answer, it only “reasoned” (%1 characters, finish=%2). Switch reasoning off in the model settings, or raise the max. tokens.</translation>
+    </message>
+    <message>
+        <source>Üres LLM-válasz (finish=%1).</source>
+        <translation>Empty LLM response (finish=%1).</translation>
     </message>
 </context>
 <context>
@@ -4782,12 +4966,28 @@
         <translation>No LLM provider configured.</translation>
     </message>
     <message>
+        <source>Az átirat üres — nincs mit összefoglalni.</source>
+        <translation>The transcript is empty — there is nothing to summarise.</translation>
+    </message>
+    <message>
         <source>A provider nem adott vissza jobot.</source>
         <translation>The provider did not return a job.</translation>
     </message>
     <message>
-        <source>Nem sikerült JSON-ként értelmezni a választ: %1</source>
-        <translation>Could not parse the response as JSON: %1</translation>
+        <source>A(z) %1/%2. rész jegyzete üres vagy nem értelmezhető.</source>
+        <translation>The notes of part %1/%2 are empty or cannot be read.</translation>
+    </message>
+    <message>
+        <source>Az összegzés válasza nem értelmezhető: %1. A részjegyzetek megmaradtak — újrapróbáláskor csak az összegzés fut le újra.</source>
+        <translation>The summing-up response cannot be read: %1. The part notes are kept — a retry runs only the summing-up again.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló válasza nem értelmezhető: %1. A jegyzet megmaradt — újrapróbáláskor csak az összegzés fut le újra.</source>
+        <translation>The summary response cannot be read: %1. The notes are kept — a retry runs only the summing-up again.</translation>
+    </message>
+    <message>
+        <source>Az összefoglaló válasza nem értelmezhető: %1.</source>
+        <translation>The summary response cannot be read: %1.</translation>
     </message>
 </context>
 <context>
@@ -4881,6 +5081,29 @@
     <message>
         <source>Kész</source>
         <translation>Done</translation>
+    </message>
+</context>
+<context>
+    <name>tanara::summarypipe</name>
+    <message>
+        <source>Jegyzet</source>
+        <translation>Notes</translation>
+    </message>
+    <message>
+        <source>a modell válasza üres</source>
+        <translation>the model response is empty</translation>
+    </message>
+    <message>
+        <source>a válaszban nincs JSON-objektum (eleje: „%1”)</source>
+        <translation>the response contains no JSON object (it starts with “%1”)</translation>
+    </message>
+    <message>
+        <source>a válasz nem érvényes JSON (%1 a(z) %2. karakternél: „%3”)</source>
+        <translation>the response is not valid JSON (%1 at character %2: “%3”)</translation>
+    </message>
+    <message>
+        <source>a JSON-ban nincs egyik várt mező sem (execSummary, decisions, openQuestions, actionItems)</source>
+        <translation>the JSON contains none of the expected fields (execSummary, decisions, openQuestions, actionItems)</translation>
     </message>
 </context>
 <context>
@@ -6482,12 +6705,36 @@
         <translation>Quick summary</translation>
     </message>
     <message>
+        <source>Rövid megbeszélésnél (kb. 22 percig) egyetlen hívás fut az „Egy lépésben” utasítással; hosszabbnál az átirat kb. 15 perces részeire egyenként „Részjegyzet” készül, majd az „Összefésülés” írja meg belőlük a vezetői összefoglalót (a memó a részjegyzetekből áll össze).</source>
+        <translation>For a short meeting (up to about 22 minutes) one call runs with the “One step” instructions; for a longer one, “Part notes” are made for each part of about 15 minutes, then “Merge” writes the executive summary from them (the memo is built from the part notes).</translation>
+    </message>
+    <message>
+        <source>Előbb a „Témajavaslat” gyűjti ki a megbeszélés témáit, majd a jóváhagyott témákra egyenként az „Elemzés” fut.</source>
+        <translation>First “Topic suggestions” collects the topics of the meeting, then “Analysis” runs for each approved topic.</translation>
+    </message>
+    <message>
+        <source>Egy lépésben</source>
+        <translation>One step</translation>
+    </message>
+    <message>
+        <source>Részjegyzet</source>
+        <translation>Part notes</translation>
+    </message>
+    <message>
+        <source>Összefésülés</source>
+        <translation>Merging</translation>
+    </message>
+    <message>
         <source>Témajavaslat</source>
         <translation>Topic suggestion</translation>
     </message>
     <message>
         <source>Témánkénti elemzés</source>
         <translation>Topic-by-topic analysis</translation>
+    </message>
+    <message>
+        <source>Elemzés</source>
+        <translation>Analysis</translation>
     </message>
     <message>
         <source>A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?</source>
@@ -6859,8 +7106,42 @@
         <translation>Creating summary</translation>
     </message>
     <message>
+        <source>Összefoglalás</source>
+        <translation>Summarising</translation>
+    </message>
+    <message>
+        <source>Jegyzetelés részenként</source>
+        <translation>Notes part by part</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rész kész</source>
+        <translation>
+            <numerusform>%n part done</numerusform>
+            <numerusform>%n parts done</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1/%2. rész</source>
+        <translation>Part %1/%2</translation>
+    </message>
+    <message numerus="yes">
+        <source> · %n korábbi futásból</source>
+        <translation>
+            <numerusform> · %n from an earlier run</numerusform>
+            <numerusform> · %n from an earlier run</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Összegzés</source>
+        <translation>Summing up</translation>
+    </message>
+    <message>
         <source>A szolgáltató nem válaszolt időben. Próbáld újra.</source>
         <translation>The provider did not respond in time. Try again.</translation>
+    </message>
+    <message>
+        <source>A szolgáltatónál hiba történt. Próbáld újra később.</source>
+        <translation>The provider reported an error. Try again later.</translation>
     </message>
     <message>
         <source>Kovács Lilla</source>
@@ -6901,6 +7182,18 @@
     <message>
         <source>[58:40] A dokumentációs létszámról a költségvetési tervezés dönt.</source>
         <translation>[58:40] Documentation headcount is decided during budget planning.</translation>
+    </message>
+    <message>
+        <source>[43:30] Legyen-e nyomtatható változata a súgóoldalaknak?</source>
+        <translation>[43:30] Should the help pages have a printable version?</translation>
+    </message>
+    <message>
+        <source>[58:40] Bevonjanak-e átmenetileg külső szövegírót a dokumentációhoz?</source>
+        <translation>[58:40] Should an outside writer help with the documentation for a while?</translation>
+    </message>
+    <message>
+        <source>Mikorra frissül a partnerportál?</source>
+        <translation>When will the partner portal be updated?</translation>
     </message>
     <message>
         <source>A súgóoldalak kiterjesztése a további termékekre: ütemterv</source>
@@ -6951,6 +7244,10 @@
         <translation>The help pages are extended to the other products.</translation>
     </message>
     <message>
+        <source>Legyen-e nyomtatható változata a súgóoldalaknak?</source>
+        <translation>Should the help pages have a printable version?</translation>
+    </message>
+    <message>
         <source>Ütemterv a kiterjesztéshez</source>
         <translation>Schedule for the rollout</translation>
     </message>
@@ -6961,6 +7258,250 @@
     <message>
         <source>A partnerek szerint a gond nem a leírás, hanem maga a folyamat: túl sok lépés, kevés visszajelzés.</source>
         <translation>According to the partners the problem is not the documentation but the process itself: too many steps, too little feedback.</translation>
+    </message>
+    <message>
+        <source>Nyitás, napirend</source>
+        <translation>Opening, agenda</translation>
+    </message>
+    <message>
+        <source>Kovács Lilla összefoglalta a negyedév fő számait és a mai napirendet.</source>
+        <translation>Lilla Kovács summed up the main figures of the quarter and today’s agenda.</translation>
+    </message>
+    <message>
+        <source>A partnerek kérték, hogy a számlázás külön napirendi pont legyen.</source>
+        <translation>The partners asked for billing to be a separate agenda item.</translation>
+    </message>
+    <message>
+        <source>Támogatási jegyek alakulása</source>
+        <translation>Support tickets</translation>
+    </message>
+    <message>
+        <source>A jegyek száma harmadával csökkent az előző negyedévhez képest.</source>
+        <translation>The number of tickets fell by a third compared with the previous quarter.</translation>
+    </message>
+    <message>
+        <source>Az aktív felhasználók száma közben 12%-kal nőtt.</source>
+        <translation>Meanwhile the number of active users grew by 12%.</translation>
+    </message>
+    <message>
+        <source>A csökkenés nagyobb része a beállítási kérdéseknél jelentkezett.</source>
+        <translation>Most of the drop came from setup questions.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalak hatása</source>
+        <translation>Effect of the help pages</translation>
+    </message>
+    <message>
+        <source>Tóth Bence szerint a termékbe épített súgó a beállítási kérdések felét kiváltotta.</source>
+        <translation>According to Bence Tóth, the in-product help replaced half of the setup questions.</translation>
+    </message>
+    <message>
+        <source>A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon.</source>
+        <translation>The partners see the same at their own support desks.</translation>
+    </message>
+    <message>
+        <source>A súgót a többi termékre is kiterjesztik.</source>
+        <translation>The help is extended to the other products.</translation>
+    </message>
+    <message>
+        <source>A kiterjesztés sorrendje</source>
+        <translation>Order of the rollout</translation>
+    </message>
+    <message>
+        <source>Elsőként a riportmodul kap súgóoldalakat, utána az integrációk.</source>
+        <translation>The reporting module gets help pages first, then the integrations.</translation>
+    </message>
+    <message>
+        <source>Kovács Lilla október 15-ig ütemtervet készít.</source>
+        <translation>Lilla Kovács prepares a schedule by October 15.</translation>
+    </message>
+    <message>
+        <source>Számlázási panaszok</source>
+        <translation>Billing complaints</translation>
+    </message>
+    <message>
+        <source>A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól.</source>
+        <translation>Billing tickets did not decrease; half of the complaints are about changing an invoice.</translation>
+    </message>
+    <message>
+        <source>Varga Nóra szerint a leírás rendben van, a folyamat hosszú.</source>
+        <translation>According to Nóra Varga, the documentation is fine; the process is long.</translation>
+    </message>
+    <message>
+        <source>Folyamat vagy dokumentáció</source>
+        <translation>Process or documentation</translation>
+    </message>
+    <message>
+        <source>Két partner a lépések számát tartja a fő gondnak.</source>
+        <translation>Two partners see the number of steps as the main problem.</translation>
+    </message>
+    <message>
+        <source>Abban maradtak, hogy előbb a folyamatot egyszerűsítik, utána a leírást.</source>
+        <translation>They agreed to simplify the process first, then the documentation.</translation>
+    </message>
+    <message>
+        <source>Elakadási pontok gyűjtése</source>
+        <translation>Collecting the sticking points</translation>
+    </message>
+    <message>
+        <source>Varga Nóra október 10-ig összegyűjti, hol akadnak el a felhasználók.</source>
+        <translation>Nóra Varga collects where users get stuck by October 10.</translation>
+    </message>
+    <message>
+        <source>A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.</source>
+        <translation>They use the ticket tags and the session recordings for this.</translation>
+    </message>
+    <message>
+        <source>Új ügyfelek bevezetése</source>
+        <translation>Onboarding new customers</translation>
+    </message>
+    <message>
+        <source>Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak.</source>
+        <translation>New customers open three times as many tickets in their first two weeks.</translation>
+    </message>
+    <message>
+        <source>Molnár Eszter bontást kért ügyféltípus szerint.</source>
+        <translation>Eszter Molnár asked for a breakdown by customer type.</translation>
+    </message>
+    <message>
+        <source>Bevezető levelek</source>
+        <translation>Welcome emails</translation>
+    </message>
+    <message>
+        <source>A bevezető levelek megnyitási aránya 40% alatt van.</source>
+        <translation>The open rate of the welcome emails is below 40%.</translation>
+    </message>
+    <message>
+        <source>Javaslat: a levelek a súgóoldalakra mutassanak, ne a dokumentációra.</source>
+        <translation>Proposal: the emails should link to the help pages, not the documentation.</translation>
+    </message>
+    <message>
+        <source>Partneri visszajelzések</source>
+        <translation>Partner feedback</translation>
+    </message>
+    <message>
+        <source>A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják.</source>
+        <translation>The partners praised the search and miss a printable version.</translation>
+    </message>
+    <message>
+        <source>Nyomtatható súgó</source>
+        <translation>Printable help</translation>
+    </message>
+    <message>
+        <source>Nem döntöttek; a nyomtatható változat igényét előbb felmérik.</source>
+        <translation>No decision; they first find out how much a printable version is needed.</translation>
+    </message>
+    <message>
+        <source>Dokumentációs kapacitás</source>
+        <translation>Documentation capacity</translation>
+    </message>
+    <message>
+        <source>A dokumentációs csapat két fővel dolgozik, ez a kiterjesztéshez kevés.</source>
+        <translation>The documentation team has two people, which is not enough for the rollout.</translation>
+    </message>
+    <message>
+        <source>Szabó Áron szerint legalább egy fő kellene a következő félévre.</source>
+        <translation>According to Áron Szabó, at least one more person is needed for the next half-year.</translation>
+    </message>
+    <message>
+        <source>Költségvetési keret</source>
+        <translation>Budget</translation>
+    </message>
+    <message>
+        <source>A létszámbővítés legkorábban a jövő évi tervben szerepelhet.</source>
+        <translation>More staff can be in next year’s plan at the earliest.</translation>
+    </message>
+    <message>
+        <source>Döntés a létszámról</source>
+        <translation>Decision on staffing</translation>
+    </message>
+    <message>
+        <source>A dokumentációs létszámról a költségvetési tervezés dönt.</source>
+        <translation>Budget planning decides on documentation staffing.</translation>
+    </message>
+    <message>
+        <source>Szabó Áron október 20-ig beadja az igényt.</source>
+        <translation>Áron Szabó submits the request by October 20.</translation>
+    </message>
+    <message>
+        <source>Külső szövegíró</source>
+        <translation>Outside writer</translation>
+    </message>
+    <message>
+        <source>Átmeneti megoldásként felmerült egy külső szövegíró; nem döntöttek.</source>
+        <translation>An outside writer came up as a temporary solution; no decision.</translation>
+    </message>
+    <message>
+        <source>Mérőszámok</source>
+        <translation>Metrics</translation>
+    </message>
+    <message>
+        <source>A jegyszám mellett a megoldási időt is mérik; ez nem javult.</source>
+        <translation>Besides the ticket count they also measure resolution time; it did not improve.</translation>
+    </message>
+    <message>
+        <source>A következő negyedév céljai</source>
+        <translation>Goals for next quarter</translation>
+    </message>
+    <message>
+        <source>Cél a számlázási jegyek 20%-os csökkentése.</source>
+        <translation>The goal is 20% fewer billing tickets.</translation>
+    </message>
+    <message>
+        <source>Riportok a partnereknek</source>
+        <translation>Reports for the partners</translation>
+    </message>
+    <message>
+        <source>A partnerek havi bontású riportot kérnek a jegyekről.</source>
+        <translation>The partners ask for a monthly ticket report.</translation>
+    </message>
+    <message>
+        <source>A riport formája</source>
+        <translation>Report format</translation>
+    </message>
+    <message>
+        <source>A riport táblázatként megy ki, grafikon nélkül.</source>
+        <translation>The report goes out as a table, without charts.</translation>
+    </message>
+    <message>
+        <source>Partnerportál</source>
+        <translation>Partner portal</translation>
+    </message>
+    <message>
+        <source>A partnerportál frissítése a következő negyedévre csúszik.</source>
+        <translation>The partner portal update slips to next quarter.</translation>
+    </message>
+    <message>
+        <source>Kapcsolattartók</source>
+        <translation>Contacts</translation>
+    </message>
+    <message>
+        <source>Minden partnernél egy állandó kapcsolattartó lesz.</source>
+        <translation>Each partner gets one permanent contact person.</translation>
+    </message>
+    <message>
+        <source>Új-ügyfél bontás</source>
+        <translation>New-customer breakdown</translation>
+    </message>
+    <message>
+        <source>Kovács Lilla október 4-ig elküldi a bontást a partnereknek.</source>
+        <translation>Lilla Kovács sends the breakdown to the partners by October 4.</translation>
+    </message>
+    <message>
+        <source>Nyitva maradt ügyek</source>
+        <translation>Open items</translation>
+    </message>
+    <message>
+        <source>Nyitva maradt a nyomtatható súgó és a külső szövegíró kérdése.</source>
+        <translation>The printable help and the outside writer remain open.</translation>
+    </message>
+    <message>
+        <source>Zárás</source>
+        <translation>Closing</translation>
+    </message>
+    <message>
+        <source>A következő partnertalálkozó januárban lesz.</source>
+        <translation>The next partner meeting is in January.</translation>
     </message>
 </context>
 <context>
@@ -7003,6 +7544,14 @@
     <message>
         <source>A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt tapasztalják.</source>
         <translation>Tickets dropped by a third while active users grew by 12%. The main reason for the drop is the help built into the product; the partners are seeing the same.</translation>
+    </message>
+    <message>
+        <source>A súgóoldalakat a többi termékre is kiterjesztik.</source>
+        <translation>The help pages are extended to the other products.</translation>
+    </message>
+    <message>
+        <source>Legyen-e nyomtatható változata a súgóoldalaknak?</source>
+        <translation>Should the help pages have a printable version?</translation>
     </message>
     <message>
         <source>Súgóoldalak kiterjesztése</source>

@@ -15,6 +15,8 @@ RowLayout {
     // Futó szakasz, amely nem kap saját csíkot (pl. a beszélő-szétválasztás az átírással egy
     // menetben fut): csak ez a megjegyzés látszik.
     property string runningNote: ""
+    // Futó, mérő szakasznál a százalék HELYETT ez a darab-haladás látszik (pl. „3 / 6 rész”).
+    property string progressText: ""
     property real labelWidth: 220
 
     readonly property bool running: stageState === "running"
@@ -59,7 +61,7 @@ RowLayout {
         }
         TLabel {
             visible: root.percent >= 0
-            text: root.percent + "%"
+            text: root.progressText !== "" ? root.progressText : root.percent + "%"
             mono: true; muted: true
             font.pixelSize: Theme.fontCaption
         }

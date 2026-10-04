@@ -365,7 +365,7 @@ Screenshots (fictional data, no controller):
 build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --qml-prop 'demoState="B04"'
 ```
 
-`demoState`: `B01` … `B07` · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
+`demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
 `logout` · `reset`.
 
 ## People window (`People*.qml`, `src/People*`)

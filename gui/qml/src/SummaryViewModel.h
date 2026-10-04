@@ -13,10 +13,21 @@
 // (SpeakerEditor) beszélő-listájából jön. Időbélyeg-hivatkozás csak ott van, ahol a döntés
 // szövege tényleg időbélyeggel kezdődik (a mai összefoglalók nem tartalmaznak ilyet).
 //
+// A kész gyors összefoglaló KÉT formája: a vezetői összefoglaló (rövid: áttekintés, döntések,
+// nyitott kérdések, teendők) és a memó (időrendi, szakaszonkénti jegyzet időkerettel). A nézet
+// (section) alapból a vezetői összefoglaló; a memó egy kattintásra van. Régi (memó előtti)
+// összefoglalónál memoState "missing"; témánkénti módban "none" (ott a témák a hosszú forma).
+//
 // Controller nélkül vagy App.demo mellett kitalált mintaadat; demoState: "stale" (alap) |
-// "done" | "topicsDoc" | "empty" | "emptyBlocked" | "emptyRunning" | "emptyError" | "topics".
+// "done" | "memo" (sok szakasz) | "memoShort" | "oldSummary" (memó nélkül) | "oldMemo" (ua., a
+// memó helye látszik) | "running" (újragenerálás fut) | "topicsDoc" | "empty" | "emptyBlocked" |
+// "emptyRunning" | "emptyRunningParts" | "emptyRunningMerge" | "emptyError" | "emptyErrorKept" |
+// "topics".
 //
 #include "TopicListModel.h"
+
+#include "tanara/Types.h"
+#include "tanara/jobs/JobTypes.h"
 
 #include <QObject>
 #include <QPointer>
@@ -67,12 +78,24 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(bool jobCancelling READ jobCancelling NOTIFY jobChanged)
     // A téma-elemzés sor fut-e (M08 fejléc: „Megszakítás” a „Hiányzók elemzése” helyén).
     Q_PROPERTY(bool analyzing READ analyzing NOTIFY jobChanged)
+    // Az összefoglaló szakaszai (SummaryProgress): "" | single | notes | merge; a futó szakasz
+    // egy sorban; valós százalék csak a részenkénti jegyzetelésnél (-1: határozatlan).
+    Q_PROPERTY(QString jobStage READ jobStage NOTIFY jobChanged)
+    Q_PROPERTY(QString jobStageLabel READ jobStageLabel NOTIFY jobChanged)
+    Q_PROPERTY(int jobPercent READ jobPercent NOTIFY jobChanged)
+    // [{ id, label, state, percent, detail }] — több szakasznál a szakasz-lista
+    Q_PROPERTY(QVariantList jobStages READ jobStages NOTIFY jobChanged)
+    Q_PROPERTY(int jobReusedParts READ jobReusedParts NOTIFY jobChanged)
+    Q_PROPERTY(QString jobReusedNote READ jobReusedNote NOTIFY jobChanged)
 
     // ---- megmaradt hiba (az utolsó összefoglaló-kísérlet elbukott) ----
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY changed)
     Q_PROPERTY(QString errorDetail READ errorDetail NOTIFY changed)
     Q_PROPERTY(QString fixActionLabel READ fixActionLabel NOTIFY changed)
     Q_PROPERTY(QString fixActionPage READ fixActionPage NOTIFY changed)
+    // Az elbukott futás kész részjegyzetei megvannak (summary.notes.json): az újrapróbálás
+    // onnan folytatja.
+    Q_PROPERTY(bool errorKeptParts READ errorKeptParts NOTIFY changed)
 
     // ---- M07 ----
     Q_PROPERTY(bool stale READ stale NOTIFY changed)
@@ -84,12 +107,21 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(QString execSummary READ execSummary NOTIFY changed)
     // [{ text, ms (-1: nincs időbélyeg), stamp }]
     Q_PROPERTY(QVariantList decisions READ decisions NOTIFY changed)
+    // [{ text, ms (-1: nincs időbélyeg), stamp }] — mint a döntések
+    Q_PROPERTY(QVariantList openQuestions READ openQuestions NOTIFY changed)
     // [{ text, owner, ownerIndex (-1: nem a meeting beszélője), owners: [{ name, index }], due }]
     Q_PROPERTY(QVariantList actions READ actions NOTIFY changed)
     // [{ name, colorIndex, percent (-1: nincs adat) }]
     Q_PROPERTY(QVariantList participants READ participants NOTIFY participantsChanged)
-    // Témánkénti összefoglaló témaszekciói: [{ title, detail, decisions, actions }]
+    // Témánkénti összefoglaló témaszekciói: [{ title, detail, decisions, openQuestions, actions }]
     Q_PROPERTY(QVariantList topicSections READ topicSections NOTIFY changed)
+    // A memó szakaszai időrendben: [{ title, startMs (-1: ismeretlen), endMs, stamp („12:40”,
+    // üres ha ismeretlen), range („12:40–15:55”), points: [string] }]
+    Q_PROPERTY(QVariantList memo READ memo NOTIFY changed)
+    // "none" (témánkénti mód: nincs memó-nézet) | "missing" (régi összefoglaló) | "ready"
+    Q_PROPERTY(QString memoState READ memoState NOTIFY changed)
+    // A kész összefoglaló látható része: "exec" (vezetői összefoglaló) | "memo"
+    Q_PROPERTY(QString section READ section WRITE setSection NOTIFY sectionChanged)
 
 public:
     explicit SummaryViewModel(QObject* parent = nullptr);
@@ -123,11 +155,18 @@ public:
     QString jobMessage() const { return m_jobMessage; }
     bool jobCancelling() const { return m_jobCancelling; }
     bool analyzing() const { return m_analyzing; }
+    QString jobStage() const { return m_jobStage; }
+    QString jobStageLabel() const { return m_jobStageLabel; }
+    int jobPercent() const { return m_jobPercent; }
+    QVariantList jobStages() const { return m_jobStages; }
+    int jobReusedParts() const { return m_jobReusedParts; }
+    QString jobReusedNote() const { return m_jobReusedNote; }
 
     QString errorMessage() const { return m_errorMessage; }
     QString errorDetail() const { return m_errorDetail; }
     QString fixActionLabel() const { return m_fixActionLabel; }
     QString fixActionPage() const { return m_fixActionPage; }
+    bool errorKeptParts() const { return m_errorKeptParts; }
 
     bool stale() const { return m_stale; }
     int staleCount() const { return m_staleCount; }
@@ -137,13 +176,21 @@ public:
     QString modelLine() const { return m_modelLine; }
     QString execSummary() const { return m_execSummary; }
     QVariantList decisions() const { return m_decisions; }
+    QVariantList openQuestions() const { return m_openQuestions; }
     QVariantList actions() const { return m_actions; }
     QVariantList participants() const { return m_participants; }
     QVariantList topicSections() const { return m_topicSections; }
+    QVariantList memo() const { return m_memo; }
+    QString memoState() const;
+    QString section() const { return m_section; }
+    void setSection(const QString& section);
 
     Q_INVOKABLE void refresh();
-    // Az összefoglaló markdownja a vágólapra. true, ha volt mit másolni.
-    Q_INVOKABLE bool copyToClipboard();
+    // Az összefoglaló markdownja: part "exec" (vezetői összefoglaló + listák + résztvevők),
+    // "memo" (csak a memó), "all" / üres (a teljes summary.md). Üres, ha nincs mit adni.
+    Q_INVOKABLE QString markdownFor(const QString& part) const;
+    // Ugyanez a vágólapra. true, ha volt mit másolni.
+    Q_INVOKABLE bool copyToClipboard(const QString& part = QString());
     // „Rendben így”: az elavult-jelző elengedése újragenerálás nélkül.
     Q_INVOKABLE void dismissStale();
     // A megmaradt hiba elvetése.
@@ -157,6 +204,7 @@ signals:
     void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
+    void sectionChanged();
     void participantsChanged();
     void jobChanged();
     void changed();
@@ -170,6 +218,8 @@ private:
     void reloadJobs();
     void reloadParticipants();
     void loadDemo();
+    void loadDemoMemo(bool longForm);
+    void applyJob(const tanara::JobProgress& job);
     void watchEditor(tanara::SpeakerEditor* editor);
     int speakerIndexFor(const QString& name) const;
     QVariantList ownerList(const QString& owner) const;
@@ -200,11 +250,18 @@ private:
     QString m_jobMessage;
     bool m_jobCancelling = false;
     bool m_analyzing = false;
+    QString m_jobStage;
+    QString m_jobStageLabel;
+    int m_jobPercent = -1;
+    QVariantList m_jobStages;
+    int m_jobReusedParts = 0;
+    QString m_jobReusedNote;
 
     QString m_errorMessage;
     QString m_errorDetail;
     QString m_fixActionLabel;
     QString m_fixActionPage;
+    bool m_errorKeptParts = false;
 
     bool m_stale = false;
     int m_staleCount = 0;
@@ -214,9 +271,13 @@ private:
     QString m_execSummary;
     QString m_markdown;
     QVariantList m_decisions;
+    QVariantList m_openQuestions;
     QVariantList m_actions;
     QVariantList m_participants;
     QVariantList m_topicSections;
+    QVariantList m_memo;
+    QString m_section = QStringLiteral("exec");
+    tanara::Summary m_summary;           // a strukturált forma (a részenkénti másoláshoz)
     QStringList m_summaryParticipants;   // az összefoglaló szerinti résztvevő-nevek
 
     // A meeting beszélői (név → szín-index, arány) a felelős-chipekhez és a résztvevőkhöz.

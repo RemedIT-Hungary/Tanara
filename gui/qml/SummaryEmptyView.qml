@@ -143,15 +143,55 @@ Flickable {
                         elide: Text.ElideRight
                     }
                 }
-                // A modell nem ad százalékot → határozatlan csík.
-                TProgressBar { Layout.fillWidth: true; thickness: 6; indeterminate: true }
+                // Több szakasz (részenkénti jegyzet + összefésülés): szakasz-lista, a jegyzetelésnél
+                // valós csík a kész részekből. Egy szakasz: csík (határozatlan — a modell nem ad
+                // köztes haladást) + a szakasz neve.
+                ColumnLayout {
+                    visible: root.vm.jobStages.length > 1
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Repeater {
+                        model: root.vm.jobStages
+                        JobStageRow {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            labelWidth: 180
+                            label: modelData.label
+                            stageState: modelData.state
+                            percent: modelData.percent
+                            detail: modelData.detail
+                            progressText: modelData.detail
+                        }
+                    }
+                }
+                TProgressBar {
+                    visible: root.vm.jobStages.length <= 1
+                    Layout.fillWidth: true
+                    thickness: 6
+                    indeterminate: root.vm.jobPercent < 0
+                    value: root.vm.jobPercent < 0 ? 0 : root.vm.jobPercent / 100
+                }
                 TLabel {
                     visible: text !== ""
                     Layout.fillWidth: true
-                    text: root.vm.jobMessage
+                    text: root.vm.jobStages.length > 1 ? ""
+                        : root.vm.jobStage !== "" ? root.vm.jobStageLabel : root.vm.jobMessage
                     muted: true
                     font.pixelSize: Theme.fontSmall
                     elide: Text.ElideRight
+                }
+                RowLayout {
+                    visible: root.vm.jobReusedNote !== ""
+                    Layout.fillWidth: true
+                    spacing: 8
+                    TIcon { name: "info"; size: 14; color: Theme.textMuted; Layout.alignment: Qt.AlignTop; Layout.topMargin: 2 }
+                    TLabel {
+                        Layout.fillWidth: true
+                        text: root.vm.jobReusedNote
+                        muted: true
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
                 }
                 TDivider { Layout.fillWidth: true }
                 RowLayout {
@@ -159,14 +199,17 @@ Flickable {
                     spacing: 12
                     TLabel {
                         Layout.fillWidth: true
-                        text: root.vm.jobCancelling ? qsTr("Megszakítás folyamatban; az átirat érintetlen marad.")
-                                                    : qsTr("Közben nyugodtan dolgozz tovább; szólunk, ha kész.")
+                        text: root.vm.jobCancelling
+                              ? (root.vm.jobStages.length > 1
+                                 ? qsTr("Megszakítás folyamatban; a kész részek jegyzetei megmaradnak, a következő futás onnan folytatja.")
+                                 : qsTr("Megszakítás folyamatban; az átirat érintetlen marad."))
+                              : qsTr("Közben nyugodtan dolgozz tovább; szólunk, ha kész.")
                         muted: true
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.Wrap
                     }
                     TButton {
-                        text: qsTr("Megszakítás")
+                        text: root.vm.jobCancelling ? qsTr("Megszakítás…") : qsTr("Megszakítás")
                         enabled: !root.vm.jobCancelling
                         size: "small"
                         implicitHeight: 30
@@ -189,8 +232,8 @@ Flickable {
                 recommended: true
                 iconName: "sparkles"
                 title: qsTr("Gyors összefoglaló")
-                description: qsTr("Egy lépésben: vezetői összefoglaló, döntések, teendők felelőssel, résztvevők.")
-                note: qsTr("kb. 1 perc")
+                description: qsTr("Vezetői összefoglaló döntésekkel, nyitott kérdésekkel és teendőkkel, mellette időrendi memó a megbeszélés menetéről.")
+                note: qsTr("rövid megbeszélésnél kb. 1 perc; hosszabbnál részenként halad")
                 actionText: qsTr("Összefoglaló készítése")
                 onTriggered: root.startQuick()
             }

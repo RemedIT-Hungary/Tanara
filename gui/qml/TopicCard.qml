@@ -17,6 +17,7 @@ Rectangle {
     property bool hasResult: false
     property string resultText: ""
     property var resultDecisions: []
+    property var resultOpenQuestions: []
     property var resultActions: []
     property bool canRun: true                // a szolgáltató kész (különben a futtatás tiltva)
     property string blockedReason: ""
@@ -221,6 +222,7 @@ Rectangle {
             Repeater {
                 model: [
                     { heading: qsTr("Döntések"), items: root.resultDecisions },
+                    { heading: qsTr("Nyitott kérdések"), items: root.resultOpenQuestions },
                     { heading: qsTr("Teendők"), items: root.resultActions },
                 ]
                 ColumnLayout {

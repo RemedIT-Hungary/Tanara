@@ -17,6 +17,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -211,6 +212,55 @@ struct Sandbox {
         app->store()->saveMeeting(m);
         return m;
     }
+
+    // Hosszú (több részes) átirat: félpercenként egy bekezdés, két beszélő váltakozva — a gyors
+    // összefoglaló ~15 perces részekre bontja (40 perc → 3 rész). Ugyanaz, mint test_app_jobs-ban.
+    tanara::Meeting transcribedLong(const QString& title, int minutes)
+    {
+        tanara::Meeting m = recording(title, 1);
+        QJsonArray toks;
+        for (int i = 0; i < minutes * 2; ++i)
+            toks.append(QJsonObject{{"text", QStringLiteral(" A(z) %1. bekezdés szövege, elég hosszan ahhoz, hogy "
+                                                            "számítson: egy kitalált megbeszélésen fél perc alatt "
+                                                            "ennél jóval több szó hangzik el.").arg(i)},
+                                    {"speaker", i % 2 ? "Beszélő 2" : "Beszélő 1"}, {"startMs", i * 30000},
+                                    {"endMs", i * 30000 + 20000}, {"confidence", 0.9}, {"trackId", "mixdown"}});
+        QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
+        if (f.open(QIODevice::WriteOnly))
+            f.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
+        f.close();
+        m.hasTranscript = true;
+        m.durationMs = qint64(minutes) * 60000;
+        app->store()->saveMeeting(m);
+        return m;
+    }
 };
+
+// A gyors összefoglaló kérése: részjegyzet-hívás-e (a "notes" prompt), és ha igen, hányadik
+// részé (1-től); 0 = egylépéses vagy összefésülő hívás.
+inline int notesPart(const FakeRequest& r)
+{
+    const QJsonArray msgs = QJsonDocument::fromJson(r.body).object().value("messages").toArray();
+    if (!msgs.at(0).toObject().value("content").toString().contains("ONE PART")) return 0;
+    static const QRegularExpression re(QStringLiteral("^PART (\\d+) of"), QRegularExpression::MultilineOption);
+    return re.match(msgs.at(1).toObject().value("content").toString()).captured(1).toInt();
+}
+
+// Egy rész kitalált jegyzete (TOPICS / DECISIONS / OPEN / ACTIONS).
+inline QString partNotes(int k)
+{
+    return QStringLiteral("TOPICS\n### [%1:00-%1:40] Tárgy %2\n- Egy pont a(z) %2. részből.\n"
+                          "DECISIONS\n- none\nOPEN\n- [%1:30] Nyitott ügy %2\nACTIONS\n- none\n")
+        .arg((k - 1) * 15).arg(k);
+}
+
+// Az összefésülés kitalált válasza.
+inline QByteArray mergeReply()
+{
+    return chat(QStringLiteral(
+        R"({"execSummary":"Hosszú megbeszélés összegzése.","decisions":["[05:00] Marad a terv."],)"
+        R"("openQuestions":["[31:30] Nyitott ügy 3","Ki viszi tovább?"],)"
+        R"("actionItems":[{"text":"Terv megírása","owner":"Beszélő 1","due":"péntek"}]})"));
+}
 
 } // namespace jobtest

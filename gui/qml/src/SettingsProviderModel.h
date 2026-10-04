@@ -57,6 +57,10 @@ class SettingsProviderModel : public QObject {
     Q_PROPERTY(QString warningText READ warningText NOTIFY testChanged)   // siker, de pl. a modell nincs a listán
     Q_PROPERTY(bool fetching READ fetching NOTIFY fetchChanged)
     Q_PROPERTY(QString fetchError READ fetchError NOTIFY fetchChanged)
+    // A modell „gondolkodása” az összefoglalónál (ProviderConfig::reasoning): "auto" | "off" |
+    // "on". Csak a saját kulcsos LLM-szolgáltatónál (a Haladó részben); a cloud maga dönt.
+    Q_PROPERTY(bool reasoningAvailable READ reasoningAvailable NOTIFY providerChanged)
+    Q_PROPERTY(QString reasoning READ reasoning WRITE setReasoning NOTIFY valuesChanged)
     // B04: ehhez a kártyához vezetett a mély hivatkozás.
     Q_PROPERTY(bool highlighted READ highlighted NOTIFY highlightedChanged)
 
@@ -82,6 +86,9 @@ public:
     bool fetching() const { return m_fetchId != 0; }
     QString fetchError() const { return m_fetchError; }
     bool highlighted() const;
+    bool reasoningAvailable() const;
+    QString reasoning() const;
+    void setReasoning(const QString& mode);
 
     Q_INVOKABLE void setValue(const QString& key, const QVariant& value);
     Q_INVOKABLE QVariant value(const QString& key) const;

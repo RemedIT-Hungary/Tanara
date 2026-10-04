@@ -3,9 +3,15 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // Összefoglaló fül — M07: kész összefoglaló. Fent az elavult-sáv (ha a készítése óta
-// beszélőt javítottak), két oszlop: balra a tartalom (vezetői összefoglaló, döntések,
-// teendők, témánkénti módban a témaszekciók), jobbra a résztvevők beszédidő-aránnyal, a
-// keletkezés adatai és a műveletek. Régi (csak markdown) összefoglaló ugyanígy jelenik meg.
+// beszélőt javítottak), két oszlop: balra a tartalom, jobbra a résztvevők beszédidő-aránnyal,
+// a keletkezés adatai és a műveletek.
+//
+// A gyors összefoglalónak két formája van, a bal oszlop tetején kapcsolóval:
+//   „Vezetői összefoglaló” (alap): áttekintés, döntések, nyitott kérdések, teendők;
+//   „Memó”: időrendi jegyzet szakaszonként (cím, időkeret → ugrás a lejátszóban és az
+//   átiratban, pontok), sok szakasznál tartalomjegyzékkel.
+// A régi (memó előtti) összefoglalónál a memó helyén rövid magyarázat + „Újragenerálás”.
+// Témánkénti összefoglalónál nincs kapcsoló: a vezetői rész alatt a témaszekciók állnak.
 Flickable {
     id: root
 
@@ -14,9 +20,15 @@ Flickable {
     property var shell: null
 
     readonly property bool narrow: width < 720
+    readonly property bool hasSwitch: vm.memoState !== "none"
+    readonly property bool showMemo: hasSwitch && vm.section === "memo"
+    // Tartalomjegyzék: csak ha a memó már nem tekinthető át egy pillantással.
+    readonly property bool tocVisible: vm.memo.length >= 6
     readonly property bool anyStamp: {
         for (let i = 0; i < vm.decisions.length; ++i)
             if (vm.decisions[i].ms >= 0) return true
+        for (let j = 0; j < vm.openQuestions.length; ++j)
+            if (vm.openQuestions[j].ms >= 0) return true
         return false
     }
 
@@ -34,6 +46,100 @@ Flickable {
     function openTopics() {
         if (vm.hasTopics) vm.topicsOpen = true
         else if (root.shell) root.shell.startTopicExtraction(root.meetingId)
+    }
+    function seek(ms) {
+        if (root.shell && ms >= 0) root.shell.seekTo(root.meetingId, ms)
+    }
+    function copy(part) {
+        if (!root.vm.copyToClipboard(part) || !root.shell) return
+        root.shell.toast(part === "exec" ? qsTr("A vezetői összefoglaló a vágólapra került.")
+                       : part === "memo" ? qsTr("A memó a vágólapra került.")
+                       : qsTr("Az összefoglaló a vágólapra került."))
+    }
+    // A memó egy szakaszára görget (tartalomjegyzékből).
+    function scrollToSection(index) {
+        const it = memoRepeater.itemAt(index)
+        if (!it) return
+        const y = it.mapToItem(col, 0, 0).y + col.y - 12
+        root.contentY = Math.max(0, Math.min(y, root.contentHeight - root.height))
+    }
+
+    // Kattintható időbélyeg (accent, egyenközű): a lejátszót és az átiratot oda ugratja.
+    component StampLink: Item {
+        id: link
+        property string text: ""
+        property real ms: -1
+        implicitWidth: linkLabel.implicitWidth
+        implicitHeight: 21
+        TLabel {
+            id: linkLabel
+            anchors.verticalCenter: parent.verticalCenter
+            text: link.text
+            mono: true
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightMedium
+            font.underline: linkHover.hovered || linkFocus.activeFocus
+            color: Theme.accent
+        }
+        FocusScope {
+            id: linkFocus
+            anchors.fill: linkLabel
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Link
+            Accessible.name: qsTr("Ugrás ide: %1").arg(link.text)
+            Keys.onReturnPressed: root.seek(link.ms)
+            Keys.onSpacePressed: root.seek(link.ms)
+            HoverHandler { id: linkHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: root.seek(link.ms) }
+        }
+    }
+
+    // Kis pont a felsorolás elején.
+    component Bullet: Rectangle {
+        implicitWidth: 4; implicitHeight: 4; radius: 2
+        color: Theme.borderStrong
+        Layout.alignment: Qt.AlignTop
+        Layout.topMargin: 9
+        Layout.leftMargin: 2
+    }
+
+    // Időbélyeges lista (döntések, nyitott kérdések): az időbélyeg-oszlop csak akkor van,
+    // ha az adatban tényleg van időbélyeg.
+    component StampedList: ColumnLayout {
+        id: stamped
+        property string heading: ""
+        property var items: []             // [{ text, ms, stamp }]
+        visible: items.length > 0
+        spacing: 8
+        TSectionLabel { text: stamped.heading }
+        Repeater {
+            model: stamped.items
+            RowLayout {
+                id: stampedRow
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 12
+                Item {
+                    visible: root.anyStamp
+                    implicitWidth: 44
+                    implicitHeight: 21
+                    Layout.alignment: Qt.AlignTop
+                    StampLink {
+                        visible: stampedRow.modelData.ms >= 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: stampedRow.modelData.stamp
+                        ms: stampedRow.modelData.ms
+                    }
+                }
+                Bullet { visible: !root.anyStamp }
+                TLabel {
+                    Layout.fillWidth: true
+                    text: stampedRow.modelData.text
+                    cssLineHeight: 1.5
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
     }
 
     // Pontokba szedett lista (döntések a témaszekciókban, teendők felelőssel).
@@ -55,13 +161,7 @@ Flickable {
                 readonly property bool plain: typeof modelData === "string"
                 Layout.fillWidth: true
                 spacing: 8
-                Rectangle {
-                    implicitWidth: 4; implicitHeight: 4; radius: 2
-                    color: Theme.borderStrong
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: 9
-                    Layout.leftMargin: 2
-                }
+                Bullet {}
                 TLabel {
                     Layout.fillWidth: true
                     text: parent.plain ? parent.modelData
@@ -123,15 +223,32 @@ Flickable {
 
             // ================= bal oszlop: tartalom =================
             ColumnLayout {
+                id: leftCol
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 spacing: 18
 
+                // ---- a két forma közti váltó (a rövid forma az alap) ----
+                SettingsSegmented {
+                    visible: root.hasSwitch
+                    Layout.bottomMargin: -2
+                    value: root.vm.section
+                    options: [
+                        { value: "exec", label: qsTr("Vezetői összefoglaló") },
+                        { value: "memo", label: root.vm.memoState === "ready"
+                                                ? qsTr("Memó · %n szakasz", "", root.vm.memo.length)
+                                                : qsTr("Memó") },
+                    ]
+                    onPicked: (v) => { root.vm.section = v; root.contentY = 0 }
+                }
+
+                // ================= vezetői összefoglaló =================
                 ColumnLayout {
-                    visible: root.vm.execSummary !== ""
+                    visible: !root.showMemo && root.vm.execSummary !== ""
                     Layout.fillWidth: true
                     spacing: 6
-                    TSectionLabel { text: qsTr("Vezetői összefoglaló") }
+                    // A kapcsoló már megnevezi a részt; címke csak nélküle (témánkénti mód).
+                    TSectionLabel { visible: !root.hasSwitch; text: qsTr("Vezetői összefoglaló") }
                     TLabel {
                         Layout.fillWidth: true
                         // A Qt a rögzített sormagasság többletét a sor FÖLÉ teszi (a CSS felezi) →
@@ -146,71 +263,22 @@ Flickable {
                     }
                 }
 
-                ColumnLayout {
-                    visible: root.vm.decisions.length > 0
+                StampedList {
+                    visible: !root.showMemo && items.length > 0
                     Layout.fillWidth: true
-                    spacing: 8
-                    TSectionLabel { text: qsTr("Döntések") }
-                    Repeater {
-                        model: root.vm.decisions
-                        RowLayout {
-                            id: decisionRow
-                            required property var modelData
-                            Layout.fillWidth: true
-                            spacing: 12
-                            // Időbélyeg-hivatkozás: csak ha az adatban tényleg van időbélyeg.
-                            Item {
-                                visible: root.anyStamp
-                                implicitWidth: 44
-                                implicitHeight: 21
-                                Layout.alignment: Qt.AlignTop
-                                TLabel {
-                                    id: stamp
-                                    visible: decisionRow.modelData.ms >= 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: decisionRow.modelData.stamp
-                                    mono: true
-                                    font.pixelSize: Theme.fontCaption
-                                    font.weight: Theme.weightMedium
-                                    font.underline: stampHover.hovered || stampFocus.activeFocus
-                                    color: Theme.accent
-                                }
-                                FocusScope {
-                                    id: stampFocus
-                                    anchors.fill: stamp
-                                    visible: stamp.visible
-                                    activeFocusOnTab: true
-                                    Accessible.role: Accessible.Link
-                                    Accessible.name: qsTr("Ugrás ide: %1").arg(decisionRow.modelData.stamp)
-                                    Keys.onReturnPressed: seek()
-                                    Keys.onSpacePressed: seek()
-                                    function seek() {
-                                        if (root.shell) root.shell.seekTo(root.meetingId, decisionRow.modelData.ms)
-                                    }
-                                    HoverHandler { id: stampHover; cursorShape: Qt.PointingHandCursor }
-                                    TapHandler { onTapped: stampFocus.seek() }
-                                }
-                            }
-                            Rectangle {
-                                visible: !root.anyStamp
-                                implicitWidth: 4; implicitHeight: 4; radius: 2
-                                color: Theme.borderStrong
-                                Layout.alignment: Qt.AlignTop
-                                Layout.topMargin: 9
-                                Layout.leftMargin: 2
-                            }
-                            TLabel {
-                                Layout.fillWidth: true
-                                text: decisionRow.modelData.text
-                                cssLineHeight: 1.5
-                                wrapMode: Text.Wrap
-                            }
-                        }
-                    }
+                    heading: qsTr("Döntések")
+                    items: root.vm.decisions
+                }
+
+                StampedList {
+                    visible: !root.showMemo && items.length > 0
+                    Layout.fillWidth: true
+                    heading: qsTr("Nyitott kérdések")
+                    items: root.vm.openQuestions
                 }
 
                 ColumnLayout {
-                    visible: root.vm.actions.length > 0
+                    visible: !root.showMemo && root.vm.actions.length > 0
                     Layout.fillWidth: true
                     spacing: 6
                     TSectionLabel { text: qsTr("Teendők") }
@@ -277,7 +345,7 @@ Flickable {
 
                 // ---- témánkénti összefoglaló: témaszekciók ----
                 ColumnLayout {
-                    visible: root.vm.topicSections.length > 0
+                    visible: !root.showMemo && root.vm.topicSections.length > 0
                     Layout.fillWidth: true
                     spacing: 14
                     TSectionLabel { text: qsTr("Témák") }
@@ -314,8 +382,166 @@ Flickable {
                             PointList {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 2
+                                heading: qsTr("Nyitott kérdések")
+                                items: section.modelData.openQuestions || []
+                            }
+                            PointList {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 2
                                 heading: qsTr("Teendők")
                                 items: section.modelData.actions
+                            }
+                        }
+                    }
+                }
+
+                // ================= memó =================
+                // Régi összefoglaló: a memó helyén magyarázat + újragenerálás.
+                Rectangle {
+                    visible: root.showMemo && root.vm.memoState === "missing"
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 640
+                    implicitHeight: missingCol.implicitHeight + 36
+                    radius: Theme.radiusPopup
+                    color: Theme.surface
+                    border.width: 1
+                    border.color: Theme.border
+                    ColumnLayout {
+                        id: missingCol
+                        anchors { fill: parent; leftMargin: 20; rightMargin: 20; topMargin: 18; bottomMargin: 18 }
+                        spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            TIcon { name: "file-text"; size: 16; color: Theme.textMuted }
+                            TLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("Ehhez az összefoglalóhoz nincs memó")
+                                font.weight: Theme.weightSemiBold
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                        TLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("Ez az összefoglaló még a memó bevezetése előtt készült. Újragenerálva a vezetői összefoglaló mellé időrendi, szakaszonkénti memó is készül.")
+                            muted: true
+                            cssLineHeight: 1.5
+                            wrapMode: Text.Wrap
+                        }
+                        TButton {
+                            Layout.topMargin: 4
+                            text: qsTr("Újragenerálás")
+                            size: "small"
+                            implicitHeight: 30
+                            leftPadding: 12; rightPadding: 12
+                            iconName: "rotate-ccw"
+                            iconSize: 13
+                            enabled: root.vm.canRun && !root.vm.jobRunning
+                            toolTipText: root.vm.canRun ? "" : (root.vm.blocker.reason || "")
+                            onClicked: root.regenerate()
+                        }
+                    }
+                }
+
+                // Tartalomjegyzék: két oszlopban, oszloponként felülről lefelé.
+                ColumnLayout {
+                    visible: root.showMemo && root.tocVisible
+                    Layout.fillWidth: true
+                    spacing: 4
+                    TSectionLabel { text: qsTr("Tartalom") }
+                    GridLayout {
+                        id: toc
+                        readonly property int cols: leftCol.width >= 560 ? 2 : 1
+                        Layout.fillWidth: true
+                        flow: GridLayout.TopToBottom
+                        rows: Math.ceil(root.vm.memo.length / cols)
+                        columnSpacing: 24
+                        rowSpacing: 0
+                        Repeater {
+                            model: root.showMemo && root.tocVisible ? root.vm.memo : []
+                            T.AbstractButton {
+                                id: tocEntry
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 1      // egyenlő oszlopok
+                                implicitHeight: 26
+                                hoverEnabled: true
+                                activeFocusOnTab: true
+                                Accessible.name: modelData.title
+                                onClicked: root.scrollToSection(index)
+                                Keys.onReturnPressed: click()
+                                background: Item { TFocusRing { visible: tocEntry.visualFocus; targetRadius: 4 } }
+                                contentItem: RowLayout {
+                                    spacing: 10
+                                    TLabel {
+                                        Layout.preferredWidth: 52
+                                        text: tocEntry.modelData.stamp
+                                        mono: true; muted: true
+                                        font.pixelSize: Theme.fontCaption
+                                    }
+                                    TLabel {
+                                        Layout.fillWidth: true
+                                        text: tocEntry.modelData.title
+                                        font.pixelSize: Theme.fontSmall
+                                        font.underline: tocEntry.hovered
+                                        color: tocEntry.hovered ? Theme.accent : Theme.text
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    TDivider { Layout.fillWidth: true; Layout.topMargin: 10 }
+                }
+
+                // A szakaszok: cím, időkeret (ugrás), pontok.
+                ColumnLayout {
+                    visible: root.showMemo && root.vm.memoState === "ready"
+                    Layout.fillWidth: true
+                    spacing: 16
+                    Repeater {
+                        id: memoRepeater
+                        model: root.showMemo ? root.vm.memo : []
+                        ColumnLayout {
+                            id: memoSection
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            spacing: 6
+                            TDivider { visible: memoSection.index > 0; Layout.fillWidth: true; Layout.bottomMargin: 10 }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                TLabel {
+                                    Layout.fillWidth: true
+                                    text: memoSection.modelData.title !== "" ? memoSection.modelData.title
+                                                                            : qsTr("Egyéb")
+                                    font.pixelSize: 15
+                                    font.weight: Theme.weightSemiBold
+                                    wrapMode: Text.Wrap
+                                }
+                                StampLink {
+                                    visible: memoSection.modelData.startMs >= 0
+                                    Layout.alignment: Qt.AlignTop
+                                    text: memoSection.modelData.range
+                                    ms: memoSection.modelData.startMs
+                                }
+                            }
+                            Repeater {
+                                model: memoSection.modelData.points
+                                RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Bullet {}
+                                    TLabel {
+                                        Layout.fillWidth: true
+                                        text: parent.modelData
+                                        cssLineHeight: 1.5
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
                             }
                         }
                     }
@@ -427,17 +653,38 @@ Flickable {
                         toolTipText: root.vm.canRun ? "" : (root.vm.blocker.reason || "")
                         onClicked: root.regenerate()
                     }
+                    // Memós összefoglalónál a menü választ: vezetői rész, memó vagy mindkettő.
                     TButton {
+                        id: copyButton
                         Layout.fillWidth: true
                         text: qsTr("Másolás")
                         variant: "ghost"; size: "small"
                         implicitHeight: 32
                         leftPadding: 12; rightPadding: 12
                         iconName: "copy"
+                        trailingIconName: root.vm.memoState === "ready" ? "chevron-down" : ""
+                        iconSize: 14
                         horizontalAlignment: Qt.AlignLeft
                         onClicked: {
-                            if (root.vm.copyToClipboard() && root.shell)
-                                root.shell.toast(qsTr("Az összefoglaló a vágólapra került."))
+                            if (root.vm.memoState === "ready")
+                                copyMenu.popup(copyButton, 0, copyButton.height + 4)
+                            else
+                                root.copy("all")
+                        }
+                    }
+                    TMenu {
+                        id: copyMenu
+                        TMenuItem {
+                            text: qsTr("Vezetői összefoglaló")
+                            onTriggered: root.copy("exec")
+                        }
+                        TMenuItem {
+                            text: qsTr("Memó")
+                            onTriggered: root.copy("memo")
+                        }
+                        TMenuItem {
+                            text: qsTr("Mindkettő")
+                            onTriggered: root.copy("all")
                         }
                     }
                     TButton {

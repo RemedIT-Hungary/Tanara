@@ -1,6 +1,8 @@
 // SummaryViewModel + TopicListModel — az Összefoglaló fül (M06 / M07 / M08) állapotai izolált
 // TANARA_HOME-on, ál-LLM-szerverrel (valódi szolgáltató-hívás nincs).
 #include "JobTestSupport.h"
+#include "ShellMeetingModel.h"
+#include "SummaryProgress.h"
 #include "SummaryViewModel.h"
 #include "TopicListModel.h"
 
@@ -11,6 +13,8 @@
 #include <QtTest>
 
 using namespace tanara;
+using tanara_qml::ShellMeetingModel;
+using tanara_qml::SummaryProgress;
 using tanara_qml::SummaryViewModel;
 using tanara_qml::TopicListModel;
 
@@ -47,6 +51,251 @@ private slots:
         QCOMPARE(SummaryViewModel::splitTimestamp(QStringLiteral("A határidő 12:30-kor jár le."), &rest), -1);
         QCOMPARE(rest, QStringLiteral("A határidő 12:30-kor jár le."));
         QCOMPARE(SummaryViewModel::splitTimestamp(QStringLiteral("3 fővel bővül a csapat."), &rest), -1);
+    }
+
+    // A feladat-szakaszok leképezése (Összefoglaló fül + feladat-sáv).
+    void summaryProgressMapping()
+    {
+        auto job = [](const QVector<JobStage>& stages, int done, int total) {
+            JobProgress j;
+            j.meetingId = QStringLiteral("m");
+            j.kind = JobKind::Summarize;
+            j.title = QStringLiteral("Összefoglaló készítése");
+            j.stages = stages;
+            j.done = done;
+            j.total = total;
+            return j;
+        };
+        // Rövid megbeszélés: egy szakasz, határozatlan.
+        SummaryProgress p = SummaryProgress::from(job({{"single", "Összefoglalás", StageState::Running, -1, {}}}, -1, -1));
+        QCOMPARE(p.stage, QStringLiteral("single"));
+        QCOMPARE(p.percent, -1);
+        QCOMPARE(p.stages.size(), 1);
+        QVERIFY(!p.label.isEmpty());
+
+        // Részenkénti jegyzet: valós csík a kész részekből, és a korábbi futásból átvett részek.
+        const JobProgress notes = job({{"notes", "Jegyzetelés részenként", StageState::Running, -1,
+                                        "3/5. rész · 2 korábbi futásból"},
+                                       {"merge", "Összegzés", StageState::Waiting, -1, {}}}, 2, 5);
+        p = SummaryProgress::from(notes);
+        QCOMPARE(p.stage, QStringLiteral("notes"));
+        QCOMPARE(p.percent, 40);
+        QCOMPARE(p.done, 2);
+        QCOMPARE(p.total, 5);
+        QVERIFY2(p.label.contains(QStringLiteral("2 / 5")), qPrintable(p.label));
+        QCOMPARE(p.reused, 2);
+        QVERIFY(!p.reusedNote.isEmpty());
+        QCOMPARE(p.stages.size(), 2);
+        QCOMPARE(p.stages.at(0).toMap().value("state").toString(), QStringLiteral("running"));
+        QCOMPARE(p.stages.at(0).toMap().value("percent").toInt(), 40);
+        QCOMPARE(p.stages.at(1).toMap().value("state").toString(), QStringLiteral("waiting"));
+
+        // Összefésülés: határozatlan; a jegyzetelés kész.
+        p = SummaryProgress::from(job({{"notes", "Jegyzetelés részenként", StageState::Done, -1, "5 rész kész"},
+                                       {"merge", "Összegzés", StageState::Running, -1, {}}}, 5, 5));
+        QCOMPARE(p.stage, QStringLiteral("merge"));
+        QCOMPARE(p.percent, -1);
+        QCOMPARE(p.reused, 0);
+        QCOMPARE(p.stages.at(0).toMap().value("state").toString(), QStringLiteral("done"));
+        QCOMPARE(p.stages.at(1).toMap().value("state").toString(), QStringLiteral("running"));
+
+        // Szakaszok nélküli összegzés (témánkénti elemzés vége) és más feladat: nincs leképezés.
+        QVERIFY(!SummaryProgress::from(job({}, -1, -1)).isValid());
+        JobProgress other = notes;
+        other.kind = JobKind::AnalyzeTopics;
+        QVERIFY(!SummaryProgress::from(other).isValid());
+        QCOMPARE(SummaryProgress::reusedParts(QStringLiteral("3/5. rész")), 0);
+        QCOMPARE(SummaryProgress::reusedParts(QStringLiteral("Part 3/5 · 4 from an earlier run")), 4);
+
+        // A feladat-sáv ugyanígy: k / n rész valós százalékkal, az összefésülés határozatlan.
+        QVariantMap strip = ShellMeetingModel::describeJob(notes);
+        QCOMPARE(strip.value("percent").toInt(), 40);
+        QVERIFY2(strip.value("detail").toString().contains(QStringLiteral("2 / 5")), qPrintable(strip.value("detail").toString()));
+        strip = ShellMeetingModel::describeJob(job({{"notes", "x", StageState::Done, -1, {}},
+                                                    {"merge", "y", StageState::Running, -1, {}}}, 5, 5));
+        QCOMPARE(strip.value("percent").toInt(), -1);
+    }
+
+    // A demó-állapotok: vezetői összefoglaló nyitott kérdésekkel, memó (sok / kevés szakasz),
+    // régi összefoglaló, futás részekkel, hiba megtartott részekkel, témák nyitott kérdései.
+    void demoMemoProgressAndOldSummaries()
+    {
+        SummaryViewModel vm;
+        QCOMPARE(vm.section(), QStringLiteral("exec"));
+        QCOMPARE(vm.memoState(), QStringLiteral("ready"));
+        QCOMPARE(vm.memo().size(), 24);
+        QCOMPARE(vm.openQuestions().size(), 3);
+        QCOMPARE(vm.openQuestions().at(0).toMap().value("ms").toLongLong(), (43 * 60 + 30) * 1000);
+        QCOMPARE(vm.openQuestions().at(2).toMap().value("ms").toLongLong(), -1);
+        const QVariantMap first = vm.memo().at(0).toMap();
+        QCOMPARE(first.value("range").toString(), QStringLiteral("00:00–02:40"));
+        QCOMPARE(first.value("startMs").toLongLong(), 0);
+        QCOMPARE(first.value("points").toStringList().size(), 2);
+        QCOMPARE(vm.memo().at(23).toMap().value("stamp").toString(), QStringLiteral("1:15:30"));
+
+        // Másolás: vezetői rész (memó nélkül), csak a memó, vagy mindkettő.
+        const QString exec = vm.markdownFor(QStringLiteral("exec"));
+        QVERIFY(exec.contains(QStringLiteral("## Vezetői összefoglaló")));
+        QVERIFY(exec.contains(QStringLiteral("## Nyitott kérdések")));
+        QVERIFY(!exec.contains(QStringLiteral("## Memó")));
+        const QString memo = vm.markdownFor(QStringLiteral("memo"));
+        QVERIFY(memo.startsWith(QStringLiteral("## Memó")));
+        QVERIFY(memo.contains(QStringLiteral("### Nyitás, napirend (00:00–02:40)")));
+        QVERIFY(!memo.contains(QStringLiteral("## Döntések")));
+        const QString all = vm.markdownFor(QStringLiteral("all"));
+        QVERIFY(all.contains(QStringLiteral("## Nyitott kérdések")) && all.contains(QStringLiteral("## Memó")));
+        QCOMPARE(vm.markdownFor(QString()), all);
+        QVERIFY(vm.copyToClipboard(QStringLiteral("memo")));
+
+        QSignalSpy sectionSpy(&vm, &SummaryViewModel::sectionChanged);
+        vm.setDemoState(QStringLiteral("memoShort"));
+        QCOMPARE(vm.section(), QStringLiteral("memo"));
+        QCOMPARE(sectionSpy.size(), 1);
+        QCOMPARE(vm.memo().size(), 4);
+        vm.setSection(QStringLiteral("bármi"));             // ismeretlen → rövid forma
+        QCOMPARE(vm.section(), QStringLiteral("exec"));
+
+        // Régi (memó előtti) összefoglaló: a vezetői rész, a memó helyén magyarázat.
+        vm.setDemoState(QStringLiteral("oldSummary"));
+        QCOMPARE(vm.memoState(), QStringLiteral("missing"));
+        QVERIFY(vm.openQuestions().isEmpty());
+        QVERIFY(vm.markdownFor(QStringLiteral("memo")).isEmpty());
+        QCOMPARE(vm.markdownFor(QStringLiteral("exec")), vm.markdownFor(QStringLiteral("all")));
+        vm.setDemoState(QStringLiteral("oldMemo"));
+        QCOMPARE(vm.section(), QStringLiteral("memo"));
+        QCOMPARE(vm.memoState(), QStringLiteral("missing"));
+
+        // Témánkénti összefoglaló: nincs memó-nézet; a témák nyitott kérdései megvannak.
+        vm.setDemoState(QStringLiteral("topicsDoc"));
+        QCOMPARE(vm.memoState(), QStringLiteral("none"));
+        QCOMPARE(vm.topicSections().at(0).toMap().value("openQuestions").toStringList().size(), 1);
+
+        // Futás: részenkénti jegyzet (3 / 6, ebből 2 korábbról), összefésülés, egy lépés.
+        vm.setDemoState(QStringLiteral("emptyRunningParts"));
+        QVERIFY(vm.jobRunning());
+        QCOMPARE(vm.jobStage(), QStringLiteral("notes"));
+        QCOMPARE(vm.jobPercent(), 50);
+        QCOMPARE(vm.jobReusedParts(), 2);
+        QVERIFY(!vm.jobReusedNote().isEmpty());
+        QCOMPARE(vm.jobStages().size(), 2);
+        vm.setDemoState(QStringLiteral("emptyRunningMerge"));
+        QCOMPARE(vm.jobStage(), QStringLiteral("merge"));
+        QCOMPARE(vm.jobPercent(), -1);
+        vm.setDemoState(QStringLiteral("emptyRunning"));
+        QCOMPARE(vm.jobStage(), QStringLiteral("single"));
+        QCOMPARE(vm.jobStages().size(), 1);
+        vm.setDemoState(QStringLiteral("running"));
+        QCOMPARE(vm.view(), QStringLiteral("summary"));
+        QVERIFY(vm.jobRunning());
+        QCOMPARE(vm.jobStage(), QStringLiteral("notes"));
+
+        // Hiba megtartott részekkel.
+        vm.setDemoState(QStringLiteral("emptyErrorKept"));
+        QVERIFY(vm.errorKeptParts());
+        QVERIFY(!vm.jobRunning());
+        vm.clearError();
+        QVERIFY(!vm.errorKeptParts());
+
+        // Témakártyák: a kész téma nyitott kérdései.
+        vm.setDemoState(QStringLiteral("topics"));
+        QCOMPARE(vm.topics()->data(vm.topics()->index(0), TopicListModel::ResultOpenQuestionsRole)
+                     .toStringList().size(), 1);
+        QVERIFY(vm.topics()->roleNames().values().contains("resultOpenQuestions"));
+    }
+
+    // Hosszú megbeszélés valódi controllerrel, ál-szerverrel: a futás szakaszai a nézetmodellben,
+    // megszakítás, elbukott futás megtartott részekkel, folytatás, majd a memó és a másolás.
+    void longMeetingPartsFailResumeAndMemo()
+    {
+        jobtest::Sandbox sb;
+        const Meeting m = sb.transcribedLong("Hosszú megbeszélés", 40);   // 3 rész
+        const Meeting other = sb.transcribed("Másik");
+        SummaryViewModel vm;
+        vm.setController(sb.app.get());
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.view(), QStringLiteral("empty"));
+
+        // 1) A 2. rész függőben: a jegyzetelés 1 / 3-nál tart, valós százalékkal; megszakítható.
+        sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+            const int k = jobtest::notesPart(r);
+            if (k == 2) { jobtest::FakeReply h; h.hold = true; return h; }
+            return {200, k > 0 ? jobtest::chat(jobtest::partNotes(k)) : jobtest::mergeReply()};
+        };
+        sb.app->summarizeMeeting(m.id);
+        QVERIFY(vm.jobRunning());
+        QCOMPARE(vm.jobStage(), QStringLiteral("notes"));
+        QCOMPARE(vm.jobStages().size(), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(vm.jobPercent(), 33, 10000);
+        QVERIFY2(vm.jobStageLabel().contains(QStringLiteral("1 / 3")), qPrintable(vm.jobStageLabel()));
+        QCOMPARE(vm.jobReusedParts(), 0);
+        QVERIFY(sb.app->cancelJob(m.id, JobKind::Summarize));
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.jobRunning(), 10000);
+        QVERIFY(vm.errorMessage().isEmpty());
+        QVERIFY(!vm.errorKeptParts());
+        QVERIFY(QDir(m.folder).exists(QStringLiteral("summary.notes.json")));
+
+        // 2) Újraindítás: az 1. rész a korábbi futásból jön; a 2. rész most elbukik → a hiba
+        //    jelzi, hogy a kész részek megmaradtak.
+        sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+            const int k = jobtest::notesPart(r);
+            if (k == 2) return {500, "{\"error\":{\"message\":\"overloaded\",\"code\":\"overloaded\"}}"};
+            return {200, k > 0 ? jobtest::chat(jobtest::partNotes(k)) : jobtest::mergeReply()};
+        };
+        sb.app->summarizeMeeting(m.id);
+        QCOMPARE(vm.jobReusedParts(), 1);
+        QVERIFY(!vm.jobReusedNote().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty(), 15000);
+        QVERIFY(!vm.jobRunning());
+        QVERIFY(vm.errorKeptParts());
+        QCOMPARE(vm.view(), QStringLiteral("empty"));
+
+        // 3) Folytatás: csak a hiányzó részek + az összefésülés fut; kész a memó.
+        sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
+            const int k = jobtest::notesPart(r);
+            return {200, k > 0 ? jobtest::chat(jobtest::partNotes(k)) : jobtest::mergeReply()};
+        };
+        QSignalSpy arrived(&vm, &SummaryViewModel::summaryArrived);
+        sb.app->summarizeMeeting(m.id);
+        QCOMPARE(vm.jobReusedParts(), 1);
+        QVERIFY(arrived.wait(15000));
+        QVERIFY(!vm.jobRunning());
+        QVERIFY(vm.errorMessage().isEmpty());
+        QVERIFY(!vm.errorKeptParts());
+        QCOMPARE(vm.view(), QStringLiteral("summary"));
+        QCOMPARE(vm.section(), QStringLiteral("exec"));
+        QCOMPARE(vm.memoState(), QStringLiteral("ready"));
+        QCOMPARE(vm.memo().size(), 3);
+        const QVariantMap third = vm.memo().at(2).toMap();
+        QCOMPARE(third.value("title").toString(), QStringLiteral("Tárgy 3"));
+        QCOMPARE(third.value("startMs").toLongLong(), 30 * 60000);
+        QCOMPARE(third.value("range").toString(), QStringLiteral("30:00–30:40"));
+        QCOMPARE(third.value("points").toStringList(), QStringList({"Egy pont a(z) 3. részből."}));
+        QCOMPARE(vm.openQuestions().size(), 2);
+        // A core a döntések / nyitott kérdések elejéről leveszi az időbélyeget → nincs hivatkozás.
+        QCOMPARE(vm.openQuestions().at(0).toMap().value("ms").toLongLong(), -1);
+        QCOMPARE(vm.openQuestions().at(0).toMap().value("text").toString(), QStringLiteral("Nyitott ügy 3"));
+        QCOMPARE(vm.decisions().at(0).toMap().value("text").toString(), QStringLiteral("Marad a terv."));
+
+        // Másolás-változatok.
+        const QString exec = vm.markdownFor(QStringLiteral("exec"));
+        QVERIFY(exec.contains(QStringLiteral("## Nyitott kérdések")));
+        QVERIFY(!exec.contains(QStringLiteral("## Memó")));
+        const QString memo = vm.markdownFor(QStringLiteral("memo"));
+        QVERIFY(memo.startsWith(QStringLiteral("## Memó")));
+        QVERIFY(memo.contains(QStringLiteral("### Tárgy 1 (00:00–00:40)")));
+        QVERIFY(!memo.contains(QStringLiteral("Vezetői összefoglaló")));
+        QVERIFY(vm.markdownFor(QStringLiteral("all")).contains(QStringLiteral("### Tárgy 2")));
+        QVERIFY(vm.copyToClipboard(QStringLiteral("exec")));
+
+        // A memó-nézet meetingváltáskor visszaáll a rövid formára.
+        vm.setSection(QStringLiteral("memo"));
+        QCOMPARE(vm.section(), QStringLiteral("memo"));
+        vm.setMeetingId(other.id);
+        QCOMPARE(vm.section(), QStringLiteral("exec"));
+        QCOMPARE(vm.memoState(), QStringLiteral("none"));   // nincs összefoglalója
     }
 
     void demoStatesWithoutController()
@@ -198,6 +447,12 @@ private slots:
         QCOMPARE(vm.actions().at(0).toMap().value("due").toString(), QStringLiteral("péntek"));
         QCOMPARE(vm.actions().at(1).toMap().value("owner").toString(), QString());
         QCOMPARE(vm.participants().size(), 2);                 // a két beszélő, nincs külön „említett”
+        // Memó előtti összefoglaló: nincs memó, nincsenek nyitott kérdések; a másolás a teljes szöveg.
+        QCOMPARE(vm.memoState(), QStringLiteral("missing"));
+        QVERIFY(vm.memo().isEmpty());
+        QVERIFY(vm.openQuestions().isEmpty());
+        QVERIFY(vm.markdownFor(QStringLiteral("memo")).isEmpty());
+        QCOMPARE(vm.markdownFor(QStringLiteral("exec")), vm.markdownFor(QStringLiteral("all")));
         QVERIFY(!vm.metaLine().isEmpty());                     // a fájl ideje
         QVERIFY(vm.modelLine().isEmpty());                     // régi összefoglaló: nincs modell-adat
         QVERIFY(vm.copyToClipboard());

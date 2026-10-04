@@ -2,6 +2,7 @@
 
 #include "AppContext.h"
 #include "JobSupport.h"
+#include "SummaryProgress.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -11,9 +12,12 @@
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/SummaryService.h"
 #include "tanara/summary/SummaryStore.h"
 
 #include <QClipboard>
+#include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QLocale>
 #include <QRegularExpression>
@@ -36,6 +40,26 @@ QVariantMap decisionMap(const QString& raw, qint64 durationMs)
     }
     return {{QStringLiteral("text"), rest}, {QStringLiteral("ms"), ms},
             {QStringLiteral("stamp"), ms >= 0 ? jobsupport::formatDuration(ms) : QString()}};
+}
+
+// Egy memó-szakasz a nézetnek. Az időbélyeg a felvétel hosszán túl nem hivatkozás.
+QVariantMap memoMap(const MemoSection& sec, qint64 durationMs)
+{
+    qint64 start = sec.startMs, end = sec.endMs;
+    if (start >= 0 && durationMs > 0 && start > durationMs)
+        start = end = -1;
+    if (end >= 0 && (start < 0 || end < start))
+        end = -1;
+    const QString stamp = start >= 0 ? jobsupport::formatDuration(start) : QString();
+    const QString range = start < 0 ? QString()
+                        : end > start ? stamp + QStringLiteral("–") + jobsupport::formatDuration(end)
+                                      : stamp;
+    QStringList points;
+    for (const QString& p : sec.points)
+        if (!p.trimmed().isEmpty()) points << p.trimmed();
+    return {{QStringLiteral("title"), sec.title.trimmed()}, {QStringLiteral("startMs"), start},
+            {QStringLiteral("endMs"), end}, {QStringLiteral("stamp"), stamp},
+            {QStringLiteral("range"), range}, {QStringLiteral("points"), points}};
 }
 
 QVariantMap participantMap(const QString& name, int colorIndex, int percent)
@@ -104,8 +128,13 @@ void SummaryViewModel::setMeetingId(const QString& id)
     // még nincs összefoglalója, megnyílik (a félbemaradt témánkénti elemzés onnan folytatható,
     // ahol a lemezen tart). Az első beállításnál a kívülről kért topicsOpen megmarad.
     AppController* c = app();
-    if (switching)
+    if (switching) {
         m_topicsOpen = false;
+        if (m_section != QLatin1String("exec")) {   // új meetingnél mindig a rövid forma látszik
+            m_section = QStringLiteral("exec");
+            emit sectionChanged();
+        }
+    }
     if (!jobsupport::demoMode(c) && !id.isEmpty()
         && !c->summaryDocument(id).exists && !c->meetingTopics(id).isEmpty())
         m_topicsOpen = true;
@@ -118,6 +147,10 @@ void SummaryViewModel::setDemoState(const QString& state)
         return;
     m_demoState = state;
     emit demoStateChanged();
+    // A memó-állapotok a memót mutatják (képernyőképhez); a többi a rövid formát.
+    const bool memo = state == QLatin1String("memo") || state == QLatin1String("memoShort")
+                   || state == QLatin1String("oldMemo");
+    setSection(memo ? QStringLiteral("memo") : QStringLiteral("exec"));
     reload();
 }
 
@@ -127,6 +160,22 @@ void SummaryViewModel::setTopicsOpen(bool open)
         return;
     m_topicsOpen = open;
     emit changed();
+}
+
+void SummaryViewModel::setSection(const QString& section)
+{
+    const QString s = section == QLatin1String("memo") ? section : QStringLiteral("exec");
+    if (s == m_section)
+        return;
+    m_section = s;
+    emit sectionChanged();
+}
+
+QString SummaryViewModel::memoState() const
+{
+    if (!m_hasSummary || m_mode == QLatin1String("topics"))
+        return QStringLiteral("none");
+    return m_memo.isEmpty() ? QStringLiteral("missing") : QStringLiteral("ready");
 }
 
 QString SummaryViewModel::view() const
@@ -167,7 +216,11 @@ void SummaryViewModel::connectController()
     m_connections << connect(c, &AppController::summaryReady, this,
                              [this, mine](const QString& id, const QString&) {
         if (!mine(id)) return;
-        m_topicsOpen = false;          // elkészült → az összefoglalót mutatjuk
+        m_topicsOpen = false;          // elkészült → az összefoglalót mutatjuk, a rövid formát
+        if (m_section != QLatin1String("exec")) {
+            m_section = QStringLiteral("exec");
+            emit sectionChanged();
+        }
         reload();
         emit summaryArrived();
     });
@@ -307,7 +360,20 @@ void SummaryViewModel::reloadJobs()
     m_jobTitle = shown.title;
     m_jobMessage = shown.message;
     m_jobCancelling = kind >= 0 ? shown.cancelling : (m_analyzing && analyze.cancelling);
+    applyJob(shown);
     emit jobChanged();
+}
+
+// Az összefoglaló szakaszai (a feladat-sáv ugyanezt a leképezést használja).
+void SummaryViewModel::applyJob(const JobProgress& job)
+{
+    const SummaryProgress p = SummaryProgress::from(job);
+    m_jobStage = p.stage;
+    m_jobStageLabel = p.isValid() ? p.label : m_jobTitle;
+    m_jobPercent = p.percent;
+    m_jobStages = p.stages;
+    m_jobReusedParts = p.reused;
+    m_jobReusedNote = p.reusedNote;
 }
 
 void SummaryViewModel::reload()
@@ -321,6 +387,7 @@ void SummaryViewModel::reload()
     m_errorDetail.clear();
     m_fixActionLabel.clear();
     m_fixActionPage.clear();
+    m_errorKeptParts = false;
     m_hasSummary = false;
     m_stale = false;
     m_staleCount = 0;
@@ -330,14 +397,18 @@ void SummaryViewModel::reload()
     m_execSummary.clear();
     m_markdown.clear();
     m_decisions.clear();
+    m_openQuestions.clear();
     m_actions.clear();
     m_topicSections.clear();
+    m_memo.clear();
+    m_summary = Summary();
     m_summaryParticipants.clear();
     m_jobKind = -1;
     m_jobTitle.clear();
     m_jobMessage.clear();
     m_jobCancelling = false;
     m_analyzing = false;
+    applyJob(JobProgress());
     m_transcriptLine.clear();
 
     AppController* c = app();
@@ -387,6 +458,9 @@ void SummaryViewModel::reload()
         const jobsupport::FixAction fix = jobsupport::fixActionForError(ps.summaryError);
         m_fixActionLabel = fix.label;
         m_fixActionPage = fix.page;
+        // A kész részek jegyzetei a gyorsítótárban: az újrapróbálás csak a hiányzókat futtatja.
+        m_errorKeptParts = !m.folder.isEmpty()
+            && QFileInfo::exists(QDir(m.folder).filePath(SummaryService::cacheFileName()));
     }
 
     // Az összefoglaló strukturáltan (új: summary.json; régi: a summary.md-ből visszanyerve).
@@ -395,10 +469,15 @@ void SummaryViewModel::reload()
     if (doc.exists) {
         m_markdown = doc.markdown;
         m_mode = summarystore::modeToString(doc.meta.mode);
+        m_summary = doc.summary;
         m_execSummary = doc.summary.execSummary.trimmed();
         m_summaryParticipants = doc.summary.participants;
         for (const QString& d : doc.summary.decisions)
             m_decisions << decisionMap(d, m.durationMs);
+        for (const QString& q : doc.summary.openQuestions)
+            m_openQuestions << decisionMap(q, m.durationMs);
+        for (const MemoSection& sec : doc.summary.memo)
+            m_memo << memoMap(sec, m.durationMs);
         for (const ActionItem& a : doc.summary.actionItems)
             m_actions << QVariantMap{{QStringLiteral("text"), a.text}, {QStringLiteral("owner"), a.owner},
                                      {QStringLiteral("ownerIndex"), -1}, {QStringLiteral("owners"), QVariantList{}},
@@ -411,6 +490,7 @@ void SummaryViewModel::reload()
             m_topicSections << QVariantMap{{QStringLiteral("title"), t.title},
                                            {QStringLiteral("detail"), t.detail.trimmed()},
                                            {QStringLiteral("decisions"), t.decisions},
+                                           {QStringLiteral("openQuestions"), t.openQuestions},
                                            {QStringLiteral("actions"), acts}};
         }
         QStringList meta;
@@ -434,11 +514,33 @@ void SummaryViewModel::reload()
     reloadJobs();
 }
 
-bool SummaryViewModel::copyToClipboard()
+QString SummaryViewModel::markdownFor(const QString& part) const
 {
-    if (m_markdown.isEmpty() || !qobject_cast<QGuiApplication*>(QCoreApplication::instance()))
+    if (!m_hasSummary)
+        return QString();
+    // A részenkénti másolás csak a strukturált gyors összefoglalónál értelmes; témánkénti
+    // vagy memó nélküli összefoglalónál mindig a teljes szöveg megy.
+    if (part == QLatin1String("exec") && memoState() == QLatin1String("ready")) {
+        Summary s = m_summary;
+        s.memo.clear();
+        return s.renderMarkdown();
+    }
+    if (part == QLatin1String("memo")) {
+        if (memoState() != QLatin1String("ready"))
+            return QString();
+        Summary s;
+        s.memo = m_summary.memo;
+        return s.renderMarkdown();
+    }
+    return m_markdown;
+}
+
+bool SummaryViewModel::copyToClipboard(const QString& part)
+{
+    const QString md = markdownFor(part);
+    if (md.isEmpty() || !qobject_cast<QGuiApplication*>(QCoreApplication::instance()))
         return false;
-    QGuiApplication::clipboard()->setText(m_markdown);
+    QGuiApplication::clipboard()->setText(md);
     return true;
 }
 
@@ -460,6 +562,7 @@ void SummaryViewModel::clearError()
     if (jobsupport::demoMode(c)) {
         m_errorMessage.clear();
         m_errorDetail.clear();
+        m_errorKeptParts = false;
         emit changed();
         return;
     }
@@ -486,6 +589,32 @@ void SummaryViewModel::loadDemo()
         m_topicsOpen = false;
     }
 
+    // Futó összefoglaló a core szakaszaival (a leképezés ugyanaz, mint élesben).
+    auto demoJob = [this](const QString& kind) {
+        JobProgress job;
+        job.meetingId = QStringLiteral("demo");
+        job.kind = JobKind::Summarize;
+        job.title = tr("Összefoglaló készítése");
+        if (kind == QLatin1String("single")) {
+            job.stages = {{QStringLiteral("single"), tr("Összefoglalás"), StageState::Running, -1, QString()}};
+        } else {
+            const bool merging = kind == QLatin1String("merge");
+            job.done = merging ? 6 : 3;
+            job.total = 6;
+            job.stages = {
+                {QStringLiteral("notes"), tr("Jegyzetelés részenként"),
+                 merging ? StageState::Done : StageState::Running, -1,
+                 merging ? tr("%n rész kész", nullptr, 6)
+                         : tr("%1/%2. rész").arg(4).arg(6) + tr(" · %n korábbi futásból", nullptr, 2)},
+                {QStringLiteral("merge"), tr("Összegzés"),
+                 merging ? StageState::Running : StageState::Waiting, -1, QString()},
+            };
+        }
+        m_jobKind = int(JobKind::Summarize);
+        m_jobTitle = job.title;
+        applyJob(job);
+    };
+
     if (empty) {
         if (st == QLatin1String("emptyBlocked")) {
             m_canRun = false;
@@ -498,18 +627,24 @@ void SummaryViewModel::loadDemo()
                 {QStringLiteral("reason"), tr("A szolgáltató beállítása után indítható.")},
             };
         } else if (st == QLatin1String("emptyRunning")) {
-            m_jobKind = int(JobKind::Summarize);
-            m_jobTitle = tr("Összefoglaló készítése");
+            demoJob(QStringLiteral("single"));
+        } else if (st == QLatin1String("emptyRunningParts")) {
+            demoJob(QStringLiteral("notes"));
+        } else if (st == QLatin1String("emptyRunningMerge")) {
+            demoJob(QStringLiteral("merge"));
         } else if (st == QLatin1String("emptyError")) {
             m_errorMessage = tr("A szolgáltató nem válaszolt időben. Próbáld újra.");
             m_errorDetail = QStringLiteral("HTTP 504 · gateway_timeout");
+        } else if (st == QLatin1String("emptyErrorKept")) {
+            m_errorMessage = tr("A szolgáltatónál hiba történt. Próbáld újra később.");
+            m_errorDetail = QStringLiteral("HTTP 500 · server_error · model crashed");
+            m_errorKeptParts = true;
         }
         return;
     }
 
     // --- kész összefoglaló ---
     m_hasSummary = true;
-    m_markdown = QStringLiteral("## Vezetői összefoglaló\n\n…");
     m_speakers = {
         {tr("Kovács Lilla"), tr("Kovács Lilla"), 0, 0.34}, {tr("Tóth Bence"), tr("Tóth Bence"), 1, 0.22},
         {tr("Varga Nóra"), tr("Varga Nóra"), 2, 0.17},     {tr("Molnár Eszter"), tr("Molnár Eszter"), 3, 0.14},
@@ -518,34 +653,56 @@ void SummaryViewModel::loadDemo()
     for (const SpeakerRef& s : std::as_const(m_speakers))
         m_participants << participantMap(s.name, s.colorIndex, int(s.share * 100.0 + 0.5));
 
-    m_execSummary = tr("A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény "
-                       "harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre "
-                       "is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A "
-                       "dokumentációs létszámbővítésről a költségvetés dönt.");
-    const QStringList decisions{
+    // Régi (memó előtti) összefoglaló: nincs memó, nincsenek nyitott kérdések, modell-adat sincs.
+    const bool old = st == QLatin1String("oldSummary") || st == QLatin1String("oldMemo");
+    m_summary.execSummary = tr("A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény "
+                               "harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre "
+                               "is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A "
+                               "dokumentációs létszámbővítésről a költségvetés dönt.");
+    m_summary.decisions = QStringList{
         tr("[12:52] A súgóoldalakat a többi termékre is kiterjesztik."),
         tr("[31:10] A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást."),
         tr("[58:40] A dokumentációs létszámról a költségvetési tervezés dönt."),
     };
-    for (const QString& d : decisions)
+    if (!old)
+        m_summary.openQuestions = QStringList{
+            tr("[43:30] Legyen-e nyomtatható változata a súgóoldalaknak?"),
+            tr("[58:40] Bevonjanak-e átmenetileg külső szövegírót a dokumentációhoz?"),
+            tr("Mikorra frissül a partnerportál?"),
+        };
+    m_summary.actionItems = {
+        {tr("A súgóoldalak kiterjesztése a további termékekre: ütemterv"), tr("Kovács Lilla"), tr("okt. 15.")},
+        {tr("Számlázási elakadási pontok összegyűjtése"), tr("Varga Nóra"), tr("okt. 10.")},
+        {tr("Dokumentációs létszámigény a költségvetési tervbe"), tr("Szabó Áron"), tr("okt. 20.")},
+        {tr("Új-ügyfél bontás elküldése a partnereknek"), tr("Kovács Lilla"), tr("okt. 4.")},
+    };
+    for (const SpeakerRef& s : std::as_const(m_speakers))
+        m_summary.participants << s.name;
+
+    for (const QString& d : std::as_const(m_summary.decisions))
         m_decisions << decisionMap(d, m_durationMs);
-    auto action = [this](const QString& text, const QString& owner, const QString& due) {
-        return QVariantMap{{QStringLiteral("text"), text}, {QStringLiteral("owner"), owner},
-                           {QStringLiteral("ownerIndex"), speakerIndexFor(owner)},
-                           {QStringLiteral("owners"), ownerList(owner)},
-                           {QStringLiteral("due"), due}};
-    };
-    m_actions = {
-        action(tr("A súgóoldalak kiterjesztése a további termékekre: ütemterv"), tr("Kovács Lilla"), tr("okt. 15.")),
-        action(tr("Számlázási elakadási pontok összegyűjtése"), tr("Varga Nóra"), tr("okt. 10.")),
-        action(tr("Dokumentációs létszámigény a költségvetési tervbe"), tr("Szabó Áron"), tr("okt. 20.")),
-        action(tr("Új-ügyfél bontás elküldése a partnereknek"), tr("Kovács Lilla"), tr("okt. 4.")),
-    };
-    m_mode = QStringLiteral("quick");
+    for (const QString& q : std::as_const(m_summary.openQuestions))
+        m_openQuestions << decisionMap(q, m_durationMs);
+    for (const ActionItem& a : std::as_const(m_summary.actionItems))
+        m_actions << QVariantMap{{QStringLiteral("text"), a.text}, {QStringLiteral("owner"), a.owner},
+                                 {QStringLiteral("ownerIndex"), speakerIndexFor(a.owner)},
+                                 {QStringLiteral("owners"), ownerList(a.owner)},
+                                 {QStringLiteral("due"), a.due}};
+    m_execSummary = m_summary.execSummary;
+    m_mode = old ? QStringLiteral("unknown") : QStringLiteral("quick");
     m_metaLine = tr("okt. 1. 17:05") + QStringLiteral(" · ") + m_providerLabel;
-    m_modelLine = QStringLiteral("gemma-4-12b");
+    m_modelLine = old ? QString() : QStringLiteral("gemma-4-12b");
     m_stale = st == QLatin1String("stale");
     m_staleCount = m_stale ? 3 : 0;
+
+    if (!old && st != QLatin1String("topicsDoc"))
+        loadDemoMemo(st != QLatin1String("memoShort"));
+    for (const MemoSection& sec : std::as_const(m_summary.memo))
+        m_memo << memoMap(sec, m_durationMs);
+    m_markdown = m_summary.renderMarkdown();
+
+    if (st == QLatin1String("running"))
+        demoJob(QStringLiteral("notes"));
 
     if (st == QLatin1String("topicsDoc")) {
         m_mode = QStringLiteral("topics");
@@ -555,6 +712,7 @@ void SummaryViewModel::loadDemo()
                                                       "felhasználók 12%-kal nőttek. A csökkenés fő oka a "
                                                       "termékbe épített súgó.")},
                         {QStringLiteral("decisions"), QStringList{tr("A súgóoldalakat a többi termékre is kiterjesztik.")}},
+                        {QStringLiteral("openQuestions"), QStringList{tr("Legyen-e nyomtatható változata a súgóoldalaknak?")}},
                         {QStringLiteral("actions"), QVariantList{QVariantMap{
                              {QStringLiteral("text"), tr("Ütemterv a kiterjesztéshez")},
                              {QStringLiteral("owner"), tr("Kovács Lilla")}, {QStringLiteral("due"), tr("okt. 15.")}}}}},
@@ -562,9 +720,83 @@ void SummaryViewModel::loadDemo()
                         {QStringLiteral("detail"), tr("A partnerek szerint a gond nem a leírás, hanem maga a "
                                                       "folyamat: túl sok lépés, kevés visszajelzés.")},
                         {QStringLiteral("decisions"), QStringList{}},
+                        {QStringLiteral("openQuestions"), QStringList{}},
                         {QStringLiteral("actions"), QVariantList{}}},
         };
     }
+}
+
+// A demó memója: egy 76 perces megbeszélés 24 szakasza, vagy (rövid változat) az első négy.
+void SummaryViewModel::loadDemoMemo(bool longForm)
+{
+    struct Row { qint64 from; qint64 to; QString title; QStringList points; };
+    auto t = [](int m, int s) { return qint64(m * 60 + s) * 1000; };
+    const QVector<Row> rows{
+        {t(0, 0), t(2, 40), tr("Nyitás, napirend"),
+         {tr("Kovács Lilla összefoglalta a negyedév fő számait és a mai napirendet."),
+          tr("A partnerek kérték, hogy a számlázás külön napirendi pont legyen.")}},
+        {t(2, 40), t(7, 15), tr("Támogatási jegyek alakulása"),
+         {tr("A jegyek száma harmadával csökkent az előző negyedévhez képest."),
+          tr("Az aktív felhasználók száma közben 12%-kal nőtt."),
+          tr("A csökkenés nagyobb része a beállítási kérdéseknél jelentkezett.")}},
+        {t(7, 15), t(12, 52), tr("A súgóoldalak hatása"),
+         {tr("Tóth Bence szerint a termékbe épített súgó a beállítási kérdések felét kiváltotta."),
+          tr("A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon."),
+          tr("A súgót a többi termékre is kiterjesztik.")}},
+        {t(12, 52), t(17, 30), tr("A kiterjesztés sorrendje"),
+         {tr("Elsőként a riportmodul kap súgóoldalakat, utána az integrációk."),
+          tr("Kovács Lilla október 15-ig ütemtervet készít.")}},
+        {t(17, 30), t(22, 5), tr("Számlázási panaszok"),
+         {tr("A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól."),
+          tr("Varga Nóra szerint a leírás rendben van, a folyamat hosszú.")}},
+        {t(22, 5), t(26, 40), tr("Folyamat vagy dokumentáció"),
+         {tr("Két partner a lépések számát tartja a fő gondnak."),
+          tr("Abban maradtak, hogy előbb a folyamatot egyszerűsítik, utána a leírást.")}},
+        {t(26, 40), t(31, 10), tr("Elakadási pontok gyűjtése"),
+         {tr("Varga Nóra október 10-ig összegyűjti, hol akadnak el a felhasználók."),
+          tr("A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.")}},
+        {t(31, 10), t(35, 20), tr("Új ügyfelek bevezetése"),
+         {tr("Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak."),
+          tr("Molnár Eszter bontást kért ügyféltípus szerint.")}},
+        {t(35, 20), t(39, 45), tr("Bevezető levelek"),
+         {tr("A bevezető levelek megnyitási aránya 40% alatt van."),
+          tr("Javaslat: a levelek a súgóoldalakra mutassanak, ne a dokumentációra.")}},
+        {t(39, 45), t(43, 30), tr("Partneri visszajelzések"),
+         {tr("A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják.")}},
+        {t(43, 30), t(46, 50), tr("Nyomtatható súgó"),
+         {tr("Nem döntöttek; a nyomtatható változat igényét előbb felmérik.")}},
+        {t(46, 50), t(51, 40), tr("Dokumentációs kapacitás"),
+         {tr("A dokumentációs csapat két fővel dolgozik, ez a kiterjesztéshez kevés."),
+          tr("Szabó Áron szerint legalább egy fő kellene a következő félévre.")}},
+        {t(51, 40), t(55, 15), tr("Költségvetési keret"),
+         {tr("A létszámbővítés legkorábban a jövő évi tervben szerepelhet.")}},
+        {t(55, 15), t(58, 40), tr("Döntés a létszámról"),
+         {tr("A dokumentációs létszámról a költségvetési tervezés dönt."),
+          tr("Szabó Áron október 20-ig beadja az igényt.")}},
+        {t(58, 40), t(61, 30), tr("Külső szövegíró"),
+         {tr("Átmeneti megoldásként felmerült egy külső szövegíró; nem döntöttek.")}},
+        {t(61, 30), t(64, 10), tr("Mérőszámok"),
+         {tr("A jegyszám mellett a megoldási időt is mérik; ez nem javult.")}},
+        {t(64, 10), t(67, 0), tr("A következő negyedév céljai"),
+         {tr("Cél a számlázási jegyek 20%-os csökkentése.")}},
+        {t(67, 0), t(69, 20), tr("Riportok a partnereknek"),
+         {tr("A partnerek havi bontású riportot kérnek a jegyekről.")}},
+        {t(69, 20), t(71, 0), tr("A riport formája"),
+         {tr("A riport táblázatként megy ki, grafikon nélkül.")}},
+        {t(71, 0), t(72, 30), tr("Partnerportál"),
+         {tr("A partnerportál frissítése a következő negyedévre csúszik.")}},
+        {t(72, 30), t(73, 40), tr("Kapcsolattartók"),
+         {tr("Minden partnernél egy állandó kapcsolattartó lesz.")}},
+        {t(73, 40), t(74, 40), tr("Új-ügyfél bontás"),
+         {tr("Kovács Lilla október 4-ig elküldi a bontást a partnereknek.")}},
+        {t(74, 40), t(75, 30), tr("Nyitva maradt ügyek"),
+         {tr("Nyitva maradt a nyomtatható súgó és a külső szövegíró kérdése.")}},
+        {t(75, 30), t(76, 4), tr("Zárás"),
+         {tr("A következő partnertalálkozó januárban lesz.")}},
+    };
+    const int n = longForm ? int(rows.size()) : 4;
+    for (int i = 0; i < n; ++i)
+        m_summary.memo.append({rows[i].title, rows[i].from, rows[i].to, rows[i].points});
 }
 
 } // namespace tanara_qml

@@ -15,6 +15,7 @@ bool TopicListModel::Item::operator==(const Item& o) const
         && state == o.state && error == o.error && errorDetail == o.errorDetail
         && hasResult == o.hasResult && result.detail == o.result.detail
         && result.decisions == o.result.decisions
+        && result.openQuestions == o.result.openQuestions
         && result.actionItems.size() == o.result.actionItems.size();
 }
 
@@ -53,6 +54,7 @@ QVariant TopicListModel::data(const QModelIndex& index, int role) const
     case HasResultRole:   return it.hasResult;
     case ResultTextRole:  return it.result.detail;
     case ResultDecisionsRole: return it.result.decisions;
+    case ResultOpenQuestionsRole: return it.result.openQuestions;
     case ResultActionsRole: {
         QVariantList list;
         for (const ActionItem& a : it.result.actionItems)
@@ -72,6 +74,7 @@ QHash<int, QByteArray> TopicListModel::roleNames() const
         {StateRole, "topicState"}, {ErrorRole, "error"}, {ErrorDetailRole, "errorDetail"},
         {HasResultRole, "hasResult"}, {ResultTextRole, "resultText"},
         {ResultDecisionsRole, "resultDecisions"}, {ResultActionsRole, "resultActions"},
+        {ResultOpenQuestionsRole, "resultOpenQuestions"},
     };
 }
 
@@ -345,6 +348,8 @@ void TopicListModel::loadDemo()
     a.result.detail = tr("A jegyek száma harmadával csökkent, miközben az aktív felhasználók 12%-kal "
                          "nőttek. A csökkenés fő oka a termékbe épített súgó; a partnerek ugyanezt "
                          "tapasztalják.");
+    a.result.decisions = QStringList{tr("A súgóoldalakat a többi termékre is kiterjesztik.")};
+    a.result.openQuestions = QStringList{tr("Legyen-e nyomtatható változata a súgóoldalaknak?")};
     Item b = make("demo-2", tr("Súgóoldalak kiterjesztése"),
                   tr("Melyik termékre, milyen sorrendben"), TopicState::Done);
     b.hasResult = true;
