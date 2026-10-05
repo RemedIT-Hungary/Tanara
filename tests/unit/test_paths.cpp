@@ -55,6 +55,7 @@ void PathsTest::initTestCase()
     QVERIFY(m_fakeHome.isValid());
     QVERIFY(m_sandbox.isValid());
     qputenv("HOME", m_fakeHome.path().toUtf8());
+    qputenv("USERPROFILE", m_fakeHome.path().toUtf8());   // Windowson a QDir::homePath() ezt olvassa
     QCOMPARE(QDir::homePath(), m_fakeHome.path());
 }
 

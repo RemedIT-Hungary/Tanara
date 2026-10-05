@@ -204,7 +204,13 @@ private slots:
         }
         ProviderConfig cfg;
         cfg.baseUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(port);
+        // Windowson a zárt portra a kapcsolódás RST után is újrapróbál (~2 s/kísérlet), így
+        // a 3 s-os próba-idő ETIMEDOUT-ba futna; az app alapértéke (8 s) bőven elég.
+#if defined(Q_OS_WIN)
+        const ConnectionTestResult r = run(probeDescriptor(), cfg, 8000);
+#else
         const ConnectionTestResult r = run(probeDescriptor(), cfg);
+#endif
         QCOMPARE(r.status, ConnectionTestResult::Status::Unreachable);
         QCOMPARE(r.code, QStringLiteral("ECONNREFUSED"));
         QCOMPARE(r.httpStatus, 0);

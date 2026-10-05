@@ -643,9 +643,11 @@ void PeopleServiceTest::statsRefreshInBackgroundAndCache()
     QVERIFY(stats->busy());
     QCOMPARE(stats->stats(kGergely).meetingCount, 0);    // a lista addig is megjelenhet: a hívás nem vár
     QVERIFY(changed.wait(5000));
-    QVERIFY(!stats->busy());
     QCOMPARE(stats->stats(kGergely).meetingCount, 12);
     QCOMPARE(stats->lastRescanned(), 12);
+    // Lassabb fájlrendszeren (Windows) az addMeeting-ek ütemezett (250 ms) frissítése a háttér-
+    // számolás alatt elsül → utána még egy kör fut. Megvárjuk, mielőtt a gyorsítótárat nézzük.
+    QTRY_VERIFY_WITH_TIMEOUT(!stats->busy(), 5000);
 
     // Gyorsítótár: változatlan megbeszéléseket nem olvas újra; egy megváltozottat igen.
     stats->refreshNow();

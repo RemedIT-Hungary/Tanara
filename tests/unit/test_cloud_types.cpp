@@ -80,7 +80,11 @@ void TestCloudTypes::semver_and_client_header()
     QVERIFY(!semverLess("1.0", "0.9.9"));
     QVERIFY(semverLess("0.1", "0.1.1"));
     QVERIFY(clientHeaderValue().startsWith(libraryVersion() + "/"));
+#if defined(Q_OS_LINUX)
     QCOMPARE(clientPlatform(), QStringLiteral("linux"));
+#elif defined(Q_OS_WIN)
+    QCOMPARE(clientPlatform(), QStringLiteral("windows"));
+#endif
 }
 
 void TestCloudTypes::vat_labels()

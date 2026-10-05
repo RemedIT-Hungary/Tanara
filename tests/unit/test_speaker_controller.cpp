@@ -59,7 +59,11 @@ void SpeakerControllerTest::initTestCase()
 {
     QVERIFY(m_home.isValid());
     // Izolált HOME: a beállítások, a személy-/lenyomat-DB és a felvételek mind a temp alatt.
+    // Windowson a QDir::homePath() a USERPROFILE-t olvassa; egy külső TANARA_HOME pedig
+    // felülírná a HOME-alapú izolációt (és a lenti védőkorlát megállítaná a tesztet).
     qputenv("HOME", m_home.path().toUtf8());
+    qputenv("USERPROFILE", m_home.path().toUtf8());
+    qunsetenv("TANARA_HOME");
     qputenv("TANARA_CLOUD", "off");
     QDir().mkpath(m_home.filePath(QStringLiteral(".tanara")));
     m_app = std::make_unique<AppController>();
