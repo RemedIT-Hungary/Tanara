@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(tanara VERSION 0.5.10 LANGUAGES CXX)
+project(tanara VERSION 0.5.11 LANGUAGES CXX)
 
 # A megjelenített verzió EGY helyről jön: a numerikus rész a project(VERSION)-ből, az utótag
 # (pl. "a" = alfa; üres = kiadás) innen. A core/src/Version.cpp ezt kapja TANARA_VERSION-ként.
