@@ -80,6 +80,11 @@ public:
     Q_INVOKABLE void startTopicAnalysis(const QString& meetingId);
     Q_INVOKABLE void analyzeTopic(const QString& meetingId, const QString& topicId);
     Q_INVOKABLE void identifyParticipants(const QString& meetingId);
+    // Újraellenőrzés a megerősített / javított sorok hangja alapján (fejléc „…” menü, az átirat
+    // „Bizonytalan 0” gombja): megerősítő ablak → SpeakerEditor::recheckFromConfirmed →
+    // visszajelzés; ha nem futtatható, az okát mondja el. Az „Résztvevők azonosítása” is ide
+    // jut, ha már minden beszélőnek van neve.
+    Q_INVOKABLE void recheckSpeakers(const QString& meetingId);
     Q_INVOKABLE void cancelJob(const QString& meetingId, int jobKind);
     // „Betöltés nagyobb kontextussal” (LM Studio): a következő LLM-feladat előtt a modell
     // legalább ennyi tokenes kontextussal töltődik újra. A feladatot a hívó indítja újra.
@@ -166,6 +171,7 @@ private:
     void onRetry(const QString& meetingId, const QString& kind);
     void onJobFinished(const QString& meetingId, tanara::JobKind kind, tanara::JobOutcome outcome);
     QString speakerSummary(const QString& meetingId) const;
+    void runRecheck(const QString& meetingId, const QString& title, const QString& text);
 
     QPointer<tanara::AppController> m_controller;
     QPointer<tanara::AppController> m_attachedController;

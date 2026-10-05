@@ -13,6 +13,9 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/edit/SpeakerEditor.h"
+#include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/edit/UtteranceEmbeddings.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/tags/TagService.h"
@@ -135,6 +138,37 @@ class TestShellActions : public QObject {
         if (tok.open(QIODevice::WriteOnly))
             tok.write(QJsonDocument(QJsonObject{{"language", "hu"}, {"tokens", toks}}).toJson());
         m.hasTranscript = true;
+        m_app->store()->saveMeeting(m);
+        return m;
+    }
+    // Átírt, MINDEN beszélőjében elnevezett megbeszélés kitalált hang-embeddingekkel (a cache
+    // közvetlenül íródik — nincs modell, nincs hang): Anna címkéje alá 3 Béla-hangú sor került.
+    tanara::Meeting namedWithVoices(const QString& title)
+    {
+        tanara::Meeting m = recording(title);
+        struct L { int start; const char* raw; char voice; };
+        const QVector<L> rows{{0, "Beszélő 1", 'A'}, {5, "Beszélő 2", 'B'}, {10, "Beszélő 1", 'A'},
+                              {15, "Beszélő 1", 'P'}, {20, "Beszélő 2", 'B'}, {25, "Beszélő 1", 'A'},
+                              {30, "Beszélő 1", 'P'}, {35, "Beszélő 2", 'B'}, {40, "Beszélő 1", 'A'},
+                              {45, "Beszélő 1", 'P'}, {50, "Beszélő 2", 'B'}};
+        QJsonArray segs;
+        for (const L& r : rows)
+            segs.append(QJsonObject{{"startMs", r.start * 1000}, {"endMs", r.start * 1000 + 4000},
+                                    {"speaker", QString::fromUtf8(r.raw)}, {"text", QStringLiteral("Kitalált sor.")}});
+        QFile seg(tanara::speakeredit::segmentsPath(m.folder));
+        if (seg.open(QIODevice::WriteOnly)) seg.write(QJsonDocument(segs).toJson());
+        seg.close();
+        const QVector<tanara::TranscriptLine> lines = tanara::speakeredit::loadTranscriptLines(m.folder);
+        tanara::UtteranceEmbeddingCache cache;
+        cache.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
+        for (int i = 0; i < rows.size(); ++i)
+            cache.vectors.insert(lines[i].id, rows[i].voice == 'A' ? QVector<float>{1, 0, 0}
+                                            : rows[i].voice == 'B' ? QVector<float>{0, 1, 0}
+                                                                   : QVector<float>{0.6f, 0.8f, 0});
+        cache.save(m.folder);
+        m.hasTranscript = true;
+        m.speakerMap = {{QStringLiteral("Beszélő 1"), QStringLiteral("Anna")},
+                        {QStringLiteral("Beszélő 2"), QStringLiteral("Béla")}};
         m_app->store()->saveMeeting(m);
         return m;
     }
@@ -515,6 +549,52 @@ private slots:
         m_toasts.clear();
         m_shell->identifyParticipants(m.id);
         QCOMPARE(m_toasts.size(), 1);                  // minden kattintásra van válasz
+    }
+
+    // Mindenki elnevezve: az azonosítás gombja az újraellenőrzést kínálja (megerősítéssel).
+    void identifyWithEveryoneNamedOffersRecheck()
+    {
+        const tanara::Meeting m = namedWithVoices(QStringLiteral("Mindenki megvan"));
+        tanara::SpeakerEditor* ed = m_app->speakerEditor(m.id);
+        QVERIFY(ed);
+        QStringList shown;
+        bool answer = true;
+        connect(m_shell.get(), &ShellActions::confirmRequested, this,
+                [&](const QString& title, const QString& text, const QString& label, bool danger) {
+            shown << title + QLatin1Char('|') + label + (danger ? QStringLiteral("|danger") : QString());
+            QVERIFY(text.contains(QStringLiteral("bizonytalanként jelölöm meg")));
+            QTimer::singleShot(10, m_shell.get(), [&] { m_shell->resolveConfirm(answer); });
+        });
+
+        // Még nincs megerősített sor: nincs párbeszéd, a toast megmondja, mi kell.
+        m_shell->identifyParticipants(m.id);
+        QVERIFY(shown.isEmpty());
+        QCOMPARE(m_toasts.size(), 1);
+        QVERIFY(m_toasts.last().contains(QStringLiteral("Előbb erősíts meg vagy javíts legalább 3 sort egy beszélőnél")));
+
+        // Anna három valódi sora megerősítve → párbeszéd → 3 kétes sor.
+        QVERIFY(ed->confirmUtterances({QStringLiteral("u0"), QStringLiteral("u10000"), QStringLiteral("u25000")}));
+        m_shell->setCurrentMeetingId(m.id);
+        m_shell->showTab(2);
+        m_shell->identifyParticipants(m.id);
+        QCOMPARE(shown, QStringList{QStringLiteral("Mindenki azonosítva|Újraellenőrzés")});
+        QCOMPARE(m_toasts.last(), QStringLiteral("3 kétséges sort jelöltem meg — a Bizonytalan szűrőben találod."));
+        QCOMPARE(ed->uncertainUtteranceIds(),
+                 (QStringList{QStringLiteral("u15000"), QStringLiteral("u30000"), QStringLiteral("u45000")}));
+        QCOMPARE(m_shell->currentTab(), 0);              // az Átirat fülre vált
+
+        // Elutasítva: semmi sem történik (nincs újabb toast).
+        answer = false;
+        const int toasts = m_toasts.size();
+        m_shell->recheckSpeakers(m.id);
+        QCOMPARE(shown.last(), QStringLiteral("Beszélők újraellenőrzése|Újraellenőrzés"));
+        QCOMPARE(m_toasts.size(), toasts);
+
+        // A kétes sorok eldöntve → az újabb újraellenőrzés nem talál semmit.
+        answer = true;
+        QVERIFY(ed->confirmUtterances(ed->uncertainUtteranceIds()));
+        m_shell->recheckSpeakers(m.id);
+        QCOMPARE(m_toasts.last(), QStringLiteral("A megerősített sorok alapján nem találtam kétséges sort."));
     }
 
     void identifyBeforeTranscriptUsesThePreview()

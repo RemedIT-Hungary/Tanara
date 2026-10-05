@@ -3,7 +3,8 @@ import QtQuick.Layouts
 
 // Megbeszélés-fejléc: cím (20/600, helyben átnevezhető), meta-sor („2026. okt. 1. · 1:16:04 ·
 // 6 beszélő”), jobbra „Résztvevők azonosítása” (csak ha van átirat — előtte az átirat előtti
-// nézet kínálja) és a „…” menü: Átnevezés, Megnyitás mappában, Újra-átírás…, Törlés….
+// nézet kínálja) és a „…” menü: Átnevezés, Megnyitás mappában, Beszélők újraellenőrzése…,
+// Újra-átírás…, Törlés….
 // Alatta (10 px) a címkesor (C03/C04, TagRow) — minden fülön; átirat előtt nincs itt, az
 // 1. lépésbe kerül (döntés 6). Chip-kattintás: a könyvtár szűrése erre a címkére; a „Miért?”
 // panel megbeszélés-linkjei megnyitják azt a megbeszélést.
@@ -137,6 +138,13 @@ Item {
                         text: qsTr("Megnyitás mappában")
                         iconName: "folder-open"
                         onTriggered: if (root.shell) root.shell.revealInFolder(root.meetingId)
+                    }
+                    TMenuItem {
+                        objectName: "recheckSpeakersItem"
+                        text: qsTr("Beszélők újraellenőrzése…")
+                        iconName: "refresh-cw"
+                        enabled: root.hasTranscript
+                        onTriggered: if (root.shell) root.shell.recheckSpeakers(root.meetingId)
                     }
                     TMenuItem {
                         text: qsTr("Újra-átírás…")

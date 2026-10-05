@@ -484,20 +484,30 @@ void ShellActions::identifyParticipants(const QString& meetingId)
             return;
         }
         // Nem indult: mondjuk meg, MIÉRT (a core csak igaz/hamisat ad).
-        if (!m_controller->voiceIdentificationAvailable()) {
-            toast(tr("Az azonosításhoz nincs telepítve a hangmodell."));
-        } else if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Transcribe)) {
+        if (m_controller->jobs() && m_controller->jobs()->isRunning(meetingId, JobKind::Transcribe)) {
             toast(tr("Az átírás még fut — a végén magától azonosítja a résztvevőket."));
+            return;
+        }
+        bool anonymous = false;
+        bool anySpeaker = false;
+        if (tanara::SpeakerEditor* ed = m_controller->speakerEditor(meetingId))
+            for (const tanara::EditorSpeaker& sp : ed->speakers()) {
+                if (sp.utteranceCount <= 0) continue;
+                anySpeaker = true;
+                anonymous = anonymous || (sp.anonymous && !sp.added);
+            }
+        if (anySpeaker && !anonymous) {
+            // Mindenkinek van neve: azonosítani nincs mit, de a sorok újraellenőrizhetők.
+            runRecheck(meetingId, tr("Mindenki azonosítva"),
+                       tr("Ebben a megbeszélésben már minden beszélőnek van neve. Újraellenőrizzem a "
+                          "sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat "
+                          "bizonytalanként jelölöm meg, hogy átnézhesd őket."));
+        } else if (!m_controller->voiceIdentificationAvailable()) {
+            toast(tr("Az azonosításhoz nincs telepítve a hangmodell."));
         } else {
-            // Nincs névtelen beszélő (mindenkinek van már neve), vagy nincs hozzá hang.
-            bool anonymous = false;
-            if (tanara::SpeakerEditor* ed = m_controller->speakerEditor(meetingId))
-                for (const tanara::EditorSpeaker& sp : ed->speakers())
-                    anonymous = anonymous || (sp.anonymous && !sp.added && sp.utteranceCount > 0);
             toast(anonymous
                       ? tr("A névtelen beszélőkhöz nem találtam használható hangot, ezért nincs mit azonosítani.")
-                      : tr("Nincs mit azonosítani: ebben a megbeszélésben már minden beszélőnek van neve. "
-                           "A neveket az átiratban, a névre kattintva javíthatod."));
+                      : tr("Nincs mit azonosítani: ebben a megbeszélésben nincs beszélő."));
         }
         return;
     }
@@ -514,6 +524,43 @@ void ShellActions::identifyParticipants(const QString& meetingId)
     m_participantGuesses.insert(meetingId, summary);
     emit participantsGuessed(meetingId, summary);
     toast(tr("Résztvevők: %1").arg(summary));
+}
+
+void ShellActions::recheckSpeakers(const QString& meetingId)
+{
+    runRecheck(meetingId, tr("Beszélők újraellenőrzése"),
+               tr("Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? "
+                  "A kétséges sorokat bizonytalanként jelölöm meg, hogy átnézhesd őket."));
+}
+
+void ShellActions::runRecheck(const QString& meetingId, const QString& title, const QString& text)
+{
+    if (!m_controller || meetingId.isEmpty())
+        return;
+    tanara::SpeakerEditor* ed = m_controller->speakerEditor(meetingId);
+    if (!ed || !ed->hasTranscript()) {
+        toast(tr("Ennek a megbeszélésnek nincs szerkeszthető átirata."));
+        return;
+    }
+    if (!ed->canRecheck()) {
+        toast(ed->recheckBlocker());
+        return;
+    }
+    if (!confirm(title, text, tr("Újraellenőrzés"), false))
+        return;
+    // A párbeszéd alatt változhatott az állapot (pl. elindult a hang-elemzés).
+    if (!ed->canRecheck()) {
+        toast(ed->recheckBlocker());
+        return;
+    }
+    // A „Bizonytalan" szűrőt a szerkesztő nézetmodellje kapcsolja be (recheckFinished jel).
+    const tanara::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+    if (r.flagged > 0) {
+        if (meetingId == m_currentMeetingId) showTab(0);
+        toast(tr("%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.", "", r.flagged));
+    } else {
+        toast(tr("A megerősített sorok alapján nem találtam kétséges sort."));
+    }
 }
 
 QString ShellActions::participantsGuess(const QString& meetingId) const
