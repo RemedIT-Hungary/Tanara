@@ -89,6 +89,7 @@ QtObject {
     readonly property int radiusPopup: 8       // menus, popovers, list containers
     readonly property int radiusDialog: 10     // dialogs, window
     readonly property int radiusPill: 999
+    readonly property int radiusTag: 4         // címke-chip (szögletes, a személy-chip kerek)
 
     // ---- Sizes ----
     readonly property int controlHeight: 34    // primary/secondary buttons, fields
