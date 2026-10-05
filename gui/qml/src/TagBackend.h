@@ -95,6 +95,13 @@ public:
     virtual void requestCooccur(const QString& meetingId, const QString& tagId) = 0;
     virtual void reject(const QString& meetingId, const TagSuggestionItem& suggestion) = 0;
     virtual bool isRejected(const QString& meetingId, const QString& tagIdOrName) const = 0;
+    // Még nem létező megbeszélés (átirat előtti lépés, import) javaslatai a cím alapján;
+    // szinkron. Alapból nincs ilyen.
+    virtual QVector<TagSuggestionItem> draftSuggestions(const QString& title) const
+    {
+        Q_UNUSED(title);
+        return {};
+    }
     // ---- kezelő ----
     virtual TagProfileItem profile(const QString& tagId) const = 0;
     virtual bool rename(const QString& tagId, const QString& name) = 0;  // false: a név másé
@@ -114,8 +121,8 @@ signals:
     void undoChanged();
 };
 
-// Wave 2 bekötési pontja: a controllerre (tanara::AppController) épülő backend. Wave 1-ben
-// nullptr-t ad — ilyenkor a nézetmodellek üres (adat nélküli) demó-backendet használnak.
+// A controllerre (tanara::AppController) épülő backend (TagControllerBackend). nullptr, ha a
+// controller nem AppController — ilyenkor a nézetmodellek üres (adat nélküli) demó-backendet használnak.
 TagBackend* createControllerTagBackend(QObject* controller, QObject* parent);
 
 // A nézetmodellek közös választása: controller nélkül a kitalált demó-készlet; controllerrel a

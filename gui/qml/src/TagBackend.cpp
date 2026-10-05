@@ -1,14 +1,16 @@
 #include "TagBackend.h"
 
+#include "TagControllerBackend.h"
 #include "TagDemoBackend.h"
+
+#include "tanara/AppController.h"
 
 namespace tanara_qml {
 
-TagBackend* createControllerTagBackend(QObject* /*controller*/, QObject* /*parent*/)
+TagBackend* createControllerTagBackend(QObject* controller, QObject* parent)
 {
-    // Wave 2: itt jön létre a tanara::AppController::tags() / profiles() / tagSuggestions*
-    // jeleire épülő backend. Addig nincs ilyen.
-    return nullptr;
+    auto* app = qobject_cast<tanara::AppController*>(controller);
+    return app ? new TagControllerBackend(app, parent) : nullptr;
 }
 
 TagBackend* createTagBackend(QObject* controller, QObject* parent)
