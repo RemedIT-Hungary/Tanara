@@ -177,6 +177,7 @@ async function chatChunked(model, spec, meeting, remind = false) {
     if (r.httpStatus !== 200 || r.error || !r.finish) return { ...agg, httpStatus: r.httpStatus, error: r.error || 'map step failed', finish: r.finish };
     agg.notes.push(`=== PART ${i + 1} of ${chunks.length} ===\n` + r.text.trim());
     await new Promise((res) => setTimeout(res, 4000));
+    await coolDown();
   }
   const user = (ctx ? 'Context / notes:\n' + ctx + '\n\n' : '') + 'Speakers: ' + speakers.join(', ') + '\n\n' + agg.notes.join('\n\n') + (remind ? REMINDER : '');
   const r = await chat(model, load(redId), user, MAX_TOKENS);
@@ -247,6 +248,18 @@ const resetCount = () => (sh('journalctl', ['-k', '-b', '--no-pager']).match(/GP
 const resetsAtStart = resetCount();
 const gpuWasReset = () => resetCount() > resetsAtStart;
 
+// Hőfigyelés: a kártya memóriája terhelés alatt a kritikus határ (108 °C) közelébe megy. Minden kérés
+// előtt megvárjuk, hogy visszahűljön; így a hosszú körök sem járatják tartósan a határon.
+const MEM_HOT = Number(arg('mem-hot', 102)), MEM_COOL = Number(arg('mem-cool', 95));
+const memTemp = () => { const m = sh('rocm-smi', ['-t']).match(/Sensor memory\) \(C\): ([\d.]+)/); return m ? Number(m[1]) : 0; };
+async function coolDown() {
+  let t = memTemp();
+  if (t < MEM_HOT) return;
+  const t0 = Date.now();
+  while (t > MEM_COOL && Date.now() - t0 < 6 * 60 * 1000) { await sleep(10000); t = memTemp(); }
+  console.log(`  (hűtési szünet: ${((Date.now() - t0) / 1000).toFixed(0)} s, memória most ${t} °C)`);
+}
+
 const rows = [];
 let failStreak = 0;
 outer:
@@ -271,6 +284,7 @@ for (const model of MODELS) {
     let r = null, tries = 0;
     for (; tries <= MAX_RETRY; ++tries) {
       if (gpuWasReset()) break;
+      await coolDown();
       if (noFit.has(model) || !(await ensureLoaded(model))) { r = { httpStatus: 0, secs: 0, text: '', reasoning: '', finish: 'noload', usage: {}, stats: {}, error: noFit.has(model) ? 'does not fit in VRAM at this context' : 'model could not be loaded' }; break; }
       try {
         r = chunked ? await chatChunked(model, pFile, m, remind)

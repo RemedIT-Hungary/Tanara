@@ -84,15 +84,11 @@ ApplicationWindow {
         return !(it instanceof TextInput || it instanceof TextEdit)
     }
 
-    // A könyvtár szűrése egy címkére (fejléc-chip, Címkék ablak). A könyvtár címke-szűrője a
-    // könyvtár-szelet része; amíg nincs, nem tesz semmit.
+    // A könyvtár szűrése egy címkére (fejléc-chip, Címkék ablak): a keresés, a többi szűrő és a
+    // többes kijelölés törlődik, csak ez az egy címke marad.
     function filterLibraryByTag(tagId) {
-        const lib = sidebar.library
-        if (!lib || tagId === "" || !("tags" in lib))
-            return
-        if ("untagged" in lib) lib.untagged = false
-        if ("tagsAll" in lib) lib.tagsAll = false
-        lib.tags = [tagId]
+        if (tagId !== "")
+            sidebar.filterByTag(tagId)
     }
 
     width: 1280
