@@ -44,6 +44,10 @@ public:
         SuggestedRole,                  // a „hasonló sorok" javaslat része, és épp mutatjuk
         SuggestionAnchorRole,           // a javaslatot kiváltó (kézzel javított) sor
         HiddenCountRole,                // elválasztó: ennyi biztos sor van elrejtve
+        NoisyRole,                      // „egymásra beszéltek": nem hangminta (automatikus vagy kézi)
+        NoisyOverlapRole,               // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
+        LikelySpeakerKeyRole,           // az újraellenőrzés javaslata: a hangra jobban illő beszélő
+        LikelySpeakerNameRole,
     };
     Q_ENUM(Role)
 

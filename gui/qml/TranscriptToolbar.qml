@@ -16,6 +16,7 @@ Item {
     signal seekRequested(real fraction)     // kattintás az áttekintőn
     signal searchStepRequested(int direction)
     signal nextUncertainRequested()         // „Következő bizonytalan"
+    signal recheckRequested()               // „Bizonytalan 0": újraellenőrzés a megerősített sorok alapján
     signal speakerClicked(string speakerKey, Item anchor)   // név az áttekintőn: a teljes beszélő
     signal voiceprintClicked(string speakerKey, Item anchor) // ujjlenyomat-jel: a hanglenyomat panelje
 
@@ -184,14 +185,23 @@ Item {
                 id: uncertainChip
                 round: true
                 outlined: true
+                objectName: "uncertainChip"
+                // Nincs (több) bizonytalan sor: a gomb az újraellenőrzést kínálja — a megerősített
+                // és javított sorok hangjához méri a többit.
+                readonly property bool offersRecheck: !root.vm.uncertainOnly && root.vm.uncertainCount === 0
+                                                      && root.vm.voiceAvailable && !root.vm.embeddingRunning
                 checked: root.vm.uncertainOnly
                 enabled: root.vm.voiceAvailable || root.vm.uncertainOnly
                 text: qsTr("Bizonytalan")
+                iconName: offersRecheck && root.vm.canRecheck ? "refresh-cw" : ""
                 hint: String(root.vm.uncertainCount)
                 toolTipText: !root.vm.voiceAvailable ? root.vm.voiceNote
                            : root.vm.uncertainOnly ? qsTr("Minden sor mutatása")
+                           : offersRecheck && root.vm.canRecheck
+                             ? qsTr("Nincs bizonytalan sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.")
+                           : offersRecheck ? qsTr("Nincs bizonytalan sor. Újraellenőrzéshez: %1").arg(root.vm.recheckBlocker)
                            : qsTr("Csak azok a sorok, ahol a beszélő hang alapján kétséges")
-                onClicked: root.vm.uncertainOnly = !root.vm.uncertainOnly
+                onClicked: offersRecheck ? root.recheckRequested() : (root.vm.uncertainOnly = !root.vm.uncertainOnly)
                 SpeakerHatch {
                     width: 12; height: 12
                     radius: 2

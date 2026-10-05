@@ -91,6 +91,16 @@ Item {
         if (editorVm.stepUncertain(from, direction) < 0 && root.shell)
             root.shell.toast(qsTr("Nincs bizonytalan sor."))
     }
+    // Újraellenőrzés a megerősített / javított sorok hangja alapján. A héjon át (megerősítő
+    // ablak + visszajelzés); héj nélkül (demó, képernyőkép) közvetlenül.
+    function recheckSpeakers() {
+        if (root.shell && root.shell.recheckSpeakers && root.meetingId !== "") {
+            root.shell.recheckSpeakers(root.meetingId)
+            return
+        }
+        const r = editorVm.recheckSpeakers()
+        if (!r.ran && r.blocker && root.shell) root.shell.toast(r.blocker)
+    }
     function copySelectionOrCurrent() {
         if (editorVm.selectedCount > 0) editorVm.copySelection()
         else if (editorVm.playingRow >= 0) editorVm.copyRow(editorVm.playingRow)
@@ -406,6 +416,7 @@ Item {
             }
             onSearchStepRequested: direction => editorVm.searchStep(direction)
             onNextUncertainRequested: root.nextUncertain(1)
+            onRecheckRequested: root.recheckSpeakers()
             onSpeakerClicked: (speakerKey, anchor) => root.openSpeakerPopover(speakerKey, anchor)
             onVoiceprintClicked: (speakerKey, anchor) => root.openVoiceprintPopover(speakerKey, anchor)
             // A kereső bezárása után a billentyűk újra a szerkesztőéi (ne a rejtett mezőéi).
@@ -657,12 +668,29 @@ Item {
                 }
             }
 
-            // Üres szűrő.
-            TLabel {
+            // Üres szűrő (innen is kérhető az újraellenőrzés).
+            Column {
                 visible: editorVm.uncertainOnly && editorVm.uncertainCount === 0
                 anchors.centerIn: parent
-                text: qsTr("Nincs bizonytalan sor — minden megszólalás beszélője rendben van.")
-                muted: true
+                spacing: Theme.space3
+                TLabel {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Nincs bizonytalan sor — minden megszólalás beszélője rendben van.")
+                    muted: true
+                }
+                TButton {
+                    objectName: "emptyFilterRecheck"
+                    visible: editorVm.voiceAvailable && !editorVm.embeddingRunning
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    size: "small"
+                    variant: "ghost"
+                    iconName: "refresh-cw"
+                    text: qsTr("Beszélők újraellenőrzése…")
+                    toolTipText: editorVm.canRecheck
+                                 ? qsTr("A megerősített és javított sorok hangjához mérem a többi sort")
+                                 : editorVm.recheckBlocker
+                    onClicked: root.recheckSpeakers()
+                }
             }
         }
 

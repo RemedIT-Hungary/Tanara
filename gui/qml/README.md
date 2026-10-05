@@ -311,10 +311,26 @@ bar, where after creation `undoChange()` removes exactly that print
 (`SpeakerEditor::removeVoiceprint`) and leaves the rename in place (the rename is still undone
 with Ctrl+Z; `changeUndoable` turns false once the print is removed).
 
+Re-check from confirmed lines (`SpeakerEditor::recheckFromConfirmed`, view-model
+`recheckSpeakers()` / `canRecheck` / `recheckBlocker`): per speaker the voice centroid is built
+only from the confirmed / corrected lines (when there are ≥ 3), and every other line is judged
+against these. Doubtful lines stay "bizonytalan" (persisted in the overlay as `rechecked`) until
+they are corrected or confirmed; a row with a suggestion shows "<Név> mondta". Reachable from
+"Résztvevők azonosítása" when everyone is named (confirm dialog, `ShellActions::recheckSpeakers`),
+the header "…" menu ("Beszélők újraellenőrzése…"), the toolbar "Bizonytalan 0" button and the
+empty uncertain filter.
+
+"Egymásra beszéltek" (noisy line): automatic when another speaker overlaps the line's embedding
+window by ≥ 1000 ms or ≥ 30 %, or manual ("Jó így, de nem minta" on an uncertain row;
+"Mintának használható" on hover clears it). Noisy lines are left out of the voice centroids and
+the voiceprint material, and the re-check never flags them. The row shows a muted pill.
+
 Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPopover`,
 `speakerPopover`, `changeLine`, `suggestion`, `suggestionShown`, `changeSelection`,
 `changeSpeaker`, `changeFilter`, `mergeConfirm`, `voiceprintHas`, `voiceprintNone`,
-`voiceprintDone`, `voiceprintShort`, `changeVoiceprint`, `changeVoiceprintDone`, e.g.
+`voiceprintDone`, `voiceprintShort`, `changeVoiceprint`, `changeVoiceprintDone`, `recheck`
+(after a re-check), `recheckReady` (nothing uncertain: the toolbar offers the re-check),
+`noisy` (a line marked "egymásra beszéltek"), e.g.
 `gui/qml/shoot.sh 'TranscriptTab:1004x640:demoState="changeLine"'`,
 `'TranscriptTab:1004x640:demoVariant="many",demoState="voiceprintNone"'` (the 11-speaker
 overview; `demoVariant="novoice"` shows the "no voice model" wording).

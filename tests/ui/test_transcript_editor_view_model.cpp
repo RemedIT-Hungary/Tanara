@@ -422,6 +422,92 @@ private slots:
         QCOMPARE(speakerOf(vm, 17), kB1);
     }
 
+    // Újraellenőrzés a nézetmodellen át: a megerősített A-sorok magja kiemeli a „Beszélő 1"
+    // C-sorait és a 2-es címkén ragadt A-sort; a szűrő bekapcsol, a javaslat a sorig ér.
+    void recheck_fromConfirmedLines()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QVERIFY(!vm.canRecheck());
+        QVERIFY(vm.recheckBlocker().contains(QStringLiteral("legalább 3 sort")));
+        QVariantMap blocked = vm.recheckSpeakers();
+        QVERIFY(!blocked.value(QStringLiteral("ran")).toBool());
+        QVERIFY(!blocked.value(QStringLiteral("blocker")).toString().isEmpty());
+
+        QSignalSpy state(&vm, &TranscriptEditorViewModel::recheckStateChanged);
+        for (int row : {0, 2, 6}) QVERIFY(vm.confirmRow(row));
+        QVERIFY(vm.canRecheck());
+        QVERIFY(vm.recheckBlocker().isEmpty());
+        QVERIFY(state.count() >= 1);
+
+        QSignalSpy finished(&vm, &TranscriptEditorViewModel::recheckFinished);
+        const QVariantMap r = vm.recheckSpeakers();
+        QVERIFY(r.value(QStringLiteral("ran")).toBool());
+        QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 5);
+        QCOMPARE(r.value(QStringLiteral("speakersWithConfirmedCore")).toInt(), 1);
+        QCOMPARE(r.value(QStringLiteral("confirmedLines")).toInt(), 3);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.last().at(0).toInt(), 5);
+        QVERIFY(vm.uncertainOnly());                        // a szűrő magától bekapcsolt
+        QCOMPARE(vm.uncertainCount(), 5);
+
+        // A javaslat a sorig ér: a 17. sor hangja A-é → „Beszélő 1"; C sorainál nincs javaslat.
+        const int row17 = vm.rows()->rowOfUtterance(17);
+        const int row4 = vm.rows()->rowOfUtterance(4);
+        QVERIFY(row17 >= 0 && row4 >= 0);
+        QCOMPARE(cell(vm, row17, Role::LikelySpeakerKeyRole).toString(), kB1);
+        QCOMPARE(cell(vm, row17, Role::LikelySpeakerNameRole).toString(), kB1);
+        QCOMPARE(cell(vm, row4, Role::LikelySpeakerKeyRole).toString(), QString());
+        QVERIFY(cell(vm, row4, Role::UncertainRole).toBool());
+
+        // B-léptetés: végigmegy a megjelölt sorokon.
+        QCOMPARE(vm.stepUncertain(-1, 1), row4);
+
+        // A sor gombja („Beszélő 1 mondta"): áthelyezés → javítva, kikerül a bizonytalanok közül.
+        QVERIFY(vm.moveUtteranceToSpeaker(uid(17), kB1));
+        QCOMPARE(vm.uncertainCount(), 4);
+        vm.undo();
+        QCOMPARE(vm.uncertainCount(), 5);
+
+        // A héjból (ugyanazon a szerkesztőn) futó újraellenőrzés is bekapcsolja a szűrőt.
+        vm.setUncertainOnly(false);
+        ed->recheckFromConfirmed();
+        QVERIFY(vm.uncertainOnly());
+        QCOMPARE(finished.count(), 2);
+    }
+
+    // „Jó így, de ne használd mintának" és „Mintának használható" a soron.
+    void noisy_manualConfirmAndClear()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QVERIFY(!cell(vm, 17, Role::NoisyRole).toBool());   // a forgatókönyvben nincs átfedés
+
+        vm.setUncertainOnly(true);
+        const int row = vm.rows()->rowOfUtterance(17);
+        QVERIFY(vm.confirmRowNoisy(row));
+        QCOMPARE(vm.uncertainCount(), 0);
+        vm.setUncertainOnly(false);
+        QVERIFY(cell(vm, 17, Role::NoisyRole).toBool());
+        QVERIFY(!cell(vm, 17, Role::NoisyOverlapRole).toBool());
+        QVERIFY(cell(vm, 17, Role::HeadRole).toBool());     // a pirula névsort kap
+        QVERIFY(ed->utterance(uid(17)).confirmed);
+        QCOMPARE(vm.undoText(), QStringLiteral("1 sor megerősítése (nem hangminta)"));
+
+        QVERIFY(vm.setRowNoisy(17, false));
+        QVERIFY(!cell(vm, 17, Role::NoisyRole).toBool());
+        vm.undo();
+        QVERIFY(cell(vm, 17, Role::NoisyRole).toBool());
+        QVERIFY(vm.setUtteranceNoisy(uid(17), false));
+        QVERIFY(!vm.setUtteranceNoisy(uid(17), false));     // már az
+    }
+
     void filter_keepsSuggestionAnchorVisible()
     {
         Fixture fx;

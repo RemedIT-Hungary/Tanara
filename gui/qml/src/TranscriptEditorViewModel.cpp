@@ -211,6 +211,13 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
     connect(editor, &SpeakerEditor::embeddingRunningChanged, this, [this](bool running) {
         if (running) m_embeddingProgress = 0.0;
         emit voiceStateChanged();
+        updateRecheckState();
+    });
+    connect(editor, &SpeakerEditor::recheckFinished, this,
+            [this](int flagged, int speakers, int lines) {
+        // Talált kétes sort → rögtön a „Bizonytalan" szűrő (ott lehet végiglépkedni rajtuk).
+        if (flagged > 0) setUncertainOnly(true);
+        emit recheckFinished(flagged, speakers, lines);
     });
     connect(editor, &SpeakerEditor::embeddingProgress, this, [this](int done, int total) {
         m_embeddingProgress = total > 0 ? qreal(done) / qreal(total) : 0.0;
@@ -222,6 +229,7 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
         if (complete) m_embeddingProgress = 1.0;
         updateVoiceNote();
         emit voiceStateChanged();
+        updateRecheckState();
         applyPendingDemoState();
     });
     connect(editor, &SpeakerEditor::reloaded, this, &TranscriptEditorViewModel::reloadAll);
@@ -275,6 +283,7 @@ void TranscriptEditorViewModel::reloadAll()
     updateSearch();
     rebuildOverview();
     updateVoiceNote();
+    updateRecheckState();
 
     emit sessionChanged();
     emit speakersChanged();
@@ -322,6 +331,7 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
     m_rows->notifyUtterances(changed);
     updatePlayingRow();
     scheduleOverview();
+    updateRecheckState();
 }
 
 void TranscriptEditorViewModel::onSpeakersChanged()
@@ -338,7 +348,8 @@ void TranscriptEditorViewModel::onSpeakersChanged()
     // áthelyezésnél csak a számlálók módosulnak).
     if (viewsChanged)
         m_rows->notifyAll({TranscriptListModel::SpeakerNameRole, TranscriptListModel::ColorIndexRole,
-                           TranscriptListModel::LaneRole, TranscriptListModel::HeadRole});
+                           TranscriptListModel::LaneRole, TranscriptListModel::HeadRole,
+                           TranscriptListModel::LikelySpeakerNameRole});
     if (m_suggestionAnchor >= 0) {
         const QString name = m_views.value(m_editor ? m_editor->suggestion().targetSpeaker : QString()).name;
         if (name != m_suggestionTargetName) {
@@ -348,6 +359,7 @@ void TranscriptEditorViewModel::onSpeakersChanged()
     }
     emit speakersChanged();
     scheduleOverview();
+    updateRecheckState();
 }
 
 void TranscriptEditorViewModel::onSuggestionChanged()
@@ -1276,6 +1288,57 @@ bool TranscriptEditorViewModel::confirmRow(int row)
     return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id});
 }
 
+bool TranscriptEditorViewModel::confirmRowNoisy(int row)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id}, /*asNoisy*/ true);
+}
+
+bool TranscriptEditorViewModel::setRowNoisy(int row, bool noisy)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return m_editor && u >= 0 && m_editor->setUtterancesNoisy({m_utts[u].id}, noisy);
+}
+
+bool TranscriptEditorViewModel::setUtteranceNoisy(const QString& utteranceId, bool noisy)
+{
+    return m_editor && m_uttIndex.contains(utteranceId)
+        && m_editor->setUtterancesNoisy({utteranceId}, noisy);
+}
+
+// ---- újraellenőrzés ---------------------------------------------------------
+
+void TranscriptEditorViewModel::updateRecheckState()
+{
+    const bool can = m_editor && m_editor->canRecheck();
+    const QString blocker = !m_editor ? QString() : can ? QString() : m_editor->recheckBlocker();
+    if (can == m_canRecheck && blocker == m_recheckBlocker) return;
+    m_canRecheck = can;
+    m_recheckBlocker = blocker;
+    emit recheckStateChanged();
+}
+
+QVariantMap TranscriptEditorViewModel::recheckSpeakers()
+{
+    QVariantMap out;
+    if (!m_editor) {
+        out[QStringLiteral("ran")] = false;
+        return out;
+    }
+    if (!m_editor->canRecheck()) {
+        out[QStringLiteral("ran")] = false;
+        out[QStringLiteral("blocker")] = m_editor->recheckBlocker();
+        return out;
+    }
+    // A szűrő-váltás és a jel a szerkesztő recheckFinished-jéből jön (a héj is azt váltja ki).
+    const SpeakerEditor::RecheckResult r = m_editor->recheckFromConfirmed();
+    out[QStringLiteral("ran")] = r.ran;
+    out[QStringLiteral("flagged")] = r.flagged;
+    out[QStringLiteral("speakersWithConfirmedCore")] = r.speakersWithConfirmedCore;
+    out[QStringLiteral("confirmedLines")] = r.confirmedLines;
+    return out;
+}
+
 // ---- másolás ----------------------------------------------------------------
 
 QString TranscriptEditorViewModel::textOfUtterances(QVector<int> utterances) const
@@ -1587,6 +1650,30 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         // Egyetlen rövid sor egy új személynél: ebből nem készíthető lenyomat.
         if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, QStringLiteral("Bálint Péter"));
         dismissChange();
+    } else if (state == QLatin1String("recheck") || state == QLatin1String("recheckReady")) {
+        // Beszélőnként 3 biztos sor megerősítve. recheckReady: a mostani bizonytalanok is
+        // eldöntve („Jó így") → a szűrő-gomb az újraellenőrzést kínálja; recheck: le is fut.
+        setRailVisible(true);
+        const bool ready = state == QLatin1String("recheckReady");
+        QStringList ids = ready ? m_editor->uncertainUtteranceIds() : QStringList();
+        QHash<QString, int> perSpeaker;
+        for (const EditorUtterance& u : std::as_const(m_utts)) {
+            if (u.uncertain || u.endMs - u.startMs < 3000) continue;
+            if (perSpeaker.value(u.speakerKey) >= 3) continue;
+            ++perSpeaker[u.speakerKey];
+            ids << u.id;
+        }
+        m_editor->confirmUtterances(ids);
+        if (!ready) recheckSpeakers();
+    } else if (state == QLatin1String("noisy")) {
+        // Egy hosszabb sor „Jó így, de ne használd mintának" jelzést kap.
+        for (const EditorUtterance& u : std::as_const(m_utts)) {
+            if (u.uncertain || u.noisy || u.endMs - u.startMs < 3000) continue;
+            m_editor->confirmUtterances({u.id}, /*asNoisy*/ true);
+            const int row = m_rows->rowOfUtterance(m_uttIndex.value(u.id, -1));
+            if (row >= 0) emit revealRequested(row);
+            break;
+        }
     } else if (state == QLatin1String("changeFilter")) {
         // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.
         setUncertainOnly(true);

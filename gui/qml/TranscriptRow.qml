@@ -23,6 +23,10 @@ Item {
     required property bool first
     required property bool uncertain
     required property bool corrected
+    required property bool noisy
+    required property bool noisyOverlap
+    required property string likelySpeakerKey
+    required property string likelySpeakerName
     required property bool selected
     required property bool suggested
     required property bool suggestionAnchor
@@ -140,7 +144,7 @@ Item {
             spacing: 2
 
             // Névsor: név (kattintható: ez a sor kié) · időbélyeg · pirula · (szűrőben)
-            // „Meghallgatom" / „Jó így" / „Más mondta…".
+            // „Meghallgatom" / „Jó így" / „Jó így, de nem minta" / („<Név> mondta") / „Más mondta…".
             Item {
                 visible: row.head
                 width: parent.width
@@ -217,10 +221,48 @@ Item {
                     }
 
                     TPill {
+                        id: statePill
                         visible: row.uncertain || row.corrected
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.uncertain ? qsTr("bizonytalan") : qsTr("javítva")
                         tone: row.uncertain ? "warn" : "success"
+                        HoverHandler { id: statePillHover }
+                        TToolTip {
+                            visible: statePillHover.hovered && row.uncertain && row.likelySpeakerName !== ""
+                            text: qsTr("Hangra inkább %1 sorának tűnik").arg(row.likelySpeakerName)
+                        }
+                    }
+
+                    // „Egymásra beszéltek": visszafogott jelzés; a sor nem hangminta.
+                    TPill {
+                        id: noisyPill
+                        objectName: "noisyPill"
+                        visible: row.noisy
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("egymásra beszéltek")
+                        tone: "neutral"
+                        HoverHandler { id: noisyHover }
+                        TToolTip {
+                            visible: noisyHover.hovered
+                            text: row.noisyOverlap
+                                  ? qsTr("Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).")
+                                  : qsTr("Megjelölted, hogy ezt a sort ne használjam hangmintának (bizonytalanság-jelzés, hanglenyomat).")
+                        }
+                    }
+                    // A jelzés visszavonása: csak rámutatáskor, hogy ne zajosítsa a listát.
+                    TButton {
+                        objectName: "noisyClear"
+                        visible: row.noisy && (rowHover.hovered || hovered)
+                        anchors.verticalCenter: parent.verticalCenter
+                        size: "small"
+                        variant: "ghost"
+                        height: 20
+                        leftPadding: 6; rightPadding: 6
+                        radius: 5
+                        font.pixelSize: Theme.fontMicro
+                        text: qsTr("Mintának használható")
+                        toolTipText: qsTr("A sor hangja mégis mehet mintának")
+                        onClicked: row.vm.setRowNoisy(row.index, false)
                     }
                 }
 
@@ -270,6 +312,34 @@ Item {
                             text: qsTr("Jó így")
                             toolTipText: qsTr("A beszélő rendben van: a sor többé nem bizonytalan")
                             onClicked: row.vm.confirmRow(row.index)
+                        }
+                        TButton {
+                            objectName: "lineConfirmNoisy"
+                            size: "small"
+                            variant: "ghost"
+                            height: 24
+                            leftPadding: 9; rightPadding: 9
+                            radius: 5
+                            font.pixelSize: Theme.fontCaption
+                            text: qsTr("Jó így, de nem minta")
+                            toolTipText: qsTr("Jó így, de ne használd mintának: a beszélő rendben van, de egymásra beszéltek, ezért a sor hangja nem lesz minta")
+                            onClicked: row.vm.confirmRowNoisy(row.index)
+                        }
+                        TButton {
+                            objectName: "lineLikely"
+                            visible: row.likelySpeakerKey !== ""
+                            size: "small"
+                            variant: "ghost"
+                            height: 24
+                            leftPadding: 9; rightPadding: 9
+                            radius: 5
+                            iconName: "arrow-right"
+                            iconSize: 12
+                            spacing: 5
+                            font.pixelSize: Theme.fontCaption
+                            text: qsTr("%1 mondta").arg(row.likelySpeakerName)
+                            toolTipText: qsTr("Hangra %1 sorának tűnik: a sor átkerül hozzá").arg(row.likelySpeakerName)
+                            onClicked: row.vm.moveUtteranceToSpeaker(row.vm.rowInfo(row.index).utteranceId, row.likelySpeakerKey)
                         }
                         TButton {
                             id: fixButton

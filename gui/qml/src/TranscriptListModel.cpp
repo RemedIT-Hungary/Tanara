@@ -41,6 +41,10 @@ QHash<int, QByteArray> TranscriptListModel::roleNames() const
         {SuggestedRole, "suggested"},
         {SuggestionAnchorRole, "suggestionAnchor"},
         {HiddenCountRole, "hiddenCount"},
+        {NoisyRole, "noisy"},
+        {NoisyOverlapRole, "noisyOverlap"},
+        {LikelySpeakerKeyRole, "likelySpeakerKey"},
+        {LikelySpeakerNameRole, "likelySpeakerName"},
     };
 }
 
@@ -51,8 +55,8 @@ bool TranscriptListModel::headAt(int row) const
     if (row == 0 || m_rows[row - 1].gap) return true;
     const auto& utts = m_vm->utterances();
     const EditorUtterance& u = utts[r.utterance];
-    // A jelölt (bizonytalan / javítva) sor mindig kap névsort: a pirula ott jelenik meg.
-    if (u.uncertain || u.manuallyCorrected) return true;
+    // A jelölt (bizonytalan / javítva / egymásra beszéltek) sor mindig kap névsort: a pirula ott jelenik meg.
+    if (u.uncertain || u.manuallyCorrected || u.noisy) return true;
     return utts[m_rows[row - 1].utterance].speakerKey != u.speakerKey;
 }
 
@@ -73,7 +77,9 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
         case CorrectedRole:
         case SelectedRole:
         case SuggestedRole:
-        case SuggestionAnchorRole: return false;
+        case SuggestionAnchorRole:
+        case NoisyRole:
+        case NoisyOverlapRole: return false;
         case StartMsRole:
         case EndMsRole:
         case ColorIndexRole: return 0;
@@ -102,6 +108,11 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
     case SuggestedRole: return m_vm->isSuggested(r.utterance);
     case SuggestionAnchorRole: return m_vm->suggestionAnchor() == r.utterance;
     case HiddenCountRole: return 0;
+    case NoisyRole: return u.noisy;
+    case NoisyOverlapRole: return u.noisyOverlap;
+    case LikelySpeakerKeyRole: return u.likelySpeakerKey;
+    case LikelySpeakerNameRole:
+        return u.likelySpeakerKey.isEmpty() ? QString() : m_vm->speakerView(u.likelySpeakerKey).name;
     default: return {};
     }
 }

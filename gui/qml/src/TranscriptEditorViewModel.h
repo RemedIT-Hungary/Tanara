@@ -78,6 +78,10 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(bool railVisible READ railVisible WRITE setRailVisible NOTIFY railVisibleChanged)
     Q_PROPERTY(bool uncertainOnly READ uncertainOnly WRITE setUncertainOnly NOTIFY uncertainOnlyChanged)
     Q_PROPERTY(int uncertainCount READ uncertainCount NOTIFY uncertainCountChanged)
+    // Újraellenőrzés a megerősített sorok alapján: futtatható-e most, és ha nem, miért
+    // (magyar mondat; üres, ha futtatható).
+    Q_PROPERTY(bool canRecheck READ canRecheck NOTIFY recheckStateChanged)
+    Q_PROPERTY(QString recheckBlocker READ recheckBlocker NOTIFY recheckStateChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     // Az egyetlen kijelölt sor (vagy a kijelölés „horgonya") a listában; -1 = nincs.
     Q_PROPERTY(int currentRow READ currentRow NOTIFY selectionChanged)
@@ -184,6 +188,8 @@ public:
     bool uncertainOnly() const { return m_uncertainOnly; }
     void setUncertainOnly(bool on);
     int uncertainCount() const { return m_uncertainCount; }
+    bool canRecheck() const { return m_canRecheck; }
+    QString recheckBlocker() const { return m_recheckBlocker; }
     int selectedCount() const { return int(m_selected.size()); }
     int currentRow() const;
 
@@ -294,6 +300,15 @@ public:
     Q_INVOKABLE bool revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints);
     Q_INVOKABLE bool mergeSpeakers(const QString& fromKey, const QString& intoKey);
     Q_INVOKABLE bool confirmRow(int row);                       // „Jó így"
+    // „Jó így, de ne használd mintának": megerősítés + „egymásra beszéltek" jelzés.
+    Q_INVOKABLE bool confirmRowNoisy(int row);
+    // Az „egymásra beszéltek" jelzés kézi beállítása (false: „Mintának használható").
+    Q_INVOKABLE bool setRowNoisy(int row, bool noisy);
+    Q_INVOKABLE bool setUtteranceNoisy(const QString& utteranceId, bool noisy);
+    // Újraellenőrzés a megerősített / javított sorok hangja alapján. { ran, flagged,
+    // speakersWithConfirmedCore, confirmedLines, blocker }. Ha talált kétes sort, a
+    // „Bizonytalan" szűrő bekapcsol.
+    Q_INVOKABLE QVariantMap recheckSpeakers();
     Q_INVOKABLE bool acceptSuggestion();
     Q_INVOKABLE void dismissSuggestion();
     Q_INVOKABLE void undo();
@@ -348,7 +363,9 @@ public:
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
     // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter" |
     // "changeVoiceprint" | "changeVoiceprintDone" | "voiceprintHas" | "voiceprintNone" |
-    // "voiceprintDone" | "voiceprintShort".
+    // "voiceprintDone" | "voiceprintShort" | "recheck" (újraellenőrzés után a szűrő) |
+    // "recheckReady" (minden kétes sor eldöntve: a szűrő-gomb az újraellenőrzést kínálja) |
+    // "noisy" (egy „egymásra beszéltek" sor).
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
 
@@ -361,6 +378,9 @@ signals:
     void railVisibleChanged();
     void uncertainOnlyChanged();
     void uncertainCountChanged();
+    void recheckStateChanged();
+    // Lefutott egy újraellenőrzés (innen vagy a héjból, ugyanazon a szerkesztőn).
+    void recheckFinished(int flagged, int speakersWithConfirmedCore, int confirmedLines);
     void selectionChanged();
     void undoStateChanged();
     void suggestionChanged();
@@ -387,6 +407,7 @@ private:
     void rebuildOverview();
     void scheduleOverview();
     void updateVoiceNote();
+    void updateRecheckState();
     void updateSearch();
     void updatePlayingRow();
     void setSelection(const QSet<int>& selection, int anchor);
@@ -443,6 +464,8 @@ private:
     bool m_railVisible = false;
     bool m_uncertainOnly = false;
     int m_uncertainCount = 0;
+    bool m_canRecheck = false;
+    QString m_recheckBlocker;
     QSet<int> m_selected;
     int m_anchor = -1;
 
