@@ -6,7 +6,9 @@
 //                                    hangfájl(ok) importálása új meetingbe (fájlonként egy sáv)
 //   transcribe <meetingId>           átírás (Soniox kulcs kell)
 //   summarize <meetingId>            összefoglaló (LM Studio)
-//   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
+//   detect [--watch] [--interval N] [--app NÉV]...
+//                                    aktív-hívás detektálás (smoke: a figyelő motorja);
+//                                    --app: további figyelt app erre a futásra (pl. ffmpeg)
 //   cloud <alparancs>                Tanara Cloud (status, login, estimate …) — CloudCommands.cpp
 //   transcribe|summarize <id> [--yes] [--complex]   cloud-módban előtte becslés + megerősítés
 //   tags list [<meetingId>]          címkekészlet (darabszámmal) / egy meeting címkéi
@@ -119,18 +121,20 @@ int main(int argc, char** argv) {
             err.flush();
             return 1;
         }
-        det->configure(s.knownCallApps, QStringLiteral("tanara"));
-
         bool watch = false;
         int interval = s.detectorIntervalSec;
+        QStringList apps = s.knownCallApps;
         for (int i = 2; i < args.size(); ++i) {
             if (args[i] == "--watch") watch = true;
             else if (args[i] == "--interval" && i + 1 < args.size()) interval = args[++i].toInt();
+            // Csak erre a futásra: a beállítások listája nem változik.
+            else if (args[i] == "--app" && i + 1 < args.size()) apps << args[++i].trimmed().toLower();
         }
         if (interval < 1) interval = 1;
+        det->configure(apps, QStringLiteral("tanara"));
 
         out << QCoreApplication::translate("cli", "Detektor: %1  (ismert appok: %2)")
-                   .arg(det->id(), s.knownCallApps.join(QStringLiteral(", ")))
+                   .arg(det->id(), apps.join(QStringLiteral(", ")))
             << "\n";
         out.flush();
 
