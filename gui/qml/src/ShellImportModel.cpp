@@ -4,7 +4,10 @@
 #include "JobSupport.h"
 #include "ShellFormat.h"
 
+#include "TagDemoBackend.h"
+
 #include "tanara/AppController.h"
+#include "tanara/tags/TagService.h"
 
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -30,6 +33,13 @@ QString channelsText(int channels)
 
 ShellImportModel::ShellImportModel(QObject* parent) : QObject(parent)
 {
+    // A cím gépelése közben nem számolunk minden billentyűre.
+    m_suggestTimer.setSingleShot(true);
+    m_suggestTimer.setInterval(300);
+    connect(&m_suggestTimer, &QTimer::timeout, this, &ShellImportModel::refreshSuggestions);
+    connect(this, &ShellImportModel::titleChanged, this, [this] {
+        if (m_controller) m_suggestTimer.start();
+    });
     AppContext* ctx = AppContext::instance();
     m_controller = ctx->controller();
     connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
@@ -71,6 +81,8 @@ void ShellImportModel::attach()
     });
     connect(c, &tanara::AppController::importFinished, this, [this](const tanara::Meeting& m) {
         if (m.id != m_importId) return;
+        applyTags(m.id, m_runningTagIds);
+        m_runningTagIds.clear();
         m_running = m_cancelling = false;
         m_importId.clear();
         emit runChanged();
@@ -362,6 +374,7 @@ bool ShellImportModel::start()
     m_fileIndex = 0;
     m_fileTotal = int(req.sources.size());
     m_runningTitle = req.title;
+    m_runningTagIds = tagIds();
     emit runChanged();
     emit filesChanged();
     return true;
@@ -378,6 +391,12 @@ void ShellImportModel::cancel()
 
 void ShellImportModel::reset()
 {
+    m_suggestTimer.stop();
+    m_tags.clear();
+    m_suggestions.clear();
+    m_dismissed.clear();
+    emit tagsChanged();
+    emit suggestionsChanged();
     m_rows.clear();
     m_ownTrack = -1;
     m_title.clear();
@@ -398,6 +417,152 @@ void ShellImportModel::setError(const QString& message, const QString& detail)
 }
 
 void ShellImportModel::clearError() { setError(QString()); }
+
+// ---- címkék (C07) ----------------------------------------------------------------------
+
+QVariantList ShellImportModel::tags() const
+{
+    QVariantList out;
+    for (const TagRef& t : m_tags)
+        out << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("name"), t.name}};
+    return out;
+}
+
+QStringList ShellImportModel::tagIds() const
+{
+    QStringList out;
+    for (const TagRef& t : m_tags) out << t.id;
+    return out;
+}
+
+QVariantList ShellImportModel::suggestions() const
+{
+    QVariantList out;
+    for (const Suggestion& s : m_suggestions)
+        out << QVariantMap{{QStringLiteral("id"), s.id}, {QStringLiteral("name"), s.name},
+                           {QStringLiteral("isNew"), s.isNew}, {QStringLiteral("source"), s.source},
+                           {QStringLiteral("reason"), s.reason}};
+    return out;
+}
+
+QString ShellImportModel::suggestionReason() const
+{
+    return m_suggestions.isEmpty() ? QString() : m_suggestions.first().reason;
+}
+
+bool ShellImportModel::addTag(const QString& name)
+{
+    const QString n = name.simplified();
+    if (n.isEmpty()) return false;
+    TagRef ref;
+    if (m_controller) {
+        tanara::TagService* svc = m_controller->tags();
+        if (!svc) return false;
+        const tanara::Tag t = svc->create(n);     // létező kulcsnál a meglévő címke
+        if (!t.isValid()) return false;
+        ref = {t.id, t.name};
+    } else {
+        // Demó: a kitalált készlet azonosítói.
+        TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
+        for (const TagItem& t : demo.tags())
+            if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
+        if (ref.id.isEmpty()) ref = {QStringLiteral("new-") + n, n};
+    }
+    for (const TagRef& t : std::as_const(m_tags))
+        if (t.id == ref.id) return false;
+    m_tags.append(ref);
+    emit tagsChanged();
+    // A felrakott címke kikerül a javaslatok közül.
+    for (int i = 0; i < m_suggestions.size(); ++i)
+        if (m_suggestions.at(i).id == ref.id
+            || m_suggestions.at(i).name.compare(ref.name, Qt::CaseInsensitive) == 0) {
+            m_suggestions.removeAt(i);
+            emit suggestionsChanged();
+            break;
+        }
+    return true;
+}
+
+void ShellImportModel::removeTag(const QString& id)
+{
+    for (int i = 0; i < m_tags.size(); ++i) {
+        if (m_tags.at(i).id != id) continue;
+        m_tags.removeAt(i);
+        emit tagsChanged();
+        return;
+    }
+}
+
+void ShellImportModel::acceptSuggestion(int index)
+{
+    if (index < 0 || index >= m_suggestions.size()) return;
+    addTag(m_suggestions.at(index).name);
+}
+
+void ShellImportModel::dismissSuggestion(int index)
+{
+    if (index < 0 || index >= m_suggestions.size()) return;
+    m_dismissed << m_suggestions.at(index).name.toLower();
+    m_suggestions.removeAt(index);
+    emit suggestionsChanged();
+}
+
+void ShellImportModel::refreshSuggestions()
+{
+    m_suggestTimer.stop();
+    if (!m_controller) return;                 // demó: a kitalált javaslat marad
+    QVector<Suggestion> out;
+    const QString title = m_title.trimmed();
+    if (!title.isEmpty()) {
+        const QStringList applied = tagIds();
+        for (const tanara::TagSuggestion& t : m_controller->draftTagSuggestions(title)) {
+            if ((!t.tagId.isEmpty() && applied.contains(t.tagId)) || m_dismissed.contains(t.name.toLower()))
+                continue;
+            bool onIt = false;
+            for (const TagRef& r : std::as_const(m_tags))
+                if (r.name.compare(t.name, Qt::CaseInsensitive) == 0) onIt = true;
+            if (onIt) continue;
+            Suggestion s;
+            s.id = t.tagId;
+            s.name = t.name;
+            s.isNew = t.isNew;
+            s.source = t.source == tanara::SuggestionSource::Llm ? QStringLiteral("llm")
+                     : t.source == tanara::SuggestionSource::Cooccur ? QStringLiteral("cooccur")
+                                                                      : QStringLiteral("similar");
+            // Egy rövid indok: a hasonló cím, különben a közös résztvevő / kifejezés.
+            for (const tanara::SuggestionReason& r : t.reasons) {
+                if (r.values.isEmpty()) continue;
+                if (r.kind == tanara::ReasonKind::Title) {
+                    s.reason = tr("hasonló cím: „%1”").arg(r.values.first());
+                    break;
+                }
+                if (s.reason.isEmpty())
+                    s.reason = r.kind == tanara::ReasonKind::Participant
+                        ? tr("közös résztvevő: %1").arg(r.values.mid(0, 2).join(QStringLiteral(", ")))
+                        : tr("közös kifejezések: %1").arg(r.values.mid(0, 3).join(QStringLiteral(", ")));
+            }
+            out.append(s);
+        }
+    }
+    bool same = out.size() == m_suggestions.size();
+    for (int i = 0; same && i < out.size(); ++i)
+        same = out.at(i).id == m_suggestions.at(i).id && out.at(i).name == m_suggestions.at(i).name
+            && out.at(i).reason == m_suggestions.at(i).reason;
+    if (same) return;
+    m_suggestions = out;
+    emit suggestionsChanged();
+}
+
+void ShellImportModel::applyTags(const QString& meetingId, const QStringList& ids)
+{
+    if (!m_controller || ids.isEmpty() || !m_controller->tags()) return;
+    // Közben törölt címke nem kerül fel.
+    QStringList valid;
+    for (const QString& id : ids)
+        if (m_controller->tags()->tag(id).isValid()) valid << id;
+    if (!valid.isEmpty())
+        m_controller->tags()->setTags(meetingId, valid, tanara::TagSource::Manual);
+}
 
 // ---- demó (képernyőkép) ------------------------------------------------------------------
 
@@ -455,6 +620,21 @@ void ShellImportModel::loadDemo()
                << file(dir + QStringLiteral("Fókuszcsoport 3 – kamera.mp4"), 4570000, 2, 1932000000, true);
     }
     refreshDefaults();
+    // Kitalált címke és javaslat (T09).
+    m_tags.clear();
+    m_suggestions.clear();
+    m_dismissed.clear();
+    if (m_demoState == QLatin1String("files") || m_demoState == QLatin1String("progress")) {
+        m_tags.append({QStringLiteral("t-kutatas"), QStringLiteral("Kutatás")});
+        Suggestion sug;
+        sug.name = QStringLiteral("Fókuszcsoportok 2026");
+        sug.id = QStringLiteral("t-fokusz2026");
+        sug.source = QStringLiteral("similar");
+        sug.reason = tr("hasonló cím: „%1”").arg(QStringLiteral("Fókuszcsoport 2"));
+        m_suggestions.append(sug);
+    }
+    emit tagsChanged();
+    emit suggestionsChanged();
     if (m_demoState == QLatin1String("failed"))
         m_error = tr("Nem sikerült beolvasni: %1").arg(QStringLiteral("Fókuszcsoport 3 – kamera.mp4"));
     if (m_demoState == QLatin1String("progress")) {
