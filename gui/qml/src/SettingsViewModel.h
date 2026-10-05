@@ -13,14 +13,17 @@
 // és a téma (ui-state.json).
 //
 // Al-modellek: `devices` (B02 eszközlista élő szinttel), `stt` / `llm` (szolgáltató-kártyák a
-// provider-registryből), `cloud` (Tanara Cloud fiók / várólista).
+// provider-registryből), `cloud` (Tanara Cloud fiók / várólista), `embedding` (C09: a
+// Beágyazás kártya, a könyvtár előkészítése és a címkejavaslat-kapcsolók).
 //
 // Controller nélkül (--qml-shot / --demo, tesztek) KITALÁLT adatot ad; a `demoState`
-// ("B01" … "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut") a design-állapotokat
-// állítja be.
+// ("B01" … "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut",
+// "B04embedding" / "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" /
+// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange") a design-állapotokat állítja be.
 //
 #include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
+#include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 
 #include "tanara/Types.h"
@@ -119,6 +122,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(tanara_qml::SettingsProviderModel* stt READ stt CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* llm READ llm CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsCloudModel* cloud READ cloud CONSTANT)
+    Q_PROPERTY(tanara_qml::SettingsEmbeddingModel* embedding READ embedding CONSTANT)
 
     // ---- B07 Összefoglaló ----
     Q_PROPERTY(QString summaryLanguage READ summaryLanguage WRITE setSummaryLanguage NOTIFY summaryChanged)
@@ -212,6 +216,7 @@ public:
     SettingsProviderModel* stt() const { return m_stt; }
     SettingsProviderModel* llm() const { return m_llm; }
     SettingsCloudModel* cloud() const { return m_cloud; }
+    SettingsEmbeddingModel* embedding() const { return m_embedding; }
 
     QString summaryLanguage() const { return m_draft.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
@@ -318,6 +323,7 @@ private:
     friend class SettingsDeviceModel;
     friend class SettingsProviderModel;
     friend class SettingsCloudModel;
+    friend class SettingsEmbeddingModel;
 
     void attach();
     void loadFromCore();
@@ -380,6 +386,7 @@ private:
     SettingsProviderModel* m_stt = nullptr;
     SettingsProviderModel* m_llm = nullptr;
     SettingsCloudModel* m_cloud = nullptr;
+    SettingsEmbeddingModel* m_embedding = nullptr;
 };
 
 } // namespace tanara_qml

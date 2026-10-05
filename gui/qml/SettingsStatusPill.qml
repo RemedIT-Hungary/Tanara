@@ -1,12 +1,13 @@
 import QtQuick
 
 // A kapcsolat-teszt állapot-pirulája: „Kapcsolódva · 210 ms” (successSoft / successInk,
-// circle-check), „Nem érhető el” (dangerSoft / dangerInk, circle-x), „Tesztelés…” (forgó jel).
+// circle-check), „Nem érhető el” (dangerSoft / dangerInk, circle-x), „Tesztelés…” (forgó jel),
+// "neutral": semleges tájékoztatás ikon nélkül (sunken / textMuted, pl. „Alap szint”).
 //   SettingsStatusPill { state: card.testState; text: card.statusText }
 Rectangle {
     id: root
 
-    property string status: ""        // "" | "testing" | "ok" | "failed"
+    property string status: ""        // "" | "testing" | "ok" | "failed" | "neutral"
     property string text: ""
 
     readonly property color ink: status === "ok" ? Theme.successInk
@@ -29,7 +30,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
         }
         TIcon {
-            visible: root.status !== "testing"
+            visible: root.status !== "testing" && root.status !== "neutral"
             name: root.status === "ok" ? "circle-check" : "circle-x"
             size: 13
             color: root.ink

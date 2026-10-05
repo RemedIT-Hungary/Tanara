@@ -3,13 +3,16 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // B04–B06 — Szolgáltatások: „Saját kulcs” vagy „Tanara Cloud” (ha a build és a beállítás
-// engedi), alatta a két szolgáltató-kártya vagy a Cloud-panel / várólista-ajánlat.
+// engedi), alatta a két szolgáltató-kártya (C09: a beállított szerep összecsukva) vagy a
+// Cloud-panel / várólista-ajánlat; mindkét módban a „Beágyazás” kártya (címkejavaslatok) és
+// a CÍMKEJAVASLATOK kapcsolói.
 Column {
     id: root
 
     property var vm: null
     property bool demoDropdown: false      // B04 képernyőkép: az STT-lista nyitva
     signal logoutRequested()
+    signal rejectedResetRequested()        // „Visszaállítás”: az ablak megerősítést kér
 
     readonly property string availability: vm ? vm.cloudAvailability : "none"
     readonly property bool cloudView: vm && vm.serviceMode === "cloud" && availability !== "none"
@@ -152,14 +155,6 @@ Column {
             title: qsTr("Összefoglaló")
             subtitle: qsTr("nyelvi modell (LLM)")
         }
-        TLabel {
-            width: parent.width
-            text: qsTr("A kulcsokat a Tanara a belső adatok mappájában, csak neked olvasható fájlban tárolja; a beállítás-fájlba nem kerülnek.")
-            muted: true
-            font.pixelSize: Theme.fontCaption
-            cssLineHeight: 1.45
-            wrapMode: Text.Wrap
-        }
     }
 
     // ---- Tanara Cloud ----
@@ -173,5 +168,82 @@ Column {
         visible: root.cloudView && root.availability === "teaser"
         width: parent.width
         vm: root.vm
+    }
+
+    // ---- C09: beágyazás (címkejavaslatokhoz) ----
+    SettingsEmbeddingCard {
+        objectName: "embeddingCard"
+        width: parent.width
+        emb: root.vm ? root.vm.embedding : null
+    }
+
+    // ---- CÍMKEJAVASLATOK ----
+    Column {
+        objectName: "tagSuggestionSettings"
+        width: parent.width
+        topPadding: 8
+        spacing: 12
+        TSectionLabel { text: qsTr("Címkejavaslatok") }
+        SettingsSwitchRow {
+            width: parent.width
+            text: qsTr("Címkék javaslása")
+            helper: qsTr("Hasonló korábbi megbeszélések és együtt járó címkék alapján. Sosem kerül fel magától.")
+            checked: root.vm && root.vm.embedding ? root.vm.embedding.tagSuggestions : true
+            onToggled: (on) => root.vm.embedding.tagSuggestions = on
+        }
+        SettingsSwitchRow {
+            width: parent.width
+            enabled: root.vm && root.vm.embedding ? root.vm.embedding.tagSuggestions : true
+            opacity: enabled ? 1 : 0.55
+            text: qsTr("A nyelvi modell is javasoljon az összefoglaló után")
+            helper: qsTr("Meglévő címkéket, és legfeljebb 2 új címke ötletét.")
+            checked: root.vm && root.vm.embedding ? root.vm.embedding.llmTagSuggestions : true
+            onToggled: (on) => root.vm.embedding.llmTagSuggestions = on
+        }
+        Row {
+            spacing: 8
+            TLabel {
+                objectName: "rejectedCount"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Elutasított javaslatok: %1").arg(root.vm && root.vm.embedding ? root.vm.embedding.rejectedCount : 0)
+                muted: true
+                font.pixelSize: Theme.fontSmall
+            }
+            T.AbstractButton {
+                id: resetLink
+                objectName: "rejectedReset"
+                visible: root.vm && root.vm.embedding && root.vm.embedding.rejectedCount > 0
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: resetLabel.implicitWidth + 4
+                implicitHeight: 24
+                hoverEnabled: true
+                activeFocusOnTab: true
+                Accessible.name: qsTr("Visszaállítás")
+                onClicked: root.rejectedResetRequested()
+                Keys.onReturnPressed: click()
+                Keys.onSpacePressed: click()
+                contentItem: TLabel {
+                    id: resetLabel
+                    text: qsTr("Visszaállítás")
+                    color: Theme.accent
+                    font.pixelSize: Theme.fontSmall
+                    font.weight: Theme.weightSemiBold
+                    font.underline: resetLink.hovered
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Item { TFocusRing { visible: resetLink.visualFocus; targetRadius: 4 } }
+                TToolTip { visible: resetLink.hovered; text: qsTr("Az elutasított javaslatokat újra felajánlhatjuk") }
+            }
+        }
+    }
+
+    TLabel {
+        visible: !root.cloudView
+        width: parent.width
+        text: qsTr("A kulcsokat a Tanara a belső adatok mappájában, csak neked olvasható fájlban tárolja; a beállítás-fájlba nem kerülnek.")
+        muted: true
+        font.pixelSize: Theme.fontCaption
+        cssLineHeight: 1.45
+        wrapMode: Text.Wrap
     }
 }

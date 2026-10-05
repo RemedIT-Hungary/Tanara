@@ -3,6 +3,7 @@
 #include "SettingsViewModel.h"
 
 #include "tanara/AppController.h"
+#include "tanara/embedding/EmbeddingProviderRegistry.h"
 #include "tanara/provider/ProviderRegistry.h"
 
 #include <QLocale>
@@ -80,23 +81,27 @@ void SettingsProviderModel::setTester(ConnectionTester* tester)
 
 QString SettingsProviderModel::kindName() const
 {
-    return m_kind == ProviderKind::Stt ? QStringLiteral("stt") : QStringLiteral("llm");
+    return m_kind == ProviderKind::Stt ? QStringLiteral("stt")
+         : m_kind == ProviderKind::Embedding ? QStringLiteral("embedding") : QStringLiteral("llm");
 }
 
 QMap<QString, ProviderConfig>& SettingsProviderModel::configs() const
 {
-    return m_kind == ProviderKind::Stt ? m_vm->draft().sttConfigs : m_vm->draft().llmConfigs;
+    return m_kind == ProviderKind::Stt ? m_vm->draft().sttConfigs
+         : m_kind == ProviderKind::Embedding ? m_vm->draft().embeddingConfigs : m_vm->draft().llmConfigs;
 }
 
 QString& SettingsProviderModel::selectedId() const
 {
-    return m_kind == ProviderKind::Stt ? m_vm->draft().sttProviderId : m_vm->draft().llmProviderId;
+    return m_kind == ProviderKind::Stt ? m_vm->draft().sttProviderId
+         : m_kind == ProviderKind::Embedding ? m_vm->draft().embeddingProviderId : m_vm->draft().llmProviderId;
 }
 
 QVector<ProviderDescriptor> SettingsProviderModel::allDescriptors() const
 {
-    QVector<ProviderDescriptor> all = m_kind == ProviderKind::Stt
-        ? SttProviderRegistry::instance().all() : LlmProviderRegistry::instance().all();
+    QVector<ProviderDescriptor> all = m_kind == ProviderKind::Stt ? SttProviderRegistry::instance().all()
+        : m_kind == ProviderKind::Embedding ? EmbeddingProviderRegistry::instance().all()
+                                            : LlmProviderRegistry::instance().all();
     // A registry hash-sorrendje nem stabil: a saját kulcsosak név szerint, a bejelentkezős a végén.
     std::sort(all.begin(), all.end(), [](const ProviderDescriptor& a, const ProviderDescriptor& b) {
         const bool la = a.authMode == AuthMode::Login, lb = b.authMode == AuthMode::Login;
@@ -108,6 +113,7 @@ QVector<ProviderDescriptor> SettingsProviderModel::allDescriptors() const
 
 ProviderDescriptor SettingsProviderModel::descriptor(const QString& id) const
 {
+    if (m_kind == ProviderKind::Embedding) return EmbeddingProviderRegistry::instance().descriptor(id);
     return m_kind == ProviderKind::Stt ? SttProviderRegistry::instance().descriptor(id)
                                        : LlmProviderRegistry::instance().descriptor(id);
 }
@@ -405,8 +411,8 @@ QHash<QString, QString> SettingsProviderModel::fieldErrors() const
                 out.insert(f.key, tr("http:// vagy https:// kezdetű címet adj meg."));
         } else if (f.type == ConfigFieldType::Number) {
             // A tárolt, tartományon kívüli érték megmarad, amíg a felhasználó nem nyúl hozzá.
-            const QMap<QString, ProviderConfig>& baseConfigs =
-                m_kind == ProviderKind::Stt ? m_vm->base().sttConfigs : m_vm->base().llmConfigs;
+            const QMap<QString, ProviderConfig>& baseConfigs = m_kind == ProviderKind::Stt ? m_vm->base().sttConfigs
+                : m_kind == ProviderKind::Embedding ? m_vm->base().embeddingConfigs : m_vm->base().llmConfigs;
             const bool untouched = baseConfigs.contains(d.id) && configValue(baseConfigs.value(d.id), f) == v;
             if (!untouched && f.minValue != f.maxValue && f.key != QLatin1String("temperature")
                 && (v.toDouble() < f.minValue || v.toDouble() > f.maxValue))
@@ -461,6 +467,45 @@ bool SettingsProviderModel::highlighted() const
     return m_vm->focusField() == kindName();
 }
 
+bool SettingsProviderModel::configured() const
+{
+    if (m_kind == ProviderKind::Embedding)
+        return !descriptor().id.isEmpty() && fieldErrors().isEmpty();
+    return m_vm->draftReadiness(m_kind == ProviderKind::Stt ? WorkflowStep::Transcribe
+                                                            : WorkflowStep::Summarize).runnable;
+}
+
+void SettingsProviderModel::setExpanded(bool expanded)
+{
+    if (m_expanded == expanded) return;
+    m_expanded = expanded;
+    emit expandedChanged();
+}
+
+void SettingsProviderModel::notifyFocusChanged()
+{
+    emit highlightedChanged();
+    if (highlighted()) setExpanded(true);    // a mély hivatkozás kártyája mindig nyitva
+}
+
+QString SettingsProviderModel::summaryText() const
+{
+    const ProviderDescriptor d = descriptor();
+    if (d.id.isEmpty()) return QString();
+    const ProviderConfig cfg = configs().value(d.id);
+    QString label = d.displayName;
+    // A helyi szerver jól ismert portjáról a nevét mutatjuk (a leíró neve általános).
+    const QUrl url(cfg.baseUrl.trimmed());
+    if (d.authMode != AuthMode::Login && isLocalEndpoint(cfg.baseUrl)) {
+        if (url.port() == 1234) label = QStringLiteral("LM Studio");
+        else if (url.port() == 11434) label = QStringLiteral("Ollama");
+    }
+    if (m_kind == ProviderKind::Stt || d.authMode == AuthMode::Login) return label;
+    QString model = cfg.model.trimmed();
+    model = model.mid(model.lastIndexOf(QLatin1Char('/')) + 1);
+    return model.isEmpty() ? label : label + QStringLiteral(" · ") + model;
+}
+
 void SettingsProviderModel::invalidateTest()
 {
     // A folyamatban lévő lekérés a RÉGI címhez / szolgáltatóhoz tartozott: eldobjuk, hogy a
@@ -503,7 +548,10 @@ void SettingsProviderModel::fetchModels()
     if (!testable() || m_fetchId) return;
     m_fetchError.clear();
     if (!m_vm->controller()) {
-        m_models = {QStringLiteral("google/gemma-4-12b-qat"), QStringLiteral("qwen/qwen3-coder-30b")};
+        m_models = m_kind == ProviderKind::Embedding
+            ? QStringList{QStringLiteral("text-embedding-nomic-embed-text-v1.5"),
+                          QStringLiteral("nomic-embed-text-v2-moe"), QStringLiteral("text-embedding-bge-m3")}
+            : QStringList{QStringLiteral("google/gemma-4-12b-qat"), QStringLiteral("qwen/qwen3-coder-30b")};
         m_modelsFor = providerId();
         emit fetchChanged();
         bumpValues();
@@ -532,6 +580,7 @@ void SettingsProviderModel::onFinished(int id, const ConnectionTestResult& resul
     m_testId = 0;
     m_result = result;
     m_testState = result.ok() ? QStringLiteral("ok") : QStringLiteral("failed");
+    if (!result.ok()) setExpanded(true);
     if (result.ok() && m_kind == ProviderKind::Llm) setServerInfo(result.server, /*withWarnings*/ false);
     // A sikeres próba modell-listája a „Lekérés” eredményét is frissíti (ugyanaz a kérés).
     if (result.ok() && !result.models.isEmpty()) {
@@ -553,6 +602,7 @@ void SettingsProviderModel::setDemoResult(const QString& state, int latencyMs,
     m_result.status = state == QLatin1String("ok") ? ConnectionTestResult::Status::Ok
                                                    : ConnectionTestResult::Status::Unreachable;
     m_testState = state;
+    if (state == QLatin1String("failed")) setExpanded(true);
     emit testChanged();
 }
 
@@ -566,6 +616,8 @@ void SettingsProviderModel::reset()
     m_models.clear();
     m_modelsFor.clear();
     clearServerInfo();
+    // C09: a beállított szerep összecsukva indul; a hiányos / kiemelt nyitva.
+    setExpanded(!configured() || highlighted());
     emit providersChanged();
     emit providerChanged();
     emit fieldsChanged();

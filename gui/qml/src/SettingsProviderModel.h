@@ -1,7 +1,12 @@
 #pragma once
 //
 // SettingsProviderModel — egy szolgáltató-kártya (B04 / B05) a Beállítások „Szolgáltatások”
-// lapján: „Átírás (STT)” vagy „Összefoglaló (LLM)”.
+// lapján: „Átírás (STT)”, „Összefoglaló (LLM)” vagy a „Beágyazás” (embedding, C09) helyi
+// végpontjának mezői (ezt a SettingsEmbeddingModel fogja össze).
+//
+// C09: a már beállított szerep egysoros, összecsukott kártyaként jelenik meg (`configured`,
+// `expanded`, `summaryText`); kattintásra nyílik. A mély hivatkozás (focusField) és a hibás
+// kapcsolat-teszt mindig kinyitja.
 //
 // ADATVEZÉRELT: a választható szolgáltatók a provider-registryből, a mezők a kiválasztott
 // ProviderDescriptor.fields-éből jönnek (típus, kötelező, titok, alapértelmezés, haladó,
@@ -32,7 +37,7 @@ class SettingsProviderModel : public QObject {
     Q_OBJECT
     QML_ANONYMOUS
 
-    Q_PROPERTY(QString kind READ kindName CONSTANT)   // "stt" | "llm"
+    Q_PROPERTY(QString kind READ kindName CONSTANT)   // "stt" | "llm" | "embedding"
     // [{ value (a provider id-ja), label, tag }] — a saját kulcsos szolgáltatók (+ a Tanara Cloud, ha épp az van kiválasztva).
     Q_PROPERTY(QVariantList providers READ providers NOTIFY providersChanged)
     Q_PROPERTY(QString providerId READ providerId WRITE setProviderId NOTIFY providerChanged)
@@ -75,6 +80,12 @@ class SettingsProviderModel : public QObject {
     Q_PROPERTY(int serverMaxContext READ serverMaxContext NOTIFY serverInfoChanged)
     // B04: ehhez a kártyához vezetett a mély hivatkozás.
     Q_PROPERTY(bool highlighted READ highlighted NOTIFY highlightedChanged)
+    // C09: a szerep futtatható a piszkozattal (kötelező mezők, kulcs / bejelentkezés megvan).
+    Q_PROPERTY(bool configured READ configured NOTIFY valuesChanged)
+    // C09: kinyitott kártya (alapból: ami nincs beállítva, kiemelt, vagy elbukott a tesztje).
+    Q_PROPERTY(bool expanded READ expanded WRITE setExpanded NOTIFY expandedChanged)
+    // Az összecsukott sor jobb oldala: „Soniox”, „LM Studio · gemma-4-12b”.
+    Q_PROPERTY(QString summaryText READ summaryText NOTIFY valuesChanged)
 
 public:
     SettingsProviderModel(SettingsViewModel* vm, tanara::ProviderKind kind);
@@ -98,6 +109,10 @@ public:
     bool fetching() const { return m_fetchId != 0; }
     QString fetchError() const { return m_fetchError; }
     bool highlighted() const;
+    bool configured() const;
+    bool expanded() const { return m_expanded; }
+    void setExpanded(bool expanded);
+    QString summaryText() const;
     bool reasoningAvailable() const;
     QString reasoning() const;
     void setReasoning(const QString& mode);
@@ -132,7 +147,7 @@ public:
     QHash<QString, QString> fieldErrors() const;
     // A piszkozat / a szolgáltató megváltozott (újratöltés, eldobás, külső változás).
     void reset();
-    void notifyFocusChanged() { emit highlightedChanged(); }
+    void notifyFocusChanged();
     bool lastTestFailed() const { return m_testState == QLatin1String("failed"); }
     // Demó: rögzített teszt-eredmény.
     void setDemoResult(const QString& state, int latencyMs, const QString& message,
@@ -151,6 +166,7 @@ signals:
     void testChanged();
     void fetchChanged();
     void highlightedChanged();
+    void expandedChanged();
     void serverInfoChanged();
 
 private:
@@ -165,6 +181,7 @@ private:
     tanara::ProviderKind m_kind;
     tanara::ConnectionTester* m_tester = nullptr;
     bool m_advancedOpen = false;
+    bool m_expanded = true;
     int m_revision = 0;
     QString m_testState;
     tanara::ConnectionTestResult m_result;
