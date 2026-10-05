@@ -17,6 +17,7 @@
 #include "tanara/jobs/JobTypes.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/library/TextFold.h"
+#include "tanara/tags/TagTypes.h"
 
 #include <QObject>
 #include <QHash>
@@ -27,6 +28,7 @@ namespace tanara {
 
 class MeetingStore;
 class MeetingJobTracker;
+class TagService;
 
 enum class DateSection { Today, Yesterday, ThisWeek, Earlier };
 
@@ -47,6 +49,12 @@ struct LibraryEntry {
     textfold::Range snippetMatch;      // a találat helye a snippet-ben
     qint64    snippetMs = -1;          // a találatot tartalmazó megszólalás kezdete (ugráshoz)
     QString   snippetSpeaker;          // a megszólaló (megjelenített név)
+
+    // --- címkék (setTagService után) ---
+    QStringList tagIds;                // a meeting sorrendjében, csak a létező címkék
+    QStringList tagNames;              // ugyanabban a sorrendben
+    bool      tagMatch = false;        // a keresés egy címke nevében talált
+    QString   tagMatchName;            // az első találó címke neve
 };
 
 struct LibraryQuery {
@@ -54,8 +62,14 @@ struct LibraryQuery {
     bool        noTranscript = false;  // csak az átirat nélküliek
     bool        noSummary = false;     // csak az összefoglaló nélküliek
     QStringList people;                // mindegyik megadott személy részt vett
+    QStringList tags;                  // címke-azonosítók: bármelyik (tagsAll → mindegyik) rajta van
+    bool        tagsAll = false;       // true → ÉS, false → VAGY
+    bool        untagged = false;      // címke nélküliek (a tags-szel VAGY kapcsolatban)
 
-    bool isEmpty() const { return text.trimmed().isEmpty() && !noTranscript && !noSummary && people.isEmpty(); }
+    bool isEmpty() const {
+        return text.trimmed().isEmpty() && !noTranscript && !noSummary && people.isEmpty()
+            && tags.isEmpty() && !untagged;
+    }
 };
 
 struct LibraryResult {
@@ -115,6 +129,13 @@ public:
     // A könyvtárban szereplő nevesített személyek, gyakoriság szerint (szűrő-chipekhez).
     QVector<PersonPresence> people() const;
 
+    // Címkék: a bejegyzések címke-nevei, a címke-szűrő és a keresés címkékben ehhez kell.
+    void setTagService(TagService* tags);
+    // A szűrő-popover címkéi: minden címke a könyvtárbeli darabszámmal (gyakoriság, majd ABC).
+    QVector<TagUsage> tagOptions() const;
+    // Hány megbeszélésen nincs címke („Címke nélkül” szám).
+    int untaggedCount() const;
+
     // „Ezek várnak rád”: legújabb elöl. limit <= 0 → mind.
     QVector<PendingItem> pendingItems(int limit = 0) const;
 
@@ -125,6 +146,10 @@ public:
 
     // Betöltötte-e már minden átirat szövegét a kereséshez.
     bool isWarm() const;
+
+    // A meeting nevesített résztvevői: a saját (mikrofon-) sáv fix beszélője + a speakerMap
+    // nevei, egyszer-egyszer. A generikus sáv-címkék („Mikrofon 2”) nem személyek.
+    static QStringList participantsOf(const Meeting& m);
 
 public slots:
     // Az átirat-szövegek előtöltése szeletekben az eseményhurokban (nem blokkol). warmedUp jel.
@@ -138,6 +163,9 @@ signals:
     void meetingRemoved(QString meetingId);
     void pendingItemsChanged();
     void reset();                               // teljes újratöltés kell (invalidate() mind)
+    // A címkekészlet változott (név, törlés, összevonás): a sorok címke-nevei és a szűrő-
+    // popover frissítendő. (Egy meeting címkéinek változása meetingChanged-ként jön.)
+    void tagsChanged();
     void warmedUp();
 
 private:
@@ -147,7 +175,6 @@ private:
     void reloadMeeting(const QString& id);
     const TextDoc* textDoc(const Meeting& m) const;
     LibraryEntry makeEntry(const Meeting& m, const QDate& today) const;
-    static QStringList participantsOf(const Meeting& m);
 
     Impl* d;
 };

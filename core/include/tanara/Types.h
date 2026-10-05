@@ -156,6 +156,9 @@ struct Meeting {
     // A figyelő által észlelt hívás-alkalmazás (pl. „Microsoft Teams”); üres, ha kézi felvétel.
     // Csak tájékoztató: sem az átírónak, sem az összefoglalónak nem megy.
     QString detectedCallApp;
+    // A megbeszélés címkéinek azonosítói, a felrakás sorrendjében (a címkekészlet:
+    // <metadataDir>/tags.json, lásd tags/TagService.h). A meeting.json-ban "tags".
+    QStringList tagIds;
 };
 
 // ---- beszélő-azonosítás (voice fingerprint) -------------------------------
@@ -305,6 +308,16 @@ struct AppSettings {
     // A hívóhelyek nagy része ezekre cserélhető (s.stt → s.sttSelected()).
     ProviderConfig sttSelected() const { return sttConfigs.value(sttProviderId); }
     ProviderConfig llmSelected() const { return llmConfigs.value(llmProviderId); }
+
+    // Beágyazó modell (embedding) a címkejavaslatokhoz. Üres id → nincs („alap” szint: a
+    // javaslatok a közös résztvevőkből, kifejezésekből és a címből készülnek). Lásd
+    // embedding/EmbeddingProviderRegistry.h: "openai-compat-embedding" | "tanara-hosted-embedding".
+    QString embeddingProviderId;
+    QMap<QString, ProviderConfig> embeddingConfigs;   // id -> config
+    ProviderConfig embeddingSelected() const { return embeddingConfigs.value(embeddingProviderId); }
+    // Címkejavaslatok be/ki, ill. a nyelvi modell javasoljon-e az összefoglaló után.
+    bool tagSuggestions = true;
+    bool llmTagSuggestions = true;
 
     // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
     // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.

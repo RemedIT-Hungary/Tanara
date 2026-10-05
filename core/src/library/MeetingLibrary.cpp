@@ -1,6 +1,7 @@
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -31,6 +32,7 @@ struct MeetingLibrary::TextDoc {
 struct MeetingLibrary::Impl {
     MeetingStore*      store = nullptr;
     MeetingJobTracker* tracker = nullptr;
+    TagService*        tags = nullptr;
     bool               loaded = false;
     QVector<Meeting>   meetings;            // startedAt szerint csökkenő
     QHash<QString, int> index;              // id → pozíció a meetings-ben
@@ -266,6 +268,14 @@ LibraryEntry MeetingLibrary::makeEntry(const Meeting& m, const QDate& today) con
     e.hasSummary = m.hasSummary;
     e.section = sectionFor(m.startedAt, today);
     e.participants = participantsOf(m);
+    if (d->tags) {
+        for (const QString& id : m.tagIds) {
+            const Tag t = d->tags->tag(id);
+            if (!t.isValid()) continue;
+            e.tagIds << t.id;
+            e.tagNames << t.name;
+        }
+    }
     if (d->tracker) {
         e.state = d->tracker->state(m);
     } else {
@@ -291,9 +301,30 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         if (!f.isEmpty()) wantPeople << f;
     }
 
+    // Címke-szűrő: csak a létező címkék számítanak.
+    QStringList wantTags;
+    for (const QString& id : q.tags)
+        if (!id.isEmpty() && (!d->tags || d->tags->tag(id).isValid())) wantTags << id;
+    const bool tagFilter = !wantTags.isEmpty() || q.untagged;
+    auto tagsOk = [&](const Meeting& m) {
+        if (!tagFilter) return true;
+        QStringList have;
+        for (const QString& id : m.tagIds)
+            if (!d->tags || d->tags->tag(id).isValid()) have << id;
+        if (q.untagged && have.isEmpty()) return true;
+        if (wantTags.isEmpty()) return false;
+        if (q.tagsAll) {
+            for (const QString& w : wantTags) if (!have.contains(w)) return false;
+            return true;
+        }
+        for (const QString& w : wantTags) if (have.contains(w)) return true;
+        return false;
+    };
+
     for (const Meeting& m : std::as_const(d->meetings)) {
         if (q.noTranscript && m.hasTranscript) continue;
         if (q.noSummary && m.hasSummary) continue;
+        if (!tagsOk(m)) continue;
         if (!wantPeople.isEmpty()) {
             QStringList have;
             for (const QString& p : participantsOf(m)) have << textfold::foldQuery(p);
@@ -319,9 +350,23 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         textfold::Range textHit;
         const TextDoc* doc = m.hasTranscript ? textDoc(m) : nullptr;
         if (doc) textHit = textfold::find(doc->folded, fq);
-        if (!titleHit.isValid() && !textHit.isValid()) continue;
+
+        // Címke-találat (ékezet- és kisbetű-függetlenül a címke nevében).
+        QString tagHit;
+        if (d->tags) {
+            for (const QString& id : m.tagIds) {
+                const Tag t = d->tags->tag(id);
+                if (t.isValid() && textfold::find(textfold::fold(textfold::normalize(t.name)), fq).isValid()) {
+                    tagHit = t.name;
+                    break;
+                }
+            }
+        }
+        if (!titleHit.isValid() && !textHit.isValid() && tagHit.isEmpty()) continue;
 
         LibraryEntry e = makeEntry(m, today);
+        e.tagMatch = !tagHit.isEmpty();
+        e.tagMatchName = tagHit;
         e.title = nfcTitle;               // a titleMatch pozíciói erre a (NFC) alakra érvényesek
         e.titleMatch = titleHit;
         if (textHit.isValid()) {
@@ -399,6 +444,55 @@ QVector<PersonPresence> MeetingLibrary::people() const
         return a.name.localeAwareCompare(b.name) < 0;
     });
     return out;
+}
+
+void MeetingLibrary::setTagService(TagService* tags)
+{
+    if (d->tags == tags) return;
+    if (d->tags) d->tags->disconnect(this);
+    d->tags = tags;
+    if (tags) connect(tags, &TagService::tagsChanged, this, &MeetingLibrary::tagsChanged);
+    emit tagsChanged();
+}
+
+QVector<TagUsage> MeetingLibrary::tagOptions() const
+{
+    ensureLoaded();
+    QVector<TagUsage> out;
+    if (!d->tags) return out;
+    QHash<QString, TagUsage> byId;
+    for (const TagUsage& u : d->tags->all(TagService::Sort::Alpha)) {
+        TagUsage x;
+        x.tag = u.tag;
+        byId.insert(u.tag.id, x);
+        out.append(x);
+    }
+    for (const Meeting& m : std::as_const(d->meetings))
+        for (const QString& id : m.tagIds) {
+            auto it = byId.find(id);
+            if (it == byId.end()) continue;
+            it->meetingCount++;
+            if (!it->firstUsedAt.isValid() || m.startedAt < it->firstUsedAt) it->firstUsedAt = m.startedAt;
+            if (!it->lastUsedAt.isValid() || m.startedAt > it->lastUsedAt) it->lastUsedAt = m.startedAt;
+        }
+    for (TagUsage& u : out) u = byId.value(u.tag.id);
+    std::stable_sort(out.begin(), out.end(), [](const TagUsage& a, const TagUsage& b) {
+        return a.meetingCount > b.meetingCount;   // azonos számnál marad az ABC
+    });
+    return out;
+}
+
+int MeetingLibrary::untaggedCount() const
+{
+    ensureLoaded();
+    int n = 0;
+    for (const Meeting& m : std::as_const(d->meetings)) {
+        bool any = false;
+        for (const QString& id : m.tagIds)
+            if (!d->tags || d->tags->tag(id).isValid()) { any = true; break; }
+        if (!any) ++n;
+    }
+    return n;
 }
 
 QVector<PendingItem> MeetingLibrary::pendingItems(int limit) const

@@ -63,6 +63,16 @@ AppSettings SettingsManager::defaults(const QString& metadataDir)
         s.llmConfigs.insert(s.llmProviderId, llm);
     }
 
+    // Beágyazás: alapból nincs (alap szint); a helyi végpont előre kitöltve, ha bekapcsolják.
+    s.embeddingProviderId.clear();
+    {
+        ProviderConfig emb;
+        emb.type    = QStringLiteral("openai-compat-embedding");
+        emb.baseUrl = QStringLiteral("http://localhost:1234/v1");
+        emb.model   = QStringLiteral("text-embedding-bge-m3");
+        s.embeddingConfigs.insert(emb.type, emb);
+    }
+
     return s;
 }
 
@@ -182,6 +192,11 @@ void SettingsManager::applyProviderDefaults(AppSettings& loaded, const AppSettin
         else
             loaded.llmProviderId = loaded.llmConfigs.firstKey();
     }
+
+    // ---- Beágyazás: a hiányzó előre kitöltött configok pótlása (az üres id = nincs) ----
+    for (auto it = def.embeddingConfigs.constBegin(); it != def.embeddingConfigs.constEnd(); ++it)
+        if (!loaded.embeddingConfigs.contains(it.key()))
+            loaded.embeddingConfigs.insert(it.key(), it.value());
 }
 
 void SettingsManager::save() const

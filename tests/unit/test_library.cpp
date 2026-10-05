@@ -14,6 +14,7 @@
 #include "tanara/library/TextFold.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 using namespace tanara;
 
@@ -39,6 +40,9 @@ private slots:
     void transcriptChangeInvalidatesCache();
     void manyMeetingsStayResponsive();
     void warmUpLoadsInBackground();
+    void tagsInEntriesAndFilter();
+    void searchInTagNames();
+    void tagOptionsAndUntagged();
 
 private:
     struct Seg { qint64 ms; QString speaker; QString text; };
@@ -451,6 +455,94 @@ void LibraryTest::warmUpLoadsInBackground()
     QVERIFY(!lib.isWarm() || warmed.count() == 0);       // nem a hívásban tölt (nem blokkol)
     QVERIFY(warmed.wait(5000));
     QVERIFY(lib.isWarm());
+}
+
+// ---- címkék ---------------------------------------------------------------------------------
+
+void LibraryTest::tagsInEntriesAndFilter()
+{
+    const Meeting a = add("Nordvik heti", m_now.addDays(-1));
+    const Meeting b = add("Partner-egyeztetés", m_now.addDays(-2));
+    const Meeting c = add("Címke nélkül", m_now.addDays(-3));
+    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    MeetingLibrary lib(m_store.get());
+    lib.setTagService(&tags);
+    const Tag nord = tags.addTag(a.id, QStringLiteral("Nordvik"));
+    const Tag part = tags.addTag(a.id, QStringLiteral("Partnerek"));
+    tags.addTag(b.id, part.id);
+
+    LibraryEntry e = lib.entry(a.id, m_now);
+    QCOMPARE(e.tagIds, (QStringList{nord.id, part.id}));
+    QCOMPARE(e.tagNames, (QStringList{"Nordvik", "Partnerek"}));
+    QVERIFY(lib.entry(c.id, m_now).tagIds.isEmpty());
+
+    LibraryQuery q;
+    q.tags = {nord.id, part.id};                       // Bármelyik (VAGY)
+    QVERIFY(!q.isEmpty());
+    QCOMPARE(lib.query(q, m_now).count(), 2);
+    q.tagsAll = true;                                  // Mindegyik (ÉS)
+    LibraryResult r = lib.query(q, m_now);
+    QCOMPARE(r.count(), 1);
+    QCOMPARE(r.entries.first().id, a.id);
+    q = {};
+    q.untagged = true;
+    QVERIFY(!q.isEmpty());
+    r = lib.query(q, m_now);
+    QCOMPARE(r.count(), 1);
+    QCOMPARE(r.entries.first().id, c.id);
+    q.tags = {nord.id};                                // címke nélküli VAGY Nordvik
+    QCOMPARE(lib.query(q, m_now).count(), 2);
+    // Törölt címke: kikerül a bejegyzésből, a szűrőben nem számít.
+    QSignalSpy tc(&lib, &MeetingLibrary::tagsChanged);
+    tags.remove(nord.id);
+    QVERIFY(tc.count() >= 1);
+    QCOMPARE(lib.entry(a.id, m_now).tagNames, QStringList{"Partnerek"});
+}
+
+void LibraryTest::searchInTagNames()
+{
+    const Meeting a = add("Heti egyeztetés", m_now.addDays(-1), {{0, "Beszélő 1", "A raktárról beszéltünk."}});
+    add("Másik", m_now.addDays(-2), {{0, "Beszélő 1", "Semmi köze."}});
+    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    MeetingLibrary lib(m_store.get());
+    lib.setTagService(&tags);
+    tags.addTag(a.id, QStringLiteral("Ügyfél-Nordvik"));
+
+    LibraryQuery q;
+    q.text = QStringLiteral("ugyfel");                 // ékezet- és kisbetű-független
+    LibraryResult r = lib.query(q, m_now);
+    QCOMPARE(r.count(), 1);
+    QVERIFY(r.entries.first().tagMatch);
+    QCOMPARE(r.entries.first().tagMatchName, QStringLiteral("Ügyfél-Nordvik"));
+    QVERIFY(!r.entries.first().titleMatch.isValid());
+    // Átirat-találat: nem címke-találat.
+    q.text = QStringLiteral("raktar");
+    r = lib.query(q, m_now);
+    QCOMPARE(r.count(), 1);
+    QVERIFY(!r.entries.first().tagMatch);
+}
+
+void LibraryTest::tagOptionsAndUntagged()
+{
+    const Meeting a = add("A", m_now.addDays(-1));
+    const Meeting b = add("B", m_now.addDays(-5));
+    add("C", m_now.addDays(-6));
+    TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
+    MeetingLibrary lib(m_store.get());
+    QVERIFY(lib.tagOptions().isEmpty());               // TagService nélkül nincs címke
+    lib.setTagService(&tags);
+    const Tag x = tags.addTag(a.id, QStringLiteral("Zebra"));
+    tags.addTag(b.id, x.id);
+    tags.addTag(b.id, QStringLiteral("Alfa"));
+    tags.create(QStringLiteral("Használatlan"));
+    const QVector<TagUsage> opts = lib.tagOptions();
+    QCOMPARE(opts.size(), 3);
+    QCOMPARE(opts.at(0).tag.name, QStringLiteral("Zebra"));   // gyakoriság szerint
+    QCOMPARE(opts.at(0).meetingCount, 2);
+    QCOMPARE(opts.at(1).tag.name, QStringLiteral("Alfa"));    // azonos számnál ABC
+    QCOMPARE(opts.at(2).meetingCount, 0);
+    QCOMPARE(opts.at(0).lastUsedAt, a.startedAt);
+    QCOMPARE(lib.untaggedCount(), 1);
 }
 
 QTEST_GUILESS_MAIN(LibraryTest)

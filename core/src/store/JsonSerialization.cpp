@@ -182,6 +182,8 @@ QJsonObject toJson(const Meeting& m)
         o[QStringLiteral("contextNote")] = m.contextNote;
     if (!m.detectedCallApp.isEmpty())
         o[QStringLiteral("detectedCallApp")] = m.detectedCallApp;
+    if (!m.tagIds.isEmpty())
+        o[QStringLiteral("tags")] = QJsonArray::fromStringList(m.tagIds);
     return o;
 }
 
@@ -209,6 +211,10 @@ Meeting meetingFromJson(const QJsonObject& o)
         m.speakerMap.insert(it.key(), it.value().toString());
     m.contextNote = o.value(QStringLiteral("contextNote")).toString();
     m.detectedCallApp = o.value(QStringLiteral("detectedCallApp")).toString();
+    for (const QJsonValue& v : o.value(QStringLiteral("tags")).toArray()) {
+        const QString id = v.toString();
+        if (!id.isEmpty() && !m.tagIds.contains(id)) m.tagIds << id;
+    }
     // Régi meeting: a figyelő automatikus mondata („Automatikusan észlelt hívás: …”) nem
     // megjegyzés → üres megjegyzés + észlelt hívás. A következő mentés már így írja ki.
     meetingnotes::interpretLegacyNote(m);
@@ -296,6 +302,10 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("llmProviderId")] = s.llmProviderId;
     o[QStringLiteral("sttProviders")]  = providerConfigsToJson(s.sttConfigs);
     o[QStringLiteral("llmProviders")]  = providerConfigsToJson(s.llmConfigs);
+    o[QStringLiteral("embeddingProviderId")] = s.embeddingProviderId;
+    o[QStringLiteral("embeddingProviders")]  = providerConfigsToJson(s.embeddingConfigs);
+    o[QStringLiteral("tagSuggestions")]      = s.tagSuggestions;
+    o[QStringLiteral("llmTagSuggestions")]   = s.llmTagSuggestions;
 
     // Meeting-figyelő (háttér-detektor + tray).
     o[QStringLiteral("detectorEnabled")]     = s.detectorEnabled;
@@ -373,6 +383,11 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
         s.llmProviderId = id;
         s.llmConfigs.insert(id, cfg);
     }
+
+    s.embeddingProviderId = o.value(QStringLiteral("embeddingProviderId")).toString();
+    s.embeddingConfigs = providerConfigsFromJson(o.value(QStringLiteral("embeddingProviders")).toObject());
+    s.tagSuggestions    = o.value(QStringLiteral("tagSuggestions")).toBool(s.tagSuggestions);
+    s.llmTagSuggestions = o.value(QStringLiteral("llmTagSuggestions")).toBool(s.llmTagSuggestions);
 
     s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);
     s.summaryLanguage = o.value(QStringLiteral("summaryLanguage")).toString(s.summaryLanguage);
