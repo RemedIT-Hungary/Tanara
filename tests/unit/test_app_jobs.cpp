@@ -442,6 +442,11 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     // Megvárjuk, amíg a szolgáltatónál fut (a lekeverés és a feltöltés kész).
     QTRY_VERIFY_WITH_TIMEOUT(jobs->job(m.id, JobKind::Transcribe).isValid()
         && jobs->job(m.id, JobKind::Transcribe).stage("transcribe")->state == StageState::Running, 30000);
+    // A „transcribe” szakasz már a POST /transcriptions VÁLASZA előtt (Queued) fut; az átírás-id
+    // csak a válasszal jön. Az első állapot-lekérdezés jelzi, hogy az id megvan (különben a
+    // megszakítás a még úton lévő POST-ot szakítja meg, és nincs mit törölni — Windowson a
+    // lassabb helyi kapcsolódás miatt ez rendszeresen így volt).
+    QTRY_VERIFY_WITH_TIMEOUT(m_http->count("GET", "/transcriptions/t1") >= 1, 30000);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));   // nem törlődött előre
 
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
