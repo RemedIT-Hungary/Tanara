@@ -1324,7 +1324,9 @@ private slots:
     {
         QTest::addColumn<QString>("state");
         for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B06", "B07", "B07notes", "advanced", "dirty", "unsaved",
-                               "schema", "teaser", "cloudOut", "addApp", "logout", "reset"})
+                               "schema", "teaser", "cloudOut", "addApp", "logout", "reset",
+                               "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
+                               "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset"})
             QTest::addRow("%s", st) << QString::fromLatin1(st);
     }
     void windowLoadsEveryDemoStateWithoutWarnings()

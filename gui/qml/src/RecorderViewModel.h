@@ -20,6 +20,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QVariantList>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
@@ -90,6 +91,12 @@ class RecorderViewModel : public QObject {
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorChanged)
     // A sávonkénti csend-figyelmeztetés küszöbe (perc).
     Q_PROPERTY(int silenceWarnMinutes READ silenceWarnMinutes CONSTANT)
+    // A felvétel címkéi (C06): [{ id, name }]. Indítás előtt és felvétel közben szerkeszthető;
+    // a meeting csak a felvétel végén jön létre, ezért a core a végén rakja rá őket
+    // (AppController::setRecordingTags).
+    Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
+    Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
+    Q_PROPERTY(bool tagsEditable READ tagsEditable NOTIFY stateChanged)
     // Design-állapot ("R01" … "R10"); csak controller nélkül hat. "" = nincs demó.
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
     // A core; alapból az App.controller. Tesztben / beágyazáskor felülírható.
@@ -135,6 +142,19 @@ public:
     Q_INVOKABLE void applyRequest(const QString& title, const QString& appName,
                                   const QString& context, const QList<int>& deviceIndexes = {});
 
+    QVariantList tags() const;
+    QStringList tagIds() const;
+    bool tagsEditable() const;
+    // Címke a felvételre név szerint (szükség szerint létrehozza a készletben). false: nem
+    // szerkeszthető most, üres a név, vagy már rajta van.
+    Q_INVOKABLE bool addTag(const QString& name);
+    Q_INVOKABLE void removeTag(const QString& id);
+    // Ctrl+T: a címke-mező megnyitása (a nézet a tagInputRequested jelre nyitja).
+    Q_INVOKABLE bool openTagInput();
+    // Csak a címkék bekötése a core-ra (eszköz-felsorolás, szintfigyelés NÉLKÜL) — tesztekhez,
+    // ahol hangeszközhöz nyúlni nem szabad. A teljes bekötés a setController.
+    void attachTagsOnly(tanara::AppController* controller);
+
 public slots:
     void start();              // Ctrl+R
     void stop();               // Ctrl+. — megerősítés nélkül (a gomb explicit)
@@ -156,6 +176,8 @@ signals:
     void errorChanged();
     void demoStateChanged();
     void controllerChanged();
+    void tagsChanged();
+    void tagInputRequested();
     // A felvevő-ablaknak / a befoglaló folyamatnak:
     void askRaised(QString title, QString text);        // jelenjen meg + rendszerértesítés
     void openAnalyzerRequested(QString meetingId);
@@ -197,12 +219,16 @@ private:
     void raiseAsk(const QString& text);
     void loadDemo();
     QString iconFor(const Row& r) const;
+    void syncRecordingTags();            // a címkék átadása a core-nak (felvétel közben él)
+    void refreshTagNames();              // átnevezett / törölt címke a készletben
     int rowOf(const QString& deviceName) const;
     QVector<tanara::AudioDeviceInfo> selectedDevices() const;
 
     RecorderDeviceModel m_model{this};
     QVector<Row> m_rows;
     QPointer<tanara::AppController> m_controller;
+    QPointer<tanara::AppController> m_tagCtl;    // a címkék core-ja (= m_controller, vagy attachTagsOnly)
+    QMetaObject::Connection m_tagConn;
     bool m_controllerSet = false;
     tanara::PlaybackRouteMonitor* m_routes = nullptr;
     QTimer m_tick;
@@ -220,6 +246,8 @@ private:
     QString m_doneSummary, m_doneMeetingId, m_doneProblem;
     QString m_errorText;
     QString m_demoState;
+    struct TagRef { QString id, name; };
+    QVector<TagRef> m_tags;
     QStringList m_knownDevices;          // amit már láttunk (az „új eszköz” felismeréséhez)
     bool m_selectionLoaded = false;
 };

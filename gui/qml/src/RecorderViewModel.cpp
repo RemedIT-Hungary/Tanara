@@ -1,6 +1,7 @@
 #include "RecorderViewModel.h"
 
 #include "AppContext.h"
+#include "TagDemoBackend.h"
 
 #include "tanara/AppController.h"
 #include "tanara/Paths.h"
@@ -9,6 +10,7 @@
 #include "tanara/audio/PlaybackRouting.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/library/MeetingNotes.h"
+#include "tanara/tags/TagService.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -134,11 +136,21 @@ void RecorderViewModel::setController(AppController* controller)
     if (m_controller == controller) return;
     if (m_controller) m_controller->disconnect(this);
     m_controller = controller;
+    attachTagsOnly(controller);
     if (m_controller) {
         m_demoState.clear();
         attach();
     }
     emit controllerChanged();
+}
+
+void RecorderViewModel::attachTagsOnly(AppController* controller)
+{
+    m_controllerSet = true;
+    disconnect(m_tagConn);
+    m_tagCtl = controller;
+    if (controller && controller->tags())
+        m_tagConn = connect(controller->tags(), &TagService::tagsChanged, this, &RecorderViewModel::refreshTagNames);
 }
 
 QString RecorderViewModel::automaticTitle(const QString& appName, const QDateTime& when)
@@ -579,6 +591,7 @@ void RecorderViewModel::start()
         emit titleChanged();
     }
     m_controller->startRecording(m_title, sel);
+    syncRecordingTags();                       // az indítás előtt választott címkék (a start üríti)
 }
 
 void RecorderViewModel::stop()
@@ -629,6 +642,7 @@ void RecorderViewModel::newRecording()
     emit elapsedChanged();
     m_appName.clear();
     m_context.clear();
+    if (!m_tags.isEmpty()) { m_tags.clear(); emit tagsChanged(); }   // a core is üresen indítja a következőt
     m_titleAuto = true;
     m_title = automaticTitle(QString(), QDateTime::currentDateTime());
     emit titleChanged();
@@ -662,6 +676,97 @@ void RecorderViewModel::raiseAsk(const QString& text)
     emit askRaised(tr("Vége a megbeszélésnek?"), text);
 }
 
+// ---- címkék (C06) ----------------------------------------------------------------------
+
+QVariantList RecorderViewModel::tags() const
+{
+    QVariantList out;
+    for (const TagRef& t : m_tags)
+        out << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("name"), t.name}};
+    return out;
+}
+
+QStringList RecorderViewModel::tagIds() const
+{
+    QStringList out;
+    for (const TagRef& t : m_tags) out << t.id;
+    return out;
+}
+
+bool RecorderViewModel::tagsEditable() const
+{
+    // A leállítás alatt is: a core a meeting mentésekor olvassa ki a felvétel címkéit.
+    return m_state == QLatin1String("idle") || m_state == QLatin1String("recording")
+        || m_state == QLatin1String("stopping");
+}
+
+bool RecorderViewModel::addTag(const QString& name)
+{
+    const QString n = name.simplified();
+    if (n.isEmpty() || !tagsEditable()) return false;
+    TagRef ref;
+    if (m_tagCtl) {
+        TagService* svc = m_tagCtl->tags();
+        if (!svc) return false;
+        const Tag t = svc->create(n);          // létező kulcsnál a meglévő címke
+        if (!t.isValid()) return false;
+        ref = {t.id, t.name};
+    } else {
+        // Demó: a kitalált készlet azonosítói (a beviteli lista ugyanezt látja).
+        TagDemoBackend demo(TagDemoBackend::Content::Sample, nullptr);
+        for (const TagItem& t : demo.tags())
+            if (t.name.compare(n, Qt::CaseInsensitive) == 0) ref = {t.id, t.name};
+        if (ref.id.isEmpty()) ref = {QStringLiteral("new-") + n, n};
+    }
+    for (const TagRef& t : std::as_const(m_tags))
+        if (t.id == ref.id) return false;
+    m_tags.append(ref);
+    emit tagsChanged();
+    syncRecordingTags();
+    return true;
+}
+
+void RecorderViewModel::removeTag(const QString& id)
+{
+    for (int i = 0; i < m_tags.size(); ++i) {
+        if (m_tags.at(i).id != id) continue;
+        if (!tagsEditable()) return;
+        m_tags.removeAt(i);
+        emit tagsChanged();
+        syncRecordingTags();
+        return;
+    }
+}
+
+bool RecorderViewModel::openTagInput()
+{
+    if (!tagsEditable()) return false;
+    emit tagInputRequested();
+    return true;
+}
+
+void RecorderViewModel::syncRecordingTags()
+{
+    // Indítás előtt is átadjuk (a startRecording üríti, utána újra átadjuk); a kész felvétel
+    // címkéihez már nem nyúlunk innen.
+    if (!m_tagCtl || m_state == QLatin1String("done")) return;
+    m_tagCtl->setRecordingTags(tagIds());
+}
+
+void RecorderViewModel::refreshTagNames()
+{
+    if (!m_tagCtl || !m_tagCtl->tags()) return;
+    bool changed = false;
+    for (int i = 0; i < m_tags.size(); ++i) {
+        const Tag t = m_tagCtl->tags()->tag(m_tags.at(i).id);
+        if (!t.isValid()) { m_tags.removeAt(i--); changed = true; continue; }   // közben törölték
+        if (t.name != m_tags.at(i).name) { m_tags[i].name = t.name; changed = true; }
+    }
+    if (!changed) return;
+    emit tagsChanged();
+    syncRecordingTags();
+}
+
 // ---- felvétel-állapot ------------------------------------------------------------------
 
 void RecorderViewModel::onRecordingState(RecordingState st)
@@ -675,6 +780,7 @@ void RecorderViewModel::onRecordingState(RecordingState st)
             r.silentSince = now;
         }
         clearError();
+        syncRecordingTags();
         setState(QStringLiteral("recording"));
         emit recordingStarted(m_controller->currentMeetingFolder());
     } else if (st == RecordingState::Stopping || st == RecordingState::Encoding) {
@@ -791,6 +897,14 @@ void RecorderViewModel::loadDemo()
                          : automaticTitle(st == QLatin1String("R10") ? QString() : QStringLiteral("Teams"), when);
     m_titleAuto = !namedTitle;
     emit titleChanged();
+
+    // Kitalált címkék (T08a–b): indítás előtt egy, felvétel közben kettő.
+    m_tags.clear();
+    if (st != QLatin1String("R09") && st != QLatin1String("R10")) {
+        m_tags.append({QStringLiteral("t-nordvik"), QStringLiteral("Nordvik")});
+        if (rec) m_tags.append({QStringLiteral("t-q4"), QStringLiteral("Q4 tervezés")});
+    }
+    emit tagsChanged();
 
     m_elapsedMs = quiet ? (41 * 60 + 3) * 1000 : rec ? (12 * 60 + 47) * 1000 : 0;
     emit elapsedChanged();

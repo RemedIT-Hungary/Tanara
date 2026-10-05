@@ -10,7 +10,8 @@ import QtQuick.Templates as T
 Rectangle {
     id: root
 
-    property var options: []           // [{ value, label, iconName? }]
+    // [{ value, label, iconName?, enabled? (alapból igaz), toolTip? (a tiltott elem magyarázata) }]
+    property var options: []
     property string value: ""
     property bool stretch: false       // az elemek egyenlően kitöltik a szélességet
     signal picked(string value)
@@ -32,6 +33,7 @@ Rectangle {
                 required property int index
                 readonly property bool current: modelData.value === root.value
                 readonly property bool hasIcon: (modelData.iconName || "") !== ""
+                readonly property bool allowed: modelData.enabled === undefined || modelData.enabled
 
                 width: root.stretch ? (root.width - 6 - 2 * (root.options.length - 1)) / root.options.length
                                     : implicitWidth
@@ -42,7 +44,9 @@ Rectangle {
                 Accessible.name: modelData.label
                 Accessible.role: Accessible.RadioButton
                 Accessible.checked: current
-                onClicked: if (!current) root.picked(modelData.value)
+                Accessible.description: modelData.toolTip || ""
+                // Tiltott elem: nem választható, de a súgója rámutatva látszik.
+                onClicked: if (!current && allowed) root.picked(modelData.value)
                 Keys.onReturnPressed: click()
                 Keys.onSpacePressed: click()
 
@@ -58,7 +62,7 @@ Rectangle {
                         anchors.fill: parent
                         radius: 5
                         color: seg.current ? Theme.raised
-                             : seg.hovered ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                             : seg.hovered && seg.allowed ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
                     }
                     TFocusRing { visible: seg.visualFocus; targetRadius: 5 }
                 }
@@ -79,9 +83,14 @@ Rectangle {
                             font.pixelSize: Theme.fontSmall
                             font.weight: seg.current ? Theme.weightSemiBold : Theme.weightRegular
                             color: seg.current ? Theme.text : Theme.textMuted
+                            opacity: seg.allowed || seg.current ? 1 : 0.55
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
+                }
+                TToolTip {
+                    visible: seg.hovered && (seg.modelData.toolTip || "") !== ""
+                    text: seg.modelData.toolTip || ""
                 }
             }
         }

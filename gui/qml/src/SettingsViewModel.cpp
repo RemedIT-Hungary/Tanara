@@ -4,6 +4,7 @@
 #include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
+#include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
 
 #include "tanara/AppController.h"
@@ -17,6 +18,7 @@
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
 #include "tanara/detect/detail/PwDumpParser.h"
+#include "tanara/embedding/EmbeddingProviderRegistry.h"
 #include "tanara/provider/ProviderRegistry.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -187,7 +189,8 @@ int SettingsViewModel::countChanges(const QJsonObject& base, const QJsonObject& 
         // nem külön változás (a szolgáltató-váltás már számít).
         const QStringList parts = p.split(QLatin1Char('/'), Qt::SkipEmptyParts);
         if (parts.size() >= 3
-            && (parts.at(0) == QLatin1String("sttProviders") || parts.at(0) == QLatin1String("llmProviders"))
+            && (parts.at(0) == QLatin1String("sttProviders") || parts.at(0) == QLatin1String("llmProviders")
+                || parts.at(0) == QLatin1String("embeddingProviders"))
             && !base.value(parts.at(0)).toObject().contains(parts.at(1)))
             continue;
         ++n;
@@ -214,6 +217,9 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     m_stt = new SettingsProviderModel(this, ProviderKind::Stt);
     m_llm = new SettingsProviderModel(this, ProviderKind::Llm);
     m_cloud = new SettingsCloudModel(this);
+    m_embedding = new SettingsEmbeddingModel(this);
+    // A Cloud-választhatóság a bejelentkezéstől függ.
+    connect(m_cloud, &SettingsCloudModel::accountChanged, m_embedding, &SettingsEmbeddingModel::notifyDraftChanged);
 
     m_detectTimer.setInterval(4000);
     connect(&m_detectTimer, &QTimer::timeout, this, &SettingsViewModel::pollDetector);
@@ -280,6 +286,7 @@ void SettingsViewModel::attach()
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
     m_cloud->attach();
+    m_embedding->attach();
 
     AppController* c = m_controller;
     if (!c) {
@@ -325,6 +332,7 @@ void SettingsViewModel::normalize(AppSettings& s) const
     if (!sd.id.isEmpty()) m_stt->fillDefaults(s.sttConfigs[s.sttProviderId], sd);
     const ProviderDescriptor ld = LlmProviderRegistry::instance().descriptor(s.llmProviderId);
     if (!ld.id.isEmpty()) m_llm->fillDefaults(s.llmConfigs[s.llmProviderId], ld);
+    m_embedding->normalize(s);
 }
 
 void SettingsViewModel::loadFromCore()
@@ -337,7 +345,7 @@ void SettingsViewModel::loadFromCore()
     m_draft = m_base;
 
     m_baseSecrets.clear();
-    for (SettingsProviderModel* card : {m_stt, m_llm})
+    for (SettingsProviderModel* card : {m_stt, m_llm, m_embedding->card()})
         for (const ProviderDescriptor& d : card->allDescriptors())
             for (const ConfigField& f : d.fields)
                 if (f.isSecret && !f.secretKey.isEmpty())
@@ -372,6 +380,7 @@ void SettingsViewModel::loadFromCore()
     applyDefaultSelection();
     m_stt->reset();
     m_llm->reset();
+    m_embedding->reset();
     m_cloud->notifyDraftChanged();
     refreshVoiceprint();
     refreshFolderUsage();
@@ -425,6 +434,7 @@ void SettingsViewModel::onExternalSettingsChanged()
     m_devices->refreshFromDraft();
     m_stt->reset();
     m_llm->reset();
+    m_embedding->reset();
     m_cloud->notifyDraftChanged();
     touch();
     emitAllChanged();
@@ -467,6 +477,7 @@ void SettingsViewModel::touch()
     validate();
     updateServicesWarn();
     emit dirtyChanged();
+    m_embedding->notifyDraftChanged();
 }
 
 void SettingsViewModel::validate()
@@ -524,6 +535,8 @@ void SettingsViewModel::updateServicesWarn()
 QString SettingsViewModel::footerText() const
 {
     if (m_changeCount <= 0) return tr("Nincs mentetlen változás");
+    // C09: a beágyazó modell cseréje a könyvtár előkészítését is újraindítja.
+    if (m_embedding->restartPending()) return tr("Modellváltás · mentéskor újraindul az előkészítés");
     const bool toCloud = m_draft.sttProviderId == cloud::ProviderId && m_draft.llmProviderId == cloud::ProviderId
                          && (m_base.sttProviderId != cloud::ProviderId || m_base.llmProviderId != cloud::ProviderId);
     if (toCloud && m_changeCount <= 2) return tr("Tanara Cloud kiválasztva · mentéskor átvált");
@@ -1202,7 +1215,8 @@ bool SettingsViewModel::save()
         badPage = QStringLiteral("general");
     else if (m_errors.contains(QStringLiteral("watchedApps")))
         badPage = QStringLiteral("watcher");
-    else if (!m_stt->fieldErrors().isEmpty() || !m_llm->fieldErrors().isEmpty())
+    else if (!m_stt->fieldErrors().isEmpty() || !m_llm->fieldErrors().isEmpty()
+             || !m_embedding->card()->fieldErrors().isEmpty())
         badPage = QStringLiteral("services");
     if (!badPage.isEmpty()) {
         setPage(badPage);
@@ -1210,7 +1224,7 @@ bool SettingsViewModel::save()
     }
 
     // A szolgáltató-mezők gépelés közben nyersen állnak a piszkozatban: mentéskor vágjuk le.
-    for (QMap<QString, ProviderConfig>* map : {&m_draft.sttConfigs, &m_draft.llmConfigs})
+    for (QMap<QString, ProviderConfig>* map : {&m_draft.sttConfigs, &m_draft.llmConfigs, &m_draft.embeddingConfigs})
         for (auto it = map->begin(); it != map->end(); ++it) {
             it->baseUrl = it->baseUrl.trimmed();
             it->model = it->model.trimmed();
@@ -1310,6 +1324,7 @@ void SettingsViewModel::discard()
     m_devices->refreshFromDraft();
     m_stt->reset();
     m_llm->reset();
+    m_embedding->reset();
     m_cloud->notifyDraftChanged();
     touch();
     emitAllChanged();
@@ -1397,6 +1412,15 @@ void SettingsViewModel::loadDemo()
     m_loading = false;
 
     m_cloud->loadDemo(st);
+    // C09 (T14–T16): a Beágyazás kártya állapotai; a többi lapon nincs beágyazás („alap”).
+    const QString emb = st == QLatin1String("B04") || st == QLatin1String("B04embedding") ? QStringLiteral("local")
+        : st == QLatin1String("B04embeddingRunning") ? QStringLiteral("localRunning")
+        : st == QLatin1String("B04embeddingError") ? QStringLiteral("localError")
+        : st == QLatin1String("B04embeddingDone") ? QStringLiteral("localDone")
+        : st == QLatin1String("B04embeddingCloud") ? QStringLiteral("cloud")
+        : st == QLatin1String("B04modelChange") ? QStringLiteral("modelChange")
+        : st == QLatin1String("B04embeddingNone") ? QStringLiteral("none") : QString();
+    m_embedding->loadDemo(emb);
     m_devices->rebuild();
     m_stt->reset();
     m_llm->reset();
@@ -1414,6 +1438,11 @@ void SettingsViewModel::loadDemo()
     } else if (st == QLatin1String("B04")) {
         m_page = QStringLiteral("services");
         m_focusField = QStringLiteral("stt");
+        m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
+    } else if (st.startsWith(QLatin1String("B04"))) {
+        // T14–T16: az átírás és az összefoglaló már be van állítva → összecsukott kártyák.
+        m_page = QStringLiteral("services");
+        m_stt->setDemoResult(QStringLiteral("ok"), 210, QString(), QString());
         m_llm->setDemoResult(QStringLiteral("ok"), 48, QString(), QString());
     } else if (st == QLatin1String("advanced")) {
         // Az LLM-kártya „Haladó” része nyitva (hőmérséklet, max. tokenek, gondolkodás).

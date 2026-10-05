@@ -326,6 +326,61 @@ TDialog {
         wrapMode: Text.Wrap
     }
 
+    // Címkék (C07, T09): többchipes mező + javaslat-sor a cím (fájlnév) alapján. Az importált
+    // megbeszélésre kerülnek, amikor elkészült.
+    ColumnLayout {
+        visible: !root.running && root.model && root.model.fileCount > 0
+        Layout.fillWidth: true
+        spacing: 4
+
+        TagInputModel {
+            id: importTagInput
+            controller: App.controller
+            excludeIds: root.model ? root.model.tagIds : []
+        }
+        TLabel { text: qsTr("Címkék"); font.pixelSize: Theme.fontSmall; font.weight: Theme.weightMedium }
+        TagField {
+            objectName: "importTags"
+            Layout.fillWidth: true
+            tags: root.model ? root.model.tags : []
+            inputModel: importTagInput
+            onAddRequested: (name, isNew) => root.model.addTag(name)
+            onRemoveRequested: (id) => root.model.removeTag(id)
+        }
+        RowLayout {
+            objectName: "importTagSuggestions"
+            visible: root.model !== null && root.model.suggestions.length > 0
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 8
+            TLabel {
+                text: qsTr("Javasolt:")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+            }
+            Repeater {
+                // Legfeljebb kettő látszik (mint a fejléc sorában).
+                model: root.model ? root.model.suggestions.slice(0, 2) : []
+                TagChip {
+                    required property var modelData
+                    required property int index
+                    kind: modelData.isNew ? "llmNew" : "suggested"
+                    text: modelData.name
+                    toolTipText: modelData.reason
+                    onClicked: root.model.acceptSuggestion(index)
+                    onRemoveRequested: root.model.dismissSuggestion(index)
+                }
+            }
+            TLabel {
+                Layout.fillWidth: true
+                text: root.model ? root.model.suggestionReason : ""
+                muted: true
+                font.pixelSize: Theme.fontCaption
+                elide: Text.ElideRight
+            }
+        }
+    }
+
     // Saját mikrofon (elhagyható).
     ColumnLayout {
         visible: !root.running && root.model && root.model.trackCount > 0 && !root.model.probing

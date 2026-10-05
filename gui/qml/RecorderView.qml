@@ -49,7 +49,36 @@ Item {
         if (root.vm && titleInput.text.trim() !== "") root.vm.title = titleInput.text
     }
 
+    // Címke-mező (Ctrl+T / „+ Címke”): a fókusz bezáráskor oda tér vissza, ahol volt.
+    function beginTagInput(text) {
+        if (!root.vm || !root.vm.tagsEditable) return
+        if (!tagRow.adding) tagRow.returnFocus = root.Window.activeFocusItem
+        tagRow.adding = true
+        tagInput.open()
+        if (text) tagInput.text = text          // képernyőkép (T08c): gépelés közben
+    }
+    function endTagInput() {
+        if (!tagRow.adding) return
+        tagRow.adding = false
+        tagInput.close()
+        tagInput.text = ""
+        const back = tagRow.returnFocus
+        tagRow.returnFocus = null
+        if (back && back !== tagInput.field) back.forceActiveFocus()
+    }
+
+    TagInputModel {
+        id: tagInputModel
+        controller: root.vm ? root.vm.controller : null
+        excludeIds: root.vm ? root.vm.tagIds : []
+    }
+    Connections {
+        target: root.vm
+        function onTagInputRequested() { root.beginTagInput() }
+    }
+
     onStChanged: {
+        if (root.vm && !root.vm.tagsEditable) root.endTagInput()
         if (!root.recording) root.sheetOpen = false
         if (st === "done" && root.closeAfterStop) {
             root.closeAfterStop = false
@@ -60,6 +89,7 @@ Item {
     Shortcut { sequence: "Ctrl+R"; enabled: root.st === "idle"; onActivated: root.vm.start() }
     Shortcut { sequence: "Ctrl+."; enabled: root.st === "recording"; onActivated: root.vm.stop() }
     Shortcut { sequence: "Escape"; enabled: root.sheetOpen; onActivated: root.sheetOpen = false }
+    Shortcut { sequence: "Ctrl+T"; enabled: root.vm !== null && root.vm.tagsEditable && !root.sheetOpen; onActivated: root.vm.openTagInput() }
 
     component BarButton: T.Button {
         id: bb
@@ -338,6 +368,95 @@ Item {
                 text: qsTr("Automatikus név · kattints az átnevezéshez")
                 muted: true
                 font.pixelSize: 11
+            }
+        }
+
+        // Címkék (C06, T08a–c): kompakt chipek (× mindig látszik) + „+ Címke  Ctrl+T”. Indítás
+        // előtt és felvétel közben (összecsukva és kinyitva is) szerkeszthető; a pirulában nincs.
+        Flow {
+            id: tagRow
+            objectName: "recorderTagRow"
+            property bool adding: false
+            property Item returnFocus: null
+            visible: root.vm !== null && root.vm.tagsEditable && root.st !== "noDevice"
+            width: parent.width
+            spacing: 6
+
+            Repeater {
+                model: root.vm ? root.vm.tags : []
+                TagChip {
+                    required property var modelData
+                    compact: true
+                    text: modelData.name
+                    removable: true
+                    removeAlwaysVisible: true
+                    onRemoveRequested: root.vm.removeTag(modelData.id)
+                }
+            }
+            T.AbstractButton {
+                id: tagAddBtn
+                objectName: "recorderTagAdd"
+                visible: !tagRow.adding
+                implicitWidth: tagAddRow.implicitWidth + 12
+                implicitHeight: 22
+                hoverEnabled: true
+                focusPolicy: Qt.TabFocus
+                Accessible.name: qsTr("Címke hozzáadása")
+                onClicked: root.vm.openTagInput()
+                Keys.onReturnPressed: click()
+                Keys.onEnterPressed: click()
+                contentItem: Item {
+                    Row {
+                        id: tagAddRow
+                        x: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 5
+                        TIcon { name: "plus"; size: 13; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+                        TLabel {
+                            text: qsTr("Címke")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: Theme.weightMedium
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        TLabel {
+                            leftPadding: 3
+                            text: "Ctrl+T"
+                            mono: true; muted: true
+                            font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
+                background: Rectangle {
+                    radius: Theme.radiusTag
+                    color: Theme.stateLayer
+                    opacity: tagAddBtn.down ? Theme.pressedOpacity : tagAddBtn.hovered ? Theme.hoverOpacity : 0
+                    TFocusRing { visible: tagAddBtn.visualFocus; targetRadius: Theme.radiusTag }
+                }
+            }
+            TagInput {
+                id: tagInput
+                objectName: "recorderTagInput"
+                visible: tagRow.adding
+                compact: true
+                width: 150
+                height: 22
+                model: tagInputModel
+                placeholderText: qsTr("Címke…")
+                onTagChosen: (name, isNew) => { root.vm.addTag(name); root.endTagInput() }
+                onBackspaceOnEmpty: {
+                    const t = root.vm ? root.vm.tags : []
+                    if (t.length > 0) root.vm.removeTag(t[t.length - 1].id)
+                }
+                onClosed: root.endTagInput()
+            }
+            Connections {
+                target: tagInput.field
+                // Máshová kattintva (üres mezővel) a gomb tér vissza.
+                function onActiveFocusChanged() {
+                    if (!tagInput.field.activeFocus && tagRow.adding && tagInput.text === "") root.endTagInput()
+                }
             }
         }
 

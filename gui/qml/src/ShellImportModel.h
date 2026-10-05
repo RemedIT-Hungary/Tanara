@@ -11,6 +11,8 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QStringList>
+#include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
@@ -51,6 +53,15 @@ class ShellImportModel : public QObject {
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString errorDetail READ errorDetail NOTIFY errorChanged)
 
+    // Címkék (C07): az importált megbeszélésre kerülnek, ha elkészült. [{ id, name }]
+    Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
+    Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
+    // Javaslatok a cím alapján (AppController::draftTagSuggestions; a cím változásakor
+    // késleltetve újraszámolva): [{ id, name, isNew, source, reason }]; a reason egy rövid
+    // indok („hasonló cím: „Fókuszcsoport 2””). A felrakott és az elvetett nem szerepel.
+    Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
+    Q_PROPERTY(QString suggestionReason READ suggestionReason NOTIFY suggestionsChanged)
+
     // Képernyőképhez (controller nélkül): "files" | "split" | "probing" | "progress" | "error".
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
 
@@ -88,6 +99,19 @@ public:
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
 
+    QVariantList tags() const;
+    QStringList tagIds() const;
+    QVariantList suggestions() const;
+    QString suggestionReason() const;
+    // Címke név szerint (a készletben szükség szerint létrejön). false: üres / már rajta van.
+    Q_INVOKABLE bool addTag(const QString& name);
+    Q_INVOKABLE void removeTag(const QString& id);
+    Q_INVOKABLE void acceptSuggestion(int index);
+    // Az ablakban nem kéri többé (a megbeszélés még nem létezik: nincs mit elutasítani).
+    Q_INVOKABLE void dismissSuggestion(int index);
+    // A javaslatok azonnali újraszámolása (a cím-változás késleltetése nélkül; tesztekhez).
+    Q_INVOKABLE void refreshSuggestions();
+
     // Fájlok hozzáadása (helyi utak vagy file:// URL-ek — a húzd-és-ejtsd ezt adja); a már
     // listán lévők és a mappák kimaradnak. Visszaadja, hány került fel.
     Q_INVOKABLE int addFiles(const QVariantList& pathsOrUrls);
@@ -110,6 +134,8 @@ signals:
     void runChanged();
     void errorChanged();
     void demoStateChanged();
+    void tagsChanged();
+    void suggestionsChanged();
     // Az importálás elkészült: az új megbeszélés azonosítója (a kijelölést a ShellActions végzi).
     void imported(const QString& meetingId);
     void failed(const QString& message);
@@ -128,6 +154,10 @@ private:
     QVector<tanara::ImportPlannedTrack> plan() const;
     void setError(const QString& message, const QString& detail = QString());
     void loadDemo();
+    void applyTags(const QString& meetingId, const QStringList& ids);
+
+    struct TagRef { QString id, name; };
+    struct Suggestion { QString id, name, source, reason; bool isNew = false; };
 
     QPointer<tanara::AppController> m_controller;
     QPointer<tanara::AppController> m_attached;
@@ -150,6 +180,12 @@ private:
     QString m_error;
     QString m_errorDetail;
     QString m_demoState;
+
+    QVector<TagRef> m_tags;
+    QStringList m_runningTagIds;         // az induláskor kiválasztott címkék (a végén kerülnek fel)
+    QVector<Suggestion> m_suggestions;
+    QStringList m_dismissed;             // elvetett javaslatok (kis betűs név)
+    QTimer m_suggestTimer;
 };
 
 } // namespace tanara_qml

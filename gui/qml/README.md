@@ -217,6 +217,14 @@ the meeting-to-be. QA scripts reach it through `window.importModel` / `window.im
 (`addFiles([...])`, `setSplit(row, on)`, `ownTrack`, `start()`, `cancel()`) — the native file
 picker is only opened by `openImport()` without arguments, so pass the paths.
 
+Tags (C07, T09): a "Címkék" `TagField` under Cím / Mikor készült plus a suggestion line
+("Javasolt: [+ chip] hasonló cím: „…”"). `ShellImportModel.addTag(name)` creates the tag in the
+set right away (`TagService::create`); `suggestions` come from
+`AppController::draftTagSuggestions(title)`, recomputed 300 ms after the title changes;
+`acceptSuggestion(i)` / `dismissSuggestion(i)` (the meeting does not exist yet, so a dismissal
+only lasts for this dialog). When `importFinished` arrives the chosen ids go onto the new
+meeting (`TagService::setTags`).
+
 Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (file
 pickers, all Tanara Cloud dialogs and chrome; it owns the `PeopleWindowHost` and the `SettingsWindowHost` and re-evaluates
 readiness, the recorder's device policy and the cloud chrome when Settings saves); `ShellRecorderHost` is the only
@@ -355,12 +363,13 @@ not drawn.
 | Piece | Role |
 |---|---|
 | `SettingsWindow.qml` | the window: navigation, scrolling content, footer (dirty indicator, Mégse / Mentés), the unsaved-changes / reset / logout / output-format dialogs |
-| `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 |
+| `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsProviderFields`, `SettingsEmbeddingCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 (+ C09) |
 | `SettingsSegmented`, `SettingsRadio`, `SettingsSwitchRow`, `SettingsStepper`, `SettingsCombo`, `SettingsTextField`, `SettingsNavItem`, `SettingsStatusPill` | the window's controls (the device rows reuse the recorder's `RecorderSwitch`, `VuMeter`, `RecorderGroupHeader`, `RecorderDefaultPill`) |
 | `SettingsViewModel` | the draft: a copy of `AppSettings` + secrets + default sources + theme. Pages write the draft; `save()` applies **only the difference** onto the core's current settings (so nothing this window does not show, or that changed meanwhile, is lost), `discard()` drops it. `dirty` / `changeCount` / `footerText`, `errors`, `servicesWarn`, `openPage(page, focusField)` |
 | `SettingsDeviceModel` (`vm.devices`) | B02 device rows: switch = default source, rename, live level (`AppController::retainLevelMonitoring`, only while the page is visible) |
 | `SettingsProviderModel` (`vm.stt`, `vm.llm`) | a provider card rendered from the provider registry (`ProviderDescriptor.fields`); "Kapcsolat tesztelése" and "Lekérés" through `tanara::ConnectionTester` with the *draft* address and key |
 | `SettingsCloudModel` (`vm.cloud`) | Tanara Cloud account panel (everything from `CloudAccount`) and the waitlist offer |
+| `SettingsEmbeddingModel` (`vm.embedding`) | C09 "Beágyazás" card: mode Nincs (alap) / Helyi végpont / Tanara Cloud in the draft (`embeddingProviderId` / `embeddingConfigs`), the local endpoint's fields and test via `card` (a `SettingsProviderModel` of kind `embedding`), KÖNYVTÁR ELŐKÉSZÍTÉSE from `EmbeddingPreparer` (running / error / done, Megszakítás / Folytatás / Újraelőkészítés), the model-change warning before saving (`restartPending`), the CÍMKEJAVASLATOK switches and the rejected-suggestion reset (immediate, confirmed) |
 | `SettingsPromptHighlighter` | `QSyntaxHighlighter` on the prompt editor's document (`{{VÁLTOZÓ}}`) |
 | `SettingsWindowHost` | C++ host with its own engine: `open(page, focusField)`, `saved()`, `themeModeSaved()`, `returnRequested()`, `closed()` |
 | `SettingsDialogs` | what the window needs from the desktop / Widgets (folder picker, open folder / URL, People, cloud login / top-up / Expert model / terms); implemented by `gui/src/SettingsWidgetsDialogs`, faked in tests |
@@ -378,6 +387,12 @@ Behaviour worth knowing:
 - **Deep link (B04).** `openSettings("providers", "stt" | "llm")` shows the info banner and
   highlights the card; after a save that makes the step runnable the window closes and the main
   window comes forward (`returnRequested`).
+- **Collapsed roles (C09).** A configured role (Átírás, Összefoglaló) is a one-line card
+  (title · provider · status pill); the header click expands it (`SettingsProviderModel.expanded`).
+  The deep-link card and a card whose test failed are always expanded.
+- **Embedding model change (C09).** Changing the embedding model shows a warning before saving,
+  the footer says "Modellváltás · mentéskor újraindul az előkészítés" and the button "Mentés és
+  újraindítás"; the core restarts the preparation itself on `settingsChanged`.
 - **Device names.** A rename is stored in `AppSettings::deviceNames` (raw OS name → name) and
   resolved in one place, `tanara::devicenames` (`core/include/tanara/audio/TrackCatalog.h`); the
   recorder, the Tracks tab and the watcher's notification follow on `settingsChanged`.
@@ -393,7 +408,8 @@ build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --q
 ```
 
 `demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
-`logout` · `reset`.
+`logout` · `reset` · C09: `B04embedding` (local, idle) · `B04embeddingRunning` (T14) · `B04embeddingError` ·
+`B04embeddingDone` · `B04embeddingCloud` (T16) · `B04embeddingNone` · `B04modelChange` (T15) · `rejectedReset`.
 
 ## People window (`People*.qml`, `src/People*`)
 
@@ -466,9 +482,9 @@ Spec: `design/handoff-recorder/README.md` (states R01–R11).
 | `RecorderView.qml` | the whole recorder as an **item** (title bar, title field, start / status + stop, source lines, device list, R06 box, R07 sheet, R09, R10); 380 px wide, height follows content |
 | `RecorderPill.qml` | pill mode (R05) |
 | `RecorderWindow.qml` | frameless always-on-top `Window` hosting the two; created by the host |
-| `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`) |
+| `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`, `R03typing` = T08c) |
 | `VuMeter.qml`, `RecorderSwitch.qml`, `RecorderButton.qml` | 14-segment meter with peak hold, 30×18 switch with lock, the recorder's buttons |
-| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)`; without a controller it serves fictional data (`demoState`) |
+| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)`; tags (C06): `tags`, `addTag(name)`, `removeTag(id)`, `openTagInput()` (Ctrl+T) — handed to the core with `AppController::setRecordingTags` (the meeting only exists when the recording ends); without a controller it serves fictional data (`demoState`) |
 | `RecorderWindowHost` | C++ host: shows the window, executes `--record` requests, remembers position, snaps the pill, hide-to-tray, `recording.lock` |
 
 ### Recorder in the main window

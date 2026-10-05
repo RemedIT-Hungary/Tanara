@@ -15,6 +15,8 @@ import QtQuick.Templates as T
 // is betölthető képernyőképhez:
 //   tanara --qml-shot ki.png --qml-page SettingsWindow --size 900x680 --qml-prop 'demoState="B03"'
 // demoState: B01 … B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
+// · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
+// · B04embeddingNone · B04modelChange (C09, T14–T16) · rejectedReset (megerősítés)
 ApplicationWindow {
     id: window
 
@@ -48,7 +50,7 @@ ApplicationWindow {
         } else if (demoState !== "") {
             // Képernyőkép / demó: a segéd-állapotok (felugrók) egy lapot is kijelölnek.
             const base = demoState === "addApp" ? "B03" : demoState === "logout" ? "B06"
-                       : demoState === "reset" ? "B07" : demoState
+                       : demoState === "reset" ? "B07" : demoState === "rejectedReset" ? "B04embeddingDone" : demoState
             model.demoState = base
             Qt.callLater(window.applyDemoOverlay)
         }
@@ -60,6 +62,7 @@ ApplicationWindow {
         case "schema": schemaDialog.open(); break
         case "logout": logoutDialog.open(); break
         case "reset": resetDialog.open(); break
+        case "rejectedReset": rejectedDialog.open(); break
         }
     }
 
@@ -87,6 +90,7 @@ ApplicationWindow {
             window.closeConfirmed = false
             // Rejtett ablakban ne maradjon nyitva kérdés (újranyitáskor tiszta lappal indul).
             unsavedDialog.close(); resetDialog.close(); logoutDialog.close(); schemaDialog.close()
+            rejectedDialog.close()
         }
     }
     Binding { target: model; property: "monitoring"; value: window.visible && model.page === "recording" }
@@ -206,6 +210,7 @@ ApplicationWindow {
                         vm: model
                         demoDropdown: window.demoState === "B04"
                         onLogoutRequested: logoutDialog.open()
+                        onRejectedResetRequested: rejectedDialog.open()
                     }
                     SettingsSummaryPage {
                         id: summary
@@ -251,7 +256,8 @@ ApplicationWindow {
                 }
                 TButton {
                     objectName: "saveButton"
-                    text: qsTr("Mentés")
+                    // C09: modellváltáskor a gomb is megmondja, mi történik mentéskor.
+                    text: model.embedding.restartPending && model.dirty ? qsTr("Mentés és újraindítás") : qsTr("Mentés")
                     variant: "primary"
                     enabled: model.dirty
                     leftPadding: 16; rightPadding: 16
@@ -311,6 +317,26 @@ ApplicationWindow {
                 text: qsTr("Visszaállítás")
                 variant: "danger"
                 onClicked: { resetDialog.accept(); model.resetPrompt() }
+            }
+        ]
+    }
+
+    TDialog {
+        id: rejectedDialog
+        title: qsTr("Visszaállítod az elutasított javaslatokat?")
+        TLabel {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            cssLineHeight: 1.45
+            text: qsTr("%n elutasított javaslatot újra felajánlhatunk a megbeszéléseknél. A felrakott címkékhez nem nyúlunk. A változás azonnal érvényes.", "",
+                       Math.max(1, model.embedding.rejectedCount))
+        }
+        actions: [
+            TButton { text: qsTr("Mégse"); onClicked: rejectedDialog.reject() },
+            TButton {
+                text: qsTr("Visszaállítás")
+                variant: "primary"
+                onClicked: { rejectedDialog.accept(); model.embedding.clearRejected() }
             }
         ]
     }

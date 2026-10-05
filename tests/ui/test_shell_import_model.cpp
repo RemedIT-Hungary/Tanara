@@ -2,12 +2,17 @@
 // nélkül, dátum-értelmezés, majd izolált TANARA_HOME-on valódi ffmpeg-gel: fájlok
 // hozzáadása (útvonal / file:// URL, ismétlődés és nem-hang fájl), bontás, saját sáv,
 // indítás → kész megbeszélés, és megszakítás (az űrlap megmarad, meeting nem keletkezik).
+// C07: címkék az ablakban (a készletbe kerülnek), cím alapú javaslatok, és a kész
+// megbeszélésre felrakva.
 #include "ShellActions.h"
 #include "ShellImportModel.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
+
+#include "../unit/tags_fixture.h"
 
 #include <QProcess>
 #include <QSignalSpy>
@@ -86,7 +91,20 @@ private slots:
         QVERIFY(model.dateValid());
         QVERIFY(model.files().at(2).toMap().value("video").toBool());
 
+        // T09: kitalált címke + javaslat; demóban a készlet nélkül is kezelhető.
+        QCOMPARE(model.tags().size(), 1);
+        QCOMPARE(model.suggestions().size(), 1);
+        QVERIFY(model.suggestionReason().startsWith(QStringLiteral("hasonló cím")));
+        model.acceptSuggestion(0);
+        QCOMPARE(model.tags().size(), 2);
+        QVERIFY(model.suggestions().isEmpty());
+        QVERIFY(model.addTag(QStringLiteral("Nordvik")));
+        QCOMPARE(model.tagIds().last(), QStringLiteral("t-nordvik"));
+        model.removeTag(QStringLiteral("t-nordvik"));
+        QCOMPARE(model.tags().size(), 2);
+
         model.setDemoState(QStringLiteral("split"));
+        QVERIFY(model.tags().isEmpty());
         QCOMPARE(model.trackNames(), QStringList({"Bal csatorna", "Jobb csatorna"}));
         QCOMPARE(model.ownTrack(), 0);
 
@@ -156,6 +174,10 @@ private slots:
         model.setDateText(QStringLiteral("2025-06-10 08:45"));
         QVERIFY(model.canStart());
 
+        QVERIFY(model.addTag(QStringLiteral("Kutatás")));
+        const QString kutatas = model.tagIds().first();
+        QVERIFY(m_app->tags()->tag(kutatas).isValid());          // a készletbe már bekerült
+
         QVERIFY(model.start());
         QVERIFY(model.running());
         QVERIFY(!model.canStart());
@@ -172,9 +194,59 @@ private slots:
         QCOMPARE(m.tracks[0].kind, tanara::TrackKind::Other);
         QCOMPARE(m.tracks[1].kind, tanara::TrackKind::Mic);
         QVERIFY(!m.hasTranscript);
+        // Az ablakban választott címke a kész megbeszélésen; az űrlap címkéi kiürültek.
+        QCOMPARE(m_app->tags()->tagsOf(id), QStringList{kutatas});
+        QCOMPARE(m.tagIds, QStringList{kutatas});
+        QVERIFY(model.tags().isEmpty());
         // A héj kijelölte az új megbeszélést (az átirat előtti nézettel).
         QCOMPARE(shell.currentMeetingId(), id);
         QCOMPARE(shell.currentTab(), 0);
+    }
+
+    // Cím alapú javaslatok (késleltetve újraszámolva), elfogadás, elvetés.
+    void draftSuggestionsFollowTheTitle()
+    {
+        m_app = std::make_unique<tanara::AppController>();
+        const tagsfixture::Library lib = tagsfixture::buildLibrary(*m_app->store());
+        tanara::TagService* svc = m_app->tags();
+        const tanara::Tag nordvik = svc->addTag(lib.nordvik1, QStringLiteral("Nordvik"));
+        svc->addTag(lib.nordvik2, QStringLiteral("Nordvik"));
+
+        ShellImportModel model;
+        model.setController(m_app.get());
+        QSignalSpy changed(&model, &ShellImportModel::suggestionsChanged);
+        model.setTitle(QStringLiteral("Nordvik heti egyeztetés"));
+        QVERIFY(model.suggestions().isEmpty());                   // késleltetve számol
+        // A profilok háttérszálon készülnek: addig újrakérjük.
+        QTRY_VERIFY_WITH_TIMEOUT((model.refreshSuggestions(), !model.suggestions().isEmpty()), 10000);
+        QVERIFY(changed.count() >= 1);
+        const QVariantMap first = model.suggestions().first().toMap();
+        QCOMPARE(first.value("id").toString(), nordvik.id);
+        QCOMPARE(first.value("name").toString(), QStringLiteral("Nordvik"));
+        QVERIFY(!model.suggestionReason().isEmpty());
+
+        // Elfogadás → a címkék közé kerül, a javaslatból kiesik (újraszámolva sem jön vissza).
+        model.acceptSuggestion(0);
+        QCOMPARE(model.tagIds(), QStringList{nordvik.id});
+        model.refreshSuggestions();
+        for (const QVariant& v : model.suggestions())
+            QVERIFY(v.toMap().value("id").toString() != nordvik.id);
+
+        // Elvetés: ebben az ablakban nem jön vissza.
+        model.removeTag(nordvik.id);
+        model.refreshSuggestions();
+        QVERIFY(!model.suggestions().isEmpty());
+        model.dismissSuggestion(0);
+        model.refreshSuggestions();
+        for (const QVariant& v : model.suggestions())
+            QVERIFY(v.toMap().value("id").toString() != nordvik.id);
+
+        // A cím változása (késleltetve) újraszámol; üres címre nincs javaslat.
+        model.reset();
+        QVERIFY(model.suggestions().isEmpty());
+        model.setTitle(QStringLiteral("Teams-hívás"));
+        QTest::qWait(450);
+        QVERIFY(model.suggestions().isEmpty());
     }
 
     void cancelKeepsTheForm()
