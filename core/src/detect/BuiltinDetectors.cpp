@@ -6,6 +6,9 @@
 #if defined(Q_OS_LINUX)
 #include "tanara/detect/LinuxCaptureDetector.h"
 #endif
+#if defined(Q_OS_WIN)
+#include "tanara/detect/WindowsCaptureDetector.h"
+#endif
 
 namespace tanara {
 
@@ -18,6 +21,18 @@ DetectorDescriptor linuxCaptureDescriptor()
     d.id             = QStringLiteral("linux-capture");
     d.displayName    = QStringLiteral("Linux — mikrofon-capture (PipeWire)");
     d.platform       = QStringLiteral("linux");
+    d.derivesAppName = true;
+    return d;
+}
+#endif
+
+#if defined(Q_OS_WIN)
+DetectorDescriptor windowsWasapiDescriptor()
+{
+    DetectorDescriptor d;
+    d.id             = QStringLiteral("windows-wasapi");
+    d.displayName    = QStringLiteral("Windows — mikrofon-session (WASAPI)");
+    d.platform       = QStringLiteral("windows");
     d.derivesAppName = true;
     return d;
 }
@@ -38,7 +53,12 @@ void registerBuiltinDetectors()
         linuxCaptureDescriptor(),
         []() -> IMeetingDetector* { return new LinuxCaptureDetector(); });
 #endif
-    // Windows (WASAPI) és macOS (CoreAudio) detektorok: Fázis 5.
+#if defined(Q_OS_WIN)
+    MeetingDetectorRegistry::instance().registerDetector(
+        windowsWasapiDescriptor(),
+        []() -> IMeetingDetector* { return new WindowsCaptureDetector(); });
+#endif
+    // macOS (CoreAudio) detektor: későbbi kör.
 }
 
 } // namespace tanara
