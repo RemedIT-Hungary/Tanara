@@ -11,6 +11,7 @@
 #include "tanara/jobs/JobTypes.h"
 #include "tanara/summary/SummaryStore.h"
 #include "tanara/import/AudioImporter.h"
+#include "tanara/tags/TagTypes.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -30,6 +31,10 @@ class TrackCatalog;
 class WaveformService;
 class PeopleService;
 class PeopleStats;
+class TagService;
+class MeetingProfiles;
+class EmbeddingIndex;
+class EmbeddingPreparer;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -114,6 +119,23 @@ public:
     PeopleStats*   peopleStats() const;
     // A hang-modell (CAM++ ONNX) várt helye; a megléte: voiceIdentificationAvailable().
     QString voiceModelPath() const;
+
+    // ---- címkék és címkejavaslatok -------------------------------------------------------
+    // A készlet és a meetingenkénti címkék (tags/TagService.h); a klasszikus hasonlóság
+    // (tags/MeetingProfiles.h); a beágyazások és a könyvtár előkészítése (embedding/).
+    TagService*        tags() const;
+    MeetingProfiles*   profiles() const;
+    EmbeddingIndex*    embeddings() const;
+    EmbeddingPreparer* embeddingPreparer() const;
+    // A meeting utolsó javaslat-listája (bármelyik forrásból; a már felrakott és az elutasított
+    // kiszűrve) — a később csatlakozó nézetmodellnek.
+    QVector<tanara::TagSuggestion> pendingTagSuggestions(const QString& meetingId) const;
+    // Javaslat még nem létező megbeszéléshez (import-ablak, felvétel előtt): cím alapján. Szinkron.
+    QVector<tanara::TagSuggestion> draftTagSuggestions(const QString& title) const;
+    // Felvétel KÖZBEN megadott címkék (a meeting még nincs a tárban): a felvétel végén a
+    // meetingre kerülnek. Felvételen kívül hatástalan; a következő felvétel üresen indul.
+    void setRecordingTags(const QStringList& tagIds);
+    QStringList recordingTags() const;
 
     // Ismert személynevek (globális, meetingek közt újrahasznált) — autocomplete-hez.
     QStringList knownPeople() const;
@@ -339,6 +361,21 @@ public slots:
     // "mixdown"). Eredmény: waveforms()->peaksReady / peaksFailed.
     void requestWaveforms(const QString& meetingId);
 
+    // ---- címkejavaslatok (aszinkron; jelek: tagSuggestionsComputing → tagSuggestionsReady) ----
+    // Hasonló megbeszélésekből (+ beágyazással, ha van). A meeting megjelenítésekor / új
+    // átiratnál hívandó; meetingenként gyorsítótárazott, amíg a címkék, az átirat vagy az
+    // index nem változik. Kikapcsolt javaslatoknál üres listát ad.
+    void requestTagSuggestions(const QString& meetingId);
+    // Egy címke felrakása után az együtt járók (source = Cooccur). Ha nincs ilyen, nem jön jel
+    // (a korábbi javaslatok maradnak, a felrakott címke nélkül).
+    void requestCooccurSuggestions(const QString& meetingId, const QString& tagId);
+    // A nyelvi modell javaslata az összefoglalóból (source = Llm; új név-ötletek isNew-val).
+    // Az összefoglaló elkészülte után magától fut, ha a llmTagSuggestions beállítás be van kapcsolva.
+    void requestLlmTagSuggestions(const QString& meetingId);
+    // A beágyazó provider beállítása (a settings.json-ba is). Modellváltás → az index
+    // eldobása és az előkészítés újraindítása. Üres id → nincs beágyazás (alap szint).
+    void setEmbeddingProvider(const QString& providerId, const tanara::ProviderConfig& config);
+
     // Titok (pl. Soniox API-kulcs) beállítása a KeyStore-ban. name pl. "soniox.apiKey".
     void setSecret(const QString& name, const QString& value);
     bool hasSecret(const QString& name) const;
@@ -408,6 +445,11 @@ signals:
     void cloudError(QString meetingId, QString kind, tanara::CloudError error,
                     tanara::Money chargedSoFar);
 
+    // Címkejavaslatok: a számolás elindult / kész (a lista lehet üres). A Ready mindig a
+    // Computing után jön, de ugyanabban az eseményhurok-körben is jöhet.
+    void tagSuggestionsComputing(QString meetingId);
+    void tagSuggestionsReady(QString meetingId, QVector<tanara::TagSuggestion> suggestions);
+
     void jobProgress(QString meetingId, QString message);   // átírás/összefoglaló állapot
     void errorOccurred(QString message);
 
@@ -449,6 +491,10 @@ private:
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
     // Az átirat utáni automatikus azonosítás az átírás-feladat utolsó szakaszaként (aszinkron).
     bool startIdentify(const QString& meetingId, bool asTranscribeStage);
+    // Címkejavaslatok: a kiszámolt lista kiadása (szűrve), ill. a beágyazás beállítása.
+    void publishTagSuggestions(const QString& meetingId, QVector<tanara::TagSuggestion> list);
+    void computeTagSuggestions(const QString& meetingId);
+    void applyEmbeddingSettings(bool restart);
     // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 

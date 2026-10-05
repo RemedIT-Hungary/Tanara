@@ -5,6 +5,8 @@
 #include "tanara/stt/SonioxProvider.h"
 #include "tanara/stt/WhisperCompatProvider.h"
 #include "tanara/llm/OpenAiCompatibleProvider.h"
+#include "tanara/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/embedding/OpenAiCompatibleEmbeddingProvider.h"
 
 #include <QCoreApplication>
 #include <QObject>
@@ -173,6 +175,61 @@ ProviderDescriptor tanaraCloudDescriptor(ProviderKind kind)
     return d;
 }
 
+// --- Beágyazás: helyi / saját OpenAI-kompatibilis végpont ---
+ProviderDescriptor openAiCompatEmbeddingDescriptor()
+{
+    ProviderDescriptor d;
+    d.id          = embeddingproviders::LocalId;
+    d.displayName = QCoreApplication::translate("BuiltinProviders", "Helyi végpont");
+    d.kind        = ProviderKind::Embedding;
+    d.authMode    = AuthMode::ApiKey;
+    d.networkRequired = false;
+
+    ConfigField baseUrl;
+    baseUrl.key          = QStringLiteral("baseUrl");
+    baseUrl.label        = QCoreApplication::translate("BuiltinProviders", "Cím (URL)");
+    baseUrl.type         = ConfigFieldType::Url;
+    baseUrl.required     = true;
+    baseUrl.defaultValue = QStringLiteral("http://localhost:1234/v1");
+
+    ConfigField model;
+    model.key            = QStringLiteral("model");
+    model.label          = QCoreApplication::translate("BuiltinProviders", "Modell");
+    model.type           = ConfigFieldType::Combo;
+    model.dynamicOptions = true;
+    model.required       = true;
+    model.defaultValue   = QStringLiteral("text-embedding-bge-m3");
+    model.help           = QCoreApplication::translate("BuiltinProviders",
+        "Többnyelvű beágyazó modell (pl. bge-m3). Modellváltáskor a könyvtár előkészítése "
+        "elölről indul.");
+
+    ConfigField apiKey;
+    apiKey.key       = QStringLiteral("apiKey");
+    apiKey.label     = QCoreApplication::translate("BuiltinProviders", "API-kulcs");
+    apiKey.type      = ConfigFieldType::Secret;
+    apiKey.required  = false;
+    apiKey.isSecret  = true;
+    apiKey.secretKey = embeddingproviders::ApiKeySecret;
+    apiKey.advanced  = true;
+
+    d.fields = { baseUrl, model, apiKey };
+    d.probe = { QStringLiteral("/models"), true };
+    return d;
+}
+
+// --- Beágyazás: Tanara Cloud (a gateway /v1/embeddings útvonala) ---
+ProviderDescriptor tanaraHostedEmbeddingDescriptor()
+{
+    ProviderDescriptor d;
+    d.id              = embeddingproviders::CloudId;
+    d.displayName     = QCoreApplication::translate("BuiltinProviders", "Tanara Cloud");
+    d.kind            = ProviderKind::Embedding;
+    d.authMode        = AuthMode::Login;
+    d.loginSecretKey  = QStringLiteral("tanara.cloud.apiKey");
+    d.networkRequired = true;
+    return d;
+}
+
 } // namespace
 
 void registerCloudProviders()
@@ -218,6 +275,19 @@ void registerBuiltinProviders()
         openAiCompatDescriptor(),
         [](const ProviderConfig& c, QObject* p) -> ILlmProvider* {
             return new OpenAiCompatibleProvider(c, p);
+        });
+
+    // Beágyazás (címkejavaslatok): mindkét leíró mindig regisztrált — a Tanara Cloud változat
+    // bejelentkezés nélkül strukturált gateway-hibával áll meg (a UI kínálja a belépést).
+    EmbeddingProviderRegistry::instance().registerProvider(
+        openAiCompatEmbeddingDescriptor(),
+        [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
+            return new OpenAiCompatibleEmbeddingProvider(c, p);
+        });
+    EmbeddingProviderRegistry::instance().registerProvider(
+        tanaraHostedEmbeddingDescriptor(),
+        [](const ProviderConfig& c, QObject* p) -> IEmbeddingProvider* {
+            return new OpenAiCompatibleEmbeddingProvider(c, p);   // a gateway OpenAI-alakú
         });
 }
 

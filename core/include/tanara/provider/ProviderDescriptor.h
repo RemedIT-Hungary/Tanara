@@ -10,7 +10,8 @@
 
 namespace tanara {
 
-enum class ProviderKind { Stt, Llm };
+// Embedding: beágyazó modell a címkejavaslatokhoz (embedding/EmbeddingProviderRegistry.h).
+enum class ProviderKind { Stt, Llm, Embedding };
 enum class AuthMode { None, ApiKey, Login };          // Login = jövőbeli hosztolt „bejelentkezés"
 enum class ConfigFieldType { Text, Secret, Number, Combo, Url };
 

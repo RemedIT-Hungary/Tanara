@@ -36,6 +36,15 @@
 #include "tanara/edit/PeopleDirectory.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/tags/TagService.h"
+#include "tanara/tags/TagNames.h"
+#include "tanara/tags/MeetingProfiles.h"
+#include "tanara/tags/TagSuggester.h"
+#include "tanara/tags/LlmTagSuggester.h"
+#include "tanara/embedding/EmbeddingIndex.h"
+#include "tanara/embedding/EmbeddingPreparer.h"
+#include "tanara/embedding/EmbeddingProviderRegistry.h"
+#include "tanara/embedding/IEmbeddingProvider.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -512,6 +521,21 @@ struct AppController::Impl {
     AudioImporter*     importer = nullptr;
     std::unique_ptr<JobStats> jobStats;      // korábbi futások sebessége (becsléshez)
 
+    // ---- címkék ----
+    TagService*        tags = nullptr;
+    MeetingProfiles*   profiles = nullptr;
+    EmbeddingIndex*    embeddings = nullptr;
+    EmbeddingPreparer* embeddingPreparer = nullptr;
+    LlmTagSuggester*   llmTags = nullptr;
+    QString            llmTagsMeetingId;         // a futó LLM-javaslat meetingje
+    QPointer<QObject>  llmTagsProvider;
+    CloudRunPtr        llmTagsRun;
+    QHash<QString, QVector<TagSuggestion>> similarCache;    // meetingId → a hasonlóság-alapú lista
+    QHash<QString, QVector<TagSuggestion>> pendingTags;     // meetingId → az utoljára kiadott lista
+    QSet<QString>      tagRequests;              // a profilok elkészültére váró kérések
+    QString            embeddingKey;             // provider|baseUrl|model — a modellváltás felismeréséhez
+    QStringList        recordingTagIds;          // a felvétel közben megadott címkék
+
     // Futó átírás: megszakításhoz a job / a lekeverés-lánc kapcsolata.
     struct TranscribeRun {
         QPointer<SttJob> job;
@@ -888,6 +912,74 @@ AppController::AppController(QObject* parent)
     connect(d->store, &MeetingStore::meetingUpdated, d->peopleStats, &PeopleStats::scheduleRefresh);
     connect(d->store, &MeetingStore::meetingRemoved, d->peopleStats, &PeopleStats::scheduleRefresh);
 
+    // Címkék: készlet + meetingenkénti címkék, klasszikus hasonlóság (háttérszálon épülő
+    // profilok), beágyazások és a könyvtár előkészítése, LLM-javaslat az összefoglaló után.
+    d->tags = new TagService(d->store, QDir(d->metaDir).filePath(QStringLiteral("tags.json")), this);
+    d->profiles = new MeetingProfiles(d->store, this);
+    d->tags->setProfiles(d->profiles);
+    d->library->setTagService(d->tags);
+    d->embeddings = new EmbeddingIndex(d->store, this);
+    d->embeddings->setProfiles(d->profiles);
+    d->embeddingPreparer = new EmbeddingPreparer(
+        d->store, d->embeddings, QDir(d->metaDir).filePath(QStringLiteral("embedding-state.json")), this);
+    d->llmTags = new LlmTagSuggester(d->tags, this);
+    connect(d->profiles, &MeetingProfiles::idle, this, [this]() {
+        const QSet<QString> waiting = d->tagRequests;
+        d->tagRequests.clear();
+        for (const QString& id : waiting) computeTagSuggestions(id);
+    });
+    // A hasonlóság-alapú lista addig érvényes, amíg a címkék, az átiratok és az index nem változnak.
+    auto dropTagCache = [this]() { d->similarCache.clear(); };
+    connect(d->tags, &TagService::tagsChanged, this, dropTagCache);
+    connect(d->embeddings, &EmbeddingIndex::indexChanged, this, dropTagCache);
+    connect(d->embeddings, &EmbeddingIndex::indexReset, this, dropTagCache);
+    // Felrakott / elutasított javaslat: a kiadott lista szűrve újra kimegy (újraszámolás nélkül).
+    connect(d->tags, &TagService::meetingTagsChanged, this, [this](const QString& id) {
+        d->similarCache.clear();
+        if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
+    });
+    connect(d->tags, &TagService::rejectedChanged, this, [this]() {
+        d->similarCache.clear();
+        const QStringList ids = d->pendingTags.keys();
+        for (const QString& id : ids) {
+            const QVector<TagSuggestion> before = d->pendingTags.value(id);
+            publishTagSuggestions(id, before);
+        }
+    });
+    connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
+        d->similarCache.clear();
+        d->profiles->invalidate(meetingId);
+        d->embeddingPreparer->enqueue(meetingId);   // csak ha van beágyazó provider
+    });
+    connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
+        // Csak ha már van címkekészlet: üres készletnél a felhasználó még nem címkéz, egy
+        // minden összefoglaló utáni modell-hívás (új név-ötletekkel) tolakodó és fölösleges.
+        const AppSettings st = d->settings->settings();
+        if (st.tagSuggestions && st.llmTagSuggestions && !d->tags->all().isEmpty())
+            requestLlmTagSuggestions(meetingId);
+    });
+    connect(d->llmTags, &LlmTagSuggester::finished, this,
+            [this](const QString& meetingId, const QVector<TagSuggestion>& list) {
+        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
+        d->llmTagsProvider = nullptr;
+        finishCloudRun(d->llmTagsRun);
+        d->llmTagsRun.reset();
+        d->llmTagsMeetingId.clear();
+        // Üres LLM-válasz: a korábbi javaslatok maradnak.
+        publishTagSuggestions(meetingId, list.isEmpty() ? d->pendingTags.value(meetingId) : list);
+    });
+    connect(d->llmTags, &LlmTagSuggester::failed, this, [this](const QString& meetingId, const QString& error) {
+        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
+        d->llmTagsProvider = nullptr;
+        d->llmTagsRun.reset();
+        d->llmTagsMeetingId.clear();
+        // A javaslat nem akadály: hibánál nincs felugró üzenet, csak napló; a korábbi lista marad.
+        qWarning().noquote() << "[tags] LLM-javaslat sikertelen:" << meetingId << error;
+        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
+    });
+    connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyEmbeddingSettings(true); });
+    applyEmbeddingSettings(false);
+
     // Átirat-szerkesztő: az új összefoglaló törli az elavult-jelzőt; az új átirat eldobja a
     // kézi sor-javításokat (a megszólalások határai megváltoztak).
     connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
@@ -928,6 +1020,10 @@ MeetingStore*    AppController::store()     const { return d->store; }
 VoiceprintStore* AppController::voiceprints() const { return d->voiceprints.get(); }
 PeopleService*   AppController::peopleService() const { return d->peopleService; }
 PeopleStats*     AppController::peopleStats() const { return d->peopleStats; }
+TagService*        AppController::tags() const { return d->tags; }
+MeetingProfiles*   AppController::profiles() const { return d->profiles; }
+EmbeddingIndex*    AppController::embeddings() const { return d->embeddings; }
+EmbeddingPreparer* AppController::embeddingPreparer() const { return d->embeddingPreparer; }
 QString          AppController::voiceModelPath() const { return d->voiceModelPath; }
 RecordingState   AppController::recordingState() const { return d->state; }
 QString AppController::currentMeetingFolder() const { return d->currentFolder; }
@@ -1668,6 +1764,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     for (const auto& dvc : use) usedNames << dvc.name;
     setLastUsedDeviceNames(usedNames);
 
+    d->recordingTagIds.clear();   // az előző felvétel címkéi nem öröklődnek
     const AppSettings s = d->settings->settings();
     auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName,
                                       opusBitrateKbps(s.audioQuality), this);
@@ -1752,6 +1849,10 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     connect(sess, &RecordingSession::finished, this, [this](Meeting m) {
         stopCallEndMonitor();
         d->currentFolder = m.folder;
+        // A felvétel közben megadott címkék (a meeting csak most kerül a tárba).
+        for (const QString& id : std::as_const(d->recordingTagIds))
+            if (d->tags->tag(id).isValid() && !m.tagIds.contains(id)) m.tagIds << id;
+        d->recordingTagIds.clear();
         d->store->saveMeeting(m);
         if (d->session) { d->session->deleteLater(); d->session = nullptr; }
         d->state = RecordingState::Idle;
@@ -3172,6 +3273,172 @@ QString AppController::importAudio(const ImportRequest& request)
 MeetingProcessingState AppController::processingState(const QString& meetingId) const
 {
     return d->jobs->state(meetingId);
+}
+
+// ---- címkék és címkejavaslatok ------------------------------------------------------------
+
+void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagSuggestion> list)
+{
+    // A már felrakott és az elutasított javaslat kimarad (az LLM új név-ötlete is, ha közben
+    // ilyen nevű címke került a meetingre).
+    const QStringList applied = d->tags->tagsOf(meetingId);
+    QStringList appliedKeys;
+    for (const QString& id : applied) appliedKeys << tagKey(d->tags->tag(id).name);
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const TagSuggestion& sg) {
+        if (sg.isNew) return appliedKeys.contains(tagKey(sg.name)) || d->tags->isRejected(meetingId, sg.name);
+        return applied.contains(sg.tagId) || !d->tags->tag(sg.tagId).isValid()
+            || d->tags->isRejected(meetingId, sg.tagId);
+    }), list.end());
+    d->pendingTags.insert(meetingId, list);
+    emit tagSuggestionsReady(meetingId, list);
+}
+
+void AppController::computeTagSuggestions(const QString& meetingId)
+{
+    auto it = d->similarCache.constFind(meetingId);
+    if (it == d->similarCache.constEnd()) {
+        const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
+        it = d->similarCache.insert(meetingId, suggester.suggest(meetingId));
+    }
+    publishTagSuggestions(meetingId, *it);
+}
+
+void AppController::requestTagSuggestions(const QString& meetingId)
+{
+    if (meetingId.isEmpty()) return;
+    emit tagSuggestionsComputing(meetingId);
+    if (!d->settings->settings().tagSuggestions) {
+        publishTagSuggestions(meetingId, {});
+        return;
+    }
+    if (d->similarCache.contains(meetingId)) {
+        computeTagSuggestions(meetingId);
+        return;
+    }
+    // A profilok (átirat-kifejezések) háttérszálon épülnek; ha van teendő, a végén számolunk.
+    d->profiles->ensureBuilt();
+    if (d->profiles->isIdle()) computeTagSuggestions(meetingId);
+    else d->tagRequests.insert(meetingId);
+}
+
+void AppController::requestCooccurSuggestions(const QString& meetingId, const QString& tagId)
+{
+    if (!d->settings->settings().tagSuggestions) return;
+    const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
+    const QVector<TagSuggestion> list = suggester.cooccur(meetingId, tagId);
+    if (list.isEmpty()) return;
+    emit tagSuggestionsComputing(meetingId);
+    publishTagSuggestions(meetingId, list);
+}
+
+void AppController::requestLlmTagSuggestions(const QString& meetingId)
+{
+    const AppSettings s = d->settings->settings();
+    if (!s.tagSuggestions) return;
+    const SummaryDocument doc = summaryDocument(meetingId);
+    if (!doc.exists || doc.markdown.trimmed().isEmpty()) return;
+    // Egyszerre egy LLM-javaslat fut (a helyi modell egy szálon dolgozik).
+    if (d->llmTags->isRunning()) {
+        const QString prev = d->llmTagsMeetingId;
+        d->llmTags->cancel();
+        if (d->llmTagsProvider) d->llmTagsProvider->deleteLater();
+        d->llmTagsProvider = nullptr;
+        d->llmTagsRun.reset();
+        if (!prev.isEmpty() && prev != meetingId) publishTagSuggestions(prev, d->pendingTags.value(prev));
+    }
+    emit tagSuggestionsComputing(meetingId);
+    const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
+    const QVector<TagSuggestion> suggested = d->similarCache.contains(meetingId)
+        ? d->similarCache.value(meetingId) : suggester.suggest(meetingId);
+    CloudRunPtr run;
+    const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"), QStringLiteral("quick"));
+    ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);
+    if (!provider) {
+        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
+        return;
+    }
+    d->llmTagsProvider = dynamic_cast<QObject*>(provider);
+    d->llmTagsRun = run;
+    d->llmTagsMeetingId = meetingId;
+    d->llmTags->start(provider, cfg.model, promptDefault(QStringLiteral("tags"), s.metadataDir),
+                      meetingId, doc.markdown, suggested);
+}
+
+QVector<TagSuggestion> AppController::pendingTagSuggestions(const QString& meetingId) const
+{
+    return d->pendingTags.value(meetingId);
+}
+
+QVector<TagSuggestion> AppController::draftTagSuggestions(const QString& title) const
+{
+    if (!d->settings->settings().tagSuggestions) return {};
+    const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
+    return suggester.suggestForDraft(title);
+}
+
+void AppController::setRecordingTags(const QStringList& tagIds)
+{
+    d->recordingTagIds.clear();
+    for (const QString& id : tagIds)
+        if (!id.isEmpty() && !d->recordingTagIds.contains(id)) d->recordingTagIds << id;
+}
+
+QStringList AppController::recordingTags() const { return d->recordingTagIds; }
+
+void AppController::setEmbeddingProvider(const QString& providerId, const ProviderConfig& config)
+{
+    AppSettings s = d->settings->settings();
+    s.embeddingProviderId = providerId;
+    if (!providerId.isEmpty()) {
+        ProviderConfig cfg = config;
+        cfg.type = providerId;
+        cfg.apiKey.clear();   // a kulcs a KeyStore-ba való (setSecret), nem a beállításokba
+        s.embeddingConfigs.insert(providerId, cfg);
+    }
+    d->settings->setSettings(s);   // settingsChanged → applyEmbeddingSettings(true)
+}
+
+void AppController::applyEmbeddingSettings(bool restart)
+{
+    const AppSettings s = d->settings->settings();
+    const QString id = EmbeddingProviderRegistry::instance().has(s.embeddingProviderId)
+        ? s.embeddingProviderId : QString();
+    ProviderConfig base = s.embeddingSelected();
+    // A Tanara Cloud változatnak nincs modell-mezője: a gateway alapmodellje.
+    const QString model = id.isEmpty() ? QString()
+        : (!base.model.trimmed().isEmpty() ? base.model.trimmed()
+                                           : (id == embeddingproviders::CloudId ? QStringLiteral("default") : QString()));
+    const QString key = id.isEmpty() || model.isEmpty()
+        ? QString() : id + QLatin1Char('|') + base.baseUrl.trimmed() + QLatin1Char('|') + model;
+    if (key == d->embeddingKey && restart) return;   // más beállítás változott
+    const QString oldModel = d->embeddingPreparer->state().model;
+    const bool hadProvider = !d->embeddingKey.isEmpty();
+    d->embeddingKey = key;
+
+    EmbeddingPreparer::ProviderFactory factory;
+    if (!key.isEmpty()) {
+        factory = [this, id](QObject* parent) -> IEmbeddingProvider* {
+            const AppSettings cur = d->settings->settings();
+            ProviderConfig cfg = cur.embeddingConfigs.value(id);
+            cfg.type = id;
+            if (id == embeddingproviders::CloudId) {
+                // Ugyanaz a bejelentkezés és fejléc-készlet, mint az LLM-útvonalon (/v1/embeddings).
+                cfg.baseUrl = d->cloud->apiBase();
+                cfg.apiKey = d->cloud->apiKey();
+                cfg.extraHeaders = d->cloud->requestHeaders(QUuid::createUuid().toString(QUuid::WithoutBraces));
+                QPointer<CloudAccount> acc = d->cloud;
+                cfg.onExchange = [acc](const HttpExchange& ex) { if (acc) acc->observeExchange(ex); };
+            } else {
+                cfg.apiKey = d->keyStore.get(embeddingproviders::ApiKeySecret);
+            }
+            return EmbeddingProviderRegistry::instance().create(id, cfg, parent);
+        };
+    }
+    // Modellváltás: a régi beágyazások nem hasonlíthatók az újakhoz → elölről.
+    if (restart && hadProvider && !key.isEmpty() && oldModel != model)
+        d->embeddings->invalidateAll();
+    d->embeddingPreparer->setProvider(key.isEmpty() ? QString() : id, model, factory);
+    if (restart && !key.isEmpty()) d->embeddingPreparer->start();
 }
 
 SummaryDocument AppController::summaryDocument(const QString& meetingId) const

@@ -176,6 +176,16 @@ const char* const kReduce = R"PROMPT(You are a precise note-taker. From the per-
 Return ONLY this paragraph and nothing else: no heading, no list, no tasks, no decisions, no JSON, no code fence, no explanation, no reasoning. Write it in {{LANGUAGE}}.
 %CONTEXT_RULE%)PROMPT";
 
+// Címkejavaslat az összefoglaló után (LlmTagSuggester). Sima sorok — a json_schema lokális
+// modellel megbízhatatlan. A címkenevek a felhasználó nyelvén maradnak (nem fordítjuk).
+const char* const kTags = R"PROMPT(You help the user tag a meeting. Tags are short free-text labels (a client, a project, a product, a recurring topic) that group related meetings. You get the summary of ONE meeting and a numbered list of the user's existing candidate tags; each candidate shows what its meetings were usually about (people, terms, example titles).
+1. Pick the candidate tags that clearly fit this meeting. Prefer fewer, certain picks over many weak ones; pick none if none fits.
+2. Only if an important, recurring subject of the meeting (a client, a project, a product) has no fitting tag yet, propose at most 2 short new tag names (1–3 words, in the language and spelling used in the meeting, no "#"). Never propose a new name that means the same as a candidate.
+OUTPUT FORMAT — exactly two lines and nothing else (no explanation, no JSON, no code fence):
+pick: <candidate numbers separated by commas, or none>
+new: <new tag names separated by semicolons, or none>
+)PROMPT";
+
 QString compose(const char* tmpl)
 {
     QString s = QString::fromUtf8(tmpl);
@@ -199,6 +209,7 @@ QString promptBuiltin(const QString& id)
     if (id == QLatin1String("topic"))    return compose(kTopic);
     if (id == QLatin1String("analysis")) return compose(kAnalysis);
     if (id == QLatin1String("reduce"))   return compose(kReduce);
+    if (id == QLatin1String("tags"))     return compose(kTags);
     return QString();
 }
 
@@ -399,6 +410,10 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "\n"
             "## Teendők\n"
             "- <a teendő szövege> — <felelős> (<határidő>)");
+    } else if (id == QLatin1String("tags")) {
+        f.kind = QStringLiteral("text");
+        f.summary = QCoreApplication::translate("PromptLibrary", "két sor: pick / new");
+        f.body = QStringLiteral("pick: 3, 7\nnew: <név 1>; <név 2>");
     } else if (id == QLatin1String("reduce")) {
         f.kind = QStringLiteral("text");
         f.summary = QCoreApplication::translate("PromptLibrary", "egy bekezdés");

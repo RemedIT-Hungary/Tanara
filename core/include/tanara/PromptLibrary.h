@@ -7,7 +7,8 @@
 //     részjegyzetek összegzése) | "single" (egy részből álló megbeszélés: jegyzet + összegzés
 //     egy hívásban; a régi "simple" azonosító ennek álneve),
 //   témánkénti elemzés: "topic" (téma-kinyerés) | "analysis" (témánkénti elemzés) |
-//     "reduce" (záró vezetői összefoglaló).
+//     "reduce" (záró vezetői összefoglaló),
+//   címkejavaslat az összefoglaló után: "tags" (LlmTagSuggester; sima „pick: / new:” sorok).
 // A beépített promptok angolok; a kimenet nyelvét a {{LANGUAGE}} (angol nyelvnév) ill. a
 // régi {{NYELV}} (a beállítás szövege) változó adja.
 //
