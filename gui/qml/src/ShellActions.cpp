@@ -159,6 +159,10 @@ void ShellActions::attachBridge()
             showMeeting(meetingId);
         activateWindow();
     });
+    connect(b, &ShellBridge::tagFilterRequested, this, [this](const QString& tagId) {
+        filterByTag(tagId);
+        activateWindow();
+    });
 }
 
 bool ShellActions::recording() const
@@ -240,10 +244,22 @@ void ShellActions::seekTo(const QString& meetingId, int ms)
     emit transcriptPositionRequested(ms);
 }
 
-void ShellActions::toast(const QString& text)
+void ShellActions::toast(const QString& text, const QString& undoKey)
 {
     if (!text.isEmpty())
-        emit toastRequested(text, QString(), QString(), false);
+        emit toastRequested(text, QString(), QString(), false, undoKey);
+}
+
+void ShellActions::undoFromToast(const QString& undoKey)
+{
+    if (!undoKey.isEmpty())
+        emit undoRequested(undoKey);
+}
+
+void ShellActions::filterByTag(const QString& tagId)
+{
+    if (!tagId.isEmpty())
+        emit tagFilterRequested(tagId);
 }
 
 // ---- Widgets-ablakok -------------------------------------------------------------------
@@ -267,6 +283,14 @@ void ShellActions::openPeople(const QString& person)
         person.trimmed().isEmpty() ? b->openPeople() : b->openPeopleAt(person.trimmed());
     else
         toast(tr("A Személyek ebben a módban nem érhetők el."));
+}
+
+void ShellActions::openTags(const QString& tagId)
+{
+    if (ShellBridge* b = bridge())
+        tagId.trimmed().isEmpty() ? b->openTags() : b->openTagsAt(tagId.trimmed());
+    else
+        toast(tr("A Címkék ebben a módban nem érhetők el."));
 }
 
 void ShellActions::openRecorder()

@@ -5,7 +5,8 @@
 // Ami Widgets-hez vagy külön ablakhoz kötött viselkedés, az itt él:
 //  - a Beállítások (QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
 //    natív mappaválasztót és a cloud Widgets-ablakait a SettingsWidgetsDialogs adja) és a
-//    Személyek ablak (QML: tanara_qml::PeopleWindowHost);
+//    Személyek ablak (QML: tanara_qml::PeopleWindowHost), a Címkék ablak (QML:
+//    tanara_qml::TagsWindowHost — a szűrő- és megbeszélés-kérései a héjhoz mennek);
 //  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
 //    át (az burkolja a QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
 //    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
@@ -31,7 +32,7 @@ struct CloudError;
 struct Money;
 }
 
-namespace tanara_qml { class SettingsWindowHost; class PeopleWindowHost; }
+namespace tanara_qml { class SettingsWindowHost; class PeopleWindowHost; class TagsWindowHost; }
 
 namespace tanara_gui {
 
@@ -62,6 +63,9 @@ public:
     // A Személyek ablaka (PeopleWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
     // A QA-szkripteknek: App.bridge.peopleWindow().
     Q_INVOKABLE QObject* peopleWindow() const;
+    // A Címkék ablaka (TagsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
+    // A QA-szkripteknek: App.bridge.tagsWindow().
+    Q_INVOKABLE QObject* tagsWindow() const;
 
     // ---- ShellBridge ----
     bool cloudChipVisible() const override { return m_chipVisible; }
@@ -74,6 +78,8 @@ public:
     void openSettingsAt(const QString& page, const QString& focusField) override;
     void openPeople() override;
     void openPeopleAt(const QString& person) override;
+    void openTags() override;
+    void openTagsAt(const QString& tagId) override;
     void openRecorder() override;
     QString pickAudioFile() override;
     QStringList pickAudioFiles() override;
@@ -118,6 +124,7 @@ private:
     SettingsWidgetsDialogs* m_settingsDialogs = nullptr;
     tanara_qml::SettingsWindowHost* m_settings = nullptr;   // a QML Beállítások-ablak gazdája
     tanara_qml::PeopleWindowHost* m_people = nullptr;       // a QML Személyek-ablak gazdája
+    tanara_qml::TagsWindowHost* m_tags = nullptr;           // a QML Címkék-ablak gazdája
     bool m_quitAfterStop = false;
     bool m_shutDown = false;
 

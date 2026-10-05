@@ -4,6 +4,7 @@
 #include "SettingsWidgetsDialogs.h"
 #include "SettingsWindowHost.h"
 #include "ShellRecorderHost.h"
+#include "TagsWindowHost.h"
 #include "cloud/CloudEstimateDialog.h"
 #include "cloud/CloudLoginDialog.h"
 #include "cloud/CloudModeDialog.h"
@@ -79,6 +80,14 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
     m_settingsDialogs = new SettingsWidgetsDialogs(m_controller, this);
     m_settingsDialogs->setPeopleOpener([this](const QString& person) { openPeopleAt(person); });
     m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
+    m_settingsDialogs->setTagsOpener([this](const QString& tagId) { openTagsAt(tagId); });
+    // A Címkék ablaka: „Megnyitás a könyvtárban szűrőként” → a könyvtár szűrése + a főablak
+    // előre; egy megbeszélés linkje → kijelölés + a főablak előre.
+    m_tags = new tanara_qml::TagsWindowHost(m_controller, this);
+    connect(m_tags, &tanara_qml::TagsWindowHost::openInLibraryRequested, this,
+            &QmlShellBridge::tagFilterRequested);
+    connect(m_tags, &tanara_qml::TagsWindowHost::meetingRequested, this,
+            &QmlShellBridge::showMeetingRequested);
     m_settings = new tanara_qml::SettingsWindowHost(m_controller, m_settingsDialogs, this);
     m_settings->setPersistTheme(false);   // a témát a főablak jegyzi meg (themeModeSaved)
     connect(m_settings, &tanara_qml::SettingsWindowHost::saved, this, [this] {
@@ -172,6 +181,25 @@ QObject* QmlShellBridge::peopleWindow() const
     return m_people ? m_people->window() : nullptr;
 }
 
+void QmlShellBridge::openTags()
+{
+    openTagsAt(QString());
+}
+
+void QmlShellBridge::openTagsAt(const QString& tagId)
+{
+    // Nem-modális QML-ablak (a Személyek mintájára), egy példány.
+    if (m_shutDown)
+        return;
+    m_tags->setTransientParent(m_window);
+    m_tags->open(tagId);
+}
+
+QObject* QmlShellBridge::tagsWindow() const
+{
+    return m_tags ? m_tags->window() : nullptr;
+}
+
 QString QmlShellBridge::pickAudioFile()
 {
     const QString start = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
@@ -243,6 +271,8 @@ void QmlShellBridge::shutdown()
     qApp->removeEventFilter(this);
     if (m_people)
         m_people->closeNow();
+    if (m_tags)
+        m_tags->closeNow();
     if (m_settings)
         m_settings->closeNow();
     m_recorder->shutdown();

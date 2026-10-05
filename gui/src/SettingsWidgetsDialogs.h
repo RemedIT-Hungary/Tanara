@@ -18,7 +18,7 @@
 class QWindow;
 
 namespace tanara { class AppController; }
-namespace tanara_qml { class PeopleWindowHost; }
+namespace tanara_qml { class PeopleWindowHost; class TagsWindowHost; }
 
 namespace tanara_gui {
 
@@ -32,6 +32,8 @@ public:
     // A Személyek ablakot más nyitja (a főablak hídja, hogy egy példány legyen).
     // Nélküle (önálló felvevő, `tanara --settings`) saját QML Személyek-ablakot nyit.
     void setPeopleOpener(std::function<void(const QString&)> opener) { m_peopleOpener = std::move(opener); }
+    // Ugyanez a Címkék ablakra (a főablak hídja nyitja, hogy a könyvtár-szűrés oda menjen).
+    void setTagsOpener(std::function<void(const QString&)> opener) { m_tagsOpener = std::move(opener); }
     // A modális Widgets-ablakok ehhez az ablakhoz (a Beállításokhoz) tartozzanak.
     void setOwnerWindow(QWindow* window);
 
@@ -40,6 +42,9 @@ public:
     void openUrl(const QString& url) override;
     void openPeople() override;
     void openPeopleAt(const QString& person) override;
+    // A Címkék ablaka (a Beállítások „Címkék kezelése” hivatkozásához; a SettingsDialogs
+    // felületre a Beállítások-szelet veszi fel). Főablak nélkül saját ablak, könyvtár-szűrés nélkül.
+    void openTags(const QString& tagId = QString());
     bool cloudLogin() override;
     void cloudTopup() override;
     bool cloudPickModel(const QString& kind) override;
@@ -58,6 +63,8 @@ private:
     int m_active = 0;                 // futó modális hívások (egymásba ágyazhatók)
     tanara_qml::PeopleWindowHost* m_people = nullptr;
     std::function<void(const QString&)> m_peopleOpener;
+    tanara_qml::TagsWindowHost* m_tags = nullptr;
+    std::function<void(const QString&)> m_tagsOpener;
 };
 
 } // namespace tanara_gui

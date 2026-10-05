@@ -70,6 +70,8 @@ public:
                                   const QString& focusField = QString());
     // person: ez a személy legyen kijelölve a Személyek ablakban (üres: nincs kérés).
     Q_INVOKABLE void openPeople(const QString& person = QString());
+    // A Címkék ablaka; tagId: ez a címke legyen kijelölve (üres: nincs kérés).
+    Q_INVOKABLE void openTags(const QString& tagId = QString());
     Q_INVOKABLE void openRecorder();
     Q_INVOKABLE void startTranscription(const QString& meetingId);
     Q_INVOKABLE void retranscribe(const QString& meetingId);
@@ -94,7 +96,9 @@ public:
     Q_INVOKABLE void showMeeting(const QString& meetingId);
     Q_INVOKABLE void showTab(int index);
     Q_INVOKABLE void seekTo(const QString& meetingId, int ms);
-    Q_INVOKABLE void toast(const QString& text);
+    // undoKey: nem üres → a toaston „Visszavonás” gomb, amely undoFromToast(undoKey)-t hív
+    // (a kulcs gazdája — pl. "tags": a címke-lépések — az undoRequested jelre visszavon).
+    Q_INVOKABLE void toast(const QString& text, const QString& undoKey = QString());
 
     // ---- a héj saját műveletei (a szerződésen túl) ----
     // Az újra-átírás megerősítő ablakának adatai: { title, text, corrections, any }.
@@ -115,6 +119,10 @@ public:
     Q_INVOKABLE void resolveConfirm(bool accepted);
     // Az átirat előtti (hang-alapú) résztvevő-tipp utolsó eredménye erre a megbeszélésre.
     Q_INVOKABLE QString participantsGuess(const QString& meetingId) const;
+    // A toast „Visszavonás” gombja (és a Ctrl+Z a címkesor fókuszában): undoRequested(undoKey).
+    Q_INVOKABLE void undoFromToast(const QString& undoKey);
+    // A könyvtár szűrése egy címkére (a fejléc chipje, a Címkék ablaka): tagFilterRequested.
+    Q_INVOKABLE void filterByTag(const QString& tagId);
     // Van-e a megbeszélésnek átirata / létezik-e (a QML gyors kérdései).
     Q_INVOKABLE bool meetingExists(const QString& meetingId) const;
 
@@ -130,8 +138,12 @@ signals:
 
     // ---- a Main.qml-nek ----
     // tone: "" (semleges) | "danger"; requestId / usageLink: cloud-értesítéseknél.
+    // undoKey: lásd toast().
     void toastRequested(const QString& text, const QString& tone, const QString& requestId,
-                        bool usageLink);
+                        bool usageLink, const QString& undoKey = QString());
+    void undoRequested(const QString& undoKey);
+    // A Main.qml a könyvtár-modellre teszi a címke-szűrőt.
+    void tagFilterRequested(const QString& tagId);
     void confirmRequested(const QString& title, const QString& text,
                           const QString& confirmLabel, bool danger);
     void retranscribeDialogRequested(const QString& meetingId);

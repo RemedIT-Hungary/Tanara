@@ -58,6 +58,15 @@ public:
         Q_UNUSED(person);
         openPeople();
     }
+    // A Címkék ablaka (TagsWindow.qml); tagId: ez a címke legyen kijelölve (üres: a korábbi
+    // kijelölés marad). Az alapértelmezés semmit sem tesz (a tesztek ál-hídjainak nem kell
+    // tudniuk róla).
+    Q_INVOKABLE virtual void openTags() {}
+    Q_INVOKABLE virtual void openTagsAt(const QString& tagId)
+    {
+        Q_UNUSED(tagId);
+        openTags();
+    }
     Q_INVOKABLE virtual void openRecorder() = 0;
     // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
     Q_INVOKABLE virtual QString pickAudioFile() = 0;
@@ -115,6 +124,9 @@ signals:
     // Egy megbeszélést ki kell jelölni és a főablakot előre hozni (a felvevő „Megnyitás az
     // elemzőben” gombja, `tanara --meeting <id>`). Üres azonosító: csak az ablak jön előre.
     void showMeetingRequested(const QString& meetingId);
+    // A Címkék ablakából: a könyvtár szűrése erre a címkére, a főablak előre
+    // („Megnyitás a könyvtárban szűrőként”).
+    void tagFilterRequested(const QString& tagId);
     // A főablakot újra meg kell mutatni (háttér-felvétel vége, felvevő bezárása).
     void showWindowRequested();
     // „Leállítom és kilépek” után a felvétel lezárult: a főablak bezárható.

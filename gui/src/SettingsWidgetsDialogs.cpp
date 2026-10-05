@@ -1,6 +1,7 @@
 #include "SettingsWidgetsDialogs.h"
 
 #include "PeopleWindowHost.h"
+#include "TagsWindowHost.h"
 #include "cloud/CloudLoginDialog.h"
 #include "cloud/CloudModelPickerDialog.h"
 #include "cloud/CloudTermsDialog.h"
@@ -36,6 +37,7 @@ SettingsWidgetsDialogs::~SettingsWidgetsDialogs()
 {
     if (qApp) qApp->removeEventFilter(this);
     if (m_people) m_people->closeNow();
+    if (m_tags) m_tags->closeNow();
 }
 
 void SettingsWidgetsDialogs::setOwnerWindow(QWindow* window)
@@ -86,6 +88,16 @@ void SettingsWidgetsDialogs::openPeopleAt(const QString& person)
     // Főablak nélküli folyamat: saját (nem modális) QML Személyek-ablak, egy példány.
     if (!m_people) m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
     m_people->open(person);
+}
+
+void SettingsWidgetsDialogs::openTags(const QString& tagId)
+{
+    if (m_tagsOpener) {
+        m_tagsOpener(tagId);
+        return;
+    }
+    if (!m_tags) m_tags = new tanara_qml::TagsWindowHost(m_controller, this);
+    m_tags->open(tagId);
 }
 
 bool SettingsWidgetsDialogs::cloudLogin()
