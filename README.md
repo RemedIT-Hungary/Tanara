@@ -24,8 +24,9 @@ structured summary. All output is plain files next to the audio.
 Status: **Tanara works on Linux and Windows.** On Windows, Tanara captures system
 audio with WASAPI loopback (playback devices appear as "loopback" capture
 sources). The speaker-recognition stack (KISS FFT + ONNX Runtime) is validated on
-Windows, and `windeployqt` produces a standalone build. Call detection currently
-works on Linux only (PipeWire). Tanara does not target macOS yet.
+Windows, and `windeployqt` produces a standalone build. Call detection works on
+Linux (PipeWire). A Windows detector (WASAPI audio sessions) is implemented but
+not yet validated on a Windows machine. Tanara does not target macOS yet.
 
 ---
 
@@ -235,6 +236,23 @@ captures the microphone counts as a call when its name matches the known
 call-app list (Zoom, Teams, Webex, Slack, Discord, Meet, and more). You can edit
 the list, the poll interval, and autostart on the **Watcher** tab in Settings.
 
+On Windows, the detector (`windows-wasapi`) lists the active audio sessions on
+all active capture endpoints. An active session belongs to a process that
+captures the microphone now. Tanara maps the process image name (for example
+`ms-teams.exe` → Teams, `Zoom.exe` → Zoom) to the same call-app list. The
+"meet" entry also covers the browsers (Chrome, Edge, Firefox, Brave, Opera,
+Vivaldi), because Google Meet runs in a browser. If no session matches, the
+detector reads the microphone consent store in the registry
+(`HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone`)
+for packaged apps. Tanara never detects its own capture (`tanara*.exe`).
+Autostart on Windows writes the `Tanara Watcher` value under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+Limitations on Windows: an app that crashes during a call can leave a stale
+consent-store entry, so a packaged app can show as "in a call" until it uses
+the microphone again. A browser that captures the microphone for a non-call
+page also counts as a call when "meet" is on the list.
+
 ### CLI (`tanara-cli`)
 
 ```
@@ -248,7 +266,8 @@ rename <meetingId> <rawLabel> <name>     # maps + enrolls a voiceprint
 identify <meetingId>            # auto-label speakers from the voiceprint DB
 participants <meetingId>        # local speaker guesses, before transcription
 voiceprints                     # list enrolled people / prints
-detect [--watch] [--interval N] # run the call detector (the watcher engine)
+detect [--watch] [--interval N] [--app NAME]  # run the call detector (the watcher engine);
+                                # --app adds an app to the list for this run only
 embed-probe <model> <audio> <startMs> <endMs>   # dump one voice embedding (diagnostics)
 cloud status|login|logout|use|tier|lang|models|estimate|accept-terms|pending|waitlist
 ```
