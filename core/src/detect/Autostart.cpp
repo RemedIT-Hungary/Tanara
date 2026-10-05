@@ -45,7 +45,8 @@ bool writeEntry(const QString& entryPath, const QString& watcherExecutable)
     if (entryPath.isEmpty() || watcherExecutable.isEmpty()) return false;
     QDir().mkpath(QFileInfo(entryPath).absolutePath());
     QFile f(entryPath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) return false;
+    // .desktop-fájl: LF sorvég kell (Text mód nélkül — Windowson az CRLF-et írna).
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     QTextStream(&f)
         << "[Desktop Entry]\n"
         << "Type=Application\n"

@@ -79,9 +79,11 @@ QString expandTilde(QString p) {
     return p;
 }
 
+// Mindig LF sorvég (QIODevice::Text NÉLKÜL): Windowson a Text mód CRLF-et írna, a
+// visszaolvasás (SummaryStore, átirat) viszont nyersen olvas → \r kerülne a szövegbe.
 bool writeTextFile(const QString& path, const QString& text) {
     QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(text.toUtf8());
     return f.commit();
 }
