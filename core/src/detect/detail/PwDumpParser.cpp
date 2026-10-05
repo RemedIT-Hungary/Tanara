@@ -26,10 +26,22 @@ QString prettyAppName(const QString& binaryLower, const QString& appNameProp)
 
 namespace {
 
+// Böngésző-binárisok: a webes hívások (Google Meet, Teams a böngészőben…) ezekben futnak.
+bool isBrowserBinary(const QString& binaryLower)
+{
+    static const char* browsers[] = {"chromium", "chrome", "firefox", "vivaldi", "brave",
+                                     "opera", "msedge", "microsoft-edge"};
+    for (const char* b : browsers)
+        if (binaryLower.contains(QLatin1String(b)))
+            return true;
+    return false;
+}
+
 QString normalizedAppId(const QString& binaryLower)
 {
     static const char* ids[] = {"zoom", "teams", "webex", "discord", "slack", "skype",
-                                "telegram", "chromium", "chrome", "firefox", "vivaldi", "brave"};
+                                "telegram", "chromium", "chrome", "firefox", "vivaldi", "brave",
+                                "opera", "msedge"};
     for (const char* id : ids)
         if (binaryLower.contains(QLatin1String(id)))
             return QString::fromLatin1(id);
@@ -88,6 +100,11 @@ MeetingSignal parsePwDump(const QByteArray& json,
                 if (a.isEmpty())
                     continue;
                 if (binaryLower.contains(a) || appLower.contains(a)) { matched = true; break; }
+                // A „meet” listaelem minden böngészőt jelent: a Google Meet (és a többi webes
+                // hívás) a böngésző folyamatában fogja a mikrofont (Vivaldi: „vivaldi-bin”,
+                // Chrome: „chrome”, Edge: „msedge”…), a Chromium-alapúak media.name-je csak
+                // „RecordStream”. Ugyanez az alias él a Windows-detektorban is.
+                if (a == QLatin1String("meet") && isBrowserBinary(binaryLower)) { matched = true; break; }
             }
         }
         if (!matched)

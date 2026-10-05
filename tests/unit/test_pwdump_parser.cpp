@@ -85,6 +85,28 @@ private slots:
         QVERIFY(!s.active);
     }
 
+    // Google Meet a Vivaldiban: a böngésző „vivaldi-bin” folyamata fogja a mikrofont,
+    // a media.name csak „RecordStream” (nincs „webrtc”). A listán a „meet” minden
+    // böngészőt lefed → meeting, Vivaldi néven.
+    void browserMeetViaMeetAlias()
+    {
+        const MeetingSignal s = detail::parsePwDump(
+            node("running", "vivaldi-bin", "Vivaldi input", "RecordStream"),
+            { QStringLiteral("zoom"), QStringLiteral("meet") }, kSelf);
+        QVERIFY(s.active);
+        QCOMPARE(s.appId, QStringLiteral("vivaldi"));
+        QCOMPARE(s.appName, QStringLiteral("Vivaldi"));
+    }
+
+    // „meet” nélkül a böngésző mikrofonhasználata nem hívás (nincs a listán).
+    void browserWithoutMeetIgnored()
+    {
+        const MeetingSignal s = detail::parsePwDump(
+            node("running", "vivaldi-bin", "Vivaldi input", "RecordStream"),
+            { QStringLiteral("zoom") }, kSelf);
+        QVERIFY(!s.active);
+    }
+
     // Playback (Stream/Output/Audio) stream nem mikrofon-fogás → figyelmen kívül.
     void playbackStreamIgnored()
     {
