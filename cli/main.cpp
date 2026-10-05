@@ -9,6 +9,9 @@
 //   detect [--watch] [--interval N]  aktív-hívás detektálás (smoke: a figyelő motorja)
 //   cloud <alparancs>                Tanara Cloud (status, login, estimate …) — CloudCommands.cpp
 //   transcribe|summarize <id> [--yes] [--complex]   cloud-módban előtte becslés + megerősítés
+//   tags list [<meetingId>]          címkekészlet (darabszámmal) / egy meeting címkéi
+//   tags add|remove <meetingId> <név>  címke fel / le
+//   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
@@ -20,6 +23,7 @@
 #include "tanara/import/AudioImporter.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/tags/TagService.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
@@ -342,6 +346,66 @@ int main(int argc, char** argv) {
         else if (complex) app.extractMeetingTopics(id);
         else app.summarizeMeeting(id);
         return qapp.exec();
+    }
+
+    if (cmd == "tags") {
+        TagService* tags = app.tags();
+        const QString sub = args.value(2), id = args.value(3), name = args.value(4);
+        auto usage = [&]() {
+            err << QCoreApplication::translate("cli", "Használat: tags list [<meetingId>] | tags add|remove <meetingId> <név> | tags suggest <meetingId> [--llm]") << "\n";
+            return 1;
+        };
+        if (sub == "list") {
+            if (id.isEmpty()) {
+                const auto all = tags->all(TagService::Sort::MostUsed);
+                out << QCoreApplication::translate("cli", "Címkék (%1):").arg(all.size()) << "\n";
+                for (const TagUsage& u : all)
+                    out << "  #" << u.tag.name << "  " << u.meetingCount << "  " << u.tag.id << "\n";
+            } else {
+                for (const QString& t : tags->tagsOf(id)) out << "  #" << tags->tag(t).name << "\n";
+            }
+            out.flush();
+            return 0;
+        }
+        if ((sub == "add" || sub == "remove") && !id.isEmpty() && !name.isEmpty()) {
+            if (sub == "add") {
+                const Tag t = tags->addTag(id, name);
+                if (!t.isValid()) { err << QCoreApplication::translate("cli", "HIBA: ismeretlen meeting vagy üres név.") << "\n"; return 1; }
+                out << QCoreApplication::translate("cli", "Felrakva: #%1").arg(t.name) << "\n";
+            } else {
+                Tag t = tags->tag(name);
+                if (!t.isValid()) t = tags->byName(name);
+                if (!t.isValid()) { err << QCoreApplication::translate("cli", "HIBA: nincs ilyen címke.") << "\n"; return 1; }
+                tags->removeTag(id, t.id);
+                out << QCoreApplication::translate("cli", "Levéve: #%1").arg(t.name) << "\n";
+            }
+            out.flush();
+            return 0;
+        }
+        if (sub == "suggest" && !id.isEmpty()) {
+            const bool llm = args.contains(QStringLiteral("--llm"));
+            QObject::connect(&app, &AppController::tagSuggestionsReady, &qapp,
+                             [&](const QString& mid, const QVector<TagSuggestion>& list) {
+                if (mid != id) return;
+                out << QCoreApplication::translate("cli", "Javaslatok (%1):").arg(list.size()) << "\n";
+                for (const TagSuggestion& sg : list) {
+                    out << "  " << (sg.isNew ? "+ÚJ " : "+") << sg.name
+                        << QStringLiteral("  (%1)").arg(sg.score, 0, 'f', 2);
+                    for (const SuggestionReason& r : sg.reasons) out << "  · " << r.values.join(QStringLiteral(", "));
+                    out << "\n";
+                }
+                out.flush();
+                qapp.exit(0);
+            });
+            if (llm) app.requestLlmTagSuggestions(id);
+            else app.requestTagSuggestions(id);
+            QTimer::singleShot(llm ? 300000 : 60000, &qapp, [&]() {
+                err << QCoreApplication::translate("cli", "HIBA: nem jött javaslat (nincs összefoglaló?).") << "\n";
+                qapp.exit(1);
+            });
+            return qapp.exec();
+        }
+        return usage();
     }
 
     if (cmd == "rename") {
