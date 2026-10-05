@@ -14,6 +14,7 @@
 #include "tanara/AppController.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QAbstractItemModel>
 #include <QDir>
@@ -149,12 +150,95 @@ private slots:
         QVERIFY(!vm.titleAutomatic());
     }
 
+    // C06: címkék indítás előtt és felvétel közben (kitalált adattal), Ctrl+T a nézetmodellen át.
+    void tagsBeforeAndDuringRecording()
+    {
+        RecorderViewModel vm;
+        vm.setDemoState(QStringLiteral("R01"));
+        QVERIFY(vm.tagsEditable());
+        QCOMPARE(vm.tagIds(), QStringList{QStringLiteral("t-nordvik")});
+
+        QSignalSpy tags(&vm, &RecorderViewModel::tagsChanged);
+        QVERIFY(vm.addTag(QStringLiteral("  q4 TERVEZÉS ")));              // a meglévő címke, kis/nagybetűtől függetlenül
+        QCOMPARE(vm.tagIds(), (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-q4")}));
+        QCOMPARE(vm.tags().at(1).toMap().value("name").toString(), QStringLiteral("Q4 tervezés"));
+        QVERIFY(!vm.addTag(QStringLiteral("Nordvik")));                    // már rajta van
+        QVERIFY(!vm.addTag(QStringLiteral("   ")));
+        QVERIFY(vm.addTag(QStringLiteral("Új ügyfél")));                   // új név
+        QCOMPARE(vm.tags().size(), 3);
+        vm.removeTag(QStringLiteral("t-nordvik"));
+        QCOMPARE(vm.tags().first().toMap().value("id").toString(), QStringLiteral("t-q4"));
+        QCOMPARE(tags.count(), 3);
+
+        // Ctrl+T: a nézetmodell kéri a mező megnyitását.
+        QSignalSpy input(&vm, &RecorderViewModel::tagInputRequested);
+        QVERIFY(vm.openTagInput());
+        QCOMPARE(input.count(), 1);
+
+        // Felvétel közben is szerkeszthető.
+        vm.setDemoState(QStringLiteral("R03"));
+        QCOMPARE(vm.state(), QStringLiteral("recording"));
+        QCOMPARE(vm.tagIds(), (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-q4")}));
+        QVERIFY(vm.tagsEditable());
+        QVERIFY(vm.openTagInput());
+        QVERIFY(vm.addTag(QStringLiteral("Partnerek")));
+        QCOMPARE(vm.tags().size(), 3);
+
+        // A kész felvételnél és eszköz nélkül nincs címke-sor.
+        vm.setDemoState(QStringLiteral("R09"));
+        QVERIFY(!vm.tagsEditable());
+        QVERIFY(!vm.openTagInput());
+        QVERIFY(!vm.addTag(QStringLiteral("Nordvik")));
+        QCOMPARE(input.count(), 2);
+        vm.setDemoState(QStringLiteral("R10"));
+        QVERIFY(vm.tags().isEmpty());
+    }
+
+    // A core-ra kötve: a név a készletbe kerül (TagService::create), az id-k a felvétel
+    // címkéiként a controllerhez (setRecordingTags); átnevezés / törlés követve. Hang-eszközhöz
+    // nem nyúl (csak a címkék vannak bekötve).
+    void tagsGoToTheController()
+    {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        const QByteArray oldHome = qgetenv("TANARA_HOME");
+        qputenv("TANARA_HOME", home.path().toUtf8());
+        {
+            tanara::AppController c;
+            tanara::TagService* svc = c.tags();
+            QVERIFY(svc);
+            const tanara::Tag existing = svc->create(QStringLiteral("Nordvik"));
+
+            RecorderViewModel vm;
+            vm.attachTagsOnly(&c);
+            QTest::qWait(10);                                   // a sorba állított App.controller-keresés lefut
+            QVERIFY(vm.tags().isEmpty());                       // nincs demó-adat
+            QVERIFY(vm.addTag(QStringLiteral("nordvik")));      // a meglévő (kulcs-egyezés)
+            QVERIFY(vm.addTag(QStringLiteral("Q4 tervezés")));  // új a készletben
+            QCOMPARE(vm.tagIds().first(), existing.id);
+            QVERIFY(svc->byName(QStringLiteral("Q4 tervezés")).isValid());
+            QCOMPARE(c.recordingTags(), vm.tagIds());
+
+            vm.removeTag(existing.id);
+            QCOMPARE(c.recordingTags(), vm.tagIds());
+            QCOMPARE(vm.tagIds().size(), 1);
+
+            const QString q4 = vm.tagIds().first();
+            QVERIFY(svc->rename(q4, QStringLiteral("Q4 terv")));
+            QCOMPARE(vm.tags().first().toMap().value("name").toString(), QStringLiteral("Q4 terv"));
+            svc->remove(q4);
+            QVERIFY(vm.tags().isEmpty());
+            QVERIFY(c.recordingTags().isEmpty());
+        }
+        qputenv("TANARA_HOME", oldHome);
+    }
+
     void previewPagesLoadWithoutWarnings_data()
     {
         QTest::addColumn<QString>("state");
         QTest::addColumn<QString>("theme");
         for (const char* theme : {"light", "dark"})
-            for (const char* st : {"R01", "R02", "R03", "R04", "R05", "R06", "R07", "R09", "R10"})
+            for (const char* st : {"R01", "R02", "R03", "R03typing", "R04", "R05", "R06", "R07", "R09", "R10"})
                 QTest::addRow("%s-%s", st, theme) << QString::fromLatin1(st) << QString::fromLatin1(theme);
     }
     void previewPagesLoadWithoutWarnings()
