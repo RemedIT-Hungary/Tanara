@@ -228,6 +228,7 @@ private slots:
     void addAndRemoveParticipant();
     void confirm_andUncertainty();
     void shortLines_neverUncertain();
+    void recheck_fromConfirmedLines_splitsMixedSpeaker();
     void suggestion_afterMove_acceptIsOneStep();
     void embedding_progressCancelAndCache();
     void embedding_gracefulWithoutModel();
@@ -671,6 +672,41 @@ void SpeakerEditorTest::confirm_andUncertainty()
     QVERIFY(!ed->utterance(uid(17)).uncertain);
     QVERIFY(ed->utterance(uid(17)).manuallyCorrected);
     QCOMPARE(ed->uncertainCount(), 0);
+}
+
+// Újraellenőrzés: a „Beszélő 1" két ember (A, C). Ha A három sorát megerősítjük, a mag
+// csak A hangja → C sorai (a sajátjukhoz sem illenek) és a 2-es címkén ragadt A-sor kétesek.
+void SpeakerEditorTest::recheck_fromConfirmedLines_splitsMixedSpeaker()
+{
+    Fixture fx;
+    auto ed = fx.editor();
+    QVERIFY(Fixture::embed(*ed));
+    QCOMPARE(ed->uncertainUtteranceIds(), uids({17}));
+    QVERIFY(!ed->canRecheck());
+
+    QVERIFY(ed->confirmUtterances(uids({0, 2, 6})));
+    QVERIFY(ed->canRecheck());
+    const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+    QCOMPARE(r.flagged, 5);
+    QCOMPARE(r.speakersWithConfirmedCore, 1);
+    QCOMPARE(r.confirmedLines, 3);
+    QCOMPARE(ed->uncertainUtteranceIds(), uids({4, 7, 9, 14, 17}));
+    // C sorainál nincs javaslat (máshoz sem illenek), a 17. sornál a hang A-é → Beszélő 1.
+    QCOMPARE(ed->utterance(uid(4)).likelySpeakerKey, QString());
+    QCOMPARE(ed->utterance(uid(17)).likelySpeakerKey, kB1);
+    QVERIFY(ed->utterance(uid(4)).rechecked);
+    QVERIFY(!ed->utterance(uid(12)).uncertain);       // rövid: sosem kétes
+
+    // A jelzés túléli a rendes újraszámolást (újabb embedding-futás, újratöltés).
+    QVERIFY(Fixture::embed(*ed));
+    QCOMPARE(ed->uncertainCount(), 5);
+    ed.reset();
+    auto again = fx.editor();
+    QCOMPARE(again->uncertainUtteranceIds(), uids({4, 7, 9, 14, 17}));
+
+    // C sorait új résztvevőhöz rakva a jelzés megszűnik (javítva).
+    QVERIFY(!again->moveUtterancesToNewParticipant(uids({4, 7, 9, 14})).isEmpty());
+    QCOMPARE(again->uncertainUtteranceIds(), uids({17}));
 }
 
 void SpeakerEditorTest::shortLines_neverUncertain()

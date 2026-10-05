@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace tanara {
 namespace speakeredit {
@@ -58,37 +59,96 @@ double cosToWithout(const Vec& sum, double sumNorm2, const QVector<float>& e, do
 
 } // namespace
 
+namespace {
+
+// A centroid-építés közös része: beszélőnként a súlyozott összeg és a benne lévő sorok száma.
+struct Centroids {
+    QVector<Vec> sums;
+    QVector<double> norms;
+    QVector<int> counts;
+    QVector<bool> member;           // soronként: benne van-e a saját beszélője centroidjában
+};
+
+bool validLine(const AnalysisLine& l, int speakerCount)
+{
+    return l.hasEmbedding() && l.speaker >= 0 && l.speaker < speakerCount;
+}
+
+// A rendes szabály: minden sor, de a zajosak csak akkor, ha nincs elég tiszta sor.
+QVector<bool> cleanEnough(const QVector<AnalysisLine>& lines, int speakerCount)
+{
+    QVector<int> clean(speakerCount, 0);
+    for (const AnalysisLine& l : lines)
+        if (validLine(l, speakerCount) && !l.noisy) ++clean[l.speaker];
+    QVector<bool> out(speakerCount);
+    for (int s = 0; s < speakerCount; ++s) out[s] = clean[s] >= kMinSpeakerLines;
+    return out;
+}
+
+Centroids buildCentroids(const QVector<AnalysisLine>& lines, int speakerCount,
+                         const std::function<bool(const AnalysisLine&)>& include)
+{
+    Centroids c;
+    c.sums.resize(speakerCount);
+    c.norms.resize(speakerCount);
+    c.counts.fill(0, speakerCount);
+    c.member.fill(false, lines.size());
+    for (int i = 0; i < lines.size(); ++i) {
+        const AnalysisLine& l = lines[i];
+        if (!validLine(l, speakerCount) || !include(l)) continue;
+        addScaled(c.sums[l.speaker], *l.embedding, weightOf(l));
+        ++c.counts[l.speaker];
+        c.member[i] = true;
+    }
+    for (int s = 0; s < speakerCount; ++s) c.norms[s] = norm2(c.sums[s]);
+    return c;
+}
+
+// A sor illeszkedése a centroidokhoz (a sajátjához leave-one-out, ha benne van).
+LineFit fitOf(const Centroids& c, const QVector<AnalysisLine>& lines, int i, int speakerCount)
+{
+    LineFit f;
+    const AnalysisLine& l = lines[i];
+    if (c.member[i]) {
+        if (c.counts[l.speaker] - 1 >= kMinSpeakerLines)
+            f.own = cosToWithout(c.sums[l.speaker], c.norms[l.speaker], *l.embedding, weightOf(l));
+    } else if (c.counts[l.speaker] >= kMinSpeakerLines) {
+        f.own = cosTo(c.sums[l.speaker], c.norms[l.speaker], *l.embedding);
+    }
+    for (int s = 0; s < speakerCount; ++s) {
+        if (s == l.speaker || c.counts[s] < kMinSpeakerLines) continue;
+        const double v = cosTo(c.sums[s], c.norms[s], *l.embedding);
+        if (!std::isnan(v) && (std::isnan(f.other) || v > f.other)) {
+            f.other = v;
+            f.otherSpeaker = s;
+        }
+    }
+    return f;
+}
+
+// A küszöbök: egy másik beszélő jobban illik, vagy (megbízható hosszú sornál) a sajátjához sem.
+bool judgeUncertain(const AnalysisLine& l, const LineFit& f)
+{
+    if (std::isnan(f.own)) return false;    // a saját beszélőről nincs elég minta → nem ítélünk
+    const bool reliable = l.durationMs >= kReliableMs;
+    const double margin = reliable ? kUncertainMargin : kUncertainMarginShort;
+    if (!std::isnan(f.other) && f.other - f.own >= margin)
+        return true;                        // egy másik beszélőre jobban hasonlít
+    return reliable && f.own < kUncertainMinFit;    // a sajátjára sem hasonlít (új, el nem különített hang)
+}
+
+} // namespace
+
 QVector<LineFit> computeFits(const QVector<AnalysisLine>& lines, int speakerCount)
 {
     QVector<LineFit> fits(lines.size());
     if (speakerCount <= 0) return fits;
-
-    QVector<Vec> sums(speakerCount);
-    QVector<int> counts(speakerCount, 0);
-    for (const AnalysisLine& l : lines) {
-        if (!l.hasEmbedding() || l.speaker < 0 || l.speaker >= speakerCount) continue;
-        addScaled(sums[l.speaker], *l.embedding, weightOf(l));
-        ++counts[l.speaker];
-    }
-    QVector<double> norms(speakerCount);
-    for (int s = 0; s < speakerCount; ++s) norms[s] = norm2(sums[s]);
-
-    for (int i = 0; i < lines.size(); ++i) {
-        const AnalysisLine& l = lines[i];
-        if (!l.hasEmbedding() || l.speaker < 0 || l.speaker >= speakerCount) continue;
-        LineFit& f = fits[i];
-        // Saját centroid a sor nélkül — csak ha a sor nélkül is marad elég minta.
-        if (counts[l.speaker] - 1 >= kMinSpeakerLines)
-            f.own = cosToWithout(sums[l.speaker], norms[l.speaker], *l.embedding, weightOf(l));
-        for (int s = 0; s < speakerCount; ++s) {
-            if (s == l.speaker || counts[s] < kMinSpeakerLines) continue;
-            const double c = cosTo(sums[s], norms[s], *l.embedding);
-            if (!std::isnan(c) && (std::isnan(f.other) || c > f.other)) {
-                f.other = c;
-                f.otherSpeaker = s;
-            }
-        }
-    }
+    const QVector<bool> clean = cleanEnough(lines, speakerCount);
+    const Centroids c = buildCentroids(lines, speakerCount, [&](const AnalysisLine& l) {
+        return !l.noisy || !clean[l.speaker];
+    });
+    for (int i = 0; i < lines.size(); ++i)
+        if (validLine(lines[i], speakerCount)) fits[i] = fitOf(c, lines, i, speakerCount);
     return fits;
 }
 
@@ -99,14 +159,99 @@ QVector<bool> computeUncertain(const QVector<AnalysisLine>& lines, int speakerCo
     for (int i = 0; i < lines.size(); ++i) {
         const AnalysisLine& l = lines[i];
         if (l.locked || !l.hasEmbedding() || l.durationMs < kMinEmbedMs) continue;
-        const LineFit& f = fits[i];
-        if (std::isnan(f.own)) continue;    // a saját beszélőről nincs elég minta → nem ítélünk
-        const bool reliable = l.durationMs >= kReliableMs;
-        const double margin = reliable ? kUncertainMargin : kUncertainMarginShort;
-        if (!std::isnan(f.other) && f.other - f.own >= margin)
-            out[i] = true;                  // egy másik beszélőre jobban hasonlít
-        else if (reliable && f.own < kUncertainMinFit)
-            out[i] = true;                  // a sajátjára sem hasonlít (pl. új, el nem különített hang)
+        out[i] = judgeUncertain(l, fits[i]);
+    }
+    return out;
+}
+
+namespace {
+
+// Beszélőnként a zárolt mag: 2 = csak a tiszta zárolt sorok, 1 = minden zárolt sor
+// (a zajosakkal együtt, mert tisztából nincs elég), 0 = nincs mag.
+QVector<int> coreModes(const QVector<AnalysisLine>& lines, int speakerCount)
+{
+    QVector<int> lockedClean(speakerCount, 0), lockedAll(speakerCount, 0);
+    for (const AnalysisLine& l : lines) {
+        if (!validLine(l, speakerCount) || !l.locked) continue;
+        ++lockedAll[l.speaker];
+        if (!l.noisy) ++lockedClean[l.speaker];
+    }
+    QVector<int> mode(speakerCount, 0);
+    for (int s = 0; s < speakerCount; ++s)
+        mode[s] = lockedClean[s] >= kMinSpeakerLines ? 2 : lockedAll[s] >= kMinSpeakerLines ? 1 : 0;
+    return mode;
+}
+
+} // namespace
+
+bool hasTrustedCore(const QVector<AnalysisLine>& lines, int speakerCount)
+{
+    if (speakerCount <= 0) return false;
+    const QVector<int> mode = coreModes(lines, speakerCount);
+    return std::any_of(mode.cbegin(), mode.cend(), [](int m) { return m > 0; });
+}
+
+RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, int speakerCount)
+{
+    RecheckAnalysis out;
+    out.lines.resize(lines.size());
+    if (speakerCount <= 0) return out;
+    const QVector<int> mode = coreModes(lines, speakerCount);
+    const QVector<bool> clean = cleanEnough(lines, speakerCount);
+    const Centroids c = buildCentroids(lines, speakerCount, [&](const AnalysisLine& l) {
+        switch (mode[l.speaker]) {
+        case 2:  return l.locked && !l.noisy;
+        case 1:  return l.locked;
+        default: return !l.noisy || !clean[l.speaker];     // a rendes szabály
+        }
+    });
+    out.trustedCore.resize(speakerCount);
+    out.coreLines.fill(0, speakerCount);
+    for (int s = 0; s < speakerCount; ++s) {
+        out.trustedCore[s] = mode[s] > 0;
+        if (mode[s] > 0) out.coreLines[s] = c.counts[s];
+    }
+
+    for (int i = 0; i < lines.size(); ++i) {
+        const AnalysisLine& l = lines[i];
+        // A zárolt sor a felhasználó döntése; a zajosat ő sem tudná eldönteni → nem jelöljük.
+        if (l.locked || l.noisy || !validLine(l, speakerCount) || l.durationMs < kMinEmbedMs)
+            continue;
+        const LineFit f = fitOf(c, lines, i, speakerCount);
+        RecheckVerdict& v = out.lines[i];
+        v.own = f.own;
+        v.other = f.other;
+        v.uncertain = judgeUncertain(l, f);
+        // Javaslat csak akkor, ha a másik beszélő TÉNYLEG jobban illik (nem csak a saját gyenge).
+        const double margin = l.durationMs >= kReliableMs ? kUncertainMargin : kUncertainMarginShort;
+        if (v.uncertain && !std::isnan(f.other) && f.other - f.own >= margin)
+            v.otherSpeaker = f.otherSpeaker;
+    }
+    return out;
+}
+
+QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines)
+{
+    QVector<bool> out(lines.size(), false);
+    for (int i = 0; i < lines.size(); ++i) {
+        const TimedLine& l = lines[i];
+        // Az embedding-ablak: hosszú sornál csak a közepe számít (lásd kMaxEmbedMs).
+        qint64 ws = l.startMs, we = l.endMs;
+        if (we - ws > kMaxEmbedMs) {
+            ws = (l.startMs + l.endMs) / 2 - kMaxEmbedMs / 2;
+            we = ws + kMaxEmbedMs;
+        }
+        const qint64 window = we - ws;
+        if (window <= 0) continue;
+        qint64 overlap = 0;
+        for (int j = 0; j < lines.size(); ++j) {
+            const TimedLine& o = lines[j];
+            if (j == i || o.speaker == l.speaker) continue;
+            if (o.startMs >= we) break;     // időrend: a továbbiak már az ablak után kezdődnek
+            overlap += std::max<qint64>(0, std::min(we, o.endMs) - std::max(ws, o.startMs));
+        }
+        overlap = std::min(overlap, window);
+        out[i] = overlap >= kNoisyOverlapMs || double(overlap) >= kNoisyOverlapRatio * double(window);
     }
     return out;
 }

@@ -10,6 +10,8 @@
 #include <QVector>
 #include <QtGlobal>
 
+#include <algorithm>
+
 namespace tanara {
 namespace speakeredit {
 
@@ -53,6 +55,7 @@ struct AnalysisLine {
     int    speaker = -1;                        // a jelenlegi beszélő indexe [0, speakerCount)
     qint64 durationMs = 0;
     bool   locked = false;                      // megerősített / kézzel javított (sosem bizonytalan)
+    bool   noisy = false;                       // „egymásra beszéltek": nem hangminta (lásd lent)
     bool hasEmbedding() const { return embedding && !embedding->isEmpty(); }
 };
 
@@ -64,10 +67,65 @@ struct LineFit {
     int    otherSpeaker = -1;
 };
 
+// A centroidok a ZAJOS (egymásra beszélős) sorokat kihagyják, ha a beszélőnek enélkül is van
+// legalább kMinSpeakerLines tiszta (embeddelt) sora; ilyenkor a zajos sor saját illeszkedése a
+// (nélküle számolt) teljes centroidhoz mért érték.
 QVector<LineFit> computeFits(const QVector<AnalysisLine>& lines, int speakerCount);
 
 // Soronként: bizonytalan-e a hozzárendelés (lásd a fenti küszöböket).
 QVector<bool> computeUncertain(const QVector<AnalysisLine>& lines, int speakerCount);
+
+// ---- újraellenőrzés a megerősített sorok alapján ---------------------------
+// A rendes bizonytalanság-ítéletben egy beszélő centroidját a hozzá TÉVESEN sorolt sorok is
+// húzzák, így azok közül a hasonló hangúak rejtve maradnak. Az újraellenőrzés „megbízható"
+// centroidot épít: beszélőnként CSAK a zárolt (megerősített / javított) soraiból, ha legalább
+// kMinSpeakerLines ilyen (embeddelt) sora van — a tiszták közül, ha azokból is van elég, és
+// csak különben a zajosakkal együtt. Akinek nincs elég zárolt sora, annál marad a rendes
+// centroid (minden sora, a tiszta-sor szabállyal). Ezután minden NEM zárolt, NEM zajos,
+// embeddelt sort ezekhez mérünk ugyanazokkal a küszöbökkel (kUncertainMargin /
+// kUncertainMarginShort / kUncertainMinFit). A megbízható centroidban nincs benne a vizsgált
+// sor, ezért ott nem kell leave-one-out.
+struct RecheckVerdict {
+    bool   uncertain = false;
+    // A hangra határozottan jobban illő MÁSIK beszélő (javaslat); -1 = nincs ilyen (pl. a sor a
+    // sajátjához sem illik, de máshoz sem — új, el nem különített hang).
+    int    otherSpeaker = -1;
+    double own = qQNaN();
+    double other = qQNaN();
+};
+
+struct RecheckAnalysis {
+    QVector<RecheckVerdict> lines;  // soronként (a bemenet sorrendjében)
+    QVector<bool> trustedCore;      // beszélőnként: a centroid csak a zárolt soraiból épült
+    QVector<int>  coreLines;        // beszélőnként: hány zárolt sor alkotja a magot (0 = nincs mag)
+    int coreSpeakers() const { return int(std::count(trustedCore.cbegin(), trustedCore.cend(), true)); }
+    int coreLineTotal() const { int n = 0; for (int c : coreLines) n += c; return n; }
+    int flagged() const {
+        return int(std::count_if(lines.cbegin(), lines.cend(),
+                                 [](const RecheckVerdict& v) { return v.uncertain; }));
+    }
+};
+
+RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, int speakerCount);
+
+// Van-e legalább egy beszélő, akinek a zárolt soraiból megbízható centroid építhető.
+bool hasTrustedCore(const QVector<AnalysisLine>& lines, int speakerCount);
+
+// ---- „egymásra beszéltek" ---------------------------------------------------
+// Egy sor zajos (nem jó hangminta), ha az embedding-ablakában (a sor közepe, legfeljebb
+// kMaxEmbedMs) más beszélő sora ennyi ideig szól egyszerre…
+inline constexpr qint64 kNoisyOverlapMs = 1000;
+// …vagy az ablak legalább ekkora hányadában.
+inline constexpr double kNoisyOverlapRatio = 0.30;
+
+struct TimedLine {
+    qint64 startMs = 0;
+    qint64 endMs = 0;
+    int    speaker = -1;            // beszélő-azonosító (csak az egyenlőség számít)
+};
+
+// Soronként: zajos-e az átfedés miatt. A sorok időrendben várhatók (kezdőidő szerint).
+QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines);
 
 // A sourceSpeaker-nél maradt (nem zárolt, embeddelt) sorok indexei, amelyek hangra a
 // targetSpeaker-hez állnak közelebb. A cél jelenlegi sorai a rögzített „mag" (köztük a

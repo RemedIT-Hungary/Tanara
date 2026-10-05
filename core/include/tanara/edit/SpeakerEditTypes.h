@@ -28,6 +28,13 @@ struct EditorUtterance {
     bool    uncertain = false;          // hangra gyengén illik a beszélőjéhez (sraffozott)
     bool    manuallyCorrected = false;  // kézzel átsorolt („javítva")
     bool    confirmed = false;          // a felhasználó megerősítette („Jó így")
+    // „Egymásra beszéltek": nem használjuk hangmintának (centroid, hanglenyomat). Automatikus
+    // (átfedés más beszélővel) vagy kézi; a kézi felülírás mindkét irányba érvényes.
+    bool    noisy = false;
+    bool    noisyOverlap = false;       // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
+    bool    rechecked = false;          // az újraellenőrzés jelölte bizonytalannak
+    // A hangra jobban illő beszélő kulcsa (az újraellenőrzés javaslata); üres = nincs.
+    QString likelySpeakerKey;
 };
 
 // A meeting egy beszélője (a sáv/oszlop a szerkesztőben).

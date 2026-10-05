@@ -18,6 +18,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <optional>
+
 namespace tanara {
 
 // A transcript.segments.json egy sora + a hozzá képzett stabil azonosító.
@@ -42,7 +44,21 @@ struct OverlayUtterance {
     QString speaker;            // felülírt beszélő-kulcs; üres = nincs felülírás
     bool    corrected = false;  // kézzel átsorolt
     bool    confirmed = false;  // „Jó így"
-    bool isDefault() const { return speaker.isEmpty() && !corrected && !confirmed; }
+    // „Egymásra beszéltek" kézi felülírása: true = ne legyen hangminta („Jó így, de ne
+    // használd mintának"), false = mintának használható (az automatikus jelzés ellenére);
+    // nincs érték = az átfedésből számolt automatikus jelzés érvényes (az nem perzisztál).
+    std::optional<bool> noisy;
+    // Az újraellenőrzés kétségesnek találta: bizonytalan marad, amíg javítás / megerősítés
+    // nem jön (vagy egy újabb újraellenőrzés fel nem oldja).
+    bool    rechecked = false;
+    QString recheckHint;        // a hangra jobban illő beszélő kulcsa (javaslat); lehet üres
+    bool isDefault() const {
+        return speaker.isEmpty() && !corrected && !confirmed && !noisy.has_value() && !rechecked;
+    }
+    bool operator==(const OverlayUtterance& o) const {
+        return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
+            && noisy == o.noisy && rechecked == o.rechecked && recheckHint == o.recheckHint;
+    }
 };
 
 struct OverlayIdentification {

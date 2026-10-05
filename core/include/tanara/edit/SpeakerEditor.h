@@ -91,8 +91,30 @@ public:
     // Üres beszélő (0 sor) eltávolítása. Nem üresnél false.
     bool removeParticipant(const QString& speakerKey);
 
-    // „Jó így": a sorok megerősítése (többé nem bizonytalanok).
-    bool confirmUtterances(const QStringList& utteranceIds);
+    // „Jó így": a sorok megerősítése (többé nem bizonytalanok). asNoisy: „Jó így, de ne
+    // használd mintának" — a sor egyben „egymásra beszéltek" jelzést is kap (nem hangminta).
+    bool confirmUtterances(const QStringList& utteranceIds, bool asNoisy = false);
+    // Az „egymásra beszéltek" jelzés kézi beállítása (true: ne legyen hangminta; false:
+    // mintának használható, akkor is, ha az átfedés-szabály zajosnak tartaná).
+    bool setUtterancesNoisy(const QStringList& utteranceIds, bool noisy);
+
+    // ---- újraellenőrzés a megerősített sorok alapján ----------------------
+    // A megerősített / javított sorokból épített „megbízható" hang-centroidokhoz méri a többi
+    // sort (SpeakerAnalysis: computeUncertainRechecked). A kétségesnek talált sorok
+    // bizonytalanok maradnak (az overlay-ben perzisztálva), amíg javítás vagy „Jó így" nem
+    // jön; egy újabb újraellenőrzés lecseréli a halmazt. Egy undo-lépés (ha változott valami).
+    struct RecheckResult {
+        int flagged = 0;                    // ennyi sort jelölt kétségesnek
+        int speakersWithConfirmedCore = 0;  // ennyi beszélőnél épült centroid a zárolt soraiból
+        int confirmedLines = 0;             // ennyi zárolt sor alkotta ezeket a magokat
+        bool ran = false;                   // lefutott-e (canRecheck volt-e)
+    };
+    RecheckResult recheckFromConfirmed();
+    // Futtatható-e: van embedding, nem fut a hang-elemzés, és legalább egy beszélőnek van
+    // legalább kMinSpeakerLines megerősített / javított (embeddelt) sora.
+    bool canRecheck() const;
+    // Ha nem futtatható: miért (magyar mondat a felhasználónak); különben üres.
+    QString recheckBlocker() const;
 
     // ---- javaslat („Még N sor hasonlít erre a hangra") --------------------
     bool hasSuggestion() const;
@@ -167,6 +189,8 @@ signals:
     void summaryStaleChanged(bool stale, int correctedSpeakers);
     // Minden megváltozott (új átirat / külső overlay-változás) → modell-reset.
     void reloaded();
+    // Lefutott egy újraellenőrzés (a nézet ilyenkor a „Bizonytalan" szűrőre válthat).
+    void recheckFinished(int flagged, int speakersWithConfirmedCore, int confirmedLines);
 
     // Mellékhatások a többi komponens felé (az AppController a saját jeleire fordítja).
     void speakerMapChanged(QString meetingId);

@@ -169,6 +169,9 @@ SpeakerOverlay loadOverlay(const QString& meetingFolder)
         u.speaker   = o.value(QStringLiteral("speaker")).toString();
         u.corrected = o.value(QStringLiteral("corrected")).toBool();
         u.confirmed = o.value(QStringLiteral("confirmed")).toBool();
+        if (o.contains(QStringLiteral("noisy"))) u.noisy = o.value(QStringLiteral("noisy")).toBool();
+        u.rechecked = o.value(QStringLiteral("rechecked")).toBool();
+        u.recheckHint = o.value(QStringLiteral("recheckHint")).toString();
         if (!u.isDefault()) ov.utterances.insert(it.key(), u);
     }
 
@@ -215,7 +218,7 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
     }
 
     QJsonObject root;
-    root[QStringLiteral("version")] = 1;
+    root[QStringLiteral("version")] = 2;
     root[QStringLiteral("transcript")] = ov.transcriptFingerprint;
 
     QJsonArray parts;
@@ -244,6 +247,12 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
         if (!it.value().speaker.isEmpty()) o[QStringLiteral("speaker")] = it.value().speaker;
         if (it.value().corrected) o[QStringLiteral("corrected")] = true;
         if (it.value().confirmed) o[QStringLiteral("confirmed")] = true;
+        if (it.value().noisy.has_value()) o[QStringLiteral("noisy")] = *it.value().noisy;
+        if (it.value().rechecked) {
+            o[QStringLiteral("rechecked")] = true;
+            if (!it.value().recheckHint.isEmpty())
+                o[QStringLiteral("recheckHint")] = it.value().recheckHint;
+        }
         utts[it.key()] = o;
     }
     root[QStringLiteral("utterances")] = utts;

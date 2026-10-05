@@ -54,9 +54,11 @@ struct RowState {
     bool corrected = false;
     bool confirmed = false;
     bool uncertain = false;
+    bool noisy = false;
+    QString likely;
     bool operator==(const RowState& o) const {
         return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
-            && uncertain == o.uncertain;
+            && uncertain == o.uncertain && noisy == o.noisy && likely == o.likely;
     }
 };
 
@@ -95,9 +97,7 @@ bool sameEdits(const SpeakerOverlay& a, const SpeakerOverlay& b)
     for (auto it = a.utterances.constBegin(); it != a.utterances.constEnd(); ++it) {
         const auto jt = b.utterances.constFind(it.key());
         if (jt == b.utterances.constEnd()) return false;
-        if (it->speaker != jt->speaker || it->corrected != jt->corrected
-            || it->confirmed != jt->confirmed)
-            return false;
+        if (!(it.value() == jt.value())) return false;
     }
     return true;
 }
@@ -141,6 +141,7 @@ struct SpeakerEditor::Private {
     QMap<QString, QString> speakerMap;
     QVector<QString> assigned;          // soronként a feloldott beszélő-kulcs
     QVector<bool> uncertain;
+    QVector<bool> overlapNoisy;         // soronként: más beszélővel átfed (automatikus, nem perzisztál)
 
     QVector<Command> undoStack;
     QVector<Command> redoStack;
@@ -191,6 +192,67 @@ struct SpeakerEditor::Private {
         assigned.resize(lines.size());
         for (int i = 0; i < lines.size(); ++i)
             assigned[i] = resolveSpeakerKey(ov, lines[i]);
+        recomputeOverlap();
+    }
+
+    // Az „egymásra beszéltek" automatikus jelzése a FELOLDOTT beszélők szerint (ugyanannak a
+    // beszélőnek két, egymásba lógó sora nem áthallás).
+    void recomputeOverlap()
+    {
+        QVector<TimedLine> tl(lines.size());
+        QHash<QString, int> ids;
+        for (int i = 0; i < lines.size(); ++i) {
+            tl[i].startMs = lines[i].startMs;
+            tl[i].endMs = lines[i].endMs;
+            auto it = ids.find(assigned[i]);
+            if (it == ids.end()) it = ids.insert(assigned[i], ids.size());
+            tl[i].speaker = it.value();
+        }
+        overlapNoisy = computeOverlapNoisy(tl);
+    }
+
+    bool noisyAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        if (it != ov.utterances.constEnd() && it->noisy.has_value()) return *it->noisy;
+        return overlapNoisy.value(i);
+    }
+
+    // Az újraellenőrzés javaslatának mostani kulcsa (az összevont címke a célra mutat).
+    QString hintKeyAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        if (it == ov.utterances.constEnd() || it->recheckHint.isEmpty()) return {};
+        QString key = it->recheckHint;
+        for (int guard = 0; guard < 8 && ov.merged.contains(key); ++guard) key = ov.merged.value(key);
+        return key;
+    }
+
+    // A sor már a javasolt beszélőnél (vagy ugyanannál a személynél) van.
+    bool hintResolved(int i, const QString& key) const
+    {
+        if (key == assigned[i]) return true;
+        const QString person = personOf(key);
+        return !person.isEmpty() && person.compare(personOf(assigned[i]), Qt::CaseInsensitive) == 0;
+    }
+
+    // Az újraellenőrzés javaslata (a hangra jobban illő beszélő), ha még érvényes és mutatható.
+    QString likelyAt(int i) const
+    {
+        const QString key = hintKeyAt(i);
+        if (key.isEmpty() || !visible(key) || hintResolved(i, key)) return {};
+        return key;
+    }
+
+    // Az újraellenőrzés jelzése még áll-e (javítás / megerősítés törli; ha a sor közben a
+    // javasolt beszélőhöz került — pl. összevonással —, magától megszűnik).
+    bool recheckedAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        if (it == ov.utterances.constEnd() || !it->rechecked || it->corrected || it->confirmed)
+            return false;
+        const QString key = hintKeyAt(i);
+        return key.isEmpty() || !hintResolved(i, key);
     }
 
     int lineCountOf(const QString& key) const
@@ -278,6 +340,10 @@ struct SpeakerEditor::Private {
             u.manuallyCorrected = it->corrected;
             u.confirmed = it->confirmed;
         }
+        u.noisy = noisyAt(i);
+        u.noisyOverlap = overlapNoisy.value(i);
+        u.rechecked = recheckedAt(i);
+        if (u.rechecked) u.likelySpeakerKey = likelyAt(i);
         return u;
     }
 
@@ -360,6 +426,7 @@ struct SpeakerEditor::Private {
             if (c != cache.vectors.constEnd() && !c->isEmpty()) al[i].embedding = &c.value();
             const auto o = ov.utterances.constFind(l.id);
             al[i].locked = o != ov.utterances.constEnd() && (o->corrected || o->confirmed);
+            al[i].noisy = noisyAt(i);
         }
         if (keyIndex) *keyIndex = idx;
         return al;
@@ -369,11 +436,23 @@ struct SpeakerEditor::Private {
     {
         if (cache.vectors.isEmpty()) {
             uncertain.fill(false, lines.size());
-            return;
+        } else {
+            QHash<QString, int> idx;
+            const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ true);
+            uncertain = computeUncertain(al, idx.size());
         }
+        // Az újraellenőrzés jelzései (perzisztensek) a hang-elemzéstől függetlenül megmaradnak.
+        for (int i = 0; i < lines.size(); ++i)
+            if (recheckedAt(i)) uncertain[i] = true;
+    }
+
+    // Embeddelt sorok vannak, és legalább egy beszélőnél van megbízható mag.
+    bool hasCore() const
+    {
+        if (cache.vectors.isEmpty()) return false;
         QHash<QString, int> idx;
         const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ true);
-        uncertain = computeUncertain(al, idx.size());
+        return hasTrustedCore(al, idx.size());
     }
 
     int uncertainCount() const
@@ -388,6 +467,8 @@ struct SpeakerEditor::Private {
         for (int i = 0; i < lines.size(); ++i) {
             out[i].speaker = assigned[i];
             out[i].uncertain = uncertain.value(i);
+            out[i].noisy = noisyAt(i);
+            out[i].likely = recheckedAt(i) ? likelyAt(i) : QString();
             const auto it = ov.utterances.constFind(lines[i].id);
             if (it != ov.utterances.constEnd()) {
                 out[i].corrected = it->corrected;
@@ -660,6 +741,8 @@ struct SpeakerEditor::Private {
             OverlayUtterance& u = ov.utterances[lines[i].id];
             u.speaker = key;
             u.corrected = true;     // kézi döntés → többé nem bizonytalan
+            u.rechecked = false;
+            u.recheckHint.clear();
         }
         appendUnique(s.affectedSpeakers, key);
     }
@@ -675,8 +758,10 @@ struct SpeakerEditor::Private {
     void mergeInto(const QString& from, const QString& into, Step& s)
     {
         // A kifejezetten `from`-ra állított sorok és a rá mutató korábbi összevonások a célra.
-        for (auto it = ov.utterances.begin(); it != ov.utterances.end(); ++it)
+        for (auto it = ov.utterances.begin(); it != ov.utterances.end(); ++it) {
             if (it->speaker == from) it->speaker = into;
+            if (it->recheckHint == from) it->recheckHint = into;
+        }
         for (auto it = ov.merged.begin(); it != ov.merged.end(); ++it)
             if (it.value() == from) it.value() = into;
         if (isParticipantKey(from)) {
@@ -697,6 +782,7 @@ struct SpeakerEditor::Private {
         QVector<int> cand;
         for (int i : speakerLines) {
             if (uncertain.value(i)) continue;   // kétes sorból nem tanítunk
+            if (noisyAt(i)) continue;           // egymásra beszéltek: nem tiszta minta
             if (lines[i].endMs - lines[i].startMs >= kPrintMinLineMs) cand.append(i);
         }
         std::sort(cand.begin(), cand.end(), [&](int a, int b) {
@@ -1113,17 +1199,109 @@ bool SpeakerEditor::removeParticipant(const QString& speakerKey)
     return true;
 }
 
-bool SpeakerEditor::confirmUtterances(const QStringList& utteranceIds)
+bool SpeakerEditor::confirmUtterances(const QStringList& utteranceIds, bool asNoisy)
 {
     QVector<int> idx;
-    for (int i : d->indicesOf(utteranceIds))
-        if (!d->ov.utterances.value(d->lines[i].id).confirmed) idx.append(i);
+    for (int i : d->indicesOf(utteranceIds)) {
+        const OverlayUtterance u = d->ov.utterances.value(d->lines[i].id);
+        if (!u.confirmed || (asNoisy && u.noisy != std::optional<bool>(true))) idx.append(i);
+    }
     if (idx.isEmpty()) return false;
 
     Step s = d->begin();
-    for (int i : std::as_const(idx)) d->ov.utterances[d->lines[i].id].confirmed = true;
-    d->commit(s, tr("%n sor megerősítése", nullptr, idx.size()));
+    for (int i : std::as_const(idx)) {
+        OverlayUtterance& u = d->ov.utterances[d->lines[i].id];
+        u.confirmed = true;
+        u.rechecked = false;
+        u.recheckHint.clear();
+        if (asNoisy) u.noisy = true;
+    }
+    d->commit(s, asNoisy ? tr("%n sor megerősítése (nem hangminta)", nullptr, idx.size())
+                         : tr("%n sor megerősítése", nullptr, idx.size()));
     return true;
+}
+
+bool SpeakerEditor::setUtterancesNoisy(const QStringList& utteranceIds, bool noisy)
+{
+    QVector<int> idx;
+    for (int i : d->indicesOf(utteranceIds))
+        if (d->noisyAt(i) != noisy) idx.append(i);
+    if (idx.isEmpty()) return false;
+
+    Step s = d->begin();
+    for (int i : std::as_const(idx)) d->ov.utterances[d->lines[i].id].noisy = noisy;
+    d->commit(s, noisy ? tr("%n sor: nem hangminta", nullptr, idx.size())
+                       : tr("%n sor: mintának használható", nullptr, idx.size()));
+    return true;
+}
+
+// ---- újraellenőrzés ---------------------------------------------------------
+
+bool SpeakerEditor::canRecheck() const
+{
+    return !d->lines.isEmpty() && !d->thread && d->hasCore();
+}
+
+QString SpeakerEditor::recheckBlocker() const
+{
+    if (d->lines.isEmpty())
+        return tr("Ennek a megbeszélésnek nincs szerkeszthető átirata.");
+    if (d->cache.vectors.isEmpty() && !d->factory)
+        return tr("Az újraellenőrzéshez nincs telepítve a hangmodell.");
+    if (d->thread)
+        return tr("A sorok hang-elemzése még fut — a végén újraellenőrizheted a sorokat.");
+    if (d->cache.vectors.isEmpty())
+        return tr("A sorok hang-elemzése még nem készült el. Nyisd meg az Átirat fület, és várd meg a végét.");
+    if (!d->hasCore())
+        return tr("Előbb erősíts meg vagy javíts legalább %1 sort egy beszélőnél („Jó így” vagy "
+                  "áthelyezés) — ezek hangjához mérem a többit.").arg(kMinSpeakerLines);
+    return {};
+}
+
+SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
+{
+    RecheckResult r;
+    if (!canRecheck()) return r;
+    QHash<QString, int> idx;
+    const QVector<AnalysisLine> al = d->analysisLines(&idx, /*groupByPerson*/ true);
+    const RecheckAnalysis a = computeUncertainRechecked(al, idx.size());
+
+    // Csoport-index → beszélő-kulcs (a csoport legtöbb sorát vivő beszélő; azonos személy
+    // több kulccsal egy csoport).
+    QVector<QHash<QString, int>> keyFreq(idx.size());
+    for (int i = 0; i < d->lines.size(); ++i) ++keyFreq[al[i].speaker][d->assigned[i]];
+    QVector<QString> groupKey(idx.size());
+    for (int g = 0; g < idx.size(); ++g) {
+        int best = -1;
+        for (auto it = keyFreq[g].constBegin(); it != keyFreq[g].constEnd(); ++it)
+            if (it.value() > best) { best = it.value(); groupKey[g] = it.key(); }
+    }
+
+    r.ran = true;
+    r.flagged = a.flagged();
+    r.speakersWithConfirmedCore = a.coreSpeakers();
+    r.confirmedLines = a.coreLineTotal();
+
+    Step s = d->begin();
+    for (int i = 0; i < d->lines.size(); ++i) {
+        const QString& id = d->lines[i].id;
+        const RecheckVerdict& v = a.lines[i];
+        auto it = d->ov.utterances.find(id);
+        if (v.uncertain) {
+            OverlayUtterance& u = it != d->ov.utterances.end() ? it.value() : d->ov.utterances[id];
+            u.rechecked = true;
+            u.recheckHint = v.otherSpeaker >= 0 ? groupKey.value(v.otherSpeaker) : QString();
+        } else if (it != d->ov.utterances.end() && it->rechecked) {
+            // Egy újabb újraellenőrzés lecseréli a halmazt: ami már nem kétes, elengedjük.
+            it->rechecked = false;
+            it->recheckHint.clear();
+            if (it->isDefault()) d->ov.utterances.erase(it);
+        }
+    }
+    if (!sameEdits(s.before, d->ov))
+        d->commit(s, tr("Beszélők újraellenőrzése"));
+    emit recheckFinished(r.flagged, r.speakersWithConfirmedCore, r.confirmedLines);
+    return r;
 }
 
 // ---- javaslat ---------------------------------------------------------------
