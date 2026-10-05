@@ -4,11 +4,13 @@
 //  - valódi AppControllerrel, IZOLÁLT TANARA_HOME-ban (QTemporaryDir): a core jeleire
 //    inkrementális frissítés (beszúrás / egy sor változása / törlés — teljes reset nélkül).
 #include "AppContext.h"
+#include "LibraryDemoData.h"
 #include "LibraryListModel.h"
 #include "LibraryPendingModel.h"
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -27,6 +29,16 @@ class TestLibraryListModel : public QObject {
     static QString text(const LibraryListModel& m, int row, int role)
     {
         return m.data(m.index(row), role).toString();
+    }
+    static QStringList list(const LibraryListModel& m, int row, int role)
+    {
+        return m.data(m.index(row), role).toStringList();
+    }
+    static int rowOf(const LibraryListModel& m, const QString& title)
+    {
+        for (int i = 0; i < m.count(); ++i)
+            if (text(m, i, LibraryListModel::TitleRole) == title) return i;
+        return -1;
     }
     static QStringList titles(const LibraryListModel& m)
     {
@@ -62,6 +74,7 @@ private slots:
     {
         AppContext::instance()->setController(nullptr);
         AppContext::instance()->setDemo(true);
+        demo::resetTags();
     }
 
     void demoLibraryHasSectionsAndStates()
@@ -144,6 +157,121 @@ private slots:
         QVERIFY(people.size() >= 4);
         QVERIFY(people.at(0).toMap().value("count").toInt() >= people.at(1).toMap().value("count").toInt());
         QCOMPARE(m.personColorIndex(people.at(1).toMap().value("name").toString()), 1);
+    }
+
+    // ---- címkék ----
+    void tagLineFitsAboutTwentyFourCharacters()
+    {
+        QCOMPARE(LibraryListModel::tagLine({}), QStringList());
+        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("Nordvik")}), QStringList{QStringLiteral("#Nordvik")});
+        // A design példái (T04/T05): ami nem fér, „+N”.
+        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("Nordvik"), QStringLiteral("Partnerek"),
+                                            QStringLiteral("Q4 tervezés")}),
+                 (QStringList{QStringLiteral("#Nordvik"), QStringLiteral("#Partnerek"), QStringLiteral("+1")}));
+        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("MuseumPlus"), QStringLiteral("MÉM-MDK"),
+                                            QStringLiteral("Gyűjteménykezelés")}),
+                 (QStringList{QStringLiteral("#MuseumPlus"), QStringLiteral("#MÉM-MDK"), QStringLiteral("+1")}));
+        // Az első címke mindig látszik, akármilyen hosszú.
+        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("Gyűjteménykezelési munkacsoport 2026"),
+                                            QStringLiteral("Belső")}),
+                 (QStringList{QStringLiteral("#Gyűjteménykezelési munkacsoport 2026"), QStringLiteral("+1")}));
+    }
+
+    void demoRowsCarryTags()
+    {
+        LibraryListModel m;
+        const int bemutato = rowOf(m, QStringLiteral("Termékbemutató, 2. kör"));
+        QVERIFY(bemutato >= 0);
+        QCOMPARE(list(m, bemutato, LibraryListModel::TagIdsRole),
+                 (QStringList{QStringLiteral("t-museumplus"), QStringLiteral("t-mem"), QStringLiteral("t-gyujtemeny")}));
+        QCOMPARE(list(m, bemutato, LibraryListModel::TagNamesRole).first(), QStringLiteral("MuseumPlus"));
+        QCOMPARE(list(m, bemutato, LibraryListModel::TagLineRole).last(), QStringLiteral("+1"));
+        // Címke nélküli sor: üres harmadik sor.
+        const int arazas = rowOf(m, QStringLiteral("Árazás egyeztetés"));
+        QVERIFY(list(m, arazas, LibraryListModel::TagLineRole).isEmpty());
+        QVERIFY(!m.data(m.index(arazas), LibraryListModel::TagMatchRole).toBool());
+    }
+
+    void demoTagFiltersAnyAllUntagged()
+    {
+        LibraryListModel m;
+        QSignalSpy chips(&m, &LibraryListModel::tagFilterItemsChanged);
+        m.addTag(QStringLiteral("t-nordvik"));
+        QVERIFY(m.filtered());
+        QCOMPARE(chips.count(), 1);
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Ügyféltámogatás átadás"),
+                                         QStringLiteral("Negyedéves partnertalálkozó"),
+                                         QStringLiteral("Nordvik heti meeting")}));
+        QCOMPARE(m.resultText(), QStringLiteral("3 megbeszélés a szűrő szerint"));
+        // Bármelyik (VAGY): a Partnerek nem hoz újat; Mindegyik (ÉS): csak a partnertalálkozó.
+        m.addTag(QStringLiteral("t-partnerek"));
+        QCOMPARE(m.count(), 3);
+        const QVariantList items = m.tagFilterItems();
+        QCOMPARE(items.size(), 2);
+        QCOMPARE(items.at(1).toMap().value("name").toString(), QStringLiteral("Partnerek"));
+        m.setTagsAll(true);
+        QCOMPARE(titles(m), QStringList{QStringLiteral("Negyedéves partnertalálkozó")});
+        // A címke nélküliek a címkékkel VAGY kapcsolatban.
+        m.setTagsAll(false);
+        m.removeTag(QStringLiteral("t-partnerek"));
+        m.toggleTag(QStringLiteral("t-nordvik"));
+        QVERIFY(m.tags().isEmpty());
+        m.setUntagged(true);
+        QCOMPARE(titles(m), (QStringList{QStringLiteral("Árazás egyeztetés"),
+                                         QStringLiteral("Vezetői egyeztetés")}));
+        m.addTag(QStringLiteral("t-belso"));
+        QCOMPARE(m.count(), 5);
+        // A „Szűrők törlése” a címkéket is leveszi.
+        m.clearFilters();
+        QVERIFY(!m.filtered());
+        QVERIFY(m.tags().isEmpty());
+        QVERIFY(!m.untagged());
+        QCOMPARE(m.count(), m.totalCount());
+    }
+
+    void demoTagOptionsAndUntaggedCount()
+    {
+        LibraryListModel m;
+        QCOMPARE(m.untaggedCount(), 2);
+        const QVariantList opts = m.tagOptions();
+        QCOMPARE(opts.size(), 12);                       // a teljes készlet, a nem használtak 0-val
+        // Gyakoriság szerint, azonos számnál ABC.
+        QCOMPARE(opts.at(0).toMap().value("name").toString(), QStringLiteral("Belső"));
+        QCOMPARE(opts.at(0).toMap().value("count").toInt(), 3);
+        QCOMPARE(opts.last().toMap().value("count").toInt(), 0);
+        // A kiválasztottak elöl.
+        m.addTag(QStringLiteral("t-partnerek"));
+        QCOMPARE(m.tagOptions().at(0).toMap().value("id").toString(), QStringLiteral("t-partnerek"));
+        // Keresés a popoverben: ékezet- és kisbetű-független részszó.
+        const QVariantList nord = m.tagOptionsMatching(QStringLiteral("NORD"));
+        QCOMPARE(nord.size(), 2);
+        QCOMPARE(m.tagOptionsMatching(QStringLiteral("gyujtemeny")).size(), 1);
+        QCOMPARE(m.tagName(QStringLiteral("t-q4")), QStringLiteral("Q4 tervezés"));
+    }
+
+    void demoSearchFindsTagNames()
+    {
+        LibraryListModel m;
+        m.setSearchText(QStringLiteral("nordvik"));
+        m.refreshNow();
+        QCOMPARE(m.count(), 4);
+        QCOMPARE(m.resultText(), QStringLiteral("4 találat · címben, címkében, átiratban"));
+        // Csak a címke miatt talált: nincs kivonat, a címke-találat a sor harmadik sora.
+        const int tamogatas = rowOf(m, QStringLiteral("Ügyféltámogatás átadás"));
+        QVERIFY(m.data(m.index(tamogatas), LibraryListModel::TagMatchRole).toBool());
+        QCOMPARE(text(m, tamogatas, LibraryListModel::TagMatchNameRole), QStringLiteral("Nordvik"));
+        QVERIFY(!m.data(m.index(tamogatas), LibraryListModel::HasSnippetRole).toBool());
+        // Átirat-találat: kivonat, címke-találat nélkül.
+        const int arazas = rowOf(m, QStringLiteral("Árazás egyeztetés"));
+        QVERIFY(m.data(m.index(arazas), LibraryListModel::HasSnippetRole).toBool());
+        QVERIFY(!m.data(m.index(arazas), LibraryListModel::TagMatchRole).toBool());
+        // Cím-találat (a címkéje is talál).
+        const int heti = rowOf(m, QStringLiteral("Nordvik heti meeting"));
+        QCOMPARE(text(m, heti, LibraryListModel::TitleMatchRole), QStringLiteral("Nordvik"));
+        // Csak a ténylegesen előforduló helyek kerülnek a számláló-sorba.
+        m.setSearchText(QStringLiteral("museum"));
+        m.refreshNow();
+        QCOMPARE(m.resultText(), QStringLiteral("1 találat · címkében"));
     }
 
     void forceEmptyGivesEmptyLibrary()
@@ -268,6 +396,69 @@ private slots:
             QCOMPARE(removes.count(), 1);
             QCOMPARE(resets.count(), 0);
             QTRY_VERIFY(pending.items().isEmpty());
+        }
+        qunsetenv("TANARA_HOME");
+    }
+
+    void realLibraryTagsFilterAndSearch()
+    {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("TANARA_HOME", home.path().toUtf8());
+        qputenv("TANARA_CLOUD", "off");
+        AppContext::instance()->setDemo(false);
+        {
+            tanara::AppController app;
+            const tanara::Meeting a = addMeeting(app, QStringLiteral("Heti egyeztetés"), true,
+                                                 QStringLiteral("A határidőt egy héttel később tartjuk."));
+            const tanara::Meeting b = addMeeting(app, QStringLiteral("Ügyfélhívás"), false);
+            const tanara::Meeting c = addMeeting(app, QStringLiteral("Tervezés"), false);
+            tanara::TagService* tags = app.tags();
+            const tanara::Tag alfa = tags->addTag(a.id, QStringLiteral("Alfa Projekt"));
+            tags->addTag(b.id, QStringLiteral("Alfa Projekt"));
+            const tanara::Tag beta = tags->addTag(b.id, QStringLiteral("Béta"));
+
+            LibraryListModel m;
+            m.setController(&app);
+            QTRY_COMPARE(m.count(), 3);
+            const int rowB = m.indexOfMeeting(b.id);
+            QCOMPARE(list(m, rowB, LibraryListModel::TagNamesRole),
+                     (QStringList{QStringLiteral("Alfa Projekt"), QStringLiteral("Béta")}));
+            QCOMPARE(m.untaggedCount(), 1);
+            QCOMPARE(m.tagOptions().at(0).toMap().value("name").toString(), QStringLiteral("Alfa Projekt"));
+            QCOMPARE(m.tagOptions().at(0).toMap().value("count").toInt(), 2);
+            QCOMPARE(m.tagName(beta.id), QStringLiteral("Béta"));
+
+            m.setTags({alfa.id, beta.id});
+            QCOMPARE(m.count(), 2);
+            m.setTagsAll(true);
+            QCOMPARE(m.count(), 1);
+            QCOMPARE(m.meetingIdAt(0), b.id);
+            m.clearFilters();
+            m.setUntagged(true);
+            QCOMPARE(m.count(), 1);
+            QCOMPARE(m.meetingIdAt(0), c.id);
+            m.clearFilters();
+
+            // Keresés a címke nevében (ékezet nélkül): a sor címke-találatként jön.
+            m.setSearchText(QStringLiteral("beta"));
+            m.refreshNow();
+            QCOMPARE(m.count(), 1);
+            QVERIFY(m.data(m.index(0), LibraryListModel::TagMatchRole).toBool());
+            QCOMPARE(text(m, 0, LibraryListModel::TagMatchNameRole), QStringLiteral("Béta"));
+            QCOMPARE(m.resultText(), QStringLiteral("1 találat · címkében"));
+            m.clearFilters();
+
+            // Egy meeting címkéje változik → a sor frissül (reset nélkül).
+            QSignalSpy resets(&m, &QAbstractItemModel::modelReset);
+            tags->addTag(c.id, QStringLiteral("Béta"));
+            QTRY_COMPARE(list(m, m.indexOfMeeting(c.id), LibraryListModel::TagNamesRole),
+                         QStringList{QStringLiteral("Béta")});
+            QCOMPARE(resets.count(), 0);
+            // Átnevezés → a sorok címke-nevei is.
+            tags->rename(beta.id, QStringLiteral("Gamma"));
+            QTRY_COMPARE(list(m, m.indexOfMeeting(c.id), LibraryListModel::TagNamesRole),
+                         QStringList{QStringLiteral("Gamma")});
         }
         qunsetenv("TANARA_HOME");
     }
