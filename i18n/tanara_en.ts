@@ -76,15 +76,15 @@
     </message>
     <message>
         <source>Helyi végpont</source>
-        <translation type="unfinished"></translation>
+        <translation>Local endpoint</translation>
     </message>
     <message>
         <source>Többnyelvű beágyazó modell (pl. bge-m3). Modellváltáskor a könyvtár előkészítése elölről indul.</source>
-        <translation type="unfinished"></translation>
+        <translation>Multilingual embedding model (e.g. bge-m3). Changing the model restarts preparing the library from scratch.</translation>
     </message>
     <message>
         <source>Tanara Cloud</source>
-        <translation type="unfinished">Tanara Cloud</translation>
+        <translation>Tanara Cloud</translation>
     </message>
 </context>
 <context>
@@ -736,98 +736,98 @@
     <name>LibraryFilterPopover</name>
     <message>
         <source>Állapot</source>
-        <translation type="unfinished"></translation>
+        <translation>Status</translation>
     </message>
     <message>
         <source>Nincs összefoglaló</source>
-        <translation type="unfinished">No summary</translation>
+        <translation>No summary</translation>
     </message>
     <message>
         <source>Nincs átirat</source>
-        <translation type="unfinished">No transcript</translation>
+        <translation>No transcript</translation>
     </message>
     <message>
         <source>Résztvevő</source>
-        <translation type="unfinished"></translation>
+        <translation>Participant</translation>
     </message>
     <message>
         <source>Címke</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag</translation>
     </message>
     <message>
         <source>Bármelyik</source>
-        <translation type="unfinished"></translation>
+        <translation>Any</translation>
     </message>
     <message>
         <source>Mindegyik</source>
-        <translation type="unfinished"></translation>
+        <translation>All</translation>
     </message>
     <message>
         <source>Címke keresése</source>
-        <translation type="unfinished"></translation>
+        <translation>Search tags</translation>
     </message>
     <message>
         <source>Nincs ilyen címke</source>
-        <translation type="unfinished"></translation>
+        <translation>No such tag</translation>
     </message>
     <message>
         <source>Címke nélkül</source>
-        <translation type="unfinished"></translation>
+        <translation>Untagged</translation>
     </message>
     <message>
         <source>Címkék kezelése…</source>
-        <translation type="unfinished"></translation>
+        <translation>Manage tags…</translation>
     </message>
 </context>
 <context>
     <name>LibraryItem</name>
     <message>
         <source>címke:</source>
-        <translation type="unfinished"></translation>
+        <translation>tag:</translation>
     </message>
 </context>
 <context>
     <name>LibrarySelectionPanel</name>
     <message numerus="yes">
         <source>%n megbeszélés kijelölve</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n meeting selected</numerusform>
+            <numerusform>%n meetings selected</numerusform>
         </translation>
     </message>
     <message>
         <source>Ctrl+kattintás: hozzáadás vagy elvétel · Shift+kattintás: tartomány · Esc: kijelölés megszüntetése</source>
-        <translation type="unfinished"></translation>
+        <translation>Ctrl+click: add or remove · Shift+click: range · Esc: clear selection</translation>
     </message>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>A kijelölt megbeszéléseken még nincs címke.</source>
-        <translation type="unfinished"></translation>
+        <translation>The selected meetings have no tags yet.</translation>
     </message>
     <message numerus="yes">
         <source>Kattintásra mind a %n megbeszélésre felkerül</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Click to add to the %n meeting</numerusform>
+            <numerusform>Click to add to all %n meetings</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>Címke hozzáadása mind a %n megbeszéléshez…</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Add a tag to the %n meeting…</numerusform>
+            <numerusform>Add a tag to all %n meetings…</numerusform>
         </translation>
     </message>
     <message>
         <source>A szaggatott keretes címke csak némelyiken van rajta: kattintásra mindegyikre felkerül. Egy lépésben visszavonható.</source>
-        <translation type="unfinished"></translation>
+        <translation>A tag with a dashed border is only on some of them: click to add it to all. Can be undone in one step.</translation>
     </message>
     <message>
         <source>Kijelölés megszüntetése</source>
-        <translation type="unfinished"></translation>
+        <translation>Clear selection</translation>
     </message>
 </context>
 <context>
@@ -858,7 +858,7 @@
     </message>
     <message>
         <source>Címke nélkül</source>
-        <translation type="unfinished"></translation>
+        <translation>Untagged</translation>
     </message>
     <message>
         <source>Szűrő</source>
@@ -890,11 +890,11 @@
     </message>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Beállítások · Ctrl+,</source>
-        <translation type="unfinished"></translation>
+        <translation>Settings · Ctrl+,</translation>
     </message>
     <message>
         <source>Átnevezés</source>
@@ -1569,23 +1569,23 @@
     </message>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Javasolt:</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested:</translation>
     </message>
     <message>
         <source>Kattintás: hozzáadás · ×: nem illik ide</source>
-        <translation type="unfinished"></translation>
+        <translation>Click: add · ×: doesn’t fit</translation>
     </message>
     <message>
         <source>Észlelt hívás: %1</source>
-        <translation type="unfinished">Detected call: %1</translation>
+        <translation>Detected call: %1</translation>
     </message>
     <message>
         <source>Megjegyzés</source>
-        <translation type="unfinished">Note</translation>
+        <translation>Note</translation>
     </message>
     <message>
         <source>Témák, nevek, szakszavak és az ismert félrehallások: az átíró ebből pontosabb átiratot készít, és az összefoglaló is megkapja. Később, az Összefoglaló fülön is módosítható. Elhagyható.</source>
@@ -1770,7 +1770,7 @@
     </message>
     <message>
         <source>két sor: pick / new</source>
-        <translation type="unfinished"></translation>
+        <translation>two lines: pick / new</translation>
     </message>
     <message>
         <source>egy bekezdés</source>
@@ -1926,15 +1926,15 @@
     </message>
     <message>
         <source>Címke hozzáadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag</translation>
     </message>
     <message>
         <source>Címke</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag</translation>
     </message>
     <message>
         <source>Címke…</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag…</translation>
     </message>
     <message>
         <source>Felvétel indítása</source>
@@ -2177,51 +2177,51 @@
     <name>SettingsEmbeddingCard</name>
     <message>
         <source>Beágyazás</source>
-        <translation type="unfinished"></translation>
+        <translation>Embedding</translation>
     </message>
     <message>
         <source>címkejavaslatokhoz (embedding)</source>
-        <translation type="unfinished"></translation>
+        <translation>for tag suggestions (embedding)</translation>
     </message>
     <message>
         <source>Könyvtár előkészítése</source>
-        <translation type="unfinished"></translation>
+        <translation>Preparing the library</translation>
     </message>
     <message>
         <source>Mentés után indul: a meglévő átiratokat egyszer előkészítjük, utána az újakat magától.</source>
-        <translation type="unfinished"></translation>
+        <translation>Starts after saving: existing transcripts are prepared once, new ones automatically after that.</translation>
     </message>
     <message>
         <source>Megszakítás</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Közben dolgozhatsz; a már előkészített megbeszéléseknél a javaslatok azonnal jobbak.</source>
-        <translation type="unfinished"></translation>
+        <translation>You can keep working; suggestions improve right away for meetings already prepared.</translation>
     </message>
     <message>
         <source>Folytatás</source>
-        <translation type="unfinished">Continue</translation>
+        <translation>Continue</translation>
     </message>
     <message>
         <source>Újraelőkészítés</source>
-        <translation type="unfinished"></translation>
+        <translation>Prepare again</translation>
     </message>
     <message>
         <source>%1 előkészítve</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 prepared</translation>
     </message>
     <message>
         <source>Előkészítés</source>
-        <translation type="unfinished">Preparation</translation>
+        <translation>Preparation</translation>
     </message>
     <message>
         <source>Kapcsolat tesztelése</source>
-        <translation type="unfinished">Test connection</translation>
+        <translation>Test connection</translation>
     </message>
     <message>
         <source>Haladó</source>
-        <translation type="unfinished">Advanced</translation>
+        <translation>Advanced</translation>
     </message>
 </context>
 <context>
@@ -2287,15 +2287,15 @@
     <name>SettingsProviderCard</name>
     <message>
         <source>Kinyitás</source>
-        <translation type="unfinished">Expand</translation>
+        <translation>Expand</translation>
     </message>
     <message>
         <source>Összecsukás</source>
-        <translation type="unfinished">Collapse</translation>
+        <translation>Collapse</translation>
     </message>
     <message>
         <source>Beállítva</source>
-        <translation type="unfinished"></translation>
+        <translation>Configured</translation>
     </message>
     <message>
         <source>Szolgáltató</source>
@@ -2350,23 +2350,23 @@
     <name>SettingsProviderFields</name>
     <message>
         <source>Kulcs elrejtése</source>
-        <translation type="unfinished">Hide key</translation>
+        <translation>Hide key</translation>
     </message>
     <message>
         <source>Kulcs megmutatása</source>
-        <translation type="unfinished">Show key</translation>
+        <translation>Show key</translation>
     </message>
     <message>
         <source>Lekérés…</source>
-        <translation type="unfinished">Fetching…</translation>
+        <translation>Fetching…</translation>
     </message>
     <message>
         <source>Lekérés</source>
-        <translation type="unfinished">Fetch</translation>
+        <translation>Fetch</translation>
     </message>
     <message>
         <source>A modellek lekérése a megadott címről</source>
-        <translation type="unfinished">Fetch the models from the given address</translation>
+        <translation>Fetch the models from the given address</translation>
     </message>
 </context>
 <context>
@@ -2472,35 +2472,35 @@
     </message>
     <message>
         <source>Címkejavaslatok</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag suggestions</translation>
     </message>
     <message>
         <source>Címkék javaslása</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggest tags</translation>
     </message>
     <message>
         <source>Hasonló korábbi megbeszélések és együtt járó címkék alapján. Sosem kerül fel magától.</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on similar earlier meetings and tags that go together. Never added automatically.</translation>
     </message>
     <message>
         <source>A nyelvi modell is javasoljon az összefoglaló után</source>
-        <translation type="unfinished"></translation>
+        <translation>Let the language model suggest too, after the summary</translation>
     </message>
     <message>
         <source>Meglévő címkéket, és legfeljebb 2 új címke ötletét.</source>
-        <translation type="unfinished"></translation>
+        <translation>Existing tags, plus at most 2 new tag ideas.</translation>
     </message>
     <message>
         <source>Elutasított javaslatok: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Dismissed suggestions: %1</translation>
     </message>
     <message>
         <source>Visszaállítás</source>
-        <translation type="unfinished">Restore</translation>
+        <translation>Restore</translation>
     </message>
     <message>
         <source>Az elutasított javaslatokat újra felajánlhatjuk</source>
-        <translation type="unfinished"></translation>
+        <translation>Dismissed suggestions can be offered again</translation>
     </message>
     <message>
         <source>A kulcsokat a Tanara a belső adatok mappájában, csak neked olvasható fájlban tárolja; a beállítás-fájlba nem kerülnek.</source>
@@ -2804,7 +2804,7 @@
     </message>
     <message>
         <source>Mentés és újraindítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Save and restart</translation>
     </message>
     <message>
         <source>Mented a változásokat?</source>
@@ -2835,13 +2835,13 @@
     </message>
     <message>
         <source>Visszaállítod az elutasított javaslatokat?</source>
-        <translation type="unfinished"></translation>
+        <translation>Restore dismissed suggestions?</translation>
     </message>
     <message numerus="yes">
         <source>%n elutasított javaslatot újra felajánlhatunk a megbeszéléseknél. A felrakott címkékhez nem nyúlunk. A változás azonnal érvényes.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n dismissed suggestion can be offered again on meetings. Tags already added stay as they are. The change takes effect immediately.</numerusform>
+            <numerusform>%n dismissed suggestions can be offered again on meetings. Tags already added stay as they are. The change takes effect immediately.</numerusform>
         </translation>
     </message>
     <message>
@@ -3026,11 +3026,11 @@
     </message>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Javasolt:</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested:</translation>
     </message>
     <message>
         <source>Ez az én mikrofonom felvétele</source>
@@ -3100,7 +3100,7 @@
     </message>
     <message>
         <source>Visszavonás</source>
-        <translation type="unfinished">Undo</translation>
+        <translation>Undo</translation>
     </message>
     <message>
         <source>Bezárás</source>
@@ -3687,279 +3687,279 @@
     <name>TagChip</name>
     <message>
         <source>Javasolt címke: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested tag: %1</translation>
     </message>
     <message>
         <source>Új címke javaslat: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>New tag suggestion: %1</translation>
     </message>
     <message>
         <source>ÚJ</source>
-        <translation type="unfinished"></translation>
+        <translation>NEW</translation>
     </message>
 </context>
 <context>
     <name>TagField</name>
     <message>
         <source>Címke hozzáadása…</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag…</translation>
     </message>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
 </context>
 <context>
     <name>TagInput</name>
     <message>
         <source>Címke…</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag…</translation>
     </message>
     <message>
         <source>Címke hozzáadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag</translation>
     </message>
 </context>
 <context>
     <name>TagInputList</name>
     <message>
         <source>Hasonló már van</source>
-        <translation type="unfinished"></translation>
+        <translation>Similar tag exists</translation>
     </message>
     <message>
         <source>Legutóbb használt</source>
-        <translation type="unfinished"></translation>
+        <translation>Recently used</translation>
     </message>
     <message>
         <source>Mégis új: „%1”</source>
-        <translation type="unfinished"></translation>
+        <translation>Create anyway: “%1”</translation>
     </message>
     <message>
         <source>Új címke: „%1”</source>
-        <translation type="unfinished"></translation>
+        <translation>New tag: “%1”</translation>
     </message>
     <message>
         <source>Enter hozzáad · Esc bezár</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter adds · Esc closes</translation>
     </message>
     <message>
         <source>↑↓ választás · Enter hozzáadás · Esc bezárás</source>
-        <translation type="unfinished"></translation>
+        <translation>↑↓ select · Enter add · Esc close</translation>
     </message>
 </context>
 <context>
     <name>TagRow</name>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Címke hozzáadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag</translation>
     </message>
     <message>
         <source>Címke</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag</translation>
     </message>
     <message>
         <source>Címke hozzáadása (T)</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag (T)</translation>
     </message>
     <message>
         <source>Kattintás: hozzáadás · ×: nem illik ide</source>
-        <translation type="unfinished"></translation>
+        <translation>Click: add · ×: doesn’t fit</translation>
     </message>
     <message>
         <source>Az összes javaslat a „Miért?” alatt</source>
-        <translation type="unfinished"></translation>
+        <translation>All suggestions under “Why?”</translation>
     </message>
     <message>
         <source>Minden javaslat hozzáadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add all suggestions</translation>
     </message>
     <message>
         <source>Mind</source>
-        <translation type="unfinished"></translation>
+        <translation>All</translation>
     </message>
     <message>
         <source>Miért ezek a javaslatok?</source>
-        <translation type="unfinished"></translation>
+        <translation>Why these suggestions?</translation>
     </message>
     <message>
         <source>Miért?</source>
-        <translation type="unfinished"></translation>
+        <translation>Why?</translation>
     </message>
     <message>
         <source>Javaslatok készülnek…</source>
-        <translation type="unfinished"></translation>
+        <translation>Preparing suggestions…</translation>
     </message>
 </context>
 <context>
     <name>TagWhyPopover</name>
     <message>
         <source>Közös résztvevő</source>
-        <translation type="unfinished"></translation>
+        <translation>Shared participant</translation>
     </message>
     <message>
         <source>Hasonló cím</source>
-        <translation type="unfinished"></translation>
+        <translation>Similar title</translation>
     </message>
     <message>
         <source>Közös kifejezések</source>
-        <translation type="unfinished"></translation>
+        <translation>Shared terms</translation>
     </message>
     <message>
         <source>Miért ezek?</source>
-        <translation type="unfinished"></translation>
+        <translation>Why these?</translation>
     </message>
     <message>
         <source>Hozzáadás</source>
-        <translation type="unfinished">Add</translation>
+        <translation>Add</translation>
     </message>
     <message>
         <source>Nem illik ide</source>
-        <translation type="unfinished"></translation>
+        <translation>Doesn’t fit</translation>
     </message>
     <message>
         <source>Hasonló megbeszélés</source>
-        <translation type="unfinished"></translation>
+        <translation>Similar meeting</translation>
     </message>
     <message>
         <source>Az elutasított javaslatot ennél a megbeszélésnél nem ajánljuk újra.</source>
-        <translation type="unfinished"></translation>
+        <translation>A dismissed suggestion won’t be offered again for this meeting.</translation>
     </message>
 </context>
 <context>
     <name>TagsDetailPane</name>
     <message>
         <source>Még nincs címke</source>
-        <translation type="unfinished"></translation>
+        <translation>No tags yet</translation>
     </message>
     <message>
         <source>Címkét a megbeszélés fejlécében, a felvevőben vagy importkor adhatsz. Ha már van néhány, a rendszer a hasonló megbeszélésekre magától is javasol.</source>
-        <translation type="unfinished"></translation>
+        <translation>You can add tags in the meeting header, in the recorder or when importing. Once there are a few, Tanara also suggests them for similar meetings on its own.</translation>
     </message>
     <message>
         <source>A címke új neve</source>
-        <translation type="unfinished"></translation>
+        <translation>New tag name</translation>
     </message>
     <message>
         <source>Mentés</source>
-        <translation type="unfinished">Save</translation>
+        <translation>Save</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Enter: mentés · Esc: mégse. A régi névre a beviteli mező ezt a címkét ajánlja.</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter: save · Esc: cancel. Typing the old name in the tag input will suggest this tag.</translation>
     </message>
     <message>
         <source>Átnevezés</source>
-        <translation type="unfinished">Rename</translation>
+        <translation>Rename</translation>
     </message>
     <message>
         <source>Összevonás…</source>
-        <translation type="unfinished">Merge…</translation>
+        <translation>Merge…</translation>
     </message>
     <message>
         <source>Címke törlése</source>
-        <translation type="unfinished"></translation>
+        <translation>Delete tag</translation>
     </message>
     <message>
         <source>A profilt a rendszer a címke használatából tanulja; a javaslatok indoklása ebből jön. Nem kell szerkeszteni.</source>
-        <translation type="unfinished"></translation>
+        <translation>The profile is learned from how the tag is used; suggestion reasons come from it. No need to edit it.</translation>
     </message>
     <message>
         <source>Jellemző résztvevők</source>
-        <translation type="unfinished"></translation>
+        <translation>Typical participants</translation>
     </message>
     <message>
         <source>Még nincs elég megbeszélés hozzá.</source>
-        <translation type="unfinished"></translation>
+        <translation>Not enough meetings yet.</translation>
     </message>
     <message>
         <source>Jellemző kifejezések</source>
-        <translation type="unfinished"></translation>
+        <translation>Typical terms</translation>
     </message>
     <message>
         <source>Gyakran együtt</source>
-        <translation type="unfinished"></translation>
+        <translation>Often together</translation>
     </message>
     <message>
         <source>Megnyitás: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Open: #%1</translation>
     </message>
     <message>
         <source>Megbeszélések</source>
-        <translation type="unfinished">Meetings</translation>
+        <translation>Meetings</translation>
     </message>
     <message>
         <source>Megnyitás a könyvtárban szűrőként</source>
-        <translation type="unfinished"></translation>
+        <translation>Open as a filter in the library</translation>
     </message>
 </context>
 <context>
     <name>TagsListPane</name>
     <message>
         <source>Címke keresése</source>
-        <translation type="unfinished"></translation>
+        <translation>Search tags</translation>
     </message>
     <message>
         <source>Keresés a címkék között</source>
-        <translation type="unfinished"></translation>
+        <translation>Search among tags</translation>
     </message>
     <message>
         <source>Rendezés: %1</source>
-        <translation type="unfinished">Sort: %1</translation>
+        <translation>Sort: %1</translation>
     </message>
     <message>
         <source>Legutóbb használt</source>
-        <translation type="unfinished"></translation>
+        <translation>Recently used</translation>
     </message>
     <message>
         <source>ABC</source>
-        <translation type="unfinished">A–Z</translation>
+        <translation>A–Z</translation>
     </message>
     <message>
         <source>Leggyakoribb</source>
-        <translation type="unfinished"></translation>
+        <translation>Most used</translation>
     </message>
     <message>
         <source>Itt jelennek meg a címkék, amint az első megbeszélésre felkerül egy.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags appear here as soon as the first meeting gets one.</translation>
     </message>
     <message>
         <source>Nincs ilyen címke.</source>
-        <translation type="unfinished"></translation>
+        <translation>No such tag.</translation>
     </message>
 </context>
 <context>
     <name>TagsMergeDialog</name>
     <message>
         <source>#%1 összevonása</source>
-        <translation type="unfinished"></translation>
+        <translation>Merge #%1</translation>
     </message>
     <message>
         <source>Ha ugyanazt jelenti két név. A megbeszélések egy címke alá kerülnek, a profilok összeadódnak.</source>
-        <translation type="unfinished"></translation>
+        <translation>For when two names mean the same thing. The meetings move under one tag and the profiles are combined.</translation>
     </message>
     <message>
         <source>Nincs hasonló nevű vagy gyakran együtt járó címke.</source>
-        <translation type="unfinished"></translation>
+        <translation>No tag with a similar name or that often goes together with it.</translation>
     </message>
     <message>
         <source>Megmaradó név</source>
-        <translation type="unfinished">Name to keep</translation>
+        <translation>Name to keep</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Összevonás</source>
-        <translation type="unfinished">Merge</translation>
+        <translation>Merge</translation>
     </message>
 </context>
 <context>
@@ -3967,27 +3967,27 @@
     <message>
         <source>az</source>
         <comment>névelő magánhangzó előtt</comment>
-        <translation type="unfinished"></translation>
+        <translation>the</translation>
     </message>
     <message>
         <source>a</source>
         <comment>névelő mássalhangzó előtt</comment>
-        <translation type="unfinished"></translation>
+        <translation>the</translation>
     </message>
 </context>
 <context>
     <name>TagsWindow</name>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Törlés</source>
-        <translation type="unfinished">Delete</translation>
+        <translation>Delete</translation>
     </message>
 </context>
 <context>
@@ -4846,35 +4846,35 @@
     </message>
     <message>
         <source>Használat: tags list [&lt;meetingId&gt;] | tags add|remove &lt;meetingId&gt; &lt;név&gt; | tags suggest &lt;meetingId&gt; [--llm]</source>
-        <translation type="unfinished"></translation>
+        <translation>Usage: tags list [&lt;meetingId&gt;] | tags add|remove &lt;meetingId&gt; &lt;name&gt; | tags suggest &lt;meetingId&gt; [--llm]</translation>
     </message>
     <message>
         <source>Címkék (%1):</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags (%1):</translation>
     </message>
     <message>
         <source>HIBA: ismeretlen meeting vagy üres név.</source>
-        <translation type="unfinished"></translation>
+        <translation>ERROR: unknown meeting or empty name.</translation>
     </message>
     <message>
         <source>Felrakva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Added: #%1</translation>
     </message>
     <message>
         <source>HIBA: nincs ilyen címke.</source>
-        <translation type="unfinished"></translation>
+        <translation>ERROR: no such tag.</translation>
     </message>
     <message>
         <source>Levéve: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Removed: #%1</translation>
     </message>
     <message>
         <source>Javaslatok (%1):</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestions (%1):</translation>
     </message>
     <message>
         <source>HIBA: nem jött javaslat (nincs összefoglaló?).</source>
-        <translation type="unfinished"></translation>
+        <translation>ERROR: no suggestions came back (no summary?).</translation>
     </message>
     <message>
         <source>Használat: rename &lt;meetingId&gt; &lt;nyersCímke&gt; &lt;név&gt;</source>
@@ -5542,22 +5542,22 @@
     <name>tanara::EmbeddingPreparer</name>
     <message>
         <source>A beágyazó szolgáltató nem hozható létre.</source>
-        <translation type="unfinished"></translation>
+        <translation>The embedding provider could not be created.</translation>
     </message>
     <message>
         <source>A beágyazási válasz hiányos.</source>
-        <translation type="unfinished"></translation>
+        <translation>The embedding response is incomplete.</translation>
     </message>
     <message>
         <source>A beágyazás nem menthető (%1).</source>
-        <translation type="unfinished"></translation>
+        <translation>The embedding could not be saved (%1).</translation>
     </message>
 </context>
 <context>
     <name>tanara::LlmTagSuggester</name>
     <message>
         <source>Nincs nyelvi modell beállítva.</source>
-        <translation type="unfinished"></translation>
+        <translation>No language model configured.</translation>
     </message>
 </context>
 <context>
@@ -5583,27 +5583,27 @@
     <name>tanara::OpenAiCompatibleEmbeddingJob</name>
     <message>
         <source>Hiányzik a beágyazó végpont címe.</source>
-        <translation type="unfinished"></translation>
+        <translation>The embedding endpoint address is missing.</translation>
     </message>
     <message>
         <source>Hálózati hiba: %1</source>
-        <translation type="unfinished">Network error: %1</translation>
+        <translation>Network error: %1</translation>
     </message>
     <message>
         <source>Beágyazási hiba (HTTP %1): %2</source>
-        <translation type="unfinished"></translation>
+        <translation>Embedding error (HTTP %1): %2</translation>
     </message>
     <message>
         <source>Beágyazási hiba (HTTP %1).</source>
-        <translation type="unfinished"></translation>
+        <translation>Embedding error (HTTP %1).</translation>
     </message>
     <message>
         <source>Érvénytelen beágyazási válasz (%1 vektor jött %2 szövegre).</source>
-        <translation type="unfinished"></translation>
+        <translation>Invalid embedding response (%1 vectors for %2 texts).</translation>
     </message>
     <message>
         <source>Érvénytelen beágyazási válasz (hiányzó vektor).</source>
-        <translation type="unfinished"></translation>
+        <translation>Invalid embedding response (missing vector).</translation>
     </message>
 </context>
 <context>
@@ -5885,53 +5885,53 @@
     <name>tanara::TagService</name>
     <message>
         <source>Címke létrehozása</source>
-        <translation type="unfinished"></translation>
+        <translation>Create tag</translation>
     </message>
     <message>
         <source>Címke átnevezése</source>
-        <translation type="unfinished"></translation>
+        <translation>Rename tag</translation>
     </message>
     <message>
         <source>Címkék összevonása</source>
-        <translation type="unfinished"></translation>
+        <translation>Merge tags</translation>
     </message>
     <message>
         <source>Címke törlése</source>
-        <translation type="unfinished"></translation>
+        <translation>Delete tag</translation>
     </message>
     <message>
         <source>Címke hozzáadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add tag</translation>
     </message>
     <message>
         <source>Címke levétele</source>
-        <translation type="unfinished"></translation>
+        <translation>Remove tag</translation>
     </message>
     <message>
         <source>Címkék módosítása</source>
-        <translation type="unfinished"></translation>
+        <translation>Change tags</translation>
     </message>
     <message numerus="yes">
         <source>„%1” hozzáadása %n megbeszéléshez</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Add “%1” to %n meeting</numerusform>
+            <numerusform>Add “%1” to %n meetings</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>„%1” levétele %n megbeszélésről</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Remove “%1” from %n meeting</numerusform>
+            <numerusform>Remove “%1” from %n meetings</numerusform>
         </translation>
     </message>
     <message>
         <source>Javaslat elutasítása</source>
-        <translation type="unfinished"></translation>
+        <translation>Dismiss suggestion</translation>
     </message>
     <message>
         <source>Elutasított javaslatok visszaállítása</source>
-        <translation type="unfinished"></translation>
+        <translation>Restore dismissed suggestions</translation>
     </message>
 </context>
 <context>
@@ -6654,19 +6654,19 @@
     </message>
     <message>
         <source>címben</source>
-        <translation type="unfinished"></translation>
+        <translation>in title</translation>
     </message>
     <message>
         <source>címkében</source>
-        <translation type="unfinished"></translation>
+        <translation>in tag</translation>
     </message>
     <message>
         <source>átiratban</source>
-        <translation type="unfinished"></translation>
+        <translation>in transcript</translation>
     </message>
     <message numerus="yes">
         <source>%n találat</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n result</numerusform>
             <numerusform>%n results</numerusform>
         </translation>
@@ -6721,32 +6721,32 @@
     <name>tanara_qml::LibrarySelectionModel</name>
     <message>
         <source>mindegyiken rajta van</source>
-        <translation type="unfinished"></translation>
+        <translation>on all of them</translation>
     </message>
     <message>
         <source>csak egyiken</source>
-        <translation type="unfinished"></translation>
+        <translation>only on one</translation>
     </message>
     <message>
         <source>%1 megbeszélésen</source>
-        <translation type="unfinished"></translation>
+        <translation>on %1 meetings</translation>
     </message>
     <message>
         <source>kattintásra mindegyikre</source>
-        <translation type="unfinished"></translation>
+        <translation>click to add to all</translation>
     </message>
     <message numerus="yes">
         <source>Címke hozzáadása %n megbeszéléshez</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Add tag to %n meeting</numerusform>
+            <numerusform>Add tag to %n meetings</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>Címke levétele %n megbeszélésről</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Remove tag from %n meeting</numerusform>
+            <numerusform>Remove tag from %n meetings</numerusform>
         </translation>
     </message>
 </context>
@@ -6781,47 +6781,47 @@
     <name>tanara_qml::MeetingTagsModel</name>
     <message>
         <source>%1 mellé gyakran</source>
-        <translation type="unfinished"></translation>
+        <translation>Often with %1</translation>
     </message>
     <message>
         <source>Az összefoglaló alapján</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on the summary</translation>
     </message>
     <message>
         <source>Javasolt</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested</translation>
     </message>
     <message>
         <source>Címke hozzáadva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag added: #%1</translation>
     </message>
     <message>
         <source>Címke eltávolítva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag removed: #%1</translation>
     </message>
     <message>
         <source>Javaslat elfogadva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestion accepted: #%1</translation>
     </message>
     <message>
         <source>Javaslat elutasítva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestion dismissed: #%1</translation>
     </message>
     <message>
         <source>%1 javaslat elfogadva</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 suggestions accepted</translation>
     </message>
     <message>
         <source>Közös résztvevő</source>
-        <translation type="unfinished"></translation>
+        <translation>Shared participant</translation>
     </message>
     <message>
         <source>Hasonló cím</source>
-        <translation type="unfinished"></translation>
+        <translation>Similar title</translation>
     </message>
     <message>
         <source>Közös kifejezések</source>
-        <translation type="unfinished"></translation>
+        <translation>Shared terms</translation>
     </message>
 </context>
 <context>
@@ -7158,23 +7158,23 @@
     </message>
     <message>
         <source>hasonló cím: „%1”</source>
-        <translation type="unfinished"></translation>
+        <translation>similar title: “%1”</translation>
     </message>
     <message>
         <source>közös résztvevő: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>shared participant: %1</translation>
     </message>
     <message>
         <source>közös kifejezések: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>shared terms: %1</translation>
     </message>
     <message>
         <source>Javaslat elfogadva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestion accepted: #%1</translation>
     </message>
     <message>
         <source>Javaslat elutasítva: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestion dismissed: #%1</translation>
     </message>
     <message>
         <source>Átírás folyamatban</source>
@@ -7542,135 +7542,135 @@
     <name>tanara_qml::SettingsEmbeddingModel</name>
     <message>
         <source>Nincs (alap)</source>
-        <translation type="unfinished"></translation>
+        <translation>None (basic)</translation>
     </message>
     <message>
         <source>Helyi végpont</source>
-        <translation type="unfinished"></translation>
+        <translation>Local endpoint</translation>
     </message>
     <message>
         <source>A Tanara Cloud hamarosan érkezik.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tanara Cloud is coming soon.</translation>
     </message>
     <message>
         <source>Ehhez jelentkezz be a Tanara Cloudba (fent, a Tanara Cloud kártyán).</source>
-        <translation type="unfinished"></translation>
+        <translation>Sign in to Tanara Cloud for this (above, on the Tanara Cloud card).</translation>
     </message>
     <message>
         <source>Tanara Cloud</source>
-        <translation type="unfinished">Tanara Cloud</translation>
+        <translation>Tanara Cloud</translation>
     </message>
     <message>
         <source>A rokon témákat is felismeri, akkor is, ha más szavakkal beszéltetek róla. Nem kell hozzá helyi modell.</source>
-        <translation type="unfinished"></translation>
+        <translation>Also recognises related topics, even if you talked about them in other words. No local model needed.</translation>
     </message>
     <message>
         <source>A rokon témákat is felismeri, akkor is, ha más szavakkal beszéltetek róla. Beágyazó modell kell hozzá (pl. LM Studio). Alap szinten is működnek a javaslatok: közös résztvevők, nevek, hasonló cím.</source>
-        <translation type="unfinished"></translation>
+        <translation>Also recognises related topics, even if you talked about them in other words. Needs an embedding model (e.g. LM Studio). Suggestions also work at the basic level: shared participants, names, similar title.</translation>
     </message>
     <message>
         <source>A javaslatok alap szinten működnek: közös résztvevők, nevek, hasonló cím alapján. Nem kell hozzá modell, és semmi nem hagyja el a gépet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestions work at the basic level: based on shared participants, names and similar title. No model needed, and nothing leaves your computer.</translation>
     </message>
     <message>
         <source>Az átiratok szövege a Tanara Cloudba kerül feldolgozásra, ugyanúgy, mint a felhős összefoglalásnál. A hangfelvétel és a hanglenyomatok a gépen maradnak.</source>
-        <translation type="unfinished"></translation>
+        <translation>Transcript text is sent to Tanara Cloud for processing, just like with cloud summaries. The audio recording and voiceprints stay on your computer.</translation>
     </message>
     <message>
         <source>Az előkészítés egyszer kb. %1 kredit, utána megbeszélésenként ~%2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Preparing costs about %1 credits once, then ~%2 per meeting.</translation>
     </message>
     <message>
         <source>A Tanara Cloudhoz be kell jelentkezned (fent, a Tanara Cloud kártyán). Addig a javaslatok az alap szinten működnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>You need to sign in to Tanara Cloud (above, on the Tanara Cloud card). Until then, suggestions work at the basic level.</translation>
     </message>
     <message>
         <source>Alap szint</source>
-        <translation type="unfinished"></translation>
+        <translation>Basic level</translation>
     </message>
     <message>
         <source>Kapcsolódva</source>
-        <translation type="unfinished">Connected</translation>
+        <translation>Connected</translation>
     </message>
     <message>
         <source>Bejelentkezés kell</source>
-        <translation type="unfinished"></translation>
+        <translation>Sign-in required</translation>
     </message>
     <message>
         <source>Nem érhető el</source>
-        <translation type="unfinished">Unreachable</translation>
+        <translation>Unreachable</translation>
     </message>
     <message>
         <source>Hiányos</source>
-        <translation type="unfinished"></translation>
+        <translation>Incomplete</translation>
     </message>
     <message>
         <source>Beállítva</source>
-        <translation type="unfinished"></translation>
+        <translation>Configured</translation>
     </message>
     <message>
         <source>%1 / %2 megbeszélés</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 / %2 meetings</translation>
     </message>
     <message numerus="yes">
         <source>kb. %n perc van hátra</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>about %n minute left</numerusform>
             <numerusform>about %n minutes left</numerusform>
         </translation>
     </message>
     <message>
         <source>ismeretlen hiba</source>
-        <translation type="unfinished"></translation>
+        <translation>unknown error</translation>
     </message>
     <message>
         <source>Megállt %1 / %2-nél: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>Stopped at %1 / %2: %3</translation>
     </message>
     <message>
         <source>Megállt %1 / %2-nál: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>Stopped at %1 / %2: %3</translation>
     </message>
     <message numerus="yes">
         <source>Naprakész · %n megbeszélés</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Up to date · %n meeting</numerusform>
+            <numerusform>Up to date · %n meetings</numerusform>
         </translation>
     </message>
     <message>
         <source>Másik beágyazásra váltasz.</source>
-        <translation type="unfinished"></translation>
+        <translation>You’re switching to a different embedding.</translation>
     </message>
     <message>
         <source>Másik modellre váltasz.</source>
-        <translation type="unfinished"></translation>
+        <translation>You’re switching to a different model.</translation>
     </message>
     <message>
         <source>Mentés után a könyvtár előkészítése elölről indul. Addig a javaslatok az alap szinten működnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>After saving, preparing the library starts over. Until then, suggestions work at the basic level.</translation>
     </message>
     <message>
         <source>Mentés után a könyvtár előkészítése elölről indul (%1, kb. %2). Addig a javaslatok az alap szinten működnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>After saving, preparing the library starts over (%1, about %2). Until then, suggestions work at the basic level.</translation>
     </message>
     <message numerus="yes">
         <source>%n megbeszélés</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n meeting</numerusform>
             <numerusform>%n meetings</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n perc</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n minute</numerusform>
             <numerusform>%n minutes</numerusform>
         </translation>
     </message>
     <message>
         <source>a végpont nem válaszol. Fut a helyi szerver?</source>
-        <translation type="unfinished"></translation>
+        <translation>the endpoint is not responding. Is the local server running?</translation>
     </message>
 </context>
 <context>
@@ -7780,7 +7780,7 @@
     </message>
     <message>
         <source>Modellváltás · mentéskor újraindul az előkészítés</source>
-        <translation type="unfinished"></translation>
+        <translation>Model change · preparation restarts on save</translation>
     </message>
     <message>
         <source>Tanara Cloud kiválasztva · mentéskor átvált</source>
@@ -8028,7 +8028,7 @@
     </message>
     <message>
         <source>A Címkék ebben a módban nem érhetők el.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags are not available in this mode.</translation>
     </message>
     <message>
         <source>A felvevő ebben a módban nem érhető el.</source>
@@ -8202,15 +8202,15 @@
     </message>
     <message>
         <source>hasonló cím: „%1”</source>
-        <translation type="unfinished"></translation>
+        <translation>similar title: “%1”</translation>
     </message>
     <message>
         <source>közös résztvevő: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>shared participant: %1</translation>
     </message>
     <message>
         <source>közös kifejezések: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>shared terms: %1</translation>
     </message>
     <message>
         <source>Nem hang- vagy videófájl (nem olvasható be): %1</source>
@@ -8770,110 +8770,110 @@
     <name>tanara_qml::TagDemoBackend</name>
     <message>
         <source>Címke hozzáadva</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag added</translation>
     </message>
     <message>
         <source>Címke eltávolítva</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag removed</translation>
     </message>
     <message>
         <source>Javaslat elutasítva</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggestion dismissed</translation>
     </message>
     <message>
         <source>Átnevezés</source>
-        <translation type="unfinished">Rename</translation>
+        <translation>Rename</translation>
     </message>
     <message>
         <source>Összevonás</source>
-        <translation type="unfinished">Merge</translation>
+        <translation>Merge</translation>
     </message>
     <message>
         <source>Címke törölve</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag deleted</translation>
     </message>
 </context>
 <context>
     <name>tanara_qml::TagsViewModel</name>
     <message>
         <source>ABC</source>
-        <translation type="unfinished">A–Z</translation>
+        <translation>A–Z</translation>
     </message>
     <message>
         <source>Leggyakoribb</source>
-        <translation type="unfinished"></translation>
+        <translation>Most used</translation>
     </message>
     <message>
         <source>Legutóbb használt</source>
-        <translation type="unfinished"></translation>
+        <translation>Recently used</translation>
     </message>
     <message>
         <source>%1 / %2 címke</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 / %2 tags</translation>
     </message>
     <message>
         <source>%1 címke</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 tags</translation>
     </message>
     <message>
         <source>%1 megbeszélés · %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 meetings · %2</translation>
     </message>
     <message>
         <source>%1 megbeszélés · először: %2 · utoljára: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 meetings · first: %2 · last: %3</translation>
     </message>
     <message>
         <source>%1 · legújabb elöl</source>
-        <translation type="unfinished">%1 · newest first</translation>
+        <translation>%1 · newest first</translation>
     </message>
     <message>
         <source>A címke már nem létezik.</source>
-        <translation type="unfinished"></translation>
+        <translation>The tag no longer exists.</translation>
     </message>
     <message>
         <source>Adj meg egy nevet.</source>
-        <translation type="unfinished">Enter a name.</translation>
+        <translation>Enter a name.</translation>
     </message>
     <message>
         <source>Átnevezve: #%1 → #%2</source>
-        <translation type="unfinished"></translation>
+        <translation>Renamed: #%1 → #%2</translation>
     </message>
     <message>
         <source>Már van „%1” nevű címke. Ha ugyanazt jelentik, vond össze őket.</source>
-        <translation type="unfinished"></translation>
+        <translation>A tag named “%1” already exists. If they mean the same thing, merge them.</translation>
     </message>
     <message>
         <source>%1 megbeszélés · hasonló név</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 meetings · similar name</translation>
     </message>
     <message>
         <source>%1 megbeszélés · %2× szerepeltek együtt</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 meetings · together %2×</translation>
     </message>
     <message>
         <source>Eredmény: &lt;b&gt;%1 megbeszélés&lt;/b&gt; (%2 közös). A „%3” név megszűnik; ha valaki beírja, a mező %4 #%5 címkét ajánlja.</source>
-        <translation type="unfinished"></translation>
+        <translation>Result: &lt;b&gt;%1 meetings&lt;/b&gt; (%2 shared). The name “%3” goes away; if someone types it, the input suggests %4 #%5 tag.</translation>
     </message>
     <message>
         <source>Válassz egy másik címkét.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choose a different tag.</translation>
     </message>
     <message>
         <source>Összevonva: #%1 → #%2</source>
-        <translation type="unfinished"></translation>
+        <translation>Merged: #%1 → #%2</translation>
     </message>
     <message>
         <source>Törlöd %1 #%2 címkét?</source>
-        <translation type="unfinished"></translation>
+        <translation>Delete %1 #%2 tag?</translation>
     </message>
     <message>
         <source>%1 megbeszélésről lekerül. Maguk a megbeszélések, átiratok és összefoglalók megmaradnak. A címke profilja és az együtt járási adatai törlődnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>It will be removed from %1 meetings. The meetings themselves, their transcripts and summaries stay. The tag’s profile and co-occurrence data are deleted.</translation>
     </message>
     <message>
         <source>Címke törölve: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag deleted: #%1</translation>
     </message>
 </context>
 <context>
