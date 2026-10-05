@@ -3,8 +3,10 @@ import QtQuick.Layouts
 
 // Nem-modális értesítés a tartalom alján (a régi állapotsor-üzenetek és a Tanara Cloud
 // költség-értesítései helyett): szöveg, opcionálisan másolható hibaazonosító és „Napló a
-// weben” hivatkozás, bezáró ×. Magától eltűnik; az új üzenet a régit váltja.
+// weben” hivatkozás, „Visszavonás” (undoKey: a visszavonható lépés gazdája, pl. "tags"), bezáró ×.
+// Magától eltűnik; az új üzenet a régit váltja.
 //   toast.show(qsTr("Elkészült az átirat"), "", "", false)
+//   toast.show(qsTr("Javaslat elutasítva: #Nordvik"), "", "", false, "tags")
 Item {
     id: root
 
@@ -12,14 +14,17 @@ Item {
     property string tone: ""                 // "" | "danger"
     property string requestId: ""
     property bool usageLink: false
+    property string undoKey: ""
     property bool shown: false
     signal usageLinkActivated()
+    signal undoActivated(string undoKey)
 
-    function show(text, tone, requestId, usageLink) {
+    function show(text, tone, requestId, usageLink, undoKey) {
         root.text = text
         root.tone = tone || ""
         root.requestId = requestId || ""
         root.usageLink = !!usageLink
+        root.undoKey = undoKey || ""
         root.shown = true
         // Költség / hiba: tovább marad kint (van rajta teendő vagy azonosító).
         hideTimer.interval = root.requestId !== "" || root.usageLink ? 20000
@@ -98,6 +103,13 @@ Item {
             size: "small"
             variant: "ghost"
             onClicked: root.usageLinkActivated()
+        }
+        TButton {
+            visible: root.undoKey !== ""
+            text: qsTr("Visszavonás")
+            size: "small"
+            variant: "ghost"
+            onClicked: root.undoActivated(root.undoKey)
         }
         TIconButton {
             variant: "flat"

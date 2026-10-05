@@ -36,6 +36,9 @@ Item {
 
     property string demoVariant: ""
     property string demoState: ""
+    // A héj kikapcsolhatja a Ctrl+Z-t, amíg a fókusz nem a szerkesztőben van (ott a címke-lépés
+    // visszavonása él; lásd Main.qml tagUndoActive).
+    property bool undoAllowed: true
 
     // ---- a sorok (TranscriptRow) ezt olvassák ----
     readonly property bool railShown: editorVm.railVisible && editorVm.hasTranscript
@@ -262,7 +265,7 @@ Item {
     }
     Shortcut {
         sequences: ["Ctrl+Z"]
-        enabled: root.visible && editorVm.canUndo && !root.textInputFocused
+        enabled: root.visible && root.undoAllowed && editorVm.canUndo && !root.textInputFocused
         onActivated: editorVm.undo()
     }
     Shortcut {

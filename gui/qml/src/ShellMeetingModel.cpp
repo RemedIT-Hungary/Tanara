@@ -95,7 +95,8 @@ QString iconFor(JobKind kind)
 
 } // namespace
 
-ShellMeetingModel::ShellMeetingModel(QObject* parent) : QObject(parent)
+ShellMeetingModel::ShellMeetingModel(QObject* parent)
+    : QObject(parent), m_tags(new MeetingTagsModel(this))
 {
     AppContext* ctx = AppContext::instance();
     m_controller = ctx->controller();
@@ -137,7 +138,11 @@ void ShellMeetingModel::attach()
             connect(c, &tanara::AppController::tracksChanged, this,
                     &ShellMeetingModel::onMeetingTouched);
             connect(c, &tanara::AppController::transcriptReady, this,
-                    [this](const QString& id, const QString&) { onMeetingTouched(id); });
+                    [this](const QString& id, const QString&) {
+                // Új átirat → új javaslatok (a controller előbb eldobja a régi profilt).
+                if (id == m_meetingId) m_tagsRequestedFor.clear();
+                onMeetingTouched(id);
+            });
             connect(c, &tanara::AppController::summaryReady, this,
                     [this](const QString& id, const QString&) { onMeetingTouched(id); });
             if (tanara::MeetingJobTracker* jobs = c->jobs()) {
@@ -153,8 +158,21 @@ void ShellMeetingModel::attach()
                 });
             }
         }
+        // A címkesor a valódi készlettel dolgozik (controller nélkül a kitalált marad).
+        if (m_controller) m_tags->setController(m_controller.data());
+        m_tagsRequestedFor.clear();
     }
     reload();
+}
+
+void ShellMeetingModel::syncTags()
+{
+    // Demóban (controller nélkül) üres azonosító → a kitalált demó-megbeszélés címkéi.
+    m_tags->setMeetingId(m_controller ? m_meetingId : QString());
+    if (!m_controller || !m_exists || !m_hasTranscript || m_tagsRequestedFor == m_meetingId)
+        return;
+    m_tagsRequestedFor = m_meetingId;
+    m_tags->requestSuggestions();
 }
 
 void ShellMeetingModel::setMeetingId(const QString& id)
@@ -229,6 +247,7 @@ void ShellMeetingModel::reload()
         m_canIdentify = canIdentify;
         emit changed();
     }
+    syncTags();
     reloadTasks();
 }
 

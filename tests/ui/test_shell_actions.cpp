@@ -15,6 +15,7 @@
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -56,6 +57,8 @@ public:
     QString lastFocusField;
     void openPeople() override { calls << QStringLiteral("people"); }
     void openPeopleAt(const QString& person) override { calls << QStringLiteral("people:") + person; }
+    void openTags() override { calls << QStringLiteral("tags"); }
+    void openTagsAt(const QString& tagId) override { calls << QStringLiteral("tags:") + tagId; }
     void openRecorder() override { calls << QStringLiteral("recorder"); }
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
     QStringList pickAudioFiles() override { calls << QStringLiteral("pickMany"); return pickedFiles; }
@@ -251,6 +254,90 @@ private slots:
         m_shell->openRecorder();
         QCOMPARE(m_shell->pickAudioFile(), QString());
         QCOMPARE(m_toasts.size(), 2);
+    }
+
+    void tagsActions()
+    {
+        // A Címkék ablaka a hídon át, opcionális kijelöléssel.
+        m_shell->openTags();
+        QCOMPARE(m_bridge->calls.last(), QStringLiteral("tags"));
+        m_shell->openTags(QStringLiteral(" t-1 "));
+        QCOMPARE(m_bridge->calls.last(), QStringLiteral("tags:t-1"));
+
+        // Szűrés címkére: a Main.qml a könyvtár-modellre teszi.
+        QSignalSpy filter(m_shell.get(), &ShellActions::tagFilterRequested);
+        m_shell->filterByTag(QStringLiteral("t-1"));
+        m_shell->filterByTag(QString());           // üres: semmi
+        QCOMPARE(filter.count(), 1);
+        QCOMPARE(filter.first().at(0).toString(), QStringLiteral("t-1"));
+        // A Címkék ablakából (híd): szűrés + a főablak előre.
+        QSignalSpy activate(m_shell.get(), &ShellActions::windowActivationRequested);
+        emit m_bridge->tagFilterRequested(QStringLiteral("t-2"));
+        QCOMPARE(filter.count(), 2);
+        QCOMPARE(filter.last().at(0).toString(), QStringLiteral("t-2"));
+        QCOMPARE(activate.count(), 1);
+
+        // Toast „Visszavonás”-sal: a kulcs a jelben; a gomb undoRequested(kulcs)-ot ad.
+        QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
+        QSignalSpy undo(m_shell.get(), &ShellActions::undoRequested);
+        m_shell->toast(QStringLiteral("Javaslat elutasítva: #Nordvik"), QStringLiteral("tags"));
+        m_shell->toast(QStringLiteral("Sima értesítés"));
+        QCOMPARE(toasts.count(), 2);
+        QCOMPARE(toasts.at(0).at(4).toString(), QStringLiteral("tags"));
+        QCOMPARE(toasts.at(1).at(4).toString(), QString());
+        m_shell->undoFromToast(QStringLiteral("tags"));
+        m_shell->undoFromToast(QString());
+        QCOMPARE(undo.count(), 1);
+        QCOMPARE(undo.first().at(0).toString(), QStringLiteral("tags"));
+
+        // Híd nélkül (demó) a Címkék nem nyílik, értesít.
+        m_shell->setBridge(nullptr);
+        m_toasts.clear();
+        m_shell->openTags();
+        QCOMPARE(m_toasts.size(), 1);
+    }
+
+    void meetingModelTagsFollowSelection()
+    {
+        const tanara::Meeting a = transcribed(QStringLiteral("Nordvik egyeztetés"));
+        const tanara::Meeting b = transcribed(QStringLiteral("Nordvik egyeztetés 2"));
+        const tanara::Meeting plain = recording(QStringLiteral("Átirat nélkül"));
+        tanara::TagService* tags = m_app->tags();
+        tags->addTag(a.id, QStringLiteral("Nordvik"));
+
+        ShellMeetingModel model;
+        model.setController(m_app.get());
+        QVERIFY(model.tags());
+        QSignalSpy computing(m_app.get(), &tanara::AppController::tagSuggestionsComputing);
+
+        // Átírt megbeszélés megjelenítése → a címkesor a megbeszéléshez kötve + javaslat-kérés.
+        model.setMeetingId(a.id);
+        QCOMPARE(model.tags()->meetingId(), a.id);
+        QCOMPARE(model.tags()->tags().size(), 1);
+        QCOMPARE(computing.count(), 1);
+        QCOMPARE(computing.last().at(0).toString(), a.id);
+        // Ugyanaz a kijelölés frissülése (pl. feladat-haladás) nem kér újra.
+        m_app->renameMeeting(a.id, QStringLiteral("Nordvik egyeztetés (átnevezve)"));
+        QTRY_COMPARE(model.title(), QStringLiteral("Nordvik egyeztetés (átnevezve)"));
+        QCOMPARE(computing.count(), 1);
+
+        // Átirat nélkül nem kér (az 1. lépés a cím alapján javasol).
+        model.setMeetingId(plain.id);
+        QCOMPARE(model.tags()->meetingId(), plain.id);
+        QCOMPARE(computing.count(), 1);
+
+        // Új átirat a kijelölt megbeszélésen → újra kér.
+        model.setMeetingId(b.id);
+        QCOMPARE(computing.count(), 2);
+        emit m_app->transcriptReady(b.id, QString());
+        QCOMPARE(computing.count(), 3);
+        QCOMPARE(computing.last().at(0).toString(), b.id);
+        // Másik megbeszélés átirata: nem.
+        emit m_app->transcriptReady(a.id, QString());
+        QCOMPARE(computing.count(), 3);
+
+        // A javaslat-lista megérkezik a modellbe (a „Nordvik” címke a hasonló megbeszélésről).
+        QTRY_VERIFY_WITH_TIMEOUT(!model.tags()->computing(), 10000);
     }
 
     void transcriptionIsGatedByReadiness()

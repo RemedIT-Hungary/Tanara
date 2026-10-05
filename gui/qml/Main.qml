@@ -22,8 +22,12 @@ ApplicationWindow {
     // Demóban / képernyőképhez: induláskor megnyíló felugró vagy állapot —
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
     // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
-    // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop"
+    // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop" |
+    // "tagToast" (címke-lépés toast „Visszavonás”-sal)
     property string demoOverlay: ""
+    // Demóban: a fejléc címkesorának kitalált állapota (MeetingTagsModel.demoState: none | few |
+    // many | computing | similar | cooccur | llm | why).
+    property string demoTags: ""
 
     // ---- állapot ----
     readonly property string computedState: sidebar.library.totalCount === 0 ? "empty"
@@ -46,6 +50,7 @@ ApplicationWindow {
     readonly property alias meetingModel: currentMeeting
     readonly property alias importModel: importModel
     readonly property alias importDialog: importDialog
+    readonly property alias meetingHeader: header
 
     property bool quitConfirmed: false
     property bool restoring: true
@@ -61,6 +66,33 @@ ApplicationWindow {
         if (it instanceof TextInput || it instanceof TextEdit)
             return false
         return it.visualFocus !== true
+    }
+
+    // Ctrl+Z: az átirat-szerkesztőben a szerkesztő saját visszavonása; máshol (fejléc, címkesor,
+    // lépések) a legutóbbi címke-lépés visszavonása. Szövegmezőben a mező saját visszavonása él.
+    readonly property bool focusInTranscript: {
+        for (let it = window.activeFocusItem; it; it = it.parent)
+            if (it === transcriptTab) return true
+        return false
+    }
+    readonly property bool tagUndoActive: {
+        if (!hasMeeting || dialogs.anyOpen || importDialog.visible || !currentMeeting.tags.canUndo)
+            return false
+        if (focusInTranscript && transcriptTab.visible)
+            return false
+        const it = window.activeFocusItem
+        return !(it instanceof TextInput || it instanceof TextEdit)
+    }
+
+    // A könyvtár szűrése egy címkére (fejléc-chip, Címkék ablak). A könyvtár címke-szűrője a
+    // könyvtár-szelet része; amíg nincs, nem tesz semmit.
+    function filterLibraryByTag(tagId) {
+        const lib = sidebar.library
+        if (!lib || tagId === "" || !("tags" in lib))
+            return
+        if ("untagged" in lib) lib.untagged = false
+        if ("tagsAll" in lib) lib.tagsAll = false
+        lib.tags = [tagId]
     }
 
     width: 1280
@@ -91,7 +123,11 @@ ApplicationWindow {
             // a kijelölés után frissül, ezért a következő körben nézzük meg).
             Qt.callLater(() => { if (!currentMeeting.hasTranscript) shellActions.currentTab = 0 })
         }
-        onToastRequested: (text, tone, requestId, usageLink) => toast.show(text, tone, requestId, usageLink)
+        onToastRequested: (text, tone, requestId, usageLink, undoKey) => toast.show(text, tone, requestId, usageLink, undoKey)
+        // A címke-lépések egy közös visszavonási vermen vannak (TagService): bármelyik modell
+        // visszavonása a legutóbbi lépést veszi vissza.
+        onUndoRequested: (undoKey) => { if (undoKey === "tags") currentMeeting.tags.undo() }
+        onTagFilterRequested: (tagId) => window.filterLibraryByTag(tagId)
         onConfirmRequested: (title, text, confirmLabel, danger) => dialogs.openConfirm(title, text, confirmLabel, danger)
         onRetranscribeDialogRequested: (meetingId) => dialogs.openRetranscribe(meetingId)
         onDeleteDialogRequested: (meetingId, title) => dialogs.openDelete(meetingId, title)
@@ -112,6 +148,17 @@ ApplicationWindow {
         id: currentMeeting
         meetingId: shellActions.currentMeetingId
         demoTask: App.demo && window.taskRunning
+    }
+    Binding {
+        when: App.demo && window.demoTags !== ""
+        target: currentMeeting.tags
+        property: "demoState"
+        value: window.demoTags
+    }
+    // A címkesor lépései (elfogadás, elutasítás, levétel) a héj toastján, „Visszavonás”-sal.
+    Connections {
+        target: currentMeeting.tags
+        function onToast(text, undoable) { shellActions.toast(text, undoable ? "tags" : "") }
     }
 
     Connections {
@@ -196,6 +243,7 @@ ApplicationWindow {
         case "confirm": dialogs.openConfirm("Törlöd az eldobott sávokat?", "2 eldobott sáv hangfájlja véglegesen törlődik. Ez nem vonható vissza.", "Végleges törlés", true); break
         case "toast": toast.show("Elkészült az átirat: Negyedéves partnertalálkozó", "", "", false); break
         case "toastError": toast.show("Nincs rögzíthető hangeszköz.", "danger", "", false); break
+        case "tagToast": toast.show("Javaslat elutasítva: #Nordvik", "", "", false, "tags"); break
         case "cloudToast": toast.show("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "", "req_8f3a2c71d0", true); break
         case "filters":
             sidebar.library.noSummary = true
@@ -239,6 +287,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+2"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(1) }
     Shortcut { sequence: "Ctrl+3"; enabled: window.hasMeeting; onActivated: shellActions.showTab(2) }
     Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen; onActivated: header.startRename() }
+    Shortcut {
+        sequence: "Ctrl+Z"
+        enabled: window.tagUndoActive
+        onActivated: { toast.hide(); currentMeeting.tags.undo() }
+    }
     Shortcut {
         sequence: "Space"
         enabled: window.spaceTogglesPlayer
@@ -527,6 +580,7 @@ ApplicationWindow {
                             meetingId: window.contentMeetingId
                             player: playerController
                             shell: shellActions
+                            undoAllowed: !window.tagUndoActive
                         }
                         SummaryTab {
                             id: summaryTab
@@ -574,6 +628,7 @@ ApplicationWindow {
                     anchors.bottomMargin: (window.hasMeeting ? Theme.playerHeight : 0) + Theme.space4
                     width: Math.min(implicitWidth, parent.width - 2 * Theme.space5)
                     onUsageLinkActivated: if (App.bridge) App.bridge.openUsageLog()
+                    onUndoActivated: (undoKey) => { toast.hide(); shellActions.undoFromToast(undoKey) }
                 }
             }
         }

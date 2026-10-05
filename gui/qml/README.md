@@ -175,6 +175,33 @@ Overrides for `--demo` / `--qml-shot` (leave unset with a real controller):
 rename | tracks | import | importSplit | importProbing | importError | importEmpty | importFailed |
 importProgress | importStrip | drop`).
 
+### Tags in the shell
+
+Spec: `design/handoff-tags/README.md` (C03/C04, C07), contract `CONTRACT-TAGS.md`. The view-models
+reach the core through `TagBackend` → `TagControllerBackend` (`createControllerTagBackend`).
+
+- **Header** (`MeetingHeader` → `TagRow`, under the meta line, every tab): the model is
+  `ShellMeetingModel.tags` (a `MeetingTagsModel` bound to the selected meeting). Suggestions are
+  requested when a transcribed meeting is shown and when its transcript arrives; co-occurring
+  ones after a manual add; LLM ones arrive by themselves after a summary. A chip click →
+  `shell.filterByTag(id)` → `tagFilterRequested` → `Main.filterLibraryByTag` (sets `tags` on the
+  library model when it has that property). "Miért?" links → `shell.showMeeting`.
+- **Before transcript** the header has no tag row; step 1 of `PreTranscriptView` shows "Címkék"
+  (`TagField` on `PreTranscriptViewModel.tags`) and the suggestion line (`tagSuggestions`,
+  `tagSuggestionReason`: the meeting's normal suggestions, else `draftTagSuggestions(title)`). The
+  note cards show the source meeting's tags (`MeetingNoteModel.suggestions[].tags`, mini chips).
+- **Undo**: every tag step toasts through `shell.toast(text, "tags")` (ShellToast shows
+  "Visszavonás" → `shell.undoFromToast` → `undoRequested("tags")`). `Ctrl+Z` undoes the last tag
+  step unless the focus is in the transcript editor or a text field (`Main.tagUndoActive`;
+  `TranscriptTab.undoAllowed`). All tag models share the one `TagService` undo stack.
+- **Tags window**: `shell.openTags(tagId)` → `ShellBridge::openTagsAt` → `TagsWindowHost`
+  ("Megnyitás a könyvtárban szűrőként" → `ShellBridge::tagFilterRequested`; meeting links →
+  `showMeetingRequested`). QA: `App.bridge.tagsWindow()`.
+- Screenshots: `Main` with `demoTags` (`none | few | many | computing | similar | cooccur | llm |
+  why`) and `demoOverlay="tagToast"`; `MeetingHeader:1004x120:demoState="cooccur"` (T03),
+  `"llm"` (T06), `MeetingHeader:1004x520:demoState="why"` (T02, panel open);
+  `PreTranscriptView:1004x640:demoState="note"` (T07).
+
 ### Audio file import
 
 "Fájl → Hangfájl importálása…" (`Ctrl+I`), the icon button next to "Új felvétel", the empty-library

@@ -5,6 +5,13 @@
 // a fülön), és a rajta futó megszakítható feladatok a feladat-sávhoz (MeetingJobTracker).
 // Controller nélkül (App.demo) a kitalált mintakönyvtárból dolgozik.
 //
+// A fejléc címkesora (TagRow) a `tags` modellt kapja: a kijelölt megbeszélés címkéi és
+// javaslatai. Javaslatot kér, amikor egy átírt megbeszélés megjelenik és amikor az átirata
+// (újra) elkészül; az együtt járókat a címke felrakása után a MeetingTagsModel kéri, az LLM-
+// javaslat az összefoglaló után magától jön. Demóban a kitalált címke-készlet (demoState a QML-ből).
+//
+#include "MeetingTagsModel.h"
+
 #include "tanara/jobs/JobTypes.h"
 
 #include <QObject>
@@ -35,6 +42,8 @@ class ShellMeetingModel : public QObject {
     // A feladat-sáv sorai: [{ kind, title, detail, eta, iconName, percent (0…100 | -1),
     //                        cancellable, cancelling }]
     Q_PROPERTY(QVariantList tasks READ tasks NOTIFY tasksChanged)
+    // A fejléc címkesorának modellje (a kijelölt megbeszéléshez kötve).
+    Q_PROPERTY(tanara_qml::MeetingTagsModel* tags READ tags CONSTANT)
     // Csak demó / képernyőkép: egy minta-feladat a sávban.
     Q_PROPERTY(bool demoTask READ demoTask WRITE setDemoTask NOTIFY tasksChanged)
 
@@ -55,6 +64,7 @@ public:
     QVariantList tasks() const { return m_tasks; }
     bool demoTask() const { return m_demoTask; }
     void setDemoTask(bool on);
+    MeetingTagsModel* tags() const { return m_tags; }
 
     // Egy futó feladat sávbeli leírása (statikus: tesztelhető).
     static QVariantMap describeJob(const tanara::JobProgress& job);
@@ -69,6 +79,7 @@ private:
     void reload();
     void reloadTasks();
     void onMeetingTouched(const QString& id);
+    void syncTags();
 
     QPointer<tanara::AppController> m_controller;
     QPointer<tanara::AppController> m_attached;
@@ -84,6 +95,9 @@ private:
     bool m_identifyRunning = false;
     bool m_demoTask = false;
     QVariantList m_tasks;
+
+    MeetingTagsModel* m_tags = nullptr;
+    QString m_tagsRequestedFor;   // erre a megbeszélésre már kértünk javaslatot (kijelölésenként egyszer)
 };
 
 } // namespace tanara_qml
