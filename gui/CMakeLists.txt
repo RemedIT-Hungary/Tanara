@@ -22,3 +22,5 @@ target_link_libraries(tanara PRIVATE
     Qt6::Multimedia
     Qt6::MultimediaWidgets
 )
+
+tanara_copy_onnxruntime_dll(tanara)

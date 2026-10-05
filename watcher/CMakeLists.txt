@@ -12,6 +12,7 @@ add_executable(tanara-watcher
 set_target_properties(tanara-watcher PROPERTIES WIN32_EXECUTABLE ON)
 
 target_link_libraries(tanara-watcher PRIVATE tanara_core Qt6::Widgets)
+tanara_copy_onnxruntime_dll(tanara-watcher)
 
 # Linuxon a hívás-notification a freedesktop Notifications D-Bus API-n megy (valódi
 # akció-gombokkal — a QSystemTrayIcon::showMessage kattintása Plasmán nem működik).

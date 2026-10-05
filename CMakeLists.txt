@@ -90,6 +90,20 @@ if(TANARA_BUILD_VOICEID)
     endif()
 endif()
 
+# Windows + voice-ID: a helyes onnxruntime.dll-t az exe mellé másoljuk (POST_BUILD).
+# A Windows a System32-ben SAJÁT, régebbi onnxruntime.dll-t szállít (Windows ML, ~1.17);
+# ha az exe mellett nincs DLL, azt tölti be → "API version [20] is not available", és a
+# voice-ID némán elhal. Az add_custom_command(TARGET …) csak a target saját könyvtárában
+# hívható, ezért segédfüggvény, amit a cli/gui/watcher/tests CMakeLists hív.
+function(tanara_copy_onnxruntime_dll target)
+    if(WIN32 AND TANARA_BUILD_VOICEID AND ONNXRUNTIME_DLL)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${ONNXRUNTIME_DLL}" "$<TARGET_FILE_DIR:${target}>"
+            VERBATIM)
+    endif()
+endfunction()
+
 add_subdirectory(core)
 add_subdirectory(cli)
 if(TANARA_BUILD_GUI)
