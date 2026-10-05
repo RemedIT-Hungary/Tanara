@@ -1,0 +1,3 @@
+; Generálva a CMake-ből (configure_file) — ne szerkeszd. A verzió a project(VERSION) + utótag.
+#define AppVersion "@TANARA_VERSION@"
+#define AppVersionNumeric "@PROJECT_VERSION@"

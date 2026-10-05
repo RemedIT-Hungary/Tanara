@@ -133,3 +133,9 @@ qt_add_translations(TARGETS ${TANARA_I18N_TARGETS}
     TS_FILES ${CMAKE_SOURCE_DIR}/i18n/tanara_en.ts
     RESOURCE_PREFIX "/i18n"
     LUPDATE_OPTIONS -no-obsolete -locations none)
+
+# Windows-telepítő (Inno Setup, packaging/windows/tanara.iss): a verzió innen jön.
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/packaging/windows/tanara-version.iss.in
+                   ${CMAKE_BINARY_DIR}/tanara-version.iss @ONLY)
+endif()
