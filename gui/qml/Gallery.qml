@@ -7,11 +7,13 @@ import QtQuick.Templates as T
 //   képernyőkép:    tanara --qml-shot ki.png --qml-page Gallery --theme dark --size 1280x2600
 // overlay: "" | "dialog" | "menu" | "popover" — induláskor megnyit egy VALÓDI felugrót
 // (pl. --qml-prop overlay=dialog), a fátyol / árnyék / pozicionálás ellenőrzéséhez.
+// section: "" (minden) | "tags" — csak az adott szakasz (pl. --qml-prop 'section="tags"').
 // A mintaszövegek fejlesztői tartalom → szándékosan nincsenek qsTr()-ben.
 Item {
     id: root
 
     property string overlay: ""
+    property string section: ""
 
     readonly property var iconNames: [
         "file-text", "sparkles", "user-check", "search", "users", "settings", "fingerprint",
@@ -22,7 +24,7 @@ Item {
         "minus", "square", "x", "chevrons-left-right", "pencil", "chevron-right", "chevron-up",
         "chevron-left", "info", "circle-alert", "circle-check", "loader-circle", "refresh-cw",
         "user", "user-plus", "volume-x", "mic-off", "external-link", "clock", "sun", "moon",
-        "circle-dot", "ellipsis-vertical"
+        "circle-dot", "ellipsis-vertical", "hash", "tag"
     ]
     readonly property var speakerNames: [
         "Kovács Lilla", "Fehér Ádám", "Szabó Áron", "Varga Nóra", "Tóth Bence", "Molnár Eszter",
@@ -92,12 +94,21 @@ Item {
         id: flick
         anchors.fill: parent
         contentWidth: width
-        contentHeight: page.implicitHeight + 64
+        contentHeight: (root.section === "tags" ? tagsOnly.implicitHeight : page.implicitHeight) + 64
         boundsBehavior: Flickable.StopAtBounds
         T.ScrollBar.vertical: TScrollBar {}
 
+        // Csak a „Címkék” szakasz (a T01 lap).
+        TagGallerySection {
+            id: tagsOnly
+            visible: root.section === "tags"
+            x: 32; y: 28
+            width: flick.width - 64
+        }
+
         ColumnLayout {
             id: page
+            visible: root.section === ""
             x: 28; y: 28
             width: flick.width - 56
             spacing: 28
@@ -265,7 +276,7 @@ Item {
                     caption: "tooltip"
                     TIconButton {
                         iconName: "volume-2"; variant: "flat"
-                        TToolTip { visible: true; delay: 0; text: "Hangerő" }
+                        TToolTip { visible: root.section === ""; delay: 0; text: "Hangerő" }
                     }
                 }
             }
@@ -678,6 +689,11 @@ Item {
                         }
                     }
                 }
+            }
+
+            Section {
+                title: "Címkék (T01: chip, beviteli mező, a fejléc címkesora)"
+                TagGallerySection { width: page.width }
             }
 
             Section {
