@@ -412,6 +412,11 @@ void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
             it = keys.contains(*it) ? std::next(it) : m_collapsed.erase(it);
     }
 
+    // Azonos nevű beszélők (a diarizáció kettévágta ugyanazt a személyt, vagy két nyers
+    // beszélőt ugyanarra a névre azonosított): a felületen a nyers címke különbözteti meg őket.
+    QHash<QString, int> nameCount;
+    for (const EditorSpeaker& s : std::as_const(m_speakers)) ++nameCount[s.displayName];
+
     m_laneKeys.clear();
     m_views.clear();
     m_lanes.clear();
@@ -424,7 +429,8 @@ void TranscriptEditorViewModel::rebuildSpeakers(bool recomputeCollapsed)
             m_laneKeys << s.key;
         }
         m_views.insert(s.key, SpeakerView{s.displayName, s.colorIndex, lane});
-        const QVariantMap map = speakerMap(s, lane);
+        QVariantMap map = speakerMap(s, lane);
+        map.insert(QStringLiteral("nameDuplicate"), nameCount.value(s.displayName) > 1);
         if (visible) m_lanes.append(map);
         m_speakerList.append(map);
     }
@@ -1401,6 +1407,9 @@ QVariantMap TranscriptEditorViewModel::speakerSample(const QString& speakerKey) 
 
 QVariantMap TranscriptEditorViewModel::speakerInfo(const QString& speakerKey) const
 {
+    // Ugyanaz a térkép, mint a `speakers` listában (benne a nameDuplicate jelzés is).
+    for (const QVariant& v : std::as_const(m_speakerList))
+        if (v.toMap().value(QStringLiteral("key")).toString() == speakerKey) return v.toMap();
     for (const EditorSpeaker& s : m_speakers)
         if (s.key == speakerKey) return speakerMap(s, m_views.value(s.key).lane);
     return {};
@@ -1420,7 +1429,7 @@ QVariantList TranscriptEditorViewModel::speakersMatching(const QString& query, c
                     if (foldForSearch(a).contains(needle)) { matchedAlias = a; break; }
             if (matchedAlias.isEmpty()) continue;
         }
-        QVariantMap entry = speakerMap(s, m_views.value(s.key).lane);
+        QVariantMap entry = speakerInfo(s.key);
         entry.insert(QStringLiteral("matchedAlias"), matchedAlias);
         out.append(entry);
     }

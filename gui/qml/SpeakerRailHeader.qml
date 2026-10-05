@@ -59,7 +59,8 @@ Item {
                     visible: laneHover.hovered
                     text: {
                         const d = laneHead.modelData
-                        let t = d.name + " · " + d.pct + "% · " + qsTr("%n megszólalás", "", d.utteranceCount)
+                        let t = d.name + (d.nameDuplicate && d.rawLabel ? " (" + d.rawLabel + ")" : "")
+                                + " · " + d.pct + "% · " + qsTr("%n megszólalás", "", d.utteranceCount)
                         if (laneHead.index < 9) t += " · " + qsTr("%1-es billentyű").arg(laneHead.index + 1)
                         t += "\n" + (d.hasVoiceprint ? qsTr("Van hanglenyomata.") : d.anonymous
                                      ? qsTr("Névtelen beszélő.") : qsTr("Nincs hanglenyomata."))

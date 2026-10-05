@@ -269,7 +269,10 @@ Item {
                             objectName: "overviewName"
                             width: laneRow.other ? 110 : 94
                             anchors.verticalCenter: parent.verticalCenter
+                            // Azonos nevű beszélőknél a nyers címke különbözteti meg a sorokat.
                             text: laneRow.modelData.name
+                                  + (laneRow.modelData.nameDuplicate && laneRow.modelData.rawLabel
+                                     ? " · " + laneRow.modelData.rawLabel : "")
                             color: laneRow.other ? Theme.textMuted : Theme.speakerInk(laneRow.modelData.colorIndex)
                             font.pixelSize: Theme.fontMicro
                             font.weight: Theme.weightSemiBold

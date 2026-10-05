@@ -45,7 +45,10 @@ TPopover {
     readonly property bool tight: fromLine && wholeSpeaker && T.Overlay.overlay
                                   && T.Overlay.overlay.height < 740
     readonly property bool wholeSpeaker: scope === "speaker"
-    readonly property string speakerName: info.name || ""
+    // Azonos nevű beszélőknél a nyers címke is látszik („Földi Tamás (Beszélő 2)”), hogy a
+    // teljes-beszélő műveletnél egyértelmű legyen, melyikről van szó.
+    readonly property string speakerName: (info.name || "")
+                                          + (info.nameDuplicate && info.rawLabel ? " (" + info.rawLabel + ")" : "")
     readonly property bool named: info.anonymous === false
     readonly property int lineCount: info.utteranceCount || 0
     readonly property int moveCount: scope === "line" ? 1 : scope === "selection" ? selectionCount : lineCount
@@ -231,8 +234,10 @@ TPopover {
                 width: blockList.width
                 personName: modelData.name
                 speakerIndex: modelData.colorIndex
-                // Ha becenévre talált, a becenév is látszik (mint a személy-listában).
+                // Ha becenévre talált, a becenév is látszik (mint a személy-listában). Azonos nevű
+                // beszélőknél a nyers címke („Beszélő 2”) különbözteti meg őket.
                 subText: (modelData.matchedAlias ? "„" + modelData.matchedAlias + "” · " : "")
+                         + (modelData.nameDuplicate && modelData.rawLabel ? modelData.rawLabel + " · " : "")
                          + (block.merge ? qsTr("összevonás") : qsTr("%n sor", "", modelData.utteranceCount))
                 highlighted: hovered || (!block.merge && control.currentIndex === index)
                 onClicked: control.chooseSpeaker(modelData.key)

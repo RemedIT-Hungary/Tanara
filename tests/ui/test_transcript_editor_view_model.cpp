@@ -104,6 +104,33 @@ private slots:
         QCOMPARE(vm.timeAtFraction(0.5), 54000);
     }
 
+    // Két nyers beszélő ugyanarra a névre azonosítva: a felület a nyers címkével különbözteti
+    // meg őket (nameDuplicate), a sorválasztó listája és a speakerInfo ugyanazt a térképet adja.
+    void sameNameSpeakers_areMarkedDuplicate()
+    {
+        Fixture fx;
+        fx.setSpeakerMap({{kB1, QStringLiteral("Tamás")}, {kB2, QStringLiteral("Tamás")}});
+        auto ed = fx.editor(/*withEmbedder*/ false);
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+
+        QCOMPARE(vm.speakerCount(), 2);
+        for (const QVariant& v : vm.speakers()) {
+            QVERIFY(v.toMap().value(QStringLiteral("nameDuplicate")).toBool());
+            QVERIFY(!v.toMap().value(QStringLiteral("rawLabel")).toString().isEmpty());
+        }
+        QVERIFY(vm.speakerInfo(kB2).value(QStringLiteral("nameDuplicate")).toBool());
+        const QVariantList others = vm.speakersMatching(QString(), kB1);
+        QCOMPARE(others.size(), 1);
+        QCOMPARE(others[0].toMap().value(QStringLiteral("rawLabel")).toString(), kB2);
+        QVERIFY(others[0].toMap().value(QStringLiteral("nameDuplicate")).toBool());
+
+        // Eltérő nevek: nincs jelölés.
+        QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Antal"), false));
+        for (const QVariant& v : vm.speakers())
+            QVERIFY(!v.toMap().value(QStringLiteral("nameDuplicate")).toBool());
+    }
+
     void singleMove_isIncremental_andUndoable()
     {
         Fixture fx;
