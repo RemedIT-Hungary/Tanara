@@ -22,7 +22,8 @@ ApplicationWindow {
     // Demóban / képernyőképhez: induláskor megnyíló felugró vagy állapot —
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
     // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
-    // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop"
+    // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop" |
+    // "selection" (T05: többes kijelölés)
     property string demoOverlay: ""
 
     // ---- állapot ----
@@ -197,10 +198,8 @@ ApplicationWindow {
         case "toast": toast.show("Elkészült az átirat: Negyedéves partnertalálkozó", "", "", false); break
         case "toastError": toast.show("Nincs rögzíthető hangeszköz.", "danger", "", false); break
         case "cloudToast": toast.show("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "", "req_8f3a2c71d0", true); break
-        case "filters":
-            sidebar.library.noSummary = true
-            sidebar.library.addPerson("Varga Nóra")
-            break
+        case "filters": sidebar.applyDemo("filters"); break       // T04: címke-szűrők + popover
+        case "selection": sidebar.applyDemo("selection"); break   // T05
         case "rename": header.startRename(); break
         case "tracks": shellActions.showTab(2); break
         case "import": importModel.demoState = "files"; importDialog.open(); break
@@ -564,6 +563,15 @@ ApplicationWindow {
                         TDivider { anchors { left: parent.left; right: parent.right; top: parent.top } }
                     }
                 }
+
+                // ---- Könyvtár: többes kijelölés (C05, T05) — a tartalom helyén a kijelölés-panel ----
+                LibrarySelectionPanel {
+                    objectName: "selectionPanel"
+                    anchors.fill: parent
+                    visible: sidebar.selection.count > 1
+                    selection: sidebar.selection
+                }
+                // ---- /többes kijelölés ----
 
                 // Nem-modális értesítés a tartalom alján (a lejátszó fölött).
                 ShellToast {

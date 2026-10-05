@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Könyvtár-oldalsáv (276 px): „Új felvétel”, keresés (Ctrl+F) szűrő-chipekkel és
-// találatszámmal, a megbeszélések listája dátum-szekciókkal és állapot-ikonokkal, alul
-// „Személyek” és „Beállítások”. Az adat a LibraryListModelből jön (a core MeetingLibrary
+// Könyvtár-oldalsáv (276 px): „Új felvétel”, keresés (Ctrl+F) szűrő-chipekkel (állapot,
+// személy, címke) és találatszámmal, a „+ Szűrő” popover (LibraryFilterPopover), a
+// megbeszélések listája dátum-szekciókkal, állapot-ikonokkal és címke-sorral, többes kijelölés
+// (Ctrl / Shift+kattintás, Esc; a jobb oldali panelt a Main.qml mutatja a `selection` alapján),
+// alul „Személyek · Címkék · ⚙”. Az adat a LibraryListModelből jön (a core MeetingLibrary
 // fölött; App.demo módban kitalált mintakönyvtár).
 Item {
     id: root
@@ -14,6 +16,8 @@ Item {
     property alias forceEmpty: libraryModel.forceEmpty
     property alias searchText: libraryModel.searchText
     readonly property alias library: libraryModel
+    // Többes kijelölés (LibrarySelectionModel); count > 1 → a Main.qml a kijelölés-panelt mutatja.
+    readonly property alias selection: selectionModel
     property var importModel: null            // ShellImportModel: a háttérben futó importálás sávjához
     // A futó importálás sávjára kattintottak (a Main.qml a párbeszédablakot hozza vissza).
     signal importStripClicked()
@@ -21,6 +25,58 @@ Item {
     function focusSearch() {
         search.forceActiveFocus()
         search.selectAll()
+    }
+
+    // Szűrés egyetlen címkére (a címke-chip / a kezelő „Megnyitás a könyvtárban szűrőként”
+    // útja): a keresés és a többi szűrő törlődik.
+    function filterByTag(tagId) {
+        selectionModel.clear()
+        libraryModel.clearFilters()
+        if (tagId !== "")
+            libraryModel.tags = [tagId]
+    }
+
+    // A címkék kezelője (a héj adja; régebbi héjban még nincs).
+    function openTags() {
+        if (root.shell && root.shell.openTags)
+            root.shell.openTags()
+    }
+
+    // Demó / képernyőkép: "filters" (T04: címke-szűrők + nyitott popover) | "selection" (T05).
+    function applyDemo(state) {
+        if (state === "filters") {
+            libraryModel.tags = ["t-nordvik", "t-partnerek"]
+            Qt.callLater(() => root.openFilterPopover())
+        } else if (state === "selection") {
+            selectionModel.selectIds(["demo-tamogatas", "demo-partner", "demo-belepo"])
+        }
+    }
+
+    function openFilterPopover() {
+        filterPopover.open()
+    }
+
+    // Kattintás egy soron: Ctrl → kijelölés váltása, Shift → tartomány, különben megnyitás.
+    function rowClicked(meetingId, snippetMs, modifiers) {
+        if (modifiers & Qt.ControlModifier) {
+            selectionModel.toggle(meetingId)
+            settleSelection()
+        } else if (modifiers & Qt.ShiftModifier) {
+            selectionModel.rangeTo(meetingId)
+            settleSelection()
+        } else {
+            selectionModel.clear()
+            activate(meetingId, snippetMs)
+        }
+    }
+
+    // Egyelemű kijelölés = az az egy megbeszélés megnyitva.
+    function settleSelection() {
+        if (selectionModel.count !== 1)
+            return
+        const only = selectionModel.ids[0]
+        selectionModel.clear()
+        activate(only, -1)
     }
 
     function activate(meetingId, snippetMs) {
@@ -38,6 +94,7 @@ Item {
     function moveSelection(delta) {
         if (libraryModel.count === 0)
             return
+        selectionModel.clear()
         let row = libraryModel.indexOfMeeting(root.currentMeetingId)
         row = row < 0 ? (delta > 0 ? 0 : libraryModel.count - 1)
                       : Math.max(0, Math.min(libraryModel.count - 1, row + delta))
@@ -64,6 +121,11 @@ Item {
     Timer { id: revealTimer; interval: 30; onTriggered: root.revealCurrent() }
 
     LibraryListModel { id: libraryModel }
+    LibrarySelectionModel {
+        id: selectionModel
+        library: libraryModel
+        currentId: root.currentMeetingId
+    }
 
     ColumnLayout {
         anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 14 }
@@ -113,7 +175,7 @@ Item {
         // Szűrő-chipek (csak keresés / szűrés közben látszanak, hogy a nyugalmi lista tiszta maradjon).
         Flow {
             id: chips
-            visible: libraryModel.filtered || search.activeFocus || filterMenu.visible
+            visible: libraryModel.filtered || search.activeFocus || filterPopover.visible
             Layout.fillWidth: true
             spacing: 6
 
@@ -142,44 +204,33 @@ Item {
                     onClicked: libraryModel.removePerson(modelData)
                 }
             }
+            // Címke-szűrők: a címke-chip (×-szel), hogy ne tévesszük össze a személy-chippel.
+            Repeater {
+                model: libraryModel.tagFilterItems
+                TagChip {
+                    required property var modelData
+                    text: modelData.name
+                    removable: true
+                    removeAlwaysVisible: true
+                    onRemoveRequested: libraryModel.removeTag(modelData.id)
+                    onClicked: libraryModel.removeTag(modelData.id)
+                }
+            }
+            TChip {
+                visible: libraryModel.untagged
+                text: qsTr("Címke nélkül")
+                tone: "neutral"
+                removable: true
+                onRemoved: libraryModel.untagged = false
+                onClicked: libraryModel.untagged = false
+            }
             TChip {
                 id: addFilter
+                objectName: "addFilter"
                 text: qsTr("Szűrő")
                 dashed: true
-                iconName: "list-filter"
-                onClicked: filterMenu.popup(addFilter, 0, addFilter.height + 4)
-
-                TMenu {
-                    id: filterMenu
-                    TMenuItem {
-                        text: qsTr("Nincs átirat")
-                        iconName: "file-text"
-                        checked: libraryModel.noTranscript
-                        onTriggered: libraryModel.noTranscript = !libraryModel.noTranscript
-                    }
-                    TMenuItem {
-                        text: qsTr("Nincs összefoglaló")
-                        iconName: "sparkles"
-                        checked: libraryModel.noSummary
-                        onTriggered: libraryModel.noSummary = !libraryModel.noSummary
-                    }
-                    TMenuSeparator { visible: peopleItems.count > 0 }
-                    Instantiator {
-                        id: peopleItems
-                        // A leggyakoribb résztvevők (a többi névre a keresés is rátalál).
-                        model: libraryModel.peopleOptions.slice(0, 8)
-                        delegate: TMenuItem {
-                            required property var modelData
-                            text: modelData.name
-                            iconName: "user"
-                            checked: libraryModel.people.indexOf(modelData.name) >= 0
-                            onTriggered: checked ? libraryModel.removePerson(modelData.name)
-                                                 : libraryModel.addPerson(modelData.name)
-                        }
-                        onObjectAdded: (index, object) => filterMenu.insertItem(index + 3, object)
-                        onObjectRemoved: (index, object) => filterMenu.removeItem(object)
-                    }
-                }
+                down: pressed || filterPopover.visible
+                onClicked: filterPopover.visible ? filterPopover.close() : root.openFilterPopover()
             }
         }
 
@@ -234,13 +285,20 @@ Item {
 
                 delegate: LibraryItem {
                     width: ListView.view.width
-                    selected: meetingId === root.currentMeetingId
+                    selectionMode: selectionModel.count > 0
+                    checked: selectionModel.count > 0 && selectionModel.ids.indexOf(meetingId) >= 0
+                    selected: selectionModel.count > 1 ? checked : meetingId === root.currentMeetingId
                     keyboardFocused: list.activeFocus && list.keyNav
-                    onActivated: {
+                    onActivated: (modifiers) => {
                         list.keyNav = false
                         list.tapFocus = !list.activeFocus
                         list.forceActiveFocus()
-                        root.activate(meetingId, hasSnippet ? snippetMs : -1)
+                        root.rowClicked(meetingId, hasSnippet ? snippetMs : -1, modifiers)
+                    }
+                    onCheckToggled: {
+                        list.forceActiveFocus()
+                        selectionModel.toggle(meetingId)
+                        root.settleSelection()
                     }
                     onContextMenuRequested: (x, y) => {
                         itemMenu.meetingId = meetingId
@@ -258,6 +316,10 @@ Item {
 
                 Keys.onDownPressed: { keyNav = true; root.moveSelection(1) }
                 Keys.onUpPressed: { keyNav = true; root.moveSelection(-1) }
+                Keys.onEscapePressed: (event) => {
+                    if (selectionModel.count > 0) selectionModel.clear()
+                    else event.accepted = false
+                }
                 Keys.onPressed: (event) => {
                     if (!root.shell || root.currentMeetingId === "")
                         return
@@ -334,14 +396,13 @@ Item {
             Layout.fillWidth: true
             spacing: 0
             TDivider { Layout.fillWidth: true }
+            // „Személyek · Címkék · ⚙” — hogy kiférjen, a Beállítások ikonra rövidül.
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 8
                 Layout.bottomMargin: 10
-                spacing: 4
+                spacing: 2
                 TButton {
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 1
                     text: qsTr("Személyek")
                     variant: "ghost"; muted: true
                     iconName: "users"
@@ -351,17 +412,44 @@ Item {
                     onClicked: if (root.shell) root.shell.openPeople()
                 }
                 TButton {
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 1
-                    text: qsTr("Beállítások")
+                    objectName: "footerTags"
+                    text: qsTr("Címkék")
                     variant: "ghost"; muted: true
-                    iconName: "settings"
+                    iconName: "tag"
                     horizontalAlignment: Qt.AlignLeft
                     leftPadding: 8; rightPadding: 8
                     font.weight: Theme.weightRegular
+                    onClicked: root.openTags()
+                }
+                Item { Layout.fillWidth: true }
+                TIconButton {
+                    objectName: "footerSettings"
+                    implicitWidth: 32; implicitHeight: 32
+                    variant: "flat"
+                    iconName: "settings"
+                    toolTipText: qsTr("Beállítások · Ctrl+,")
                     onClicked: if (root.shell) root.shell.openSettings("")
                 }
             }
+        }
+    }
+
+    LibraryFilterPopover {
+        id: filterPopover
+        parent: addFilter
+        // A design szerint kicsit balra lóg (az ablak szélénél a margó megfogja).
+        x: -40
+        y: addFilter.height + 6
+        library: libraryModel
+        onManageTagsRequested: root.openTags()
+    }
+
+    // Kívülről választott megbeszélés (héj, „Ezek várnak rád”, kezelő): a kijelölés megszűnik.
+    Connections {
+        target: root
+        function onCurrentMeetingIdChanged() {
+            if (selectionModel.count > 0 && selectionModel.ids.indexOf(root.currentMeetingId) < 0)
+                selectionModel.clear()
         }
     }
 
