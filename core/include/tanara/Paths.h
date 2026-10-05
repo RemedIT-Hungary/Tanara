@@ -37,5 +37,13 @@ QString metadataFile(const QString& relative, const QString& configuredDir = QSt
 QString defaultAudioDir();
 QString defaultNotesDir();
 
+// A beszélő-embedding (CAM++) modell fájlneve és feloldása. Sorrend:
+//  1) <metaDir>/models/<név>  — a felhasználó saját (letöltött) modellje;
+//  2) <appDir>/models/<név>   — az alkalmazás mellé csomagolt modell (Windows-zip/telepítő);
+//  3) egyik sincs → az 1) útja (a „várt hely”, hibaüzenetekhez / letöltési célnak).
+// Az appDir üres is lehet (pl. QCoreApplication nélkül) — ilyenkor a 2) kimarad.
+QString voiceModelFileName();
+QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir);
+
 } // namespace paths
 } // namespace tanara

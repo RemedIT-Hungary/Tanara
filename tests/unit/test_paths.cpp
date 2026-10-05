@@ -34,6 +34,7 @@ private slots:
     void storesDefaultIntoOverride();
     void settingsFileCannotRedirectOut();
     void appControllerStaysInside();
+    void voiceModelResolutionOrder();
 
 private:
     QTemporaryDir m_fakeHome;    // a „valódi” HOME szerepében
@@ -180,6 +181,36 @@ void PathsTest::appControllerStaysInside()
         if (!before.contains(p) && !p.contains(QStringLiteral("/.config"))) created << p;
     QVERIFY2(created.isEmpty(), qPrintable(created.join(QStringLiteral(", "))));
     QVERIFY(!QDir(realMeta()).exists());
+}
+
+// A CAM++ modell: előbb a felhasználó metaadat-mappája, aztán az app mellé csomagolt
+// models/, és ha egyik sincs, a metaadat-mappabeli „várt hely”.
+void PathsTest::voiceModelResolutionOrder()
+{
+    QTemporaryDir meta, app;
+    QVERIFY(meta.isValid() && app.isValid());
+    const QString rel = QStringLiteral("models/") + paths::voiceModelFileName();
+    const QString userModel = QDir(meta.path()).filePath(rel);
+    const QString appModel = QDir(app.path()).filePath(rel);
+    auto touch = [](const QString& f) {
+        QVERIFY(QDir().mkpath(QFileInfo(f).absolutePath()));
+        QFile file(f);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("x");
+    };
+
+    // 1) egyik sincs → a várt hely (metaadat-mappa), az appDir-től függetlenül
+    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
+    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
+
+    // 2) csak az app mellett van → a csomagolt modell
+    touch(appModel);
+    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), appModel);
+    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
+
+    // 3) a felhasználói modell elsőbbséget élvez
+    touch(userModel);
+    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
 }
 
 QTEST_GUILESS_MAIN(PathsTest)

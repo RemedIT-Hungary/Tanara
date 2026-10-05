@@ -1,6 +1,7 @@
 #include "tanara/Paths.h"
 
 #include <QDir>
+#include <QFileInfo>
 
 namespace tanara {
 namespace paths {
@@ -61,6 +62,25 @@ QString defaultNotesDir()
     if (!over.isEmpty())
         return QDir(over).filePath(QStringLiteral("notes"));
     return QDir(QDir::homePath()).filePath(QStringLiteral("Tanara/notes"));
+}
+
+QString voiceModelFileName()
+{
+    return QStringLiteral("campplus_sv_zh_en_16k.onnx");
+}
+
+QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir)
+{
+    const QString rel = QStringLiteral("models/") + voiceModelFileName();
+    const QString user = QDir(metaDir).filePath(rel);
+    if (QFileInfo::exists(user))
+        return user;
+    if (!appDir.isEmpty()) {
+        const QString bundled = QDir(appDir).filePath(rel);
+        if (QFileInfo::exists(bundled))
+            return bundled;
+    }
+    return user;
 }
 
 } // namespace paths

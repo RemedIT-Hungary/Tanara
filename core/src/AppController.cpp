@@ -894,11 +894,13 @@ AppController::AppController(QObject* parent)
 
     d->people = std::make_unique<PeopleStore>(QDir(d->metaDir).filePath(QStringLiteral("people.json")));
 
-    // Voice-ID: lenyomat-DB + a modell várt helye (~/.tanara/models/...).
+    // Voice-ID: lenyomat-DB + a modell helye: <metaDir>/models/..., ha nincs, akkor az
+    // alkalmazás mellé csomagolt <appDir>/models/... (Windows-zip / telepítő).
     d->voiceprints = std::make_unique<VoiceprintStore>(
         QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
-    d->voiceModelPath = QDir(d->metaDir).filePath(
-        QStringLiteral("models/campplus_sv_zh_en_16k.onnx"));
+    d->voiceModelPath = paths::resolveVoiceModelPath(
+        d->metaDir,
+        QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString());
 
     // Személyek ablak: háttérben számolt statisztika, és a műveletek (összevonás,
     // minta-áthelyezés …). A becenevek / megjegyzés a people.json rekordjaiban élnek.
