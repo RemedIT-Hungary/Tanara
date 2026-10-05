@@ -107,7 +107,7 @@
     </message>
     <message>
         <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection.</translation>
+        <translation>We couldn't reach the server. Check your internet connection.</translation>
     </message>
     <message>
         <source>Nincs elég egyenleg.</source>
@@ -195,7 +195,7 @@
     </message>
     <message>
         <source>Hibaazonosító: %1 — ha írsz nekünk, küldd el ezt is. A meeting tartalmát nem látjuk.</source>
-        <translation>Error ID: %1 — include it if you contact us. We can&apos;t see your meeting content.</translation>
+        <translation>Error ID: %1 — include it if you contact us. We can't see your meeting content.</translation>
     </message>
 </context>
 <context>
@@ -226,11 +226,11 @@
     </message>
     <message>
         <source>Ha írsz nekünk, küldd el ezt is. A meeting tartalmát nem látjuk.</source>
-        <translation>Include it if you contact us. We can&apos;t see your meeting content.</translation>
+        <translation>Include it if you contact us. We can't see your meeting content.</translation>
     </message>
     <message>
         <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection.</translation>
+        <translation>We couldn't reach the server. Check your internet connection.</translation>
     </message>
     <message>
         <source>Ezt az eszközt leválasztották. Jelentkezz be újra.</source>
@@ -422,7 +422,7 @@
     </message>
     <message>
         <source>Nem értük el a szervert</source>
-        <translation>We couldn&apos;t reach the server</translation>
+        <translation>We couldn't reach the server</translation>
     </message>
     <message>
         <source>Ellenőrizd az internetkapcsolatot, és próbáld újra.</source>
@@ -430,19 +430,19 @@
     </message>
     <message>
         <source>Az átírás nem készült el</source>
-        <translation>The transcription wasn&apos;t completed</translation>
+        <translation>The transcription wasn't completed</translation>
     </message>
     <message>
         <source>A becslés nem készült el</source>
-        <translation>The estimate wasn&apos;t completed</translation>
+        <translation>The estimate wasn't completed</translation>
     </message>
     <message>
         <source>Az összefoglaló nem készült el teljesen</source>
-        <translation>The summary wasn&apos;t completed</translation>
+        <translation>The summary wasn't completed</translation>
     </message>
     <message>
         <source>Az összefoglaló nem készült el</source>
-        <translation>The summary wasn&apos;t completed</translation>
+        <translation>The summary wasn't completed</translation>
     </message>
     <message>
         <source>Hiba történt</source>
@@ -521,7 +521,7 @@
     </message>
     <message>
         <source>A modell maximuma: %1 token.</source>
-        <translation>The model&apos;s maximum: %1 tokens.</translation>
+        <translation>The model's maximum: %1 tokens.</translation>
     </message>
     <message>
         <source>Más betöltött modell: %1.</source>
@@ -545,7 +545,7 @@
     </message>
     <message>
         <source>A helyi szerver hibát jelzett. Nézd meg a szerver naplóját.</source>
-        <translation>The local server reported an error. Check the server&apos;s log.</translation>
+        <translation>The local server reported an error. Check the server's log.</translation>
     </message>
     <message>
         <source>A szolgáltató hibát jelzett. Próbáld újra később.</source>
@@ -565,14 +565,14 @@
     </message>
     <message>
         <source>A beállított modell (%1) nincs a szolgáltató listájában.</source>
-        <translation>The configured model (%1) is not in the provider&apos;s list.</translation>
+        <translation>The configured model (%1) is not in the provider's list.</translation>
     </message>
 </context>
 <context>
     <name>EmptyLibraryView</name>
     <message>
         <source>Vegyük fel az első megbeszélést</source>
-        <translation>Let&apos;s record your first meeting</translation>
+        <translation>Let's record your first meeting</translation>
     </message>
     <message>
         <source>A Tanara minden hangforrást külön sávra rögzít, utána átiratot és összefoglalót készít. A felvétel a gépeden marad.</source>
@@ -623,7 +623,7 @@
     </message>
     <message>
         <source>A kérés nem fért bele a modell kontextusába.</source>
-        <translation>The request did not fit into the model&apos;s context.</translation>
+        <translation>The request did not fit into the model's context.</translation>
     </message>
     <message>
         <source>A Tanara Cloud modellje ekkora kérést nem tud feldolgozni.</source>
@@ -1074,6 +1074,10 @@
         <translation>Show in folder</translation>
     </message>
     <message>
+        <source>Beszélők újraellenőrzése…</source>
+        <translation>Re-check speakers…</translation>
+    </message>
+    <message>
         <source>Újra-átírás…</source>
         <translation>Re-transcribe…</translation>
     </message>
@@ -1144,11 +1148,11 @@
     <name>PeopleDetailPane</name>
     <message>
         <source>Még csak te vagy itt</source>
-        <translation>It&apos;s just you here so far</translation>
+        <translation>It's just you here so far</translation>
     </message>
     <message>
         <source>Nevezd el a beszélőket egy megbeszélés átiratában, vagy vegyél fel valakit előre, hogy a személyválasztóban már szerepeljen.</source>
-        <translation>Name the speakers in a meeting&apos;s transcript, or add someone in advance so they already appear in the person picker.</translation>
+        <translation>Name the speakers in a meeting's transcript, or add someone in advance so they already appear in the person picker.</translation>
     </message>
     <message>
         <source>Új személy</source>
@@ -1156,7 +1160,7 @@
     </message>
     <message>
         <source>A személy új neve</source>
-        <translation>The person&apos;s new name</translation>
+        <translation>The person's new name</translation>
     </message>
     <message>
         <source>Mentés</source>
@@ -1303,7 +1307,7 @@
     </message>
     <message>
         <source>Új személy: „%1”</source>
-        <translation>New person: &quot;%1&quot;</translation>
+        <translation>New person: "%1"</translation>
     </message>
 </context>
 <context>
@@ -1395,7 +1399,7 @@
     </message>
     <message>
         <source>Ha a minta valaki más hangja: add meg a nevét. A minta kikerül a mostani hanglenyomatból. Létező névnél a minta ahhoz a személyhez kerül.</source>
-        <translation>If the sample is someone else&apos;s voice, enter their name. The sample leaves the current voiceprint. If the name already exists, the sample goes to that person.</translation>
+        <translation>If the sample is someone else's voice, enter their name. The sample leaves the current voiceprint. If the name already exists, the sample goes to that person.</translation>
     </message>
     <message>
         <source>Név vagy becenév</source>
@@ -1403,11 +1407,11 @@
     </message>
     <message>
         <source>Az új személy neve</source>
-        <translation>The new person&apos;s name</translation>
+        <translation>The new person's name</translation>
     </message>
     <message>
         <source>Nincs ilyen személy. Enter vagy „Új személy”: ezzel a névvel létrejön, és megkapja a mintát.</source>
-        <translation>No such person. Enter or &quot;New person&quot;: they are created with this name and get the sample.</translation>
+        <translation>No such person. Enter or "New person": they are created with this name and get the sample.</translation>
     </message>
     <message>
         <source>A minta most is ennél a személynél van.</source>
@@ -1496,7 +1500,7 @@
     </message>
     <message>
         <source>„%1”</source>
-        <translation>&quot;%1&quot;</translation>
+        <translation>"%1"</translation>
     </message>
     <message>
         <source>már résztvevő</source>
@@ -1515,7 +1519,7 @@
     </message>
     <message>
         <source>Új személy: „%1”</source>
-        <translation>New person: &quot;%1&quot;</translation>
+        <translation>New person: "%1"</translation>
     </message>
     <message>
         <source>A beszélő névtelenül is maradhat; később is elnevezheted.</source>
@@ -1677,11 +1681,11 @@
     </message>
     <message>
         <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
-        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
+        <translation>Don't want to bother with keys? Tanara Cloud is coming soon.</translation>
     </message>
     <message>
         <source>Érdekel</source>
-        <translation>I&apos;m interested</translation>
+        <translation>I'm interested</translation>
     </message>
     <message>
         <source>az átírással egy menetben</source>
@@ -1693,7 +1697,7 @@
     </message>
     <message>
         <source>Közben nyugodtan dolgozz tovább; szólunk, ha kész.</source>
-        <translation>Feel free to keep working; we&apos;ll let you know when it&apos;s done.</translation>
+        <translation>Feel free to keep working; we'll let you know when it's done.</translation>
     </message>
     <message>
         <source>Az átírás nem sikerült</source>
@@ -2637,7 +2641,7 @@
     </message>
     <message>
         <source>Adatot csak a gombra kattintva küldünk: az e-mail címed, a válaszaid, a platform és a Tanara verziója. Megerősítő e-mailt kapsz; csak a megerősített cím kerül a listára.</source>
-        <translation>We send data only when you click the button: your e-mail address, your answers, the platform and the Tanara version. You&apos;ll get a confirmation e-mail; only confirmed addresses are added to the list.</translation>
+        <translation>We send data only when you click the button: your e-mail address, your answers, the platform and the Tanara version. You'll get a confirmation e-mail; only confirmed addresses are added to the list.</translation>
     </message>
 </context>
 <context>
@@ -2908,7 +2912,7 @@
     </message>
     <message>
         <source>„%1” felvétele (a hangsávok), az átirata és az összefoglalója véglegesen törlődik a gépedről. Ez nem vonható vissza.</source>
-        <translation>The recording (audio tracks), transcript and summary of &quot;%1&quot; will be permanently deleted from your computer. This cannot be undone.</translation>
+        <translation>The recording (audio tracks), transcript and summary of "%1" will be permanently deleted from your computer. This cannot be undone.</translation>
     </message>
     <message>
         <source>Törlés</source>
@@ -2936,7 +2940,7 @@
     </message>
     <message>
         <source>Leállítsam a rögzítést? Ha nem válaszolsz, a felvétel megy tovább.</source>
-        <translation>Stop the recording? If you don&apos;t answer, the recording continues.</translation>
+        <translation>Stop the recording? If you don't answer, the recording continues.</translation>
     </message>
     <message>
         <source>Folytatom a felvételt</source>
@@ -3161,7 +3165,7 @@
     </message>
     <message>
         <source>Új személy: „%1”</source>
-        <translation>New person: &quot;%1&quot;</translation>
+        <translation>New person: "%1"</translation>
     </message>
     <message>
         <source>Névtelen beszélő</source>
@@ -3226,7 +3230,7 @@
     </message>
     <message>
         <source>„%1”</source>
-        <translation>&quot;%1&quot;</translation>
+        <translation>"%1"</translation>
     </message>
     <message>
         <source>Új névtelen résztvevő</source>
@@ -3234,7 +3238,7 @@
     </message>
     <message>
         <source>A sorok kerüljenek ki %1 hanglenyomatából (téves felismerés)</source>
-        <translation>Remove these lines from %1&apos;s voiceprint (wrong match)</translation>
+        <translation>Remove these lines from %1's voiceprint (wrong match)</translation>
     </message>
     <message>
         <source>Üres oszlop eltávolítása</source>
@@ -3460,7 +3464,7 @@
     </message>
     <message>
         <source>Közben nyugodtan dolgozz tovább; szólunk, ha kész.</source>
-        <translation>Feel free to keep working; we&apos;ll let you know when it&apos;s done.</translation>
+        <translation>Feel free to keep working; we'll let you know when it's done.</translation>
     </message>
     <message>
         <source>Megszakítás</source>
@@ -3536,11 +3540,11 @@
     </message>
     <message>
         <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
-        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
+        <translation>Don't want to bother with keys? Tanara Cloud is coming soon.</translation>
     </message>
     <message>
         <source>Érdekel</source>
-        <translation>I&apos;m interested</translation>
+        <translation>I'm interested</translation>
     </message>
 </context>
 <context>
@@ -3620,7 +3624,7 @@
     </message>
     <message>
         <source>„%1” elemzése kikerül az összegzésből. A többi téma eredménye megmarad.</source>
-        <translation>The analysis of &quot;%1&quot; is removed from the overall summary. The results of the other topics are kept.</translation>
+        <translation>The analysis of "%1" is removed from the overall summary. The results of the other topics are kept.</translation>
     </message>
     <message>
         <source>Téma törlése</source>
@@ -4159,7 +4163,7 @@
     </message>
     <message>
         <source>Enter: mentés · Esc: mégse · üresen: „%1”</source>
-        <translation>Enter: save · Esc: cancel · empty: &quot;%1&quot;</translation>
+        <translation>Enter: save · Esc: cancel · empty: "%1"</translation>
     </message>
     <message>
         <source>Megkeresés…</source>
@@ -4174,7 +4178,7 @@
     <name>TracksTab</name>
     <message>
         <source>A sáv hangfájlja a megbeszélés mappájába került.</source>
-        <translation>The track&apos;s audio file was copied into the meeting folder.</translation>
+        <translation>The track's audio file was copied into the meeting folder.</translation>
     </message>
     <message>
         <source>Végleg törlöd az eldobott sávokat?</source>
@@ -4349,12 +4353,52 @@
         <translation>corrected</translation>
     </message>
     <message>
+        <source>Hangra inkább %1 sorának tűnik</source>
+        <translation>By voice it sounds more like %1</translation>
+    </message>
+    <message>
+        <source>egymásra beszéltek</source>
+        <translation>cross-talk</translation>
+    </message>
+    <message>
+        <source>Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).</source>
+        <translation>Someone else speaks at the same time in this line, so its voice is not used as a sample (uncertainty marks, voiceprints).</translation>
+    </message>
+    <message>
+        <source>Megjelölted, hogy ezt a sort ne használjam hangmintának (bizonytalanság-jelzés, hanglenyomat).</source>
+        <translation>You marked this line not to be used as a voice sample (uncertainty marks, voiceprints).</translation>
+    </message>
+    <message>
+        <source>Mintának használható</source>
+        <translation>Usable as a sample</translation>
+    </message>
+    <message>
+        <source>A sor hangja mégis mehet mintának</source>
+        <translation>Use this line’s voice as a sample after all</translation>
+    </message>
+    <message>
         <source>Jó így</source>
         <translation>Looks right</translation>
     </message>
     <message>
         <source>A beszélő rendben van: a sor többé nem bizonytalan</source>
         <translation>The speaker is right: the line is no longer uncertain</translation>
+    </message>
+    <message>
+        <source>Jó így, de nem minta</source>
+        <translation>Fine, but not a sample</translation>
+    </message>
+    <message>
+        <source>Jó így, de ne használd mintának: a beszélő rendben van, de egymásra beszéltek, ezért a sor hangja nem lesz minta</source>
+        <translation>Fine, but don’t use it as a sample: the speaker is right, but there is cross-talk, so this line’s voice won’t be a sample</translation>
+    </message>
+    <message>
+        <source>%1 mondta</source>
+        <translation>%1 said it</translation>
+    </message>
+    <message>
+        <source>Hangra %1 sorának tűnik: a sor átkerül hozzá</source>
+        <translation>By voice it sounds like %1: the line moves to them</translation>
     </message>
     <message>
         <source>Más mondta…</source>
@@ -4428,6 +4472,14 @@
     <message>
         <source>Nincs bizonytalan sor — minden megszólalás beszélője rendben van.</source>
         <translation>No uncertain lines — the speaker of every utterance is confirmed.</translation>
+    </message>
+    <message>
+        <source>Beszélők újraellenőrzése…</source>
+        <translation>Re-check speakers…</translation>
+    </message>
+    <message>
+        <source>A megerősített és javított sorok hangjához mérem a többi sort</source>
+        <translation>Compares the other lines with the voice of the confirmed and corrected lines</translation>
     </message>
     <message>
         <source>Névtelen résztvevő</source>
@@ -4525,6 +4577,14 @@
     <message>
         <source>Minden sor mutatása</source>
         <translation>Show all lines</translation>
+    </message>
+    <message>
+        <source>Nincs bizonytalan sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.</source>
+        <translation>No uncertain lines. Click to re-check the rest against the voice of the confirmed and corrected lines.</translation>
+    </message>
+    <message>
+        <source>Nincs bizonytalan sor. Újraellenőrzéshez: %1</source>
+        <translation>No uncertain lines. To re-check: %1</translation>
     </message>
     <message>
         <source>Csak azok a sorok, ahol a beszélő hang alapján kétséges</source>
@@ -4633,7 +4693,7 @@
     </message>
     <message>
         <source>A megbeszélés lekevert hangja nem érhető el, ezért itt most nem készíthető hanglenyomat.</source>
-        <translation>The meeting&apos;s mixdown is not available, so a voiceprint cannot be created here right now.</translation>
+        <translation>The meeting's mixdown is not available, so a voiceprint cannot be created here right now.</translation>
     </message>
     <message>
         <source>Nincs letöltve a hangmodell, ezért itt most nem készíthető hanglenyomat.</source>
@@ -4679,7 +4739,7 @@
     </message>
     <message>
         <source>Hanglenyomat készül a beszélő itteni, hosszabb soraiból — ebből ismeri fel a program a következő megbeszéléseken</source>
-        <translation>A voiceprint is made from the speaker&apos;s longer lines here — this is how the app recognises them in later meetings</translation>
+        <translation>A voiceprint is made from the speaker's longer lines here — this is how the app recognises them in later meetings</translation>
     </message>
     <message>
         <source>Visszavonás</source>
@@ -4717,8 +4777,8 @@
         <translation>Detector: %1  (known apps: %2)</translation>
     </message>
     <message>
-        <source>  ● MEETING: %1  [appId=%2, ablak=&quot;%3&quot;, forrás=%4]</source>
-        <translation>  ● MEETING: %1  [appId=%2, window=&quot;%3&quot;, source=%4]</translation>
+        <source>  ● MEETING: %1  [appId=%2, ablak="%3", forrás=%4]</source>
+        <translation>  ● MEETING: %1  [appId=%2, window="%3", source=%4]</translation>
     </message>
     <message>
         <source>  ○ nincs aktív hívás</source>
@@ -4733,10 +4793,10 @@
         <translation>No selectable device.</translation>
     </message>
     <message numerus="yes">
-        <source>Felvétel: &quot;%1&quot; — %n sáv</source>
+        <source>Felvétel: "%1" — %n sáv</source>
         <translation>
-            <numerusform>Recording: &quot;%1&quot; — %n track</numerusform>
-            <numerusform>Recording: &quot;%1&quot; — %n tracks</numerusform>
+            <numerusform>Recording: "%1" — %n track</numerusform>
+            <numerusform>Recording: "%1" — %n tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -4772,10 +4832,10 @@
         <translation>--own-track must be between 1 and %1.</translation>
     </message>
     <message numerus="yes">
-        <source>Importálás: &quot;%1&quot; — %n sáv</source>
+        <source>Importálás: "%1" — %n sáv</source>
         <translation>
-            <numerusform>Importing: &quot;%1&quot; — %n track</numerusform>
-            <numerusform>Importing: &quot;%1&quot; — %n tracks</numerusform>
+            <numerusform>Importing: "%1" — %n track</numerusform>
+            <numerusform>Importing: "%1" — %n tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -4881,8 +4941,8 @@
         <translation>Usage: rename &lt;meetingId&gt; &lt;rawLabel&gt; &lt;name&gt;</translation>
     </message>
     <message>
-        <source>Átnevezve: &quot;%1&quot; → &quot;%2&quot;</source>
-        <translation>Renamed: &quot;%1&quot; → &quot;%2&quot;</translation>
+        <source>Átnevezve: "%1" → "%2"</source>
+        <translation>Renamed: "%1" → "%2"</translation>
     </message>
     <message>
         <source>Használat: identify &lt;meetingId&gt;</source>
@@ -5062,8 +5122,8 @@
         <translation>Top up to start. Nothing was charged.</translation>
     </message>
     <message>
-        <source>A Tanara Cloud mód nincs bekapcsolva (settings.json: &quot;cloudEnabled&quot;: true, vagy TANARA_CLOUD=live).</source>
-        <translation>Tanara Cloud mode is off (settings.json: &quot;cloudEnabled&quot;: true, or TANARA_CLOUD=live).</translation>
+        <source>A Tanara Cloud mód nincs bekapcsolva (settings.json: "cloudEnabled": true, vagy TANARA_CLOUD=live).</source>
+        <translation>Tanara Cloud mode is off (settings.json: "cloudEnabled": true, or TANARA_CLOUD=live).</translation>
     </message>
     <message>
         <source>Jelentkezz be a Tanara Cloudba: tanara-cli cloud login</source>
@@ -5135,7 +5195,7 @@
     </message>
     <message>
         <source>  ▲ nem különíti el a beszélőket</source>
-        <translation>  ▲ doesn&apos;t separate speakers</translation>
+        <translation>  ▲ doesn't separate speakers</translation>
     </message>
     <message>
         <source>  ▲ ehhez a nyelvhez nem ajánlott</source>
@@ -5237,7 +5297,7 @@
     </message>
     <message>
         <source>Hiányzik a(z) „%1” sáv hangfájlja — a meglévő lekeverés megmaradt. Keresd meg a fájlt a Sávok fülön, vagy dobd el a sávot, és keverd újra.</source>
-        <translation>The audio file of track &quot;%1&quot; is missing — the existing mixdown was kept. Locate the file on the Tracks tab, or discard the track and mix down again.</translation>
+        <translation>The audio file of track "%1" is missing — the existing mixdown was kept. Locate the file on the Tracks tab, or discard the track and mix down again.</translation>
     </message>
     <message>
         <source>Nincs aktív hangsáv a lekeveréshez.</source>
@@ -5407,8 +5467,8 @@
     <message numerus="yes">
         <source>%n rész (a modell kontextusához igazítva)</source>
         <translation>
-            <numerusform>%n part (fitted to the model&apos;s context)</numerusform>
-            <numerusform>%n parts (fitted to the model&apos;s context)</numerusform>
+            <numerusform>%n part (fitted to the model's context)</numerusform>
+            <numerusform>%n parts (fitted to the model's context)</numerusform>
         </translation>
     </message>
     <message>
@@ -5465,7 +5525,7 @@
     </message>
     <message>
         <source>„%1” téma elemzése…</source>
-        <translation>Analyzing topic &quot;%1&quot;…</translation>
+        <translation>Analyzing topic "%1"…</translation>
     </message>
     <message>
         <source>Megszakítva</source>
@@ -5531,7 +5591,7 @@
     </message>
     <message>
         <source>Nem sikerült a téma-elemzést értelmezni („%1”).</source>
-        <translation>Could not parse the topic analysis (&quot;%1&quot;).</translation>
+        <translation>Could not parse the topic analysis ("%1").</translation>
     </message>
     <message>
         <source>Nem sikerült az összegzést értelmezni.</source>
@@ -5625,8 +5685,8 @@
         <translation>Invalid JSON response: %1</translation>
     </message>
     <message>
-        <source>A válasz nem tartalmaz &apos;choices&apos; tömböt.</source>
-        <translation>The response contains no &apos;choices&apos; array.</translation>
+        <source>A válasz nem tartalmaz 'choices' tömböt.</source>
+        <translation>The response contains no 'choices' array.</translation>
     </message>
     <message>
         <source>A modell nem adott választ, csak „gondolkodott” (%1 karakter, finish=%2). Kapcsold ki a gondolkodást a modell beállításainál, vagy növeld a max. tokenszámot.</source>
@@ -5669,7 +5729,7 @@
     </message>
     <message>
         <source>Ez a személy neve — becenévnek mást adj meg.</source>
-        <translation>This is the person&apos;s name — enter something else as an alias.</translation>
+        <translation>This is the person's name — enter something else as an alias.</translation>
     </message>
     <message>
         <source>Ez a becenév már szerepel.</source>
@@ -5820,11 +5880,56 @@
         <translation>Remove participant: %1</translation>
     </message>
     <message numerus="yes">
+        <source>%n sor megerősítése (nem hangminta)</source>
+        <translation>
+            <numerusform>Confirm %n line (not a voice sample)</numerusform>
+            <numerusform>Confirm %n lines (not a voice sample)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>%n sor megerősítése</source>
         <translation>
             <numerusform>Confirm %n line</numerusform>
             <numerusform>Confirm %n lines</numerusform>
         </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: nem hangminta</source>
+        <translation>
+            <numerusform>%n line: not a voice sample</numerusform>
+            <numerusform>%n lines: not a voice sample</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: mintának használható</source>
+        <translation>
+            <numerusform>%n line: usable as a sample</numerusform>
+            <numerusform>%n lines: usable as a sample</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Ennek a megbeszélésnek nincs szerkeszthető átirata.</source>
+        <translation>This meeting has no editable transcript.</translation>
+    </message>
+    <message>
+        <source>Az újraellenőrzéshez nincs telepítve a hangmodell.</source>
+        <translation>The voice model is not installed, so lines cannot be re-checked.</translation>
+    </message>
+    <message>
+        <source>A sorok hang-elemzése még fut — a végén újraellenőrizheted a sorokat.</source>
+        <translation>The voice analysis of the lines is still running — you can re-check them when it finishes.</translation>
+    </message>
+    <message>
+        <source>A sorok hang-elemzése még nem készült el. Nyisd meg az Átirat fület, és várd meg a végét.</source>
+        <translation>The voice analysis of the lines is not done yet. Open the Transcript tab and wait for it to finish.</translation>
+    </message>
+    <message>
+        <source>Előbb erősíts meg vagy javíts legalább %1 sort egy beszélőnél („Jó így” vagy áthelyezés) — ezek hangjához mérem a többit.</source>
+        <translation>First confirm or correct at least %1 lines of one speaker (“Fine as is” or move) — the rest is compared with their voice.</translation>
+    </message>
+    <message>
+        <source>Beszélők újraellenőrzése</source>
+        <translation>Re-check speakers</translation>
     </message>
     <message numerus="yes">
         <source>Javaslat elfogadása: %n sor ide: %1</source>
@@ -6166,7 +6271,7 @@
     </message>
     <message>
         <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot, és próbáld újra.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection and try again.</translation>
+        <translation>We couldn't reach the server. Check your internet connection and try again.</translation>
     </message>
     <message>
         <source>Újra</source>
@@ -6232,12 +6337,12 @@
         <translation>Retry</translation>
     </message>
     <message>
-        <source>Ha a böngésző nem nyílt meg, nyisd meg ezt a címet: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt;, és írd be a kódot: &lt;b&gt;%2&lt;/b&gt;. Telefonon is jóváhagyhatod, ha ott vagy belépve.</source>
-        <translation>If the browser didn&apos;t open, open this address: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter the code: &lt;b&gt;%2&lt;/b&gt;. You can also approve on your phone if you&apos;re signed in there.</translation>
+        <source>Ha a böngésző nem nyílt meg, nyisd meg ezt a címet: &lt;a href="%1"&gt;%1&lt;/a&gt;, és írd be a kódot: &lt;b&gt;%2&lt;/b&gt;. Telefonon is jóváhagyhatod, ha ott vagy belépve.</source>
+        <translation>If the browser didn't open, open this address: &lt;a href="%1"&gt;%1&lt;/a&gt; and enter the code: &lt;b&gt;%2&lt;/b&gt;. You can also approve on your phone if you're signed in there.</translation>
     </message>
     <message>
         <source>Nem sikerült megnyitni a böngészőt. Nyisd meg kézzel az alábbi címet, és írd be a kódot.</source>
-        <translation>We couldn&apos;t open your browser. Open the address below manually and enter the code.</translation>
+        <translation>We couldn't open your browser. Open the address below manually and enter the code.</translation>
     </message>
     <message>
         <source>Várakozás a jóváhagyásra · lejár %1:%2 múlva</source>
@@ -6272,7 +6377,7 @@
     </message>
     <message>
         <source>Regisztráció után azonnal működik, havidíj nélkül. Próbaegyenleget adunk kártya-ellenőrzés után. A hang és az átirat a szerverünkön át a szolgáltatóhoz megy. Nem tároljuk: a feldolgozás után töröljük.</source>
-        <translation>Works right after sign-up, no subscription. Includes a trial balance after card verification. Audio and transcripts pass through our server to the provider. We don&apos;t store them: they&apos;re deleted after processing.</translation>
+        <translation>Works right after sign-up, no subscription. Includes a trial balance after card verification. Audio and transcripts pass through our server to the provider. We don't store them: they're deleted after processing.</translation>
     </message>
     <message>
         <source>Tanara Cloud — bejelentkezés</source>
@@ -6335,7 +6440,7 @@
     </message>
     <message>
         <source>▲ nem különíti el a beszélőket</source>
-        <translation>▲ doesn&apos;t separate speakers</translation>
+        <translation>▲ doesn't separate speakers</translation>
     </message>
     <message>
         <source>▲ magyarhoz nem ajánlott</source>
@@ -6366,11 +6471,11 @@
     </message>
     <message>
         <source>Elfogadhatod most, vagy később. Hatálybalépés után a Tanara Cloud használatához el kell fogadnod.</source>
-        <translation>Accept now or later. After it takes effect, you&apos;ll need to accept it to keep using Tanara Cloud.</translation>
+        <translation>Accept now or later. After it takes effect, you'll need to accept it to keep using Tanara Cloud.</translation>
     </message>
     <message>
         <source>Nem fogadom el, fiók törlése</source>
-        <translation>I don&apos;t accept — delete my account</translation>
+        <translation>I don't accept — delete my account</translation>
     </message>
     <message>
         <source>A fiók törlése a weben (Tanara Cloud dashboard) történik.</source>
@@ -6473,7 +6578,7 @@
     </message>
     <message>
         <source>Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg. A felvételed sávjai megmaradnak. Ha fontos, ki mit mondott, válaszd a Pontos szintet.</source>
-        <translation>This tier doesn&apos;t separate speakers: everyone appears as one speaker in the transcript. Your recording keeps its separate tracks. If it matters who said what, choose Accurate.</translation>
+        <translation>This tier doesn't separate speakers: everyone appears as one speaker in the transcript. Your recording keeps its separate tracks. If it matters who said what, choose Accurate.</translation>
     </message>
     <message>
         <source>Magyar nyelvhez nem ajánljuk — a pontosság gyengébb lehet.</source>
@@ -6489,7 +6594,7 @@
     </message>
     <message>
         <source>A modell-lista még nem töltődött le — a szintek a bejelentkezés után frissülnek.</source>
-        <translation>The model list hasn&apos;t loaded yet — the tiers update after you sign in.</translation>
+        <translation>The model list hasn't loaded yet — the tiers update after you sign in.</translation>
     </message>
 </context>
 <context>
@@ -6832,7 +6937,7 @@
     </message>
     <message>
         <source>„%1”</source>
-        <translation>&quot;%1&quot;</translation>
+        <translation>"%1"</translation>
     </message>
     <message numerus="yes">
         <source>%n megbeszélés</source>
@@ -6878,7 +6983,7 @@
     </message>
     <message>
         <source>A megbeszélés lekevert hangja</source>
-        <translation>The meeting&apos;s mixed-down audio</translation>
+        <translation>The meeting's mixed-down audio</translation>
     </message>
     <message>
         <source>ismeretlen eszköz</source>
@@ -7030,7 +7135,7 @@
     </message>
     <message>
         <source>Eredmény: &lt;b&gt;%1&lt;/b&gt;, &lt;b&gt;%2&lt;/b&gt;. „%3” becenév lesz.</source>
-        <translation>Result: &lt;b&gt;%1&lt;/b&gt;, &lt;b&gt;%2&lt;/b&gt;. &quot;%3&quot; becomes an alias.</translation>
+        <translation>Result: &lt;b&gt;%1&lt;/b&gt;, &lt;b&gt;%2&lt;/b&gt;. "%3" becomes an alias.</translation>
     </message>
     <message numerus="yes">
         <source>%n érintett összefoglaló elavultnak jelölődik.</source>
@@ -7054,8 +7159,8 @@
     <message numerus="yes">
         <source>%n megbeszélésen névtelen beszélőként marad meg (pl. „%1”), a szöveg nem változik.</source>
         <translation>
-            <numerusform>They remain an unnamed speaker in %n meeting (e.g. &quot;%1&quot;); the text does not change.</numerusform>
-            <numerusform>They remain an unnamed speaker in %n meetings (e.g. &quot;%1&quot;); the text does not change.</numerusform>
+            <numerusform>They remain an unnamed speaker in %n meeting (e.g. "%1"); the text does not change.</numerusform>
+            <numerusform>They remain an unnamed speaker in %n meetings (e.g. "%1"); the text does not change.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -7120,7 +7225,7 @@
     </message>
     <message>
         <source>A minta hangfájlja már nincs meg, ezért nem hallgatható meg.</source>
-        <translation>The sample&apos;s audio file no longer exists, so it cannot be played.</translation>
+        <translation>The sample's audio file no longer exists, so it cannot be played.</translation>
     </message>
 </context>
 <context>
@@ -7142,11 +7247,11 @@
     </message>
     <message>
         <source>Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg. Ha fontos, ki mit mondott, válaszd a Pontos szintet.</source>
-        <translation>This tier doesn&apos;t separate speakers: everyone appears as a single speaker in the transcript. If it matters who said what, choose the Accurate tier.</translation>
+        <translation>This tier doesn't separate speakers: everyone appears as a single speaker in the transcript. If it matters who said what, choose the Accurate tier.</translation>
     </message>
     <message>
         <source>Ehhez a nyelvhez ezt a szintet nem ajánljuk: a pontosság gyengébb lehet.</source>
-        <translation>We don&apos;t recommend this tier for this language: accuracy may be lower.</translation>
+        <translation>We don't recommend this tier for this language: accuracy may be lower.</translation>
     </message>
     <message>
         <source>A modell-lista még nem töltődött le; a szintek a bejelentkezés után frissülnek.</source>
@@ -7242,7 +7347,7 @@
     </message>
     <message>
         <source>Kontextus: „%1”</source>
-        <translation>Context: &quot;%1&quot;</translation>
+        <translation>Context: "%1"</translation>
     </message>
     <message>
         <source>Szolgáltató: %1</source>
@@ -7261,17 +7366,17 @@
     </message>
     <message>
         <source>Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.</source>
-        <translation>The call seems to have ended. I won&apos;t stop on my own.</translation>
+        <translation>The call seems to have ended. I won't stop on my own.</translation>
     </message>
     <message>
         <source>Úgy tűnik, véget ért: %1. Magamtól nem állítom le.</source>
-        <translation>This seems to have ended: %1. I won&apos;t stop on my own.</translation>
+        <translation>This seems to have ended: %1. I won't stop on my own.</translation>
     </message>
     <message numerus="yes">
         <source>Minden sávon %n perce csend van. Magamtól nem állítom le.</source>
         <translation>
-            <numerusform>Every track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
-            <numerusform>Every track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
+            <numerusform>Every track has been silent for %n minute. I won't stop on my own.</numerusform>
+            <numerusform>Every track has been silent for %n minutes. I won't stop on my own.</numerusform>
         </translation>
     </message>
     <message>
@@ -7326,8 +7431,8 @@
     <message numerus="yes">
         <source>A hívás sávján %n perce csend van. Magamtól nem állítom le.</source>
         <translation>
-            <numerusform>The call track has been silent for %n minute. I won&apos;t stop on my own.</numerusform>
-            <numerusform>The call track has been silent for %n minutes. I won&apos;t stop on my own.</numerusform>
+            <numerusform>The call track has been silent for %n minute. I won't stop on my own.</numerusform>
+            <numerusform>The call track has been silent for %n minutes. I won't stop on my own.</numerusform>
         </translation>
     </message>
 </context>
@@ -7343,7 +7448,7 @@
     </message>
     <message>
         <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection.</translation>
+        <translation>We couldn't reach the server. Check your internet connection.</translation>
     </message>
     <message>
         <source>Nem sikerült a feliratkozás. Próbáld újra később.</source>
@@ -7459,7 +7564,7 @@
     </message>
     <message>
         <source>A korábban választott modell már nem érhető el; a szint modelljét használjuk.</source>
-        <translation>The model you chose earlier is no longer available; the tier&apos;s model is used.</translation>
+        <translation>The model you chose earlier is no longer available; the tier's model is used.</translation>
     </message>
     <message>
         <source>%1 / óra.</source>
@@ -8073,8 +8178,20 @@
         <translation>This topic no longer exists.</translation>
     </message>
     <message>
+        <source>Mindenki azonosítva</source>
+        <translation>Everyone identified</translation>
+    </message>
+    <message>
+        <source>Ebben a megbeszélésben már minden beszélőnek van neve. Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat bizonytalanként jelölöm meg, hogy átnézhesd őket.</source>
+        <translation>Every speaker in this meeting already has a name. Re-check the lines against the voice of the confirmed and corrected lines? Doubtful lines will be marked uncertain so you can review them.</translation>
+    </message>
+    <message>
         <source>Az azonosításhoz nincs telepítve a hangmodell.</source>
         <translation>The voice model needed for identification is not installed.</translation>
+    </message>
+    <message>
+        <source>Nincs mit azonosítani: ebben a megbeszélésben nincs beszélő.</source>
+        <translation>Nothing to identify: this meeting has no speakers.</translation>
     </message>
     <message>
         <source>Az átírás még fut — a végén magától azonosítja a résztvevőket.</source>
@@ -8085,10 +8202,6 @@
         <translation>No usable audio was found for the unnamed speakers, so there is nothing to identify.</translation>
     </message>
     <message>
-        <source>Nincs mit azonosítani: ebben a megbeszélésben már minden beszélőnek van neve. A neveket az átiratban, a névre kattintva javíthatod.</source>
-        <translation>Nothing to identify: every speaker in this meeting already has a name. You can correct names in the transcript by clicking a name.</translation>
-    </message>
-    <message>
         <source>Azonosítás megszakítva.</source>
         <translation>Identification cancelled.</translation>
     </message>
@@ -8097,8 +8210,35 @@
         <translation>Participants: %1</translation>
     </message>
     <message>
+        <source>Beszélők újraellenőrzése</source>
+        <translation>Re-check speakers</translation>
+    </message>
+    <message>
+        <source>Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat bizonytalanként jelölöm meg, hogy átnézhesd őket.</source>
+        <translation>Re-check the lines against the voice of the confirmed and corrected lines? Doubtful lines will be marked uncertain so you can review them.</translation>
+    </message>
+    <message>
+        <source>Ennek a megbeszélésnek nincs szerkeszthető átirata.</source>
+        <translation>This meeting has no editable transcript.</translation>
+    </message>
+    <message>
+        <source>Újraellenőrzés</source>
+        <translation>Re-check</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.</source>
+        <translation>
+            <numerusform>Marked %n doubtful line — you’ll find it in the Uncertain filter.</numerusform>
+            <numerusform>Marked %n doubtful lines — you’ll find them in the Uncertain filter.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A megerősített sorok alapján nem találtam kétséges sort.</source>
+        <translation>Based on the confirmed lines, no doubtful line was found.</translation>
+    </message>
+    <message>
         <source>Az azonosítás kész: egyik beszélő hangja sem ismert még. A neveket az átiratban adhatod meg.</source>
-        <translation>Identification done: none of the speakers&apos; voices is known yet. You can enter names in the transcript.</translation>
+        <translation>Identification done: none of the speakers' voices is known yet. You can enter names in the transcript.</translation>
     </message>
     <message>
         <source>Az azonosítás kész. Felismert résztvevők: %1.</source>
@@ -8144,7 +8284,7 @@
     </message>
     <message>
         <source>Akkor kapcsold be, ha a bal és a jobb csatornán más-más ember mikrofonja szól. Kikapcsolva a fájl egyetlen sztereó sáv marad.</source>
-        <translation>Turn this on if the left and right channels carry different people&apos;s microphones. When off, the file stays a single stereo track.</translation>
+        <translation>Turn this on if the left and right channels carry different people's microphones. When off, the file stays a single stereo track.</translation>
     </message>
     <message>
         <source>Mind a(z) %1 csatorna külön sáv lesz.</source>
@@ -8186,7 +8326,7 @@
     </message>
     <message>
         <source>A fájl módosítási idejéből — ha máskor készült, írd át.</source>
-        <translation>From the file&apos;s modification time — change it if it was recorded at another time.</translation>
+        <translation>From the file's modification time — change it if it was recorded at another time.</translation>
     </message>
     <message>
         <source>Megszakítás…</source>
@@ -8337,7 +8477,7 @@
     </message>
     <message>
         <source>Hiányzik: Cím (URL) (OpenAI-kompatibilis). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
-        <translation>Missing: Address (URL) (OpenAI-compatible). Enter your own provider&apos;s details in Settings.</translation>
+        <translation>Missing: Address (URL) (OpenAI-compatible). Enter your own provider's details in Settings.</translation>
     </message>
     <message>
         <source>Szolgáltató beállítása</source>
@@ -8959,7 +9099,7 @@
     </message>
     <message>
         <source>Következő negyedév mérőszámai</source>
-        <translation>Next quarter&apos;s metrics</translation>
+        <translation>Next quarter's metrics</translation>
     </message>
     <message>
         <source>Mit és hogyan mérünk</source>
@@ -9012,7 +9152,7 @@
     </message>
     <message>
         <source>A megbeszélés lekevert hangja nem érhető el, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>
-        <translation>The meeting&apos;s mixdown audio is not available, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
+        <translation>The meeting's mixdown audio is not available, so marking uncertain lines, suggesting similar lines and manual voiceprints are not available right now. Editing works without them.</translation>
     </message>
     <message numerus="yes">
         <source>%1 mind az %n sora</source>
