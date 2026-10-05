@@ -60,7 +60,7 @@ private:
     QString tanaraBinary() const;             // a sibling `tanara` binary feloldása
     QString lockPath() const;                 // <metaadat-mappa>/recording.lock
     void launch(const QStringList& args) const;
-    void applyAutostart(bool on) const;       // ~/.config/autostart/*.desktop (Linux)
+    void applyAutostart(bool on) const;       // Linux: autostart .desktop; Windows: HKCU Run
     // A settings.json megváltozott (a Beállítások mentett): újratöltés + a figyelő
     // átállítása újraindítás nélkül (be/ki, gyakoriság, figyelt appok, autostart).
     void reloadSettingsIfChanged();

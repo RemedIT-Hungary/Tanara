@@ -18,6 +18,13 @@
 #include "tanara/detect/Autostart.h"
 #include "tanara/store/JsonSerialization.h"
 
+#if defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 using namespace tanara;
 
 namespace {
@@ -214,15 +221,54 @@ private slots:
         const bool existed = !real.isEmpty() && QFile::exists(real);
         const QDateTime stamp = existed ? QFileInfo(real).lastModified() : QDateTime();
 
+#if defined(Q_OS_WIN)
+        // Windowson a bejegyzés a HKCU\…\Run "Tanara Watcher" értéke.
+        const QString realRun = autostart::readRunValue(QLatin1String(autostart::kRunSubKey),
+                                                         QLatin1String(autostart::kRunValueName));
+#endif
+
         QVERIFY(!qEnvironmentVariableIsEmpty("TANARA_HOME"));
         QVERIFY(!autostart::managed());
         QVERIFY(!autostart::applyWatcher(true, QStringLiteral("/nem/letezik/tanara-watcher")));
         QVERIFY(!autostart::applyWatcher(false, QString()));
+#if defined(Q_OS_WIN)
+        QCOMPARE(autostart::readRunValue(QLatin1String(autostart::kRunSubKey),
+                                         QLatin1String(autostart::kRunValueName)),
+                 realRun);
+#endif
 
         if (!real.isEmpty()) {
             QCOMPARE(QFile::exists(real), existed);
             if (existed) QCOMPARE(QFileInfo(real).lastModified(), stamp);
         }
+    }
+
+    // Windows Run-kulcs: írás → visszaolvasás → törlés egy SAJÁT, utána törölt teszt-kulcson
+    // (a valódi Run kulcshoz a teszt nem nyúl; nem marad utána semmi).
+    void autostartRunValueRoundTrip()
+    {
+#if defined(Q_OS_WIN)
+        const QString key = QStringLiteral("Software\\TanaraUnitTest-%1")
+                                .arg(QCoreApplication::applicationPid());
+        const QString name = QLatin1String(autostart::kRunValueName);
+        auto cleanup = qScopeGuard([&] {
+            RegDeleteKeyW(HKEY_CURRENT_USER, reinterpret_cast<const wchar_t*>(key.utf16()));
+        });
+        QVERIFY(autostart::readRunValue(key, name).isEmpty());
+        QVERIFY(autostart::writeRunValue(key, name, QStringLiteral("C:/Program Files/Tanara/tanara-watcher.exe")));
+        // Idézőjeles, natív elválasztós út (a szóközös út miatt).
+        QCOMPARE(autostart::readRunValue(key, name),
+                 QStringLiteral("\"C:\\Program Files\\Tanara\\tanara-watcher.exe\""));
+        QVERIFY(!autostart::writeRunValue(key, name, QString()));   // üres út → nem ír
+        QVERIFY(autostart::removeRunValue(key, name));
+        QVERIFY(autostart::readRunValue(key, name).isEmpty());
+        QVERIFY(autostart::removeRunValue(key, name));               // már nincs → akkor is true
+        // A bejegyzés-út ember-olvasható registry-út.
+        QVERIFY(autostart::watcherEntryPath().endsWith(QStringLiteral("\\Run\\Tanara Watcher")));
+#else
+        QVERIFY(autostart::readRunValue(QStringLiteral("x"), QStringLiteral("y")).isEmpty());
+        QVERIFY(!autostart::writeRunValue(QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("z")));
+#endif
     }
 
     void findWatcherExecutableLooksNextToTheApp()

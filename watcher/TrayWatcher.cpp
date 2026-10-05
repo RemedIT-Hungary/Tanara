@@ -435,7 +435,7 @@ void TrayWatcher::onNotifyClosed(uint id, uint reason)
 void TrayWatcher::applyAutostart(bool on) const
 {
     // A szabály EGY helyen él (tanara/detect/Autostart.h): TANARA_HOME (homokozó / teszt)
-    // mellett SOHA nem nyúl a valódi autostart-bejegyzéshez; Windows / macOS: későbbi kör.
+    // mellett SOHA nem nyúl a valódi autostart-bejegyzéshez. Linux: .desktop, Windows: Run-kulcs.
     tanara::autostart::applyWatcher(on, QCoreApplication::applicationFilePath());
 }
 
