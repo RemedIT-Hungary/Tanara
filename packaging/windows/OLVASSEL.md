@@ -54,16 +54,23 @@ Ha a gépről mindent törölni akarsz: zárd be a Tanarát, és töröld a fent
 ## 4. Tálca-figyelő (`tanara-watcher.exe`)
 
 A `tanara-watcher.exe` a rendszertálcán fut, és onnan egy kattintással indítható a
-felvétel. Kézzel indítsd el a mappából. A Beállítások → Hívásfigyelő →
-„Induljon el a bejelentkezéskor” kapcsoló Windowson még nem hoz létre indítási
-bejegyzést. Ha bejelentkezéskor is el kell indulnia, tegyél parancsikont a
-`tanara-watcher.exe`-ről ide: `Win+R` → `shell:startup`.
+felvétel. Először kézzel indítsd el a mappából. Ha bejelentkezéskor is el kell
+indulnia, kapcsold be: Beállítások → Hívásfigyelő → „Induljon el a
+bejelentkezéskor”. Ez a `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+kulcsba ír egy „Tanara Watcher” bejegyzést; a kapcsoló kikapcsolása törli.
+
+A figyelő akkor jelez, ha egy ismert hívás-app (Teams, Zoom, Webex, Slack,
+Discord, Skype; „meet” = böngésző: Chrome, Edge, Firefox, Brave…) éppen használja
+a mikrofont. A listát a Beállítások → Hívásfigyelő lapon bővítheted. Parancssorból
+is kipróbálhatod: `tanara-cli.exe detect` (egyszeri lekérdezés) vagy
+`tanara-cli.exe detect --watch`.
 
 ## 5. Ismert korlátok Windowson
 
-- **Hívás-felismerés nincs.** Az automatikus meeting-észlelés (Teams/Zoom/Meet
-  indulásakor értesítés) jelenleg csak Linuxon működik. Windowson a felvételt
-  kézzel kell indítani (főablak vagy tálca-figyelő).
+- **A hívás-felismerés Windowson új.** Valódi Teams-, Zoom- és Meet-hívással még
+  nem próbáltuk ki — ha egy hívást nem jelez, vagy hívás nélkül jelez, írd meg,
+  melyik appal történt. A böngésző bármilyen mikrofonhasználata (nem csak a Meet)
+  hívásnak számít, ha a „meet” a listán van.
 - **A gép hangja WASAPI loopbackkel jön.** A lejátszó eszközök „loopback”
   felvevőként jelennek meg az eszközlistában. Fejhallgatóval is működik, de csak
   azt a kimenetet rögzíti, amelyiket kiválasztod — ha a hívás közben eszközt

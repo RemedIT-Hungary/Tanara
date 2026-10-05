@@ -25,15 +25,15 @@ Status: **Tanara works on Linux and Windows.** On Windows, Tanara captures syste
 audio with WASAPI loopback (playback devices appear as "loopback" capture
 sources). The speaker-recognition stack (KISS FFT + ONNX Runtime) is validated on
 Windows, and `windeployqt` produces a standalone build. Call detection works on
-Linux (PipeWire). A Windows detector (WASAPI audio sessions) is implemented but
-not yet validated on a Windows machine. Tanara does not target macOS yet.
+Linux (PipeWire) and Windows (WASAPI audio sessions). Tanara does not target
+macOS yet.
 
 ---
 
 ## How it works
 
 ```
-watch (tray app, PipeWire call detector)  →  notification  →  tanara --record
+watch (tray app, PipeWire / WASAPI call detector)  →  notification  →  tanara --record
 record (miniaudio, per device)  →  track_*.ogg + mixdown.mp3
    → transcribe (Soniox, per track, Hungarian)        →  transcript.md / .tokens.json / .segments.json
    → speaker recognition (CAM++ ONNX embedding + cosine)  →  labels recurring voices
@@ -247,6 +247,10 @@ detector reads the microphone consent store in the registry
 for packaged apps. Tanara never detects its own capture (`tanara*.exe`).
 Autostart on Windows writes the `Tanara Watcher` value under
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+Validated on Windows 11: an `ffmpeg` DirectShow microphone capture is detected
+(when `ffmpeg` is on the list), and a running `tanara-cli record` is not. Real
+call apps (Teams, Zoom, Meet) are not yet tested.
 
 Limitations on Windows: an app that crashes during a call can leave a stale
 consent-store entry, so a packaged app can show as "in a call" until it uses
