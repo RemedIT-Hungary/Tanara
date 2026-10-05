@@ -41,6 +41,7 @@ struct Row {
     QDateTime   startedAt;
     QStringList tagIds;
     QStringList participants;
+    qint64      durationMs = 0;
 };
 
 struct UndoStep {
@@ -166,7 +167,7 @@ struct TagService::Impl {
         rowsLoaded = true;
     }
     static Row rowOf(const Meeting& m) {
-        return Row{ m.title, m.startedAt, m.tagIds, MeetingLibrary::participantsOf(m) };
+        return Row{ m.title, m.startedAt, m.tagIds, MeetingLibrary::participantsOf(m), m.durationMs };
     }
     void reloadRow(const QString& id) {
         if (!rowsLoaded || !store) return;
@@ -668,8 +669,8 @@ MeetingRef TagService::meetingRef(const QString& meetingId) const
 {
     d->ensureRows();
     const auto it = d->rows.constFind(meetingId);
-    if (it == d->rows.constEnd()) return { meetingId, QString(), QDateTime() };
-    return { meetingId, it->title, it->startedAt };
+    if (it == d->rows.constEnd()) return { meetingId, QString(), QDateTime(), 0 };
+    return { meetingId, it->title, it->startedAt, it->durationMs };
 }
 
 // ---- levezetett ---------------------------------------------------------------------------
@@ -702,7 +703,7 @@ TagProfile TagService::profile(const QString& id) const
     QHash<QString, int> people;
     for (const QString& mid : mids) {
         const Row r = d->rows.value(mid);
-        p.meetings.append({ mid, r.title, r.startedAt });
+        p.meetings.append({ mid, r.title, r.startedAt, r.durationMs });
         for (const QString& n : r.participants) people[n]++;
     }
     for (auto it = people.constBegin(); it != people.constEnd(); ++it)

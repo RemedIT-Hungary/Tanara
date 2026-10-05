@@ -46,6 +46,7 @@ struct MeetingRef {
     QString   meetingId;
     QString   title;
     QDateTime startedAt;
+    qint64    durationMs = 0;
 };
 
 struct TagSuggestion {
@@ -56,6 +57,7 @@ struct TagSuggestion {
     double  score = 0.0;             // 0..1, csak a sorrendhez
     QVector<SuggestionReason> reasons;
     QVector<MeetingRef> similarMeetings;   // „Hasonló megbeszélés” linkek
+    QString baseTagId;               // Cooccur: a címke, amely mellé gyakran („<Tag> mellé gyakran”)
 };
 
 // Amit a rendszer egy címkéről a használatából megtanult (levezetett, csak olvasható).

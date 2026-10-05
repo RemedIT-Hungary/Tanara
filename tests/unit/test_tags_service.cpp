@@ -62,6 +62,7 @@ QString TagsServiceTest::addMeeting(const QString& title, const QDateTime& when,
 {
     Meeting m = m_store->createMeeting(title);
     m.startedAt = when;
+    m.durationMs = 52 * 60 * 1000;
     for (int i = 0; i < speakers.size(); ++i)
         m.speakerMap.insert(QStringLiteral("Beszélő %1").arg(i + 1), speakers.at(i));
     m_store->saveMeeting(m);
@@ -340,6 +341,14 @@ void TagsServiceTest::rejected()
         llmNew.isNew = true;
         svc->reject(m1, llmNew);
         QCOMPARE(rc.count(), 2);
+        // Az elutasítás visszavonható lépés (undo = visszavétel), csoportban is.
+        svc->beginGroup(QStringLiteral("Nem illik ide"));
+        svc->reject(m2, TagSuggestion{a.id, a.name});
+        svc->endGroup();
+        QCOMPARE(svc->undoLabel(), QStringLiteral("Nem illik ide"));
+        QVERIFY(svc->isRejected(m2, a.id));
+        svc->undo();
+        QVERIFY(!svc->isRejected(m2, a.id));
         QVERIFY(svc->isRejected(m1, a.id));
         QVERIFY(svc->isRejected(m1, QStringLiteral("nordvik")));          // név szerint is
         QVERIFY(svc->isRejected(m1, QStringLiteral("arajanlat 2027")));   // az új név-ötlet kulcsa
@@ -387,6 +396,8 @@ void TagsServiceTest::usageAndProfile()
     QVERIFY(svc->profileLine(n.id).contains(QStringLiteral("Kovács Anna")));
     QCOMPARE(svc->meetingsWith(n.id), (QStringList{m2, m1}));
     QCOMPARE(svc->meetingRef(m1).title, QStringLiteral("Nordvik heti"));
+    QCOMPARE(svc->meetingRef(m1).durationMs, qint64(52 * 60 * 1000));
+    QCOMPARE(prof.meetings.first().durationMs, qint64(52 * 60 * 1000));
 }
 
 QTEST_GUILESS_MAIN(TagsServiceTest)
