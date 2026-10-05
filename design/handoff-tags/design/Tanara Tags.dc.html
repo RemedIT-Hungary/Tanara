@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}body{margin:0;background:#e6e6e4;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}a{color:#2f5aa8}a:hover{color:#1d3d78}</style>
+</helmet>
+<section style="width:2660px;padding:48px;display:flex;flex-direction:column;gap:56px;box-sizing:border-box">
+  <div style="display:grid;grid-template-columns:minmax(0,720px) minmax(0,1fr);gap:48px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5d5f63">TANARA · CÍMKÉK</div>
+      <div style="font:600 30px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Címkék és címkejavaslatok</div>
+      <div style="font:400 16px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">A brief C01–C09 elemei a mai felületre illesztve. Új szín és új vezérlő nincs: a címke alakjával különbözik (szögletes, „#” jellel), a javaslat szaggatott kék kerettel és „+” jellel, a nyelvi modell új ötlete ✦ jellel és „ÚJ” jelöléssel.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+      <sc-for list="{{ decisions }}" as="d" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;border-radius:8px;background:#f6f5f3;border:1px solid #d6d5d2">
+          <div style="font:600 12px/1.3 'IBM Plex Mono',monospace;letter-spacing:.04em;color:#5d5f63">{{ d.k }}</div>
+          <div style="font:600 15px/1.35 'IBM Plex Sans',sans-serif;color:#1f2126">{{ d.t }}</div>
+          <div style="font:400 13.5px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">{{ d.b }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 22px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Elemek · C01 chip, C02 beviteli mező, C03–C04 a fejléc címkesora</div>
+    <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+      <sc-for list="{{ sheets }}" as="s" hint-placeholder-count="2">
+        <div style="width:1280px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ s.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ s.cap }}</div></div>
+          <div data-shot="{{ s.id }}" style="width:1280px;box-sizing:border-box;padding:28px 32px 32px;background:{{ s.t.bg }};color:{{ s.t.text }};border-radius:10px;border:1px solid {{ s.t.borderStrong }};display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ s.t.muted }};white-space:nowrap">C01 · Címke-chip</div>
+              <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:20px">
+                <sc-for list="{{ s.ex }}" as="e" hint-placeholder-count="6">
+                  <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+                    <div style="height:30px;display:flex;align-items:center">
+                      <div style="flex:none;height:{{ e.c.h }}px;max-width:{{ e.c.maxW }}px;box-sizing:border-box;padding:0 {{ e.c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ e.c.bg }};border:{{ e.c.bd }};box-shadow:{{ e.c.ring }};color:{{ e.c.fg }};font-size:{{ e.c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ e.c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ e.c.gFg }}">{{ e.c.g }}</div></sc-if><sc-if value="{{ e.c.hasIc }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px">{{ e.c.ic }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ e.c.ov }};text-overflow:ellipsis">{{ e.c.l }}</div><sc-if value="{{ e.c.isNew }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:3px;background:{{ e.c.newBg }};color:{{ e.c.newFg }}">ÚJ</div></sc-if><sc-if value="{{ e.c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ e.c.xFg }}">{{ e.c.x }}</div></sc-if></div>
+                    </div>
+                    <div style="font-size:13px;line-height:1.45;color:{{ s.t.muted }};text-wrap:pretty">{{ e.cap }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:8px;border:1px solid {{ s.t.border }};background:{{ s.t.surface }}">
+                <div style="font-size:13px;color:{{ s.t.muted }};white-space:nowrap">Nem téveszthető össze:</div>
+                <div style="display:flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 6px;border-radius:12px;background:{{ s.p.soft }};color:{{ s.p.ink }};font-size:12.5px;font-weight:600;white-space:nowrap"><div style="width:10px;height:10px;border-radius:50%;background:{{ s.p.line }}"></div>Kovács Lilla</div>
+                <div style="font-size:12px;color:{{ s.t.muted }};white-space:nowrap">személy: kerek, színes</div>
+                <div style="width:1px;height:18px;background:{{ s.t.border }}"></div>
+                <div style="height:20px;padding:0 8px;display:flex;align-items:center;border-radius:10px;background:{{ s.t.warnSoft }};color:{{ s.t.warnInk }};font-size:11px;font-weight:600;white-space:nowrap">elavult</div>
+                <div style="font-size:12px;color:{{ s.t.muted }};white-space:nowrap">állapot: kis, kerek</div>
+                <div style="width:1px;height:18px;background:{{ s.t.border }}"></div>
+                <div style="flex:none;height:24px;box-sizing:border-box;padding:0 5px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ s.t.raised }};border:1px solid {{ s.t.borderStrong }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ s.t.muted }}">#</div>Nordvik</div>
+                <div style="font-size:12px;color:{{ s.t.muted }};white-space:nowrap">címke: szögletes, semleges, „#”</div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px;padding-top:22px;border-top:1px solid {{ s.t.border }}">
+              <div style="display:flex;align-items:baseline;gap:10px"><div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ s.t.muted }};white-space:nowrap">C02 · Címke-beviteli mező</div><div style="font-size:12px;color:{{ s.t.muted }};white-space:nowrap">Enter hozzáad · Backspace üres mezőben az utolsót törli · ↑↓ a listában · Esc bezár</div></div>
+              <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;align-items:start">
+                <sc-for list="{{ s.inputs }}" as="ip" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <div style="width:220px;height:28px;box-sizing:border-box;padding:0 8px;display:flex;align-items:center;gap:6px;border-radius:5px;background:{{ s.t.raised }};border:1px solid {{ s.t.accent }};box-shadow:0 0 0 3px {{ s.t.accentSoft }};font-size:13px;white-space:nowrap"><div style="flex:none;width:13px;height:13px;color:{{ s.t.muted }}">{{ i.hash }}</div><div style="flex:none;color:{{ ip.fg }}">{{ ip.text }}</div><div style="flex:none;width:1px;height:15px;background:{{ s.t.text }}"></div></div>
+                    <div style="width:{{ ip.pop.w }}px;background:{{ s.t.raised }};border:1px solid {{ s.t.border }};border-radius:8px;box-shadow:{{ s.t.shadow }};padding:4px;display:flex;flex-direction:column">
+                      <sc-for list="{{ ip.pop.rows }}" as="r" hint-placeholder-count="4">
+                        <div style="display:flex;flex-direction:column">
+                          <sc-if value="{{ r.isH }}" hint-placeholder-val="{{ false }}"><div style="padding:8px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ s.t.muted }};white-space:nowrap">{{ r.h }}</div></sc-if>
+                          <sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}"><div style="height:{{ ip.pop.rh }}px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:5px;background:{{ r.bg }}"><div style="flex:none;width:14px;height:14px;color:{{ r.icFg }}">{{ r.ic }}</div><div style="flex:1;min-width:0;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><sc-for list="{{ r.seg }}" as="g" hint-placeholder-count="1"><span style="background:{{ g.bg }};border-radius:2px">{{ g.t }}</span></sc-for></div><div style="flex:none;font:400 12px/1 'IBM Plex Mono',monospace;color:{{ s.t.muted }}">{{ r.n }}</div></div></sc-if>
+                        </div>
+                      </sc-for>
+                      <div style="margin-top:4px;padding:7px 10px 5px;border-top:1px solid {{ s.t.border }};font-size:11px;color:{{ s.t.muted }};white-space:nowrap">{{ ip.pop.hint }}</div>
+                    </div>
+                    <div style="padding-top:6px;font-size:13px;line-height:1.45;color:{{ s.t.muted }};text-wrap:pretty">{{ ip.cap }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;padding-top:22px;border-top:1px solid {{ s.t.border }}">
+              <div style="display:flex;align-items:baseline;gap:10px"><div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ s.t.muted }};white-space:nowrap">C03–C04 · A megbeszélés címkesora</div><div style="font-size:12px;color:{{ s.t.muted }};white-space:nowrap">a fejlécben, az adatsor alatt; mindig 26 px magas, ezért a késve érkező javaslat nem tolja el a felületet</div></div>
+              <sc-for list="{{ s.rows }}" as="hr" hint-placeholder-count="7">
+                <div style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:center;padding:8px 0;border-top:1px dashed {{ s.t.border }}">
+                  <div style="font-size:13px;line-height:1.4;color:{{ s.t.muted }}">{{ hr.cap }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;min-height:26px;white-space:nowrap">
+                    <sc-for list="{{ hr.tags }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};box-shadow:{{ c.ring }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div></sc-if><sc-if value="{{ c.hasIc }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px">{{ c.ic }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.isNew }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:3px;background:{{ c.newBg }};color:{{ c.newFg }}">ÚJ</div></sc-if><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                    <div style="flex:none;height:24px;padding:0 8px;display:flex;align-items:center;gap:4px;border-radius:4px;font-size:12.5px;font-weight:500;color:{{ s.t.muted }}"><div style="width:12px;height:12px">{{ i.plus }}</div>Címke</div>
+                    <sc-if value="{{ hr.hasSug }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:6px">
+                        <div style="width:1px;height:16px;background:{{ s.t.border }};margin:0 6px"></div>
+                        <sc-if value="{{ hr.llm }}" hint-placeholder-val="{{ false }}"><div style="width:13px;height:13px;color:{{ s.t.muted }}">{{ i.sparkles }}</div></sc-if>
+                        <div style="font-size:12px;color:{{ s.t.muted }}">{{ hr.sugLabel }}</div>
+                        <sc-for list="{{ hr.sugs }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};box-shadow:{{ c.ring }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div></sc-if><sc-if value="{{ c.hasIc }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px">{{ c.ic }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.isNew }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:3px;background:{{ c.newBg }};color:{{ c.newFg }}">ÚJ</div></sc-if><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                        <div style="font-size:12.5px;font-weight:500;color:{{ s.t.accent }};padding:0 4px">Mind</div>
+                        <div style="display:flex;align-items:center;gap:4px;font-size:12.5px;color:{{ s.t.muted }}"><div style="width:13px;height:13px">{{ i.info }}</div>Miért?</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ hr.busy }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:6px"><div style="width:1px;height:16px;background:{{ s.t.border }};margin:0 6px"></div><div style="width:13px;height:13px;color:{{ s.t.muted }}">{{ i.loader }}</div><div style="font-size:12px;color:{{ s.t.muted }}">Javaslatok készülnek…</div></div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 22px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Főablak · C03–C05, C07</div>
+    <div style="display:flex;flex-wrap:wrap;gap:56px 48px;align-items:flex-start">
+      <sc-for list="{{ mains }}" as="f" hint-placeholder-count="6">
+        <div style="width:1280px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ f.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ f.cap }}</div></div>
+            <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ f.note }}</div>
+          </div>
+          <div data-shot="{{ f.id }}" data-screen-label="{{ f.id }}" style="width:1280px;height:820px;background:{{ f.t.bg }};color:{{ f.t.text }};border-radius:10px;border:1px solid {{ f.t.borderStrong }};overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+            <div style="height:36px;flex:none;display:flex;align-items:center;gap:22px;padding:0 14px;background:{{ f.t.surface }};border-bottom:1px solid {{ f.t.border }};font-size:13px">
+              <div style="width:14px;height:14px;border-radius:3px;background:{{ f.t.accent }}"></div><div>Fájl</div><div>Nézet</div>
+            </div>
+            <div style="flex:1;min-height:0;display:flex">
+              <div style="width:276px;flex:none;display:flex;flex-direction:column;background:{{ f.t.surface }};border-right:1px solid {{ f.t.border }};position:relative;z-index:3">
+                <div style="padding:14px 12px 6px;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;gap:6px">
+                    <div style="flex:1;height:34px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:6px;background:{{ f.t.rec }};color:#fff;font-size:14px;font-weight:600;white-space:nowrap"><div style="width:10px;height:10px;border-radius:50%;background:#fff"></div>Új felvétel</div>
+                    <div title="Importálás" style="width:34px;height:34px;flex:none;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }}"><div style="width:15px;height:15px">{{ i.import }}</div></div>
+                  </div>
+                  <div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.searchBg }};border:1px solid {{ f.searchBd }};box-shadow:{{ f.searchRing }}">
+                    <div style="width:15px;height:15px;flex:none;color:{{ f.t.muted }}">{{ i.search }}</div>
+                    <div style="flex:1;font-size:14px;color:{{ f.searchFg }};white-space:nowrap">{{ f.searchText }}</div>
+                    <sc-if value="{{ f.searchNoX }}" hint-placeholder-val="{{ true }}"><div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">Ctrl+F</div></sc-if>
+                    <sc-if value="{{ f.searchHasX }}" hint-placeholder-val="{{ false }}"><div style="width:14px;height:14px;color:{{ f.t.muted }}">{{ i.x }}</div></sc-if>
+                  </div>
+                  <sc-if value="{{ f.hasFilters }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                      <sc-for list="{{ f.filters }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                      <div style="position:relative">
+                        <div style="height:24px;padding:0 9px;display:flex;align-items:center;gap:4px;border-radius:12px;border:1px dashed {{ f.t.borderStrong }};font-size:12.5px;color:{{ f.t.muted }};white-space:nowrap;background:{{ f.fpBtnBg }}"><div style="width:12px;height:12px">{{ i.plus }}</div>Szűrő</div>
+                        <sc-if value="{{ f.filterPop }}" hint-placeholder-val="{{ false }}">
+                          <div style="position:absolute;top:30px;left:-40px;width:300px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};padding:6px;display:flex;flex-direction:column;z-index:6">
+                            <div style="padding:6px 8px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">Állapot</div>
+                            <sc-for list="{{ f.fp.st }}" as="o" hint-placeholder-count="3"><div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:10px;font-size:13.5px"><div style="width:15px;height:15px;flex:none;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ f.t.borderStrong }}"></div>{{ o.l }}</div></sc-for>
+                            <div style="height:1px;margin:6px 4px;background:{{ f.t.border }}"></div>
+                            <div style="padding:4px 8px;display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">Címke</div>
+                              <div style="display:flex;padding:2px;gap:2px;border-radius:6px;background:{{ f.t.sunken }}"><div style="height:22px;padding:0 8px;display:flex;align-items:center;border-radius:4px;background:{{ f.t.raised }};font-size:12px;font-weight:600;white-space:nowrap">Bármelyik</div><div style="height:22px;padding:0 8px;display:flex;align-items:center;font-size:12px;color:{{ f.t.muted }};white-space:nowrap">Mindegyik</div></div>
+                            </div>
+                            <div style="margin:4px 4px 2px;height:28px;padding:0 8px;display:flex;align-items:center;gap:6px;border-radius:5px;background:{{ f.t.sunken }};font-size:13px;color:{{ f.t.muted }}"><div style="width:13px;height:13px">{{ i.search }}</div>Címke keresése</div>
+                            <sc-for list="{{ f.fp.tg }}" as="o" hint-placeholder-count="5"><div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:10px;font-size:13.5px"><div style="width:15px;height:15px;flex:none;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ o.cbBd }};background:{{ o.cbBg }};color:{{ f.t.onAccent }}"><div style="width:11px;height:11px;margin:1px">{{ o.cbIc }}</div></div><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ f.t.muted }}">#</div><div style="flex:1">{{ o.l }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ o.n }}</div></div></sc-for>
+                            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:10px;font-size:13.5px;color:{{ f.t.muted }}"><div style="width:15px;height:15px;flex:none;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ f.t.borderStrong }}"></div><div style="flex:1">Címke nélkül</div><div style="font:400 12px/1 'IBM Plex Mono',monospace">11</div></div>
+                            <div style="height:1px;margin:6px 4px;background:{{ f.t.border }}"></div>
+                            <div style="padding:4px 8px 6px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:{{ f.t.accent }}"><div style="width:14px;height:14px">{{ i.tag }}</div>Címkék kezelése…</div>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ f.hasCount }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ f.countLabel }}</div></sc-if>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden;padding:0 8px 8px;display:flex;flex-direction:column">
+                  <sc-for list="{{ f.lib }}" as="r" hint-placeholder-count="10">
+                    <div style="display:flex;flex-direction:column">
+                      <sc-if value="{{ r.isH }}" hint-placeholder-val="{{ false }}"><div style="padding:12px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ r.h }}</div></sc-if>
+                      <sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:6px;background:{{ r.bg }}">
+                          <sc-if value="{{ r.showCb }}" hint-placeholder-val="{{ false }}"><div style="width:16px;height:16px;flex:none;margin-top:2px;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ r.cbBd }};background:{{ r.cbBg }};color:{{ f.t.onAccent }}"><div style="width:12px;height:12px;margin:0.5px">{{ r.cbIc }}</div></div></sc-if>
+                          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                            <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><sc-for list="{{ r.titleSeg }}" as="g" hint-placeholder-count="1"><span style="background:{{ g.bg }};border-radius:2px">{{ g.t }}</span></sc-for></div>
+                            <div style="display:flex;align-items:center;gap:5px"><div style="flex:1;font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ r.meta }}</div><sc-for list="{{ r.st }}" as="s" hint-placeholder-count="3"><div style="width:20px;height:20px;box-sizing:border-box;border-radius:4px;background:{{ s.bg }};border:1px solid {{ s.bd }};color:{{ s.fg }};display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px">{{ s.u }}</div></div></sc-for></div>
+                            <sc-if value="{{ r.hasTags }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:8px;font-size:12px;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden"><sc-for list="{{ r.tags }}" as="g" hint-placeholder-count="2"><div style="flex:none">{{ g.l }}</div></sc-for></div></sc-if>
+                            <sc-if value="{{ r.hasSnip }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:5px;font-size:12px;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden"><sc-if value="{{ r.snipTag }}" hint-placeholder-val="{{ false }}"><div style="width:12px;height:12px;flex:none">{{ i.tag }}</div></sc-if><div style="min-width:0;overflow:hidden;text-overflow:ellipsis"><sc-for list="{{ r.snip }}" as="g" hint-placeholder-count="1"><span style="background:{{ g.bg }};color:{{ g.fg }};border-radius:2px">{{ g.t }}</span></sc-for></div></div></sc-if>
+                          </div>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:8px 10px;border-top:1px solid {{ f.t.border }};display:flex;align-items:center;gap:2px">
+                  <div style="height:32px;padding:0 8px;display:flex;align-items:center;gap:7px;border-radius:6px;font-size:13.5px;white-space:nowrap"><div style="width:15px;height:15px">{{ i.users }}</div>Személyek</div>
+                  <div style="height:32px;padding:0 8px;display:flex;align-items:center;gap:7px;border-radius:6px;font-size:13.5px;white-space:nowrap"><div style="width:15px;height:15px">{{ i.tag }}</div>Címkék</div>
+                  <div style="flex:1"></div>
+                  <div title="Beállítások" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px"><div style="width:16px;height:16px">{{ i.settings }}</div></div>
+                </div>
+              </div>
+
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+                <sc-if value="{{ f.hasMeeting }}" hint-placeholder-val="{{ true }}">
+                  <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+                    <div style="padding:16px 24px 0;display:flex;flex-direction:column;position:relative;z-index:2">
+                      <div style="display:flex;align-items:flex-start;gap:12px">
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:20px;font-weight:600;line-height:1.3">{{ f.title }}</div><div style="font-size:13px;color:{{ f.t.muted }}">{{ f.meta }}</div></div>
+                        <div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13.5px;font-weight:500"><div style="width:15px;height:15px">{{ i.finger }}</div>Résztvevők azonosítása</div>
+                        <div style="width:34px;height:34px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};background:{{ f.t.raised }}"><div style="width:15px;height:15px">{{ i.dots }}</div></div>
+                      </div>
+                      <sc-if value="{{ f.headerTags }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;align-items:center;gap:6px;min-height:26px;margin-top:10px;white-space:nowrap">
+                          <sc-for list="{{ f.tags }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};box-shadow:{{ c.ring }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                          <sc-if value="{{ f.addBtn }}" hint-placeholder-val="{{ true }}"><div style="flex:none;height:24px;padding:0 8px;display:flex;align-items:center;gap:4px;border-radius:4px;font-size:12.5px;font-weight:500;color:{{ f.t.muted }}"><div style="width:12px;height:12px">{{ i.plus }}</div>Címke</div></sc-if>
+                          <sc-if value="{{ f.addInput }}" hint-placeholder-val="{{ false }}">
+                            <div style="position:relative;flex:none">
+                              <div style="width:170px;height:24px;box-sizing:border-box;padding:0 8px;display:flex;align-items:center;gap:6px;border-radius:4px;background:{{ f.t.raised }};border:1px solid {{ f.t.accent }};box-shadow:0 0 0 3px {{ f.t.accentSoft }};font-size:12.5px"><div style="width:12px;height:12px;color:{{ f.t.muted }}">{{ i.hash }}</div><div style="flex:none">{{ f.q }}</div><div style="flex:none;width:1px;height:14px;background:{{ f.t.text }}"></div></div>
+                              <div style="position:absolute;top:30px;left:0;width:{{ f.ipop.w }}px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};padding:4px;display:flex;flex-direction:column;z-index:6">
+                                <sc-for list="{{ f.ipop.rows }}" as="r" hint-placeholder-count="3"><div style="display:flex;flex-direction:column"><sc-if value="{{ r.isH }}" hint-placeholder-val="{{ false }}"><div style="padding:8px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ r.h }}</div></sc-if><sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}"><div style="height:{{ f.ipop.rh }}px;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:5px;background:{{ r.bg }}"><div style="flex:none;width:14px;height:14px;color:{{ r.icFg }}">{{ r.ic }}</div><div style="flex:1;min-width:0;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><sc-for list="{{ r.seg }}" as="g" hint-placeholder-count="1"><span style="background:{{ g.bg }};border-radius:2px">{{ g.t }}</span></sc-for></div><div style="flex:none;font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ r.n }}</div></div></sc-if></div></sc-for>
+                                <div style="margin-top:4px;padding:7px 10px 5px;border-top:1px solid {{ f.t.border }};font-size:11px;color:{{ f.t.muted }};white-space:nowrap">{{ f.ipop.hint }}</div>
+                              </div>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ f.hasSug }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;align-items:center;gap:6px">
+                              <div style="width:1px;height:16px;background:{{ f.t.border }};margin:0 6px"></div>
+                              <sc-if value="{{ f.sugLlm }}" hint-placeholder-val="{{ false }}"><div style="width:13px;height:13px;color:{{ f.t.muted }}">{{ i.sparkles }}</div></sc-if>
+                              <div style="font-size:12px;color:{{ f.t.muted }}">{{ f.sugLabel }}</div>
+                              <sc-for list="{{ f.sugs }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><sc-if value="{{ c.hasG }}" hint-placeholder-val="{{ true }}"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div></sc-if><sc-if value="{{ c.hasIc }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px">{{ c.ic }}</div></sc-if><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.isNew }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:1px 4px;border-radius:3px;background:{{ c.newBg }};color:{{ c.newFg }}">ÚJ</div></sc-if><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                              <div style="font-size:12.5px;font-weight:500;color:{{ f.t.accent }};padding:0 4px">Mind</div>
+                              <div style="position:relative">
+                                <div style="display:flex;align-items:center;gap:4px;height:24px;padding:0 6px;border-radius:4px;font-size:12.5px;color:{{ f.whyFg }};background:{{ f.whyBg }}"><div style="width:13px;height:13px">{{ i.info }}</div>Miért?</div>
+                                <sc-if value="{{ f.whyPop }}" hint-placeholder-val="{{ false }}">
+                                  <div style="position:absolute;top:30px;left:-200px;width:420px;white-space:normal;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};padding:14px 16px;display:flex;flex-direction:column;gap:12px;z-index:6">
+                                    <div style="font-size:14px;font-weight:600">Miért ezek?</div>
+                                    <sc-for list="{{ f.why }}" as="w" hint-placeholder-count="2">
+                                      <div style="display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid {{ f.t.border }}">
+                                        <div style="display:flex;align-items:center;gap:8px">
+                                          <div style="flex:none;height:24px;box-sizing:border-box;padding:0 8px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;border:{{ w.c.bd }};color:{{ w.c.fg }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px">+</div>{{ w.c.l }}</div>
+                                          <div style="flex:1"></div>
+                                          <div style="white-space:nowrap;height:26px;padding:0 10px;display:flex;align-items:center;border-radius:5px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};font-size:12.5px;font-weight:600">Hozzáadás</div>
+                                          <div style="white-space:nowrap;height:26px;padding:0 10px;display:flex;align-items:center;border-radius:5px;border:1px solid {{ f.t.borderStrong }};font-size:12.5px;font-weight:500">Nem illik ide</div>
+                                        </div>
+                                        <sc-for list="{{ w.reasons }}" as="rs" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;font-size:13px;line-height:1.4"><div style="color:{{ f.t.muted }}">{{ rs.k }}</div><div>{{ rs.v }}</div></div></sc-for>
+                                        <div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;font-size:13px;line-height:1.4"><div style="color:{{ f.t.muted }}">Hasonló megbeszélés</div><div style="display:flex;flex-direction:column;gap:2px"><sc-for list="{{ w.links }}" as="lk" hint-placeholder-count="2"><div style="color:{{ f.t.accent }};font-weight:500">{{ lk.l }}</div></sc-for></div></div>
+                                      </div>
+                                    </sc-for>
+                                    <div style="padding-top:10px;border-top:1px solid {{ f.t.border }};font-size:12px;line-height:1.45;color:{{ f.t.muted }}">Az elutasított javaslatot ennél a megbeszélésnél nem ajánljuk újra.</div>
+                                  </div>
+                                </sc-if>
+                              </div>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ f.sugBusy }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px"><div style="width:1px;height:16px;background:{{ f.t.border }};margin:0 6px"></div><div style="width:13px;height:13px;color:{{ f.t.muted }}">{{ i.loader }}</div><div style="font-size:12px;color:{{ f.t.muted }}">Javaslatok készülnek…</div></div></sc-if>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ f.hasTabs }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;gap:4px;margin-top:12px;border-bottom:1px solid {{ f.t.border }}">
+                          <sc-for list="{{ f.tabs }}" as="tb" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:14px;font-weight:{{ tb.fw }};color:{{ tb.fg }};box-shadow:{{ tb.sh }}">{{ tb.l }}<sc-if value="{{ tb.stale }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:9px;background:{{ f.t.warnSoft }};color:{{ f.t.warnInk }}">elavult</div></sc-if></div></sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+
+                    <sc-if value="{{ f.isTranscript }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+                        <div style="padding:12px 24px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid {{ f.t.border }}">
+                          <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ f.t.muted }}">ÁTTEKINTÉS</div><div style="white-space:nowrap;height:28px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;border:1px solid {{ f.t.borderStrong }};font-size:13px"><div style="width:14px;height:14px">{{ i.panel }}</div>Sávok</div><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:{{ f.t.muted }}"><div style="width:15px;height:15px">{{ i.search }}</div></div></div>
+                          <sc-for list="{{ f.lanes }}" as="ln" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;height:14px"><div style="width:110px;font-size:11px;font-weight:600;color:{{ ln.ink }};white-space:nowrap">{{ ln.n }}</div><div style="flex:1;height:8px;border-radius:2px;background:{{ f.t.sunken }};position:relative;overflow:hidden"><sc-for list="{{ ln.segs }}" as="sg" hint-placeholder-count="12"><div style="position:absolute;top:0;bottom:0;left:{{ sg.l }}%;width:{{ sg.w }}%;background:{{ ln.line }}"></div></sc-for></div><div style="width:34px;text-align:right;font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ ln.p }}</div></div></sc-for>
+                        </div>
+                        <div style="padding:14px 24px;display:flex;flex-direction:column;gap:14px">
+                          <sc-for list="{{ f.utts }}" as="u" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:13px;font-weight:600;color:{{ u.ink }}">{{ u.n }}</div><div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ u.ts }}</div></div><div style="font-size:14px;line-height:1.55;text-wrap:pretty">{{ u.x }}</div></div></sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ f.isSummary }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:1;min-height:0;overflow:hidden;padding:20px 24px;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:32px">
+                        <div style="display:flex;flex-direction:column;gap:16px">
+                          <div style="display:flex;padding:3px;gap:2px;border-radius:7px;background:{{ f.t.sunken }};width:max-content"><div style="white-space:nowrap;height:28px;padding:0 12px;display:flex;align-items:center;border-radius:5px;background:{{ f.t.raised }};font-size:13px;font-weight:600">Vezetői összefoglaló</div><div style="white-space:nowrap;height:28px;padding:0 12px;display:flex;align-items:center;font-size:13px;color:{{ f.t.muted }}">Memó · 24 szakasz</div></div>
+                          <div style="font-size:15px;line-height:1.6;text-wrap:pretty">A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik.</div>
+                          <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ f.t.muted }}">DÖNTÉSEK</div>
+                          <sc-for list="{{ f.decs }}" as="dc" hint-placeholder-count="3"><div style="display:flex;gap:14px;font-size:14px;line-height:1.5"><div style="font:400 12px/1.9 'IBM Plex Mono',monospace;color:{{ f.t.accent }}">{{ dc.ts }}</div><div style="flex:1">{{ dc.x }}</div></div></sc-for>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:12px">
+                          <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ f.t.muted }}">RÉSZTVEVŐK</div>
+                          <sc-for list="{{ f.parts }}" as="pt" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;font-size:14px"><div style="width:22px;height:22px;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ pt.line }};background:{{ pt.soft }};color:{{ pt.ink }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">{{ pt.m }}</div><div style="flex:1">{{ pt.n }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ pt.p }}</div></div></sc-for>
+                          <div style="padding-top:12px;border-top:1px solid {{ f.t.border }};font-size:13px;line-height:1.6;color:{{ f.t.muted }}">Gyors összefoglaló<br>okt. 1. 17:05 · LM Studio · saját kulcs</div>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ f.isPre }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:1;min-height:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:14px;max-width:780px">
+                        <div style="font-size:13px;color:{{ f.t.muted }}">Ehhez a felvételhez még nincs átirat. Három lépés:</div>
+                        <div style="display:flex;gap:16px">
+                          <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:28px;height:28px;border-radius:50%;background:{{ f.t.accent }};color:{{ f.t.onAccent }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">1</div><div style="flex:1;width:2px;background:{{ f.t.border }}"></div></div>
+                          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;padding-bottom:6px">
+                            <div style="font-size:16px;font-weight:600;line-height:28px">Miről szólt a megbeszélés?</div>
+                            <div style="display:flex;flex-direction:column;gap:6px">
+                              <div style="font-size:13px;font-weight:600">Címkék</div>
+                              <div style="min-height:36px;box-sizing:border-box;padding:5px 8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }}">
+                                <sc-for list="{{ f.preTags }}" as="c" hint-placeholder-count="1"><div style="flex:none;height:{{ c.h }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">{{ c.g }}</div>{{ c.l }}<sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                                <div style="font-size:13px;color:{{ f.t.muted }};white-space:nowrap">Címke hozzáadása…</div>
+                              </div>
+                              <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+                                <div style="font-size:12px;color:{{ f.t.muted }}">Javasolt:</div>
+                                <sc-for list="{{ f.preSugs }}" as="c" hint-placeholder-count="1"><div style="flex:none;height:{{ c.h }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;border:{{ c.bd }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px">{{ c.g }}</div>{{ c.l }}<div style="flex:none;width:12px;height:12px">{{ c.x }}</div></div></sc-for>
+                                <div style="font-size:12px;color:{{ f.t.muted }}">hasonló cím: „Ügyféltámogatás heti” · Észlelt hívás: Microsoft Teams</div>
+                              </div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:6px;padding-top:6px">
+                              <div style="font-size:13px;font-weight:600">Megjegyzés</div>
+                              <div style="font-size:12px;color:{{ f.t.muted }}">Korábbi megbeszélések megjegyzései — kattintásra a mezőbe kerül:</div>
+                              <sc-for list="{{ f.preCards }}" as="pc" hint-placeholder-count="2">
+                                <div style="display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }}">
+                                  <div style="display:flex;align-items:center;gap:8px"><div style="width:13px;height:13px;color:{{ f.t.muted }}">{{ i.copy }}</div><div style="font-size:13px;font-weight:600">{{ pc.t }}</div><div style="flex:none;height:18px;padding:0 6px;display:flex;align-items:center;gap:3px;border-radius:3px;border:1px solid {{ f.t.border }};font-size:11px;white-space:nowrap"><span style="font-family:'IBM Plex Mono',monospace;color:{{ f.t.muted }}">#</span>{{ pc.tag }}</div><div style="flex:1"></div><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ pc.d }}</div></div>
+                                  <div style="font-size:12.5px;color:{{ f.t.muted }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ pc.x }}</div>
+                                </div>
+                              </sc-for>
+                              <div style="height:72px;box-sizing:border-box;padding:9px 11px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:14px;line-height:1.5;color:{{ f.t.muted }}">Például: Résztvevők: Kovács Anna, Szabó Bence. A „Nordwig” helyesen: Nordvik.</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div style="display:flex;gap:16px;align-items:center"><div style="width:28px;height:28px;box-sizing:border-box;border-radius:50%;border:2px solid {{ f.t.borderStrong }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:{{ f.t.muted }}">2</div><div style="font-size:16px;font-weight:600">Előkészítés</div><div style="font-size:12px;color:{{ f.t.muted }}">opcionális</div></div>
+                        <div style="display:flex;gap:16px;align-items:center"><div style="width:28px;height:28px;box-sizing:border-box;border-radius:50%;border:2px solid {{ f.t.borderStrong }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:{{ f.t.muted }}">3</div><div style="font-size:16px;font-weight:600">Átírás</div></div>
+                      </div>
+                    </sc-if>
+
+                    <div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 24px;background:{{ f.t.surface }};border-top:1px solid {{ f.t.border }}">
+                      <div style="width:32px;height:32px;border-radius:50%;background:{{ f.t.text }};color:{{ f.t.bg }};display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px">{{ i.play }}</div></div>
+                      <div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};white-space:nowrap">00:00 / {{ f.dur }}</div>
+                      <div style="flex:1;height:4px;border-radius:2px;background:{{ f.t.sunken }}"></div>
+                      <div style="font:500 12px/1 'IBM Plex Mono',monospace;padding:4px 6px;border-radius:4px;border:1px solid {{ f.t.border }}">1×</div>
+                      <div style="width:16px;height:16px;color:{{ f.t.muted }}">{{ i.vol }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ f.isMulti }}" hint-placeholder-val="{{ false }}">
+                  <div style="flex:1;display:flex;justify-content:center;padding:56px 24px">
+                    <div style="width:560px;display:flex;flex-direction:column;gap:18px">
+                      <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:22px;font-weight:600">3 megbeszélés kijelölve</div><div style="font-size:13px;color:{{ f.t.muted }}">Ctrl+kattintás: hozzáadás vagy elvétel · Shift+kattintás: tartomány · Esc: kijelölés megszüntetése</div></div>
+                      <div style="display:flex;flex-direction:column;border:1px solid {{ f.t.border }};border-radius:8px;background:{{ f.t.surface }}">
+                        <sc-for list="{{ f.mSel }}" as="m" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:9px 12px;border-top:{{ m.bt }}"><div style="font-size:14px;font-weight:600">{{ m.t }}</div><div style="font:400 12px/1.6 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ m.d }}</div><div style="font-size:12px;color:{{ f.t.muted }}">{{ m.tags }}</div></div></sc-for>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:10px">
+                        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ f.t.muted }}">CÍMKÉK</div>
+                        <sc-for list="{{ f.mTags }}" as="mt" hint-placeholder-count="2">
+                          <div style="display:flex;align-items:center;gap:10px">
+                            <div style="flex:none;height:24px;box-sizing:border-box;padding:0 5px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ f.t.raised }};border:{{ mt.bd }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ f.t.muted }}">#</div>{{ mt.l }}<div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};padding-left:2px">{{ mt.n }}</div><div style="width:12px;height:12px;color:{{ f.t.muted }}">{{ i.x }}</div></div>
+                            <div style="font-size:13px;color:{{ f.t.muted }}">{{ mt.note }}</div>
+                          </div>
+                        </sc-for>
+                        <div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13.5px;color:{{ f.t.muted }}"><div style="width:14px;height:14px">{{ i.hash }}</div>Címke hozzáadása mind a 3 megbeszéléshez…</div>
+                        <div style="font-size:12px;line-height:1.45;color:{{ f.t.muted }}">A szaggatott keretes címke csak némelyiken van rajta: kattintásra mindegyikre felkerül. Egy lépésben visszavonható.</div>
+                      </div>
+                      <div style="display:flex;gap:8px"><div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};font-size:14px;font-weight:500">Kijelölés megszüntetése</div></div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 22px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Felvevő és import · C06–C07</div>
+    <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+      <sc-for list="{{ recs }}" as="r" hint-placeholder-count="3">
+        <div style="width:420px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-height:84px">
+            <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ r.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ r.cap }}</div></div>
+            <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ r.note }}</div>
+          </div>
+          <div data-shot="{{ r.id }}" style="width:420px;background:{{ r.t.bg }};color:{{ r.t.text }};border-radius:10px;border:1px solid {{ r.t.borderStrong }};box-shadow:0 16px 40px oklch(0.2 0.01 260 / 0.22);display:flex;flex-direction:column">
+            <div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;background:{{ r.t.surface }};border-bottom:1px solid {{ r.t.border }};border-radius:10px 10px 0 0">
+              <div style="width:8px;height:8px;border-radius:50%;background:{{ r.dot }};box-shadow:{{ r.dotRing }}"></div>
+              <div style="flex:1;font-size:12px;color:{{ r.t.muted }}">Tanara felvevő</div>
+              <sc-for list="{{ r.tb }}" as="b" hint-placeholder-count="5"><div style="width:26px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:{{ b.bg }};color:{{ b.fg }}"><div style="width:14px;height:14px">{{ b.u }}</div></div></sc-for>
+            </div>
+            <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ r.t.surface }};border:1px solid {{ r.t.border }}"><div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:{{ r.titleFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</div><div style="width:14px;height:14px;color:{{ r.t.muted }}">{{ i.pencil }}</div></div>
+                <sc-if value="{{ r.auto }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:{{ r.t.muted }}">Automatikus név · kattints az átnevezéshez</div></sc-if>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-height:22px;position:relative;z-index:3">
+                <sc-for list="{{ r.tags }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:{{ c.h }}px;max-width:{{ c.maxW }}px;box-sizing:border-box;padding:0 {{ c.pr }}px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};color:{{ c.fg }};font-size:{{ c.fs }}px;font-weight:500;white-space:nowrap"><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:{{ c.gFg }}">{{ c.g }}</div><div style="min-width:0;padding-right:3px;overflow:{{ c.ov }};text-overflow:ellipsis">{{ c.l }}</div><sc-if value="{{ c.hasX }}" hint-placeholder-val="{{ false }}"><div style="flex:none;width:11px;height:11px;color:{{ c.xFg }}">{{ c.x }}</div></sc-if></div></sc-for>
+                <sc-if value="{{ r.addBtn }}" hint-placeholder-val="{{ true }}"><div style="height:22px;padding:0 6px;display:flex;align-items:center;gap:4px;border-radius:4px;font-size:12px;font-weight:500;color:{{ r.t.muted }};white-space:nowrap"><div style="width:11px;height:11px">{{ i.plus }}</div>Címke<div style="font:400 10.5px/1 'IBM Plex Mono',monospace;padding-left:4px">Ctrl+T</div></div></sc-if>
+                <sc-if value="{{ r.addInput }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:relative">
+                    <div style="width:150px;height:22px;box-sizing:border-box;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:4px;background:{{ r.t.raised }};border:1px solid {{ r.t.accent }};box-shadow:0 0 0 3px {{ r.t.accentSoft }};font-size:12px"><div style="width:11px;height:11px;color:{{ r.t.muted }}">{{ i.hash }}</div><div style="flex:none">{{ r.q }}</div><div style="flex:none;width:1px;height:13px;background:{{ r.t.text }}"></div></div>
+                    <div style="position:absolute;top:27px;left:0;width:{{ r.pop.w }}px;background:{{ r.t.raised }};border:1px solid {{ r.t.border }};border-radius:8px;box-shadow:{{ r.t.shadow }};padding:4px;display:flex;flex-direction:column">
+                      <sc-for list="{{ r.pop.rows }}" as="pr" hint-placeholder-count="2"><div style="display:flex;flex-direction:column"><sc-if value="{{ pr.isRow }}" hint-placeholder-val="{{ true }}"><div style="height:{{ r.pop.rh }}px;padding:0 8px;display:flex;align-items:center;gap:8px;border-radius:5px;background:{{ pr.bg }}"><div style="flex:none;width:13px;height:13px;color:{{ pr.icFg }}">{{ pr.ic }}</div><div style="flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><sc-for list="{{ pr.seg }}" as="g" hint-placeholder-count="1"><span style="background:{{ g.bg }};border-radius:2px">{{ g.t }}</span></sc-for></div><div style="flex:none;font:400 11px/1 'IBM Plex Mono',monospace;color:{{ r.t.muted }}">{{ pr.n }}</div></div></sc-if></div></sc-for>
+                      <div style="margin-top:3px;padding:6px 8px 4px;border-top:1px solid {{ r.t.border }};font-size:11px;color:{{ r.t.muted }};white-space:nowrap">{{ r.pop.hint }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ r.idle }}" hint-placeholder-val="{{ true }}">
+                <div style="height:42px;display:flex;align-items:center;justify-content:center;gap:10px;border-radius:7px;background:{{ r.t.rec }};color:#fff;font-size:15px;font-weight:600;white-space:nowrap"><div style="width:12px;height:12px;border-radius:50%;background:#fff"></div>Felvétel indítása<div style="font:400 11px/1 'IBM Plex Mono',monospace;opacity:.8">Ctrl+R</div></div>
+              </sc-if>
+              <sc-if value="{{ r.rec }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px">
+                  <div style="flex:1;height:42px;box-sizing:border-box;padding:0 12px;display:flex;align-items:center;gap:10px;border-radius:7px;background:{{ r.t.recSoft }};border:1px solid {{ r.t.recLine }}"><div style="width:12px;height:12px;border-radius:50%;background:{{ r.t.rec }};box-shadow:0 0 0 4px {{ r.t.recLine }}"></div><div style="font-size:12px;font-weight:700;letter-spacing:.08em;color:{{ r.t.recInk }}">FELVÉTEL</div><div style="flex:1;text-align:right;font:500 22px/1 'IBM Plex Mono',monospace">00:12:47</div></div>
+                  <div style="height:42px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:7px;background:{{ r.t.text }};color:{{ r.t.bg }};font-size:14px;font-weight:600;white-space:nowrap"><div style="width:11px;height:11px;border-radius:2px;background:{{ r.t.bg }}"></div>Leállítás</div>
+                </div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ r.src }}" as="sr" hint-placeholder-count="3"><div style="height:26px;display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;color:{{ r.t.muted }}">{{ sr.u }}</div><div style="flex:1;font-size:13px;white-space:nowrap">{{ sr.n }}</div><div style="display:flex;gap:2px"><sc-for list="{{ sr.vu }}" as="v" hint-placeholder-count="14"><div style="width:5px;height:10px;border-radius:1px;background:{{ v.bg }}"></div></sc-for></div></div></sc-for>
+              </div>
+              <div style="height:30px;display:flex;align-items:center;border-top:1px solid {{ r.t.border }};padding-top:4px;font-size:12px;color:{{ r.t.muted }}"><div style="flex:1">3 sáv</div><div style="display:flex;align-items:center;gap:4px;color:{{ r.t.text }};font-weight:500">Források<div style="width:13px;height:13px">{{ i.chev }}</div></div></div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="width:560px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-height:84px">
+          <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">T09</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">Import: címkék a cím mellett</div></div>
+          <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">Ugyanaz a mező, mint a fejlécben. Javaslat már itt is van, a cím és a fájlnév hasonlósága alapján.</div>
+        </div>
+        <div data-shot="T09" style="width:560px;box-sizing:border-box;background:{{ imp.t.raised }};color:{{ imp.t.text }};border-radius:10px;border:1px solid {{ imp.t.border }};box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.25);padding:22px 22px 18px;display:flex;flex-direction:column;gap:16px">
+          <div style="font-size:19px;font-weight:600">Hangfájl importálása</div>
+          <div style="display:flex;flex-direction:column;border:1px solid {{ imp.t.border }};border-radius:8px">
+            <sc-for list="{{ imp.files }}" as="fl" hint-placeholder-count="2"><div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:{{ fl.bt }}"><div style="width:16px;height:16px;margin-top:2px;color:{{ imp.t.muted }}">{{ i.fileAudio }}</div><div style="flex:1;display:flex;flex-direction:column;gap:3px"><div style="font-size:14px;font-weight:600">{{ fl.n }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ imp.t.muted }}">{{ fl.m }}</div></div><div style="width:14px;height:14px;color:{{ imp.t.muted }}">{{ i.x }}</div></div></sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:13px;font-weight:600">Cím</div><div style="height:34px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ imp.t.borderStrong }};font-size:14px">Fókuszcsoport 3</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:13px;font-weight:600;white-space:nowrap">Mikor készült?</div><div style="height:34px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ imp.t.borderStrong }};font:400 13px/1 'IBM Plex Mono',monospace;white-space:nowrap">2026-09-24 10:05</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:13px;font-weight:600">Címkék</div>
+            <div style="min-height:34px;box-sizing:border-box;padding:4px 8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;border-radius:6px;border:1px solid {{ imp.t.borderStrong }}">
+              <sc-for list="{{ imp.tags }}" as="c" hint-placeholder-count="1"><div style="flex:none;height:24px;box-sizing:border-box;padding:0 5px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ c.bg }};border:{{ c.bd }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ c.gFg }}">#</div>{{ c.l }}<div style="width:12px;height:12px;color:{{ c.xFg }}">{{ c.x }}</div></div></sc-for>
+              <div style="font-size:13px;color:{{ imp.t.muted }};white-space:nowrap">Címke hozzáadása…</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+              <div style="font-size:12px;color:{{ imp.t.muted }}">Javasolt:</div>
+              <sc-for list="{{ imp.sugs }}" as="c" hint-placeholder-count="2"><div style="flex:none;height:24px;box-sizing:border-box;padding:0 5px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;border:{{ c.bd }};color:{{ c.fg }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px">+</div>{{ c.l }}<div style="width:12px;height:12px">{{ c.x }}</div></div></sc-for>
+              <div style="font-size:12px;color:{{ imp.t.muted }}">hasonló cím: „Fókuszcsoport 2”</div>
+            </div>
+          </div>
+          <div style="padding-top:12px;border-top:1px solid {{ imp.t.border }};display:flex;flex-direction:column;gap:2px"><div style="font-size:14px;font-weight:600">2 sáv lesz belőle.</div><div style="font-size:13px;color:{{ imp.t.muted }}">Az eredeti fájlok érintetlenek maradnak. Az átírást utána te indítod.</div></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px"><div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ imp.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div><div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ imp.t.accent }};color:{{ imp.t.onAccent }};font-size:14px;font-weight:600"><div style="width:15px;height:15px">{{ i.import }}</div>Importálás</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 22px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Címkék kezelése · C08</div>
+    <div style="display:flex;flex-wrap:wrap;gap:56px 48px;align-items:flex-start">
+      <sc-for list="{{ mans }}" as="m" hint-placeholder-count="4">
+        <div style="width:960px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ m.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ m.cap }}</div></div>
+            <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ m.note }}</div>
+          </div>
+          <div data-shot="{{ m.id }}" style="width:960px;min-height:660px;background:{{ m.t.bg }};color:{{ m.t.text }};border-radius:10px;border:1px solid {{ m.t.borderStrong }};overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+            <div style="height:36px;flex:none;display:flex;align-items:center;padding:0 6px 0 14px;background:{{ m.t.surface }};border-bottom:1px solid {{ m.t.border }}"><div style="flex:1;font-size:13px;font-weight:600">Címkék</div><div style="width:36px;height:28px;display:flex;align-items:center;justify-content:center;color:{{ m.t.muted }}"><div style="width:14px;height:14px">{{ i.x }}</div></div></div>
+            <div style="flex:1;display:flex">
+              <div style="width:288px;flex:none;display:flex;flex-direction:column;background:{{ m.t.surface }};border-right:1px solid {{ m.t.border }}">
+                <div style="padding:12px 12px 8px;display:flex;flex-direction:column;gap:8px">
+                  <div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ m.t.sunken }};border:1px solid {{ m.t.border }};font-size:14px;color:{{ m.t.muted }}"><div style="width:15px;height:15px">{{ i.search }}</div>Címke keresése</div>
+                  <div style="display:flex;align-items:center;font-size:12px;color:{{ m.t.muted }}"><div style="flex:1">{{ m.count }}</div><div style="display:flex;align-items:center;gap:4px">Legutóbb használt<div style="width:12px;height:12px">{{ i.chev }}</div></div></div>
+                </div>
+                <div style="flex:1;padding:0 8px 10px;display:flex;flex-direction:column">
+                  <sc-for list="{{ m.list }}" as="tr" hint-placeholder-count="10"><div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;background:{{ tr.bg }}"><div style="width:28px;height:28px;flex:none;border-radius:6px;background:{{ m.t.sunken }};display:flex;align-items:center;justify-content:center;font:500 13px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }}">#</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><div style="font-size:14px;font-weight:{{ tr.fw }};white-space:nowrap">{{ tr.n }}</div><div style="font-size:12px;color:{{ m.t.muted }};white-space:nowrap">{{ tr.meta }}</div></div></div></sc-for>
+                  <sc-if value="{{ m.empty }}" hint-placeholder-val="{{ false }}"><div style="margin:6px;padding:14px;border-radius:8px;border:1px dashed {{ m.t.borderStrong }};font-size:13px;line-height:1.45;color:{{ m.t.muted }}">Itt jelennek meg a címkék, amint az első megbeszélésre felkerül egy.</div></sc-if>
+                </div>
+              </div>
+              <div style="flex:1;min-width:0;padding:22px 28px 24px;display:flex;flex-direction:column;gap:20px">
+                <sc-if value="{{ m.hasDetail }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:20px">
+                    <div style="display:flex;align-items:flex-start;gap:14px">
+                      <div style="width:44px;height:44px;flex:none;border-radius:10px;background:{{ m.t.sunken }};display:flex;align-items:center;justify-content:center;font:500 20px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }}">#</div>
+                      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:20px;font-weight:600">Nordvik</div><div style="font-size:13px;color:{{ m.t.muted }};white-space:nowrap">14 megbeszélés · először: márc. 3. · utoljára: okt. 2.</div></div>
+                      <div style="display:flex;gap:6px;flex:none">
+                        <div style="white-space:nowrap;height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ m.t.raised }};border:1px solid {{ m.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:14px;height:14px">{{ i.pencil }}</div>Átnevezés</div>
+                        <div style="white-space:nowrap;height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ m.t.raised }};border:1px solid {{ m.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:14px;height:14px">{{ i.merge }}</div>Összevonás…</div>
+                        <div style="width:30px;height:30px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ m.t.border }};color:{{ m.t.dangerInk }}"><div style="width:14px;height:14px">{{ i.trash }}</div></div>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:{{ m.t.surface }};border:1px solid {{ m.t.border }};font-size:12.5px;color:{{ m.t.muted }}"><div style="width:14px;height:14px;flex:none">{{ i.info }}</div><div>A profilt a rendszer a címke használatából tanulja; a javaslatok indoklása ebből jön. Nem kell szerkeszteni.</div></div>
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ m.t.muted }};white-space:nowrap">JELLEMZŐ RÉSZTVEVŐK</div>
+                        <sc-for list="{{ m.people }}" as="pp" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;font-size:13.5px"><div style="width:24px;height:24px;flex:none;border-radius:50%;background:{{ m.t.sunken }};border:1px solid {{ m.t.border }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">{{ pp.m }}</div><div style="flex:1">{{ pp.n }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }}">{{ pp.c }}</div></div></sc-for>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ m.t.muted }};white-space:nowrap">JELLEMZŐ KIFEJEZÉSEK</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ m.terms }}" as="tm" hint-placeholder-count="6"><div style="height:24px;padding:0 8px;display:flex;align-items:center;border-radius:12px;background:{{ m.t.sunken }};font-size:12.5px;white-space:nowrap">{{ tm }}</div></sc-for></div>
+                        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ m.t.muted }};padding-top:10px;white-space:nowrap">GYAKRAN EGYÜTT</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ m.co }}" as="co" hint-placeholder-count="3"><div style="flex:none;height:24px;box-sizing:border-box;padding:0 8px 0 7px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ m.t.raised }};border:1px solid {{ m.t.borderStrong }};font-size:12.5px;font-weight:500;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:{{ m.t.muted }}">#</div>{{ co.l }}<div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }};padding-left:3px">{{ co.n }}</div></div></sc-for></div>
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ m.t.muted }}">MEGBESZÉLÉSEK</div><div style="font-size:12px;color:{{ m.t.muted }};white-space:nowrap">14 · legújabb elöl</div></div>
+                      <div style="display:flex;flex-direction:column;border:1px solid {{ m.t.border }};border-radius:8px;background:{{ m.t.surface }}">
+                        <sc-for list="{{ m.mtgs }}" as="mg" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 50px;gap:12px;align-items:center;padding:8px 12px;border-top:{{ mg.bt }}"><div style="font-size:13px;line-height:1.4">{{ mg.t }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }};white-space:nowrap">{{ mg.d }}</div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ m.t.muted }};text-align:right">{{ mg.l }}</div></div></sc-for>
+                        <div style="padding:8px 12px;border-top:1px solid {{ m.t.border }};font-size:13px;font-weight:500;color:{{ m.t.accent }}">Megnyitás a könyvtárban szűrőként</div>
+                      </div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ m.empty }}" hint-placeholder-val="{{ false }}">
+                  <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:540px">
+                    <div style="max-width:400px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+                      <div style="width:40px;height:40px;border-radius:10px;background:{{ m.t.sunken }};display:flex;align-items:center;justify-content:center;color:{{ m.t.muted }}"><div style="width:20px;height:20px">{{ i.tag }}</div></div>
+                      <div style="font-size:16px;font-weight:600">Még nincs címke</div>
+                      <div style="font-size:14px;line-height:1.5;color:{{ m.t.muted }};text-wrap:pretty">Címkét a megbeszélés fejlécében, a felvevőben vagy importkor adhatsz. Ha már van néhány, a rendszer a hasonló megbeszélésekre magától is javasol.</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+            <sc-if value="{{ m.merge }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:{{ m.t.scrim }};display:flex;align-items:center;justify-content:center">
+                <div style="width:500px;background:{{ m.t.raised }};border-radius:10px;border:1px solid {{ m.t.border }};box-shadow:{{ m.t.shadow }};display:flex;flex-direction:column">
+                  <div style="padding:20px 22px 0;display:flex;flex-direction:column;gap:6px"><div style="font-size:16px;font-weight:600">#Nordvik összevonása</div><div style="font-size:13px;line-height:1.45;color:{{ m.t.muted }}">Ha ugyanazt jelenti két név. A megbeszélések egy címke alá kerülnek, a profilok összeadódnak.</div></div>
+                  <div style="padding:16px 22px;display:flex;flex-direction:column;gap:12px">
+                    <div style="display:flex;flex-direction:column;gap:2px">
+                      <sc-for list="{{ mergeCands }}" as="c" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:{{ c.bg }};border:{{ c.bd }}"><div style="width:16px;height:16px;flex:none;box-sizing:border-box;border-radius:50%;border:{{ c.radio }}"></div><div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:13px;color:{{ m.t.muted }}">#</div><div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:14px;font-weight:600">{{ c.n }}</div><div style="font-size:12px;color:{{ m.t.muted }}">{{ c.m }}</div></div></div></sc-for>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:8px;background:{{ m.t.sunken }}">
+                      <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ m.t.muted }}">MEGMARADÓ NÉV</div>
+                      <div style="display:flex;gap:20px;font-size:14px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;flex:none;box-sizing:border-box;border-radius:50%;border:5px solid {{ m.t.accent }}"></div><div style="flex:none">Nordvik</div></div><div style="display:flex;align-items:center;gap:8px"><div style="width:16px;height:16px;flex:none;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ m.t.borderStrong }}"></div><div style="flex:none">Nordvik AS</div></div></div>
+                      <div style="font-size:13px;line-height:1.45">Eredmény: <b>16 megbeszélés</b> (1 közös). A „Nordvik AS” név megszűnik; ha valaki beírja, a mező a Nordvikot ajánlja.</div>
+                    </div>
+                  </div>
+                  <div style="padding:14px 22px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid {{ m.t.border }}"><div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ m.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div><div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;border-radius:6px;background:{{ m.t.accent }};color:{{ m.t.onAccent }};font-size:14px;font-weight:600">Összevonás</div></div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ m.del }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:{{ m.t.scrim }};display:flex;align-items:center;justify-content:center">
+                <div style="width:440px;background:{{ m.t.raised }};border-radius:10px;border:1px solid {{ m.t.border }};box-shadow:{{ m.t.shadow }};display:flex;flex-direction:column">
+                  <div style="padding:20px 22px 16px;display:flex;flex-direction:column;gap:10px"><div style="font-size:16px;font-weight:600">Törlöd a #Nordvik címkét?</div><div style="font-size:14px;line-height:1.5;color:{{ m.t.muted }};text-wrap:pretty">14 megbeszélésről lekerül. Maguk a megbeszélések, átiratok és összefoglalók megmaradnak. A címke profilja és az együtt járási adatai törlődnek.</div></div>
+                  <div style="padding:14px 22px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid {{ m.t.border }}"><div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ m.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div><div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;border-radius:6px;background:{{ m.t.danger }};color:#fff;font-size:14px;font-weight:600">Törlés</div></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div style="font:600 22px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Beállítások · C09 (Szolgáltatások oldal)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:56px 48px;align-items:flex-start">
+      <sc-for list="{{ sets }}" as="st" hint-placeholder-count="3">
+        <div style="width:900px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ st.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ st.cap }}</div></div>
+            <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ st.note }}</div>
+          </div>
+          <div data-shot="{{ st.id }}" style="width:900px;background:{{ st.t.bg }};color:{{ st.t.text }};border-radius:10px;border:1px solid {{ st.t.borderStrong }};overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+            <div style="flex:1;display:flex">
+              <div style="width:208px;flex:none;padding:12px 10px;display:flex;flex-direction:column;gap:2px;background:{{ st.t.surface }};border-right:1px solid {{ st.t.border }}">
+                <sc-for list="{{ st.nav }}" as="n" hint-placeholder-count="5"><div style="height:36px;padding:0 10px;display:flex;align-items:center;gap:10px;border-radius:6px;background:{{ n.bg }};color:{{ n.fg }};font-size:14px;font-weight:{{ n.fw }}"><div style="width:16px;height:16px;flex:none">{{ n.u }}</div><div style="flex:1;white-space:nowrap">{{ n.l }}</div></div></sc-for>
+              </div>
+              <div style="flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px;max-width:660px">
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                  <div style="display:flex;gap:10px;padding:12px 14px;border-radius:8px;background:{{ st.t.raised }};border:1.5px solid {{ st.t.accent }}"><div style="width:16px;height:16px;flex:none;margin-top:2px;box-sizing:border-box;border-radius:50%;border:5px solid {{ st.t.accent }}"></div><div style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;white-space:nowrap"><div style="width:15px;height:15px">{{ i.key }}</div>Saját kulcs</div><div style="font-size:12px;line-height:1.4;color:{{ st.t.muted }}">A te fiókod a szolgáltatóknál; nekik fizetsz közvetlenül.</div></div></div>
+                  <div style="display:flex;gap:10px;padding:12px 14px;border-radius:8px;border:1px solid {{ st.t.border }}"><div style="width:16px;height:16px;flex:none;margin-top:2px;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ st.t.borderStrong }}"></div><div style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;white-space:nowrap"><div style="width:15px;height:15px">{{ i.cloud }}</div>Tanara Cloud</div><div style="font-size:12px;line-height:1.4;color:{{ st.t.muted }}">Bejelentkezés és egyenleg; nincs kulcskezelés.</div></div></div>
+                </div>
+                <sc-for list="{{ st.compact }}" as="cc" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:8px;background:{{ st.t.surface }};border:1px solid {{ st.t.border }}"><div style="width:14px;height:14px;color:{{ st.t.muted }}">{{ i.chevR }}</div><div style="font-size:15px;font-weight:600">{{ cc.t }}</div><div style="font-size:12px;color:{{ st.t.muted }};white-space:nowrap">{{ cc.s }}</div><div style="flex:1"></div><div style="font-size:13px;color:{{ st.t.muted }};white-space:nowrap">{{ cc.p }}</div><div style="white-space:nowrap;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:10px;background:{{ st.t.successSoft }};color:{{ st.t.successInk }}"><div style="width:13px;height:13px">{{ i.ok }}</div>Kapcsolódva</div></div></sc-for>
+
+                <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-radius:8px;background:{{ st.t.surface }};border:1px solid {{ st.cardBd }}">
+                  <div style="display:flex;align-items:center;gap:10px"><div style="flex:1 0 auto;display:flex;align-items:baseline;gap:8px;white-space:nowrap"><div style="font-size:15px;font-weight:600">Beágyazás</div><div style="font-size:12px;color:{{ st.t.muted }}">címkejavaslatokhoz (embedding)</div></div><sc-if value="{{ st.hasPill }}" hint-placeholder-val="{{ false }}"><div style="white-space:nowrap;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:10px;background:{{ st.pillBg }};color:{{ st.pillFg }}"><div style="width:13px;height:13px">{{ st.pillIc }}</div>{{ st.pill }}</div></sc-if></div>
+                  <div style="display:flex;padding:3px;gap:2px;border-radius:7px;background:{{ st.t.sunken }};width:max-content"><sc-for list="{{ st.seg }}" as="sg" hint-placeholder-count="3"><div style="white-space:nowrap;height:28px;padding:0 12px;display:flex;align-items:center;border-radius:5px;background:{{ sg.bg }};box-shadow:{{ sg.sh }};font-size:13px;font-weight:{{ sg.fw }};color:{{ sg.fg }}">{{ sg.l }}</div></sc-for></div>
+                  <div style="font-size:13px;line-height:1.45;color:{{ st.t.muted }};text-wrap:pretty">{{ st.desc }}</div>
+                  <sc-if value="{{ st.isLocal }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 12px;align-items:center">
+                      <div style="font-size:13px;font-weight:500">Cím (URL)</div><div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;border-radius:6px;background:{{ st.t.sunken }};border:1px solid {{ st.t.borderStrong }};font:400 13px/1 'IBM Plex Mono',monospace">http://localhost:1234/v1</div>
+                      <div style="font-size:13px;font-weight:500">Modell</div>
+                      <div style="display:flex;gap:6px"><div style="flex:1;min-width:0;height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ st.t.raised }};border:1px solid {{ st.modelBd }};box-shadow:{{ st.modelRing }};font:400 13px/1 'IBM Plex Mono',monospace"><div style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.model }}</div><div style="width:15px;height:15px;color:{{ st.t.muted }}">{{ i.chev }}</div></div><div style="white-space:nowrap;height:32px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ st.t.raised }};border:1px solid {{ st.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:13px;height:13px">{{ i.refresh }}</div>Lekérés</div></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ st.modelChange }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:6px;background:{{ st.t.warnSoft }};border:1px solid {{ st.t.warnLine }};font-size:13px;line-height:1.45"><div style="width:15px;height:15px;flex:none;margin-top:2px;color:{{ st.t.warnInk }}">{{ i.warn }}</div><div>Másik modellre váltasz. Mentés után a könyvtár előkészítése elölről indul (40 megbeszélés, kb. 6 perc). Addig a javaslatok az alap szinten működnek.</div></div></sc-if>
+                  <sc-if value="{{ st.isCloud }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:6px;background:{{ st.t.accentSoft }};border:1px solid {{ st.t.accentLine }};font-size:13px;line-height:1.45"><div style="width:15px;height:15px;flex:none;margin-top:2px;color:{{ st.t.accent }}">{{ i.info }}</div><div>Az átiratok szövege a Tanara Cloudba kerül feldolgozásra, ugyanúgy, mint a felhős összefoglalásnál. A hangfelvétel és a hanglenyomatok a gépen maradnak. Az előkészítés egyszer kb. 120 kredit, utána megbeszélésenként ~3.</div></div></sc-if>
+                  <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid {{ st.t.border }}">
+                    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ st.t.muted }}">KÖNYVTÁR ELŐKÉSZÍTÉSE</div>
+                    <sc-if value="{{ st.prepRun }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="display:flex;font-size:13px"><div style="flex:1">23 / 40 megbeszélés</div><div style="color:{{ st.t.muted }}">kb. 4 perc van hátra</div></div><div style="height:6px;border-radius:3px;background:{{ st.t.sunken }};overflow:hidden"><div style="width:57%;height:100%;background:{{ st.t.accent }}"></div></div></div><div style="white-space:nowrap;height:30px;padding:0 12px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ st.t.borderStrong }};font-size:13px;font-weight:500">Megszakítás</div></div><div style="font-size:12px;color:{{ st.t.muted }}">Közben dolgozhatsz; a már előkészített megbeszéléseknél a javaslatok azonnal jobbak.</div></sc-if>
+                    <sc-if value="{{ st.prepErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:{{ st.t.dangerSoft }};border:1px solid {{ st.t.dangerLine }};font-size:13px"><div style="flex:1;line-height:1.4">Megállt 31 / 40-nél: a végpont nem válaszol. Fut a helyi szerver?</div><div style="white-space:nowrap;height:28px;padding:0 10px;display:flex;align-items:center;border-radius:5px;background:{{ st.t.raised }};border:1px solid {{ st.t.borderStrong }};font-size:13px;font-weight:500">Folytatás</div></div></sc-if>
+                    <sc-if value="{{ st.prepOk }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;font-size:13px"><div style="width:15px;height:15px;color:{{ st.t.successInk }}">{{ i.ok }}</div><div style="flex:1">Naprakész · 40 megbeszélés · okt. 5. 09:12</div><div style="font-size:13px;font-weight:500;color:{{ st.t.accent }};white-space:nowrap">Újraelőkészítés</div></div></sc-if>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px"><div style="white-space:nowrap;height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;border-radius:6px;border:1px solid {{ st.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:13px;height:13px">{{ i.plug }}</div>Kapcsolat tesztelése</div></div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:12px;padding-top:8px">
+                  <div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{{ st.t.muted }}">CÍMKEJAVASLATOK</div>
+                  <sc-for list="{{ st.toggles }}" as="tg" hint-placeholder-count="2"><div style="display:flex;align-items:flex-start;gap:12px"><div style="width:30px;height:18px;flex:none;margin-top:1px;border-radius:9px;background:{{ st.t.accent }};position:relative"><div style="position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:{{ st.t.onAccent }}"></div></div><div style="display:flex;flex-direction:column;gap:2px"><div style="font-size:14px;font-weight:500">{{ tg.l }}</div><div style="font-size:13px;line-height:1.45;color:{{ st.t.muted }}">{{ tg.s }}</div></div></div></sc-for>
+                  <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:{{ st.t.muted }}">Elutasított javaslatok: 12<div style="font-weight:500;color:{{ st.t.accent }}">Visszaállítás</div></div>
+                </div>
+              </div>
+            </div>
+            <div style="height:56px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px 0 20px;border-top:1px solid {{ st.t.border }};background:{{ st.t.surface }}">
+              <sc-if value="{{ st.dirty }}" hint-placeholder-val="{{ false }}"><div style="width:8px;height:8px;border-radius:50%;background:{{ st.t.warn }}"></div></sc-if>
+              <div style="flex:1;font-size:13px;color:{{ st.t.muted }}">{{ st.footer }}</div>
+              <div style="white-space:nowrap;height:34px;padding:0 14px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ st.t.borderStrong }};font-size:14px;font-weight:500">Mégse</div>
+              <div style="white-space:nowrap;height:34px;padding:0 16px;display:flex;align-items:center;border-radius:6px;background:{{ st.saveBg }};color:{{ st.saveFg }};font-size:14px;font-weight:600">{{ st.saveL }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;'mixed'|'light'|'dark'&quot;}}">
+const ICONS = {"search":"<circle cx=\"11\" cy=\"11\" r=\"8\" /><path d=\"m21 21-4.3-4.3\" />","circle-check":"<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"m9 12 2 2 4-4\" />","key-round":"<path d=\"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z\" /><circle cx=\"16.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" />","sparkles":"<path d=\"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z\" /><path d=\"M20 3v4\" /><path d=\"M22 5h-4\" /><path d=\"M4 17v2\" /><path d=\"M5 18H3\" />","plus":"<path d=\"M5 12h14\" /><path d=\"M12 5v14\" />","fingerprint":"<path d=\"M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4\" /><path d=\"M14 13.12c0 2.38 0 6.38-1 8.88\" /><path d=\"M17.29 21.02c.12-.6.43-2.3.5-3.02\" /><path d=\"M2 12a10 10 0 0 1 18-6\" /><path d=\"M2 16h.01\" /><path d=\"M21.8 16c.2-2 .131-5.354 0-6\" /><path d=\"M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2\" /><path d=\"M8.65 22c.21-.66.45-1.32.57-2\" /><path d=\"M9 6.8a6 6 0 0 1 9 5.2v2\" />","play":"<polygon points=\"6 3 20 12 6 21 6 3\" />","copy":"<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" /><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />","users":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /><path d=\"M16 3.13a4 4 0 0 1 0 7.75\" />","ellipsis":"<circle cx=\"12\" cy=\"12\" r=\"1\" /><circle cx=\"19\" cy=\"12\" r=\"1\" /><circle cx=\"5\" cy=\"12\" r=\"1\" />","chevron-right":"<path d=\"m9 18 6-6-6-6\" />","settings":"<path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\" /><circle cx=\"12\" cy=\"12\" r=\"3\" />","plug":"<path d=\"M12 22v-5\" /><path d=\"M9 8V2\" /><path d=\"M15 8V2\" /><path d=\"M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z\" />","user-check":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><polyline points=\"16 11 18 13 22 9\" />","cloud":"<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\" />","file-text":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\" /><path d=\"M14 2v4a2 2 0 0 0 2 2h4\" /><path d=\"M10 9H8\" /><path d=\"M16 13H8\" /><path d=\"M16 17H8\" />","mic":"<path d=\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\" /><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\" /><line x1=\"12\" x2=\"12\" y1=\"19\" y2=\"22\" />","volume-2":"<path d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z\" /><path d=\"M16 9a5 5 0 0 1 0 6\" /><path d=\"M19.364 18.364a9 9 0 0 0 0-12.728\" />","arrow-down-to-line":"<path d=\"M12 17V3\" /><path d=\"m6 11 6 6 6-6\" /><path d=\"M19 21H5\" />","pencil":"<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /><path d=\"m15 5 4 4\" />","speaker":"<rect width=\"16\" height=\"20\" x=\"4\" y=\"2\" rx=\"2\" /><path d=\"M12 6h.01\" /><circle cx=\"12\" cy=\"14\" r=\"4\" /><path d=\"M12 14h.01\" />","chevrons-down":"<path d=\"m7 6 5 5 5-5\" /><path d=\"m7 13 5 5 5-5\" />","radar":"<path d=\"M19.07 4.93A10 10 0 0 0 6.99 3.34\" /><path d=\"M4 6h.01\" /><path d=\"M2.29 9.62A10 10 0 1 0 21.31 8.35\" /><path d=\"M16.24 7.76A6 6 0 1 0 8.23 16.67\" /><path d=\"M12 18h.01\" /><path d=\"M17.99 11.66A6 6 0 0 1 15.77 16.67\" /><circle cx=\"12\" cy=\"12\" r=\"2\" /><path d=\"m13.41 10.59 5.66-5.66\" />","check":"<path d=\"M20 6 9 17l-5-5\" />","trash-2":"<path d=\"M3 6h18\" /><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\" /><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\" /><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\" /><line x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\" />","chevron-down":"<path d=\"m6 9 6 6 6-6\" />","refresh-cw":"<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" /><path d=\"M21 3v5h-5\" /><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" /><path d=\"M8 16H3v5\" />","headphones":"<path d=\"M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3\" />","pin":"<path d=\"M12 17v5\" /><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\" />","minimize-2":"<polyline points=\"4 14 10 14 10 20\" /><polyline points=\"20 10 14 10 14 4\" /><line x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\" /><line x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\" />","merge":"<path d=\"m8 6 4-4 4 4\" /><path d=\"M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22\" /><path d=\"m20 22-5-5\" />","circle-x":"<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"m15 9-6 6\" /><path d=\"m9 9 6 6\" />","panel-left":"<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /><path d=\"M9 3v18\" />","x":"<path d=\"M18 6 6 18\" /><path d=\"m6 6 12 12\" />","file-audio":"<path d=\"M17.5 22h.5a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3\" /><path d=\"M14 2v4a2 2 0 0 0 2 2h4\" /><path d=\"M2 19a2 2 0 1 1 4 0v1a2 2 0 1 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 1 1-4 0v-1a2 2 0 1 1 4 0\" />","download":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /><polyline points=\"7 10 12 15 17 10\" /><line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\" />","tag":"<path d=\"M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z\" /><circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" />","loader-circle":"<path d=\"M21 12a9 9 0 1 1-6.219-8.56\" />","hash":"<line x1=\"4\" x2=\"20\" y1=\"9\" y2=\"9\" /><line x1=\"4\" x2=\"20\" y1=\"15\" y2=\"15\" /><line x1=\"10\" x2=\"8\" y1=\"3\" y2=\"21\" /><line x1=\"16\" x2=\"14\" y1=\"3\" y2=\"21\" />","info":"<circle cx=\"12\" cy=\"12\" r=\"10\" /><path d=\"M12 16v-4\" /><path d=\"M12 8h.01\" />","triangle-alert":"<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /><path d=\"M12 9v4\" /><path d=\"M12 17h.01\" />"};
+const IC = n => React.createElement('svg', { viewBox: '0 0 24 24', width: '100%', height: '100%', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', style: { display: 'block' }, dangerouslySetInnerHTML: { __html: ICONS[n] || '' } });
+const L = { bg:'oklch(0.97 0.003 95)', surface:'oklch(0.987 0.002 95)', raised:'oklch(1 0 0)', sunken:'oklch(0.94 0.004 95)', border:'oklch(0.89 0.004 95)', borderStrong:'oklch(0.77 0.005 95)', text:'oklch(0.22 0.006 260)', muted:'oklch(0.47 0.007 260)', accent:'oklch(0.5 0.13 258)', onAccent:'oklch(0.99 0 0)', accentSoft:'oklch(0.94 0.025 258)', accentLine:'oklch(0.85 0.05 258)', warn:'oklch(0.72 0.14 75)', warnSoft:'oklch(0.95 0.045 85)', warnLine:'oklch(0.85 0.08 80)', warnInk:'oklch(0.45 0.1 70)', successSoft:'oklch(0.94 0.035 155)', successInk:'oklch(0.4 0.09 155)', danger:'oklch(0.53 0.17 25)', dangerSoft:'oklch(0.96 0.025 25)', dangerLine:'oklch(0.85 0.07 25)', dangerInk:'oklch(0.45 0.16 25)', rec:'oklch(0.57 0.2 25)', recSoft:'oklch(0.96 0.025 25)', recLine:'oklch(0.88 0.06 25)', recInk:'oklch(0.45 0.16 25)', vuTrack:'oklch(0.92 0.004 95)', vuLow:'oklch(0.6 0.12 155)', scrim:'oklch(0.2 0.01 260 / 0.35)', shadow:'0 12px 32px oklch(0.2 0.02 260 / 0.18), 0 1px 3px oklch(0.2 0.02 260 / 0.12)' };
+const D = { bg:'oklch(0.19 0.005 260)', surface:'oklch(0.22 0.006 260)', raised:'oklch(0.265 0.007 260)', sunken:'oklch(0.165 0.005 260)', border:'oklch(0.32 0.007 260)', borderStrong:'oklch(0.44 0.008 260)', text:'oklch(0.94 0.004 95)', muted:'oklch(0.74 0.006 95)', accent:'oklch(0.75 0.11 255)', onAccent:'oklch(0.18 0.03 258)', accentSoft:'oklch(0.3 0.05 258)', accentLine:'oklch(0.42 0.08 258)', warn:'oklch(0.8 0.12 80)', warnSoft:'oklch(0.31 0.05 80)', warnLine:'oklch(0.45 0.08 80)', warnInk:'oklch(0.87 0.1 85)', successSoft:'oklch(0.31 0.05 155)', successInk:'oklch(0.86 0.08 155)', danger:'oklch(0.62 0.17 25)', dangerSoft:'oklch(0.28 0.05 25)', dangerLine:'oklch(0.45 0.1 25)', dangerInk:'oklch(0.85 0.08 25)', rec:'oklch(0.64 0.19 25)', recSoft:'oklch(0.27 0.05 25)', recLine:'oklch(0.4 0.1 25)', recInk:'oklch(0.85 0.09 25)', vuTrack:'oklch(0.28 0.006 260)', vuLow:'oklch(0.74 0.14 155)', scrim:'oklch(0 0 0 / 0.5)', shadow:'0 12px 32px oklch(0 0 0 / 0.5), 0 1px 3px oklch(0 0 0 / 0.35)' };
+const spk = (dark, h) => dark ? { line: `oklch(0.72 0.13 ${h})`, soft: `oklch(0.33 0.052 ${h})`, ink: `oklch(0.86 0.09 ${h})` } : { line: `oklch(0.6 0.13 ${h})`, soft: `oklch(0.93 0.04 ${h})`, ink: `oklch(0.42 0.12 ${h})` };
+const NORM = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const TAGS = [['Nordvik', 14], ['Q4 tervezés', 9], ['MuseumPlus', 6], ['Múzeumi pályázat', 3], ['MÉM-MDK', 7], ['Partnerek', 5], ['Belső', 11], ['Termék', 8], ['Gyűjteménykezelés', 4], ['Ügyféltámogatás', 6], ['Kutatás', 2]];
+
+function chip(t, l, kind = 'on', o = {}) {
+  const sug = kind === 'sug' || kind === 'new', more = kind === 'more', sm = !!o.sm;
+  return { l, ov: l.length > 22 ? 'hidden' : 'visible', h: sm ? 22 : 24, fs: sm ? 12 : 12.5, maxW: o.maxW || 180,
+    hasG: kind === 'on' || kind === 'sug', g: kind === 'sug' ? '+' : '#', gFg: sug ? t.accent : t.muted,
+    hasIc: kind === 'new', ic: IC('sparkles'), isNew: kind === 'new', newBg: t.accentSoft, newFg: t.accent,
+    bg: more ? t.sunken : sug ? 'transparent' : t.raised,
+    bd: more ? '1px solid transparent' : sug ? `1px dashed ${t.accent}` : `1px solid ${o.hover ? t.text : t.borderStrong}`,
+    ring: o.focus ? `0 0 0 3px ${t.accentSoft}` : 'none', fg: more ? t.muted : sug ? t.accent : t.text,
+    hasX: sug || !!o.x, x: IC('x'), xFg: sug ? t.accent : t.muted, pr: (sug || o.x) ? 5 : 8 };
+}
+function seg(t, s, q) {
+  const i = q ? NORM(s).indexOf(NORM(q)) : -1;
+  if (i < 0) return [{ t: s, bg: 'transparent', fg: 'inherit' }];
+  return [{ t: s.slice(0, i), bg: 'transparent', fg: 'inherit' }, { t: s.slice(i, i + q.length), bg: t.warnSoft, fg: t.text }, { t: s.slice(i + q.length), bg: 'transparent', fg: 'inherit' }];
+}
+function pop(t, mode, q = '', o = {}) {
+  const rows = [];
+  const H = h => rows.push({ isH: true, isRow: false, h });
+  const R = (ic, icFg, sg, n, sel) => rows.push({ isH: false, isRow: true, ic: IC(ic), icFg, seg: sg, n: n == null ? '' : String(n), bg: sel ? t.sunken : 'transparent' });
+  if (mode === 'recent') { H('Legutóbb használt'); [['Nordvik', 14], ['Q4 tervezés', 9], ['MuseumPlus', 6], ['Partnerek', 5]].forEach(([l, n], k) => R('hash', t.muted, seg(t, l, ''), n, k === 0)); }
+  else if (mode === 'similar') { H('Hasonló már van'); R('hash', t.muted, seg(t, 'MuseumPlus', ''), 6, true); R('plus', t.muted, [{ t: `Mégis új: „${q}”`, bg: 'transparent' }], '', false); }
+  else { const m = TAGS.filter(([l]) => NORM(l).includes(NORM(q))).slice(0, o.max || 5); m.forEach(([l, n], k) => R('hash', t.muted, seg(t, l, q), n, k === 0)); R('plus', t.accent, [{ t: `Új címke: „${q}”`, bg: 'transparent' }], '', m.length === 0); }
+  return { w: o.w || 300, rh: o.rh || 32, rows, hint: o.hint || '↑↓ választás · Enter hozzáadás · Esc bezárás' };
+}
+const ICS = ['file-text', 'sparkles', 'user-check'];
+function tile(t, s, ic) { const m = { d: [t.successSoft, 'transparent', t.successInk], m: ['transparent', t.borderStrong, t.muted], s: [t.warnSoft, t.warnLine, t.warnInk], e: [t.dangerSoft, t.dangerLine, t.dangerInk] }[s]; return { bg: m[0], bd: m[1], fg: m[2], u: IC(ic) }; }
+function tagLine(tags) { const out = []; let len = 0; for (let k = 0; k < tags.length; k++) { const l = tags[k]; if (k > 0 && len + l.length > 24) { out.push({ l: '+' + (tags.length - k) }); break; } out.push({ l: '#' + l }); len += l.length + 2; } return out; }
+const BASE = [['Ma'], ['Termékcsapat heti egyeztetés', 'okt. 2. · 30 p', ['Termék', 'Q4 tervezés'], 'ddm'], ['Ügyféltámogatás átadás', 'okt. 2. · 52 p', ['Nordvik'], 'mmm'], ['Tegnap'], ['Negyedéves partnertalálkozó', 'okt. 1. · 1 ó 16 p', ['Nordvik', 'Partnerek', 'Q4 tervezés'], 'dsd'], ['Ezen a héten'], ['Termékbemutató, 2. kör', 'szept. 30. · 44 p', ['MuseumPlus', 'MÉM-MDK', 'Gyűjteménykezelés'], 'dmm'], ['Árazás egyeztetés', 'szept. 29. · 27 p', [], 'ddd'], ['Nordvik heti meeting', 'szept. 29. · 55 p', ['Nordvik'], 'ddm'], ['Korábban'], ['Infrastruktúra áttekintés', 'szept. 25. · 41 p', ['Belső'], 'ddm'], ['Heti tervezés', 'szept. 24. · 33 p', ['Belső', 'Q4 tervezés'], 'ddd']];
+function row(t, b, o) {
+  return { isH: false, isRow: true, titleSeg: o.titleSeg || [{ t: b[0], bg: 'transparent' }], meta: b[1], st: [...b[3]].map((s, k) => tile(t, s, ICS[k])), hasTags: !o.snip && o.tags.length > 0, tags: tagLine(o.tags), hasSnip: !!o.snip, snip: o.snip || [], snipTag: !!o.snipTag, bg: o.on ? t.accentSoft : 'transparent', showCb: !!o.cb, cbBg: o.on ? t.accent : t.raised, cbBd: o.on ? t.accent : t.borderStrong, cbIc: o.on ? IC('check') : null };
+}
+function libRows(t, def) {
+  const find = n => BASE.find(b => b[0] === n);
+  if (def.search) {
+    const q = def.search;
+    return [
+      row(t, find('Nordvik heti meeting'), { tags: ['Nordvik'], on: def.sel === 'Nordvik heti meeting', titleSeg: seg(t, 'Nordvik heti meeting', q) }),
+      row(t, find('Ügyféltámogatás átadás'), { tags: [], snipTag: true, snip: [{ t: 'címke: ', bg: 'transparent', fg: 'inherit' }, { t: '#Nordvik', bg: t.warnSoft, fg: t.text }] }),
+      row(t, find('Negyedéves partnertalálkozó'), { tags: [], snipTag: true, snip: [{ t: 'címke: ', bg: 'transparent', fg: 'inherit' }, { t: '#Nordvik', bg: t.warnSoft, fg: t.text }, { t: ' · átiratban 4×', bg: 'transparent', fg: 'inherit' }] }),
+      row(t, find('Árazás egyeztetés'), { tags: [], snip: [{ t: '…a ', bg: 'transparent', fg: 'inherit' }, { t: 'Nordvik', bg: t.warnSoft, fg: t.text }, { t: '-szerződés megújítása előtt…', bg: 'transparent', fg: 'inherit' }] })
+    ];
+  }
+  const ov = def.libTags || {}, multi = def.multi || null;
+  return BASE.map(b => b.length === 1 ? { isH: true, isRow: false, h: b[0] } : row(t, b, { tags: ov[b[0]] || b[2], on: multi ? multi.includes(b[0]) : b[0] === def.sel, cb: !!multi }));
+}
+const LANES = [['Kovács Lilla', 30, '23%'], ['Fehér Ádám', 230, '25%'], ['Távoli 1', 145, '20%'], ['Varga Nóra', 330, '31%']];
+const META = { 'Negyedéves partnertalálkozó': ['2026. okt. 1. · 1:16:04 · 6 beszélő', '1:16:04'], 'Termékbemutató, 2. kör': ['2026. szept. 30. · 44:12 · 3 beszélő', '44:12'], 'Nordvik heti meeting': ['2026. szept. 29. · 55:03 · 4 beszélő', '55:03'], 'Ügyféltámogatás átadás': ['2026. okt. 2. · 52:10 · még nincs átirat', '52:10'] };
+const theme = (def, force) => (force === 'dark' ? true : force === 'light' ? false : !!def.dark) ? D : L;
+
+function buildMain(def, force) {
+  const t = theme(def, force), dark = t === D, tab = def.tab || 0;
+  const meta = META[def.sel] || ['', ''];
+  return { id: def.id, cap: def.cap, note: def.note, t,
+    lib: libRows(t, def),
+    searchText: def.search || 'Keresés', searchFg: def.search ? t.text : t.muted, searchBg: def.search ? t.raised : t.sunken, searchBd: def.search ? t.accent : t.border, searchRing: def.search ? `0 0 0 3px ${t.accentSoft}` : 'none', searchHasX: !!def.search, searchNoX: !def.search,
+    hasFilters: !!def.filters, filters: (def.filters || []).map(l => chip(t, l, 'on', { x: true })), filterPop: !!def.filterPop, fpBtnBg: def.filterPop ? t.sunken : 'transparent',
+    fp: { st: ['Nincs összefoglaló', 'Nincs átirat', 'Elavult összefoglaló'].map(l => ({ l })), tg: [['Nordvik', 14, 1], ['Partnerek', 5, 1], ['Q4 tervezés', 9], ['MuseumPlus', 6], ['Belső', 11]].map(([l, n, on]) => ({ l, n, cbBg: on ? t.accent : 'transparent', cbBd: on ? t.accent : t.borderStrong, cbIc: on ? IC('check') : null })) },
+    hasCount: !!def.search, countLabel: '4 találat · címben, címkében, átiratban',
+    hasMeeting: !def.multi, isMulti: !!def.multi, title: def.sel || '', meta: meta[0], dur: meta[1],
+    headerTags: !def.pre, hasTabs: !def.pre,
+    tags: (def.tags || []).map(([l, o]) => chip(t, l, 'on', o || {})),
+    addBtn: def.add !== 'input', addInput: def.add === 'input', q: def.q || '', ipop: pop(t, 'typing', def.q || 'x', { max: 3 }),
+    hasSug: !!def.sugs, sugLabel: def.sugLabel || '', sugLlm: !!def.llm, sugs: (def.sugs || []).map(([l, k]) => chip(t, l, k)),
+    whyPop: !!def.why, whyBg: def.why ? t.sunken : 'transparent', whyFg: def.why ? t.text : t.muted,
+    why: [{ c: chip(t, 'Nordvik', 'sug'), reasons: [['Közös résztvevő', 'Varga Nóra, Fehér Ádám'], ['Közös kifejezések', 'Nordvik, partnerportál, ütemterv']], links: ['Nordvik heti meeting · szept. 29.', 'Ügyféltámogatás átadás · okt. 2.'] }, { c: chip(t, 'Ügyfélsiker', 'sug'), reasons: [['Hasonló cím', 'Negyedéves partnertalálkozó (júl. 2.)'], ['Közös kifejezések', 'támogatási igény, súgóoldalak']], links: ['Negyedéves partnertalálkozó · júl. 2.'] }].map(w => ({ c: w.c, reasons: w.reasons.map(([k, v]) => ({ k, v })), links: w.links.map(l => ({ l })) })),
+    sugBusy: !!def.busy,
+    tabs: ['Átirat', 'Összefoglaló', 'Sávok'].map((l, k) => ({ l, fw: k === tab ? 600 : 400, fg: k === tab ? t.text : t.muted, sh: k === tab ? `inset 0 -2px 0 ${t.accent}` : 'none', stale: k === 1 && !!def.stale })),
+    isTranscript: tab === 0 && !def.pre && !def.multi, isSummary: tab === 1, isPre: !!def.pre,
+    lanes: LANES.map(([n, h, p], j) => { const s = spk(dark, h); return { n, ink: s.ink, line: s.line, p, segs: Array.from({ length: 22 }, (_, k) => ({ l: ((k * 4.4 + j * 1.7 + (k % 3) * 0.9) % 99).toFixed(1), w: (0.3 + ((k * (j + 2)) % 4) * 0.25).toFixed(2) })) }; }),
+    utts: [['Kovács Lilla', 30, '00:04', 'Köszönöm, hogy ilyen sokan eljöttetek. Röviden végigmegyek a harmadik negyedéven, utána szívesen válaszolok a kérdésekre. Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.'], ['Fehér Ádám', 230, '01:12', 'Bocs, hogy közbeszólok, ez a szám az összes ügyfélre vonatkozik, vagy csak az újakra?'], ['Kovács Lilla', 30, '01:16', 'Az összesre. Az újaknál egyébként még jobb az arány, de ott kicsi a minta, ezért nem tettem fel a diára.']].map(([n, h, ts, x]) => ({ n, ink: spk(dark, h).ink, ts, x })),
+    decs: [['12:52', 'A súgóoldalakat a többi termékre is kiterjesztik.'], ['31:10', 'A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.'], ['58:40', 'A dokumentációs létszámról a költségvetési tervezés dönt.']].map(([ts, x]) => ({ ts, x })),
+    parts: [['Kovács Lilla', 'KL', 30, '34%'], ['Tóth Bence', 'TB', 230, '22%'], ['Varga Nóra', 'VN', 145, '17%'], ['Molnár Eszter', 'ME', 330, '14%']].map(([n, m, h, p]) => ({ n, m, p, ...spk(dark, h) })),
+    preTags: [chip(t, 'Nordvik', 'on', { x: true })], preSugs: [chip(t, 'Ügyféltámogatás', 'sug')],
+    preCards: [['Nordvik heti meeting', 'Nordvik', '2026. szept. 29.', 'Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul.'], ['Ügyféltámogatás heti', 'Ügyféltámogatás', '2026. szept. 18.', 'A „pixel tár” helyesen: PixelTár. Eszkalációs szintek: L1–L3.']].map(([tt, tag, d, x]) => ({ t: tt, tag, d, x })),
+    mSel: [['Ügyféltámogatás átadás', 'okt. 2.', '#Nordvik'], ['Negyedéves partnertalálkozó', 'okt. 1.', '#Nordvik #Partnerek #Q4 tervezés'], ['Nordvik heti meeting', 'szept. 29.', '#Nordvik']].map(([tt, d, tags], k) => ({ t: tt, d, tags, bt: k ? `1px solid ${t.border}` : 'none' })),
+    mTags: [['Nordvik', '3/3', 'mindegyiken rajta van', `1px solid ${t.borderStrong}`], ['Partnerek', '1/3', 'csak egyiken · kattintásra mindegyikre', `1px dashed ${t.borderStrong}`], ['Q4 tervezés', '1/3', 'csak egyiken', `1px dashed ${t.borderStrong}`]].map(([l, n, note, bd]) => ({ l, n, note, bd }))
+  };
+}
+function buildSheet(dark) {
+  const t = dark ? D : L;
+  return { t, id: dark ? 'T01b' : 'T01', cap: dark ? 'Elemek · sötét téma' : 'Elemek · világos téma', p: spk(dark, 30),
+    ex: [[chip(t, 'Nordvik'), 'Felrakott címke. Kattintás: szűrés a könyvtárban erre a címkére.'], [chip(t, 'Nordvik', 'on', { hover: 1, x: 1 }), 'Rámutatva vagy fókuszban: × eltávolít (Delete).'], [chip(t, 'Partnerek', 'sug'), 'Javasolt meglévő címke. Kattintás: hozzáadás, ×: elutasítás.'], [chip(t, 'Ügyfélsiker', 'new'), 'A nyelvi modell ötlete, új névvel: elfogadáskor a készlet bővül.'], [chip(t, 'Gyűjteménykezelési munkacsoport 2026'), 'Hosszú név: legfeljebb 180 px, a teljes név tooltipben.'], [chip(t, '+3', 'more'), 'Ami nem fér egy sorba. Kattintásra lista.']].map(([c, cap]) => ({ c, cap })),
+    inputs: [['', 'Címke…', pop(t, 'recent'), 'Üres mező: a legutóbb használt címkék.'], ['mu', '', pop(t, 'typing', 'mu'), 'Gépelés közben: ékezet és kis-nagybetű nem számít, az egyezés kiemelve.'], ['Pilot 2027', '', pop(t, 'typing', 'Pilot 2027'), 'Nincs találat: Enter új címkét hoz létre.'], ['Museum Plus', '', pop(t, 'similar', 'Museum Plus'), 'Nagyon hasonló név: a meglévő van kijelölve, az új létrehozása is lehetséges.']].map(([text, ph, p, cap]) => ({ text: text || ph, fg: text ? t.text : t.muted, pop: p, cap })),
+    rows: [
+      { cap: 'Nincs címke', tags: [] },
+      { cap: '1–3 címke', tags: [chip(t, 'Nordvik'), chip(t, 'Partnerek')] },
+      { cap: 'Sok címke: egy sor, a többi „+N”', tags: ['Nordvik', 'Partnerek', 'Q4 tervezés', 'Termék', 'Ügyféltámogatás', 'Belső'].map(l => chip(t, l)).concat([chip(t, '+4', 'more')]) },
+      { cap: 'Javaslat készül: a hely fenn van tartva', tags: [chip(t, 'Nordvik')], busy: true },
+      { cap: 'Javaslat a hasonló megbeszélések alapján, indoklással', tags: [chip(t, 'Nordvik')], hasSug: true, sugLabel: 'Javasolt', sugs: [chip(t, 'Partnerek', 'sug'), chip(t, 'Q4 tervezés', 'sug')] },
+      { cap: 'Együtt járó címkék, egy címke hozzáadása után', tags: [chip(t, 'MuseumPlus', 'on', { focus: 1 })], hasSug: true, sugLabel: 'MuseumPlus mellé gyakran', sugs: [chip(t, 'MÉM-MDK', 'sug'), chip(t, 'Gyűjteménykezelés', 'sug')] },
+      { cap: 'A nyelvi modell javaslata, az összefoglalás után', tags: [chip(t, 'Nordvik')], hasSug: true, llm: true, sugLabel: 'Az összefoglaló alapján', sugs: [chip(t, 'Termék', 'sug'), chip(t, 'Ügyfélsiker', 'new')] }
+    ].map(r => ({ hasSug: false, busy: false, llm: false, sugs: [], sugLabel: '', ...r }))
+  };
+}
+const vu = (t, lv) => Array.from({ length: 14 }, (_, i) => ({ bg: i < lv ? t.vuLow : t.vuTrack }));
+function buildRec(def, force) {
+  const t = theme(def, force), rec = def.state === 'rec';
+  return { id: def.id, cap: def.cap, note: def.note, t, idle: !rec, rec, dot: rec ? t.rec : t.borderStrong, dotRing: rec ? `0 0 0 3px ${t.recLine}` : 'none',
+    tb: ['pin', 'chevrons-down', 'minimize-2', 'arrow-down-to-line', 'x'].map((u, k) => ({ u: IC(u), bg: k === 0 ? t.accentSoft : 'transparent', fg: k === 0 ? t.accent : t.muted })),
+    title: def.title, titleFg: def.auto ? t.muted : t.text, auto: !!def.auto,
+    tags: (def.tags || []).map(l => chip(t, l, 'on', { sm: true, x: true })), addBtn: def.add !== 'input', addInput: def.add === 'input', q: def.q || '', pop: pop(t, 'typing', def.q || 'x', { w: 250, rh: 28, max: 3, hint: 'Enter hozzáad · Esc bezár' }),
+    src: [['mic', 'Trust USB mikrofon', rec ? 9 : 6], ['headphones', 'Sennheiser headset', rec ? 6 : 0], ['speaker', 'Kanto YU4 hangfal', 0]].map(([u, n, lv]) => ({ u: IC(u), n, vu: vu(t, lv) })) };
+}
+const TAGLIST = [['Nordvik', 14, 'okt. 2.'], ['Q4 tervezés', 9, 'okt. 2.'], ['Termék', 8, 'okt. 2.'], ['Partnerek', 5, 'okt. 1.'], ['Belső', 11, 'szept. 25.'], ['MuseumPlus', 6, 'szept. 30.'], ['MÉM-MDK', 7, 'szept. 30.'], ['Gyűjteménykezelés', 4, 'szept. 30.'], ['Ügyféltámogatás', 6, 'szept. 18.'], ['Múzeumi pályázat', 3, 'júl. 8.'], ['Nordvik AS', 3, 'máj. 20.'], ['Kutatás', 2, 'ápr. 14.']];
+function buildMan(def, force) {
+  const t = theme(def, force);
+  return { id: def.id, cap: def.cap, note: def.note, t, empty: !!def.empty, hasDetail: !def.empty, merge: !!def.merge, del: !!def.del,
+    count: def.empty ? '0 címke' : `${TAGLIST.length} címke`,
+    list: def.empty ? [] : TAGLIST.map(([n, c, d]) => ({ n, meta: `${c} megbeszélés · ${d}`, bg: n === 'Nordvik' ? t.accentSoft : 'transparent', fw: n === 'Nordvik' ? 600 : 500 })),
+    people: [['Kovács Anna', 'KA', '12 / 14'], ['Szabó Bence', 'SB', '11 / 14'], ['Lantos Réka', 'LR', '6 / 14'], ['Varga Nóra', 'VN', '5 / 14']].map(([n, m, c]) => ({ n, m, c })),
+    terms: ['Nordvik', 'partnerportál', 'ütemterv', 'SLA', 'eszkaláció', 'Qvarko-modul', 'PixelTár', 'megújítás'],
+    co: [['Partnerek', '6×'], ['Q4 tervezés', '5×'], ['Ügyféltámogatás', '4×']].map(([l, n]) => ({ l, n })),
+    mtgs: [['Ügyféltámogatás átadás', '2026-10-02', '52 p'], ['Negyedéves partnertalálkozó', '2026-10-01', '1 ó 16 p'], ['Nordvik heti meeting', '2026-09-29', '55 p'], ['Nordvik heti meeting – demó előtt', '2026-09-22', '48 p']].map(([tt, d, l], k) => ({ t: tt, d, l, bt: k ? `1px solid ${t.border}` : 'none' })) };
+}
+function buildSet(def, force) {
+  const t = theme(def, force), local = def.emb === 'local', cloud = def.emb === 'cloud';
+  const pill = def.prep === 'err' ? ['Nem érhető el', t.dangerSoft, t.dangerInk, 'circle-x'] : ['Kapcsolódva', t.successSoft, t.successInk, 'circle-check'];
+  return { id: def.id, cap: def.cap, note: def.note, t, isLocal: local, isCloud: cloud, prepRun: def.prep === 'run', prepErr: def.prep === 'err', prepOk: def.prep === 'ok', modelChange: !!def.modelChange,
+    nav: [['Általános', 'settings'], ['Rögzítés', 'mic'], ['Hívásfigyelő', 'radar'], ['Szolgáltatások', 'plug'], ['Összefoglaló', 'sparkles']].map(([l, u], k) => ({ l, u: IC(u), bg: k === 3 ? t.accentSoft : 'transparent', fg: k === 3 ? t.text : t.muted, fw: k === 3 ? 600 : 400 })),
+    compact: [['Átírás', 'beszédből szöveg', 'Soniox'], ['Összefoglaló', 'nyelvi modell', 'LM Studio · gemma-4-12b']].map(([tt, s, p]) => ({ t: tt, s, p })),
+    cardBd: def.prep === 'err' ? t.dangerLine : t.border, hasPill: true, pill: pill[0], pillBg: pill[1], pillFg: pill[2], pillIc: IC(pill[3]),
+    seg: ['Nincs (alap)', 'Helyi végpont', 'Tanara Cloud'].map((l, k) => { const on = (k === 1 && local) || (k === 2 && cloud); return { l, bg: on ? t.raised : 'transparent', sh: on ? '0 1px 2px oklch(0.2 0.01 260 / 0.2)' : 'none', fw: on ? 600 : 400, fg: on ? t.text : t.muted }; }),
+    desc: cloud ? 'A rokon témákat is felismeri, akkor is, ha más szavakkal beszéltetek róla. Nem kell hozzá helyi modell.' : 'A rokon témákat is felismeri, akkor is, ha más szavakkal beszéltetek róla. Beágyazó modell kell hozzá (pl. LM Studio). Alap szinten is működnek a javaslatok: közös résztvevők, nevek, hasonló cím.',
+    model: def.modelChange ? 'nomic-embed-text-v2-moe' : 'text-embedding-nomic-embed-text-v1.5', modelBd: def.modelChange ? t.accent : t.borderStrong, modelRing: def.modelChange ? `0 0 0 3px ${t.accentSoft}` : 'none',
+    toggles: [['Címkék javaslása', 'Hasonló korábbi megbeszélések és együtt járó címkék alapján. Sosem kerül fel magától.'], ['A nyelvi modell is javasoljon az összefoglaló után', 'Meglévő címkéket, és legfeljebb 2 új címke ötletét.']].map(([l, s]) => ({ l, s })),
+    dirty: !!def.dirty, footer: def.dirty || 'Nincs mentetlen változás', saveBg: def.dirty ? t.accent : t.sunken, saveFg: def.dirty ? t.onAccent : t.muted, saveL: def.dirty ? 'Mentés és újraindítás' : 'Mentés' };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const force = this.props.theme ?? 'mixed';
+    const mains = [
+      { id: 'T02', cap: 'Fejléc: címkék, javaslatok, „Miért?”', note: 'A címkesor a fejléc adatsora alatt van, minden fülön közös. A javaslatok ugyanebben a sorban, elválasztva jönnek. A „Miért?” egyszerre mutatja az összes javaslat indoklását; a hasonló megbeszélések kattinthatók.', sel: 'Negyedéves partnertalálkozó', tags: [['Partnerek'], ['Q4 tervezés', { hover: 1, x: 1 }]], sugs: [['Nordvik', 'sug'], ['Ügyfélsiker', 'sug']], sugLabel: 'Javasolt', why: true, stale: true, libTags: { 'Negyedéves partnertalálkozó': ['Partnerek', 'Q4 tervezés'] } },
+      { id: 'T03', cap: 'Hozzáadás a fejlécben + együtt járó címkék', note: 'A „+ Címke” helyben mezővé válik (T billentyű). A MuseumPlus felrakása után a vele együtt szereplő címkéket kínálja fel.', dark: true, sel: 'Termékbemutató, 2. kör', tags: [['MuseumPlus', { focus: 1 }]], add: 'input', q: 'gyű', sugs: [['MÉM-MDK', 'sug'], ['Múzeumi pályázat', 'sug']], sugLabel: 'MuseumPlus mellé gyakran', libTags: { 'Termékbemutató, 2. kör': ['MuseumPlus'] } },
+      { id: 'T04', cap: 'Könyvtár: címke-szűrő és keresés címkében', note: 'Címke-szűrő a meglévő szűrők között, több címkére (Bármelyik / Mindegyik), „Címke nélkül” opcióval. A keresési találat címke ikonnal jelzi, ha a címke miatt van. A listasorban a címkék szövegként, egy sorban látszanak (ami nem fér el: +N). Közben a fejlécben a javaslat még készül.', sel: 'Nordvik heti meeting', search: 'nordvik', filters: ['Nordvik', 'Partnerek'], filterPop: true, tags: [['Nordvik']], busy: true },
+      { id: 'T05', cap: 'Többes kijelölés és közös címkézés', note: 'Ctrl/Shift+kattintással több megbeszélés jelölhető ki. A jobb oldalon a közös címkék, a részlegesen rajta lévők szaggatott kerettel és számmal.', dark: true, multi: ['Ügyféltámogatás átadás', 'Negyedéves partnertalálkozó', 'Nordvik heti meeting'] },
+      { id: 'T06', cap: 'Összefoglaló után: a nyelvi modell javaslata', note: 'Nem a jobb oszlopba kerül, hanem ugyanabba a fejléc-sorba, ✦ jellel; így a javaslat egy helyen van. A kitalált új név „ÚJ” jelölést kap. Szabály: legfeljebb 2 javaslat látszik, a többi „+N” mögött (a „Miért?” mindet listázza), így a sor sosem törik és nem ugrik.', sel: 'Negyedéves partnertalálkozó', tab: 1, tags: [['Nordvik'], ['Partnerek'], ['Q4 tervezés']], sugs: [['Ügyfélsiker', 'new'], ['Termék', 'sug'], ['+1', 'more']], sugLabel: 'Az összefoglaló alapján', llm: true },
+      { id: 'T07', cap: 'Átirat előtt: címkék az 1. lépésben', note: 'Amíg nincs átirat, a címkesor a fejlécből az 1. lépésbe kerül, a megjegyzés fölé. A megjegyzés-kártyákon látszik a közös címke; később innen jönnek a címke alapú megjegyzés-javaslatok.', dark: true, sel: 'Ügyféltámogatás átadás', pre: true }
+    ];
+    const recs = [
+      { id: 'T08a', cap: 'Felvevő · indítás előtt', note: 'Egy kompakt sor a cím alatt. Ctrl+T-re a mező fókuszt kap, a hívás közben sem kell egeret fogni.', state: 'idle', title: 'Teams-hívás · okt. 5. 14:02', auto: true, tags: ['Nordvik'] },
+      { id: 'T08b', cap: 'Felvevő · felvétel közben', note: 'A címkék a felvétel alatt is szerkeszthetők. Összecsukott állapotban is látszanak; a pirula méretben nincsenek.', dark: true, state: 'rec', title: 'Nordvik heti meeting', tags: ['Nordvik', 'Q4 tervezés'] },
+      { id: 'T08c', cap: 'Felvevő · gépelés közben', note: 'Kompakt lista: 3 találat, 28 px-es sorok. Enter hozzáad, Esc bezár; a fókusz visszakerül oda, ahol volt.', dark: true, state: 'rec', title: 'Nordvik heti meeting', tags: ['Nordvik'], add: 'input', q: 'q4' }
+    ];
+    const mans = [
+      { id: 'T10', cap: 'Címkék kezelése · részletek', note: 'A Személyek ablak mintájára. A profil (résztvevők, kifejezések, együtt járó címkék) csak olvasható: a használatból tanult adat.' },
+      { id: 'T11', cap: 'Két címke összevonása', note: 'A hasonló nevű címke elöl. A megmaradó név választható, az eredmény számokkal.', dark: true, merge: true },
+      { id: 'T12', cap: 'Törlés megerősítése', note: 'A megbeszélések megmaradnak; csak a címke és a tanult profil tűnik el.', del: true },
+      { id: 'T13', cap: 'Üres állapot', note: 'Elmagyarázza, hol lehet címkét adni.', dark: true, empty: true }
+    ];
+    const sets = [
+      { id: 'T14', cap: 'Beágyazás · helyi végpont, előkészítés folyamatban', note: 'Harmadik szerep a meglévő kártyák mintájára. A már beállított szerepek összecsukva. Az előkészítés megszakítható.', emb: 'local', prep: 'run' },
+      { id: 'T15', cap: 'Modellváltás előre jelezve + előkészítési hiba', note: 'A figyelmeztetés mentés előtt jelenik meg; a mentés gomb neve is mondja, mi fog történni.', dark: true, emb: 'local', prep: 'err', modelChange: true, dirty: 'Modellváltás · mentéskor újraindul az előkészítés' },
+      { id: 'T16', cap: 'Beágyazás · Tanara Cloud', note: 'Jelzi, hogy az átirat szövege a felhőbe megy, és mennyibe kerül. Az előkészítés naprakész.', emb: 'cloud', prep: 'ok' }
+    ];
+    const impT = force === 'dark' ? D : L;
+    return {
+      i: { x: IC('x'), search: IC('search'), import: IC('download'), users: IC('users'), tag: IC('tag'), settings: IC('settings'), plus: IC('plus'), hash: IC('hash'), sparkles: IC('sparkles'), info: IC('info'), loader: IC('loader-circle'), finger: IC('fingerprint'), dots: IC('ellipsis'), panel: IC('panel-left'), play: IC('play'), vol: IC('volume-2'), copy: IC('copy'), pencil: IC('pencil'), chev: IC('chevron-down'), chevR: IC('chevron-right'), merge: IC('merge'), trash: IC('trash-2'), fileAudio: IC('file-audio'), key: IC('key-round'), cloud: IC('cloud'), ok: IC('circle-check'), refresh: IC('refresh-cw'), warn: IC('triangle-alert'), plug: IC('plug') },
+      decisions: [
+        { k: 'C01 · SZÍN', t: 'A címkének nincs saját színe', b: 'A színek a beszélőké. 50–200 címkénél a színek úgysem különböztethetők meg, és versenyeznének a beszélőkkel. A címkét az alakja jelzi: szögletes sarok és „#” jel, semleges színben.' },
+        { k: 'C04 · JAVASLAT', t: 'Egy hely, minden fülön', b: 'A javaslatok a fejléc címkesorában jelennek meg, a nyelvi modelléi is. Nem ugranak fel. A felület nem mozdul el: a sor magassága mindig fenn van tartva, és legfeljebb 2 javaslat látszik, a többi „+N” mögött. Az elutasítás × egy kattintással, kérdés nélkül; Ctrl+Z visszavonja.' },
+        { k: 'C05 · TÖBBES KIJELÖLÉS', t: 'Igen, Ctrl/Shift+kattintással', b: 'Régi megbeszélések utólagos címkézéséhez kell. A jobb oldalon kijelölés-panel jelenik meg: közös címkék, részleges jelölés, címke hozzáadása mindegyikhez. Egy lépésben visszavonható.' },
+        { k: 'BELÉPŐ', t: 'Lábléc: Személyek · Címkék · ⚙', b: 'A Címkék a Személyek mellé kerül. Hogy kiférjen a 276 px-be, a Beállítások ikonra rövidül (tooltip, Ctrl+,). Másodlagos utak: a címke-szűrő alján „Címkék kezelése…”, illetve a chip helyi menüjében „Megnyitás a kezelőben”.' },
+        { k: 'C07 · ÁTIRAT ELŐTT', t: 'A címkesor az 1. lépésbe költözik', b: 'Amíg nincs átirat, a fejlécben nincs címkesor, hogy ne legyen két mező ugyanarra. A megjegyzés-kártyákon látszik a közös címke, így a későbbi, címke alapú megjegyzés-javaslatnak már megvan a helye.' },
+        { k: 'TOKENEK', t: 'Nincs új szín', b: 'Felrakott: raised háttér, borderStrong keret, muted „#”. Javasolt: átlátszó, 1 px szaggatott accent keret, accent szöveg és „+”. Nyelvi modell, új: ✦ és „ÚJ” címke accentSoft háttéren. Új méretek: 24 px-es chip (felvevőben 22), 4 px-es sarok, legfeljebb 180 px széles.' }
+      ],
+      sheets: [buildSheet(false), buildSheet(true)],
+      mains: mains.map(d => buildMain(d, force)),
+      recs: recs.map(d => buildRec(d, force)),
+      imp: { t: impT, files: [['Fókuszcsoport 3 – terem.wav', '1:16:01 · sztereó · 765,8 MB'], ['Fókuszcsoport 3 – moderátor.m4a', '1:15:58 · mono · 34,7 MB']].map(([n, m], k) => ({ n, m, bt: k ? `1px solid ${impT.border}` : 'none' })), tags: [chip(impT, 'Kutatás', 'on', { x: true })], sugs: [chip(impT, 'Fókuszcsoportok 2026', 'sug')] },
+      mans: mans.map(d => buildMan(d, force)),
+      mergeCands: [['Nordvik AS', '3 megbeszélés · hasonló név', 1], ['Partnerek', '5 megbeszélés · 6× szerepeltek együtt', 0]].map(([n, m, on]) => ({ n, m, bg: on ? 'oklch(0.3 0.05 258)' : 'transparent', bd: on ? '1px solid oklch(0.42 0.08 258)' : '1px solid transparent', radio: on ? '5px solid oklch(0.75 0.11 255)' : '1.5px solid oklch(0.44 0.008 260)' })),
+      sets: sets.map(d => buildSet(d, force))
+    };
+  }
+}
+</script>
+</body>
+</html>
