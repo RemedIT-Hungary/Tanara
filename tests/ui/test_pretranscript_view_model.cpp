@@ -3,6 +3,10 @@
 #include "JobTestSupport.h"
 #include "PreTranscriptViewModel.h"
 
+#include "tanara/tags/TagService.h"
+
+#include "../unit/tags_fixture.h"
+
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -185,6 +189,79 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!sb.app->jobs()->isRunning(m.id, JobKind::Transcribe), 15000);
         QVERIFY(sb.app->store()->load(m.id).hasTranscript);
         QVERIFY(vm.errorMessage().isEmpty());
+    }
+
+    void demoTagStep()
+    {
+        PreTranscriptViewModel vm;
+        vm.setDemoState(QStringLiteral("note"));
+        QVERIFY(vm.demo());
+        // T07: egy felrakott címke, a cím alapú javaslat az indokkal.
+        QCOMPARE(vm.tags()->tags().size(), 1);
+        QCOMPARE(vm.tags()->tags().first().toMap().value("name").toString(), QStringLiteral("Nordvik"));
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("name").toString(), QStringLiteral("Ügyféltámogatás"));
+        QCOMPARE(vm.tagSuggestionReason(), QStringLiteral("hasonló cím: „Ügyféltámogatás heti”"));
+        // A megjegyzés-kártyák a forrás-megbeszélés címkéit is hozzák.
+        QCOMPARE(vm.note()->suggestions().first().toMap().value("tags").toStringList(), QStringList{"Nordvik"});
+        QSignalSpy toasts(&vm, &PreTranscriptViewModel::toast);
+        vm.acceptTagSuggestion(0);
+        QCOMPARE(vm.tags()->tags().size(), 2);
+        QVERIFY(vm.tagSuggestions().isEmpty());
+        QCOMPARE(toasts.count(), 1);
+    }
+
+    void tagStepDraftSuggestions()
+    {
+        jobtest::Sandbox sb;
+        const tagsfixture::Library lib = tagsfixture::buildLibrary(*sb.app->store());
+        TagService* tags = sb.app->tags();
+        const Tag nordvik = tags->addTag(lib.nordvik1, QStringLiteral("Nordvik"));
+        tags->addTag(lib.nordvik2, nordvik.id);
+        sb.app->setMeetingContextNote(lib.nordvik1, QStringLiteral("Résztvevők: Kovács Anna."));
+        const Meeting m = sb.recording("Nordvik heti egyeztetés", 1);
+
+        PreTranscriptViewModel vm;
+        vm.setController(sb.app.get());
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.state(), QStringLiteral("steps"));
+        QVERIFY(vm.tags()->tags().isEmpty());
+        // Átirat nélkül a cím alapján (draftTagSuggestions), indokkal.
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("id").toString(), nordvik.id);
+        QVERIFY2(vm.tagSuggestionReason().startsWith(QStringLiteral("hasonló cím: „Nordvik")),
+                 qPrintable(vm.tagSuggestionReason()));
+        // A hasonló című megbeszélés megjegyzés-kártyáján a címkéje.
+        bool cardHasTag = false;
+        for (const QVariant& v : vm.note()->suggestions())
+            if (v.toMap().value("meetingId").toString() == lib.nordvik1)
+                cardHasTag = v.toMap().value("tags").toStringList() == QStringList{QStringLiteral("Nordvik")};
+        QVERIFY(cardHasTag);
+
+        // Elfogadás → felkerül, a javaslat eltűnik; visszavonható lépés (toast).
+        QSignalSpy toasts(&vm, &PreTranscriptViewModel::toast);
+        vm.acceptTagSuggestion(0);
+        QCOMPARE(tags->tagsOf(m.id), QStringList{nordvik.id});
+        QCOMPARE(vm.tags()->tagIds(), QStringList{nordvik.id});
+        QVERIFY(vm.tagSuggestions().isEmpty());
+        QCOMPARE(toasts.count(), 1);
+        QCOMPARE(toasts.last().at(0).toString(), QStringLiteral("Javaslat elfogadva: #Nordvik"));
+        QVERIFY(toasts.last().at(1).toBool());
+        vm.tags()->undo();
+        QVERIFY(tags->tagsOf(m.id).isEmpty());
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+
+        // Elutasítás → nem jön újra; visszavonás után igen.
+        vm.rejectTagSuggestion(0);
+        QVERIFY(tags->isRejected(m.id, nordvik.id));
+        QVERIFY(vm.tagSuggestions().isEmpty());
+        vm.tags()->undo();
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+
+        // Kézzel a mezőből: név szerint (új címke is).
+        vm.tags()->add(QStringLiteral("Logisztika"));
+        QCOMPARE(vm.tags()->tags().size(), 1);
+        QCOMPARE(tags->tag(tags->tagsOf(m.id).value(0)).name, QStringLiteral("Logisztika"));
     }
 
     void clearErrorReturnsToSteps()

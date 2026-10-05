@@ -6,10 +6,28 @@
 #include "tanara/AppController.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 namespace tanara_qml {
 
 using namespace tanara;
+
+namespace {
+
+// A forrás-megbeszélés címkéinek nevei (a kártya mini chipjeihez), a megbeszélés sorrendjében.
+QStringList tagNamesOf(AppController* c, const QString& meetingId)
+{
+    QStringList out;
+    TagService* tags = c ? c->tags() : nullptr;
+    if (!tags || meetingId.isEmpty()) return out;
+    for (const QString& id : tags->tagsOf(meetingId)) {
+        const Tag t = tags->tag(id);
+        if (t.isValid()) out << t.name;
+    }
+    return out;
+}
+
+} // namespace
 
 MeetingNoteModel::MeetingNoteModel(QObject* parent) : QObject(parent) {}
 
@@ -134,7 +152,8 @@ void MeetingNoteModel::reloadSuggestions()
                                 {QStringLiteral("title"), s.title},
                                 {QStringLiteral("dateText"), fmt::longDate(s.startedAt)},
                                 {QStringLiteral("preview"), previewOf(s.note)},
-                                {QStringLiteral("note"), s.note}};
+                                {QStringLiteral("note"), s.note},
+                                {QStringLiteral("tags"), tagNamesOf(c, s.meetingId)}};
     }
     if (list != m_suggestions) {
         m_suggestions = list;
@@ -171,7 +190,8 @@ QVariantList MeetingNoteModel::demoSuggestions()
         return QVariantMap{{QStringLiteral("meetingId"), QString()}, {QStringLiteral("title"), title},
                            {QStringLiteral("dateText"), date},
                            {QStringLiteral("preview"), previewOf(note)},
-                           {QStringLiteral("note"), note}};
+                           {QStringLiteral("note"), note},
+                           {QStringLiteral("tags"), QStringList{QStringLiteral("Nordvik")}}};
     };
     return {
         item(tr("Nordvik heti meeting"), tr("2026. szept. 29."),

@@ -6,6 +6,11 @@
 //   "running" — M04: az átírás-feladat szakaszai VALÓS haladással (JobProgress);
 //   "failed"  — M05: a megmaradt hiba emberi üzenete + technikai sora + javító művelet.
 //
+// Az 1. lépés címkéi (C07, T07; átirat előtt a fejlécben nincs címkesor): `tags` (a mező
+// chipjei) és a javaslat-sor. A javaslat a megbeszélés rendes javaslataiból jön, ha vannak;
+// amíg nincs átirat, a cím alapján (AppController::draftTagSuggestions), a már felrakottak és
+// az elutasítottak nélkül. Elfogadás / elutasítás egy-egy visszavonható lépés (toast).
+//
 // Az átírást NEM ez indítja (az a héj dolga: shell.startTranscription — kapuzás + cloud-
 // becslés); ez csak állapotot ad, és a meetinghez tartozó beállításokat menti (kontextus,
 // azonosítás kapcsoló, Tanara Cloud szint).
@@ -15,6 +20,7 @@
 // "uploading" | "failed" | "note" — lépések sablon-javaslatokkal és észlelt hívással).
 //
 #include "MeetingNoteModel.h"
+#include "MeetingTagsModel.h"
 
 #include "tanara/jobs/JobTypes.h"
 
@@ -50,6 +56,12 @@ class PreTranscriptViewModel : public QObject {
     // MeetingNoteEditor ezt kapja. A contextNote ennek a mentett értéke (rövidítés).
     Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
     Q_PROPERTY(QString contextNote READ contextNote WRITE setContextNote NOTIFY contextNoteChanged)
+    // Az 1. lépés címkemezője (a megbeszélés címkéi).
+    Q_PROPERTY(tanara_qml::MeetingTagsModel* tags READ tags CONSTANT)
+    // A javaslat-sor: [{ index, id, name, isNew, source }] (legfeljebb 3).
+    Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY tagSuggestionsChanged)
+    // Rövid indok az első javaslathoz: „hasonló cím: „…”” | „közös résztvevő: …” | „közös kifejezések: …”.
+    Q_PROPERTY(QString tagSuggestionReason READ tagSuggestionReason NOTIFY tagSuggestionsChanged)
     Q_PROPERTY(bool identifyEnabled READ identifyEnabled WRITE setIdentifyEnabled NOTIFY changed)
     Q_PROPERTY(bool identifyAvailable READ identifyAvailable NOTIFY changed)
     // "ready" | "missing" | "stale" | "running"
@@ -107,6 +119,12 @@ public:
     // (A MeetingNoteModel draft / commitDraft műveletei.)
     Q_INVOKABLE void draftContextNote(const QString& note) { m_note->draft(note); }
     Q_INVOKABLE void commitContextDraft() { m_note->commitDraft(); }
+    MeetingTagsModel* tags() const { return m_tags; }
+    QVariantList tagSuggestions() const;
+    QString tagSuggestionReason() const;
+    // A javaslat-sor egy elemének felrakása / elutasítása (visszavonható lépés + toast).
+    Q_INVOKABLE void acceptTagSuggestion(int index);
+    Q_INVOKABLE void rejectTagSuggestion(int index);
     bool identifyEnabled() const { return m_identifyEnabled; }
     void setIdentifyEnabled(bool enabled);
     bool identifyAvailable() const { return m_identifyAvailable; }
@@ -149,6 +167,9 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void contextNoteChanged();
+    void tagSuggestionsChanged();
+    // Értesítés egy címke-lépés után (a nézet a héj toastjával mutatja, „Visszavonás”-sal).
+    void toast(const QString& text, bool undoable);
     void mixdownPercentChanged();
     void jobChanged();
     void changed();
@@ -159,6 +180,7 @@ private:
     void reload();
     void loadDemo();
     void applyJob(const tanara::JobProgress& job);
+    void reloadTagSuggestions();
 
     QPointer<QObject> m_injected;
     QPointer<tanara::AppController> m_connected;
@@ -169,6 +191,10 @@ private:
     QString m_state = QStringLiteral("none");
 
     MeetingNoteModel* m_note = nullptr;
+    MeetingTagsModel* m_tags = nullptr;
+    QString m_title;                               // a vázlat-javaslathoz
+    QVector<TagSuggestionItem> m_tagSuggestions;   // a javaslat-sor
+    bool m_tagSuggestionsFromModel = false;        // a rendes javaslatok (nem a cím alapú vázlat)
     bool m_identifyEnabled = true;
     bool m_identifyAvailable = true;
     QString m_mixdownState = QStringLiteral("ready");

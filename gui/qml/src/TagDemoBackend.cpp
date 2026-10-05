@@ -89,6 +89,19 @@ QString TagDemoBackend::idOf(const QString& nameOrId) const
     return {};
 }
 
+QVector<TagSuggestionItem> TagDemoBackend::draftSuggestions(const QString& /*title*/) const
+{
+    // T07: „Javasolt: + Ügyféltámogatás · hasonló cím: „Ügyféltámogatás heti””.
+    TagSuggestionItem s;
+    s.name = QStringLiteral("Ügyféltámogatás");
+    s.tagId = idOf(s.name);
+    s.isNew = s.tagId.isEmpty();
+    s.source = QStringLiteral("similar");
+    s.reasons = {reason("title", {QStringLiteral("Ügyféltámogatás heti")})};
+    s.similarMeetings = {meeting(QStringLiteral("m-support-0918"), QStringLiteral("Ügyféltámogatás heti"), at(2026, 9, 18), 40)};
+    return {s};
+}
+
 void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& state)
 {
     auto ids = [this](std::initializer_list<const char*> names) {
@@ -121,6 +134,9 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
     } else if (state == QLatin1String("many")) {
         tags = ids({"Nordvik", "Partnerek", "Q4 tervezés", "Termék", "Ügyféltámogatás", "Belső", "MuseumPlus",
                     "MÉM-MDK", "Kutatás", "Múzeumi pályázat"});
+    } else if (state == QLatin1String("draft")) {
+        // T07: átirat előtt — egy felrakott címke, a javaslat a cím alapján jön (draftSuggestions).
+        tags = ids({"Nordvik"});
     } else if (state == QLatin1String("computing")) {
         tags = ids({"Nordvik"});
         s.computing = true;

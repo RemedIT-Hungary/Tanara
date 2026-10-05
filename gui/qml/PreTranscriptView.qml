@@ -20,6 +20,8 @@ Item {
         id: vm
         meetingId: root.meetingId
         demoState: root.demoState
+        // A címke-lépések a héj toastján, „Visszavonás”-sal (közös visszavonási verem).
+        onToast: (text, undoable) => { if (root.shell) root.shell.toast(text, undoable ? "tags" : "") }
     }
 
     // A Beállítások bezárása után a kapuzás újraolvasása (kulcs került be / ki).
@@ -80,9 +82,71 @@ Item {
                     tone: "current"
                     title: qsTr("Miről szólt a megbeszélés?")
 
+                    // ---- Címkék (C07, T07): átirat előtt itt, nem a fejlécben ----
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        TLabel {
+                            text: qsTr("Címkék")
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Theme.weightSemiBold
+                        }
+                        TagField {
+                            id: tagField
+                            objectName: "preTranscriptTagField"
+                            Layout.fillWidth: true
+                            tags: vm.tags.tags
+                            onAddRequested: (name, isNew) => vm.tags.add(name)
+                            onRemoveRequested: (id) => vm.tags.remove(id)
+                        }
+                        // „Javasolt: [+ chip] hasonló cím: „…” · Észlelt hívás: …”
+                        Row {
+                            visible: vm.tagSuggestions.length > 0
+                            Layout.fillWidth: true
+                            spacing: 6
+                            clip: true
+
+                            TLabel {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("Javasolt:")
+                                muted: true
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            Repeater {
+                                model: vm.tagSuggestions
+                                TagChip {
+                                    required property var modelData
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    kind: modelData.isNew ? "llmNew" : "suggested"
+                                    text: modelData.name
+                                    toolTipText: qsTr("Kattintás: hozzáadás · ×: nem illik ide")
+                                    onClicked: vm.acceptTagSuggestion(modelData.index)
+                                    onRemoveRequested: vm.rejectTagSuggestion(modelData.index)
+                                }
+                            }
+                            TLabel {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: [vm.tagSuggestionReason,
+                                       vm.note.detectedCallApp !== "" ? qsTr("Észlelt hívás: %1").arg(vm.note.detectedCallApp) : ""]
+                                      .filter(t => t !== "").join(" · ")
+                                muted: true
+                                font.pixelSize: Theme.fontCaption
+                            }
+                        }
+                    }
+
+                    TLabel {
+                        Layout.topMargin: 6
+                        text: qsTr("Megjegyzés")
+                        font.pixelSize: Theme.fontSmall
+                        font.weight: Theme.weightSemiBold
+                    }
                     MeetingNoteEditor {
                         id: noteEditor
                         Layout.fillWidth: true
+                        // Az észlelt hívás a javaslat-sorban áll, ha az látszik.
+                        showDetectedCall: vm.tagSuggestions.length === 0
                         model: vm.note
                         accessibleName: qsTr("Miről szólt a megbeszélés?")
                         helperText: qsTr("Témák, nevek, szakszavak és az ismert félrehallások: az átíró ebből pontosabb átiratot készít, és az összefoglaló is megkapja. Később, az Összefoglaló fülön is módosítható. Elhagyható.")

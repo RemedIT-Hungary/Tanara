@@ -26,7 +26,7 @@ public:
     // A demó megbeszélés azonosítója (a MeetingTagsModel ezt használja, ha nincs meetingId).
     static QString demoMeetingId() { return QStringLiteral("m-demo"); }
     // Egy megbeszélés demó-állapota (a T01 C03–C04 sorai + a T02 „why”):
-    // none | few | many | computing | similar | cooccur | llm | why
+    // none | few | many | computing | similar | cooccur | llm | why | draft (T07: átirat előtt)
     void loadMeetingDemo(const QString& meetingId, const QString& state);
     // T13: üres készlet.
     void clearAll();
@@ -41,6 +41,8 @@ public:
     void requestCooccur(const QString& meetingId, const QString& tagId) override;
     void reject(const QString& meetingId, const TagSuggestionItem& suggestion) override;
     bool isRejected(const QString& meetingId, const QString& tagIdOrName) const override;
+    // T07: a cím alapú javaslat (a címtől függetlenül ugyanaz a kitalált elem).
+    QVector<TagSuggestionItem> draftSuggestions(const QString& title) const override;
     TagProfileItem profile(const QString& tagId) const override;
     bool rename(const QString& tagId, const QString& name) override;
     void merge(const QString& fromId, const QString& keepId) override;

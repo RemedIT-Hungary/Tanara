@@ -5,7 +5,8 @@ import QtQuick.Templates as T
 // A megbeszélés-megjegyzés szerkesztője (MeetingNoteModel) — az átirat előtti nézet 1. lépése
 // és az Összefoglaló fül közös része. Fentről lefelé: sablon-javaslatok a korábbi, hasonló
 // című megbeszélésekből (kattintásra a mezőbe kerülnek; ha a mezőben már van szöveg, rákérdez:
-// csere vagy hozzáfűzés), a mező, alatta a magyarázat és az észlelt hívás.
+// csere vagy hozzáfűzés; a kártyán a forrás-megbeszélés címkéi mini chipként), a mező, alatta a
+// magyarázat és az észlelt hívás.
 // Mentés: késleltetve (900 ms) és fókuszvesztéskor; a piszkozatot a modell a megbeszélés
 // azonosítójával együtt őrzi, így sosem kerülhet másik megbeszélésbe.
 ColumnLayout {
@@ -18,6 +19,8 @@ ColumnLayout {
     // Szűk oszlopban (az Összefoglaló jobb oldalán) a javaslat-kártyák tömörebbek.
     property bool compact: false
     property int fieldHeight: 96
+    // Az észlelt hívás sora (az átirat előtti nézetben a címke-javaslat sorában áll, ha az látszik).
+    property bool showDetectedCall: true
 
     spacing: 8
 
@@ -79,17 +82,43 @@ ColumnLayout {
                         width: sug.width - 20
                         spacing: 2
                         RowLayout {
+                            id: sugRow
                             Layout.fillWidth: true
                             spacing: 8
                             TIcon { name: "copy"; size: 13; color: Theme.textMuted }
                             TLabel {
-                                Layout.fillWidth: true
+                                id: sugTitle
+                                // A cím a teljes szélességét kapja, ha a chipek és a dátum mellett elfér.
+                                Layout.preferredWidth: Math.max(40, Math.min(implicitWidth,
+                                    sugCol.width - 13 - 3 * sugRow.spacing
+                                    - (sugTagRow.visible ? sugTagRow.implicitWidth + sugRow.spacing : 0)
+                                    - (sugDate.visible ? sugDate.implicitWidth : 0)))
                                 text: sug.modelData.title
                                 font.pixelSize: Theme.fontSmall
                                 font.weight: Theme.weightMedium
                                 elide: Text.ElideRight
                             }
+                            // A forrás-megbeszélés címkéi (mini chip, 18 px).
+                            Row {
+                                id: sugTagRow
+                                visible: !root.compact && sugTags.count > 0
+                                spacing: 4
+                                Repeater {
+                                    id: sugTags
+                                    model: sug.modelData.tags !== undefined ? sug.modelData.tags.slice(0, 2) : []
+                                    TagChip {
+                                        required property var modelData
+                                        mini: true
+                                        focusPolicy: Qt.NoFocus
+                                        text: modelData
+                                        maxWidth: 140
+                                        onClicked: root.pick(sug.modelData.note)   // a kártya része
+                                    }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
                             TLabel {
+                                id: sugDate
                                 visible: !root.compact
                                 text: sug.modelData.dateText
                                 muted: true
@@ -153,7 +182,7 @@ ColumnLayout {
 
     // ---- észlelt hívás (a figyelőtől; csak tájékoztatás) ----
     RowLayout {
-        visible: root.model.detectedCallApp !== ""
+        visible: root.showDetectedCall && root.model.detectedCallApp !== ""
         Layout.fillWidth: true
         spacing: 6
         TIcon { name: "radar"; size: 13; color: Theme.textMuted }

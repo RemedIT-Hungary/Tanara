@@ -243,9 +243,9 @@ private slots:
         const QVector<TagSuggestionItem> draft = b->draftSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
         QVERIFY(!draft.isEmpty());
         QCOMPARE(draft.first().tagId, nordvik);
-        // A demó-backend alapból nem ad vázlat-javaslatot.
+        // A demó-backend a T07 kitalált javaslatát adja.
         std::unique_ptr<TagBackend> demo(createTagBackend(nullptr, nullptr));
-        QVERIFY(demo->draftSuggestions(QStringLiteral("Nordvik")).isEmpty());
+        QCOMPARE(demo->draftSuggestions(QStringLiteral("Nordvik")).value(0).name, QStringLiteral("Ügyféltámogatás"));
     }
 
 private:

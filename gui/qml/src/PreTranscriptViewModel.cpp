@@ -2,6 +2,7 @@
 
 #include "AppContext.h"
 #include "JobSupport.h"
+#include "TagMatching.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -31,8 +32,13 @@ QVariantMap stageMap(const QString& id, const QString& label, const QString& sta
 } // namespace
 
 PreTranscriptViewModel::PreTranscriptViewModel(QObject* parent)
-    : QObject(parent), m_note(new MeetingNoteModel(this))
+    : QObject(parent), m_note(new MeetingNoteModel(this)), m_tags(new MeetingTagsModel(this))
 {
+    // A címke-javaslat sor követi a mező címkéit, a rendes javaslatokat és a visszavonást.
+    connect(m_tags, &MeetingTagsModel::tagsChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
+    connect(m_tags, &MeetingTagsModel::suggestionsChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
+    connect(m_tags, &MeetingTagsModel::undoChanged, this, &PreTranscriptViewModel::reloadTagSuggestions);
+    connect(m_tags, &MeetingTagsModel::toast, this, &PreTranscriptViewModel::toast);
     connect(m_note, &MeetingNoteModel::noteChanged, this, [this]() {
         emit contextNoteChanged();
         emit changed();   // a futás-nézet lábléce is ebből idéz
@@ -61,6 +67,7 @@ void PreTranscriptViewModel::setController(QObject* controller)
         return;
     m_injected = controller;
     m_note->setController(controller);
+    m_tags->setController(controller);
     connectController();
     emit controllerChanged();
     reload();
@@ -75,6 +82,8 @@ void PreTranscriptViewModel::setMeetingId(const QString& id)
     // A még el nem mentett megjegyzés a RÉGI megbeszélésé: a váltás előtt oda írja ki.
     m_note->setMeetingId(id);
     m_meetingId = id;
+    // Demóban üres azonosító → a kitalált demó-megbeszélés címkéi.
+    m_tags->setMeetingId(jobsupport::demoMode(app()) ? QString() : id);
     reload();                 // előbb az új adatok, hogy a jelre már az új megjegyzés látsszon
     emit meetingIdChanged();
 }
@@ -160,6 +169,7 @@ void PreTranscriptViewModel::reload()
     m_mixdownCancellable = false;
 
     AppController* c = app();
+    m_title.clear();
     if (jobsupport::demoMode(c)) {
         loadDemo();
     } else if (m_meetingId.isEmpty()) {
@@ -167,6 +177,7 @@ void PreTranscriptViewModel::reload()
         m_note->reload();
     } else {
         const Meeting m = c->store()->load(m_meetingId);
+        m_title = m.title;
         const MeetingProcessingState ps = c->jobs()->state(m);
         const JobProgress job = c->jobs()->job(m_meetingId, JobKind::Transcribe);
 
@@ -250,6 +261,95 @@ void PreTranscriptViewModel::reload()
         emit mixdownPercentChanged();
     emit jobChanged();
     emit changed();
+    reloadTagSuggestions();
+}
+
+void PreTranscriptViewModel::reloadTagSuggestions()
+{
+    TagBackend* b = m_tags->backend();
+    QVector<TagSuggestionItem> list = m_tags->visibleSuggestions();
+    m_tagSuggestionsFromModel = !list.isEmpty();
+    if (list.isEmpty() && b && (m_state == QLatin1String("steps") || jobsupport::demoMode(app()))) {
+        const QString meeting = m_tags->effectiveMeetingId();
+        const QStringList applied = m_tags->tagIds();
+        QStringList appliedKeys;
+        for (const QString& id : applied) appliedKeys << tagmatch::key(m_tags->tagName(id));
+        for (const TagSuggestionItem& s : b->draftSuggestions(m_title)) {
+            if ((!s.tagId.isEmpty() && applied.contains(s.tagId)) || appliedKeys.contains(tagmatch::key(s.name)))
+                continue;
+            if (b->isRejected(meeting, s.tagId.isEmpty() ? s.name : s.tagId))
+                continue;
+            list << s;
+        }
+    }
+    if (list.size() > 3) list.resize(3);
+    m_tagSuggestions = list;
+    emit tagSuggestionsChanged();
+}
+
+QVariantList PreTranscriptViewModel::tagSuggestions() const
+{
+    QVariantList out;
+    for (int i = 0; i < m_tagSuggestions.size(); ++i) {
+        const TagSuggestionItem& s = m_tagSuggestions[i];
+        out << QVariantMap{{QStringLiteral("index"), i}, {QStringLiteral("id"), s.tagId},
+                           {QStringLiteral("name"), s.name}, {QStringLiteral("isNew"), s.isNew},
+                           {QStringLiteral("source"), s.source}};
+    }
+    return out;
+}
+
+QString PreTranscriptViewModel::tagSuggestionReason() const
+{
+    if (m_tagSuggestions.isEmpty()) return {};
+    const TagSuggestionItem& s = m_tagSuggestions.first();
+    auto find = [&s](const char* kind) -> const TagReasonItem* {
+        for (const TagReasonItem& r : s.reasons)
+            if (r.kind == QLatin1String(kind) && !r.values.isEmpty()) return &r;
+        return nullptr;
+    };
+    if (const TagReasonItem* r = find("title")) {
+        const QString title = s.similarMeetings.isEmpty() ? r->values.first() : s.similarMeetings.first().title;
+        return tr("hasonló cím: „%1”").arg(title);
+    }
+    if (const TagReasonItem* r = find("participant"))
+        return tr("közös résztvevő: %1").arg(r->values.mid(0, 2).join(QStringLiteral(", ")));
+    if (const TagReasonItem* r = find("terms"))
+        return tr("közös kifejezések: %1").arg(r->values.mid(0, 3).join(QStringLiteral(", ")));
+    return {};
+}
+
+void PreTranscriptViewModel::acceptTagSuggestion(int index)
+{
+    TagBackend* b = m_tags->backend();
+    if (!b || index < 0 || index >= m_tagSuggestions.size()) return;
+    if (m_tagSuggestionsFromModel) {   // a rendes javaslatok: a modell teszi fel (toast-tal)
+        m_tags->accept(index);
+        return;
+    }
+    const TagSuggestionItem s = m_tagSuggestions[index];
+    b->beginGroup(tr("Javaslat elfogadva: #%1").arg(s.name));
+    b->addTag(m_tags->effectiveMeetingId(), s.isNew || s.tagId.isEmpty() ? s.name : s.tagId,
+              TagAddSource::Suggestion);
+    b->endGroup();
+    reloadTagSuggestions();
+    emit toast(b->undoLabel(), b->canUndo());
+}
+
+void PreTranscriptViewModel::rejectTagSuggestion(int index)
+{
+    TagBackend* b = m_tags->backend();
+    if (!b || index < 0 || index >= m_tagSuggestions.size()) return;
+    if (m_tagSuggestionsFromModel) {
+        m_tags->reject(index);
+        return;
+    }
+    const TagSuggestionItem s = m_tagSuggestions[index];
+    b->beginGroup(tr("Javaslat elutasítva: #%1").arg(s.name));
+    b->reject(m_tags->effectiveMeetingId(), s);
+    b->endGroup();
+    reloadTagSuggestions();
+    emit toast(b->undoLabel(), b->canUndo());
 }
 
 void PreTranscriptViewModel::applyJob(const JobProgress& job)
@@ -268,6 +368,8 @@ void PreTranscriptViewModel::applyJob(const JobProgress& job)
 void PreTranscriptViewModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("steps") : m_demoState;
+    // T07: egy felrakott címke, a javaslat a cím alapján (kitalált készlet).
+    m_tags->setDemoState(QStringLiteral("draft"));
     const QString note = tr("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
                             "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.");
     if (st == QLatin1String("note")) {

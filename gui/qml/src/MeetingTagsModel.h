@@ -67,6 +67,8 @@ public:
     QString undoLabel() const { return m_backend ? m_backend->undoLabel() : QString(); }
 
     const QVector<TagSuggestionItem>& visibleSuggestions() const { return m_visible; }
+    // A ténylegesen használt megbeszélés-azonosító (demóban üres helyett a demó-megbeszélés).
+    QString effectiveMeetingId() const;
 
     // Név (vagy id) hozzáadása kézzel; visszaadja az id-t.
     Q_INVOKABLE QString add(const QString& nameOrId);
@@ -93,7 +95,6 @@ signals:
 
 private:
     void attach(TagBackend* backend);
-    QString effectiveMeetingId() const;
     void applyDemoState();
     void reloadTags();
     void reloadSuggestions();

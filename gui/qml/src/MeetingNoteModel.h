@@ -37,7 +37,8 @@ class MeetingNoteModel : public QObject {
     Q_PROPERTY(QString note READ note WRITE setNote NOTIFY noteChanged)
     // „Microsoft Teams” — üres, ha nem a figyelő indította a felvételt.
     Q_PROPERTY(QString detectedCallApp READ detectedCallApp NOTIFY changed)
-    // [{ meetingId, title, dateText, preview, note }] — legfeljebb 3, legújabb elöl.
+    // [{ meetingId, title, dateText, preview, note, tags }] — legfeljebb 3, legújabb elöl;
+    // tags: a forrás-megbeszélés címkéinek nevei (a kártya mini chipjei).
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
 
 public:
