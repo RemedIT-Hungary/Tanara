@@ -39,6 +39,7 @@ private slots:
 private:
     QTemporaryDir m_fakeHome;    // a „valódi” HOME szerepében
     QTemporaryDir m_sandbox;     // TANARA_HOME
+    bool m_homeFaked = false;    // a QDir::homePath() a m_fakeHome-ra mutat-e
     QString realMeta() const { return QDir(m_fakeHome.path()).filePath(QStringLiteral(".tanara")); }
     // Minden fájl a mappa alatt (rekurzívan) — „érintetlen maradt-e” ellenőrzéshez.
     static QStringList listAll(const QString& dir) {
@@ -55,12 +56,19 @@ void PathsTest::initTestCase()
     QVERIFY(m_fakeHome.isValid());
     QVERIFY(m_sandbox.isValid());
     qputenv("HOME", m_fakeHome.path().toUtf8());
-    qputenv("USERPROFILE", m_fakeHome.path().toUtf8());   // Windowson a QDir::homePath() ezt olvassa
-    QCOMPARE(QDir::homePath(), m_fakeHome.path());
+    m_homeFaked = QDir::homePath() == m_fakeHome.path();
+#if !defined(Q_OS_WIN)
+    QVERIFY(m_homeFaked);
+#endif
 }
 
 void PathsTest::init()
 {
+    // Windowson a QDir::homePath() a felhasználói profilt adja, a HOME nem téríti el. A
+    // HOME-ra épülő esetek ott a VALÓDI profilba írnának → kihagyjuk őket (a TANARA_HOME-
+    // független eseteket nem).
+    if (!m_homeFaked && qstrcmp(QTest::currentTestFunction(), "voiceModelResolutionOrder") != 0)
+        QSKIP("A HOME ezen a platformon nem téríti el a QDir::homePath()-t.");
     qunsetenv("TANARA_HOME");
 }
 

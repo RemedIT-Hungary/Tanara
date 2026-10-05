@@ -95,7 +95,8 @@ void TestCloudJobId::initTestCase()
 
     // Izolált HOME (~/.tanara a temp alatt) + élő cloud-mód a mock ellen.
     qputenv("HOME", m_home.path().toUtf8());
-    qputenv("USERPROFILE", m_home.path().toUtf8());   // Windowson a QDir::homePath() ezt olvassa
+    // A HOME Windowson nem téríti el a QDir::homePath()-t → a TANARA_HOME is a temp alá mutat.
+    qputenv("TANARA_HOME", m_home.filePath(".tanara").toUtf8());
     qputenv("TANARA_CLOUD", "live");
     qputenv("TANARA_CLOUD_URL", m_base.toUtf8());
     QDir().mkpath(m_home.filePath(".tanara"));
