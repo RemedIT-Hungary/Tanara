@@ -8,7 +8,9 @@
 #include "tanara/library/MeetingLibrary.h"
 
 #include <QDateTime>
+#include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace tanara_qml::demo {
@@ -30,6 +32,33 @@ const DemoMeeting* find(const QString& meetingId);
 tanara::LibraryResult query(const tanara::LibraryQuery& q);
 QVector<tanara::PersonPresence> people();
 QVector<tanara::PendingItem> pendingItems();
+
+// ---- címkék (kitalált készlet; a tömeges címkézés demója memóriában módosíthatja) ----
+struct DemoTag {
+    QString id;
+    QString name;
+};
+QVector<DemoTag> tagCatalog();
+QString tagName(const QString& tagId);              // üres, ha nincs ilyen
+QString tagIdByName(const QString& name);           // tagKey-egyezés; üres, ha nincs ilyen
+QString createTag(const QString& name);             // a meglévőt adja, ha a név már foglalt
+QStringList tagsOf(const QString& meetingId);
+void setTagsOf(const QString& meetingId, const QStringList& tagIds);
+void resetTags();                                   // vissza a kiinduló állapotba (tesztek)
+// Ugyanaz a szerződés, mint a MeetingLibrary::tagOptions / untaggedCount / entry.
+QVector<tanara::TagUsage> tagOptions();
+int untaggedCount();
+tanara::LibraryEntry entry(const QString& meetingId);
+
+// A demó címkéinek változásáról szól (a könyvtár-modell erre frissül).
+class DemoTagNotifier : public QObject {
+    Q_OBJECT
+public:
+    using QObject::QObject;
+signals:
+    void changed();
+};
+DemoTagNotifier* tagNotifier();
 
 // Az alapból megnyitott megbeszélés (van átirata és elavult összefoglalója).
 QString defaultMeetingId();
