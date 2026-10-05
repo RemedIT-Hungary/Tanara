@@ -35,14 +35,22 @@ Remove-Item Env:QT_QPA_PLATFORM, Env:TANARA_HOME
 # 2) Stand-alone folder
 New-Item -ItemType Directory dist, dist\models -Force | Out-Null
 Copy-Item build\gui\tanara.exe, build\cli\tanara-cli.exe, build\watcher\tanara-watcher.exe dist
-& "$qt\bin\windeployqt.exe" --release --compiler-runtime --qmldir gui\qml dist\tanara.exe dist\tanara-cli.exe dist\tanara-watcher.exe
+& "$qt\bin\windeployqt.exe" --release --compiler-runtime --qmldir gui\qml `
+  --exclude-plugins qsqlibase,qsqlpsql,qsqlmimer,qsqloci,qsqlodbc `
+  --dir dist dist\tanara.exe dist\tanara-cli.exe dist\tanara-watcher.exe
 Copy-Item "$ort\lib\onnxruntime.dll" dist        # never rely on System32\onnxruntime.dll (old version)
-Copy-Item C:\ffmpeg\bin\ffmpeg.exe dist          # the app finds it next to tanara.exe
+# onnxruntime.dll is built with MSVC: ship the VC++ runtime app-locally (a clean PC may not have it)
+Copy-Item C:\Windows\System32\msvcp140.dll, C:\Windows\System32\vcruntime140.dll, C:\Windows\System32\vcruntime140_1.dll dist
+# the app runs both ffmpeg and ffprobe (QProcess); Windows finds them next to the exe
+Copy-Item C:\ffmpeg\bin\ffmpeg.exe, C:\ffmpeg\bin\ffprobe.exe dist
+# windeployqt deploys only qwindows; --qml-shot (diagnostics, offscreen) needs qoffscreen
+Copy-Item "$qt\plugins\platforms\qoffscreen.dll" dist\platforms
 Copy-Item "$env:USERPROFILE\.tanara\models\campplus_sv_zh_en_16k.onnx" dist\models
 Copy-Item packaging\windows\OLVASSEL.md dist
 
-# 3a) Tester zip
-Compress-Archive dist\* Tanara-<version>-win64.zip
+# 3a) Tester zip (flat: the files are at the root of the zip)
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Compression.ZipFile]::CreateFromDirectory("$PWD\dist", "$PWD\Tanara-<version>-win64.zip", 'Optimal', $false)
 
 # 3b) Installer
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DDistDir=$PWD\dist /DBuildDir=$PWD\build `
@@ -63,5 +71,9 @@ $env:PATH = 'C:\Windows\System32;C:\Windows'
 $env:TANARA_HOME = "$env:TEMP\tanara-pkgtest"
 dist\tanara-cli.exe --version
 dist\tanara-cli.exe devices
+dist\tanara-cli.exe import some.wav --title Test      # runs the bundled ffmpeg + ffprobe
 dist\tanara.exe --qml-shot shot.png --qml-page Main --size 1280x820
 ```
+
+To check that no DLL outside `dist` and `System32` is needed, list the imports of
+every binary with `C:\Qt\Tools\mingw1310_64\bin\objdump.exe -p <file> | findstr "DLL Name"`.

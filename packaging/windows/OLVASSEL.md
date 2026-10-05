@@ -12,7 +12,8 @@ vagy rendszergazdai jog.
 3. Ha a SmartScreen figyelmeztet („A Windows megvédte a számítógépet”), kattints a
    „További információ” → „Futtatás mindenképp” gombra. A csomag nincs aláírva.
 
-A mappában minden a helyén van: `ffmpeg.exe` (felvétel és hang-dekódolás),
+A mappában minden a helyén van: `ffmpeg.exe` és `ffprobe.exe` (felvétel, importálás,
+hang-dekódolás),
 `onnxruntime.dll` és `models\campplus_sv_zh_en_16k.onnx` (beszélő-felismerés),
 valamint a Qt-könyvtárak. Ne mozgass ki belőle fájlt.
 
