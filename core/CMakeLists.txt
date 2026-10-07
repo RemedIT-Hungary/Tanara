@@ -34,6 +34,19 @@ if(WIN32)
     target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser)
 endif()
 
+# miniz (vendorelt, MIT, third_party/miniz) — ZIP írás/olvasás a megbeszélés-archívumhoz
+# (store/MeetingArchive). Tiszta C → a C nyelvet engedélyezni kell; a zlib-kompatibilis
+# nevek kikapcsolva, hogy ne ütközzenek a Qt által húzott zlibbel.
+enable_language(C)
+add_library(tanara_miniz STATIC ${CMAKE_SOURCE_DIR}/third_party/miniz/miniz.c)
+target_include_directories(tanara_miniz PUBLIC ${CMAKE_SOURCE_DIR}/third_party/miniz)
+target_compile_definitions(tanara_miniz PUBLIC MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
+target_compile_definitions(tanara_miniz PRIVATE _LARGEFILE64_SOURCE=1)
+set_target_properties(tanara_miniz PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # tiszta C-lib, nincs MOC
+target_link_libraries(tanara_core PRIVATE tanara_miniz)
+
 # Beszélő-embedding (opcionális): kaldi-native-fbank (fbank) + onnxruntime (CAM++ modell).
 if(TANARA_BUILD_VOICEID)
     target_compile_definitions(tanara_core PRIVATE TANARA_HAVE_VOICEID)

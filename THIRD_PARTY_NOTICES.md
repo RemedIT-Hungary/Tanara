@@ -16,6 +16,12 @@ respective licenses.
   Single-header audio capture, vendored under `third_party/miniaudio/`.
   Upstream: https://github.com/mackron/miniaudio
 
+- **miniz** 3.1.2 — MIT License.
+  Copyright 2013-2014 RAD Game Tools and Valve Software; Copyright 2010-2014 Rich Geldreich
+  and Tenacious Software LLC. Vendored source under `third_party/miniz/` (see its `LICENSE`),
+  unmodified. Used to write and read meeting archives (`*.tanara.zip`).
+  Upstream: https://github.com/richgel999/miniz
+
 - **IBM Plex Sans / IBM Plex Mono** — SIL Open Font License 1.1.
   Copyright © 2017 IBM Corp. with Reserved Font Name "Plex". TrueType files (Sans
   Regular / Medium / SemiBold / Bold, Mono Regular / Medium / SemiBold) are embedded in
