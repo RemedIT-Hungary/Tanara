@@ -1,5 +1,6 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/JsonSerialization.h"
+#include "tanara/store/MeetingArchive.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/Logging.h"
 #include "tanara/Paths.h"
@@ -496,43 +497,72 @@ bool copyDirRecursive(const QString& from, const QString& to)
 
 Meeting MeetingStore::adoptMeetingFolder(const QString& sourceDir, QString* error)
 {
-    auto fail = [&](const QString& msg) { if (error) *error = msg; return Meeting(); };
+    const QString audioRoot = QDir(m_audioDir).absolutePath();
     const QFileInfo src(sourceDir);
+    const QString source = src.absoluteFilePath();
+
+    // Archívum-import: a forrás a felvételek mappája alatti .import-<uuid> ideiglenes mappában
+    // van → áthelyezés (nem másolás), és az ideiglenes mappa a végén MINDIG törlődik.
+    const QFileInfo parentInfo(src.absolutePath());
+    const bool fromImportTemp = parentInfo.fileName().startsWith(MeetingArchive::tempDirPrefix())
+        && QDir(parentInfo.absolutePath()).absolutePath() == audioRoot;
+    struct TempCleanup {
+        QString dir;
+        ~TempCleanup() { if (!dir.isEmpty()) QDir(dir).removeRecursively(); }
+    } tempCleanup{fromImportTemp ? parentInfo.absoluteFilePath() : QString()};
+
+    auto fail = [&](const QString& msg) { if (error) *error = msg; return Meeting(); };
     if (!src.isDir())
         return fail(QStringLiteral("Nincs ilyen mappa: %1").arg(sourceDir));
-    const QString source = src.absoluteFilePath();
     const bool hasJson = QFile::exists(meetingJsonPath(source));
     const bool hasTracks = !QDir(source).entryList({QStringLiteral("track_*.ogg")}, QDir::Files).isEmpty();
     if (!hasJson && !hasTracks)
         return fail(QStringLiteral("A mappában nincs meeting.json és nincs track_*.ogg sáv: %1").arg(sourceDir));
 
+    // A meeting.json beolvasása MÉG a forrásból: a hibás / már meglévő megbeszélés így semmit
+    // nem hagy maga után a felvételek mappájában.
+    Meeting m;
+    if (hasJson) {
+        QFile f(meetingJsonPath(source));
+        QJsonParseError err{};
+        const QJsonDocument doc = f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll(), &err)
+                                                              : QJsonDocument();
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            return fail(QStringLiteral("A meeting.json nem olvasható: %1").arg(meetingJsonPath(source)));
+        m = meetingFromJson(doc.object());
+        if (m.id.isEmpty())
+            m.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
+
     // Cél: a felvételek mappája alatt, ugyanazzal a névvel. Ha már ott van, helyben marad.
-    const QString audioRoot = QDir(m_audioDir).absolutePath();
     QString folder = source;
-    if (QFileInfo(source).dir().absolutePath() != audioRoot) {
+    if (parentInfo.absoluteFilePath() != audioRoot) {
         folder = QDir(audioRoot).filePath(src.fileName());
         if (QFileInfo::exists(folder))
-            return fail(QStringLiteral("Már van ilyen nevű felvétel-mappa: %1").arg(folder));
-        if (!copyDirRecursive(source, folder)) {
+            return fail(QStringLiteral("Már van ilyen nevű felvétel: %1 — a meglévőt nem írom felül.").arg(folder));
+    }
+    // Ugyanaz a megbeszélés (azonosító) már a könyvtárban van, másik mappában.
+    if (hasJson) {
+        const Meeting existing = load(m.id);
+        if (!existing.id.isEmpty()
+            && QDir(existing.folder).absolutePath() != QDir(folder).absolutePath())
+            return fail(QStringLiteral("Ez a megbeszélés már szerepel a könyvtárban: „%1” (%2).")
+                            .arg(existing.title, existing.folder));
+    }
+
+    if (folder != source) {
+        if (!QDir().mkpath(audioRoot))
+            return fail(QStringLiteral("A felvételek mappája nem hozható létre: %1").arg(audioRoot));
+        // Ugyanazon a köteten (pl. a .import-* mappából) átnevezés; különben másolás.
+        const bool moved = fromImportTemp && QDir().rename(source, folder);
+        if (!moved && !copyDirRecursive(source, folder)) {
             QDir(folder).removeRecursively();
             return fail(QStringLiteral("A mappa másolása nem sikerült: %1 → %2").arg(source, folder));
         }
     }
 
-    Meeting m;
-    if (hasJson) {
-        QFile f(meetingJsonPath(folder));
-        QJsonParseError err{};
-        const QJsonDocument doc = f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll(), &err)
-                                                              : QJsonDocument();
-        if (err.error != QJsonParseError::NoError || !doc.isObject())
-            return fail(QStringLiteral("A meeting.json nem olvasható: %1").arg(meetingJsonPath(folder)));
-        m = meetingFromJson(doc.object());
-        if (m.id.isEmpty())
-            m.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    } else {
+    if (!hasJson)
         m = meetingFromTrackFolder(folder);
-    }
     // A lemezen lévő mappa az igazság: a más gépről hozott (pl. D:\…) útvonal helyett ez megy az indexbe.
     m.folder = folder;
     saveMeeting(m);   // meeting.json (javított folder) + index

@@ -75,6 +75,7 @@ QString fallbackTitle(JobKind kind)
     case JobKind::Mixdown:       return ShellMeetingModel::tr("Lekeverés");
     case JobKind::Identify:      return ShellMeetingModel::tr("Résztvevők azonosítása");
     case JobKind::Import:        return ShellMeetingModel::tr("Importálás");
+    case JobKind::Export:        return ShellMeetingModel::tr("Exportálás archívumba");
     }
     return {};
 }
@@ -89,6 +90,7 @@ QString iconFor(JobKind kind)
     case JobKind::Mixdown:       return QStringLiteral("audio-lines");
     case JobKind::Identify:      return QStringLiteral("fingerprint");
     case JobKind::Import:        return QStringLiteral("file-audio");
+    case JobKind::Export:        return QStringLiteral("arrow-down-to-line");
     }
     return QStringLiteral("loader-circle");
 }

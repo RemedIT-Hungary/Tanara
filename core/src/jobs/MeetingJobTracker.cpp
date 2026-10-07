@@ -22,6 +22,7 @@ QString errorSlot(JobKind kind)
     case JobKind::Mixdown:       return QStringLiteral("mixdown");
     case JobKind::Identify:      return QString();
     case JobKind::Import:        return QString();   // nincs meeting, amin megmaradhatna
+    case JobKind::Export:        return QString();   // a hibát a héj toastja mondja el
     }
     return QString();
 }
@@ -36,6 +37,7 @@ QString kindToString(JobKind kind)
     case JobKind::Mixdown:       return QStringLiteral("mixdown");
     case JobKind::Identify:      return QStringLiteral("identify");
     case JobKind::Import:        return QStringLiteral("import");
+    case JobKind::Export:        return QStringLiteral("export");
     }
     return QStringLiteral("transcribe");
 }
@@ -49,6 +51,7 @@ JobKind kindFromString(const QString& s, JobKind fallback)
     if (s == QLatin1String("mixdown"))       return JobKind::Mixdown;
     if (s == QLatin1String("identify"))      return JobKind::Identify;
     if (s == QLatin1String("import"))        return JobKind::Import;
+    if (s == QLatin1String("export"))        return JobKind::Export;
     return fallback;
 }
 

@@ -235,6 +235,28 @@ public slots:
     // NEM indul magától.
     QString importAudio(const tanara::ImportRequest& request);
 
+    // ---- megbeszélés-archívum (*.tanara.zip, lásd store/MeetingArchive.h) ----
+    // Exportálás háttérszálon (a GUI nem áll meg egy 1 GB-os felvételnél sem). Azonnal
+    // visszatér a művelet azonosítójával ("export:<meetingId>"); a haladás a jobs()-ban
+    // JobKind::Export feladatként látszik a meetingen (valós százalék, megszakítható:
+    // cancelJob(meetingId, JobKind::Export)), és archiveProgress jelként is jön. A vége
+    // archiveFinished. Üres azonosító + errorOccurred: nincs ilyen meeting / felvétel alatt
+    // áll / már fut egy archívum-művelet.
+    QString exportMeetingArchive(const QString& meetingId, const QString& zipPath);
+    // Importálás háttérszálon: kicsomagolás a felvételek mappája alatti .import-* mappába,
+    // majd (fő szálon) MeetingStore::adoptMeetingFolder + a címkék feloldása a helyi
+    // címkekészletre (azonos azonosító → az; különben név szerint, szükség esetén létrehozva).
+    // Visszaad: művelet-azonosító ("import:<uuid>"); üres + errorOccurred, ha már fut egy.
+    // A vége archiveFinished (siker esetén meetingId = az új megbeszélés).
+    QString importMeetingArchive(const QString& zipPath);
+    // Ugyanezek szinkron (CLI, tesztek). Hiba: false / üres Meeting + *error.
+    bool exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath, QString* error,
+                                 std::function<void(int)> progress = {});
+    tanara::Meeting importMeetingArchiveNow(const QString& zipPath, QString* error,
+                                            std::function<void(int)> progress = {});
+    // Fut-e épp archívum-művelet (export vagy import).
+    bool archiveBusy() const;
+
     // A saját (mic-sáv) beszélőnév beállítása — a beállításba ÉS a személy-DB-be is.
     void setUserSpeakerName(const QString& name);
 
@@ -405,6 +427,11 @@ signals:
     // Az importálás nem sikerült (nem maradt utána semmi). detail: technikai sor, lehet üres.
     void importFailed(QString importId, QString message, QString detail);
     void importCancelled(QString importId);
+    // Archívum-művelet haladása (opId: az exportMeetingArchive / importMeetingArchive
+    // visszatérési értéke) és vége. ok == false: message a hiba (megszakításnál „Megszakítva.”).
+    // Exportnál path a kész fájl, importnál meetingId az új megbeszélés.
+    void archiveProgress(QString opId, int percent);
+    void archiveFinished(QString opId, bool ok, QString meetingId, QString path, QString message);
     // Felvétel közben a hívás véget ért (a detektor 2 egymást követő pollban inaktívat
     // látott egy korábban aktív hívás után). A UI ebből kérdez rá a leállításra.
     void callEnded(QString appName);

@@ -11,6 +11,7 @@
 #include "tanara/audio/DeviceMonitor.h"
 #include "tanara/audio/RecordingSession.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/store/MeetingArchive.h"
 #include "tanara/store/KeyStore.h"
 #include "tanara/store/PeopleStore.h"
 #include "tanara/people/PeopleService.h"
@@ -600,6 +601,10 @@ struct AppController::Impl {
         return QStringLiteral("%1/%2/%3").arg(transcriptGen.value(meetingId)).arg(fs.mtimeMs).arg(fs.size);
     }
     QHash<QString, IdentifyRun> identifyRuns;
+    // Archívum-művelet (export / import) — egyszerre egy, háttérszálon.
+    QThread* archiveThread = nullptr;
+    std::shared_ptr<std::atomic<bool>> archiveCancel;
+    QString archiveOp;          // "export:<meetingId>" | "import:<uuid>"
 
     static QString llmKey(const QString& meetingId, JobKind kind) {
         return meetingId + QLatin1Char('|') + QString::number(int(kind));
@@ -837,6 +842,15 @@ AppController::AppController(QObject* parent)
     d->store   = new MeetingStore(d->audioDir, d->metaDir, this);
     // Crash után árván maradt felvételek (sávok meeting.json nélkül) visszahozása a listába.
     d->store->recoverOrphanRecordings();
+    // Megszakadt archívum-import (pl. kilépés kicsomagolás közben) ideiglenes mappái. Csak a
+    // régebbiek: egy épp futó (pl. CLI-s) import mappáját nem bántjuk.
+    {
+        const QDir root(d->store->audioDir());
+        const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-6 * 3600);
+        for (const QFileInfo& fi : root.entryInfoList({MeetingArchive::tempDirPrefix() + QLatin1Char('*')},
+                                                      QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot))
+            if (fi.lastModified() < cutoff) QDir(fi.absoluteFilePath()).removeRecursively();
+    }
 
     // Strukturált réteg: feldolgozási állapot, könyvtár-lekérdezések, sávok, hullámforma.
     d->jobs      = new MeetingJobTracker(d->store, this);
@@ -1016,6 +1030,13 @@ AppController::~AppController()
         }
     }
     d->identifyRuns.clear();
+    if (d->archiveThread) {
+        if (d->archiveCancel) d->archiveCancel->store(true);
+        d->archiveThread->disconnect(this);
+        d->archiveThread->wait();
+        delete d->archiveThread;
+        d->archiveThread = nullptr;
+    }
 }
 
 SettingsManager* AppController::settings() const { return d->settings; }
@@ -3274,6 +3295,179 @@ QString AppController::importAudio(const ImportRequest& request)
     return d->importer->start(request);
 }
 
+// ---- megbeszélés-archívum ---------------------------------------------------------------
+
+namespace {
+
+QVector<Tag> archiveTags(TagService* tags, const Meeting& m)
+{
+    QVector<Tag> out;
+    for (const QString& id : m.tagIds) {
+        const Tag t = tags ? tags->tag(id) : Tag{};
+        if (t.isValid()) out.append(t);
+    }
+    return out;
+}
+
+// A kicsomagolt mappa behúzása + a címkék feloldása a helyi készletre. Fő szálon fut.
+Meeting adoptArchiveFolder(MeetingStore* store, TagService* tags, const QString& folder,
+                           const ArchiveManifest& manifest, QString* error)
+{
+    Meeting m = store->adoptMeetingFolder(folder, error);
+    if (m.id.isEmpty() || !tags) return m;
+    QStringList ids;
+    QStringList pending = m.tagIds;   // a manifesztben nem szereplő, de helyben ismert azonosítók
+    for (const Tag& t : manifest.tags) {
+        Tag local = tags->tag(t.id);
+        if (!local.isValid()) local = tags->byName(t.name);
+        if (!local.isValid()) local = tags->create(t.name);
+        if (local.isValid() && !ids.contains(local.id)) ids << local.id;
+        pending.removeAll(t.id);
+    }
+    for (const QString& id : pending)
+        if (tags->tag(id).isValid() && !ids.contains(id)) ids << id;
+    if (ids != m.tagIds) {
+        tags->setTags(m.id, ids, TagSource::Bulk);
+        m.tagIds = ids;
+    }
+    return m;
+}
+
+} // namespace
+
+bool AppController::archiveBusy() const { return d->archiveThread != nullptr; }
+
+bool AppController::exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath,
+                                            QString* error, std::function<void(int)> progress)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) {
+        if (error) *error = tr("Nincs ilyen megbeszélés: %1").arg(meetingId);
+        return false;
+    }
+    if (d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
+        && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath()) {
+        if (error) *error = tr("Felvétel közben a megbeszélés nem exportálható.");
+        return false;
+    }
+    return MeetingArchive::exportMeeting(m, zipPath, error, std::move(progress), archiveTags(d->tags, m));
+}
+
+Meeting AppController::importMeetingArchiveNow(const QString& zipPath, QString* error,
+                                               std::function<void(int)> progress)
+{
+    const QString root = QDir(d->store->audioDir()).absolutePath();
+    QDir().mkpath(root);
+    ArchiveManifest manifest;
+    const QString folder = MeetingArchive::importArchive(zipPath, root, error, std::move(progress), &manifest);
+    if (folder.isEmpty()) return {};
+    return adoptArchiveFolder(d->store, d->tags, folder, manifest, error);
+}
+
+QString AppController::exportMeetingArchive(const QString& meetingId, const QString& zipPath)
+{
+    if (archiveBusy()) {
+        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
+        return {};
+    }
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) {
+        emit errorOccurred(tr("Nincs ilyen megbeszélés: %1").arg(meetingId));
+        return {};
+    }
+    if (d->state != RecordingState::Idle && !d->currentFolder.isEmpty()
+        && QDir(d->currentFolder).absolutePath() == QDir(m.folder).absolutePath()) {
+        emit errorOccurred(tr("Felvétel közben a megbeszélés nem exportálható."));
+        return {};
+    }
+    const QVector<Tag> tags = archiveTags(d->tags, m);
+    const QString opId = QStringLiteral("export:") + meetingId;
+    auto cancel = std::make_shared<std::atomic<bool>>(false);
+    auto ok = std::make_shared<bool>(false);
+    auto error = std::make_shared<QString>();
+    d->jobs->begin(meetingId, JobKind::Export, tr("Exportálás archívumba"));
+    d->jobs->setMessage(meetingId, JobKind::Export, QFileInfo(zipPath).fileName());
+    d->jobs->setPercent(meetingId, JobKind::Export, 0);
+
+    QPointer<AppController> self(this);
+    QThread* th = QThread::create([self, m, zipPath, tags, cancel, ok, error, opId]() {
+        *ok = MeetingArchive::exportMeeting(m, zipPath, error.get(), [self, opId, mid = m.id](int pct) {
+            QMetaObject::invokeMethod(qApp, [self, opId, mid, pct]() {
+                if (!self || self->d->archiveOp != opId) return;
+                if (self->d->jobs->isRunning(mid, JobKind::Export))
+                    self->d->jobs->setPercent(mid, JobKind::Export, pct);
+                emit self->archiveProgress(opId, pct);
+            }, Qt::QueuedConnection);
+        }, tags, cancel.get());
+    });
+    d->archiveThread = th;
+    d->archiveCancel = cancel;
+    d->archiveOp = opId;
+    connect(th, &QThread::finished, this, [this, th, meetingId, zipPath, cancel, ok, error, opId]() {
+        d->archiveThread = nullptr;
+        d->archiveCancel.reset();
+        d->archiveOp.clear();
+        th->deleteLater();
+        if (*ok) {
+            d->jobs->finish(meetingId, JobKind::Export);
+            emit archiveFinished(opId, true, meetingId, zipPath, QString());
+        } else if (cancel->load()) {
+            d->jobs->cancelled(meetingId, JobKind::Export);
+            emit archiveFinished(opId, false, meetingId, QString(), tr("Megszakítva."));
+        } else {
+            JobError je;
+            je.kind = JobKind::Export;
+            je.message = *error;
+            je.when = QDateTime::currentDateTime();
+            d->jobs->fail(meetingId, JobKind::Export, je);
+            emit archiveFinished(opId, false, meetingId, QString(), *error);
+        }
+    });
+    th->start();
+    return opId;
+}
+
+QString AppController::importMeetingArchive(const QString& zipPath)
+{
+    if (archiveBusy()) {
+        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
+        return {};
+    }
+    const QString root = QDir(d->store->audioDir()).absolutePath();
+    QDir().mkpath(root);
+    const QString opId = QStringLiteral("import:") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto folder = std::make_shared<QString>();
+    auto error = std::make_shared<QString>();
+    auto manifest = std::make_shared<ArchiveManifest>();
+
+    QPointer<AppController> self(this);
+    QThread* th = QThread::create([self, zipPath, root, folder, error, manifest, opId]() {
+        *folder = MeetingArchive::importArchive(zipPath, root, error.get(), [self, opId](int pct) {
+            QMetaObject::invokeMethod(qApp, [self, opId, pct]() {
+                if (self && self->d->archiveOp == opId) emit self->archiveProgress(opId, pct);
+            }, Qt::QueuedConnection);
+        }, manifest.get());
+    });
+    d->archiveThread = th;
+    d->archiveCancel.reset();   // a kicsomagolás nem szakítható meg (rövid, és a végén úgyis takarít)
+    d->archiveOp = opId;
+    connect(th, &QThread::finished, this, [this, th, zipPath, folder, error, manifest, opId]() {
+        d->archiveThread = nullptr;
+        d->archiveOp.clear();
+        th->deleteLater();
+        QString message = *error;
+        Meeting m;
+        if (!folder->isEmpty())
+            m = adoptArchiveFolder(d->store, d->tags, *folder, *manifest, &message);
+        if (m.id.isEmpty())
+            emit archiveFinished(opId, false, QString(), zipPath, message);
+        else
+            emit archiveFinished(opId, true, m.id, zipPath, QString());
+    });
+    th->start();
+    return opId;
+}
+
 MeetingProcessingState AppController::processingState(const QString& meetingId) const
 {
     return d->jobs->state(meetingId);
@@ -3667,6 +3861,14 @@ bool AppController::cancelJob(const QString& meetingId, JobKind kind)
         if (d->importer->currentId() != meetingId || !d->jobs->isRunning(meetingId, kind)) return false;
         d->jobs->setCancelling(meetingId, kind);
         d->importer->cancel();   // a cancelled-ág zár le: a félkész mappa törölve
+        return true;
+    }
+    case JobKind::Export: {
+        if (d->archiveOp != QStringLiteral("export:") + meetingId || !d->archiveCancel
+            || !d->jobs->isRunning(meetingId, kind))
+            return false;
+        d->jobs->setCancelling(meetingId, kind);
+        d->archiveCancel->store(true);   // a szál a következő blokknál megáll, a félkész fájl törlődik
         return true;
     }
     case JobKind::Identify: {

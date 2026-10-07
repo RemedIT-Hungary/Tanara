@@ -162,7 +162,7 @@ JobError describeJobFailure(JobKind kind, const QString& rawMessage, const HttpE
     // A „nem fér a kontextusba” hiba minden alakja (LM Studio / llama.cpp / OpenAI / vLLM)
     // saját, számokkal kiírt magyarázatot kap — a nyers JSON nem kerül a felhasználó elé.
     if (kind != JobKind::Transcribe && kind != JobKind::Mixdown && kind != JobKind::Import
-        && kind != JobKind::Identify) {
+        && kind != JobKind::Identify && kind != JobKind::Export) {
         const llmctx::ContextOverflow ov =
             llmctx::parseContextOverflow(ex ? ex->body : QByteArray(), raw);
         if (ov.matched)

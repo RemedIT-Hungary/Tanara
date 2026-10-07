@@ -46,6 +46,10 @@ public:
     // tényleges hellyel javítja, és csak EZT az egy megbeszélést veszi fel az indexbe — a többi
     // mappát nem nézi (a törölt / teszt-felvételek nem jönnek vissza). meeting.json nélkül a
     // track_*.ogg sávokból építi fel, „(helyreállított)” címmel. Hiba: üres Meeting + *error.
+    // Archívum-importnál (MeetingArchive) a forrás a felvételek mappája alatti .import-<uuid>
+    // ideiglenes mappában van: ilyenkor ÁTHELYEZI (nem másolja), és az ideiglenes mappát
+    // sikertől függetlenül törli. Hiba akkor is, ha ugyanez az azonosító már a könyvtárban
+    // van egy másik mappában.
     Meeting adoptMeetingFolder(const QString& sourceDir, QString* error = nullptr);
 
     // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.

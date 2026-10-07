@@ -23,6 +23,7 @@ public:
         Mixdown       = int(tanara::JobKind::Mixdown),
         Identify      = int(tanara::JobKind::Identify),
         Import        = int(tanara::JobKind::Import),
+        Export        = int(tanara::JobKind::Export),
     };
     Q_ENUM(Kind)
 };

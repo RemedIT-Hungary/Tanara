@@ -32,6 +32,7 @@ enum class JobKind {
     Identify,        // résztvevők azonosítása hang alapján (átirat után)
     Import,          // hangfájlok importálása új meetingbe — a feladat a LEENDŐ meeting
                      // azonosítója alatt fut (a meeting csak a sikeres végén jön létre)
+    Export,          // a megbeszélés becsomagolása archívumba (*.tanara.zip, store/MeetingArchive.h)
 };
 
 enum class StageState { Waiting, Running, Done, Failed, Skipped };

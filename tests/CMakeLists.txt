@@ -13,6 +13,11 @@ if(TARGET test_store_settings)
     target_compile_definitions(test_store_settings PRIVATE TANARA_STORE_SETTINGS_STANDALONE)
 endif()
 
+# Az archívum-teszt kézzel rak össze (hibás / rosszindulatú) ZIP-eket → miniz kell neki.
+if(TARGET test_meeting_archive)
+    target_link_libraries(test_meeting_archive PRIVATE tanara_miniz)
+endif()
+
 # A cloud-integrációs tesztek a mock-gateway-t indítják (node). Node nélkül QSKIP.
 foreach(t test_cloud_gateway test_cloud_job_id)
     if(TARGET ${t})
