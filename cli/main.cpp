@@ -5,6 +5,8 @@
 //   list                             meetingek
 //   adopt <folder>                   felvétel-mappa behúzása (másik gépről, pendrive-ról)
 //   reindex                          az index újraépítése a lemezen lévő mappákból
+//   export <id> [<archive.zip>]      megbeszélés becsomagolása *.tanara.zip archívumba
+//   import-archive <archive.zip>     archívum behúzása (mintha itt vették volna fel)
 //   import <file>… [--title T] [--date ISO] [--split-channels] [--own-track N]
 //                                    hangfájl(ok) importálása új meetingbe (fájlonként egy sáv)
 //   transcribe <meetingId>           átírás (Soniox kulcs kell)
@@ -25,6 +27,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/import/AudioImporter.h"
+#include "tanara/store/MeetingArchive.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/tags/TagService.h"
@@ -38,6 +41,8 @@
 #include <QTranslator>
 #include <QSocketNotifier>
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 
 #include <memory>
 
@@ -121,6 +126,47 @@ int main(int argc, char** argv) {
         if (m.id.isEmpty()) { err << error << "\n"; return 1; }
         out << QStringLiteral("Adopted: %1 — %2 (%3)\n%4\n")
                    .arg(m.title, m.id, plural(m.tracks.size(), "%n track", "%n tracks"), m.folder);
+        out.flush();
+        return 0;
+    }
+
+    if (cmd == "export") {
+        // Egy megbeszélés becsomagolása *.tanara.zip archívumba (lásd store/MeetingArchive.h).
+        // Cél nélkül a munkakönyvtárba, mappa-célnál abba, a javasolt fájlnévvel.
+        const QString id = args.value(2);
+        if (id.isEmpty()) { err << "Usage: export <id> [<archive.zip>]\n"; return 2; }
+        const Meeting m = app.store()->load(id);
+        if (m.id.isEmpty()) { err << QStringLiteral("ERROR: no such meeting: %1").arg(id) << "\n"; return 1; }
+        QString target = args.value(3);
+        if (target.isEmpty() || QFileInfo(target).isDir())
+            target = QDir(target.isEmpty() ? QDir::currentPath() : target)
+                         .filePath(MeetingArchive::suggestedFileName(m));
+        target = QFileInfo(target).absoluteFilePath();
+        out << QStringLiteral("Exporting: \"%1\" → %2").arg(m.title, target) << "\n";
+        out.flush();
+        QString error;
+        const bool ok = app.exportMeetingArchiveNow(id, target, &error, [](int pct) {
+            out << "\r  " << pct << "%"; out.flush();
+        });
+        if (!ok) { err << "\n" << QStringLiteral("ERROR: %1").arg(error) << "\n"; return 1; }
+        out << "\r" << QStringLiteral("DONE. Archive: %1 (%2 MB)")
+                       .arg(target).arg(QFileInfo(target).size() / (1024.0 * 1024.0), 0, 'f', 1) << "\n";
+        out.flush();
+        return 0;
+    }
+
+    if (cmd == "import-archive") {
+        // Egy *.tanara.zip archívum behúzása, mintha itt vették volna fel: kicsomagolás, a
+        // felvételek közé helyezés, címkék feloldása. Ugyanilyen nevű mappa / azonosító: hiba.
+        const QString zip = args.value(2);
+        if (zip.isEmpty()) { err << "Usage: import-archive <archive.zip>\n"; return 2; }
+        QString error;
+        const Meeting m = app.importMeetingArchiveNow(zip, &error, [](int pct) {
+            out << "\r  " << pct << "%"; out.flush();
+        });
+        if (m.id.isEmpty()) { err << "\n" << QStringLiteral("ERROR: %1").arg(error) << "\n"; return 1; }
+        out << "\r" << QStringLiteral("DONE. Meeting: %1 — %2 (%3)\nFolder: %4")
+                       .arg(m.id, m.title, plural(m.tracks.size(), "%n track", "%n tracks"), m.folder) << "\n";
         out.flush();
         return 0;
     }
@@ -519,6 +565,7 @@ int main(int argc, char** argv) {
 
     out << "tanara-cli " << libraryVersion() << "\n"
         << "Commands: devices | record [--title T --seconds N --device IDX] | list | adopt <folder> | "
+           "export <id> [<archive.zip>] | import-archive <archive.zip> | "
            "import <file>… [--title T --date ISO --split-channels --own-track N] | reindex | "
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
