@@ -17,6 +17,7 @@
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
 #include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/store/MeetingArchive.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/tags/TagService.h"
 
@@ -66,6 +67,15 @@ public:
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
     QStringList pickAudioFiles() override { calls << QStringLiteral("pickMany"); return pickedFiles; }
     QStringList pickedFiles;
+    QString pickSaveFile(const QString&, const QString& proposedPath, const QString& filter) override
+    {
+        calls << QStringLiteral("save");
+        lastProposed = proposedPath;
+        lastFilter = filter;
+        return savePath;
+    }
+    QString pickArchiveFile() override { calls << QStringLiteral("pickArchive"); return archivePath; }
+    QString savePath, archivePath, lastProposed, lastFilter;
     bool handleCloudBlocker(const tanara::ReadinessResult& r) override
     {
         calls << QStringLiteral("blocker:%1:%2").arg(int(r.blockerKind)).arg(r.providerId);
@@ -288,6 +298,64 @@ private slots:
         m_shell->openRecorder();
         QCOMPARE(m_shell->pickAudioFile(), QString());
         QCOMPARE(m_toasts.size(), 2);
+    }
+
+    void archiveExportAndImport()
+    {
+        const tanara::Meeting a = recording(QStringLiteral("Archív próba"));
+        QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
+        QSignalSpy finished(m_app.get(), &tanara::AppController::archiveFinished);
+
+        // Visszalépés a mentés-ablakból: nem indul semmi. A javasolt név „<mappanév>.tanara.zip”.
+        m_shell->exportArchive(a.id);
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("save")});
+        QVERIFY(m_bridge->lastProposed.endsWith(tanara::MeetingArchive::suggestedFileName(a)));
+        QVERIFY(m_bridge->lastFilter.contains(QStringLiteral("*.tanara.zip")));
+        QVERIFY(!m_app->archiveBusy());
+
+        // Kiterjesztés nélküli név → .tanara.zip; háttérben fut, a feladat-sávban látszik.
+        QVERIFY(QDir().mkpath(m_home->filePath(QStringLiteral("ki"))));
+        m_bridge->savePath = m_home->filePath(QStringLiteral("ki/archiv"));
+        m_shell->exportArchive(a.id);
+        QVERIFY(m_app->jobs()->isRunning(a.id, tanara::JobKind::Export));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 20000);
+        const QString zip = m_home->filePath(QStringLiteral("ki/archiv.tanara.zip"));
+        QVERIFY(QFile::exists(zip));
+        QCOMPARE(toasts.last().at(1).toString(), QString());
+        QCOMPARE(toasts.last().at(5).toString(), zip);   // „Megnyitás mappában”
+        // A következő export a legutóbbi mappát javasolja.
+        m_bridge->savePath.clear();
+        m_shell->exportArchive(a.id);
+        QCOMPARE(QFileInfo(m_bridge->lastProposed).absolutePath(), m_home->filePath(QStringLiteral("ki")));
+
+        // Import: előbb a választó (visszalépés: semmi), majd a kiválasztott archívum.
+        QVERIFY(m_app->store()->deleteMeeting(a.id));
+        m_bridge->calls.clear();
+        m_shell->importArchive(QString());
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("pickArchive")});
+        QVERIFY(!m_app->archiveBusy());
+        m_bridge->archivePath = zip;
+        m_shell->importArchive(QString());
+        QVERIFY(m_app->archiveBusy());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 2, 20000);
+        QVERIFY(finished.last().at(1).toBool());
+        QCOMPARE(m_shell->currentMeetingId(), a.id);
+        QCOMPARE(m_shell->currentTab(), 0);
+        QVERIFY(m_toasts.last().contains(QStringLiteral("Archív próba")));
+
+        // Ejtett fájl-URL, ami nem archívum: hiba-toast, a kijelölés marad.
+        const QString bad = m_home->filePath(QStringLiteral("hibas.zip"));
+        QFile f(bad);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("nem zip");
+        f.close();
+        QVERIFY(m_shell->isArchiveFile(QUrl::fromLocalFile(bad)));
+        QVERIFY(m_shell->isArchiveFile(QStringLiteral("/x/Valami.TANARA.ZIP")));
+        QVERIFY(!m_shell->isArchiveFile(QUrl::fromLocalFile(QStringLiteral("/x/hang.wav"))));
+        m_shell->importArchive(QUrl::fromLocalFile(bad));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 3, 20000);
+        QCOMPARE(toasts.last().at(1).toString(), QStringLiteral("danger"));
+        QCOMPARE(m_shell->currentMeetingId(), a.id);
     }
 
     void tagsActions()

@@ -83,6 +83,8 @@ public:
     void openRecorder() override;
     QString pickAudioFile() override;
     QStringList pickAudioFiles() override;
+    QString pickSaveFile(const QString& title, const QString& proposedPath, const QString& filter) override;
+    QString pickArchiveFile() override;
     bool handleCloudBlocker(const tanara::ReadinessResult& blocker) override;
     bool confirmCloudEstimate(const QString& meetingId, const QString& task,
                               const QString& mode) override;

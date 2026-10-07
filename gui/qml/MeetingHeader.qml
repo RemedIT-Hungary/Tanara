@@ -140,6 +140,12 @@ Item {
                         onTriggered: if (root.shell) root.shell.revealInFolder(root.meetingId)
                     }
                     TMenuItem {
+                        objectName: "exportArchiveItem"
+                        text: qsTr("Exportálás archívumba…")
+                        iconName: "arrow-down-to-line"
+                        onTriggered: if (root.shell) root.shell.exportArchive(root.meetingId)
+                    }
+                    TMenuItem {
                         objectName: "recheckSpeakersItem"
                         text: qsTr("Beszélők újraellenőrzése…")
                         iconName: "refresh-cw"

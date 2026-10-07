@@ -3,7 +3,8 @@ import QtQuick.Layouts
 
 // M01 — üres könyvtár: mit csinál a Tanara, a három lépés (Felvétel → Átirat →
 // Összefoglaló), „Felvétel indítása”, „Hangfájl importálása” (a második út az első
-// megbeszéléshez) és „Hívásfigyelő beállítása” (Beállítások › Figyelő).
+// megbeszéléshez) és „Hívásfigyelő beállítása” (Beállítások › Figyelő). Alul egy sor a
+// másik gépről hozott megbeszéléshez: „Archívum importálása” (*.tanara.zip).
 Item {
     id: root
 
@@ -114,6 +115,27 @@ Item {
             font.pixelSize: Theme.fontSmall
             cssLineHeight: 1.5
             wrapMode: Text.Wrap
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 6
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("Másik gépen rögzített megbeszélést hoznál át (.tanara.zip)?")
+                muted: true
+                font.pixelSize: Theme.fontSmall
+                cssLineHeight: 1.5
+                wrapMode: Text.Wrap
+            }
+            TButton {
+                objectName: "emptyImportArchive"
+                text: qsTr("Archívum importálása")
+                iconName: "folder-open"
+                size: "small"
+                variant: "ghost"
+                onClicked: if (root.shell) root.shell.importArchive("")
+            }
         }
         TLabel {
             Layout.fillWidth: true

@@ -96,6 +96,18 @@ public:
     // történik semmi); a megadott (pl. az ablakra ejtett) fájlokkal rögtön a párbeszédablak.
     // Futó importálás mellett a haladását mutató ablak jön elő.
     Q_INVOKABLE void openImport(const QVariantList& files = {});
+    // Megbeszélés-archívum (*.tanara.zip, lásd store/MeetingArchive.h).
+    // „Exportálás archívumba…”: natív mentés-ablak (alapból „<mappanév>.tanara.zip” a legutóbb
+    // használt mappában, ill. ~/Tanara-ban), majd háttérben fut — a haladás a feladat-sávban,
+    // a végén toast „Megnyitás mappában” gombbal.
+    Q_INVOKABLE void exportArchive(const QString& meetingId);
+    // „Megbeszélés importálása archívumból…”: üres úttal előbb a natív választó; a végén az új
+    // megbeszélés kijelölődik + toast; hiba toastban. (Ráejtett .zip is ide jut: fájl-URL is jó.)
+    Q_INVOKABLE void importArchive(const QVariant& pathOrUrl = QVariant());
+    // Archívumnak látszik-e (a ráejtett fájlok szétválogatásához): *.zip.
+    Q_INVOKABLE bool isArchiveFile(const QVariant& pathOrUrl) const;
+    // Egy fájl mappájának megnyitása a fájlkezelőben (a toast „Megnyitás mappában” gombja).
+    Q_INVOKABLE void revealFile(const QString& path);
     Q_INVOKABLE bool confirm(const QString& title, const QString& text,
                              const QString& confirmLabel, bool danger);
     Q_INVOKABLE void showMeeting(const QString& meetingId);
@@ -143,9 +155,10 @@ signals:
 
     // ---- a Main.qml-nek ----
     // tone: "" (semleges) | "danger"; requestId / usageLink: cloud-értesítéseknél.
-    // undoKey: lásd toast().
+    // undoKey: lásd toast(). revealPath: nem üres → „Megnyitás mappában” gomb (revealFile).
     void toastRequested(const QString& text, const QString& tone, const QString& requestId,
-                        bool usageLink, const QString& undoKey = QString());
+                        bool usageLink, const QString& undoKey = QString(),
+                        const QString& revealPath = QString());
     void undoRequested(const QString& undoKey);
     // A Main.qml a könyvtár-modellre teszi a címke-szűrőt.
     void tagFilterRequested(const QString& tagId);
@@ -189,6 +202,7 @@ private:
     // Az épp most rögzített, a megnyitott megbeszélés hibasávjában LÁTHATÓ feladat-hiba
     // üzenete (ugyanabban az esemény-körben érkező errorOccurred-ből nem lesz második toast).
     QString m_errorInBanner;
+    QString m_lastArchiveDir;   // az utolsó export célmappája (munkameneten belül)
 
     // confirm(): beágyazott eseményhurok, amíg a QML-ablak válaszol.
     class QEventLoop* m_confirmLoop = nullptr;

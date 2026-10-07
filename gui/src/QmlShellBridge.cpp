@@ -21,7 +21,9 @@
 #include <QCoreApplication>
 #include <QDialog>
 #include <QEvent>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QProgressDialog>
 #include <QStandardPaths>
 #include <QQuickWindow>
@@ -216,6 +218,21 @@ QStringList QmlShellBridge::pickAudioFiles()
         nullptr, tr("Importálandó hangfájlok kiválasztása"), start,
         tr("Hang- és videófájlok (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif "
            "*.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;Minden fájl (*)"));
+}
+
+QString QmlShellBridge::pickSaveFile(const QString& title, const QString& proposedPath,
+                                     const QString& filter)
+{
+    return QFileDialog::getSaveFileName(nullptr, title, proposedPath, filter);
+}
+
+QString QmlShellBridge::pickArchiveFile()
+{
+    const QString start = QDir::home().filePath(QStringLiteral("Tanara"));
+    return QFileDialog::getOpenFileName(
+        nullptr, tr("Megbeszélés-archívum kiválasztása"),
+        QFileInfo(start).isDir() ? start : QDir::homePath(),
+        tr("Tanara-archívum (*.tanara.zip *.zip);;Minden fájl (*)"));
 }
 
 // ---- felvevő (lásd ShellRecorderHost) ----------------------------------------------------

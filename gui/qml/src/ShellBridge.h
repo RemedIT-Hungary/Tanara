@@ -72,6 +72,18 @@ public:
     Q_INVOKABLE virtual QString pickAudioFile() = 0;
     // Ugyanez több fájlra (importálás): hang- és videófájlok; üres lista = visszalépett.
     Q_INVOKABLE virtual QStringList pickAudioFiles() = 0;
+    // Natív mentés-ablak (proposedPath: javasolt mappa + fájlnév; filter: QFileDialog-szűrő);
+    // üres, ha visszalépett. Az alapértelmezés üres (a tesztek ál-hídjainak nem kell tudniuk róla).
+    Q_INVOKABLE virtual QString pickSaveFile(const QString& title, const QString& proposedPath,
+                                             const QString& filter)
+    {
+        Q_UNUSED(title);
+        Q_UNUSED(proposedPath);
+        Q_UNUSED(filter);
+        return {};
+    }
+    // Megbeszélés-archívum (*.tanara.zip / *.zip) kiválasztása importáláshoz; üres = visszalépett.
+    Q_INVOKABLE virtual QString pickArchiveFile() { return {}; }
 
     // ---- Tanara Cloud kapuk (a ShellActions hívja a feldolgozás indítása előtt) ----
     // Egy blokkolt lépés cloud-teendője (bejelentkezés / feltöltés / frissítés). true = a

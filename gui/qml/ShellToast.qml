@@ -3,7 +3,8 @@ import QtQuick.Layouts
 
 // Nem-modális értesítés a tartalom alján (a régi állapotsor-üzenetek és a Tanara Cloud
 // költség-értesítései helyett): szöveg, opcionálisan másolható hibaazonosító és „Napló a
-// weben” hivatkozás, „Visszavonás” (undoKey: a visszavonható lépés gazdája, pl. "tags"), bezáró ×.
+// weben” hivatkozás, „Visszavonás” (undoKey: a visszavonható lépés gazdája, pl. "tags"),
+// „Megnyitás mappában” (revealPath: egy kész fájl, pl. az exportált archívum), bezáró ×.
 // Magától eltűnik; az új üzenet a régit váltja.
 //   toast.show(qsTr("Elkészült az átirat"), "", "", false)
 //   toast.show(qsTr("Javaslat elutasítva: #Nordvik"), "", "", false, "tags")
@@ -15,19 +16,22 @@ Item {
     property string requestId: ""
     property bool usageLink: false
     property string undoKey: ""
+    property string revealPath: ""
     property bool shown: false
     signal usageLinkActivated()
     signal undoActivated(string undoKey)
+    signal revealActivated(string path)
 
-    function show(text, tone, requestId, usageLink, undoKey) {
+    function show(text, tone, requestId, usageLink, undoKey, revealPath) {
         root.text = text
         root.tone = tone || ""
         root.requestId = requestId || ""
         root.usageLink = !!usageLink
         root.undoKey = undoKey || ""
+        root.revealPath = revealPath || ""
         root.shown = true
-        // Költség / hiba: tovább marad kint (van rajta teendő vagy azonosító).
-        hideTimer.interval = root.requestId !== "" || root.usageLink ? 20000
+        // Költség / hiba / kész fájl: tovább marad kint (van rajta teendő vagy azonosító).
+        hideTimer.interval = root.requestId !== "" || root.usageLink || root.revealPath !== "" ? 20000
                            : root.tone === "danger" ? 12000 : 6000
         hideTimer.restart()
     }
@@ -103,6 +107,15 @@ Item {
             size: "small"
             variant: "ghost"
             onClicked: root.usageLinkActivated()
+        }
+        TButton {
+            objectName: "toastReveal"
+            visible: root.revealPath !== ""
+            text: qsTr("Megnyitás mappában")
+            iconName: "folder-open"
+            size: "small"
+            variant: "ghost"
+            onClicked: root.revealActivated(root.revealPath)
         }
         TButton {
             visible: root.undoKey !== ""

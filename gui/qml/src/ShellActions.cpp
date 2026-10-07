@@ -9,9 +9,12 @@
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/jobs/MeetingJobTracker.h"
+#include "tanara/store/MeetingArchive.h"
 #include "tanara/store/MeetingStore.h"
 
 #include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
 #include <QEventLoop>
 #include <QMetaMethod>
 #include <QTimer>
@@ -107,6 +110,31 @@ void ShellActions::attachController()
         else
             toast(tr("%1, %2 — a hibásak a kártyájukon újrafuttathatók.")
                       .arg(tr("%n téma kész", nullptr, okCount), tr("%n hibázott", nullptr, failCount)));
+    });
+    // Archívum-művelet vége (export: a feladat-sáv mutatta a haladást; import: kijelölés).
+    connect(c, &tanara::AppController::archiveFinished, this,
+            [this](const QString& opId, bool ok, const QString& meetingId, const QString& path,
+                   const QString& message) {
+        const bool isExport = opId.startsWith(QLatin1String("export:"));
+        if (isExport) {
+            if (ok)
+                emit toastRequested(tr("Exportálva: %1").arg(QDir::toNativeSeparators(path)), {}, {}, false,
+                                    {}, path);
+            else if (message == tanara::AppController::tr("Megszakítva."))
+                toast(tr("Az exportálás megszakítva."));
+            else
+                emit toastRequested(tr("Az exportálás nem sikerült: %1").arg(message),
+                                    QStringLiteral("danger"), {}, false);
+            return;
+        }
+        if (!ok) {
+            emit toastRequested(tr("Az archívum importálása nem sikerült: %1").arg(message),
+                                QStringLiteral("danger"), {}, false);
+            return;
+        }
+        showMeeting(meetingId);
+        setCurrentTab(0);
+        toast(tr("Importálva archívumból: %1").arg(meeting(meetingId).title));
     });
     connect(c, &tanara::AppController::mixdownUpdated, this, [this](const QString&, bool ok) {
         if (!ok) emit toastRequested(tr("A lekeverés nem sikerült."), QStringLiteral("danger"), {}, false);
@@ -324,6 +352,68 @@ void ShellActions::openImport(const QVariantList& files)
         for (const QString& p : picked) list << p;
     }
     emit importDialogRequested(list);
+}
+
+// ---- megbeszélés-archívum --------------------------------------------------------------
+
+void ShellActions::exportArchive(const QString& meetingId)
+{
+    ShellBridge* b = bridge();
+    if (!m_controller || !b)
+        return;
+    const tanara::Meeting m = meeting(meetingId);
+    if (m.id.isEmpty())
+        return;
+    QString dir = m_lastArchiveDir;
+    if (dir.isEmpty() || !QFileInfo(dir).isDir()) {
+        const QString tanaraDir = QDir::home().filePath(QStringLiteral("Tanara"));
+        dir = QFileInfo(tanaraDir).isDir() ? tanaraDir : QDir::homePath();
+    }
+    QString path = b->pickSaveFile(tr("Exportálás archívumba"),
+                                   QDir(dir).filePath(tanara::MeetingArchive::suggestedFileName(m)),
+                                   tr("Tanara-archívum (*.tanara.zip)"));
+    if (path.isEmpty())
+        return;                           // visszalépett
+    if (!path.endsWith(QLatin1String(".zip"), Qt::CaseInsensitive))
+        path += tanara::MeetingArchive::fileSuffix();
+    m_lastArchiveDir = QFileInfo(path).absolutePath();
+    m_controller->exportMeetingArchive(meetingId, path);   // hiba: errorOccurred → toast
+}
+
+namespace {
+QString localPath(const QVariant& pathOrUrl)
+{
+    const QUrl url = pathOrUrl.toUrl();
+    return url.isLocalFile() ? url.toLocalFile() : pathOrUrl.toString();
+}
+} // namespace
+
+void ShellActions::importArchive(const QVariant& pathOrUrl)
+{
+    if (!m_controller)
+        return;
+    QString file = localPath(pathOrUrl);
+    if (file.isEmpty()) {
+        ShellBridge* b = bridge();
+        if (!b)
+            return;
+        file = b->pickArchiveFile();
+        if (file.isEmpty())
+            return;                       // visszalépett
+    }
+    if (!m_controller->importMeetingArchive(file).isEmpty())
+        toast(tr("Archívum importálása: %1…").arg(QFileInfo(file).fileName()));
+}
+
+bool ShellActions::isArchiveFile(const QVariant& pathOrUrl) const
+{
+    return localPath(pathOrUrl).endsWith(QLatin1String(".zip"), Qt::CaseInsensitive);
+}
+
+void ShellActions::revealFile(const QString& path)
+{
+    if (!path.isEmpty())
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 }
 
 // ---- kapuzás ---------------------------------------------------------------------------

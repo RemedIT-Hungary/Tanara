@@ -119,7 +119,8 @@ ApplicationWindow {
             // a kijelölés után frissül, ezért a következő körben nézzük meg).
             Qt.callLater(() => { if (!currentMeeting.hasTranscript) shellActions.currentTab = 0 })
         }
-        onToastRequested: (text, tone, requestId, usageLink, undoKey) => toast.show(text, tone, requestId, usageLink, undoKey)
+        onToastRequested: (text, tone, requestId, usageLink, undoKey, revealPath) =>
+                          toast.show(text, tone, requestId, usageLink, undoKey, revealPath)
         // A címke-lépések egy közös visszavonási vermen vannak (TagService): bármelyik modell
         // visszavonása a legutóbbi lépést veszi vissza.
         onUndoRequested: (undoKey) => { if (undoKey === "tags") currentMeeting.tags.undo() }
@@ -333,6 +334,12 @@ ApplicationWindow {
                             iconName: "import"
                             shortcutText: "Ctrl+I"
                             onTriggered: shellActions.openImport()
+                        }
+                        TMenuItem {
+                            objectName: "importArchiveItem"
+                            text: qsTr("Megbeszélés importálása archívumból…")
+                            iconName: "folder-open"
+                            onTriggered: shellActions.importArchive("")
                         }
                         TMenuSeparator {}
                         TMenuItem {
@@ -632,12 +639,13 @@ ApplicationWindow {
                     width: Math.min(implicitWidth, parent.width - 2 * Theme.space5)
                     onUsageLinkActivated: if (App.bridge) App.bridge.openUsageLog()
                     onUndoActivated: (undoKey) => { toast.hide(); shellActions.undoFromToast(undoKey) }
+                    onRevealActivated: (path) => { toast.hide(); shellActions.revealFile(path) }
                 }
             }
         }
     }
 
-    // ---- húzd-és-ejtsd: hang- / videófájl az ablakra → importálás ----
+    // ---- húzd-és-ejtsd: hang- / videófájl az ablakra → importálás; *.zip → archívum-import ----
     DropArea {
         id: windowDrop
         anchors.fill: parent
@@ -646,7 +654,13 @@ ApplicationWindow {
         onDropped: (drop) => {
             if (!drop.hasUrls)
                 return
-            shellActions.openImport(drop.urls)
+            const audio = []
+            for (const url of drop.urls) {
+                if (shellActions.isArchiveFile(url)) shellActions.importArchive(url)
+                else audio.push(url)
+            }
+            if (audio.length > 0)
+                shellActions.openImport(audio)
             drop.accept()
         }
     }
@@ -684,7 +698,8 @@ ApplicationWindow {
                 TLabel {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv.")
+                    text: qsTr("A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv. "
+                               + "Egy .tanara.zip archívum a teljes megbeszélést hozza be.")
                     muted: true
                     font.pixelSize: Theme.fontSmall
                     cssLineHeight: 1.5
