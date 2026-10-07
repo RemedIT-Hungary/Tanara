@@ -225,6 +225,19 @@ set right away (`TagService::create`); `suggestions` come from
 only lasts for this dialog). When `importFinished` arrives the chosen ids go onto the new
 meeting (`TagService::setTags`).
 
+### Meeting archive (export / import)
+
+"…" menu in `MeetingHeader` → "Exportálás archívumba…" calls `ShellActions.exportArchive(id)`:
+`ShellBridge::pickSaveFile` (proposed `<folder>.tanara.zip` in the last used folder or `~/Tanara`),
+then `AppController::exportMeetingArchive` on a worker thread. The progress is a
+`JobKind::Export` task in the `TaskStrip` (cancellable); `archiveFinished` gives a toast with
+"Megnyitás mappában" (`ShellToast.revealPath` → `ShellActions.revealFile`). "Fájl → Megbeszélés
+importálása archívumból…", the empty-library row and a dropped `*.zip` call
+`ShellActions.importArchive(pathOrUrl)` (`ShellBridge::pickArchiveFile` when empty) →
+`AppController::importMeetingArchive` → on success the new meeting is selected; errors come as
+a danger toast. Main.qml splits dropped URLs with `ShellActions.isArchiveFile`: archives go to
+the archive import, everything else to `openImport`. Format and checks: `core/include/tanara/store/MeetingArchive.h`.
+
 Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (file
 pickers, all Tanara Cloud dialogs and chrome; it owns the `PeopleWindowHost` and the `SettingsWindowHost` and re-evaluates
 readiness, the recorder's device policy and the cloud chrome when Settings saves); `ShellRecorderHost` is the only

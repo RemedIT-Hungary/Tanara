@@ -203,6 +203,28 @@ The Summary tab has two modes:
   in its own job, then merges the results. Tanara persists the analysis, so you
   can stop it and continue later.
 
+### Export / import (move a meeting to another computer)
+
+A meeting can travel as one file. In the meeting header, **… → Exportálás
+archívumba…** writes `<folder name>.tanara.zip`; the progress shows in the task
+strip, and the finished toast opens the folder. On the other computer, use
+**Fájl → Megbeszélés importálása archívumból…**, drop the file on the window, or
+run `tanara-cli import-archive <archive.zip>`. The meeting then looks as if you
+recorded it on that computer.
+
+The archive is a plain ZIP: one folder with the same name as the meeting folder,
+plus `tanara-archive.json` (format version 1, app version, export time, meeting
+id, title, start, duration, track count, tag names). It holds the audio tracks,
+`meeting.json`, the mixdown, the transcript with the speaker corrections, and
+the summary. It does not hold the lock file, temporary files, transcript
+backups, or derived data (`*.embeddings.bin`, `profile.json`); Tanara rebuilds
+these. On import, Tanara maps the tags to the local tag set by name and creates
+the missing ones. Tanara refuses the import when a recording folder with the
+same name, or the same meeting, is already in the library — it never overwrites.
+
+To take over a plain meeting folder (for example from a USB drive), use
+`tanara-cli adopt <folder>`.
+
 ### Recorder mode (`tanara --record`)
 
 `tanara --record` opens only the floating recorder, without the main window, and
@@ -263,6 +285,9 @@ page also counts as a call when "meet" is on the list.
 devices                         list capture devices
 record [--title T --seconds N --device IDX]
 list                            list meetings
+adopt <folder>                  copy a meeting folder into the library (index only this one)
+export <id> [<archive.zip>]     pack a meeting into <folder name>.tanara.zip
+import-archive <archive.zip>    bring an exported meeting into this library
 reindex                         rebuild the index from the meeting folders on disk
 transcribe <meetingId>
 summarize  <meetingId>
@@ -275,6 +300,8 @@ detect [--watch] [--interval N] [--app NAME]  # run the call detector (the watch
 embed-probe <model> <audio> <startMs> <endMs>   # dump one voice embedding (diagnostics)
 cloud status|login|logout|use|tier|lang|models|estimate|accept-terms|pending|waitlist
 ```
+
+The CLI output is always English (see `cli/README.md`).
 
 ### Tanara Cloud (optional, paid service)
 
