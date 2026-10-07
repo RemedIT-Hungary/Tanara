@@ -607,6 +607,14 @@
         <translation>Already have a recording? Import an audio or video file (you can also drop it here): it gets a transcript and a summary just the same.</translation>
     </message>
     <message>
+        <source>Másik gépen rögzített megbeszélést hoznál át (.tanara.zip)?</source>
+        <translation>Bringing over a meeting recorded on another machine (.tanara.zip)?</translation>
+    </message>
+    <message>
+        <source>Archívum importálása</source>
+        <translation>Import archive</translation>
+    </message>
+    <message>
         <source>A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást észlel. A felvételt mindig te indítod.</source>
         <translation>The call watcher runs in the tray and notifies you when it detects a Teams, Meet or Zoom call. You always start the recording yourself.</translation>
     </message>
@@ -959,6 +967,10 @@
         <translation>Import audio file…</translation>
     </message>
     <message>
+        <source>Megbeszélés importálása archívumból…</source>
+        <translation>Import meeting from archive…</translation>
+    </message>
+    <message>
         <source>Beállítások…</source>
         <translation>Settings…</translation>
     </message>
@@ -1019,8 +1031,8 @@
         <translation>Drop to import</translation>
     </message>
     <message>
-        <source>A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv.</source>
-        <translation>The audio or video files become a new meeting: one track per file.</translation>
+        <source>A hang- vagy videófájlokból új megbeszélés lesz: fájlonként egy sáv. Egy .tanara.zip archívum a teljes megbeszélést hozza be.</source>
+        <translation>Audio or video files become a new meeting, one track per file. A .tanara.zip archive brings in the whole meeting.</translation>
     </message>
     <message>
         <source>Felvétel leállítása, kilépés utána…</source>
@@ -1048,6 +1060,109 @@
     </message>
 </context>
 <context>
+    <name>MeetingArchive</name>
+    <message>
+        <source>A megbeszélés mappája nem található: %1</source>
+        <translation>The meeting folder was not found: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum nem hozható létre: %1 (%2)</source>
+        <translation>The archive could not be created: %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Az archívum írása nem sikerült: %1</source>
+        <translation>Writing the archive failed: %1</translation>
+    </message>
+    <message>
+        <source>Megszakítva.</source>
+        <translation>Cancelled.</translation>
+    </message>
+    <message>
+        <source>A fájl nem olvasható: %1 (%2)</source>
+        <translation>The file could not be read: %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Az archívum írása nem sikerült (%1): %2</source>
+        <translation>Writing the archive failed (%1): %2</translation>
+    </message>
+    <message>
+        <source>Az archívum lezárása nem sikerült: %1</source>
+        <translation>Finalising the archive failed: %1</translation>
+    </message>
+    <message>
+        <source>A meglévő fájl nem írható felül: %1</source>
+        <translation>The existing file could not be overwritten: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum nem nevezhető át: %1</source>
+        <translation>The archive could not be renamed: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum nem nyitható meg: %1 (%2)</source>
+        <translation>The archive could not be opened: %1 (%2)</translation>
+    </message>
+    <message>
+        <source>A fájl nem érvényes ZIP-archívum: %1</source>
+        <translation>The file is not a valid ZIP archive: %1</translation>
+    </message>
+    <message>
+        <source>Sérült archívum: %1</source>
+        <translation>Corrupted archive: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum tiltott útvonalat tartalmaz: %1</source>
+        <translation>The archive contains a forbidden path: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum titkosított vagy nem támogatott bejegyzést tartalmaz: %1</source>
+        <translation>The archive contains an encrypted or unsupported entry: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum gyökerében ismeretlen fájl van: %1</source>
+        <translation>There is an unknown file in the archive root: %1</translation>
+    </message>
+    <message>
+        <source>Az archívumban több megbeszélés-mappa van (%1, %2) — egyszerre egy hozható be.</source>
+        <translation>The archive contains several meeting folders (%1, %2) — only one can be imported at a time.</translation>
+    </message>
+    <message>
+        <source>Ez nem Tanara-archívum (hiányzik a %1).</source>
+        <translation>This is not a Tanara archive (%1 is missing).</translation>
+    </message>
+    <message>
+        <source>Sérült archívum-manifeszt.</source>
+        <translation>Corrupted archive manifest.</translation>
+    </message>
+    <message>
+        <source>Sérült archívum-manifeszt: %1</source>
+        <translation>Corrupted archive manifest: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum formátum-verziója (%1) nem támogatott; ez a Tanara a(z) %2. verziót ismeri.</source>
+        <translation>The archive format version (%1) is not supported; this Tanara knows version %2.</translation>
+    </message>
+    <message>
+        <source>Az archívumban nincs megbeszélés (meeting.json vagy track_*.ogg).</source>
+        <translation>The archive contains no meeting (meeting.json or track_*.ogg).</translation>
+    </message>
+    <message>
+        <source>Az ideiglenes mappa nem hozható létre: %1</source>
+        <translation>The temporary folder could not be created: %1</translation>
+    </message>
+    <message>
+        <source>A mappa nem hozható létre: %1</source>
+        <translation>The folder could not be created: %1</translation>
+    </message>
+    <message>
+        <source>A fájl nem írható: %1 (%2)</source>
+        <translation>The file could not be written: %1 (%2)</translation>
+    </message>
+    <message>
+        <source>A kicsomagolás nem sikerült (%1): %2</source>
+        <translation>Extraction failed (%1): %2</translation>
+    </message>
+</context>
+<context>
     <name>MeetingHeader</name>
     <message>
         <source>A megbeszélés címe</source>
@@ -1072,6 +1187,10 @@
     <message>
         <source>Megnyitás mappában</source>
         <translation>Show in folder</translation>
+    </message>
+    <message>
+        <source>Exportálás archívumba…</source>
+        <translation>Export to archive…</translation>
     </message>
     <message>
         <source>Beszélők újraellenőrzése…</source>
@@ -1127,6 +1246,37 @@
     <message>
         <source>Csere</source>
         <translation>Replace</translation>
+    </message>
+</context>
+<context>
+    <name>MeetingStore</name>
+    <message>
+        <source>Nincs ilyen mappa: %1</source>
+        <translation>No such folder: %1</translation>
+    </message>
+    <message>
+        <source>A mappában nincs meeting.json és nincs track_*.ogg sáv: %1</source>
+        <translation>The folder has neither a meeting.json nor any track_*.ogg track: %1</translation>
+    </message>
+    <message>
+        <source>A meeting.json nem olvasható: %1</source>
+        <translation>meeting.json could not be read: %1</translation>
+    </message>
+    <message>
+        <source>Már van ilyen nevű felvétel: %1 — a meglévőt nem írom felül.</source>
+        <translation>A recording with this name already exists: %1 — the existing one is not overwritten.</translation>
+    </message>
+    <message>
+        <source>Ez a megbeszélés már szerepel a könyvtárban: „%1” (%2).</source>
+        <translation>This meeting is already in the library: “%1” (%2).</translation>
+    </message>
+    <message>
+        <source>A felvételek mappája nem hozható létre: %1</source>
+        <translation>The recordings folder could not be created: %1</translation>
+    </message>
+    <message>
+        <source>A mappa másolása nem sikerült: %1 → %2</source>
+        <translation>Copying the folder failed: %1 → %2</translation>
     </message>
 </context>
 <context>
@@ -3103,6 +3253,10 @@
         <translation>Log on the web</translation>
     </message>
     <message>
+        <source>Megnyitás mappában</source>
+        <translation>Show in folder</translation>
+    </message>
+    <message>
         <source>Visszavonás</source>
         <translation>Undo</translation>
     </message>
@@ -4751,506 +4905,6 @@
     </message>
 </context>
 <context>
-    <name>cli</name>
-    <message>
-        <source>egyéb</source>
-        <translation>other</translation>
-    </message>
-    <message>
-        <source>Felvehető eszközök (%1):</source>
-        <translation>Recordable devices (%1):</translation>
-    </message>
-    <message>
-        <source>Meetingek (%1):</source>
-        <translation>Meetings (%1):</translation>
-    </message>
-    <message>
-        <source>Index újraépítve a lemezről — %1 meeting.</source>
-        <translation>Index rebuilt from disk — %1 meetings.</translation>
-    </message>
-    <message>
-        <source>Nincs elérhető meeting-detektor ezen a platformon (pw-dump?).</source>
-        <translation>No meeting detector available on this platform (pw-dump?).</translation>
-    </message>
-    <message>
-        <source>Detektor: %1  (ismert appok: %2)</source>
-        <translation>Detector: %1  (known apps: %2)</translation>
-    </message>
-    <message>
-        <source>  ● MEETING: %1  [appId=%2, ablak="%3", forrás=%4]</source>
-        <translation>  ● MEETING: %1  [appId=%2, window="%3", source=%4]</translation>
-    </message>
-    <message>
-        <source>  ○ nincs aktív hívás</source>
-        <translation>  ○ no active call</translation>
-    </message>
-    <message>
-        <source>(figyelés %1 mp-enként — Ctrl-C a leállításhoz)</source>
-        <translation>(checking every %1 s — Ctrl-C to stop)</translation>
-    </message>
-    <message>
-        <source>Nincs kiválasztható eszköz.</source>
-        <translation>No selectable device.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Felvétel: "%1" — %n sáv</source>
-        <translation>
-            <numerusform>Recording: "%1" — %n track</numerusform>
-            <numerusform>Recording: "%1" — %n tracks</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>KÉSZ. Mappa: %1</source>
-        <translation>DONE. Folder: %1</translation>
-    </message>
-    <message>
-        <source>  sáv: %1  (%2)</source>
-        <translation>  track: %1  (%2)</translation>
-    </message>
-    <message>
-        <source>HIBA: %1</source>
-        <translation>ERROR: %1</translation>
-    </message>
-    <message>
-        <source>(Felvétel folyik — nyomj ENTER-t a leállításhoz)</source>
-        <translation>(Recording in progress — press ENTER to stop)</translation>
-    </message>
-    <message>
-        <source>Érvénytelen dátum: %1 (ISO formátum kell, pl. 2026-03-05T14:30)</source>
-        <translation>Invalid date: %1 (ISO format required, e.g. 2026-03-05T14:30)</translation>
-    </message>
-    <message>
-        <source>Ismeretlen kapcsoló: %1</source>
-        <translation>Unknown option: %1</translation>
-    </message>
-    <message>
-        <source>Használat: import &lt;fájl&gt;… [--title T] [--date ISO] [--split-channels] [--own-track N]</source>
-        <translation>Usage: import &lt;file&gt;… [--title T] [--date ISO] [--split-channels] [--own-track N]</translation>
-    </message>
-    <message>
-        <source>A --own-track értéke 1 és %1 közé essen.</source>
-        <translation>--own-track must be between 1 and %1.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Importálás: "%1" — %n sáv</source>
-        <translation>
-            <numerusform>Importing: "%1" — %n track</numerusform>
-            <numerusform>Importing: "%1" — %n tracks</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>  (saját mikrofon)</source>
-        <translation>  (my microphone)</translation>
-    </message>
-    <message>
-        <source>Meeting: %1</source>
-        <translation>Meeting: %1</translation>
-    </message>
-    <message>
-        <source>Hiányzó meetingId.</source>
-        <translation>Missing meetingId.</translation>
-    </message>
-    <message>
-        <source>Nem indítható: %1</source>
-        <translation>Cannot start: %1</translation>
-    </message>
-    <message>
-        <source>Indítod? [i/N] </source>
-        <translation>Start? [y/N] </translation>
-    </message>
-    <message>
-        <source>Megszakítva — nem terheltünk semmit.</source>
-        <translation>Cancelled — nothing was charged.</translation>
-    </message>
-    <message>
-        <source>Ez az átírás %1 volt. Egyenleg: %2.</source>
-        <translation>This transcription cost %1. Balance: %2.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Az összefoglaló %1 volt (%n rész). Egyenleg: %2.</source>
-        <translation>
-            <numerusform>This summary cost %1 (%n part). Balance: %2.</numerusform>
-            <numerusform>This summary cost %1 (%n parts). Balance: %2.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>A témák kigyűjtése %1 volt. Egyenleg: %2.</source>
-        <translation>Collecting the topics cost %1. Balance: %2.</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló %1 volt. Egyenleg: %2.</source>
-        <translation>This summary cost %1. Balance: %2.</translation>
-    </message>
-    <message>
-        <source>Az átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.</source>
-        <translation>The transcription failed on the provider side. We refunded the %1 charge.</translation>
-    </message>
-    <message>
-        <source>Hibaazonosító: %1</source>
-        <translation>Error ID: %1</translation>
-    </message>
-    <message>
-        <source>Átirat kész: %1</source>
-        <translation>Transcript done: %1</translation>
-    </message>
-    <message>
-        <source>Összefoglaló kész: %1</source>
-        <translation>Summary done: %1</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n téma — elemzés indul…</source>
-        <translation>
-            <numerusform>%n topic — starting the analysis…</numerusform>
-            <numerusform>%n topics — starting the analysis…</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Használat: tags list [&lt;meetingId&gt;] | tags add|remove &lt;meetingId&gt; &lt;név&gt; | tags suggest &lt;meetingId&gt; [--llm]</source>
-        <translation>Usage: tags list [&lt;meetingId&gt;] | tags add|remove &lt;meetingId&gt; &lt;name&gt; | tags suggest &lt;meetingId&gt; [--llm]</translation>
-    </message>
-    <message>
-        <source>Címkék (%1):</source>
-        <translation>Tags (%1):</translation>
-    </message>
-    <message>
-        <source>HIBA: ismeretlen meeting vagy üres név.</source>
-        <translation>ERROR: unknown meeting or empty name.</translation>
-    </message>
-    <message>
-        <source>Felrakva: #%1</source>
-        <translation>Added: #%1</translation>
-    </message>
-    <message>
-        <source>HIBA: nincs ilyen címke.</source>
-        <translation>ERROR: no such tag.</translation>
-    </message>
-    <message>
-        <source>Levéve: #%1</source>
-        <translation>Removed: #%1</translation>
-    </message>
-    <message>
-        <source>Javaslatok (%1):</source>
-        <translation>Suggestions (%1):</translation>
-    </message>
-    <message>
-        <source>HIBA: nem jött javaslat (nincs összefoglaló?).</source>
-        <translation>ERROR: no suggestions came back (no summary?).</translation>
-    </message>
-    <message>
-        <source>Használat: rename &lt;meetingId&gt; &lt;nyersCímke&gt; &lt;név&gt;</source>
-        <translation>Usage: rename &lt;meetingId&gt; &lt;rawLabel&gt; &lt;name&gt;</translation>
-    </message>
-    <message>
-        <source>Átnevezve: "%1" → "%2"</source>
-        <translation>Renamed: "%1" → "%2"</translation>
-    </message>
-    <message>
-        <source>Használat: identify &lt;meetingId&gt;</source>
-        <translation>Usage: identify &lt;meetingId&gt;</translation>
-    </message>
-    <message>
-        <source>Auto-azonosítás kész. Leképezés (speakerMap):</source>
-        <translation>Auto-identification done. Mapping (speakerMap):</translation>
-    </message>
-    <message>
-        <source>  (üres — nincs küszöb feletti találat, vagy nincs modell/lenyomat)</source>
-        <translation>  (empty — no match above threshold, or no model/voiceprint)</translation>
-    </message>
-    <message>
-        <source>Használat: participants &lt;meetingId&gt;</source>
-        <translation>Usage: participants &lt;meetingId&gt;</translation>
-    </message>
-    <message>
-        <source>Résztvevők azonosítása (átírás előtt, lokálisan)…</source>
-        <translation>Identifying participants (before transcription, locally)…</translation>
-    </message>
-    <message>
-        <source>  (nincs találat — nincs modell/aktív sáv, vagy csend)</source>
-        <translation>  (no match — no model/active track, or silence)</translation>
-    </message>
-    <message>
-        <source>ISMERETLEN</source>
-        <translation>UNKNOWN</translation>
-    </message>
-    <message numerus="yes">
-        <source>  • %1  →  %2   [%n ablak, minta: %3]</source>
-        <translation>
-            <numerusform>  • %1  →  %2   [%n window, sample: %3]</numerusform>
-            <numerusform>  • %1  →  %2   [%n windows, sample: %3]</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Hang-lenyomatok (%1, %2):</source>
-        <translation>Voiceprints (%1, %2):</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n személy</source>
-        <translation>
-            <numerusform>%n person</numerusform>
-            <numerusform>%n people</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n lenyomat</source>
-        <translation>
-            <numerusform>%n voiceprint</numerusform>
-            <numerusform>%n voiceprints</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>Parancsok: devices | record [--title T --seconds N --device IDX] | list | import &lt;fájl&gt;… [--title T --date ISO --split-channels --own-track N] | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;nyersCímke&gt; &lt;név&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</source>
-        <translation>Commands: devices | record [--title T --seconds N --device IDX] | list | import &lt;file&gt;… [--title T --date ISO --split-channels --own-track N] | transcribe &lt;id&gt; | summarize &lt;id&gt; | rename &lt;id&gt; &lt;rawLabel&gt; &lt;name&gt; | identify &lt;id&gt; | voiceprints | cloud &lt;status|login|estimate|…&gt;</translation>
-    </message>
-    <message>
-        <source>Bejelentkezve: %1</source>
-        <translation>Signed in as %1</translation>
-    </message>
-    <message>
-        <source>Egyenleg: %1 (%2)</source>
-        <translation>Balance: %1 (%2)</translation>
-    </message>
-    <message>
-        <source>≈ %1 Pontos · ≈ %2 Gyors átírás</source>
-        <translation>≈ %1 Accurate · ≈ %2 Fast transcription</translation>
-    </message>
-    <message>
-        <source>Elfogyott az egyenleged. A Tanara Cloud feldolgozás a feltöltésig szünetel; a saját kulcsos mód továbbra is működik.</source>
-        <translation>Your balance is used up. Tanara Cloud processing is paused until you top up; your own-keys mode keeps working.</translation>
-    </message>
-    <message>
-        <source>Kevés az egyenleged: %1.</source>
-        <translation>Your balance is low: %1.</translation>
-    </message>
-    <message>
-        <source>Próbaegyenleg: %1 · online feltöltés: %2</source>
-        <translation>Trial balance: %1 · online top-up: %2</translation>
-    </message>
-    <message>
-        <source>van</source>
-        <translation>available</translation>
-    </message>
-    <message>
-        <source>nincs (írj nekünk)</source>
-        <translation>not yet (contact us)</translation>
-    </message>
-    <message>
-        <source>ÁSZF: elfogadva %1, hatályos %2</source>
-        <translation>Terms: accepted %1, in effect %2</translation>
-    </message>
-    <message>
-        <source>A feldolgozáshoz el kell fogadnod az új ÁSZF-et: tanara-cli cloud accept-terms</source>
-        <translation>Accept the new Terms to continue processing: tanara-cli cloud accept-terms</translation>
-    </message>
-    <message>
-        <source>Új ÁSZF (%1), hatályos: %2 — elfogadás: tanara-cli cloud accept-terms</source>
-        <translation>New Terms (%1), effective %2 — accept with: tanara-cli cloud accept-terms</translation>
-    </message>
-    <message>
-        <source>Fiókom a weben: %1</source>
-        <translation>My account on the web: %1</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloudhoz frissítés kell (legalább %1).</source>
-        <translation>Tanara Cloud requires an update (%1 or newer).</translation>
-    </message>
-    <message>
-        <source>A becslés nem érkezett meg.</source>
-        <translation>The estimate did not arrive.</translation>
-    </message>
-    <message>
-        <source>Becsült költség: ≈ %1</source>
-        <translation>Estimated cost: ≈ %1</translation>
-    </message>
-    <message>
-        <source>Becsült költség: ≈ %1 (%2 – %3 között)</source>
-        <translation>Estimated cost: ≈ %1 (%2 – %3)</translation>
-    </message>
-    <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
-    </message>
-    <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
-    </message>
-    <message>
-        <source>Átírás (%1), %2</source>
-        <translation>Transcription (%1), %2</translation>
-    </message>
-    <message>
-        <source>Összefoglaló (%1, %2)</source>
-        <translation>Summary (%1, %2)</translation>
-    </message>
-    <message>
-        <source>komplex</source>
-        <translation>complex</translation>
-    </message>
-    <message>
-        <source>gyors</source>
-        <translation>quick</translation>
-    </message>
-    <message>
-        <source>kb. %1</source>
-        <translation>about %1</translation>
-    </message>
-    <message>
-        <source>pontos</source>
-        <translation>exact</translation>
-    </message>
-    <message>
-        <source>becsült</source>
-        <translation>estimated</translation>
-    </message>
-    <message>
-        <source>Egyenleged: %1 — utána kb. %2 marad</source>
-        <translation>Your balance: %1 — about %2 left afterwards</translation>
-    </message>
-    <message>
-        <source>Egyenleged: %1</source>
-        <translation>Your balance: %1</translation>
-    </message>
-    <message>
-        <source>Valószínűleg elég, de kevés tartalék marad. Ha menet közben elfogy, a már elkészült részek díja terhelődik, és feltöltés után folytathatod.</source>
-        <translation>Probably enough, but with little margin. If it runs out midway, you pay only for the finished parts and can continue after topping up.</translation>
-    </message>
-    <message>
-        <source>Ehhez kb. %1 kell, az egyenleged %2.</source>
-        <translation>This needs about %1; your balance is %2.</translation>
-    </message>
-    <message>
-        <source>Az indításhoz tölts fel. Nem terheltünk semmit.</source>
-        <translation>Top up to start. Nothing was charged.</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloud mód nincs bekapcsolva (settings.json: "cloudEnabled": true, vagy TANARA_CLOUD=live).</source>
-        <translation>Tanara Cloud mode is off (settings.json: "cloudEnabled": true, or TANARA_CLOUD=live).</translation>
-    </message>
-    <message>
-        <source>Jelentkezz be a Tanara Cloudba: tanara-cli cloud login</source>
-        <translation>Sign in to Tanara Cloud: tanara-cli cloud login</translation>
-    </message>
-    <message>
-        <source>Nyisd meg ezt a címet a böngészőben, és hagyd jóvá a kódot:</source>
-        <translation>Open this address in your browser and approve the code:</translation>
-    </message>
-    <message>
-        <source>Kód: %1 (lejár %2 perc múlva)</source>
-        <translation>Code: %1 (expires in %2 min)</translation>
-    </message>
-    <message>
-        <source>Sikeres bejelentkezés: %1</source>
-        <translation>Signed in: %1</translation>
-    </message>
-    <message>
-        <source>A kapcsolódást elutasítottad a böngészőben.</source>
-        <translation>You denied the connection in the browser.</translation>
-    </message>
-    <message>
-        <source>A kód lejárt.</source>
-        <translation>The code expired.</translation>
-    </message>
-    <message>
-        <source>Használat: cloud key &lt;api_kulcs&gt;</source>
-        <translation>Usage: cloud key &lt;api_key&gt;</translation>
-    </message>
-    <message>
-        <source>API-kulcs elmentve.</source>
-        <translation>API key saved.</translation>
-    </message>
-    <message>
-        <source>Kijelentkezve; a kulcsot ezen a gépen töröltük és visszavontuk.</source>
-        <translation>Signed out; the key was deleted on this computer and revoked.</translation>
-    </message>
-    <message>
-        <source>Átírás és összefoglaló: Tanara Cloud.</source>
-        <translation>Transcription and summary: Tanara Cloud.</translation>
-    </message>
-    <message>
-        <source>Átírás és összefoglaló: saját kulcsok (BYO).</source>
-        <translation>Transcription and summary: your own keys (BYO).</translation>
-    </message>
-    <message>
-        <source>Használat: cloud tier &lt;stt|llm&gt; &lt;fast|accurate&gt;</source>
-        <translation>Usage: cloud tier &lt;stt|llm&gt; &lt;fast|accurate&gt;</translation>
-    </message>
-    <message>
-        <source>Szint beállítva: %1 = %2</source>
-        <translation>Tier set: %1 = %2</translation>
-    </message>
-    <message>
-        <source>A meeting nyelve: %1</source>
-        <translation>Meeting language: %1</translation>
-    </message>
-    <message>
-        <source>automatikus</source>
-        <translation>automatic</translation>
-    </message>
-    <message>
-        <source>%1 / óra</source>
-        <translation>%1 / hour</translation>
-    </message>
-    <message>
-        <source>%1 / 1M bemeneti token</source>
-        <translation>%1 / 1M input tokens</translation>
-    </message>
-    <message>
-        <source>  ▲ nem különíti el a beszélőket</source>
-        <translation>  ▲ doesn't separate speakers</translation>
-    </message>
-    <message>
-        <source>  ▲ ehhez a nyelvhez nem ajánlott</source>
-        <translation>  ▲ not recommended for this language</translation>
-    </message>
-    <message>
-        <source>Használat: cloud estimate &lt;meetingId&gt; [transcribe|summarize] [--mode quick|complex]</source>
-        <translation>Usage: cloud estimate &lt;meetingId&gt; [transcribe|summarize] [--mode quick|complex]</translation>
-    </message>
-    <message>
-        <source>Nincs elfogadandó ÁSZF-verzió.</source>
-        <translation>There is no Terms version to accept.</translation>
-    </message>
-    <message>
-        <source>Elfogadtad az ÁSZF %1 verzióját.</source>
-        <translation>You accepted Terms version %1.</translation>
-    </message>
-    <message>
-        <source>Függő átírások: %1</source>
-        <translation>Pending transcriptions: %1</translation>
-    </message>
-    <message>
-        <source>Az előző átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk. Egyenleg: %2.</source>
-        <translation>Your previous transcription failed on the provider side. We refunded the %1 charge. Balance: %2.</translation>
-    </message>
-    <message>
-        <source>Hátralévő függő átírások: %1</source>
-        <translation>Remaining pending transcriptions: %1</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloud várólista ebben a buildben ki van kapcsolva.</source>
-        <translation>The Tanara Cloud waitlist is disabled in this build.</translation>
-    </message>
-    <message>
-        <source>Ellenőrizd az e-mail címet.</source>
-        <translation>Check the e-mail address.</translation>
-    </message>
-    <message>
-        <source>A feliratkozáshoz kifejezett hozzájárulás kell (--consent): „Értesítést kérek a Tanara Cloud indulásáról. Bármikor leiratkozhatok.”</source>
-        <translation>Signing up needs explicit consent (--consent): “Notify me when Tanara Cloud launches. I can unsubscribe at any time.”</translation>
-    </message>
-    <message>
-        <source>Küldtünk egy megerősítő e-mailt.</source>
-        <translation>We sent you a confirmation e-mail.</translation>
-    </message>
-    <message>
-        <source>Eldobható e-mail címmel nem lehet feliratkozni.</source>
-        <translation>Disposable e-mail addresses are not accepted.</translation>
-    </message>
-    <message>
-        <source>Ismeretlen cloud-parancs. Használat: cloud status|login|key|logout|use|tier|lang|models|estimate|accept-terms|pending|waitlist</source>
-        <translation>Unknown cloud command. Usage: cloud status|login|key|logout|use|tier|lang|models|estimate|accept-terms|pending|waitlist</translation>
-    </message>
-</context>
-<context>
     <name>main</name>
     <message>
         <source>Tanara — Felvétel</source>
@@ -5550,6 +5204,26 @@
     <message>
         <source>Már fut egy importálás — várd meg, vagy szakítsd meg.</source>
         <translation>An import is already running — wait for it to finish or cancel it.</translation>
+    </message>
+    <message>
+        <source>Nincs ilyen megbeszélés: %1</source>
+        <translation>No such meeting: %1</translation>
+    </message>
+    <message>
+        <source>Felvétel közben a megbeszélés nem exportálható.</source>
+        <translation>The meeting cannot be exported while it is being recorded.</translation>
+    </message>
+    <message>
+        <source>Már fut egy archívum-művelet — várd meg, vagy szakítsd meg.</source>
+        <translation>An archive operation is already running — wait for it or cancel it.</translation>
+    </message>
+    <message>
+        <source>Exportálás archívumba</source>
+        <translation>Export to archive</translation>
+    </message>
+    <message>
+        <source>Megszakítva.</source>
+        <translation>Cancelled.</translation>
     </message>
     <message>
         <source>%1 / %2 beszélő</source>
@@ -6614,6 +6288,14 @@
     <message>
         <source>Hang- és videófájlok (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;Minden fájl (*)</source>
         <translation>Audio and video files (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.amr *.mp4 *.mov *.mkv *.webm *.avi *.m4v *.3gp);;All files (*)</translation>
+    </message>
+    <message>
+        <source>Megbeszélés-archívum kiválasztása</source>
+        <translation>Choose a meeting archive</translation>
+    </message>
+    <message>
+        <source>Tanara-archívum (*.tanara.zip *.zip);;Minden fájl (*)</source>
+        <translation>Tanara archive (*.tanara.zip *.zip);;All files (*)</translation>
     </message>
     <message>
         <source>Résztvevők azonosítása a hang alapján…</source>
@@ -8120,6 +7802,26 @@
         </translation>
     </message>
     <message>
+        <source>Exportálva: %1</source>
+        <translation>Exported: %1</translation>
+    </message>
+    <message>
+        <source>Az exportálás megszakítva.</source>
+        <translation>Export cancelled.</translation>
+    </message>
+    <message>
+        <source>Az exportálás nem sikerült: %1</source>
+        <translation>Export failed: %1</translation>
+    </message>
+    <message>
+        <source>Az archívum importálása nem sikerült: %1</source>
+        <translation>Importing the archive failed: %1</translation>
+    </message>
+    <message>
+        <source>Importálva archívumból: %1</source>
+        <translation>Imported from archive: %1</translation>
+    </message>
+    <message>
         <source>A lekeverés nem sikerült.</source>
         <translation>The mixdown failed.</translation>
     </message>
@@ -8138,6 +7840,18 @@
     <message>
         <source>A felvevő ebben a módban nem érhető el.</source>
         <translation>The recorder is not available in this mode.</translation>
+    </message>
+    <message>
+        <source>Exportálás archívumba</source>
+        <translation>Export to archive</translation>
+    </message>
+    <message>
+        <source>Tanara-archívum (*.tanara.zip)</source>
+        <translation>Tanara archive (*.tanara.zip)</translation>
+    </message>
+    <message>
+        <source>Archívum importálása: %1…</source>
+        <translation>Importing archive: %1…</translation>
     </message>
     <message>
         <source>Nem indítható: %1</source>
@@ -8390,6 +8104,10 @@
     <message>
         <source>Importálás</source>
         <translation>Import</translation>
+    </message>
+    <message>
+        <source>Exportálás archívumba</source>
+        <translation>Export to archive</translation>
     </message>
     <message numerus="yes">
         <source>%n beszélő</source>
