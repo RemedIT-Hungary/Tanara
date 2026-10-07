@@ -41,6 +41,12 @@ public:
     // Kimarad, amibe MÉG ÍRNAK: a recording.lock (élő PID) mappája, ill. az a mappa,
     // amelynek valamelyik sáv-fájlja az utolsó pár percben módosult.
     int recoverOrphanRecordings();
+    // Egy felvétel-mappa behúzása (pl. másik gépről, pendrive-ról): ha nem a felvételek mappája
+    // alatt van, oda MÁSOLJA (ugyanazzal a névvel; ha már létezik, hiba), a meeting.json-t a
+    // tényleges hellyel javítja, és csak EZT az egy megbeszélést veszi fel az indexbe — a többi
+    // mappát nem nézi (a törölt / teszt-felvételek nem jönnek vissza). meeting.json nélkül a
+    // track_*.ogg sávokból építi fel, „(helyreállított)” címmel. Hiba: üres Meeting + *error.
+    Meeting adoptMeetingFolder(const QString& sourceDir, QString* error = nullptr);
 
     // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.
     QVector<Meeting> loadAll();
@@ -69,6 +75,7 @@ private:
     void openDb();
     void ensureSchema();
     void upsertIndex(const Meeting& m);
+    Meeting meetingFromTrackFolder(const QString& folder) const;
     QString dbConnectionName() const;
     QString meetingJsonPath(const QString& folder) const;
     bool folderOwnedOnlyBy(const QString& id, const QString& folder) const;

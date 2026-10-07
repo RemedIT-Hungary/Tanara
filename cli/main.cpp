@@ -97,6 +97,19 @@ int main(int argc, char** argv) {
     if (cmd == "devices") return cmdDevices(app);
     if (cmd == "list")    return cmdList(app);
 
+    if (cmd == "adopt") {
+        // Egy felvétel-mappa behúzása (másik gépről, pendrive-ról): bemásolja a felvételek közé,
+        // és CSAK ezt veszi fel az indexbe. Lásd MeetingStore::adoptMeetingFolder.
+        if (args.size() < 3) { err << "adopt <mappa>\n"; return 2; }
+        QString error;
+        const Meeting m = app.store()->adoptMeetingFolder(args.at(2), &error);
+        if (m.id.isEmpty()) { err << error << "\n"; return 1; }
+        out << QCoreApplication::translate("cli", "Behúzva: %1 — %2 (%3 sáv)\n%4\n")
+                   .arg(m.title, m.id).arg(m.tracks.size()).arg(m.folder);
+        out.flush();
+        return 0;
+    }
+
     if (cmd == "reindex") {
         // Az index (SQLite cache) teljes újraépítése a lemezen lévő meeting-mappákból.
         // Hasznos, ha kézzel másoltunk be felvétel-mappát (pl. másik gépről).
@@ -494,7 +507,7 @@ int main(int argc, char** argv) {
 
     out << "tanara-cli " << libraryVersion() << "\n"
         << QCoreApplication::translate("cli",
-               "Parancsok: devices | record [--title T --seconds N --device IDX] | list | "
+               "Parancsok: devices | record [--title T --seconds N --device IDX] | list | adopt <mappa> | "
                "import <fájl>… [--title T --date ISO --split-channels --own-track N] | "
                "transcribe <id> | summarize <id> | rename <id> <nyersCímke> <név> | "
                "identify <id> | voiceprints | cloud <status|login|estimate|…>")

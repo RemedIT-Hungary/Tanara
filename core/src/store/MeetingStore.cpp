@@ -400,6 +400,42 @@ qint64 probeDurationMs(const QString& path)
 }
 } // namespace
 
+// Sáv-fájlokból (track_*.ogg) épített meeting egy olyan mappához, amelynek nincs meeting.json-ja
+// (összeomlott felvétel, vagy más gépről kézzel átmásolt sávok).
+Meeting MeetingStore::meetingFromTrackFolder(const QString& folder) const
+{
+    const QFileInfo fi(folder);
+    const QStringList oggs = QDir(folder).entryList({QStringLiteral("track_*.ogg")}, QDir::Files, QDir::Name);
+    Meeting m;
+    m.id     = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m.folder = folder;
+    // Mappanév: "yyyy-MM-dd_HHmm_<cím-slug>" (RecordingSession::start írja így).
+    const QString name = fi.fileName();
+    m.startedAt = QDateTime::fromString(name.left(15), QStringLiteral("yyyy-MM-dd_HHmm"));
+    if (!m.startedAt.isValid()) m.startedAt = fi.birthTime().isValid() ? fi.birthTime() : fi.lastModified();
+    QString slug = name.size() > 16 ? name.mid(16) : name;
+    slug.replace(QLatin1Char('-'), QLatin1Char(' '));
+    m.title = slug.trimmed().isEmpty() ? QStringLiteral("Meeting") : slug.trimmed();
+    m.title += QStringLiteral(" (helyreállított)");
+
+    int micNo = 1;
+    for (const QString& f : oggs) {
+        Track t;
+        const QString stem = f.left(f.size() - 4).mid(6);   // "track_" + ".ogg" nélkül
+        t.id         = stem;
+        t.file       = f;
+        t.deviceName = QString(stem).replace(QLatin1Char('-'), QLatin1Char(' '));
+        const bool loop = stem.startsWith(QStringLiteral("monitor-of")) || stem.contains(QStringLiteral("loopback"));
+        t.kind         = loop ? TrackKind::Loopback : TrackKind::Mic;
+        t.speakerLabel = loop ? QStringLiteral("Rendszer")
+                              : QStringLiteral("Mikrofon ") + QString::number(micNo++);
+        t.active = true;
+        m.durationMs = qMax(m.durationMs, probeDurationMs(QDir(folder).filePath(f)));
+        m.tracks.append(t);
+    }
+    return m;
+}
+
 int MeetingStore::recoverOrphanRecordings()
 {
     QDir root(m_audioDir);
@@ -434,39 +470,75 @@ int MeetingStore::recoverOrphanRecordings()
             continue;
         }
 
-        Meeting m;
-        m.id     = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        m.folder = folder;
-        // Mappanév: "yyyy-MM-dd_HHmm_<cím-slug>" (RecordingSession::start írja így).
-        const QString name = fi.fileName();
-        m.startedAt = QDateTime::fromString(name.left(15), QStringLiteral("yyyy-MM-dd_HHmm"));
-        if (!m.startedAt.isValid()) m.startedAt = fi.birthTime().isValid() ? fi.birthTime() : fi.lastModified();
-        QString slug = name.size() > 16 ? name.mid(16) : name;
-        slug.replace(QLatin1Char('-'), QLatin1Char(' '));
-        m.title = slug.trimmed().isEmpty() ? QStringLiteral("Meeting") : slug.trimmed();
-        m.title += QStringLiteral(" (helyreállított)");
-
-        int micNo = 1;
-        for (const QString& f : oggs) {
-            Track t;
-            const QString stem = f.left(f.size() - 4).mid(6);   // "track_" + ".ogg" nélkül
-            t.id         = stem;
-            t.file       = f;
-            t.deviceName = QString(stem).replace(QLatin1Char('-'), QLatin1Char(' '));
-            const bool loop = stem.startsWith(QStringLiteral("monitor-of")) || stem.contains(QStringLiteral("loopback"));
-            t.kind         = loop ? TrackKind::Loopback : TrackKind::Mic;
-            t.speakerLabel = loop ? QStringLiteral("Rendszer")
-                                  : QStringLiteral("Mikrofon ") + QString::number(micNo++);
-            t.active = true;
-            m.durationMs = qMax(m.durationMs, probeDurationMs(QDir(folder).filePath(f)));
-            m.tracks.append(t);
-        }
+        const Meeting m = meetingFromTrackFolder(folder);
         saveMeeting(m);   // meeting.json + index
         ++recovered;
-        qCInfo(lcStore).noquote() << "Árva felvétel helyreállítva:" << name
+        qCInfo(lcStore).noquote() << "Árva felvétel helyreállítva:" << fi.fileName()
                                   << "sávok:" << m.tracks.size() << "hossz(ms):" << m.durationMs;
     }
     return recovered;
+}
+
+namespace {
+// Mappa rekurzív másolása (a cél még nem létezik). Hiba esetén false, a félig kész célt a hívó takarítja.
+bool copyDirRecursive(const QString& from, const QString& to)
+{
+    QDir src(from);
+    if (!QDir().mkpath(to)) return false;
+    for (const QFileInfo& e : src.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden)) {
+        const QString dst = QDir(to).filePath(e.fileName());
+        if (e.isDir()) { if (!copyDirRecursive(e.absoluteFilePath(), dst)) return false; }
+        else if (!QFile::copy(e.absoluteFilePath(), dst)) return false;
+    }
+    return true;
+}
+} // namespace
+
+Meeting MeetingStore::adoptMeetingFolder(const QString& sourceDir, QString* error)
+{
+    auto fail = [&](const QString& msg) { if (error) *error = msg; return Meeting(); };
+    const QFileInfo src(sourceDir);
+    if (!src.isDir())
+        return fail(QStringLiteral("Nincs ilyen mappa: %1").arg(sourceDir));
+    const QString source = src.absoluteFilePath();
+    const bool hasJson = QFile::exists(meetingJsonPath(source));
+    const bool hasTracks = !QDir(source).entryList({QStringLiteral("track_*.ogg")}, QDir::Files).isEmpty();
+    if (!hasJson && !hasTracks)
+        return fail(QStringLiteral("A mappában nincs meeting.json és nincs track_*.ogg sáv: %1").arg(sourceDir));
+
+    // Cél: a felvételek mappája alatt, ugyanazzal a névvel. Ha már ott van, helyben marad.
+    const QString audioRoot = QDir(m_audioDir).absolutePath();
+    QString folder = source;
+    if (QFileInfo(source).dir().absolutePath() != audioRoot) {
+        folder = QDir(audioRoot).filePath(src.fileName());
+        if (QFileInfo::exists(folder))
+            return fail(QStringLiteral("Már van ilyen nevű felvétel-mappa: %1").arg(folder));
+        if (!copyDirRecursive(source, folder)) {
+            QDir(folder).removeRecursively();
+            return fail(QStringLiteral("A mappa másolása nem sikerült: %1 → %2").arg(source, folder));
+        }
+    }
+
+    Meeting m;
+    if (hasJson) {
+        QFile f(meetingJsonPath(folder));
+        QJsonParseError err{};
+        const QJsonDocument doc = f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll(), &err)
+                                                              : QJsonDocument();
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            return fail(QStringLiteral("A meeting.json nem olvasható: %1").arg(meetingJsonPath(folder)));
+        m = meetingFromJson(doc.object());
+        if (m.id.isEmpty())
+            m.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    } else {
+        m = meetingFromTrackFolder(folder);
+    }
+    // A lemezen lévő mappa az igazság: a más gépről hozott (pl. D:\…) útvonal helyett ez megy az indexbe.
+    m.folder = folder;
+    saveMeeting(m);   // meeting.json (javított folder) + index
+    emit meetingAdded(m.id);
+    qCInfo(lcStore).noquote() << "Felvétel-mappa behúzva:" << folder << "id:" << m.id;
+    return m;
 }
 
 void MeetingStore::rebuildIndexFromDisk()
