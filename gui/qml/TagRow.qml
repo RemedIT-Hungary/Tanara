@@ -77,6 +77,7 @@ FocusScope {
     }
     TagInputModel {
         id: ownInputModel
+        controller: App.controller
         excludeIds: root.effectiveModel ? root.effectiveModel.tagIds : []
     }
 

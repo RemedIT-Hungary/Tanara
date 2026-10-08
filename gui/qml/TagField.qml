@@ -34,8 +34,11 @@ Rectangle {
 
     TFocusRing { visible: root.stateFocused; border.color: Theme.accentSoft }
 
+    // Saját beviteli modell, ha a gazda nem ad: a valódi controllerrel a teljes címkekészlet
+    // (legutóbbiak, találatok), nélküle a demó-készlet — így az autocomplete mindenhol ugyanaz.
     TagInputModel {
         id: ownInputModel
+        controller: App.controller
         excludeIds: root.tags.map(t => t.id)
     }
 

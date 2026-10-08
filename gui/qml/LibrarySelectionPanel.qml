@@ -30,6 +30,7 @@ Rectangle {
 
     TagInputModel {
         id: inputModel
+        controller: App.controller
         excludeIds: root.selection ? root.selection.fullTagIds : []
     }
 
