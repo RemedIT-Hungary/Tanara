@@ -607,12 +607,16 @@
         <translation>Already have a recording? Import an audio or video file (you can also drop it here): it gets a transcript and a summary just the same.</translation>
     </message>
     <message>
-        <source>Másik gépen rögzített megbeszélést hoznál át (.tanara.zip)?</source>
-        <translation>Bringing over a meeting recorded on another machine (.tanara.zip)?</translation>
+        <source>Másik gépen rögzített megbeszélést hoznál át (.tanara.zip vagy kimásolt mappa)?</source>
+        <translation>Bringing over a meeting recorded on another machine (.tanara.zip or a copied folder)?</translation>
     </message>
     <message>
         <source>Archívum importálása</source>
         <translation>Import archive</translation>
+    </message>
+    <message>
+        <source>Mappa importálása</source>
+        <translation>Import folder</translation>
     </message>
     <message>
         <source>A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást észlel. A felvételt mindig te indítod.</source>
@@ -969,6 +973,10 @@
     <message>
         <source>Megbeszélés importálása archívumból…</source>
         <translation>Import meeting from archive…</translation>
+    </message>
+    <message>
+        <source>Megbeszélés importálása mappából…</source>
+        <translation>Import meeting from folder…</translation>
     </message>
     <message>
         <source>Beállítások…</source>
@@ -6298,6 +6306,10 @@
         <translation>Tanara archive (*.tanara.zip *.zip);;All files (*)</translation>
     </message>
     <message>
+        <source>Megbeszélés mappájának kiválasztása</source>
+        <translation>Choose the meeting folder</translation>
+    </message>
+    <message>
         <source>Résztvevők azonosítása a hang alapján…</source>
         <translation>Identifying participants by voice…</translation>
     </message>
@@ -7814,10 +7826,6 @@
         <translation>Export failed: %1</translation>
     </message>
     <message>
-        <source>Az archívum importálása nem sikerült: %1</source>
-        <translation>Importing the archive failed: %1</translation>
-    </message>
-    <message>
         <source>Importálva archívumból: %1</source>
         <translation>Imported from archive: %1</translation>
     </message>
@@ -7852,6 +7860,10 @@
     <message>
         <source>Archívum importálása: %1…</source>
         <translation>Importing archive: %1…</translation>
+    </message>
+    <message>
+        <source>Mappa importálása: %1…</source>
+        <translation>Importing folder: %1…</translation>
     </message>
     <message>
         <source>Nem indítható: %1</source>
@@ -7910,6 +7922,10 @@
     <message>
         <source>Az átírás még fut — a végén magától azonosítja a résztvevőket.</source>
         <translation>Transcription is still running — it identifies the participants automatically when it finishes.</translation>
+    </message>
+    <message>
+        <source>Az importálás nem sikerült: %1</source>
+        <translation>Import failed: %1</translation>
     </message>
     <message>
         <source>A névtelen beszélőkhöz nem találtam használható hangot, ezért nincs mit azonosítani.</source>

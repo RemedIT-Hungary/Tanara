@@ -84,6 +84,8 @@ public:
     }
     // Megbeszélés-archívum (*.tanara.zip / *.zip) kiválasztása importáláshoz; üres = visszalépett.
     Q_INVOKABLE virtual QString pickArchiveFile() { return {}; }
+    // Megbeszélés-mappa (track_*.ogg + meeting.json) kiválasztása importáláshoz; üres = visszalépett.
+    Q_INVOKABLE virtual QString pickMeetingFolder() { return {}; }
 
     // ---- Tanara Cloud kapuk (a ShellActions hívja a feldolgozás indítása előtt) ----
     // Egy blokkolt lépés cloud-teendője (bejelentkezés / feltöltés / frissítés). true = a

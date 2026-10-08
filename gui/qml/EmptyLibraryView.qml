@@ -122,7 +122,7 @@ Item {
             spacing: 6
             TLabel {
                 Layout.fillWidth: true
-                text: qsTr("Másik gépen rögzített megbeszélést hoznál át (.tanara.zip)?")
+                text: qsTr("Másik gépen rögzített megbeszélést hoznál át (.tanara.zip vagy kimásolt mappa)?")
                 muted: true
                 font.pixelSize: Theme.fontSmall
                 cssLineHeight: 1.5
@@ -135,6 +135,14 @@ Item {
                 size: "small"
                 variant: "ghost"
                 onClicked: if (root.shell) root.shell.importArchive("")
+            }
+            TButton {
+                objectName: "emptyImportFolder"
+                text: qsTr("Mappa importálása")
+                iconName: "folder-open"
+                size: "small"
+                variant: "ghost"
+                onClicked: if (root.shell) root.shell.importFolder("")
             }
         }
         TLabel {

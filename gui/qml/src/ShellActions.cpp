@@ -128,7 +128,7 @@ void ShellActions::attachController()
             return;
         }
         if (!ok) {
-            emit toastRequested(tr("Az archívum importálása nem sikerült: %1").arg(message),
+            emit toastRequested(tr("Az importálás nem sikerült: %1").arg(message),
                                 QStringLiteral("danger"), {}, false);
             return;
         }
@@ -403,6 +403,29 @@ void ShellActions::importArchive(const QVariant& pathOrUrl)
     }
     if (!m_controller->importMeetingArchive(file).isEmpty())
         toast(tr("Archívum importálása: %1…").arg(QFileInfo(file).fileName()));
+}
+
+void ShellActions::importFolder(const QVariant& pathOrUrl)
+{
+    if (!m_controller)
+        return;
+    QString folder = localPath(pathOrUrl);
+    if (folder.isEmpty()) {
+        ShellBridge* b = bridge();
+        if (!b)
+            return;
+        folder = b->pickMeetingFolder();
+        if (folder.isEmpty())
+            return;                       // visszalépett
+    }
+    if (!m_controller->importMeetingFolder(folder).isEmpty())
+        toast(tr("Mappa importálása: %1…").arg(QFileInfo(folder).fileName()));
+}
+
+bool ShellActions::isDirectory(const QVariant& pathOrUrl) const
+{
+    const QString p = localPath(pathOrUrl);
+    return !p.isEmpty() && QFileInfo(p).isDir();
 }
 
 bool ShellActions::isArchiveFile(const QVariant& pathOrUrl) const

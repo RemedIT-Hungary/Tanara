@@ -104,8 +104,13 @@ public:
     // „Megbeszélés importálása archívumból…”: üres úttal előbb a natív választó; a végén az új
     // megbeszélés kijelölődik + toast; hiba toastban. (Ráejtett .zip is ide jut: fájl-URL is jó.)
     Q_INVOKABLE void importArchive(const QVariant& pathOrUrl = QVariant());
+    // „Megbeszélés importálása mappából…”: egy kimásolt felvétel-mappa (zip nélkül); üres úttal
+    // natív mappaválasztó. A vége ugyanaz, mint az archívumnál (kijelölés + toast / hiba toast).
+    Q_INVOKABLE void importFolder(const QVariant& pathOrUrl = QVariant());
     // Archívumnak látszik-e (a ráejtett fájlok szétválogatásához): *.zip.
     Q_INVOKABLE bool isArchiveFile(const QVariant& pathOrUrl) const;
+    // Mappa-e (a ráejtett elemek szétválogatásához): egy ráejtett megbeszélés-mappa importálható.
+    Q_INVOKABLE bool isDirectory(const QVariant& pathOrUrl) const;
     // Egy fájl mappájának megnyitása a fájlkezelőben (a toast „Megnyitás mappában” gombja).
     Q_INVOKABLE void revealFile(const QString& path);
     Q_INVOKABLE bool confirm(const QString& title, const QString& text,

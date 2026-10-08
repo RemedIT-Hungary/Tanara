@@ -75,7 +75,8 @@ public:
         return savePath;
     }
     QString pickArchiveFile() override { calls << QStringLiteral("pickArchive"); return archivePath; }
-    QString savePath, archivePath, lastProposed, lastFilter;
+    QString pickMeetingFolder() override { calls << QStringLiteral("pickFolder"); return folderPath; }
+    QString savePath, archivePath, folderPath, lastProposed, lastFilter;
     bool handleCloudBlocker(const tanara::ReadinessResult& r) override
     {
         calls << QStringLiteral("blocker:%1:%2").arg(int(r.blockerKind)).arg(r.providerId);
@@ -343,6 +344,30 @@ private slots:
         QCOMPARE(m_shell->currentTab(), 0);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Archív próba")));
 
+        // Mappa-import (zip nélkül): a meglévő megbeszélés mappáját kimásoljuk egy külső helyre,
+        // töröljük a könyvtárból, majd a választóból behúzzuk — ugyanaz a vég, mint az archívumnál.
+        const QString outside = m_home->filePath(QStringLiteral("kulso"));
+        QVERIFY(QDir().mkpath(outside));
+        const QString srcFolder = m_app->store()->load(a.id).folder;
+        const QString copied = QDir(outside).filePath(QFileInfo(srcFolder).fileName());
+        QVERIFY(QDir().mkpath(copied));
+        for (const QFileInfo& e : QDir(srcFolder).entryInfoList(QDir::Files))
+            QVERIFY(QFile::copy(e.absoluteFilePath(), QDir(copied).filePath(e.fileName())));
+        QVERIFY(m_app->store()->deleteMeeting(a.id));
+        m_bridge->calls.clear();
+        m_shell->importFolder(QString());
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("pickFolder")});
+        QVERIFY(!m_app->archiveBusy());
+        m_bridge->folderPath = copied;
+        m_shell->importFolder(QString());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 3, 20000);
+        QVERIFY(finished.last().at(1).toBool());
+        QCOMPARE(m_shell->currentMeetingId(), a.id);
+        QVERIFY(QFileInfo(copied).isDir());                                   // a forrás megmarad
+        QVERIFY(QDir(m_app->store()->audioDir()).entryList({QStringLiteral(".import-*")}, QDir::Dirs | QDir::Hidden).isEmpty());
+        QVERIFY(m_shell->isDirectory(copied));
+        QVERIFY(!m_shell->isDirectory(QDir(copied).filePath(QStringLiteral("meeting.json"))));
+
         // Ejtett fájl-URL, ami nem archívum: hiba-toast, a kijelölés marad.
         const QString bad = m_home->filePath(QStringLiteral("hibas.zip"));
         QFile f(bad);
@@ -353,7 +378,7 @@ private slots:
         QVERIFY(m_shell->isArchiveFile(QStringLiteral("/x/Valami.TANARA.ZIP")));
         QVERIFY(!m_shell->isArchiveFile(QUrl::fromLocalFile(QStringLiteral("/x/hang.wav"))));
         m_shell->importArchive(QUrl::fromLocalFile(bad));
-        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 3, 20000);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 4, 20000);
         QCOMPARE(toasts.last().at(1).toString(), QStringLiteral("danger"));
         QCOMPARE(m_shell->currentMeetingId(), a.id);
     }

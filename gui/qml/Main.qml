@@ -341,6 +341,12 @@ ApplicationWindow {
                             iconName: "folder-open"
                             onTriggered: shellActions.importArchive("")
                         }
+                        TMenuItem {
+                            objectName: "importFolderItem"
+                            text: qsTr("Megbeszélés importálása mappából…")
+                            iconName: "folder-open"
+                            onTriggered: shellActions.importFolder("")
+                        }
                         TMenuSeparator {}
                         TMenuItem {
                             text: qsTr("Beállítások…")
@@ -657,6 +663,7 @@ ApplicationWindow {
             const audio = []
             for (const url of drop.urls) {
                 if (shellActions.isArchiveFile(url)) shellActions.importArchive(url)
+                else if (shellActions.isDirectory(url)) shellActions.importFolder(url)
                 else audio.push(url)
             }
             if (audio.length > 0)

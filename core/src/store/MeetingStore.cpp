@@ -496,6 +496,31 @@ bool copyDirRecursive(const QString& from, const QString& to)
 }
 } // namespace
 
+QString MeetingStore::stageFolderForImport(const QString& sourceDir, QString* error) const
+{
+    auto fail = [&](const QString& msg) { if (error) *error = msg; return QString(); };
+    const QFileInfo src(sourceDir);
+    if (!src.isDir())
+        return fail(QCoreApplication::translate("MeetingStore", "Nincs ilyen mappa: %1").arg(sourceDir));
+    const QString source = src.absoluteFilePath();
+    const bool hasJson = QFile::exists(meetingJsonPath(source));
+    const bool hasTracks = !QDir(source).entryList({QStringLiteral("track_*.ogg")}, QDir::Files).isEmpty();
+    if (!hasJson && !hasTracks)
+        return fail(QCoreApplication::translate("MeetingStore", "A mappában nincs meeting.json és nincs track_*.ogg sáv: %1").arg(sourceDir));
+    const QString audioRoot = QDir(m_audioDir).absolutePath();
+    if (QFileInfo::exists(QDir(audioRoot).filePath(src.fileName())))
+        return fail(QCoreApplication::translate("MeetingStore", "Már van ilyen nevű felvétel: %1 — a meglévőt nem írom felül.")
+                        .arg(QDir(audioRoot).filePath(src.fileName())));
+    const QString temp = QDir(audioRoot).filePath(MeetingArchive::tempDirPrefix()
+                                                  + QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const QString staged = QDir(temp).filePath(src.fileName());
+    if (!QDir().mkpath(audioRoot) || !copyDirRecursive(source, staged)) {
+        QDir(temp).removeRecursively();
+        return fail(QCoreApplication::translate("MeetingStore", "A mappa másolása nem sikerült: %1 → %2").arg(source, staged));
+    }
+    return staged;
+}
+
 Meeting MeetingStore::adoptMeetingFolder(const QString& sourceDir, QString* error)
 {
     const QString audioRoot = QDir(m_audioDir).absolutePath();

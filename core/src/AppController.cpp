@@ -3427,6 +3427,50 @@ QString AppController::exportMeetingArchive(const QString& meetingId, const QStr
     return opId;
 }
 
+QString AppController::importMeetingFolder(const QString& folderIn)
+{
+    if (archiveBusy()) {
+        emit errorOccurred(tr("Már fut egy archívum-művelet — várd meg, vagy szakítsd meg."));
+        return {};
+    }
+    const QString folder = QFileInfo(folderIn).absoluteFilePath();
+    const QString root = QDir(d->store->audioDir()).absolutePath();
+    const QString opId = QStringLiteral("import:") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto staged = std::make_shared<QString>();
+    auto error = std::make_shared<QString>();
+    // A felvételek mappája alatt lévő forrás helyben marad (nincs másolás); minden más előbb
+    // a .import-* ideiglenes mappába kerül a háttérszálon, hogy a GUI ne álljon meg.
+    const bool inPlace = QFileInfo(folder).dir().absolutePath() == root;
+
+    QPointer<AppController> self(this);
+    MeetingStore* store = d->store;
+    QThread* th = QThread::create([self, folder, inPlace, store, staged, error, opId]() {
+        if (inPlace) { *staged = folder; return; }
+        *staged = store->stageFolderForImport(folder, error.get());
+        QMetaObject::invokeMethod(qApp, [self, opId]() {
+            if (self && self->d->archiveOp == opId) emit self->archiveProgress(opId, 100);
+        }, Qt::QueuedConnection);
+    });
+    d->archiveThread = th;
+    d->archiveCancel.reset();
+    d->archiveOp = opId;
+    connect(th, &QThread::finished, this, [this, th, folder, staged, error, opId]() {
+        d->archiveThread = nullptr;
+        d->archiveOp.clear();
+        th->deleteLater();
+        QString message = *error;
+        Meeting m;
+        if (!staged->isEmpty())
+            m = adoptArchiveFolder(d->store, d->tags, *staged, ArchiveManifest{}, &message);
+        if (m.id.isEmpty())
+            emit archiveFinished(opId, false, QString(), folder, message);
+        else
+            emit archiveFinished(opId, true, m.id, folder, QString());
+    });
+    th->start();
+    return opId;
+}
+
 QString AppController::importMeetingArchive(const QString& zipPath)
 {
     if (archiveBusy()) {

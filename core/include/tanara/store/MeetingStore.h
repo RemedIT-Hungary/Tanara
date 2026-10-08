@@ -51,6 +51,10 @@ public:
     // sikertől függetlenül törli. Hiba akkor is, ha ugyanez az azonosító már a könyvtárban
     // van egy másik mappában.
     Meeting adoptMeetingFolder(const QString& sourceDir, QString* error = nullptr);
+    // Egy külső mappa bemásolása a felvételek mappája alatti .import-<uuid>/<név> ideiglenes
+    // helyre (háttérszálról hívható: csak a fájlrendszert érinti). Az eredményt az
+    // adoptMeetingFolder helyezi át végleges helyére és takarítja a temp mappát. Hiba: üres + *error.
+    QString stageFolderForImport(const QString& sourceDir, QString* error = nullptr) const;
 
     // Összes meeting a (lemez-cache) indexből, startedAt szerint csökkenőben.
     QVector<Meeting> loadAll();

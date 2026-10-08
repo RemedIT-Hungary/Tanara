@@ -235,6 +235,15 @@ QString QmlShellBridge::pickArchiveFile()
         tr("Tanara-archívum (*.tanara.zip *.zip);;Minden fájl (*)"));
 }
 
+QString QmlShellBridge::pickMeetingFolder()
+{
+    const QString start = QDir::home().filePath(QStringLiteral("Tanara"));
+    return QFileDialog::getExistingDirectory(
+        nullptr, tr("Megbeszélés mappájának kiválasztása"),
+        QFileInfo(start).isDir() ? start : QDir::homePath(),
+        QFileDialog::ShowDirsOnly);
+}
+
 // ---- felvevő (lásd ShellRecorderHost) ----------------------------------------------------
 
 void QmlShellBridge::startRecorderListening()

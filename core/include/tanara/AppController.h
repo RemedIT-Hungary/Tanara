@@ -249,6 +249,11 @@ public slots:
     // Visszaad: művelet-azonosító ("import:<uuid>"); üres + errorOccurred, ha már fut egy.
     // A vége archiveFinished (siker esetén meetingId = az új megbeszélés).
     QString importMeetingArchive(const QString& zipPath);
+    // Egy sima megbeszélés-mappa behúzása (másik gépről kimásolt mappa, zip nélkül): a
+    // felvételek mappáján kívüli forrást háttérszálon bemásolja (.import-*), majd ugyanaz
+    // az útvonal, mint az archívumnál (adopt + címkék). A felvételek mappája alatti forrás
+    // helyben marad. Visszaad: "import:<uuid>"; a vége archiveFinished.
+    QString importMeetingFolder(const QString& folder);
     // Ugyanezek szinkron (CLI, tesztek). Hiba: false / üres Meeting + *error.
     bool exportMeetingArchiveNow(const QString& meetingId, const QString& zipPath, QString* error,
                                  std::function<void(int)> progress = {});
