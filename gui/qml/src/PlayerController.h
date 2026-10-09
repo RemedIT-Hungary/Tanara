@@ -11,6 +11,8 @@
 //  - playFile() egy másik fájlt (egy sávot) hallgat bele; közben a lekeverés pozíciója és
 //    a `playing` érintetlen (az előnézet állapota: previewPath / previewPlaying /
 //    previewPositionMs / previewDurationMs). stopPreview() visszatér a lekeveréshez.
+//    Az előnézet a sávfájlt ÖNMAGÁBAN játssza (fájl-idő, 0-tól): egy később kezdődő sáv
+//    (Track::startOffsetMs) előnézete a sáv saját elejétől szól, a megbeszélés-idő nem számít.
 //
 #include "PlayerBackend.h"
 

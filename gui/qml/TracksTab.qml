@@ -116,6 +116,8 @@ Item {
                             peaksState: model.peaksState
                             peakReference: { model.peaks; tracks.peakReference; return tracks.rowReference(index) }
                             colorIndex: model.colorIndex
+                            waveStart: model.waveStart
+                            waveSpan: model.waveSpan
                             canPlay: !model.missing && (root.player !== null || tracks.demo)
                             playing: root.previewPath !== "" && root.previewPath === model.path
                             onPlayRequested: root.togglePreview(model.path)

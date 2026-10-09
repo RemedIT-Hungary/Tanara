@@ -89,7 +89,9 @@ private:
 };
 
 // A megbeszélés hallgatható hangja: a lekeverés; ha nincs (régi felvétel, elmaradt keverés),
-// a legnagyobb AKTÍV sáv — a szegmens-időbélyegek globálisak, így egy sávon is időhelyes.
+// a legnagyobb AKTÍV, a felvétel elejétől tartó (startOffsetMs == 0) sáv — a szegmens-
+// időbélyegek megbeszélés-időben vannak, így csak egy ilyen sávon időhelyesek. Ha nincs ilyen,
+// a legnagyobb aktív sáv (eltolva szól, de legalább hallható).
 QString meetingAudioPath(const tanara::Meeting& m)
 {
     const QString mixdown = QDir(m.folder).filePath(
@@ -98,11 +100,15 @@ QString meetingAudioPath(const tanara::Meeting& m)
         return mixdown;
     QString best;
     qint64 bestSize = -1;
+    bool bestAligned = false;
     for (const tanara::Track& t : m.tracks) {
         if (!t.active || t.file.isEmpty()) continue;
         const QFileInfo fi(QDir(m.folder).filePath(t.file));
-        if (fi.exists() && fi.size() > bestSize) {
+        if (!fi.exists()) continue;
+        const bool aligned = t.startOffsetMs <= 0;
+        if ((aligned && !bestAligned) || (aligned == bestAligned && fi.size() > bestSize)) {
             bestSize = fi.size();
+            bestAligned = aligned;
             best = fi.absoluteFilePath();
         }
     }

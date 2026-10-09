@@ -67,6 +67,68 @@ private slots:
         QCOMPARE(model.droppedCount(), 0);
     }
 
+    void waveExtentOnMeetingTimeline()
+    {
+        using P = QPair<qreal, qreal>;
+        QCOMPARE(TrackListModel::waveExtent(0, 60000, 60000), P(0.0, 1.0));
+        QCOMPARE(TrackListModel::waveExtent(15000, 30000, 60000), P(0.25, 0.5));
+        // Ismeretlen fájlhossz: a kezdetétől a végéig.
+        QCOMPARE(TrackListModel::waveExtent(15000, -1, 60000), P(0.25, 0.75));
+        // A megbeszélésnél hosszabb fájl / túl nagy eltolás: a sávon belül marad.
+        QCOMPARE(TrackListModel::waveExtent(0, 61000, 60000), P(0.0, 1.0));
+        QCOMPARE(TrackListModel::waveExtent(45000, 30000, 60000), P(0.75, 0.25));
+        QCOMPARE(TrackListModel::waveExtent(90000, 1000, 60000), P(1.0, 0.0));
+        // Ismeretlen megbeszélés-hossz: a teljes szélesség.
+        QCOMPARE(TrackListModel::waveExtent(5000, 1000, 0), P(0.0, 1.0));
+    }
+
+    // Egy eszköz ki-be kapcsolva: két szakasz, a második később kezdődik. A sor második sora
+    // jelzi a szakaszt és a kezdetet, a hullámforma a helyén áll, a hossz a fájlé.
+    void segmentRowsAndWaveGap()
+    {
+        jobtest::Sandbox sb;
+        Meeting m = sb.recording("Szakaszok", 1, /*secondTrack*/ true);
+        tanara::Track seg2 = m.tracks[1];
+        seg2.id = "loop-2";
+        seg2.file = "track_loop-2.wav";
+        seg2.startOffsetMs = 3000;
+        QVERIFY(QFile::copy(QDir(m.folder).filePath("track_loop.wav"), QDir(m.folder).filePath(seg2.file)));
+        m.tracks.append(seg2);
+        m.tracks[1].startOffsetMs = 1000;
+        m.durationMs = 4000;
+        sb.app->store()->saveMeeting(m);
+
+        TrackListModel model;
+        QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::QtTest);
+        model.setController(sb.app.get());
+        model.setMeetingId(m.id);
+        QCOMPARE(model.count(), 3);
+        QCOMPARE(cell(model, 1, TrackListModel::TrackIdRole).toString(), QStringLiteral("loop"));
+        QCOMPARE(cell(model, 2, TrackListModel::TrackIdRole).toString(), QStringLiteral("loop-2"));
+        QCOMPARE(cell(model, 1, TrackListModel::DisplayNameRole), cell(model, 2, TrackListModel::DisplayNameRole));
+        QCOMPARE(cell(model, 0, TrackListModel::SegmentRole).toInt(), 0);
+        QCOMPARE(cell(model, 2, TrackListModel::SegmentRole).toInt(), 2);
+        const QString raw2 = cell(model, 2, TrackListModel::RawNameRole).toString();
+        QVERIFY2(raw2.startsWith(QStringLiteral("2. szakasz · kezdete: 00:03 · Monitor of Teszt")), qPrintable(raw2));
+        QVERIFY(raw2.endsWith(QStringLiteral("track_loop-2.wav")));
+        QVERIFY(!cell(model, 0, TrackListModel::RawNameRole).toString().contains(QStringLiteral("szakasz")));
+
+        // Csúcsok még nincsenek: a hossz a kezdettől a megbeszélés végéig.
+        QCOMPARE(cell(model, 0, TrackListModel::WaveStartRole).toReal(), 0.0);
+        QCOMPARE(cell(model, 2, TrackListModel::WaveStartRole).toReal(), 0.75);
+        QCOMPARE(cell(model, 2, TrackListModel::WaveSpanRole).toReal(), 0.25);
+        QCOMPARE(cell(model, 1, TrackListModel::DurationTextRole).toString(), QStringLiteral("00:03"));
+
+        // A csúcsok (valódi ffmpeg) után a fájl valódi hossza: 1 s → a sáv negyede.
+        if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty())
+            QSKIP("ffmpeg nincs a PATH-on");
+        model.requestWaveforms();
+        QTRY_COMPARE_WITH_TIMEOUT(cell(model, 1, TrackListModel::PeaksStateRole).toString(), QStringLiteral("ready"), 15000);
+        QCOMPARE(cell(model, 1, TrackListModel::DurationTextRole).toString(), QStringLiteral("00:01"));
+        QCOMPARE(cell(model, 1, TrackListModel::WaveStartRole).toReal(), 0.25);
+        QVERIFY(qAbs(cell(model, 1, TrackListModel::WaveSpanRole).toReal() - 0.25) < 0.02);
+    }
+
     void namesRenameRestoreAndDelete()
     {
         jobtest::Sandbox sb;

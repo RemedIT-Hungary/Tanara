@@ -184,23 +184,33 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case FriendlyNameRole: return r.view.friendlyName;
     case RenamedRole:      return r.view.renamed;
     case RawNameRole: {
+        // Második sor: [N. szakasz · kezdete m:ss · ]nyers eszköznév · fájlnév.
         const QString file = QFileInfo(r.view.track.file).fileName();
-        QString line = r.view.rawDeviceName.isEmpty() ? file
-                     : file.isEmpty() ? r.view.rawDeviceName
-                                      : r.view.rawDeviceName + QStringLiteral(" · ") + file;
-        // Később kezdődő sáv: a lekeverés ennyivel tolja el (lásd Track::startOffsetMs).
+        QStringList parts;
+        if (r.view.segment > 0)
+            parts << tr("%1. szakasz").arg(r.view.segment);
+        // Később kezdődő sáv: ennyivel a felvétel kezdete után indult (Track::startOffsetMs).
         if (r.view.track.startOffsetMs > 0)
-            line += QStringLiteral(" · ") + tr("+%1 eltolás")
-                        .arg(jobsupport::formatDuration(r.view.track.startOffsetMs));
-        return line;
+            parts << tr("kezdete: %1").arg(jobsupport::formatDuration(r.view.track.startOffsetMs));
+        if (!r.view.rawDeviceName.isEmpty()) parts << r.view.rawDeviceName;
+        if (!file.isEmpty()) parts << file;
+        return parts.join(QStringLiteral(" · "));
     }
     case IconNameRole:     return iconFor(r.view.role);
     case ActiveRole:       return r.view.track.active;
     case MissingRole:      return r.view.fileMissing;
     case PathRole:         return r.view.absolutePath;
     case DurationTextRole:
+        // A fájl (a felvett szakasz) hossza; amíg nem ismert, a kezdetétől a megbeszélés végéig.
         if (r.view.fileMissing) return QStringLiteral("–");
-        return jobsupport::formatDuration(r.durationMs >= 0 ? r.durationMs : m_meetingDurationMs);
+        return jobsupport::formatDuration(r.durationMs >= 0 ? r.durationMs
+                                          : qMax<qint64>(0, m_meetingDurationMs - r.view.track.startOffsetMs));
+    case WaveStartRole:
+        return waveExtent(r.view.track.startOffsetMs, r.durationMs, m_meetingDurationMs).first;
+    case WaveSpanRole:
+        return waveExtent(r.view.track.startOffsetMs, r.durationMs, m_meetingDurationMs).second;
+    case SegmentRole:      return r.view.segment;
+    case StartOffsetRole:  return r.view.track.startOffsetMs;
     case PeaksRole:        return QVariant::fromValue(r.peaks);
     case PeaksStateRole:   return r.peaksState;
     case ColorIndexRole:   return r.colorIndex;
@@ -216,8 +226,19 @@ QHash<int, QByteArray> TrackListModel::roleNames() const
         {RenamedRole, "renamed"}, {RawNameRole, "rawName"}, {IconNameRole, "iconName"},
         {ActiveRole, "active"}, {MissingRole, "missing"}, {PathRole, "path"},
         {DurationTextRole, "durationText"}, {PeaksRole, "peaks"}, {PeaksStateRole, "peaksState"},
-        {ColorIndexRole, "colorIndex"},
+        {ColorIndexRole, "colorIndex"}, {WaveStartRole, "waveStart"}, {WaveSpanRole, "waveSpan"},
+        {SegmentRole, "segment"}, {StartOffsetRole, "startOffsetMs"},
     };
+}
+
+QPair<qreal, qreal> TrackListModel::waveExtent(qint64 startOffsetMs, qint64 fileDurationMs,
+                                               qint64 meetingDurationMs)
+{
+    if (meetingDurationMs <= 0) return {0.0, 1.0};
+    const qreal total = qreal(meetingDurationMs);
+    const qreal start = std::clamp(qreal(qMax<qint64>(0, startOffsetMs)) / total, 0.0, 1.0);
+    const qreal span = fileDurationMs >= 0 ? qreal(fileDurationMs) / total : 1.0 - start;
+    return {start, std::clamp(span, 0.0, 1.0 - start)};
 }
 
 int TrackListModel::activeCount() const
@@ -384,7 +405,7 @@ void TrackListModel::applyPeaks(const QString& trackId, const TrackPeaks& peaks,
             r.peaksState = QStringLiteral("ready");
             r.durationMs = peaks.durationMs;
         }
-        emit dataChanged(index(i), index(i), {PeaksRole, PeaksStateRole, DurationTextRole});
+        emit dataChanged(index(i), index(i), {PeaksRole, PeaksStateRole, DurationTextRole, WaveSpanRole});
         emit peaksChanged();   // a közös skála is változhatott
         return;
     }
@@ -550,6 +571,7 @@ void TrackListModel::loadDemo()
          << make("call", TrackRole::CallAudio, tr("Hívás hangja"),
                  QStringLiteral("Microsoft Teams · Monitor of Built-in Audio Analog Stereo"),
                  QStringLiteral("track-02.ogg"), true, false, 1, 0.9);
+    rows.last().view.track.startOffsetMs = 2 * 60 * 1000 + 30 * 1000;   // később bekapcsolva
     if (st != QLatin1String("idle")) {
         rows << make("system", TrackRole::SystemAudio, tr("Rendszerhang"),
                      QStringLiteral("Monitor of HDMI / DisplayPort 1 Output"),

@@ -8843,8 +8843,12 @@
 <context>
     <name>tanara_qml::TrackListModel</name>
     <message>
-        <source>+%1 eltolás</source>
-        <translation>+%1 offset</translation>
+        <source>%1. szakasz</source>
+        <translation>segment %1</translation>
+    </message>
+    <message>
+        <source>kezdete: %1</source>
+        <translation>starts at %1</translation>
     </message>
     <message>
         <source>Közben másik megbeszélésre váltottál, ezért a fájl nem lett hozzárendelve.</source>

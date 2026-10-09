@@ -70,7 +70,20 @@ public:
         PeaksRole,            // QList<qreal>
         PeaksStateRole,       // none | loading | ready | failed
         ColorIndexRole,       // a hullámforma színe (beszélő-paletta)
+        // A sáv helye a megbeszélés idővonalán (0..1): a hullámforma a sor szélességének
+        // waveStart-jánál kezdődik (később bekapcsolt sáv / második szakasz) és waveSpan
+        // hosszú (a fájl hossza a megbeszéléshez mérve).
+        WaveStartRole,
+        WaveSpanRole,
+        SegmentRole,          // az eszköz szakaszának sorszáma (1..), 0 = egyetlen fájl
+        StartOffsetRole,      // ms
     };
+
+    // A hullámforma helye a megbeszélés idővonalán: {kezdet, hossz} 0..1 arányban. Ismeretlen
+    // fájlhossz (fileDurationMs < 0) → a sáv a kezdetétől a megbeszélés végéig; ismeretlen
+    // megbeszélés-hossz → {0, 1}.
+    static QPair<qreal, qreal> waveExtent(qint64 startOffsetMs, qint64 fileDurationMs,
+                                          qint64 meetingDurationMs);
 
     explicit TrackListModel(QObject* parent = nullptr);
 

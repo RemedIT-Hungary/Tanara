@@ -19,6 +19,10 @@ Item {
     property string peaksState: "none"        // none | loading | ready | failed
     property real peakReference: 0
     property int colorIndex: 0
+    // A sáv helye a megbeszélés idővonalán (0..1): később kezdődő sáv / egy eszköz második
+    // szakasza előtt üres rés áll, a hullámforma a fájl hosszával arányos.
+    property real waveStart: 0
+    property real waveSpan: 1
     property bool playing: false              // ez a sáv szól épp előnézetként
     property bool canPlay: true               // van lejátszó és megvan a fájl
     property bool first: false
@@ -147,25 +151,38 @@ Item {
             }
         }
 
-        // ---- hullámforma ----
-        WaveformItem {
-            id: wave
+        // ---- hullámforma (a megbeszélés idővonalán: rés a sáv kezdete előtt) ----
+        Item {
+            id: waveLane
             Layout.fillWidth: true
             implicitHeight: 30
-            peaks: root.peaks
-            reference: root.peakReference
-            color: loading ? Theme.border
-                 : root.dropped || root.missing ? Theme.borderStrong : Theme.speakerLine(root.colorIndex)
-            flat: root.missing || (root.dropped && root.peaksState !== "ready")
-            loading: root.peaksState === "loading"
             visible: !root.missing
-            // Számolás közben lüktet (a képernyőképen állókép).
-            SequentialAnimation on opacity {
-                running: wave.loading && wave.visible
-                loops: Animation.Infinite
-                NumberAnimation { from: 1; to: 0.45; duration: 700; easing.type: Easing.InOutSine }
-                NumberAnimation { from: 0.45; to: 1; duration: 700; easing.type: Easing.InOutSine }
-                onRunningChanged: if (!running) wave.opacity = 1
+            // Ahol a sávnak nincs hangja (a kezdete előtt / a vége után): halvány alapvonal.
+            Rectangle {
+                visible: root.waveStart > 0 || root.waveSpan < 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width; height: 1
+                color: Theme.border
+            }
+            WaveformItem {
+                id: wave
+                x: Math.round(waveLane.width * Math.max(0, Math.min(1, root.waveStart)))
+                width: Math.max(2, Math.round(waveLane.width * Math.max(0, Math.min(1 - root.waveStart, root.waveSpan))))
+                height: parent.height
+                peaks: root.peaks
+                reference: root.peakReference
+                color: loading ? Theme.border
+                     : root.dropped || root.missing ? Theme.borderStrong : Theme.speakerLine(root.colorIndex)
+                flat: root.missing || (root.dropped && root.peaksState !== "ready")
+                loading: root.peaksState === "loading"
+                // Számolás közben lüktet (a képernyőképen állókép).
+                SequentialAnimation on opacity {
+                    running: wave.loading && waveLane.visible
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 1; to: 0.45; duration: 700; easing.type: Easing.InOutSine }
+                    NumberAnimation { from: 0.45; to: 1; duration: 700; easing.type: Easing.InOutSine }
+                    onRunningChanged: if (!running) wave.opacity = 1
+                }
             }
         }
         Item { visible: root.missing; Layout.fillWidth: true }
