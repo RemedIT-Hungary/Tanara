@@ -1,5 +1,6 @@
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/library/MeetingNotes.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QJsonValue>
 
@@ -309,6 +310,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("embeddingProviders")]  = providerConfigsToJson(s.embeddingConfigs);
     o[QStringLiteral("tagSuggestions")]      = s.tagSuggestions;
     o[QStringLiteral("llmTagSuggestions")]   = s.llmTagSuggestions;
+    o[QStringLiteral("voiceModels")]         = stringListToArray(VoiceModelRegistry::normalizeIds(s.voiceModels));
 
     // Meeting-figyelő (háttér-detektor + tray).
     o[QStringLiteral("detectorEnabled")]     = s.detectorEnabled;
@@ -392,6 +394,10 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.embeddingConfigs = providerConfigsFromJson(o.value(QStringLiteral("embeddingProviders")).toObject());
     s.tagSuggestions    = o.value(QStringLiteral("tagSuggestions")).toBool(s.tagSuggestions);
     s.llmTagSuggestions = o.value(QStringLiteral("llmTagSuggestions")).toBool(s.llmTagSuggestions);
+    // Beszélő-modellek: hiányzó kulcs → alapérték; az üres lista érvényes (minden modell ki).
+    if (o.contains(QStringLiteral("voiceModels")))
+        s.voiceModels = VoiceModelRegistry::normalizeIds(
+            arrayToStringList(o.value(QStringLiteral("voiceModels")).toArray()));
 
     s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);
     s.summaryLanguage = o.value(QStringLiteral("summaryLanguage")).toString(s.summaryLanguage);

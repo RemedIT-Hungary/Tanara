@@ -37,7 +37,8 @@ QString metadataFile(const QString& relative, const QString& configuredDir = QSt
 QString defaultAudioDir();
 QString defaultNotesDir();
 
-// A beszélő-embedding (CAM++) modell fájlneve és feloldása. Sorrend:
+// Az ALAP beszélő-embedding modell (CAM++) fájlneve és feloldása — a VoiceModelRegistry
+// szabályát használja (ott a többi modellé is). Sorrend:
 //  1) <metaDir>/models/<név>  — a felhasználó saját (letöltött) modellje;
 //  2) <appDir>/models/<név>   — az alkalmazás mellé csomagolt modell (Windows-zip/telepítő);
 //  3) egyik sincs → az 1) útja (a „várt hely”, hibaüzenetekhez / letöltési célnak).

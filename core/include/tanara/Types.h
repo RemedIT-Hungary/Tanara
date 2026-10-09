@@ -331,6 +331,11 @@ struct AppSettings {
     bool tagSuggestions = true;
     bool llmTagSuggestions = true;
 
+    // Bekapcsolt beszélő-embedding modellek (VoiceModelRegistry id-k), ábécérendben. Lenyomatnál
+    // és elemzésnél mindegyik számít (fúzió); a hiányzó modellfájl futáskor kimarad, a beállítás
+    // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["campplus"].
+    QStringList voiceModels{QStringLiteral("campplus")};
+
     // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
     // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.
     bool detectorEnabled = true;              // aktív-hívás észlelés be/ki
