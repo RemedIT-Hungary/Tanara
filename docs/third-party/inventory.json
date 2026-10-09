@@ -1,0 +1,1329 @@
+[
+  {
+    "version": "",
+    "licenseVerifiedFrom": "inference: own file in MIT repo",
+    "licenseTextInRepo": "LICENSE",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "No external origin identified.",
+    "id": "spec-cloud-gateway-api",
+    "name": "docs/cloud-gateway-api.yaml (OpenAPI spec)",
+    "category": "asset",
+    "license": "MIT",
+    "homepage": "",
+    "usedFor": {
+      "hu": "A Tanara Cloud átjáró saját API-leírása.",
+      "en": "Tanara's own cloud-gateway API description."
+    },
+    "whereInCode": [
+      "docs/cloud-gateway-api.yaml"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "",
+      "currentlyMet": true,
+      "gap": ""
+    }
+  },
+  {
+    "id": "ibm-plex",
+    "name": "IBM Plex Sans / IBM Plex Mono (7 TTF)",
+    "version": "release/commit not recorded (fetch-assets.sh uses IBM/plex master ref); files Sans Regular/Medium/SemiBold/Bold + Mono Regular/Medium/SemiBold",
+    "category": "asset",
+    "license": "OFL-1.1",
+    "licenseVerifiedFrom": "gui/qml/fonts/OFL.txt (read: 'Copyright © 2017 IBM Corp. with Reserved Font Name \"Plex\"' + OFL 1.1 text)",
+    "licenseTextInRepo": "gui/qml/fonts/OFL.txt",
+    "homepage": "https://www.ibm.com/plex/",
+    "sourceUrl": "https://github.com/IBM/plex",
+    "usedFor": {
+      "hu": "A felület betűtípusai.",
+      "en": "UI typefaces."
+    },
+    "whereInCode": [
+      "gui/qml/fonts/*.ttf (qt_add_qml_module RESOURCES -> :/qt/qml/Tanara/fonts/)",
+      "gui/qml/fetch-assets.sh",
+      "design/handoff-*/design/fonts/*.woff2 (design handoff only, not compiled)"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "OFL-1.1: keep copyright notice + licence with any redistribution of the fonts (embedded in tanara.exe as resources - include OFL text in package/About); fonts may not be sold alone; Reserved Font Name 'Plex' - do not modify/rename-publish modified versions; unmodified here.",
+      "currentlyMet": false,
+      "gap": "Repo has OFL.txt and NOTICES is accurate for the source repo, but the compiled binaries/Windows package do not display or ship the OFL text separately (fonts are inside tanara.exe resources). ADD OFL.txt to package / About page. Version not recorded: pin a Plex release tag in fetch-assets.sh (PLEX_REF=master is floating)."
+    },
+    "notes": "Design handoff folders (design/**/fonts/*.woff2) hold the same fonts in woff2 - not shipped; covered by same licence. Upstream copyright line is shown by IBM as 'Copyright © 2017 IBM Corp.' (matches OFL.txt)."
+  },
+  {
+    "id": "lucide-icons",
+    "name": "Lucide icons (lucide-static)",
+    "version": "0.460.0 (gui/qml/fetch-assets.sh LUCIDE_VERSION); 81 SVGs in gui/qml/icons (incl. a few not in the fetch list: arrow-down-to-line, cable, chevrons-down, chevrons-up, hash, maximize-2, minimize-2, pin, tag)",
+    "category": "asset",
+    "license": "ISC (portions MIT from Feather)",
+    "licenseVerifiedFrom": "gui/qml/icons/LICENSE (read: ISC, 'Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.')",
+    "licenseTextInRepo": "gui/qml/icons/LICENSE",
+    "homepage": "https://lucide.dev",
+    "sourceUrl": "https://github.com/lucide-icons/lucide",
+    "usedFor": {
+      "hu": "Felület-ikonok (SVG), futásidőben színezve.",
+      "en": "UI icons (SVG), recoloured at runtime."
+    },
+    "whereInCode": [
+      "gui/qml/icons/*.svg (RESOURCES in gui/qml/CMakeLists.txt)",
+      "gui/qml/fetch-assets.sh",
+      "gui/qml/TIcon.qml / Svg image provider"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "ISC: copyright + permission notice in all copies; Feather's MIT notice for portions (Cole Bemis).",
+      "currentlyMet": false,
+      "gap": "Repo OK; NOTICES says 0.460.0 which matches script. Packages do not carry the notice text (icons embedded in exe). Add LICENSE text to package/About. Some icons (cable, hash, pin, tag, maximize-2, minimize-2, chevrons-up/down, arrow-down-to-line) exist in the dir but are not in fetch-assets.sh's default list (added later with extra args) - assumed same 0.460.0; unverified (inference)."
+    },
+    "notes": "Feather portions are MIT: the Lucide LICENSE file covers both notices."
+  },
+  {
+    "id": "cmake-ninja",
+    "name": "CMake and Ninja",
+    "version": "CMake >=3.21 required (4.3.0 on Linux dev; Qt-bundled CMake_64 on Windows); Ninja 1.13.2 (Linux)",
+    "category": "build-tool",
+    "license": "BSD-3-Clause (CMake); Apache-2.0 (Ninja)",
+    "licenseVerifiedFrom": "Not verified from text (well-known; Fedora rpm lists)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://cmake.org / https://ninja-build.org",
+    "sourceUrl": "https://gitlab.kitware.com/cmake/cmake / https://github.com/ninja-build/ninja",
+    "usedFor": {
+      "hu": "Build rendszer.",
+      "en": "Build system."
+    },
+    "whereInCode": [
+      "CMakeLists.txt",
+      "README.md"
+    ],
+    "shippedIn": [
+      "none"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Not distributed - none.",
+      "currentlyMet": true,
+      "gap": "None."
+    },
+    "notes": ""
+  },
+  {
+    "id": "gcc-mingw-toolchain",
+    "name": "GCC (Linux) and MinGW-w64 GCC 13.1 (Windows, Qt-bundled mingw1310_64)",
+    "version": "GCC 16.2.1 (Fedora dev); MinGW GCC 13.1 (Windows)",
+    "category": "build-tool",
+    "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+    "licenseVerifiedFrom": "as for mingw-runtime-gcc",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://gcc.gnu.org",
+    "sourceUrl": "https://gcc.gnu.org/git.html",
+    "usedFor": {
+      "hu": "Fordító.",
+      "en": "Compiler."
+    },
+    "whereInCode": [
+      "packaging/windows/README.md",
+      "README.md"
+    ],
+    "shippedIn": [
+      "none"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "GCC Runtime Library Exception covers compiled output; the runtime DLLs themselves are listed separately.",
+      "currentlyMet": true,
+      "gap": "None for the compiler; see mingw-runtime-gcc for DLLs."
+    },
+    "notes": ""
+  },
+  {
+    "id": "inno-setup",
+    "name": "Inno Setup 6",
+    "version": "6.x (winget JRSoftware.InnoSetup; exact version not recorded)",
+    "category": "build-tool",
+    "license": "LicenseRef-InnoSetup (Inno Setup License, permissive)",
+    "licenseVerifiedFrom": "https://jrsoftware.org/files/is/license.txt (fetched)",
+    "licenseTextInRepo": "MISSING (not needed)",
+    "homepage": "https://jrsoftware.org/isinfo.php",
+    "sourceUrl": "https://github.com/jrsoftware/issrc",
+    "usedFor": {
+      "hu": "A Windows-telepítő (Tanara-x.y.z-win64-setup.exe) készítése.",
+      "en": "Builds the Windows installer."
+    },
+    "whereInCode": [
+      "packaging/windows/tanara.iss",
+      "packaging/windows/tanara-version.iss.in",
+      "CMakeLists.txt: configure_file for tanara-version.iss"
+    ],
+    "shippedIn": [
+      "windows-installer (the setup stub is embedded in the installer)"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "License permits using the software for any purpose incl. commercial; conditions concern redistributing Inno Setup itself. The generated setup.exe embeds the Inno Setup runtime stub; license page text does not address output installers explicitly (fetch summary) - practice: no obligation, acknowledgement 'appreciated but not required'.",
+      "currentlyMet": true,
+      "gap": "None required. Optional credit."
+    },
+    "notes": "Inno Setup also includes Pascal Script/RemObjects; output installer is widely distributed commercially without attribution."
+  },
+  {
+    "id": "nodejs-dev-scripts",
+    "name": "Node.js (dev-only scripts: tools/prompt-eval, tests/mock-gateway)",
+    "version": "not recorded; scripts use only Node built-ins (node:fs, http, https, child_process, crypto, os, url, path) - no npm dependencies",
+    "category": "build-tool",
+    "license": "MIT (Node.js)",
+    "licenseVerifiedFrom": "scripts import only node: built-in modules (grep of tools/prompt-eval/*.mjs and tests/mock-gateway/mock-gateway.mjs)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://nodejs.org",
+    "sourceUrl": "https://github.com/nodejs/node",
+    "usedFor": {
+      "hu": "Prompt-kiértékelő eszköz és a cloud-integrációs tesztek mock-gateway-e.",
+      "en": "Prompt evaluation tool and mock gateway for cloud integration tests."
+    },
+    "whereInCode": [
+      "tools/prompt-eval/*.mjs",
+      "tests/mock-gateway/mock-gateway.mjs",
+      "tests/CMakeLists.txt (TANARA_MOCK_GATEWAY)"
+    ],
+    "shippedIn": [
+      "none"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Not distributed.",
+      "currentlyMet": true,
+      "gap": "None. tools/prompt-eval additionally drives the user-installed LM Studio `lms` CLI (execFileSync) - runtime tool of the dev workflow only; local LLM models used there (gemma, qwen) are not shipped."
+    },
+    "notes": "tools/prompt-eval prompts/ are Tanara's own. No package.json found in tools/ (no npm deps)."
+  },
+  {
+    "id": "pkgconfig-cmake-finders",
+    "name": "pkg-config (kissfft-float lookup, Linux)",
+    "version": "n/a",
+    "category": "build-tool",
+    "license": "GPL-2.0-or-later",
+    "licenseVerifiedFrom": "n/a",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.freedesktop.org/wiki/Software/pkg-config/",
+    "sourceUrl": "",
+    "usedFor": {
+      "hu": "Linuxon a kissfft megkeresése.",
+      "en": "Locates kissfft on Linux."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: find_package(PkgConfig); pkg_check_modules(KISSFFT kissfft-float)"
+    ],
+    "shippedIn": [
+      "none"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Not distributed.",
+      "currentlyMet": true,
+      "gap": "None."
+    },
+    "notes": ""
+  },
+  {
+    "id": "windeployqt-qt-tools",
+    "name": "Qt build tools: windeployqt, lupdate, lrelease, moc/rcc/uic, qmltyperegistrar, qmlcachegen",
+    "version": "Qt 6.11.x",
+    "category": "build-tool",
+    "license": "LGPL-3.0-only (Qt 6.11 open-source edition is LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; some add-on modules GPL-only)",
+    "licenseVerifiedFrom": "as for qt6",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.qt.io",
+    "sourceUrl": "https://code.qt.io",
+    "usedFor": {
+      "hu": "Telepítő-mappa összerakása, fordítások (.ts -> .qm), MOC/RCC.",
+      "en": "Deployment folder assembly, translations (.ts -> .qm), MOC/RCC code generation."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: qt_add_translations, AUTOMOC/AUTORCC",
+      "packaging/windows/README.md windeployqt command"
+    ],
+    "shippedIn": [
+      "none"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Tools themselves not distributed. Output (generated moc code) is Tanara's. Caveat: rcc/qmlcachegen embed Qt-licensed boilerplate in generated sources - covered by Qt linking exception (GPL-exception) / LGPL.",
+      "currentlyMet": false,
+      "gap": "None."
+    },
+    "notes": "windeployqt copies the DLLs listed in qt6 entry (see its obligations)."
+  },
+  {
+    "id": "onnxruntime",
+    "name": "ONNX Runtime",
+    "version": "Windows: 1.20.1 (README/packaging docs; onnxruntime.dll timestamp 2024-11-19); Linux dev: 1.22.2 (Fedora onnxruntime-devel, ORT_API_VERSION 22)",
+    "category": "linked-library",
+    "license": "MIT",
+    "licenseVerifiedFrom": "Fedora package license field (rpm -q onnxruntime): 'MIT AND Apache-2.0 AND BSL-1.0 AND BSD-3-Clause' (includes its bundled deps); upstream LICENSE is MIT (not fetched)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://onnxruntime.ai",
+    "sourceUrl": "https://github.com/microsoft/onnxruntime",
+    "usedFor": {
+      "hu": "A beszélő-embedding (CAM++) ONNX modell futtatása.",
+      "en": "Runs the ONNX speaker-embedding (CAM++) model."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: find_package(onnxruntime) on Linux; include(cmake/OnnxRuntimeWin.cmake) when WIN32 and ONNXRUNTIME_ROOT_DIR",
+      "cmake/OnnxRuntimeWin.cmake (IMPORTED SHARED onnxruntime::onnxruntime, onnxruntime.dll)",
+      "core/CMakeLists.txt: linked PRIVATE",
+      "CMakeLists.txt: tanara_copy_onnxruntime_dll POST_BUILD"
+    ],
+    "shippedIn": [
+      "linux-build (system lib, not shipped)",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "MIT: include copyright + permission notice (Copyright (c) Microsoft Corporation). The official release archive also contains ThirdPartyNotices.txt covering ORT's bundled dependencies (protobuf, Eigen, abseil, flatbuffers, onnx, re2, etc., licences incl. Apache-2.0, BSD, MIT, BSL-1.0): redistributing onnxruntime.dll should be accompanied by that file.",
+      "currentlyMet": false,
+      "gap": "NOTICES names MIT but no version, no copyright line; Windows zip/installer ship onnxruntime.dll without LICENSE or ThirdPartyNotices.txt from the ORT release. ADD both files (from onnxruntime-win-x64-1.20.1 archive) to the package (e.g. licenses\\onnxruntime\\) and mention version 1.20.1."
+    },
+    "notes": "Windows build is MSVC-compiled so Tanara also ships the VC++ runtime (see vcpp-runtime). Version mismatch Linux 1.22.2 vs Windows 1.20.1 - SHOULD record the minimum supported version. System32 has an older Windows ML onnxruntime.dll - reason for app-local copy (CMakeLists comment)."
+  },
+  {
+    "id": "threads-libm-dl",
+    "name": "POSIX Threads / libm / libdl (Linux system libraries)",
+    "version": "glibc of the build host",
+    "category": "linked-library",
+    "license": "LGPL-2.1-or-later (glibc)",
+    "licenseVerifiedFrom": "not applicable (OS component)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.gnu.org/software/libc/",
+    "sourceUrl": "",
+    "usedFor": {
+      "hu": "Szálak, matematika, dinamikus betöltés (miniaudio dlopen).",
+      "en": "Threads, math, dlopen for miniaudio backends."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: find_package(Threads); core/CMakeLists.txt: ${CMAKE_DL_LIBS} m Threads::Threads"
+    ],
+    "shippedIn": [
+      "linux-build (system, not shipped)"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "System component; none.",
+      "currentlyMet": true,
+      "gap": "None."
+    },
+    "notes": ""
+  },
+  {
+    "id": "qt6",
+    "name": "Qt 6 (Core, Gui, Network, Sql, Widgets, Multimedia, MultimediaWidgets, Qml, Quick, QuickControls2, Svg, DBus)",
+    "version": "6.11.2 on Linux dev (Fedora qt6-qtbase 6.11.2); 6.11.1 mingw_64 documented for Windows (packaging/windows/README.md; DLL timestamps 2026-05-07/08)",
+    "category": "linked-library",
+    "license": "LGPL-3.0-only (Qt 6.11 open-source edition is LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; some add-on modules GPL-only)",
+    "licenseVerifiedFrom": "Fedora package license field (rpm -q qt6-qtbase): 'LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0'; https://www.qt.io/qt-licensing (not fetched this session - inference for upstream wording)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.qt.io",
+    "sourceUrl": "https://code.qt.io/cgit/ / https://download.qt.io/official_releases/qt/6.11/",
+    "usedFor": {
+      "hu": "Felhasználói felület (Widgets + Qt Quick/QML), hálózat, SQLite, médialejátszás, SVG, fordítás.",
+      "en": "GUI (Widgets + Qt Quick/QML), networking, SQLite access, media playback, SVG, translations."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: find_package(Qt6 REQUIRED Core Network Sql Widgets Multimedia MultimediaWidgets Test LinguistTools OPTIONAL DBus); GUI: Qml Quick QuickControls2 Svg",
+      "core/CMakeLists.txt: Qt6::Core Network Sql (Widgets forbidden)",
+      "gui/CMakeLists.txt: Qt6::Widgets Multimedia MultimediaWidgets",
+      "gui/qml/CMakeLists.txt: Qml Quick QuickControls2 Svg",
+      "watcher/CMakeLists.txt: Widgets, DBus (Linux)",
+      "tests: Qt6::Test"
+    ],
+    "shippedIn": [
+      "linux-build (system Qt, not shipped)",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "LGPL-3.0 for a dynamically linked app: (1) prominent notice that Qt is used and is LGPL-licensed; (2) provide/accompany a copy of LGPL-3.0 (and GPL-3.0 it references) text; (3) written offer / link to the exact corresponding Qt source (qt.io) for the shipped version; (4) user must be able to replace Qt DLLs (dynamic linking satisfies this; do not use anti-tampering/ signing that blocks replacement; no static Qt); (5) do not forbid reverse engineering for debugging modifications in Tanara's own EULA/license; (6) keep Qt copyright notices; also Qt's own third-party notices (see qt-bundled-third-party).",
+      "currentlyMet": false,
+      "gap": "THIRD_PARTY_NOTICES.md has only 'Qt 6 - LGPL v3, dynamically linked, replaceable' with no version, no module list, no LGPL/GPL text, no source offer. The Windows zip/installer ship ~60 Qt DLLs/plugins plus qt_*.qm translations and NO license text, no 'uses Qt' notice, no link to Qt source for 6.11.1. MISSING: LGPL-3.0 + GPL-3.0 texts in package, Qt source offer URL (https://download.qt.io/archive/qt/6.11/6.11.1/), exact Qt version, module list. Also the Qt 'Test' and 'LinguistTools' are build-time only. Installer (tanara.iss) has no LicenseFile page."
+    },
+    "notes": "Windows zip contains Qt6Core, Gui, Multimedia, Network, OpenGL, Qml, QmlMeta, QmlModels, QmlWorkerScript, Quick, QuickControls2 (+Basic, Fusion, Imagine, Material, Universal, FluentWinUI3, WindowsStyleImpl and *Impl), QuickEffects, QuickLayouts, QuickShapes, QuickTemplates2, Sql, Svg, Widgets; plugins: platforms(qwindows,qoffscreen), styles(qmodernwindowsstyle), imageformats(qgif,qico,qjpeg,qsvg), iconengines(qsvgicon), generic(qtuiotouchplugin), multimedia(ffmpegmediaplugin,windowsmediaplugin), networkinformation(qnetworklistmanager), sqldrivers(qsqlite), tls(qschannelbackend,qcertonlybackend), qmltooling debug plugins (qmldbg_*), qml imports. Inference: Qt installed via Qt online installer (MinGW kit) = open-source LGPL edition. Unused-by-Tanara extras (qmltooling debug plugins, Material/Universal/Imagine styles, qoffscreen) increase obligations little but could be pruned. Tanara has Qt Quick Controls 2 style FluentWinUI3 DLLs (Microsoft design - Qt code, LGPL). Replaceability: DLLs are plain files beside exe -> relinking requirement met if user may swap them."
+  },
+  {
+    "id": "windows-system-libs",
+    "name": "Windows SDK system libraries (ole32, oleaut32, uuid, winmm, avrt, ksuser, secur32, plus Qt-implied d3d11, user32 ...)",
+    "version": "Windows 10+ (installer MinGW MinVersion=10.0)",
+    "category": "linked-library",
+    "license": "LicenseRef-Microsoft-Windows",
+    "licenseVerifiedFrom": "core/CMakeLists.txt (if(WIN32) target_link_libraries ole32 oleaut32 uuid winmm avrt ksuser secur32); packaging/windows/tanara.iss MinVersion=10.0",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://learn.microsoft.com/windows/win32/",
+    "sourceUrl": "(closed source)",
+    "usedFor": {
+      "hu": "WASAPI/COM audio, Schannel TLS, multimédia időzítők - rendszer-API-k.",
+      "en": "WASAPI/COM audio, Schannel TLS, multimedia timers - OS APIs."
+    },
+    "whereInCode": [
+      "core/CMakeLists.txt"
+    ],
+    "shippedIn": [
+      "none (OS-provided)"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "System components; not redistributed.",
+      "currentlyMet": true,
+      "gap": "None."
+    },
+    "notes": ""
+  },
+  {
+    "version": "default id 'text-embedding-bge-m3' (BuiltinProviders.cpp:201)",
+    "licenseVerifiedFrom": "https://huggingface.co/BAAI/bge-m3 (license: mit)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://github.com/FlagOpen/FlagEmbedding",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "User may choose another embedding model; bge-m3 is just the placeholder/default and is loaded in LM Studio by the user.",
+    "id": "model-bge-m3",
+    "name": "BGE-M3 embedding model (BAAI/bge-m3)",
+    "category": "model",
+    "license": "MIT",
+    "homepage": "https://huggingface.co/BAAI/bge-m3",
+    "usedFor": {
+      "hu": "Többnyelvű szöveg-beágyazás a címkékhez / hasonlósághoz, OpenAI-kompatibilis végponton át; nem szállítjuk.",
+      "en": "Multilingual text embeddings for tags/similarity via an OpenAI-compatible endpoint; not shipped."
+    },
+    "whereInCode": [
+      "core/src/provider/BuiltinProviders.cpp:193-203",
+      "core/src/embedding/OpenAiCompatibleEmbeddingProvider.cpp",
+      "core/src/tags/TagService.cpp",
+      "tests/unit/test_embedding.cpp"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "MIT applies to redistribution; Tanara does not redistribute. Credit in About page is courtesy.",
+      "currentlyMet": false,
+      "gap": "Not in NOTICES."
+    }
+  },
+  {
+    "version": "file campplus_sv_zh_en_16k.onnx (upstream name 3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx); no hash/version pinned",
+    "licenseVerifiedFrom": "https://modelscope.cn/api/v1/models/iic/speech_campplus_sv_zh_en_16k-common_advanced ('License':'Apache License 2.0'); sherpa-onnx repo Apache-2.0 (https://github.com/k2-fsa/sherpa-onnx)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://modelscope.cn/models/iic/speech_campplus_sv_zh_en_16k-common_advanced ; ONNX via https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models",
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "notes": "README.md says 'not bundled' (Linux/source) while OLVASSEL.md says the model is in the package (Windows). Training data (VoxCeleb/CN-Celeb etc., inference) may carry their own research-use terms; the model license field is Apache-2.0 — flag for review. Voiceprints derived from user recordings are personal (biometric) data stored in ~/.tanara/voiceprints.json (GDPR note). | (merged from second entry) Part B/other agents may cover model details. Verify licence on the 3D-Speaker repo/ModelScope card and training-data terms (VoxCeleb/3D-Speaker dataset restrictions?) before shipping.",
+    "id": "model-campplus",
+    "name": "CAM++ speaker-embedding model (3D-Speaker, ONNX export via sherpa-onnx)",
+    "category": "model",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/modelscope/3D-Speaker",
+    "usedFor": {
+      "hu": "Beszélő-lenyomat (embedding) számítása a beszélők automatikus felismeréséhez; helyben fut ONNX Runtime-mal.",
+      "en": "Computes speaker embeddings for automatic speaker labelling; runs locally via ONNX Runtime."
+    },
+    "whereInCode": [
+      "core/src/Paths.cpp:69 (file name)",
+      "core/src/voiceid/VoiceEmbedder.cpp",
+      "README.md 'Speaker-embedding model'",
+      "packaging/windows/README.md",
+      "packaging/windows/OLVASSEL.md",
+      "packaging/windows/tanara.iss",
+      "packaging/windows/README.md (models\\campplus_sv_zh_en_16k.onnx)"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Apache-2.0: when redistributing the weights include the Apache-2.0 text, a notice of origin (3D-Speaker / Alibaba, ModelScope, ONNX export by k2-fsa/sherpa-onnx) and keep NOTICE if any. 'Not on Linux' — user downloads it from GitHub.",
+      "currentlyMet": false,
+      "gap": "NOTICES says 'downloaded by the user' — false for Windows: packaging/windows/README.md and tanara.iss BUNDLE models\\campplus_sv_zh_en_16k.onnx. No Apache text for the model or copyright line (Alibaba/3D-Speaker authors). | NOTICES says 'downloaded separately, not bundled' - FALSE for the Windows zip/installer: models\\campplus_sv_zh_en_16k.onnx (28 MB) is shipped. No Apache text, no copyright line, no version/URL pinned to a release."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "https://www.modelscope.cn/api/v1/models/iic/speech_eres2netv2_sv_zh-cn_16k-common ('License': Apache License 2.0)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://modelscope.cn/models/iic/speech_eres2netv2_sv_zh-cn_16k-common",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Planned.",
+    "id": "model-eres2netv2",
+    "name": "ERes2NetV2 speaker model, 3D-Speaker (PLANNED)",
+    "category": "model",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/modelscope/3D-Speaker",
+    "usedFor": {
+      "hu": "Tervezett alternatív beszélő-embedding modell.",
+      "en": "Planned alternative speaker-embedding model."
+    },
+    "whereInCode": [
+      "(not referenced in repo)"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Same as CAM++ if shipped.",
+      "currentlyMet": true,
+      "gap": "Planned only."
+    }
+  },
+  {
+    "version": "default model id 'google/gemma-4-12b' (core/src/provider/BuiltinProviders.cpp:78); GGUF/quant chosen by user in LM Studio",
+    "licenseVerifiedFrom": "https://ai.google.dev/gemma/terms (Gemma Terms of Use; custom license, not an SPDX OSS license); Prohibited Use Policy https://ai.google.dev/gemma/prohibited_use_policy",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://huggingface.co/google",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Gemma is NOT open source (custom terms, use restrictions incl. Prohibited Use Policy). Trademark 'Gemma' is Google's. If Tanara Cloud's gateway serves Gemma it becomes a Hosted Service/distribution -> full s.3.1 obligations (inference). The default is 'google/gemma-4-12b'; the dev setup uses -qat variant. Exact HF license for gemma-4 not re-fetched (page check was of the generic terms).",
+    "id": "model-gemma",
+    "name": "Google Gemma (google/gemma-4-12b; prompt-eval also tests google/gemma-4-12b-qat)",
+    "category": "model",
+    "license": "LicenseRef-Gemma-Terms-of-Use",
+    "homepage": "https://ai.google.dev/gemma",
+    "usedFor": {
+      "hu": "Alapértelmezett helyi LLM az összefoglalókhoz és címkékhez (LM Studio-n át); a Tanara nem szállítja a súlyokat.",
+      "en": "Default local LLM for summaries and tags (via LM Studio); Tanara does not ship the weights."
+    },
+    "whereInCode": [
+      "core/src/provider/BuiltinProviders.cpp:78 (default model)",
+      "core/src/PromptLibrary.cpp (Gemma prompt tuning)",
+      "core/src/llm/OpenAiCompatibleProvider.cpp",
+      "core/src/AppController.cpp",
+      "tools/prompt-eval/run.mjs"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Fact (Terms s.3.1): obligations arise when you DISTRIBUTE Gemma or derivatives (copy of the terms, pass-down of use restrictions, modification notices, and a Notice file with the sentence 'Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms'). Tanara only recommends/uses a model the user downloads in LM Studio, so (inference) the distribution clauses are not triggered; a courtesy notice and link is still advisable. Outputs: Google claims no rights; user responsible. Hosted service counts as distribution — relevant if Tanara Cloud ever runs Gemma.",
+      "currentlyMet": false,
+      "gap": "Not mentioned at all in THIRD_PARTY_NOTICES.md or README. Add Gemma/Prohibited-Use-Policy links in NOTICES and About page."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "https://github.com/k2-fsa/sherpa-onnx (Apache-2.0 license)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://github.com/k2-fsa/sherpa-onnx",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "The ONNX file's own metadata/NOTICE not inspected (no download).",
+    "id": "sherpa-onnx-export",
+    "name": "sherpa-onnx (k2-fsa) — source of the ONNX CAM++ export",
+    "category": "model",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/k2-fsa/sherpa-onnx",
+    "usedFor": {
+      "hu": "Innen töltődik le az ONNX-ra exportált CAM++ modell (release 'speaker-recongition-models'); a sherpa-onnx kódot nem használjuk. A feature-kinyerés kaldi-native-fbank-kal (A rész) egyezik az export tanító-előfeldolgozásával.",
+      "en": "Source of the ONNX-exported CAM++ file (release 'speaker-recongition-models'); the sherpa-onnx code itself is not used. Feature extraction uses kaldi-native-fbank (see Part A), matching the export's preprocessing."
+    },
+    "whereInCode": [
+      "README.md:152 (download URL)"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Provenance credit only (the model file is covered by model-campplus).",
+      "currentlyMet": false,
+      "gap": "Mention export provenance in NOTICES."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM (license: cc-by-4.0)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Planned.",
+    "id": "model-wespeaker-resnet34-lm",
+    "name": "WeSpeaker ResNet34-LM (PLANNED)",
+    "category": "model",
+    "license": "CC-BY-4.0",
+    "homepage": "https://github.com/wenet-e2e/wespeaker",
+    "usedFor": {
+      "hu": "Tervezett alternatív beszélő-embedding modell (nincs a kódban).",
+      "en": "Planned alternative speaker-embedding model (not in code yet)."
+    },
+    "whereInCode": [
+      "(not referenced in repo; grep found nothing)"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "If ever shipped/offered: CC-BY-4.0 attribution (author, license link, indicate changes e.g. ONNX conversion). Trained on VoxCeleb (inference: dataset terms to check).",
+      "currentlyMet": true,
+      "gap": "Planned only; nothing to do now."
+    }
+  },
+  {
+    "version": "not recorded; Windows build = gyan.dev 'essentials' static build per packaging/windows/README.md (version not pinned). Record exact build + configure line.",
+    "licenseVerifiedFrom": "https://ffmpeg.org/legal.html ; https://www.gyan.dev/ffmpeg/builds/ ('All builds are 64-bit, static and licensed as GPLv3')",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://git.ffmpeg.org/ffmpeg.git (gyan.dev build commit listed on https://www.gyan.dev/ffmpeg/builds/)",
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "notes": "KEY FINDING. Distinction: FFmpeg code is LGPL-2.1+ with some GPL parts; a binary is LGPL only if built without --enable-gpl/--enable-nonfree and without GPL libs (x264/x265). gyan.dev essentials are GPLv3, therefore the redistributed exe is GPLv3 and bundles many other components (x264 GPL, LAME LGPL, opus BSD, etc.; see build's own license files). Tanara executes it as a separate process through QProcess, no linking, so Tanara's MIT license is not affected, but the zip/installer is a distribution of GPL software. See Part A for the exact zip contents. Pin the version and keep the source URL (gyan.dev commit) in the release notes. Codecs used are libopus (BSD-3, in the build) and libmp3lame (LGPL-2.1; MP3 patents expired). Note: the Windows build notice in README.md says only ffmpeg.exe is needed but the package also ships ffprobe.exe — check whether Part A sees ffprobe.",
+    "id": "ffmpeg-cli",
+    "name": "FFmpeg (ffmpeg / ffprobe executables)",
+    "category": "runtime-tool",
+    "license": "GPL-3.0-only (gyan.dev essentials/full builds) — FFmpeg itself is LGPL-2.1-or-later with optional GPL-2.0-or-later parts; distributed binary license depends on configure flags",
+    "homepage": "https://ffmpeg.org",
+    "usedFor": {
+      "hu": "Hangfelvétel kódolása (libopus), lekeverés (libmp3lame, loudnorm), importált hangfájlok dekódolása/kódolása, hullámforma és beszélő-szegmensek dekódolása; az ffprobe a hangfájlok adatait olvassa.",
+      "en": "Encodes recordings (libopus), builds the mixdown (libmp3lame, loudnorm), imports/decodes audio, decodes segments for waveform and speaker embeddings; ffprobe reads file metadata."
+    },
+    "whereInCode": [
+      "core/src/audio/RecordingSession.cpp (start ffmpeg, -c:a libopus)",
+      "core/src/audio/MixdownPlan.cpp (libmp3lame, loudnorm)",
+      "core/src/audio/WaveformService.cpp",
+      "core/src/import/AudioImporter.cpp (ffprobe + ffmpeg libopus)",
+      "core/src/voiceid/VoiceEmbedder.cpp",
+      "core/src/edit/UtteranceEmbeddings.cpp",
+      "core/src/store/MeetingStore.cpp (ffprobe length)",
+      "packaging/windows/README.md (Copy-Item ffmpeg.exe, ffprobe.exe dist)",
+      "packaging/windows/OLVASSEL.md",
+      "packaging/windows/tanara.iss (header comment lists ffmpeg.exe in DistDir)"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Linux: Tanara only invokes the user's installed ffmpeg via PATH -> no redistribution, a mention is enough. Windows: Tanara REDISTRIBUTES ffmpeg.exe+ffprobe.exe (fact: packaging/windows/README.md step 2 copies them into dist; OLVASSEL.md says they are in the folder). If the gyan.dev GPLv3 static build is shipped (inference: README names it), obligations are GPL-3.0: ship the GPL-3.0 text, provide/offer the corresponding source of that exact build (incl. statically linked libs: x264, x265, LAME, opus etc.) on the same server or via a written offer, keep copyright notices, state that FFmpeg is a separate program (aggregate, not linked) so Tanara's MIT license is unaffected; FFmpeg's own checklist also asks for attribution in the About box and spelling 'FFmpeg'. Alternative: ship an LGPL-only shared build (no --enable-gpl) with libmp3lame/libopus, which needs LGPL-2.1 text + source for the build, and DLL replaceability.",
+      "currentlyMet": false,
+      "gap": "THIRD_PARTY_NOTICES.md says 'Tanara does not redistribute FFmpeg. Install separately.' — FALSE for the Windows zip/installer. No FFmpeg/GPL/LAME license text in repo or package, no source offer, no build identification, no About-box attribution. KEY FINDING."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "No notify-send, xdg-open or pactl invocations were found; QDesktopServices::openUrl (Qt) opens links/folders (gui/src/SettingsWidgetsDialogs.cpp, gui/src/cloud/*).",
+    "id": "linux-desktop-integration",
+    "name": "freedesktop.org Notifications (D-Bus), XDG autostart, QSystemTrayIcon/StatusNotifier",
+    "category": "runtime-tool",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "https://specifications.freedesktop.org/",
+    "usedFor": {
+      "hu": "Értesítések (org.freedesktop.Notifications), induláskori automatikus indítás (~/.config/autostart/tanara-watcher.desktop), tálcaikon.",
+      "en": "Desktop notifications (D-Bus org.freedesktop.Notifications), login autostart via ~/.config/autostart/tanara-watcher.desktop, tray icon."
+    },
+    "whereInCode": [
+      "watcher/TrayWatcher.cpp",
+      "core/src/detect/Autostart.cpp"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Open specifications / OS services; no attribution obligation. Not user-facing as a product name.",
+      "currentlyMet": true,
+      "gap": ""
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "https://github.com/PipeWire/pipewire ('mostly licensed under the MIT license', exceptions in LICENSE)",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "https://gitlab.freedesktop.org/pipewire/pipewire",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Feature silently disabled if pw-dump is absent. Not available on Windows.",
+    "id": "pipewire-pw-dump",
+    "name": "PipeWire (pw-dump)",
+    "category": "runtime-tool",
+    "license": "MIT",
+    "homepage": "https://pipewire.org",
+    "usedFor": {
+      "hu": "Linuxon a pw-dump JSON-kimenetéből derül ki, melyik alkalmazás használja a mikrofont (hívásfelismerés) és melyek a lejátszó-eszközök (lejátszás-irányítás).",
+      "en": "On Linux, pw-dump JSON output tells which application uses the microphone (call detection) and which playback devices exist (playback routing)."
+    },
+    "whereInCode": [
+      "core/src/detect/LinuxCaptureDetector.cpp",
+      "core/src/detect/detail/PwDumpParser.cpp",
+      "core/src/audio/PlaybackRouting.cpp"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Only invoked from the user's system PATH; nothing redistributed. Naming in About page is courtesy.",
+      "currentlyMet": false,
+      "gap": "Not mentioned in THIRD_PARTY_NOTICES.md (courtesy mention only)."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "inference: miniaudio dlopens libpulse/libasound; Qt Multimedia playback may also use PipeWire/PulseAudio via GStreamer/FFmpeg Qt backend (Part A). No pactl/wpctl calls found in the code (grep).",
+    "id": "pipewire-pulseaudio-alsa-backends",
+    "name": "PipeWire / PulseAudio / ALSA (via miniaudio backends)",
+    "category": "runtime-tool",
+    "license": "MIT (PipeWire) / LGPL-2.1+ (PulseAudio client lib) / LGPL-2.1+ (ALSA lib)",
+    "homepage": "https://pipewire.org",
+    "usedFor": {
+      "hu": "Linuxon a miniaudio ezeken a rendszer-hangszervereken át vesz fel és játszik le; a miniaudio dinamikusan tölti be őket (dlopen).",
+      "en": "On Linux miniaudio captures and plays through these system audio servers, loading them dynamically (dlopen)."
+    },
+    "whereInCode": [
+      "third_party/miniaudio (backend selection)",
+      "core/src/audio/DeviceManager.cpp",
+      "gui/src/AudioOutputFactory.h"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "System components, not redistributed. inference: licenses per upstream knowledge, not fetched except PipeWire.",
+      "currentlyMet": true,
+      "gap": "Optional About-page grouping 'System audio: PipeWire/PulseAudio/ALSA (Linux), WASAPI (Windows)'."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "WebView2 is only detected as a process name, not used/embedded by Tanara. Values read are system-provided, undocumented-ish registry state (inference: ConsentStore layout may change between Windows versions).",
+    "id": "windows-os-integrations",
+    "name": "Windows APIs: WASAPI loopback, CapabilityAccessManager ConsentStore registry, HKCU Run key, process snapshot, WebView2 parent-chain detection",
+    "category": "runtime-tool",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "https://learn.microsoft.com/windows/win32/coreaudio/wasapi",
+    "usedFor": {
+      "hu": "WASAPI loopback a gép hangjához (miniaudio), a mikrofonhasználat felismerése a ConsentStore registryből, a 'Tanara Watcher' bejelentkezéskori indítása HKCU\\...\\Run kulcson át, az msedgewebview2 szülő-lánc feloldása.",
+      "en": "WASAPI loopback for system audio (via miniaudio), mic-use detection from the ConsentStore registry key, login autostart via HKCU\\...\\Run ('Tanara Watcher'), msedgewebview2 parent-chain resolution."
+    },
+    "whereInCode": [
+      "core/src/detect/WindowsCaptureDetector.cpp",
+      "core/src/detect/detail/WinCaptureRules.h",
+      "core/src/detect/Autostart.cpp",
+      "packaging/windows/OLVASSEL.md"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "OS APIs; no attribution obligation. Microsoft/Windows/WebView2/Edge are Microsoft trademarks — nominative use only. No schtasks/powershell/reg.exe invocation found (registry is accessed through the Win32 API).",
+      "currentlyMet": true,
+      "gap": ""
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer",
+      "linux-build"
+    ],
+    "notes": "No telemetry or contact with these services. Windows detector reads process image names and registry only.",
+    "id": "service-call-apps-detection",
+    "name": "Call/meeting app names (Google Meet, Microsoft Teams, Zoom, Webex, Slack, Discord, Skype) and browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi)",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "",
+    "usedFor": {
+      "hu": "Csak név-egyezés: a hívásfigyelő ezeknek a programoknak/böngészőknek a mikrofonhasználatát ismeri fel; semmilyen API-hívás nem megy hozzájuk.",
+      "en": "Name matching only: the call watcher recognises mic use by these apps/browsers; no API calls to them."
+    },
+    "whereInCode": [
+      "core/src/detect/detail/WinCaptureRules.cpp",
+      "core/src/detect/detail/PwDumpParser.cpp",
+      "core/src/detect/BuiltinDetectors.cpp",
+      "gui/qml/src/SettingsViewModel.cpp (Google Meet)",
+      "gui/qml/EmptyLibraryView.qml, OnboardingWindow.qml, Main.qml (Teams/Zoom in text)",
+      "i18n/tanara_en.ts"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Trademarks of their owners; nominative/descriptive use. Add a sentence: 'All product names are trademarks of their respective owners; Tanara is not affiliated with or endorsed by them.'",
+      "currentlyMet": false,
+      "gap": "No trademark disclaimer anywhere in README/NOTICES/UI."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Default URL is local; user may enter any host (incl. cloud). LM Studio native API is also used to read/reload the loaded model context. Hosted use of Gemma: see model-gemma.",
+    "id": "service-openai-compat-llm",
+    "name": "OpenAI-compatible LLM/STT/embedding endpoints (LM Studio, Ollama, OpenAI, Whisper-compatible servers)",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "https://lmstudio.ai",
+    "usedFor": {
+      "hu": "Összefoglaló, címkézés és beágyazás OpenAI-kompatibilis /v1 végpontokon (alapért.: LM Studio http://localhost:1234/v1), opcionálisan whisper-kompatibilis STT (http://localhost:8000/v1 vagy api.openai.com).",
+      "en": "Summaries, tagging and embeddings over OpenAI-compatible /v1 endpoints (default LM Studio http://localhost:1234/v1), optionally Whisper-compatible STT (localhost:8000/v1 or api.openai.com)."
+    },
+    "whereInCode": [
+      "core/src/llm/OpenAiCompatibleProvider.cpp",
+      "core/src/llm/LlmServer.cpp (LM Studio native API GET /api/v1/models, model load)",
+      "core/src/embedding/OpenAiCompatibleEmbeddingProvider.cpp",
+      "core/src/stt/WhisperCompatProvider.cpp",
+      "core/src/provider/BuiltinProviders.cpp",
+      "core/src/Logging.cpp"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "No software license obligation; trademarks (LM Studio, Ollama, OpenAI, Whisper) nominative. If the user points it at a cloud endpoint such as api.openai.com, the transcript text leaves the machine under that provider's terms.",
+      "currentlyMet": true,
+      "gap": "Add a short data-flow sentence: with the default localhost endpoint nothing leaves the machine."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "https://soniox.com/company/policies/terms-and-conditions/ (ToS), https://soniox.com/company/policies/privacy-policy/ , https://soniox.com/docs/stt/security-and-privacy (retention) — found via search, summary only",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "Data leaving machine: recorded audio (per track), language hints, vocabulary/context if sent. Optional: user chooses provider; needs own key (or Tanara Cloud). Per Soniox docs (search summary): audio/transcripts not used for training; async storage only if requested, auto-deleted after 30 days (verify Tanara's code requests deletion — open question). Product pages/ToS URLs may move; policy last updated 2026-06-29 per search.",
+    "id": "service-soniox",
+    "name": "Soniox speech-to-text API",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "https://soniox.com",
+    "usedFor": {
+      "hu": "Felhőalapú, aszinkron beszéd-szöveg átírás (alapértelmezett STT; a felhasználó saját kulcsával).",
+      "en": "Cloud asynchronous speech-to-text (default STT; uses the user's own API key)."
+    },
+    "whereInCode": [
+      "core/src/stt/SonioxProvider.cpp",
+      "core/include/tanara/stt/SonioxProvider.h",
+      "core/src/provider/BuiltinProviders.cpp (https://api.soniox.com/v1, model stt-async-v5)",
+      "core/src/SettingsManager.cpp",
+      "gui/qml/OnboardingWindow.qml"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "No software license. Soniox ToS apply to the user's own account/key. Trademark 'Soniox' used nominatively. Data: the meeting AUDIO FILES are uploaded to api.soniox.com when the user transcribes; Tanara should tell users (privacy note + link to Soniox privacy policy).",
+      "currentlyMet": false,
+      "gap": "THIRD_PARTY_NOTICES.md lists Soniox but has no data-flow note or ToS/privacy link; no in-app privacy statement verified."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "docs/cloud-gateway-api.yaml (own spec); core/include/tanara/cloud/CloudTypes.h",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer",
+      "linux-build"
+    ],
+    "notes": "Client is compiled in by default (option names above). If a user signs in, audio/transcript text goes to RemedIT servers. OLVASSEL.md tells testers to ignore it. Dev/UAT servers in the YAML (api.uat/dev.tanara.remedit.hu, 127.0.0.1:8300).",
+    "id": "service-tanara-cloud",
+    "name": "Tanara Cloud (RemedIT Hungary Kft.)",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "https://app.tanara.remedit.hu",
+    "usedFor": {
+      "hu": "A RemedIT saját átírás/összefoglaló/beágyazás átjárója (api.tanara.remedit.hu), bejelentkezéssel; opcionális, jelenleg 'hamarosan'.",
+      "en": "RemedIT's own transcription/summary/embedding gateway (api.tanara.remedit.hu) with sign-in; optional, currently 'coming soon'."
+    },
+    "whereInCode": [
+      "core/include/tanara/cloud/CloudTypes.h (DefaultBaseUrl, PrivacyUrl https://app.tanara.remedit.hu/legal/privacy)",
+      "docs/cloud-gateway-api.yaml",
+      "gui/src/cloud/*",
+      "gui/qml/src/SettingsCloudModel.cpp",
+      "CMake options TANARA_BUILD_CLOUD, TANARA_CLOUD_TEASER"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "First-party service; the privacy URL is flagged in code as an assumption ('feltételezés'). Upstream providers the gateway may forward to (inference) would need separate disclosure when the service goes live.",
+      "currentlyMet": false,
+      "gap": "Privacy URL unverified/assumed; terms/privacy pages must exist before the cloud mode is enabled for users."
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "none"
+    ],
+    "notes": "FACT from grep of string literals; runtime URLs the user types or Cloud returns (verification URI, downloadUrl, notification url opened via QDesktopServices) are not covered. gui/qml/fetch-assets.sh fetches unpkg.com/github.com at dev time only (Part A).",
+    "id": "no-telemetry-update",
+    "name": "Telemetry / update checks (none found)",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "",
+    "usedFor": {
+      "hu": "Nincs: a kódban (core/gui/cli/watcher) nincs frissítés-ellenőrzés vagy telemetria-végpont.",
+      "en": "None: no update-check or telemetry endpoint found in core/gui/cli/watcher."
+    },
+    "whereInCode": [
+      "grep https:// over core cli gui watcher: only api.soniox.com, api.openai.com, localhost, api.tanara.remedit.hu, app.tanara.remedit.hu"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "",
+      "currentlyMet": true,
+      "gap": ""
+    }
+  },
+  {
+    "version": "",
+    "licenseVerifiedFrom": "",
+    "licenseTextInRepo": "MISSING",
+    "sourceUrl": "",
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer",
+      "linux-build"
+    ],
+    "notes": "grep file list truncated to filenames; not all line numbers captured.",
+    "id": "ui-trademarks",
+    "name": "Third-party names in UI text (Soniox, LM Studio, OpenAI, Ollama, Teams, Zoom, Google Meet, Gemma)",
+    "category": "service",
+    "license": "N/A (service terms / OS API — no software license applies)",
+    "homepage": "",
+    "usedFor": {
+      "hu": "Felhasználói szövegekben és beállítás-súgókban termékek megnevezése (nominatív használat).",
+      "en": "Product names in UI strings and settings help (nominative use)."
+    },
+    "whereInCode": [
+      "i18n/tanara_en.ts (Teams, Zoom, Soniox, LM Studio, OpenAI)",
+      "gui/qml/Main.qml, EmptyLibraryView.qml (Teams/Zoom)",
+      "gui/qml/OnboardingWindow.qml (Soniox, Zoom, OpenAI)",
+      "gui/qml/SettingsProviderCard.qml (LM Studio)",
+      "gui/qml/src/SettingsViewModel.cpp (Google Meet, LM Studio, Teams)",
+      "gui/qml/src/OnboardingViewModel.cpp (LM Studio, Ollama)",
+      "Vivaldi/Discord/Webex/Slack/Skype only in core/src/detect/detail/*.cpp matching rules, not UI"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Nominative use is customary; add a disclaimer of non-affiliation. Not legal advice.",
+      "currentlyMet": false,
+      "gap": "No trademark disclaimer."
+    }
+  },
+  {
+    "id": "d3dcompiler-47",
+    "name": "D3Dcompiler_47.dll",
+    "version": "47 (file date 2014-03-11)",
+    "category": "shipped-binary",
+    "license": "LicenseRef-Microsoft-Redistributable",
+    "licenseVerifiedFrom": "Microsoft Windows SDK redistributable list (not fetched); windeployqt copies it by default",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://learn.microsoft.com/en-us/windows/win32/direct3dtools/d3dcompiler",
+    "sourceUrl": "(closed source)",
+    "usedFor": {
+      "hu": "Qt shader-fordító függősége (windeployqt másolja); Tanara közvetlenül nem használja.",
+      "en": "Shader compiler dependency copied by windeployqt; Tanara does not use it directly."
+    },
+    "whereInCode": [
+      "Windows zip: D3Dcompiler_47.dll"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Distributable under the Windows SDK / Visual Studio redistributable terms (D3DCompiler is on the redist list). Inference.",
+      "currentlyMet": false,
+      "gap": "Not listed. Consider excluding (--no-compiler-runtime/--no-system-d3d-compiler) since Qt Quick uses the RHI D3D11 backend with precompiled shaders; or list it."
+    },
+    "notes": "Candidate to remove from package to cut obligations."
+  },
+  {
+    "id": "ffmpeg-exe",
+    "name": "FFmpeg command-line tools: ffmpeg.exe and ffprobe.exe (Windows static build)",
+    "version": "ffmpeg.exe/ffprobe.exe dated 2026-09-19 in Tanara-0.5.11-win64.zip; README says 'gyan.dev essentials build'; inference: gyan release 9.0.2 (page lists 9.0.2, 2026-09-19)",
+    "category": "shipped-binary",
+    "license": "GPL-3.0-or-later",
+    "licenseVerifiedFrom": "https://www.gyan.dev/ffmpeg/builds/ (fetched): 'All builds are 64-bit, static and licensed as GPLv3'",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://ffmpeg.org",
+    "sourceUrl": "https://www.gyan.dev/ffmpeg/builds/ (links to source commit) / https://ffmpeg.org/download.html",
+    "usedFor": {
+      "hu": "Hangfelvétel kódolás/dekódolás, importálás, hullámforma, 16 kHz PCM kinyerés - QProcess-szel indított külső program.",
+      "en": "Audio encode/decode, import, waveform, 16 kHz PCM extraction - external program started via QProcess."
+    },
+    "whereInCode": [
+      "core/src/audio/RecordingSession.cpp (QProcess ffmpeg)",
+      "core/src/audio/MixdownPlan.cpp",
+      "core/src/audio/WaveformService.cpp",
+      "core/src/import/AudioImporter.cpp (ffprobe)",
+      "core/src/voiceid/VoiceEmbedder.cpp (decodePcm16kMono)",
+      "packaging/windows/README.md (copy ffmpeg.exe, ffprobe.exe)"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "GPLv3 build redistributed as separate executables (aggregate, not linked): must include GPLv3 text, FFmpeg copyright notice, and provide corresponding source or a written offer valid >=3 years (GPL 6(b)/(d)) for the exact build (gyan.dev publishes source commit); mention build config. Tanara's MIT code is not infected because it only spawns the program, but the *bundle* must meet GPL terms for these two binaries. Alternative: ship an LGPL FFmpeg build (e.g. BtbN lgpl/shared build) or no ffmpeg and ask the user to install.",
+      "currentlyMet": false,
+      "gap": "THIRD_PARTY_NOTICES.md says FFmpeg is NOT redistributed - wrong for the Windows zip/installer (ffmpeg.exe + ffprobe.exe are shipped, 105 MB each, GPL v3 static build). Missing: FFmpeg + GPLv3 notice, exact version/build source link, source offer, licence texts. Also no mention of encoders inside the build (libx264, etc. - patent issues N/A for audio use but listed by `ffmpeg -version`)."
+    },
+    "notes": "KEY QUESTION: exact build - confirm by running `ffmpeg.exe -version` from the dist folder (not done: only zip listing allowed) and record version + configuration. GPLv3 (gyan builds) is stricter than the LGPL notice currently implied. Linux: system ffmpeg (Fedora 8.1.3 full build, not shipped by Tanara)."
+  },
+  {
+    "id": "qt-ffmpeg-libs",
+    "name": "FFmpeg libraries bundled with Qt Multimedia (avcodec-61, avformat-61, avutil-59, swresample-5, swscale-8)",
+    "version": "FFmpeg 7.1.x (inference from DLL sonames avcodec-61/avformat-61/avutil-59; Qt 6.11 ships its own LGPL build)",
+    "category": "shipped-binary",
+    "license": "LGPL-2.1-or-later (inference: Qt builds its FFmpeg without GPL components)",
+    "licenseVerifiedFrom": "not verified in this session: zip listing only (avcodec-61.dll etc., dated 2026-05-08, same as Qt DLLs)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://ffmpeg.org",
+    "sourceUrl": "https://ffmpeg.org/download.html / Qt's FFmpeg build scripts (qtmultimedia/coin/provisioning)",
+    "usedFor": {
+      "hu": "A Qt Multimedia FFmpeg-backendje (lejátszás) használja; Tanara közvetlenül nem hívja.",
+      "en": "Used by Qt Multimedia's FFmpeg backend (playback); not called directly by Tanara code."
+    },
+    "whereInCode": [
+      "Windows zip: avcodec-61.dll, avformat-61.dll, avutil-59.dll, swresample-5.dll, swscale-8.dll, multimedia\\ffmpegmediaplugin.dll",
+      "gui: Qt6::Multimedia (PlayerController etc.)"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "LGPL-2.1+: license text, notice, source offer for the FFmpeg version shipped, relinking possibility (DLLs are replaceable). Verify the Qt-supplied build really is LGPL (not --enable-gpl).",
+      "currentlyMet": false,
+      "gap": "Not mentioned anywhere (THIRD_PARTY_NOTICES.md says 'Tanara does not redistribute FFmpeg', which is FALSE for the Windows package - it ships both Qt's FFmpeg DLLs AND ffmpeg.exe/ffprobe.exe). Need FFmpeg notice, LGPL text, source offer (https://ffmpeg.org / Qt source)."
+    },
+    "notes": "OPEN: confirm exact FFmpeg version and that licence is LGPL by checking Qt's multimedia FFmpeg build documentation (https://doc.qt.io/qt-6/qtmultimedia-attribution-ffmpeg.html - inference of URL)."
+  },
+  {
+    "id": "vcpp-runtime",
+    "name": "Microsoft Visual C++ runtime: msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll",
+    "version": "14.x (file dates 2025-11-21; copied from C:\\Windows\\System32 per packaging/windows/README.md)",
+    "category": "shipped-binary",
+    "license": "LicenseRef-Microsoft-VC-Redistributable",
+    "licenseVerifiedFrom": "Microsoft Visual Studio redistributable terms (not fetched); NOTE the README copies them from System32",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files",
+    "sourceUrl": "(closed source, no source)",
+    "usedFor": {
+      "hu": "Az MSVC-vel fordított onnxruntime.dll futtatókörnyezete (tiszta gépen nem biztos, hogy van).",
+      "en": "Runtime for the MSVC-built onnxruntime.dll (may be absent on a clean PC)."
+    },
+    "whereInCode": [
+      "packaging/windows/README.md",
+      "Windows zip: msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Microsoft permits app-local redistribution of the files listed in the Visual Studio 'REDIST.TXT' under the VS licence terms; copies taken from System32 rather than from the official VC_redist/Redist folder may not be covered (inference). Alternative: require the Microsoft VC++ 2015-2022 x64 redistributable installer.",
+      "currentlyMet": false,
+      "gap": "Not listed. Take the files from an official VC Redist (or Visual Studio Redist\\MSVC folder) and document it; or instruct installer to download vc_redist.x64.exe."
+    },
+    "notes": "Open legal question: redistribution from System32 is not an officially documented source."
+  },
+  {
+    "id": "mingw-runtime-gcc",
+    "name": "MinGW-w64 GCC runtime DLLs: libstdc++-6.dll, libgcc_s_seh-1.dll",
+    "version": "GCC 13.1 (Qt-bundled mingw1310_64; DLL timestamps 2023-05-24)",
+    "category": "shipped-binary",
+    "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+    "licenseVerifiedFrom": "GCC Runtime Library Exception 3.1 (https://www.gnu.org/licenses/gcc-exception-3.1.html - from knowledge, not fetched); toolchain version from packaging/windows/README.md (mingw1310_64)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://gcc.gnu.org",
+    "sourceUrl": "https://gcc.gnu.org/git/gcc.git (tag releases/gcc-13.1.0)",
+    "usedFor": {
+      "hu": "A MinGW-vel fordított exe-k C++ futtatókörnyezete.",
+      "en": "C++/exception runtime for MinGW-compiled executables."
+    },
+    "whereInCode": [
+      "packaging/windows/README.md (windeployqt --compiler-runtime)",
+      "Windows zip: libstdc++-6.dll, libgcc_s_seh-1.dll"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "GCC Runtime Library Exception: allows conveying the runtime libraries in unmodified form with any program regardless of its licence; no source offer is strictly needed for the unmodified runtime but good practice is a notice + link to the GCC source. Keep the GPL/exception text available.",
+      "currentlyMet": false,
+      "gap": "Not listed in NOTICES. Add a line 'libstdc++/libgcc (GCC 13.1 runtime), GPL-3.0 with GCC Runtime Library Exception' + link to source."
+    },
+    "notes": "Distribution under the exception does not make Tanara GPL (inference/standard reading)."
+  },
+  {
+    "id": "opengl32sw",
+    "name": "opengl32sw.dll (Mesa llvmpipe software OpenGL)",
+    "version": "Mesa version unknown (file date 2022-11-28; Qt-supplied)",
+    "category": "shipped-binary",
+    "license": "MIT (Mesa) AND others incl. LLVM Apache-2.0 WITH LLVM-exception (inference)",
+    "licenseVerifiedFrom": "not verified; Mesa licence is MIT (https://docs.mesa3d.org/license.html - not fetched)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.mesa3d.org",
+    "sourceUrl": "https://gitlab.freedesktop.org/mesa/mesa",
+    "usedFor": {
+      "hu": "Szoftveres OpenGL tartalék (windeployqt másolja), ha nincs GPU-driver.",
+      "en": "Software OpenGL fallback copied by windeployqt for machines without drivers."
+    },
+    "whereInCode": [
+      "Windows zip: opengl32sw.dll"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Mesa is MIT: include copyright/permission notice; LLVM parts Apache-2.0 w/ exception.",
+      "currentlyMet": false,
+      "gap": "Not listed. List or drop (--no-opengl-sw)."
+    },
+    "notes": "20 MB; Tanara's Qt Quick might use software renderer fallback."
+  },
+  {
+    "id": "qt-bundled-third-party",
+    "name": "Third-party code bundled inside Qt 6.11 DLLs (PCRE2, double-conversion, zlib, libpng, libjpeg, FreeType, HarfBuzz, md4c, tinycbor, forkfd, Mesa etc.)",
+    "version": "bundled by Qt 6.11.x (exact versions in Qt's 'Licenses Used in Qt' docs)",
+    "category": "shipped-binary",
+    "license": "MIXED (BSD-2/3-Clause, MIT, Zlib, libpng, FTL OR GPL-2.0, IJG, Apache-2.0 ... per component)",
+    "licenseVerifiedFrom": "https://doc.qt.io/qt-6/licenses-used-in-qt.html (not fetched; inference from Qt docs knowledge)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://doc.qt.io/qt-6/licenses-used-in-qt.html",
+    "sourceUrl": "https://code.qt.io/cgit/qt/qtbase.git/tree/src/3rdparty",
+    "usedFor": {
+      "hu": "A Qt DLL-ekbe fordított harmadik féltől származó kódok.",
+      "en": "Third-party code compiled into the Qt DLLs."
+    },
+    "whereInCode": [
+      "Windows zip: Qt6Core.dll, Qt6Gui.dll, imageformats\\qjpeg.dll etc."
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Each embedded component's own notice terms (mostly: reproduce copyright + license text in documentation for binary redistribution). Qt docs 'Licenses Used in Qt' list the required notices.",
+      "currentlyMet": false,
+      "gap": "Not mentioned at all. Windows package ships none of those notices. ADD a 'Qt third-party components' section referencing Qt's licenses-used page + the relevant texts (or include qt's own LICENSES dir / Qt installer's 'Licenses' folder)."
+    },
+    "notes": "Inference: for MinGW Qt builds the Gui DLL contains FreeType, HarfBuzz, libpng, zlib; Core contains PCRE2, double-conversion, md4c; Qt6Qml/Quick contain small MIT/BSD bits; qjpeg.dll contains libjpeg (IJG/BSD-3 style: requires 'based in part on the work of the Independent JPEG Group' acknowledgement). Verify against Qt 6.11 docs before publishing."
+  },
+  {
+    "id": "mingw-winpthreads",
+    "name": "winpthreads: libwinpthread-1.dll (mingw-w64)",
+    "version": "bundled with Qt mingw1310_64 (GCC 13.1 toolchain; DLL 2023-05-24)",
+    "category": "shipped-binary",
+    "license": "MIT (mingw-w64 winpthreads: MIT-style with some BSD-3 parts; inference)",
+    "licenseVerifiedFrom": "not verified from text this session (mingw-w64 COPYING.MinGW-w64-runtime/winpthreads COPYING); marked inference",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://www.mingw-w64.org",
+    "sourceUrl": "https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winpthreads/",
+    "usedFor": {
+      "hu": "POSIX szálak a MinGW futtatókörnyezetben.",
+      "en": "POSIX threads layer for the MinGW runtime."
+    },
+    "whereInCode": [
+      "Windows zip: libwinpthread-1.dll"
+    ],
+    "shippedIn": [
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Permissive: include copyright notice and permission text.",
+      "currentlyMet": false,
+      "gap": "Not listed. Add with winpthreads/mingw-w64 licence text (Copyright (c) 2011 mingw-w64 project - verify)."
+    },
+    "notes": "Verify licence text from the Qt toolchain's share/licenses or mingw-w64 repo before publishing."
+  },
+  {
+    "id": "dr-libs-in-miniaudio",
+    "name": "dr_wav / dr_flac / dr_mp3 (embedded in miniaudio)",
+    "version": "version of embedded copies not stated in grep; bundled with miniaudio 0.11.25",
+    "category": "vendored-source",
+    "license": "MIT-0 OR Unlicense",
+    "licenseVerifiedFrom": "third_party/miniaudio/miniaudio.h (single license block at end of file covers embedded dr_libs: '/* dr_wav_c begin */ ... dr_mp3_c end' regions)",
+    "licenseTextInRepo": "MISSING (inside miniaudio.h)",
+    "homepage": "https://github.com/mackron/dr_libs",
+    "sourceUrl": "https://github.com/mackron/dr_libs",
+    "usedFor": {
+      "hu": "WAV/FLAC/MP3 dekódolás a miniaudio-n belül.",
+      "en": "WAV/FLAC/MP3 decoding inside miniaudio."
+    },
+    "whereInCode": [
+      "third_party/miniaudio/miniaudio.h (dr_wav_c/dr_flac_c/dr_mp3_c sections), compiled by core/src/audio/miniaudio_impl.cpp"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Public domain / MIT-0: none.",
+      "currentlyMet": true,
+      "gap": "None. Optional: list under miniaudio in NOTICES."
+    },
+    "notes": "Inference: not separately used by Tanara code; compiled in because MINIAUDIO_IMPLEMENTATION enables decoders."
+  },
+  {
+    "id": "kaldi-native-fbank",
+    "name": "kaldi-native-fbank",
+    "version": "commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01 (upstream release tag not recorded)",
+    "category": "vendored-source",
+    "license": "Apache-2.0",
+    "licenseVerifiedFrom": "third_party/kaldi-native-fbank/LICENSE (Apache 2.0 text read; VENDORED.txt states Apache-2.0)",
+    "licenseTextInRepo": "third_party/kaldi-native-fbank/LICENSE",
+    "homepage": "https://github.com/csukuangfj/kaldi-native-fbank",
+    "sourceUrl": "https://github.com/csukuangfj/kaldi-native-fbank",
+    "usedFor": {
+      "hu": "Kaldi-kompatibilis fbank jellemzők a beszélő-embedding (voice-ID) előfeldolgozásához.",
+      "en": "Kaldi-compatible filterbank features for the speaker-embedding (voice-ID) pre-processing."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: static lib kaldi_native_fbank (glob third_party/kaldi-native-fbank/csrc/*.cc, only if TANARA_BUILD_VOICEID)",
+      "core/CMakeLists.txt: linked PRIVATE into tanara_core",
+      "core/src/voiceid/VoiceEmbedder.cpp"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "Apache-2.0 sec.4: ship a copy of the license; retain copyright/patent/attribution notices in source; mark modified files with prominent notices; reproduce NOTICE contents if upstream has a NOTICE file (none vendored). Files carry 'Copyright Xiaomi Corporation (Fangjun Kuang) 2022-2025', Brno Univ. of Technology 2024, and Karel Vesely/Petr Motlicek/Saarland University 2009-2011 (derived from Kaldi, Apache-2.0). Binary distribution: license text should accompany the binary.",
+      "currentlyMet": false,
+      "gap": "THIRD_PARTY_NOTICES.md names it and the repo has the license, but: no version/commit in the notice (VENDORED.txt has commit only); no copyright holders (Xiaomi Corp., Brno Univ. of Technology, Saarland University/Karel Vesely et al.) listed; the Windows zip/installer ships NO license text (the binary contains the code). Source files are 'copied/modified from kaldi' - upstream's own marking, retained."
+    },
+    "notes": "FACT: csrc contains only non-test files (VENDORED.txt). No local modifications recorded (inference: unmodified copy of upstream commit). Derived from Kaldi (Apache-2.0). Needs kissfft at link time. Upstream version number not recorded; SHOULD be recorded in VENDORED.txt (e.g. v1.22.x matching commit)."
+  },
+  {
+    "id": "kissfft",
+    "name": "KISS FFT (float build)",
+    "version": "131.1.0 on Linux dev machine (system pkg kiss-fft-131.2.0 rpm, pkg-config says 131.1.0); vendored copy: version NOT recorded (SPDX-header style => >=131.x; inference)",
+    "category": "vendored-source",
+    "license": "BSD-3-Clause",
+    "licenseVerifiedFrom": "SPDX-License-Identifier: BSD-3-Clause + 'See COPYING file' in third_party/kissfft/kiss_fft.h; full text not in repo; Fedora package license field BSD-3-Clause (rpm -q)",
+    "licenseTextInRepo": "MISSING",
+    "homepage": "https://github.com/mborgerding/kissfft",
+    "sourceUrl": "https://github.com/mborgerding/kissfft",
+    "usedFor": {
+      "hu": "Gyors Fourier-transzformáció a kaldi-native-fbank-hoz (Windowson vendorelt forrásból, Linuxon rendszercsomagból).",
+      "en": "FFT backend for kaldi-native-fbank (compiled from vendored source on Windows, linked from the system package on Linux)."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: WIN32 -> static lib kissfft_float (kiss_fft.c, kiss_fftr.c, kiss_fft_scalar=float), alias tanara::kissfft",
+      "CMakeLists.txt: Linux -> pkg_check_modules(KISSFFT kissfft-float)",
+      "third_party/kissfft/*"
+    ],
+    "shippedIn": [
+      "linux-build (system lib, dynamically linked - not shipped by Tanara)",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "BSD-3-Clause: binary redistribution must reproduce the copyright notice, conditions list and disclaimer in documentation/other materials provided with the distribution; no endorsement. Copyright lines: 'Copyright (c) 2003-2010 Mark Borgerding' (kiss_fftr 2003-2004).",
+      "currentlyMet": false,
+      "gap": "third_party/kissfft/COPYING (or LICENSES/BSD-3-Clause) is NOT vendored; the headers only say 'See COPYING file'. THIRD_PARTY_NOTICES.md names BSD-3-Clause but gives no copyright line and no license text; Windows zip/installer ship no notice. ADD: third_party/kissfft/COPYING (upstream text, 'Copyright (c) 2003-2010 Mark Borgerding'), VENDORED.txt with upstream tag/commit, notice entry with copyright line; ship text in Windows package."
+    },
+    "notes": "Vendored files: _kiss_fft_guts.h, kiss_fft.c/.h, kiss_fft_log.h, kiss_fftr.c/.h. Modification status unknown (inference: unmodified). Linux system package not redistributed by Tanara (user installs kiss-fft-devel)."
+  },
+  {
+    "id": "miniaudio",
+    "name": "miniaudio",
+    "version": "0.11.25 (2026-03-04) - MA_VERSION_* in header",
+    "category": "vendored-source",
+    "license": "MIT-0 OR Unlicense",
+    "licenseVerifiedFrom": "third_party/miniaudio/miniaudio.h (license blocks at end of file: ALTERNATIVE 1 Public Domain/Unlicense, ALTERNATIVE 2 MIT No Attribution, 'Copyright 2026 David Reid')",
+    "licenseTextInRepo": "MISSING (license text only inside miniaudio.h; no separate file - acceptable, no attribution required)",
+    "homepage": "https://miniaud.io",
+    "sourceUrl": "https://github.com/mackron/miniaudio",
+    "usedFor": {
+      "hu": "Hangrögzítés és lejátszás (WASAPI/PipeWire/Pulse/ALSA stb. backendek).",
+      "en": "Cross-platform audio capture/playback."
+    },
+    "whereInCode": [
+      "CMakeLists.txt: INTERFACE target miniaudio",
+      "core/src/audio/miniaudio_impl.cpp (#define MINIAUDIO_IMPLEMENTATION)",
+      "core/CMakeLists.txt: linked PRIVATE to tanara_core"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": false,
+      "requirements": "Public domain / MIT-0: no attribution or license-text obligation. Courtesy credit recommended.",
+      "currentlyMet": true,
+      "gap": "None legally. Improve: NOTICES lacks version (0.11.25) and says 'public domain (MIT-0 alternative)' which is OK; mention it embeds dr_wav/dr_flac/dr_mp3 (same dual licence). Optionally vendor the license blocks as third_party/miniaudio/LICENSE for clarity."
+    },
+    "notes": "Embeds dr_libs (ma_dr_wav, ma_dr_flac, ma_dr_mp3) with the same dual licence. stb_vorbis/libopus/libvorbis are optional external backends, NOT compiled in. Unmodified (inference)."
+  },
+  {
+    "id": "miniz",
+    "name": "miniz",
+    "version": "3.1.2 (miniz.h header comment; MZ_VERSION macro \"11.3.2\"; commit c87136a)",
+    "category": "vendored-source",
+    "license": "MIT",
+    "licenseVerifiedFrom": "third_party/miniz/LICENSE (read; MIT, 'Copyright 2013-2014 RAD Game Tools and Valve Software, Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC')",
+    "licenseTextInRepo": "third_party/miniz/LICENSE",
+    "homepage": "https://github.com/richgel999/miniz",
+    "sourceUrl": "https://github.com/richgel999/miniz",
+    "usedFor": {
+      "hu": "ZIP írás/olvasás a megbeszélés-archívumhoz (*.tanara.zip).",
+      "en": "ZIP reading/writing for meeting archives (*.tanara.zip)."
+    },
+    "whereInCode": [
+      "core/CMakeLists.txt: static lib tanara_miniz (MINIZ_NO_ZLIB_COMPATIBLE_NAMES), linked PRIVATE into tanara_core",
+      "tests/CMakeLists.txt: test_meeting_archive",
+      "core/src/store/MeetingArchive*"
+    ],
+    "shippedIn": [
+      "linux-build",
+      "windows-zip",
+      "windows-installer"
+    ],
+    "attribution": {
+      "required": true,
+      "requirements": "MIT: include the copyright notice and permission notice in all copies or substantial portions - binary distribution is generally treated as needing the notice in documentation.",
+      "currentlyMet": false,
+      "gap": "NOTICES entry is correct (version, copyright lines, 'unmodified'), but the Windows zip/installer contain no notice text. Note header comment says 'public domain' while LICENSE is MIT - upstream inconsistency; MIT is the safe reading."
+    },
+    "notes": "Note: header says 'miniz.c 3.1.2 - public domain...' but vendored LICENSE is MIT; keep MIT."
+  }
+]
