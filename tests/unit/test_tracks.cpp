@@ -69,6 +69,8 @@ private slots:
     void callDeviceByLoudnessWhenNameSilent();
     void duplicateRolesDisambiguated();
     void shortDeviceNames();
+    void segmentsOfOneDevice();
+    void segmentsRenameTogether();
 
     void viewsAndMissingFile();
     void renamePersists();
@@ -185,6 +187,89 @@ void TracksTest::shortDeviceNames()
 }
 
 // ---- katalógus-műveletek ----------------------------------------------------------------
+
+// ---- egy eszköz szakaszai ---------------------------------------------------------------
+
+void TracksTest::segmentsOfOneDevice()
+{
+    // A rendszerhang 57,2 s-nál bekapcsolva, később ki, 300 s-nál újra be: két fájl. Közben egy
+    // másik loopback (HDMI) is szól, halkabban. A második szakasz a meeting.json VÉGÉN áll.
+    Track sys1 = mk("sys", "Monitor of Speakers", TrackKind::Loopback, true, 0.3f);
+    sys1.startOffsetMs = 57200;
+    Track sys2 = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback, false, 0.0f);   // csendes, eldobott
+    sys2.startOffsetMs = 300000;
+    Track sys3 = mk("sys-3", "Monitor of Speakers", TrackKind::Loopback, true, 0.6f);
+    sys3.startOffsetMs = 400000;
+    const QVector<Track> tracks{
+        mk("mic", "Trust USB mikrofon", TrackKind::Mic),
+        sys3,
+        sys1,
+        mk("hdmi", "Monitor of HDMI", TrackKind::Loopback, true, 0.1f),
+        sys2,
+    };
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(tracks);
+    QCOMPARE(seg.at(0).segment, 0);
+    QCOMPARE(seg.at(0).count, 1);
+    QCOMPARE(seg.at(2).leader, 2);                     // a legkorábbi szakasz vezet
+    QCOMPARE(seg.at(2).segment, 1);
+    QCOMPARE(seg.at(4).leader, 2);
+    QCOMPARE(seg.at(4).segment, 2);
+    QCOMPARE(seg.at(1).leader, 2);
+    QCOMPARE(seg.at(1).segment, 3);
+    QCOMPARE(seg.at(1).count, 3);
+    QCOMPARE(seg.at(3).segment, 0);
+
+    // Közös szerep és név: a szakaszok együtt a leghangosabb loopback → hívás hangja; az
+    // eldobott szakasz is (nem „Rendszerhang” egy hívás közepén).
+    for (int i : {1, 2, 4})
+        QCOMPARE(tracknames::classify(tracks[i], tracks), TrackRole::CallAudio);
+    QCOMPARE(tracknames::classify(tracks[3], tracks), TrackRole::SystemAudio);
+    const QStringList names = tracknames::friendlyNames(tracks);
+    QCOMPARE(names.at(1), QStringLiteral("Hívás hangja"));
+    QCOMPARE(names.at(2), QStringLiteral("Hívás hangja"));
+    QCOMPARE(names.at(4), QStringLiteral("Hívás hangja"));
+    QCOMPARE(names.at(3), QStringLiteral("Rendszerhang"));
+
+    // Sorrend a Sávok fülön: logikai sávonként, azon belül eltolás szerint.
+    Meeting m;
+    m.folder = m_dir->path();
+    m.tracks = tracks;
+    const QVector<TrackView> views = TrackCatalog::tracks(m);
+    QStringList ids;
+    for (const TrackView& v : views) ids << v.track.id;
+    QCOMPARE(ids, QStringList({"mic", "sys", "sys-2", "sys-3", "hdmi"}));
+    QCOMPARE(views.at(1).segment, 1);
+    QCOMPARE(views.at(3).segment, 3);
+    QCOMPARE(views.at(3).segmentCount, 3);
+    QCOMPARE(views.at(0).segment, 0);
+
+    // Azonos nevű eszközök azonos időben (két egyforma mikrofon): külön sávok, nem szakaszok.
+    QVector<Track> twins{mk("a", "USB Mic", TrackKind::Mic), mk("b", "USB Mic", TrackKind::Mic)};
+    QCOMPARE(tracknames::segments(twins).at(1).leader, 1);
+    QCOMPARE(tracknames::segments(twins).at(1).segment, 0);
+    // … de ha az egyik később indult, egy eszköz két szakasza.
+    twins[1].startOffsetMs = 5000;
+    QCOMPARE(tracknames::segments(twins).at(1).leader, 0);
+    const QStringList tn = tracknames::friendlyNames(twins);
+    QCOMPARE(tn.at(0), tn.at(1));
+}
+
+void TracksTest::segmentsRenameTogether()
+{
+    Track a = mk("sys", "Monitor of Speakers", TrackKind::Loopback);
+    Track b = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback);
+    b.startOffsetMs = 12000;
+    const Meeting m = makeMeeting({mk("mic", "Trust USB mikrofon", TrackKind::Mic), a, b});
+    TrackCatalog cat(m_store.get());
+    QVERIFY(cat.renameTrack(m.id, "sys-2", "Teams"));
+    const Meeting back = m_store->load(m.id);
+    QCOMPARE(back.tracks.at(1).customName, QStringLiteral("Teams"));
+    QCOMPARE(back.tracks.at(2).customName, QStringLiteral("Teams"));
+    QCOMPARE(back.tracks.at(0).customName, QString());
+    // Vissza a barátságos névre: mindkét szakaszon.
+    QVERIFY(cat.renameTrack(m.id, "sys", QString()));
+    for (const TrackView& v : cat.tracks(m.id)) QVERIFY(!v.renamed);
+}
 
 void TracksTest::viewsAndMissingFile()
 {

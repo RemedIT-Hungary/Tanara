@@ -9,6 +9,9 @@
 #include <QReadWriteLock>
 #include <QRegularExpression>
 
+#include <algorithm>
+#include <numeric>
+
 namespace tanara {
 
 namespace devicenames {
@@ -95,46 +98,107 @@ QString shortDeviceName(const QString& deviceName)
     return n.trimmed();
 }
 
-TrackRole classify(const Track& track, const QVector<Track>& all)
+QVector<SegmentInfo> segments(const QVector<Track>& all)
 {
+    const int n = int(all.size());
+    QVector<SegmentInfo> out(n);
+    for (int i = 0; i < n; ++i) out[i].leader = i;
+    QVector<bool> done(n, false);
+    for (int i = 0; i < n; ++i) {
+        if (done[i] || all.at(i).deviceName.isEmpty()) continue;
+        QVector<int> group;
+        for (int j = i; j < n; ++j)
+            if (!done[j] && all.at(j).deviceName == all.at(i).deviceName) group.append(j);
+        for (int j : group) done[j] = true;
+        if (group.size() < 2) continue;
+        // Csak ha mind különböző időben indult (lásd a fejlécet).
+        QVector<qint64> offs;
+        for (int j : group) offs.append(all.at(j).startOffsetMs);
+        std::sort(offs.begin(), offs.end());
+        if (std::adjacent_find(offs.cbegin(), offs.cend()) != offs.cend()) continue;
+        std::stable_sort(group.begin(), group.end(), [&all](int x, int y) {
+            return all.at(x).startOffsetMs < all.at(y).startOffsetMs;
+        });
+        for (int k = 0; k < group.size(); ++k)
+            out[group[k]] = SegmentInfo{group.first(), k + 1, int(group.size())};
+    }
+    return out;
+}
+
+namespace {
+
+// A logikai sáv (egy eszköz összes szakasza) összesített állapota a szerep-döntéshez.
+struct Logical {
+    int leader = -1;
+    bool active = false;
+    float peak = 0.0f;
+};
+
+TrackRole classifyAt(int idx, const QVector<Track>& all, const QVector<SegmentInfo>& seg)
+{
+    const Track& track = all.at(idx);
     if (track.kind == TrackKind::Mic)   return TrackRole::OwnMic;
     if (track.kind == TrackKind::Other) return TrackRole::Other;
 
     if (looksLikeCallDevice(track.deviceName))
         return TrackRole::CallAudio;
-    // Ha VAN olyan loopback, amelyik név szerint a hívás eszköze, minden más rendszerhang.
-    const Track* loudest = nullptr;
-    int activeLoopbacks = 0;
-    for (const Track& t : all) {
+    // Logikai loopback-sávok (szakaszok összevonva).
+    QVector<Logical> logical;
+    for (int i = 0; i < all.size(); ++i) {
+        const Track& t = all.at(i);
         if (t.kind != TrackKind::Loopback) continue;
+        // Ha VAN olyan loopback, amelyik név szerint a hívás eszköze, minden más rendszerhang.
         if (looksLikeCallDevice(t.deviceName)) return TrackRole::SystemAudio;
-        if (!t.active) continue;
-        ++activeLoopbacks;
-        if (!loudest || t.peakLevel > loudest->peakLevel) loudest = &t;
+        const int lead = seg.at(i).leader;
+        auto it = std::find_if(logical.begin(), logical.end(),
+                               [lead](const Logical& l) { return l.leader == lead; });
+        if (it == logical.end()) { logical.append(Logical{lead, false, 0.0f}); it = logical.end() - 1; }
+        if (t.active) { it->active = true; it->peak = std::max(it->peak, t.peakLevel); }
     }
     // Név alapján nem dönthető el: a felvett hívás azon a monitoron szólt, amelyiken volt
     // hang — az egyetlen aktív, ill. több közül a leghangosabb.
-    if (track.active && loudest && loudest->id == track.id
-        && (activeLoopbacks == 1 || loudest->peakLevel > 0.0f))
+    const Logical* loudest = nullptr;
+    int activeLoopbacks = 0;
+    for (const Logical& l : std::as_const(logical)) {
+        if (!l.active) continue;
+        ++activeLoopbacks;
+        if (!loudest || l.peak > loudest->peak) loudest = &l;
+    }
+    const int myLead = seg.at(idx).leader;
+    bool myActive = false;
+    for (const Logical& l : std::as_const(logical)) if (l.leader == myLead) myActive = l.active;
+    if (myActive && loudest && loudest->leader == myLead
+        && (activeLoopbacks == 1 || loudest->peak > 0.0f))
         return TrackRole::CallAudio;
     return TrackRole::SystemAudio;
 }
 
+} // namespace
+
+TrackRole classify(const Track& track, const QVector<Track>& all)
+{
+    for (int i = 0; i < all.size(); ++i)
+        if (all.at(i).id == track.id && all.at(i).file == track.file)
+            return classifyAt(i, all, segments(all));
+    // Nincs a listában: önmagában, a többiek mellé téve.
+    QVector<Track> withIt = all;
+    withIt.append(track);
+    return classifyAt(int(withIt.size()) - 1, withIt, segments(withIt));
+}
+
 QStringList friendlyNames(const QVector<Track>& all)
 {
-    QVector<TrackRole> roles;
+    const QVector<SegmentInfo> seg = segments(all);
     QStringList names;
-    roles.reserve(all.size());
     const QMap<QString, QString> own = devicenames::overrides();
-    for (const Track& t : all) {
-        const TrackRole r = classify(t, all);
-        roles.append(r);
+    for (int i = 0; i < all.size(); ++i) {
+        const Track& t = all.at(i);
         // A felhasználó által átnevezett eszköz sávja az ő nevét kapja (a szerep-név helyett).
         if (const QString o = own.value(t.deviceName); !o.isEmpty()) {
             names << o;
             continue;
         }
-        switch (r) {
+        switch (classifyAt(i, all, seg)) {
         case TrackRole::OwnMic:
             names << QCoreApplication::translate("TrackCatalog", "Saját mikrofon"); break;
         case TrackRole::CallAudio:
@@ -148,11 +212,14 @@ QStringList friendlyNames(const QVector<Track>& all)
         }
         }
     }
-    // Azonos nevek megkülönböztetése: előbb a rövid eszköznévvel, aztán sorszámmal.
+    // Azonos nevek megkülönböztetése — csak a logikai sávok (szakasz-vezetők) között: előbb a
+    // rövid eszköznévvel, aztán sorszámmal. A további szakaszok a vezetőjük nevét kapják.
+    auto isLeader = [&seg](int i) { return seg.at(i).leader == i; };
     for (int i = 0; i < names.size(); ++i) {
+        if (!isLeader(i)) continue;
         QVector<int> same;
         for (int j = 0; j < names.size(); ++j)
-            if (names.at(j) == names.at(i)) same.append(j);
+            if (isLeader(j) && names.at(j) == names.at(i)) same.append(j);
         if (same.size() < 2) continue;
         const QString base = names.at(i);
         for (int j : same) {
@@ -163,11 +230,14 @@ QStringList friendlyNames(const QVector<Track>& all)
         }
     }
     for (int i = 0; i < names.size(); ++i) {
+        if (!isLeader(i)) continue;
         int n = 1;
         for (int j = i + 1; j < names.size(); ++j)
-            if (names.at(j) == names.at(i))
+            if (isLeader(j) && names.at(j) == names.at(i))
                 names[j] = QStringLiteral("%1 %2").arg(names.at(i)).arg(++n);
     }
+    for (int i = 0; i < names.size(); ++i)
+        if (!isLeader(i)) names[i] = names.at(seg.at(i).leader);
     return names;
 }
 
@@ -184,15 +254,32 @@ QVector<TrackView> TrackCatalog::tracks(const Meeting& m)
     QVector<TrackView> out;
     out.reserve(m.tracks.size());
     const QStringList friendly = tracknames::friendlyNames(m.tracks);
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    // Sorrend: logikai sávonként (a vezető első előfordulása szerint — a vezető a legkorábbi
+    // szakasz, ezért a csoport első tagjának indexét vesszük), azon belül szakasz szerint.
+    QVector<int> order(m.tracks.size());
+    std::iota(order.begin(), order.end(), 0);
+    QVector<int> groupPos(m.tracks.size(), -1);
     for (int i = 0; i < m.tracks.size(); ++i) {
+        int& p = groupPos[seg.at(i).leader];
+        if (p < 0) p = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        const int ga = groupPos.at(seg.at(a).leader), gb = groupPos.at(seg.at(b).leader);
+        if (ga != gb) return ga < gb;
+        return seg.at(a).segment < seg.at(b).segment;
+    });
+    for (int i : std::as_const(order)) {
         const Track& t = m.tracks.at(i);
         TrackView v;
         v.track = t;
-        v.role = tracknames::classify(t, m.tracks);
+        v.role = tracknames::classifyAt(i, m.tracks, seg);
         v.friendlyName = friendly.at(i);
         v.renamed = !t.customName.trimmed().isEmpty();
         v.displayName = v.renamed ? t.customName.trimmed() : v.friendlyName;
         v.rawDeviceName = t.deviceName;
+        v.segment = seg.at(i).segment;
+        v.segmentCount = seg.at(i).count;
         v.absolutePath = QDir(m.folder).filePath(t.file);
         const QFileInfo fi(v.absolutePath);
         v.fileMissing = t.file.isEmpty() || !fi.isFile();
@@ -229,16 +316,21 @@ bool TrackCatalog::renameTrack(const QString& meetingId, const QString& trackId,
     Meeting m = m_store->load(meetingId);
     if (m.id.isEmpty()) return false;
     const QStringList friendly = tracknames::friendlyNames(m.tracks);
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    int target = -1;
+    for (int i = 0; i < m.tracks.size(); ++i)
+        if (m.tracks.at(i).id == trackId) { target = i; break; }
+    if (target < 0) return false;
+    QString n = name.simplified();
+    if (n == friendly.at(target)) n.clear();   // a barátságos névre „átnevezés” = nincs egyedi név
+    // Az eszköz minden szakasza ugyanazt a nevet kapja (egy logikai sáv).
     bool changed = false;
     for (int i = 0; i < m.tracks.size(); ++i) {
+        if (seg.at(i).leader != seg.at(target).leader) continue;
         Track& t = m.tracks[i];
-        if (t.id != trackId) continue;
-        QString n = name.simplified();
-        if (n == friendly.at(i)) n.clear();   // a barátságos névre „átnevezés” = nincs egyedi név
-        if (t.customName == n) return false;
+        if (t.customName == n) continue;
         t.customName = n;
         changed = true;
-        break;
     }
     if (!changed) return false;
     m_store->saveMeeting(m);
