@@ -130,8 +130,8 @@ Tanara has no telemetry and no update check. It contacts only the services you c
 
 - **Soniox** (cloud speech-to-text, default STT, your own API key): Tanara **uploads the meeting audio** to Soniox for transcription. Terms: https://soniox.com/company/policies/terms-and-conditions/ - privacy policy: https://soniox.com/company/policies/privacy-policy/
 - **OpenAI-compatible endpoints** (summaries, tags, embeddings; for example LM Studio, Ollama, OpenAI): local by default (`http://localhost:1234/v1`). The transcript text goes to the endpoint you enter; if you enter a cloud endpoint, that provider's terms apply.
-- **Tanara Cloud** (RemedIT Hungary Kft., optional, `api.tanara.remedit.hu`): transcription, summary and embedding gateway with sign-in. Privacy information: https://app.tanara.remedit.hu/legal/privacy
-- **Model downloads:** `tanara-cli voice-models fetch` and the setup step download from GitHub (sherpa-onnx releases).
+- **Tanara Cloud** (RemedIT Hungary Kft., optional, `api.tanara.remedit.hu`): transcription, summary and embedding gateway with sign-in. Privacy information (address as set in the app; the final page is not yet confirmed): https://app.tanara.remedit.hu/legal/privacy
+- **Model downloads:** `tanara-cli voice-models fetch` downloads from GitHub (sherpa-onnx releases).
 
 ## 7. Trademarks
 
