@@ -33,6 +33,7 @@
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/audio/MixdownPlan.h"
+#include "tanara/audio/TrackTiming.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/WaveformService.h"
 #include "tanara/edit/PeopleDirectory.h"
@@ -312,7 +313,9 @@ const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
 
 // Egy beszélő reprezentatív embeddingje: a leghosszabb utterance-eiből ~3–12 s hangot
 // gyűjt a megadott sávból, és egyetlen embeddinget számol. Üres = nincs elég hang/hiba.
-QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath,
+// Az utterance-ek megbeszélés-időben vannak; offsetMs a hangfájl kezdete a megbeszélésben
+// (sávfájlnál Track::startOffsetMs, a lekeverésnél 0) — a fájl előtti rész kimarad.
+QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath, qint64 offsetMs,
                                  const MergedTranscript& mt, const QString& rawLabel) {
     QVector<Utterance> utts;
     for (const Utterance& u : mt.segments())
@@ -325,15 +328,18 @@ QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath,
     qint64 accMs = 0;
     for (const Utterance& u : utts) {
         if (accMs >= 3000 || pcm.size() > 16000 * 12) break;
-        pcm += VoiceEmbedder::decodePcm16kMono(path, u.startMs, u.endMs);
-        accMs += (u.endMs - u.startMs);
+        const tracktiming::FileRange r = tracktiming::meetingToFileRange(offsetMs, u.startMs, u.endMs);
+        if (!r.valid()) continue;   // a sáv ekkor még nem szólt
+        pcm += VoiceEmbedder::decodePcm16kMono(path, r.startMs, r.endMs);
+        accMs += (r.endMs - r.startMs);
     }
     if (pcm.isEmpty()) return {};
     return emb.embedPcm(pcm);
 }
 
 // A lenyomathoz eltárolt, visszahallgatható reprezentatív szegmens hivatkozása:
-// "track_fájl#startMs-endMs" (a leghosszabb utterance). Lejátszáshoz a People-panel
+// "track_fájl#startMs-endMs" (a leghosszabb utterance). Az idők MEGBESZÉLÉS-időben vannak
+// (mint az átiratban); sávfájlnál a lejátszó a sáv eltolásával vált fájl-időre (PeopleService). Lejátszáshoz a People-panel
 // a sourceMeetingId-ből oldja fel a mappát.
 QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLabel,
                                 const QString& fileRel) {
@@ -350,7 +356,8 @@ QString representativeSampleRef(const MergedTranscript& mt, const QString& rawLa
 // A voice-ID hangforrása: MOST a mixdown (a leirat is abból készül, így a diarizált
 // „Beszélő N" címkék időablakai közvetlenül a mixre illeszkednek). Ha nincs mixdown
 // (régi, per-sáv meeting), back-compat: a címke feloldott sávjára esünk vissza.
-struct VoiceSource { QString absPath; QString fileRel; QString trackId; QString device; };
+struct VoiceSource { QString absPath; QString fileRel; QString trackId; QString device;
+                     qint64 offsetMs = 0; };   // a fájl kezdete a megbeszélésben
 VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
                                const QString& rawLabel) {
     const QString mixRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3")
@@ -359,7 +366,7 @@ VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
     if (QFile::exists(mixAbs))
         return { mixAbs, mixRel, QStringLiteral("mixdown"), QString() };
     if (const Track* t = resolveTrackForLabel(m, mt, rawLabel))
-        return { QDir(m.folder).filePath(t->file), t->file, t->id, t->deviceName };
+        return { QDir(m.folder).filePath(t->file), t->file, t->id, t->deviceName, t->startOffsetMs };
     return {};
 }
 
@@ -1121,7 +1128,7 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return;
 
-    const QVector<float> embedding = embeddingForLabel(*emb, src.absPath, merged, rawLabel);
+    const QVector<float> embedding = embeddingForLabel(*emb, src.absPath, src.offsetMs, merged, rawLabel);
     if (embedding.isEmpty()) return;
 
     Voiceprint vp;
@@ -1175,7 +1182,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
             continue;   // már nevesített (kézzel vagy korábbi match)
         const VoiceSource src = resolveVoiceSource(m, merged, label);
         if (src.absPath.isEmpty()) continue;
-        const QVector<float> e = embeddingForLabel(*emb, src.absPath, merged, label);
+        const QVector<float> e = embeddingForLabel(*emb, src.absPath, src.offsetMs, merged, label);
         if (e.isEmpty()) continue;
         if (d->matchSpeaker(m, label, e)) {
             identified << label;
@@ -1202,7 +1209,7 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     if (merged.tokens.isEmpty()) return none;
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return none;
-    const QVector<float> e = embeddingForLabel(*d->embedder, src.absPath, merged, rawLabel);
+    const QVector<float> e = embeddingForLabel(*d->embedder, src.absPath, src.offsetMs, merged, rawLabel);
     if (e.isEmpty()) return none;
     return d->voiceprints->bestMatch(e);
 }
@@ -1249,7 +1256,11 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
         for (qint64 s = 0; s + kWinMs <= D; s += step) {
             if (onProgress && !onProgress(++progressDone, progressTotal))
                 return out;   // a felhasználó megszakította
-            QVector<float> pcm = VoiceEmbedder::decodePcm16kMono(path, s, s + kWinMs);
+            // Az ablak megbeszélés-időben van; a később kezdődő / korábban véget érő sáv fájlján
+            // kívül eső ablak üres (kihagyva).
+            const tracktiming::FileRange fr = tracktiming::fileRange(t, s, s + kWinMs);
+            if (!fr.valid()) continue;
+            QVector<float> pcm = VoiceEmbedder::decodePcm16kMono(path, fr.startMs, fr.endMs);
             if (pcm.isEmpty()) continue;
             double sum = 0.0;
             for (float x : pcm) sum += static_cast<double>(x) * x;
@@ -1315,7 +1326,10 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     for (const Track& t : m.tracks) if (t.id == trackId) { track = &t; break; }
     if (!track) return;
     const QString path = QDir(m.folder).filePath(track->file);
-    const QVector<float> e = d->embedder->embedFile(path, startMs, endMs);
+    // startMs/endMs megbeszélés-időben (mint a sampleRef) → a sávfájl ideje.
+    const tracktiming::FileRange fr = tracktiming::fileRange(*track, startMs, endMs);
+    if (!fr.valid()) return;
+    const QVector<float> e = d->embedder->embedFile(path, fr.startMs, fr.endMs);
     if (e.isEmpty()) return;
 
     Voiceprint vp;
@@ -3934,7 +3948,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
     if (merged.tokens.isEmpty()) return false;
 
     // A még névtelen (nem leképezett) nyers beszélő-címkék és a hangforrásuk.
-    struct Item { QString label; QString audioPath; };
+    struct Item { QString label; QString audioPath; qint64 offsetMs = 0; };
     QVector<Item> items;
     QStringList seen;
     for (const TranscriptToken& t : merged.tokens) {
@@ -3942,7 +3956,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         seen << t.speaker;
         if (m.speakerMap.contains(t.speaker)) continue;
         const VoiceSource src = resolveVoiceSource(m, merged, t.speaker);
-        if (!src.absPath.isEmpty()) items.append({t.speaker, src.absPath});
+        if (!src.absPath.isEmpty()) items.append({t.speaker, src.absPath, src.offsetMs});
     }
     if (items.isEmpty()) {
         d->jobs->markIdentified(meetingId);   // nincs névtelen beszélő → nincs mit azonosítani
@@ -3973,7 +3987,7 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
         int done = 0;
         for (const Item& it : items) {
             if (cancel->load()) break;
-            const QVector<float> e = embeddingForLabel(emb, it.audioPath, merged, it.label);
+            const QVector<float> e = embeddingForLabel(emb, it.audioPath, it.offsetMs, merged, it.label);
             ++done;
             // Eredmény + valós darab-haladás vissza a fő szálra.
             QMetaObject::invokeMethod(qApp, [self, results, label = it.label, e, meetingId,

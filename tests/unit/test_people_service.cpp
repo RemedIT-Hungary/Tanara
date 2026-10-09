@@ -1036,6 +1036,7 @@ void PeopleServiceTest::sampleSourceDescription()
     Track loop;
     loop.id = "loop"; loop.kind = TrackKind::Loopback; loop.file = "track_loop.ogg";
     loop.deviceName = "Monitor of Headset Communication";
+    loop.startOffsetMs = 10000;   // később bekapcsolt sáv: a minta megbeszélés-idejéből fájl-idő lesz
     m.tracks = {mic, loop};
     m_app->store()->saveMeeting(m);
     writeFile(QDir(m.folder).filePath("track_mic.ogg"), "x");
@@ -1043,7 +1044,7 @@ void PeopleServiceTest::sampleSourceDescription()
     Voiceprint a = print("s-mic", {1, 0, 0}, m.id);
     a.sourceTrack = "mic"; a.sampleRef = "track_mic.ogg#2000-44000";
     Voiceprint b = print("s-call", {1, 0, 0}, m.id);
-    b.sourceTrack = "loop"; b.sampleRef = "track_loop.ogg#0-38000";
+    b.sourceTrack = "loop"; b.sampleRef = "track_loop.ogg#12000-38000";
     Voiceprint c = print("s-mix", {1, 0, 0}, m.id);
     Voiceprint e = print("s-gone", {1, 0, 0}, "torolt-megbeszeles");
     e.sourceTrack.clear(); e.createdAt = "2026-08-28T09:00:00";
@@ -1064,6 +1065,8 @@ void PeopleServiceTest::sampleSourceDescription()
     QVERIFY(sm.audioExists);
     QCOMPARE(sm.audioPath, QDir(m.folder).filePath("track_mic.ogg"));
     QCOMPARE(byId("s-call").sourceKind, QStringLiteral("call"));
+    QCOMPARE(byId("s-call").startMs, qint64(2000));
+    QCOMPARE(byId("s-call").endMs, qint64(28000));
     QVERIFY(!byId("s-call").audioExists);
     QCOMPARE(byId("s-mix").sourceKind, QStringLiteral("mix"));
     const VoiceSample gone = byId("s-gone");

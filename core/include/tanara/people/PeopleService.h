@@ -60,7 +60,7 @@ struct VoiceSample {
     QString meetingId;
     QString meetingTitle;   // üres, ha a megbeszélés már nincs meg
     QDate   recordedAt;     // a megbeszélés napja (annak híján a minta készítéséé)
-    qint64  startMs = 0;    // a minta helye a hangfájlban
+    qint64  startMs = 0;    // a minta helye a hangfájlban (fájl-idő: a sáv eltolása levonva)
     qint64  endMs = 0;
     QString audioPath;      // abszolút út; üres, ha nem oldható fel
     bool    audioExists = false;

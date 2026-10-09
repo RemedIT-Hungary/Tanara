@@ -297,6 +297,12 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
                 for (const TrackView& v : views)
                     if (v.track.file == file) { view = &v; break; }
             if (view) {
+                // A sampleRef megbeszélés-időben van; a sávfájl a sáv eltolásánál kezdődik →
+                // a lejátszáshoz fájl-idő kell.
+                if (view->track.startOffsetMs > 0 && s.endMs > s.startMs) {
+                    s.startMs = qMax<qint64>(0, s.startMs - view->track.startOffsetMs);
+                    s.endMs = qMax<qint64>(s.startMs, s.endMs - view->track.startOffsetMs);
+                }
                 switch (view->role) {
                 case TrackRole::OwnMic:
                     s.sourceKind = QStringLiteral("mic");

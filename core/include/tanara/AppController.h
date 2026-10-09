@@ -333,7 +333,8 @@ public slots:
 
     // Lenyomat felvétele egy tetszőleges hang-szegmensből (átírás előtti névadáshoz):
     // a meeting adott sávjának [startMs,endMs] részéből embeddinget számol és a név
-    // alá menti. voiceprintsChanged jel.
+    // alá menti. Az idők MEGBESZÉLÉS-időben vannak (mint az identifyParticipants sampleRef-je);
+    // a sáv eltolását (Track::startOffsetMs) a függvény vonja le. voiceprintsChanged jel.
     void enrollVoiceprintFromSample(const QString& name, const QString& meetingId,
                                     const QString& trackId, qint64 startMs, qint64 endMs);
 

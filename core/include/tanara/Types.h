@@ -177,7 +177,7 @@ struct Voiceprint {
     QString sourceMeetingId;    // melyik meetingből származik
     QString sourceTrack;        // pl. "loopback" / "mic" / track-id
     QString device;             // a felvevő eszköz neve (több-mikrofonos kontextus)
-    QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs"
+    QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs" — az idők megbeszélés-időben
     QString createdAt;          // ISO-8601
 };
 
@@ -196,7 +196,7 @@ struct ParticipantGuess {
     QString name;          // a DB-találat neve, vagy "" ha ismeretlen (küszöb alatt)
     double  score = -1.0;  // a találat cosine pontszáma
     int     windows = 0;   // hány hang-ablakból állt a klaszter (megbízhatóság)
-    QString sampleRef;     // "track_x.ogg#startMs-endMs" — reprezentatív minta
+    QString sampleRef;     // "track_x.ogg#startMs-endMs" — reprezentatív minta (megbeszélés-időben)
 };
 
 // ---- provider konfiguráció / beállítások ----------------------------------

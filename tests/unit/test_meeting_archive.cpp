@@ -197,6 +197,7 @@ Meeting MeetingArchiveTest::makeFixture(MeetingStore& store, const QString& titl
     lb.id = QStringLiteral("loopback");
     lb.file = QStringLiteral("track_loopback.ogg");
     lb.kind = TrackKind::Loopback;
+    lb.startOffsetMs = 57200;   // később bekapcsolt sáv: az eltolás a meeting.json-nal utazik
     m.tracks = {mic, lb};
     m.mixdownFile = QStringLiteral("mixdown.mp3");
     m.hasTranscript = true;
@@ -274,6 +275,9 @@ void MeetingArchiveTest::exportImportRoundTrip()
     const QString folder = QDir(m_dst->audioDir()).filePath(QFileInfo(m.folder).fileName());
     QCOMPARE(imported.folder, folder);
     QCOMPARE(imported.tagIds, m.tagIds);   // a store-szinten az azonosítók változatlanok
+    QCOMPARE(imported.tracks.size(), 2);
+    QCOMPARE(imported.tracks.at(1).startOffsetMs, qint64(57200));
+    QCOMPARE(imported.tracks.at(0).startOffsetMs, qint64(0));
 
     // meeting.json: a folder mezőn kívül azonos.
     const QJsonObject a = readJson(QDir(m.folder).filePath("meeting.json"));
@@ -470,6 +474,7 @@ void MeetingArchiveTest::adoptRecoversWithoutJson()
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
     QVERIFY(a.title.contains(QStringLiteral("helyreállított")));
     QCOMPARE(a.tracks.size(), 1);
+    QCOMPARE(a.tracks.first().startOffsetMs, qint64(0));   // helyreállítva: 0 (a CLI align --auto igazít)
     QVERIFY(QFile::exists(QDir(a.folder).filePath("meeting.json")));
 
     // Hiba: se meeting.json, se sáv.

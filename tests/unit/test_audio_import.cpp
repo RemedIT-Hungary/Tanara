@@ -319,6 +319,7 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(t.file, QStringLiteral("track_interju-kovacs.ogg"));
     QCOMPARE(t.channels, 1);
     QCOMPARE(t.sampleRate, 48000);
+    QCOMPARE(t.startOffsetMs, qint64(0));   // importált fájl: a megbeszélés elejétől
 
     // A sáv Opus/ogg, 48 kHz — ugyanaz a forma, mint a felvett sávoké.
     const ImportFileInfo out = audioimport::probe(QDir(stored.folder).filePath(t.file));
