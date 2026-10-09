@@ -82,14 +82,16 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     app->refreshDevices();
 
     FakeEngine* engine = nullptr;
-    app->setRecordingEngineFactory([&engine] {
+    std::shared_ptr<std::atomic<bool>> alive;
+    app->setRecordingEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
         engine = e.get();
+        alive = engine->alive;
         return e;
     });
     QTimer feeder;
     feeder.setInterval(5);
-    QObject::connect(&feeder, &QTimer::timeout, [&engine] { if (engine) engine->feed(); });
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
 
     QSignalSpy closed(app.get(), &AppController::recordingTrackClosed);
     QSignalSpy finished(app.get(), &AppController::recordingFinished);

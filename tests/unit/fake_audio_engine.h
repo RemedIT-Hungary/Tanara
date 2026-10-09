@@ -35,6 +35,11 @@ public:
     QStringList silentNames;
     std::array<std::unique_ptr<Slot>, kMaxDevices> devs;
     int n = 0;
+    // A motort a RecordingSession birtokolja és a lezáráskor törli; a teszt feeder-időzítője
+    // ezen a jelzőn át látja, hogy a nyers `engine` mutató még él-e (különben felszabadított
+    // memóriába írna — terhelés alatt ez SIGABRT-tal bukott).
+    std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
+    ~FakeEngine() override { *alive = false; }
 
     bool start(const QVector<AudioDeviceInfo>& devices) override {
         for (const AudioDeviceInfo& d : devices) addDevice(d);

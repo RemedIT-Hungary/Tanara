@@ -115,12 +115,14 @@ void RecordingSessionTest::lateAndToggledTracksGetOffsets()
     if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
     RecordingSession rec(dir.path(), QStringLiteral("Szakaszok"));
-    rec.setEngineFactory([&engine] { auto e = std::make_unique<FakeEngine>(); engine = e.get(); return e; });
+    rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
+        alive = engine->alive; return e; });
     QSignalSpy finished(&rec, &RecordingSession::finished);
     QTimer feeder;
     feeder.setInterval(5);
-    QObject::connect(&feeder, &QTimer::timeout, [&engine] { if (engine) engine->feed(); });
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
 
     QElapsedTimer clock;
     clock.start();
@@ -173,18 +175,20 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
     RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
     rec.setFillCaptureGaps(true);   // Linuxon alapból ki — itt a Windows-ág logikáját mérjük
-    rec.setEngineFactory([&engine] {
+    rec.setEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
         e->silentNames << QStringLiteral("Speakers (loopback)");
         engine = e.get();
+        alive = engine->alive;
         return e;
     });
     QSignalSpy finished(&rec, &RecordingSession::finished);
     QTimer feeder;
     feeder.setInterval(5);
-    QObject::connect(&feeder, &QTimer::timeout, [&engine] { if (engine) engine->feed(); });
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
 
     rec.start({dev(QStringLiteral("Mic A"), TrackKind::Mic),
                dev(QStringLiteral("Speakers (loopback)"), TrackKind::Loopback)});
@@ -214,14 +218,16 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
     QTemporaryDir dir;
     FakeEngine* engine = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
     RecordingSession rec(dir.path(), QStringLiteral("Kihúzás"));
-    rec.setEngineFactory([&engine] { auto e = std::make_unique<FakeEngine>(); engine = e.get(); return e; });
+    rec.setEngineFactory([&engine, &alive] { auto e = std::make_unique<FakeEngine>(); engine = e.get();
+        alive = engine->alive; return e; });
     QSignalSpy finished(&rec, &RecordingSession::finished);
     QSignalSpy closed(&rec, &RecordingSession::trackClosed);
     QSignalSpy elapsed(&rec, &RecordingSession::elapsedChanged);
     QTimer feeder;
     feeder.setInterval(5);
-    QObject::connect(&feeder, &QTimer::timeout, [&engine] { if (engine) engine->feed(); });
+    QObject::connect(&feeder, &QTimer::timeout, [&engine, &alive] { if (engine && alive && *alive) engine->feed(); });
 
     const QString headset = QStringLiteral("Sennheiser headset");
     rec.start({dev(QStringLiteral("Mic A"), TrackKind::Mic), dev(headset, TrackKind::Mic),
