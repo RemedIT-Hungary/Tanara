@@ -10,6 +10,8 @@
 //
 #include "tanara/voiceid/EmbeddingSet.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/voiceid/VoiceEmbedderSet.h"
 
 #include <QHash>
 #include <QMap>
@@ -46,6 +48,7 @@ struct UtteranceModel {
     QString id;
     QString path;
     EmbedderConfig features;
+    int dim = 0;   // várt dimenzió (0 = nem ellenőrizzük; eltérésnél a VoiceEmbedder figyelmeztet)
 };
 
 // A valódi megvalósítás gyára több modellre: EGY dekódolt PCM, modellenként egy VoiceEmbedder.
@@ -54,6 +57,13 @@ struct UtteranceModel {
 // (TANARA_BUILD_VOICEID=OFF) az open() false.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
     const QVector<UtteranceModel>& models, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+// Ugyanez egy modell-készletből (a betöltője is: tesztben hamis modell). Üres készlet → üres gyár.
+// Minden létrehozott embedder a készlet saját, betöltetlen másolatát kapja.
+UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
+    const VoiceEmbedderSet& set, const QString& ffmpegPath = QStringLiteral("ffmpeg"));
+// A megadott modell-leírók (pl. VoiceModelRegistry::active()) a feloldott fájl-útjukkal.
+QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
+                                           const QString& metaDir, const QString& appDir);
 // Egymodelles rövidítés: az alapmodell (VoiceModelRegistry::defaultModelId()) a megadott fájlból.
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(
     const QString& modelPath, const QString& ffmpegPath = QStringLiteral("ffmpeg"));

@@ -26,8 +26,8 @@ constexpr int kSampleRate = 16000;
 // modell ugyanebből a szeletből számol.
 class VoiceUtteranceEmbedder final : public IUtteranceEmbedder {
 public:
-    VoiceUtteranceEmbedder(const QVector<UtteranceModel>& models, const QString& ffmpegPath)
-        : m_models(models), m_ffmpeg(ffmpegPath) {}
+    VoiceUtteranceEmbedder(VoiceEmbedderSet set, const QString& ffmpegPath)
+        : m_set(std::move(set)), m_ffmpeg(ffmpegPath) {}
 
     bool open(const QString& audioPath) override
     {
@@ -70,16 +70,8 @@ public:
 
     EmbeddingSet embedAll(qint64 startMs, qint64 endMs, const QStringList& modelIds) override
     {
-        EmbeddingSet out;
-        if (m_pcm.isEmpty()) return out;
-        QVector<float> pcm;
-        bool sliced = false;
-        for (auto it = m_embedders.cbegin(); it != m_embedders.cend(); ++it) {
-            if (!modelIds.contains(it.key())) continue;
-            if (!sliced) { pcm = slice(startMs, endMs); sliced = true; }
-            out.insert(it.key(), pcm.isEmpty() ? QVector<float>() : it.value()->embedPcm(pcm));
-        }
-        return out;
+        if (m_pcm.isEmpty()) return {};
+        return m_set.embedPcmWith(slice(startMs, endMs), modelIds);
     }
 
     QString lastError() const override { return m_error; }
@@ -88,25 +80,9 @@ private:
     // A modellek betöltése (egyszer). Legalább egynek sikerülnie kell.
     bool loadModels()
     {
-        if (!m_embedders.isEmpty()) return true;
-        QStringList errors;
-        for (const UtteranceModel& m : m_models) {
-            if (!QFileInfo::exists(m.path)) {
-                errors << QStringLiteral("Hiányzik a hangmodell: %1").arg(m.path);
-                continue;
-            }
-            auto e = std::make_shared<VoiceEmbedder>(m.path, m.features);
-            if (!e->isValid()) {
-                errors << e->lastError();
-                continue;
-            }
-            m_embedders.insert(m.id, e);
-        }
-        if (m_embedders.isEmpty()) {
-            m_error = errors.isEmpty() ? QStringLiteral("Nincs hangmodell.") : errors.join(QLatin1Char('\n'));
-            return false;
-        }
-        return true;
+        if (m_set.ensureLoaded()) return true;
+        m_error = m_set.isEmpty() ? QStringLiteral("Nincs hangmodell.") : m_set.lastError();
+        return false;
     }
 
     // A [startMs,endMs] szelet float PCM-ként; fél mp alatt üres (nincs értelmes embedding).
@@ -123,10 +99,9 @@ private:
         return pcm;
     }
 
-    QVector<UtteranceModel> m_models;
+    VoiceEmbedderSet m_set;   // modellenként lustán betöltve (a háttérszál saját példánya)
     QString m_ffmpeg;
     QString m_error;
-    QMap<QString, std::shared_ptr<VoiceEmbedder>> m_embedders;   // modelId → betöltött modell
     QByteArray m_pcm;   // s16le mono 16 kHz
 };
 
@@ -143,8 +118,25 @@ EmbeddingSet IUtteranceEmbedder::embedAll(qint64 startMs, qint64 endMs, const QS
 UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QVector<UtteranceModel>& models,
                                                        const QString& ffmpegPath)
 {
-    return [models, ffmpegPath]() -> std::unique_ptr<IUtteranceEmbedder> {
-        return std::make_unique<VoiceUtteranceEmbedder>(models, ffmpegPath);
+    QVector<VoiceModelEntry> entries;
+    for (const UtteranceModel& m : models) {
+        VoiceModelSpec spec;
+        if (const auto known = VoiceModelRegistry::spec(m.id)) spec = *known;
+        spec.id = m.id;
+        spec.features = m.features;
+        spec.dim = m.dim;
+        entries.append({spec, m.path});
+    }
+    return voiceUtteranceEmbedderFactory(VoiceEmbedderSet(entries), ffmpegPath);
+}
+
+UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const VoiceEmbedderSet& set,
+                                                       const QString& ffmpegPath)
+{
+    if (set.isEmpty()) return {};
+    const VoiceEmbedderSet proto = set.freshCopy();
+    return [proto, ffmpegPath]() -> std::unique_ptr<IUtteranceEmbedder> {
+        return std::make_unique<VoiceUtteranceEmbedder>(proto.freshCopy(), ffmpegPath);
     };
 }
 
@@ -153,7 +145,16 @@ UtteranceEmbedderFactory voiceUtteranceEmbedderFactory(const QString& modelPath,
 {
     const auto spec = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId());
     return voiceUtteranceEmbedderFactory(
-        QVector<UtteranceModel>{{spec->id, modelPath, spec->features}}, ffmpegPath);
+        QVector<UtteranceModel>{{spec->id, modelPath, spec->features, spec->dim}}, ffmpegPath);
+}
+
+QVector<UtteranceModel> utteranceModelsFor(const QVector<VoiceModelSpec>& specs,
+                                           const QString& metaDir, const QString& appDir)
+{
+    QVector<UtteranceModel> out;
+    for (const VoiceModelSpec& s : specs)
+        out.append({s.id, VoiceModelRegistry::resolvePath(s, metaDir, appDir), s.features, s.dim});
+    return out;
 }
 
 bool UtteranceEmbeddingCache::has(const QString& modelId, const QString& utteranceId) const
