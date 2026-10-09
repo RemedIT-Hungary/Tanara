@@ -64,10 +64,10 @@ The build produces four targets:
 ## Requirements
 
 - **C++20**, **CMake ≥ 3.21**, **Ninja**
-- **Qt 6** (Core, Network, Sql, Widgets, Multimedia, Test)
+- **Qt 6** (Core, Network, Sql, Widgets, Multimedia, MultimediaWidgets, Qml, Quick, QuickControls2, Svg, LinguistTools; DBus on Linux; Test for the tests). The Windows packages use Qt 6.11.1 under the LGPL-3.0.
 - **ONNX Runtime** (dev package) — for the speaker-embedding model
 - **KISS FFT** (float build) — used by the bundled kaldi-native-fbank
-- **FFmpeg** CLI — Tanara calls it as an external program to encode and decode audio
+- **FFmpeg** CLI (`ffmpeg` and `ffprobe`, built with libopus and libmp3lame) — Tanara calls it as an external program to encode and decode audio. On Linux it uses the system FFmpeg. The Windows packages ship an LGPL-only FFmpeg build (see `packaging/windows/README.md`).
 - A **Soniox** API key for transcription, and an **OpenAI-compatible LLM
   endpoint** (for example LM Studio or Ollama) for summaries. Both are optional.
   You configure them in the app.
@@ -107,8 +107,9 @@ Build options:
 
 The build uses the MinGW toolchain that comes with Qt. You do not need an MSVC
 kit. Prerequisites: Qt 6 (mingw_64), the Qt-bundled MinGW, Ninja, CMake, and
-**FFmpeg** on `PATH`. At runtime only `ffmpeg.exe` is needed, and a static build
-works.
+**FFmpeg** on `PATH`. At runtime `ffmpeg.exe` and `ffprobe.exe` are needed, and a
+static build works. For a package that you give to other people, use an LGPL-only
+FFmpeg build; see `packaging/windows/README.md`.
 
 ```powershell
 # adjust the Qt path to your install
@@ -135,16 +136,21 @@ ctest --test-dir build
 mkdir dist; copy build\gui\tanara.exe dist; copy build\cli\tanara-cli.exe dist
 & "$qt\bin\windeployqt.exe" --release --compiler-runtime --no-translations --dir dist dist\tanara.exe
 copy C:\path\to\onnxruntime-win-x64-1.20.1\lib\onnxruntime.dll dist   # only for voice-ID builds
-copy C:\path\to\ffmpeg.exe dist                                       # so recording is self-contained
+copy C:\path\to\ffmpeg.exe, C:\path\to\ffprobe.exe dist                   # so recording is self-contained
 ```
+
+This folder is for your own use. For a package that you give to others, follow
+`packaging/windows/README.md`: it also puts `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the
+`packaging/licenses` folder into the package, as the licenses of the bundled components require.
 
 Put the speaker-embedding model in `%USERPROFILE%\.tanara\models\`. It is the
 same file as on Linux (see below).
 
 ## Speaker-embedding model
 
-Speaker recognition needs a speaker-embedding model. The model is not bundled
-(~27 MB, Apache-2.0). Download it once into `~/.tanara/models/`:
+Speaker recognition needs a speaker-embedding model (CAM++, ~27 MB, Apache-2.0).
+The source repository does not contain it, and the Linux build does not bundle it
+(the Windows packages do). Download it once into `~/.tanara/models/`:
 
 ```bash
 mkdir -p ~/.tanara/models
@@ -155,6 +161,10 @@ curl -L -o ~/.tanara/models/campplus_sv_zh_en_16k.onnx \
 Speaker embeddings are language-independent. They model the voice, not the
 words, so this model works for Hungarian. If the model is missing, Tanara still
 works. It only skips the automatic speaker labels.
+
+Two more models can be downloaded with `tanara-cli voice-models fetch`: WeSpeaker
+ResNet34-LM (CC-BY-4.0) and ERes2NetV2 (Apache-2.0). They are never bundled; the
+attribution is in `THIRD_PARTY_NOTICES.md`.
 
 ## Configuration
 
