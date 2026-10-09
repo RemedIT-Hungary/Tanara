@@ -7063,6 +7063,10 @@
         <translation>%1 call</translation>
     </message>
     <message>
+        <source>A(z) %1 eszköz eltűnt, a sávja lezárult, a többi sáv megy tovább.</source>
+        <translation>The device %1 disappeared. Its track is closed; the other tracks continue.</translation>
+    </message>
+    <message>
         <source>Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.</source>
         <translation>The call seems to have ended. I won&apos;t stop on my own.</translation>
     </message>

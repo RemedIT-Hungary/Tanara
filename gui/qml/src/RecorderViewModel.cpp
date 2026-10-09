@@ -306,6 +306,13 @@ void RecorderViewModel::attach()
             rebuildDevices();   // a sor már nincs a felsorolásban → „leválasztva” sorként visszakerül
         }
         emit countsChanged();
+        if (unplugged && m_state == QLatin1String("recording")) {
+            // Értesítés: a felvétel NEM állt le, csak ennek az eszköznek a sávja zárult le.
+            const int row = rowOf(name);
+            const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
+            m_errorText = tr("A(z) %1 eszköz eltűnt, a sávja lezárult, a többi sáv megy tovább.").arg(shown);
+            emit errorChanged();
+        }
     });
     connect(c, &AppController::callEnded, this, [this](const QString& app) {
         raiseAsk(app.isEmpty()
