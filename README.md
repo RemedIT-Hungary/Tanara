@@ -203,6 +203,23 @@ The Summary tab has two modes:
   in its own job, then merges the results. Tanara persists the analysis, so you
   can stop it and continue later.
 
+### Tracks switched on later, or switched off and on
+
+You can switch a device on during a recording, and you can switch a recorded
+device off and on again (the floating recorder's device list). Each time a device
+starts, Tanara opens a new file for it (`track_<device>.ogg`, then
+`track_<device>-2.ogg`, …) that holds only the audio captured from that moment, and
+writes the start time into `meeting.json` (`startOffsetMs`, milliseconds after the
+recording started). The mixdown, the waveforms on the **Tracks** tab and the
+speaker recognition place every file at its offset. The Tracks tab shows the files
+of one device as segments of one track (same name, "2. szakasz" and the start
+time below it); you drop or restore each segment on its own. On Windows, the system
+loopback sends no data while nothing plays; Tanara fills these gaps with silence so
+that the loopback track keeps time. For a folder recorded by an older Tanara, or
+brought from elsewhere, `tanara-cli align <id> --auto` infers the offsets (it
+assumes that all tracks ended together) and `--track <trackId>=<ms>` sets one by
+hand; both regenerate the mixdown.
+
 ### Export / import (move a meeting to another computer)
 
 A meeting can travel as one file. In the meeting header, **… → Exportálás
@@ -286,6 +303,7 @@ devices                         list capture devices
 record [--title T --seconds N --device IDX]
 list                            list meetings
 adopt <folder>                  copy a meeting folder into the library (index only this one)
+align <id> (--auto | --track <trackId>=<ms>)   set track start offsets, then regenerate the mixdown
 export <id> [<archive.zip>]     pack a meeting into <folder name>.tanara.zip
 import-archive <archive.zip>    bring an exported meeting into this library
 reindex                         rebuild the index from the meeting folders on disk

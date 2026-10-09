@@ -269,6 +269,27 @@ in their own engines).
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
 
+### Tracks tab (`TracksTab.qml`, `TrackRow.qml`, `src/TrackListModel`)
+
+One row per track file: play (preview), source icon, friendly name (rename in place), a second
+line, the waveform, the file length, and the action (dropped → „Visszaállítás”, missing file →
+„Megkeresés…”). Below: the mixdown row and the permanent delete of the dropped tracks.
+
+- **Timeline.** A track file holds only what was captured: a device switched on later starts
+  at `Track::startOffsetMs`. `waveStart` / `waveSpan` (0..1, `TrackListModel::waveExtent`)
+  place the waveform on the meeting timeline: the gap before the start and after the end shows
+  a thin baseline. `durationText` is the file length (until the peaks are known: from the start
+  to the end of the meeting).
+- **Segments.** The files of one device that started at different offsets (switched off and on
+  during the recording: `track_<slug>.ogg`, `track_<slug>-2.ogg` …) are segments of one logical
+  track (`tracknames::segments`): same name and role, adjacent rows ordered by offset. The
+  second line reads `N. szakasz · kezdete: m:ss · <device> · <file>`. Rename applies to all
+  segments; drop / restore / locate stay per file.
+- **Preview** (`PlayerController::playFile`) plays the file on its own, from the file's start
+  (file time, not meeting time).
+- Demo (`--qml-page TracksTab --qml-prop 'demoState="idle"'`): the „Hívás hangja” row starts at
+  2:30.
+
 ## Transcript editor: the scope of a speaker correction
 
 Agreed with the owner; it deliberately departs from the designer's spec, where a click on a
@@ -512,8 +533,8 @@ Spec: `design/handoff-recorder/README.md` (states R01–R11).
 | `RecorderPill.qml` | pill mode (R05) |
 | `RecorderWindow.qml` | frameless always-on-top `Window` hosting the two; created by the host |
 | `RecorderPreview.qml` | screenshot wrapper with fictional devices: `--qml-page RecorderPreview --size 420x640 --qml-prop 'demoState="R04"'` (`R01`…`R10`, `R03typing` = T08c) |
-| `VuMeter.qml`, `RecorderSwitch.qml`, `RecorderButton.qml` | 14-segment meter with peak hold, 30×18 switch with lock, the recorder's buttons |
-| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)`; tags (C06): `tags`, `addTag(name)`, `removeTag(id)`, `openTagInput()` (Ctrl+T) — handed to the core with `AppController::setRecordingTags` (the meeting only exists when the recording ends); without a controller it serves fictional data (`demoState`) |
+| `VuMeter.qml`, `RecorderSwitch.qml`, `RecorderButton.qml` | 14-segment meter with peak hold, 30×18 switch with lock (unplugged device), the recorder's buttons |
+| `RecorderViewModel` | state, title, device model (`devices`: name / rawName / group / selected / locked / appName / level / peak / status…), `start()`, `stop()`, `toggleDevice(row)` (during a recording: on → the device's track starts now, a new segment if it ran before; off → its file ends, `AppController::stopRecordingDevice`; the last open track stays on; `locked` = unplugged device); tags (C06): `tags`, `addTag(name)`, `removeTag(id)`, `openTagInput()` (Ctrl+T) — handed to the core with `AppController::setRecordingTags` (the meeting only exists when the recording ends); without a controller it serves fictional data (`demoState`) |
 | `RecorderWindowHost` | C++ host: shows the window, executes `--record` requests, remembers position, snaps the pill, hide-to-tray, `recording.lock` |
 
 ### Recorder in the main window

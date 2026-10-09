@@ -121,10 +121,14 @@ int main(int argc, char** argv) {
 
     if (cmd == "align") {
         // Track start offsets: a track whose file does not start at the recording's zero point
-        // (e.g. turned on later without silence padding) gets a startOffsetMs; the mixdown
-        // delays it by that much. --auto assumes all tracks ENDED together (stop() closes them
-        // at once) and derives offset = longest − own duration for every active track that is
-        // at least 1 s shorter. Then the mixdown is regenerated. The transcript is NOT redone.
+        // gets a startOffsetMs; the mixdown delays it by that much. The recorder writes the
+        // offset itself (tracks turned on later, segments of a device toggled off and on), so
+        // this is the repair path for folders recorded before that, or brought from elsewhere.
+        // --auto assumes all tracks ENDED together (stop() closes them at once) and derives
+        // offset = longest − own duration for every active track that is at least 1 s shorter
+        // AND has no offset yet (recorded offsets are kept; a track that was switched off early
+        // would be wrongly shifted — fix that one with --track). Then the mixdown is regenerated.
+        // The transcript is NOT redone.
         const QString id = args.value(2);
         if (id.isEmpty()) { err << "Usage: align <id> (--auto | --track <trackId>=<ms> ...)\n"; return 2; }
         Meeting m = app.store()->load(id);
@@ -161,7 +165,7 @@ int main(int argc, char** argv) {
         for (Track& t : m.tracks) {
             qint64 offset = t.startOffsetMs;
             if (manual.contains(t.id)) offset = manual.value(t.id);
-            else if (autoMode && t.active) {
+            else if (autoMode && t.active && t.startOffsetMs == 0) {
                 const qint64 gap = longest - durations.value(t.id);
                 offset = gap >= 1000 ? gap : 0;
             }

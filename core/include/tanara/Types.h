@@ -51,9 +51,11 @@ struct Track {
     float peakLevel = 0.0f; // a felvétel alatti csúcs-RMS (a megtartás-döntéshez)
     QString customName;     // a felhasználó által adott sávnév; üres → barátságos név (TrackCatalog)
     // A sáv hangja ennyivel KÉSŐBB kezdődik a felvétel 0-pontjánál (ms). 0 = együtt indult.
-    // Akkor nem nulla, ha a sáv fájlja nem a felvétel elejétől tart (más gépről hozott /
-    // csend-kitöltés nélkül később bekapcsolt sáv): a lekeverés ennyi csenddel tolja el
-    // (adelay), így a sávok időben együtt állnak. Kézzel vagy a CLI `align` parancsával állítható.
+    // A fájl a ténylegesen felvett szakasz (csend-kitöltés NINCS): a felvevő a felvétel közben
+    // bekapcsolt eszköz sávjának, ill. egy ki-be kapcsolt eszköz minden szakaszának (új fájl:
+    // track_<slug>-2.ogg …) a megnyitás idejét írja ide. A lekeverés ennyi csenddel tolja el
+    // (adelay); a sávfájlból olvasók a megbeszélés-időt ennyivel tolják (tracktiming). Régi /
+    // máshonnan hozott mappánál a CLI `align` parancsa állítja (--auto: közös vég feltételezve).
     qint64 startOffsetMs = 0;
 };
 
