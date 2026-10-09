@@ -94,7 +94,7 @@ tényleges tartalma a következő csomag-építés után ellenőrizendő). „in
 ## Összesítés
 
 - 43 tétel; 19 tételnél kötelező az attribúció, ebből 19 teljesül.
-- A Windows-csomag a javítás után tartalmazza: `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses\\` (lásd `packaging/windows/README.md`); a telepítőnek van `LicenseFile`-ja.
+- A Windows-csomag a javítás után tartalmazza: `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses\` (lásd `packaging/windows/README.md`); a telepítőnek van `LicenseFile`-ja.
 - Hangmodellek: a CAM++ a Windows-csomagban van (Apache-2.0); a WeSpeaker ResNet34-LM (CC-BY-4.0) és az ERes2NetV2 (Apache-2.0) a `tanara-cli voice-models fetch` paranccsal tölthető le, nincs csomagolva.
 
 ## Nyitott kérdések
