@@ -14,6 +14,7 @@
 #include <QTemporaryDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QDir>
 #include <QFile>
 
@@ -55,6 +56,28 @@ private slots:
     }
 
     // AppSettings JSON round-trip (ÚJ multi-provider shape).
+    // A sáv kezdőeltolása (Track::startOffsetMs) oda-vissza jár a meeting.json-ban; 0-nál kimarad.
+    void track_startOffsetRoundTrip()
+    {
+        Meeting m;
+        m.id = QStringLiteral("m1");
+        Track t;
+        t.id = QStringLiteral("loop");
+        t.file = QStringLiteral("track_loop.ogg");
+        t.startOffsetMs = 57200;
+        Track zero;
+        zero.id = QStringLiteral("mic");
+        m.tracks << t << zero;
+
+        const QJsonObject o = toJson(m);
+        const QJsonArray tracks = o.value(QStringLiteral("tracks")).toArray();
+        QCOMPARE(tracks.at(0).toObject().value(QStringLiteral("startOffsetMs")).toDouble(), 57200.0);
+        QVERIFY(!tracks.at(1).toObject().contains(QStringLiteral("startOffsetMs")));
+        const Meeting back = meetingFromJson(o);
+        QCOMPARE(back.tracks.at(0).startOffsetMs, qint64(57200));
+        QCOMPARE(back.tracks.at(1).startOffsetMs, qint64(0));
+    }
+
     void appSettings_jsonRoundTrip()
     {
         AppSettings s;

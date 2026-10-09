@@ -185,9 +185,14 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case RenamedRole:      return r.view.renamed;
     case RawNameRole: {
         const QString file = QFileInfo(r.view.track.file).fileName();
-        if (r.view.rawDeviceName.isEmpty()) return file;
-        return file.isEmpty() ? r.view.rawDeviceName
-                              : r.view.rawDeviceName + QStringLiteral(" · ") + file;
+        QString line = r.view.rawDeviceName.isEmpty() ? file
+                     : file.isEmpty() ? r.view.rawDeviceName
+                                      : r.view.rawDeviceName + QStringLiteral(" · ") + file;
+        // Később kezdődő sáv: a lekeverés ennyivel tolja el (lásd Track::startOffsetMs).
+        if (r.view.track.startOffsetMs > 0)
+            line += QStringLiteral(" · ") + tr("+%1 eltolás")
+                        .arg(jobsupport::formatDuration(r.view.track.startOffsetMs));
+        return line;
     }
     case IconNameRole:     return iconFor(r.view.role);
     case ActiveRole:       return r.view.track.active;

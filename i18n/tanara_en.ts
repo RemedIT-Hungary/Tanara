@@ -8843,6 +8843,10 @@
 <context>
     <name>tanara_qml::TrackListModel</name>
     <message>
+        <source>+%1 eltolás</source>
+        <translation>+%1 offset</translation>
+    </message>
+    <message>
         <source>Közben másik megbeszélésre váltottál, ezért a fájl nem lett hozzárendelve.</source>
         <translation>You switched to another meeting in the meantime, so the file was not assigned.</translation>
     </message>

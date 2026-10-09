@@ -50,6 +50,11 @@ struct Track {
     bool active = true;     // false = felvétel után csendesnek ítélve, eldobva (fájl MARAD)
     float peakLevel = 0.0f; // a felvétel alatti csúcs-RMS (a megtartás-döntéshez)
     QString customName;     // a felhasználó által adott sávnév; üres → barátságos név (TrackCatalog)
+    // A sáv hangja ennyivel KÉSŐBB kezdődik a felvétel 0-pontjánál (ms). 0 = együtt indult.
+    // Akkor nem nulla, ha a sáv fájlja nem a felvétel elejétől tart (más gépről hozott /
+    // csend-kitöltés nélkül később bekapcsolt sáv): a lekeverés ennyi csenddel tolja el
+    // (adelay), így a sávok időben együtt állnak. Kézzel vagy a CLI `align` parancsával állítható.
+    qint64 startOffsetMs = 0;
 };
 
 // ---- transcript ------------------------------------------------------------

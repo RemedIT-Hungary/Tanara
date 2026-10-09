@@ -42,6 +42,8 @@
 #include <QSocketNotifier>
 #include <QDateTime>
 #include <QDir>
+#include <QHash>
+#include <QProcess>
 #include <QFileInfo>
 
 #include <memory>
@@ -116,6 +118,74 @@ int main(int argc, char** argv) {
 
     if (cmd == "devices") return cmdDevices(app);
     if (cmd == "list")    return cmdList(app);
+
+    if (cmd == "align") {
+        // Track start offsets: a track whose file does not start at the recording's zero point
+        // (e.g. turned on later without silence padding) gets a startOffsetMs; the mixdown
+        // delays it by that much. --auto assumes all tracks ENDED together (stop() closes them
+        // at once) and derives offset = longest − own duration for every active track that is
+        // at least 1 s shorter. Then the mixdown is regenerated. The transcript is NOT redone.
+        const QString id = args.value(2);
+        if (id.isEmpty()) { err << "Usage: align <id> (--auto | --track <trackId>=<ms> ...)\n"; return 2; }
+        Meeting m = app.store()->load(id);
+        if (m.id.isEmpty()) { err << "No such meeting: " << id << "\n"; return 1; }
+        bool autoMode = false;
+        QHash<QString, qint64> manual;
+        for (int i = 3; i < args.size(); ++i) {
+            if (args.at(i) == "--auto") autoMode = true;
+            else if (args.at(i) == "--track" && i + 1 < args.size()) {
+                const QString spec = args.at(++i);
+                const int eq = spec.indexOf('=');
+                if (eq <= 0) { err << "Bad --track value (expected <trackId>=<ms>): " << spec << "\n"; return 2; }
+                manual.insert(spec.left(eq), spec.mid(eq + 1).toLongLong());
+            }
+        }
+        if (!autoMode && manual.isEmpty()) { err << "Usage: align <id> (--auto | --track <trackId>=<ms> ...)\n"; return 2; }
+        auto probe = [](const QString& path) -> qint64 {
+            QProcess p;
+            p.start(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"),
+                QStringLiteral("-show_entries"), QStringLiteral("format=duration"),
+                QStringLiteral("-of"), QStringLiteral("csv=p=0"), path});
+            if (!p.waitForFinished(10000)) { p.kill(); return 0; }
+            return qint64(QString::fromUtf8(p.readAllStandardOutput()).trimmed().toDouble() * 1000.0);
+        };
+        QHash<QString, qint64> durations;
+        qint64 longest = 0;
+        for (const Track& t : m.tracks) {
+            if (!t.active) continue;
+            const qint64 d = probe(QDir(m.folder).filePath(t.file));
+            durations.insert(t.id, d);
+            longest = qMax(longest, d);
+        }
+        bool changed = false;
+        for (Track& t : m.tracks) {
+            qint64 offset = t.startOffsetMs;
+            if (manual.contains(t.id)) offset = manual.value(t.id);
+            else if (autoMode && t.active) {
+                const qint64 gap = longest - durations.value(t.id);
+                offset = gap >= 1000 ? gap : 0;
+            }
+            if (offset != t.startOffsetMs) { t.startOffsetMs = offset; changed = true; }
+            out << "  " << t.id << "  duration " << (durations.value(t.id) / 1000.0) << " s"
+                << "  offset " << t.startOffsetMs << " ms" << (t.active ? "" : "  (dropped)") << "\n";
+        }
+        out.flush();
+        if (!changed) { out << "Nothing to change.\n"; out.flush(); return 0; }
+        app.store()->saveMeeting(m);
+        out << "Offsets saved; regenerating the mixdown...\n"; out.flush();
+        int rc = 1;
+        QObject::connect(&app, &AppController::mixdownUpdated, &qapp, [&](const QString& mid, bool ok) {
+            if (mid != id) return;
+            out << (ok ? "Mixdown regenerated. Re-run the transcription to apply the new alignment.\n"
+                       : "Mixdown failed.\n");
+            out.flush();
+            rc = ok ? 0 : 1;
+            qapp.quit();
+        });
+        app.regenerateMixdown(id);
+        qapp.exec();
+        return rc;
+    }
 
     if (cmd == "adopt") {
         // Egy felvétel-mappa behúzása (másik gépről, pendrive-ról): bemásolja a felvételek közé,
@@ -564,7 +634,7 @@ int main(int argc, char** argv) {
     }
 
     out << "tanara-cli " << libraryVersion() << "\n"
-        << "Commands: devices | record [--title T --seconds N --device IDX] | list | adopt <folder> | "
+        << "Commands: devices | record [--title T --seconds N --device IDX] | list | adopt <folder> | align <id> (--auto | --track <trackId>=<ms>) | "
            "export <id> [<archive.zip>] | import-archive <archive.zip> | "
            "import <file>… [--title T --date ISO --split-channels --own-track N] | reindex | "
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "

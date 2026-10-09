@@ -1483,6 +1483,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe.
     QStringList inArgs;
     QStringList missing;   // aktív sávok, amelyeknek nincs meg a hangfájlja (megjelenített név)
+    QStringList delays;    // bemenetenként: adelay-szűrő, ha a sáv később kezdődik; különben üres
     int inputs = 0;
     const QVector<TrackView> views = TrackCatalog::tracks(m);
     for (int i = 0; i < m.tracks.size(); ++i) {
@@ -1494,6 +1495,11 @@ void AppController::regenerateMixdown(const QString& meetingId) {
             continue;
         }
         inArgs << QStringLiteral("-i") << path;
+        // Később kezdődő sáv (startOffsetMs): ennyi csenddel tolva kerül a keverékbe.
+        if (t.startOffsetMs > 0)
+            delays << QStringLiteral("[%1]adelay=%2:all=1[d%1]").arg(inputs).arg(t.startOffsetMs);
+        else
+            delays << QString();
         ++inputs;
     }
     // Hiányzó aktív sáv mellett a MEGLÉVŐ (teljes) keveréket nem cseréljük le egy
@@ -1526,10 +1532,20 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     // halk beszédet kényelmes lejátszási hangerőre (lásd RecordingSession). STT-t nem érint.
     const QString kLoudnorm = QStringLiteral(
         "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
+    // Az eltolt sávok adelay-jel kerülnek a keverőbe: "[1]adelay=57200:all=1[d1];[0][d1]amix=…".
+    QString pre, mixIn;
+    for (int i = 0; i < inputs; ++i) {
+        if (delays.at(i).isEmpty()) { mixIn += QStringLiteral("[%1]").arg(i); continue; }
+        pre += delays.at(i) + QLatin1Char(';');
+        mixIn += QStringLiteral("[d%1]").arg(i);
+    }
     if (inputs > 1) {
         args << QStringLiteral("-filter_complex")
-             << QStringLiteral("amix=inputs=%1:duration=longest:normalize=0,%2")
-                    .arg(inputs).arg(kLoudnorm);
+             << QStringLiteral("%1%2amix=inputs=%3:duration=longest:normalize=0,%4")
+                    .arg(pre, mixIn).arg(inputs).arg(kLoudnorm);
+    } else if (!pre.isEmpty()) {
+        args << QStringLiteral("-filter_complex")
+             << QStringLiteral("%1%2%3").arg(pre, mixIn, kLoudnorm);   // 1 eltolt sáv
     } else {
         args << QStringLiteral("-af") << kLoudnorm;   // 1 aktív sáv → csak normalizálás
     }
