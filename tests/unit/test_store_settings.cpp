@@ -237,7 +237,7 @@ private slots:
     {
         const AppSettings d = SettingsManager::defaults(QStringLiteral("/tmp/x"));
         QCOMPARE(d.languageHints, (QStringList{QStringLiteral("hu")}));
-        QCOMPARE(d.userSpeakerName, QStringLiteral("Ádám"));
+        QVERIFY(!d.userSpeakerName.trimmed().isEmpty());   // az OS-fiók neve (nincs beégetett név)
         QCOMPARE(d.sttProviderId, QStringLiteral("soniox"));
         QCOMPARE(d.llmProviderId, QStringLiteral("openai-compat"));
         QCOMPARE(d.sttSelected().type, QStringLiteral("soniox"));

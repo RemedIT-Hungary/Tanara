@@ -31,7 +31,7 @@ endif()
 # az MMDevice enumerációhoz uuid; a WinMM backendhez winmm. MSVC ezeket #pragma
 # comment-tel linkeli, MinGW-n explicit kell.
 if(WIN32)
-    target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser)
+    target_link_libraries(tanara_core PRIVATE ole32 oleaut32 uuid winmm avrt ksuser secur32)
 endif()
 
 # miniz (vendorelt, MIT, third_party/miniz) — ZIP írás/olvasás a megbeszélés-archívumhoz

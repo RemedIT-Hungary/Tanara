@@ -9,6 +9,15 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#if defined(Q_OS_WIN)
+#  define SECURITY_WIN32
+#  include <windows.h>
+#  include <security.h>
+#else
+#  include <pwd.h>
+#  include <unistd.h>
+#endif
+#include <iterator>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -30,6 +39,38 @@ SettingsManager::SettingsManager(const QString& metadataDir, QObject* parent)
     load();
 }
 
+namespace {
+// A saját mikrofon-sáv alapértelmezett neve: az operációs rendszer fiókjának megjelenített
+// neve (Windows: NameDisplay; POSIX: a gecos első mezője), különben a bejelentkezési név
+// nagy kezdőbetűvel. A felhasználó az első indításkor és a Beállításokban bármikor átírja.
+QString defaultUserSpeakerName()
+{
+    QString name;
+#if defined(Q_OS_WIN)
+    wchar_t buf[256];
+    ULONG len = ULONG(std::size(buf));
+    if (GetUserNameExW(NameDisplay, buf, &len) && len > 0)
+        name = QString::fromWCharArray(buf, int(len));
+    if (name.trimmed().isEmpty())
+        name = qEnvironmentVariable("USERNAME");
+#else
+    if (const passwd* pw = getpwuid(getuid())) {
+        const QString gecos = QString::fromLocal8Bit(pw->pw_gecos).section(QLatin1Char(','), 0, 0);
+        name = gecos.trimmed().isEmpty() ? QString::fromLocal8Bit(pw->pw_name) : gecos;
+    }
+    if (name.trimmed().isEmpty())
+        name = qEnvironmentVariable("USER");
+#endif
+    name = name.trimmed();
+    if (name.isEmpty())
+        return QStringLiteral("Én");
+    // Bejelentkezési név (csupa kisbetű): nagy kezdőbetű, hogy névnek nézzen ki.
+    if (name == name.toLower())
+        name[0] = name.at(0).toUpper();
+    return name;
+}
+} // namespace
+
 AppSettings SettingsManager::defaults(const QString& metadataDir)
 {
     const QString meta = metadataDir.isEmpty() ? defaultMetadataDir() : metadataDir;
@@ -38,7 +79,7 @@ AppSettings SettingsManager::defaults(const QString& metadataDir)
     s.audioDir        = paths::defaultAudioDir();   // TANARA_HOME mellett a sandboxba
     s.notesDir        = paths::defaultNotesDir();
     s.metadataDir     = meta;
-    s.userSpeakerName = QStringLiteral("Ádám");
+    s.userSpeakerName = defaultUserSpeakerName();
     s.languageHints   = QStringList{QStringLiteral("hu")};
 
     // STT: kiválasztott provider = "soniox", a hozzá tartozó configgal.
