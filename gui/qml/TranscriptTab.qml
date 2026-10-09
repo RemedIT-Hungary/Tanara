@@ -833,6 +833,20 @@ Item {
             iconName: "user"
             onTriggered: rowMenu.fixPending = true
         }
+        // Hanglenyomat-minta ebből a sorból (a sor felugrójában is ott van; itt a jobb-klikk útja).
+        // Bizonytalan sornál egyben megerősítés is.
+        TMenuItem {
+            objectName: "rowMenuSample"
+            readonly property var info: rowMenu.visible && rowMenu.row >= 0
+                                        ? editorVm.lineSampleInfo(editorVm.rowUtteranceId(rowMenu.row)) : ({})
+            text: info.confirmFirst === true
+                  ? qsTr("Jó így + hanglenyomat-minta ebből a sorból (%1 mp)").arg(info.seconds || 0)
+                  : (info.personName ? qsTr("Hanglenyomat-minta ebből a sorból (%1 mp)").arg(info.seconds || 0)
+                                     : qsTr("Hanglenyomat-minta ebből a sorból"))
+            iconName: "fingerprint"
+            enabled: info.ok === true
+            onTriggered: editorVm.createVoiceprintFromLine(editorVm.rowUtteranceId(rowMenu.row))
+        }
         TMenuSeparator {}
         TMenuItem {
             text: qsTr("Sor másolása")

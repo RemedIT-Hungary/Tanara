@@ -253,6 +253,8 @@ public:
     Q_INVOKABLE qreal rowEndFraction(int row) const;
     Q_INVOKABLE int timeAtFraction(qreal fraction) const;
     Q_INVOKABLE int rowStartMs(int row) const;
+    // A sor megszólalás-azonosítója (jobb-klikk menü → „minta ebből a sorból”); üres, ha nem sor.
+    Q_INVOKABLE QString rowUtteranceId(int row) const;
     Q_INVOKABLE int rowEndMs(int row) const;
     // A sor megszólalása a soronkénti panelhez: { utteranceId, speakerKey, timeLabel, startMs,
     // endMs }; elválasztónál / érvénytelen sornál üres.

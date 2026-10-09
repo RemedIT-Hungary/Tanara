@@ -836,6 +836,12 @@ int TranscriptEditorViewModel::rowStartMs(int row) const
     return u >= 0 ? int(m_utts[u].startMs) : -1;
 }
 
+QString TranscriptEditorViewModel::rowUtteranceId(int row) const
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 ? m_utts[u].id : QString();
+}
+
 int TranscriptEditorViewModel::rowEndMs(int row) const
 {
     const int u = m_rows->utteranceOfRow(row);

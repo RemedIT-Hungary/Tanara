@@ -4917,6 +4917,18 @@
         <translation>Someone else said it… (this line)</translation>
     </message>
     <message>
+        <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
+        <translation>Fine as is + voice sample from this line (%1 s)</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-minta ebből a sorból (%1 mp)</source>
+        <translation>Voice sample from this line (%1 s)</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-minta ebből a sorból</source>
+        <translation>Voice sample from this line</translation>
+    </message>
+    <message>
         <source>Sor másolása</source>
         <translation>Copy line</translation>
     </message>
