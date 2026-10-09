@@ -558,7 +558,7 @@ void PeopleServiceTest::oldFilesMigrateUnderTheApp()
 
     const QJsonObject prints = readJson(metaFile("voiceprints.json"));
     QCOMPARE(prints.keys(), QStringList{"people"});
-    const QStringList printKeys{"createdAt", "device", "dim", "embedding", "id", "sampleRef",
+    const QStringList printKeys{"createdAt", "device", "dim", "embedding", "id", "model", "sampleRef",
                                 "sourceMeetingId", "sourceTrack"};
     for (const QJsonValue& pv : prints.value("people").toArray()) {
         QCOMPARE(pv.toObject().keys(), QStringList({"name", "prints"}));

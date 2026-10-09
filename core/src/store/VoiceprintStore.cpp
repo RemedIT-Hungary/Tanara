@@ -1,6 +1,7 @@
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/Logging.h"
 #include "tanara/Paths.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QDir>
 #include <QFile>
@@ -71,6 +72,8 @@ void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
     if (print.id.isEmpty())
         print.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     print.dim = print.embedding.size();
+    if (print.model.isEmpty())
+        print.model = VoiceModelRegistry::defaultModelId();
     // Biztos, ami biztos: normalizálva tároljuk (a cosine így stabil marad).
     print.embedding = l2normalize(print.embedding);
 
@@ -171,41 +174,83 @@ void VoiceprintStore::merge(const QString& from, const QString& into)
     persist();
 }
 
+namespace {
+
+// Egy személy pontszáma: modellenként a max cosine az adott modellű lenyomatain, majd átlag a
+// közös modelleken. Nincs közös modell → -1.
+double personScore(const QVector<Voiceprint>& prints, const EmbeddingSet& query, const QStringList& ids)
+{
+    double sum = 0.0;
+    int n = 0;
+    for (const QString& id : ids) {
+        const QVector<float> q = query.value(id);
+        if (q.isEmpty()) continue;
+        double best = -2.0;
+        for (const Voiceprint& p : prints)
+            if (p.model == id)
+                best = std::max(best, VoiceprintStore::cosineSimilarity(q, p.embedding));
+        if (best < -1.5) continue;   // ennek a modellnek nincs lenyomata a személynél
+        sum += best;
+        ++n;
+    }
+    return n > 0 ? sum / n : -1.0;
+}
+
+EmbeddingSet defaultSet(const QVector<float>& embedding)
+{
+    EmbeddingSet set;
+    if (!embedding.isEmpty()) set.insert(VoiceModelRegistry::defaultModelId(), embedding);
+    return set;
+}
+
+} // namespace
+
+QVector<VoiceMatch> VoiceprintStore::rankedMatches(const EmbeddingSet& query,
+                                                   const QStringList& modelIds) const
+{
+    QVector<VoiceMatch> out;
+    const QStringList ids = VoiceModelRegistry::normalizeIds(modelIds);
+    bool any = false;
+    for (const QString& id : ids) any = any || !query.value(id).isEmpty();
+    if (!any || m_people.isEmpty())
+        return out;
+    for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it)
+        out.append(VoiceMatch{it.key(), personScore(it.value(), query, ids)});
+    std::stable_sort(out.begin(), out.end(),
+                     [](const VoiceMatch& a, const VoiceMatch& b) { return a.score > b.score; });
+    return out;
+}
+
+VoiceMatch VoiceprintStore::bestMatch(const EmbeddingSet& query, const QStringList& modelIds) const
+{
+    const QVector<VoiceMatch> ranked = rankedMatches(query, modelIds);
+    if (ranked.isEmpty() || ranked.first().score <= -1.0)
+        return VoiceMatch();   // { "", -1 }
+    return ranked.first();
+}
+
 VoiceMatch VoiceprintStore::bestMatch(const QVector<float>& embedding) const
 {
-    VoiceMatch best;   // { "", -1 }
-    if (embedding.isEmpty() || m_people.isEmpty())
-        return best;
-    const QVector<float> q = l2normalize(embedding);
-    for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it) {
-        double personBest = -2.0;
-        for (const Voiceprint& p : it.value()) {
-            const double s = cosineSimilarity(q, p.embedding);
-            if (s > personBest)
-                personBest = s;
-        }
-        if (personBest > best.score) {
-            best.score = personBest;
-            best.name = it.key();
-        }
-    }
-    return best;
+    return bestMatch(defaultSet(embedding), {VoiceModelRegistry::defaultModelId()});
 }
 
 QVector<VoiceMatch> VoiceprintStore::rankedMatches(const QVector<float>& embedding) const
 {
-    QVector<VoiceMatch> out;
-    if (embedding.isEmpty() || m_people.isEmpty())
-        return out;
-    const QVector<float> q = l2normalize(embedding);
-    for (auto it = m_people.constBegin(); it != m_people.constEnd(); ++it) {
-        double personBest = -2.0;
-        for (const Voiceprint& p : it.value())
-            personBest = std::max(personBest, cosineSimilarity(q, p.embedding));
-        out.append(VoiceMatch{it.key(), personBest});
+    return rankedMatches(defaultSet(embedding), {VoiceModelRegistry::defaultModelId()});
+}
+
+QStringList VoiceprintStore::printsMissingModel(const QString& name, const QString& modelId) const
+{
+    QStringList refs, have;
+    for (const Voiceprint& p : printsFor(name)) {
+        if (p.sampleRef.isEmpty()) continue;
+        if (p.model == modelId) have << p.sampleRef;
+        else if (!refs.contains(p.sampleRef)) refs << p.sampleRef;
     }
-    std::sort(out.begin(), out.end(),
-              [](const VoiceMatch& a, const VoiceMatch& b) { return a.score > b.score; });
+    QStringList out;
+    for (const QString& r : std::as_const(refs))
+        if (!have.contains(r)) out << r;
+    out.sort();
     return out;
 }
 
@@ -286,6 +331,8 @@ void VoiceprintStore::load()
             vp.device = o.value(QStringLiteral("device")).toString();
             vp.sampleRef = o.value(QStringLiteral("sampleRef")).toString();
             vp.createdAt = o.value(QStringLiteral("createdAt")).toString();
+            vp.model = o.value(QStringLiteral("model")).toString(VoiceModelRegistry::defaultModelId());
+            if (vp.model.isEmpty()) vp.model = VoiceModelRegistry::defaultModelId();
             if (!vp.embedding.isEmpty())
                 prints.append(vp);
         }
@@ -321,6 +368,7 @@ void VoiceprintStore::persist()
             o[QStringLiteral("device")] = vp.device;
             o[QStringLiteral("sampleRef")] = vp.sampleRef;
             o[QStringLiteral("createdAt")] = vp.createdAt;
+            o[QStringLiteral("model")] = vp.model;
             prints.append(o);
         }
         po[QStringLiteral("prints")] = prints;

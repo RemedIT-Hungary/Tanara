@@ -181,6 +181,9 @@ struct Voiceprint {
     QString device;             // a felvevő eszköz neve (több-mikrofonos kontextus)
     QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs" — az idők megbeszélés-időben
     QString createdAt;          // ISO-8601
+    // A beágyazó modell (VoiceModelRegistry id). JSON "model"; hiányzik → "campplus". Egy minta
+    // (sampleRef) minden engedélyezett modellel külön lenyomatot kap (azonos sampleRef/createdAt).
+    QString model{QStringLiteral("campplus")};
 };
 
 // Egy párosítás eredménye: melyik személy, milyen (cosine) pontszámmal.
