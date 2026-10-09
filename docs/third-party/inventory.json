@@ -34,7 +34,7 @@
     "category": "asset",
     "license": "OFL-1.1",
     "licenseVerifiedFrom": "gui/qml/fonts/OFL.txt (read: 'Copyright © 2017 IBM Corp. with Reserved Font Name \"Plex\"' + OFL 1.1 text)",
-    "licenseTextInRepo": "gui/qml/fonts/OFL.txt",
+    "licenseTextInRepo": "packaging/licenses/OFL-1.1-IBM-Plex.txt, gui/qml/fonts/OFL.txt",
     "homepage": "https://www.ibm.com/plex/",
     "sourceUrl": "https://github.com/IBM/plex",
     "usedFor": {
@@ -54,8 +54,8 @@
     "attribution": {
       "required": true,
       "requirements": "OFL-1.1: keep copyright notice + licence with any redistribution of the fonts (embedded in tanara.exe as resources - include OFL text in package/About); fonts may not be sold alone; Reserved Font Name 'Plex' - do not modify/rename-publish modified versions; unmodified here.",
-      "currentlyMet": false,
-      "gap": "Repo has OFL.txt and NOTICES is accurate for the source repo, but the compiled binaries/Windows package do not display or ship the OFL text separately (fonts are inside tanara.exe resources). ADD OFL.txt to package / About page. Version not recorded: pin a Plex release tag in fetch-assets.sh (PLEX_REF=master is floating)."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Design handoff folders (design/**/fonts/*.woff2) hold the same fonts in woff2 - not shipped; covered by same licence. Upstream copyright line is shown by IBM as 'Copyright © 2017 IBM Corp.' (matches OFL.txt)."
   },
@@ -66,7 +66,7 @@
     "category": "asset",
     "license": "ISC (portions MIT from Feather)",
     "licenseVerifiedFrom": "gui/qml/icons/LICENSE (read: ISC, 'Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.')",
-    "licenseTextInRepo": "gui/qml/icons/LICENSE",
+    "licenseTextInRepo": "packaging/licenses/ISC-Lucide.txt, gui/qml/icons/LICENSE",
     "homepage": "https://lucide.dev",
     "sourceUrl": "https://github.com/lucide-icons/lucide",
     "usedFor": {
@@ -86,8 +86,8 @@
     "attribution": {
       "required": true,
       "requirements": "ISC: copyright + permission notice in all copies; Feather's MIT notice for portions (Cole Bemis).",
-      "currentlyMet": false,
-      "gap": "Repo OK; NOTICES says 0.460.0 which matches script. Packages do not carry the notice text (icons embedded in exe). Add LICENSE text to package/About. Some icons (cable, hash, pin, tag, maximize-2, minimize-2, chevrons-up/down, arrow-down-to-line) exist in the dir but are not in fetch-assets.sh's default list (added later with extra args) - assumed same 0.460.0; unverified (inference)."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Feather portions are MIT: the Lucide LICENSE file covers both notices."
   },
@@ -261,8 +261,8 @@
     "attribution": {
       "required": false,
       "requirements": "Tools themselves not distributed. Output (generated moc code) is Tanara's. Caveat: rcc/qmlcachegen embed Qt-licensed boilerplate in generated sources - covered by Qt linking exception (GPL-exception) / LGPL.",
-      "currentlyMet": false,
-      "gap": "None."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "windeployqt copies the DLLs listed in qt6 entry (see its obligations)."
   },
@@ -273,7 +273,7 @@
     "category": "linked-library",
     "license": "MIT",
     "licenseVerifiedFrom": "Fedora package license field (rpm -q onnxruntime): 'MIT AND Apache-2.0 AND BSL-1.0 AND BSD-3-Clause' (includes its bundled deps); upstream LICENSE is MIT (not fetched)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/MIT-onnxruntime.txt",
     "homepage": "https://onnxruntime.ai",
     "sourceUrl": "https://github.com/microsoft/onnxruntime",
     "usedFor": {
@@ -294,10 +294,10 @@
     "attribution": {
       "required": true,
       "requirements": "MIT: include copyright + permission notice (Copyright (c) Microsoft Corporation). The official release archive also contains ThirdPartyNotices.txt covering ORT's bundled dependencies (protobuf, Eigen, abseil, flatbuffers, onnx, re2, etc., licences incl. Apache-2.0, BSD, MIT, BSL-1.0): redistributing onnxruntime.dll should be accompanied by that file.",
-      "currentlyMet": false,
-      "gap": "NOTICES names MIT but no version, no copyright line; Windows zip/installer ship onnxruntime.dll without LICENSE or ThirdPartyNotices.txt from the ORT release. ADD both files (from onnxruntime-win-x64-1.20.1 archive) to the package (e.g. licenses\\onnxruntime\\) and mention version 1.20.1."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "Windows build is MSVC-compiled so Tanara also ships the VC++ runtime (see vcpp-runtime). Version mismatch Linux 1.22.2 vs Windows 1.20.1 - SHOULD record the minimum supported version. System32 has an older Windows ML onnxruntime.dll - reason for app-local copy (CMakeLists comment)."
+    "notes": "Windows build is MSVC-compiled so Tanara also ships the VC++ runtime (see vcpp-runtime). Version mismatch Linux 1.22.2 vs Windows 1.20.1 - SHOULD record the minimum supported version. System32 has an older Windows ML onnxruntime.dll - reason for app-local copy (CMakeLists comment). | Package copies LICENSE and ThirdPartyNotices.txt from the onnxruntime-win-x64-1.20.1 archive into licenses\\ (packaging/windows/README.md)."
   },
   {
     "id": "threads-libm-dl",
@@ -334,7 +334,7 @@
     "category": "linked-library",
     "license": "LGPL-3.0-only (Qt 6.11 open-source edition is LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; some add-on modules GPL-only)",
     "licenseVerifiedFrom": "Fedora package license field (rpm -q qt6-qtbase): 'LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0'; https://www.qt.io/qt-licensing (not fetched this session - inference for upstream wording)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/LGPL-3.0.txt, packaging/licenses/GPL-3.0.txt",
     "homepage": "https://www.qt.io",
     "sourceUrl": "https://code.qt.io/cgit/ / https://download.qt.io/official_releases/qt/6.11/",
     "usedFor": {
@@ -357,10 +357,10 @@
     "attribution": {
       "required": true,
       "requirements": "LGPL-3.0 for a dynamically linked app: (1) prominent notice that Qt is used and is LGPL-licensed; (2) provide/accompany a copy of LGPL-3.0 (and GPL-3.0 it references) text; (3) written offer / link to the exact corresponding Qt source (qt.io) for the shipped version; (4) user must be able to replace Qt DLLs (dynamic linking satisfies this; do not use anti-tampering/ signing that blocks replacement; no static Qt); (5) do not forbid reverse engineering for debugging modifications in Tanara's own EULA/license; (6) keep Qt copyright notices; also Qt's own third-party notices (see qt-bundled-third-party).",
-      "currentlyMet": false,
-      "gap": "THIRD_PARTY_NOTICES.md has only 'Qt 6 - LGPL v3, dynamically linked, replaceable' with no version, no module list, no LGPL/GPL text, no source offer. The Windows zip/installer ship ~60 Qt DLLs/plugins plus qt_*.qm translations and NO license text, no 'uses Qt' notice, no link to Qt source for 6.11.1. MISSING: LGPL-3.0 + GPL-3.0 texts in package, Qt source offer URL (https://download.qt.io/archive/qt/6.11/6.11.1/), exact Qt version, module list. Also the Qt 'Test' and 'LinguistTools' are build-time only. Installer (tanara.iss) has no LicenseFile page."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "Windows zip contains Qt6Core, Gui, Multimedia, Network, OpenGL, Qml, QmlMeta, QmlModels, QmlWorkerScript, Quick, QuickControls2 (+Basic, Fusion, Imagine, Material, Universal, FluentWinUI3, WindowsStyleImpl and *Impl), QuickEffects, QuickLayouts, QuickShapes, QuickTemplates2, Sql, Svg, Widgets; plugins: platforms(qwindows,qoffscreen), styles(qmodernwindowsstyle), imageformats(qgif,qico,qjpeg,qsvg), iconengines(qsvgicon), generic(qtuiotouchplugin), multimedia(ffmpegmediaplugin,windowsmediaplugin), networkinformation(qnetworklistmanager), sqldrivers(qsqlite), tls(qschannelbackend,qcertonlybackend), qmltooling debug plugins (qmldbg_*), qml imports. Inference: Qt installed via Qt online installer (MinGW kit) = open-source LGPL edition. Unused-by-Tanara extras (qmltooling debug plugins, Material/Universal/Imagine styles, qoffscreen) increase obligations little but could be pruned. Tanara has Qt Quick Controls 2 style FluentWinUI3 DLLs (Microsoft design - Qt code, LGPL). Replaceability: DLLs are plain files beside exe -> relinking requirement met if user may swap them."
+    "notes": "Windows zip contains Qt6Core, Gui, Multimedia, Network, OpenGL, Qml, QmlMeta, QmlModels, QmlWorkerScript, Quick, QuickControls2 (+Basic, Fusion, Imagine, Material, Universal, FluentWinUI3, WindowsStyleImpl and *Impl), QuickEffects, QuickLayouts, QuickShapes, QuickTemplates2, Sql, Svg, Widgets; plugins: platforms(qwindows,qoffscreen), styles(qmodernwindowsstyle), imageformats(qgif,qico,qjpeg,qsvg), iconengines(qsvgicon), generic(qtuiotouchplugin), multimedia(ffmpegmediaplugin,windowsmediaplugin), networkinformation(qnetworklistmanager), sqldrivers(qsqlite), tls(qschannelbackend,qcertonlybackend), qmltooling debug plugins (qmldbg_*), qml imports. Inference: Qt installed via Qt online installer (MinGW kit) = open-source LGPL edition. Unused-by-Tanara extras (qmltooling debug plugins, Material/Universal/Imagine styles, qoffscreen) increase obligations little but could be pruned. Tanara has Qt Quick Controls 2 style FluentWinUI3 DLLs (Microsoft design - Qt code, LGPL). Replaceability: DLLs are plain files beside exe -> relinking requirement met if user may swap them. | Notices: THIRD_PARTY_NOTICES.md section 2 (modules, 6.11.1, LGPL-3.0 notice, source URL download.qt.io/archive/qt/6.11/6.11.1, relinking statement); texts in packaging/licenses (shipped as licenses\\ in the Windows packages)."
   },
   {
     "id": "windows-system-libs",
@@ -398,7 +398,7 @@
     "shippedIn": [
       "none"
     ],
-    "notes": "User may choose another embedding model; bge-m3 is just the placeholder/default and is loaded in LM Studio by the user.",
+    "notes": "User may choose another embedding model; bge-m3 is just the placeholder/default and is loaded in LM Studio by the user. | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "model-bge-m3",
     "name": "BGE-M3 embedding model (BAAI/bge-m3)",
     "category": "model",
@@ -417,20 +417,20 @@
     "attribution": {
       "required": false,
       "requirements": "MIT applies to redistribution; Tanara does not redistribute. Credit in About page is courtesy.",
-      "currentlyMet": false,
-      "gap": "Not in NOTICES."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
     "version": "file campplus_sv_zh_en_16k.onnx (upstream name 3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx); no hash/version pinned",
     "licenseVerifiedFrom": "https://modelscope.cn/api/v1/models/iic/speech_campplus_sv_zh_en_16k-common_advanced ('License':'Apache License 2.0'); sherpa-onnx repo Apache-2.0 (https://github.com/k2-fsa/sherpa-onnx)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/Apache-2.0.txt",
     "sourceUrl": "https://modelscope.cn/models/iic/speech_campplus_sv_zh_en_16k-common_advanced ; ONNX via https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models",
     "shippedIn": [
       "windows-zip",
       "windows-installer"
     ],
-    "notes": "README.md says 'not bundled' (Linux/source) while OLVASSEL.md says the model is in the package (Windows). Training data (VoxCeleb/CN-Celeb etc., inference) may carry their own research-use terms; the model license field is Apache-2.0 — flag for review. Voiceprints derived from user recordings are personal (biometric) data stored in ~/.tanara/voiceprints.json (GDPR note). | (merged from second entry) Part B/other agents may cover model details. Verify licence on the 3D-Speaker repo/ModelScope card and training-data terms (VoxCeleb/3D-Speaker dataset restrictions?) before shipping.",
+    "notes": "README.md says 'not bundled' (Linux/source) while OLVASSEL.md says the model is in the package (Windows). Training data (VoxCeleb/CN-Celeb etc., inference) may carry their own research-use terms; the model license field is Apache-2.0 — flag for review. Voiceprints derived from user recordings are personal (biometric) data stored in ~/.tanara/voiceprints.json (GDPR note). | (merged from second entry) Part B/other agents may cover model details. Verify licence on the 3D-Speaker repo/ModelScope card and training-data terms (VoxCeleb/3D-Speaker dataset restrictions?) before shipping. | Windows package bundles it (decision 2026-10-09); notices and Apache-2.0 text updated.",
     "id": "model-campplus",
     "name": "CAM++ speaker-embedding model (3D-Speaker, ONNX export via sherpa-onnx)",
     "category": "model",
@@ -452,37 +452,40 @@
     "attribution": {
       "required": true,
       "requirements": "Apache-2.0: when redistributing the weights include the Apache-2.0 text, a notice of origin (3D-Speaker / Alibaba, ModelScope, ONNX export by k2-fsa/sherpa-onnx) and keep NOTICE if any. 'Not on Linux' — user downloads it from GitHub.",
-      "currentlyMet": false,
-      "gap": "NOTICES says 'downloaded by the user' — false for Windows: packaging/windows/README.md and tanara.iss BUNDLE models\\campplus_sv_zh_en_16k.onnx. No Apache text for the model or copyright line (Alibaba/3D-Speaker authors). | NOTICES says 'downloaded separately, not bundled' - FALSE for the Windows zip/installer: models\\campplus_sv_zh_en_16k.onnx (28 MB) is shipped. No Apache text, no copyright line, no version/URL pinned to a release."
-    }
+      "currentlyMet": true,
+      "gap": ""
+    },
+    "delivery": "bundled in Windows packages; user-downloaded on Linux"
   },
   {
-    "version": "",
+    "version": "3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx (71,441,526 B), sherpa-onnx release speaker-recongition-models",
     "licenseVerifiedFrom": "https://www.modelscope.cn/api/v1/models/iic/speech_eres2netv2_sv_zh-cn_16k-common ('License': Apache License 2.0)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/Apache-2.0.txt",
     "sourceUrl": "https://modelscope.cn/models/iic/speech_eres2netv2_sv_zh-cn_16k-common",
     "shippedIn": [
       "none"
     ],
-    "notes": "Planned.",
+    "notes": "Registered in VoiceModelRegistry (downloadUrl, license Apache-2.0). Training-data terms not examined.",
     "id": "model-eres2netv2",
-    "name": "ERes2NetV2 speaker model, 3D-Speaker (PLANNED)",
+    "name": "ERes2NetV2 speaker model, 3D-Speaker",
     "category": "model",
     "license": "Apache-2.0",
     "homepage": "https://github.com/modelscope/3D-Speaker",
     "usedFor": {
-      "hu": "Tervezett alternatív beszélő-embedding modell.",
-      "en": "Planned alternative speaker-embedding model."
+      "hu": "Alternatív beszélő-embedding modell; a felhasználó tölti le (voice-models fetch), nem része a csomagnak.",
+      "en": "Alternative speaker-embedding model; downloaded by the user (voice-models fetch), not part of any package."
     },
     "whereInCode": [
-      "(not referenced in repo)"
+      "core/src/voiceid/VoiceModelRegistry.cpp",
+      "cli/VoiceCommands.cpp"
     ],
     "attribution": {
       "required": true,
-      "requirements": "Same as CAM++ if shipped.",
+      "requirements": "Not redistributed by Tanara. If ever bundled: Apache-2.0 text + origin notice.",
       "currentlyMet": true,
-      "gap": "Planned only."
-    }
+      "gap": ""
+    },
+    "delivery": "downloaded by the user (tanara-cli voice-models fetch); NOT bundled"
   },
   {
     "version": "default model id 'google/gemma-4-12b' (core/src/provider/BuiltinProviders.cpp:78); GGUF/quant chosen by user in LM Studio",
@@ -492,7 +495,7 @@
     "shippedIn": [
       "none"
     ],
-    "notes": "Gemma is NOT open source (custom terms, use restrictions incl. Prohibited Use Policy). Trademark 'Gemma' is Google's. If Tanara Cloud's gateway serves Gemma it becomes a Hosted Service/distribution -> full s.3.1 obligations (inference). The default is 'google/gemma-4-12b'; the dev setup uses -qat variant. Exact HF license for gemma-4 not re-fetched (page check was of the generic terms).",
+    "notes": "Gemma is NOT open source (custom terms, use restrictions incl. Prohibited Use Policy). Trademark 'Gemma' is Google's. If Tanara Cloud's gateway serves Gemma it becomes a Hosted Service/distribution -> full s.3.1 obligations (inference). The default is 'google/gemma-4-12b'; the dev setup uses -qat variant. Exact HF license for gemma-4 not re-fetched (page check was of the generic terms). | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "model-gemma",
     "name": "Google Gemma (google/gemma-4-12b; prompt-eval also tests google/gemma-4-12b-qat)",
     "category": "model",
@@ -512,14 +515,14 @@
     "attribution": {
       "required": false,
       "requirements": "Fact (Terms s.3.1): obligations arise when you DISTRIBUTE Gemma or derivatives (copy of the terms, pass-down of use restrictions, modification notices, and a Notice file with the sentence 'Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms'). Tanara only recommends/uses a model the user downloads in LM Studio, so (inference) the distribution clauses are not triggered; a courtesy notice and link is still advisable. Outputs: Google claims no rights; user responsible. Hosted service counts as distribution — relevant if Tanara Cloud ever runs Gemma.",
-      "currentlyMet": false,
-      "gap": "Not mentioned at all in THIRD_PARTY_NOTICES.md or README. Add Gemma/Prohibited-Use-Policy links in NOTICES and About page."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
     "version": "",
     "licenseVerifiedFrom": "https://github.com/k2-fsa/sherpa-onnx (Apache-2.0 license)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/Apache-2.0.txt",
     "sourceUrl": "https://github.com/k2-fsa/sherpa-onnx",
     "shippedIn": [
       "none"
@@ -540,52 +543,54 @@
     "attribution": {
       "required": false,
       "requirements": "Provenance credit only (the model file is covered by model-campplus).",
-      "currentlyMet": false,
-      "gap": "Mention export provenance in NOTICES."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
-    "version": "",
+    "version": "wespeaker_en_voxceleb_resnet34_LM.onnx (26,530,550 B), sherpa-onnx release speaker-recongition-models",
     "licenseVerifiedFrom": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM (license: cc-by-4.0)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/CC-BY-4.0.txt",
     "sourceUrl": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM",
     "shippedIn": [
       "none"
     ],
-    "notes": "Planned.",
+    "notes": "Registered in VoiceModelRegistry (license CC-BY-4.0 from the HF card). Because it is downloaded, not bundled, attribution is given in THIRD_PARTY_NOTICES.md; if it is ever bundled, the CC-BY-4.0 text, author credit, license link and an indication of changes (ONNX conversion) must ship with it. Training-data (VoxCeleb) terms not examined.",
     "id": "model-wespeaker-resnet34-lm",
-    "name": "WeSpeaker ResNet34-LM (PLANNED)",
+    "name": "WeSpeaker ResNet34-LM (VoxCeleb)",
     "category": "model",
     "license": "CC-BY-4.0",
     "homepage": "https://github.com/wenet-e2e/wespeaker",
     "usedFor": {
-      "hu": "Tervezett alternatív beszélő-embedding modell (nincs a kódban).",
-      "en": "Planned alternative speaker-embedding model (not in code yet)."
+      "hu": "Alternatív beszélő-embedding modell (256 dim.); a felhasználó tölti le, nem része a csomagnak.",
+      "en": "Alternative speaker-embedding model (256-dim); downloaded by the user, not part of any package."
     },
     "whereInCode": [
-      "(not referenced in repo; grep found nothing)"
+      "core/src/voiceid/VoiceModelRegistry.cpp",
+      "cli/VoiceCommands.cpp"
     ],
     "attribution": {
       "required": true,
-      "requirements": "If ever shipped/offered: CC-BY-4.0 attribution (author, license link, indicate changes e.g. ONNX conversion). Trained on VoxCeleb (inference: dataset terms to check).",
+      "requirements": "CC-BY-4.0: credit the authors, link the license, indicate changes (ONNX conversion by sherpa-onnx). Given in THIRD_PARTY_NOTICES.md and shown when relevant.",
       "currentlyMet": true,
-      "gap": "Planned only; nothing to do now."
-    }
+      "gap": ""
+    },
+    "delivery": "downloaded by the user (tanara-cli voice-models fetch); NOT bundled"
   },
   {
-    "version": "not recorded; Windows build = gyan.dev 'essentials' static build per packaging/windows/README.md (version not pinned). Record exact build + configure line.",
-    "licenseVerifiedFrom": "https://ffmpeg.org/legal.html ; https://www.gyan.dev/ffmpeg/builds/ ('All builds are 64-bit, static and licensed as GPLv3')",
-    "licenseTextInRepo": "MISSING",
-    "sourceUrl": "https://git.ffmpeg.org/ffmpeg.git (gyan.dev build commit listed on https://www.gyan.dev/ffmpeg/builds/)",
+    "version": "FFmpeg n9.0.2-17-g2a571b6068 (release/9.0, commit 2a571b606854520cf89804d8030c8b328e621689), BtbN autobuild-2026-09-30-13-08, file ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip, SHA256 6b264b9e6019103f601d98c292bd332fd87acf1c5e941ddff4fb71760fe63432",
+    "licenseVerifiedFrom": "https://github.com/BtbN/FFmpeg-Builds/blob/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b/variants/defaults-lgpl.sh (FF_CONFIGURE=--enable-version3 --disable-debug; LICENSE_FILE=COPYING.LGPLv3); scripts.d/50-libopus.sh, 50-libmp3lame.sh (enabled unconditionally); 50-x264.sh, 50-rubberband.sh (disabled for lgpl*)",
+    "licenseTextInRepo": "packaging/licenses/LGPL-3.0.txt (+ build LICENSE.txt copied into the package as licenses\\FFmpeg-LICENSE.txt)",
+    "sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/2a571b606854520cf89804d8030c8b328e621689 ; build recipe https://github.com/BtbN/FFmpeg-Builds (commit 6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b)",
     "shippedIn": [
       "windows-zip",
       "windows-installer"
     ],
-    "notes": "KEY FINDING. Distinction: FFmpeg code is LGPL-2.1+ with some GPL parts; a binary is LGPL only if built without --enable-gpl/--enable-nonfree and without GPL libs (x264/x265). gyan.dev essentials are GPLv3, therefore the redistributed exe is GPLv3 and bundles many other components (x264 GPL, LAME LGPL, opus BSD, etc.; see build's own license files). Tanara executes it as a separate process through QProcess, no linking, so Tanara's MIT license is not affected, but the zip/installer is a distribution of GPL software. See Part A for the exact zip contents. Pin the version and keep the source URL (gyan.dev commit) in the release notes. Codecs used are libopus (BSD-3, in the build) and libmp3lame (LGPL-2.1; MP3 patents expired). Note: the Windows build notice in README.md says only ffmpeg.exe is needed but the package also ships ffprobe.exe — check whether Part A sees ffprobe.",
+    "notes": "Linux: the system ffmpeg is used (not shipped). Windows: see ffmpeg-exe. ",
     "id": "ffmpeg-cli",
     "name": "FFmpeg (ffmpeg / ffprobe executables)",
     "category": "runtime-tool",
-    "license": "GPL-3.0-only (gyan.dev essentials/full builds) — FFmpeg itself is LGPL-2.1-or-later with optional GPL-2.0-or-later parts; distributed binary license depends on configure flags",
+    "license": "LGPL-3.0-or-later (build configured with --enable-version3, no --enable-gpl/--enable-nonfree; includes libopus, libmp3lame; excludes x264/x265)",
     "homepage": "https://ffmpeg.org",
     "usedFor": {
       "hu": "Hangfelvétel kódolása (libopus), lekeverés (libmp3lame, loudnorm), importált hangfájlok dekódolása/kódolása, hullámforma és beszélő-szegmensek dekódolása; az ffprobe a hangfájlok adatait olvassa.",
@@ -605,9 +610,9 @@
     ],
     "attribution": {
       "required": true,
-      "requirements": "Linux: Tanara only invokes the user's installed ffmpeg via PATH -> no redistribution, a mention is enough. Windows: Tanara REDISTRIBUTES ffmpeg.exe+ffprobe.exe (fact: packaging/windows/README.md step 2 copies them into dist; OLVASSEL.md says they are in the folder). If the gyan.dev GPLv3 static build is shipped (inference: README names it), obligations are GPL-3.0: ship the GPL-3.0 text, provide/offer the corresponding source of that exact build (incl. statically linked libs: x264, x265, LAME, opus etc.) on the same server or via a written offer, keep copyright notices, state that FFmpeg is a separate program (aggregate, not linked) so Tanara's MIT license is unaffected; FFmpeg's own checklist also asks for attribution in the About box and spelling 'FFmpeg'. Alternative: ship an LGPL-only shared build (no --enable-gpl) with libmp3lame/libopus, which needs LGPL-2.1 text + source for the build, and DLL replaceability.",
-      "currentlyMet": false,
-      "gap": "THIRD_PARTY_NOTICES.md says 'Tanara does not redistribute FFmpeg. Install separately.' — FALSE for the Windows zip/installer. No FFmpeg/GPL/LAME license text in repo or package, no source offer, no build identification, no About-box attribution. KEY FINDING."
+      "requirements": "LGPL-3.0 build redistributed as separate executables: ship the LGPL-3.0 (+GPL-3.0) texts and the build's LICENSE.txt, name version and give the source location for the exact build; FFmpeg is a trademark of Fabrice Bellard. Tanara's MIT code is not affected (separate process, not linked). Replaceable: any other ffmpeg.exe next to tanara.exe is used.",
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
@@ -647,7 +652,7 @@
     "shippedIn": [
       "none"
     ],
-    "notes": "Feature silently disabled if pw-dump is absent. Not available on Windows.",
+    "notes": "Feature silently disabled if pw-dump is absent. Not available on Windows. | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "pipewire-pw-dump",
     "name": "PipeWire (pw-dump)",
     "category": "runtime-tool",
@@ -665,8 +670,8 @@
     "attribution": {
       "required": false,
       "requirements": "Only invoked from the user's system PATH; nothing redistributed. Naming in About page is courtesy.",
-      "currentlyMet": false,
-      "gap": "Not mentioned in THIRD_PARTY_NOTICES.md (courtesy mention only)."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
@@ -740,7 +745,7 @@
       "windows-installer",
       "linux-build"
     ],
-    "notes": "No telemetry or contact with these services. Windows detector reads process image names and registry only.",
+    "notes": "No telemetry or contact with these services. Windows detector reads process image names and registry only. | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "service-call-apps-detection",
     "name": "Call/meeting app names (Google Meet, Microsoft Teams, Zoom, Webex, Slack, Discord, Skype) and browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi)",
     "category": "service",
@@ -761,8 +766,8 @@
     "attribution": {
       "required": false,
       "requirements": "Trademarks of their owners; nominative/descriptive use. Add a sentence: 'All product names are trademarks of their respective owners; Tanara is not affiliated with or endorsed by them.'",
-      "currentlyMet": false,
-      "gap": "No trademark disclaimer anywhere in README/NOTICES/UI."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
@@ -806,7 +811,7 @@
     "shippedIn": [
       "none"
     ],
-    "notes": "Data leaving machine: recorded audio (per track), language hints, vocabulary/context if sent. Optional: user chooses provider; needs own key (or Tanara Cloud). Per Soniox docs (search summary): audio/transcripts not used for training; async storage only if requested, auto-deleted after 30 days (verify Tanara's code requests deletion — open question). Product pages/ToS URLs may move; policy last updated 2026-06-29 per search.",
+    "notes": "Data leaving machine: recorded audio (per track), language hints, vocabulary/context if sent. Optional: user chooses provider; needs own key (or Tanara Cloud). Per Soniox docs (search summary): audio/transcripts not used for training; async storage only if requested, auto-deleted after 30 days (verify Tanara's code requests deletion — open question). Product pages/ToS URLs may move; policy last updated 2026-06-29 per search. | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "service-soniox",
     "name": "Soniox speech-to-text API",
     "category": "service",
@@ -826,8 +831,8 @@
     "attribution": {
       "required": false,
       "requirements": "No software license. Soniox ToS apply to the user's own account/key. Trademark 'Soniox' used nominatively. Data: the meeting AUDIO FILES are uploaded to api.soniox.com when the user transcribes; Tanara should tell users (privacy note + link to Soniox privacy policy).",
-      "currentlyMet": false,
-      "gap": "THIRD_PARTY_NOTICES.md lists Soniox but has no data-flow note or ToS/privacy link; no in-app privacy statement verified."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
@@ -861,7 +866,7 @@
       "required": false,
       "requirements": "First-party service; the privacy URL is flagged in code as an assumption ('feltételezés'). Upstream providers the gateway may forward to (inference) would need separate disclosure when the service goes live.",
       "currentlyMet": false,
-      "gap": "Privacy URL unverified/assumed; terms/privacy pages must exist before the cloud mode is enabled for users."
+      "gap": "Listed with data-flow note in THIRD_PARTY_NOTICES.md section 6; the privacy URL is still an assumption in CloudTypes.h and the final terms/privacy pages must exist before cloud mode goes live."
     }
   },
   {
@@ -902,7 +907,7 @@
       "windows-installer",
       "linux-build"
     ],
-    "notes": "grep file list truncated to filenames; not all line numbers captured.",
+    "notes": "grep file list truncated to filenames; not all line numbers captured. | Covered by THIRD_PARTY_NOTICES.md (sections 4-7).",
     "id": "ui-trademarks",
     "name": "Third-party names in UI text (Soniox, LM Studio, OpenAI, Ollama, Teams, Zoom, Google Meet, Gemma)",
     "category": "service",
@@ -924,8 +929,8 @@
     "attribution": {
       "required": false,
       "requirements": "Nominative use is customary; add a disclaimer of non-affiliation. Not legal advice.",
-      "currentlyMet": false,
-      "gap": "No trademark disclaimer."
+      "currentlyMet": true,
+      "gap": ""
     }
   },
   {
@@ -952,21 +957,21 @@
     "attribution": {
       "required": true,
       "requirements": "Distributable under the Windows SDK / Visual Studio redistributable terms (D3DCompiler is on the redist list). Inference.",
-      "currentlyMet": false,
-      "gap": "Not listed. Consider excluding (--no-compiler-runtime/--no-system-d3d-compiler) since Qt Quick uses the RHI D3D11 backend with precompiled shaders; or list it."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "Candidate to remove from package to cut obligations."
+    "notes": "Candidate to remove from package to cut obligations. | Listed in THIRD_PARTY_NOTICES.md section 3; whether to drop it from the package is still open."
   },
   {
     "id": "ffmpeg-exe",
     "name": "FFmpeg command-line tools: ffmpeg.exe and ffprobe.exe (Windows static build)",
-    "version": "ffmpeg.exe/ffprobe.exe dated 2026-09-19 in Tanara-0.5.11-win64.zip; README says 'gyan.dev essentials build'; inference: gyan release 9.0.2 (page lists 9.0.2, 2026-09-19)",
+    "version": "FFmpeg n9.0.2-17-g2a571b6068 (release/9.0, commit 2a571b606854520cf89804d8030c8b328e621689), BtbN autobuild-2026-09-30-13-08, file ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip, SHA256 6b264b9e6019103f601d98c292bd332fd87acf1c5e941ddff4fb71760fe63432",
     "category": "shipped-binary",
-    "license": "GPL-3.0-or-later",
-    "licenseVerifiedFrom": "https://www.gyan.dev/ffmpeg/builds/ (fetched): 'All builds are 64-bit, static and licensed as GPLv3'",
-    "licenseTextInRepo": "MISSING",
+    "license": "LGPL-3.0-or-later (build configured with --enable-version3, no --enable-gpl/--enable-nonfree; includes libopus, libmp3lame; excludes x264/x265)",
+    "licenseVerifiedFrom": "https://github.com/BtbN/FFmpeg-Builds/blob/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b/variants/defaults-lgpl.sh (FF_CONFIGURE=--enable-version3 --disable-debug; LICENSE_FILE=COPYING.LGPLv3); scripts.d/50-libopus.sh, 50-libmp3lame.sh (enabled unconditionally); 50-x264.sh, 50-rubberband.sh (disabled for lgpl*)",
+    "licenseTextInRepo": "packaging/licenses/LGPL-3.0.txt (+ build LICENSE.txt copied into the package as licenses\\FFmpeg-LICENSE.txt)",
     "homepage": "https://ffmpeg.org",
-    "sourceUrl": "https://www.gyan.dev/ffmpeg/builds/ (links to source commit) / https://ffmpeg.org/download.html",
+    "sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/2a571b606854520cf89804d8030c8b328e621689 ; build recipe https://github.com/BtbN/FFmpeg-Builds (commit 6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b)",
     "usedFor": {
       "hu": "Hangfelvétel kódolás/dekódolás, importálás, hullámforma, 16 kHz PCM kinyerés - QProcess-szel indított külső program.",
       "en": "Audio encode/decode, import, waveform, 16 kHz PCM extraction - external program started via QProcess."
@@ -985,11 +990,11 @@
     ],
     "attribution": {
       "required": true,
-      "requirements": "GPLv3 build redistributed as separate executables (aggregate, not linked): must include GPLv3 text, FFmpeg copyright notice, and provide corresponding source or a written offer valid >=3 years (GPL 6(b)/(d)) for the exact build (gyan.dev publishes source commit); mention build config. Tanara's MIT code is not infected because it only spawns the program, but the *bundle* must meet GPL terms for these two binaries. Alternative: ship an LGPL FFmpeg build (e.g. BtbN lgpl/shared build) or no ffmpeg and ask the user to install.",
-      "currentlyMet": false,
-      "gap": "THIRD_PARTY_NOTICES.md says FFmpeg is NOT redistributed - wrong for the Windows zip/installer (ffmpeg.exe + ffprobe.exe are shipped, 105 MB each, GPL v3 static build). Missing: FFmpeg + GPLv3 notice, exact version/build source link, source offer, licence texts. Also no mention of encoders inside the build (libx264, etc. - patent issues N/A for audio use but listed by `ffmpeg -version`)."
+      "requirements": "LGPL-3.0 build redistributed as separate executables: ship the LGPL-3.0 (+GPL-3.0) texts and the build's LICENSE.txt, name version and give the source location for the exact build; FFmpeg is a trademark of Fabrice Bellard. Tanara's MIT code is not affected (separate process, not linked). Replaceable: any other ffmpeg.exe next to tanara.exe is used.",
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "KEY QUESTION: exact build - confirm by running `ffmpeg.exe -version` from the dist folder (not done: only zip listing allowed) and record version + configuration. GPLv3 (gyan builds) is stricter than the LGPL notice currently implied. Linux: system ffmpeg (Fedora 8.1.3 full build, not shipped by Tanara)."
+    "notes": "Decision (owner, 2026-10-09): Windows packages use the BtbN LGPL static build instead of the gyan.dev GPLv3 build. Verified from BtbN scripts at commit 6c9aec5 (the zip itself was not downloaded/run): libopus + libmp3lame + native decoders for wav/mp3/ogg/flac/aac; loudnorm/amix/acompressor/alimiter are LGPL filters. Package must be built as described in packaging/windows/README.md (checksum pinned there). Unverified: ffmpeg.exe -version output of the actual zip."
   },
   {
     "id": "qt-ffmpeg-libs",
@@ -998,7 +1003,7 @@
     "category": "shipped-binary",
     "license": "LGPL-2.1-or-later (inference: Qt builds its FFmpeg without GPL components)",
     "licenseVerifiedFrom": "not verified in this session: zip listing only (avcodec-61.dll etc., dated 2026-05-08, same as Qt DLLs)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/LGPL-2.1.txt",
     "homepage": "https://ffmpeg.org",
     "sourceUrl": "https://ffmpeg.org/download.html / Qt's FFmpeg build scripts (qtmultimedia/coin/provisioning)",
     "usedFor": {
@@ -1016,10 +1021,10 @@
     "attribution": {
       "required": true,
       "requirements": "LGPL-2.1+: license text, notice, source offer for the FFmpeg version shipped, relinking possibility (DLLs are replaceable). Verify the Qt-supplied build really is LGPL (not --enable-gpl).",
-      "currentlyMet": false,
-      "gap": "Not mentioned anywhere (THIRD_PARTY_NOTICES.md says 'Tanara does not redistribute FFmpeg', which is FALSE for the Windows package - it ships both Qt's FFmpeg DLLs AND ffmpeg.exe/ffprobe.exe). Need FFmpeg notice, LGPL text, source offer (https://ffmpeg.org / Qt source)."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "OPEN: confirm exact FFmpeg version and that licence is LGPL by checking Qt's multimedia FFmpeg build documentation (https://doc.qt.io/qt-6/qtmultimedia-attribution-ffmpeg.html - inference of URL)."
+    "notes": "OPEN: confirm exact FFmpeg version and that licence is LGPL by checking Qt's multimedia FFmpeg build documentation (https://doc.qt.io/qt-6/qtmultimedia-attribution-ffmpeg.html - inference of URL). | LGPL-2.1 text in packaging/licenses/LGPL-2.1.txt. Exact patch version not verified (soname avcodec-61 = FFmpeg 7.1)."
   },
   {
     "id": "vcpp-runtime",
@@ -1046,10 +1051,10 @@
     "attribution": {
       "required": true,
       "requirements": "Microsoft permits app-local redistribution of the files listed in the Visual Studio 'REDIST.TXT' under the VS licence terms; copies taken from System32 rather than from the official VC_redist/Redist folder may not be covered (inference). Alternative: require the Microsoft VC++ 2015-2022 x64 redistributable installer.",
-      "currentlyMet": false,
-      "gap": "Not listed. Take the files from an official VC Redist (or Visual Studio Redist\\MSVC folder) and document it; or instruct installer to download vc_redist.x64.exe."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "Open legal question: redistribution from System32 is not an officially documented source."
+    "notes": "Documented in THIRD_PARTY_NOTICES.md; packaging/windows/README.md now takes the DLLs from the official VC++ Redist folder (not System32) -- true once the next package is built that way. Legal acceptability of the redistribution terms not reviewed by a lawyer."
   },
   {
     "id": "mingw-runtime-gcc",
@@ -1058,7 +1063,7 @@
     "category": "shipped-binary",
     "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
     "licenseVerifiedFrom": "GCC Runtime Library Exception 3.1 (https://www.gnu.org/licenses/gcc-exception-3.1.html - from knowledge, not fetched); toolchain version from packaging/windows/README.md (mingw1310_64)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/GPL-3.0.txt, packaging/licenses/GCC-exception-3.1.txt",
     "homepage": "https://gcc.gnu.org",
     "sourceUrl": "https://gcc.gnu.org/git/gcc.git (tag releases/gcc-13.1.0)",
     "usedFor": {
@@ -1076,8 +1081,8 @@
     "attribution": {
       "required": true,
       "requirements": "GCC Runtime Library Exception: allows conveying the runtime libraries in unmodified form with any program regardless of its licence; no source offer is strictly needed for the unmodified runtime but good practice is a notice + link to the GCC source. Keep the GPL/exception text available.",
-      "currentlyMet": false,
-      "gap": "Not listed in NOTICES. Add a line 'libstdc++/libgcc (GCC 13.1 runtime), GPL-3.0 with GCC Runtime Library Exception' + link to source."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Distribution under the exception does not make Tanara GPL (inference/standard reading)."
   },
@@ -1105,10 +1110,10 @@
     "attribution": {
       "required": true,
       "requirements": "Mesa is MIT: include copyright/permission notice; LLVM parts Apache-2.0 w/ exception.",
-      "currentlyMet": false,
-      "gap": "Not listed. List or drop (--no-opengl-sw)."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "20 MB; Tanara's Qt Quick might use software renderer fallback."
+    "notes": "20 MB; Tanara's Qt Quick might use software renderer fallback. | Listed in THIRD_PARTY_NOTICES.md section 3; whether to drop it from the package is still open."
   },
   {
     "id": "qt-bundled-third-party",
@@ -1134,10 +1139,10 @@
     "attribution": {
       "required": true,
       "requirements": "Each embedded component's own notice terms (mostly: reproduce copyright + license text in documentation for binary redistribution). Qt docs 'Licenses Used in Qt' list the required notices.",
-      "currentlyMet": false,
-      "gap": "Not mentioned at all. Windows package ships none of those notices. ADD a 'Qt third-party components' section referencing Qt's licenses-used page + the relevant texts (or include qt's own LICENSES dir / Qt installer's 'Licenses' folder)."
+      "currentlyMet": true,
+      "gap": ""
     },
-    "notes": "Inference: for MinGW Qt builds the Gui DLL contains FreeType, HarfBuzz, libpng, zlib; Core contains PCRE2, double-conversion, md4c; Qt6Qml/Quick contain small MIT/BSD bits; qjpeg.dll contains libjpeg (IJG/BSD-3 style: requires 'based in part on the work of the Independent JPEG Group' acknowledgement). Verify against Qt 6.11 docs before publishing."
+    "notes": "Inference: for MinGW Qt builds the Gui DLL contains FreeType, HarfBuzz, libpng, zlib; Core contains PCRE2, double-conversion, md4c; Qt6Qml/Quick contain small MIT/BSD bits; qjpeg.dll contains libjpeg (IJG/BSD-3 style: requires 'based in part on the work of the Independent JPEG Group' acknowledgement). Verify against Qt 6.11 docs before publishing. | Linked to Qt's 'Licenses Used in Qt' page from the notices; IJG sentence included."
   },
   {
     "id": "mingw-winpthreads",
@@ -1146,7 +1151,7 @@
     "category": "shipped-binary",
     "license": "MIT (mingw-w64 winpthreads: MIT-style with some BSD-3 parts; inference)",
     "licenseVerifiedFrom": "not verified from text this session (mingw-w64 COPYING.MinGW-w64-runtime/winpthreads COPYING); marked inference",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "packaging/licenses/winpthreads-COPYING.txt",
     "homepage": "https://www.mingw-w64.org",
     "sourceUrl": "https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winpthreads/",
     "usedFor": {
@@ -1163,8 +1168,8 @@
     "attribution": {
       "required": true,
       "requirements": "Permissive: include copyright notice and permission text.",
-      "currentlyMet": false,
-      "gap": "Not listed. Add with winpthreads/mingw-w64 licence text (Copyright (c) 2011 mingw-w64 project - verify)."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Verify licence text from the Qt toolchain's share/licenses or mingw-w64 repo before publishing."
   },
@@ -1201,11 +1206,11 @@
   {
     "id": "kaldi-native-fbank",
     "name": "kaldi-native-fbank",
-    "version": "commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01 (upstream release tag not recorded)",
+    "version": "v1.22.3 (2025-10-09), commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01; csrc files byte-identical to the tag",
     "category": "vendored-source",
     "license": "Apache-2.0",
     "licenseVerifiedFrom": "third_party/kaldi-native-fbank/LICENSE (Apache 2.0 text read; VENDORED.txt states Apache-2.0)",
-    "licenseTextInRepo": "third_party/kaldi-native-fbank/LICENSE",
+    "licenseTextInRepo": "third_party/kaldi-native-fbank/LICENSE, packaging/licenses/Apache-2.0.txt",
     "homepage": "https://github.com/csukuangfj/kaldi-native-fbank",
     "sourceUrl": "https://github.com/csukuangfj/kaldi-native-fbank",
     "usedFor": {
@@ -1225,19 +1230,19 @@
     "attribution": {
       "required": true,
       "requirements": "Apache-2.0 sec.4: ship a copy of the license; retain copyright/patent/attribution notices in source; mark modified files with prominent notices; reproduce NOTICE contents if upstream has a NOTICE file (none vendored). Files carry 'Copyright Xiaomi Corporation (Fangjun Kuang) 2022-2025', Brno Univ. of Technology 2024, and Karel Vesely/Petr Motlicek/Saarland University 2009-2011 (derived from Kaldi, Apache-2.0). Binary distribution: license text should accompany the binary.",
-      "currentlyMet": false,
-      "gap": "THIRD_PARTY_NOTICES.md names it and the repo has the license, but: no version/commit in the notice (VENDORED.txt has commit only); no copyright holders (Xiaomi Corp., Brno Univ. of Technology, Saarland University/Karel Vesely et al.) listed; the Windows zip/installer ships NO license text (the binary contains the code). Source files are 'copied/modified from kaldi' - upstream's own marking, retained."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "FACT: csrc contains only non-test files (VENDORED.txt). No local modifications recorded (inference: unmodified copy of upstream commit). Derived from Kaldi (Apache-2.0). Needs kissfft at link time. Upstream version number not recorded; SHOULD be recorded in VENDORED.txt (e.g. v1.22.x matching commit)."
   },
   {
     "id": "kissfft",
     "name": "KISS FFT (float build)",
-    "version": "131.1.0 on Linux dev machine (system pkg kiss-fft-131.2.0 rpm, pkg-config says 131.1.0); vendored copy: version NOT recorded (SPDX-header style => >=131.x; inference)",
+    "version": "131.1.0 (matches upstream tags 131.1.0/131.2.0 for the compiled files); recorded in third_party/kissfft/VENDORED.txt",
     "category": "vendored-source",
     "license": "BSD-3-Clause",
     "licenseVerifiedFrom": "SPDX-License-Identifier: BSD-3-Clause + 'See COPYING file' in third_party/kissfft/kiss_fft.h; full text not in repo; Fedora package license field BSD-3-Clause (rpm -q)",
-    "licenseTextInRepo": "MISSING",
+    "licenseTextInRepo": "third_party/kissfft/COPYING, packaging/licenses/BSD-3-Clause-kissfft.txt",
     "homepage": "https://github.com/mborgerding/kissfft",
     "sourceUrl": "https://github.com/mborgerding/kissfft",
     "usedFor": {
@@ -1257,8 +1262,8 @@
     "attribution": {
       "required": true,
       "requirements": "BSD-3-Clause: binary redistribution must reproduce the copyright notice, conditions list and disclaimer in documentation/other materials provided with the distribution; no endorsement. Copyright lines: 'Copyright (c) 2003-2010 Mark Borgerding' (kiss_fftr 2003-2004).",
-      "currentlyMet": false,
-      "gap": "third_party/kissfft/COPYING (or LICENSES/BSD-3-Clause) is NOT vendored; the headers only say 'See COPYING file'. THIRD_PARTY_NOTICES.md names BSD-3-Clause but gives no copyright line and no license text; Windows zip/installer ship no notice. ADD: third_party/kissfft/COPYING (upstream text, 'Copyright (c) 2003-2010 Mark Borgerding'), VENDORED.txt with upstream tag/commit, notice entry with copyright line; ship text in Windows package."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Vendored files: _kiss_fft_guts.h, kiss_fft.c/.h, kiss_fft_log.h, kiss_fftr.c/.h. Modification status unknown (inference: unmodified). Linux system package not redistributed by Tanara (user installs kiss-fft-devel)."
   },
@@ -1269,7 +1274,7 @@
     "category": "vendored-source",
     "license": "MIT-0 OR Unlicense",
     "licenseVerifiedFrom": "third_party/miniaudio/miniaudio.h (license blocks at end of file: ALTERNATIVE 1 Public Domain/Unlicense, ALTERNATIVE 2 MIT No Attribution, 'Copyright 2026 David Reid')",
-    "licenseTextInRepo": "MISSING (license text only inside miniaudio.h; no separate file - acceptable, no attribution required)",
+    "licenseTextInRepo": "statements at the end of third_party/miniaudio/miniaudio.h; third_party/miniaudio/VENDORED.txt (header byte-identical to upstream 0.11.25)",
     "homepage": "https://miniaud.io",
     "sourceUrl": "https://github.com/mackron/miniaudio",
     "usedFor": {
@@ -1297,11 +1302,11 @@
   {
     "id": "miniz",
     "name": "miniz",
-    "version": "3.1.2 (miniz.h header comment; MZ_VERSION macro \"11.3.2\"; commit c87136a)",
+    "version": "3.1.2 (release 2026-07-01); recorded in third_party/miniz/VENDORED.txt; Tanara vendoring commit c87136a",
     "category": "vendored-source",
     "license": "MIT",
     "licenseVerifiedFrom": "third_party/miniz/LICENSE (read; MIT, 'Copyright 2013-2014 RAD Game Tools and Valve Software, Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC')",
-    "licenseTextInRepo": "third_party/miniz/LICENSE",
+    "licenseTextInRepo": "third_party/miniz/LICENSE, packaging/licenses/MIT-miniz.txt",
     "homepage": "https://github.com/richgel999/miniz",
     "sourceUrl": "https://github.com/richgel999/miniz",
     "usedFor": {
@@ -1321,8 +1326,8 @@
     "attribution": {
       "required": true,
       "requirements": "MIT: include the copyright notice and permission notice in all copies or substantial portions - binary distribution is generally treated as needing the notice in documentation.",
-      "currentlyMet": false,
-      "gap": "NOTICES entry is correct (version, copyright lines, 'unmodified'), but the Windows zip/installer contain no notice text. Note header comment says 'public domain' while LICENSE is MIT - upstream inconsistency; MIT is the safe reading."
+      "currentlyMet": true,
+      "gap": ""
     },
     "notes": "Note: header says 'miniz.c 3.1.2 - public domain...' but vendored LICENSE is MIT; keep MIT."
   }

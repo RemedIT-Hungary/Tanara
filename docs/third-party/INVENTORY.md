@@ -1,67 +1,69 @@
 # Tanara — külső komponensek leltára (third-party inventory)
 
-Gépi forrása: `inventory.json` (ugyanebben a mappában). Ez a jegyzet abból készül; a GUI „Felhasznált szoftverek" oldala
-és a `THIRD_PARTY_NOTICES.md` később ebből a JSON-ból generálódik. Felmérés dátuma: 2026-10-09, alap: `main` f905ca0,
-Windows-csomag: Tanara-0.5.11-win64.zip (Drive-tükör, csak listázva).
+Gépi forrása: `inventory.json` (ugyanebben a mappában). Ez a jegyzet abból generálódik; a GUI „Felhasznált szoftverek" oldala
+később szintén ebből a JSON-ból készülhet. A `THIRD_PARTY_NOTICES.md` kézzel írt, de ezzel szinkronban tartott. Felmérés dátuma: 2026-10-09,
+alap: `main` f905ca0; Windows-csomag: Tanara-0.5.11-win64.zip (csak listázva). Javítások: `chore/third-party-notices` ág (2026-10-09):
+LGPL-only FFmpeg-build, licencszövegek (`packaging/licenses/`), újraírt NOTICES, telepítő-`LicenseFile`.
 
-Jelmagyarázat: **Attribúció** = a licenc előír-e megjelölést/licencszöveget, és ma teljesül-e. „inference” a JSON-ban = az agent következtetése, nem olvasott tény.
+Jelmagyarázat: **Attribúció** = a licenc előír-e megjelölést/licencszöveget, és teljesül-e (a javított csomag/dokumentáció szerint; a Windows-csomag
+tényleges tartalma a következő csomag-építés után ellenőrizendő). „inference” a JSON-ban = az agent következtetése, nem olvasott tény.
 
 ## Vendorozott forrás (belefordítva)
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
 | dr_wav / dr_flac / dr_mp3 (embedded in miniaudio) | version of embedded copies not stated in grep; bundled with miniaudio 0.11.25 | MIT-0 OR Unlicense | linux-build, windows-zip, windows-installer | nem szükséges | WAV/FLAC/MP3 dekódolás a miniaudio-n belül. |
-| kaldi-native-fbank | commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01 (upstream release tag not recorded) | Apache-2.0 | linux-build, windows-zip, windows-installer | **hiányos** | Kaldi-kompatibilis fbank jellemzők a beszélő-embedding (voice-ID) előfeldolgozásához. |
-| KISS FFT (float build) | 131.1.0 on Linux dev machine (system pkg kiss-fft-131.2.0 rpm, pkg-config says 131.1.0); vendored copy: version NOT recorded (SPDX-header style => >=131.x; inference) | BSD-3-Clause | linux-build (system lib, dynamically linked - not shipped by Tanara), windows-zip, windows-installer | **hiányos** | Gyors Fourier-transzformáció a kaldi-native-fbank-hoz (Windowson vendorelt forrásból, Linuxon rendszercsomagból). |
+| kaldi-native-fbank | v1.22.3 (2025-10-09), commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01; csrc files byte-identical to the tag | Apache-2.0 | linux-build, windows-zip, windows-installer | rendben | Kaldi-kompatibilis fbank jellemzők a beszélő-embedding (voice-ID) előfeldolgozásához. |
+| KISS FFT (float build) | 131.1.0 (matches upstream tags 131.1.0/131.2.0 for the compiled files); recorded in third_party/kissfft/VENDORED.txt | BSD-3-Clause | linux-build (system lib, dynamically linked - not shipped by Tanara), windows-zip, windows-installer | rendben | Gyors Fourier-transzformáció a kaldi-native-fbank-hoz (Windowson vendorelt forrásból, Linuxon rendszercsomagból). |
 | miniaudio | 0.11.25 (2026-03-04) - MA_VERSION_* in header | MIT-0 OR Unlicense | linux-build, windows-zip, windows-installer | nem szükséges | Hangrögzítés és lejátszás (WASAPI/PipeWire/Pulse/ALSA stb. backendek). |
-| miniz | 3.1.2 (miniz.h header comment; MZ_VERSION macro "11.3.2"; commit c87136a) | MIT | linux-build, windows-zip, windows-installer | **hiányos** | ZIP írás/olvasás a megbeszélés-archívumhoz (*.tanara.zip). |
+| miniz | 3.1.2 (release 2026-07-01); recorded in third_party/miniz/VENDORED.txt; Tanara vendoring commit c87136a | MIT | linux-build, windows-zip, windows-installer | rendben | ZIP írás/olvasás a megbeszélés-archívumhoz (*.tanara.zip). |
 
 ## Linkelt könyvtár
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
-| ONNX Runtime | Windows: 1.20.1 (README/packaging docs; onnxruntime.dll timestamp 2024-11-19); Linux dev: 1.22.2 (Fedora onnxruntime-devel, ORT_API_VERSION 22) | MIT | linux-build (system lib, not shipped), windows-zip, windows-installer | **hiányos** | A beszélő-embedding (CAM++) ONNX modell futtatása. |
+| ONNX Runtime | Windows: 1.20.1 (README/packaging docs; onnxruntime.dll timestamp 2024-11-19); Linux dev: 1.22.2 (Fedora onnxruntime-devel, ORT_API_VERSION 22) | MIT | linux-build (system lib, not shipped), windows-zip, windows-installer | rendben | A beszélő-embedding (CAM++) ONNX modell futtatása. |
 | POSIX Threads / libm / libdl (Linux system libraries) | glibc of the build host | LGPL-2.1-or-later (glibc) | linux-build (system, not shipped) | nem szükséges | Szálak, matematika, dinamikus betöltés (miniaudio dlopen). |
-| Qt 6 (Core, Gui, Network, Sql, Widgets, Multimedia, MultimediaWidgets, Qml, Quick, QuickControls2, Svg, DBus) | 6.11.2 on Linux dev (Fedora qt6-qtbase 6.11.2); 6.11.1 mingw_64 documented for Windows (packaging/windows/README.md; DLL timestamps 2026-05-07/08) | LGPL-3.0-only (Qt 6.11 open-source edition is LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; some add-on modules GPL-only) | linux-build (system Qt, not shipped), windows-zip, windows-installer | **hiányos** | Felhasználói felület (Widgets + Qt Quick/QML), hálózat, SQLite, médialejátszás, SVG, fordítás. |
+| Qt 6 (Core, Gui, Network, Sql, Widgets, Multimedia, MultimediaWidgets, Qml, Quick, QuickControls2, Svg, DBus) | 6.11.2 on Linux dev (Fedora qt6-qtbase 6.11.2); 6.11.1 mingw_64 documented for Windows (packaging/windows/README.md; DLL timestamps 2026-05-07/08) | LGPL-3.0-only (Qt 6.11 open-source edition is LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0; some add-on modules GPL-only) | linux-build (system Qt, not shipped), windows-zip, windows-installer | rendben | Felhasználói felület (Widgets + Qt Quick/QML), hálózat, SQLite, médialejátszás, SVG, fordítás. |
 | Windows SDK system libraries (ole32, oleaut32, uuid, winmm, avrt, ksuser, secur32, plus Qt-implied d3d11, user32 ...) | Windows 10+ (installer MinGW MinVersion=10.0) | LicenseRef-Microsoft-Windows | none (OS-provided) | nem szükséges | WASAPI/COM audio, Schannel TLS, multimédia időzítők - rendszer-API-k. |
 
 ## Szállított bináris (Windows-csomag)
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
-| D3Dcompiler_47.dll | 47 (file date 2014-03-11) | LicenseRef-Microsoft-Redistributable | windows-zip, windows-installer | **hiányos** | Qt shader-fordító függősége (windeployqt másolja); Tanara közvetlenül nem használja. |
-| FFmpeg command-line tools: ffmpeg.exe and ffprobe.exe (Windows static build) | ffmpeg.exe/ffprobe.exe dated 2026-09-19 in Tanara-0.5.11-win64.zip; README says 'gyan.dev essentials build'; inference: gyan release 9.0.2 (page lists 9.0.2, 2026-09-19) | GPL-3.0-or-later | windows-zip, windows-installer | **hiányos** | Hangfelvétel kódolás/dekódolás, importálás, hullámforma, 16 kHz PCM kinyerés - QProcess-szel indított külső program. |
-| FFmpeg libraries bundled with Qt Multimedia (avcodec-61, avformat-61, avutil-59, swresample-5, swscale-8) | FFmpeg 7.1.x (inference from DLL sonames avcodec-61/avformat-61/avutil-59; Qt 6.11 ships its own LGPL build) | LGPL-2.1-or-later (inference: Qt builds its FFmpeg without GPL components) | windows-zip, windows-installer | **hiányos** | A Qt Multimedia FFmpeg-backendje (lejátszás) használja; Tanara közvetlenül nem hívja. |
-| Microsoft Visual C++ runtime: msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll | 14.x (file dates 2025-11-21; copied from C:\Windows\System32 per packaging/windows/README.md) | LicenseRef-Microsoft-VC-Redistributable | windows-zip, windows-installer | **hiányos** | Az MSVC-vel fordított onnxruntime.dll futtatókörnyezete (tiszta gépen nem biztos, hogy van). |
-| MinGW-w64 GCC runtime DLLs: libstdc++-6.dll, libgcc_s_seh-1.dll | GCC 13.1 (Qt-bundled mingw1310_64; DLL timestamps 2023-05-24) | GPL-3.0-or-later WITH GCC-exception-3.1 | windows-zip, windows-installer | **hiányos** | A MinGW-vel fordított exe-k C++ futtatókörnyezete. |
-| opengl32sw.dll (Mesa llvmpipe software OpenGL) | Mesa version unknown (file date 2022-11-28; Qt-supplied) | MIT (Mesa) AND others incl. LLVM Apache-2.0 WITH LLVM-exception (inference) | windows-zip, windows-installer | **hiányos** | Szoftveres OpenGL tartalék (windeployqt másolja), ha nincs GPU-driver. |
-| Third-party code bundled inside Qt 6.11 DLLs (PCRE2, double-conversion, zlib, libpng, libjpeg, FreeType, HarfBuzz, md4c, tinycbor, forkfd, Mesa etc.) | bundled by Qt 6.11.x (exact versions in Qt's 'Licenses Used in Qt' docs) | MIXED (BSD-2/3-Clause, MIT, Zlib, libpng, FTL OR GPL-2.0, IJG, Apache-2.0 ... per component) | windows-zip, windows-installer | **hiányos** | A Qt DLL-ekbe fordított harmadik féltől származó kódok. |
-| winpthreads: libwinpthread-1.dll (mingw-w64) | bundled with Qt mingw1310_64 (GCC 13.1 toolchain; DLL 2023-05-24) | MIT (mingw-w64 winpthreads: MIT-style with some BSD-3 parts; inference) | windows-zip, windows-installer | **hiányos** | POSIX szálak a MinGW futtatókörnyezetben. |
+| D3Dcompiler_47.dll | 47 (file date 2014-03-11) | LicenseRef-Microsoft-Redistributable | windows-zip, windows-installer | rendben | Qt shader-fordító függősége (windeployqt másolja); Tanara közvetlenül nem használja. |
+| FFmpeg command-line tools: ffmpeg.exe and ffprobe.exe (Windows static build) | FFmpeg n9.0.2-17-g2a571b6068 (release/9.0, commit 2a571b606854520cf89804d8030c8b328e621689), BtbN autobuild-2026-09-30-13-08, file ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip, SHA256 6b264b9e6019103f601d98c292bd332fd87acf1c5e941ddff4fb71760fe63432 | LGPL-3.0-or-later (build configured with --enable-version3, no --enable-gpl/--enable-nonfree; includes libopus, libmp3lame; excludes x264/x265) | windows-zip, windows-installer | rendben | Hangfelvétel kódolás/dekódolás, importálás, hullámforma, 16 kHz PCM kinyerés - QProcess-szel indított külső program. |
+| FFmpeg libraries bundled with Qt Multimedia (avcodec-61, avformat-61, avutil-59, swresample-5, swscale-8) | FFmpeg 7.1.x (inference from DLL sonames avcodec-61/avformat-61/avutil-59; Qt 6.11 ships its own LGPL build) | LGPL-2.1-or-later (inference: Qt builds its FFmpeg without GPL components) | windows-zip, windows-installer | rendben | A Qt Multimedia FFmpeg-backendje (lejátszás) használja; Tanara közvetlenül nem hívja. |
+| Microsoft Visual C++ runtime: msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll | 14.x (file dates 2025-11-21; copied from C:\Windows\System32 per packaging/windows/README.md) | LicenseRef-Microsoft-VC-Redistributable | windows-zip, windows-installer | rendben | Az MSVC-vel fordított onnxruntime.dll futtatókörnyezete (tiszta gépen nem biztos, hogy van). |
+| MinGW-w64 GCC runtime DLLs: libstdc++-6.dll, libgcc_s_seh-1.dll | GCC 13.1 (Qt-bundled mingw1310_64; DLL timestamps 2023-05-24) | GPL-3.0-or-later WITH GCC-exception-3.1 | windows-zip, windows-installer | rendben | A MinGW-vel fordított exe-k C++ futtatókörnyezete. |
+| opengl32sw.dll (Mesa llvmpipe software OpenGL) | Mesa version unknown (file date 2022-11-28; Qt-supplied) | MIT (Mesa) AND others incl. LLVM Apache-2.0 WITH LLVM-exception (inference) | windows-zip, windows-installer | rendben | Szoftveres OpenGL tartalék (windeployqt másolja), ha nincs GPU-driver. |
+| Third-party code bundled inside Qt 6.11 DLLs (PCRE2, double-conversion, zlib, libpng, libjpeg, FreeType, HarfBuzz, md4c, tinycbor, forkfd, Mesa etc.) | bundled by Qt 6.11.x (exact versions in Qt's 'Licenses Used in Qt' docs) | MIXED (BSD-2/3-Clause, MIT, Zlib, libpng, FTL OR GPL-2.0, IJG, Apache-2.0 ... per component) | windows-zip, windows-installer | rendben | A Qt DLL-ekbe fordított harmadik féltől származó kódok. |
+| winpthreads: libwinpthread-1.dll (mingw-w64) | bundled with Qt mingw1310_64 (GCC 13.1 toolchain; DLL 2023-05-24) | MIT (mingw-w64 winpthreads: MIT-style with some BSD-3 parts; inference) | windows-zip, windows-installer | rendben | POSIX szálak a MinGW futtatókörnyezetben. |
 
 ## Beágyazott eszköz (betű, ikon, spec)
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
 | docs/cloud-gateway-api.yaml (OpenAPI spec) | — | MIT | none | nem szükséges | A Tanara Cloud átjáró saját API-leírása. |
-| IBM Plex Sans / IBM Plex Mono (7 TTF) | release/commit not recorded (fetch-assets.sh uses IBM/plex master ref); files Sans Regular/Medium/SemiBold/Bold + Mono Regular/Medium/SemiBold | OFL-1.1 | linux-build, windows-zip, windows-installer | **hiányos** | A felület betűtípusai. |
-| Lucide icons (lucide-static) | 0.460.0 (gui/qml/fetch-assets.sh LUCIDE_VERSION); 81 SVGs in gui/qml/icons (incl. a few not in the fetch list: arrow-down-to-line, cable, chevrons-down, chevrons-up, hash, maximize-2, minimize-2, pin, tag) | ISC (portions MIT from Feather) | linux-build, windows-zip, windows-installer | **hiányos** | Felület-ikonok (SVG), futásidőben színezve. |
+| IBM Plex Sans / IBM Plex Mono (7 TTF) | release/commit not recorded (fetch-assets.sh uses IBM/plex master ref); files Sans Regular/Medium/SemiBold/Bold + Mono Regular/Medium/SemiBold | OFL-1.1 | linux-build, windows-zip, windows-installer | rendben | A felület betűtípusai. |
+| Lucide icons (lucide-static) | 0.460.0 (gui/qml/fetch-assets.sh LUCIDE_VERSION); 81 SVGs in gui/qml/icons (incl. a few not in the fetch list: arrow-down-to-line, cable, chevrons-down, chevrons-up, hash, maximize-2, minimize-2, pin, tag) | ISC (portions MIT from Feather) | linux-build, windows-zip, windows-installer | rendben | Felület-ikonok (SVG), futásidőben színezve. |
 
 ## ML-modell
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
 | BGE-M3 embedding model (BAAI/bge-m3) | default id 'text-embedding-bge-m3' (BuiltinProviders.cpp:201) | MIT | none | nem szükséges | Többnyelvű szöveg-beágyazás a címkékhez / hasonlósághoz, OpenAI-kompatibilis végponton át; nem szállítjuk. |
-| CAM++ speaker-embedding model (3D-Speaker, ONNX export via sherpa-onnx) | file campplus_sv_zh_en_16k.onnx (upstream name 3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx); no hash/version pinned | Apache-2.0 | windows-zip, windows-installer | **hiányos** | Beszélő-lenyomat (embedding) számítása a beszélők automatikus felismeréséhez; helyben fut ONNX Runtime-mal. |
-| ERes2NetV2 speaker model, 3D-Speaker (PLANNED) | — | Apache-2.0 | none | rendben | Tervezett alternatív beszélő-embedding modell. |
+| CAM++ speaker-embedding model (3D-Speaker, ONNX export via sherpa-onnx) | file campplus_sv_zh_en_16k.onnx (upstream name 3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx); no hash/version pinned | Apache-2.0 | windows-zip, windows-installer | rendben | Beszélő-lenyomat (embedding) számítása a beszélők automatikus felismeréséhez; helyben fut ONNX Runtime-mal. |
+| ERes2NetV2 speaker model, 3D-Speaker | 3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx (71,441,526 B), sherpa-onnx release speaker-recongition-models | Apache-2.0 | none | rendben | Alternatív beszélő-embedding modell; a felhasználó tölti le (voice-models fetch), nem része a csomagnak. |
 | Google Gemma (google/gemma-4-12b; prompt-eval also tests google/gemma-4-12b-qat) | default model id 'google/gemma-4-12b' (core/src/provider/BuiltinProviders.cpp:78); GGUF/quant chosen by user in LM Studio | LicenseRef-Gemma-Terms-of-Use | none | nem szükséges | Alapértelmezett helyi LLM az összefoglalókhoz és címkékhez (LM Studio-n át); a Tanara nem szállítja a súlyokat. |
 | sherpa-onnx (k2-fsa) — source of the ONNX CAM++ export | — | Apache-2.0 | none | nem szükséges | Innen töltődik le az ONNX-ra exportált CAM++ modell (release 'speaker-recongition-models'); a sherpa-onnx kódot nem használjuk. A feature-kinyerés kaldi-native-fbank-kal (A rész) egyezik az export tanító-előfeldolgozásával. |
-| WeSpeaker ResNet34-LM (PLANNED) | — | CC-BY-4.0 | none | rendben | Tervezett alternatív beszélő-embedding modell (nincs a kódban). |
+| WeSpeaker ResNet34-LM (VoxCeleb) | wespeaker_en_voxceleb_resnet34_LM.onnx (26,530,550 B), sherpa-onnx release speaker-recongition-models | CC-BY-4.0 | none | rendben | Alternatív beszélő-embedding modell (256 dim.); a felhasználó tölti le, nem része a csomagnak. |
 
 ## Futásidejű külső program / rendszer-API
 
 | Komponens | Verzió | Licenc | Szállítva | Attribúció | Mire használjuk |
 |---|---|---|---|---|---|
-| FFmpeg (ffmpeg / ffprobe executables) | not recorded; Windows build = gyan.dev 'essentials' static build per packaging/windows/README.md (version not pinned). Record exact build + configure line. | GPL-3.0-only (gyan.dev essentials/full builds) — FFmpeg itself is LGPL-2.1-or-later with optional GPL-2.0-or-later parts; distributed binary license depends on configure flags | windows-zip, windows-installer | **hiányos** | Hangfelvétel kódolása (libopus), lekeverés (libmp3lame, loudnorm), importált hangfájlok dekódolása/kódolása, hullámforma és beszélő-szegmensek dekódolása; az ffprobe a hangfájlok adatait olvassa. |
+| FFmpeg (ffmpeg / ffprobe executables) | FFmpeg n9.0.2-17-g2a571b6068 (release/9.0, commit 2a571b606854520cf89804d8030c8b328e621689), BtbN autobuild-2026-09-30-13-08, file ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip, SHA256 6b264b9e6019103f601d98c292bd332fd87acf1c5e941ddff4fb71760fe63432 | LGPL-3.0-or-later (build configured with --enable-version3, no --enable-gpl/--enable-nonfree; includes libopus, libmp3lame; excludes x264/x265) | windows-zip, windows-installer | rendben | Hangfelvétel kódolása (libopus), lekeverés (libmp3lame, loudnorm), importált hangfájlok dekódolása/kódolása, hullámforma és beszélő-szegmensek dekódolása; az ffprobe a hangfájlok adatait olvassa. |
 | freedesktop.org Notifications (D-Bus), XDG autostart, QSystemTrayIcon/StatusNotifier | — | N/A (service terms / OS API — no software license applies) | none | nem szükséges | Értesítések (org.freedesktop.Notifications), induláskori automatikus indítás (~/.config/autostart/tanara-watcher.desktop), tálcaikon. |
 | PipeWire (pw-dump) | — | MIT | none | nem szükséges | Linuxon a pw-dump JSON-kimenetéből derül ki, melyik alkalmazás használja a mikrofont (hívásfelismerés) és melyek a lejátszó-eszközök (lejátszás-irányítás). |
 | PipeWire / PulseAudio / ALSA (via miniaudio backends) | — | MIT (PipeWire) / LGPL-2.1+ (PulseAudio client lib) / LGPL-2.1+ (ALSA lib) | none | nem szükséges | Linuxon a miniaudio ezeken a rendszer-hangszervereken át vesz fel és játszik le; a miniaudio dinamikusan tölti be őket (dlopen). |
@@ -91,29 +93,19 @@ Jelmagyarázat: **Attribúció** = a licenc előír-e megjelölést/licencszöve
 
 ## Összesítés
 
-- 43 tétel; 19 tételnél kötelező az attribúció, ebből ma 2 teljesül.
-- A Windows-csomag jelenleg SEMMILYEN licencszöveget nem tartalmaz (csak OLVASSEL.md); a telepítőnek nincs `LicenseFile`-ja.
-
-## Hiányok és javítandók (prioritás szerint)
-
-1. **FFmpeg a Windows-csomagban.** A zip és a telepítő szállítja az `ffmpeg.exe`/`ffprobe.exe`-t (gyan.dev „essentials”, GPLv3) és a Qt saját FFmpeg-DLL-jeit (avcodec-61 stb., LGPL). A `THIRD_PARTY_NOTICES.md` azt állítja, nem terjesztjük — ez Windowson hamis. Döntés kell: (a) marad a GPLv3 build → GPL-3.0 szöveg, pontos verzió, forrás-ajánlat/forrás-link a buildhez, x264/LAME megjegyzések; vagy (b) LGPL-only build (pl. BtbN „lgpl-shared”) → LGPL szöveg + forrás-link; vagy (c) nem csomagoljuk, a felhasználó telepíti. A Tanara MIT-licencét egyik sem érinti (külön folyamat, nem linkelt).
-2. **CAM++ modell a Windows-csomagban** (`models\campplus_sv_zh_en_16k.onnx`), a NOTICES szerint „külön letöltendő”. Apache-2.0 (ModelScope API-ból igazolva) → Apache-2.0 szöveg + származás (3D-Speaker, sherpa-onnx export) + rögzített kiadás-URL és hash.
-3. **Qt 6 LGPL-3.0 kötelezettségek a Windows-csomagban:** ~60 DLL és plugin licencszöveg és „uses Qt” megjegyzés nélkül. Kell: `licenses\` mappa (LGPL-3.0, GPL-3.0), verzió + modul-lista, Qt-forrás elérhetőség (download.qt.io archívum), a DLL-ek cserélhetősége (adott). Plusz a Qt-be ágyazott harmadik felek (PCRE2, FreeType, HarfBuzz, libpng, libjpeg IJG…) hivatkozása a Qt „Licenses Used in Qt” oldalára.
-4. **Hiányzó licencszövegek a repóban:** `third_party/kissfft/COPYING` (BSD-3-Clause, Mark Borgerding 2003–2010) + `VENDORED.txt` verzióval; miniz/miniaudio/kissfft `VENDORED.txt`; kaldi-native-fbank jogtulajdonosok (Xiaomi/Fangjun Kuang, Brno University of Technology, Karel Veselý/Saarland) a NOTICES-ban.
-5. **ONNX Runtime:** verzió (Win 1.20.1 / Linux 1.22.2) és Microsoft copyright a NOTICES-ban; a kiadás `LICENSE` + `ThirdPartyNotices.txt` a csomagba.
-6. **Fel nem sorolt szállított binárisok:** MinGW-futtatókörnyezet (libstdc++-6, libgcc_s_seh-1: GPL-3.0 + GCC Runtime Library Exception; libwinpthread-1), MSVC-futtatókörnyezet (System32-ből másolva — hivatalos redistributable-ből kellene), D3Dcompiler_47, opengl32sw (Mesa). Több közülük (qmltooling, nem használt Quick-stílusok, qoffscreen, D3Dcompiler/opengl32sw) valószínűleg kihagyható a csomagból.
-7. **IBM Plex + Lucide:** a betűk és ikonok a binárisba fordulnak, de a licencszövegek nincsenek a csomagban; a Plex kiadás nincs rögzítve (fetch-assets.sh `master`-t húz).
-8. **Modellek és szolgáltatások a NOTICES-ban:** Gemma-megjegyzés (Gemma Terms of Use + Prohibited Use Policy link; nem szállítjuk a súlyokat), bge-m3 (MIT), PipeWire `pw-dump` (MIT), tervezett WeSpeaker ResNet34-LM (CC-BY-4.0) és ERes2NetV2 (Apache-2.0).
-9. **Adatáramlás-szekció:** Soniox (a hang felkerül; adatvédelmi és felhasználási feltételek linkje), OpenAI-kompatibilis végpontok (alapból localhost, de bármi beírható), Tanara Cloud (saját; a privacy-URL a kódban feltételezés). Telemetria/frissítés-ellenőrzés: nincs (ellenőrizve).
-10. **Védjegy-nyilatkozat:** Google Meet, Gemma, Microsoft Teams, Zoom, Discord, Webex, Slack, Skype, Vivaldi, Soniox, LM Studio, Ollama, OpenAI.
-11. **Telepítő/zip:** `LICENSE` + `THIRD_PARTY_NOTICES.md` + `licenses\` a csomag gyökerébe, `tanara.iss` `LicenseFile=`; README követelmény-lista: hiányzó Qml/Quick/QuickControls2/Svg modulok.
+- 43 tétel; 19 tételnél kötelező az attribúció, ebből 19 teljesül.
+- A Windows-csomag a javítás után tartalmazza: `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses\` (lásd `packaging/windows/README.md`); a telepítőnek van `LicenseFile`-ja.
+- Hangmodellek: a CAM++ a Windows-csomagban van (Apache-2.0); a WeSpeaker ResNet34-LM (CC-BY-4.0) és az ERes2NetV2 (Apache-2.0) a `tanara-cli voice-models fetch` paranccsal tölthető le, nincs csomagolva.
 
 ## Nyitott kérdések
 
-- Az `ffmpeg.exe` pontos buildje/konfigurációja (csak a zip-lista volt olvasva; `ffmpeg -version` a dist-ből megadja).
-- A Qt-vel szállított FFmpeg-DLL-ek pontos verziója és hogy tisztán LGPL-e (Qt attribúciós oldal).
-- A VC++ DLL-ek System32-ből másolva terjeszthetők-e (Microsoft feltételek) — inkább hivatalos redistributable.
+- A pinelt FFmpeg-zip (`ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip`) tartalmát a BtbN build-scriptekből ellenőriztük, de a zipet nem töltöttük le: az első csomag-építésnél futtasd a `ffmpeg.exe -version` és `-encoders` ellenőrzést (lásd a packaging README-t).
+- A Qt-vel szállított FFmpeg-DLL-ek pontos patch-verziója nincs ellenőrizve (avcodec-61 = FFmpeg 7.1-széria).
+- A VC++ DLL-ek hivatalos redistributable-ből jönnek-e a következő csomagban (a README lépése ezt írja elő); jogi felülvizsgálat nem történt.
+- D3Dcompiler_47 / opengl32sw / qmltooling / nem használt Quick-stílusok / qoffscreen kihagyható-e a csomagból.
+- A hangmodellek tanító-adat feltételei (VoxCeleb, 3D-Speaker adat) nincsenek vizsgálva; csak a modell-szintű licenc.
 - Soniox: kéri-e a Tanara a feltöltött hang törlését (az async tár 30 nap után törlődik a dokumentáció szerint)?
-- Tanara Cloud: végleges adatvédelmi/feltételek oldal; szolgál-e majd Gemmát (az hosztolt terjesztésnek számít a Gemma-feltételek szerint)?
-- A hanglenyomat biometrikus személyes adat — a GDPR-szöveg nem e leltár része, de a GUI-oldalnak érintenie kell.
-- Linux: nincs szállított csomag (rendszer-Qt/onnxruntime/kissfft/ffmpeg), ezért ott minimális a kötelezettség — ha AppImage/Flatpak/RPM jön, a Windows-lista érvényes rá is.
+- Tanara Cloud: végleges adatvédelmi/feltételek oldal (a CloudTypes.h-beli URL feltételezés); szolgál-e majd Gemmát (hosztolt terjesztés a Gemma-feltételek szerint)?
+- A hanglenyomat biometrikus személyes adat — a GDPR-szöveg nem e leltár része.
+- A forrás-ajánlat (FFmpeg/BtbN) a NOTICES-ban linkekkel teljesül; ha a BtbN-repó vagy a release eltűnik, a RemedIT-nek saját tükörre/írásos ajánlatra van szüksége (tulajdonosi döntés).
+- Linux: nincs szállított csomag; ha AppImage/Flatpak/RPM jön, a Windows-lista érvényes rá is.

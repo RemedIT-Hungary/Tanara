@@ -1,0 +1,8 @@
+miniaudio
+Upstream:  https://github.com/mackron/miniaudio
+Version:   0.11.25 (2026-03-04); miniaudio.h is byte-identical to the upstream 0.11.25 tag
+           (checked 2026-10-09).
+License:   Public domain (Unlicense) or MIT-0, your choice. Statements at the end of miniaudio.h.
+           Copyright: David Reid. The header embeds dr_wav, dr_flac and dr_mp3 (same dual license).
+Vendored:  2026-06-18.
+Status:    unmodified.

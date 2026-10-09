@@ -1,4 +1,9 @@
-Vendored from https://github.com/csukuangfj/kaldi-native-fbank
-Commit: b09e686fe2084732ddd30d1ef80acfc0f13eaf01
-License: Apache-2.0 (see LICENSE)
-Only non-test csrc files; built into tanara_core.
+kaldi-native-fbank
+Upstream:  https://github.com/csukuangfj/kaldi-native-fbank
+Version:   v1.22.3 (released 2025-10-09), commit b09e686fe2084732ddd30d1ef80acfc0f13eaf01
+License:   Apache-2.0 (see LICENSE; identical to the upstream LICENSE file)
+Copyright: Xiaomi Corporation / Fangjun Kuang (2022-2025), Brno University of Technology (2024),
+           and the Kaldi authors (Karel Vesely, Petr Motlicek, Saarland University, 2009-2011),
+           as stated in the source file headers.
+Vendored:  2026-06-18. Only the non-test csrc files; built into tanara_core.
+Status:    unmodified (all 26 csrc files are byte-identical to tag v1.22.3, checked 2026-10-09).
