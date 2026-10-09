@@ -987,6 +987,10 @@
         <translation>People…</translation>
     </message>
     <message>
+        <source>Első lépések…</source>
+        <translation>Getting started…</translation>
+    </message>
+    <message>
         <source>Kilépés</source>
         <translation>Quit</translation>
     </message>
@@ -1300,6 +1304,205 @@
     <message>
         <source>A bal oldali listából nyithatsz meg egyet. Most semmi nem vár rád.</source>
         <translation>Open one from the list on the left. Nothing is waiting for you right now.</translation>
+    </message>
+</context>
+<context>
+    <name>OnboardingWindow</name>
+    <message>
+        <source>Első lépések</source>
+        <translation>Getting started</translation>
+    </message>
+    <message>
+        <source>%1 / %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>Minden beállítás később is módosítható a Beállításokban.</source>
+        <translation>Every setting can be changed later in Settings.</translation>
+    </message>
+    <message>
+        <source>Üdv a Tanarában!</source>
+        <translation>Welcome to Tanara!</translation>
+    </message>
+    <message>
+        <source>A Tanara rögzíti a megbeszéléseidet — minden hangforrást külön sávra —, majd átiratot és összefoglalót készít belőlük. A felvételek a gépeden maradnak, a szolgáltatókat a saját kulcsoddal éred el.</source>
+        <translation>Tanara records your meetings — every audio source on its own track — then produces a transcript and a summary. Recordings stay on your machine; you reach the providers with your own keys.</translation>
+    </message>
+    <message>
+        <source>Felvétel</source>
+        <translation>Recording</translation>
+    </message>
+    <message>
+        <source>Átirat</source>
+        <translation>Transcript</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>Néhány lépésben beállítjuk a legfontosabbakat. Bármelyiket kihagyhatod, és az ablakot is bármikor bezárhatod.</source>
+        <translation>A few steps set up the essentials. You can skip any of them, and close this window at any time.</translation>
+    </message>
+    <message>
+        <source>Minden beállítás később is módosítható a Beállításokban. Ezt az ablakot a Fájl › Első lépések… menüből bármikor újranyithatod.</source>
+        <translation>Every setting can be changed later in Settings. You can reopen this window any time from File › Getting started….</translation>
+    </message>
+    <message>
+        <source>Te</source>
+        <translation>You</translation>
+    </message>
+    <message>
+        <source>A saját mikrofonod sávja ezen a néven szerepel. A nevet az operációs rendszer fiókjából vettük — írd át, ha másként szólítanak.</source>
+        <translation>Your own microphone track appears under this name. It was taken from your operating system account — change it if people call you something else.</translation>
+    </message>
+    <message>
+        <source>Saját neved</source>
+        <translation>Your name</translation>
+    </message>
+    <message>
+        <source>Így jelensz meg az átiratokban; a saját hanglenyomatod ehhez a névhez tartozik.</source>
+        <translation>This is how you appear in transcripts; your own voiceprint belongs to this name.</translation>
+    </message>
+    <message>
+        <source>Nyelv</source>
+        <translation>Language</translation>
+    </message>
+    <message>
+        <source>A nyelv a Tanara következő indításakor vált.</source>
+        <translation>The language changes the next time Tanara starts.</translation>
+    </message>
+    <message>
+        <source>Téma</source>
+        <translation>Theme</translation>
+    </message>
+    <message>
+        <source>Rendszer</source>
+        <translation>System</translation>
+    </message>
+    <message>
+        <source>Világos</source>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>Sötét</source>
+        <translation>Dark</translation>
+    </message>
+    <message>
+        <source>Mappák</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>Ide kerülnek a felvételek és az összefoglalók Markdown-másolata. Az alapértelmezés a legtöbbször jó; ha a jegyzeteidet máshol tartod, válaszd azt a mappát.</source>
+        <translation>Recordings and the Markdown copies of the summaries go here. The default is usually fine; if you keep your notes elsewhere, pick that folder.</translation>
+    </message>
+    <message>
+        <source>alapértelmezett</source>
+        <translation>default</translation>
+    </message>
+    <message>
+        <source>Tallózás…</source>
+        <translation>Browse…</translation>
+    </message>
+    <message>
+        <source>Vissza az alapértelmezettre</source>
+        <translation>Back to default</translation>
+    </message>
+    <message>
+        <source>A belső adatok mappáját (hanglenyomatok, index) a Beállítások › Általános lapon találod.</source>
+        <translation>The internal data folder (voiceprints, index) is on the Settings › General page.</translation>
+    </message>
+    <message>
+        <source>Szolgáltatások</source>
+        <translation>Services</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloudot választottad: az átírás és az összefoglaló a fiókodon fut, saját kulcs nem kell. A Beállításokban bármikor válthatsz saját kulcsra.</source>
+        <translation>You chose Tanara Cloud: transcription and summaries run on your account, no keys needed. You can switch to your own keys in Settings at any time.</translation>
+    </message>
+    <message>
+        <source>A Tanara a saját kulcsoddal dolgozik: az átírást a Soniox végzi (API-kulcs kell hozzá), az összefoglalót egy OpenAI-kompatibilis végpont — például a gépeden futó LM Studio vagy egy felhős szolgáltató.</source>
+        <translation>Tanara works with your own keys: Soniox does the transcription (an API key is needed), and an OpenAI-compatible endpoint writes the summary — for example LM Studio on your machine or a cloud service.</translation>
+    </message>
+    <message>
+        <source>Beállítás most</source>
+        <translation>Set up now</translation>
+    </message>
+    <message>
+        <source>Beállítások › Szolgáltatások</source>
+        <translation>Settings › Services</translation>
+    </message>
+    <message>
+        <source>A kulcs a gépeden marad. A Beállításokban a kapcsolatot is kipróbálhatod; átírás nélkül is rögzíthetsz, a kulcs csak a feldolgozáshoz kell.</source>
+        <translation>The key stays on your machine. You can test the connection in Settings; you can record without transcription, the key is only needed for processing.</translation>
+    </message>
+    <message>
+        <source>Tanara Cloud: hamarosan — átírás és összefoglaló saját kulcs nélkül.</source>
+        <translation>Tanara Cloud: coming soon — transcription and summaries without your own keys.</translation>
+    </message>
+    <message>
+        <source>Hívásfigyelő</source>
+        <translation>Call watcher</translation>
+    </message>
+    <message>
+        <source>A hívásfigyelő a tálcán fut, és szól, ha Teams, Meet vagy Zoom hívást észlel. A felvételt mindig te indítod.</source>
+        <translation>The call watcher runs in the tray and tells you when it notices a Teams, Meet or Zoom call. You always start the recording yourself.</translation>
+    </message>
+    <message>
+        <source>Induljon el a figyelő bejelentkezéskor</source>
+        <translation>Start the watcher at login</translation>
+    </message>
+    <message>
+        <source>A figyelt alkalmazásokat és a megbeszélés végi rákérdezést a Beállítások › Hívásfigyelő lapon állíthatod.</source>
+        <translation>The watched applications and the end-of-meeting prompt are on the Settings › Call watcher page.</translation>
+    </message>
+    <message>
+        <source>Kész is vagyunk</source>
+        <translation>All done</translation>
+    </message>
+    <message>
+        <source>Vegyük fel az első megbeszélést: indíts felvételt, vagy importálj egy meglévő hang- vagy videófájlt.</source>
+        <translation>Let’s record the first meeting: start a recording, or import an existing audio or video file.</translation>
+    </message>
+    <message>
+        <source>Név és megjelenés</source>
+        <translation>Name and appearance</translation>
+    </message>
+    <message>
+        <source>%1 — kihagyva</source>
+        <translation>%1 — skipped</translation>
+    </message>
+    <message>
+        <source>%1 — nem nézted meg</source>
+        <translation>%1 — not viewed</translation>
+    </message>
+    <message>
+        <source>Minden beállítás később is módosítható a Beállításokban (Fájl › Beállítások…, Ctrl+,).</source>
+        <translation>Every setting can be changed later in Settings (File › Settings…, Ctrl+,).</translation>
+    </message>
+    <message>
+        <source>Később</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>Bezárás — a Fájl › Első lépések… menüből újranyitható</source>
+        <translation>Close — can be reopened from File › Getting started…</translation>
+    </message>
+    <message>
+        <source>Vissza</source>
+        <translation>Back</translation>
+    </message>
+    <message>
+        <source>Kihagyom</source>
+        <translation>Skip</translation>
+    </message>
+    <message>
+        <source>Kezdjük</source>
+        <translation>Let’s go</translation>
+    </message>
+    <message>
+        <source>Tovább</source>
+        <translation>Next</translation>
     </message>
 </context>
 <context>
@@ -2443,6 +2646,14 @@
     <message>
         <source>Megnyitás a fájlkezelőben</source>
         <translation>Open in the file manager</translation>
+    </message>
+    <message>
+        <source>Az első indításkor látott bevezető:</source>
+        <translation>The introduction shown at first start:</translation>
+    </message>
+    <message>
+        <source>Első lépések</source>
+        <translation>Getting started</translation>
     </message>
 </context>
 <context>
@@ -6624,6 +6835,105 @@
     </message>
 </context>
 <context>
+    <name>tanara_qml::OnboardingViewModel</name>
+    <message>
+        <source>Átírás</source>
+        <translation>Transcription</translation>
+    </message>
+    <message>
+        <source>Összefoglaló</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>nincs bejelentkezve</source>
+        <translation>not signed in</translation>
+    </message>
+    <message>
+        <source>nincs kulcs</source>
+        <translation>no key</translation>
+    </message>
+    <message>
+        <source>hiányos beállítás</source>
+        <translation>incomplete setup</translation>
+    </message>
+    <message>
+        <source>Üdvözlés</source>
+        <translation>Welcome</translation>
+    </message>
+    <message>
+        <source>Te</source>
+        <translation>You</translation>
+    </message>
+    <message>
+        <source>Mappák</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>Szolgáltatások</source>
+        <translation>Services</translation>
+    </message>
+    <message>
+        <source>Hívásfigyelő</source>
+        <translation>Call watcher</translation>
+    </message>
+    <message>
+        <source>Kész</source>
+        <translation>Done</translation>
+    </message>
+    <message>
+        <source>Adj meg egy nevet — ezen a néven szerepelsz az átiratokban.</source>
+        <translation>Enter a name — this is how you appear in transcripts.</translation>
+    </message>
+    <message>
+        <source>Rendszer nyelve (magyar)</source>
+        <translation>System language (Hungarian)</translation>
+    </message>
+    <message>
+        <source>Rendszer nyelve (English)</source>
+        <translation>System language (English)</translation>
+    </message>
+    <message>
+        <source>Felvételek</source>
+        <translation>Recordings</translation>
+    </message>
+    <message>
+        <source>Hangsávok, megbeszélésenként egy mappa. Az új felvételek ide kerülnek.</source>
+        <translation>Audio tracks, one folder per meeting. New recordings go here.</translation>
+    </message>
+    <message>
+        <source>Jegyzetek</source>
+        <translation>Notes</translation>
+    </message>
+    <message>
+        <source>Az összefoglalók másolata sima Markdown-fájlként (pl. a jegyzettáradba).</source>
+        <translation>Copies of the summaries as plain Markdown files (for example into your notes vault).</translation>
+    </message>
+    <message>
+        <source>Felvételek mappája</source>
+        <translation>Recordings folder</translation>
+    </message>
+    <message>
+        <source>Jegyzetek mappája</source>
+        <translation>Notes folder</translation>
+    </message>
+    <message>
+        <source>Linuxon egy indítófájl kerül a ~/.config/autostart mappába; kikapcsoláskor törlődik.</source>
+        <translation>On Linux a launcher file is placed in ~/.config/autostart; it is removed when switched off.</translation>
+    </message>
+    <message>
+        <source>Windowson egy bejegyzés kerül a felhasználó indítási listájába (Run); kikapcsoláskor törlődik.</source>
+        <translation>On Windows an entry is added to the user’s startup list (Run); it is removed when switched off.</translation>
+    </message>
+    <message>
+        <source>Ezen a rendszeren az automatikus indítás még nem érhető el; a figyelőt kézzel indíthatod.</source>
+        <translation>Automatic start is not available on this system yet; you can start the watcher by hand.</translation>
+    </message>
+    <message>
+        <source>Most nem íródik bejegyzés (elkülönített adatmappával fut a Tanara).</source>
+        <translation>No entry is written now (Tanara runs with a separate data folder).</translation>
+    </message>
+</context>
+<context>
     <name>tanara_qml::PeopleViewModel</name>
     <message>
         <source>%1 / %2 megbeszélés…</source>
@@ -7856,6 +8166,10 @@
     <message>
         <source>A Címkék ebben a módban nem érhetők el.</source>
         <translation>Tags are not available in this mode.</translation>
+    </message>
+    <message>
+        <source>Az Első lépések ebben a módban nem érhetők el.</source>
+        <translation>Getting started is not available in this mode.</translation>
     </message>
     <message>
         <source>A felvevő ebben a módban nem érhető el.</source>
