@@ -3614,8 +3614,16 @@
         <translation>Remove these lines from %1's voiceprint (wrong match)</translation>
     </message>
     <message>
+        <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
+        <translation>Fine as is + voice sample from this line (%1 s)</translation>
+    </message>
+    <message>
         <source>Hanglenyomat-minta ebből a sorból (%1 mp)</source>
         <translation>Voice sample from this line (%1 s)</translation>
+    </message>
+    <message>
+        <source>Megerősíti, hogy a sor %1 hangja, és egyben mintát készít belőle.</source>
+        <translation>Confirms that the line is %1’s voice and makes a sample from it at the same time.</translation>
     </message>
     <message>
         <source>A sor hangja %1 hanglenyomatához kerül; ebből ismeri fel legközelebb.</source>
@@ -9288,10 +9296,6 @@
     <message>
         <source>Előbb nevezd el a beszélőt.</source>
         <translation>Name the speaker first.</translation>
-    </message>
-    <message>
-        <source>Bizonytalan sor: előbb „Jó így”, vagy helyezd át a megfelelő beszélőhöz.</source>
-        <translation>Uncertain line: confirm it (“Fine as is”) or move it to the right speaker first.</translation>
     </message>
     <message>
         <source>Egymásra beszéltek — nem tiszta minta.</source>

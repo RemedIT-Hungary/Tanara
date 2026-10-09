@@ -1570,8 +1570,6 @@ QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId
     out[QStringLiteral("personName")] = sp.personName;
     if (sp.anonymous)
         out[QStringLiteral("reason")] = tr("Előbb nevezd el a beszélőt.");
-    else if (u.uncertain)
-        out[QStringLiteral("reason")] = tr("Bizonytalan sor: előbb „Jó így”, vagy helyezd át a megfelelő beszélőhöz.");
     else if (u.noisy)
         out[QStringLiteral("reason")] = tr("Egymásra beszéltek — nem tiszta minta.");
     else if (u.endMs - u.startMs < 3000)
@@ -1580,6 +1578,9 @@ QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId
         out[QStringLiteral("reason")] = tr("Nincs hangmodell vagy lekevert hang.");
     else
         out[QStringLiteral("ok")] = true;
+    // Bizonytalan sor: a minta egyben megerősítés is („Jó így”), mert a felhasználó a sor
+    // kiválasztásával dönt arról, hogy ez tényleg ennek a beszélőnek a hangja.
+    out[QStringLiteral("confirmFirst")] = u.uncertain && out.value(QStringLiteral("ok")).toBool();
     return out;
 }
 
@@ -1590,6 +1591,9 @@ QVariantMap TranscriptEditorViewModel::createVoiceprintFromLine(const QString& u
     if (i < 0 || !m_editor) return out;
     const QString key = m_utts.at(i).speakerKey;
     const QString name = m_views.value(key).name;
+    // Bizonytalan sorból: előbb megerősítjük (ugyanaz, mint a „Jó így”), aztán minta lesz belőle.
+    if (m_utts.at(i).uncertain)
+        m_editor->confirmUtterances({utteranceId}, /*asNoisy*/ false);
     const VoiceprintResult r = m_editor->createVoiceprintFromLines(key, {utteranceId});
     out[QStringLiteral("ok")] = r.ok;
     out[QStringLiteral("printId")] = r.printId;

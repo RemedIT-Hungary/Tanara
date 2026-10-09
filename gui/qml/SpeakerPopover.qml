@@ -485,9 +485,13 @@ TPopover {
                     variant: "ghost"
                     iconName: "fingerprint"
                     enabled: lineSample.info.ok === true
-                    text: qsTr("Hanglenyomat-minta ebből a sorból (%1 mp)").arg(lineSample.info.seconds || 0)
-                    toolTipText: qsTr("A sor hangja %1 hanglenyomatához kerül; ebből ismeri fel legközelebb.")
-                                     .arg(control.speakerName)
+                    text: lineSample.info.confirmFirst === true
+                          ? qsTr("Jó így + hanglenyomat-minta ebből a sorból (%1 mp)").arg(lineSample.info.seconds || 0)
+                          : qsTr("Hanglenyomat-minta ebből a sorból (%1 mp)").arg(lineSample.info.seconds || 0)
+                    toolTipText: lineSample.info.confirmFirst === true
+                          ? qsTr("Megerősíti, hogy a sor %1 hangja, és egyben mintát készít belőle.").arg(control.speakerName)
+                          : qsTr("A sor hangja %1 hanglenyomatához kerül; ebből ismeri fel legközelebb.")
+                                .arg(control.speakerName)
                     onClicked: {
                         const r = control.editor.createVoiceprintFromLine(control.utteranceId)
                         if (r.ok) control.close()
