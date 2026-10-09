@@ -49,6 +49,13 @@ public:
     // Egy MÁSIK QML-ablak (Beállítások: App.bridge.settingsWindow(), felvevő:
     // App.bridge.recorderWindow()) képe PNG-be — ezek saját motorban élnek, a QML-ből az
     // Item.grabToImage nem éri el őket.
+    // QA: egy QML-elem elérése objectName szerint a főablak fájából (pl. "transcriptTab").
+    Q_INVOKABLE QObject* findObject(const QString& objectName) const
+    {
+        if (!m_window) return nullptr;
+        if (m_window->objectName() == objectName) return m_window;
+        return m_window->findChild<QObject*>(objectName);
+    }
     Q_INVOKABLE bool grabWindow(QObject* window, const QString& path)
     {
         auto* w = qobject_cast<QQuickWindow*>(window);

@@ -15,6 +15,10 @@
 #include <QPair>
 #include <QSet>
 #include <QThread>
+#include <QCoreApplication>
+#include <QPointer>
+#include <QThreadPool>
+#include <QEventLoop>
 #include <QTimer>
 #include <QUuid>
 
@@ -161,6 +165,11 @@ struct SpeakerEditor::Private {
     // A transcript.md késleltetett újragenerálása (lásd persist()).
     QTimer* markdownTimer = nullptr;
     bool markdownPending = false;
+    // A transcript.md újragenerálása háttérszálon fut (a tokenek újraolvasása + a teljes fájl
+    // kiírása egy 2 órás megbeszélésnél ~120 ms — a fő szálon ez minden javítás után
+    // megakasztotta a felületet). Egyszerre egy futás; közben érkező kérés a végén újraindul.
+    bool markdownRunning = false;
+    std::atomic<int> markdownInFlight{0};
 
     // ---- betöltés -----------------------------------------------------------
     void load()
@@ -565,6 +574,7 @@ struct SpeakerEditor::Private {
     // Overlay + speakerMap-változás kiírása, transcript.md frissítése.
     void persist(const QVector<MapDelta>& delta, bool forward, bool namesChanged)
     {
+        tanara::PerfScope perfScope("SpeakerEditor::persist", 10);
         if (folder.isEmpty()) return;
         saveOverlay(folder, ov);
         if (!store) return;
@@ -602,12 +612,36 @@ struct SpeakerEditor::Private {
 
     void flushMarkdown()
     {
-        if (!markdownPending) return;
+        tanara::PerfScope perfScope("SpeakerEditor::flushMarkdown (indítás)", 10);
+        if (!markdownPending || markdownRunning) return;
         markdownPending = false;
         if (markdownTimer) markdownTimer->stop();
         if (!store) return;
         const Meeting m = store->load(meetingId);
-        if (!m.id.isEmpty() && QDir(m.folder).exists()) regenerateTranscriptMarkdown(m);
+        if (m.id.isEmpty() || !QDir(m.folder).exists()) return;
+        // Az overlay már a lemezen van (persist menti), ezért a háttérszál csak fájlokat olvas
+        // és a transcript.md-t írja; az Impl-hez nem nyúl.
+        markdownRunning = true;
+        ++markdownInFlight;
+        QPointer<SpeakerEditor> self(q);
+        QThreadPool::globalInstance()->start([this, self, m] {
+            {
+                tanara::PerfScope bg("SpeakerEditor: transcript.md (háttérszál)", 10);
+                regenerateTranscriptMarkdown(m);
+            }
+            --markdownInFlight;
+            QMetaObject::invokeMethod(qApp, [this, self] {
+                if (!self) return;
+                markdownRunning = false;
+                if (markdownPending) flushMarkdown();   // közben újabb javítás érkezett
+            }, Qt::QueuedConnection);
+        });
+    }
+
+    // Lezáráskor (destruktor): a futó háttér-írást bevárjuk, hogy a fájl ne maradjon félben.
+    void waitMarkdown()
+    {
+        while (markdownInFlight.load() > 0) QThread::msleep(5);
     }
 
     void clearSuggestion()
@@ -1014,13 +1048,23 @@ SpeakerEditor::SpeakerEditor(MeetingStore* store, PeopleStore* people, Voiceprin
 
 SpeakerEditor::~SpeakerEditor()
 {
+    if (d->markdownTimer) d->markdownTimer->stop();
+    d->waitMarkdown();   // a háttér-írás ne a félig lebontott objektumra fusson
+
     d->stopThread(/*notify*/ false);
     d->flushMarkdown();
 }
 
 void SpeakerEditor::flushPendingWrites()
 {
+    // Szinkron szemantika (lezárás, tesztek, CLI): elindítjuk és be is várjuk a háttér-írást;
+    // ha közben újabb kérés jött, azt is.
     d->flushMarkdown();
+    d->waitMarkdown();
+    while (d->markdownPending || d->markdownRunning) {
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
+        d->waitMarkdown();
+    }
 }
 
 QString SpeakerEditor::meetingId() const { return d->meetingId; }
@@ -1651,6 +1695,7 @@ void SpeakerEditor::reloadTranscript()
     // Az új átirattal a transcript.md is frissen készült: a függő újragenerálás tárgytalan.
     d->markdownPending = false;
     if (d->markdownTimer) d->markdownTimer->stop();
+    d->waitMarkdown();
     d->load();
     d->undoStack.clear();
     d->redoStack.clear();

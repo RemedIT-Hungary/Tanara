@@ -219,6 +219,8 @@ Item {
         picker.open()
     }
 
+    // QA / szkriptek: a nézetmodell elérése (hook.findObject("transcriptTab").editor).
+    readonly property alias editor: editorVm
     TranscriptEditorViewModel {
         id: editorVm
         meetingId: root.meetingId

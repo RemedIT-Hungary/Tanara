@@ -590,6 +590,7 @@ ApplicationWindow {
                         currentIndex: shellActions.currentTab
                         TranscriptTab {
                             id: transcriptTab
+                            objectName: "transcriptTab"
                             meetingId: window.contentMeetingId
                             player: playerController
                             shell: shellActions

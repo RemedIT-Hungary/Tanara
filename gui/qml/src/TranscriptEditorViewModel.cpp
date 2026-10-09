@@ -327,6 +327,7 @@ void TranscriptEditorViewModel::startEmbeddingIfNeeded()
 
 void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
 {
+    tanara::PerfScope perfScope("TranscriptEditorViewModel::onUtterancesChanged", 10);
     if (!m_editor) return;
     QVector<int> changed;
     changed.reserve(ids.size());
@@ -349,6 +350,7 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
 
 void TranscriptEditorViewModel::onSpeakersChanged()
 {
+    tanara::PerfScope perfScope("TranscriptEditorViewModel::onSpeakersChanged", 10);
     const QHash<QString, SpeakerView> before = m_views;
     rebuildSpeakers(/*recomputeCollapsed*/ false);
     bool viewsChanged = before.size() != m_views.size();
@@ -1107,12 +1109,14 @@ bool TranscriptEditorViewModel::moveSelectionToNewParticipant()
 
 bool TranscriptEditorViewModel::moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey)
 {
+    tanara::PerfScope perfScope("TranscriptEditorViewModel::moveUtteranceToSpeaker", 10);
     if (!m_uttIndex.contains(utteranceId) || speakerKey.isEmpty()) return false;
     return !moveLines({utteranceId}, MoveTarget::Speaker, speakerKey).isEmpty();
 }
 
 bool TranscriptEditorViewModel::moveUtteranceToPerson(const QString& utteranceId, const QString& personName)
 {
+    tanara::PerfScope perfScope("TranscriptEditorViewModel::moveUtteranceToPerson", 10);
     const QString name = personName.trimmed();
     if (!m_uttIndex.contains(utteranceId) || name.isEmpty()) return false;
     return !moveLines({utteranceId}, MoveTarget::Person, name).isEmpty();
