@@ -314,6 +314,13 @@ void RecorderViewModel::attach()
             emit errorChanged();
         }
     });
+    connect(c, &AppController::recordingDeviceReturned, this, [this](const QString& name) {
+        // A kihúzott, majd visszadugott eszközt a rendszer magától újra rögzíti (új szakasz).
+        const int row = rowOf(name);
+        const QString shown = (row >= 0 && !m_rows[row].friendly.isEmpty()) ? m_rows[row].friendly : name;
+        m_errorText = tr("A(z) %1 eszköz visszatért, a rögzítése folytatódik (új szakasz).").arg(shown);
+        emit errorChanged();
+    });
     connect(c, &AppController::callEnded, this, [this](const QString& app) {
         raiseAsk(app.isEmpty()
             ? tr("Úgy tűnik, a hívás véget ért. Magamtól nem állítom le.")

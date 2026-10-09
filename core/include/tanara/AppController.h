@@ -437,6 +437,7 @@ signals:
     void deviceLevelPeak(QString deviceName, float rms, float peak);
     void recordingTrackAdded(QString deviceName);    // felvétel közben új sáv indult
     void recordingTrackClosed(QString deviceName);   // a rögzített eszközt leválasztották
+    void recordingDeviceReturned(QString deviceName); // a leválasztott eszköz visszatért: új szakasz indul
     void recordingStateChanged(tanara::RecordingState state);
     void elapsedChanged(qint64 ms);
     void recordingFinished(tanara::Meeting meeting);

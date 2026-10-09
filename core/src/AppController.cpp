@@ -487,6 +487,7 @@ struct AppController::Impl {
     QStringList recClosed;                      // menet közben leválasztott eszközök
     QStringList recOff;                         // menet közben a felhasználó kikapcsolta
     QHash<QString, int> recMissing;             // hány egymást követő felsorolásból hiányzott
+    QHash<QString, int> recReturning;           // leválasztott eszköz: hány egymást követő felsorolásban van újra jelen
     bool        autoMixdown = true;             // felvétel utáni automatikus lekeverés
     QHash<QString, MergedTranscript> mergedCache;
 
@@ -1722,6 +1723,23 @@ void AppController::handleDeviceSetChange() {
                 recheck = true;
             }
         }
+        // Visszadugott eszköz: amit a leválasztás zárt le (nem a felhasználó kapcsolta ki), és a
+        // felsorolásban KÉTSZER egymás után újra jelen van (stabilnak néz ki), azt magától újra
+        // rögzítjük — új szakasz indul, a felvétel eddigi része érintetlen. A felhasználó jogos
+        // elvárása, hogy egy rövid USB-kiesés után ne kelljen kézzel visszakapcsolnia.
+        const QStringList closedNow = d->recClosed;
+        for (const QString& name : closedNow) {
+            const AudioDeviceInfo* dev = nullptr;
+            for (const AudioDeviceInfo& cand : present)
+                if (cand.name == name) { dev = &cand; break; }
+            if (!dev) { d->recReturning.remove(name); continue; }
+            if (++d->recReturning[name] < 2) { recheck = true; continue; }
+            d->recReturning.remove(name);
+            qCInfo(lcApp).noquote() << "Leválasztott eszköz visszatért, a rögzítése folytatódik (új szakasz):" << name;
+            emit recordingDeviceReturned(name);
+            if (!d->session->addDevice(*dev))
+                qCWarning(lcApp).noquote() << "A visszatért eszköz sávja nem indult el:" << name;
+        }
         if (recheck)
             QTimer::singleShot(1200, this, [this] {
                 if (d->state == RecordingState::Recording) d->devices->refresh();
@@ -1772,6 +1790,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     d->recClosed.clear();
     d->recOff.clear();
     d->recMissing.clear();
+    d->recReturning.clear();
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
         d->devices->refresh();

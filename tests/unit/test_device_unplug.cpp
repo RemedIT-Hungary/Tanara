@@ -128,14 +128,34 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     QCOMPARE(app->recordingState(), RecordingState::Recording);
     QCOMPARE(closed.size(), 1);
 
+    // Visszadugás: az eszköz újra a felsorolásban. Egy látás még nem elég (stabilitás), a
+    // második (időzített) felsorolás után magától újra rögzítjük: új sáv, eltolással.
+    QSignalSpy added(app.get(), &AppController::recordingTrackAdded);
+    QSignalSpy returned(app.get(), &AppController::recordingDeviceReturned);
+    engine->revive(headset.name);
+    app->devices()->setDeviceListOverride(QVector<AudioDeviceInfo>{mic, headset, mon});
+    app->refreshDevices();
+    QCOMPARE(added.size(), 0);
+    QVERIFY(added.wait(4000));
+    QCOMPARE(added.at(0).at(0).toString(), headset.name);
+    QCOMPARE(returned.size(), 1);
+    QVERIFY(app->disconnectedRecordingDeviceNames().isEmpty());
+    QVERIFY(app->recordingDeviceNames().contains(headset.name));
+    QCOMPARE(app->recordingState(), RecordingState::Recording);
+    QTest::qWait(500);
+
     app->stopRecording();
     QVERIFY(finished.wait(20000));
     feeder.stop();
     QVERIFY2(errors.isEmpty(), qPrintable(errors.join(QStringLiteral("; "))));
 
     const Meeting m = finished.at(0).at(0).value<Meeting>();
-    QCOMPARE(m.tracks.size(), 3);
-    for (const Track& t : m.tracks) QCOMPARE(t.startOffsetMs, qint64(0));
+    QCOMPARE(m.tracks.size(), 4);
+    for (int i = 0; i < 3; ++i) QCOMPARE(m.tracks.at(i).startOffsetMs, qint64(0));
+    // A visszatért eszköz új szakasza: ugyanaz az eszköznév, későbbi kezdet, saját fájl.
+    QCOMPARE(m.tracks.at(3).deviceName, headset.name);
+    QVERIFY2(m.tracks.at(3).startOffsetMs > 1000, qPrintable(QString::number(m.tracks.at(3).startOffsetMs)));
+    QVERIFY(m.tracks.at(3).file != m.tracks.at(1).file);
     const qint64 dMic = probeMs(QDir(m.folder).filePath(m.tracks.at(0).file));
     const qint64 dHs = probeMs(QDir(m.folder).filePath(m.tracks.at(1).file));
     QVERIFY2(qAbs(dMic - m.durationMs) < 300, qPrintable(QStringLiteral("%1 vs %2").arg(dMic).arg(m.durationMs)));

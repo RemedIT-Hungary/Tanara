@@ -227,13 +227,11 @@ running and the recording does not stop. When the device is missing from two
 device scans in a row (about 1–2 seconds), Tanara closes that device's track:
 the track file keeps the audio up to the unplug and stays part of the meeting.
 The other tracks continue without a gap, and the recorder shows the message
-"A(z) X eszköz eltűnt, a sávja lezárult, a többi sáv megy tovább." To record the
-device again after you plug it back in, switch it on in the recorder: Tanara
-starts a new segment for it. Without a recording, the level meters simply drop
-the missing device. Technical note: Tanara stops each audio device before it
-releases it, so that the capture thread of a missing device ends. If a device
-still does not release within 1.5 seconds, Tanara leaves it to a background
-thread and writes a warning to the log; the UI never waits longer than that.
+"A(z) X eszköz eltűnt, a sávja lezárult, a többi sáv megy tovább." When you plug the device back in, Tanara starts recording it again by
+itself as soon as it has been present in two device scans in a row (about 1–2
+seconds): a new segment of the same track begins at that moment, and the
+recorder shows "A(z) X eszköz visszatért, a rögzítése folytatódik (új szakasz)."
+A device you switched off yourself is not switched back on automatically.
 
 ### Export / import (move a meeting to another computer)
 

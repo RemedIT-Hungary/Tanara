@@ -51,6 +51,11 @@ public:
     }
     void closeDevice(int i) override { if (i >= 0 && i < n) { devs[i]->open = false; ++closeCalls; } }
     int closeCalls = 0;
+    // Visszadugás: az eszköz újra ad adatot (az új addDevice-nak új slot jár, ez csak a régit éleszti).
+    void revive(const QString& name) {
+        for (int i = 0; i < n; ++i)
+            if (devs[i]->info.name == name) devs[i]->vanished = false;
+    }
     void vanish(const QString& name) {
         for (int i = 0; i < n; ++i)
             if (devs[i]->info.name == name) devs[i]->vanished = true;
