@@ -290,6 +290,28 @@ PureLines similarPair(int lockedAnna = 3, int lockedBela = 3)
     return p;
 }
 
+// Lenyomat-prior beszélő-indexenként (a tiszta függvényekhez).
+QVector<SpeakerPrior> priorFor(int speakerCount, int speaker, const QVector<QVector<float>>& prior,
+                               const QVector<QVector<float>>& local = {}, const QVector<int>& replaced = {})
+{
+    QVector<SpeakerPrior> out(speakerCount);
+    out[speaker].vectors = prior;
+    out[speaker].localVectors = local;
+    out[speaker].replacedLines = replaced;
+    return out;
+}
+
+// cos(e, Σ wᵢ·vᵢ) — a teszt kézi ellenőrzéséhez.
+double cosToWeighted(const QVector<float>& e, const QVector<QPair<double, QVector<float>>>& parts)
+{
+    QVector<double> sum(e.size(), 0.0);
+    for (const auto& p : parts)
+        for (int k = 0; k < e.size(); ++k) sum[k] += p.first * double(p.second[k]);
+    double d = 0.0, n = 0.0;
+    for (int k = 0; k < e.size(); ++k) { d += sum[k] * double(e[k]); n += sum[k] * sum[k]; }
+    return d / std::sqrt(n);
+}
+
 } // namespace
 
 class SpeakerRecheckTest : public QObject {
@@ -791,6 +813,161 @@ private slots:
         QVERIFY(again->utterance(uid(12)).noisy);
         again->undo();      // új munkamenet: nincs visszavonás-verem → semmi
         QVERIFY(!again->utterance(uid(11)).noisy);
+    }
+
+    // ---- tárolt lenyomatok a referenciában (SpeakerPrior) ----------------------
+
+    void pure_prior_pullsFewConfirmedLinesTowardTheVoice_capped()
+    {
+        // Anna 3 rövid megerősített sora kissé „elcsúszott" hangú (u); a korábbi lenyomatai a
+        // tiszta hangját (kA) hordozzák. A lenyomat Anna megerősítetlen kA-sorához húzza a
+        // referenciát — de csak a plafonig (a helyi súly harmada).
+        const QVector<float> u{0.8f, 0.6f, 0.0f};
+        PureLines p;
+        for (int i = 0; i < 3; ++i) p.add(u, 0, 1500, /*locked*/ true);   // 0–2 (4,5 mp)
+        p.add(kA, 0);                                                      // 3
+        for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);             // 4–6 Béla
+        const QVector<AnalysisLine> al = p.build();
+
+        const RecheckAnalysis plain = computeUncertainRechecked(al, 2);
+        const RecheckAnalysis withPrior = computeUncertainRechecked(al, 2, priorFor(2, 0, {kA, kA}));
+        QVERIFY(std::abs(plain.lines[3].own - 0.8) < 1e-3);
+        QVERIFY(withPrior.lines[3].own > plain.lines[3].own + 0.05);
+        // Kézi számolás: 4,5 mp · u + (4,5/3 = 1,5 mp) · kA.
+        QVERIFY(std::abs(withPrior.lines[3].own - cosToWeighted(kA, {{4.5, u}, {1.5, kA}})) < 1e-6);
+        const ReferenceInfo& ref = withPrior.refs[0];
+        QVERIFY(ref.refLocal());
+        QCOMPARE(ref.lines, 3);
+        QCOMPARE(ref.priorPrints, 2);
+        QCOMPARE(ref.localPrints, 0);
+        QVERIFY(ref.priorCapped);                       // 2 × 4 mp > 1,5 mp
+        QVERIFY(std::abs(ref.priorShare - 0.25) < 1e-9);
+        QVERIFY(withPrior.refs[1].refLocal());
+        QCOMPARE(withPrior.refs[1].priorPrints, 0);
+        QCOMPARE(withPrior.coreLines, (QVector<int>{3, 3}));
+
+        // Plafon alatt nincs vágás: 12 mp helyi súly mellett egy 4 mp-es lenyomat épp belefér.
+        PureLines q = pollutedSpeaker(/*lockAnna*/ true);
+        const RecheckAnalysis r = computeUncertainRechecked(q.build(), 2, priorFor(2, 0, {kA}));
+        QVERIFY(!r.refs[0].priorCapped);
+        QVERIFY(std::abs(r.refs[0].priorShare - 0.25) < 1e-9);
+        QCOMPARE(r.flagged(), 3);
+    }
+
+    void pure_prior_capKeepsLocalDominance_localPrintNotCapped()
+    {
+        // Anna 3 megerősített kA-sora, Béla 3 megerősített kB-sora. Annánál egy megerősítetlen
+        // x-sor, amely Bélához áll közelebb. Anna 5 korábbi lenyomata (más mikrofon) kB-szerű:
+        // vágás nélkül átbillentené az ítéletet, vágva nem.
+        const QVector<float> x{0.3f, 0.9539f, 0.0f};
+        PureLines p;
+        for (int i = 0; i < 3; ++i) p.add(kA, 0, 4000, true);    // 0–2 (12 mp)
+        p.add(x, 0);                                               // 3
+        for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);    // 4–6
+        const QVector<AnalysisLine> al = p.build();
+        const QVector<QVector<float>> five{kB, kB, kB, kB, kB};
+
+        QVERIFY(computeUncertainRechecked(al, 2).lines[3].uncertain);
+        const RecheckAnalysis capped = computeUncertainRechecked(al, 2, priorFor(2, 0, five));
+        QVERIFY(capped.refs[0].priorCapped);
+        QVERIFY(capped.lines[3].uncertain);
+        QCOMPARE(capped.lines[3].otherSpeaker, 1);
+        // Vágás nélkül (5 × 4 mp = 20 mp > 12 mp) Anna referenciája x-hez jobban illene, mint
+        // Béláé — a sor nem lenne kétes.
+        const double uncappedOwn = cosToWeighted(x, {{12.0, kA}, {20.0, kB}});
+        QVERIFY(uncappedOwn > capped.lines[3].other);
+        // Vágva: 12 mp · kA + 4 mp · kB.
+        QVERIFY(std::abs(capped.lines[3].own - cosToWeighted(x, {{12.0, kA}, {4.0, kB}})) < 1e-6);
+
+        // Ugyanezek ITTENI lenyomatként helyi bizonyítékok: 10 mp-es súly, nincs vágás → a sor
+        // Annáé (nem kétes).
+        const RecheckAnalysis local = computeUncertainRechecked(al, 2, priorFor(2, 0, {}, five));
+        QCOMPARE(local.refs[0].localPrints, 5);
+        QVERIFY(!local.refs[0].priorCapped);
+        QVERIFY(!local.lines[3].uncertain);
+        QVERIFY(std::abs(local.lines[3].own - cosToWeighted(x, {{12.0, kA}, {50.0, kB}})) < 1e-6);
+    }
+
+    void pure_prior_formsReferenceWithoutLockedLines()
+    {
+        // Megerősített sor nincs: eddig a szennyezett rendes centroid eltakarta a téves sorokat.
+        PureLines p = pollutedSpeaker(/*lockAnna*/ false);
+        const QVector<AnalysisLine> al = p.build();
+        QCOMPARE(computeUncertainRechecked(al, 2).flagged(), 0);
+        QCOMPARE(computeUncertainRechecked(al, 2).refs[0].kind, ReferenceKind::Fallback);
+
+        // Annának van korábbi lenyomata → az adja a referenciáját (nincs helyi mag).
+        const QVector<SpeakerPrior> pr = priorFor(2, 0, {kA});
+        const RecheckAnalysis r = computeUncertainRechecked(al, 2, pr);
+        QVERIFY(!hasTrustedCore(al, 2, pr));            // korábbi lenyomat egymaga nem helyi mag
+        QCOMPARE(r.refs[0].kind, ReferenceKind::Prior);
+        QCOMPARE(r.refs[0].lines, 0);
+        QCOMPARE(r.refs[0].priorPrints, 1);
+        QVERIFY(!r.refs[0].priorCapped);
+        QCOMPARE(r.refs[1].kind, ReferenceKind::Fallback);
+        QCOMPARE(r.trustedCore, (QVector<bool>{false, false}));
+        QCOMPARE(r.flagged(), 3);
+        for (int i = 4; i <= 6; ++i) {
+            QVERIFY(r.lines[i].uncertain);
+            QCOMPARE(r.lines[i].otherSpeaker, 1);
+        }
+
+        // ITTENI lenyomat egymaga is helyi mag.
+        const QVector<SpeakerPrior> lp = priorFor(2, 0, {}, {kA});
+        QVERIFY(hasTrustedCore(al, 2, lp));
+        const RecheckAnalysis l = computeUncertainRechecked(al, 2, lp);
+        QCOMPARE(l.trustedCore, (QVector<bool>{true, false}));
+        QCOMPARE(l.refs[0].kind, ReferenceKind::Local);
+        QCOMPARE(l.refs[0].lines, 0);
+        QCOMPARE(l.refs[0].localPrints, 1);
+        QCOMPARE(l.flagged(), 3);
+    }
+
+    void pure_prior_localPrintReplacesItsSampleLine()
+    {
+        // Az itteni lenyomat mintasora (0) maga is megerősített: csak egyszer számít (a lenyomat).
+        PureLines p = pollutedSpeaker(/*lockAnna*/ true);
+        const QVector<AnalysisLine> al = p.build();
+        const RecheckAnalysis r = computeUncertainRechecked(al, 2, priorFor(2, 0, {}, {kA}, {0}));
+        QCOMPARE(r.refs[0].lines, 2);
+        QCOMPARE(r.refs[0].localPrints, 1);
+        QCOMPARE(r.coreLines[0], 2);
+        QCOMPARE(r.flagged(), 3);
+        // Páros átnézésnél ugyanígy.
+        const PairRecheckAnalysis pr = computePairRecheck(al, 0, 1, priorFor(2, 0, {}, {kA}, {0}));
+        QCOMPARE(pr.refA.lines, 2);
+        QCOMPARE(pr.refA.localPrints, 1);
+        QVERIFY(pr.refA.refLocal());
+        QVERIFY(pr.valid);
+    }
+
+    void pure_pair_priorReplacesFallback()
+    {
+        // Bélának nincs megerősített sora: eddig fallback (az összes sora); korábbi lenyomattal
+        // az adja a referenciáját.
+        PureLines p = similarPair(/*lockedAnna*/ 3, /*lockedBela*/ 0);
+        const QVector<AnalysisLine> al = p.build();
+        QVERIFY(computePairRecheck(al, 0, 1).fallbackB);
+        const PairRecheckAnalysis r = computePairRecheck(al, 0, 1, priorFor(2, 1, {pb}));
+        QVERIFY(r.valid);
+        QVERIFY(!r.fallbackB);
+        QCOMPARE(r.refB.kind, ReferenceKind::Prior);
+        QCOMPARE(r.refLinesB, 0);
+        QCOMPARE(r.refB.priorPrints, 1);
+        QVERIFY(r.refA.refLocal());
+        QCOMPARE(r.refA.priorPrints, 0);
+        for (int i : {5, 6, 7, 13}) QVERIFY2(r.lines[i].flagged, qPrintable(QString::number(i)));
+        for (int i : {8, 9, 10, 11, 12}) QVERIFY(!r.lines[i].flagged);
+        QCOMPARE(r.flagged(), 4);
+
+        // Itteni lenyomat helyi magként: kevés sor mellett is érvényes referencia.
+        PureLines q = similarPair(/*lockedAnna*/ 0, /*lockedBela*/ 3);
+        const PairRecheckAnalysis l = computePairRecheck(q.build(), 0, 1, priorFor(2, 0, {}, {pa}));
+        QVERIFY(l.valid);
+        QVERIFY(l.refA.refLocal());
+        QCOMPARE(l.refLinesA, 0);
+        QCOMPARE(l.refA.localPrints, 1);
+        QVERIFY(!l.fallbackA);
     }
 
     void editor_voiceprintMaterialSkipsNoisyLines()

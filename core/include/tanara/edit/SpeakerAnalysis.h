@@ -75,6 +75,56 @@ QVector<LineFit> computeFits(const QVector<AnalysisLine>& lines, int speakerCoun
 // Soronként: bizonytalan-e a hozzárendelés (lásd a fenti küszöböket).
 QVector<bool> computeUncertain(const QVector<AnalysisLine>& lines, int speakerCount);
 
+// ---- tárolt hanglenyomatok a referenciában (csak az explicit újraellenőrzéseknél) ----
+// A beszélőhöz rendelt személy tárolt lenyomatai (VoiceprintStore) is beszállnak az
+// újraellenőrzés (computeUncertainRechecked) és a páros átnézés (computePairRecheck)
+// referenciájába — a súlyszabály (súly = ms-egyenérték, mint a soroknál):
+//   * a megerősített / javított sor a hosszát nyomja (legfeljebb kMaxEmbedMs), mint eddig;
+//   * az EBBEN a megbeszélésben készült lenyomat (localVectors) ennek a felvételnek az
+//     akusztikáját hordozza (jellemzően épp azért készült, mert itt tévedett a felismerés),
+//     ezért helyi bizonyíték: kMaxEmbedMs súllyal számít, a helyi súlyhoz adódik, nem vágjuk,
+//     és egymagában is helyi magot alkot;
+//   * a MÁS megbeszélésből való (korábbi) lenyomat (vectors) kPriorPrintMs súlyú, de az
+//     összes korábbi lenyomat együtt legfeljebb a helyi súly kPriorMaxShare-szerese — így a
+//     megbeszélés saját megerősített hangja mindig dominál;
+//   * ha a beszélőnek NINCS helyi magja (kevés zárolt sor és nincs itteni lenyomat), a korábbi
+//     lenyomatok egymagukban adják a referenciát; ha lenyomat sincs, marad a régi tartalék
+//     (a beszélő összes tiszta sora).
+// Kettős számolás ellen: ha egy itteni lenyomat mintasora maga is zárolt referencia-sor, a
+// sor kimarad (replacedLines), a lenyomat számít (az több sort is összefoghat).
+// A bizonytalanság automatikus ítéletét (computeUncertain) és a „hasonló sorok" javaslatot
+// (suggestSimilar) ez nem érinti.
+inline constexpr qint64 kPriorPrintMs = 4000;       // egy korábbi lenyomat súlya
+inline constexpr double kPriorMaxShare = 1.0 / 3.0; // a korábbi lenyomatok összsúlya ≤ helyi súly × ennyi
+inline constexpr qint64 kLocalPrintMs = kMaxEmbedMs; // egy itteni lenyomat súlya
+
+struct SpeakerPrior {
+    QVector<QVector<float>> vectors;        // korábbi (más megbeszélésből való) lenyomatok, L2-normalizált
+    QVector<QVector<float>> localVectors;   // ebben a megbeszélésben készült lenyomatok
+    QVector<int> replacedLines;             // sor-indexek, amelyek hangját egy itteni lenyomat már hordozza
+    bool isEmpty() const { return vectors.isEmpty() && localVectors.isEmpty(); }
+};
+
+// Miből épült egy beszélő referenciája.
+enum class ReferenceKind {
+    None,       // nem épült referencia
+    Local,      // helyi mag: zárolt sorok és/vagy itteni lenyomatok (+ vágott korábbi lenyomatok)
+    Prior,      // nincs helyi mag: csak a korábbi lenyomatok
+    Fallback,   // se helyi mag, se lenyomat: a beszélő összes (tiszta) sora
+};
+
+struct ReferenceInfo {
+    ReferenceKind kind = ReferenceKind::None;
+    int  lines = 0;             // a referenciában lévő sorok száma
+    int  localPrints = 0;       // itteni lenyomatok
+    int  priorPrints = 0;       // korábbi lenyomatok
+    bool priorCapped = false;   // a korábbi lenyomatok súlyát a kPriorMaxShare-plafon vágta
+    double priorShare = 0.0;    // a korábbi lenyomatok súlyaránya a referenciában [0..1]
+    bool refLocal() const { return kind == ReferenceKind::Local; }
+    bool refPrior() const { return kind == ReferenceKind::Prior; }
+    bool fallback() const { return kind == ReferenceKind::Fallback; }
+};
+
 // ---- újraellenőrzés a megerősített sorok alapján ---------------------------
 // A rendes bizonytalanság-ítéletben egy beszélő centroidját a hozzá TÉVESEN sorolt sorok is
 // húzzák, így azok közül a hasonló hangúak rejtve maradnak. Az újraellenőrzés „megbízható"
@@ -98,6 +148,7 @@ struct RecheckAnalysis {
     QVector<RecheckVerdict> lines;  // soronként (a bemenet sorrendjében)
     QVector<bool> trustedCore;      // beszélőnként: a centroid csak a zárolt soraiból épült
     QVector<int>  coreLines;        // beszélőnként: hány zárolt sor alkotja a magot (0 = nincs mag)
+    QVector<ReferenceInfo> refs;    // beszélőnként: miből épült a referencia (lásd SpeakerPrior)
     int coreSpeakers() const { return int(std::count(trustedCore.cbegin(), trustedCore.cend(), true)); }
     int coreLineTotal() const { int n = 0; for (int c : coreLines) n += c; return n; }
     int flagged() const {
@@ -106,10 +157,16 @@ struct RecheckAnalysis {
     }
 };
 
-RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, int speakerCount);
+// priors: beszélő-indexenként a tárolt lenyomatok (lásd SpeakerPrior); üres = csak a sorok.
+// A helyi mag (trustedCore) itteni lenyomatból is állhat; akinek nincs helyi magja, de van
+// korábbi lenyomata, annál a lenyomatok adják a referenciát (refs[s].kind == Prior).
+RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, int speakerCount,
+                                          const QVector<SpeakerPrior>& priors = {});
 
-// Van-e legalább egy beszélő, akinek a zárolt soraiból megbízható centroid építhető.
-bool hasTrustedCore(const QVector<AnalysisLine>& lines, int speakerCount);
+// Van-e legalább egy beszélő, akinek a zárolt soraiból (vagy itteni lenyomatából) megbízható
+// centroid építhető.
+bool hasTrustedCore(const QVector<AnalysisLine>& lines, int speakerCount,
+                    const QVector<SpeakerPrior>& priors = {});
 
 // ---- „egymásra beszéltek" ---------------------------------------------------
 // Egy sor zajos (nem jó hangminta), ha az embedding-ablakában (a sor közepe, legfeljebb
@@ -168,10 +225,12 @@ struct PairRecheckAnalysis {
     QVector<PairVerdict> lines;     // soronként (a bemenet sorrendjében)
     int  refLinesA = 0;             // ennyi sorból épült A referenciája
     int  refLinesB = 0;
-    // A referencia NEM a zárolt sorokból épült (kevés volt), hanem a beszélő összes tiszta
-    // (nem zajos, embeddelt) sorából — ez szennyezett lehet a tévesen hozzá sorolt sorokkal.
+    // A referencia NEM a zárolt sorokból (és nem lenyomatokból) épült, hanem a beszélő összes
+    // tiszta (nem zajos, embeddelt) sorából — ez szennyezett lehet a tévesen hozzá sorolt sorokkal.
     bool fallbackA = false;
     bool fallbackB = false;
+    ReferenceInfo refA;             // miből épült A / B referenciája (lásd SpeakerPrior)
+    ReferenceInfo refB;
     double centroidSimilarity = qQNaN();    // cos(A-referencia, B-referencia)
     bool valid = false;             // mindkét referenciához megvolt a kMinSpeakerLines sor
     int flagged() const {
@@ -185,9 +244,11 @@ struct PairRecheckAnalysis {
 // B-n lévő, NEM zárolt, NEM zajos, legalább kMinEmbedMs hosszú, embeddelt sort a két
 // referenciához mérünk (ha a sor maga is benne van egy referenciában, ahhoz önmaga nélkül), és
 // kétes, ha a másik referencia legalább kPairMargin (rövidnél kPairMarginShort) értékkel jobban
-// illik rá. Más beszélők sorait nem nézi.
+// illik rá. Más beszélők sorait nem nézi. priors: mint computeUncertainRechecked-nél — itteni
+// lenyomat helyi magnak számít; helyi mag híján a korábbi lenyomatok adják a referenciát, és
+// csak ha az sincs, jön a fallback. Lenyomatos referencia akkor is érvényes, ha kevés a sor.
 PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int speakerA,
-                                       int speakerB);
+                                       int speakerB, const QVector<SpeakerPrior>& priors = {});
 
 } // namespace speakeredit
 } // namespace tanara
