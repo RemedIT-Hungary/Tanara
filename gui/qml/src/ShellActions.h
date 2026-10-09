@@ -72,6 +72,8 @@ public:
     Q_INVOKABLE void openPeople(const QString& person = QString());
     // A Címkék ablaka; tagId: ez a címke legyen kijelölve (üres: nincs kérés).
     Q_INVOKABLE void openTags(const QString& tagId = QString());
+    // Az „Első lépések” ablak (Fájl › „Első lépések…”).
+    Q_INVOKABLE void openOnboarding();
     Q_INVOKABLE void openRecorder();
     Q_INVOKABLE void startTranscription(const QString& meetingId);
     Q_INVOKABLE void retranscribe(const QString& meetingId);

@@ -1,5 +1,7 @@
 #include "QmlShellBridge.h"
 
+#include "OnboardingViewModel.h"
+#include "OnboardingWindowHost.h"
 #include "PeopleWindowHost.h"
 #include "SettingsWidgetsDialogs.h"
 #include "SettingsWindowHost.h"
@@ -12,6 +14,7 @@
 #include "cloud/CloudUi.h"
 
 #include "tanara/AppController.h"
+#include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/library/MeetingLibrary.h"
@@ -107,6 +110,23 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
         emit readinessChanged();
     });
 
+    // Az „Első lépések” ablaka: „Beállítás most” → Beállítások › Szolgáltatások; az elfogadott
+    // téma a főablakhoz megy (az jegyzi meg), a mentett lépés a nézetek futtathatóságát frissíti.
+    m_onboarding = new tanara_qml::OnboardingWindowHost(m_controller, m_settingsDialogs, this);
+    m_settingsDialogs->setOnboardingOpener([this] { openOnboarding(); });
+    connect(m_onboarding, &tanara_qml::OnboardingWindowHost::openSettingsRequested, this,
+            [this](const QString& page) { openSettings(page); });
+    connect(m_onboarding, &tanara_qml::OnboardingWindowHost::themeModeSaved, this,
+            &QmlShellBridge::themeModeSaved);
+    connect(m_onboarding, &tanara_qml::OnboardingWindowHost::saved, this, [this] {
+        m_recorder->refreshFromSettings();
+        emit readinessChanged();
+    });
+    // A Beállításokban mentett kulcs / szolgáltató → az „Első lépések” állapot-sora is frissül.
+    connect(this, &QmlShellBridge::readinessChanged, this, [this] {
+        if (m_onboarding->viewModel()) m_onboarding->viewModel()->refreshReadiness();
+    });
+
     wireCloud();
 }
 
@@ -200,6 +220,31 @@ void QmlShellBridge::openTagsAt(const QString& tagId)
 QObject* QmlShellBridge::tagsWindow() const
 {
     return m_tags ? m_tags->window() : nullptr;
+}
+
+void QmlShellBridge::openOnboarding()
+{
+    // Nem-modális QML-ablak, egy példány; kézzel mindig megnyílik (az onboardingDone-tól függetlenül).
+    if (m_shutDown)
+        return;
+    m_onboarding->setTransientParent(m_window);
+    m_onboarding->open();
+}
+
+QObject* QmlShellBridge::onboardingWindow() const
+{
+    return m_onboarding ? m_onboarding->window() : nullptr;
+}
+
+void QmlShellBridge::maybeOpenOnboarding()
+{
+    // Első indítás (minden módban): egyszer, a főablak fölött középen. A cloud-mód K-01
+    // választó ablaka (ha volt) már lezárult — az onboarding utána jön.
+    if (m_shutDown || !m_autoOnboarding || mainWindowHidden())
+        return;
+    m_onboarding->setTransientParent(m_window);
+    if (m_onboarding->openIfNeeded())
+        qCInfo(tanara::lcApp) << "Első lépések: első indítás — az ablak megnyílt";
 }
 
 QString QmlShellBridge::pickAudioFile()
@@ -299,6 +344,8 @@ void QmlShellBridge::shutdown()
         m_people->closeNow();
     if (m_tags)
         m_tags->closeNow();
+    if (m_onboarding)
+        m_onboarding->closeNow();
     if (m_settings)
         m_settings->closeNow();
     m_recorder->shutdown();
@@ -399,7 +446,12 @@ void QmlShellBridge::windowShown()
     if (m_cloudStartupDone)
         return;
     m_cloudStartupDone = true;
-    QTimer::singleShot(0, this, &QmlShellBridge::startupCloudChecks);
+    // A főablak már látszik: az indulási ablakok (K-01, majd az „Első lépések”) a következő
+    // eseményhurok-körben jönnek, így az indulást nem tartják fel.
+    QTimer::singleShot(0, this, [this] {
+        startupCloudChecks();
+        maybeOpenOnboarding();
+    });
 }
 
 void QmlShellBridge::startupCloudChecks()

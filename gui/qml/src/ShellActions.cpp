@@ -321,6 +321,14 @@ void ShellActions::openTags(const QString& tagId)
         toast(tr("A Címkék ebben a módban nem érhetők el."));
 }
 
+void ShellActions::openOnboarding()
+{
+    if (ShellBridge* b = bridge())
+        b->openOnboarding();
+    else
+        toast(tr("Az Első lépések ebben a módban nem érhetők el."));
+}
+
 void ShellActions::openRecorder()
 {
     if (ShellBridge* b = bridge())

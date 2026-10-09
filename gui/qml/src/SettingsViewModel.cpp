@@ -762,6 +762,17 @@ void SettingsViewModel::openPeople()
     if (m_dialogs) m_dialogs->openPeopleAt(m_base.userSpeakerName.trimmed());
 }
 
+bool SettingsViewModel::onboardingAvailable() const
+{
+    if (m_dialogs) return m_dialogs->canOpenOnboarding();
+    return demo();
+}
+
+void SettingsViewModel::openOnboarding()
+{
+    if (m_dialogs) m_dialogs->openOnboarding();
+}
+
 // ---- B02 Rögzítés ----------------------------------------------------------------------
 
 QAbstractItemModel* SettingsViewModel::devicesModel() const { return m_devices; }

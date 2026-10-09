@@ -6,7 +6,9 @@
 //  - a Beállítások (QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
 //    natív mappaválasztót és a cloud Widgets-ablakait a SettingsWidgetsDialogs adja) és a
 //    Személyek ablak (QML: tanara_qml::PeopleWindowHost), a Címkék ablak (QML:
-//    tanara_qml::TagsWindowHost — a szűrő- és megbeszélés-kérései a héjhoz mennek);
+//    tanara_qml::TagsWindowHost — a szűrő- és megbeszélés-kérései a héjhoz mennek), és az
+//    „Első lépések” ablak (QML: tanara_qml::OnboardingWindowHost — első indításkor egyszer
+//    magától, a főablak megjelenése után; a Fájl menüből és a Beállításokból kézzel);
 //  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
 //    át (az burkolja a QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
 //    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
@@ -32,7 +34,12 @@ struct CloudError;
 struct Money;
 }
 
-namespace tanara_qml { class SettingsWindowHost; class PeopleWindowHost; class TagsWindowHost; }
+namespace tanara_qml {
+class SettingsWindowHost;
+class PeopleWindowHost;
+class TagsWindowHost;
+class OnboardingWindowHost;
+}
 
 namespace tanara_gui {
 
@@ -66,6 +73,11 @@ public:
     // A Címkék ablaka (TagsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
     // A QA-szkripteknek: App.bridge.tagsWindow().
     Q_INVOKABLE QObject* tagsWindow() const;
+    // Az „Első lépések” ablaka (OnboardingWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt
+    // meg. A QA-szkripteknek: App.bridge.onboardingWindow().
+    Q_INVOKABLE QObject* onboardingWindow() const;
+    // Hamis: az első indítás nem nyitja meg magától (QA-szkript mód). Alapból igaz.
+    void setAutoOnboarding(bool on) { m_autoOnboarding = on; }
 
     // ---- ShellBridge ----
     bool cloudChipVisible() const override { return m_chipVisible; }
@@ -80,6 +92,7 @@ public:
     void openPeopleAt(const QString& person) override;
     void openTags() override;
     void openTagsAt(const QString& tagId) override;
+    void openOnboarding() override;
     void openRecorder() override;
     QString pickAudioFile() override;
     QStringList pickAudioFiles() override;
@@ -109,6 +122,7 @@ private:
     // ---- Tanara Cloud ----
     void wireCloud();
     void startupCloudChecks();
+    void maybeOpenOnboarding();
     void refreshCloudChrome();
     bool cloudLogin();
     void cloudToast(const QString& text, const QString& requestId = QString(),
@@ -128,6 +142,8 @@ private:
     tanara_qml::SettingsWindowHost* m_settings = nullptr;   // a QML Beállítások-ablak gazdája
     tanara_qml::PeopleWindowHost* m_people = nullptr;       // a QML Személyek-ablak gazdája
     tanara_qml::TagsWindowHost* m_tags = nullptr;           // a QML Címkék-ablak gazdája
+    tanara_qml::OnboardingWindowHost* m_onboarding = nullptr;   // az „Első lépések” gazdája
+    bool m_autoOnboarding = true;
     bool m_quitAfterStop = false;
     bool m_shutDown = false;
 

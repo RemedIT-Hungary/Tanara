@@ -63,6 +63,7 @@ public:
     void openPeopleAt(const QString& person) override { calls << QStringLiteral("people:") + person; }
     void openTags() override { calls << QStringLiteral("tags"); }
     void openTagsAt(const QString& tagId) override { calls << QStringLiteral("tags:") + tagId; }
+    void openOnboarding() override { calls << QStringLiteral("onboarding"); }
     void openRecorder() override { calls << QStringLiteral("recorder"); }
     QString pickAudioFile() override { calls << QStringLiteral("pick"); return QStringLiteral("/tmp/x.ogg"); }
     QStringList pickAudioFiles() override { calls << QStringLiteral("pickMany"); return pickedFiles; }
@@ -421,6 +422,18 @@ private slots:
         m_shell->setBridge(nullptr);
         m_toasts.clear();
         m_shell->openTags();
+        QCOMPARE(m_toasts.size(), 1);
+    }
+
+    void onboardingAction()
+    {
+        // Fájl › „Első lépések…”: a hídon át (az onboardingDone-tól függetlenül).
+        m_shell->openOnboarding();
+        QCOMPARE(m_bridge->calls.last(), QStringLiteral("onboarding"));
+        // Híd nélkül (demó) nem nyílik, értesít.
+        m_shell->setBridge(nullptr);
+        m_toasts.clear();
+        m_shell->openOnboarding();
         QCOMPARE(m_toasts.size(), 1);
     }
 

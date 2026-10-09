@@ -88,6 +88,8 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
     // [{ key: audio|notes|meta, label, path, usage, hint, error, locked }]
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
+    // Az „Első lépések” ablak innen is újranyitható (csak a főablak folyamatában; demóban látszik).
+    Q_PROPERTY(bool onboardingAvailable READ onboardingAvailable NOTIFY dialogsChanged)
 
     // ---- B02 Rögzítés ----
     Q_PROPERTY(QAbstractItemModel* devices READ devicesModel CONSTANT)
@@ -179,6 +181,7 @@ public:
     QString themeMode() const { return m_draftTheme; }
     void setThemeMode(const QString& mode);
     QVariantList folders() const;
+    bool onboardingAvailable() const;
 
     QAbstractItemModel* devicesModel() const;
     int deviceCount() const;
@@ -251,6 +254,8 @@ public:
     Q_INVOKABLE void setFolder(const QString& key, const QString& path);
     Q_INVOKABLE void openFolder(const QString& key);
     Q_INVOKABLE void openPeople();
+    // Az „Első lépések” ablak (Beállítások › Általános hivatkozás).
+    Q_INVOKABLE void openOnboarding();
 
     Q_INVOKABLE void toggleDevice(int row);
     // Üres név → vissza az alapértelmezett (rövidített) névre.

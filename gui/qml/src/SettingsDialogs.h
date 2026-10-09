@@ -32,6 +32,11 @@ public:
         openPeople();
     }
 
+    // Az „Első lépések” ablak (a Beállítások › Általános hivatkozása). Csak ott érhető el, ahol
+    // főablak fut (a híd nyitja); az önálló felvevőben és a `tanara --settings` módban nem.
+    virtual bool canOpenOnboarding() const { return false; }
+    virtual void openOnboarding() {}
+
     // ---- Tanara Cloud: a meglévő (modális) Widgets-folyamatok ----
     virtual bool cloudLogin() = 0;                        // true = bejelentkezett
     virtual void cloudTopup() = 0;                        // feltöltés-link / „Írj nekünk”

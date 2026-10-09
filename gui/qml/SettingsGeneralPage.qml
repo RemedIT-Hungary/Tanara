@@ -238,4 +238,55 @@ Column {
             }
         }
     }
+
+    // ---- ELSŐ LÉPÉSEK (kis hivatkozás; csak a főablak folyamatában) ----
+    Rectangle { visible: onboardingRow.visible; width: parent.width; height: 1; color: Theme.border }
+    Row {
+        id: onboardingRow
+        visible: root.vm ? root.vm.onboardingAvailable : false
+        width: parent.width
+        spacing: 6
+        topPadding: -6
+        TLabel {
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("Az első indításkor látott bevezető:")
+            muted: true
+            font.pixelSize: Theme.fontSmall
+        }
+        T.AbstractButton {
+            id: onboardingLink
+            objectName: "onboardingLink"
+            anchors.verticalCenter: parent.verticalCenter
+            width: onboardingLinkRow.implicitWidth + 12
+            height: 28
+            hoverEnabled: true
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Link
+            Accessible.name: qsTr("Első lépések")
+            onClicked: root.vm.openOnboarding()
+            Keys.onReturnPressed: click()
+            Keys.onSpacePressed: click()
+            background: Rectangle {
+                radius: Theme.radiusControl
+                color: Theme.stateLayer
+                opacity: onboardingLink.down ? Theme.pressedOpacity : onboardingLink.hovered ? Theme.hoverOpacity : 0
+                TFocusRing { visible: onboardingLink.visualFocus }
+            }
+            contentItem: Item {
+                Row {
+                    id: onboardingLinkRow
+                    anchors.centerIn: parent
+                    spacing: 4
+                    TLabel {
+                        text: qsTr("Első lépések")
+                        color: Theme.accent
+                        font.pixelSize: Theme.fontSmall
+                        font.weight: Theme.weightMedium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    TIcon { name: "arrow-right"; size: 14; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                }
+            }
+        }
+    }
 }

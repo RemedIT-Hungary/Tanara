@@ -67,6 +67,9 @@ public:
         Q_UNUSED(tagId);
         openTags();
     }
+    // Az „Első lépések” ablak (OnboardingWindow.qml) — kézi újranyitás (Fájl menü). Az
+    // alapértelmezés semmit sem tesz (a tesztek ál-hídjainak nem kell tudniuk róla).
+    Q_INVOKABLE virtual void openOnboarding() {}
     Q_INVOKABLE virtual void openRecorder() = 0;
     // Natív fájlválasztó hangfájlhoz; üres, ha a felhasználó visszalépett.
     Q_INVOKABLE virtual QString pickAudioFile() = 0;

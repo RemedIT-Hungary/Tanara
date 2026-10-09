@@ -34,6 +34,9 @@ public:
     void setPeopleOpener(std::function<void(const QString&)> opener) { m_peopleOpener = std::move(opener); }
     // Ugyanez a Címkék ablakra (a főablak hídja nyitja, hogy a könyvtár-szűrés oda menjen).
     void setTagsOpener(std::function<void(const QString&)> opener) { m_tagsOpener = std::move(opener); }
+    // Az „Első lépések” ablakot a főablak hídja nyitja; nélküle (önálló felvevő, `tanara
+    // --settings`) a Beállítások hivatkozása nem látszik.
+    void setOnboardingOpener(std::function<void()> opener) { m_onboardingOpener = std::move(opener); }
     // A modális Widgets-ablakok ehhez az ablakhoz (a Beállításokhoz) tartozzanak.
     void setOwnerWindow(QWindow* window);
 
@@ -45,6 +48,8 @@ public:
     // A Címkék ablaka (a Beállítások „Címkék kezelése” hivatkozásához; a SettingsDialogs
     // felületre a Beállítások-szelet veszi fel). Főablak nélkül saját ablak, könyvtár-szűrés nélkül.
     void openTags(const QString& tagId = QString());
+    bool canOpenOnboarding() const override { return bool(m_onboardingOpener); }
+    void openOnboarding() override { if (m_onboardingOpener) m_onboardingOpener(); }
     bool cloudLogin() override;
     void cloudTopup() override;
     bool cloudPickModel(const QString& kind) override;
@@ -65,6 +70,7 @@ private:
     std::function<void(const QString&)> m_peopleOpener;
     tanara_qml::TagsWindowHost* m_tags = nullptr;
     std::function<void(const QString&)> m_tagsOpener;
+    std::function<void()> m_onboardingOpener;
 };
 
 } // namespace tanara_gui

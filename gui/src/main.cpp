@@ -358,6 +358,8 @@ int main(int argc, char** argv) {
     // Tanara Cloud Widgets-ablakai.
     tanara_gui::QmlShellBridge bridge(&controller);
     tanara_qml::AppContext::instance()->setBridge(&bridge);
+    // QA-szkript módban az „Első lépések” nem nyílik meg magától (a szkript a főablakot vezeti).
+    bridge.setAutoOnboarding(!qaScript);
 
     // QA-szkript mód: friss homokozóban az index üres → a lemezről újraépítjük.
     if (qaScript)

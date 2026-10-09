@@ -359,6 +359,12 @@ ApplicationWindow {
                             iconName: "users"
                             onTriggered: shellActions.openPeople()
                         }
+                        TMenuItem {
+                            objectName: "onboardingItem"
+                            text: qsTr("Első lépések…")
+                            iconName: "sparkles"
+                            onTriggered: shellActions.openOnboarding()
+                        }
                         TMenuSeparator {}
                         TMenuItem {
                             text: qsTr("Kilépés")
