@@ -75,7 +75,7 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
     case GroupFirstRole: return i == 0 || m_vm->m_rows.at(i - 1).group != r.group;
     case IconRole:       return m_vm->iconFor(r);
     case SelectedRole:   return r.selected || r.recorded;
-    case LockedRole:     return r.recorded || r.disconnected;
+    case LockedRole:     return r.disconnected;
     case DefaultRole:    return r.info.isDefault;
     case AppRole:        return r.app;
     case LevelRole:      return r.level;
@@ -83,8 +83,10 @@ QVariant RecorderDeviceModel::data(const QModelIndex& index, int role) const
     case StatusRole:     return r.status;
     case StatusTextRole: return r.statusText;
     case ToggleableRole: {
+        // Felvétel közben a rögzített sáv is kikapcsolható (a fájlja lezárul; újra bekapcsolva
+        // új szakasz indul). A leválasztott eszköz sora zárolt, amíg vissza nem kerül.
         const QString st = m_vm->m_state;
-        if (r.recorded || r.disconnected) return false;
+        if (r.disconnected) return false;
         return st == QLatin1String("idle") || st == QLatin1String("recording");
     }
     }
@@ -288,9 +290,16 @@ void RecorderViewModel::attach()
     });
     connect(c, &AppController::recordingTrackClosed, this, [this](const QString& name) {
         const int i = rowOf(name);
+        // Leválasztott eszköz, vagy a felhasználó kapcsolta ki (az utóbbi újra bekapcsolható).
+        const bool unplugged = !m_controller
+            || m_controller->disconnectedRecordingDeviceNames().contains(name);
         if (i >= 0) {
             m_rows[i].recorded = false;
-            m_rows[i].disconnected = true;
+            m_rows[i].disconnected = unplugged;
+            if (!unplugged) {
+                m_rows[i].selected = false;
+                m_rows[i].silentSince = m_clock.elapsed();
+            }
             m_rows[i].rms = m_rows[i].peak = 0.f;
             refreshRow(i, false);
         } else {
@@ -608,7 +617,7 @@ void RecorderViewModel::toggleDevice(int row)
 {
     if (row < 0 || row >= m_rows.size()) return;
     Row& r = m_rows[row];
-    if (r.recorded || r.disconnected) return;           // rögzített sáv nem kapcsolható ki
+    if (r.disconnected) return;                          // leválasztott eszköz: nincs mit kapcsolni
     if (m_state == QLatin1String("idle")) {
         r.selected = !r.selected;
         r.silentSince = m_clock.elapsed();
@@ -618,8 +627,21 @@ void RecorderViewModel::toggleDevice(int row)
         emit countsChanged();
         persistSelection();
     } else if (m_state == QLatin1String("recording")) {
-        // Felvétel közben csak BE kapcsolható: a sávja attól a pillanattól indul.
-        if (!m_controller) { r.recorded = r.selected = true; refreshRow(row, false); emit countsChanged(); return; }
+        // Felvétel közben: BE → a sávja attól a pillanattól indul (egy korábban kikapcsolt
+        // eszköznél új szakasz); KI → a sáv fájlja itt lezárul, a felvétel megy tovább.
+        if (!m_controller) {
+            r.recorded = r.selected = !r.recorded;
+            refreshRow(row, false);
+            emit countsChanged();
+            return;
+        }
+        if (r.recorded) {
+            if (!m_controller->stopRecordingDevice(r.info.name)) {
+                m_errorText = tr("Az utolsó rögzített sáv nem kapcsolható ki — a felvételt a Leállítás gombbal fejezheted be.");
+                emit errorChanged();
+            }
+            return;
+        }
         if (!m_controller->addRecordingDevice(r.info)) {
             m_errorText = tr("Nem sikerült sávot indítani ezen az eszközön: %1").arg(r.friendly);
             emit errorChanged();

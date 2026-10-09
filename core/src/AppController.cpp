@@ -484,6 +484,7 @@ struct AppController::Impl {
     QStringList monitorNames;                   // a figyelő aktuális eszköz-halmaza
     QStringList recNames;                       // a felvétel sávjai (index → eszköznév)
     QStringList recClosed;                      // menet közben leválasztott eszközök
+    QStringList recOff;                         // menet közben a felhasználó kikapcsolta
     QHash<QString, int> recMissing;             // hány egymást követő felsorolásból hiányzott
     bool        autoMixdown = true;             // felvétel utáni automatikus lekeverés
     QHash<QString, MergedTranscript> mergedCache;
@@ -1683,7 +1684,8 @@ void AppController::restartLevelMonitor(bool force) {
     QStringList names;
     for (const AudioDeviceInfo& dev : d->devices->captureDevices()) {
         // Felvétel alatt a sávon lévő eszközöket a RecordingSession birtokolja és méri.
-        if (recording && d->recNames.contains(dev.name) && !d->recClosed.contains(dev.name))
+        if (recording && d->recNames.contains(dev.name) && !d->recClosed.contains(dev.name)
+            && !d->recOff.contains(dev.name))
             continue;
         list.push_back(dev);
         names << dev.name;
@@ -1702,7 +1704,7 @@ void AppController::handleDeviceSetChange() {
         bool recheck = false;
         const QStringList rec = d->recNames;
         for (const QString& name : rec) {
-            if (d->recClosed.contains(name)) continue;
+            if (d->recClosed.contains(name) || d->recOff.contains(name)) continue;
             bool found = false;
             for (const AudioDeviceInfo& dev : present)
                 if (dev.name == name) { found = true; break; }
@@ -1727,7 +1729,7 @@ void AppController::handleDeviceSetChange() {
 QStringList AppController::recordingDeviceNames() const {
     QStringList out;
     for (const QString& n : d->recNames)
-        if (!d->recClosed.contains(n)) out << n;
+        if (!d->recClosed.contains(n) && !d->recOff.contains(n) && !out.contains(n)) out << n;
     return out;
 }
 
@@ -1736,6 +1738,15 @@ QStringList AppController::disconnectedRecordingDeviceNames() const { return d->
 bool AppController::addRecordingDevice(const AudioDeviceInfo& device) {
     if (d->state != RecordingState::Recording || !d->session) return false;
     return d->session->addDevice(device);
+}
+
+bool AppController::stopRecordingDevice(const QString& deviceName) {
+    if (d->state != RecordingState::Recording || !d->session) return false;
+    const QStringList open = recordingDeviceNames();
+    if (!open.contains(deviceName) || open.size() < 2) return false;   // az utolsó nyitott sáv marad
+    if (!d->recOff.contains(deviceName)) d->recOff << deviceName;
+    d->session->closeTrack(deviceName);   // → trackClosed → recordingTrackClosed
+    return true;
 }
 
 void AppController::setSecret(const QString& name, const QString& value) { d->keyStore.set(name, value); }
@@ -1754,6 +1765,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     if (d->monitor) d->monitor->stop();
     d->recNames.clear();
     d->recClosed.clear();
+    d->recOff.clear();
     d->recMissing.clear();
     QVector<AudioDeviceInfo> use = devices;
     if (use.isEmpty()) {
@@ -1802,6 +1814,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     connect(sess, &RecordingSession::trackAdded, this, [this](int, const QString& name) {
         d->recNames << name;
         d->recClosed.removeAll(name);   // visszadugott, újra felvett eszköz
+        d->recOff.removeAll(name);      // újra bekapcsolt eszköz: új szakasz
         if (!d->lastDevices.contains(name)) {
             QStringList names = d->lastDevices;
             names << name;
@@ -1811,7 +1824,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         emit recordingTrackAdded(name);
     });
     connect(sess, &RecordingSession::trackClosed, this, [this](int, const QString& name) {
-        if (!d->recClosed.contains(name)) d->recClosed << name;
+        // A felhasználó kapcsolta ki → nem „leválasztott”; a figyelő újra méri a szintjét.
+        if (!d->recOff.contains(name) && !d->recClosed.contains(name)) d->recClosed << name;
+        restartLevelMonitor(/*force*/ false);
         emit recordingTrackClosed(name);
     });
     // Csend-figyelés: bármely sáv beszéd-szintű RMS-e „hangos” → időbélyeg frissül,
@@ -1849,6 +1864,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->state = RecordingState::Idle;
         d->recNames.clear();
         d->recClosed.clear();
+        d->recOff.clear();
         emit recordingStateChanged(d->state);
         restartLevelMonitor(/*force*/ true);
     });
@@ -1864,6 +1880,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         d->state = RecordingState::Idle;
         d->recNames.clear();
         d->recClosed.clear();
+        d->recOff.clear();
         emit recordingFinished(m);
         emit recordingStateChanged(d->state);
         restartLevelMonitor(/*force*/ true);

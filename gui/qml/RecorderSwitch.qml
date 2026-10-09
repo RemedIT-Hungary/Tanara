@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Templates as T
 
 // A felvevő eszköz-kapcsolója (30×18). Be: accent; ki: borderStrong körvonal.
-// locked: épp rögzített sáv — lakat a gombban, nem kapcsolható ki.
+// locked: leválasztott eszköz sávja — lakat a gombban, nem kapcsolható.
 T.Switch {
     id: control
     property bool locked: false

@@ -91,8 +91,8 @@ private slots:
         QCOMPARE(vm.state(), QStringLiteral("recording"));
         QCOMPARE(vm.trackCount(), 3);
         QCOMPARE(vm.elapsedText(), QStringLiteral("00:12:47"));
-        QVERIFY(role(vm, 0, "locked").toBool());          // rögzített sáv: zárolt
-        QVERIFY(!role(vm, 0, "toggleable").toBool());
+        QVERIFY(!role(vm, 0, "locked").toBool());         // rögzített sáv: kikapcsolható
+        QVERIFY(role(vm, 0, "toggleable").toBool());
         QVERIFY(role(vm, 1, "toggleable").toBool());      // nem rögzített: bekapcsolható
         QCOMPARE(role(vm, 3, "status").toString(), QStringLiteral("silentWarn"));
 
@@ -129,12 +129,19 @@ private slots:
         vm.setTitle(QString());                            // üresre nem írható
         QCOMPARE(vm.title(), QStringLiteral("Heti státusz"));
 
-        // Felvétel közben a rögzített sáv nem kapcsolható ki, más bekapcsolható.
+        // Felvétel közben a nem rögzített eszköz bekapcsolható, a rögzített kikapcsolható (és
+        // újra be: új szakasz); egyik sem zárolt.
         vm.setDemoState(QStringLiteral("R04"));
+        vm.toggleDevice(1);
+        QVERIFY(role(vm, 1, "selected").toBool());
+        QVERIFY(!role(vm, 1, "locked").toBool());
+        QVERIFY(role(vm, 1, "toggleable").toBool());
+        QCOMPARE(vm.trackCount(), 4);
+        vm.toggleDevice(0);
+        QVERIFY(!role(vm, 0, "selected").toBool());
+        QCOMPARE(vm.trackCount(), 3);
         vm.toggleDevice(0);
         QVERIFY(role(vm, 0, "selected").toBool());
-        vm.toggleDevice(1);
-        QVERIFY(role(vm, 1, "locked").toBool());
         QCOMPARE(vm.trackCount(), 4);
     }
 
@@ -351,7 +358,7 @@ private slots:
             vm.start();
             QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("recording"), 8000);
             QCOMPARE(vm.trackCount(), 1);
-            QVERIFY(role(vm, 0, "locked").toBool());
+            QVERIFY(role(vm, 0, "selected").toBool());
 
             // 3) Felvétel közben is jön szint a rögzített ÉS a nem rögzített eszközökről.
             seen.clear();
@@ -363,7 +370,7 @@ private slots:
             // 4) Második eszköz bekapcsolása felvétel közben → új sáv.
             vm.toggleDevice(1);
             QTRY_COMPARE_WITH_TIMEOUT(vm.trackCount(), 2, 5000);
-            QVERIFY(role(vm, 1, "locked").toBool());
+            QVERIFY(role(vm, 1, "selected").toBool());
             QVERIFY(vm.errorText().isEmpty());
             vm.setTitle(QStringLiteral("Élő teszt (átnevezve)"));   // átnevezés felvétel közben
             QTest::qWait(1500);

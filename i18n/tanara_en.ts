@@ -2182,8 +2182,8 @@
         <translation>The device was disconnected; its track is closed</translation>
     </message>
     <message>
-        <source>Rögzített sáv: felvétel közben nem kapcsolható ki</source>
-        <translation>Track being recorded: cannot be turned off during recording</translation>
+        <source>Kikapcsolás: a sáv itt lezárul; újra bekapcsolva új szakasz indul</source>
+        <translation>Turn off: the track ends here; turning it on again starts a new segment</translation>
     </message>
     <message>
         <source>Bekapcsolás: a sávja ettől a pillanattól indul</source>
@@ -7050,6 +7050,10 @@
 </context>
 <context>
     <name>tanara_qml::RecorderViewModel</name>
+    <message>
+        <source>Az utolsó rögzített sáv nem kapcsolható ki — a felvételt a Leállítás gombbal fejezheted be.</source>
+        <translation>The last recorded track cannot be turned off — use Stop to end the recording.</translation>
+    </message>
     <message>
         <source>Megbeszélés</source>
         <translation>Meeting</translation>

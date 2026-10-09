@@ -859,7 +859,7 @@ Item {
                                     locked: dev.locked
                                     enabled: dev.toggleable
                                     toolTipText: dev.status === "disconnected" ? qsTr("Az eszközt leválasztották; a sávja lezárult")
-                                        : dev.locked ? qsTr("Rögzített sáv: felvétel közben nem kapcsolható ki")
+                                        : root.recording && dev.selected ? qsTr("Kikapcsolás: a sáv itt lezárul; újra bekapcsolva új szakasz indul")
                                         : root.recording ? qsTr("Bekapcsolás: a sávja ettől a pillanattól indul") : ""
                                     onToggled: {
                                         root.vm.toggleDevice(dev.index)

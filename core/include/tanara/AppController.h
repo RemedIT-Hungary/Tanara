@@ -106,8 +106,9 @@ public:
     QStringList lastUsedDeviceNames() const;
 
     // ---- felvevő (lebegő felvevő-ablak) -------------------------------------------------
-    // A futó felvétel ÉLŐ sávjainak eszköznevei (sáv-sorrendben), ill. a felvétel közben
-    // leválasztott (biztonságosan lezárt) sávok eszköznevei. Felvételen kívül üresek.
+    // A futó felvétel ÉLŐ (nyitott) sávjainak eszköznevei (sáv-sorrendben), ill. a felvétel
+    // közben leválasztott (biztonságosan lezárt) sávok eszköznevei. A felhasználó által
+    // kikapcsolt sáv egyikben sincs. Felvételen kívül üresek.
     QStringList recordingDeviceNames() const;
     QStringList disconnectedRecordingDeviceNames() const;
 
@@ -182,10 +183,16 @@ public slots:
     void startLevelMonitoring();
     void stopLevelMonitoring();
 
-    // Felvétel KÖZBEN egy további eszköz sávjának indítása (a sáv attól a pillanattól szól;
-    // a fájl elejét csend tölti ki, így együtt áll a többivel). false, ha nem megy felvétel
-    // vagy az eszköz nem nyitható. Siker: recordingTrackAdded + a kijelölés mentése.
+    // Felvétel KÖZBEN egy további eszköz sávjának indítása (a sáv attól a pillanattól szól; a
+    // fájl a megnyitástól tart, a kezdete a Track::startOffsetMs). Egy korábban kikapcsolt /
+    // leválasztott eszköz újra-bekapcsolása az eszköz újabb SZAKASZA (új fájl). false, ha nem
+    // megy felvétel vagy az eszköz nem nyitható. Siker: recordingTrackAdded + a kijelölés mentése.
     bool addRecordingDevice(const tanara::AudioDeviceInfo& device);
+    // Felvétel KÖZBEN egy eszköz sávjának kikapcsolása: a fájlja itt lezárul (a meeting része
+    // marad), a felvétel a többi sávval megy tovább; újra bekapcsolva új szakasz indul. false,
+    // ha nem megy felvétel, az eszköz nincs (nyitott) sávon, vagy ez az utolsó nyitott sáv.
+    // Siker: recordingTrackClosed (a név NEM kerül a leválasztottak közé).
+    bool stopRecordingDevice(const QString& deviceName);
 
     // A felvétel utáni AUTOMATIKUS lekeverés engedélyezése ebben a folyamatban (alapból be).
     // Az önálló felvevő-folyamat (tanara --record) kikapcsolja: az a felvétel után kilép, a
