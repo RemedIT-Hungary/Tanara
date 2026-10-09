@@ -218,6 +218,9 @@ Nézzem át kettejük sorait…?"). The review compares each of their unconfirme
 with the voices of their confirmed lines and marks the doubtful lines as uncertain,
 with the other speaker as the suggestion. It does not move lines. You can also start
 it from a speaker's panel ("Átnézés másik beszélővel…"). It is one undo step.
+Both this review and the full re-check also use the stored voiceprints of the named
+person: a print made in this meeting counts like confirmed lines, older prints count
+less, and the result message lists what the comparison was based on.
 
 The Summary tab has two modes:
 
