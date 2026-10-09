@@ -184,6 +184,10 @@ struct Voiceprint {
     // A beágyazó modell (VoiceModelRegistry id). JSON "model"; hiányzik → "campplus". Egy minta
     // (sampleRef) minden engedélyezett modellel külön lenyomatot kap (azonos sampleRef/createdAt).
     QString model{QStringLiteral("campplus")};
+    // Minden hozzájáruló hangszakasz "<fájl>#startMs-endMs" alakban (megbeszélés-idő), ha a
+    // lenyomat több szakaszból készült (JSON "sourceRefs"). A sampleRef a lejátszandó (leghosszabb)
+    // szakasz; a lusta pótlás (más modellel) ezekből számol újra, ennek híján a sampleRef-ből.
+    QStringList sourceRefs;
 };
 
 // Egy párosítás eredménye: melyik személy, milyen (cosine) pontszámmal.

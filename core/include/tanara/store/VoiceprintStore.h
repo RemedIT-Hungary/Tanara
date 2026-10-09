@@ -55,6 +55,22 @@ public:
     // modellel készült lenyomat (a lusta pótláshoz). Üres sampleRef-ű lenyomat nem számít.
     QStringList printsMissingModel(const QString& name, const QString& modelId) const;
 
+    // Testvér-lenyomatok: ugyanaz a minta más modellekkel (azonos sampleRef + sourceMeetingId +
+    // createdAt, KÜLÖNBÖZŐ modell). A kulcs a hármast fogja össze.
+    static QString siblingKey(const Voiceprint& p);
+    // Lenyomatok testvér-csoportokba (egy csoport = egy minta): azonos kulcson belül minden
+    // modellből legfeljebb egy lenyomat; az azonos modellű ismétlés új csoportot nyit. Üres
+    // sampleRef → saját csoport. A csoportok az első tagjuk sorrendjében, belül modell szerint.
+    static QVector<QVector<Voiceprint>> siblingGroups(const QVector<Voiceprint>& prints);
+    // A lenyomat testvér-csoportja a gazdájánál (önmagával együtt); üres, ha nincs ilyen id.
+    QVector<Voiceprint> siblingsOf(const QString& printId, QString* owner = nullptr) const;
+    // A személy mintái (csoportonként egy képviselő: a legkisebb modell-id), amelyekhez még
+    // nincs az adott modellel lenyomat (a printsMissingModel testvér-pontos párja: két meeting
+    // azonos nevű fájljának azonos szakasza sem keveredik).
+    QVector<Voiceprint> samplesMissingModel(const QString& name, const QString& modelId) const;
+    // A személy mintáinak (testvér-csoportjainak) száma.
+    int sampleCount(const QString& name) const;
+
     // Egy lenyomat és a gazdája id alapján; false, ha nincs ilyen.
     bool findPrint(const QString& printId, QString* owner, Voiceprint* print) const;
     // Ha a fájl a lemezen megváltozott (másik folyamat írta), újraolvassa.

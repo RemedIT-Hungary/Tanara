@@ -7,6 +7,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QHash>
+#include <QSet>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -254,6 +256,63 @@ QStringList VoiceprintStore::printsMissingModel(const QString& name, const QStri
     return out;
 }
 
+QString VoiceprintStore::siblingKey(const Voiceprint& p)
+{
+    return p.sampleRef + QChar(0x1f) + p.sourceMeetingId + QChar(0x1f) + p.createdAt;
+}
+
+QVector<QVector<Voiceprint>> VoiceprintStore::siblingGroups(const QVector<Voiceprint>& prints)
+{
+    QVector<QVector<Voiceprint>> groups;
+    QHash<QString, QVector<int>> byKey;   // kulcs → a csoportok indexei
+    for (const Voiceprint& p : prints) {
+        if (p.sampleRef.isEmpty()) { groups.append(QVector<Voiceprint>{p}); continue; }
+        QVector<int>& idx = byKey[siblingKey(p)];
+        int target = -1;
+        for (int g : std::as_const(idx)) {
+            bool hasModel = false;
+            for (const Voiceprint& q : std::as_const(groups[g]))
+                if (q.model == p.model) { hasModel = true; break; }
+            if (!hasModel) { target = g; break; }
+        }
+        if (target < 0) { target = int(groups.size()); groups.append(QVector<Voiceprint>()); idx.append(target); }
+        groups[target].append(p);
+    }
+    for (QVector<Voiceprint>& g : groups)
+        std::stable_sort(g.begin(), g.end(), [](const Voiceprint& a, const Voiceprint& b) { return a.model < b.model; });
+    return groups;
+}
+
+QVector<Voiceprint> VoiceprintStore::siblingsOf(const QString& printId, QString* owner) const
+{
+    QString who;
+    Voiceprint print;
+    if (!findPrint(printId, &who, &print)) return {};
+    if (owner) *owner = who;
+    for (const QVector<Voiceprint>& g : siblingGroups(printsFor(who)))
+        for (const Voiceprint& p : g)
+            if (p.id == printId) return g;
+    return {print};
+}
+
+QVector<Voiceprint> VoiceprintStore::samplesMissingModel(const QString& name, const QString& modelId) const
+{
+    QVector<Voiceprint> out;
+    for (const QVector<Voiceprint>& g : siblingGroups(printsFor(name))) {
+        if (g.first().sampleRef.isEmpty()) continue;   // nincs mintája: nem pótolható
+        bool has = false;
+        for (const Voiceprint& p : g)
+            if (p.model == modelId) { has = true; break; }
+        if (!has) out.append(g.first());
+    }
+    return out;
+}
+
+int VoiceprintStore::sampleCount(const QString& name) const
+{
+    return int(siblingGroups(printsFor(name)).size());
+}
+
 double VoiceprintStore::cosineSimilarity(const QVector<float>& a, const QVector<float>& b)
 {
     if (a.isEmpty() || a.size() != b.size())
@@ -333,6 +392,8 @@ void VoiceprintStore::load()
             vp.createdAt = o.value(QStringLiteral("createdAt")).toString();
             vp.model = o.value(QStringLiteral("model")).toString(VoiceModelRegistry::defaultModelId());
             if (vp.model.isEmpty()) vp.model = VoiceModelRegistry::defaultModelId();
+            for (const QJsonValue& r : o.value(QStringLiteral("sourceRefs")).toArray())
+                if (!r.toString().isEmpty()) vp.sourceRefs << r.toString();
             if (!vp.embedding.isEmpty())
                 prints.append(vp);
         }
@@ -369,6 +430,8 @@ void VoiceprintStore::persist()
             o[QStringLiteral("sampleRef")] = vp.sampleRef;
             o[QStringLiteral("createdAt")] = vp.createdAt;
             o[QStringLiteral("model")] = vp.model;
+            if (!vp.sourceRefs.isEmpty())
+                o[QStringLiteral("sourceRefs")] = QJsonArray::fromStringList(vp.sourceRefs);
             prints.append(o);
         }
         po[QStringLiteral("prints")] = prints;

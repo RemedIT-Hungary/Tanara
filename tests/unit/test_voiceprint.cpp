@@ -20,6 +20,8 @@ private slots:
     void multiModel_maxPerModelThenMean();
     void multiModel_noCommonModel();
     void printsMissingModel_listsSampleRefs();
+    void siblingGroups_andSamplesMissingModel();
+    void sourceRefs_persist();
 
 private:
     static Voiceprint mp(const QString& model, const QVector<float>& e, const QString& ref = QString()) {
@@ -217,6 +219,65 @@ void VoiceprintTest::printsMissingModel_listsSampleRefs() {
     QCOMPARE(store.printsMissingModel(QStringLiteral("Anna"), QStringLiteral("third")),
              QStringList({QStringLiteral("m/a.ogg#0-5"), QStringLiteral("m/b.ogg#10-20")}));
     QVERIFY(store.printsMissingModel(QStringLiteral("Senki"), QStringLiteral("other")).isEmpty());
+}
+
+void VoiceprintTest::siblingGroups_andSamplesMissingModel() {
+    QTemporaryDir dir;
+    VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
+    auto withMeta = [](Voiceprint p, const QString& meeting, const QString& created) {
+        p.sourceMeetingId = meeting;
+        p.createdAt = created;
+        return p;
+    };
+    const QString ref = QStringLiteral("mixdown.mp3#10-20");
+    // Ugyanaz a minta két modellel (testvérek), és ugyanaz a fájlnév+szakasz MÁS meetingből.
+    store.addPrint("Anna", withMeta(mp("campplus", {1, 0}, ref), "m1", "t1"));
+    store.addPrint("Anna", withMeta(mp("wespeaker", {1, 0, 0}, ref), "m1", "t1"));
+    store.addPrint("Anna", withMeta(mp("campplus", {0, 1}, ref), "m2", "t1"));
+    // Azonos kulcs, azonos modell: két külön minta (nem testvérek).
+    store.addPrint("Anna", withMeta(mp("campplus", {0.6f, 0.8f}, ref), "m1", "t1"));
+    store.addPrint("Anna", mp("campplus", {0, 1}));   // sampleRef nélkül: saját csoport
+
+    const auto groups = VoiceprintStore::siblingGroups(store.printsFor("Anna"));
+    QCOMPARE(groups.size(), 4);
+    QCOMPARE(groups[0].size(), 2);
+    QCOMPARE(groups[0][0].model, QStringLiteral("campplus"));
+    QCOMPARE(groups[0][1].model, QStringLiteral("wespeaker"));
+    QCOMPARE(store.sampleCount("Anna"), 4);
+
+    // A sampleRef-szintű lista összemosná a két meetinget; a testvér-pontos nem.
+    QVERIFY(store.printsMissingModel("Anna", "wespeaker").isEmpty());
+    const QVector<Voiceprint> missing = store.samplesMissingModel("Anna", "wespeaker");
+    QCOMPARE(missing.size(), 2);                   // m2 és az azonos kulcsú második campplus
+    for (const Voiceprint& p : missing) QCOMPARE(p.model, QStringLiteral("campplus"));
+    QCOMPARE(store.samplesMissingModel("Anna", "campplus").size(), 0);
+
+    const QVector<Voiceprint> sibs = store.siblingsOf(groups[0][1].id);
+    QCOMPARE(sibs.size(), 2);
+    QString owner;
+    QCOMPARE(store.siblingsOf(groups[2].first().id, &owner).size(), 1);
+    QCOMPARE(owner, QStringLiteral("Anna"));
+    QVERIFY(store.siblingsOf("nincs").isEmpty());
+}
+
+void VoiceprintTest::sourceRefs_persist() {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("vp.json"));
+    {
+        VoiceprintStore store(path);
+        Voiceprint p = mp("campplus", {1, 0}, QStringLiteral("mixdown.mp3#0-9000"));
+        p.sourceRefs = {QStringLiteral("mixdown.mp3#0-9000"), QStringLiteral("mixdown.mp3#12000-15000")};
+        store.addPrint("Anna", p);
+        store.addPrint("Béla", mp("campplus", {0, 1}, QStringLiteral("x.ogg#1-2")));
+    }
+    VoiceprintStore again(path);
+    QCOMPARE(again.printsFor("Anna").first().sourceRefs,
+             QStringList({QStringLiteral("mixdown.mp3#0-9000"), QStringLiteral("mixdown.mp3#12000-15000")}));
+    QVERIFY(again.printsFor("Béla").first().sourceRefs.isEmpty());
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QByteArray raw = f.readAll();
+    QCOMPARE(raw.count("sourceRefs"), 1);           // üresen nem íródik ki
 }
 
 QTEST_GUILESS_MAIN(VoiceprintTest)

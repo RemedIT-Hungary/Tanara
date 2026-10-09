@@ -54,7 +54,8 @@ struct UndoStep {
     PeopleUndoKind kind = PeopleUndoKind::None;
     QString person;         // minta: a (korábbi) gazda; becenév / átnevezés: a személy (régi név)
     QString other;          // áthelyezés: a cél; átnevezés: az új név
-    Voiceprint print;       // minta-lépéseknél
+    Voiceprint print;       // minta-lépéseknél (a kiválasztott lenyomat)
+    QVector<Voiceprint> prints;   // …és minden testvére (ugyanaz a minta más modellekkel), vele együtt
     QString detail;
     QString alias;
     int aliasIndex = -1;
@@ -116,7 +117,7 @@ struct PeopleService::Private {
             r.aliases = d.aliases;
             r.note = d.note;
         }
-        r.sampleCount = voiceprints ? voiceprints->printCount(name) : 0;
+        r.sampleCount = voiceprints ? voiceprints->sampleCount(name) : 0;
         return r;
     }
 
@@ -175,7 +176,19 @@ struct PeopleService::Private {
     {
         if (factoryInjected) return factory;
         if (!controller || !controller->voiceIdentificationAvailable()) return {};
-        return voiceUtteranceEmbedderFactory(controller->voiceModelPath());
+        return controller->utteranceEmbedderFactory();
+    }
+
+    // Ideiglenes szerkesztő a lenyomat-műveletekhez: a használt modellekkel (a beinjektált gyárnál
+    // a szerkesztő alapértelmezése marad).
+    void configureEditor(SpeakerEditor& ed, const UtteranceEmbedderFactory& f) const
+    {
+        if (!factoryInjected && controller) {
+            const QStringList active = controller->activeVoiceModelIds();
+            ed.setVoiceModelIds(active.isEmpty() && controller->settings()
+                                    ? controller->settings()->enabledVoiceModels() : active);
+        }
+        if (f) ed.setEmbedderFactory(f);
     }
 
     // A személy beszélő-kulcsai egy megnyitott szerkesztőben.
@@ -265,7 +278,12 @@ QVector<VoiceSample> PeopleService::samples(const QString& name) const
     QVector<VoiceSample> out;
     if (!d->voiceprints) return out;
     QHash<QString, Meeting> meetings;   // egy megbeszélést egyszer töltünk
-    for (const Voiceprint& vp : d->voiceprints->printsFor(name)) {
+    // Testvér-lenyomatok (ugyanaz a minta más modellekkel) egy mintaként: a képviselő a legkisebb
+    // modell-id-jű; a törlés / áthelyezés a testvérekre is hat.
+    QVector<Voiceprint> reps;
+    for (const QVector<Voiceprint>& g : VoiceprintStore::siblingGroups(d->voiceprints->printsFor(name)))
+        reps.append(g.first());
+    for (const Voiceprint& vp : std::as_const(reps)) {
         VoiceSample s;
         s.id = vp.id;
         s.person = name;
@@ -478,8 +496,15 @@ PeopleOpResult PeopleService::removeSample(const QString& printId)
     d->voiceprints->refresh();
     UndoStep step;
     step.kind = PeopleUndoKind::SampleRemoved;
-    if (!d->voiceprints->findPrint(printId, &step.person, &step.print)
-        || !d->voiceprints->removePrint(printId)) {
+    if (!d->voiceprints->findPrint(printId, &step.person, &step.print)) {
+        r.error = tr("Ez a minta már nincs meg.");
+        return r;
+    }
+    step.prints = d->voiceprints->siblingsOf(printId);
+    bool removed = false;
+    for (const Voiceprint& p : std::as_const(step.prints))
+        removed = d->voiceprints->removePrint(p.id) || removed;
+    if (!removed) {
         r.error = tr("Ez a minta már nincs meg.");
         return r;
     }
@@ -520,8 +545,11 @@ PeopleOpResult PeopleService::moveSample(const QString& printId, const QString& 
     if (d->stats) d->stats->refreshNow();
     step.marks = d->markStale(step.person, step.print.sourceMeetingId);
 
-    d->voiceprints->removePrint(printId);
-    d->voiceprints->addPrint(step.other, step.print);   // az azonosító megmarad
+    step.prints = d->voiceprints->siblingsOf(printId);   // a testvérek együtt mennek
+    for (const Voiceprint& p : std::as_const(step.prints)) {
+        d->voiceprints->removePrint(p.id);
+        d->voiceprints->addPrint(step.other, p);   // az azonosító megmarad
+    }
     if (d->people) d->people->add(step.other);
     if (d->store) step.detail = d->store->load(step.print.sourceMeetingId).title;
     d->push(step);
@@ -547,6 +575,7 @@ VoiceprintPlan PeopleService::voiceprintPlan(const QString& name) const
         ++plan.meetingsWithLines;
         // A meglévő szerkesztő-logika mondja meg, van-e elég biztos (nem kétes), hosszú sor.
         SpeakerEditor ed(d->store, d->people, d->voiceprints, pm.meetingId);
+        d->configureEditor(ed, {});
         qint64 best = 0;
         for (const QString& key : Private::speakerKeysOf(ed, name)) {
             const VoiceprintMaterial material = ed.voiceprintMaterial(key);
@@ -571,7 +600,7 @@ VoiceprintResult PeopleService::createVoiceprintFromMeeting(const QString& name,
     // Saját, ideiglenes szerkesztő-munkamenet: a főablakban esetleg nyitott szerkesztő
     // állapotához (undo-verem) nem nyúlunk; a lenyomat a közös tárolóba kerül.
     SpeakerEditor ed(d->store, d->people, d->voiceprints, meetingId);
-    ed.setEmbedderFactory(factory);
+    d->configureEditor(ed, factory);
     QString bestKey;
     qint64 bestMs = 0;
     for (const QString& key : Private::speakerKeysOf(ed, name)) {
@@ -604,7 +633,7 @@ MergePreview PeopleService::mergePreview(const QString& loser, const QString& su
         p.meetingCount = ids.size();
     }
     if (d->voiceprints)
-        p.sampleCount = d->voiceprints->printCount(loser) + d->voiceprints->printCount(survivor);
+        p.sampleCount = d->voiceprints->sampleCount(loser) + d->voiceprints->sampleCount(survivor);
     return p;
 }
 
@@ -633,7 +662,7 @@ PeopleOpResult PeopleService::merge(const QString& loserName, const QString& sur
     r.ok = true;
     r.name = survivor;
     r.meetings = d->stats ? d->stats->stats(survivor).meetingCount : 0;
-    r.samples = d->voiceprints ? d->voiceprints->printCount(survivor) : 0;
+    r.samples = d->voiceprints ? d->voiceprints->sampleCount(survivor) : 0;
     r.staleSummaries = marks.size();
     d->announceStale(marks);
     emit changed();
@@ -643,7 +672,7 @@ PeopleOpResult PeopleService::merge(const QString& loserName, const QString& sur
 DeletePreview PeopleService::deletePreview(const QString& name) const
 {
     DeletePreview p;
-    p.sampleCount = d->voiceprints ? d->voiceprints->printCount(name) : 0;
+    p.sampleCount = d->voiceprints ? d->voiceprints->sampleCount(name) : 0;
     if (!d->stats) return p;
     const PersonStats ps = d->stats->stats(name);
     p.meetingCount = ps.meetingCount;
@@ -675,7 +704,7 @@ PeopleOpResult PeopleService::removePerson(const QString& nameIn, bool keepSampl
     }
     if (d->stats) d->stats->refreshNow();
     r.meetings = d->stats ? d->stats->stats(name).meetingCount : 0;
-    r.samples = d->voiceprints ? d->voiceprints->printCount(name) : 0;
+    r.samples = d->voiceprints ? d->voiceprints->sampleCount(name) : 0;
     const QVector<StaleMark> marks = d->markStale(name);
 
     // „Hangminták megtartása névtelen személyként”: a minták a törlés ELŐTT egy új,
@@ -723,13 +752,17 @@ PeopleUndoInfo PeopleService::undo()
 
     switch (s.kind) {
     case PeopleUndoKind::SampleRemoved:
-        if (d->voiceprints) d->voiceprints->addPrint(s.person, s.print);
+        if (d->voiceprints)
+            for (const Voiceprint& p : s.prints.isEmpty() ? QVector<Voiceprint>{s.print} : s.prints)
+                d->voiceprints->addPrint(s.person, p);
         d->finish(false, true);
         break;
     case PeopleUndoKind::SampleMoved: {
         if (d->voiceprints) {
-            d->voiceprints->removePrint(s.print.id);
-            d->voiceprints->addPrint(s.person, s.print);
+            for (const Voiceprint& p : s.prints.isEmpty() ? QVector<Voiceprint>{s.print} : s.prints) {
+                d->voiceprints->removePrint(p.id);
+                d->voiceprints->addPrint(s.person, p);
+            }
         }
         // Ha a művelet hozta létre a cél-személyt, és azóta semmi nem kötődik hozzá, eltűnik.
         if (s.createdPerson && d->people && d->voiceprints && d->voiceprints->printCount(s.other) == 0

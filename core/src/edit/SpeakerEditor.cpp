@@ -1047,6 +1047,7 @@ struct SpeakerEditor::Private {
         QMap<QString, QVector<double>> sums;        // modelId → súlyozott összeg
         qint64 embeddedMs = 0, bestDur = -1;
         int best = -1;
+        QStringList sourceRefs;   // a ténylegesen beágyazott ablakok (a lusta pótláshoz)
         for (int i : picked) {
             const TranscriptLine& l = lines[i];
             const QStringList missing = missingModels(l.id);
@@ -1073,6 +1074,11 @@ struct SpeakerEditor::Private {
                 for (int k = 0; k < it->size(); ++k) sum[k] += double(dur) * double((*it)[k]);
             }
             embeddedMs += dur;
+            {
+                qint64 ws, we;
+                embedWindow(l, &ws, &we);
+                sourceRefs << QStringLiteral("%1#%2-%3").arg(audioRel).arg(ws).arg(we);
+            }
             if (l.endMs - l.startMs > bestDur) { bestDur = l.endMs - l.startMs; best = i; }
         }
         if (sync) cache.save(folder);
@@ -1093,6 +1099,7 @@ struct SpeakerEditor::Private {
             vp.sourceMeetingId = meetingId;
             vp.sourceTrack = QStringLiteral("mixdown");
             vp.sampleRef = sampleRef;
+            vp.sourceRefs = sourceRefs;
             vp.createdAt = createdAt;
             out.append(vp);
         }
