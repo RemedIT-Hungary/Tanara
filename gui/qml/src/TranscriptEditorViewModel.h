@@ -348,6 +348,10 @@ public:
     Q_INVOKABLE QVariantMap voiceprintMaterial(const QString& speakerKey) const;
     // { ok, message, printId, usedLines, usedSec, missingSec } — csak kifejezett műveletre készül.
     Q_INVOKABLE QVariantMap createVoiceprint(const QString& speakerKey);
+    // A sor felugrójának „Hanglenyomat-minta ebből a sorból” gombja. lineSampleInfo:
+    // { ok, reason, seconds, personName } — a gomb állapota és magyarázata.
+    Q_INVOKABLE QVariantMap lineSampleInfo(const QString& utteranceId) const;
+    Q_INVOKABLE QVariantMap createVoiceprintFromLine(const QString& utteranceId);
     // A most készített lenyomat visszavonása: pontosan az a lenyomat törlődik.
     Q_INVOKABLE bool removeVoiceprint(const QString& printId);
 

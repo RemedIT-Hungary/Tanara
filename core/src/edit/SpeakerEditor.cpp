@@ -1,4 +1,5 @@
 #include "tanara/edit/SpeakerEditor.h"
+#include "tanara/Logging.h"
 
 #include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"
@@ -164,12 +165,15 @@ struct SpeakerEditor::Private {
     // ---- betöltés -----------------------------------------------------------
     void load()
     {
+        QElapsedTimer perf;
+        perf.start();
         const Meeting m = store ? store->load(meetingId) : Meeting();
         folder = m.folder;
         hasSummary = m.hasSummary;
         speakerMap = m.speakerMap;
         audioPath = m.folder.isEmpty() ? QString() : mixdownPath(m);
         audioRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
+        const qint64 tMeeting = perf.elapsed();
 
         lines = folder.isEmpty() ? QVector<TranscriptLine>() : loadTranscriptLines(folder);
         indexById.clear();
@@ -178,12 +182,22 @@ struct SpeakerEditor::Private {
             indexById.insert(lines[i].id, i);
             if (!rawOrder.contains(lines[i].rawLabel)) rawOrder << lines[i].rawLabel;
         }
+        const qint64 tLines = perf.elapsed();
         ov = folder.isEmpty() ? SpeakerOverlay() : loadOverlayFor(folder, lines);
+        const qint64 tOverlay = perf.elapsed();
         cache = folder.isEmpty() ? UtteranceEmbeddingCache()
                                  : UtteranceEmbeddingCache::load(folder, ov.transcriptFingerprint);
+        const qint64 tCache = perf.elapsed();
         ++epoch;
         recomputeAssigned();
+        const qint64 tAssigned = perf.elapsed();
         recomputeUncertain();
+        qCDebug(lcPerf).noquote()
+            << QStringLiteral("SpeakerEditor::load %1 sor: meeting %2 ms, átirat %3 ms, overlay %4 ms, "
+                              "embedding-cache %5 ms, feloldás %6 ms, bizonytalanság %7 ms, össz %8 ms")
+                   .arg(lines.size()).arg(tMeeting).arg(tLines - tMeeting).arg(tOverlay - tLines)
+                   .arg(tCache - tOverlay).arg(tAssigned - tCache).arg(perf.elapsed() - tAssigned)
+                   .arg(perf.elapsed());
     }
 
     // ---- feloldás -----------------------------------------------------------
@@ -815,10 +829,19 @@ struct SpeakerEditor::Private {
     {
         qint64 total = 0;
         const QVector<int> picked = selectPrintLines(speakerLines, &total);
+        return buildPrintFromPicked(picked, total, kPrintMinTotalMs, usedMs, usedLines, missingMs);
+    }
+
+    // Lenyomat KIFEJEZETTEN megadott sorokból (a felhasználó választotta: „minta ebből a
+    // sorból”). A szűrést a hívó végzi; itt csak a minimum-hossz és a beágyazás számít.
+    std::optional<Voiceprint> buildPrintFromPicked(const QVector<int>& picked, qint64 total,
+                                                   qint64 minTotalMs, qint64* usedMs,
+                                                   int* usedLines, qint64* missingMs)
+    {
         if (usedMs) *usedMs = total;
         if (usedLines) *usedLines = picked.size();
-        if (missingMs) *missingMs = std::max<qint64>(0, kPrintMinTotalMs - total);
-        if (total < kPrintMinTotalMs) return std::nullopt;
+        if (missingMs) *missingMs = std::max<qint64>(0, minTotalMs - total);
+        if (total < minTotalMs) return std::nullopt;
 
         std::unique_ptr<IUtteranceEmbedder> sync;   // csak ha a cache-ből hiányzik valami
         bool syncFailed = false;
@@ -848,7 +871,7 @@ struct SpeakerEditor::Private {
             if (l.endMs - l.startMs > bestDur) { bestDur = l.endMs - l.startMs; best = i; }
         }
         if (sync) cache.save(folder);
-        if (embeddedMs < kPrintMinTotalMs || best < 0) return std::nullopt;
+        if (embeddedMs < minTotalMs || best < 0) return std::nullopt;
 
         Voiceprint vp;
         vp.embedding.resize(sum.size());
@@ -1476,6 +1499,60 @@ VoiceprintResult SpeakerEditor::createVoiceprint(const QString& speakerKey)
                          "(legalább 3 mp-es sorokból).").arg((r.missingMs + 999) / 1000);
         else
             r.error = tr("A hangmodell vagy a megbeszélés hangja nem érhető el.");
+        return r;
+    }
+    d->voiceprints->addPrint(person, *print);
+    r.ok = true;
+    r.printId = print->id;
+    r.missingMs = 0;
+    emit voiceprintsChanged();
+    emit speakersChanged();
+    return r;
+}
+
+VoiceprintResult SpeakerEditor::createVoiceprintFromLines(const QString& speakerKey,
+                                                         const QStringList& utteranceIds)
+{
+    VoiceprintResult r;
+    if (!d->visible(speakerKey) || !d->voiceprints) {
+        r.error = tr("Ismeretlen beszélő.");
+        return r;
+    }
+    const QString person = d->personOf(speakerKey);
+    if (person.isEmpty()) {
+        r.error = tr("Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.");
+        return r;
+    }
+    // Csak a beszélő saját, tiszta, legalább 3 mp-es sorai; a bizonytalan sort előbb meg kell
+    // erősíteni vagy áthelyezni (a kézi minta sem taníthat kétes sorból).
+    QVector<int> picked;
+    qint64 total = 0;
+    for (const QString& id : utteranceIds) {
+        const int i = d->indexById.value(id, -1);
+        if (i < 0 || d->assigned.value(i) != speakerKey) continue;
+        if (d->uncertain.value(i)) {
+            r.error = tr("Ez a sor bizonytalan: előbb erősítsd meg („Jó így”) vagy helyezd át, utána lehet minta.");
+            return r;
+        }
+        if (d->noisyAt(i)) {
+            r.error = tr("Ebben a sorban egymásra beszéltek, ezért nem használható hangmintának.");
+            return r;
+        }
+        const qint64 dur = d->lines[i].endMs - d->lines[i].startMs;
+        if (dur < kPrintMinLineMs) {
+            r.error = tr("Ez a sor túl rövid mintának (legalább 3 mp beszéd kell).");
+            return r;
+        }
+        picked.append(i);
+        total += std::min<qint64>(dur, kMaxEmbedMs);
+    }
+    if (picked.isEmpty()) {
+        r.error = tr("Nincs olyan sor, amelyből minta készülhetne.");
+        return r;
+    }
+    const auto print = d->buildPrintFromPicked(picked, total, kPrintMinLineMs, &r.usedMs, &r.usedLines, &r.missingMs);
+    if (!print) {
+        r.error = tr("A hangmodell vagy a megbeszélés hangja nem érhető el.");
         return r;
     }
     d->voiceprints->addPrint(person, *print);

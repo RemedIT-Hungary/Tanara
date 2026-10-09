@@ -30,6 +30,7 @@ Q_LOGGING_CATEGORY(lcStt,   "tanara.stt")
 Q_LOGGING_CATEGORY(lcLlm,   "tanara.llm")
 Q_LOGGING_CATEGORY(lcStore, "tanara.store")
 Q_LOGGING_CATEGORY(lcVoice, "tanara.voice")
+Q_LOGGING_CATEGORY(lcPerf,  "tanara.perf")
 
 namespace {
 

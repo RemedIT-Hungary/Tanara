@@ -25,7 +25,8 @@ Q_DECLARE_LOGGING_CATEGORY(lcAudio)   // tanara.audio — eszközök, felvétel,
 Q_DECLARE_LOGGING_CATEGORY(lcStt)     // tanara.stt   — átírás
 Q_DECLARE_LOGGING_CATEGORY(lcLlm)     // tanara.llm   — összefoglaló
 Q_DECLARE_LOGGING_CATEGORY(lcStore)   // tanara.store — meeting-tár, perzisztencia
-Q_DECLARE_LOGGING_CATEGORY(lcVoice)   // tanara.voice — voice-ID, lenyomatok
+Q_DECLARE_LOGGING_CATEGORY(lcVoice)
+Q_DECLARE_LOGGING_CATEGORY(lcPerf)   // tanara.perf: betöltési/újraépítési idők (debug szint)   // tanara.voice — voice-ID, lenyomatok
 
 enum class LogLevel { Error = 0, Warning = 1, Info = 2, Debug = 3 };
 

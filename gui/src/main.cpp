@@ -16,6 +16,7 @@
 // QML-ablakok mellett nyílnak (App.bridge / SettingsWidgetsDialogs). A főablak, a Beállítások
 // (SettingsWindowHost), a Személyek (PeopleWindowHost) és a felvevő (RecorderWindowHost; a
 // főablakban a ShellRecorderHost-on át) QML.
+#include <QElapsedTimer>
 #include "AnalyzerSingleton.h"
 #include "AppIcon.h"
 #include "RecorderSingleton.h"
@@ -403,6 +404,23 @@ int main(int argc, char** argv) {
 
     controller.refreshDevices();
     tanara::logStartupDiagnostics(controller);
+
+    // Fő-szál megakadás-figyelő (csak ha a tanara.perf debug-naplózás be van kapcsolva:
+    // --log-rules "tanara.perf.debug=true"): 16 ms-os időzítő; ha két tüzelés között 80 ms-nál
+    // több telik el, a fő szál ennyi ideig nem jutott az eseményhurokhoz — a napló időbélyege
+    // mellé tehető a többi (betöltési) bejegyzés, így kiderül, mi akasztotta meg a felületet.
+    if (tanara::lcPerf().isDebugEnabled()) {
+        auto* stall = new QTimer(&app);
+        auto* last = new QElapsedTimer();
+        last->start();
+        QObject::connect(stall, &QTimer::timeout, &app, [last] {
+            const qint64 gap = last->restart();
+            if (gap > 80)
+                qCDebug(tanara::lcPerf).noquote()
+                    << QStringLiteral("fő szál megakadás: %1 ms (nem jutott az eseményhurokhoz)").arg(gap);
+        });
+        stall->start(16);
+    }
 
     return app.exec();
 }

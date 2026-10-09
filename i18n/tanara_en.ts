@@ -3614,6 +3614,14 @@
         <translation>Remove these lines from %1's voiceprint (wrong match)</translation>
     </message>
     <message>
+        <source>Hanglenyomat-minta ebből a sorból (%1 mp)</source>
+        <translation>Voice sample from this line (%1 s)</translation>
+    </message>
+    <message>
+        <source>A sor hangja %1 hanglenyomatához kerül; ebből ismeri fel legközelebb.</source>
+        <translation>This line’s voice goes into %1’s voiceprint; it is recognised from it next time.</translation>
+    </message>
+    <message>
         <source>Üres oszlop eltávolítása</source>
         <translation>Remove empty column</translation>
     </message>
@@ -5846,6 +5854,22 @@
     <message>
         <source>A hangmodell vagy a megbeszélés hangja nem érhető el.</source>
         <translation>The voice model or the meeting audio is not available.</translation>
+    </message>
+    <message>
+        <source>Ez a sor bizonytalan: előbb erősítsd meg („Jó így”) vagy helyezd át, utána lehet minta.</source>
+        <translation>This line is uncertain: confirm it (“Fine as is”) or move it first, then it can be a sample.</translation>
+    </message>
+    <message>
+        <source>Ebben a sorban egymásra beszéltek, ezért nem használható hangmintának.</source>
+        <translation>People talk over each other in this line, so it cannot be a voice sample.</translation>
+    </message>
+    <message>
+        <source>Ez a sor túl rövid mintának (legalább 3 mp beszéd kell).</source>
+        <translation>This line is too short for a sample (at least 3 s of speech is needed).</translation>
+    </message>
+    <message>
+        <source>Nincs olyan sor, amelyből minta készülhetne.</source>
+        <translation>There is no line a sample could be made from.</translation>
     </message>
 </context>
 <context>
@@ -9260,6 +9284,30 @@
             <numerusform>%n utterance copied to the clipboard.</numerusform>
             <numerusform>%n utterances copied to the clipboard.</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Előbb nevezd el a beszélőt.</source>
+        <translation>Name the speaker first.</translation>
+    </message>
+    <message>
+        <source>Bizonytalan sor: előbb „Jó így”, vagy helyezd át a megfelelő beszélőhöz.</source>
+        <translation>Uncertain line: confirm it (“Fine as is”) or move it to the right speaker first.</translation>
+    </message>
+    <message>
+        <source>Egymásra beszéltek — nem tiszta minta.</source>
+        <translation>Cross-talk — not a clean sample.</translation>
+    </message>
+    <message>
+        <source>Túl rövid mintának (legalább 3 mp kell).</source>
+        <translation>Too short for a sample (at least 3 s is needed).</translation>
+    </message>
+    <message>
+        <source>Nincs hangmodell vagy lekevert hang.</source>
+        <translation>No voice model or mixdown audio.</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-minta készült: %1 (ebből a sorból, %2 mp).</source>
+        <translation>Voice sample created: %1 (from this line, %2 s).</translation>
     </message>
     <message>
         <source>Hanglenyomat készült: %1 (%2 sorból, %3 mp beszédből).</source>

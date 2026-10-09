@@ -233,6 +233,7 @@ private slots:
     void embedding_progressCancelAndCache();
     void embedding_gracefulWithoutModel();
     void voiceprint_explicitOnly();
+    void voiceprint_fromSingleLine();
     void summaryStale_lifecycle();
     void retranscribe_impactBackupDiscard();
     void overlay_fingerprintMismatchDropsEdits();
@@ -847,6 +848,37 @@ void SpeakerEditorTest::embedding_gracefulWithoutModel()
     QVERIFY(real);
     QVERIFY(!real->open(QStringLiteral("/nincs/ilyen/hang.mp3")));
     QVERIFY(real->embed(0, 3000).isEmpty());
+}
+
+// Kézi minta egyetlen, kifejezetten kiválasztott sorból: a 15 mp-es minimum nem él, de a
+// bizonytalan / rövid sor és a másik beszélő sora nem fogadható el.
+void SpeakerEditorTest::voiceprint_fromSingleLine()
+{
+    Fixture fx;
+    auto ed = fx.editor();
+    const QString cili = ed->moveUtterancesToPerson(uids({14}), QStringLiteral("Cili"));  // 6 mp-es sor
+    QCOMPARE(fx.prints->totalPrintCount(), 0);
+
+    // Nem az ő sora → nincs minta.
+    VoiceprintResult r = ed->createVoiceprintFromLines(cili, uids({4}));
+    QVERIFY(!r.ok);
+
+    // Az ő egyetlen hosszú sora elég.
+    QSignalSpy vpSig(ed.get(), &SpeakerEditor::voiceprintsChanged);
+    r = ed->createVoiceprintFromLines(cili, uids({14}));
+    QVERIFY2(r.ok, qPrintable(r.error));
+    QCOMPARE(r.usedLines, 1);
+    QCOMPARE(vpSig.count(), 1);
+    QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 1);
+    QCOMPARE(fx.prints->printsFor(QStringLiteral("Cili")).first().sampleRef,
+             QStringLiteral("mixdown.mp3#83000-89000"));
+
+    // Rövid sor → érthető hiba, nem készül minta.
+    const QString dani = ed->moveUtterancesToPerson(uids({3}), QStringLiteral("Dani"));   // 0,8 mp
+    r = ed->createVoiceprintFromLines(dani, uids({3}));
+    QVERIFY(!r.ok);
+    QVERIFY(r.error.contains(QStringLiteral("rövid")));
+    QCOMPARE(fx.prints->printCount(QStringLiteral("Dani")), 0);
 }
 
 void SpeakerEditorTest::voiceprint_explicitOnly()

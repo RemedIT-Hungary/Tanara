@@ -4,6 +4,7 @@
 #include "TranscriptDemoSession.h"
 
 #include "tanara/AppController.h"
+#include "tanara/Logging.h"
 #include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/PeopleDirectory.h"
@@ -11,6 +12,7 @@
 #include "tanara/store/MeetingStore.h"
 
 #include <QClipboard>
+#include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -277,13 +279,24 @@ void TranscriptEditorViewModel::reloadAll()
     m_change = Change();
     m_railVisible = loadRailState();
 
+    QElapsedTimer perf;
+    perf.start();
     rebuildSpeakers(/*recomputeCollapsed*/ true);
+    const qint64 tSpeakers = perf.elapsed();
     m_rows->rebuild();
+    const qint64 tRows = perf.elapsed();
     onSuggestionChanged();
     updateSearch();
+    const qint64 tSearch = perf.elapsed();
     rebuildOverview();
+    const qint64 tOverview = perf.elapsed();
     updateVoiceNote();
     updateRecheckState();
+    qCDebug(lcPerf).noquote()
+        << QStringLiteral("TranscriptEditorViewModel::reloadAll %1 sor: beszélők %2 ms, sorok %3 ms, "
+                          "keresés %4 ms, áttekintés %5 ms, egyéb %6 ms, össz %7 ms")
+               .arg(m_utts.size()).arg(tSpeakers).arg(tRows - tSpeakers).arg(tSearch - tRows)
+               .arg(tOverview - tSearch).arg(perf.elapsed() - tOverview).arg(perf.elapsed());
 
     emit sessionChanged();
     emit speakersChanged();
@@ -1538,6 +1551,51 @@ QVariantMap TranscriptEditorViewModel::createVoiceprint(const QString& speakerKe
     out[QStringLiteral("usedSec")] = int(r.usedMs / 1000);
     out[QStringLiteral("missingSec")] = int((r.missingMs + 999) / 1000);
     out[QStringLiteral("message")] = r.ok ? voiceprintMessage(name, r) : r.error;
+    if (r.ok) {
+        emit peopleChanged();
+        emit notice(out.value(QStringLiteral("message")).toString());
+    }
+    return out;
+}
+
+QVariantMap TranscriptEditorViewModel::lineSampleInfo(const QString& utteranceId) const
+{
+    QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("reason"), QString()},
+                    {QStringLiteral("seconds"), 0}, {QStringLiteral("personName"), QString()}};
+    const int i = m_uttIndex.value(utteranceId, -1);
+    if (i < 0 || !m_editor) return out;
+    const EditorUtterance& u = m_utts.at(i);
+    const EditorSpeaker sp = m_editor->speaker(u.speakerKey);
+    out[QStringLiteral("seconds")] = int((u.endMs - u.startMs) / 1000);
+    out[QStringLiteral("personName")] = sp.personName;
+    if (sp.anonymous)
+        out[QStringLiteral("reason")] = tr("Előbb nevezd el a beszélőt.");
+    else if (u.uncertain)
+        out[QStringLiteral("reason")] = tr("Bizonytalan sor: előbb „Jó így”, vagy helyezd át a megfelelő beszélőhöz.");
+    else if (u.noisy)
+        out[QStringLiteral("reason")] = tr("Egymásra beszéltek — nem tiszta minta.");
+    else if (u.endMs - u.startMs < 3000)
+        out[QStringLiteral("reason")] = tr("Túl rövid mintának (legalább 3 mp kell).");
+    else if (!voiceAvailable())
+        out[QStringLiteral("reason")] = tr("Nincs hangmodell vagy lekevert hang.");
+    else
+        out[QStringLiteral("ok")] = true;
+    return out;
+}
+
+QVariantMap TranscriptEditorViewModel::createVoiceprintFromLine(const QString& utteranceId)
+{
+    QVariantMap out{{QStringLiteral("ok"), false}, {QStringLiteral("message"), QString()}};
+    const int i = m_uttIndex.value(utteranceId, -1);
+    if (i < 0 || !m_editor) return out;
+    const QString key = m_utts.at(i).speakerKey;
+    const QString name = m_views.value(key).name;
+    const VoiceprintResult r = m_editor->createVoiceprintFromLines(key, {utteranceId});
+    out[QStringLiteral("ok")] = r.ok;
+    out[QStringLiteral("printId")] = r.printId;
+    out[QStringLiteral("message")] = r.ok
+        ? tr("Hanglenyomat-minta készült: %1 (ebből a sorból, %2 mp).").arg(name).arg(r.usedMs / 1000)
+        : r.error;
     if (r.ok) {
         emit peopleChanged();
         emit notice(out.value(QStringLiteral("message")).toString());

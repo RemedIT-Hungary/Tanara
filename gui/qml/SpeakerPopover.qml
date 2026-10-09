@@ -464,6 +464,49 @@ TPopover {
             onChanged: control.refresh()
         }
 
+        // ---- Egy sor hatóköre: ez a sor legyen hangminta a (már elnevezett) beszélőjéhez ----
+        Item {
+            id: lineSample
+            objectName: "lineSampleBlock"
+            readonly property var info: control.scope === "line" && control.editor && control.utteranceId !== ""
+                                        ? control.editor.lineSampleInfo(control.utteranceId) : ({})
+            visible: control.scope === "line" && control.named && !control.wholeSpeaker
+            width: parent.width
+            height: visible ? sampleCol.implicitHeight + 18 : 0
+            TDivider { width: parent.width }
+            Column {
+                id: sampleCol
+                x: 10; y: 9
+                width: parent.width - 20
+                spacing: 4
+                TButton {
+                    objectName: "lineSampleButton"
+                    size: "small"
+                    variant: "ghost"
+                    iconName: "fingerprint"
+                    enabled: lineSample.info.ok === true
+                    text: qsTr("Hanglenyomat-minta ebből a sorból (%1 mp)").arg(lineSample.info.seconds || 0)
+                    toolTipText: qsTr("A sor hangja %1 hanglenyomatához kerül; ebből ismeri fel legközelebb.")
+                                     .arg(control.speakerName)
+                    onClicked: {
+                        const r = control.editor.createVoiceprintFromLine(control.utteranceId)
+                        if (r.ok) control.close()
+                        else lineSample.lastError = r.message
+                    }
+                }
+                TLabel {
+                    visible: text !== ""
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    text: lineSample.lastError !== "" ? lineSample.lastError
+                        : (lineSample.info.ok === true ? "" : (lineSample.info.reason || ""))
+                }
+            }
+            property string lastError: ""
+        }
+
         // ---- Üres, kézzel felvett oszlop eltávolítása ----
         Item {
             visible: control.wholeSpeaker && control.info.added === true && control.lineCount === 0

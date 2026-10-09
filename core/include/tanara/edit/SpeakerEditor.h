@@ -139,6 +139,10 @@ public:
     // Lenyomat a beszélő ITTENI soraiból (hosszabb sorok, ~15–20 mp). Kevés anyagnál nem
     // készít gyenge lenyomatot: ok=false + missingMs. Nem undo-lépés (a printId-vel törölhető).
     VoiceprintResult createVoiceprint(const QString& speakerKey);
+    // Lenyomat KIFEJEZETTEN megadott sorokból (a sor felugrójának „minta ebből a sorból”
+    // gombja): a sor a beszélőé, nem bizonytalan, nem „egymásra beszéltek”, legalább 3 mp.
+    // Egyetlen hosszú, tiszta sor is elég (a 15 mp-es minimum itt nem él). Nem undo-lépés.
+    VoiceprintResult createVoiceprintFromLines(const QString& speakerKey, const QStringList& utteranceIds);
     // A kézi készítés visszavonása: PONTOSAN ez a lenyomat törlődik (a createVoiceprint
     // printId-je). false, ha már nincs ilyen. Ez sem undo-lépés.
     bool removeVoiceprint(const QString& printId);
