@@ -4,6 +4,9 @@
 // valós idejű callbackje CSAK a saját körpufferébe másol + frissít egy atomi
 // RMS/peak értéket. Semmi allokáció / lock / Qt a callbackben.
 //
+// A metódusok virtuálisak: a tesztek egy hamis motorral (valódi hangeszköz nélkül) hajtják
+// meg a RecordingSession-t (lásd RecordingSession::setEngineFactory).
+//
 #include "tanara/Types.h"
 #include "tanara/audio/RingBuffer.h"
 
@@ -17,7 +20,7 @@ namespace tanara {
 class AudioEngine {
 public:
     AudioEngine();
-    ~AudioEngine();
+    virtual ~AudioEngine();
 
     AudioEngine(const AudioEngine&)            = delete;
     AudioEngine& operator=(const AudioEngine&) = delete;
@@ -26,47 +29,47 @@ public:
     // csatornaszám). Igaz, ha legalább egy eszköz elindult. Részleges sikerre is
     // igazat ad: a be nem indult eszközöket kihagyja (count() ennek megfelelő).
     // Hiba/üres bemenet → false, és tisztán visszaáll (stop()).
-    bool start(const QVector<AudioDeviceInfo>& devices);
+    virtual bool start(const QVector<AudioDeviceInfo>& devices);
 
     // Leállít és felszabadít minden eszközt és puffert.
-    void stop();
+    virtual void stop();
 
     // Egy TOVÁBBI eszköz megnyitása a már futó motorban (felvétel közbeni sáv-hozzáadás).
     // Visszaadja az új sáv indexét, hibára -1-et. A meglévő indexek nem változnak. Csak a
     // motort birtokló szálról hívható (a callbackek és az olvasó szál közben futhatnak).
-    int addDevice(const AudioDeviceInfo& device);
+    virtual int addDevice(const AudioDeviceInfo& device);
 
     // Egy eszköz lezárása menet közben (pl. leválasztották): a capture leáll, de a slot és a
     // körpuffere megmarad (az index stabil, a maradék adat még kiolvasható).
-    void closeDevice(int trackIndex);
-    bool isOpen(int trackIndex) const;
+    virtual void closeDevice(int trackIndex);
+    virtual bool isOpen(int trackIndex) const;
 
     // Legfeljebb ennyi eszköz nyitható (a slot-tömb rögzített méretű, hogy az olvasó szál
     // zár nélkül, biztonságosan érhesse el, miközben új eszköz nyílik).
     static constexpr int kMaxDevices = 64;
 
-    int count() const;
+    virtual int count() const;
 
     // A trackIndex-edik (elindult) eszköz körpuffere. Érvénytelen indexre egy
     // belső üres-puffer referenciát ad (sosem null), hogy a hívó ne crasheljen.
-    RingBuffer& buffer(int trackIndex);
+    virtual RingBuffer& buffer(int trackIndex);
 
     // Az adott sáv legutóbbi RMS-e (0..~1, s16-ot normalizálva). Érvénytelen
     // indexre 0.
-    float rms(int trackIndex) const;
+    virtual float rms(int trackIndex) const;
 
     // Az adott sáv legutóbbi csúcsértéke (0..~1). Érvénytelen indexre 0.
-    float peak(int trackIndex) const;
+    virtual float peak(int trackIndex) const;
 
     // A legutóbbi hívás óta mért legnagyobb csúcs (0..~1), majd nullázza — a szintmérő
     // csúcstartásához (a peak() csak az utolsó blokkot látja, a rövid tüskék kimaradnának).
-    float takePeak(int trackIndex);
+    virtual float takePeak(int trackIndex);
 
     // Az adott elindult eszköz csatornaszáma (a callback ezzel másol).
-    int channels(int trackIndex) const;
+    virtual int channels(int trackIndex) const;
 
     // Az adott elindult eszközhöz tartozó AudioDeviceInfo (a felvétel-szervezőnek).
-    AudioDeviceInfo deviceInfo(int trackIndex) const;
+    virtual AudioDeviceInfo deviceInfo(int trackIndex) const;
 
 private:
     struct Impl;

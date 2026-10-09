@@ -12,6 +12,7 @@
 #include <QString>
 #include <QVector>
 
+#include <functional>
 #include <memory>
 
 namespace tanara {
@@ -31,6 +32,14 @@ public:
                               int opusKbps = 64,
                               QObject* parent = nullptr);
     ~RecordingSession() override;
+
+    // A capture-motor gyártója (start() előtt hívandó). Üres → valódi AudioEngine (miniaudio).
+    // A tesztek egy hamis motorral hajtják meg a felvevőt, hangeszköz nélkül.
+    using EngineFactory = std::function<std::unique_ptr<AudioEngine>()>;
+    void setEngineFactory(EngineFactory factory);
+    // A néma capture-szakaszok csenddel pótlása (lásd tracktiming::silenceToInsert) minden
+    // sávra be/ki. Alapból platform szerint: csak Windowson, csak loopback sávnál. Teszthez.
+    void setFillCaptureGaps(bool on);
 
     RecordingState state() const;
     QString folder() const;          // a létrejött meeting-mappa abszolút útja
@@ -53,15 +62,17 @@ public slots:
     // AppController készíti később, aszinkron (auto vagy kézi módban).
     void stop();
 
-    // Felvétel KÖZBEN egy további eszköz sávjának indítása. A sáv fájlja a felvétel elejétől
-    // csenddel van kitöltve, így időben együtt áll a többi sávval (a hang „attól a
-    // pillanattól” szól benne). false, ha nem fut felvétel, az eszköz már sávon van, vagy
-    // nem nyitható meg. Siker: trackAdded().
+    // Felvétel KÖZBEN egy további eszköz sávjának indítása. A sáv fájlja a megnyitás
+    // pillanatától tart (csend-kitöltés NINCS); a megnyitás ideje a felvétel 0-pontjától a sáv
+    // Track::startOffsetMs-a, ebből tolja a helyére a lekeverés és minden más fogyasztó.
+    // Egy korábban lezárt eszköz újra-hozzáadása új fájlt ad (track_<slug>-2.ogg …): ugyanannak
+    // az eszköznek egy újabb SZAKASZA (lásd TrackCatalog). false, ha nem fut felvétel, az
+    // eszköz már (nyitott) sávon van, vagy nem nyitható meg. Siker: trackAdded().
     bool addDevice(const tanara::AudioDeviceInfo& device);
 
     // Egy sáv biztonságos lezárása felvétel közben (az eszközt leválasztották): a capture
     // leáll, a maradék hang kiíródik, az encoder lezárja a fájlt. A felvétel a többi sávval
-    // megy tovább; a lezárt sáv a meeting része marad (rövidebb fájllal). trackClosed().
+    // megy tovább; a lezárt sáv a meeting része marad (a fájlja a lezárásig tart). trackClosed().
     void closeTrack(const QString& deviceName);
 
 signals:

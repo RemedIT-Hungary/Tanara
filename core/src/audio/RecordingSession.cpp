@@ -2,6 +2,7 @@
 
 #include "tanara/audio/AudioEngine.h"
 #include "tanara/audio/RingBuffer.h"
+#include "tanara/audio/TrackTiming.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace tanara {
@@ -49,8 +51,13 @@ struct TrackMeta {
     TrackKind kind = TrackKind::Mic;
     QString deviceName;
     AudioDeviceInfo device;
-    bool closed = false;       // menet közben lezárva (leválasztott eszköz)
+    bool closed = false;       // menet közben lezárva (leválasztott / kikapcsolt eszköz)
+    // A sáv megnyitásának ideje a felvétel 0-pontjától (ms) → Track::startOffsetMs. A fájl a
+    // megnyitástól tartó hangot tartalmazza, csend-kitöltés NÉLKÜL.
+    qint64 startOffsetMs = 0;
 };
+
+constexpr int kSampleRate = 48000;
 
 } // namespace
 
@@ -58,11 +65,18 @@ struct TrackMeta {
 // rá és Ő zárja le — ugyanazon a szálon, így nincs "QSocketNotifier from another
 // thread" probléma és nincs adatvesztés-kockázat. A sávokról SAJÁT másolatot tart
 // (EncTrack), a fő szál listájához nem nyúl.
+//
+// Időzítés: a `clock` a felvétel 0-pontja (a capture indítása előtt indul). Egy sáv fájlja
+// a megnyitásától kezdődik; a megnyitás ideje a TrackMeta::startOffsetMs (metaadat), a fájl
+// elejére NEM kerül csend. Ahol a platform csendben nem ad mintát (Windows WASAPI loopback,
+// lásd tracktiming::fillsCaptureGaps), a worker a hiányt a fali órához mérve csenddel pótolja.
 class DrainWorker : public QObject {
     Q_OBJECT
 public:
-    DrainWorker(AudioEngine* engine, QString folder, int opusKbps)
-        : engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps) {}
+    DrainWorker(AudioEngine* engine, QString folder, int opusKbps, QElapsedTimer clock,
+                std::optional<bool> fillGaps)
+        : engine_(engine), folder_(std::move(folder)), opusKbps_(opusKbps), clock_(clock),
+          fillGaps_(fillGaps) {}
 
     ~DrainWorker() override {
         for (EncTrack& t : tracks_) delete t.proc;
@@ -72,7 +86,7 @@ public:
     // encodereket; true ha minden elindult. Sikertelenségnél visszatakarít.
     bool startEncoders(const std::vector<TrackMeta>& metas) {
         for (const TrackMeta& m : metas) {
-            if (!openEncoder(m, 0)) {
+            if (!openEncoder(m)) {
                 for (EncTrack& t : tracks_) { if (t.proc) { t.proc->kill(); delete t.proc; t.proc = nullptr; } }
                 tracks_.clear();
                 return false;
@@ -82,17 +96,13 @@ public:
         timer_->setInterval(20);   // 50 Hz drain
         connect(timer_, &QTimer::timeout, this, &DrainWorker::tick);
         meter_.start();
-        elapsed_.start();
         timer_->start();
         return true;
     }
 
-    // Felvétel közben hozzáadott sáv: az encoder a felvétel eddigi hosszának megfelelő
-    // csenddel indul (padBytes), hogy a fájl időben együtt álljon a többivel.
-    bool addEncoder(const TrackMeta& meta) {
-        const qint64 frames = elapsed_.isValid() ? elapsed_.elapsed() * 48 : 0;   // 48 kHz
-        return openEncoder(meta, frames * meta.channels * qint64(sizeof(int16_t)));
-    }
+    // Felvétel közben hozzáadott sáv: az encoder üresen indul, a fájl a megnyitástól tart
+    // (az eltolás metaadat: TrackMeta::startOffsetMs).
+    bool addEncoder(const TrackMeta& meta) { return openEncoder(meta); }
 
     // Egy sáv lezárása menet közben: maradék kiírása, encoder lezárása (megvárva).
     void closeEncoder(int index) {
@@ -132,7 +142,7 @@ private slots:
                 emit meter(static_cast<int>(i), engine_->rms(tracks_[i].engineIndex),
                            engine_->takePeak(tracks_[i].engineIndex));
             }
-            emit elapsed(elapsed_.elapsed());
+            emit elapsed(clock_.elapsed());
         }
     }
 
@@ -142,20 +152,22 @@ private:
         QString fileName;
         int channels = 1;
         QProcess* proc = nullptr;
-        qint64 padBytes = 0;       // még kiírandó vezető csend (késve indult sáv)
-        QByteArray held;           // a csend kiírása alatt érkezett valódi hang
+        qint64 openedAtMs = 0;     // a sáv megnyitása a felvétel órája szerint
+        qint64 lastDataMs = 0;     // mikor jött utoljára adat az eszköztől (felvétel-óra)
+        qint64 framesWritten = 0;  // a fájlba írt keretek (valódi hang + pótolt csend)
+        bool fillGaps = false;     // a néma szakaszok csenddel pótlandók (Windows loopback)
         bool closed = false;
         bool ok = false;           // az encoder hibátlanul lezárta a fájlt
         std::vector<int16_t> scratch;
     };
 
-    bool openEncoder(const TrackMeta& t, qint64 padBytes) {
+    bool openEncoder(const TrackMeta& t) {
         auto* proc = new QProcess(this);          // a worker szálon él
         const QString outPath = QDir(folder_).absoluteFilePath(t.fileName);
         const QStringList args{
             QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
             QStringLiteral("-f"), QStringLiteral("s16le"),
-            QStringLiteral("-ar"), QStringLiteral("48000"),
+            QStringLiteral("-ar"), QString::number(kSampleRate),
             QStringLiteral("-ac"), QString::number(t.channels),
             QStringLiteral("-i"), QStringLiteral("pipe:0"),
             QStringLiteral("-c:a"), QStringLiteral("libopus"),
@@ -171,56 +183,57 @@ private:
         e.fileName = t.fileName;
         e.channels = t.channels;
         e.proc = proc;
-        e.padBytes = padBytes;
+        e.openedAtMs = t.startOffsetMs;
+        e.lastDataMs = t.startOffsetMs;
+        e.fillGaps = fillGaps_.value_or(tracktiming::fillsCaptureGaps(t.kind));
         tracks_.push_back(std::move(e));
         return true;
     }
 
-    // A vezető csendet adagolva írjuk (az ffmpeg a csendet a valós idő sokszorosával
-    // kódolja): egyszerre legfeljebb ~4 MB vár a QProcess írópufferében, így egy órányi
-    // csend sem foglal memóriát. Amíg tart, a valódi hang a `held`-ben gyűlik.
-    void pumpPad(EncTrack& t) {
-        static const QByteArray zeros(1 << 20, '\0');
-        while (t.padBytes > 0 && t.proc && t.proc->bytesToWrite() < (4 << 20)) {
-            const qint64 n = qMin<qint64>(t.padBytes, zeros.size());
-            t.proc->write(zeros.constData(), n);
-            t.padBytes -= n;
-        }
-        if (t.padBytes == 0 && !t.held.isEmpty()) {
-            t.proc->write(t.held);
-            t.held.clear();
+    void writePcm(EncTrack& t, const char* data, qint64 bytes) {
+        if (t.proc->state() == QProcess::Running) t.proc->write(data, bytes);
+        t.framesWritten += bytes / (qint64(sizeof(int16_t)) * t.channels);
+    }
+
+    // A néma (adatot nem adó) eszköz hiányzó kereteinek pótlása csenddel — lásd
+    // tracktiming::silenceToInsert. Csak fillGaps-es sávnál.
+    void fillGap(EncTrack& t) {
+        if (!t.fillGaps) return;
+        const qint64 now = clock_.elapsed();
+        qint64 frames = tracktiming::silenceToInsert(now - t.openedAtMs, now - t.lastDataMs,
+                                                     t.framesWritten, kSampleRate);
+        static const QByteArray zeros(1 << 16, '\0');
+        const qint64 frameBytes = qint64(sizeof(int16_t)) * t.channels;
+        while (frames > 0) {
+            const qint64 n = qMin<qint64>(frames, zeros.size() / frameBytes);
+            writePcm(t, zeros.constData(), n * frameBytes);
+            frames -= n;
         }
     }
 
     void drainTrack(EncTrack& t) {
         if (t.closed || !t.proc) return;
-        if (t.padBytes > 0) pumpPad(t);
         RingBuffer& ring = engine_->buffer(t.engineIndex);
         size_t avail = ring.available();
+        bool gotData = false;
         while (avail > 0) {
             if (t.scratch.size() < avail) t.scratch.resize(avail);
             const size_t got = ring.read(t.scratch.data(), avail);
             if (got == 0) break;
-            const char* data = reinterpret_cast<const char*>(t.scratch.data());
-            const qint64 bytes = static_cast<qint64>(got * sizeof(int16_t));
-            if (t.padBytes > 0)
-                t.held.append(data, bytes);
-            else if (t.proc->state() == QProcess::Running)
-                t.proc->write(data, bytes);
+            gotData = true;
+            writePcm(t, reinterpret_cast<const char*>(t.scratch.data()),
+                     static_cast<qint64>(got * sizeof(int16_t)));
             avail = ring.available();
         }
+        if (gotData) t.lastDataMs = clock_.elapsed();
+        else fillGap(t);
     }
 
     // Lezárja a sáv encoderét és megvárja; t.ok = a fájl hibátlanul elkészült.
     void finishTrack(EncTrack& t) {
         if (t.closed || !t.proc) return;
+        fillGap(t);   // a sáv végi néma szakasz (fillGaps-es sávnál)
         t.closed = true;
-        // A még hátralévő vezető csend + a visszatartott hang kiírása (blokkolva).
-        while (t.padBytes > 0 && t.proc->state() == QProcess::Running) {
-            pumpPad(t);
-            if (t.padBytes > 0 && !t.proc->waitForBytesWritten(10000)) break;
-        }
-        if (t.padBytes == 0 && !t.held.isEmpty()) pumpPad(t);
         t.proc->closeWriteChannel();
         if (!t.proc->waitForFinished(30000)) { t.proc->kill(); t.proc->waitForFinished(2000); }
         const QFileInfo fi(QDir(folder_).absoluteFilePath(t.fileName));
@@ -231,10 +244,11 @@ private:
     AudioEngine* engine_ = nullptr;
     QString folder_;
     int opusKbps_ = 64;          // per-sáv Opus bitráta (a hangminőség-beállításból)
+    QElapsedTimer clock_;        // a felvétel 0-pontja (a session órájának másolata)
+    std::optional<bool> fillGaps_;   // teszt-felülírás; üres → platform szerint
     std::vector<EncTrack> tracks_;
     QTimer* timer_ = nullptr;
     QElapsedTimer meter_;
-    QElapsedTimer elapsed_;
     bool finalized_ = false;
 };
 
@@ -247,8 +261,12 @@ struct RecordingSession::Impl {
     QString folder;
     QString id;
     QDateTime startedAt;
+    // A felvétel órája: a capture indítása ELŐTT indul, ez a megbeszélés 0-pontja. Ehhez mért
+    // minden sáv-eltolás (startOffsetMs) és a megbeszélés hossza.
     QElapsedTimer wall;
     qint64 durationMs = 0;
+    RecordingSession::EngineFactory engineFactory;   // üres → valódi AudioEngine
+    std::optional<bool> fillGaps;                    // üres → platform szerint
 
     RecordingState state = RecordingState::Idle;
 
@@ -309,6 +327,9 @@ RecordingSession::~RecordingSession() {
 }
 
 RecordingState RecordingSession::state() const { return impl_->state; }
+
+void RecordingSession::setEngineFactory(EngineFactory factory) { impl_->engineFactory = std::move(factory); }
+void RecordingSession::setFillCaptureGaps(bool on) { impl_->fillGaps = on; }
 QString RecordingSession::folder() const { return impl_->folder; }
 
 QVector<AudioDeviceInfo> RecordingSession::trackDevices() const {
@@ -344,9 +365,10 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     impl_->folder = base.absoluteFilePath(dirName);
     impl_->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-    // 2) AudioEngine.
-    impl_->engine = std::make_unique<AudioEngine>();
-    if (!impl_->engine->start(devices)) {
+    // 2) AudioEngine. Az óra a capture előtt indul: a kezdő sávok fájljai ettől tartanak.
+    impl_->engine = impl_->engineFactory ? impl_->engineFactory() : std::make_unique<AudioEngine>();
+    impl_->wall.start();
+    if (!impl_->engine || !impl_->engine->start(devices)) {
         emit failed(tr("Az audio motor nem indult el (nincs elérhető eszköz/backend)."));
         impl_->engine.reset();
         return;
@@ -361,7 +383,8 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
     // 4) Worker szál — Ő hozza létre+indítja az encodereket (a saját szálán).
     impl_->trackPeak = QVector<float>(static_cast<int>(impl_->tracks.size()), 0.0f);
     impl_->workerThread = new QThread(this);
-    impl_->worker = new DrainWorker(impl_->engine.get(), impl_->folder, impl_->opusKbps);
+    impl_->worker = new DrainWorker(impl_->engine.get(), impl_->folder, impl_->opusKbps,
+                                    impl_->wall, impl_->fillGaps);
     impl_->worker->moveToThread(impl_->workerThread);
     connect(impl_->worker, &DrainWorker::meter, this,
             [this](int idx, float rms, float peak) {
@@ -391,7 +414,6 @@ void RecordingSession::start(const QVector<AudioDeviceInfo>& devices) {
         return;
     }
 
-    impl_->wall.start();
     impl_->state = RecordingState::Recording;
     emit stateChanged(impl_->state);
 }
@@ -402,10 +424,13 @@ bool RecordingSession::addDevice(const AudioDeviceInfo& device) {
     for (const TrackMeta& t : impl_->tracks)
         if (!t.closed && t.deviceName == device.name) return false;   // már sávon van
 
+    // A sáv a megnyitás pillanatától szól: ez az eltolása a felvétel 0-pontjához képest.
+    const qint64 offsetMs = impl_->wall.elapsed();
     const int engineIndex = impl_->engine->addDevice(device);
     if (engineIndex < 0) return false;
 
-    const TrackMeta meta = impl_->makeTrack(engineIndex);
+    TrackMeta meta = impl_->makeTrack(engineIndex);
+    meta.startOffsetMs = offsetMs;
     bool ok = false;
     DrainWorker* w = impl_->worker;
     QMetaObject::invokeMethod(w, [w, meta] { return w->addEncoder(meta); },
@@ -514,6 +539,7 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         tr.channels = t.channels;
         tr.peakLevel = peakOf(i);
         tr.active = isActive(i);
+        tr.startOffsetMs = t.startOffsetMs;
         m.tracks.push_back(tr);
     }
 
