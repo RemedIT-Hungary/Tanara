@@ -181,6 +181,13 @@ struct Voiceprint {
     QString device;             // a felvevő eszköz neve (több-mikrofonos kontextus)
     QString sampleRef;          // "<folder>/track_x.ogg#startMs-endMs" — az idők megbeszélés-időben
     QString createdAt;          // ISO-8601
+    // A beágyazó modell (VoiceModelRegistry id). JSON "model"; hiányzik → "campplus". Egy minta
+    // (sampleRef) minden engedélyezett modellel külön lenyomatot kap (azonos sampleRef/createdAt).
+    QString model{QStringLiteral("campplus")};
+    // Minden hozzájáruló hangszakasz "<fájl>#startMs-endMs" alakban (megbeszélés-idő), ha a
+    // lenyomat több szakaszból készült (JSON "sourceRefs"). A sampleRef a lejátszandó (leghosszabb)
+    // szakasz; a lusta pótlás (más modellel) ezekből számol újra, ennek híján a sampleRef-ből.
+    QStringList sourceRefs;
 };
 
 // Egy párosítás eredménye: melyik személy, milyen (cosine) pontszámmal.
@@ -330,6 +337,11 @@ struct AppSettings {
     // Címkejavaslatok be/ki, ill. a nyelvi modell javasoljon-e az összefoglaló után.
     bool tagSuggestions = true;
     bool llmTagSuggestions = true;
+
+    // Bekapcsolt beszélő-embedding modellek (VoiceModelRegistry id-k), ábécérendben. Lenyomatnál
+    // és elemzésnél mindegyik számít (fúzió); a hiányzó modellfájl futáskor kimarad, a beállítás
+    // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["campplus"].
+    QStringList voiceModels{QStringLiteral("campplus")};
 
     // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
     // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.

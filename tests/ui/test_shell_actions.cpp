@@ -174,7 +174,7 @@ class TestShellActions : public QObject {
         tanara::UtteranceEmbeddingCache cache;
         cache.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
         for (int i = 0; i < rows.size(); ++i)
-            cache.vectors.insert(lines[i].id, rows[i].voice == 'A' ? QVector<float>{1, 0, 0}
+            cache.set(QStringLiteral("campplus"), lines[i].id, rows[i].voice == 'A' ? QVector<float>{1, 0, 0}
                                             : rows[i].voice == 'B' ? QVector<float>{0, 1, 0}
                                                                    : QVector<float>{0.6f, 0.8f, 0});
         cache.save(m.folder);

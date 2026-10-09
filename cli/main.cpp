@@ -19,9 +19,12 @@
 //   tags list [<meetingId>]          címkekészlet (darabszámmal) / egy meeting címkéi
 //   tags add|remove <meetingId> <name>  címke fel / le
 //   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
+//   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
+//   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
+#include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/Logging.h"
 #include "tanara/SettingsManager.h"
@@ -107,6 +110,10 @@ int main(int argc, char** argv) {
     }
     const QStringList args = tanara::stripLogArgs(rawArgs);
     const QString cmd = args.value(1);
+
+    // AppController nélküli parancsok (nem indítják el az alkalmazás háttérmunkáit).
+    if (cmd == "voice-models") return tanara::cli::runVoiceModelsCommand(args);
+    if (cmd == "voice-eval")   return tanara::cli::runVoiceEvalCommand(args);
 
     AppController app;
 
@@ -643,7 +650,8 @@ int main(int argc, char** argv) {
            "import <file>… [--title T --date ISO --split-channels --own-track N] | reindex | "
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
-           "tags <list|add|remove|suggest> … | cloud <status|login|estimate|…>"
+           "tags <list|add|remove|suggest> … | cloud <status|login|estimate|…> | "
+           "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json]"
         << "\n";
     out.flush();
     return 0;

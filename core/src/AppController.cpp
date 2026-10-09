@@ -18,6 +18,8 @@
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
+#include "tanara/voiceid/VoiceEmbedderSet.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 #include "tanara/stt/ISttProvider.h"
 #include "tanara/llm/ILlmProvider.h"
 #include "tanara/llm/LlmServer.h"
@@ -312,12 +314,15 @@ const Track* resolveTrackForLabel(const Meeting& m, const MergedTranscript& mt,
     return m.tracks.isEmpty() ? nullptr : &m.tracks.first();
 }
 
-// Egy beszélő reprezentatív embeddingje: a leghosszabb utterance-eiből ~3–12 s hangot
-// gyűjt a megadott sávból, és egyetlen embeddinget számol. Üres = nincs elég hang/hiba.
-// Az utterance-ek megbeszélés-időben vannak; offsetMs a hangfájl kezdete a megbeszélésben
-// (sávfájlnál Track::startOffsetMs, a lekeverésnél 0) — a fájl előtti rész kimarad.
-QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath, qint64 offsetMs,
-                                 const MergedTranscript& mt, const QString& rawLabel) {
+// Egy beszélő reprezentatív embeddingje (minden használt modellel): a leghosszabb utterance-eiből
+// ~3–12 s hangot gyűjt a megadott sávból, és EGY összefűzött PCM-ből modellenként egy vektort
+// számol. Üres = nincs elég hang/hiba. Az utterance-ek megbeszélés-időben vannak; offsetMs a
+// hangfájl kezdete a megbeszélésben (sávfájlnál Track::startOffsetMs, a lekeverésnél 0) — a fájl
+// előtti rész kimarad. refs (opcionális): a felhasznált szakaszok "fileRel#start-end" alakban
+// (megbeszélés-idő) — a lenyomat sourceRefs-e.
+EmbeddingSet embeddingForLabel(const VoiceEmbedderSet& set, const QString& audioPath, qint64 offsetMs,
+                               const MergedTranscript& mt, const QString& rawLabel,
+                               const QString& fileRel = QString(), QStringList* refs = nullptr) {
     QVector<Utterance> utts;
     for (const Utterance& u : mt.segments())
         if (u.speaker == rawLabel) utts.append(u);
@@ -331,11 +336,72 @@ QVector<float> embeddingForLabel(VoiceEmbedder& emb, const QString& audioPath, q
         if (accMs >= 3000 || pcm.size() > 16000 * 12) break;
         const tracktiming::FileRange r = tracktiming::meetingToFileRange(offsetMs, u.startMs, u.endMs);
         if (!r.valid()) continue;   // a sáv ekkor még nem szólt
-        pcm += VoiceEmbedder::decodePcm16kMono(path, r.startMs, r.endMs);
+        const QVector<float> part = VoiceEmbedder::decodePcm16kMono(path, r.startMs, r.endMs);
+        if (part.isEmpty()) continue;
+        pcm += part;
         accMs += (r.endMs - r.startMs);
+        if (refs)
+            *refs << QStringLiteral("%1#%2-%3").arg(fileRel).arg(r.startMs + offsetMs).arg(r.endMs + offsetMs);
     }
     if (pcm.isEmpty()) return {};
-    return emb.embedPcm(pcm);
+    return set.embedPcm(pcm);
+}
+
+// Egy minta-hivatkozás ("fájl#startMs-endMs", megbeszélés-idő) felbontása; false, ha nincs tartomány.
+bool parseRangeRef(const QString& ref, QString* file, qint64* startMs, qint64* endMs) {
+    const int hash = ref.lastIndexOf(QLatin1Char('#'));
+    if (hash <= 0) return false;
+    *file = ref.left(hash);
+    const QString range = ref.mid(hash + 1);
+    const int dash = range.indexOf(QLatin1Char('-'));
+    if (dash <= 0) return false;
+    bool ok1 = false, ok2 = false;
+    *startMs = range.left(dash).toLongLong(&ok1);
+    *endMs = range.mid(dash + 1).toLongLong(&ok2);
+    return ok1 && ok2 && *endMs > *startMs;
+}
+
+// Egy lenyomat EGY modellel, újra a hangjából (lusta pótlás). A szakaszok (sourceRefs, ennek
+// híján a sampleRef) PCM-jét összefűzi és egyben ágyazza be — ugyanígy készül az enrollSpeaker
+// lenyomata is (embeddingForLabel); a szerkesztő súlyozott soronkénti átlagától ez kissé eltér,
+// de modellenként önkonzisztens. A szakaszok megbeszélés-időben vannak: a sávfájlnál a sáv
+// eltolását levonjuk. missingAudio: a hivatkozott fájl hiányzik.
+QVector<float> embedPrintSource(const VoiceEmbedderSet& set, const QString& modelId, const Meeting& m,
+                                const Voiceprint& vp, bool* missingAudio) {
+    *missingAudio = false;
+    const QStringList refs = vp.sourceRefs.isEmpty() ? QStringList{vp.sampleRef} : vp.sourceRefs;
+    QVector<float> pcm;
+    for (const QString& ref : refs) {
+        QString file;
+        qint64 s = 0, e = 0;
+        if (!parseRangeRef(ref, &file, &s, &e)) continue;
+        const QString abs = QDir(m.folder).filePath(file);
+        if (!QFileInfo::exists(abs)) { *missingAudio = true; continue; }
+        qint64 offset = 0;
+        for (const Track& t : m.tracks)
+            if (t.file == file) { offset = t.startOffsetMs; break; }
+        const tracktiming::FileRange r = tracktiming::meetingToFileRange(offset, s, e);
+        if (!r.valid()) continue;
+        pcm += VoiceEmbedder::decodePcm16kMono(abs, r.startMs, r.endMs);
+    }
+    if (pcm.isEmpty()) return {};
+    return set.embedPcmWith(pcm, {modelId}).value(modelId);
+}
+
+// Lenyomatok egy mintából: modellenként egy (azonos sampleRef / forrás / createdAt / sourceRefs,
+// saját id és model). A sablon embedding-, id- és model-mezője nem számít.
+QVector<Voiceprint> printsFromSet(const EmbeddingSet& set, const Voiceprint& tmpl) {
+    QVector<Voiceprint> out;
+    for (auto it = set.cbegin(); it != set.cend(); ++it) {
+        if (it.value().isEmpty()) continue;
+        Voiceprint vp = tmpl;
+        vp.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        vp.model = it.key();
+        vp.embedding = it.value();
+        vp.dim = it.value().size();
+        out.append(vp);
+    }
+    return out;
 }
 
 // A lenyomathoz eltárolt, visszahallgatható reprezentatív szegmens hivatkozása:
@@ -469,8 +535,29 @@ struct AppController::Impl {
     PeopleStats*   peopleStats = nullptr;
     PeopleService* peopleService = nullptr;
     std::unique_ptr<VoiceprintStore> voiceprints;
-    std::unique_ptr<VoiceEmbedder>   embedder;   // lusta betöltés (első használatkor)
-    QString          voiceModelPath;
+    QString          voiceModelPath;    // az alapmodell várt helye (diagnosztika)
+    QString          appDir;            // a csomagolt modellek helye (<appDir>/models)
+    // A használt beszélő-modellek (engedélyezett ∩ elérhető) — a fő szál készlete, lustán tölt.
+    VoiceEmbedderSet voiceSet;
+    QStringList      voiceModelIds;     // a voiceSet id-i (ábécérendben)
+    PcmEmbedderLoader voiceLoader;      // teszt-varrat; üres → valódi VoiceEmbedder
+    // Lusta lenyomat-pótlás (backfillVoiceprints): 1 szálas pool, egyszerre egy futás.
+    QThreadPool      backfillPool;
+    bool             backfillRunning = false;
+    bool             backfillAgain = false;
+    std::shared_ptr<std::atomic<bool>> backfillCancel = std::make_shared<std::atomic<bool>>(false);
+    QSet<QString>    backfillLogged;    // a hiányzó hang miatt már naplózott lenyomatok
+    bool             voiceModelsApplied = false;
+    // A szerkesztő modell-listája: a használt modellek; ha egy sem használható (nincs modellfájl),
+    // a bekapcsoltak — a meeting cache-ében korábban számolt vektorokkal az elemzés így is megy.
+    QStringList editorModelIds(const SettingsManager* st) const {
+        return voiceModelIds.isEmpty() ? st->enabledVoiceModels() : voiceModelIds;
+    }
+    int              backfillAdded = 0;
+    // Egy pótlandó lenyomat: a testvér-csoport képviselője + a hiányzó modell + a forrás-meeting.
+    struct BackfillJob { QString person; QString model; Voiceprint print; Meeting meeting; };
+    void finishBackfillJob(const BackfillJob& job, const QVector<float>& vec, bool missingAudio);
+    void finishBackfill();
     RecordingState   state = RecordingState::Idle;
     QString          audioDir;
     QString          metaDir;
@@ -644,8 +731,8 @@ struct AppController::Impl {
                                 const FailureSinkPtr& sink,
                                 const std::shared_ptr<LlmContextState>& ctx = nullptr) const;
     void applyIdentification(const QString& meetingId,
-                             const QVector<QPair<QString, QVector<float>>>& embeddings);
-    bool matchSpeaker(Meeting& m, const QString& rawLabel, const QVector<float>& embedding);
+                             const QVector<QPair<QString, EmbeddingSet>>& embeddings);
+    bool matchSpeaker(Meeting& m, const QString& rawLabel, const EmbeddingSet& embedding);
     void commitIdentification(const Meeting& m, MergedTranscript merged,
                               const QStringList& identifiedLabels);
 };
@@ -679,10 +766,11 @@ struct AppController::CloudRun {
 
 bool AppController::Impl::voiceModelUsable() const
 {
+    if (voiceSet.isEmpty()) return false;
 #ifdef TANARA_HAVE_VOICEID
-    return QFileInfo::exists(voiceModelPath);
+    return true;
 #else
-    return false;   // a build nem tartalmaz voice-ID-t (TANARA_BUILD_VOICEID=OFF)
+    return bool(voiceLoader);   // a build nem tartalmaz voice-ID-t; csak a teszt-betöltővel
 #endif
 }
 
@@ -784,7 +872,7 @@ LlmModelPreparer* AppController::Impl::prepareLlm(const QString& meetingId, JobK
 // szál). Ugyanaz a szabály, mint az autoIdentifyMeeting-ben: csak a még névtelen címkék,
 // küszöb felett; a transcript.md a nevekkel újragenerálódik; speakerMapChanged jel.
 void AppController::Impl::applyIdentification(
-    const QString& meetingId, const QVector<QPair<QString, QVector<float>>>& embeddings)
+    const QString& meetingId, const QVector<QPair<QString, EmbeddingSet>>& embeddings)
 {
     if (embeddings.isEmpty() || !voiceprints) return;
     Meeting m = store->load(meetingId);
@@ -803,10 +891,10 @@ void AppController::Impl::applyIdentification(
 // a beszélő embeddingje a lenyomat-DB ellen; küszöb felett a név a speakerMap-be kerül, a
 // személy a névlistába, a pontszám az overlay-be (a szerkesztő „hang alapján felismerve (82%)”).
 bool AppController::Impl::matchSpeaker(Meeting& m, const QString& rawLabel,
-                                       const QVector<float>& embedding)
+                                       const EmbeddingSet& embedding)
 {
     if (!voiceprints || embedding.isEmpty()) return false;
-    const VoiceMatch match = voiceprints->bestMatch(embedding);
+    const VoiceMatch match = voiceprints->bestMatch(embedding, embedding.keys());
     if (match.score < kVoiceMatchThreshold || match.name.isEmpty()) return false;
     m.speakerMap.insert(rawLabel, match.name);
     if (people) people->add(match.name);
@@ -937,9 +1025,10 @@ AppController::AppController(QObject* parent)
     // alkalmazás mellé csomagolt <appDir>/models/... (Windows-zip / telepítő).
     d->voiceprints = std::make_unique<VoiceprintStore>(
         QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
-    d->voiceModelPath = paths::resolveVoiceModelPath(
-        d->metaDir,
-        QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString());
+    d->appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
+    d->voiceModelPath = paths::resolveVoiceModelPath(d->metaDir, d->appDir);
+    d->backfillPool.setMaxThreadCount(1);
+    d->backfillPool.setObjectName(QStringLiteral("tanara-voiceprint-backfill"));
 
     // Személyek ablak: háttérben számolt statisztika, és a műveletek (összevonás,
     // minta-áthelyezés …). A becenevek / megjegyzés a people.json rekordjaiban élnek.
@@ -1027,6 +1116,13 @@ AppController::AppController(QObject* parent)
     connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyEmbeddingSettings(true); });
     applyEmbeddingSettings(false);
 
+    // Beszélő-modellek: a beállítás szerinti készlet most, változáskor újra (bővülésnél pótlás).
+    // Az induló pótlás az eseményhurok első körében (a GUI / a CLI hosszú parancsai alatt fut;
+    // eseményhurok nélküli rövid CLI-parancsnál el sem indul).
+    applyVoiceModels();
+    connect(d->settings, &SettingsManager::settingsChanged, this, [this]() { applyVoiceModels(); });
+    QTimer::singleShot(0, this, [this]() { backfillVoiceprints(); });
+
     // Átirat-szerkesztő: az új összefoglaló törli az elavult-jelzőt; az új átirat eldobja a
     // kézi sor-javításokat (a megszólalások határai megváltoztak).
     connect(this, &AppController::summaryReady, this, [this](const QString& meetingId) {
@@ -1048,6 +1144,10 @@ AppController::AppController(QObject* parent)
 
 AppController::~AppController()
 {
+    // A lenyomat-pótlás: a sorban álló feladat elmarad, a futó a következő lenyomatnál kilép.
+    d->backfillCancel->store(true);
+    d->backfillPool.clear();
+    d->backfillPool.waitForDone();
     // A futó címkejavaslat a profilokat / az indexet olvassa: azok előtt kell végeznie.
     d->tagPool.clear();
     d->tagPool.waitForDone();
@@ -1082,6 +1182,157 @@ MeetingProfiles*   AppController::profiles() const { return d->profiles; }
 EmbeddingIndex*    AppController::embeddings() const { return d->embeddings; }
 EmbeddingPreparer* AppController::embeddingPreparer() const { return d->embeddingPreparer; }
 QString          AppController::voiceModelPath() const { return d->voiceModelPath; }
+
+QStringList AppController::activeVoiceModelIds() const { return d->voiceModelIds; }
+
+VoiceEmbedderSet AppController::voiceEmbedderSet() const { return d->voiceSet.freshCopy(); }
+
+UtteranceEmbedderFactory AppController::utteranceEmbedderFactory() const
+{
+    if (!d->voiceModelUsable()) return {};
+    return voiceUtteranceEmbedderFactory(d->voiceSet);
+}
+
+void AppController::setVoiceEmbedderLoader(PcmEmbedderLoader loader)
+{
+    d->voiceLoader = std::move(loader);
+    d->voiceModelsApplied = false;   // a készlet a betöltővel együtt újraépül (pótlás nélkül)
+    d->voiceModelIds.clear();
+    applyVoiceModels();
+}
+
+void AppController::applyVoiceModels()
+{
+    const QStringList enabled = d->settings->enabledVoiceModels();
+    VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(enabled, d->metaDir, d->appDir, d->voiceLoader);
+    const QStringList ids = set.modelIds();
+    if (d->voiceModelsApplied && ids == d->voiceModelIds) return;   // más beállítás változott
+    bool grew = false;
+    for (const QString& id : ids)
+        if (!d->voiceModelIds.contains(id)) grew = true;
+    const bool first = !d->voiceModelsApplied;
+    d->voiceModelsApplied = true;
+    d->voiceSet = std::move(set);
+    d->voiceModelIds = ids;
+    for (const QString& id : enabled)
+        if (!ids.contains(id))
+            qCInfo(lcVoice).noquote() << "Hangmodell bekapcsolva, de nem használható (ismeretlen id vagy"
+                                         " hiányzó fájl):" << id;
+    qCInfo(lcVoice).noquote() << "Használt hangmodellek:" << (ids.isEmpty() ? QStringLiteral("-") : ids.join(QStringLiteral(", ")));
+    // A nyitott szerkesztők az új modell-listával és gyárral dolgoznak tovább.
+    for (const QPointer<SpeakerEditor>& ed : std::as_const(d->speakerEditors)) {
+        if (!ed) continue;
+        ed->setEmbedderFactory(utteranceEmbedderFactory());
+        ed->setVoiceModelIds(d->editorModelIds(d->settings));
+    }
+    emit voiceModelsChanged();
+    if (grew && !first) backfillVoiceprints();
+}
+
+bool AppController::voiceprintBackfillRunning() const { return d->backfillRunning; }
+
+void AppController::backfillVoiceprints()
+{
+    if (!d->voiceprints) return;
+    if (d->backfillRunning) { d->backfillAgain = true; return; }
+    if (!d->voiceModelUsable()) { emit voiceprintBackfillFinished(0); return; }
+
+    // A feladatlista a fő szálon készül (a DB-t csak a fő szál éri el); a háttérszál csak dekódol
+    // és beágyaz. A meetingeket egyszer töltjük.
+    d->voiceprints->refresh();
+    QVector<Impl::BackfillJob> jobs;
+    QHash<QString, Meeting> meetings;
+    for (const QString& person : d->voiceprints->people()) {
+        for (const QString& model : std::as_const(d->voiceModelIds)) {
+            // Testvér-pontos lista (a printsMissingModel sampleRef-szintű: két meeting azonos
+            // nevű keverékének azonos szakaszát összemosná).
+            for (const Voiceprint& vp : d->voiceprints->samplesMissingModel(person, model)) {
+                auto it = meetings.constFind(vp.sourceMeetingId);
+                if (it == meetings.constEnd())
+                    it = meetings.insert(vp.sourceMeetingId,
+                                         vp.sourceMeetingId.isEmpty() ? Meeting() : d->store->load(vp.sourceMeetingId));
+                if (it->id.isEmpty()) {
+                    const QString key = vp.id + QLatin1Char('|') + model;
+                    if (!d->backfillLogged.contains(key)) {
+                        d->backfillLogged.insert(key);
+                        qCInfo(lcVoice).noquote() << "Lenyomat-pótlás: a forrás-megbeszélés nincs meg, kihagyva:"
+                                                  << person << vp.sampleRef << model;
+                    }
+                    continue;
+                }
+                jobs.append({person, model, vp, it.value()});
+            }
+        }
+    }
+    if (jobs.isEmpty()) { emit voiceprintBackfillFinished(0); return; }
+
+    d->backfillRunning = true;
+    d->backfillAdded = 0;
+    qCInfo(lcVoice).noquote() << "Lenyomat-pótlás indul:" << jobs.size() << "lenyomat";
+    const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
+    const auto cancel = d->backfillCancel;
+    QPointer<AppController> self(this);
+    d->backfillPool.start([self, jobs, proto, cancel]() {
+        const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+        for (const Impl::BackfillJob& job : jobs) {
+            if (cancel->load()) break;
+            bool missing = false;
+            const QVector<float> vec = embedPrintSource(emb, job.model, job.meeting, job.print, &missing);
+            QMetaObject::invokeMethod(qApp, [self, job, vec, missing]() {
+                if (self) self->d->finishBackfillJob(job, vec, missing);
+            }, Qt::QueuedConnection);
+        }
+        QMetaObject::invokeMethod(qApp, [self]() {
+            if (self) self->d->finishBackfill();
+        }, Qt::QueuedConnection);
+    });
+}
+
+// Egy pótolt vektor a DB-be (fő szál). Közben a DB változhatott (törölt / áthelyezett minta,
+// másik folyamat pótolta): csak akkor kerül be, ha a csoportból még mindig hiányzik a modell.
+void AppController::Impl::finishBackfillJob(const BackfillJob& job, const QVector<float>& vec,
+                                            bool missingAudio)
+{
+    const QString key = job.print.id + QLatin1Char('|') + job.model;
+    if (vec.isEmpty()) {
+        if (!backfillLogged.contains(key)) {
+            backfillLogged.insert(key);
+            qCInfo(lcVoice).noquote() << (missingAudio ? "Lenyomat-pótlás: hiányzó hang, kihagyva:"
+                                                       : "Lenyomat-pótlás: nem számolható, kihagyva:")
+                                      << job.person << job.print.sampleRef << job.model;
+        }
+        return;
+    }
+    voiceprints->refresh();
+    const QString sib = VoiceprintStore::siblingKey(job.print);
+    bool stillMissing = false;
+    for (const Voiceprint& p : voiceprints->samplesMissingModel(job.person, job.model))
+        if (VoiceprintStore::siblingKey(p) == sib) { stillMissing = true; break; }
+    if (!stillMissing) return;
+    Voiceprint vp = job.print;
+    vp.id.clear();   // addPrint generál
+    vp.model = job.model;
+    vp.embedding = vec;
+    vp.dim = vec.size();
+    voiceprints->addPrint(job.person, vp);
+    ++backfillAdded;
+}
+
+void AppController::Impl::finishBackfill()
+{
+    backfillRunning = false;
+    const int added = backfillAdded;
+    backfillAdded = 0;
+    if (added > 0) {
+        qCInfo(lcVoice).noquote() << "Lenyomat-pótlás kész:" << added << "új lenyomat";
+        emit q->voiceprintsChanged();
+    }
+    emit q->voiceprintBackfillFinished(added);
+    if (backfillAgain) {
+        backfillAgain = false;
+        q->backfillVoiceprints();
+    }
+}
 RecordingState   AppController::recordingState() const { return d->state; }
 QString AppController::currentMeetingFolder() const { return d->currentFolder; }
 
@@ -1137,18 +1388,8 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     if (nm.isEmpty()) return;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
-
-    auto ensureEmb = [this]() -> VoiceEmbedder* {
-        if (!d->embedder) {
-            if (!QFileInfo::exists(d->voiceModelPath)) return nullptr;
-            auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
-            if (!e->isValid()) return nullptr;
-            d->embedder = std::move(e);
-        }
-        return d->embedder.get();
-    };
-    VoiceEmbedder* emb = ensureEmb();
-    if (!emb) return;   // nincs modell → csendben kihagyjuk (a kézi címkézés így is működik)
+    // Nincs modell → csendben kihagyjuk (a kézi címkézés így is működik).
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
 
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -1156,17 +1397,19 @@ void AppController::enrollSpeaker(const QString& meetingId, const QString& rawLa
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return;
 
-    const QVector<float> embedding = embeddingForLabel(*emb, src.absPath, src.offsetMs, merged, rawLabel);
-    if (embedding.isEmpty()) return;
+    QStringList refs;
+    const EmbeddingSet set = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel,
+                                               src.fileRel, &refs);
+    if (set.isEmpty()) return;
 
-    Voiceprint vp;
-    vp.embedding = embedding;
-    vp.sourceMeetingId = m.id;
-    vp.sourceTrack = src.trackId;
-    vp.device = src.device;
-    vp.sampleRef = representativeSampleRef(merged, rawLabel, src.fileRel);
-    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
-    d->voiceprints->addPrint(nm, vp);
+    Voiceprint tmpl;
+    tmpl.sourceMeetingId = m.id;
+    tmpl.sourceTrack = src.trackId;
+    tmpl.device = src.device;
+    tmpl.sampleRef = representativeSampleRef(merged, rawLabel, src.fileRel);
+    tmpl.sourceRefs = refs;
+    tmpl.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(nm, vp);
     emit voiceprintsChanged();
 }
 
@@ -1174,18 +1417,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
                                        const std::function<bool(int,int)>& onProgress) {
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
-
-    auto ensureEmb = [this]() -> VoiceEmbedder* {
-        if (!d->embedder) {
-            if (!QFileInfo::exists(d->voiceModelPath)) return nullptr;
-            auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
-            if (!e->isValid()) return nullptr;
-            d->embedder = std::move(e);
-        }
-        return d->embedder.get();
-    };
-    VoiceEmbedder* emb = ensureEmb();
-    if (!emb) return;
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
 
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -1210,7 +1442,7 @@ void AppController::autoIdentifyMeeting(const QString& meetingId,
             continue;   // már nevesített (kézzel vagy korábbi match)
         const VoiceSource src = resolveVoiceSource(m, merged, label);
         if (src.absPath.isEmpty()) continue;
-        const QVector<float> e = embeddingForLabel(*emb, src.absPath, src.offsetMs, merged, label);
+        const EmbeddingSet e = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, label);
         if (e.isEmpty()) continue;
         if (d->matchSpeaker(m, label, e)) {
             identified << label;
@@ -1226,20 +1458,15 @@ VoiceMatch AppController::testSpeakerMatch(const QString& meetingId, const QStri
     VoiceMatch none;   // { "", -1 }
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return none;
-    if (!d->embedder) {
-        if (!QFileInfo::exists(d->voiceModelPath)) return none;
-        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
-        if (!e->isValid()) return none;
-        d->embedder = std::move(e);
-    }
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return none;
     const MergedTranscript merged =
         readTokensJson(QDir(m.folder).filePath(QStringLiteral("transcript.tokens.json")));
     if (merged.tokens.isEmpty()) return none;
     const VoiceSource src = resolveVoiceSource(m, merged, rawLabel);
     if (src.absPath.isEmpty()) return none;
-    const QVector<float> e = embeddingForLabel(*d->embedder, src.absPath, src.offsetMs, merged, rawLabel);
+    const EmbeddingSet e = embeddingForLabel(d->voiceSet, src.absPath, src.offsetMs, merged, rawLabel);
     if (e.isEmpty()) return none;
-    return d->voiceprints->bestMatch(e);
+    return d->voiceprints->bestMatch(e, e.keys());
 }
 
 QVector<ParticipantGuess> AppController::identifyParticipants(
@@ -1247,14 +1474,10 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
     QVector<ParticipantGuess> out;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return out;
-
-    if (!d->embedder) {
-        if (!QFileInfo::exists(d->voiceModelPath)) return out;
-        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
-        if (!e->isValid()) return out;
-        d->embedder = std::move(e);
-    }
-    VoiceEmbedder* emb = d->embedder.get();
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return out;
+    // A klaszterezés a fúziós vektoron fut (a betölthető modellek mindegyikével); az ablak
+    // csak akkor számít, ha minden modell adott rá vektort.
+    const QStringList modelIds = d->voiceSet.loadedModelIds();
 
     constexpr qint64 kWinMs = 3000;          // ablak-hossz
     constexpr int    kTargetWindows = 50;    // ablakok száma/sáv (felső korlát)
@@ -1279,7 +1502,8 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
         const QString path = QDir(m.folder).filePath(t.file);
         const qint64 step = std::max<qint64>(kWinMs, D / kTargetWindows);
 
-        QVector<QVector<float>> embs;
+        QVector<QVector<float>> embs;      // fúziós vektorok
+        QVector<EmbeddingSet> sets;        // ugyanezek modellenként (a lenyomat-párosításhoz)
         QVector<qint64> winStart;
         for (qint64 s = 0; s + kWinMs <= D; s += step) {
             if (onProgress && !onProgress(++progressDone, progressTotal))
@@ -1294,8 +1518,9 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             for (float x : pcm) sum += static_cast<double>(x) * x;
             const double rms = std::sqrt(sum / static_cast<double>(pcm.size()));
             if (rms < kSilenceRms) continue;          // csend → kihagy
-            const QVector<float> e = emb->embedPcm(pcm);
-            if (!e.isEmpty()) { embs.append(e); winStart.append(s); }
+            const EmbeddingSet set = d->voiceSet.embedPcmWith(pcm, modelIds);
+            const QVector<float> e = fusion::fuse(set, modelIds);
+            if (!e.isEmpty()) { embs.append(e); sets.append(set); winStart.append(s); }
         }
         if (embs.isEmpty()) continue;
 
@@ -1314,7 +1539,18 @@ QVector<ParticipantGuess> AppController::identifyParticipants(
             for (int k = 0; k < cent.size(); ++k) cent[k] /= idxs.size();
             cent = VoiceprintStore::l2normalize(cent);
 
-            const VoiceMatch mt = d->voiceprints->bestMatch(cent);
+            // Modellenkénti centroid a párosításhoz (a lenyomatok modellenként tároltak).
+            EmbeddingSet centSet;
+            for (const QString& id : modelIds) {
+                QVector<float> c;
+                for (int i : idxs) {
+                    const QVector<float>& v = sets[i].value(id);
+                    if (c.isEmpty()) c.fill(0.0f, v.size());
+                    for (int k = 0; k < c.size() && k < v.size(); ++k) c[k] += v[k];
+                }
+                centSet.insert(id, VoiceprintStore::l2normalize(c));
+            }
+            const VoiceMatch mt = d->voiceprints->bestMatch(centSet, modelIds);
             // Reprezentatív ablak = a centroidhoz legközelebbi (medoid).
             qint64 repStart = winStart[idxs[0]]; double bestSim = -2.0;
             for (int i : idxs) {
@@ -1344,12 +1580,7 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     if (nm.isEmpty()) return;
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
-    if (!d->embedder) {
-        if (!QFileInfo::exists(d->voiceModelPath)) return;
-        auto e = std::make_unique<VoiceEmbedder>(d->voiceModelPath);
-        if (!e->isValid()) return;
-        d->embedder = std::move(e);
-    }
+    if (!d->voiceModelUsable() || !d->voiceSet.ensureLoaded()) return;
     const Track* track = nullptr;
     for (const Track& t : m.tracks) if (t.id == trackId) { track = &t; break; }
     if (!track) return;
@@ -1357,17 +1588,18 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
     // startMs/endMs megbeszélés-időben (mint a sampleRef) → a sávfájl ideje.
     const tracktiming::FileRange fr = tracktiming::fileRange(*track, startMs, endMs);
     if (!fr.valid()) return;
-    const QVector<float> e = d->embedder->embedFile(path, fr.startMs, fr.endMs);
-    if (e.isEmpty()) return;
+    const EmbeddingSet set =
+        d->voiceSet.embedPcm(VoiceEmbedder::decodePcm16kMono(path, fr.startMs, fr.endMs));
+    if (set.isEmpty()) return;
 
-    Voiceprint vp;
-    vp.embedding = e;
-    vp.sourceMeetingId = m.id;
-    vp.sourceTrack = track->id;
-    vp.device = track->deviceName;
-    vp.sampleRef = QStringLiteral("%1#%2-%3").arg(track->file).arg(startMs).arg(endMs);
-    vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
-    d->voiceprints->addPrint(nm, vp);
+    Voiceprint tmpl;
+    tmpl.sourceMeetingId = m.id;
+    tmpl.sourceTrack = track->id;
+    tmpl.device = track->deviceName;
+    tmpl.sampleRef = QStringLiteral("%1#%2-%3").arg(track->file).arg(startMs).arg(endMs);
+    tmpl.sourceRefs = QStringList{tmpl.sampleRef};
+    tmpl.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    for (const Voiceprint& vp : printsFromSet(set, tmpl)) d->voiceprints->addPrint(nm, vp);
     if (d->people) d->people->add(nm);
     emit voiceprintsChanged();
     emit peopleChanged();
@@ -4129,17 +4361,17 @@ bool AppController::startIdentify(const QString& meetingId, bool asStage)
     // (a fő szál embedderéhez nem nyúl). A párosítás a lenyomat-DB ellen és a mentés a fő
     // szálon történik (applyIdentification) — a DB-t csak a fő szál éri el.
     auto cancel = std::make_shared<std::atomic<bool>>(false);
-    auto results = std::make_shared<QVector<QPair<QString, QVector<float>>>>();
-    const QString modelPath = d->voiceModelPath;
+    auto results = std::make_shared<QVector<QPair<QString, EmbeddingSet>>>();
+    const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     QPointer<AppController> self(this);
-    QThread* th = QThread::create([self, items, merged, modelPath, cancel, results, meetingId,
+    QThread* th = QThread::create([self, items, merged, proto, cancel, results, meetingId,
                                    total, kind, asStage]() {
-        VoiceEmbedder emb(modelPath);
-        if (!emb.isValid()) return;
+        const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+        if (!emb.ensureLoaded()) return;
         int done = 0;
         for (const Item& it : items) {
             if (cancel->load()) break;
-            const QVector<float> e = embeddingForLabel(emb, it.audioPath, it.offsetMs, merged, it.label);
+            const EmbeddingSet e = embeddingForLabel(emb, it.audioPath, it.offsetMs, merged, it.label);
             ++done;
             // Eredmény + valós darab-haladás vissza a fő szálra.
             QMetaObject::invokeMethod(qApp, [self, results, label = it.label, e, meetingId,
@@ -4213,8 +4445,8 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     ed->setUserSpeakerName(d->settings->settings().userSpeakerName);
     // Voice-ID nélkül (nincs modell / TANARA_BUILD_VOICEID=OFF) a szerkesztő bizonytalanság
     // és javaslat nélkül is teljes értékű.
-    if (QFileInfo::exists(d->voiceModelPath))
-        ed->setEmbedderFactory(voiceUtteranceEmbedderFactory(d->voiceModelPath));
+    ed->setVoiceModelIds(d->editorModelIds(d->settings));
+    ed->setEmbedderFactory(utteranceEmbedderFactory());
     d->speakerEditors.insert(meetingId, ed);
 
     // A szerkesztő mellékhatásai a megszokott jeleken mennek ki (régi UI, könyvtár).

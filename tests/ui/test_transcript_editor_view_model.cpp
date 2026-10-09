@@ -94,7 +94,7 @@ struct PairScene {
         const QVector<tanara::TranscriptLine> lines = tanara::speakeredit::loadTranscriptLines(meeting.folder);
         UtteranceEmbeddingCache c;
         c.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
-        for (int i = 0; i < lines.size(); ++i) c.vectors.insert(lines[i].id, rows[i].second == 'a' ? a : b);
+        for (int i = 0; i < lines.size(); ++i) c.set(QStringLiteral("campplus"), lines[i].id, rows[i].second == 'a' ? a : b);
         c.save(meeting.folder);
     }
 

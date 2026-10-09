@@ -9,6 +9,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/store/SharedFile.h"
+#include "tanara/voiceid/EmbeddingSet.h"
 
 #include <QString>
 #include <QStringList>
@@ -27,8 +28,8 @@ public:
     int printCount(const QString& name) const;
     int totalPrintCount() const;
 
-    // Lenyomat hozzáadása egy névhez. Üres print.id esetén generál egyet.
-    // print.dim-et az embedding méretére igazítja. Persist.
+    // Lenyomat hozzáadása egy névhez. Üres print.id esetén generál egyet; üres print.model →
+    // az alapmodell. print.dim-et az embedding méretére igazítja. Persist.
     void addPrint(const QString& name, Voiceprint print);
     // Lenyomat törlése id alapján (bármely személytől). true, ha törölt.
     bool removePrint(const QString& printId);
@@ -39,11 +40,36 @@ public:
     // Két személy egyesítése: 'from' lenyomatai 'into'-ba, 'from' törlése.
     void merge(const QString& from, const QString& into);
 
-    // Legjobb párosítás: a legnagyobb cosine-t adó személy (max a halmazán).
-    // Üres DB / üres embedding → { "", -1 }.
+    // Több modelles párosítás: személyenként modellenként a MAX cosine a személy adott modellű
+    // lenyomatain, majd ezek átlaga a közös modelleken (a kért modellIds közül azokon, amelyekhez
+    // a lekérdezésben van vektor ÉS a személynek van lenyomata). Nincs közös modell → -1.
+    // Legjobb párosítás; üres DB / üres lekérdezés / sehol közös modell → { "", -1 }.
+    VoiceMatch bestMatch(const EmbeddingSet& query, const QStringList& modelIds) const;
+    // Minden személy pontszáma csökkenő sorrendben (UI/diagnosztika); közös modell nélkül -1.
+    QVector<VoiceMatch> rankedMatches(const EmbeddingSet& query, const QStringList& modelIds) const;
+    // Egymodelles (régi) forma: {"campplus" → embedding}.
     VoiceMatch bestMatch(const QVector<float>& embedding) const;
-    // Minden személy pontszáma csökkenő sorrendben (UI/diagnosztika).
     QVector<VoiceMatch> rankedMatches(const QVector<float>& embedding) const;
+
+    // A személy azon mintái (sampleRef, ábécérendben, egyedi), amelyekhez még nincs az adott
+    // modellel készült lenyomat (a lusta pótláshoz). Üres sampleRef-ű lenyomat nem számít.
+    QStringList printsMissingModel(const QString& name, const QString& modelId) const;
+
+    // Testvér-lenyomatok: ugyanaz a minta más modellekkel (azonos sampleRef + sourceMeetingId +
+    // createdAt, KÜLÖNBÖZŐ modell). A kulcs a hármast fogja össze.
+    static QString siblingKey(const Voiceprint& p);
+    // Lenyomatok testvér-csoportokba (egy csoport = egy minta): azonos kulcson belül minden
+    // modellből legfeljebb egy lenyomat; az azonos modellű ismétlés új csoportot nyit. Üres
+    // sampleRef → saját csoport. A csoportok az első tagjuk sorrendjében, belül modell szerint.
+    static QVector<QVector<Voiceprint>> siblingGroups(const QVector<Voiceprint>& prints);
+    // A lenyomat testvér-csoportja a gazdájánál (önmagával együtt); üres, ha nincs ilyen id.
+    QVector<Voiceprint> siblingsOf(const QString& printId, QString* owner = nullptr) const;
+    // A személy mintái (csoportonként egy képviselő: a legkisebb modell-id), amelyekhez még
+    // nincs az adott modellel lenyomat (a printsMissingModel testvér-pontos párja: két meeting
+    // azonos nevű fájljának azonos szakasza sem keveredik).
+    QVector<Voiceprint> samplesMissingModel(const QString& name, const QString& modelId) const;
+    // A személy mintáinak (testvér-csoportjainak) száma.
+    int sampleCount(const QString& name) const;
 
     // Egy lenyomat és a gazdája id alapján; false, ha nincs ilyen.
     bool findPrint(const QString& printId, QString* owner, Voiceprint* print) const;

@@ -61,7 +61,7 @@ QVector<PersonInfo> listPeople(const PeopleStore* people, const VoiceprintStore*
         for (const QString& n : voiceprints->people()) {
             const int i = ensure(n);
             if (i < 0) continue;
-            out[i].voiceprintCount = voiceprints->printCount(n);
+            out[i].voiceprintCount = voiceprints->sampleCount(n);
             out[i].hasVoiceprint = out[i].voiceprintCount > 0;
         }
 

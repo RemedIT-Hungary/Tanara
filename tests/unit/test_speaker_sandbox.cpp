@@ -123,6 +123,7 @@ void SpeakerSandboxTest::measure()
         // ---- illeszkedés-eloszlások a nyers diarizáción ----
         const UtteranceEmbeddingCache cache =
             UtteranceEmbeddingCache::load(m.folder, transcriptFingerprint(lines));
+        const QHash<QString, QVector<float>> vectors = cache.vectors(QStringLiteral("campplus"));
         QStringList raws;
         for (const TranscriptLine& l : lines)
             if (!raws.contains(l.rawLabel)) raws << l.rawLabel;
@@ -130,8 +131,8 @@ void SpeakerSandboxTest::measure()
         for (int i = 0; i < lines.size(); ++i) {
             al[i].speaker = raws.indexOf(lines[i].rawLabel);
             al[i].durationMs = lines[i].endMs - lines[i].startMs;
-            const auto it = cache.vectors.constFind(lines[i].id);
-            if (it != cache.vectors.constEnd() && !it->isEmpty()) al[i].embedding = &it.value();
+            const auto it = vectors.constFind(lines[i].id);
+            if (it != vectors.constEnd() && !it->isEmpty()) al[i].embedding = &it.value();
         }
         const QVector<LineFit> fits = computeFits(al, raws.size());
         QVector<double> ownLong, ownShort, gapLong, gapShort;

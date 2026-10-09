@@ -12,6 +12,8 @@
 #include "tanara/summary/SummaryStore.h"
 #include "tanara/import/AudioImporter.h"
 #include "tanara/tags/TagTypes.h"
+#include "tanara/edit/UtteranceEmbeddings.h"
+#include "tanara/voiceid/VoiceEmbedderSet.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -119,8 +121,32 @@ public:
     // utoljára látva) háttérszálon számolódik: people/PeopleStats.h.
     PeopleService* peopleService() const;
     PeopleStats*   peopleStats() const;
-    // A hang-modell (CAM++ ONNX) várt helye; a megléte: voiceIdentificationAvailable().
+    // Az ALAPmodell (CAM++ ONNX) várt helye (diagnosztika); a használhatóság:
+    // voiceIdentificationAvailable().
     QString voiceModelPath() const;
+
+    // ---- beszélő-modellek (voice embedding) --------------------------------------------
+    // A használt modellek: a beállítás "voiceModels" listája ∩ a meglévő modellfájlok
+    // (VoiceModelRegistry::active), ábécérendben. A beállítás változásakor újraszámolódik
+    // (a nyitott szerkesztők is megkapják), és ha a lista bővült, indul a lenyomat-pótlás.
+    QStringList activeVoiceModelIds() const;
+    // A használt modellek készlete (betöltetlen másolat — a hívó saját példánya).
+    VoiceEmbedderSet voiceEmbedderSet() const;
+    // Megszólalás-embedder gyár a használt modellekre (SpeakerEditor / PeopleService); üres, ha
+    // nincs használható modell.
+    UtteranceEmbedderFactory utteranceEmbedderFactory() const;
+    // Teszt-varrat: a modellek betöltője (hamis „modell” ONNX nélkül). Üres → a valódi.
+    // Azonnal újraszámolja a készletet.
+    void setVoiceEmbedderLoader(PcmEmbedderLoader loader);
+
+    // Lusta lenyomat-pótlás: minden személy minden olyan mintájához (sampleRef), amelyhez egy
+    // használt modellel még nincs lenyomat, háttérszálon (1 szálas pool) kiszámolja a vektort a
+    // minta hangjából (sourceRefs, ennek híján sampleRef), és addPrint-eli (testvér-lenyomat:
+    // azonos sampleRef / forrás / createdAt / sourceRefs). Hiányzó hang → kihagyja (egyszer
+    // naplóz). A fő szálat nem blokkolja; ha már fut, a végén újra lefut. Kész:
+    // voiceprintBackfillFinished(added). Induláskor és a modell-lista bővülésekor magától indul.
+    void backfillVoiceprints();
+    bool voiceprintBackfillRunning() const;
 
     // ---- címkék és címkejavaslatok -------------------------------------------------------
     // A készlet és a meetingenkénti címkék (tags/TagService.h); a klasszikus hasonlóság
@@ -476,6 +502,8 @@ signals:
     void summaryStaleChanged(QString meetingId);            // az összefoglaló elavult-jelzője változott
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
+    void voiceprintBackfillFinished(int added);             // a lusta pótlás lefutott (új lenyomatok)
+    void voiceModelsChanged();                              // a használt modellek listája változott
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
     void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
@@ -549,6 +577,8 @@ private:
     void invalidateTagSuggestions();
     void startLlmTagSuggestions(const QString& meetingId, const QVector<tanara::TagSuggestion>& suggested);
     void applyEmbeddingSettings(bool restart);
+    // A használt modellek újraszámolása (beállítás / betöltő változásakor); bővülésnél pótlás.
+    void applyVoiceModels();
     // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
 

@@ -100,6 +100,41 @@ private:
     std::shared_ptr<FakeWorld> m_world;
 };
 
+// Több modelles hamis embedder: "x" ugyanazt adja, mint a FakeEmbedder, "y" és "z" más
+// dimenziójú, de szintén beszélőnként ortogonális vektort. Minden kérést naplóz.
+struct MultiWorld {
+    std::atomic_int opens{0};
+    std::atomic_int calls{0};
+    QStringList seen;                  // a kért modell-listák (csak a háttérszál írja)
+};
+
+class MultiFakeEmbedder : public IUtteranceEmbedder {
+public:
+    explicit MultiFakeEmbedder(std::shared_ptr<MultiWorld> w) : m_world(std::move(w)) {}
+    bool open(const QString&) override { ++m_world->opens; return true; }
+    QVector<float> embed(qint64 s, qint64 e) override { return embedAll(s, e, {"x"}).value("x"); }
+    EmbeddingSet embedAll(qint64 startMs, qint64 endMs, const QStringList& modelIds) override
+    {
+        ++m_world->calls;
+        m_world->seen << modelIds.join(QLatin1Char(','));
+        const qint64 mid = (startMs + endMs) / 2;
+        int voice = -1;
+        for (const Row& r : scenario())
+            if (mid >= r.startMs && mid <= r.startMs + r.durMs) voice = r.voice == 'A' ? 0 : r.voice == 'B' ? 1 : 2;
+        EmbeddingSet out;
+        for (const QString& id : modelIds) {
+            if (voice < 0) { out.insert(id, {}); continue; }
+            const int dim = id == QLatin1String("x") ? 3 : 4;
+            QVector<float> v(dim, 0.0f);
+            v[id == QLatin1String("z") ? (voice + 1) % dim : voice] = 1.0f;
+            out.insert(id, v);
+        }
+        return out;
+    }
+private:
+    std::shared_ptr<MultiWorld> m_world;
+};
+
 void writeJson(const QString& path, const QJsonDocument& doc)
 {
     QFile f(path);
@@ -232,6 +267,7 @@ private slots:
     void suggestion_afterMove_acceptIsOneStep();
     void embedding_progressCancelAndCache();
     void embedding_gracefulWithoutModel();
+    void embedding_multiModel_oneDecodeFusedPrints();
     void voiceprint_explicitOnly();
     void voiceprint_fromSingleLine();
     void summaryStale_lifecycle();
@@ -879,6 +915,64 @@ void SpeakerEditorTest::voiceprint_fromSingleLine()
     QVERIFY(!r.ok);
     QVERIFY(r.error.contains(QStringLiteral("rövid")));
     QCOMPARE(fx.prints->printCount(QStringLiteral("Dani")), 0);
+}
+
+// Több modell: egy háttérfutás = egy open() (egy dekódolás) minden modellre; a cache
+// modellenként tárol; az elemzés a fúziós vektorral ugyanazt adja, mint egy modellel; a kézi
+// lenyomat modellenként külön Voiceprint, és a visszavonás mindet viszi. Új modell bekapcsolásakor
+// csak az hiányzik, és csak azt számolja.
+void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
+{
+    Fixture fx;
+    auto world = std::make_shared<MultiWorld>();
+    auto ed = std::make_unique<SpeakerEditor>(fx.store.get(), fx.people.get(), fx.prints.get(), fx.meeting.id);
+    QCOMPARE(ed->voiceModelIds(), QStringList{"campplus"});
+    ed->setEmbedderFactory([world] { return std::make_unique<MultiFakeEmbedder>(world); });
+    ed->setVoiceModelIds({"y", "x", "x"});
+    QCOMPARE(ed->voiceModelIds(), QStringList({"x", "y"}));
+
+    QVERIFY(Fixture::embed(*ed));
+    QCOMPARE(world->opens.load(), 1);
+    QVERIFY(ed->embeddingsComplete());
+    for (const QString& m : std::as_const(world->seen)) QCOMPARE(m, QStringLiteral("x,y"));
+    QCOMPARE(ed->uncertainUtteranceIds(), uids({17}));
+
+    // A cache modellenként a lemezen (v2).
+    const UtteranceEmbeddingCache cache = UtteranceEmbeddingCache::load(
+        fx.meeting.folder,
+        speakeredit::transcriptFingerprint(speakeredit::loadTranscriptLines(fx.meeting.folder)));
+    QCOMPARE(cache.models.keys(), QStringList({"x", "y"}));
+    QCOMPARE(cache.vectors("x").value(uid(0)), (QVector<float>{1, 0, 0}));
+    QCOMPARE(cache.vectors("y").value(uid(0)), (QVector<float>{1, 0, 0, 0}));
+
+    // Kézi lenyomat: modellenként egy, közös mintával; a visszavonás mindkettőt viszi.
+    const QString cili = ed->moveUtterancesToPerson(uids({4, 7, 9, 14}), QStringLiteral("Cili"));
+    const VoiceprintResult r = ed->createVoiceprint(cili);
+    QVERIFY2(r.ok, qPrintable(r.error));
+    const QVector<Voiceprint> made = fx.prints->printsFor(QStringLiteral("Cili"));
+    QCOMPARE(made.size(), 2);
+    QCOMPARE(made[0].model, QStringLiteral("x"));
+    QCOMPARE(made[1].model, QStringLiteral("y"));
+    QCOMPARE(made[0].sampleRef, made[1].sampleRef);
+    QCOMPARE(made[0].createdAt, made[1].createdAt);
+    QVERIFY(made[0].id != made[1].id);
+    QCOMPARE(made[0].dim, 3);
+    QCOMPARE(made[1].dim, 4);
+    QVERIFY(ed->removeVoiceprint(r.printId));
+    QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 0);
+
+    // Új modell: amíg nincs vektora, nincs fúziós vektor (nincs hang-alapú bizonytalanság);
+    // a következő futás csak a "z"-t számolja, megint egyetlen open()-nel.
+    ed->setVoiceModelIds({"x", "y", "z"});
+    QVERIFY(!ed->embeddingsComplete());
+    QCOMPARE(ed->uncertainCount(), 0);
+    world->seen.clear();
+    QVERIFY(Fixture::embed(*ed));
+    QCOMPARE(world->opens.load(), 2);
+    QVERIFY(!world->seen.isEmpty());
+    for (const QString& m : std::as_const(world->seen)) QCOMPARE(m, QStringLiteral("z"));
+    QVERIFY(ed->embeddingsComplete());
+    QVERIFY(ed->uncertainCount() > 0);
 }
 
 void SpeakerEditorTest::voiceprint_explicitOnly()

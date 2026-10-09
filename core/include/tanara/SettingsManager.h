@@ -21,6 +21,11 @@ public:
     // Beállítja és perzisztálja, majd settingsChanged()-et emittál.
     void setSettings(const AppSettings& s);
 
+    // Bekapcsolt beszélő-embedding modellek ("voiceModels"; ábécérendben, egyedi id-k).
+    QStringList enabledVoiceModels() const { return m_settings.voiceModels; }
+    // Normalizálja (ábécérend, egyedi), és ha változott: perzisztál + settingsChanged().
+    void setEnabledVoiceModels(const QStringList& ids);
+
     // Betölt a settings.json-ból. Ha NINCS fájl → defaultok + mentés (első indítás). Ha VAN,
     // de nem olvasható / nem értelmezhető → defaultok CSAK a memóriában: a fájlt nem írjuk
     // felül csendben (a felhasználó beállításai és a másik folyamat épp írt fájlja ne vesszen).

@@ -3,6 +3,7 @@
 #include "tanara/Paths.h"
 #include "tanara/Logging.h"
 #include "tanara/audio/TrackCatalog.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QDateTime>
 #include <QSaveFile>
@@ -271,9 +272,19 @@ void SettingsManager::save() const
         qCWarning(lcApp).noquote() << "settings.json: a mentés nem sikerült:" << path << f.errorString();
 }
 
+void SettingsManager::setEnabledVoiceModels(const QStringList& ids)
+{
+    const QStringList norm = VoiceModelRegistry::normalizeIds(ids);
+    if (norm == m_settings.voiceModels) return;
+    AppSettings s = m_settings;
+    s.voiceModels = norm;
+    setSettings(s);
+}
+
 void SettingsManager::setSettings(const AppSettings& s)
 {
     m_settings = s;
+    m_settings.voiceModels = VoiceModelRegistry::normalizeIds(s.voiceModels);
     devicenames::setOverrides(m_settings.deviceNames);
     save();
     emit settingsChanged();

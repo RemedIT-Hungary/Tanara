@@ -42,3 +42,10 @@ if(TARGET tanara_qml)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
     endforeach()
 endif()
+
+# A CLI voice-models / voice-eval parancsait a tanara-cli futtatásával teszteljük (QProcess).
+if(TARGET test_cli_voice_models AND TARGET tanara-cli)
+    add_dependencies(test_cli_voice_models tanara-cli)
+    target_compile_definitions(test_cli_voice_models PRIVATE TANARA_CLI_EXE="$<TARGET_FILE:tanara-cli>")
+    set_tests_properties(test_cli_voice_models PROPERTIES TIMEOUT 180)
+endif()
