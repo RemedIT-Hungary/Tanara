@@ -523,6 +523,48 @@ build/gui/tanara --qml-shot out.png --qml-page PeopleWindow --size 960x1100 --qm
 `demoState`: `P01` … `P06` · `newPerson` · `sampleNew` · `sampleMove` · `noResult` · `sort` ·
 `allSamples` · `deleteKeep` · `creating` · `toastPlain`.
 
+## First steps window (`OnboardingWindow.qml`, `src/Onboarding*`)
+
+Screen list item K14 (`design/kepernyolista.md`). There is no designer package: it follows the
+Settings window and the empty-library screen (`SettingsNavItem` rail, `SettingsTextField`,
+`SettingsCombo`, `SettingsSegmented`, `SettingsSwitchRow`, the numbered step chips of
+`EmptyLibraryView`). A separate, **non-modal** window (720 × 640) with native decorations.
+
+**Wizard, not one long page.** Four of the six steps are real decisions, and each needs its
+own "Kihagyom" (skip). Per step that button clearly applies to what is on screen; on one long
+page it would not. "Tovább" saves the step at once, so a wizard left half-way keeps what was
+accepted. Nothing is mandatory: "Később" and the window's × close it at any time.
+
+| Step | Content | Saved on "Tovább" |
+|---|---|---|
+| `welcome` | what Tanara does (local-first, own keys), "everything can be changed later" | — |
+| `you` | own name (prefilled from `AppSettings::userSpeakerName`, i.e. the OS account on a fresh install), UI language (applies at next start), theme (live preview) | name via `AppController::setUserSpeakerName`; `uiLanguage`; theme via `themeModeSaved` (the main window stores it) |
+| `folders` | recordings and notes folders, "alapértelmezett" pill when unchanged, Tallózás… (`SettingsDialogs::pickFolder`), reset | `audioDir`, `notesDir` |
+| `providers` | own-key explanation, readiness lines from `ReadinessModel` ("Átírás: nincs kulcs", "Összefoglaló: LM Studio · gemma-4-12b"), "Beállítás most" → Settings › Szolgáltatások, "Tanara Cloud: hamarosan" (not a choice; in live cloud mode with Cloud chosen the own-key copy is replaced) | — |
+| `watcher` | "Induljon el a figyelő bejelentkezéskor" + platform note | `watcherAutostart` + `tanara::autostart::applyWatcher` |
+| `done` | summary of accepted / skipped steps; "Kezdjük" closes | `onboardingDone` |
+
+| Piece | Role |
+|---|---|
+| `OnboardingWindow.qml` | rail, step pages, footer (Később · Vissza · Kihagyom · Tovább / Kezdjük) |
+| `OnboardingViewModel` | per-step draft over `AppSettings`; `next()` applies **only the step's difference** onto the core's current settings, `skip()` drops it, `discardPending()` on close, `markDone()`; `sttStatus` / `llmStatus`, `providerLabel()` |
+| `OnboardingWindowHost` | C++ host with its own engine: `open()` (manual, always), `openIfNeeded()` (first run: only while `AppSettings::onboardingDone` is false, once per process), centred over the transient parent; closing the window in any way sets `onboardingDone` |
+
+Where it opens: `QmlShellBridge::windowShown()` → next event-loop turn → after the cloud
+startup checks (K-01 mode choice in live cloud mode stays as it was) → `openIfNeeded()`. Never in
+`--shell-script` QA mode. Manually: File › "Első lépések…" (`ShellActions.openOnboarding()` →
+`ShellBridge::openOnboarding()`) and the link at the bottom of Settings › Általános
+(`SettingsDialogs::openOnboarding()`; hidden where no main window runs: `tanara --record`,
+`tanara --settings`).
+
+Screenshots (fictional data, no controller):
+
+```bash
+gui/qml/shoot.sh 'OnboardingWindow:720x640:demoState="you"'
+```
+
+`demoState`: `welcome` · `you` · `folders` · `providers` · `watcher` · `done`.
+
 ## Recorder (`Recorder*.qml`, `VuMeter.qml`, `src/Recorder*`)
 
 Spec: `design/handoff-recorder/README.md` (states R01–R11).

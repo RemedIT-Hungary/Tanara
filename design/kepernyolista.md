@@ -30,7 +30,7 @@ Három külön indítható felület van, közös `core` fölött:
 | K11 | Beállítások | MEGVAN | Fájl → Beállítások… |
 | K12 | Felvevő | MEGVAN | „Új felvétel", tálca |
 | K13 | Tálca-figyelő | MEGVAN | Háttérben fut |
-| K14 | Első indítás (onboarding) | nincs megvalósítva | — |
+| K14 | Első indítás (onboarding) | MEGVAN (QML) | Első indításkor magától; Fájl → Első lépések…; Beállítások › Általános |
 
 ## K1 — Könyvtár [MEGVAN]
 
@@ -216,9 +216,14 @@ Lebegő, húzással mozgatható ablak; a főablaktól független folyamat.
 - Menü: Rögzítés azonnali indítása, Rögzítő megnyitása…, Elemző megnyitása, Kilépés.
 - Ha már fut felvétel, újat nem indít.
 
-## K14 — Első indítás [nincs megvalósítva]
+## K14 — Első indítás [MEGVAN (QML)]
 
-A kódban nincs megvalósítva (korábban csak drótváz készült hozzá). A QML-átállásnál dönteni kell, kell-e (saját név, mappák, szolgáltató beállítása).
+„Első lépések” ablak (`gui/qml/OnboardingWindow.qml`, `OnboardingViewModel`, `OnboardingWindowHost`). Designer-csomag nem volt: a Beállítások-ablak és az üres könyvtár vizuális nyelvét követi. Nem modális, 720 × 640, első indításkor a főablak fölött középen.
+
+- **Varázsló hat lépéssel** (bal oldalt a lépések a Beállítások navigációjának elemeivel): Üdvözlés → Te (saját név az OS-fiókból kitöltve, nyelv, téma) → Mappák (felvételek, jegyzetek; „alapértelmezett” jelölés, tallózás, visszaállítás) → Szolgáltatások (saját kulcsos út magyarázata, állapot-sor: „Átírás: nincs kulcs”, „Összefoglaló: LM Studio · gemma-4-12b”; „Beállítás most” → Beállítások › Szolgáltatások; „Tanara Cloud: hamarosan”) → Hívásfigyelő (indítás bejelentkezéskor) → Kész.
+- **Semmi sem kötelező:** minden döntési lépésnek van „Kihagyom” gombja, a „Később” / × bármikor bezár. A „Tovább” azonnal menti az adott lépést (különbség-mentés, mint a Beállításokban).
+- **Egyszer magától:** az `onboardingDone` jelző (settings.json) a bezáráskor igazra áll. Kézzel bármikor újranyitható (Fájl → Első lépések…, Beállítások › Általános hivatkozás).
+- Élő cloud-módban a K-01 módválasztó (Widgets) változatlanul előtte jön; ha a Cloudot választották, a Szolgáltatások lépés a saját kulcsos magyarázat helyett ezt mondja.
 
 ## Megvalósítási sorrend (javaslat)
 

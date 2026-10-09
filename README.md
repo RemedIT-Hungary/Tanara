@@ -158,6 +158,18 @@ works. It only skips the automatic speaker labels.
 
 ## Configuration
 
+### First run
+
+At the first start the **Első lépések** (first steps) window opens once over the main
+window. It walks through your speaker name (prefilled from the OS account), the UI
+language and theme, the recordings and notes folders, the state of the transcription
+and summary services (with a shortcut to Settings › Services), and whether the call
+watcher starts at login. Every step can be skipped, and you can close the window at any
+time; all values stay editable in Settings. Reopen it from **File › Első lépések…** or
+from the link on Settings › General.
+
+### Settings
+
 Open **Settings** in the GUI to set:
 
 - the UI language (system / Magyar / English) — a change applies at the next start
