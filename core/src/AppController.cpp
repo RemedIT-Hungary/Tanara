@@ -32,6 +32,7 @@
 #include "tanara/jobs/JobStats.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
+#include "tanara/audio/MixdownPlan.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/WaveformService.h"
 #include "tanara/edit/PeopleDirectory.h"
@@ -1480,28 +1481,10 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     const QString outRel = QStringLiteral("mixdown.mp3");
     const QString outPath = QDir(m.folder).filePath(outRel);
 
-    // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe.
-    QStringList inArgs;
-    QStringList missing;   // aktív sávok, amelyeknek nincs meg a hangfájlja (megjelenített név)
-    QStringList delays;    // bemenetenként: adelay-szűrő, ha a sáv később kezdődik; különben üres
-    int inputs = 0;
-    const QVector<TrackView> views = TrackCatalog::tracks(m);
-    for (int i = 0; i < m.tracks.size(); ++i) {
-        const Track& t = m.tracks.at(i);
-        if (!t.active) continue;
-        const QString path = QDir(m.folder).filePath(t.file);
-        if (t.file.isEmpty() || !QFileInfo(path).isFile()) {
-            missing << views.value(i).displayName;
-            continue;
-        }
-        inArgs << QStringLiteral("-i") << path;
-        // Később kezdődő sáv (startOffsetMs): ennyi csenddel tolva kerül a keverékbe.
-        if (t.startOffsetMs > 0)
-            delays << QStringLiteral("[%1]adelay=%2:all=1[d%1]").arg(inputs).arg(t.startOffsetMs);
-        else
-            delays << QString();
-        ++inputs;
-    }
+    // Csak az aktív, lemezen meglévő sávok kerülnek a keverékbe, a később kezdődők a helyükre
+    // tolva (startOffsetMs → adelay). A szűrőgráf: MixdownPlan.
+    const MixdownPlan plan = MixdownPlan::fromMeeting(m);
+    const QStringList& missing = plan.missing;
     // Hiányzó aktív sáv mellett a MEGLÉVŐ (teljes) keveréket nem cseréljük le egy
     // részlegesre — sem kézi újrakeverésnél, sem az átírás előtti automatikusnál.
     const bool haveMixdown = QFileInfo(outPath).isFile()
@@ -1515,7 +1498,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         emit mixdownUpdated(meetingId, false);
         return;
     }
-    if (inputs == 0) {
+    if (plan.inputs.isEmpty()) {
         emit errorOccurred(tr("Nincs aktív hangsáv a lekeveréshez."));
         emit mixdownUpdated(meetingId, false);
         return;
@@ -1525,39 +1508,7 @@ void AppController::regenerateMixdown(const QString& meetingId) {
     // hiba esetén a korábbi (még lejátszható) keverék érintetlen marad.
     const QString partPath = QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"));
 
-    QStringList args{QStringLiteral("-hide_banner"),
-                     QStringLiteral("-loglevel"), QStringLiteral("error")};
-    args += inArgs;
-    // Loudness-normalizálás (EBU R128, -16 LUFS, true-peak -1.5 dBTP) — felhozza a
-    // halk beszédet kényelmes lejátszási hangerőre (lásd RecordingSession). STT-t nem érint.
-    const QString kLoudnorm = QStringLiteral(
-        "loudnorm=I=-16,acompressor=threshold=-24dB:ratio=4:makeup=10,alimiter=limit=0.97");
-    // Az eltolt sávok adelay-jel kerülnek a keverőbe: "[1]adelay=57200:all=1[d1];[0][d1]amix=…".
-    QString pre, mixIn;
-    for (int i = 0; i < inputs; ++i) {
-        if (delays.at(i).isEmpty()) { mixIn += QStringLiteral("[%1]").arg(i); continue; }
-        pre += delays.at(i) + QLatin1Char(';');
-        mixIn += QStringLiteral("[d%1]").arg(i);
-    }
-    if (inputs > 1) {
-        args << QStringLiteral("-filter_complex")
-             << QStringLiteral("%1%2amix=inputs=%3:duration=longest:normalize=0,%4")
-                    .arg(pre, mixIn).arg(inputs).arg(kLoudnorm);
-    } else if (!pre.isEmpty()) {
-        args << QStringLiteral("-filter_complex")
-             << QStringLiteral("%1%2%3").arg(pre, mixIn, kLoudnorm);   // 1 eltolt sáv
-    } else {
-        args << QStringLiteral("-af") << kLoudnorm;   // 1 aktív sáv → csak normalizálás
-    }
-    // SZTEREÓ kimenet (dual-mono) — a Qt6/PipeWire mono streamet halkan/egy csatornára
-    // játszhat; sztereóval mindkét hangszóró megszólal.
-    args << QStringLiteral("-ac") << QStringLiteral("2")
-         << QStringLiteral("-c:a") << QStringLiteral("libmp3lame")
-         << QStringLiteral("-q:a") << QStringLiteral("4");
-    // Valós haladás: az ffmpeg kulcs=érték sorokat ír a stdoutra (out_time_us=…), amiből a
-    // felvétel hosszához mérve százalékot számolunk → mixdownProgress() a nem-modális UI-nak.
-    args << QStringLiteral("-progress") << QStringLiteral("pipe:1") << QStringLiteral("-nostats")
-         << QStringLiteral("-y") << partPath;
+    const QStringList args = plan.ffmpegArgs(partPath);
     const qint64 totalMs = m.durationMs;   // a százalék nevezője
 
     // Aszinkron QProcess — NEM blokkolja a UI-t (egy 90 perces keverés is futhat), és nem
