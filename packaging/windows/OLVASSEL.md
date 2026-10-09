@@ -13,9 +13,13 @@ vagy rendszergazdai jog.
    „További információ” → „Futtatás mindenképp” gombra. A csomag nincs aláírva.
 
 A mappában minden a helyén van: `ffmpeg.exe` és `ffprobe.exe` (felvétel, importálás,
-hang-dekódolás),
+hang-dekódolás; LGPL-licencű FFmpeg-build),
 `onnxruntime.dll` és `models\campplus_sv_zh_en_16k.onnx` (beszélő-felismerés),
 valamint a Qt-könyvtárak. Ne mozgass ki belőle fájlt.
+
+**Licencek.** A Tanara MIT-licencű (`LICENSE`). A csomagban lévő harmadik féltől származó
+komponensek (Qt, FFmpeg, ONNX Runtime, a CAM++ modell stb.) jegyzéke a
+`THIRD_PARTY_NOTICES.md`, a licencszövegek a `licenses\` mappában vannak.
 
 ## 2. Első indítás — beállítások
 
@@ -37,7 +41,9 @@ résznél add meg a következőket.
 **Tanara Cloud**: hamarosan, most nem használható. A beállításokban megjelenő
 Tanara Cloud / „hamarosan” részt hagyd figyelmen kívül.
 
-A beszélő-felismerés modellje a csomagban van, ehhez nincs teendő.
+A beszélő-felismerés alapmodellje (CAM++) a csomagban van, ehhez nincs teendő. Más hangmodelleket
+nem tartalmaz a csomag; ha szeretnél, a `tanara-cli.exe voice-models` paranccsal listázhatod és
+letöltheted őket (egyes modellek licence megjelölést kér, lásd `THIRD_PARTY_NOTICES.md`).
 
 ## 3. Hol vannak az adatok?
 

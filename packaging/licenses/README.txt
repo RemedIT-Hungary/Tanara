@@ -41,4 +41,3 @@ upstream archives, so they always match the shipped binaries; see packaging/wind
   FFmpeg-README-build.txt              short build information of that FFmpeg build
   onnxruntime-LICENSE.txt              LICENSE of the ONNX Runtime release
   onnxruntime-ThirdPartyNotices.txt    ThirdPartyNotices.txt of the ONNX Runtime release
-  Qt-LICENSES-README.txt               pointer to Qt's third-party license list (see THIRD_PARTY_NOTICES.md)

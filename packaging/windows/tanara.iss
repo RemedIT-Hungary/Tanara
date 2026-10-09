@@ -8,7 +8,8 @@
 ;
 ;   DistDir  — a windeployqt-vel összerakott, önálló mappa (tanara.exe, tanara-cli.exe,
 ;              tanara-watcher.exe, Qt + QML pluginek, MinGW runtime, onnxruntime.dll,
-;              ffmpeg.exe, models\campplus_sv_zh_en_16k.onnx, OLVASSEL.md).
+;              ffmpeg.exe + ffprobe.exe (LGPL-only build), models\campplus_sv_zh_en_16k.onnx,
+;              OLVASSEL.md, LICENSE, THIRD_PARTY_NOTICES.md, licenses\ — lásd README.md).
 ;   BuildDir — a CMake build-mappa: innen jön a tanara-version.iss (a verzió a
 ;              CMakeLists.txt project(VERSION)-jéből). /DAppVersion=x.y.z felülírja.
 ;
@@ -54,6 +55,9 @@ OutputBaseFilename=Tanara-{#AppVersion}-win64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; A Tanara (MIT) licenc az első oldalon; a harmadik felek licencei a {app}\licenses mappában
+; és a THIRD_PARTY_NOTICES.md-ben vannak (a DistDir-ből másolódnak).
+LicenseFile={#DistDir}\LICENSE
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName} {#AppVersion}
 ; A futó tanara.exe / tanara-watcher.exe bezárása frissítés és eltávolítás előtt.
@@ -71,19 +75,23 @@ hu.WatcherName=Tanara tálca-figyelő
 en.WatcherName=Tanara tray watcher
 hu.ReadmeName=Tanara — olvass el
 en.ReadmeName=Tanara — read me
+hu.NoticesName=Harmadik féltől származó komponensek (licencek)
+en.NoticesName=Third-party notices (licenses)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "watcherautostart"; Description: "{cm:WatcherAutostart}"; Flags: unchecked
 
 [Files]
-; A teljes, windeployqt-vel összerakott mappa (almappákkal: platforms, qml, models …).
+; A teljes, windeployqt-vel összerakott mappa (almappákkal: platforms, qml, models, licenses …).
+; Ebben van a LICENSE, a THIRD_PARTY_NOTICES.md és a licenses\ is — ezek nélkül ne készíts csomagot.
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\{cm:WatcherName}"; Filename: "{app}\{#WatcherExe}"
 Name: "{group}\{cm:ReadmeName}"; Filename: "{app}\OLVASSEL.md"
+Name: "{group}\{cm:NoticesName}"; Filename: "{app}\THIRD_PARTY_NOTICES.md"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 ; Indítás bejelentkezéskor: parancsikon a felhasználó Startup mappájában (az app saját
