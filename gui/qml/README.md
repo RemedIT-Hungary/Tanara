@@ -354,10 +354,29 @@ they are corrected or confirmed; a row with a suggestion shows "<Név> mondta". 
 the header "…" menu ("Beszélők újraellenőrzése…"), the toolbar "Bizonytalan 0" button and the
 empty uncertain filter.
 
+Stored voiceprints in the re-check references (`SpeakerPrior` in `SpeakerAnalysis.h`; only
+`recheckFromConfirmed` and `recheckPair` — the automatic uncertainty and the similarity
+suggestion do not use them). For a named speaker, `SpeakerEditor` passes the person's prints from
+`VoiceprintStore` (prints of another model dimension are skipped). Weights, in ms-equivalent: a
+confirmed line weighs its duration (capped at `kMaxEmbedMs` = 10 s); a print made **in this
+meeting** (`sourceMeetingId`) is local evidence of this recording's acoustics: `kLocalPrintMs`
+= 10 s each, not capped, and one such print alone is a local core (it also enables the re-check);
+a print from **another meeting** weighs `kPriorPrintMs` = 4 s, and all of them together at most
+`kPriorMaxShare` = 1/3 of the local weight, so the meeting's own evidence always dominates. Three
+reference cases per speaker (`ReferenceInfo::kind`): `Local` (confirmed lines and/or this-meeting
+prints, plus the capped earlier prints), `Prior` (no local core: the earlier prints alone), and
+`Fallback` (neither: all clean lines, as before). When a this-meeting print's sample line
+(`sampleRef` start time) is itself a confirmed line of the speaker, that line is left out of the
+reference and only the print counts. The result carries the composition
+(`RecheckResult::references`, `PairRecheckResult::refA/refB`); when any print was used, the toast
+appends `SpeakerEditor::referenceSummary`, e.g. "Referencia: Dompa 3 sor + 1 itteni lenyomat + 2
+korábbi lenyomat, Gábor 5 sor." (view-model: `referenceSummary` in the result maps).
+
 Pairwise review between two speakers ("Átnézés A és B között"; `SpeakerEditor::recheckPair`,
 analysis `computePairRecheck`, view-model `recheckPair(a, b)`): only the lines of A and B, only
 their two voices. Each reference is built from the speaker's confirmed / corrected clean lines
-(≥ 3), else from all of its clean lines (`fallbackA/B`, said in the result toast). Every
+(≥ 3) plus the stored voiceprints (see above), else from the earlier prints alone, else from
+all of its clean lines (`fallbackA/B`, said in the result toast). Every
 unlocked, clean line ≥ 1.5 s on A or B is flagged when the other reference fits better by
 `kPairMargin` 0.05 (0.10 under 3 s). There is no "not two people" centroid guard here — the user
 said they are two people — but a reference similarity ≥ 0.60 is reported ("a két hang nagyon

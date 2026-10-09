@@ -104,11 +104,32 @@ public:
     // sort (SpeakerAnalysis: computeUncertainRechecked). A kétségesnek talált sorok
     // bizonytalanok maradnak (az overlay-ben perzisztálva), amíg javítás vagy „Jó így" nem
     // jön; egy újabb újraellenőrzés lecseréli a halmazt. Egy undo-lépés (ha változott valami).
+    // Az elnevezett beszélőknél a személy tárolt hanglenyomatai is beszállnak a referenciába
+    // (SpeakerAnalysis: SpeakerPrior): az ebben a megbeszélésben készültek helyi bizonyítékként,
+    // a korábbiak kisebb, vágott súllyal (a megerősített sorok mindig dominálnak).
+    // Egy beszélő referenciájának összetétele (a visszajelzés szövegéhez).
+    struct SpeakerReference {
+        QString speakerKey;
+        QString name;               // megjelenített név
+        int  lines = 0;             // megerősített / javított sorok (fallbacknél: az összes sora)
+        int  localPrints = 0;       // ebben a megbeszélésben készült lenyomatok
+        int  priorPrints = 0;       // korábbi (más megbeszélésből való) lenyomatok
+        bool priorOnly = false;     // nincs helyi mag: csak a korábbi lenyomatok
+        bool fallback = false;      // se mag, se lenyomat: a beszélő összes sora
+        bool priorCapped = false;   // a korábbi lenyomatok súlyát a plafon vágta
+        bool usesPrints() const { return localPrints + priorPrints > 0; }
+    };
+    // „Referencia: Dompa 3 sor + 1 itteni lenyomat + 2 korábbi lenyomat, Gábor 5 sor" — csak a
+    // magos / lenyomatos beszélők; üres, ha egyik referencia sem használt lenyomatot (akkor
+    // nincs újdonság a megszokotthoz képest).
+    static QString referenceSummary(const QVector<SpeakerReference>& refs);
     struct RecheckResult {
         int flagged = 0;                    // ennyi sort jelölt kétségesnek
         int speakersWithConfirmedCore = 0;  // ennyi beszélőnél épült centroid a zárolt soraiból
         int confirmedLines = 0;             // ennyi zárolt sor alkotta ezeket a magokat
         bool ran = false;                   // lefutott-e (canRecheck volt-e)
+        QVector<SpeakerReference> references;   // beszélőnként a referencia (a magos / lenyomatosak)
+        QString referenceSummary() const { return SpeakerEditor::referenceSummary(references); }
     };
     RecheckResult recheckFromConfirmed();
     // Futtatható-e: van embedding, nem fut a hang-elemzés, és legalább egy beszélőnek van
@@ -119,8 +140,9 @@ public:
 
     // ---- páronkénti átnézés („Átnézés A és B között") ---------------------
     // Csak A és B sorai, csak kettejük hangja alapján (SpeakerAnalysis: computePairRecheck):
-    // a referencia a megerősített / javított sorokból épül (ha kevés, a beszélő összes tiszta
-    // sorából — ezt a fallbackA/B jelzi). A kétesnek talált sorok bizonytalanok lesznek, a
+    // a referencia a megerősített / javított sorokból (+ a tárolt lenyomatokból, lásd fent)
+    // épül; ha kevés a sor és lenyomat sincs, a beszélő összes tiszta sorából — ezt a
+    // fallbackA/B jelzi. A kétesnek talált sorok bizonytalanok lesznek, a
     // javaslat (recheckHint) a másik beszélő; ugyanaz a perzisztencia, mint az
     // újraellenőrzésé (javítás / „Jó így" törli). Az A-n és B-n lévő sorok korábbi
     // újraellenőrzés-jelzéseit ez lecseréli; más beszélőkéit nem érinti. Egy undo-lépés (ha
@@ -132,8 +154,11 @@ public:
         bool   fallbackA = false;
         bool   fallbackB = false;
         double centroidSimilarity = qQNaN();    // a két referencia hangjának cosine-ja
+        SpeakerReference refA;                  // a két referencia összetétele
+        SpeakerReference refB;
         bool   ran = false;
         QString blocker;                        // ha nem futott: miért (magyar mondat)
+        QString referenceSummary() const { return SpeakerEditor::referenceSummary({refA, refB}); }
     };
     PairRecheckResult recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
     // Ha most nem futtatható: miért; különben üres.

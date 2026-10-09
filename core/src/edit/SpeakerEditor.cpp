@@ -471,13 +471,69 @@ struct SpeakerEditor::Private {
             if (recheckedAt(i)) uncertain[i] = true;
     }
 
-    // Embeddelt sorok vannak, és legalább egy beszélőnél van megbízható mag.
+    // Az újraellenőrzések referenciájához a tárolt lenyomatok, beszélő-indexenként (az al
+    // indexelése szerint): az elnevezett beszélő személyének lenyomatai. Ami ebben a
+    // megbeszélésben készült, az „itteni" (helyi bizonyíték); ha a mintasora (a sampleRef
+    // kezdőideje, mint a fixVoiceprints-nél) e beszélő zárolt sora, az a sor a referenciában nem
+    // számít külön (replacedLines) — ugyanaz a hang ne számítson kétszer.
+    QVector<SpeakerPrior> priorsFor(const QVector<AnalysisLine>& al, int speakerCount) const
+    {
+        QVector<SpeakerPrior> out(speakerCount);
+        if (!voiceprints || cache.vectors.isEmpty()) return out;
+        const int dim = cache.vectors.constBegin()->size();
+        QVector<QString> personOfIdx(speakerCount);
+        for (int i = 0; i < al.size(); ++i) {
+            const int s = al[i].speaker;
+            if (s >= 0 && s < speakerCount && personOfIdx[s].isEmpty())
+                personOfIdx[s] = personOf(assigned[i]);
+        }
+        for (int s = 0; s < speakerCount; ++s) {
+            if (personOfIdx[s].isEmpty()) continue;
+            SpeakerPrior& p = out[s];
+            for (const Voiceprint& vp : voiceprints->printsFor(personOfIdx[s])) {
+                if (vp.embedding.size() != dim) continue;   // más modell lenyomata: nem összemérhető
+                if (vp.sourceMeetingId != meetingId) {
+                    p.vectors.append(vp.embedding);
+                    continue;
+                }
+                p.localVectors.append(vp.embedding);
+                const qint64 start = sampleRefStartMs(vp.sampleRef);
+                if (start < 0) continue;
+                for (int i = 0; i < al.size(); ++i) {
+                    if (al[i].speaker != s || !al[i].locked) continue;
+                    if (lines[i].startMs <= start && start < lines[i].endMs) {
+                        p.replacedLines.append(i);
+                        break;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    // A ReferenceInfo → a felületnek szóló összetétel.
+    SpeakerReference referenceOf(const QString& key, const ReferenceInfo& info) const
+    {
+        SpeakerReference r;
+        r.speakerKey = key;
+        r.name = displayOf(key);
+        r.lines = info.lines;
+        r.localPrints = info.localPrints;
+        r.priorPrints = info.priorPrints;
+        r.priorOnly = info.refPrior();
+        r.fallback = info.fallback();
+        r.priorCapped = info.priorCapped;
+        return r;
+    }
+
+    // Embeddelt sorok vannak, és legalább egy beszélőnél van megbízható mag (zárolt sorokból
+    // vagy itteni lenyomatból).
     bool hasCore() const
     {
         if (cache.vectors.isEmpty()) return false;
         QHash<QString, int> idx;
         const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ true);
-        return hasTrustedCore(al, idx.size());
+        return hasTrustedCore(al, idx.size(), priorsFor(al, idx.size()));
     }
 
     int uncertainCount() const
@@ -679,7 +735,8 @@ struct SpeakerEditor::Private {
     {
         QHash<QString, int> idx;
         const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ false);
-        return computePairRecheck(al, idx.value(keyA, -1), idx.value(keyB, -1));
+        return computePairRecheck(al, idx.value(keyA, -1), idx.value(keyB, -1),
+                                  priorsFor(al, idx.size()));
     }
 
     // A „hasonló sorok" őre elhallgatott: ha a két beszélő elnevezett, és mindkettőnek van
@@ -1381,7 +1438,7 @@ SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
     if (!canRecheck()) return r;
     QHash<QString, int> idx;
     const QVector<AnalysisLine> al = d->analysisLines(&idx, /*groupByPerson*/ true);
-    const RecheckAnalysis a = computeUncertainRechecked(al, idx.size());
+    const RecheckAnalysis a = computeUncertainRechecked(al, idx.size(), d->priorsFor(al, idx.size()));
 
     // Csoport-index → beszélő-kulcs (a csoport legtöbb sorát vivő beszélő; azonos személy
     // több kulccsal egy csoport).
@@ -1398,6 +1455,10 @@ SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
     r.flagged = a.flagged();
     r.speakersWithConfirmedCore = a.coreSpeakers();
     r.confirmedLines = a.coreLineTotal();
+    for (int g = 0; g < idx.size(); ++g) {
+        const ReferenceInfo& info = a.refs.value(g);
+        if (info.refLocal() || info.refPrior()) r.references.append(d->referenceOf(groupKey[g], info));
+    }
 
     Step s = d->begin();
     for (int i = 0; i < d->lines.size(); ++i) {
@@ -1419,6 +1480,25 @@ SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
         d->commit(s, tr("Beszélők újraellenőrzése"));
     emit recheckFinished(r.flagged, r.speakersWithConfirmedCore, r.confirmedLines);
     return r;
+}
+
+QString SpeakerEditor::referenceSummary(const QVector<SpeakerReference>& refs)
+{
+    const bool anyPrint = std::any_of(refs.cbegin(), refs.cend(),
+                                      [](const SpeakerReference& r) { return r.usesPrints(); });
+    if (!anyPrint) return {};
+    QStringList parts;
+    for (const SpeakerReference& r : refs) {
+        if (r.fallback) continue;   // a „kevés megerősített sor" üzenet külön szól róla
+        QStringList what;
+        if (r.lines > 0) what << tr("%1 sor").arg(r.lines);
+        if (r.localPrints > 0) what << tr("%1 itteni lenyomat").arg(r.localPrints);
+        if (r.priorPrints > 0) what << tr("%1 korábbi lenyomat").arg(r.priorPrints);
+        if (what.isEmpty()) continue;
+        parts << QStringLiteral("%1 %2").arg(r.name, what.join(QStringLiteral(" + ")));
+    }
+    if (parts.isEmpty()) return {};
+    return tr("Referencia: %1.").arg(parts.join(QStringLiteral(", ")));
 }
 
 // ---- páronkénti átnézés -----------------------------------------------------
@@ -1454,7 +1534,8 @@ SpeakerEditor::PairRecheckResult SpeakerEditor::recheckPair(const QString& speak
     QHash<QString, int> idx;
     const QVector<AnalysisLine> al = d->analysisLines(&idx, /*groupByPerson*/ false);
     const int ia = idx.value(speakerKeyA, -1);
-    const PairRecheckAnalysis a = computePairRecheck(al, ia, idx.value(speakerKeyB, -1));
+    const PairRecheckAnalysis a = computePairRecheck(al, ia, idx.value(speakerKeyB, -1),
+                                                     d->priorsFor(al, idx.size()));
     r.ran = true;
     r.flagged = a.flagged();
     r.refLinesA = a.refLinesA;
@@ -1462,6 +1543,8 @@ SpeakerEditor::PairRecheckResult SpeakerEditor::recheckPair(const QString& speak
     r.fallbackA = a.fallbackA;
     r.fallbackB = a.fallbackB;
     r.centroidSimilarity = a.centroidSimilarity;
+    r.refA = d->referenceOf(speakerKeyA, a.refA);
+    r.refB = d->referenceOf(speakerKeyB, a.refB);
 
     Step s = d->begin();
     for (int i = 0; i < d->lines.size(); ++i) {

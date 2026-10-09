@@ -633,6 +633,41 @@ private slots:
         QVERIFY(r.value(QStringLiteral("centroidSimilarity")).toDouble() < 0.1);
     }
 
+    // A tárolt lenyomatok is a referencia részei: az eredmény-üzenet megmondja, miből állt össze.
+    void recheck_referenceSummaryWithVoiceprints()
+    {
+        PairScene sc(/*similar*/ false);
+        tanara::Voiceprint here;
+        here.embedding = {1.0f, 0.0f, 0.0f};
+        here.sourceMeetingId = sc.meeting.id;
+        here.sampleRef = QStringLiteral("audio.ogg#0-4000");     // Anna 0. sora
+        sc.prints->addPrint(QStringLiteral("Anna"), here);
+        tanara::Voiceprint earlier;
+        earlier.embedding = {0.0f, 1.0f, 0.0f};
+        earlier.sourceMeetingId = QStringLiteral("korabbi-megbeszeles");
+        sc.prints->addPrint(QStringLiteral("Béla"), earlier);
+        auto ed = sc.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QSignalSpy notices(&vm, &TranscriptEditorViewModel::notice);
+        QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5)}));
+
+        const QVariantMap r = vm.recheckPair(kB1, kB2);
+        QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 3);
+        QVERIFY(!r.value(QStringLiteral("fallbackB")).toBool());
+        const QString expected =
+            QStringLiteral("3 kétséges sor Anna és Béla között — a Bizonytalan szűrőben. "
+                           "Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat.");
+        QCOMPARE(r.value(QStringLiteral("message")).toString(), expected);
+        QCOMPARE(notices.last().at(0).toString(), expected);
+
+        const QVariantMap g = vm.recheckSpeakers();
+        QVERIFY(g.value(QStringLiteral("ran")).toBool());
+        QCOMPARE(g.value(QStringLiteral("referenceSummary")).toString(),
+                 QStringLiteral("Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat."));
+    }
+
     // „Jó így, de ne használd mintának" és „Mintának használható" a soron.
     void noisy_manualConfirmAndClear()
     {

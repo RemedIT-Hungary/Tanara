@@ -312,6 +312,15 @@ double cosToWeighted(const QVector<float>& e, const QVector<QPair<double, QVecto
     return d / std::sqrt(n);
 }
 
+Voiceprint makePrint(const QVector<float>& v, const QString& meetingId, const QString& sampleRef = {})
+{
+    Voiceprint vp;
+    vp.embedding = v;
+    vp.sourceMeetingId = meetingId;
+    vp.sampleRef = sampleRef;
+    return vp;
+}
+
 } // namespace
 
 class SpeakerRecheckTest : public QObject {
@@ -968,6 +977,68 @@ private slots:
         QCOMPARE(l.refLinesA, 0);
         QCOMPARE(l.refA.localPrints, 1);
         QVERIFY(!l.fallbackA);
+    }
+
+    void editor_recheckUsesStoredVoiceprints()
+    {
+        Fixture fx;
+        // Anna itteni lenyomata a 0. sorból; Béla korábbi lenyomata egy másik megbeszélésből;
+        // egy más dimenziójú (más modell) lenyomat, amelyet ki kell hagyni.
+        fx.prints->addPrint(QStringLiteral("Anna"),
+                            makePrint(kA, fx.meeting.id, QStringLiteral("audio.ogg#0-4000")));
+        fx.prints->addPrint(QStringLiteral("Béla"), makePrint(kB, QStringLiteral("masik-megbeszeles")));
+        fx.prints->addPrint(QStringLiteral("Béla"),
+                            makePrint({0.0f, 1.0f, 0.0f, 0.0f}, QStringLiteral("regi-modell")));
+        auto ed = fx.editor();
+        // Az itteni lenyomat egymaga helyi mag → az újraellenőrzés megerősítés nélkül is fut.
+        QVERIFY(ed->canRecheck());
+
+        QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
+        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        QVERIFY(r.ran);
+        QCOMPARE(r.flagged, 3);
+        QCOMPARE(ed->uncertainUtteranceIds(), uids({3, 6, 9}));
+        QCOMPARE(ed->utterance(uid(3)).likelySpeakerKey, kB2);
+        QCOMPARE(r.references.size(), 2);
+        const SpeakerEditor::SpeakerReference& anna = r.references[0];
+        QCOMPARE(anna.speakerKey, kB1);
+        QCOMPARE(anna.lines, 2);                        // a 0. sor a lenyomatban számít
+        QCOMPARE(anna.localPrints, 1);
+        QCOMPARE(anna.priorPrints, 0);
+        const SpeakerEditor::SpeakerReference& bela = r.references[1];
+        QVERIFY(bela.priorOnly);
+        QCOMPARE(bela.priorPrints, 1);
+        QCOMPARE(r.confirmedLines, 2);
+        QCOMPARE(r.referenceSummary(),
+                 QStringLiteral("Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat."));
+    }
+
+    void editor_recheckWithoutPrints_noSummary()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
+        const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+        QCOMPARE(r.references.size(), 1);
+        QCOMPARE(r.references[0].lines, 3);
+        QVERIFY(r.referenceSummary().isEmpty());
+    }
+
+    void editor_pairRecheckUsesStoredVoiceprints()
+    {
+        PairFixture fx;
+        fx.prints->addPrint(QStringLiteral("Béla"), makePrint(pb, QStringLiteral("masik-megbeszeles")));
+        auto ed = fx.editor();
+        QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Bélának csak 1 megerősített sora
+        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QVERIFY(r.ran);
+        QVERIFY(!r.fallbackB);
+        QVERIFY(r.refB.priorOnly);
+        QCOMPARE(r.refB.priorPrints, 1);
+        QCOMPARE(r.refA.lines, 3);
+        QCOMPARE(r.referenceSummary(), QStringLiteral("Referencia: Anna 3 sor, Béla 1 korábbi lenyomat."));
+        for (int row : {3, 7, 15}) QCOMPARE(ed->utterance(pid(row)).likelySpeakerKey, kB2);
+        QCOMPARE(ed->utterance(pid(17)).likelySpeakerKey, kB1);
     }
 
     void editor_voiceprintMaterialSkipsNoisyLines()

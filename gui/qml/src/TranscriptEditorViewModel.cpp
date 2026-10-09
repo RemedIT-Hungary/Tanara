@@ -714,6 +714,10 @@ QVariantMap TranscriptEditorViewModel::recheckPair(const QString& speakerKeyA, c
     if (!few.isEmpty())
         text += QLatin1Char(' ')
               + tr("Kevés megerősített sor (%1): az összes sorát vettem alapul.").arg(few.join(QStringLiteral(", ")));
+    // Ha tárolt lenyomat is beszállt a referenciába: miből állt össze (pl. „Dompa 3 sor + 1 korábbi lenyomat").
+    const QString refs = r.referenceSummary();
+    out[QStringLiteral("referenceSummary")] = refs;
+    if (!refs.isEmpty()) text += QLatin1Char(' ') + refs;
     if (!std::isnan(r.centroidSimilarity) && r.centroidSimilarity >= tanara::speakeredit::kPairSimilarWarn)
         text += QLatin1Char(' ')
               + tr("A két hang nagyon hasonló (%1), az eredmény bizonytalan — hallgass bele.")
@@ -1457,6 +1461,7 @@ QVariantMap TranscriptEditorViewModel::recheckSpeakers()
     out[QStringLiteral("flagged")] = r.flagged;
     out[QStringLiteral("speakersWithConfirmedCore")] = r.speakersWithConfirmedCore;
     out[QStringLiteral("confirmedLines")] = r.confirmedLines;
+    out[QStringLiteral("referenceSummary")] = r.referenceSummary();
     return out;
 }
 

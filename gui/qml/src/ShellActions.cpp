@@ -676,12 +676,17 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
     }
     // A „Bizonytalan" szűrőt a szerkesztő nézetmodellje kapcsolja be (recheckFinished jel).
     const tanara::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
+    QString msg;
     if (r.flagged > 0) {
         if (meetingId == m_currentMeetingId) showTab(0);
-        toast(tr("%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.", "", r.flagged));
+        msg = tr("%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.", "", r.flagged);
     } else {
-        toast(tr("A megerősített sorok alapján nem találtam kétséges sort."));
+        msg = tr("A megerősített sorok alapján nem találtam kétséges sort.");
     }
+    // Ha tárolt lenyomat is beszállt a referenciába: miből állt össze.
+    const QString refs = r.referenceSummary();
+    if (!refs.isEmpty()) msg += QLatin1Char(' ') + refs;
+    toast(msg);
 }
 
 QString ShellActions::participantsGuess(const QString& meetingId) const

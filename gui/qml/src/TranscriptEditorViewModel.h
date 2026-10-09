@@ -315,13 +315,15 @@ public:
     Q_INVOKABLE bool setRowNoisy(int row, bool noisy);
     Q_INVOKABLE bool setUtteranceNoisy(const QString& utteranceId, bool noisy);
     // Újraellenőrzés a megerősített / javított sorok hangja alapján. { ran, flagged,
-    // speakersWithConfirmedCore, confirmedLines, blocker }. Ha talált kétes sort, a
+    // speakersWithConfirmedCore, confirmedLines, referenceSummary, blocker } (referenceSummary:
+    // „Referencia: …", ha tárolt lenyomat is beszállt; lásd SpeakerEditor::referenceSummary). Ha talált kétes sort, a
     // „Bizonytalan" szűrő bekapcsol.
     Q_INVOKABLE QVariantMap recheckSpeakers();
     Q_INVOKABLE bool acceptSuggestion();
     Q_INVOKABLE void dismissSuggestion();
     // Páronkénti átnézés („Átnézés A és B között"): csak a két beszélő sorai, csak kettejük
-    // hangja alapján. { ran, flagged, blocker, fallbackA, fallbackB, centroidSimilarity, message }.
+    // hangja alapján. { ran, flagged, blocker, fallbackA, fallbackB, centroidSimilarity,
+    // referenceSummary, message } — a message végén a referencia összetétele, ha lenyomat is volt benne.
     // Talált kétes sort → a „Bizonytalan" szűrő bekapcsol; az eredmény (vagy az akadály)
     // notice-ként is elhangzik.
     Q_INVOKABLE QVariantMap recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
