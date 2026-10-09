@@ -6,6 +6,11 @@
 // Felvétel előtt minden eszközt figyel; felvétel alatt (ha az AppController kéri) csak a
 // sávra nem kerülő eszközöket — a rögzítetteket a RecordingSession birtokolja és méri.
 //
+// Az eszközök megnyitása, mérése és lezárása a saját háttérszálán fut: a start() / stop()
+// azonnal visszatér, a szintek a megnyitás után jönnek. Az active() a kérést tükrözi (az
+// indítás alatt is igaz; sikertelen megnyitás után hamis), a deviceNames() a megnyitás után
+// telik meg. A stop() után a már elküldött, elavult szintek nem jutnak ki.
+//
 #include "tanara/Types.h"
 #include <QObject>
 #include <QStringList>
@@ -21,7 +26,7 @@ public:
     ~DeviceMonitor() override;
 
     bool active() const;
-    // A ténylegesen megnyitott eszközök nevei (a meg nem nyíltak kimaradnak).
+    // A ténylegesen megnyitott eszközök nevei (a meg nem nyíltak kimaradnak; indítás alatt üres).
     QStringList deviceNames() const;
 
 public slots:
@@ -33,6 +38,11 @@ signals:
     void level(const QString& deviceName, float rms);
     // Ugyanez csúccsal: peak = az előző jel óta mért legnagyobb minta (0..1).
     void levelPeak(const QString& deviceName, float rms, float peak);
+
+public:
+    // Belső: a háttérszál visszajelzései (a fő szálon futnak).
+    bool d_isCurrent(quint64 gen) const;
+    void d_started(quint64 gen, bool ok, const QStringList& names);
 
 private:
     struct Impl;

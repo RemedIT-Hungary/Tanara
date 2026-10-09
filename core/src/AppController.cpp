@@ -1722,8 +1722,8 @@ void AppController::restartLevelMonitor(bool force) {
     perfTimer.start();
     const QStringList before = d->monitorNames;
     d->monitorNames = names;
-    d->monitor->start(list);   // üres listára leáll
-    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítva (%1 → %2 eszköz, force=%3): %4 ms, szinkron")
+    d->monitor->start(list);   // üres listára leáll; a megnyitás a monitor háttérszálán fut
+    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítás kérve (%1 → %2 eszköz, force=%3): %4 ms a fő szálon")
                                  .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
 }
 
@@ -1809,7 +1809,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         return;
     }
     // A monitor felszabadítja az eszközöket a felvétel előtt (a kérés — monitorWanted —
-    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul).
+    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul). A lezárás a monitor
+    // háttérszálán, aszinkron fut: rövid ideig a felvétellel párhuzamosan is nyitva lehet egy
+    // eszköz (megosztott módban ez nem akadály).
     d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
     d->recNames.clear();
