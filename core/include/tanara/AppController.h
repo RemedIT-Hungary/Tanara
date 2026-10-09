@@ -404,7 +404,9 @@ public slots:
     // ---- címkejavaslatok (aszinkron; jelek: tagSuggestionsComputing → tagSuggestionsReady) ----
     // Hasonló megbeszélésekből (+ beágyazással, ha van). A meeting megjelenítésekor / új
     // átiratnál hívandó; meetingenként gyorsítótárazott, amíg a címkék, az átirat vagy az
-    // index nem változik. Kikapcsolt javaslatoknál üres listát ad.
+    // index nem változik. Kikapcsolt javaslatoknál üres listát ad. A számolás háttérszálon
+    // fut (a fő szál nem akad meg); a gyorsítótárból azonnal, még a hívásban jön a jel. Az
+    // ugyanarra a meetingre ismételt kérések összevonódnak.
     void requestTagSuggestions(const QString& meetingId);
     // Egy címke felrakása után az együtt járók (source = Cooccur). Ha nincs ilyen, nem jön jel
     // (a korábbi javaslatok maradnak, a felrakott címke nélkül).
@@ -540,6 +542,12 @@ private:
     // Címkejavaslatok: a kiszámolt lista kiadása (szűrve), ill. a beágyazás beállítása.
     void publishTagSuggestions(const QString& meetingId, QVector<tanara::TagSuggestion> list);
     void computeTagSuggestions(const QString& meetingId);
+    // A hasonlóság-alapú lista háttérszálon (lásd az AppController.cpp „címkejavaslatok” részét).
+    void scheduleTagSuggestions(const QString& meetingId);
+    void startTagSuggestionJob(const QString& meetingId);
+    void finishTagSuggestionJob(const QString& meetingId, quint64 dataGen, QVector<tanara::TagSuggestion> list);
+    void invalidateTagSuggestions();
+    void startLlmTagSuggestions(const QString& meetingId, const QVector<tanara::TagSuggestion>& suggested);
     void applyEmbeddingSettings(bool restart);
     // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);

@@ -13,6 +13,7 @@
 #include "TagsViewModel.h"
 
 #include "tanara/AppController.h"
+#include "tanara/tags/MeetingProfiles.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/tags/TagService.h"
@@ -240,6 +241,9 @@ private slots:
     {
         TagBackend* b = m_backend.get();
         const QString nordvik = b->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"), TagAddSource::Manual);
+        // A profilok háttérszálon épülnek (a fő szál nem tölt szinkron): megvárjuk a kört.
+        m_app->profiles()->ensureBuilt();
+        QTRY_VERIFY_WITH_TIMEOUT(m_app->profiles()->isIdle(), 10000);
         const QVector<TagSuggestionItem> draft = b->draftSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
         QVERIFY(!draft.isEmpty());
         QCOMPARE(draft.first().tagId, nordvik);

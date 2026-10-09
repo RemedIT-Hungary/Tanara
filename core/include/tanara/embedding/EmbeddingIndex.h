@@ -15,6 +15,7 @@
 #include "tanara/tags/TagTypes.h"
 
 #include <QHash>
+#include <QMutex>
 #include <QObject>
 #include <QVector>
 
@@ -47,8 +48,14 @@ public:
     void setModel(const QString& model);
     QString model() const;
 
+    // A mappát az indexből (MeetingStore) keresik ki: csak a tulajdonos (fő) szálról.
     bool has(const QString& meetingId) const;
     QVector<SimilarHit> similar(const QString& meetingId, int limit = 8) const;
+    // Szálbiztos változatok ismert mappákkal (id → mappa, pl. MeetingProfiles::folders()):
+    // háttérszálról is hívhatók; a memóriabeli gyorsítótárat mutex védi.
+    bool has(const QString& meetingId, const QString& folder) const;
+    QVector<SimilarHit> similar(const QString& meetingId, const QHash<QString, QString>& folders,
+                                int limit = 8) const;
 
     // Egy meeting indexének kiírása (a darabok vektorokkal) → indexChanged.
     bool store(const QString& meetingId, const QString& model, const QVector<EmbeddingChunk>& chunks);
@@ -72,10 +79,12 @@ signals:
 private:
     struct Entry { qint64 fileMtime = -1; QString model; QVector<float> mean; };
     QString folderOf(const QString& meetingId) const;
-    const Entry* entry(const QString& meetingId) const;
+    // A meeting átlag-vektora, ha az indexe érvényes és az aktuális modellé; különben üres.
+    QVector<float> meanFor(const QString& meetingId, const QString& folder) const;
 
     MeetingStore* m_store = nullptr;
     MeetingProfiles* m_profiles = nullptr;
+    mutable QMutex m_mutex;                     // m_model, m_cache, m_folders
     QString m_model;
     mutable QHash<QString, Entry> m_cache;
     mutable QHash<QString, QString> m_folders;

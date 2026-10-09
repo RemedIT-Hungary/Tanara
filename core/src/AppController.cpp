@@ -67,6 +67,7 @@
 #include <QUuid>
 #include <QElapsedTimer>
 #include <QThread>
+#include <QThreadPool>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -547,6 +548,17 @@ struct AppController::Impl {
     QHash<QString, QVector<TagSuggestion>> similarCache;    // meetingId → a hasonlóság-alapú lista
     QHash<QString, QVector<TagSuggestion>> pendingTags;     // meetingId → az utoljára kiadott lista
     QSet<QString>      tagRequests;              // a profilok elkészültére váró kérések
+    // A hasonlóság-alapú lista háttérszálon készül. Meetingenként legfeljebb egy fut; a közben
+    // érkező kérés ennek az eredményét kapja. A tagDataGen minden gyorsítótár-ürítéskor nő: a
+    // régebbi állapotból számolt eredmény eldobódik, és (ha még várnak rá) újraszámolódik.
+    struct TagRun {
+        bool running = false;
+        bool publish = false;    // requestTagSuggestions várja
+        bool llm = false;        // requestLlmTagSuggestions várja (a jelöltlistához)
+    };
+    QHash<QString, TagRun> tagRuns;
+    quint64            tagDataGen = 0;
+    QThreadPool        tagPool;                  // 1 szál; a ~AppController bevárja
     QString            embeddingKey;             // provider|baseUrl|model — a modellváltás felismeréséhez
     QStringList        recordingTagIds;          // a felvétel közben megadott címkék
 
@@ -952,23 +964,29 @@ AppController::AppController(QObject* parent)
     d->embeddingPreparer = new EmbeddingPreparer(
         d->store, d->embeddings, QDir(d->metaDir).filePath(QStringLiteral("embedding-state.json")), this);
     d->llmTags = new LlmTagSuggester(d->tags, this);
+    d->tagPool.setMaxThreadCount(1);
+    d->tagPool.setObjectName(QStringLiteral("tanara-tag-suggest"));
     connect(d->profiles, &MeetingProfiles::idle, this, [this]() {
         const QSet<QString> waiting = d->tagRequests;
         d->tagRequests.clear();
-        for (const QString& id : waiting) computeTagSuggestions(id);
+        for (const QString& id : waiting) startTagSuggestionJob(id);
     });
+    // A profilok sorai (meeting.json-ok) és kifejezései háttérszálon, már induláskor épülnek;
+    // ettől kezdve a fő szál olvasói (címke-profil, tervezet-javaslat) sosem töltenek és
+    // számolnak szinkron, a kész pillanatképet kapják.
+    d->profiles->ensureBuilt();
     // A hasonlóság-alapú lista addig érvényes, amíg a címkék, az átiratok és az index nem változnak.
-    auto dropTagCache = [this]() { d->similarCache.clear(); };
+    auto dropTagCache = [this]() { invalidateTagSuggestions(); };
     connect(d->tags, &TagService::tagsChanged, this, dropTagCache);
     connect(d->embeddings, &EmbeddingIndex::indexChanged, this, dropTagCache);
     connect(d->embeddings, &EmbeddingIndex::indexReset, this, dropTagCache);
     // Felrakott / elutasított javaslat: a kiadott lista szűrve újra kimegy (újraszámolás nélkül).
     connect(d->tags, &TagService::meetingTagsChanged, this, [this](const QString& id) {
-        d->similarCache.clear();
+        invalidateTagSuggestions();
         if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
     });
     connect(d->tags, &TagService::rejectedChanged, this, [this]() {
-        d->similarCache.clear();
+        invalidateTagSuggestions();
         const QStringList ids = d->pendingTags.keys();
         for (const QString& id : ids) {
             const QVector<TagSuggestion> before = d->pendingTags.value(id);
@@ -976,7 +994,7 @@ AppController::AppController(QObject* parent)
         }
     });
     connect(this, &AppController::transcriptReady, this, [this](const QString& meetingId) {
-        d->similarCache.clear();
+        invalidateTagSuggestions();
         d->profiles->invalidate(meetingId);
         d->embeddingPreparer->enqueue(meetingId);   // csak ha van beágyazó provider
     });
@@ -1030,6 +1048,9 @@ AppController::AppController(QObject* parent)
 
 AppController::~AppController()
 {
+    // A futó címkejavaslat a profilokat / az indexet olvassa: azok előtt kell végeznie.
+    d->tagPool.clear();
+    d->tagPool.waitForDone();
     // A háttérszálas azonosítások leállítása és bevárása (a szál a d-re hivatkozó
     // eredményt már nem adja át: a QPointer addigra null).
     for (auto it = d->identifyRuns.begin(); it != d->identifyRuns.end(); ++it) {
@@ -1701,8 +1722,8 @@ void AppController::restartLevelMonitor(bool force) {
     perfTimer.start();
     const QStringList before = d->monitorNames;
     d->monitorNames = names;
-    d->monitor->start(list);   // üres listára leáll
-    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítva (%1 → %2 eszköz, force=%3): %4 ms, szinkron")
+    d->monitor->start(list);   // üres listára leáll; a megnyitás a monitor háttérszálán fut
+    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítás kérve (%1 → %2 eszköz, force=%3): %4 ms a fő szálon")
                                  .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
 }
 
@@ -1788,7 +1809,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         return;
     }
     // A monitor felszabadítja az eszközöket a felvétel előtt (a kérés — monitorWanted —
-    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul).
+    // megmarad: a felvétel alatt a sávra nem kerülő eszközökön újraindul). A lezárás a monitor
+    // háttérszálán, aszinkron fut: rövid ideig a felvétellel párhuzamosan is nyitva lehet egy
+    // eszköz (megosztott módban ez nem akadály).
     d->monitorNames.clear();
     if (d->monitor) d->monitor->stop();
     d->recNames.clear();
@@ -3563,15 +3586,84 @@ void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagS
     emit tagSuggestionsReady(meetingId, list);
 }
 
+// A gyorsítótárazott hasonlóság-alapú lista kiadása (a számolás a háttérszálon fut:
+// startTagSuggestionJob).
 void AppController::computeTagSuggestions(const QString& meetingId)
 {
-    tanara::PerfScope perfScope("AppController::computeTagSuggestions", 20);
-    auto it = d->similarCache.constFind(meetingId);
-    if (it == d->similarCache.constEnd()) {
-        const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
-        it = d->similarCache.insert(meetingId, suggester.suggest(meetingId));
+    tanara::PerfScope perfScope("AppController::computeTagSuggestions", 5);
+    const auto it = d->similarCache.constFind(meetingId);
+    if (it != d->similarCache.constEnd()) publishTagSuggestions(meetingId, *it);
+}
+
+void AppController::invalidateTagSuggestions()
+{
+    d->similarCache.clear();
+    ++d->tagDataGen;
+}
+
+// A profilok (sorok + átirat-kifejezések) háttérszálon épülnek; a kör végén (idle) indul a
+// javaslat-számolás.
+void AppController::scheduleTagSuggestions(const QString& meetingId)
+{
+    d->tagRequests.insert(meetingId);
+    d->profiles->ensureBuilt();
+}
+
+// Szálkezelés: a TagService a fő szálé, ezért itt, a fő szálon egy kis pillanatkép készül a
+// címke-adatokból (TagSnapshot); a háttérszál csak ezt, valamint a szálbiztos MeetingProfiles /
+// EmbeddingIndex olvasóit használja. Az eredmény sorban állított hívással jön vissza a fő
+// szálra (finishTagSuggestionJob). A ~AppController bevárja a futó számolást.
+void AppController::startTagSuggestionJob(const QString& meetingId)
+{
+    auto run = d->tagRuns.find(meetingId);
+    if (run == d->tagRuns.end() || (!run->publish && !run->llm)) {
+        d->tagRuns.remove(meetingId);
+        return;
     }
-    publishTagSuggestions(meetingId, *it);
+    if (run->running) return;   // a futó eredménye válaszol (adatváltozásnál újraindul)
+    const auto cached = d->similarCache.constFind(meetingId);
+    if (cached != d->similarCache.constEnd()) {
+        finishTagSuggestionJob(meetingId, d->tagDataGen, *cached);
+        return;
+    }
+    run->running = true;
+    TagSnapshot snap;
+    {
+        tanara::PerfScope perfScope("AppController::startTagSuggestionJob (pillanatkép, fő szál)", 5);
+        snap = TagSuggester::snapshot(*d->tags, meetingId);
+    }
+    const quint64 gen = d->tagDataGen;
+    const MeetingProfiles* profiles = d->profiles;
+    const EmbeddingIndex* index = d->embeddings;
+    d->tagPool.start([this, snap, gen, profiles, index]() {
+        QVector<TagSuggestion> list;
+        {
+            tanara::PerfScope perfScope("TagSuggester::suggestFrom (háttérszál)", 0);
+            list = TagSuggester::suggestFrom(snap, profiles, index);
+        }
+        const QString meetingId = snap.meetingId;
+        QMetaObject::invokeMethod(this, [this, meetingId, gen, list]() {
+            finishTagSuggestionJob(meetingId, gen, list);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void AppController::finishTagSuggestionJob(const QString& meetingId, quint64 dataGen, QVector<TagSuggestion> list)
+{
+    auto run = d->tagRuns.find(meetingId);
+    if (run == d->tagRuns.end()) return;
+    run->running = false;
+    if (dataGen != d->tagDataGen) {
+        // Közben változtak a címkék / az átirat / az index: az eredmény elavult.
+        if (run->publish || run->llm) scheduleTagSuggestions(meetingId);
+        else d->tagRuns.erase(run);
+        return;
+    }
+    const Impl::TagRun done = *run;
+    d->tagRuns.erase(run);
+    d->similarCache.insert(meetingId, list);
+    if (done.publish) publishTagSuggestions(meetingId, list);
+    if (done.llm) startLlmTagSuggestions(meetingId, list);
 }
 
 void AppController::requestTagSuggestions(const QString& meetingId)
@@ -3586,10 +3678,8 @@ void AppController::requestTagSuggestions(const QString& meetingId)
         computeTagSuggestions(meetingId);
         return;
     }
-    // A profilok (átirat-kifejezések) háttérszálon épülnek; ha van teendő, a végén számolunk.
-    d->profiles->ensureBuilt();
-    if (d->profiles->isIdle()) computeTagSuggestions(meetingId);
-    else d->tagRequests.insert(meetingId);
+    d->tagRuns[meetingId].publish = true;
+    if (!d->tagRuns.value(meetingId).running) scheduleTagSuggestions(meetingId);
 }
 
 void AppController::requestCooccurSuggestions(const QString& meetingId, const QString& tagId)
@@ -3608,6 +3698,24 @@ void AppController::requestLlmTagSuggestions(const QString& meetingId)
     if (!s.tagSuggestions) return;
     const SummaryDocument doc = summaryDocument(meetingId);
     if (!doc.exists || doc.markdown.trimmed().isEmpty()) return;
+    emit tagSuggestionsComputing(meetingId);
+    // A jelöltlista (hasonlóság-alapú javaslatok) a gyorsítótárból, vagy háttérszálon készül.
+    if (d->similarCache.contains(meetingId)) {
+        startLlmTagSuggestions(meetingId, d->similarCache.value(meetingId));
+        return;
+    }
+    d->tagRuns[meetingId].llm = true;
+    if (!d->tagRuns.value(meetingId).running) scheduleTagSuggestions(meetingId);
+}
+
+void AppController::startLlmTagSuggestions(const QString& meetingId, const QVector<TagSuggestion>& suggested)
+{
+    const AppSettings s = d->settings->settings();
+    const SummaryDocument doc = summaryDocument(meetingId);
+    if (!s.tagSuggestions || !doc.exists || doc.markdown.trimmed().isEmpty()) {
+        publishTagSuggestions(meetingId, d->pendingTags.value(meetingId));
+        return;
+    }
     // Egyszerre egy LLM-javaslat fut (a helyi modell egy szálon dolgozik).
     if (d->llmTags->isRunning()) {
         const QString prev = d->llmTagsMeetingId;
@@ -3617,10 +3725,6 @@ void AppController::requestLlmTagSuggestions(const QString& meetingId)
         d->llmTagsRun.reset();
         if (!prev.isEmpty() && prev != meetingId) publishTagSuggestions(prev, d->pendingTags.value(prev));
     }
-    emit tagSuggestionsComputing(meetingId);
-    const TagSuggester suggester(d->tags, d->profiles, d->embeddings);
-    const QVector<TagSuggestion> suggested = d->similarCache.contains(meetingId)
-        ? d->similarCache.value(meetingId) : suggester.suggest(meetingId);
     CloudRunPtr run;
     const ProviderConfig cfg = llmConfigFor(run, meetingId, QStringLiteral("tags"), QStringLiteral("quick"));
     ILlmProvider* provider = LlmProviderRegistry::instance().create(s.llmProviderId, cfg, this);

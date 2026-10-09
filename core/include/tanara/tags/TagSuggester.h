@@ -11,13 +11,32 @@
 //    szereplő címkék.
 //  - suggestForDraft(): még nem létező megbeszéléshez (import, felvétel előtt) cím alapján.
 //
+// Szálkezelés: a TagService a fő szálé, ezért a javaslathoz szükséges címke-adatokból a fő
+// szálon egy kis pillanatkép (TagSnapshot) készül; a suggestFrom ezt, valamint a szálbiztos
+// MeetingProfiles / EmbeddingIndex olvasóit használja, így háttérszálon is futtatható. A
+// TagService-t közvetlenül olvasó metódusok (suggest, cooccur, suggestForDraft) a fő szálé.
+//
 #include "tanara/tags/TagTypes.h"
+
+#include <QHash>
+#include <QSet>
 
 namespace tanara {
 
 class TagService;
 class MeetingProfiles;
 class EmbeddingIndex;
+
+// A címke-adatok másolata egy meeting javaslatához (érték-típus, szálak között átadható).
+struct TagSnapshot {
+    QString meetingId;                              // üres: tervezet (még nem létező meeting)
+    QHash<QString, QStringList> tagsByMeeting;      // címkézett meetingek → címkéik
+    QHash<QString, Tag> tags;                       // id → címke
+    QHash<QString, int> counts;                     // id → meetingek száma
+    QSet<QString> rejected;                         // a meetingen elutasított címke-azonosítók
+    QHash<QString, MeetingRef> refs;                // a címkézett meetingek hivatkozásai
+    int totalMeetings = 0;
+};
 
 class TagSuggester {
 public:
@@ -28,6 +47,11 @@ public:
     TagSuggester(TagService* tags, MeetingProfiles* profiles, EmbeddingIndex* index = nullptr);
 
     QVector<TagSuggestion> suggest(const QString& meetingId) const;
+    // A pillanatkép elkészítése (fő szál; a meeting számától függően ~ezredmásodpercek).
+    static TagSnapshot snapshot(const TagService& tags, const QString& meetingId);
+    // A suggest() szálbiztos magja: bármelyik szálról hívható.
+    static QVector<TagSuggestion> suggestFrom(const TagSnapshot& snap, const MeetingProfiles* profiles,
+                                              const EmbeddingIndex* index = nullptr);
     QVector<TagSuggestion> cooccur(const QString& meetingId, const QString& justAddedTagId) const;
     QVector<TagSuggestion> suggestForDraft(const QString& title, const QStringList& participants = {}) const;
 
@@ -35,7 +59,7 @@ public:
     static QVector<SimilarHit> fuseRrf(const QVector<SimilarHit>& a, const QVector<SimilarHit>& b, int k = kRrfK);
 
 private:
-    QVector<TagSuggestion> vote(const QString& meetingId, const QVector<SimilarHit>& neighbours) const;
+    static QVector<TagSuggestion> vote(const TagSnapshot& snap, const QVector<SimilarHit>& neighbours);
 
     TagService*      m_tags;
     MeetingProfiles* m_profiles;

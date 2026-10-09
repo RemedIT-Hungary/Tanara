@@ -80,7 +80,7 @@ public:
     {
         const qint64 ms = m_timer.elapsed();
         if (ms >= m_threshold && lcPerf().isDebugEnabled())
-            qCDebug(lcPerf).noquote() << QStringLiteral("%1: %2 ms").arg(QLatin1String(m_label)).arg(ms);
+            qCDebug(lcPerf).noquote() << QStringLiteral("%1: %2 ms").arg(QString::fromUtf8(m_label)).arg(ms);
     }
     PerfScope(const PerfScope&) = delete;
     PerfScope& operator=(const PerfScope&) = delete;

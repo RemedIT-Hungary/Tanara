@@ -12,10 +12,18 @@
 //    (félrehallás: „remedi” ~ „remedit”) összevonódnak; a megjelenített alak a leggyakoribb
 //    eredeti írásmód.
 //
-// A kifejezés-számlálás (az átirat beolvasása, szavakra bontása) háttérszálon fut, és a meeting
-// mappájába gyorsítótárazódik (profile.json, az átirat-fájl módosítási ideje + mérete szerint
-// érvényes). A könyvtár-szintű statisztika (df, összevonás, súlyok) a fő szálon, lustán áll
-// össze a kész profilokból; pár száz meetingnél ez ezredmásodpercek kérdése.
+// A sorok (meeting.json) betöltése és a kifejezés-számlálás (az átirat beolvasása, szavakra
+// bontása) a „tanara-profiles” háttérszálon fut; a profil a meeting mappájába gyorsítótárazódik
+// (profile.json, az átirat-fájl módosítási ideje + mérete szerint érvényes). A könyvtár-szintű
+// statisztika (df, összevonás, súlyok) lustán, megváltoztathatatlan pillanatképként áll össze
+// a kész profilokból — az építés végén a háttérszálon előre is.
+//
+// Szálbiztonság: az olvasó metódusok (similar, similarToDraft, termsOf, topTerms, sharedTerms,
+// participantWeight, folders, isBuilt) bármelyik szálról hívhatók; az ensureBuilt /
+// invalidate / isIdle a tulajdonos (fő) szálé. Az első ensureBuilt után (háttér-mód; az
+// alkalmazás indításkor hívja) a fő szál sosem tölt be sorokat és sosem számol statisztikát:
+// elavult állapotnál a korábbi pillanatképet kapja, a háttérszál pedig frissít. Előtte (csak
+// szinkron használat: tesztek, egyszerű eszközök) az első olvasás a fő szálon tölt és számol.
 //
 // Hasonlóság: 0.45 · résztvevők (súlyozott Jaccard) + 0.40 · kifejezések (koszinusz) +
 // 0.15 · cím (meetingnotes::titleSimilarity).
@@ -54,8 +62,9 @@ public:
     explicit MeetingProfiles(MeetingStore* store, QObject* parent = nullptr);
     ~MeetingProfiles() override;
 
-    // A hiányzó / elavult profilok építése a háttérszálon (nem blokkol). profileReady jelek,
-    // a végén idle(). Ha nincs teendő, nem jön jel (isIdle() igaz).
+    // A sorok betöltése és a hiányzó / elavult profilok építése a háttérszálon (nem blokkol;
+    // a fő szálon csak az index-lekérdezés fut). profileReady jelek, a kör végén idle() —
+    // akkor is, ha nem volt teendő. A még el nem kezdett kör nem duplázódik.
     void ensureBuilt();
     bool isIdle() const;
     bool isBuilt(const QString& meetingId) const;
@@ -75,6 +84,8 @@ public:
     QStringList sharedTerms(const QString& a, const QString& b, int limit = 3) const;
     // A meeting résztvevőinek ritkasági súlya (0..1) — teszthez / indokláshoz.
     double participantWeight(const QString& name) const;
+    // Az ismert meetingek mappái (id → mappa) — háttérszálról az index nélkül (EmbeddingIndex).
+    QHash<QString, QString> folders() const;
 
 signals:
     void profileReady(QString meetingId);
