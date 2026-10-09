@@ -1,4 +1,5 @@
 #include "TranscriptLaneStrip.h"
+#include "tanara/Logging.h"
 
 #include <QPainter>
 
@@ -11,6 +12,7 @@ TranscriptLaneStrip::TranscriptLaneStrip(QQuickItem* parent) : QQuickPaintedItem
 
 void TranscriptLaneStrip::paint(QPainter* p)
 {
+    tanara::PerfScope perfScope("TranscriptLaneStrip::paint", 20);
     const qreal w = width(), h = height();
     // A sáv 8 px magas, középen; a kiemelés túllóg rajta (ezért magasabb az elem).
     const qreal trackH = qMin<qreal>(8.0, h);

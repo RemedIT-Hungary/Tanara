@@ -260,6 +260,8 @@ int main(int argc, char** argv) {
     // fejlesztői módjai.
     const bool recordMode = cleanArgs.contains(QStringLiteral("--record"));
     const bool qmlMode = !recordMode;
+
+
     const bool settingsMode = qmlMode && cleanArgs.contains(QStringLiteral("--settings"));
     tanara_qml::QmlOptions qmlOpts;
     if (qmlMode) {
@@ -298,6 +300,22 @@ int main(int argc, char** argv) {
         tanara_qml::RecorderWindowHost::prepareProcess();   // a QML-felvevő
 
     QApplication app(argc, argv);
+    // Fő-szál megakadás-figyelő (csak ha a tanara.perf debug-naplózás be van kapcsolva:
+    // --log-rules "tanara.perf.debug=true"): 16 ms-os időzítő; ha két tüzelés között 80 ms-nál
+    // több telik el, a fő szál ennyi ideig nem jutott az eseményhurokhoz — a napló időbélyege
+    // mellé tehető a többi (betöltési) bejegyzés, így kiderül, mi akasztotta meg a felületet.
+    if (tanara::lcPerf().isDebugEnabled()) {
+        auto* stall = new QTimer(&app);
+        auto* last = new QElapsedTimer();
+        last->start();
+        QObject::connect(stall, &QTimer::timeout, &app, [last] {
+            const qint64 gap = last->restart();
+            if (gap > 80)
+                qCDebug(tanara::lcPerf).noquote()
+                    << QStringLiteral("fő szál megakadás: %1 ms (nem jutott az eseményhurokhoz)").arg(gap);
+        });
+        stall->start(16);
+    }
     QApplication::setApplicationName(QStringLiteral("Tanara"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // minden ablakra + tálcára
@@ -404,23 +422,6 @@ int main(int argc, char** argv) {
 
     controller.refreshDevices();
     tanara::logStartupDiagnostics(controller);
-
-    // Fő-szál megakadás-figyelő (csak ha a tanara.perf debug-naplózás be van kapcsolva:
-    // --log-rules "tanara.perf.debug=true"): 16 ms-os időzítő; ha két tüzelés között 80 ms-nál
-    // több telik el, a fő szál ennyi ideig nem jutott az eseményhurokhoz — a napló időbélyege
-    // mellé tehető a többi (betöltési) bejegyzés, így kiderül, mi akasztotta meg a felületet.
-    if (tanara::lcPerf().isDebugEnabled()) {
-        auto* stall = new QTimer(&app);
-        auto* last = new QElapsedTimer();
-        last->start();
-        QObject::connect(stall, &QTimer::timeout, &app, [last] {
-            const qint64 gap = last->restart();
-            if (gap > 80)
-                qCDebug(tanara::lcPerf).noquote()
-                    << QStringLiteral("fő szál megakadás: %1 ms (nem jutott az eseményhurokhoz)").arg(gap);
-        });
-        stall->start(16);
-    }
 
     return app.exec();
 }

@@ -219,6 +219,7 @@ void PeopleStats::refreshNow()
 
 void PeopleStats::apply(const Result& result)
 {
+    tanara::PerfScope perfScope("PeopleStats::apply", 20);
     bool any = !m_ready;
     // A megszűnt megbeszélések ki a gyorsítótárból.
     const QSet<QString> ids(result.ids.cbegin(), result.ids.cend());

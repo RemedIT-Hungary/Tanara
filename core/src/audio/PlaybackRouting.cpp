@@ -8,6 +8,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QElapsedTimer>
+#include "tanara/Logging.h"
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
@@ -217,8 +219,12 @@ void PlaybackRouteMonitor::poll()
         proc->deleteLater();
         if (d->proc == proc) d->proc = nullptr;
         if (st != QProcess::NormalExit || code != 0) return;
+        QElapsedTimer perfTimer;
+        perfTimer.start();
         const AudioGraphSnapshot next = detail::parsePwDumpGraph(out);
         const bool devs = next.deviceKeys != d->snap.deviceKeys;
+        qCDebug(lcPerf).noquote() << QStringLiteral("pw-dump feldolgozás: %1 KB, %2 ms, eszközkészlet változott: %3")
+                                     .arg(out.size() / 1024).arg(perfTimer.elapsed()).arg(devs);
         const bool routes = !sameRoutes(next.routes, d->snap.routes);
         const bool first = d->first;
         d->first = false;

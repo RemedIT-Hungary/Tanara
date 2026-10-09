@@ -1,4 +1,5 @@
 #include "SummaryViewModel.h"
+#include "tanara/Logging.h"
 
 #include "AppContext.h"
 #include "JobSupport.h"
@@ -401,6 +402,7 @@ void SummaryViewModel::applyJob(const JobProgress& job)
 
 void SummaryViewModel::reload()
 {
+    tanara::PerfScope perfScope("SummaryViewModel::reload", 20);
     m_blocker.clear();
     m_canRun = false;
     m_cloudSelected = false;

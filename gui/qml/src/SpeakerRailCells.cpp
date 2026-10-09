@@ -1,4 +1,5 @@
 #include "SpeakerRailCells.h"
+#include "tanara/Logging.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -32,6 +33,7 @@ QRectF SpeakerRailCells::cellRect(int lane) const
 
 void SpeakerRailCells::paint(QPainter* p)
 {
+    tanara::PerfScope perfScope("SpeakerRailCells::paint", 20);
     p->setRenderHint(QPainter::Antialiasing, true);
 
     // 1) Ejtési célok a kijelölt sor többi oszlopában.

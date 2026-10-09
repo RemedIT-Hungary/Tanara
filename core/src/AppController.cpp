@@ -1697,8 +1697,13 @@ void AppController::restartLevelMonitor(bool force) {
         names << dev.name;
     }
     if (!force && d->monitor->active() && names == d->monitorNames) return;
+    QElapsedTimer perfTimer;
+    perfTimer.start();
+    const QStringList before = d->monitorNames;
     d->monitorNames = names;
     d->monitor->start(list);   // üres listára leáll
+    qCDebug(lcPerf).noquote() << QStringLiteral("szintmérő újraindítva (%1 → %2 eszköz, force=%3): %4 ms, szinkron")
+                                 .arg(before.size()).arg(names.size()).arg(force).arg(perfTimer.elapsed());
 }
 
 void AppController::handleDeviceSetChange() {
@@ -3560,6 +3565,7 @@ void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagS
 
 void AppController::computeTagSuggestions(const QString& meetingId)
 {
+    tanara::PerfScope perfScope("AppController::computeTagSuggestions", 20);
     auto it = d->similarCache.constFind(meetingId);
     if (it == d->similarCache.constEnd()) {
         const TagSuggester suggester(d->tags, d->profiles, d->embeddings);

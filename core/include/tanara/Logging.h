@@ -66,3 +66,27 @@ class AppController;
 void logStartupDiagnostics(const AppController& app);
 
 } // namespace tanara
+
+#include <QElapsedTimer>
+#include <QString>
+
+namespace tanara {
+// Mérő-hatókör a tanara.perf naplóhoz: a destruktorban kiírja a blokk idejét, ha az eléri a
+// küszöböt (csak debug szint mellett látszik). Használat: PerfScope perf("X::y", 20);
+class PerfScope {
+public:
+    PerfScope(const char* label, qint64 thresholdMs = 20) : m_label(label), m_threshold(thresholdMs) { m_timer.start(); }
+    ~PerfScope()
+    {
+        const qint64 ms = m_timer.elapsed();
+        if (ms >= m_threshold && lcPerf().isDebugEnabled())
+            qCDebug(lcPerf).noquote() << QStringLiteral("%1: %2 ms").arg(QLatin1String(m_label)).arg(ms);
+    }
+    PerfScope(const PerfScope&) = delete;
+    PerfScope& operator=(const PerfScope&) = delete;
+private:
+    const char* m_label;
+    qint64 m_threshold;
+    QElapsedTimer m_timer;
+};
+} // namespace tanara

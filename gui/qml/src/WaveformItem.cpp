@@ -1,4 +1,5 @@
 #include "WaveformItem.h"
+#include "tanara/Logging.h"
 
 #include <QPainter>
 
@@ -119,6 +120,7 @@ QList<qreal> WaveformItem::barLevels(const QList<qreal>& peaks, int bars, qreal 
 
 void WaveformItem::paint(QPainter* painter)
 {
+    tanara::PerfScope perfScope("WaveformItem::paint", 20);
     const qreal w = width(), h = height();
     const qreal step = m_barWidth + m_barGap;
     const int bars = int(std::floor((w + m_barGap) / step));

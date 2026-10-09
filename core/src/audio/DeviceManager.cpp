@@ -1,4 +1,6 @@
 #include "tanara/audio/DeviceManager.h"
+#include "tanara/Logging.h"
+#include <QElapsedTimer>
 
 #include "miniaudio.h"
 
@@ -61,6 +63,8 @@ void DeviceManager::setDeviceListOverride(std::optional<QVector<AudioDeviceInfo>
 }
 
 void DeviceManager::refresh() {
+    QElapsedTimer perfTimer;
+    perfTimer.start();
     if (d_->override) {
         d_->capture = *d_->override;
         emit devicesChanged();
@@ -142,6 +146,8 @@ void DeviceManager::refresh() {
     ma_context_uninit(&context);
 
     d_->capture = result;
+    qCDebug(lcPerf).noquote() << QStringLiteral("DeviceManager::refresh: %1 eszköz, %2 ms (ma_context, szinkron)")
+                                 .arg(captureDevices().size()).arg(perfTimer.elapsed());
     emit devicesChanged();
 }
 

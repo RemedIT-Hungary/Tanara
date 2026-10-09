@@ -1,4 +1,5 @@
 #include "TranscriptListModel.h"
+#include "tanara/Logging.h"
 
 #include "TranscriptEditorViewModel.h"
 
@@ -254,6 +255,7 @@ void TranscriptListModel::notifyUtterances(const QVector<int>& utteranceIndices,
 
 void TranscriptListModel::notifyAll(const QList<int>& roles)
 {
+    tanara::PerfScope perfScope("TranscriptListModel::notifyAll", 20);
     if (m_rows.isEmpty()) return;
     emit dataChanged(index(0), index(int(m_rows.size()) - 1), roles);
 }
