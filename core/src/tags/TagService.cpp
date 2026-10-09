@@ -665,6 +665,19 @@ QStringList TagService::meetingsWith(const QString& tagId) const
     return out;
 }
 
+QHash<QString, QStringList> TagService::taggedMeetings() const
+{
+    d->ensureRows();
+    QHash<QString, QStringList> out;
+    for (auto it = d->rows.constBegin(); it != d->rows.constEnd(); ++it) {
+        QStringList ids;
+        for (const QString& id : it->tagIds)
+            if (d->indexOf(id) >= 0) ids << id;
+        if (!ids.isEmpty()) out.insert(it.key(), ids);
+    }
+    return out;
+}
+
 MeetingRef TagService::meetingRef(const QString& meetingId) const
 {
     d->ensureRows();

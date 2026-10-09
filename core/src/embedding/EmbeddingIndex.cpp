@@ -7,6 +7,8 @@
 #include <QDataStream>
 #include <QDir>
 #include <QFile>
+#include <QMutex>
+#include <QThread>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -41,6 +43,7 @@ EmbeddingIndex::EmbeddingIndex(MeetingStore* store, QObject* parent)
 {
     if (store) {
         connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
+            QMutexLocker lock(&m_mutex);
             m_cache.remove(id);
             m_folders.remove(id);
         });
@@ -53,67 +56,112 @@ void EmbeddingIndex::setProfiles(MeetingProfiles* profiles) { m_profiles = profi
 
 void EmbeddingIndex::setModel(const QString& model)
 {
-    if (m_model == model) return;
-    m_model = model;
+    {
+        QMutexLocker lock(&m_mutex);
+        if (m_model == model) return;
+        m_model = model;
+    }
     emit indexReset();
 }
 
-QString EmbeddingIndex::model() const { return m_model; }
+QString EmbeddingIndex::model() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_model;
+}
 
 QString EmbeddingIndex::folderOf(const QString& meetingId) const
 {
-    const auto it = m_folders.constFind(meetingId);
-    if (it != m_folders.constEnd()) return *it;
-    const QString folder = m_store ? m_store->load(meetingId).folder : QString();
-    if (!folder.isEmpty()) m_folders.insert(meetingId, folder);
+    {
+        QMutexLocker lock(&m_mutex);
+        const auto it = m_folders.constFind(meetingId);
+        if (it != m_folders.constEnd()) return *it;
+    }
+    // Az index (SQLite) csak a tulajdonos szálról kérdezhető.
+    if (!m_store || QThread::currentThread() != thread()) return QString();
+    const QString folder = m_store->load(meetingId).folder;
+    if (!folder.isEmpty()) {
+        QMutexLocker lock(&m_mutex);
+        m_folders.insert(meetingId, folder);
+    }
     return folder;
 }
 
-const EmbeddingIndex::Entry* EmbeddingIndex::entry(const QString& meetingId) const
+QVector<float> EmbeddingIndex::meanFor(const QString& meetingId, const QString& folder) const
 {
-    if (m_model.isEmpty()) return nullptr;
-    const QString folder = folderOf(meetingId);
-    if (folder.isEmpty()) return nullptr;
+    const QString model = this->model();
+    if (model.isEmpty() || folder.isEmpty()) return {};
     const QString path = QDir(folder).filePath(kFileName);
     const FileStamp fs = FileStamp::of(path);
-    if (fs.mtimeMs < 0) { m_cache.remove(meetingId); return nullptr; }
+    if (fs.mtimeMs < 0) {
+        QMutexLocker lock(&m_mutex);
+        m_cache.remove(meetingId);
+        return {};
+    }
     // Régebbi, mint az átirat → elavult.
     const FileStamp ts = FileStamp::of(segmentsPath(folder));
-    if (ts.mtimeMs > fs.mtimeMs) return nullptr;
-    auto it = m_cache.find(meetingId);
-    if (it == m_cache.end() || it->fileMtime != fs.mtimeMs) {
-        Entry e;
+    if (ts.mtimeMs > fs.mtimeMs) return {};
+    Entry e;
+    bool cached = false;
+    {
+        QMutexLocker lock(&m_mutex);
+        const auto it = m_cache.constFind(meetingId);
+        if (it != m_cache.constEnd() && it->fileMtime == fs.mtimeMs) { e = *it; cached = true; }
+    }
+    if (!cached) {
+        // A fájl olvasása zár nélkül; párhuzamos olvasóknál legfeljebb kétszer töltődik.
         e.fileMtime = fs.mtimeMs;
         QVector<EmbeddingChunk> chunks;
-        if (!readFile(path, &e.model, &chunks)) return nullptr;
+        if (!readFile(path, &e.model, &chunks)) return {};
         e.mean = meanVector(chunks);
-        it = m_cache.insert(meetingId, e);
+        QMutexLocker lock(&m_mutex);
+        m_cache.insert(meetingId, e);
     }
-    if (it->model != m_model || it->mean.isEmpty()) return nullptr;
-    return &*it;
+    if (e.model != model || e.mean.isEmpty()) return {};
+    return e.mean;
 }
 
-bool EmbeddingIndex::has(const QString& meetingId) const { return entry(meetingId) != nullptr; }
+bool EmbeddingIndex::has(const QString& meetingId) const
+{
+    return !meanFor(meetingId, folderOf(meetingId)).isEmpty();
+}
+
+bool EmbeddingIndex::has(const QString& meetingId, const QString& folder) const
+{
+    return !meanFor(meetingId, folder).isEmpty();
+}
 
 QVector<SimilarHit> EmbeddingIndex::similar(const QString& meetingId, int limit) const
 {
+    if (!m_store || QThread::currentThread() != thread()) return {};
+    QHash<QString, QString> folders;
+    for (const Meeting& m : m_store->loadAll())
+        if (!m.folder.isEmpty()) folders.insert(m.id, m.folder);
+    {
+        QMutexLocker lock(&m_mutex);
+        for (auto it = folders.constBegin(); it != folders.constEnd(); ++it) m_folders.insert(it.key(), it.value());
+    }
+    return similar(meetingId, folders, limit);
+}
+
+QVector<SimilarHit> EmbeddingIndex::similar(const QString& meetingId, const QHash<QString, QString>& folders,
+                                            int limit) const
+{
     QVector<SimilarHit> hits;
-    const Entry* self = entry(meetingId);
-    if (!self || !m_store) return hits;
-    const QVector<float> a = self->mean;
-    for (const Meeting& m : m_store->loadAll()) {
-        if (m.id == meetingId) continue;
-        if (!m.folder.isEmpty()) m_folders.insert(m.id, m.folder);
-        const Entry* o = entry(m.id);
-        if (!o || o->mean.size() != a.size()) continue;
+    const QVector<float> a = meanFor(meetingId, folders.value(meetingId));
+    if (a.isEmpty()) return hits;
+    for (auto it = folders.constBegin(); it != folders.constEnd(); ++it) {
+        if (it.key() == meetingId) continue;
+        const QVector<float> o = meanFor(it.key(), it.value());
+        if (o.size() != a.size()) continue;
         double dot = 0;
-        for (int i = 0; i < a.size(); ++i) dot += double(a.at(i)) * double(o->mean.at(i));
+        for (int i = 0; i < a.size(); ++i) dot += double(a.at(i)) * double(o.at(i));
         if (dot <= 0) continue;
         SimilarHit h;
-        h.meetingId = m.id;
+        h.meetingId = it.key();
         h.score = dot;
         if (m_profiles) {
-            const QStringList terms = m_profiles->sharedTerms(meetingId, m.id, 3);
+            const QStringList terms = m_profiles->sharedTerms(meetingId, it.key(), 3);
             if (!terms.isEmpty()) h.reasons.append({ ReasonKind::Terms, terms });
         }
         hits.append(h);
@@ -132,7 +180,10 @@ bool EmbeddingIndex::store(const QString& meetingId, const QString& model,
     const QString folder = folderOf(meetingId);
     if (folder.isEmpty()) return false;
     if (!writeFile(QDir(folder).filePath(kFileName), model, chunks)) return false;
-    m_cache.remove(meetingId);
+    {
+        QMutexLocker lock(&m_mutex);
+        m_cache.remove(meetingId);
+    }
     emit indexChanged(meetingId);
     return true;
 }
@@ -142,8 +193,11 @@ void EmbeddingIndex::invalidateAll()
     if (m_store)
         for (const Meeting& m : m_store->loadAll())
             if (!m.folder.isEmpty()) QFile::remove(QDir(m.folder).filePath(kFileName));
-    m_cache.clear();
-    m_folders.clear();
+    {
+        QMutexLocker lock(&m_mutex);
+        m_cache.clear();
+        m_folders.clear();
+    }
     emit indexReset();
 }
 
@@ -151,7 +205,10 @@ void EmbeddingIndex::invalidate(const QString& meetingId)
 {
     const QString folder = folderOf(meetingId);
     if (!folder.isEmpty()) QFile::remove(QDir(folder).filePath(kFileName));
-    m_cache.remove(meetingId);
+    {
+        QMutexLocker lock(&m_mutex);
+        m_cache.remove(meetingId);
+    }
     emit indexChanged(meetingId);
 }
 

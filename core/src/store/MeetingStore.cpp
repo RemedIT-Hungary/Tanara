@@ -256,9 +256,25 @@ Meeting MeetingStore::load(const QString& id)
 
     if (folder.isEmpty())
         return Meeting{};
+    return readMeetingFolder(folder);
+}
 
-    const QString path = meetingJsonPath(folder);
-    QFile f(path);
+QString MeetingStore::folderOf(const QString& id)
+{
+    QSqlDatabase db = QSqlDatabase::database(m_connName);
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT folder FROM meetings WHERE id = :id"));
+    q.bindValue(QStringLiteral(":id"), id);
+    if (q.exec() && q.next())
+        return q.value(0).toString();
+    return QString();
+}
+
+Meeting MeetingStore::readMeetingFolder(const QString& folder)
+{
+    if (folder.isEmpty())
+        return Meeting{};
+    QFile f(QDir(folder).filePath(QStringLiteral("meeting.json")));
     if (!f.open(QIODevice::ReadOnly))
         return Meeting{};
     const QByteArray data = f.readAll();

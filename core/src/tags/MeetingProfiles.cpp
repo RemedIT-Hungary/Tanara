@@ -1,5 +1,6 @@
 #include "tanara/tags/MeetingProfiles.h"
 #include "tanara/tags/TagNames.h"
+#include "tanara/Logging.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
@@ -11,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMutex>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
@@ -252,6 +254,17 @@ public:
     std::atomic<bool> stop{false};
 };
 
+// Szálbiztonság (lásd a fejlécet):
+//  - A közös állapotot (sorok, kész profilok, a statisztika-pillanatkép) a `mutex` védi; a
+//    zárat csak másolásra / beillesztésre tartjuk (a QHash implicit megosztott, a másolat
+//    O(1)), lemez-I/O és számolás sosem fut alatta.
+//  - A könyvtár-szintű statisztika megváltoztathatatlan pillanatkép (Stats): az olvasó
+//    (bármelyik szálon) egy shared_ptr-t kap, és zár nélkül dolgozik rajta. Ha elavult (a
+//    `gen` azóta nőtt), az olvasó újraszámolja; egyszerre egy számítás fut (`computeMutex`).
+//    A fő szál nem vár egy másik szálon futó számításra: addig a korábbi pillanatképet kapja.
+//  - Lemez-I/O (meeting.json, profile.json, átirat) a „tanara-profiles” szálon fut; a fő
+//    szál csak az index-lekérdezést (MeetingStore::loadAll / folderOf, SQLite) végzi, mert az
+//    adatbázis-kapcsolat a fő szálhoz kötött.
 struct MeetingProfiles::Impl {
     MeetingProfiles* q = nullptr;
     MeetingStore* store = nullptr;
@@ -264,62 +277,226 @@ struct MeetingProfiles::Impl {
         QStringList participants;
         QString     folder;
         bool        hasTranscript = false;
+        bool operator==(const Row&) const = default;
     };
     struct Built {
         FileStamp stamp;
         RawTerms  raw;
     };
-    mutable bool rowsLoaded = false;
-    mutable QHash<QString, Row> rows;
+    // A könyvtár-szintű statisztika egy adott állapotra (gen) — megváltoztathatatlan.
+    struct Stats {
+        quint64 gen = 0;
+        QHash<QString, Row> rows;
+        QHash<QString, QString> canon;                 // nyers tő → összevont tő
+        QHash<QString, QString> display;               // összevont tő → megjelenített alak
+        QHash<QString, QHash<QString, double>> vec;    // meetingId → (tő → súly), ≤ 60
+        QHash<QString, double> norm;
+        QHash<QString, double> personWeight;           // név → ritkasági súly
+    };
+    enum class RowsState { NotLoaded, Loading, Loaded };
+
+    // ---- közös állapot (mutex) ----
+    mutable QMutex mutex;
+    RowsState rowsState = RowsState::NotLoaded;
+    QHash<QString, Row> rows;
     QHash<QString, Built> built;
-    QSet<QString> inFlight;
+    QSet<QString> removedWhileLoading;
+    quint64 gen = 1;                                   // minden változás növeli
+    mutable std::shared_ptr<const Stats> stats;        // a legutóbbi pillanatkép
+    mutable QMutex computeMutex;
 
-    // A könyvtár-szintű statisztika (lusta, a kész profilokból).
-    mutable bool statsDirty = true;
-    mutable QHash<QString, QString> canon;                 // nyers tő → összevont tő
-    mutable QHash<QString, QString> display;               // összevont tő → megjelenített alak
-    mutable QHash<QString, QHash<QString, double>> vec;    // meetingId → (tő → súly), ≤ 60
-    mutable QHash<QString, double> norm;
-    mutable QHash<QString, double> personWeight;           // név → ritkasági súly
+    // ---- csak a tulajdonos szálon ----
+    int pendingSyncs = 0;
+    std::atomic<bool> syncQueued{false};
+    // Háttér-mód (az első ensureBuilt után): a fő szál sosem tölt be sorokat és sosem számol
+    // statisztikát, az elavult pillanatképet a háttérszál frissíti.
+    std::atomic<bool> background{false};
+    mutable std::atomic<bool> recomputeQueued{false};
 
-    void ensureRows() const {
-        if (rowsLoaded || !store) return;
-        rows.clear();
-        for (const Meeting& idx : store->loadAll()) {
-            Meeting m = store->load(idx.id);
-            if (m.id.isEmpty()) m = idx;
-            if (m.folder.isEmpty()) m.folder = idx.folder;
-            rows.insert(m.id, rowOf(m));
-        }
-        rowsLoaded = true;
-        statsDirty = true;
-    }
     static Row rowOf(const Meeting& m) {
         return Row{ m.title, meetingnotes::titleWords(m.title), MeetingLibrary::participantsOf(m),
                     m.folder, m.hasTranscript };
     }
-    void reloadRow(const QString& id) {
-        if (!rowsLoaded || !store) return;
-        const Meeting m = store->load(id);
-        if (m.id.isEmpty()) { rows.remove(id); built.remove(id); }
-        else rows.insert(id, rowOf(m));
-        statsDirty = true;
+    static Row rowFromIndex(const Meeting& idx) {
+        Meeting m = MeetingStore::readMeetingFolder(idx.folder);
+        if (m.id.isEmpty()) m = idx;
+        if (m.folder.isEmpty()) m.folder = idx.folder;
+        return rowOf(m);
+    }
+    bool onOwnerThread() const { return QThread::currentThread() == q->thread(); }
+
+    // Régi, szinkron út: ha még senki nem kérte a háttér-építést (ensureBuilt), a tulajdonos
+    // szálon az első olvasás tölti be a sorokat. Az alkalmazás az indításkor ensureBuilt-et
+    // hív, így ott ez nem fut; a tesztekben és a CLI-ben kényelmes.
+    void ensureRowsSync() const {
+        if (!store || background || !onOwnerThread()) return;
+        {
+            QMutexLocker lock(&mutex);
+            if (rowsState != RowsState::NotLoaded) return;
+        }
+        PerfScope perf("MeetingProfiles: sorok szinkron betöltése (fő szál)", 0);
+        QHash<QString, Row> fresh;
+        for (const Meeting& idx : store->loadAll()) fresh.insert(idx.id, rowFromIndex(idx));
+        auto* self = const_cast<Impl*>(this);
+        QMutexLocker lock(&self->mutex);
+        if (self->rowsState != RowsState::NotLoaded) return;
+        self->rows = fresh;
+        self->rowsState = RowsState::Loaded;
+        ++self->gen;
     }
 
-    void computeStats() const {
-        if (!statsDirty) return;
-        statsDirty = false;
-        ensureRows();
-        canon.clear(); display.clear(); vec.clear(); norm.clear(); personWeight.clear();
+    // Egy meeting sorának frissítése a háttérszálon (meeting.json); a fő szál csak a mappát
+    // keresi ki (ha a sor még nem ismert).
+    void reloadRow(const QString& id) {
+        QString folder;
+        {
+            QMutexLocker lock(&mutex);
+            if (rowsState == RowsState::NotLoaded) return;
+            folder = rows.value(id).folder;
+        }
+        if (folder.isEmpty() && store) folder = store->folderOf(id);
+        QMetaObject::invokeMethod(worker, [this, id, folder]() {
+            if (worker->stop) return;
+            const Meeting m = MeetingStore::readMeetingFolder(folder);
+            QMutexLocker lock(&mutex);
+            if (m.id.isEmpty()) {
+                if (!rows.contains(id) && !built.contains(id)) return;
+                rows.remove(id);
+                built.remove(id);
+            } else {
+                Meeting mm = m;
+                if (mm.folder.isEmpty()) mm.folder = folder;
+                const Row row = rowOf(mm);
+                const auto old = rows.constFind(id);
+                if (old != rows.constEnd() && *old == row) return;   // nincs érdemi változás
+                rows.insert(id, row);
+            }
+            ++gen;
+        }, Qt::QueuedConnection);
+    }
+
+    void removeMeeting(const QString& id) {
+        QMutexLocker lock(&mutex);
+        rows.remove(id);
+        built.remove(id);
+        if (rowsState == RowsState::Loading) removedWhileLoading.insert(id);
+        ++gen;
+    }
+
+    // A háttérszál egy köre: (ha kell) a sorok betöltése, az elavult profilok építése, végül
+    // a statisztika előmelegítése.
+    void syncJob(bool loadRows, const QVector<Meeting>& index) {
+        syncQueued = false;
+        if (worker->stop) return;
+        if (loadRows) {
+            PerfScope perf("MeetingProfiles: sorok betöltése (háttérszál)", 0);
+            QHash<QString, Row> fresh;
+            for (const Meeting& idx : index) {
+                if (worker->stop) return;
+                fresh.insert(idx.id, rowFromIndex(idx));
+            }
+            QMutexLocker lock(&mutex);
+            for (const QString& id : std::as_const(removedWhileLoading)) fresh.remove(id);
+            removedWhileLoading.clear();
+            // Közben beérkezett sor-frissítések (reloadRow) a betöltés után futnak — sorrendben.
+            rows = fresh;
+            rowsState = RowsState::Loaded;
+            ++gen;
+        }
+        QHash<QString, Row> rowsCopy;
+        QHash<QString, FileStamp> stamps;
+        {
+            QMutexLocker lock(&mutex);
+            rowsCopy = rows;
+            for (auto it = built.constBegin(); it != built.constEnd(); ++it) stamps.insert(it.key(), it->stamp);
+        }
+        for (auto it = rowsCopy.constBegin(); it != rowsCopy.constEnd(); ++it) {
+            if (worker->stop) return;
+            const QString id = it.key();
+            if (!it->hasTranscript || it->folder.isEmpty()) continue;
+            const FileStamp stamp = FileStamp::of(segmentsPath(it->folder));
+            if (stamp.mtimeMs < 0) continue;
+            const auto b = stamps.constFind(id);
+            if (b != stamps.constEnd() && *b == stamp) continue;
+            RawTerms raw;
+            if (!readProfileFile(it->folder, stamp, &raw)) {
+                raw = countTerms(it->folder);
+                writeProfileFile(it->folder, stamp, raw);
+            }
+            bool inserted = false;
+            {
+                QMutexLocker lock(&mutex);
+                if (rows.contains(id)) {
+                    built.insert(id, Built{ stamp, raw });
+                    ++gen;
+                    inserted = true;
+                }
+            }
+            if (inserted)
+                QMetaObject::invokeMethod(q, [this, id]() { emit q->profileReady(id); }, Qt::QueuedConnection);
+        }
+        if (worker->stop) return;
+        (void)snapshot();   // előmelegítés: a fő szál olvasói már kész statisztikát kapnak
+    }
+
+    // A statisztika aktuális pillanatképe (sosem null).
+    std::shared_ptr<const Stats> snapshot() const {
+        {
+            QMutexLocker lock(&mutex);
+            if (stats && stats->gen == gen) return stats;
+        }
+        if (onOwnerThread() && background) {
+            // A fő szál nem számol: a háttérszál frissít, addig a korábbi pillanatkép él.
+            if (!recomputeQueued.exchange(true))
+                QMetaObject::invokeMethod(worker, [this]() {
+                    recomputeQueued = false;
+                    if (!worker->stop) (void)snapshot();
+                }, Qt::QueuedConnection);
+            QMutexLocker lock(&mutex);
+            return stats ? stats : std::make_shared<const Stats>();
+        }
+        if (onOwnerThread()) {
+            if (!computeMutex.tryLock()) {
+                // Másik szál épp számol: a fő szál nem vár, a korábbi pillanatkép is megfelel.
+                QMutexLocker lock(&mutex);
+                return stats ? stats : std::make_shared<const Stats>();
+            }
+        } else {
+            computeMutex.lock();
+        }
+        QHash<QString, Built> builtCopy;
+        auto s = std::make_shared<Stats>();
+        {
+            QMutexLocker lock(&mutex);
+            if (stats && stats->gen == gen) { computeMutex.unlock(); return stats; }
+            s->gen = gen;
+            s->rows = rows;
+            builtCopy = built;
+        }
+        {
+            PerfScope perf(onOwnerThread() ? "MeetingProfiles: statisztika (fő szál)"
+                                           : "MeetingProfiles: statisztika (háttérszál)", 0);
+            computeStats(*s, builtCopy);
+        }
+        {
+            QMutexLocker lock(&mutex);
+            if (!stats || stats->gen < s->gen) stats = s;
+        }
+        computeMutex.unlock();
+        return s;
+    }
+
+    static void computeStats(Stats& s, const QHash<QString, Built>& built) {
+        const QHash<QString, Row>& rows = s.rows;
 
         // Résztvevők ritkasága: aki a megbeszélések > 60 %-án ott van, ~0.
         const int nAll = int(rows.size());
         QHash<QString, int> pdf;
-        for (const Row& r : std::as_const(rows))
+        for (const Row& r : rows)
             for (const QString& p : r.participants) pdf[p]++;
         for (auto it = pdf.constBegin(); it != pdf.constEnd(); ++it) {
             const double share = nAll > 0 ? double(it.value()) / nAll : 1.0;
-            personWeight.insert(it.key(), std::max(0.0, 1.0 - share / 0.6));
+            s.personWeight.insert(it.key(), std::max(0.0, 1.0 - share / 0.6));
         }
 
         // Kifejezések: nyers df + összesített előfordulás.
@@ -344,10 +521,10 @@ struct MeetingProfiles::Impl {
         const int rareDf = std::max(2, int(std::ceil(n * 0.1)));
         QHash<QString, QStringList> buckets;
         for (auto it = rawDf.constBegin(); it != rawDf.constEnd(); ++it) {
-            const QString& s = it.key();
-            if (it.value() > rareDf || s.size() < 5) continue;
-            buckets[s].append(s);
-            for (int i = 0; i < s.size(); ++i) buckets[s.left(i) + s.mid(i + 1)].append(s);
+            const QString& w = it.key();
+            if (it.value() > rareDf || w.size() < 5) continue;
+            buckets[w].append(w);
+            for (int i = 0; i < w.size(); ++i) buckets[w.left(i) + w.mid(i + 1)].append(w);
         }
         UnionFind uf;
         for (auto it = buckets.constBegin(); it != buckets.constEnd(); ++it) {
@@ -362,9 +539,10 @@ struct MeetingProfiles::Impl {
         }
         // Csoportonként a leggyakoribb tő lesz a közös.
         QHash<QString, QString> groupBest;
-        for (auto it = uf.parent.constBegin(); it != uf.parent.constEnd(); ++it) {
-            const QString root = uf.find(it.key());
-            for (const QString& member : { it.key(), root }) {
+        const QStringList members = uf.parent.keys();
+        for (const QString& key : members) {
+            const QString root = uf.find(key);
+            for (const QString& member : { key, root }) {
                 const QString cur = groupBest.value(root);
                 if (cur.isEmpty() || rawTotal.value(member) > rawTotal.value(cur)
                     || (rawTotal.value(member) == rawTotal.value(cur) && member.size() > cur.size()))
@@ -372,20 +550,20 @@ struct MeetingProfiles::Impl {
             }
         }
         for (auto it = rawDf.constBegin(); it != rawDf.constEnd(); ++it) {
-            const QString s = it.key();
-            canon.insert(s, uf.parent.contains(s) ? groupBest.value(uf.find(s)) : s);
+            const QString w = it.key();
+            s.canon.insert(w, uf.parent.contains(w) ? groupBest.value(uf.find(w)) : w);
         }
 
         // Megjelenített alak: az összevont csoport leggyakoribb eredeti írásmódja.
         QHash<QString, QHash<QString, int>> canonForms;
         for (auto it = surfaces.constBegin(); it != surfaces.constEnd(); ++it)
             for (auto f = it->constBegin(); f != it->constEnd(); ++f)
-                canonForms[canon.value(it.key())][f.key()] += f.value();
+                canonForms[s.canon.value(it.key())][f.key()] += f.value();
         for (auto it = canonForms.constBegin(); it != canonForms.constEnd(); ++it) {
             QString best; int bestN = -1;
             for (auto f = it->constBegin(); f != it->constEnd(); ++f)
                 if (f.value() > bestN || (f.value() == bestN && f.key() < best)) { best = f.key(); bestN = f.value(); }
-            display.insert(it.key(), best);
+            s.display.insert(it.key(), best);
         }
 
         // Összevont df, majd meetingenként tf × log(N / df), a legerősebb 60.
@@ -395,7 +573,7 @@ struct MeetingProfiles::Impl {
             if (!rows.contains(it.key()) || it->raw.tf.isEmpty()) continue;
             QHash<QString, int>& m = ctf[it.key()];
             for (auto t = it->raw.tf.constBegin(); t != it->raw.tf.constEnd(); ++t)
-                m[canon.value(t.key(), t.key())] += t.value();
+                m[s.canon.value(t.key(), t.key())] += t.value();
             for (auto t = m.constBegin(); t != m.constEnd(); ++t) df[t.key()]++;
         }
         for (auto it = ctf.constBegin(); it != ctf.constEnd(); ++it) {
@@ -413,18 +591,18 @@ struct MeetingProfiles::Impl {
             QHash<QString, double> v;
             double sq = 0;
             for (const auto& p : std::as_const(w)) { v.insert(p.second, p.first); sq += p.first * p.first; }
-            vec.insert(it.key(), v);
-            norm.insert(it.key(), std::sqrt(sq));
+            s.vec.insert(it.key(), v);
+            s.norm.insert(it.key(), std::sqrt(sq));
         }
     }
 
-    double participantScore(const QStringList& a, const QStringList& b, QStringList* shared) const {
+    static double participantScore(const Stats& s, const QStringList& a, const QStringList& b, QStringList* shared) {
         double inter = 0, uni = 0;
         QSet<QString> all(a.cbegin(), a.cend());
         for (const QString& p : b) all.insert(p);
         QVector<QPair<double, QString>> common;
         for (const QString& p : std::as_const(all)) {
-            const double w = personWeight.value(p, 1.0);
+            const double w = s.personWeight.value(p, 1.0);
             uni += w;
             if (a.contains(p) && b.contains(p)) {
                 inter += w;
@@ -439,8 +617,8 @@ struct MeetingProfiles::Impl {
         return uni > 0 ? inter / uni : 0.0;
     }
 
-    QStringList shared(const QString& a, const QString& b, int limit) const {
-        const QHash<QString, double> va = vec.value(a), vb = vec.value(b);
+    static QStringList shared(const Stats& s, const QString& a, const QString& b, int limit) {
+        const QHash<QString, double> va = s.vec.value(a), vb = s.vec.value(b);
         QVector<QPair<double, QString>> common;
         for (auto it = va.constBegin(); it != va.constEnd(); ++it) {
             const auto o = vb.constFind(it.key());
@@ -453,24 +631,23 @@ struct MeetingProfiles::Impl {
         QStringList out;
         for (const auto& c : std::as_const(common)) {
             if (out.size() >= limit) break;
-            out << display.value(c.second, c.second);
+            out << s.display.value(c.second, c.second);
         }
         return out;
     }
 
-    QVector<SimilarHit> rank(const QString& selfId, const QStringList& participants,
-                             const QStringList& titleWords, int limit) const {
-        computeStats();
+    static QVector<SimilarHit> rank(const Stats& s, const QString& selfId, const QStringList& participants,
+                                    const QStringList& titleWords, int limit) {
         QVector<SimilarHit> hits;
-        const bool hasVec = vec.contains(selfId);
-        const QHash<QString, double> selfVec = vec.value(selfId);
-        const double selfNorm = norm.value(selfId);
-        for (auto it = rows.constBegin(); it != rows.constEnd(); ++it) {
+        const bool hasVec = s.vec.contains(selfId);
+        const QHash<QString, double> selfVec = s.vec.value(selfId);
+        const double selfNorm = s.norm.value(selfId);
+        for (auto it = s.rows.constBegin(); it != s.rows.constEnd(); ++it) {
             if (it.key() == selfId) continue;
             QStringList sharedPeople;
-            const double p = participantScore(participants, it->participants, &sharedPeople);
-            const double t = hasVec && vec.contains(it.key())
-                ? cosine(selfVec, selfNorm, vec.value(it.key()), norm.value(it.key())) : 0.0;
+            const double p = participantScore(s, participants, it->participants, &sharedPeople);
+            const double t = hasVec && s.vec.contains(it.key())
+                ? cosine(selfVec, selfNorm, s.vec.value(it.key()), s.norm.value(it.key())) : 0.0;
             const double ti = meetingnotes::titleSimilarity(titleWords, it->titleWords);
             const double score = kWeightParticipants * p + kWeightTerms * t + kWeightTitle * ti;
             if (score <= 0.0) continue;
@@ -480,7 +657,7 @@ struct MeetingProfiles::Impl {
             if (p > 0 && !sharedPeople.isEmpty())
                 h.reasons.append({ ReasonKind::Participant, sharedPeople.mid(0, 3) });
             if (t > 0) {
-                const QStringList terms = shared(selfId, it.key(), 3);
+                const QStringList terms = shared(s, selfId, it.key(), 3);
                 if (!terms.isEmpty()) h.reasons.append({ ReasonKind::Terms, terms });
             }
             if (ti > 0) h.reasons.append({ ReasonKind::Title, { it->title } });
@@ -509,11 +686,7 @@ MeetingProfiles::MeetingProfiles(MeetingStore* store, QObject* parent)
         auto refresh = [this](const QString& id) { d->reloadRow(id); };
         connect(store, &MeetingStore::meetingUpdated, this, refresh);
         connect(store, &MeetingStore::meetingAdded, this, refresh);
-        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) {
-            d->rows.remove(id);
-            d->built.remove(id);
-            d->statsDirty = true;
-        });
+        connect(store, &MeetingStore::meetingRemoved, this, [this](const QString& id) { d->removeMeeting(id); });
     }
 }
 
@@ -526,65 +699,78 @@ MeetingProfiles::~MeetingProfiles()
 
 void MeetingProfiles::ensureBuilt()
 {
-    d->ensureRows();
-    for (auto it = d->rows.constBegin(); it != d->rows.constEnd(); ++it) {
-        const QString id = it.key();
-        if (!it->hasTranscript || it->folder.isEmpty() || d->inFlight.contains(id)) continue;
-        const FileStamp stamp = FileStamp::of(segmentsPath(it->folder));
-        if (stamp.mtimeMs < 0) continue;
-        const auto b = d->built.constFind(id);
-        if (b != d->built.constEnd() && b->stamp == stamp) continue;
-        d->inFlight.insert(id);
-        const QString folder = it->folder;
-        ProfileWorker* worker = d->worker;
-        QMetaObject::invokeMethod(worker, [this, worker, id, folder, stamp]() {
-            if (worker->stop) return;
-            RawTerms raw;
-            if (!readProfileFile(folder, stamp, &raw)) {
-                raw = countTerms(folder);
-                writeProfileFile(folder, stamp, raw);
-            }
-            if (worker->stop) return;
-            // Vissza a fő szálra (a profilok ott élnek). A MeetingProfiles a szál leállítása
-            // előtt nem szűnik meg, így a cél-objektum itt még érvényes.
-            QMetaObject::invokeMethod(this, [this, id, stamp, raw]() {
-                d->inFlight.remove(id);
-                if (d->rows.contains(id)) {
-                    d->built.insert(id, Impl::Built{ stamp, raw });
-                    d->statsDirty = true;
-                    emit profileReady(id);
-                }
-                if (d->inFlight.isEmpty()) emit idle();
-            }, Qt::QueuedConnection);
-        }, Qt::QueuedConnection);
+    d->background = true;
+    // Egy várakozó kör elég: ami addig változik, azt az is látja.
+    if (d->syncQueued.exchange(true)) return;
+    bool loadRows = false;
+    QVector<Meeting> index;
+    {
+        QMutexLocker lock(&d->mutex);
+        if (d->rowsState == Impl::RowsState::NotLoaded && d->store) {
+            d->rowsState = Impl::RowsState::Loading;
+            loadRows = true;
+        }
     }
+    if (loadRows) {
+        PerfScope perf("MeetingProfiles::ensureBuilt: index (fő szál)", 5);
+        index = d->store->loadAll();   // csak az index (SQLite), fájl-olvasás nélkül
+    }
+    ++d->pendingSyncs;
+    QMetaObject::invokeMethod(d->worker, [this, loadRows, index]() {
+        d->syncJob(loadRows, index);
+        QMetaObject::invokeMethod(this, [this]() {
+            if (--d->pendingSyncs == 0) emit idle();
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
 }
 
-bool MeetingProfiles::isIdle() const { return d->inFlight.isEmpty(); }
+bool MeetingProfiles::isIdle() const { return d->pendingSyncs == 0; }
 
-bool MeetingProfiles::isBuilt(const QString& meetingId) const { return d->built.contains(meetingId); }
+bool MeetingProfiles::isBuilt(const QString& meetingId) const
+{
+    QMutexLocker lock(&d->mutex);
+    return d->built.contains(meetingId);
+}
 
 void MeetingProfiles::invalidate(const QString& meetingId)
 {
-    d->built.remove(meetingId);
+    {
+        QMutexLocker lock(&d->mutex);
+        d->built.remove(meetingId);
+        ++d->gen;
+    }
     d->reloadRow(meetingId);
-    d->statsDirty = true;
+}
+
+QHash<QString, QString> MeetingProfiles::folders() const
+{
+    d->ensureRowsSync();
+    QHash<QString, Impl::Row> rows;
+    {
+        QMutexLocker lock(&d->mutex);
+        rows = d->rows;
+    }
+    QHash<QString, QString> out;
+    out.reserve(rows.size());
+    for (auto it = rows.constBegin(); it != rows.constEnd(); ++it) out.insert(it.key(), it->folder);
+    return out;
 }
 
 QVector<SimilarHit> MeetingProfiles::similar(const QString& meetingId, int limit) const
 {
-    d->ensureRows();
-    const auto self = d->rows.constFind(meetingId);
-    if (self == d->rows.constEnd()) return {};
-    return d->rank(meetingId, self->participants, self->titleWords, limit);
+    d->ensureRowsSync();
+    const auto s = d->snapshot();
+    const auto self = s->rows.constFind(meetingId);
+    if (self == s->rows.constEnd()) return {};
+    return Impl::rank(*s, meetingId, self->participants, self->titleWords, limit);
 }
 
 QVector<SimilarHit> MeetingProfiles::similarToDraft(const QString& title, const QStringList& participants,
                                                     const QString& excludeId, int limit) const
 {
-    d->ensureRows();
+    d->ensureRowsSync();
     const QString self = excludeId.isEmpty() ? QStringLiteral("\x01draft") : excludeId;
-    return d->rank(self, participants, meetingnotes::titleWords(title), limit);
+    return Impl::rank(*d->snapshot(), self, participants, meetingnotes::titleWords(title), limit);
 }
 
 QStringList MeetingProfiles::termsOf(const QString& meetingId, int limit) const
@@ -594,11 +780,12 @@ QStringList MeetingProfiles::termsOf(const QString& meetingId, int limit) const
 
 QStringList MeetingProfiles::topTerms(const QStringList& meetingIds, int limit) const
 {
-    d->computeStats();
+    d->ensureRowsSync();
+    const auto s = d->snapshot();
     QHash<QString, double> sum;
     QHash<QString, int> in;
     for (const QString& id : meetingIds) {
-        const QHash<QString, double> v = d->vec.value(id);
+        const QHash<QString, double> v = s->vec.value(id);
         for (auto it = v.constBegin(); it != v.constEnd(); ++it) {
             sum[it.key()] += it.value();
             in[it.key()]++;
@@ -614,21 +801,21 @@ QStringList MeetingProfiles::topTerms(const QStringList& meetingIds, int limit) 
     QStringList out;
     for (const auto& p : std::as_const(list)) {
         if (out.size() >= limit) break;
-        out << d->display.value(p.second, p.second);
+        out << s->display.value(p.second, p.second);
     }
     return out;
 }
 
 QStringList MeetingProfiles::sharedTerms(const QString& a, const QString& b, int limit) const
 {
-    d->computeStats();
-    return d->shared(a, b, limit);
+    d->ensureRowsSync();
+    return Impl::shared(*d->snapshot(), a, b, limit);
 }
 
 double MeetingProfiles::participantWeight(const QString& name) const
 {
-    d->computeStats();
-    return d->personWeight.value(name, 1.0);
+    d->ensureRowsSync();
+    return d->snapshot()->personWeight.value(name, 1.0);
 }
 
 } // namespace tanara

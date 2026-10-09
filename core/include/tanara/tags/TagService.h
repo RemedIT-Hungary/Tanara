@@ -70,6 +70,8 @@ public:
     QVector<Tag> recent(int limit = 5) const;
     QStringList meetingsWith(const QString& tagId) const;      // legújabb elöl
     MeetingRef meetingRef(const QString& meetingId) const;     // cím + dátum a gyorsítótárból
+    // Minden címkézett meeting címkéi (meetingId → tagsOf) — a javaslat-pillanatképhez.
+    QHash<QString, QStringList> taggedMeetings() const;
 
     // ---- levezetett ----
     TagProfile profile(const QString& id) const;

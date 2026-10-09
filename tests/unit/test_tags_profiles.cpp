@@ -6,6 +6,9 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QThread>
+
+#include <atomic>
 
 #include "tanara/store/MeetingStore.h"
 #include "tanara/tags/MeetingProfiles.h"
@@ -26,6 +29,7 @@ private slots:
     void mishearingMerge();
     void profileCacheAndRebuild();
     void draftByTitle();
+    void parallelReadsWhileRebuilding();
 
 private:
     void buildAll(MeetingProfiles& p);
@@ -164,6 +168,50 @@ void TagsProfilesTest::draftByTitle()
     const QVector<SimilarHit> hits = p.similarToDraft(QStringLiteral("Nordvik heti egyeztetés"), {});
     QVERIFY(!hits.isEmpty());
     QVERIFY(hits.first().meetingId == m_lib.nordvik1 || hits.first().meetingId == m_lib.nordvik2);
+}
+
+void TagsProfilesTest::parallelReadsWhileRebuilding()
+{
+    // Szálbiztonsági füstteszt: négy szál folyamatosan olvas, miközben a fő szál a sorokat
+    // (meeting.json-változás) és a profilokat (átirat-változás) újraépítteti.
+    MeetingProfiles p(m_store.get());
+    buildAll(p);
+    std::atomic<bool> stop{false};
+    std::atomic<int> reads{0};
+    std::atomic<int> missing{0};
+    std::vector<std::unique_ptr<QThread>> readers;
+    for (int i = 0; i < 4; ++i) {
+        readers.emplace_back(QThread::create([&] {
+            while (!stop) {
+                if (p.similar(m_lib.nordvik1, 5).isEmpty()) ++missing;
+                if (!p.folders().contains(m_lib.budget2)) ++missing;
+                p.sharedTerms(m_lib.museum1, m_lib.museum2, 5);
+                p.topTerms({ m_lib.budget1, m_lib.budget2 }, 10);
+                p.similarToDraft(QStringLiteral("Nordvik heti egyeztetés"), {});
+                p.participantWeight(QStringLiteral("Kovács Anna"));
+                p.isBuilt(m_lib.budget1);
+                ++reads;
+            }
+        }));
+        readers.back()->start();
+    }
+    for (int round = 0; round < 8; ++round) {
+        Meeting m = m_store->load(m_lib.museum2);
+        m.title = QStringLiteral("Remedi átadás %1").arg(round);
+        m_store->saveMeeting(m);          // meetingUpdated → a sor a háttérszálon frissül
+        p.invalidate(m_lib.budget1);      // a profil újraépül
+        p.ensureBuilt();
+        QTRY_VERIFY_WITH_TIMEOUT(p.isIdle(), 10000);
+        // A fő szál olvasása közben sem akad meg (legfeljebb a korábbi pillanatképet kapja).
+        QVERIFY(!p.similar(m_lib.nordvik1).isEmpty());
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(reads.load() > 40, 10000);
+    stop = true;
+    for (auto& t : readers) QVERIFY(t->wait(10000));
+    QCOMPARE(missing.load(), 0);
+    QVERIFY(p.isBuilt(m_lib.budget1));
+    QCOMPARE(p.similar(m_lib.nordvik1).first().meetingId, m_lib.nordvik2);
+    QCOMPARE(p.similar(m_lib.budget1).first().meetingId, m_lib.budget2);
 }
 
 QTEST_GUILESS_MAIN(TagsProfilesTest)

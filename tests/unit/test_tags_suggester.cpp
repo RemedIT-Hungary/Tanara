@@ -6,6 +6,9 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QThread>
+
+#include <atomic>
 
 #include "tanara/embedding/EmbeddingIndex.h"
 #include "tanara/store/MeetingStore.h"
@@ -29,6 +32,7 @@ private slots:
     void rrfPureFunction();
     void rrfWithFakeIndex();
     void draftSuggestions();
+    void snapshotOnWorkerThread();
 
 private:
     static QStringList names(const QVector<TagSuggestion>& list);
@@ -197,6 +201,46 @@ void TagsSuggesterTest::draftSuggestions()
     const TagSuggester sg(m_tags.get(), m_profiles.get());
     QCOMPARE(names(sg.suggestForDraft(QStringLiteral("Nordvik heti egyeztetés"))), QStringList{"Nordvik"});
     QVERIFY(sg.suggestForDraft(QStringLiteral("Teams-hívás")).isEmpty());
+}
+
+void TagsSuggesterTest::snapshotOnWorkerThread()
+{
+    // A pillanatkép a fő szálon készül, a számolás (profilok + ál-index) háttérszálon fut, és
+    // ugyanazt adja, mint a szinkron suggest().
+    m_tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
+    m_tags->addTag(m_lib.museum1, QStringLiteral("MuseumPlus"));
+    const Tag log = m_tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
+    m_tags->reject(m_lib.nordvik2, TagSuggestion{ log.id, log.name });
+    EmbeddingIndex index(m_store.get());
+    index.setProfiles(m_profiles.get());
+    index.setModel(QStringLiteral("fake-embed"));
+    auto put = [&](const QString& id, QVector<float> v) {
+        EmbeddingChunk c; c.startMs = 0; c.endMs = 1000; c.vector = v;
+        QVERIFY(index.store(id, QStringLiteral("fake-embed"), { c }));
+    };
+    put(m_lib.nordvik2, { 1.0f, 0.0f, 0.0f });
+    put(m_lib.museum1,  { 0.95f, 0.05f, 0.0f });
+    put(m_lib.nordvik1, { 0.6f, 0.4f, 0.0f });
+
+    const TagSuggester sg(m_tags.get(), m_profiles.get(), &index);
+    const QStringList expected = names(sg.suggest(m_lib.nordvik2));
+    QVERIFY2(expected.contains("MuseumPlus") && expected.contains("Nordvik"), qPrintable(expected.join(", ")));
+    QVERIFY(!expected.contains("Logisztika"));   // elutasítva (a pillanatképben is)
+
+    const TagSnapshot snap = TagSuggester::snapshot(*m_tags, m_lib.nordvik2);
+    QVERIFY(snap.rejected.contains(log.id));
+    // A pillanatkép érték: a későbbi változás nem hat rá.
+    m_tags->addTag(m_lib.nordvik2, QStringLiteral("Nordvik"));
+    QStringList onWorker;
+    std::atomic<bool> otherThread{false};
+    std::unique_ptr<QThread> t(QThread::create([&] {
+        otherThread = QThread::currentThread() != qApp->thread();
+        onWorker = names(TagSuggester::suggestFrom(snap, m_profiles.get(), &index));
+    }));
+    t->start();
+    QVERIFY(t->wait(10000));
+    QVERIFY(otherThread);
+    QCOMPARE(onWorker, expected);
 }
 
 QTEST_GUILESS_MAIN(TagsSuggesterTest)

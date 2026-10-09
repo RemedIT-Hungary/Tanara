@@ -49,11 +49,26 @@ QVector<SimilarHit> TagSuggester::fuseRrf(const QVector<SimilarHit>& a, const QV
     return out;
 }
 
-QVector<TagSuggestion> TagSuggester::vote(const QString& meetingId, const QVector<SimilarHit>& neighbours) const
+TagSnapshot TagSuggester::snapshot(const TagService& tags, const QString& meetingId)
 {
-    if (!m_tags) return {};
-    const QStringList applied = meetingId.isEmpty() ? QStringList() : m_tags->tagsOf(meetingId);
-    const int total = std::max(1, m_tags->totalMeetings());
+    TagSnapshot snap;
+    snap.meetingId = meetingId;
+    snap.tagsByMeeting = tags.taggedMeetings();
+    snap.totalMeetings = tags.totalMeetings();
+    for (const TagUsage& u : tags.all()) {
+        snap.tags.insert(u.tag.id, u.tag);
+        snap.counts.insert(u.tag.id, tags.meetingCount(u.tag.id));
+        if (!meetingId.isEmpty() && tags.isRejected(meetingId, u.tag.id)) snap.rejected.insert(u.tag.id);
+    }
+    for (auto it = snap.tagsByMeeting.constBegin(); it != snap.tagsByMeeting.constEnd(); ++it)
+        snap.refs.insert(it.key(), tags.meetingRef(it.key()));
+    return snap;
+}
+
+QVector<TagSuggestion> TagSuggester::vote(const TagSnapshot& snap, const QVector<SimilarHit>& neighbours)
+{
+    const QStringList applied = snap.meetingId.isEmpty() ? QStringList() : snap.tagsByMeeting.value(snap.meetingId);
+    const int total = std::max(1, snap.totalMeetings);
 
     struct Vote {
         double score = 0;
@@ -61,13 +76,13 @@ QVector<TagSuggestion> TagSuggester::vote(const QString& meetingId, const QVecto
         QHash<int, QStringList> reasons;                   // ReasonKind → értékek
     };
     QHash<QString, Vote> votes;
-    QHash<QString, SimilarHit> byId;
     for (const SimilarHit& n : neighbours) {
-        byId.insert(n.meetingId, n);
-        for (const QString& tagId : m_tags->tagsOf(n.meetingId)) {
+        const auto tagIds = snap.tagsByMeeting.constFind(n.meetingId);
+        if (tagIds == snap.tagsByMeeting.constEnd()) continue;
+        for (const QString& tagId : *tagIds) {
             if (applied.contains(tagId)) continue;
-            if (!meetingId.isEmpty() && m_tags->isRejected(meetingId, tagId)) continue;
-            const double share = double(m_tags->meetingCount(tagId)) / double(total);
+            if (snap.rejected.contains(tagId)) continue;
+            const double share = double(snap.counts.value(tagId)) / double(total);
             const double contrib = n.score / std::log(2.0 + share * 10.0);
             Vote& v = votes[tagId];
             v.score += contrib;
@@ -86,7 +101,7 @@ QVector<TagSuggestion> TagSuggester::vote(const QString& meetingId, const QVecto
     QVector<TagSuggestion> out;
     for (auto it = votes.constBegin(); it != votes.constEnd(); ++it) {
         if (it->score < kKeepRatio * best) continue;
-        const Tag t = m_tags->tag(it.key());
+        const Tag t = snap.tags.value(it.key());
         if (!t.isValid()) continue;
         TagSuggestion s;
         s.tagId = t.id;
@@ -101,7 +116,7 @@ QVector<TagSuggestion> TagSuggester::vote(const QString& meetingId, const QVecto
         std::sort(voters.begin(), voters.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
         for (const auto& v : std::as_const(voters)) {
             if (s.similarMeetings.size() >= 3) break;
-            s.similarMeetings.append(m_tags->meetingRef(v.second));
+            s.similarMeetings.append(snap.refs.value(v.second, MeetingRef{ v.second, QString(), QDateTime(), 0 }));
         }
         out.append(s);
     }
@@ -114,21 +129,32 @@ QVector<TagSuggestion> TagSuggester::vote(const QString& meetingId, const QVecto
     return out;
 }
 
+QVector<TagSuggestion> TagSuggester::suggestFrom(const TagSnapshot& snap, const MeetingProfiles* profiles,
+                                                 const EmbeddingIndex* index)
+{
+    if (!profiles || snap.meetingId.isEmpty()) return {};
+    QVector<SimilarHit> neighbours = profiles->similar(snap.meetingId, 20);
+    if (index) {
+        // A mappák a profilokból: az index (SQLite) háttérszálról nem kérdezhető.
+        const QHash<QString, QString> folders = profiles->folders();
+        if (index->has(snap.meetingId, folders.value(snap.meetingId))) {
+            const QVector<SimilarHit> emb = index->similar(snap.meetingId, folders, 20);
+            if (!emb.isEmpty()) neighbours = fuseRrf(neighbours, emb);
+        }
+    }
+    return vote(snap, neighbours);
+}
+
 QVector<TagSuggestion> TagSuggester::suggest(const QString& meetingId) const
 {
     if (!m_profiles || !m_tags) return {};
-    QVector<SimilarHit> neighbours = m_profiles->similar(meetingId, 20);
-    if (m_index && m_index->has(meetingId)) {
-        const QVector<SimilarHit> emb = m_index->similar(meetingId, 20);
-        if (!emb.isEmpty()) neighbours = fuseRrf(neighbours, emb);
-    }
-    return vote(meetingId, neighbours);
+    return suggestFrom(snapshot(*m_tags, meetingId), m_profiles, m_index);
 }
 
 QVector<TagSuggestion> TagSuggester::suggestForDraft(const QString& title, const QStringList& participants) const
 {
     if (!m_profiles || !m_tags) return {};
-    return vote(QString(), m_profiles->similarToDraft(title, participants, QString(), 20));
+    return vote(snapshot(*m_tags, QString()), m_profiles->similarToDraft(title, participants, QString(), 20));
 }
 
 QVector<TagSuggestion> TagSuggester::cooccur(const QString& meetingId, const QString& justAddedTagId) const

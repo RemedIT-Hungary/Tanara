@@ -55,6 +55,7 @@ private slots:
     void cleanup();
 
     void suggestionsComputingThenReady();
+    void asyncCoalesceStaleDropAndCache();
     void cooccurAfterAdd();
     void llmSuggestionsManualAndAutomatic();
     void embeddingProviderAndModelChange();
@@ -163,6 +164,62 @@ void TagsControllerTest::suggestionsComputingThenReady()
     const QVector<TagSuggestion> draft = m_app->draftTagSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
     QVERIFY(!draft.isEmpty());
     QCOMPARE(draft.first().tagId, nordvik.id);
+}
+
+void TagsControllerTest::asyncCoalesceStaleDropAndCache()
+{
+    TagService* tags = m_app->tags();
+    tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
+    QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
+    auto readyFor = [&](const QString& id) {
+        int n = 0;
+        for (const QList<QVariant>& a : std::as_const(ready)) if (a.at(0).toString() == id) ++n;
+        return n;
+    };
+    auto names = [](const QVector<TagSuggestion>& list) {
+        QStringList out;
+        for (const TagSuggestion& sg : list) out << sg.name;
+        return out;
+    };
+
+    // Háttérszálon: a hívásban nem jön eredmény; az ismételt kérések egy számolásba olvadnak.
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    QCOMPARE(readyFor(m_lib.nordvik2), 0);
+    QVector<TagSuggestion> list = waitReady(ready, m_lib.nordvik2);
+    QCOMPARE(names(list), QStringList{ QStringLiteral("Nordvik") });
+    QTest::qWait(150);
+    QCOMPARE(readyFor(m_lib.nordvik2), 1);
+
+    // Gyorsítótárból azonnal; a címkekészlet változása után újra háttérszálon számol.
+    ready.clear();
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    QCOMPARE(ready.count(), 1);
+    tags->addTag(m_lib.budget2, QStringLiteral("Belső"));
+    ready.clear();
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    QCOMPARE(ready.count(), 0);
+    QCOMPARE(names(waitReady(ready, m_lib.nordvik2)), QStringList{ QStringLiteral("Nordvik") });
+
+    // Elavult eredmény: a számolás már elindult (a pillanatkép kész), amikor a szomszéd új címkét
+    // kap → a régi állapotból számolt lista nem megy ki, az új állapotból újraszámolódik.
+    tags->addTag(m_lib.budget1, QStringLiteral("Belső"));   // gyorsítótár-ürítés
+    bool changed = false;
+    // Az AppController idle-slotja (a számolás indítása) előbb fut, mint ez.
+    const auto conn = connect(m_app->profiles(), &MeetingProfiles::idle, this, [&] {
+        if (changed) return;
+        changed = true;
+        tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
+    });
+    ready.clear();
+    m_app->requestTagSuggestions(m_lib.nordvik2);
+    list = waitReady(ready, m_lib.nordvik2);
+    disconnect(conn);
+    QVERIFY(changed);
+    QVERIFY2(names(list).contains(QStringLiteral("Logisztika")), qPrintable(names(list).join(", ")));
+    QTest::qWait(150);
+    QCOMPARE(readyFor(m_lib.nordvik2), 1);
 }
 
 void TagsControllerTest::cooccurAfterAdd()

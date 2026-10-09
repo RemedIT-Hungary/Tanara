@@ -62,6 +62,12 @@ public:
     // Egy meeting betöltése azonosító alapján (lemezről).
     Meeting load(const QString& id);
 
+    // Egy meeting-mappa meeting.json-jának beolvasása (index nélkül). Bármelyik szálról
+    // hívható: csak a fájlrendszert érinti. Hiba / hiányzó fájl: üres Meeting.
+    static Meeting readMeetingFolder(const QString& folder);
+    // A meeting mappája az indexből (csak az index-lekérdezés, fájl-olvasás nélkül).
+    QString folderOf(const QString& id);
+
     // Egy meeting VÉGLEGES törlése: a mappa (audio + átirat + összefoglaló) +
     // az index-bejegyzés. meetingRemoved jel. true, ha volt mit törölni.
     // A mappa a lemezen MARAD (csak az index-sor törlődik), ha másik listázott meeting is
