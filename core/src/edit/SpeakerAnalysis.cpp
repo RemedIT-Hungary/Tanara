@@ -229,7 +229,7 @@ void addPrints(Vec& sum, const SpeakerPrior* p, double localLineWeight, bool loc
 
 // Beszélőnként a referencia módja: 2 = csak a tiszta zárolt sorok, 1 = minden zárolt sor
 // (a zajosakkal együtt, mert tisztából nincs elég), 3 = itteni lenyomat + a (kevés) tiszta
-// zárolt sor, 4 = csak a korábbi lenyomatok, 0 = nincs mag (a rendes szabály).
+// zárolt sor, 4 = a korábbi lenyomatok + a (kevés) tiszta zárolt sor, 0 = nincs mag (a rendes szabály).
 // Az itteni lenyomatba olvadt sorok (replaced) nem számítanak.
 enum { kModeNone = 0, kModeLockedAll = 1, kModeLockedClean = 2, kModeLocalPrint = 3, kModePrior = 4 };
 
@@ -282,7 +282,9 @@ RecheckAnalysis computeUncertainRechecked(const QVector<AnalysisLine>& lines, in
         case kModeLockedClean:
         case kModeLocalPrint:  return l.locked && !l.noisy;
         case kModeLockedAll:   return l.locked;
-        case kModePrior:       return false;
+        // Csak korábbi lenyomat ad magot: a (kevés) tiszta megerősített sor azért beszáll
+        // mellé, hogy az itteni akusztika is számítson — a lenyomat súlya ilyenkor nincs vágva.
+        case kModePrior:       return l.locked && !l.noisy;
         default:               return !l.noisy || !clean[l.speaker];     // a rendes szabály
         }
     });
