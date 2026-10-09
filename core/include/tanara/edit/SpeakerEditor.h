@@ -46,6 +46,13 @@ public:
     // A megszólalás-embedder gyára. Nélküle nincs bizonytalanság / javaslat / kézi lenyomat —
     // minden más működik (kíméletes leépülés modell vagy hang hiányában).
     void setEmbedderFactory(UtteranceEmbedderFactory factory);
+    // A használt beszélő-modellek (engedélyezett ÉS elérhető VoiceModelRegistry id-k; az
+    // AppController adja). Alap: {"campplus"}. Az elemzés soronként a modellek fúziós vektorával
+    // dolgozik (fusion::fuse); amelyik sorhoz nincs minden modellre vektor, az kimarad. A kézi
+    // lenyomat modellenként külön Voiceprint-et ad. Változáskor a bizonytalan-jelzők frissülnek;
+    // a hiányzó vektorokat a következő startEmbedding() számolja ki.
+    void setVoiceModelIds(const QStringList& ids);
+    QStringList voiceModelIds() const;
 
     // ---- olvasó-modell ----------------------------------------------------
     int utteranceCount() const;

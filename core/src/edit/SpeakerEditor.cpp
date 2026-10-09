@@ -6,6 +6,7 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -157,6 +158,10 @@ struct SpeakerEditor::Private {
     // embeddingek
     UtteranceEmbedderFactory factory;
     UtteranceEmbeddingCache cache;
+    QStringList modelIds{VoiceModelRegistry::defaultModelId()};   // ábécérendben
+    // Soronként a modellek fúziós vektora (csak ahol minden modellre van nem üres vektor) —
+    // az elemzés (SpeakerAnalysis) ezt kapja. A cache minden változása után frissül.
+    QHash<QString, QVector<float>> fused;
     QThread* thread = nullptr;
     std::shared_ptr<std::atomic_bool> cancel;
     int epoch = 0;                      // nő minden (újra)töltésnél — a régi szál eredményét eldobjuk
@@ -198,6 +203,7 @@ struct SpeakerEditor::Private {
         const qint64 tOverlay = perf.elapsed();
         cache = folder.isEmpty() ? UtteranceEmbeddingCache()
                                  : UtteranceEmbeddingCache::load(folder, ov.transcriptFingerprint);
+        rebuildFused();
         const qint64 tCache = perf.elapsed();
         ++epoch;
         recomputeAssigned();
@@ -209,6 +215,29 @@ struct SpeakerEditor::Private {
                    .arg(lines.size()).arg(tMeeting).arg(tLines - tMeeting).arg(tOverlay - tLines)
                    .arg(tCache - tOverlay).arg(tAssigned - tCache).arg(perf.elapsed() - tAssigned)
                    .arg(perf.elapsed());
+    }
+
+    // ---- embedding-cache → fúziós vektorok -------------------------------------
+    void refreshFused(const QString& id)
+    {
+        const QVector<float> f = fusion::fuse(cache.setFor(id, modelIds), modelIds);
+        if (f.isEmpty()) fused.remove(id);
+        else fused.insert(id, f);
+    }
+
+    void rebuildFused()
+    {
+        fused.clear();
+        for (const TranscriptLine& l : std::as_const(lines)) refreshFused(l.id);
+    }
+
+    // Mely modellekkel nem próbáltuk még ezt a sort (üres = kész).
+    QStringList missingModels(const QString& id) const
+    {
+        QStringList out;
+        for (const QString& m : modelIds)
+            if (!cache.has(m, id)) out << m;
+        return out;
     }
 
     // ---- feloldás -----------------------------------------------------------
@@ -447,8 +476,8 @@ struct SpeakerEditor::Private {
             if (it == idx.end()) it = idx.insert(group, idx.size());
             al[i].speaker = it.value();
             al[i].durationMs = l.endMs - l.startMs;
-            const auto c = cache.vectors.constFind(l.id);
-            if (c != cache.vectors.constEnd() && !c->isEmpty()) al[i].embedding = &c.value();
+            const auto c = fused.constFind(l.id);
+            if (c != fused.constEnd()) al[i].embedding = &c.value();
             const auto o = ov.utterances.constFind(l.id);
             al[i].locked = o != ov.utterances.constEnd() && (o->corrected || o->confirmed);
             al[i].noisy = noisyAt(i);
@@ -459,7 +488,7 @@ struct SpeakerEditor::Private {
 
     void recomputeUncertain()
     {
-        if (cache.vectors.isEmpty()) {
+        if (fused.isEmpty()) {
             uncertain.fill(false, lines.size());
         } else {
             QHash<QString, int> idx;
@@ -471,6 +500,38 @@ struct SpeakerEditor::Private {
             if (recheckedAt(i)) uncertain[i] = true;
     }
 
+    // Egy minta (sampleRef) lenyomatai a használt modellekkel, fúziós vektorként. A testvér-
+    // lenyomatok (ugyanaz a minta, más modell) a sampleRef + forrás-meeting + createdAt szerint
+    // tartoznak össze; amelyik mintához nincs minden modellre lenyomat, kimarad.
+    struct FusedPrint {
+        QVector<float> vec;
+        QString sourceMeetingId;
+        QString sampleRef;
+    };
+    QVector<FusedPrint> fusedPrints(const QString& person) const
+    {
+        struct Group { QString key; EmbeddingSet set; FusedPrint meta; };
+        QVector<Group> groups;
+        for (const Voiceprint& vp : voiceprints->printsFor(person)) {
+            if (!modelIds.contains(vp.model)) continue;
+            const QString key = vp.sampleRef + QChar(0x1f) + vp.sourceMeetingId + QChar(0x1f) + vp.createdAt;
+            Group* g = nullptr;
+            for (Group& cand : groups)
+                if (cand.key == key && !cand.set.contains(vp.model)) { g = &cand; break; }
+            if (!g) {
+                groups.append(Group{key, {}, FusedPrint{{}, vp.sourceMeetingId, vp.sampleRef}});
+                g = &groups.last();
+            }
+            g->set.insert(vp.model, vp.embedding);
+        }
+        QVector<FusedPrint> out;
+        for (Group& g : groups) {
+            g.meta.vec = fusion::fuse(g.set, modelIds);
+            if (!g.meta.vec.isEmpty()) out.append(g.meta);
+        }
+        return out;
+    }
+
     // Az újraellenőrzések referenciájához a tárolt lenyomatok, beszélő-indexenként (az al
     // indexelése szerint): az elnevezett beszélő személyének lenyomatai. Ami ebben a
     // megbeszélésben készült, az „itteni" (helyi bizonyíték); ha a mintasora (a sampleRef
@@ -479,8 +540,8 @@ struct SpeakerEditor::Private {
     QVector<SpeakerPrior> priorsFor(const QVector<AnalysisLine>& al, int speakerCount) const
     {
         QVector<SpeakerPrior> out(speakerCount);
-        if (!voiceprints || cache.vectors.isEmpty()) return out;
-        const int dim = cache.vectors.constBegin()->size();
+        if (!voiceprints || fused.isEmpty()) return out;
+        const int dim = fused.constBegin()->size();
         QVector<QString> personOfIdx(speakerCount);
         for (int i = 0; i < al.size(); ++i) {
             const int s = al[i].speaker;
@@ -490,13 +551,13 @@ struct SpeakerEditor::Private {
         for (int s = 0; s < speakerCount; ++s) {
             if (personOfIdx[s].isEmpty()) continue;
             SpeakerPrior& p = out[s];
-            for (const Voiceprint& vp : voiceprints->printsFor(personOfIdx[s])) {
-                if (vp.embedding.size() != dim) continue;   // más modell lenyomata: nem összemérhető
+            for (const FusedPrint& vp : fusedPrints(personOfIdx[s])) {
+                if (vp.vec.size() != dim) continue;   // nem összemérhető (más modell-összetétel)
                 if (vp.sourceMeetingId != meetingId) {
-                    p.vectors.append(vp.embedding);
+                    p.vectors.append(vp.vec);
                     continue;
                 }
-                p.localVectors.append(vp.embedding);
+                p.localVectors.append(vp.vec);
                 const qint64 start = sampleRefStartMs(vp.sampleRef);
                 if (start < 0) continue;
                 for (int i = 0; i < al.size(); ++i) {
@@ -530,7 +591,7 @@ struct SpeakerEditor::Private {
     // vagy itteni lenyomatból).
     bool hasCore() const
     {
-        if (cache.vectors.isEmpty()) return false;
+        if (fused.isEmpty()) return false;
         QHash<QString, int> idx;
         const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ true);
         return hasTrustedCore(al, idx.size(), priorsFor(al, idx.size()));
@@ -722,8 +783,7 @@ struct SpeakerEditor::Private {
         int n = 0;
         for (int i = 0; i < lines.size(); ++i) {
             if (assigned[i] != key || noisyAt(i)) continue;
-            const auto c = cache.vectors.constFind(lines[i].id);
-            if (c == cache.vectors.constEnd() || c->isEmpty()) continue;
+            if (!fused.contains(lines[i].id)) continue;
             const auto o = ov.utterances.constFind(lines[i].id);
             if (o != ov.utterances.constEnd() && (o->corrected || o->confirmed)) ++n;
         }
@@ -960,9 +1020,10 @@ struct SpeakerEditor::Private {
         }
     }
 
-    // Lenyomat a megadott sorokból (cache-ből, vagy ha ott nincs, most kiszámolva).
-    std::optional<Voiceprint> buildPrint(const QVector<int>& speakerLines, qint64* usedMs,
-                                         int* usedLines, qint64* missingMs)
+    // Lenyomat a megadott sorokból (cache-ből, vagy ha ott nincs, most kiszámolva): minden
+    // használt modellel egy-egy Voiceprint (azonos sampleRef / createdAt). Üres = nem sikerült.
+    QVector<Voiceprint> buildPrint(const QVector<int>& speakerLines, qint64* usedMs,
+                                   int* usedLines, qint64* missingMs)
     {
         qint64 total = 0;
         const QVector<int> picked = selectPrintLines(speakerLines, &total);
@@ -970,25 +1031,26 @@ struct SpeakerEditor::Private {
     }
 
     // Lenyomat KIFEJEZETTEN megadott sorokból (a felhasználó választotta: „minta ebből a
-    // sorból”). A szűrést a hívó végzi; itt csak a minimum-hossz és a beágyazás számít.
-    std::optional<Voiceprint> buildPrintFromPicked(const QVector<int>& picked, qint64 total,
-                                                   qint64 minTotalMs, qint64* usedMs,
-                                                   int* usedLines, qint64* missingMs)
+    // sorból”). A szűrést a hívó végzi; itt csak a minimum-hossz és a beágyazás számít. Csak
+    // azok a sorok számítanak, amelyekhez minden modellel van vektor.
+    QVector<Voiceprint> buildPrintFromPicked(const QVector<int>& picked, qint64 total,
+                                             qint64 minTotalMs, qint64* usedMs,
+                                             int* usedLines, qint64* missingMs)
     {
         if (usedMs) *usedMs = total;
         if (usedLines) *usedLines = picked.size();
         if (missingMs) *missingMs = std::max<qint64>(0, minTotalMs - total);
-        if (total < minTotalMs) return std::nullopt;
+        if (total < minTotalMs || modelIds.isEmpty()) return {};
 
         std::unique_ptr<IUtteranceEmbedder> sync;   // csak ha a cache-ből hiányzik valami
         bool syncFailed = false;
-        QVector<double> sum;
+        QMap<QString, QVector<double>> sums;        // modelId → súlyozott összeg
         qint64 embeddedMs = 0, bestDur = -1;
         int best = -1;
         for (int i : picked) {
             const TranscriptLine& l = lines[i];
-            QVector<float> e = cache.vectors.value(l.id);
-            if (e.isEmpty() && !cache.vectors.contains(l.id) && factory && !syncFailed) {
+            const QStringList missing = missingModels(l.id);
+            if (!missing.isEmpty() && factory && !syncFailed) {
                 if (!sync) {
                     sync = factory();
                     if (!sync || !sync->open(audioPath)) { syncFailed = true; sync.reset(); }
@@ -996,33 +1058,46 @@ struct SpeakerEditor::Private {
                 if (sync) {
                     qint64 ws, we;
                     embedWindow(l, &ws, &we);
-                    e = sync->embed(ws, we);
-                    cache.vectors.insert(l.id, e);
+                    const EmbeddingSet got = sync->embedAll(ws, we, missing);
+                    for (auto it = got.cbegin(); it != got.cend(); ++it)
+                        if (missing.contains(it.key())) cache.set(it.key(), l.id, it.value());
+                    refreshFused(l.id);
                 }
             }
-            if (e.isEmpty()) continue;
+            const EmbeddingSet set = cache.setFor(l.id, modelIds);
+            if (set.size() != modelIds.size()) continue;   // nincs minden modellre vektor
             const qint64 dur = std::min<qint64>(l.endMs - l.startMs, kMaxEmbedMs);
-            if (sum.size() < e.size()) sum.resize(e.size());
-            for (int k = 0; k < e.size(); ++k) sum[k] += double(dur) * double(e[k]);
+            for (auto it = set.cbegin(); it != set.cend(); ++it) {
+                QVector<double>& sum = sums[it.key()];
+                if (sum.size() < it->size()) sum.resize(it->size());
+                for (int k = 0; k < it->size(); ++k) sum[k] += double(dur) * double((*it)[k]);
+            }
             embeddedMs += dur;
             if (l.endMs - l.startMs > bestDur) { bestDur = l.endMs - l.startMs; best = i; }
         }
         if (sync) cache.save(folder);
-        if (embeddedMs < minTotalMs || best < 0) return std::nullopt;
+        if (embeddedMs < minTotalMs || best < 0) return {};
 
-        Voiceprint vp;
-        vp.embedding.resize(sum.size());
-        for (int k = 0; k < sum.size(); ++k) vp.embedding[k] = float(sum[k] / double(embeddedMs));
-        vp.embedding = VoiceprintStore::l2normalize(vp.embedding);
-        vp.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        vp.dim = vp.embedding.size();
-        vp.sourceMeetingId = meetingId;
-        vp.sourceTrack = QStringLiteral("mixdown");
-        vp.sampleRef = QStringLiteral("%1#%2-%3").arg(audioRel)
-                           .arg(lines[best].startMs).arg(lines[best].endMs);
-        vp.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+        const QString sampleRef = QStringLiteral("%1#%2-%3").arg(audioRel)
+                                      .arg(lines[best].startMs).arg(lines[best].endMs);
+        const QString createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+        QVector<Voiceprint> out;
+        for (auto it = sums.cbegin(); it != sums.cend(); ++it) {
+            Voiceprint vp;
+            vp.embedding.resize(it->size());
+            for (int k = 0; k < it->size(); ++k) vp.embedding[k] = float((*it)[k] / double(embeddedMs));
+            vp.embedding = VoiceprintStore::l2normalize(vp.embedding);
+            vp.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            vp.dim = vp.embedding.size();
+            vp.model = it.key();
+            vp.sourceMeetingId = meetingId;
+            vp.sourceTrack = QStringLiteral("mixdown");
+            vp.sampleRef = sampleRef;
+            vp.createdAt = createdAt;
+            out.append(vp);
+        }
         if (usedMs) *usedMs = embeddedMs;
-        return vp;
+        return out;
     }
 
     // „Téves felismerés": a beszélő ITTENI mintái ki a korábbi személy lenyomatából, és
@@ -1052,9 +1127,12 @@ struct SpeakerEditor::Private {
         if (newPerson.isEmpty()) return;
         // A választott személyhez friss lenyomat a beszélő soraiból; ha ehhez nincs elég
         // anyag (vagy nincs modell), az elvett mintákat tesszük át hozzá.
-        if (const auto built = buildPrint(speakerLines, nullptr, nullptr, nullptr)) {
-            voiceprints->addPrint(newPerson, *built);
-            s.voiceprints.append(VoiceprintOp{true, newPerson, *built});
+        const QVector<Voiceprint> built = buildPrint(speakerLines, nullptr, nullptr, nullptr);
+        if (!built.isEmpty()) {
+            for (const Voiceprint& p : built) {
+                voiceprints->addPrint(newPerson, p);
+                s.voiceprints.append(VoiceprintOp{true, newPerson, p});
+            }
         } else {
             for (const Voiceprint& p : std::as_const(removed)) {
                 voiceprints->addPrint(newPerson, p);
@@ -1066,7 +1144,7 @@ struct SpeakerEditor::Private {
     // ---- javaslat -----------------------------------------------------------
     void proposeSuggestion(const Step& s, const QVector<int>& moved, const QString& target)
     {
-        if (cache.vectors.isEmpty() || moved.isEmpty()) return;
+        if (fused.isEmpty() || moved.isEmpty()) return;
         // A leggyakoribb forrás-beszélő az áthelyezett sorok közt.
         QHash<QString, int> freq;
         for (int i : moved) ++freq[s.rows[i].speaker];
@@ -1104,14 +1182,18 @@ struct SpeakerEditor::Private {
         delete thread;
         thread = nullptr;
         ++epoch;    // a sorban álló eredmények már nem érdekesek
-        if (!folder.isEmpty() && !cache.vectors.isEmpty()) cache.save(folder);
+        if (!folder.isEmpty() && !cache.isEmpty()) cache.save(folder);
         if (notify) emit q->embeddingRunningChanged(false);
     }
 
-    void onBatch(int forEpoch, const QVector<QPair<QString, QVector<float>>>& batch)
+    void onBatch(int forEpoch, const QVector<QPair<QString, EmbeddingSet>>& batch)
     {
         if (forEpoch != epoch) return;
-        for (const auto& item : batch) cache.vectors.insert(item.first, item.second);
+        for (const auto& item : batch) {
+            for (auto it = item.second.cbegin(); it != item.second.cend(); ++it)
+                cache.set(it.key(), item.first, it.value());
+            refreshFused(item.first);
+        }
         embDone += batch.size();
         emit q->embeddingProgress(embDone, embTotal);
     }
@@ -1123,7 +1205,7 @@ struct SpeakerEditor::Private {
         delete thread;
         thread = nullptr;
         embError = error;
-        if (!folder.isEmpty() && !cache.vectors.isEmpty()) cache.save(folder);
+        if (!folder.isEmpty() && !cache.isEmpty()) cache.save(folder);
 
         const QVector<bool> before = uncertain;
         recomputeUncertain();
@@ -1188,6 +1270,26 @@ void SpeakerEditor::setEmbedderFactory(UtteranceEmbedderFactory factory)
 {
     d->factory = std::move(factory);
 }
+
+void SpeakerEditor::setVoiceModelIds(const QStringList& ids)
+{
+    const QStringList norm = VoiceModelRegistry::normalizeIds(ids);
+    if (norm == d->modelIds) return;
+    // A futó szál eredménye modellenként a cache-be kerül, így a váltás után is érvényes.
+    d->modelIds = norm;
+    d->rebuildFused();
+    const QVector<bool> before = d->uncertain;
+    d->recomputeUncertain();
+    QStringList changed;
+    for (int i = 0; i < d->lines.size(); ++i)
+        if (d->uncertain.value(i) != before.value(i)) changed << d->lines[i].id;
+    if (!changed.isEmpty()) {
+        emit utterancesChanged(changed);
+        emit uncertainCountChanged(d->uncertainCount());
+    }
+}
+
+QStringList SpeakerEditor::voiceModelIds() const { return d->modelIds; }
 
 // ---- olvasó-modell ----------------------------------------------------------
 
@@ -1420,11 +1522,11 @@ QString SpeakerEditor::recheckBlocker() const
 {
     if (d->lines.isEmpty())
         return tr("Ennek a megbeszélésnek nincs szerkeszthető átirata.");
-    if (d->cache.vectors.isEmpty() && !d->factory)
+    if (d->fused.isEmpty() && !d->factory)
         return tr("Az újraellenőrzéshez nincs telepítve a hangmodell.");
     if (d->thread)
         return tr("A sorok hang-elemzése még fut — a végén újraellenőrizheted a sorokat.");
-    if (d->cache.vectors.isEmpty())
+    if (d->fused.isEmpty())
         return tr("A sorok hang-elemzése még nem készült el. Nyisd meg az Átirat fület, és várd meg a végét.");
     if (!d->hasCore())
         return tr("Előbb erősíts meg vagy javíts legalább %1 sort egy beszélőnél („Jó így” vagy "
@@ -1510,11 +1612,11 @@ QString SpeakerEditor::pairRecheckBlocker(const QString& speakerKeyA, const QStr
     if (speakerKeyA.isEmpty() || speakerKeyB.isEmpty() || speakerKeyA == speakerKeyB
         || !d->visible(speakerKeyA) || !d->visible(speakerKeyB))
         return tr("Válassz két különböző beszélőt ebből a megbeszélésből.");
-    if (d->cache.vectors.isEmpty() && !d->factory)
+    if (d->fused.isEmpty() && !d->factory)
         return tr("Az átnézéshez nincs telepítve a hangmodell.");
     if (d->thread)
         return tr("A sorok hang-elemzése még fut — a végén átnézheted a két beszélőt.");
-    if (d->cache.vectors.isEmpty())
+    if (d->fused.isEmpty())
         return tr("A sorok hang-elemzése még nem készült el. Nyisd meg az Átirat fület, és várd meg a végét.");
     const PairRecheckAnalysis a = d->pairAnalysis(speakerKeyA, speakerKeyB);
     if (!a.valid) {
@@ -1649,7 +1751,7 @@ QString SpeakerEditor::embeddingError() const { return d->embError; }
 bool SpeakerEditor::embeddingsComplete() const
 {
     for (const TranscriptLine& l : d->lines)
-        if (l.endMs - l.startMs >= kMinEmbedMs && !d->cache.vectors.contains(l.id))
+        if (l.endMs - l.startMs >= kMinEmbedMs && !d->missingModels(l.id).isEmpty())
             return false;
     return !d->lines.isEmpty();
 }
@@ -1661,12 +1763,16 @@ void SpeakerEditor::startEmbedding()
         emit embeddingFinished(false);
         return;
     }
-    struct Job { QString id; qint64 startMs; qint64 endMs; };
+    // Soronként csak a még hiányzó modellek; a hang dekódolása a szálon EGYSZER történik.
+    struct Job { QString id; qint64 startMs; qint64 endMs; QStringList models; };
     QVector<Job> jobs;
     for (const TranscriptLine& l : d->lines) {
-        if (l.endMs - l.startMs < kMinEmbedMs || d->cache.vectors.contains(l.id)) continue;
+        if (l.endMs - l.startMs < kMinEmbedMs) continue;
+        const QStringList missing = d->missingModels(l.id);
+        if (missing.isEmpty()) continue;
         Job j;
         j.id = l.id;
+        j.models = missing;
         Private::embedWindow(l, &j.startMs, &j.endMs);
         jobs.append(j);
     }
@@ -1687,7 +1793,7 @@ void SpeakerEditor::startEmbedding()
     // A szál a saját embedder-példányával dolgozik; az eredményt adagokban, queued hívással
     // adja vissza a fő szálnak. A destruktor megvárja, ezért a `this` végig él.
     d->thread = QThread::create([this, jobs, cancel, factory, audio, epoch] {
-        using Batch = QVector<QPair<QString, QVector<float>>>;
+        using Batch = QVector<QPair<QString, EmbeddingSet>>;
         auto finish = [this, epoch](bool complete, const QString& error) {
             QMetaObject::invokeMethod(this, [this, epoch, complete, error] {
                 d->onFinished(epoch, complete, error);
@@ -1711,7 +1817,7 @@ void SpeakerEditor::startEmbedding()
         };
         for (const Job& j : jobs) {
             if (cancel->load()) { cancelled = true; break; }
-            batch.append({j.id, emb->embed(j.startMs, j.endMs)});
+            batch.append({j.id, emb->embedAll(j.startMs, j.endMs, j.models)});
             if (batch.size() >= 16 || timer.elapsed() > 300) flush();
         }
         flush();
@@ -1752,8 +1858,8 @@ VoiceprintResult SpeakerEditor::createVoiceprint(const QString& speakerKey)
         r.error = tr("Előbb nevezd el a beszélőt — névtelen beszélőhöz nem készül hanglenyomat.");
         return r;
     }
-    const auto print = d->buildPrint(d->linesOf(speakerKey), &r.usedMs, &r.usedLines, &r.missingMs);
-    if (!print) {
+    const QVector<Voiceprint> prints = d->buildPrint(d->linesOf(speakerKey), &r.usedMs, &r.usedLines, &r.missingMs);
+    if (prints.isEmpty()) {
         if (r.missingMs > 0)
             r.error = tr("Nincs elég hanganyag a lenyomathoz: még kb. %1 mp beszéd kellene "
                          "(legalább 3 mp-es sorokból).").arg((r.missingMs + 999) / 1000);
@@ -1761,9 +1867,9 @@ VoiceprintResult SpeakerEditor::createVoiceprint(const QString& speakerKey)
             r.error = tr("A hangmodell vagy a megbeszélés hangja nem érhető el.");
         return r;
     }
-    d->voiceprints->addPrint(person, *print);
+    for (const Voiceprint& p : prints) d->voiceprints->addPrint(person, p);
     r.ok = true;
-    r.printId = print->id;
+    r.printId = prints.first().id;   // a testvér-lenyomatok (más modellek) ezzel együtt törlődnek
     r.missingMs = 0;
     emit voiceprintsChanged();
     emit speakersChanged();
@@ -1810,14 +1916,14 @@ VoiceprintResult SpeakerEditor::createVoiceprintFromLines(const QString& speaker
         r.error = tr("Nincs olyan sor, amelyből minta készülhetne.");
         return r;
     }
-    const auto print = d->buildPrintFromPicked(picked, total, kPrintMinLineMs, &r.usedMs, &r.usedLines, &r.missingMs);
-    if (!print) {
+    const QVector<Voiceprint> prints = d->buildPrintFromPicked(picked, total, kPrintMinLineMs, &r.usedMs, &r.usedLines, &r.missingMs);
+    if (prints.isEmpty()) {
         r.error = tr("A hangmodell vagy a megbeszélés hangja nem érhető el.");
         return r;
     }
-    d->voiceprints->addPrint(person, *print);
+    for (const Voiceprint& p : prints) d->voiceprints->addPrint(person, p);
     r.ok = true;
-    r.printId = print->id;
+    r.printId = prints.first().id;   // a testvér-lenyomatok (más modellek) ezzel együtt törlődnek
     r.missingMs = 0;
     emit voiceprintsChanged();
     emit speakersChanged();
@@ -1826,7 +1932,20 @@ VoiceprintResult SpeakerEditor::createVoiceprintFromLines(const QString& speaker
 
 bool SpeakerEditor::removeVoiceprint(const QString& printId)
 {
-    if (!d->voiceprints || printId.isEmpty() || !d->voiceprints->removePrint(printId)) return false;
+    if (!d->voiceprints || printId.isEmpty()) return false;
+    // A lenyomat és a testvérei (ugyanaz a minta más modellekkel: azonos sampleRef, forrás és
+    // createdAt) együtt törlődnek — egy kézi készítés egy egységként vonható vissza.
+    QString owner;
+    Voiceprint print;
+    if (!d->voiceprints->findPrint(printId, &owner, &print)) return false;
+    QStringList ids{printId};
+    for (const Voiceprint& p : d->voiceprints->printsFor(owner))
+        if (p.id != printId && p.model != print.model && p.sampleRef == print.sampleRef
+            && p.sourceMeetingId == print.sourceMeetingId && p.createdAt == print.createdAt)
+            ids << p.id;
+    bool removed = false;
+    for (const QString& id : std::as_const(ids)) removed = d->voiceprints->removePrint(id) || removed;
+    if (!removed) return false;
     emit voiceprintsChanged();
     emit speakersChanged();
     return true;

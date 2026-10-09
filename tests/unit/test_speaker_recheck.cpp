@@ -124,7 +124,7 @@ struct Fixture {
         UtteranceEmbeddingCache c;
         c.fingerprint = transcriptFingerprint(lines);
         for (int i = 0; i < scenario().size(); ++i)
-            if (scenario()[i].voice != '-') c.vectors.insert(lines[i].id, voiceVec(scenario()[i].voice));
+            if (scenario()[i].voice != '-') c.set(QStringLiteral("campplus"), lines[i].id, voiceVec(scenario()[i].voice));
         QVERIFY(c.save(meeting.folder));
     }
 
@@ -260,7 +260,7 @@ struct PairFixture {
         UtteranceEmbeddingCache c;
         c.fingerprint = transcriptFingerprint(lines);
         for (int i = 0; i < lines.size(); ++i)
-            c.vectors.insert(lines[i].id, pairVec(pairScenario()[i].voice));
+            c.set(QStringLiteral("campplus"), lines[i].id, pairVec(pairScenario()[i].voice));
         c.save(meeting.folder);
     }
 
