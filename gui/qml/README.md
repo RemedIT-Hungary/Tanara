@@ -354,6 +354,25 @@ they are corrected or confirmed; a row with a suggestion shows "<Név> mondta". 
 the header "…" menu ("Beszélők újraellenőrzése…"), the toolbar "Bizonytalan 0" button and the
 empty uncertain filter.
 
+Pairwise review between two speakers ("Átnézés A és B között"; `SpeakerEditor::recheckPair`,
+analysis `computePairRecheck`, view-model `recheckPair(a, b)`): only the lines of A and B, only
+their two voices. Each reference is built from the speaker's confirmed / corrected clean lines
+(≥ 3), else from all of its clean lines (`fallbackA/B`, said in the result toast). Every
+unlocked, clean line ≥ 1.5 s on A or B is flagged when the other reference fits better by
+`kPairMargin` 0.05 (0.10 under 3 s). There is no "not two people" centroid guard here — the user
+said they are two people — but a reference similarity ≥ 0.60 is reported ("a két hang nagyon
+hasonló (0,8x), az eredmény bizonytalan"). Same persistence as the re-check (`rechecked` /
+`recheckHint`); a run replaces the marks on A's and B's lines only, and is one undo step. Entry
+points: (1) after a manual line / selection move between two named speakers, when the similarity
+suggestion is silent **because of the centroid guard**
+(`suggestSimilarDetailed().blockedBySimilarity`) and both have ≥ 3 confirmed / corrected embedded clean lines (the moved
+line counts), `TranscriptChangeBar` shows a second row: `pairOfferActive` / `pairOfferText` with
+"Átnézés" (`acceptPairOffer()`) and "Most nem" (`declinePairOffer()`: not offered again for that
+pair in this editor session); the bar does not expire while the offer waits. (2)
+`SpeakerPopover` in whole-speaker scope of a named speaker: "Átnézés másik beszélővel…" → pick
+one of `pairCandidates(key)`. The result is a toast (`notice`); flagged lines switch the
+uncertain filter on.
+
 "Egymásra beszéltek" (noisy line): automatic when another speaker overlaps the line's embedding
 window by ≥ 1000 ms or ≥ 30 %, or manual ("Jó így, de nem minta" on an uncertain row;
 "Mintának használható" on hover clears it). Noisy lines are left out of the voice centroids and
@@ -364,7 +383,9 @@ Demo states for screenshots: `linePopover`, `selectionPopover`, `lineToSpeakerPo
 `changeSpeaker`, `changeFilter`, `mergeConfirm`, `voiceprintHas`, `voiceprintNone`,
 `voiceprintDone`, `voiceprintShort`, `changeVoiceprint`, `changeVoiceprintDone`, `recheck`
 (after a re-check), `recheckReady` (nothing uncertain: the toolbar offers the re-check),
-`noisy` (a line marked "egymásra beszéltek"), e.g.
+`noisy` (a line marked "egymásra beszéltek"), `changePairOffer` (the pairwise-review offer on
+the bar; the offer itself is staged, the demo voices are too distinct), `speakerPopoverPair`
+(the whole-speaker panel with the pair picker open), e.g.
 `gui/qml/shoot.sh 'TranscriptTab:1004x640:demoState="changeLine"'`,
 `'TranscriptTab:1004x640:demoVariant="many",demoState="voiceprintNone"'` (the 11-speaker
 overview; `demoVariant="novoice"` shows the "no voice model" wording).
