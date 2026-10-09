@@ -134,5 +134,60 @@ QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines);
 QVector<int> suggestSimilar(const QVector<AnalysisLine>& lines, int sourceSpeaker,
                             int targetSpeaker);
 
+// Ugyanez, a „miért nincs javaslat" okával: blockedBySimilarity = a forrásból leváló hang
+// centroidja kSuggestMaxCentroidSimilarity fölött hasonlít a maradékhoz („nem két ember" őr) — két
+// HASONLÓ hangú embernél éppen ez hallgat el. centroidSimilarity: a két klaszter cosine-ja
+// (NaN, ha a 2-közép nem futott le).
+struct SuggestOutcome {
+    QVector<int> lines;
+    bool   blockedBySimilarity = false;
+    double centroidSimilarity = qQNaN();
+};
+SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int sourceSpeaker,
+                                      int targetSpeaker);
+
+// ---- páronkénti átnézés („Átnézés A és B között") ---------------------------
+// A felhasználó kimondta, hogy A és B két ember — akkor is, ha a hangjuk hasonló. Ezért itt
+// NINCS centroid-hasonlósági őr (csak jelentjük az értéket), és a küszöb enyhébb: a sor akkor
+// kétes, ha a MÁSIK beszélő referenciája ennyivel jobban illik rá (cosine-különbség)…
+inline constexpr double kPairMargin = 0.05;
+// …rövid (kMinEmbedMs..kReliableMs) sornál ennyivel.
+inline constexpr double kPairMarginShort = 0.10;
+// Efölötti referencia-hasonlóságnál a UI figyelmeztet: a két hang nagyon hasonló, az
+// eredmény bizonytalan (a mért értékek: különböző beszélők 0.15–0.35).
+inline constexpr double kPairSimilarWarn = kSuggestMaxCentroidSimilarity;
+
+struct PairVerdict {
+    bool   flagged = false;
+    int    hintedSpeaker = -1;      // flagged esetén a jobban illő másik (speakerA / speakerB)
+    double toA = qQNaN();           // cosine az A-referenciához (önmaga nélkül, ha benne van)
+    double toB = qQNaN();
+};
+
+struct PairRecheckAnalysis {
+    QVector<PairVerdict> lines;     // soronként (a bemenet sorrendjében)
+    int  refLinesA = 0;             // ennyi sorból épült A referenciája
+    int  refLinesB = 0;
+    // A referencia NEM a zárolt sorokból épült (kevés volt), hanem a beszélő összes tiszta
+    // (nem zajos, embeddelt) sorából — ez szennyezett lehet a tévesen hozzá sorolt sorokkal.
+    bool fallbackA = false;
+    bool fallbackB = false;
+    double centroidSimilarity = qQNaN();    // cos(A-referencia, B-referencia)
+    bool valid = false;             // mindkét referenciához megvolt a kMinSpeakerLines sor
+    int flagged() const {
+        return int(std::count_if(lines.cbegin(), lines.cend(),
+                                 [](const PairVerdict& v) { return v.flagged; }));
+    }
+};
+
+// Referencia beszélőnként: a zárolt, nem zajos, embeddelt sorai, ha legalább kMinSpeakerLines
+// ilyen van; különben (fallback) az összes nem zajos, embeddelt sora. Ezután minden A-n vagy
+// B-n lévő, NEM zárolt, NEM zajos, legalább kMinEmbedMs hosszú, embeddelt sort a két
+// referenciához mérünk (ha a sor maga is benne van egy referenciában, ahhoz önmaga nélkül), és
+// kétes, ha a másik referencia legalább kPairMargin (rövidnél kPairMarginShort) értékkel jobban
+// illik rá. Más beszélők sorait nem nézi.
+PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int speakerA,
+                                       int speakerB);
+
 } // namespace speakeredit
 } // namespace tanara

@@ -64,6 +64,17 @@ struct SpeakerSuggestion {
     bool isValid() const { return !targetSpeaker.isEmpty() && !utteranceIds.isEmpty(); }
 };
 
+// Kézi átsorolás után, ha a „hasonló sorok" javaslat azért hallgat, mert a két hang túl
+// hasonló („nem két ember" őr), de mindkét beszélő elnevezett, és mindkettőnek van legalább
+// 3 megerősített / javított (embeddelt, tiszta) sora: a szerkesztő felajánlja a kettejük
+// közötti átnézést („A és B hangja hasonló. Nézzem át kettejük sorait…?").
+struct PairRecheckOffer {
+    QString sourceSpeakerKey;       // ahonnan a sor(ok) jöttek
+    QString targetSpeakerKey;       // ahova kerültek
+    double  centroidSimilarity = 0.0;   // a „hasonló sorok" 2-közepének két hangja közti cosine
+    bool isValid() const { return !sourceSpeakerKey.isEmpty() && !targetSpeakerKey.isEmpty(); }
+};
+
 // Egy ismert személy a személyválasztó panelhez.
 struct PersonInfo {
     QString name;
