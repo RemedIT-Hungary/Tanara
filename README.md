@@ -208,6 +208,17 @@ transcript, Tanara also enrolls that voiceprint. On the **Tracks** tab you can
 restore or permanently delete the dropped silent tracks. The **People** dialog
 manages names and voiceprints (listen, merge, delete).
 
+**Two similar voices.** When you move a line from one speaker to another, Tanara
+usually offers the other lines that sound like the moved one ("Még N sor hasonlít
+erre a hangra"). For two people with very similar voices it stays silent, because
+it cannot tell the voices apart well enough to suggest a bulk move. In that case,
+when both speakers have a name and at least 3 confirmed or corrected lines, the
+change bar offers a review of only these two speakers ("A és B hangja hasonló.
+Nézzem át kettejük sorait…?"). The review compares each of their unconfirmed lines
+with the voices of their confirmed lines and marks the doubtful lines as uncertain,
+with the other speaker as the suggestion. It does not move lines. You can also start
+it from a speaker's panel ("Átnézés másik beszélővel…"). It is one undo step.
+
 The Summary tab has two modes:
 
 - **Quick summary** — one LLM pass over the transcript.

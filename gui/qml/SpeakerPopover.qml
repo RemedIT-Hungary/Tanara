@@ -9,6 +9,9 @@ import QtQuick.Templates as T
 //     visszaállítás névtelenre, összevonás, téves hang-felismerés javítása, hanglenyomat).
 // A hanglenyomat-blokk (VoiceprintPanel) a teljes-beszélő hatókörben mindig ott van, sorról
 // nyitva is, ha a „<Név> minden sora" van kiválasztva.
+// Teljes-beszélő hatókörben (elnevezett beszélőnél) „Átnézés másik beszélővel…": egy másik
+// elnevezett beszélő kiválasztása után CSAK kettejük sorait méri a megerősített soraik
+// hangjához (páronkénti átnézés), a kétségeseket bizonytalannak jelöli.
 // A meeting egy másik beszélőjével való összevonást a panel nem hajtja végre: a hívó
 // megerősítést kér (mergeRequested). Minden művelet egy visszavonási lépés.
 TPopover {
@@ -62,6 +65,10 @@ TPopover {
     // Soronkénti hatókörben a meeting többi beszélője is a billentyűzettel bejárható lista
     // része (ők állnak elöl); a teljes beszélőnél csak az ismert személyek.
     readonly property int otherCount: wholeSpeaker ? 0 : others.length
+    // „Átnézés másik beszélővel…": a pár-választó lista nyitva van-e.
+    property bool pairPicking: false
+    readonly property var pairCandidates: { speakersRevision; return editor && wholeSpeaker && named
+                                            ? editor.pairCandidates(speakerKey) : [] }
     // A billentyűzettel kiemelt sor (-1 = nincs): 0…otherCount-1 a meeting beszélői, utána
     // a „Másik személy" lista.
     property int currentIndex: -1
@@ -134,6 +141,7 @@ TPopover {
         search.text = initialQuery
         resetCurrent()
         fixBox.checked = true
+        pairPicking = false
         search.forceActiveFocus()
     }
 
@@ -448,6 +456,69 @@ TPopover {
                 checked: true
                 font.pixelSize: Theme.fontSmall
                 text: qsTr("A sorok kerüljenek ki %1 hanglenyomatából (téves felismerés)").arg(control.speakerName)
+            }
+        }
+
+        // ---- Átnézés másik beszélővel (páronkénti újraellenőrzés; csak teljes beszélő) ----
+        Item {
+            id: pairBlock
+            objectName: "pairRecheckBlock"
+            visible: control.wholeSpeaker && control.named && control.pairCandidates.length > 0
+                     && control.editor && control.editor.voiceAvailable
+            width: parent.width
+            height: visible ? pairCol.implicitHeight + 14 : 0
+            TDivider { width: parent.width }
+            Column {
+                id: pairCol
+                x: 4; y: 7
+                width: parent.width - 8
+                spacing: 2
+                TButton {
+                    objectName: "pairRecheckButton"
+                    x: 6
+                    size: "small"
+                    variant: "ghost"
+                    iconName: "users"
+                    text: qsTr("Átnézés másik beszélővel…")
+                    toolTipText: qsTr("Ha két hasonló hang sorai összekeveredtek: csak kettejük sorait mérem "
+                                      + "a megerősített soraik hangjához, és a kétségeseket bizonytalannak jelölöm.")
+                    onClicked: control.pairPicking = !control.pairPicking
+                }
+                TLabel {
+                    visible: control.pairPicking
+                    x: 10
+                    width: parent.width - 20
+                    wrapMode: Text.Wrap
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    text: qsTr("Kivel keveredhettek össze %1 sorai?").arg(control.speakerName)
+                }
+                ListView {
+                    id: pairList
+                    objectName: "pairRecheckList"
+                    visible: control.pairPicking
+                    width: parent.width
+                    height: visible ? Math.min(count, 3) * 38 : 0
+                    clip: true
+                    model: visible ? control.pairCandidates : []
+                    boundsBehavior: Flickable.StopAtBounds
+                    T.ScrollBar.vertical: TScrollBar {}
+                    delegate: PersonRow {
+                        required property var modelData
+                        objectName: "pairChoice"
+                        compact: true
+                        width: pairList.width
+                        personName: modelData.name
+                        speakerIndex: modelData.colorIndex
+                        subText: qsTr("%n sor", "", modelData.utteranceCount)
+                        highlighted: hovered
+                        onClicked: {
+                            const a = control.speakerKey
+                            control.close()
+                            control.editor.recheckPair(a, modelData.key)
+                        }
+                    }
+                }
             }
         }
 

@@ -1330,6 +1330,61 @@ private slots:
         QVERIFY(!visual("changeVoiceprint"));
     }
 
+    // Két hasonló hang: a sáv második sora ajánlja a kettejük átnézését (Átnézés / Most nem);
+    // a „Ki mondta?" panel teljes-beszélő hatókörében ugyanez kézzel, a párt választva.
+    void pairRecheck_changeBarOffer_andPopover()
+    {
+        load();
+        m_vm->applyDemoState(QStringLiteral("changePairOffer"));
+        QTRY_VERIFY(barShown());
+        QVERIFY(m_vm->pairOfferActive());
+        QTRY_VERIFY(visual("pairOffer"));
+        QCOMPARE(textOf("pairOfferText"), m_vm->pairOfferText());
+        QVERIFY(m_vm->pairOfferText().contains(QStringLiteral(" hangja hasonló. Nézzem át kettejük sorait")));
+        QVERIFY(changeBar()->property("height").toReal() > 70);
+        QVERIFY(!visual("changeSimilar"));
+
+        // „Most nem": az ajánlat eltűnik, az átsorolás értesítése marad.
+        pump(100);      // a megnőtt sáv elrendezése
+        click(center(visual("pairOfferDecline")));
+        QVERIFY(!m_vm->pairOfferActive());
+        QVERIFY(barShown());
+        QTRY_VERIFY(!visual("pairOffer"));
+        m_vm->undo();
+
+        // „Átnézés": lefut (egy visszavonási lépés), a sáv helyén értesítés.
+        m_vm->applyDemoState(QStringLiteral("changePairOffer"));
+        QTRY_VERIFY(visual("pairOfferAccept"));
+        pump(100);
+        m_shell->setProperty("toasts", QString());
+        click(center(visual("pairOfferAccept")));
+        QVERIFY(!m_vm->pairOfferActive());
+        QTRY_VERIFY(!barShown());
+        const QString toast = m_shell->property("toasts").toString();
+        QVERIFY2(toast.contains(QStringLiteral(" között")), qPrintable(toast));
+        QVERIFY2(m_vm->undoText().startsWith(QStringLiteral("Átnézés: ")) || toast.startsWith(QStringLiteral("A megerősített")),
+                 qPrintable(m_vm->undoText()));
+
+        // A panel: „Átnézés másik beszélővel…" → a pár kiválasztása → lefut.
+        m_vm->setRailVisible(true);
+        pump();
+        click(center(visuals("laneHead").at(1)));
+        QTRY_VERIFY(popupOpen("speakerPopover"));
+        QVERIFY(visual("pairRecheckButton"));
+        QVERIFY(!visual("pairRecheckList"));
+        click(center(visual("pairRecheckButton")));
+        QTRY_VERIFY(visual("pairRecheckList"));
+        const QList<QQuickItem*> choices = visuals("pairChoice");
+        QVERIFY(!choices.isEmpty());
+        const QString other = choices.first()->property("personName").toString();
+        m_shell->setProperty("toasts", QString());
+        click(center(choices.first()));
+        QTRY_VERIFY(popupGone("speakerPopover"));
+        const QString toast2 = m_shell->property("toasts").toString();
+        QVERIFY2(toast2.contains(QStringLiteral("Fehér Ádám és ") + other), qPrintable(toast2));
+        QVERIFY(m_warnings.isEmpty());
+    }
+
     // Hangmodell nélkül: nincs halott gomb — a panel egyszer megmondja az okot, a sáv nem ajánl.
     void withoutVoiceModel_noDeadVoiceprintButton()
     {
@@ -1370,7 +1425,8 @@ private slots:
                                 "linePopover", "selectionPopover", "lineToSpeakerPopover", "changeLine",
                                 "changeSelection", "changeSpeaker", "changeFilter", "mergeConfirm",
                                 "changeVoiceprint", "changeVoiceprintDone", "voiceprintHas", "voiceprintNone",
-                                "voiceprintDone", "voiceprintShort"};
+                                "voiceprintDone", "voiceprintShort", "changePairOffer",
+                                "speakerPopoverPair"};
         for (const char* variant : {"", "two", "many", "long", "novoice", "none"})
             for (const char* state : states)
                 QTest::addRow("%s-%s", *variant ? variant : "default", *state ? state : "plain")

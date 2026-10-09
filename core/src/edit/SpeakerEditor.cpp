@@ -151,6 +151,8 @@ struct SpeakerEditor::Private {
     QVector<Command> undoStack;
     QVector<Command> redoStack;
     SpeakerSuggestion suggestion;
+    PairRecheckOffer pairOffer;
+    QSet<QString> declinedPairs;        // „Most nem": ezeket a párokat nem ajánljuk újra
 
     // embeddingek
     UtteranceEmbedderFactory factory;
@@ -646,8 +648,52 @@ struct SpeakerEditor::Private {
 
     void clearSuggestion()
     {
-        if (!suggestion.isValid()) return;
+        if (!suggestion.isValid() && !pairOffer.isValid()) return;
         suggestion = SpeakerSuggestion();
+        pairOffer = PairRecheckOffer();
+        emit q->suggestionChanged();
+    }
+
+    static QString pairId(const QString& a, const QString& b)
+    {
+        return a < b ? a + QChar(0x1f) + b : b + QChar(0x1f) + a;
+    }
+
+    // A beszélő zárolt (megerősített / javított), tiszta, embeddelt sorai — a páronkénti
+    // átnézés referenciája ezekből épül.
+    int lockedVoiceLines(const QString& key) const
+    {
+        int n = 0;
+        for (int i = 0; i < lines.size(); ++i) {
+            if (assigned[i] != key || noisyAt(i)) continue;
+            const auto c = cache.vectors.constFind(lines[i].id);
+            if (c == cache.vectors.constEnd() || c->isEmpty()) continue;
+            const auto o = ov.utterances.constFind(lines[i].id);
+            if (o != ov.utterances.constEnd() && (o->corrected || o->confirmed)) ++n;
+        }
+        return n;
+    }
+
+    // A páronkénti átnézés elemzése (a beszélő-kulcsok közvetlenül, személy-csoportosítás nélkül).
+    PairRecheckAnalysis pairAnalysis(const QString& keyA, const QString& keyB) const
+    {
+        QHash<QString, int> idx;
+        const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ false);
+        return computePairRecheck(al, idx.value(keyA, -1), idx.value(keyB, -1));
+    }
+
+    // A „hasonló sorok" őre elhallgatott: ha a két beszélő elnevezett, és mindkettőnek van
+    // elég megerősített sora, felajánljuk a kettejük közötti átnézést.
+    void offerPair(const QString& source, const QString& target, double similarity)
+    {
+        const QString ps = personOf(source), pt = personOf(target);
+        if (ps.isEmpty() || pt.isEmpty() || ps.compare(pt, Qt::CaseInsensitive) == 0) return;
+        if (declinedPairs.contains(pairId(source, target))) return;
+        if (lockedVoiceLines(source) < kMinSpeakerLines || lockedVoiceLines(target) < kMinSpeakerLines)
+            return;
+        pairOffer.sourceSpeakerKey = source;
+        pairOffer.targetSpeakerKey = target;
+        pairOffer.centroidSimilarity = similarity;
         emit q->suggestionChanged();
     }
 
@@ -976,8 +1022,12 @@ struct SpeakerEditor::Private {
         QHash<QString, int> idx;
         const QVector<AnalysisLine> al = analysisLines(&idx, /*groupByPerson*/ false);
         if (!idx.contains(source) || !idx.contains(target)) return;
-        const QVector<int> hits = suggestSimilar(al, idx.value(source), idx.value(target));
-        if (hits.isEmpty()) return;
+        const SuggestOutcome outcome = suggestSimilarDetailed(al, idx.value(source), idx.value(target));
+        const QVector<int>& hits = outcome.lines;
+        if (hits.isEmpty()) {
+            if (outcome.blockedBySimilarity) offerPair(source, target, outcome.centroidSimilarity);
+            return;
+        }
 
         SpeakerSuggestion sg;
         sg.sourceSpeakerKey = source;
@@ -1371,6 +1421,89 @@ SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
     return r;
 }
 
+// ---- páronkénti átnézés -----------------------------------------------------
+
+QString SpeakerEditor::pairRecheckBlocker(const QString& speakerKeyA, const QString& speakerKeyB) const
+{
+    if (d->lines.isEmpty())
+        return tr("Ennek a megbeszélésnek nincs szerkeszthető átirata.");
+    if (speakerKeyA.isEmpty() || speakerKeyB.isEmpty() || speakerKeyA == speakerKeyB
+        || !d->visible(speakerKeyA) || !d->visible(speakerKeyB))
+        return tr("Válassz két különböző beszélőt ebből a megbeszélésből.");
+    if (d->cache.vectors.isEmpty() && !d->factory)
+        return tr("Az átnézéshez nincs telepítve a hangmodell.");
+    if (d->thread)
+        return tr("A sorok hang-elemzése még fut — a végén átnézheted a két beszélőt.");
+    if (d->cache.vectors.isEmpty())
+        return tr("A sorok hang-elemzése még nem készült el. Nyisd meg az Átirat fület, és várd meg a végét.");
+    const PairRecheckAnalysis a = d->pairAnalysis(speakerKeyA, speakerKeyB);
+    if (!a.valid) {
+        const QString who = a.refLinesA < kMinSpeakerLines ? d->displayOf(speakerKeyA) : d->displayOf(speakerKeyB);
+        return tr("%1 hangjához kevés a minta: legalább %2 elég hosszú, tiszta sora kell.")
+            .arg(who).arg(kMinSpeakerLines);
+    }
+    return {};
+}
+
+SpeakerEditor::PairRecheckResult SpeakerEditor::recheckPair(const QString& speakerKeyA,
+                                                            const QString& speakerKeyB)
+{
+    PairRecheckResult r;
+    r.blocker = pairRecheckBlocker(speakerKeyA, speakerKeyB);
+    if (!r.blocker.isEmpty()) return r;
+    QHash<QString, int> idx;
+    const QVector<AnalysisLine> al = d->analysisLines(&idx, /*groupByPerson*/ false);
+    const int ia = idx.value(speakerKeyA, -1);
+    const PairRecheckAnalysis a = computePairRecheck(al, ia, idx.value(speakerKeyB, -1));
+    r.ran = true;
+    r.flagged = a.flagged();
+    r.refLinesA = a.refLinesA;
+    r.refLinesB = a.refLinesB;
+    r.fallbackA = a.fallbackA;
+    r.fallbackB = a.fallbackB;
+    r.centroidSimilarity = a.centroidSimilarity;
+
+    Step s = d->begin();
+    for (int i = 0; i < d->lines.size(); ++i) {
+        // Csak A és B sorai: a többi beszélő korábbi jelzései érintetlenek.
+        if (d->assigned[i] != speakerKeyA && d->assigned[i] != speakerKeyB) continue;
+        const QString& id = d->lines[i].id;
+        const PairVerdict& v = a.lines[i];
+        auto it = d->ov.utterances.find(id);
+        if (v.flagged) {
+            OverlayUtterance& u = it != d->ov.utterances.end() ? it.value() : d->ov.utterances[id];
+            u.rechecked = true;
+            u.recheckHint = v.hintedSpeaker == ia ? speakerKeyA : speakerKeyB;
+        } else if (it != d->ov.utterances.end() && it->rechecked) {
+            // Az A-n és B-n lévő sorok korábbi jelzését ez az átnézés váltja fel.
+            it->rechecked = false;
+            it->recheckHint.clear();
+            if (it->isDefault()) d->ov.utterances.erase(it);
+        }
+    }
+    if (!sameEdits(s.before, d->ov))
+        d->commit(s, tr("Átnézés: %1 és %2").arg(d->displayOf(speakerKeyA), d->displayOf(speakerKeyB)));
+    return r;
+}
+
+bool SpeakerEditor::hasPairOffer() const { return d->pairOffer.isValid(); }
+PairRecheckOffer SpeakerEditor::pairOffer() const { return d->pairOffer; }
+
+void SpeakerEditor::declinePairOffer()
+{
+    if (!d->pairOffer.isValid()) return;
+    d->declinedPairs.insert(Private::pairId(d->pairOffer.sourceSpeakerKey, d->pairOffer.targetSpeakerKey));
+    d->pairOffer = PairRecheckOffer();
+    emit suggestionChanged();
+}
+
+void SpeakerEditor::dismissPairOffer()
+{
+    if (!d->pairOffer.isValid()) return;
+    d->pairOffer = PairRecheckOffer();
+    emit suggestionChanged();
+}
+
 // ---- javaslat ---------------------------------------------------------------
 
 bool SpeakerEditor::hasSuggestion() const { return d->suggestion.isValid(); }
@@ -1668,6 +1801,7 @@ void SpeakerEditor::refreshFromDisk()
         d->undoStack.clear();
         d->redoStack.clear();
         d->suggestion = SpeakerSuggestion();
+        d->pairOffer = PairRecheckOffer();
         emit reloaded();
         emit speakersChanged();
         emit undoStateChanged();
@@ -1700,6 +1834,7 @@ void SpeakerEditor::reloadTranscript()
     d->undoStack.clear();
     d->redoStack.clear();
     d->suggestion = SpeakerSuggestion();
+    d->pairOffer = PairRecheckOffer();
     d->embError.clear();
     emit reloaded();
     emit speakersChanged();

@@ -19,6 +19,7 @@
 #include "tanara/edit/UtteranceEmbeddings.h"
 
 #include <QObject>
+#include <QtNumeric>
 #include <QStringList>
 #include <QVector>
 #include <memory>
@@ -115,6 +116,36 @@ public:
     bool canRecheck() const;
     // Ha nem futtatható: miért (magyar mondat a felhasználónak); különben üres.
     QString recheckBlocker() const;
+
+    // ---- páronkénti átnézés („Átnézés A és B között") ---------------------
+    // Csak A és B sorai, csak kettejük hangja alapján (SpeakerAnalysis: computePairRecheck):
+    // a referencia a megerősített / javított sorokból épül (ha kevés, a beszélő összes tiszta
+    // sorából — ezt a fallbackA/B jelzi). A kétesnek talált sorok bizonytalanok lesznek, a
+    // javaslat (recheckHint) a másik beszélő; ugyanaz a perzisztencia, mint az
+    // újraellenőrzésé (javítás / „Jó így" törli). Az A-n és B-n lévő sorok korábbi
+    // újraellenőrzés-jelzéseit ez lecseréli; más beszélőkéit nem érinti. Egy undo-lépés (ha
+    // változott valami).
+    struct PairRecheckResult {
+        int    flagged = 0;
+        int    refLinesA = 0;
+        int    refLinesB = 0;
+        bool   fallbackA = false;
+        bool   fallbackB = false;
+        double centroidSimilarity = qQNaN();    // a két referencia hangjának cosine-ja
+        bool   ran = false;
+        QString blocker;                        // ha nem futott: miért (magyar mondat)
+    };
+    PairRecheckResult recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
+    // Ha most nem futtatható: miért; különben üres.
+    QString pairRecheckBlocker(const QString& speakerKeyA, const QString& speakerKeyB) const;
+
+    // Az ajánlat (lásd PairRecheckOffer). A suggestionChanged jellel együtt változik, és a
+    // következő szerkesztés / visszavonás eldobja.
+    bool hasPairOffer() const;
+    PairRecheckOffer pairOffer() const;
+    // „Most nem": ezt a párt ebben a munkamenetben nem ajánlja fel újra.
+    void declinePairOffer();
+    void dismissPairOffer();
 
     // ---- javaslat („Még N sor hasonlít erre a hangra") --------------------
     bool hasSuggestion() const;

@@ -94,6 +94,11 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(bool suggestionActive READ suggestionActive NOTIFY suggestionChanged)
     Q_PROPERTY(int suggestionCount READ suggestionCount NOTIFY suggestionChanged)
     Q_PROPERTY(QString suggestionTargetName READ suggestionTargetName NOTIFY suggestionChanged)
+    // Páronkénti átnézés ajánlata a sávon: a kézi átsorolás után a „hasonló sorok" javaslat a
+    // két hang hasonlósága miatt hallgatott, de mindkét elnevezett beszélőnek van legalább 3
+    // megerősített sora → „A és B hangja hasonló. Nézzem át kettejük sorait…?"
+    Q_PROPERTY(bool pairOfferActive READ pairOfferActive NOTIFY suggestionChanged)
+    Q_PROPERTY(QString pairOfferText READ pairOfferText NOTIFY suggestionChanged)
     // „Megmutatom": a javasolt sorok kiemelve a sínen és az áttekintőn.
     Q_PROPERTY(bool suggestionShown READ suggestionShown WRITE setSuggestionShown NOTIFY suggestionChanged)
 
@@ -203,6 +208,8 @@ public:
     QString suggestionTargetName() const { return m_suggestionTargetName; }
     bool suggestionShown() const { return m_suggestionShown; }
     void setSuggestionShown(bool shown);
+    bool pairOfferActive() const { return m_pairOffer.isValid(); }
+    QString pairOfferText() const;
 
     bool changeActive() const { return m_change.active; }
     int changeSerial() const { return m_changeSerial; }
@@ -313,6 +320,18 @@ public:
     Q_INVOKABLE QVariantMap recheckSpeakers();
     Q_INVOKABLE bool acceptSuggestion();
     Q_INVOKABLE void dismissSuggestion();
+    // Páronkénti átnézés („Átnézés A és B között"): csak a két beszélő sorai, csak kettejük
+    // hangja alapján. { ran, flagged, blocker, fallbackA, fallbackB, centroidSimilarity, message }.
+    // Talált kétes sort → a „Bizonytalan" szűrő bekapcsol; az eredmény (vagy az akadály)
+    // notice-ként is elhangzik.
+    Q_INVOKABLE QVariantMap recheckPair(const QString& speakerKeyA, const QString& speakerKeyB);
+    // A sáv ajánlata: „Átnézés" (a fenti, az ajánlat két beszélőjére) / „Most nem" (ebben a
+    // munkamenetben erre a párra nem kérdez újra).
+    Q_INVOKABLE QVariantMap acceptPairOffer();
+    Q_INVOKABLE void declinePairOffer();
+    // A páronkénti átnézés lehetséges párjai: a meeting többi ELNEVEZETT, sorral bíró
+    // beszélője (más személy) — { key, name, colorIndex, utteranceCount }.
+    Q_INVOKABLE QVariantList pairCandidates(const QString& speakerKey) const;
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
 
@@ -371,7 +390,8 @@ public:
     // "changeVoiceprint" | "changeVoiceprintDone" | "voiceprintHas" | "voiceprintNone" |
     // "voiceprintDone" | "voiceprintShort" | "recheck" (újraellenőrzés után a szűrő) |
     // "recheckReady" (minden kétes sor eldöntve: a szűrő-gomb az újraellenőrzést kínálja) |
-    // "noisy" (egy „egymásra beszéltek" sor).
+    // "noisy" (egy „egymásra beszéltek" sor) | "changePairOffer" (átsorolás után a páros
+    // átnézés ajánlata a sávon).
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
 
@@ -479,6 +499,8 @@ private:
     int m_suggestionAnchor = -1;
     QString m_suggestionTargetName;
     bool m_suggestionShown = false;
+    tanara::PairRecheckOffer m_pairOffer;
+    bool m_demoPairOffer = false;       // a demó-állapot kitalált ajánlata (nem a szerkesztőé)
 
     struct Change {
         bool active = false;

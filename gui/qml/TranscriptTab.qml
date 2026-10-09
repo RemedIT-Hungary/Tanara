@@ -25,7 +25,8 @@ import QtQuick.Templates as T
 //                "lineToSpeakerPopover" | "speakerPopover" | "personPicker" | "drag" |
 //                "expanded" | "changeLine" | "changeSelection" | "changeSpeaker" |
 //                "changeFilter" | "mergeConfirm" | "changeVoiceprint" | "changeVoiceprintDone" |
-//                "voiceprintHas" | "voiceprintNone" | "voiceprintDone" | "voiceprintShort"
+//                "voiceprintHas" | "voiceprintNone" | "voiceprintDone" | "voiceprintShort" |
+//                "changePairOffer" | "speakerPopoverPair"
 Item {
     id: root
 
@@ -914,9 +915,10 @@ Item {
                 }
                 root.openVoiceprintPopover(key, mark)
                 if (s === "voiceprintDone") voiceprintPanel.create()
-            } else if (s === "speakerPopover") {
-                // A teljes beszélő: a sáv-fejléc első avatarjáról.
+            } else if (s === "speakerPopover" || s === "speakerPopoverPair") {
+                // A teljes beszélő: a sáv-fejléc első avatarjáról (Pair: a pár-választó nyitva).
                 if (root.laneCount > 0) root.openSpeakerPopover(editorVm.lanes[0].key, railHeader)
+                if (s === "speakerPopoverPair") speakerPopover.pairPicking = true
             } else if (s === "linePopover" || s === "lineToSpeakerPopover") {
                 const item = list.itemAtIndex(0)
                 if (item) root.openLinePopover(0, item.nameItem)
@@ -951,7 +953,7 @@ Item {
         } else if (s === "expanded") {
             editorVm.railVisible = true
             editorVm.lanesExpanded = true
-        } else if (s === "speakerPopover" || s === "linePopover" || s === "lineToSpeakerPopover"
+        } else if (s === "speakerPopover" || s === "speakerPopoverPair" || s === "linePopover" || s === "lineToSpeakerPopover"
                    || s === "selectionPopover" || s === "mergeConfirm" || s === "personPicker" || s === "drag") {
             editorVm.railVisible = true
             demoTimer.start()

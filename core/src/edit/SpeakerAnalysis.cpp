@@ -259,7 +259,14 @@ QVector<bool> computeOverlapNoisy(const QVector<TimedLine>& lines)
 QVector<int> suggestSimilar(const QVector<AnalysisLine>& lines, int sourceSpeaker,
                             int targetSpeaker)
 {
-    if (sourceSpeaker == targetSpeaker) return {};
+    return suggestSimilarDetailed(lines, sourceSpeaker, targetSpeaker).lines;
+}
+
+SuggestOutcome suggestSimilarDetailed(const QVector<AnalysisLine>& lines, int sourceSpeaker,
+                                      int targetSpeaker)
+{
+    SuggestOutcome outcome;
+    if (sourceSpeaker == targetSpeaker) return outcome;
     // A cél „magja": a jelenlegi sorai (köztük a most kézzel átrakottak) — ez végig rögzített.
     Vec seed;
     int anchors = 0;
@@ -274,7 +281,7 @@ QVector<int> suggestSimilar(const QVector<AnalysisLine>& lines, int sourceSpeake
             members.append(i);
         }
     }
-    if (anchors == 0 || members.size() < 2) return {};
+    if (anchors == 0 || members.size() < 2) return outcome;
     const double seedNorm = norm2(seed);
 
     // Magozott 2-közép a forrás sorain. A „marad" klaszter kezdete a maghoz LEGKEVÉSBÉ
@@ -339,7 +346,11 @@ QVector<int> suggestSimilar(const QVector<AnalysisLine>& lines, int sourceSpeake
         double d = 0.0;
         const int n = std::min<int>(target.size(), stay.size());
         for (int k = 0; k < n; ++k) d += target[k] * stay[k];
-        if (d / std::sqrt(targetNorm * stayNorm) > kSuggestMaxCentroidSimilarity) return {};
+        outcome.centroidSimilarity = d / std::sqrt(targetNorm * stayNorm);
+        if (outcome.centroidSimilarity > kSuggestMaxCentroidSimilarity) {
+            outcome.blockedBySimilarity = true;
+            return outcome;
+        }
     }
 
     // A javaslatba csak a HATÁROZOTTAN a célhoz húzó, elég hosszú sorok kerülnek.
@@ -356,6 +367,77 @@ QVector<int> suggestSimilar(const QVector<AnalysisLine>& lines, int sourceSpeake
         if (std::isnan(toStay) || toTarget - toStay >= margin) out.append(i);
     }
     std::sort(out.begin(), out.end());
+    outcome.lines = out;
+    return outcome;
+}
+
+PairRecheckAnalysis computePairRecheck(const QVector<AnalysisLine>& lines, int speakerA,
+                                       int speakerB)
+{
+    PairRecheckAnalysis out;
+    out.lines.resize(lines.size());
+    if (speakerA < 0 || speakerB < 0 || speakerA == speakerB) return out;
+
+    auto usable = [](const AnalysisLine& l) { return l.hasEmbedding() && !l.noisy; };
+    // Referenciánként: a zárolt tiszta sorok, ha elég van; különben az összes tiszta sor.
+    struct Ref { Vec sum; double norm = 0.0; int count = 0; bool fallback = false; QVector<bool> member; };
+    auto buildRef = [&](int speaker) {
+        Ref r;
+        r.member.fill(false, lines.size());
+        int locked = 0;
+        for (const AnalysisLine& l : lines)
+            if (l.speaker == speaker && usable(l) && l.locked) ++locked;
+        r.fallback = locked < kMinSpeakerLines;
+        for (int i = 0; i < lines.size(); ++i) {
+            const AnalysisLine& l = lines[i];
+            if (l.speaker != speaker || !usable(l) || (!r.fallback && !l.locked)) continue;
+            addScaled(r.sum, *l.embedding, weightOf(l));
+            r.member[i] = true;
+            ++r.count;
+        }
+        r.norm = norm2(r.sum);
+        return r;
+    };
+    const Ref a = buildRef(speakerA);
+    const Ref b = buildRef(speakerB);
+    out.refLinesA = a.count;
+    out.refLinesB = b.count;
+    out.fallbackA = a.fallback;
+    out.fallbackB = b.fallback;
+    out.valid = a.count >= kMinSpeakerLines && b.count >= kMinSpeakerLines;
+    if (a.norm > 1e-12 && b.norm > 1e-12) {
+        double d = 0.0;
+        const int n = std::min<int>(a.sum.size(), b.sum.size());
+        for (int k = 0; k < n; ++k) d += a.sum[k] * b.sum[k];
+        out.centroidSimilarity = d / std::sqrt(a.norm * b.norm);
+    }
+    if (!out.valid) return out;
+
+    // A sor illeszkedése egy referenciához: ha benne van, önmaga nélkül (különben önmagát húzná).
+    auto fit = [&](const Ref& r, int i) {
+        const AnalysisLine& l = lines[i];
+        if (!r.member[i]) return cosTo(r.sum, r.norm, *l.embedding);
+        if (r.count - 1 < kMinSpeakerLines) return qQNaN();
+        return cosToWithout(r.sum, r.norm, *l.embedding, weightOf(l));
+    };
+    for (int i = 0; i < lines.size(); ++i) {
+        const AnalysisLine& l = lines[i];
+        if (l.speaker != speakerA && l.speaker != speakerB) continue;
+        // A zárolt sor a felhasználó döntése; a zajosat ő sem tudná eldönteni; a rövid megbízhatatlan.
+        if (l.locked || l.noisy || !l.hasEmbedding() || l.durationMs < kMinEmbedMs) continue;
+        PairVerdict& v = out.lines[i];
+        v.toA = fit(a, i);
+        v.toB = fit(b, i);
+        if (std::isnan(v.toA) || std::isnan(v.toB)) continue;
+        const bool onA = l.speaker == speakerA;
+        const double own = onA ? v.toA : v.toB;
+        const double other = onA ? v.toB : v.toA;
+        const double margin = l.durationMs >= kReliableMs ? kPairMargin : kPairMarginShort;
+        if (other - own >= margin) {
+            v.flagged = true;
+            v.hintedSpeaker = onA ? speakerB : speakerA;
+        }
+    }
     return out;
 }
 

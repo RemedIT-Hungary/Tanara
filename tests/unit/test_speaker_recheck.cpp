@@ -175,6 +175,121 @@ PureLines pollutedSpeaker(bool lockAnna)
     return p;
 }
 
+// ---- páronkénti átnézés: két HASONLÓ hang ----------------------------------
+// a = Anna, b = Béla (cos(a,b) = 0.85 — a „hasonló sorok" őre ezt már egy embernek veszi),
+// m = a kettő között, Bélához 0.087-tel közelebb (a globális 0.10-es küszöb alatt, a páronkénti
+// 0.05 fölött), c = Csaba (más hang), d = ismeretlen hang.
+const QVector<float> pa{1.0f, 0.0f, 0.0f, 0.0f};
+const QVector<float> pb{0.85f, 0.5268f, 0.0f, 0.0f};
+const QVector<float> pm{0.9063f, 0.4226f, 0.0f, 0.0f};
+const QVector<float> pc{0.0f, 0.0f, 1.0f, 0.0f};
+const QVector<float> pd{0.0f, 0.0f, 0.0f, 1.0f};
+
+const QString kB3 = QStringLiteral("Beszélő 3");
+
+struct PairRow { QString raw; char voice; };
+const QVector<PairRow>& pairScenario()
+{
+    static const QVector<PairRow> rows{
+        {kB1, 'a'},     // 0  Anna (megerősítendő)
+        {kB2, 'b'},     // 1  Béla (megerősítendő)
+        {kB1, 'a'},     // 2  Anna (megerősítendő)
+        {kB1, 'b'},     // 3  valójában Béla
+        {kB2, 'b'},     // 4  Béla (megerősítendő)
+        {kB1, 'a'},     // 5  Anna (megerősítendő)
+        {kB3, 'c'},     // 6  Csaba (megerősítendő)
+        {kB1, 'b'},     // 7  valójában Béla
+        {kB2, 'b'},     // 8  Béla (megerősítendő)
+        {kB3, 'c'},     // 9  Csaba (megerősítendő)
+        {kB1, 'm'},     // 10 a kettő között, Bélához közelebb
+        {kB3, 'c'},     // 11 Csaba (megerősítendő)
+        {kB3, 'a'},     // 12 valójában Anna — Csabánál (a páros átnézés nem nyúl hozzá)
+        {kB1, 'd'},     // 13 ismeretlen hang Annánál
+        {kB2, 'b'},     // 14 Béla
+        {kB1, 'b'},     // 15 valójában Béla
+        {kB3, 'c'},     // 16 Csaba
+        {kB2, 'a'},     // 17 valójában Anna — Bélánál
+    };
+    return rows;
+}
+QString pid(int row) { return QStringLiteral("u%1").arg(qint64(row) * 5000); }
+QStringList pids(std::initializer_list<int> rows)
+{
+    QStringList out;
+    for (int r : rows) out << pid(r);
+    return out;
+}
+const QVector<float>& pairVec(char v)
+{
+    switch (v) {
+    case 'a': return pa;
+    case 'b': return pb;
+    case 'm': return pm;
+    case 'c': return pc;
+    default:  return pd;
+    }
+}
+
+struct PairFixture {
+    QTemporaryDir dir;
+    std::unique_ptr<MeetingStore> store;
+    std::unique_ptr<PeopleStore> people;
+    std::unique_ptr<VoiceprintStore> prints;
+    Meeting meeting;
+
+    PairFixture()
+    {
+        store = std::make_unique<MeetingStore>(dir.filePath(QStringLiteral("rec")),
+                                               dir.filePath(QStringLiteral("meta")));
+        people = std::make_unique<PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        meeting = store->createMeeting(QStringLiteral("Páros átnézés"));
+        QJsonArray segs;
+        for (int i = 0; i < pairScenario().size(); ++i)
+            segs.append(QJsonObject{{"startMs", double(i * 5000)}, {"endMs", double(i * 5000 + 4000)},
+                                    {"speaker", pairScenario()[i].raw},
+                                    {"text", QStringLiteral("Sor %1").arg(i)}});
+        QFile f(segmentsPath(meeting.folder));
+        if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
+        f.close();
+        meeting.hasTranscript = true;
+        meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")},
+                              {kB3, QStringLiteral("Csaba")}};
+        store->saveMeeting(meeting);
+        const QVector<TranscriptLine> lines = loadTranscriptLines(meeting.folder);
+        UtteranceEmbeddingCache c;
+        c.fingerprint = transcriptFingerprint(lines);
+        for (int i = 0; i < lines.size(); ++i)
+            c.vectors.insert(lines[i].id, pairVec(pairScenario()[i].voice));
+        c.save(meeting.folder);
+    }
+
+    std::unique_ptr<SpeakerEditor> editor()
+    {
+        return std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+    }
+
+    QJsonObject overlayUtterance(const QString& id) const
+    {
+        QFile f(overlayPath(meeting.folder));
+        if (!f.open(QIODevice::ReadOnly)) return {};
+        return QJsonDocument::fromJson(f.readAll()).object()
+            .value(QStringLiteral("utterances")).toObject().value(id).toObject();
+    }
+};
+
+// Tiszta függvényekhez: Anna = 0, Béla = 1. Anna: 3 megerősített + 2 sima a-sor, 3 b-sor
+// (Béláé); Béla: 3 megerősített + 2 sima b-sor, 1 a-sor (Annáé).
+PureLines similarPair(int lockedAnna = 3, int lockedBela = 3)
+{
+    PureLines p;
+    for (int i = 0; i < 5; ++i) p.add(pa, 0, 4000, i < lockedAnna);    // 0–4
+    for (int i = 0; i < 3; ++i) p.add(pb, 0);                           // 5–7 Béla hangja Annánál
+    for (int i = 0; i < 5; ++i) p.add(pb, 1, 4000, i < lockedBela);    // 8–12
+    p.add(pa, 1);                                                       // 13 Anna hangja Bélánál
+    return p;
+}
+
 } // namespace
 
 class SpeakerRecheckTest : public QObject {
@@ -277,6 +392,229 @@ private slots:
         };
         const QVector<bool> noisy = computeOverlapNoisy(tl);
         QCOMPARE(noisy, (QVector<bool>{true, true, false, true, false, true, false, false, true, false}));
+    }
+
+    // ---- páronkénti átnézés (tiszta) ----------------------------------------
+
+    void pure_pair_similarVoices_guardBlocksSuggestion_pairFlags()
+    {
+        PureLines p = similarPair();
+        const QVector<AnalysisLine> al = p.build();
+        // A „hasonló sorok" javaslat a hasonló hang miatt hallgat — és ezt most meg is mondja.
+        const SuggestOutcome sg = suggestSimilarDetailed(al, /*source*/ 0, /*target*/ 1);
+        QVERIFY(sg.lines.isEmpty());
+        QVERIFY(sg.blockedBySimilarity);
+        QVERIFY(sg.centroidSimilarity > kSuggestMaxCentroidSimilarity);
+        QVERIFY(suggestSimilar(al, 0, 1).isEmpty());
+
+        // A páros átnézés: nincs őr, a téves sorok mindkét irányban előkerülnek.
+        const PairRecheckAnalysis r = computePairRecheck(al, 0, 1);
+        QVERIFY(r.valid);
+        QCOMPARE(r.refLinesA, 3);
+        QCOMPARE(r.refLinesB, 3);
+        QVERIFY(!r.fallbackA);
+        QVERIFY(!r.fallbackB);
+        QVERIFY(std::abs(r.centroidSimilarity - 0.85) < 1e-3);
+        QCOMPARE(r.flagged(), 4);
+        for (int i : {5, 6, 7}) {
+            QVERIFY2(r.lines[i].flagged, qPrintable(QString::number(i)));
+            QCOMPARE(r.lines[i].hintedSpeaker, 1);
+            QVERIFY(std::abs(r.lines[i].toA - 0.85) < 1e-3);
+            QVERIFY(std::abs(r.lines[i].toB - 1.0) < 1e-3);
+        }
+        QVERIFY(r.lines[13].flagged);
+        QCOMPARE(r.lines[13].hintedSpeaker, 0);
+        for (int i : {0, 1, 2, 3, 4, 8, 9, 10, 11, 12}) QVERIFY(!r.lines[i].flagged);
+        // A zárolt sorokat nem ítéli meg (nincs érték), a sima sorokat igen.
+        QVERIFY(std::isnan(r.lines[0].toA));
+        QVERIFY(std::abs(r.lines[3].toA - 1.0) < 1e-3);
+    }
+
+    void pure_pair_marginsAndSkippedLines()
+    {
+        PureLines p = similarPair();
+        p.add(pm, 0);                               // 14 m: 0.087-tel közelebb Bélához → kétes
+        p.add(pm, 0, 2000);                         // 15 ugyanez rövid sorban: 0.10 kellene → nem
+        p.add(pb, 0, 2000);                         // 16 rövid, 0.15 → kétes
+        p.add(pb, 0, 1000);                         // 17 túl rövid → sosem
+        p.add(pb, 0, 4000, false, /*noisy*/ true);  // 18 zajos → sosem
+        p.add(pb, 0, 4000, /*locked*/ true, true);  // 19 zárolt (és zajos: a referenciába sem kerül)
+        const PairRecheckAnalysis r = computePairRecheck(p.build(), 0, 1);
+        QCOMPARE(r.refLinesA, 3);
+        QVERIFY(r.lines[14].flagged);
+        QVERIFY(!r.lines[15].flagged);
+        QVERIFY(r.lines[16].flagged);
+        QVERIFY(!r.lines[17].flagged);
+        QVERIFY(!r.lines[18].flagged);
+        QVERIFY(!r.lines[19].flagged);
+        // A globális újraellenőrzés (0.10-es küszöb) az m-sort nem jelzi.
+        QVERIFY(!computeUncertainRechecked(p.build(), 2).lines[14].uncertain);
+    }
+
+    void pure_pair_fallbackWhenFewLockedLines()
+    {
+        // Annának csak 2 megerősített sora van: a referenciája az összes tiszta sora (8).
+        PureLines p = similarPair(/*lockedAnna*/ 2);
+        const PairRecheckAnalysis r = computePairRecheck(p.build(), 0, 1);
+        QVERIFY(r.valid);
+        QVERIFY(r.fallbackA);
+        QVERIFY(!r.fallbackB);
+        QCOMPARE(r.refLinesA, 8);
+        QCOMPARE(r.refLinesB, 3);
+        // A szennyezett referenciával is előkerülnek (a sor önmaga nélkül mérve), de közelebbről.
+        for (int i : {5, 6, 7}) QVERIFY(r.lines[i].flagged);
+        QVERIFY(r.centroidSimilarity > 0.85);
+
+        // Kevés sor (2 tiszta) → nem fut.
+        PureLines q;
+        q.add(pa, 0, 4000, true);
+        q.add(pa, 0, 4000, true);
+        q.add(pa, 0, 4000, false, /*noisy*/ true);
+        for (int i = 0; i < 4; ++i) q.add(pb, 1, 4000, true);
+        const PairRecheckAnalysis r2 = computePairRecheck(q.build(), 0, 1);
+        QVERIFY(!r2.valid);
+        QVERIFY(r2.fallbackA);
+        QCOMPARE(r2.refLinesA, 2);
+        QCOMPARE(r2.flagged(), 0);
+        // Ugyanaz a beszélő kétszer / érvénytelen index → semmi.
+        QVERIFY(!computePairRecheck(p.build(), 1, 1).valid);
+        QVERIFY(!computePairRecheck(p.build(), 0, -1).valid);
+    }
+
+    // ---- páronkénti átnézés (SpeakerEditor) --------------------------------
+
+    void editor_pairRecheck_replacesOnlyPairMarks_persistsAndUndoes()
+    {
+        PairFixture fx;
+        auto ed = fx.editor();
+        QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1, 4, 8, 6, 9, 11})));
+
+        // Előbb a globális újraellenőrzés: Annánál 3,7,15 (Béla), 13 (ismeretlen hang), Bélánál
+        // 17 (Anna), Csabánál 12 (Anna). Az m-sor (10) a globális küszöb alatt marad.
+        const SpeakerEditor::RecheckResult g = ed->recheckFromConfirmed();
+        QCOMPARE(g.flagged, 6);
+        QVERIFY(ed->utterance(pid(13)).rechecked);
+        QVERIFY(!ed->utterance(pid(10)).rechecked);
+        QCOMPARE(ed->utterance(pid(12)).likelySpeakerKey, kB1);
+
+        QSignalSpy undoSpy(ed.get(), &SpeakerEditor::undoStateChanged);
+        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QVERIFY(r.ran);
+        QVERIFY(r.blocker.isEmpty());
+        QCOMPARE(r.flagged, 5);
+        QCOMPARE(r.refLinesA, 3);
+        QCOMPARE(r.refLinesB, 3);
+        QVERIFY(!r.fallbackA && !r.fallbackB);
+        QVERIFY(std::abs(r.centroidSimilarity - 0.85) < 1e-3);
+        QCOMPARE(ed->undoText(), QStringLiteral("Átnézés: Anna és Béla"));
+        QVERIFY(undoSpy.count() > 0);
+
+        for (int row : {3, 7, 10, 15}) {
+            const EditorUtterance u = ed->utterance(pid(row));
+            QVERIFY2(u.rechecked && u.uncertain, qPrintable(QString::number(row)));
+            QCOMPARE(u.likelySpeakerKey, kB2);
+        }
+        QCOMPARE(ed->utterance(pid(17)).likelySpeakerKey, kB1);
+        // Annál az A/B-sornál, amelyet ez az átnézés nem talált kétesnek, a régi jelzés lecserélődik…
+        QVERIFY(!ed->utterance(pid(13)).rechecked);
+        QVERIFY(!fx.overlayUtterance(pid(13)).contains(QStringLiteral("rechecked")));
+        // …a többi beszélőé (Csaba) érintetlen.
+        QVERIFY(ed->utterance(pid(12)).rechecked);
+        QCOMPARE(ed->utterance(pid(12)).likelySpeakerKey, kB1);
+
+        // Perzisztencia.
+        QCOMPARE(fx.overlayUtterance(pid(10)).value(QStringLiteral("recheckHint")).toString(), kB2);
+        {
+            auto again = fx.editor();
+            QVERIFY(again->utterance(pid(10)).rechecked);
+            QCOMPARE(again->utterance(pid(17)).likelySpeakerKey, kB1);
+            QVERIFY(!again->utterance(pid(13)).rechecked);
+            QVERIFY(again->utterance(pid(12)).rechecked);
+        }
+
+        // Egy visszavonási lépés: a globális állapot jön vissza; újra → a páros.
+        ed->undo();
+        QVERIFY(ed->utterance(pid(13)).rechecked);
+        QVERIFY(!ed->utterance(pid(10)).rechecked);
+        QCOMPARE(ed->undoText(), QStringLiteral("Beszélők újraellenőrzése"));
+        ed->redo();
+        QVERIFY(ed->utterance(pid(10)).rechecked);
+        QVERIFY(!ed->utterance(pid(13)).rechecked);
+
+        // Javítás / „Jó így" törli; változatlan újrafuttatás nem új lépés.
+        QVERIFY(ed->confirmUtterances({pid(10)}));
+        QVERIFY(!ed->utterance(pid(10)).rechecked);
+        QVERIFY(ed->moveUtterances({pid(3)}, kB2));
+        QVERIFY(!ed->utterance(pid(3)).rechecked);
+        ed->recheckPair(kB1, kB2);
+        const QString undo = ed->undoText();
+        QCOMPARE(ed->recheckPair(kB1, kB2).flagged, 3);
+        QCOMPARE(ed->undoText(), undo);
+    }
+
+    void editor_pairRecheck_blockers()
+    {
+        PairFixture fx;
+        auto ed = fx.editor();
+        QVERIFY(!ed->pairRecheckBlocker(kB1, kB1).isEmpty());
+        QVERIFY(!ed->pairRecheckBlocker(kB1, QStringLiteral("nincs ilyen")).isEmpty());
+        // Megerősítés nélkül is fut (az összes tiszta sorral — ezt a fallback jelzi).
+        QVERIFY(ed->pairRecheckBlocker(kB1, kB2).isEmpty());
+        const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
+        QVERIFY(r.ran);
+        QVERIFY(r.fallbackA && r.fallbackB);
+        QCOMPARE(r.refLinesA, 8);
+        QCOMPARE(r.refLinesB, 5);
+
+        // Kevés sor: Csaba 5 sorából 3 máshova kerül.
+        QVERIFY(ed->moveUtterances(pids({6, 9, 11}), kB1));
+        const QString why = ed->pairRecheckBlocker(kB3, kB2);
+        QVERIFY2(why.startsWith(QStringLiteral("Csaba hangjához kevés a minta")), qPrintable(why));
+        QVERIFY(!ed->recheckPair(kB3, kB2).ran);
+    }
+
+    void editor_pairOffer_onlyWhenGuardBlocksAndBothHaveConfirmedLines()
+    {
+        PairFixture fx;
+        auto ed = fx.editor();
+        // Megerősített sorok nélkül: a javaslat hallgat (őr), de ajánlat sincs.
+        QVERIFY(ed->moveUtterances({pid(3)}, kB2));
+        QVERIFY(!ed->hasPairOffer());
+        ed->undo();
+
+        QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1, 4, 8})));
+        QSignalSpy spy(ed.get(), &SpeakerEditor::suggestionChanged);
+        QVERIFY(ed->moveUtterances({pid(3)}, kB2));
+        QVERIFY(!ed->hasSuggestion());
+        QVERIFY(ed->hasPairOffer());
+        QVERIFY(spy.count() > 0);
+        const PairRecheckOffer o = ed->pairOffer();
+        QCOMPARE(o.sourceSpeakerKey, kB1);
+        QCOMPARE(o.targetSpeakerKey, kB2);
+        QVERIFY(o.centroidSimilarity > kSuggestMaxCentroidSimilarity);
+
+        // A következő szerkesztés eldobja; „Most nem" után ez a pár nem kerül elő újra.
+        QVERIFY(ed->confirmUtterances({pid(13)}));
+        QVERIFY(!ed->hasPairOffer());
+        QVERIFY(ed->moveUtterances({pid(7)}, kB2));
+        QVERIFY(ed->hasPairOffer());
+        ed->declinePairOffer();
+        QVERIFY(!ed->hasPairOffer());
+        QVERIFY(ed->moveUtterances({pid(15)}, kB2));
+        QVERIFY(!ed->hasPairOffer());
+        // A másik irány ugyanaz a pár.
+        QVERIFY(ed->moveUtterances({pid(17)}, kB1));
+        QVERIFY(!ed->hasPairOffer());
+
+        // Névtelen cél: nincs ajánlat.
+        PairFixture fx2;
+        fx2.meeting = fx2.store->load(fx2.meeting.id);
+        fx2.meeting.speakerMap.remove(kB2);
+        fx2.store->saveMeeting(fx2.meeting);
+        auto ed2 = fx2.editor();
+        QVERIFY(ed2->confirmUtterances(pids({0, 2, 5, 1, 4, 8})));
+        QVERIFY(ed2->moveUtterances({pid(3)}, kB2));
+        QVERIFY(!ed2->hasPairOffer());
     }
 
     // ---- SpeakerEditor -----------------------------------------------------
