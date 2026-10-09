@@ -8,6 +8,7 @@
 #include <QVector>
 
 #include <memory>
+#include <optional>
 
 namespace tanara {
 
@@ -27,6 +28,10 @@ public:
     // Az „auto-rögzítés minden eszközre" halmaza: a captureDevices() a vonalbemenet/
     // AUX (TrackKind::Other) inputok NÉLKÜL. Ezeket kézzel kell bepipálni a felvevőben.
     QVector<AudioDeviceInfo> autoRecordDevices() const;
+
+    // Teszt-varrat: nem üres → a refresh() ezt a listát adja a valódi felsorolás helyett
+    // (eszköz be- és kihúzásának szimulálásához). std::nullopt → újra a valódi felsorolás.
+    void setDeviceListOverride(std::optional<QVector<AudioDeviceInfo>> devices);
 
 public slots:
     // Újra felsorolja az eszközöket. Robusztus: ha a backend nem elérhető,

@@ -21,6 +21,8 @@
 #include "tanara/audio/RecordingSession.h"
 #include "tanara/audio/TrackTiming.h"
 
+#include "fake_audio_engine.h"
+
 using namespace tanara;
 
 namespace {
@@ -41,61 +43,6 @@ qint64 probeMs(const QString& path)
     return qint64(QString::fromUtf8(p.readAllStandardOutput()).trimmed().toDouble() * 1000.0);
 }
 
-// Hamis motor: eszközönként egy körpuffer. A „feed()” a fali óra szerint esedékes mintákat
-// írja a NYITOTT, nem néma eszközök pufferébe (440 Hz-es szinusz) — mintha valódi capture
-// futna. A `silentNames`-beli eszközök sosem adnak adatot (mint a WASAPI loopback csendben).
-class FakeEngine : public AudioEngine {
-public:
-    struct Slot {
-        std::unique_ptr<RingBuffer> ring;
-        AudioDeviceInfo info;
-        bool open = true;
-        QElapsedTimer since;
-        qint64 framesFed = 0;
-    };
-    QStringList silentNames;
-    std::array<std::unique_ptr<Slot>, kMaxDevices> devs;
-    int n = 0;
-
-    bool start(const QVector<AudioDeviceInfo>& devices) override {
-        for (const AudioDeviceInfo& d : devices) addDevice(d);
-        return n > 0;
-    }
-    void stop() override { for (int i = 0; i < n; ++i) devs[i]->open = false; }
-    int addDevice(const AudioDeviceInfo& d) override {
-        auto s = std::make_unique<Slot>();
-        s->ring = std::make_unique<RingBuffer>(48000 * 2);
-        s->info = d;
-        s->since.start();
-        devs[n] = std::move(s);
-        return n++;
-    }
-    void closeDevice(int i) override { if (i >= 0 && i < n) devs[i]->open = false; }
-    bool isOpen(int i) const override { return i >= 0 && i < n && devs[i]->open; }
-    int count() const override { return n; }
-    RingBuffer& buffer(int i) override { return *devs[i]->ring; }
-    float rms(int i) const override { return silentNames.contains(devs[i]->info.name) ? 0.0f : 0.3f; }
-    float peak(int i) const override { return rms(i); }
-    float takePeak(int i) override { return rms(i); }
-    int channels(int) const override { return 1; }
-    AudioDeviceInfo deviceInfo(int i) const override { return devs[i]->info; }
-
-    void feed() {
-        for (int i = 0; i < n; ++i) {
-            Slot& s = *devs[i];
-            if (!s.open) continue;
-            if (silentNames.contains(s.info.name)) { s.framesFed = s.since.elapsed() * 48; continue; }
-            const qint64 due = s.since.elapsed() * 48 - s.framesFed;
-            if (due <= 0) continue;
-            std::vector<int16_t> buf(static_cast<size_t>(due));
-            for (qint64 k = 0; k < due; ++k)
-                buf[size_t(k)] = int16_t(8000 * std::sin(2.0 * M_PI * 440.0 * double(s.framesFed + k) / 48000.0));
-            s.ring->write(buf.data(), buf.size());
-            s.framesFed += due;
-        }
-    }
-};
-
 AudioDeviceInfo dev(const QString& name, TrackKind kind)
 {
     AudioDeviceInfo d;
@@ -114,6 +61,7 @@ private slots:
     void framesOwedHelper();
     void lateAndToggledTracksGetOffsets();
     void silentLoopbackGapsAreFilled();
+    void unpluggedDeviceClosesOnlyItsTrack();
 };
 
 void RecordingSessionTest::fileRangeMapping()
@@ -257,6 +205,62 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     const qint64 dLb = probeMs(QDir(m.folder).filePath(m.tracks.at(1).file));
     // A néma szakaszok csenddel pótolva: a loopback fájlja ugyanolyan hosszú, mint a mic-é.
     QVERIFY2(qAbs(dLb - dMic) < 200, qPrintable(QStringLiteral("loopback %1 ms, mic %2 ms").arg(dLb).arg(dMic)));
+}
+
+// Felvétel közben kihúzott eszköz: csak az ő sávja zárul le (a fájlja a lezárásig tart), a
+// többi sáv megszakítás nélkül megy tovább, és egyik sáv eltolása sem változik.
+void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
+{
+    if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
+    QTemporaryDir dir;
+    FakeEngine* engine = nullptr;
+    RecordingSession rec(dir.path(), QStringLiteral("Kihúzás"));
+    rec.setEngineFactory([&engine] { auto e = std::make_unique<FakeEngine>(); engine = e.get(); return e; });
+    QSignalSpy finished(&rec, &RecordingSession::finished);
+    QSignalSpy closed(&rec, &RecordingSession::trackClosed);
+    QSignalSpy elapsed(&rec, &RecordingSession::elapsedChanged);
+    QTimer feeder;
+    feeder.setInterval(5);
+    QObject::connect(&feeder, &QTimer::timeout, [&engine] { if (engine) engine->feed(); });
+
+    const QString headset = QStringLiteral("Sennheiser headset");
+    rec.start({dev(QStringLiteral("Mic A"), TrackKind::Mic), dev(headset, TrackKind::Mic),
+               dev(QStringLiteral("Monitor of Speakers"), TrackKind::Loopback)});
+    QCOMPARE(rec.state(), RecordingState::Recording);
+    feeder.start();
+
+    QTest::qWait(800);
+    engine->vanish(headset);                     // kihúzták: nem jön több adat
+    QTest::qWait(300);
+    rec.closeTrack(headset);                     // a hot-plug figyelő zárja le
+    QCOMPARE(closed.size(), 1);
+    QCOMPARE(closed.at(0).at(0).toInt(), 1);
+    QCOMPARE(closed.at(0).at(1).toString(), headset);
+    QCOMPARE(engine->closeCalls, 1);
+    QVERIFY(!rec.trackOpen(1));
+    QVERIFY(rec.trackOpen(0));
+    QVERIFY(rec.trackOpen(2));
+    rec.closeTrack(headset);                     // ismételt jelzés: nincs második lezárás
+    QCOMPARE(closed.size(), 1);
+
+    elapsed.clear();
+    QTest::qWait(900);
+    QCOMPARE(rec.state(), RecordingState::Recording);   // a felvétel megy tovább
+    QVERIFY(elapsed.size() > 5);                        // a drain-szál dolgozik
+    rec.stop();
+    QVERIFY(finished.wait(20000));
+    feeder.stop();
+
+    const Meeting m = finished.at(0).at(0).value<Meeting>();
+    QCOMPARE(m.tracks.size(), 3);
+    for (const Track& t : m.tracks) QCOMPARE(t.startOffsetMs, qint64(0));
+    const qint64 dMic = probeMs(QDir(m.folder).filePath(m.tracks.at(0).file));
+    const qint64 dHs  = probeMs(QDir(m.folder).filePath(m.tracks.at(1).file));
+    const qint64 dMon = probeMs(QDir(m.folder).filePath(m.tracks.at(2).file));
+    QVERIFY2(qAbs(dMic - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMic).arg(m.durationMs)));
+    QVERIFY2(qAbs(dMon - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMon).arg(m.durationMs)));
+    // A kihúzott eszköz sávja a kihúzásig tartó hangot hordozza, lezárt, olvasható fájlként.
+    QVERIFY2(dHs > 600 && dHs < 1100, qPrintable(QString::number(dHs)));
 }
 
 QTEST_GUILESS_MAIN(RecordingSessionTest)

@@ -461,6 +461,7 @@ struct AppController::Impl {
     DeviceManager*   devices  = nullptr;
     MeetingStore*    store    = nullptr;
     RecordingSession* session = nullptr;
+    RecordingSession::EngineFactory recordingEngineFactory;   // teszt-varrat; üres → valódi
     DeviceMonitor*   monitor = nullptr;
     KeyStore         keyStore;
     std::unique_ptr<PeopleStore> people;
@@ -1063,6 +1064,10 @@ RecordingState   AppController::recordingState() const { return d->state; }
 QString AppController::currentMeetingFolder() const { return d->currentFolder; }
 
 void AppController::refreshDevices() { d->devices->refresh(); }
+
+void AppController::setRecordingEngineFactory(std::function<std::unique_ptr<AudioEngine>()> factory) {
+    d->recordingEngineFactory = std::move(factory);
+}
 
 QStringList AppController::lastUsedDeviceNames() const { return d->lastDevices; }
 
@@ -1786,6 +1791,7 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
     const AppSettings s = d->settings->settings();
     auto* sess = new RecordingSession(d->audioDir, title, s.userSpeakerName,
                                       opusBitrateKbps(s.audioQuality), this);
+    if (d->recordingEngineFactory) sess->setEngineFactory(d->recordingEngineFactory);
     d->session = sess;
 
     connect(sess, &RecordingSession::stateChanged, this, [this, sess](RecordingState st) {

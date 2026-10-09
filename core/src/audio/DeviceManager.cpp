@@ -8,6 +8,7 @@ namespace tanara {
 
 struct DeviceManagerPrivate {
     QVector<AudioDeviceInfo> capture;
+    std::optional<QVector<AudioDeviceInfo>> override;   // teszt-varrat
 };
 
 namespace {
@@ -55,7 +56,16 @@ QVector<AudioDeviceInfo> DeviceManager::autoRecordDevices() const {
     return out;
 }
 
+void DeviceManager::setDeviceListOverride(std::optional<QVector<AudioDeviceInfo>> devices) {
+    d_->override = std::move(devices);
+}
+
 void DeviceManager::refresh() {
+    if (d_->override) {
+        d_->capture = *d_->override;
+        emit devicesChanged();
+        return;
+    }
     QVector<AudioDeviceInfo> result;
 
     ma_context context;

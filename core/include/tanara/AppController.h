@@ -35,6 +35,7 @@ class TagService;
 class MeetingProfiles;
 class EmbeddingIndex;
 class EmbeddingPreparer;
+class AudioEngine;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -171,6 +172,10 @@ public:
     tanara::SummaryStaleInfo summaryStale(const tanara::Meeting& meeting) const;
     // Mi vész el újra-átíráskor (kézi javítások száma a megerősítő párbeszédhez).
     tanara::RetranscribeImpact retranscribeImpact(const QString& meetingId) const;
+
+    // Teszt-varrat: a következő felvételek capture-motorjának gyártója (üres → valódi
+    // miniaudio-motor). Lásd RecordingSession::setEngineFactory.
+    void setRecordingEngineFactory(std::function<std::unique_ptr<tanara::AudioEngine>()> factory);
 
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
