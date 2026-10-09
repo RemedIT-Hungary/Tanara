@@ -20,16 +20,23 @@ struct EmbedderConfig {
     float dither     = 0.0f;     // 0 = determinisztikus
     bool  subtractMean = true;   // CMN: bin-enkénti átlag levonása az idő mentén
     float waveScale  = 1.0f;     // [-1,1] mintára szorzó (kaldi int16-skála esetén 32768)
+    // Ablakfüggvény a kaldi-native-fbank nevével: "povey" (kaldi-alap), "hamming", "hanning" …
+    QString windowType = QStringLiteral("povey");
 };
 
 class VoiceEmbedder {
 public:
-    explicit VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg = EmbedderConfig());
+    // expectedDim: a modell-leíró szerinti dimenzió (0 = nem ellenőrizzük). Ha az ONNX kimenete
+    // (betöltéskor a statikus alakból, különben az első inferenciánál) ettől eltér → figyelmeztetés.
+    explicit VoiceEmbedder(const QString& modelPath, const EmbedderConfig& cfg = EmbedderConfig(),
+                           int expectedDim = 0);
     ~VoiceEmbedder();
 
     bool    isValid() const;
     QString lastError() const;
     int     embeddingDim() const;     // 0, amíg le nem futott egy inferencia
+    // A kimenet utolsó dimenziója a modell statikus alakjából (0 = dinamikus / nincs modell).
+    int     outputDim() const;
     EmbedderConfig config() const;
 
     // 16 kHz mono float PCM ([-1,1]) → L2-normalizált embedding. Üres vektor = hiba.

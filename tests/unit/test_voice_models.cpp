@@ -48,7 +48,11 @@ private slots:
     void builtin_campplus()
     {
         const QVector<VoiceModelSpec> all = VoiceModelRegistry::builtin();
-        QCOMPARE(all.size(), 1);
+        QCOMPARE(all.size(), 3);
+        // Id szerint ábécérendben.
+        QCOMPARE(all[0].id, QStringLiteral("campplus"));
+        QCOMPARE(all[1].id, QStringLiteral("eres2netv2"));
+        QCOMPARE(all[2].id, QStringLiteral("wespeaker-resnet34-lm"));
         const auto s = VoiceModelRegistry::spec(QStringLiteral("campplus"));
         QVERIFY(s.has_value());
         QCOMPARE(s->id, VoiceModelRegistry::defaultModelId());
