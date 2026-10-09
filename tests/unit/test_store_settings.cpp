@@ -55,6 +55,17 @@ private slots:
         QVERIFY(old.waitlistEmail.isEmpty());
     }
 
+    // Az „Első lépések” jelzője oda-vissza jár; régi settings.json-ban hiányzik → false.
+    void appSettings_onboardingDoneRoundTrip()
+    {
+        AppSettings s;
+        QCOMPARE(s.onboardingDone, false);
+        s.onboardingDone = true;
+        QCOMPARE(appSettingsFromJson(toJson(s)).onboardingDone, true);
+        const AppSettings old = appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
+        QCOMPARE(old.onboardingDone, false);
+    }
+
     // AppSettings JSON round-trip (ÚJ multi-provider shape).
     // A sáv kezdőeltolása (Track::startOffsetMs) oda-vissza jár a meeting.json-ban; 0-nál kimarad.
     void track_startOffsetRoundTrip()

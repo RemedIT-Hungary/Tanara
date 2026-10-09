@@ -306,6 +306,11 @@ struct AppSettings {
     // SettingsManager tölti be minden betöltéskor / mentéskor.
     QMap<QString, QString> deviceNames;
 
+    // Az „Első lépések” ablak (OnboardingWindow.qml) már lezajlott: bezárták, kihagyták vagy
+    // végigmentek rajta. Csak az automatikus megnyitást kapcsolja ki (első indításkor egyszer);
+    // a Fájl › „Első lépések…” menüből és a Beállításokból bármikor újranyitható.
+    bool onboardingDone = false;
+
     QString sttProviderId{QStringLiteral("soniox")};
     QString llmProviderId{QStringLiteral("openai-compat")};
     QMap<QString, ProviderConfig> sttConfigs;   // id -> config

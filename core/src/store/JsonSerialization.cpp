@@ -328,6 +328,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("cloudLlmModel")] = s.cloudLlmModel;
     o[QStringLiteral("waitlistEmail")] = s.waitlistEmail;
     o[QStringLiteral("cloudEstimateBeforeRun")] = s.cloudEstimateBeforeRun;
+    o[QStringLiteral("onboardingDone")] = s.onboardingDone;
 
     // Hangeszközök felhasználói nevei (nyers név → barátságos név).
     QJsonObject names;
@@ -415,6 +416,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.waitlistEmail = o.value(QStringLiteral("waitlistEmail")).toString(s.waitlistEmail);
     s.cloudEstimateBeforeRun =
         o.value(QStringLiteral("cloudEstimateBeforeRun")).toBool(s.cloudEstimateBeforeRun);
+    s.onboardingDone = o.value(QStringLiteral("onboardingDone")).toBool(s.onboardingDone);
 
     // Hangeszközök felhasználói nevei — az üres név nem felülírás (kimarad).
     const QJsonObject names = o.value(QStringLiteral("deviceNames")).toObject();
