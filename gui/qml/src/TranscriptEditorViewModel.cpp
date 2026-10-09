@@ -8,6 +8,7 @@
 #include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/PeopleDirectory.h"
+#include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/store/MeetingStore.h"
 
@@ -385,6 +386,8 @@ void TranscriptEditorViewModel::onSuggestionChanged()
     m_suggested.clear();
     m_suggestionAnchor = -1;
     m_suggestionTargetName.clear();
+    if (!m_demoPairOffer)
+        m_pairOffer = m_editor && m_editor->hasPairOffer() ? m_editor->pairOffer() : tanara::PairRecheckOffer();
     if (m_editor && m_editor->hasSuggestion()) {
         const SpeakerSuggestion s = m_editor->suggestion();
         for (const QString& id : s.utteranceIds) {
@@ -662,7 +665,102 @@ bool TranscriptEditorViewModel::acceptSuggestion()
 
 void TranscriptEditorViewModel::dismissSuggestion()
 {
+    if (m_demoPairOffer) {
+        m_demoPairOffer = false;
+        m_pairOffer = PairRecheckOffer();
+        emit suggestionChanged();
+    }
     if (m_editor) m_editor->dismissSuggestion();
+}
+
+// ---- páronkénti átnézés -----------------------------------------------------
+
+QString TranscriptEditorViewModel::pairOfferText() const
+{
+    if (!m_pairOffer.isValid()) return {};
+    return tr("%1 és %2 hangja hasonló. Nézzem át kettejük sorait a megerősítettek alapján?")
+        .arg(m_views.value(m_pairOffer.sourceSpeakerKey).name, m_views.value(m_pairOffer.targetSpeakerKey).name);
+}
+
+QVariantMap TranscriptEditorViewModel::recheckPair(const QString& speakerKeyA, const QString& speakerKeyB)
+{
+    QVariantMap out;
+    out[QStringLiteral("ran")] = false;
+    if (!m_editor) return out;
+    const QString nameA = m_views.value(speakerKeyA).name;
+    const QString nameB = m_views.value(speakerKeyB).name;
+    const SpeakerEditor::PairRecheckResult r = m_editor->recheckPair(speakerKeyA, speakerKeyB);
+    out[QStringLiteral("ran")] = r.ran;
+    out[QStringLiteral("blocker")] = r.blocker;
+    if (!r.ran) {
+        out[QStringLiteral("message")] = r.blocker;
+        if (!r.blocker.isEmpty()) emit notice(r.blocker);
+        return out;
+    }
+    out[QStringLiteral("flagged")] = r.flagged;
+    out[QStringLiteral("fallbackA")] = r.fallbackA;
+    out[QStringLiteral("fallbackB")] = r.fallbackB;
+    out[QStringLiteral("centroidSimilarity")] = r.centroidSimilarity;
+
+    QString text = r.flagged > 0
+        ? tr("%n kétséges sor %1 és %2 között — a Bizonytalan szűrőben.", nullptr, r.flagged).arg(nameA, nameB)
+        : tr("A megerősített sorok alapján nem találtam kétséges sort %1 és %2 között.").arg(nameA, nameB);
+    // Ha valamelyiküknél kevés volt a megerősített sor, a referencia az összes sora (szennyezett lehet).
+    QStringList few;
+    if (r.fallbackA) few << nameA;
+    if (r.fallbackB) few << nameB;
+    if (!few.isEmpty())
+        text += QLatin1Char(' ')
+              + tr("Kevés megerősített sor (%1): az összes sorát vettem alapul.").arg(few.join(QStringLiteral(", ")));
+    if (!std::isnan(r.centroidSimilarity) && r.centroidSimilarity >= tanara::speakeredit::kPairSimilarWarn)
+        text += QLatin1Char(' ')
+              + tr("A két hang nagyon hasonló (%1), az eredmény bizonytalan — hallgass bele.")
+                    .arg(QString::number(r.centroidSimilarity, 'f', 2).replace(QLatin1Char('.'), QLatin1Char(',')));
+    out[QStringLiteral("message")] = text;
+    if (r.flagged > 0) setUncertainOnly(true);
+    emit notice(text);
+    return out;
+}
+
+QVariantMap TranscriptEditorViewModel::acceptPairOffer()
+{
+    if (!m_pairOffer.isValid()) return {{QStringLiteral("ran"), false}};
+    const PairRecheckOffer o = m_pairOffer;
+    if (m_demoPairOffer) {
+        m_demoPairOffer = false;
+        m_pairOffer = PairRecheckOffer();
+        emit suggestionChanged();
+    }
+    const QVariantMap out = recheckPair(o.sourceSpeakerKey, o.targetSpeakerKey);
+    // Az eredmény értesítésként szól; a sáv (az átsorolás híre + az ajánlat) ezzel lezárul.
+    clearChange();
+    return out;
+}
+
+void TranscriptEditorViewModel::declinePairOffer()
+{
+    if (m_demoPairOffer) {
+        m_demoPairOffer = false;
+        m_pairOffer = PairRecheckOffer();
+        emit suggestionChanged();
+        return;
+    }
+    if (m_editor) m_editor->declinePairOffer();
+}
+
+QVariantList TranscriptEditorViewModel::pairCandidates(const QString& speakerKey) const
+{
+    QVariantList out;
+    const QString self = m_views.contains(speakerKey) && m_editor ? m_editor->speaker(speakerKey).personName : QString();
+    for (const EditorSpeaker& s : m_speakers) {
+        if (s.key == speakerKey || s.anonymous || s.utteranceCount <= 0) continue;
+        if (!self.isEmpty() && s.personName.compare(self, Qt::CaseInsensitive) == 0) continue;
+        out.append(QVariantMap{{QStringLiteral("key"), s.key},
+                               {QStringLiteral("name"), s.displayName},
+                               {QStringLiteral("colorIndex"), s.colorIndex},
+                               {QStringLiteral("utteranceCount"), s.utteranceCount}});
+    }
+    return out;
 }
 
 // ---- hang-elemzés -----------------------------------------------------------
@@ -1741,6 +1839,30 @@ void TranscriptEditorViewModel::applyPendingDemoState()
             const int row = m_rows->rowOfUtterance(m_uttIndex.value(u.id, -1));
             if (row >= 0) emit revealRequested(row);
             break;
+        }
+    } else if (state == QLatin1String("changePairOffer")) {
+        // Egy sor átkerül egy másik elnevezett beszélőhöz; a sáv a kettejük átnézését ajánlja
+        // (a kitalált hangok ehhez túl különbözők, ezért az ajánlat itt kitalált).
+        setRailVisible(true);
+        QString from, to;
+        int moved = -1;
+        for (int i = 3; i < m_utts.size() && moved < 0; ++i) {
+            if (m_editor->speaker(m_utts[i].speakerKey).anonymous) continue;
+            for (const QString& key : std::as_const(m_laneKeys)) {
+                if (key == m_utts[i].speakerKey || m_editor->speaker(key).anonymous) continue;
+                from = m_utts[i].speakerKey;
+                to = key;
+                moved = i;
+                break;
+            }
+        }
+        if (moved >= 0 && moveUtteranceToSpeaker(m_utts[moved].id, to)) {
+            m_editor->dismissSuggestion();      // a kettő együtt sosem jelenik meg
+            m_demoPairOffer = true;
+            m_pairOffer.sourceSpeakerKey = from;
+            m_pairOffer.targetSpeakerKey = to;
+            m_pairOffer.centroidSimilarity = 0.82;
+            emit suggestionChanged();
         }
     } else if (state == QLatin1String("changeFilter")) {
         // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.

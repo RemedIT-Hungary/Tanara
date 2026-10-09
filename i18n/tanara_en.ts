@@ -3614,6 +3614,18 @@
         <translation>Remove these lines from %1's voiceprint (wrong match)</translation>
     </message>
     <message>
+        <source>Átnézés másik beszélővel…</source>
+        <translation>Review with another speaker…</translation>
+    </message>
+    <message>
+        <source>Ha két hasonló hang sorai összekeveredtek: csak kettejük sorait mérem a megerősített soraik hangjához, és a kétségeseket bizonytalannak jelölöm.</source>
+        <translation>If the lines of two similar voices got mixed up: I compare only their lines with the voice of their confirmed lines and mark the doubtful ones as uncertain.</translation>
+    </message>
+    <message>
+        <source>Kivel keveredhettek össze %1 sorai?</source>
+        <translation>Who could %1's lines be mixed up with?</translation>
+    </message>
+    <message>
         <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
         <translation>Fine as is + voice sample from this line (%1 s)</translation>
     </message>
@@ -4710,6 +4722,22 @@
     <message>
         <source>Bezárás</source>
         <translation>Close</translation>
+    </message>
+    <message>
+        <source>Átnézés</source>
+        <translation>Review</translation>
+    </message>
+    <message>
+        <source>Csak a két beszélő sorait mérem a megerősített soraik hangjához; a kétségeseket bizonytalannak jelölöm (visszavonható: Ctrl+Z)</source>
+        <translation>I compare only the two speakers' lines with the voice of their confirmed lines and mark the doubtful ones as uncertain (undo: Ctrl+Z)</translation>
+    </message>
+    <message>
+        <source>Most nem</source>
+        <translation>Not now</translation>
+    </message>
+    <message>
+        <source>Ebben a munkamenetben erre a két beszélőre nem kérdezek rá újra</source>
+        <translation>I won't ask about these two speakers again in this session</translation>
     </message>
 </context>
 <context>
@@ -5851,6 +5879,26 @@
     <message>
         <source>Beszélők újraellenőrzése</source>
         <translation>Re-check speakers</translation>
+    </message>
+    <message>
+        <source>Válassz két különböző beszélőt ebből a megbeszélésből.</source>
+        <translation>Choose two different speakers from this meeting.</translation>
+    </message>
+    <message>
+        <source>Az átnézéshez nincs telepítve a hangmodell.</source>
+        <translation>The voice model needed for the review is not installed.</translation>
+    </message>
+    <message>
+        <source>A sorok hang-elemzése még fut — a végén átnézheted a két beszélőt.</source>
+        <translation>The voice analysis of the lines is still running — you can review the two speakers when it finishes.</translation>
+    </message>
+    <message>
+        <source>%1 hangjához kevés a minta: legalább %2 elég hosszú, tiszta sora kell.</source>
+        <translation>Not enough samples of %1's voice: at least %2 long enough, clean lines are needed.</translation>
+    </message>
+    <message>
+        <source>Átnézés: %1 és %2</source>
+        <translation>Review: %1 and %2</translation>
     </message>
     <message numerus="yes">
         <source>Javaslat elfogadása: %n sor ide: %1</source>
@@ -9257,6 +9305,29 @@
             <numerusform>%n line moved to %1</numerusform>
             <numerusform>%n lines moved to %1</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>%1 és %2 hangja hasonló. Nézzem át kettejük sorait a megerősítettek alapján?</source>
+        <translation>%1 and %2 sound similar. Shall I review their lines based on the confirmed ones?</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n kétséges sor %1 és %2 között — a Bizonytalan szűrőben.</source>
+        <translation>
+            <numerusform>%n doubtful line between %1 and %2 — in the Uncertain filter.</numerusform>
+            <numerusform>%n doubtful lines between %1 and %2 — in the Uncertain filter.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A megerősített sorok alapján nem találtam kétséges sort %1 és %2 között.</source>
+        <translation>Based on the confirmed lines, I found no doubtful line between %1 and %2.</translation>
+    </message>
+    <message>
+        <source>Kevés megerősített sor (%1): az összes sorát vettem alapul.</source>
+        <translation>Few confirmed lines (%1): I used all of their lines as the reference.</translation>
+    </message>
+    <message>
+        <source>A két hang nagyon hasonló (%1), az eredmény bizonytalan — hallgass bele.</source>
+        <translation>The two voices are very similar (%1), so the result is uncertain — listen to the lines.</translation>
     </message>
     <message>
         <source>Nincs letöltve a hangmodell, ezért a bizonytalan sorok jelölése, a hasonló sorok felajánlása és a kézi hanglenyomat most nem érhető el. A szerkesztés enélkül is működik.</source>

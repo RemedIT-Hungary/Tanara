@@ -52,6 +52,61 @@ int laneOf(const TranscriptEditorViewModel& vm, const QString& key)
     return -1;
 }
 
+// ---- két HASONLÓ hang (páronkénti átnézés) ----------------------------------
+// Anna („Beszélő 1") 4 saját sora mellett 3 Béla-hangú sor; Béla („Beszélő 2") 5 sora.
+// similar: cos(Anna, Béla) = 0.85 (a „hasonló sorok" őre ezt egy embernek veszi); különben
+// a két hang merőleges.
+struct PairScene {
+    QTemporaryDir dir;
+    std::unique_ptr<MeetingStore> store;
+    std::unique_ptr<PeopleStore> people;
+    std::unique_ptr<VoiceprintStore> prints;
+    Meeting meeting;
+
+    static QString id(int row) { return QStringLiteral("u%1").arg(row * 5000); }
+
+    explicit PairScene(bool similar)
+    {
+        // 0 A a · 1 B b · 2 A a · 3 A b* · 4 B b · 5 A a · 6 A b* · 7 B b · 8 A a · 9 B b ·
+        // 10 A b* · 11 B b
+        const QVector<QPair<QString, char>> rows{
+            {kB1, 'a'}, {kB2, 'b'}, {kB1, 'a'}, {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'},
+            {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'}, {kB2, 'b'}, {kB1, 'b'}, {kB2, 'b'}};
+        store = std::make_unique<MeetingStore>(dir.filePath(QStringLiteral("rec")),
+                                               dir.filePath(QStringLiteral("meta")));
+        people = std::make_unique<PeopleStore>(dir.filePath(QStringLiteral("meta/people.json")));
+        prints = std::make_unique<VoiceprintStore>(dir.filePath(QStringLiteral("meta/vp.json")));
+        meeting = store->createMeeting(QStringLiteral("Két hasonló hang"));
+        QJsonArray segs;
+        for (int i = 0; i < rows.size(); ++i)
+            segs.append(QJsonObject{{QStringLiteral("startMs"), double(i * 5000)},
+                                    {QStringLiteral("endMs"), double(i * 5000 + 4000)},
+                                    {QStringLiteral("speaker"), rows[i].first},
+                                    {QStringLiteral("text"), QStringLiteral("Sor %1").arg(i)}});
+        QFile f(tanara::speakeredit::segmentsPath(meeting.folder));
+        if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(segs).toJson());
+        f.close();
+        meeting.hasTranscript = true;
+        meeting.speakerMap = {{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}};
+        store->saveMeeting(meeting);
+        const QVector<float> a{1.0f, 0.0f, 0.0f};
+        const QVector<float> b = similar ? QVector<float>{0.85f, 0.5268f, 0.0f} : QVector<float>{0.0f, 1.0f, 0.0f};
+        const QVector<tanara::TranscriptLine> lines = tanara::speakeredit::loadTranscriptLines(meeting.folder);
+        UtteranceEmbeddingCache c;
+        c.fingerprint = tanara::speakeredit::transcriptFingerprint(lines);
+        for (int i = 0; i < lines.size(); ++i) c.vectors.insert(lines[i].id, rows[i].second == 'a' ? a : b);
+        c.save(meeting.folder);
+    }
+
+    std::unique_ptr<SpeakerEditor> editor()
+    {
+        auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
+        // A cache teljes: a gyár csak a „van hangmodell" állapotért kell (nem fut le semmi).
+        ed->setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
+        return ed;
+    }
+};
+
 } // namespace
 
 class TestTranscriptEditorViewModel : public QObject {
@@ -477,6 +532,105 @@ private slots:
         ed->recheckFromConfirmed();
         QVERIFY(vm.uncertainOnly());
         QCOMPARE(finished.count(), 2);
+    }
+
+    // Két hasonló hang: a „hasonló sorok" javaslat hallgat → a sáv a kettejük átnézését ajánlja,
+    // de csak ha mindkét elnevezett beszélőnek van legalább 3 megerősített sora.
+    void pairOffer_onlyWhenGuardBlocked_andBothHaveConfirmedLines()
+    {
+        PairScene sc(/*similar*/ true);
+        auto ed = sc.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QSignalSpy notices(&vm, &TranscriptEditorViewModel::notice);
+
+        // Megerősített sorok nélkül: se javaslat, se ajánlat.
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(3), kB2));
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.suggestionActive());
+        QVERIFY(!vm.pairOfferActive());
+        vm.undo();
+
+        QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5),
+                                       PairScene::id(1), PairScene::id(4), PairScene::id(7)}));
+        QSignalSpy sugg(&vm, &TranscriptEditorViewModel::suggestionChanged);
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(3), kB2));
+        QVERIFY(vm.changeActive());
+        QVERIFY(!vm.suggestionActive());
+        QVERIFY(vm.pairOfferActive());
+        QVERIFY(sugg.count() > 0);
+        QCOMPARE(vm.pairOfferText(),
+                 QStringLiteral("Anna és Béla hangja hasonló. Nézzem át kettejük sorait a megerősítettek alapján?"));
+
+        // „Átnézés": a két beszélő sorai, a szűrő bekapcsol, a sáv helyén értesítés.
+        const QVariantMap r = vm.acceptPairOffer();
+        QVERIFY(r.value(QStringLiteral("ran")).toBool());
+        QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 2);
+        QVERIFY(!vm.pairOfferActive());
+        QVERIFY(!vm.changeActive());
+        QVERIFY(vm.uncertainOnly());
+        QCOMPARE(ed->undoText(), QStringLiteral("Átnézés: Anna és Béla"));
+        QCOMPARE(notices.count(), 1);
+        QCOMPARE(notices.last().at(0).toString(),
+                 QStringLiteral("2 kétséges sor Anna és Béla között — a Bizonytalan szűrőben. "
+                                "A két hang nagyon hasonló (0,85), az eredmény bizonytalan — hallgass bele."));
+        for (int row : {6, 10}) {
+            const int r6 = vm.rows()->rowOfUtterance(row);
+            QVERIFY(r6 >= 0);
+            QVERIFY(cell(vm, r6, Role::UncertainRole).toBool());
+            QCOMPARE(cell(vm, r6, Role::LikelySpeakerKeyRole).toString(), kB2);
+        }
+
+        // Javítás után nincs több kétes sor: a 0-s üzenet.
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(6), kB2));
+        QVERIFY(vm.pairOfferActive());                  // újra ajánlja (nem utasította el)
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
+        vm.recheckPair(kB1, kB2);
+        QVERIFY(notices.last().at(0).toString().startsWith(
+            QStringLiteral("A megerősített sorok alapján nem találtam kétséges sort Anna és Béla között.")));
+
+        // „Most nem": erre a párra ebben a munkamenetben nem kérdez újra.
+        vm.undo();
+        vm.undo();
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
+        QVERIFY(vm.pairOfferActive());
+        vm.declinePairOffer();
+        QVERIFY(!vm.pairOfferActive());
+        QVERIFY(vm.changeActive());                     // az átsorolás értesítése marad
+        vm.undo();
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
+        QVERIFY(!vm.pairOfferActive());
+
+        // Akadály: értesítésként elhangzik, nem fut.
+        const int before = notices.count();
+        QVERIFY(!vm.recheckPair(kB1, kB1).value(QStringLiteral("ran")).toBool());
+        QCOMPARE(notices.count(), before + 1);
+
+        // A panel pár-választója: a többi elnevezett beszélő.
+        const QVariantList cands = vm.pairCandidates(kB1);
+        QCOMPARE(cands.size(), 1);
+        QCOMPARE(cands.first().toMap().value(QStringLiteral("key")).toString(), kB2);
+        QCOMPARE(cands.first().toMap().value(QStringLiteral("name")).toString(), QStringLiteral("Béla"));
+    }
+
+    void pairOffer_notShownWhenVoicesDiffer()
+    {
+        PairScene sc(/*similar*/ false);
+        auto ed = sc.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5),
+                                       PairScene::id(1), PairScene::id(4), PairScene::id(7)}));
+        QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(3), kB2));
+        QVERIFY(vm.suggestionActive());                 // a rendes javaslat szól („Hasonló 2 sor is")
+        QCOMPARE(vm.suggestionCount(), 2);
+        QVERIFY(!vm.pairOfferActive());
+        // A páros átnézés kézzel így is futtatható.
+        const QVariantMap r = vm.recheckPair(kB1, kB2);
+        QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 2);
+        QVERIFY(r.value(QStringLiteral("centroidSimilarity")).toDouble() < 0.1);
     }
 
     // „Jó így, de ne használd mintának" és „Mintának használható" a soron.
