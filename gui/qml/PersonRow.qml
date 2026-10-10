@@ -2,7 +2,7 @@ import QtQuick
 
 // Egy személy sora a választó panelekben. Két méret:
 //   magas (44 px, PersonPicker): 28 px monogram · név 14/500 + alsor 12 · ujjlenyomat-ikon
-//   alacsony (38 px, SpeakerPopover): 24 px monogram · név 14 · jobb oldalt az alsor
+//   alacsony (38 px, LinePopover / SpeakerWhyPopover): 24 px monogram · név 14 · jobb oldalt az alsor
 // speakerIndex >= 0: a monogram a beszélő színében (a meeting egy másik beszélője).
 Item {
     id: root

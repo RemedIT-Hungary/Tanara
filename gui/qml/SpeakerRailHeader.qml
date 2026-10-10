@@ -1,8 +1,9 @@
 import QtQuick
 
 // A beszélő-sín rögzített fejléce: látható beszélőnként egy 24 px-es oszlop (20 px-es teli
-// avatar a beszélő színében, alatta 5 px-es pötty: teli zöld, ha a személynek van hanglenyomata,
-// üres karika, ha elnevezett, de még nincs — ugyanaz a jelentés, mint az áttekintő jelénél), az
+// avatar a beszélő színében, a sarkán hanglenyomat-pötty: teli zöld, ha a személynek van
+// hanglenyomata, üres karika, ha elnevezett, de még nincs; alatta az oldal ikonja: mikrofon /
+// hívás hangja — handoff-v3 E1; az imént felvett személy avatarja accent gyűrűt kap — E4), az
 // összecsukott „+N" csoport, és a „+" (új résztvevő) oszlop. A sorok oszlopai ehhez igazodnak.
 Item {
     id: root
@@ -33,25 +34,47 @@ Item {
                 required property int index
                 width: Theme.laneWidth
                 height: root.implicitHeight
+                // Az imént felvett személy oszlopa: 2 px accent gyűrű az avatar körül (E4).
+                Rectangle {
+                    visible: laneHead.modelData.isNew === true
+                    anchors.centerIn: avatar
+                    width: avatar.width + 4; height: width; radius: width / 2
+                    color: "transparent"
+                    border.width: 2
+                    border.color: Theme.accent
+                }
                 TAvatar {
                     id: avatar
-                    y: 8
+                    y: 6
                     anchors.horizontalCenter: parent.horizontalCenter
                     size: 20
                     variant: "solid"
                     name: laneHead.modelData.name
                     speakerIndex: laneHead.modelData.colorIndex
                 }
+                // Hanglenyomat-jel az avatar jobb alsó sarkán: teli zöld = van, üres karika = elnevezett,
+                // de még nincs; névtelennél nincs.
                 Rectangle {
-                    y: 32
-                    anchors.horizontalCenter: parent.horizontalCenter
                     objectName: "laneVoiceprint"
                     property string voiceprint: laneHead.modelData.voiceprint
-                    width: 5; height: 5; radius: 2.5
-                    color: laneHead.modelData.hasVoiceprint ? Theme.success : "transparent"
-                    border.width: laneHead.modelData.hasVoiceprint ? 0 : 1
-                    border.color: Theme.borderStrong
+                    x: avatar.x + avatar.width - 5
+                    y: avatar.y + avatar.height - 6
+                    width: 6; height: 6; radius: 3
+                    color: laneHead.modelData.hasVoiceprint ? Theme.success : Theme.surface
+                    border.width: 1
+                    border.color: laneHead.modelData.hasVoiceprint ? Theme.surface : Theme.borderStrong
                     visible: !laneHead.modelData.anonymous
+                }
+                // Melyik sávon beszél (a sáv-elemzés szerint): mikrofon / hívás hangja.
+                TIcon {
+                    objectName: "laneSide"
+                    readonly property string side: laneHead.modelData.side || "unknown"
+                    visible: side === "local" || side === "remote"
+                    y: 29
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: side === "local" ? "mic" : "phone"
+                    size: 10
+                    color: Theme.textMuted
                 }
                 HoverHandler { id: laneHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: root.speakerClicked(laneHead.modelData.key, avatar) }
@@ -64,6 +87,9 @@ Item {
                         if (laneHead.index < 9) t += " · " + qsTr("%1-es billentyű").arg(laneHead.index + 1)
                         t += "\n" + (d.hasVoiceprint ? qsTr("Van hanglenyomata.") : d.anonymous
                                      ? qsTr("Névtelen beszélő.") : qsTr("Nincs hanglenyomata."))
+                        if (d.side === "local") t += " " + qsTr("A mikrofonon beszél.")
+                        else if (d.side === "remote") t += " " + qsTr("A hívás hangján beszél.")
+                        t += "\n" + qsTr("Kattintásra: miért ő, és hol javítható")
                         return t
                     }
                 }
@@ -76,7 +102,7 @@ Item {
             width: visible ? Theme.laneGroupWidth : 0
             height: root.implicitHeight
             Rectangle {
-                y: 8
+                y: 6
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 18; height: 20
                 radius: 4
@@ -116,7 +142,7 @@ Item {
             height: root.implicitHeight
             Rectangle {
                 id: addCircle
-                y: 8
+                y: 6
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 20; height: 20; radius: 10
                 color: root.addOpen ? Theme.accentSoft : addHover.hovered ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"

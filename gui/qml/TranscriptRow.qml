@@ -1,10 +1,12 @@
 import QtQuick
 
-// Az átirat-lista egy sora: megszólalás (névsor csak beszélőváltáskor, alatta a szöveg),
-// vagy a „Bizonytalan" szűrő „··· N biztos sor elrejtve" elválasztója. Bal oldalt (ha a sín
-// látszik) a beszélő-oszlopok ezen sorra eső szelete; a sín egérkezelése a TranscriptTab-ban
-// van (egy közös réteg, hogy a húzás több soron át is működjön). A NÉVRE kattintva ennek a
-// sornak a beszélője javítható (a teljes beszélő a sáv-fejlécről / az áttekintőről).
+// Az átirat-lista egy sora: megszólalás (névsor csak beszélőváltáskor és jelölt sornál, alatta a
+// szöveg), vagy a szűrő „··· N biztos sor elrejtve" elválasztója. Bal oldalt (ha a sín látszik) a
+// beszélő-oszlopok ezen sorra eső szelete; a sín egérkezelése a TranscriptTab-ban van (egy közös
+// réteg, hogy a húzás több soron át is működjön). A NÉVRE kattintva ennek a sornak a beszélője
+// javítható (LinePopover; a teljes beszélő a sín-fejlécről / a térképről: SpeakerWhyPopover).
+// Javítás módban (sín látszik) a névsor jelölői (handoff-v3 E1): pipa (megerősítve), „rövid",
+// „bizonytalan · sáv | hang | címke", „javítva", „új személy", „egymásra beszéltek".
 Item {
     id: row
 
@@ -27,6 +29,12 @@ Item {
     required property bool noisyOverlap
     required property string likelySpeakerKey
     required property string likelySpeakerName
+    required property string uncertainReason
+    required property bool confirmed
+    required property bool isShort
+    required property bool sideConflict
+    required property bool newPerson
+    required property bool similar
     required property bool selected
     required property bool suggested
     required property bool suggestionAnchor
@@ -112,6 +120,7 @@ Item {
                 uncertain: row.uncertain
                 selected: row.selected
                 suggested: row.suggested
+                suggestLane: row.similar ? row.tab.newPersonLane : -1
                 dimmed: row.inDrag && row.tab.dragLane >= 0 && row.tab.dragLane !== row.lane
                 targetLane: row.inDrag ? row.tab.dragLane : -1
                 targetLineColor: Theme.speakerLine(row.tab.dragColorIndex)
@@ -143,12 +152,12 @@ Item {
             width: body.width - x - 20
             spacing: 2
 
-            // Névsor: név (kattintható: ez a sor kié) · időbélyeg · pirula · (szűrőben)
-            // „Meghallgatom" / „Jó így" / „Jó így, de nem minta" / („<Név> mondta") / „Más mondta…".
+            // Névsor: név (kattintható: ez a sor kié) · időbélyeg · jelölők. (A soronkénti döntés
+            // gombjai az Átnézendő nézet „Egyenként" soraiban vannak: ReviewGroupsView.)
             Item {
                 visible: row.head
                 width: parent.width
-                height: row.head ? Math.max(17, actions.active ? 24 : 0) : 0
+                height: row.head ? 18 : 0
 
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
@@ -220,34 +229,54 @@ Item {
                         TToolTip { visible: stampHover.hovered; text: qsTr("Lejátszás innen") }
                     }
 
-                    TPill {
-                        id: statePill
-                        visible: row.uncertain || row.corrected
+                    // ---- jelölők (Javítás módban; olvasáskor csak a bizonytalan / javítva) ----
+                    TranscriptMarker {
+                        objectName: "newPersonMarker"
+                        visible: row.newPerson && row.tab.railShown
                         anchors.verticalCenter: parent.verticalCenter
-                        text: row.uncertain ? qsTr("bizonytalan") : qsTr("javítva")
-                        tone: row.uncertain ? "warn" : "success"
-                        HoverHandler { id: statePillHover }
-                        TToolTip {
-                            visible: statePillHover.hovered && row.uncertain && row.likelySpeakerName !== ""
-                            text: qsTr("Hangra inkább %1 sorának tűnik").arg(row.likelySpeakerName)
-                        }
+                        kind: "newPerson"
+                        toolTipText: qsTr("Most vetted fel: a hozzá hasonló hangú sorok kék kerettel látszanak a sínen")
+                    }
+                    TranscriptMarker {
+                        id: statePill
+                        objectName: "statePill"
+                        // Az új személy sorainál a „javítva" magától értetődik (az „új személy" mondja).
+                        visible: row.uncertain || (row.corrected && !(row.newPerson && row.tab.railShown))
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: row.uncertain ? "uncertain" : "corrected"
+                        reason: row.uncertainReason
+                        toolTipText: !row.uncertain ? qsTr("Kézzel javítottad a beszélőjét")
+                                   : row.uncertainReason === "side"
+                                     ? qsTr("A sor a beszélője oldalával ellentétes sávon szólt (mikrofon / hívás hangja)")
+                                   : row.likelySpeakerName !== "" ? qsTr("Hangra inkább %1 sorának tűnik").arg(row.likelySpeakerName)
+                                   : row.uncertainReason === "tag" ? qsTr("Hangra kétes, és a beszélő címkéi nem illenek a megbeszéléshez")
+                                   : qsTr("Hangra kétes, kié a sor")
+                    }
+                    TranscriptMarker {
+                        objectName: "confirmedMarker"
+                        visible: row.confirmed && !row.uncertain && row.tab.railShown
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: "confirmed"
+                        toolTipText: qsTr("Megerősítetted: a beszélő rendben van")
+                    }
+                    TranscriptMarker {
+                        objectName: "shortMarker"
+                        visible: row.isShort && !row.uncertain && !row.corrected && row.tab.railShown
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: "short"
+                        toolTipText: qsTr("Túl rövid a hang-ellenőrzéshez: csak fülre dönthető el, kié")
                     }
 
                     // „Egymásra beszéltek": visszafogott jelzés; a sor nem hangminta.
-                    TPill {
+                    TranscriptMarker {
                         id: noisyPill
                         objectName: "noisyPill"
                         visible: row.noisy
                         anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("egymásra beszéltek")
-                        tone: "neutral"
-                        HoverHandler { id: noisyHover }
-                        TToolTip {
-                            visible: noisyHover.hovered
-                            text: row.noisyOverlap
-                                  ? qsTr("Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).")
-                                  : qsTr("Megjelölted, hogy ezt a sort ne használjam hangmintának (bizonytalanság-jelzés, hanglenyomat).")
-                        }
+                        kind: "noisy"
+                        toolTipText: row.noisyOverlap
+                              ? qsTr("Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).")
+                              : qsTr("Megjelölted, hogy ezt a sort ne használjam hangmintának (bizonytalanság-jelzés, hanglenyomat).")
                     }
                     // A jelzés visszavonása: csak rámutatáskor, hogy ne zajosítsa a listát.
                     TButton {
@@ -263,100 +292,6 @@ Item {
                         text: qsTr("Mintának használható")
                         toolTipText: qsTr("A sor hangja mégis mehet mintának")
                         onClicked: row.vm.setRowNoisy(row.index, false)
-                    }
-                }
-
-                Loader {
-                    id: actions
-                    active: row.head && row.uncertain && row.vm.uncertainOnly
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    sourceComponent: Row {
-                        spacing: 6
-                        // A természetes sorrend: meghallgatom → jó így / más mondta. A MEGHALLGATÁS a
-                        // kiemelt (ez az első lépés); a döntés két gombja visszafogott és távolabb áll,
-                        // hogy ne lehessen véletlenül a „Jó így"-re kattintani hallgatás helyett.
-                        TButton {
-                            objectName: "lineListen"
-                            size: "small"
-                            height: 24
-                            leftPadding: 9; rightPadding: 10
-                            radius: 5
-                            iconName: "play"
-                            iconSize: 12
-                            spacing: 5
-                            font.pixelSize: Theme.fontCaption
-                            text: qsTr("Meghallgatom")
-                            enabled: row.tab.canPlay
-                            onClicked: row.tab.playLine(row.startMs, row.endMs)
-                        }
-                        Item {
-                            width: 22; height: 24
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: 1; height: 14
-                                color: Theme.border
-                            }
-                        }
-                        TButton {
-                            objectName: "lineConfirm"
-                            size: "small"
-                            variant: "ghost"
-                            height: 24
-                            leftPadding: 9; rightPadding: 9
-                            radius: 5
-                            iconName: "check"
-                            iconSize: 12
-                            spacing: 5
-                            font.pixelSize: Theme.fontCaption
-                            text: qsTr("Jó így")
-                            toolTipText: qsTr("A beszélő rendben van: a sor többé nem bizonytalan")
-                            onClicked: row.vm.confirmRow(row.index)
-                        }
-                        TButton {
-                            objectName: "lineConfirmNoisy"
-                            size: "small"
-                            variant: "ghost"
-                            height: 24
-                            leftPadding: 9; rightPadding: 9
-                            radius: 5
-                            font.pixelSize: Theme.fontCaption
-                            text: qsTr("Jó így, de nem minta")
-                            toolTipText: qsTr("Jó így, de ne használd mintának: a beszélő rendben van, de egymásra beszéltek, ezért a sor hangja nem lesz minta")
-                            onClicked: row.vm.confirmRowNoisy(row.index)
-                        }
-                        TButton {
-                            objectName: "lineLikely"
-                            visible: row.likelySpeakerKey !== ""
-                            size: "small"
-                            variant: "ghost"
-                            height: 24
-                            leftPadding: 9; rightPadding: 9
-                            radius: 5
-                            iconName: "arrow-right"
-                            iconSize: 12
-                            spacing: 5
-                            font.pixelSize: Theme.fontCaption
-                            text: qsTr("%1 mondta").arg(row.likelySpeakerName)
-                            toolTipText: qsTr("Hangra %1 sorának tűnik: a sor átkerül hozzá").arg(row.likelySpeakerName)
-                            onClicked: row.vm.moveUtteranceToSpeaker(row.vm.rowInfo(row.index).utteranceId, row.likelySpeakerKey)
-                        }
-                        TButton {
-                            id: fixButton
-                            objectName: "lineFix"
-                            size: "small"
-                            variant: "ghost"
-                            height: 24
-                            leftPadding: 9; rightPadding: 9
-                            radius: 5
-                            iconName: "user"
-                            iconSize: 12
-                            spacing: 5
-                            font.pixelSize: Theme.fontCaption
-                            text: qsTr("Más mondta…")
-                            toolTipText: qsTr("Csak ez a sor kerül át ahhoz, akit választasz")
-                            onClicked: row.tab.openLinePopover(row.index, fixButton)
-                        }
                     }
                 }
             }

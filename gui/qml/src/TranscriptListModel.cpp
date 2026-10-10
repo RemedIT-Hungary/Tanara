@@ -46,6 +46,12 @@ QHash<int, QByteArray> TranscriptListModel::roleNames() const
         {NoisyOverlapRole, "noisyOverlap"},
         {LikelySpeakerKeyRole, "likelySpeakerKey"},
         {LikelySpeakerNameRole, "likelySpeakerName"},
+        {UncertainReasonRole, "uncertainReason"},
+        {ConfirmedRole, "confirmed"},
+        {ShortRole, "isShort"},
+        {SideConflictRole, "sideConflict"},
+        {NewPersonRole, "newPerson"},
+        {SimilarRole, "similar"},
     };
 }
 
@@ -56,8 +62,9 @@ bool TranscriptListModel::headAt(int row) const
     if (row == 0 || m_rows[row - 1].gap) return true;
     const auto& utts = m_vm->utterances();
     const EditorUtterance& u = utts[r.utterance];
-    // A jelölt (bizonytalan / javítva / egymásra beszéltek) sor mindig kap névsort: a pirula ott jelenik meg.
-    if (u.uncertain || u.manuallyCorrected || u.noisy) return true;
+    // A jelölt (bizonytalan / javítva / egymásra beszéltek / megerősített) sor mindig kap névsort:
+    // a jelölő ott jelenik meg.
+    if (u.uncertain || u.manuallyCorrected || u.noisy || u.confirmed) return true;
     return utts[m_rows[row - 1].utterance].speakerKey != u.speakerKey;
 }
 
@@ -80,7 +87,12 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
         case SuggestedRole:
         case SuggestionAnchorRole:
         case NoisyRole:
-        case NoisyOverlapRole: return false;
+        case NoisyOverlapRole:
+        case ConfirmedRole:
+        case ShortRole:
+        case SideConflictRole:
+        case NewPersonRole:
+        case SimilarRole: return false;
         case StartMsRole:
         case EndMsRole:
         case ColorIndexRole: return 0;
@@ -114,6 +126,12 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
     case LikelySpeakerKeyRole: return u.likelySpeakerKey;
     case LikelySpeakerNameRole:
         return u.likelySpeakerKey.isEmpty() ? QString() : m_vm->speakerView(u.likelySpeakerKey).name;
+    case UncertainReasonRole: return u.uncertain ? u.uncertainReason : QString();
+    case ConfirmedRole: return u.confirmed && !u.manuallyCorrected;
+    case ShortRole: return m_vm->isShort(r.utterance);
+    case SideConflictRole: return m_vm->isSideConflict(u.id);
+    case NewPersonRole: return m_vm->isNewPerson(u.speakerKey);
+    case SimilarRole: return m_vm->isSimilar(r.utterance);
     default: return {};
     }
 }

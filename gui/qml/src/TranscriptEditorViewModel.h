@@ -11,6 +11,7 @@
 //  - nincs (App.demo, --qml-shot, --demo):  beépített KITALÁLT meeting (TranscriptDemoSession)
 //  - teszt:  setEditor() + setPeopleProvider() közvetlenül
 //
+#include "ReviewGroupsModel.h"
 #include "TranscriptListModel.h"
 
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -138,6 +139,35 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // Az épp lejátszott megszólalás sora; -1 = nincs (vagy a szűrő elrejti).
     Q_PROPERTY(int playingRow READ playingRow NOTIFY playingRowChanged)
 
+    // ---- v3 Javítás mód: Átnézendő csoportok, új személy (handoff-v3 E1–E4) ----
+    // Az Átnézendő nézet sorai (csoport-kártyák, kinyitott csoport sorai, „··· N sor" sorok).
+    // A nézet az `uncertainOnly` kapcsolóra jelenik meg (az „Átnézendő N" chip).
+    Q_PROPERTY(tanara_qml::ReviewGroupsModel* reviewGroups READ reviewGroups CONSTANT)
+    // Átnézendő sorok száma: a döntést kérő csoportok sorai (a rövid sorok tájékoztató csoportja
+    // és a szennyezett mag nélkül) — az eszköz-sor chipje.
+    Q_PROPERTY(int reviewCount READ reviewCount NOTIFY reviewChanged)
+    // A döntést kérő csoportok száma („84 / 1298 sor · 3 csoport").
+    Q_PROPERTY(int reviewGroupCount READ reviewGroupCount NOTIFY reviewChanged)
+    // A háttér-elemzés (sáv-oldal, jelöltek, csoportok) épp fut.
+    Q_PROPERTY(bool reviewRunning READ reviewRunning NOTIFY reviewChanged)
+    // Szennyezett mag (a banner): { groupId, speakerKey, name, title, count, confirmed } — üres
+    // map, ha nincs ilyen.
+    Q_PROPERTY(QVariantMap contaminated READ contaminated NOTIFY reviewChanged)
+    // Az imént (ebben a munkamenetben) létrehozott személy oszlopa; üres = nincs.
+    Q_PROPERTY(QString newPersonKey READ newPersonKey NOTIFY reviewChanged)
+    // A változás-sáv „új személy" sorai (E4): igaz, ha a legutóbbi átsorolás új személyt hozott létre.
+    Q_PROPERTY(bool changeNewPerson READ changeNewPerson NOTIFY changeChanged)
+    // „Még N sor hangja hasonlít…": { groupId, count, name, lines (az új személy sorai), detail } —
+    // üres, ha nincs hasonló sor.
+    Q_PROPERTY(QVariantMap newPersonSimilar READ newPersonSimilar NOTIFY reviewChanged)
+    // Lenyomat-készültség az új személynél: { text, ready, pending } — üres, ha nem értelmes.
+    Q_PROPERTY(QVariantMap newPersonReadiness READ newPersonReadiness NOTIFY reviewChanged)
+    // Az új személyhez hasonló sorok kiemelése (sín: 2 px accent keret, térkép: accent jel).
+    Q_PROPERTY(bool similarShown READ similarShown WRITE setSimilarShown NOTIFY reviewChanged)
+    // A kiemelt hasonló sorok a térképnek: [x, w, x, w, …] (0..1, az idővonalon). Ugyanezek az
+    // `overview` sorainak `marks` listájában is benne vannak (a térkép-dokk accent jelei).
+    Q_PROPERTY(QVariantList similarMarks READ similarMarks NOTIFY reviewChanged)
+
 public:
     struct SpeakerView {
         QString name;
@@ -239,11 +269,61 @@ public:
 
     int playingRow() const { return m_playingRow; }
 
+    ReviewGroupsModel* reviewGroups() const { return m_review; }
+    int reviewCount() const { return m_reviewCount; }
+    int reviewGroupCount() const { return m_reviewGroupCount; }
+    bool reviewRunning() const;
+    QVariantMap contaminated() const { return m_contaminated; }
+    QString newPersonKey() const { return m_newPersonKey; }
+    bool changeNewPerson() const { return m_change.active && m_change.newPerson; }
+    QVariantMap newPersonSimilar() const;
+    QVariantMap newPersonReadiness() const;
+    bool similarShown() const { return m_similarShown; }
+    void setSimilarShown(bool shown);
+    QVariantList similarMarks() const { return m_similarMarks; }
+
+    // ---- bizonyíték / jelöltek (a CandidateListModel és a panelek olvassák) ----
+    QVector<tanara::Candidate> candidatesForLine(const QString& utteranceId) const;
+    QVector<tanara::Candidate> candidatesForSpeaker(const QString& speakerKey) const;
+    // Egy bizonyíték a QML-nek: { kind (EvidenceChip), polarity, side ("mic" | "loopback" | ""),
+    // text (chip), label („Hang:"), sentence (a „Miért…?" blokkok mondata), detail, fixTarget,
+    // fixLabel, value }. sideContext: a „támogató" sáv-bizonyíték oldala (a sor / a beszélő oldala).
+    QVariantMap evidenceMap(const tanara::Evidence& e, const QString& sideContext = QString(),
+                            bool forLine = false) const;
+    QVariantList evidenceList(const QVector<tanara::Evidence>& list, const QString& sideContext = QString(),
+                              bool forLine = false, bool chipsOnly = false) const;
+    // A beszélő oldala a sáv-elemzés szerint: "local" | "remote" | "mixed" | "unknown".
+    QString speakerSideName(const QString& speakerKey) const;
+    // A sor oldala: "local" | "remote" | "mixed" | "unknown".
+    QString lineSideName(const QString& utteranceId) const;
+    // A csoport-modell olvassa: a megszólalás indexe az azonosítóhoz (-1 = nincs).
+    int utteranceIndexOf(const QString& utteranceId) const { return m_uttIndex.value(utteranceId, -1); }
+    struct ReviewView {
+        QString id;
+        QString kind;           // "sideConflict" | "coreMismatch" | "similarToNewPerson" | "shortLines" |
+                                // "uncertain" (a csoportokon kívüli, hangra kétes sorok; a VM képzi)
+        QString title;
+        QString subtitle;
+        QStringList ids;
+        QString currentKey;
+        QString proposedKey;
+        QString proposedName;
+        QVariantList evidence;
+        bool actionable = true; // döntést kér (a rövid sorok csak tájékoztatnak)
+    };
+    const QVector<ReviewView>& reviewViews() const { return m_reviewViews; }
+    QString displayName(const QString& key) const { return m_views.value(key).name; }
+
     // ---- a lista-modell olvassa -------------------------------------------
     const QVector<tanara::EditorUtterance>& utterances() const { return m_utts; }
     SpeakerView speakerView(const QString& key) const { return m_views.value(key); }
     bool isSelected(int utterance) const { return m_selected.contains(utterance); }
     bool isSuggested(int utterance) const { return m_suggestionShown && m_suggested.contains(utterance); }
+    // Az új személyhez hasonló sor, és épp mutatjuk (sín: keret az új személy oszlopában).
+    bool isSimilar(int utterance) const { return m_similarShown && m_similar.contains(utterance); }
+    bool isShort(int utterance) const;
+    bool isNewPerson(const QString& speakerKey) const { return !m_newPersonKey.isEmpty() && speakerKey == m_newPersonKey; }
+    bool isSideConflict(const QString& utteranceId) const { return m_sideConflicts.contains(utteranceId); }
     // A „Bizonytalan" szűrőben frissen javított sor: a szűrő újbóli alkalmazásáig látható marad
     // (ne tűnjön el a kurzor alól, és ne csússzon más sor a következő kattintás alá).
     bool isSticky(int utterance) const { return m_sticky.contains(utterance); }
@@ -386,6 +466,36 @@ public:
     QVector<tanara::PersonInfo> people() const;
     bool isMeetingPerson(const QString& name) const;
 
+    // ---- v3: bizonyíték, jelöltek, csoportok, sáv-beosztás -------------------
+    // „Miért nem X?" (a sor mostani beszélője ellen szóló bizonyítékok, fix-linkkel).
+    Q_INVOKABLE QVariantList whyNot(const QString& utteranceId) const;
+    // „Miért ő?" a teljes beszélőre.
+    Q_INVOKABLE QVariantList speakerEvidence(const QString& speakerKey) const;
+    // A sor adatai az Átnézendő nézet sorairól nyitott panelhez: { utteranceId, speakerKey,
+    // timeLabel, startMs, endMs } (mint a rowInfo).
+    Q_INVOKABLE QVariantMap lineInfo(const QString& utteranceId) const;
+    // „Melyik sávon beszél?": a meeting sávjai { id, name, kind ("mic" | "loopback" | "other"),
+    // checked } — üres, ha egysávos a meeting (ott nincs mit beosztani).
+    Q_INVOKABLE QVariantList trackOptions(const QString& speakerKey) const;
+    // A kézi sáv-beosztás (egy undo-lépés; üres lista = a megkötés törlése).
+    Q_INVOKABLE bool setSpeakerTracks(const QString& speakerKey, const QStringList& trackIds);
+    // „tanult: jellemzően a hívás hangján" — üres, ha nincs tanult / kézi alap.
+    Q_INVOKABLE QString sideBasisText(const QString& speakerKey) const;
+    // A csoport javaslatának végrehajtása (egy undo-lépés; a változás-sáv kiírja).
+    Q_INVOKABLE bool applyReviewGroup(const QString& groupId);
+    // „Kihagyom": a csoport ebben a munkamenetben nem jelenik meg újra.
+    Q_INVOKABLE void skipReviewGroup(const QString& groupId);
+    // A szennyezett mag szétválasztása (egy undo-lépés).
+    Q_INVOKABLE bool splitSpeaker(const QString& speakerKey);
+    // „Jó így" / „Jó így, de nem minta" a sor azonosítójával (az Átnézendő nézet sorairól).
+    Q_INVOKABLE bool confirmUtterance(const QString& utteranceId, bool asNoisy = false);
+    // Az új személyhez hasonló sorok mind hozzá (a SimilarToNewPerson csoport).
+    Q_INVOKABLE bool acceptNewPersonSimilar();
+    // „Hanglenyomat, ha elég": most, ha elég az anyag; különben amint elég lesz (kifejezett kérés).
+    Q_INVOKABLE QVariantMap requestNewPersonVoiceprint();
+    // A személy (a „Ki volt ott?" résztvevő) neve a beszélőhöz; üres = névtelen.
+    Q_INVOKABLE QString personOf(const QString& speakerKey) const;
+
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
     // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter" |
@@ -396,6 +506,8 @@ public:
     // átnézés ajánlata a sávon).
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
+    // Vár-e még egy demó-állapot a hang-elemzés végére.
+    Q_INVOKABLE bool demoStatePending() const { return !m_pendingDemoState.isEmpty(); }
 
 signals:
     void meetingIdChanged();
@@ -418,6 +530,7 @@ signals:
     void highlightColorChanged();
     void playingRowChanged();
     void peopleChanged();
+    void reviewChanged();
     // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
     void revealRequested(int row);
     // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
@@ -450,7 +563,7 @@ private:
     // Vissza: a cél-beszélő kulcsa (üres = nem történt semmi).
     QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value);
     void publishChange(const QString& text, const QString& sourceKey, const QString& targetKey,
-                       int lastUtterance, bool offerVoiceprint = false);
+                       int lastUtterance, bool offerVoiceprint = false, bool newPerson = false);
     void publishWholeSpeakerChange(const QString& fromName, int lines, const QString& targetKey);
     bool canOfferVoiceprint(const QString& speakerKey) const;
     QString voiceprintMessage(const QString& name, const tanara::VoiceprintResult& result) const;
@@ -458,6 +571,11 @@ private:
     bool loadRailState() const;
     void saveRailState() const;
     void applyPendingDemoState();
+    void rebuildReview();
+    void scheduleReview();
+    void updateSimilar();
+    QString tagLabel(const QString& id) const;
+    QString sideOfTrackKind(const QString& trackId) const;
 
     bool m_deferred = false;
     bool m_legacyTranscript = false;
@@ -516,6 +634,7 @@ private:
         enum Voiceprint { None, Offer, Created, Removed };
         Voiceprint voiceprint = None;
         QString printId;                // a sávról készült lenyomat (a visszavonásához)
+        bool newPerson = false;         // az átsorolás új személyt hozott létre (E4)
     };
     Change m_change;
     int m_changeSerial = 0;
@@ -541,6 +660,24 @@ private:
     int m_playingRow = -1;
 
     QString m_pendingDemoState;
+
+    // ---- v3 ----
+    ReviewGroupsModel* m_review = nullptr;
+    QVector<ReviewView> m_reviewViews;
+    QSet<QString> m_skippedGroups;
+    int m_reviewCount = 0;
+    int m_reviewGroupCount = 0;
+    QVariantMap m_contaminated;
+    QSet<QString> m_sideConflicts;          // a sáv-ellentmondásos sorok azonosítói
+    QHash<QString, QString> m_speakerSides; // beszélő-kulcs → "local" | "remote" | "mixed" | "unknown"
+    QString m_newPersonKey;
+    QString m_newPersonGroupId;
+    QSet<int> m_similar;
+    bool m_similarShown = false;
+    bool m_similarAutoShown = false;
+    QVariantList m_similarMarks;
+    QString m_voiceprintWhenReady;          // „Hanglenyomat, ha elég" kérés erre a beszélőre
+    QTimer m_reviewTimer;
 };
 
 } // namespace tanara_qml

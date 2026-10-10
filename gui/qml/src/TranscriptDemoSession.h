@@ -12,10 +12,14 @@
 //   "many"     11 beszélő (összecsukott „+N" oszlop, „Egyéb (N)" sor)
 //   "long"     az első megszólalás nagyon hosszú monológ
 //   "novoice"  nincs hangmodell (nincs bizonytalanság / javaslat / kézi lenyomat)
+//   "v3"       a handoff-v3 nevei (Kovács Lilla, Fehér Gábor, Varga Árpád…): mikrofon- és
+//              hívás-sáv kitalált aktivitással, #Nordvik címke, Átnézendő csoportokra való sorok
 //   "none"     nincs átirat
 //
+#include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 
+#include <QHash>
 #include <QString>
 #include <QTemporaryDir>
 #include <QVector>
@@ -42,6 +46,14 @@ public:
     // Fehér Ádámhoz áttenni. Üres, ha a változatban nincs ilyen.
     QString suggestionSeedUtteranceId() const { return m_seedId; }
     QString suggestionTargetKey() const { return m_seedTarget; }
+    // A kitalált címke-azonosítók neve (a bizonyíték-chipekhez); ismeretlennél üres.
+    QString tagName(const QString& id) const { return m_tagNames.value(id); }
+    // A v3 demó-állapotok előkészítése a forgatókönyv ismeretében (megerősített magok, egy
+    // „egymásra beszéltek" sor, a szennyezett maghoz két idegen hangú megerősített sor, a
+    // „javítva" sor). Más változatban nem csinál semmit. Vissza: igaz, ha v3 a változat.
+    bool stageV3(const QString& state);
+    // A kitalált meeting sávjai (a „Melyik sávon beszél?" chipjeihez).
+    QVector<tanara::Track> tracks() const { return m_tracks; }
 
 private:
     QTemporaryDir m_dir;
@@ -51,6 +63,12 @@ private:
     std::unique_ptr<tanara::SpeakerEditor> m_editor;
     QString m_seedId;
     QString m_seedTarget;
+    QHash<QString, QString> m_tagNames;
+    QVector<tanara::Track> m_tracks;
+    bool m_v3 = false;
+    QVector<int> m_lineSpeaker;     // forgatókönyv-sor → beszélő (cast-index)
+    QVector<int> m_lineVoice;       // → kinek a hangja szól
+    QVector<qint64> m_lineDur;
 };
 
 } // namespace tanara_qml

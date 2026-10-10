@@ -69,7 +69,15 @@ void SpeakerRailCells::paint(QPainter* p)
         p->setOpacity(1.0);
     }
 
-    // 3) Húzás célja.
+    // 3) Javasolt cél-oszlop (az új személyhez hasonló sor).
+    const QRectF suggest = m_suggestLane >= 0 && m_suggestLane != m_ownLane ? cellRect(m_suggestLane) : QRectF();
+    if (suggest.isValid()) {
+        p->setPen(QPen(m_accent, 2.0));
+        p->setBrush(Qt::NoBrush);
+        p->drawRoundedRect(suggest.adjusted(1, 1, -1, -1), kRadius, kRadius);
+    }
+
+    // 4) Húzás célja.
     const QRectF target = m_targetLane >= 0 ? cellRect(m_targetLane) : QRectF();
     if (target.isValid() && m_targetLane != m_ownLane) {
         p->setPen(Qt::NoPen);
