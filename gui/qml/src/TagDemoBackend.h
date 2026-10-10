@@ -53,6 +53,20 @@ public:
     QString undoLabel() const override { return m_undo.isEmpty() ? QString() : m_undo.last().label; }
     void undo() override;
 
+    // Személyek (a design-csomagok kitalált nevei; a saját személy: Kovács Lilla).
+    QString selfName() const override { return QStringLiteral("Kovács Lilla"); }
+    QStringList tagsOfPerson(const QString& name) const override;
+    QString addPersonTag(const QString& name, const QString& nameOrId) override;
+    void removePersonTag(const QString& name, const QString& tagId) override;
+    void rejectPersonTag(const QString& name, const QString& tagId) override;
+    QStringList peopleWith(const QString& tagId) const override;
+    QVector<PersonTagItem> peopleStats(const QString& tagId) const override;
+    QVector<PersonTagItem> suggestTagsForPerson(const QString& name) const override;
+    int personMeetingCount(const QString& name) const override { return m_state.personTotal.value(name); }
+    bool personStatsBusy() const override { return m_statsBusy; }
+    // Képhez: a statisztika „még számol” állapota.
+    void setPersonStatsBusy(bool busy);
+
 private:
     struct State {
         QVector<TagItem> tags;
@@ -61,6 +75,10 @@ private:
         QHash<QString, TagSuggestionState> suggestions;
         QSet<QString> rejected;                     // "meetingId|tagId" vagy "meetingId|kulcs"
         QHash<QString, int> cooccur;                // "idA|idB" (idA < idB) → együtt
+        QHash<QString, QStringList> personTags;     // név → kézi tagId-k
+        QHash<QString, QHash<QString, int>> shared; // tagId → név → közös megbeszélések
+        QHash<QString, int> personTotal;            // név → megbeszélések
+        QSet<QString> personRejected;               // "név|tagId"
     };
     struct UndoStep { QString label; State before; };
 
@@ -70,6 +88,7 @@ private:
     QVector<QPair<QString, int>> cooccurring(const QString& tagId) const;
     void touch(const QString& fallbackLabel);
     void emitAll();
+    PersonTagItem personItem(const QString& name, const QString& tagId) const;
 
     State m_state;
     QVector<UndoStep> m_undo;
@@ -77,6 +96,7 @@ private:
     QString m_groupLabel;
     bool m_groupRecorded = false;
     int m_created = 0;
+    bool m_statsBusy = false;
 };
 
 } // namespace tanara_qml

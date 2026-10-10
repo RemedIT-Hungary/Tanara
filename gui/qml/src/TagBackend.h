@@ -75,6 +75,18 @@ struct TagProfileItem {
     QVector<TagMeetingItem> meetings;            // legújabb elöl
 };
 
+// Egy (személy, címke) pár számokkal (core: PersonTagStat) — a Személyek ablak javaslat-sora,
+// a Címkék ablak Személyek-listája és a személyválasztó rangsora.
+struct PersonTagItem {
+    QString name;               // a személy
+    QString tagId;
+    int shared = 0;             // közös megbeszélések c(p,t)
+    int tagTotal = 0;           // a címke megbeszélései |M(t)|
+    int personTotal = 0;        // a személy megbeszélései |M(p)|
+    bool manual = false;        // a címke kézzel rajta van a személyen
+    bool rejected = false;      // a (személy, címke) javaslat elutasítva
+};
+
 class TagBackend : public QObject {
     Q_OBJECT
 public:
@@ -114,11 +126,39 @@ public:
     virtual QString undoLabel() const = 0;
     virtual void undo() = 0;
 
+    // ---- személyek (kézi címkék + tanult kapcsolat); alapból nincs ilyen adat ----
+    // A saját személy neve (minden szabályból kimarad).
+    virtual QString selfName() const { return {}; }
+    virtual QStringList tagsOfPerson(const QString& name) const { Q_UNUSED(name); return {}; }
+    // Név vagy id; név esetén szükség szerint létrehozza. A címke id-je (üres: nem sikerült).
+    virtual QString addPersonTag(const QString& name, const QString& nameOrId)
+    {
+        Q_UNUSED(name); Q_UNUSED(nameOrId);
+        return {};
+    }
+    virtual void removePersonTag(const QString& name, const QString& tagId) { Q_UNUSED(name); Q_UNUSED(tagId); }
+    // Tartós (személy, címke) elutasítás (a javaslat eltűnik, a statisztika marad).
+    virtual void rejectPersonTag(const QString& name, const QString& tagId) { Q_UNUSED(name); Q_UNUSED(tagId); }
+    // Kézi címkéjükként viselik (név szerint, a saját személy nélkül).
+    virtual QStringList peopleWith(const QString& tagId) const { Q_UNUSED(tagId); return {}; }
+    // A címke személyei: kézi + tanult ≥ küszöb; kézi előbb, aztán a számláló szerint.
+    virtual QVector<PersonTagItem> peopleStats(const QString& tagId) const { Q_UNUSED(tagId); return {}; }
+    // „Ezeken szokott ott lenni” — mind (a nézet vágja); nincs rajta, nincs elutasítva.
+    virtual QVector<PersonTagItem> suggestTagsForPerson(const QString& name) const { Q_UNUSED(name); return {}; }
+    // A személy megbeszéléseinek száma a tanult statisztikában (|M(p)|).
+    virtual int personMeetingCount(const QString& name) const { Q_UNUSED(name); return 0; }
+    // A tanult statisztika épp számolódik (az első eredmény még nincs meg).
+    virtual bool personStatsBusy() const { return false; }
+
 signals:
     void tagsChanged();
     void meetingTagsChanged(const QString& meetingId);
     void suggestionsChanged(const QString& meetingId);
     void undoChanged();
+    // Egy személy kézi címkéi / elutasításai változtak (üres név: több is, vagy ismeretlen).
+    void personTagsChanged(const QString& name);
+    // A tanult kapcsolat statisztikája frissült (vagy elkezdett számolódni).
+    void personStatsChanged();
 };
 
 // A controllerre (tanara::AppController) épülő backend (TagControllerBackend). nullptr, ha a

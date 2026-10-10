@@ -57,6 +57,17 @@ public:
     QString undoLabel() const override;
     void undo() override;
 
+    QString selfName() const override;
+    QStringList tagsOfPerson(const QString& name) const override;
+    QString addPersonTag(const QString& name, const QString& nameOrId) override;
+    void removePersonTag(const QString& name, const QString& tagId) override;
+    void rejectPersonTag(const QString& name, const QString& tagId) override;
+    QStringList peopleWith(const QString& tagId) const override;
+    QVector<PersonTagItem> peopleStats(const QString& tagId) const override;
+    QVector<PersonTagItem> suggestTagsForPerson(const QString& name) const override;
+    int personMeetingCount(const QString& name) const override;
+    bool personStatsBusy() const override;
+
     // Vázlat (még nem létező megbeszélés, pl. átirat előtti lépés): cím alapján, szinkron.
     QVector<TagSuggestionItem> draftSuggestions(const QString& title) const override;
 
