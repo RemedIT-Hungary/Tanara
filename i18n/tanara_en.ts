@@ -2082,7 +2082,7 @@
     </message>
     <message>
         <source>A minták újraszámolása az új modellel…</source>
-        <translation type="unfinished"></translation>
+        <translation>Recalculating the samples with the new model…</translation>
     </message>
     <message>
         <source>A személy új neve</source>
@@ -2426,7 +2426,7 @@
     </message>
     <message>
         <source>Név keresése</source>
-        <translation type="unfinished"></translation>
+        <translation>Search name</translation>
     </message>
     <message>
         <source>„%1”</source>
@@ -2460,31 +2460,31 @@
     <name>PersonTagsSection</name>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished">Tags</translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Minden megbeszéléseden ott vagy, ezért a címkék rád nem adnak bizonyítékot.</source>
-        <translation type="unfinished"></translation>
+        <translation>You&apos;re in all of your meetings, so tags give no evidence about you.</translation>
     </message>
     <message>
         <source>Címke hozzáadása…</source>
-        <translation type="unfinished">Add tag…</translation>
+        <translation>Add tag…</translation>
     </message>
     <message>
         <source>Ezeken szokott ott lenni:</source>
-        <translation type="unfinished"></translation>
+        <translation>They are usually there at these:</translation>
     </message>
     <message>
         <source>A többi javaslat</source>
-        <translation type="unfinished"></translation>
+        <translation>Other suggestions</translation>
     </message>
     <message>
         <source>Mind</source>
-        <translation type="unfinished">All</translation>
+        <translation>All</translation>
     </message>
     <message>
         <source>Mindegyik javaslat felrakása</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply all suggestions</translation>
     </message>
 </context>
 <context>
@@ -3603,71 +3603,71 @@
     <name>SettingsSpeakersPage</name>
     <message>
         <source>Te</source>
-        <translation type="unfinished">You</translation>
+        <translation>You</translation>
     </message>
     <message>
         <source>Saját neved</source>
-        <translation type="unfinished">Your name</translation>
+        <translation>Your name</translation>
     </message>
     <message>
         <source>Így jelensz meg az átiratokban; a saját hanglenyomatod ehhez a névhez tartozik.</source>
-        <translation type="unfinished">This is how you appear in transcripts; your own voiceprint belongs to this name.</translation>
+        <translation>This is how you appear in transcripts; your own voiceprint belongs to this name.</translation>
     </message>
     <message>
         <source>Személyek kezelése</source>
-        <translation type="unfinished">Manage people</translation>
+        <translation>Manage people</translation>
     </message>
     <message>
         <source>Hangmodellek</source>
-        <translation type="unfinished"></translation>
+        <translation>Voice models</translation>
     </message>
     <message>
         <source>Ezekkel ismeri fel a Tanara, ki beszél. A modellek a gépeden futnak; a felvétel nem megy sehova.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tanara uses these to recognize who is speaking. The models run on your machine; the recording goes nowhere.</translation>
     </message>
     <message>
         <source>A hangelemzés ki van kapcsolva</source>
-        <translation type="unfinished"></translation>
+        <translation>Voice analysis is turned off</translation>
     </message>
     <message>
         <source>Nincs letöltött hangmodell. Az átirat így is szerkeszthető, de a beszélőket nem ismerem fel hangra, és hanglenyomat sem készül.</source>
-        <translation type="unfinished"></translation>
+        <translation>No voice model is downloaded. The transcript can still be edited, but speakers are not recognized by voice and no voiceprints are created.</translation>
     </message>
     <message>
         <source>CAM++ letöltése (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Download CAM++ (%1)</translation>
     </message>
     <message>
         <source>letöltés… %1</source>
-        <translation type="unfinished"></translation>
+        <translation>downloading… %1</translation>
     </message>
     <message>
         <source>Egy hangmodell sincs bekapcsolva, ezért a hangelemzés ki van kapcsolva.</source>
-        <translation type="unfinished"></translation>
+        <translation>No voice model is turned on, so voice analysis is turned off.</translation>
     </message>
     <message>
         <source>Nincs internetkapcsolat: a letöltés most nem indul. A már letöltött modellek működnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>No internet connection: the download will not start now. Models already downloaded still work.</translation>
     </message>
     <message>
         <source>Személyek</source>
-        <translation type="unfinished">People</translation>
+        <translation>People</translation>
     </message>
     <message>
         <source>Ezekhez a mintákhoz már nincs meg a felvétel, ezért csak a régi modellel számolnak. A Személyek ablakban újra felveheted őket.</source>
-        <translation type="unfinished"></translation>
+        <translation>The recordings for these samples are gone, so they only count with the old model. You can add them again in the People window.</translation>
     </message>
     <message>
         <source>Közben dolgozhatsz; a felismerés a régi mintákkal is működik.</source>
-        <translation type="unfinished"></translation>
+        <translation>You can keep working; recognition also works with the old samples.</translation>
     </message>
     <message>
         <source>Több bekapcsolt modell együtt dönt; a lassabb modellek lassítják az elemzést.</source>
-        <translation type="unfinished"></translation>
+        <translation>Several turned-on models decide together; slower models slow down the analysis.</translation>
     </message>
     <message>
         <source>Ajánlott: CAM++ és WeSpeaker együtt.</source>
-        <translation type="unfinished"></translation>
+        <translation>Recommended: CAM++ and WeSpeaker together.</translation>
     </message>
 </context>
 <context>
@@ -3732,71 +3732,71 @@
     <name>SettingsVoiceModelCard</name>
     <message>
         <source>ajánlott</source>
-        <translation type="unfinished"></translation>
+        <translation>recommended</translation>
     </message>
     <message>
         <source>letöltve</source>
-        <translation type="unfinished"></translation>
+        <translation>downloaded</translation>
     </message>
     <message>
         <source>a csomagban</source>
-        <translation type="unfinished"></translation>
+        <translation>bundled</translation>
     </message>
     <message>
         <source>letöltés… %1</source>
-        <translation type="unfinished"></translation>
+        <translation>downloading… %1</translation>
     </message>
     <message>
         <source>hiba</source>
-        <translation type="unfinished"></translation>
+        <translation>error</translation>
     </message>
     <message>
         <source>offline</source>
-        <translation type="unfinished"></translation>
+        <translation>offline</translation>
     </message>
     <message>
         <source>nincs letöltve</source>
-        <translation type="unfinished"></translation>
+        <translation>not downloaded</translation>
     </message>
     <message>
         <source>Bekapcsolva</source>
-        <translation type="unfinished">On</translation>
+        <translation>On</translation>
     </message>
     <message>
         <source>%1 bekapcsolása</source>
-        <translation type="unfinished"></translation>
+        <translation>Turn on %1</translation>
     </message>
     <message>
         <source>Előbb töltsd le a modellt</source>
-        <translation type="unfinished"></translation>
+        <translation>Download the model first</translation>
     </message>
     <message>
         <source>%1 bekapcsolva</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 turned on</translation>
     </message>
     <message>
         <source>Licenc: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>License: %1</translation>
     </message>
     <message>
         <source>forrás:</source>
-        <translation type="unfinished"></translation>
+        <translation>source:</translation>
     </message>
     <message>
         <source>Letöltés (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Download (%1)</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Újra</source>
-        <translation type="unfinished">Retry</translation>
+        <translation>Retry</translation>
     </message>
     <message>
         <source>Letöltés újrapróbálása</source>
-        <translation type="unfinished"></translation>
+        <translation>Retry download</translation>
     </message>
 </context>
 <context>
@@ -4018,7 +4018,7 @@
     </message>
     <message>
         <source>Beszélők</source>
-        <translation type="unfinished"></translation>
+        <translation>Speakers</translation>
     </message>
     <message>
         <source>Összefoglaló</source>
@@ -5271,39 +5271,39 @@
     <name>TagPeopleList</name>
     <message>
         <source>Személyek</source>
-        <translation type="unfinished">People</translation>
+        <translation>People</translation>
     </message>
     <message>
         <source>Személy</source>
-        <translation type="unfinished"></translation>
+        <translation>Person</translation>
     </message>
     <message>
         <source>Személy hozzáadása ehhez a címkéhez</source>
-        <translation type="unfinished"></translation>
+        <translation>Add a person to this tag</translation>
     </message>
     <message>
         <source>Megbeszélések számolása…</source>
-        <translation type="unfinished">Counting meetings…</translation>
+        <translation>Counting meetings…</translation>
     </message>
     <message>
         <source>címkéje</source>
-        <translation type="unfinished"></translation>
+        <translation>tags</translation>
     </message>
     <message>
         <source>Levétel: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Remove: %1</translation>
     </message>
     <message>
         <source>Ráteszem</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply</translation>
     </message>
     <message>
         <source>A címke rákerül: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag applied to: %1</translation>
     </message>
     <message>
         <source>Ráteszem: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply: %1</translation>
     </message>
 </context>
 <context>
@@ -5455,7 +5455,7 @@
     </message>
     <message>
         <source>A kifejezéseket és az együtt járást a rendszer a címke használatából tanulja; a javaslatok indoklása ebből jön. A személyeken a címkét te teheted fel vagy veheted le.</source>
-        <translation type="unfinished"></translation>
+        <translation>The system learns the terms and co-occurrence from how the tag is used; the reasons for suggestions come from that. On people, you add or remove the tag yourself.</translation>
     </message>
     <message>
         <source>Jellemző kifejezések</source>
@@ -5561,7 +5561,7 @@
     </message>
     <message>
         <source>Akin már rajta van a címke, nem szerepel a listában.</source>
-        <translation type="unfinished"></translation>
+        <translation>People who already have the tag are not in the list.</translation>
     </message>
     <message>
         <source>Mégse</source>
@@ -6368,27 +6368,27 @@
     <name>VoiceModelOnboardingRow</name>
     <message>
         <source>A hangmodell letöltve: a Tanara felismeri, ki beszél.</source>
-        <translation type="unfinished"></translation>
+        <translation>The voice model is downloaded: Tanara recognizes who is speaking.</translation>
     </message>
     <message>
         <source>Hangmodell a beszélők felismeréséhez</source>
-        <translation type="unfinished"></translation>
+        <translation>Voice model for recognizing speakers</translation>
     </message>
     <message>
         <source>Nélküle is minden működik, csak a beszélőket neked kell elnevezned. Licenc: Apache-2.0; később a Beállítások › Beszélők lapon is letöltheted.</source>
-        <translation type="unfinished"></translation>
+        <translation>Everything works without it, you just have to name the speakers yourself. License: Apache-2.0; you can also download it later under Settings › Speakers.</translation>
     </message>
     <message>
         <source>Hangmodell letöltése (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Download voice model (%1)</translation>
     </message>
     <message>
         <source>Nincs internetkapcsolat.</source>
-        <translation type="unfinished"></translation>
+        <translation>No internet connection.</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -9047,7 +9047,7 @@
     </message>
     <message>
         <source>címke: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>tag: #%1</translation>
     </message>
     <message>
         <source>Te</source>
@@ -9094,42 +9094,42 @@
     </message>
     <message>
         <source>%1/%2 modell</source>
-        <translation type="unfinished"></translation>
+        <translation>%1/%2 models</translation>
     </message>
     <message>
         <source>Megvan: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Present: %1</translation>
     </message>
     <message>
         <source>Hiányzik: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Missing: %1</translation>
     </message>
     <message>
         <source>A javaslathoz legalább két megbeszélés kell.</source>
-        <translation type="unfinished"></translation>
+        <translation>A suggestion needs at least two meetings.</translation>
     </message>
     <message>
         <source>%1 #%2 %3 megbeszéléséből %4 alkalommal ott volt.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 was there in %4 of the %3 meetings tagged #%2.</translation>
     </message>
     <message>
         <source>Címke hozzáadva: #%1</source>
-        <translation type="unfinished">Tag added: #%1</translation>
+        <translation>Tag added: #%1</translation>
     </message>
     <message>
         <source>Címke levéve: #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag removed: #%1</translation>
     </message>
     <message numerus="yes">
         <source>%n javasolt címke hozzáadva</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n suggested tag added</numerusform>
+            <numerusform>%n suggested tags added</numerusform>
         </translation>
     </message>
     <message>
         <source>Javaslat elutasítva: #%1</source>
-        <translation type="unfinished">Suggestion dismissed: #%1</translation>
+        <translation>Suggestion dismissed: #%1</translation>
     </message>
     <message numerus="yes">
         <source>Kézzel rendelted hozzá %n megbeszélés sorait, ezért eddig nem ismerjük fel magától. A biztos sorokból mintát vehetünk.</source>
@@ -9277,7 +9277,7 @@
     </message>
     <message>
         <source>A címkék összeadódnak (%1).</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags add up (%1).</translation>
     </message>
     <message>
         <source>Az összevonás nem vonható vissza.</source>
@@ -9344,7 +9344,7 @@
     </message>
     <message>
         <source>Visszavonva: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Undone: %1</translation>
     </message>
     <message>
         <source>A minta visszakerült.</source>
@@ -9371,18 +9371,18 @@
     <name>tanara_qml::PersonListModel</name>
     <message numerus="yes">
         <source>%n megbeszélés</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n meeting</numerusform>
             <numerusform>%n meetings</numerusform>
         </translation>
     </message>
     <message>
         <source>A #%1 alapján</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on #%1</translation>
     </message>
     <message>
         <source>A címkék alapján</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on tags</translation>
     </message>
 </context>
 <context>
@@ -10073,7 +10073,7 @@
     </message>
     <message>
         <source>Új hangmodell · mentéskor indul a minták pótlása</source>
-        <translation type="unfinished"></translation>
+        <translation>New voice model · samples are recalculated on save</translation>
     </message>
     <message numerus="yes">
         <source>%n nem mentett változás</source>
@@ -11347,15 +11347,15 @@
     <name>tanara_qml::TagDemoBackend</name>
     <message>
         <source>Címke a személyen</source>
-        <translation type="unfinished">Tag on a person</translation>
+        <translation>Tag on a person</translation>
     </message>
     <message>
         <source>Címke levétele a személyről</source>
-        <translation type="unfinished">Remove tag from a person</translation>
+        <translation>Remove tag from a person</translation>
     </message>
     <message>
         <source>Javaslat elutasítása</source>
-        <translation type="unfinished">Dismiss suggestion</translation>
+        <translation>Dismiss suggestion</translation>
     </message>
     <message>
         <source>Címke hozzáadva</source>
@@ -11410,22 +11410,22 @@
     </message>
     <message>
         <source>Még senki. Ha %1 #%2 megbeszéléseken elnevezed a beszélőket, itt megjelennek.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nobody yet. If you name the speakers in meetings tagged #%2, %1 will appear here.</translation>
     </message>
     <message>
         <source>%1 megbeszélés</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 meetings</translation>
     </message>
     <message numerus="yes">
         <source>%n személy</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n person</numerusform>
             <numerusform>%n people</numerusform>
         </translation>
     </message>
     <message>
         <source>először: %1 · utoljára: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>first: %1 · last: %2</translation>
     </message>
     <message>
         <source>%1 · legújabb elöl</source>
@@ -11461,9 +11461,9 @@
     </message>
     <message numerus="yes">
         <source>A címke %n személyen is egyesül.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>The tag is merged on %n person too.</numerusform>
+            <numerusform>The tag is merged on %n people too.</numerusform>
         </translation>
     </message>
     <message>
@@ -11480,30 +11480,30 @@
     </message>
     <message numerus="yes">
         <source>%1 megbeszélésről és %n személyről lekerül.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>It is removed from %1 meetings and %n person.</numerusform>
+            <numerusform>It is removed from %1 meetings and %n people.</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 megbeszélésről lekerül.</source>
-        <translation type="unfinished"></translation>
+        <translation>It is removed from %1 meetings.</translation>
     </message>
     <message>
         <source>Maguk a megbeszélések, átiratok és összefoglalók megmaradnak. A címke profilja és az együtt járási adatai törlődnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>The meetings, transcripts and summaries themselves remain. The tag&apos;s profile and co-occurrence data are deleted.</translation>
     </message>
     <message>
         <source>#%1 rákerült: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>#%1 applied: %2</translation>
     </message>
     <message>
         <source>#%1 levéve: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>#%1 removed: %2</translation>
     </message>
     <message>
         <source>Nem tartozik ide: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Doesn&apos;t belong here: %1</translation>
     </message>
     <message>
         <source>Címke törölve: #%1</source>
@@ -11961,68 +11961,68 @@
     <name>tanara_qml::VoiceModelListModel</name>
     <message>
         <source>Alap, a csomagban.</source>
-        <translation type="unfinished"></translation>
+        <translation>Basic, bundled.</translation>
     </message>
     <message>
         <source>Alap: ezzel indul a hangelemzés.</source>
-        <translation type="unfinished"></translation>
+        <translation>Basic: voice analysis starts with this.</translation>
     </message>
     <message>
         <source>Jobb elválasztás, ajánlott a CAM++ mellé.</source>
-        <translation type="unfinished"></translation>
+        <translation>Better separation, recommended alongside CAM++.</translation>
     </message>
     <message>
         <source>Rövid sorokra; magyar beszéden nem ajánlott.</source>
-        <translation type="unfinished"></translation>
+        <translation>For short lines; not recommended for Hungarian speech.</translation>
     </message>
     <message>
         <source>a szerzők megnevezésével</source>
-        <translation type="unfinished"></translation>
+        <translation>with attribution to the authors</translation>
     </message>
     <message>
         <source>%1 dim.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 dims</translation>
     </message>
     <message>
         <source>A letöltés megszakadt: a kapcsolat 12 MB után megszűnt. Semmi nem került a gépre.</source>
-        <translation type="unfinished"></translation>
+        <translation>The download was interrupted: the connection dropped after 12 MB. Nothing was saved to your machine.</translation>
     </message>
     <message>
         <source>A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.</source>
-        <translation type="unfinished"></translation>
+        <translation>The file size differs from expected (%2 instead of %1) — download it again.</translation>
     </message>
     <message>
         <source>A letöltött fájl mérete nem egyezik a várttal, ezért nem mentettem el.</source>
-        <translation type="unfinished"></translation>
+        <translation>The downloaded file&apos;s size does not match the expected one, so it was not saved.</translation>
     </message>
     <message>
         <source>Nem tudtam menteni a modellt a belső adatok mappájába.</source>
-        <translation type="unfinished"></translation>
+        <translation>Could not save the model to the internal data folder.</translation>
     </message>
     <message>
         <source>A letöltés nem sikerült: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>The download failed: %1</translation>
     </message>
     <message numerus="yes">
         <source>A meglévő %n minta újraszámolása az új modellel… (%1 / %2)</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Recalculating the existing %n sample with the new model… (%1 / %2)</numerusform>
+            <numerusform>Recalculating the existing %n samples with the new model… (%1 / %2)</numerusform>
         </translation>
     </message>
     <message>
         <source>A meglévő minták újraszámolása az új modellel… folyamatban</source>
-        <translation type="unfinished"></translation>
+        <translation>Recalculating the existing samples with the new model… in progress</translation>
     </message>
     <message>
         <source>Kész: a meglévő minták az új modellel is megvannak.</source>
-        <translation type="unfinished"></translation>
+        <translation>Done: the existing samples are now also available with the new model.</translation>
     </message>
     <message numerus="yes">
         <source>%n minta nem volt pótolható (hiányzó felvétel).</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n sample could not be recovered (missing recording).</numerusform>
+            <numerusform>%n samples could not be recovered (missing recording).</numerusform>
         </translation>
     </message>
 </context>
