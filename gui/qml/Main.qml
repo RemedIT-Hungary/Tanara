@@ -37,6 +37,9 @@ ApplicationWindow {
     // "overviewNobody" (V6) | "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
     property string demoState: ""
     readonly property bool demoOverview: demoState.startsWith("overview")
+    // "summarySources" (S1: 2. fül, forrás-chipek) | "memoSections" (S2: 3. fül) — a bekötött
+    // eszköz-sor és a dokk Forrás/Szakaszok sorának képernyőképéhez.
+    readonly property bool demoSummary: demoState === "summarySources" || demoState === "memoSections"
 
     // ---- állapot ----
     readonly property string computedState: sidebar.library.totalCount === 0 ? "empty"
@@ -200,7 +203,7 @@ ApplicationWindow {
     Binding {
         when: App.demo && window.demoState !== ""
         target: header; property: "hasSummary"
-        value: window.demoState === "overviewDone"
+        value: window.demoState === "overviewDone" || window.demoSummary
     }
     Binding {
         when: App.demo && window.demoState !== ""
@@ -250,6 +253,10 @@ ApplicationWindow {
                 shellActions.currentMeetingId = "demo-partner"
             if (demoState === "readingMap" || demoState === "tabTooltip")
                 Qt.callLater(() => shellActions.showTab(1))
+            if (demoState === "summarySources")
+                Qt.callLater(() => shellActions.showTab(2))
+            if (demoState === "memoSections")
+                Qt.callLater(() => shellActions.showTab(3))
             if (demoSearch !== "")
                 sidebar.searchText = demoSearch
             // A felugrók a kijelölés lefutása után nyílnak (a fül-visszaállítás utáni körben).
@@ -726,6 +733,8 @@ ApplicationWindow {
                                 meetingId: window.contentMeetingId
                                 player: playerController
                                 shell: shellActions
+                                demoState: window.demoState === "summarySources" ? "sourcesOn"
+                                         : window.demoState === "memoSections" ? "memoSections" : ""
                                 // A héj eszköz-sora és térkép-dokkja veszi át (U1 ↔ U4 bekötés).
                                 embedToolsRow: false
                                 embedMapRows: false
