@@ -329,8 +329,9 @@ Scenario v3Scenario()
         // Lilla nevén, de Gábor hangja a hívásról: „bizonytalan · sáv".
         {ts(0, 13), 7400, 0, 1,
          QStringLiteral("Igen, ezt mi is láttuk a partnerportálon, főleg a Nordvik-ügyfeleknél, ott a jegyek fele számlázási volt.")},
-        // Eszter nevén, Árpád hangja: a „markers" állapot kézzel átteszi (javítva).
-        {ts(0, 22), 6600, 3, 2,
+        // Árpád nevén, Eszter hangja: a „markers" állapot kézzel átteszi (javítva). (Árpád nyers
+        // címkéje így Eszteré előtt jelenik meg: a színek sorrendje a handoffé.)
+        {ts(0, 22), 6600, 2, 3,
          QStringLiteral("A mi oldalunkon ez a negyedik negyedév elejére kellene, különben a megújításnál újra elő fog jönni.")},
         {ts(0, 30), 5200, 1, -1,
          QStringLiteral("Ezt a részt én vállalom, de kellene hozzá két hét a dokumentációs csapattól.")},
@@ -501,9 +502,9 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         const auto activity = std::make_shared<const MeetingActivity>(demoActivity(sc));
         m_editor->setActivityProvider([activity](const Meeting&) { return *activity; });
         m_editor->setPersonTagsProvider([](const QString& person) {
-            if (person == QLatin1String("Fehér Gábor") || person == QLatin1String("Varga Árpád"))
+            if (person == QStringLiteral("Fehér Gábor") || person == QStringLiteral("Varga Árpád"))
                 return QStringList{QStringLiteral("nordvik")};
-            if (person == QLatin1String("Molnár Eszter")) return QStringList{QStringLiteral("piac")};
+            if (person == QStringLiteral("Molnár Eszter")) return QStringList{QStringLiteral("piac")};
             return QStringList();
         });
         m_tagNames.insert(QStringLiteral("piac"), QStringLiteral("Piackutatás"));
@@ -556,8 +557,8 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     }
     m_editor->confirmUtterances(confirm);
     m_editor->setUtterancesNoisy({id(4)}, true);
-    // „javítva": Eszter nevén Árpád hangja → kézzel Árpádhoz.
-    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, QStringLiteral("Beszélő 3"));
+    // „javítva": Árpád nevén Eszter hangja → kézzel Eszterhez.
+    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, QStringLiteral("Beszélő 4"));
     return true;
 }
 

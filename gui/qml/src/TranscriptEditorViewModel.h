@@ -157,13 +157,15 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(QString newPersonKey READ newPersonKey NOTIFY reviewChanged)
     // A változás-sáv „új személy" sorai (E4): igaz, ha a legutóbbi átsorolás új személyt hozott létre.
     Q_PROPERTY(bool changeNewPerson READ changeNewPerson NOTIFY changeChanged)
-    // „Még N sor hangja hasonlít…": { groupId, count, name, detail } — üres, ha nincs hasonló sor.
+    // „Még N sor hangja hasonlít…": { groupId, count, name, lines (az új személy sorai), detail } —
+    // üres, ha nincs hasonló sor.
     Q_PROPERTY(QVariantMap newPersonSimilar READ newPersonSimilar NOTIFY reviewChanged)
     // Lenyomat-készültség az új személynél: { text, ready, pending } — üres, ha nem értelmes.
     Q_PROPERTY(QVariantMap newPersonReadiness READ newPersonReadiness NOTIFY reviewChanged)
     // Az új személyhez hasonló sorok kiemelése (sín: 2 px accent keret, térkép: accent jel).
     Q_PROPERTY(bool similarShown READ similarShown WRITE setSimilarShown NOTIFY reviewChanged)
-    // A kiemelt hasonló sorok a térképnek: [x, w, x, w, …] (0..1, az idővonalon).
+    // A kiemelt hasonló sorok a térképnek: [x, w, x, w, …] (0..1, az idővonalon). Ugyanezek az
+    // `overview` sorainak `marks` listájában is benne vannak (a térkép-dokk accent jelei).
     Q_PROPERTY(QVariantList similarMarks READ similarMarks NOTIFY reviewChanged)
 
 public:
@@ -504,6 +506,8 @@ public:
     // átnézés ajánlata a sávon).
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
+    // Vár-e még egy demó-állapot a hang-elemzés végére.
+    Q_INVOKABLE bool demoStatePending() const { return !m_pendingDemoState.isEmpty(); }
 
 signals:
     void meetingIdChanged();

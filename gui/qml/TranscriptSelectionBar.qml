@@ -1,7 +1,7 @@
 import QtQuick
 
 // A kijelölés sötét alsó sávja: „3 sor kijelölve · Áthelyezés:" + beszélő-chipek a
-// billentyűjükkel (1, 2 …), „Új résztvevő…", „Mégse". Fordított színekkel (text háttér).
+// billentyűjükkel (1, 2 …), „Új személy…" (utána: hozzá hasonló sorok), „Mégse". Fordított színekkel (text háttér).
 Rectangle {
     id: root
 
@@ -108,7 +108,7 @@ Rectangle {
                     TIcon { anchors.verticalCenter: parent.verticalCenter; name: "plus"; size: 13; color: Theme.bg }
                     TLabel {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Új résztvevő…")
+                        text: qsTr("Új személy…")
                         color: Theme.bg
                         font.pixelSize: Theme.fontSmall
                     }

@@ -9,9 +9,14 @@ import QtQuick.Templates as T
 // A javítás hatóköre (a tulajdonossal egyeztetve, a tervezői spectől szándékosan eltérve):
 //  - egy sor NEVÉRE kattintva (vagy „Más mondta…") alapból CSAK AZ A SOR kerül át (több soros
 //    kijelölés részeként: a kijelölt sorok); a teljes beszélő ott kifejezett választás;
-//  - a TELJES beszélő a beszélő-szintű helyekről javítható: sáv-fejléc avatar, áttekintő név;
-//  - hanglenyomat CSAK kifejezett műveletre készül, három helyről: az áttekintő ujjlenyomat-jele
-//    (saját panel), a „Ki mondta?" panel teljes-beszélő hatóköre, és — egy teljes beszélő
+//  - a TELJES beszélő a beszélő-szintű helyekről javítható: sín-fejléc avatar, térkép-dokk név,
+//    a sor-panel „Miért ő?" linkje → „Miért ő?" panel (SpeakerWhyPopover, handoff-v3 E3);
+//  - a sor-panel (LinePopover, E1): jelöltek bizonyítékkal, „Miért nem X?" + a javítás helye;
+//  - Javítás módban az „Átnézendő" chip a csoport-nézetet kapcsolja (ReviewGroupsView, E2): a
+//    kétes sorok okok szerint, csoportonként egy döntés / egy visszavonási lépés;
+//  - új személy után a hozzá hasonló sorok a sínen (accent keret) és a térképen (E4);
+//  - hanglenyomat CSAK kifejezett műveletre készül: a térkép ujjlenyomat-jele (saját panel), a
+//    „Miért ő?" Minták-linkje, a sor-panel teljes-beszélő hatóköre, és — egy teljes beszélő
 //    elnevezése után, ha a személynek még nincs — az értesítő sáv „Hanglenyomat készítése" gombja;
 //  - minden átsorolás után alul értesítő sáv: mi történt + Visszavonás / „Hasonló N sor is" /
 //    „<Forrás> mind a N sora";
@@ -26,7 +31,10 @@ import QtQuick.Templates as T
 //                "expanded" | "changeLine" | "changeSelection" | "changeSpeaker" |
 //                "changeFilter" | "mergeConfirm" | "changeVoiceprint" | "changeVoiceprintDone" |
 //                "voiceprintHas" | "voiceprintNone" | "voiceprintDone" | "voiceprintShort" |
-//                "changePairOffer" | "speakerPopoverPair"
+//                "changePairOffer" | "speakerPopoverPair" |
+//                v3 Javítás mód (a „v3" kitalált meetingen, ha demoVariant üres):
+//                "markers" | "fixLinePopover" | "reviewGroups" | "reviewExpanded" |
+//                "contaminatedCore" | "speakerWhy" | "newPersonSimilar"
 Item {
     id: root
 
@@ -46,6 +54,29 @@ Item {
     onFixModeChanged: if (editorVm.hasTranscript && editorVm.railVisible !== fixMode) editorVm.railVisible = fixMode
     // „Ki volt ott?” (eszköz-sor) — a héj nyitja a résztvevő-párbeszédet.
     signal participantsRequested()
+
+    // ---- v3 Javítás mód (a térkép-dokk és az eszköz-sor ezeket olvassa) ----
+    readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
+                                         "contaminatedCore", "speakerWhy", "newPersonSimilar"]
+    readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
+    // Az Átnézendő csoport-nézet látszik (az „Átnézendő" chip = editorVm.uncertainOnly).
+    readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
+    // Az új személyhez hasonló sorok a térképnek: [x, w, …] (0..1); ugyanezek az
+    // editorVm.overview `marks` listáiban is (a MapDock accent jelei).
+    readonly property var similarMarks: editorVm.similarMarks
+    // Az imént felvett személy oszlopa a sínen (-1 = nincs / összecsukva).
+    readonly property int newPersonLane: {
+        const key = editorVm.newPersonKey
+        if (key === "") return -1
+        const lanes = editorVm.lanes
+        for (let i = 0; i < lanes.length; ++i) if (lanes[i].key === key) return i
+        return -1
+    }
+    // A sín-fejléc mellett: mit csinál itt a kattintás / mi a kiemelés.
+    readonly property string railNote: reviewShown ? qsTr("Átnézendő: csak a kétes sorok, okok szerint")
+        : editorVm.newPersonKey !== "" && editorVm.similarShown && newPersonLane >= 0
+          ? qsTr("új oszlop: %1 · kék keret: hozzá hasonló sorok").arg(editorVm.lanes[newPersonLane].name)
+        : qsTr("másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · húzás").arg(Math.min(9, laneCount))
 
     // ---- a sorok (TranscriptRow) ezt olvassák ----
     readonly property bool railShown: editorVm.railVisible && editorVm.hasTranscript
@@ -92,6 +123,11 @@ Item {
     }
     // „Következő bizonytalan": a kijelölt (különben az első látható) sortól lép tovább.
     function nextUncertain(direction) {
+        if (root.reviewShown) {
+            root.forceActiveFocus()
+            if (!reviewView.step(direction) && root.shell) root.shell.toast(qsTr("Nincs átnézendő sor."))
+            return
+        }
         let from = editorVm.currentRow
         if (from < 0) from = list.indexAt(list.width / 2, list.contentY + 1) - (direction < 0 ? 0 : 1)
         root.forceActiveFocus()
@@ -169,15 +205,22 @@ Item {
         return Math.round(Math.max(0, anchorItem.mapToItem(root, 0, 0).y - popupHeight - 6))
     }
     // A TELJES beszélő panelje (sáv-fejléc avatar, térkép-dokk név).
-    function openSpeakerPopover(speakerKey, anchorItem) {
+    function openSpeakerPopover(speakerKey, anchorItem, focusTracks) {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
-        speakerPopover.speakerKey = speakerKey
-        speakerPopover.utteranceId = ""
-        speakerPopover.selectionCount = 0
-        speakerPopover.x = Math.round(p.x - 7)
-        speakerPopover.y = root.popoverY(anchorItem, speakerPopover.implicitHeight)
+        speakerWhy.speakerKey = speakerKey
+        speakerWhy.focusTracks = focusTracks === true
+        speakerWhy.x = Math.round(Math.max(8, Math.min(p.x - 7, root.width - speakerWhy.width - 8)))
+        speakerWhy.y = root.popoverY(anchorItem, speakerWhy.implicitHeight)
         speakerPopoverRow = -1
-        speakerPopover.open()
+        speakerWhy.open()
+    }
+    // „Miért ő?" a sor-panelről (a panel helyén nyílik).
+    function openSpeakerWhyAt(speakerKey, x, y, focusTracks) {
+        speakerWhy.speakerKey = speakerKey
+        speakerWhy.focusTracks = focusTracks === true
+        speakerWhy.x = Math.round(Math.max(8, Math.min(x, root.width - speakerWhy.width - 8)))
+        speakerWhy.y = Math.round(Math.max(0, y))
+        speakerWhy.open()
     }
     // A hanglenyomat saját panelje (az áttekintő ujjlenyomat-jeléről).
     function openVoiceprintPopover(speakerKey, anchorItem) {
@@ -194,17 +237,62 @@ Item {
         if (line.utteranceId === undefined) return
         const p = px === undefined ? anchorItem.mapToItem(root, 0, anchorItem.height)
                                    : anchorItem.mapToItem(root, px, py)
-        speakerPopover.speakerKey = line.speakerKey
-        speakerPopover.utteranceId = line.utteranceId
-        speakerPopover.lineTime = line.timeLabel
-        speakerPopover.lineStartMs = line.startMs
-        speakerPopover.lineEndMs = line.endMs
-        speakerPopover.selectionCount = editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
-                                        ? editorVm.selectedCount : 0
-        speakerPopover.x = Math.round(p.x - 7)
-        speakerPopover.y = Math.round(p.y + 6)
+        linePopover.selectionCount = editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
+                                     ? editorVm.selectedCount : 0
+        showLinePopover(line, p.x - 7, p.y + 6)
         speakerPopoverRow = row
-        speakerPopover.open()
+    }
+    // Egy sor panelje a sor-azonosítóval (az Átnézendő nézet „Más…" gombjáról).
+    function openLinePopoverFor(utteranceId, anchorItem) {
+        const line = editorVm.lineInfo(utteranceId)
+        if (line.utteranceId === undefined) return
+        const p = anchorItem.mapToItem(root, 0, anchorItem.height)
+        linePopover.selectionCount = 0
+        showLinePopover(line, p.x - 7, p.y + 6)
+        speakerPopoverRow = -1
+    }
+    function showLinePopover(line, x, y) {
+        linePopover.speakerKey = line.speakerKey
+        linePopover.utteranceId = line.utteranceId
+        linePopover.lineTime = line.timeLabel
+        linePopover.lineStartMs = line.startMs
+        linePopover.lineEndMs = line.endMs
+        linePopover.x = Math.round(Math.max(8, Math.min(x, root.width - linePopover.width - 8)))
+        linePopover.y = Math.round(Math.max(0, Math.min(y, root.height - linePopover.implicitHeight - 8)))
+        linePopover.open()
+    }
+    // Egy panelről nyitott másik panel csak az első BEZÁRULTA után nyílik (különben a bezáródó
+    // panel visszaadná a fókuszt a szerkesztőnek, és az új panel billentyűi nem élnének).
+    property var afterPopupClose: null
+    function runAfterPopupClose() {
+        if (!afterPopupClose) return false
+        const f = afterPopupClose
+        afterPopupClose = null
+        f()
+        return true
+    }
+    function openVoiceprintFor(key) {
+        const mark = toolbar.voiceprintMark(key)
+        if (mark) root.openVoiceprintPopover(key, mark)
+    }
+    // „Ő nem volt ott": a beszélő sorai névtelenek lesznek, és a „Ki volt ott?" jelölése is
+    // törlődik (ParticipantsViewModel.unbind). Ha nincs hozzá résztvevő (vagy demó), a beszélő
+    // egyszerűen névtelenné válik — mindkét út egy visszavonási lépés.
+    function markNotPresent(speakerKey, fixVoiceprints) {
+        const person = editorVm.personOf(speakerKey)
+        let participantId = ""
+        if (person !== "" && !editorVm.demo) {
+            participantsVm.reload()
+            const groups = participantsVm.groups
+            for (let g = 0; g < groups.length && participantId === ""; ++g)
+                for (let r = 0; r < groups[g].rows.length; ++r)
+                    if ((groups[g].rows[r].name || "").toLowerCase() === person.toLowerCase()) {
+                        participantId = groups[g].rows[r].id
+                        break
+                    }
+        }
+        if (fixVoiceprints || participantId === "") editorVm.revertSpeakerToAnonymous(speakerKey, fixVoiceprints)
+        if (participantId !== "") participantsVm.unbind(participantId)
     }
     // Két beszélő összevonása előtt megerősítés, számokkal. request: { kind: "merge" |
     // "reassign" | "rest", fromKey, intoKey, personName, fix }. Üres forrásnál nincs mit kérdezni.
@@ -244,7 +332,8 @@ Item {
     TranscriptEditorViewModel {
         id: editorVm
         meetingId: root.meetingId
-        demoVariant: root.demoVariant
+        // A v3 demó-állapotok a handoff neveivel épített „v3" kitalált meetingen futnak.
+        demoVariant: root.demoVariant !== "" ? root.demoVariant : root.v3Demo ? "v3" : ""
         highlightColor: Theme.warnSoft
         highlightCurrentColor: Theme.warnLine
         timelineMs: (root.player && root.player.durationMs) || 0
@@ -260,7 +349,8 @@ Item {
             root.fixMode = editorVm.railVisible
             root.lastPlayingRow = -1
             root.speakerPopoverRow = -1
-            speakerPopover.close()
+            linePopover.close()
+            speakerWhy.close()
             voiceprintPopover.close()
             picker.close()
             mergeDialog.close()
@@ -321,8 +411,15 @@ Item {
         } else if (ctrlOnly && event.key === Qt.Key_A) {
             editorVm.selectAll()
             event.accepted = true
+        } else if (plain && event.key === Qt.Key_B && root.reviewShown) {
+            root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+            event.accepted = true
         } else if (plain && event.key === Qt.Key_B && editorVm.uncertainCount > 0) {
             root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+            event.accepted = true
+        } else if (plain && event.key === Qt.Key_1 && root.reviewShown && reviewView.currentUtterance !== "") {
+            // Az Átnézendő nézet kiválasztott sora a javasolt beszélőhöz („X mondta").
+            reviewView.acceptCurrent()
             event.accepted = true
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
             const row = editorVm.stepSelection(event.key === Qt.Key_Down ? 1 : -1)
@@ -460,6 +557,18 @@ Item {
             clip: true
             color: Theme.surface
 
+            TLabel {
+                objectName: "railNote"
+                visible: root.railShown
+                x: root.textX + 12
+                width: Math.max(0, parent.width - x - 20)
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -4
+                text: root.railNote
+                elide: Text.ElideRight
+                muted: true
+                font.pixelSize: Theme.fontCaption
+            }
             SpeakerRailHeader {
                 id: railHeader
                 visible: root.railShown
@@ -487,6 +596,7 @@ Item {
                 id: list
                 objectName: "transcriptList"
                 anchors.fill: parent
+                visible: !root.reviewShown
                 model: editorVm.rows
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
@@ -652,29 +762,17 @@ Item {
                 }
             }
 
-            // Üres szűrő (innen is kérhető az újraellenőrzés).
-            Column {
-                visible: editorVm.uncertainOnly && editorVm.uncertainCount === 0
-                anchors.centerIn: parent
-                spacing: Theme.space3
-                TLabel {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Nincs bizonytalan sor — minden megszólalás beszélője rendben van.")
-                    muted: true
-                }
-                TButton {
-                    objectName: "emptyFilterRecheck"
-                    visible: editorVm.voiceAvailable && !editorVm.embeddingRunning
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    size: "small"
-                    variant: "ghost"
-                    iconName: "refresh-cw"
-                    text: qsTr("Beszélők újraellenőrzése…")
-                    toolTipText: editorVm.canRecheck
-                                 ? qsTr("A megerősített és javított sorok hangjához mérem a többi sort")
-                                 : editorVm.recheckBlocker
-                    onClicked: root.recheckSpeakers()
-                }
+            // Átnézendő (E2): a kétes sorok csoportjai; a lista helyén.
+            ReviewGroupsView {
+                id: reviewView
+                objectName: "reviewView"
+                anchors.fill: parent
+                visible: root.reviewShown
+                vm: editorVm
+                tab: root
+                onSplitRequested: key => editorVm.splitSpeaker(key)
+                onSpeakerWhyRequested: (key, anchor) => root.openSpeakerPopover(key, anchor)
+                onLineFixRequested: (id, anchor) => root.openLinePopoverFor(id, anchor)
             }
         }
 
@@ -690,6 +788,7 @@ Item {
             vm: editorVm
             onRestRequested: root.requestMerge({ kind: "rest", fromKey: editorVm.changeSourceKey,
                                                  intoKey: editorVm.changeTargetKey })
+            onVoiceprintPanelRequested: key => root.openVoiceprintFor(key)
         }
 
         TranscriptSelectionBar {
@@ -709,29 +808,85 @@ Item {
         id: picker
         objectName: "personPicker"
         editor: editorVm
-        anonymousText: root.pickerTarget === "participant" ? qsTr("Névtelen résztvevő") : qsTr("Új névtelen résztvevő")
+        anonymousText: root.pickerTarget === "participant" ? qsTr("Névtelen résztvevő")
+                     : root.pickerTarget === "speaker" ? qsTr("Névtelen beszélő") : qsTr("Új névtelen résztvevő")
+        // „Új személy…" a „Miért ő?" panelről: a teljes beszélő a választott névhez kerül.
+        property string speakerKey: ""
+        property bool fixVoiceprints: false
         onPersonChosen: name => {
-            if (root.pickerTarget === "participant") editorVm.addParticipant(name)
-            else editorVm.moveSelectionToPerson(name)
+            if (root.pickerTarget === "participant") {
+                editorVm.addParticipant(name)
+            } else if (root.pickerTarget === "speaker") {
+                const existing = editorVm.speakerKeyForPerson(name)
+                if (existing !== "" && existing !== picker.speakerKey)
+                    root.requestMerge({ kind: "reassign", fromKey: picker.speakerKey, intoKey: existing,
+                                        personName: name, fix: picker.fixVoiceprints })
+                else
+                    editorVm.reassignSpeaker(picker.speakerKey, name, picker.fixVoiceprints)
+            } else {
+                editorVm.moveSelectionToPerson(name)
+            }
         }
         onAnonymousChosen: {
             if (root.pickerTarget === "participant") editorVm.addParticipant("")
+            else if (root.pickerTarget === "speaker") editorVm.revertSpeakerToAnonymous(picker.speakerKey, picker.fixVoiceprints)
             else editorVm.moveSelectionToNewParticipant()
         }
         onClosed: root.forceActiveFocus()
     }
 
-    SpeakerPopover {
-        id: speakerPopover
-        objectName: "speakerPopover"
+    // „Kinek a sora ez?" (E1): egy sor / a kijelölés / (kifejezett választásra) a teljes beszélő.
+    LinePopover {
+        id: linePopover
+        objectName: "linePopover"
         editor: editorVm
         canListen: root.canPlay
         onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
         onMergeRequested: request => root.requestMerge(request)
+        onSpeakerWhyRequested: (key, tracks) => {
+            const x = linePopover.x, y = linePopover.y
+            root.afterPopupClose = () => root.openSpeakerWhyAt(key, x, y, tracks)
+        }
+        onVoiceprintRequested: key => root.afterPopupClose = () => root.openVoiceprintFor(key)
         onClosed: {
             root.speakerPopoverRow = -1
+            if (root.runAfterPopupClose()) return
             if (!mergeDialog.visible) root.forceActiveFocus()
         }
+    }
+
+    // „Miért ő?" (E3): a teljes beszélő — bizonyíték, sáv-beosztás, jelöltek, „Ő nem volt ott".
+    SpeakerWhyPopover {
+        id: speakerWhy
+        objectName: "speakerWhyPopover"
+        editor: editorVm
+        canListen: root.canPlay
+        onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
+        onMergeRequested: request => root.requestMerge(request)
+        onVoiceprintRequested: key => root.afterPopupClose = () => root.openVoiceprintFor(key)
+        onPeopleRequested: person => { if (root.shell && root.shell.openPeople) root.shell.openPeople(person) }
+        onNewPersonRequested: (key, fix) => {
+            const x = speakerWhy.x, y = speakerWhy.y
+            root.afterPopupClose = () => {
+                picker.speakerKey = key
+                picker.fixVoiceprints = fix
+                root.pickerTarget = "speaker"
+                picker.x = Math.round(Math.max(8, Math.min(x, root.width - picker.width - 8)))
+                picker.y = Math.round(Math.max(0, y))
+                picker.open()
+            }
+        }
+        onNotPresentRequested: (key, fix) => root.markNotPresent(key, fix)
+        onClosed: {
+            if (root.runAfterPopupClose()) return
+            if (!mergeDialog.visible) root.forceActiveFocus()
+        }
+    }
+
+    // „Ő nem volt ott": a „Ki volt ott?" jelölés is frissül (a résztvevő kötése megszűnik).
+    ParticipantsViewModel {
+        id: participantsVm
+        meetingId: root.meetingId
     }
 
     // A hanglenyomat panelje: állapot, használható anyag, készítés (és a most készült
@@ -863,6 +1018,7 @@ Item {
         id: demoTimer
         interval: 120
         property int tries: 0
+        property int settled: 0
         // A hanglenyomat-panel demó-beszélője: az első, amelyik az állapotnak megfelel.
         function voiceprintDemoKey(s) {
             const list = editorVm.speakers
@@ -896,14 +1052,22 @@ Item {
                 }
                 root.openVoiceprintPopover(key, mark)
                 if (s === "voiceprintDone") voiceprintPanel.create()
+            } else if (root.v3Demo) {
+                // A v3 állapotok a hang-elemzés és a háttér-elemzés (csoportok) végén állnak elő.
+                if (editorVm.demoStatePending() || editorVm.embeddingRunning || editorVm.reviewRunning
+                        || ++settled < 3 || (s === "newPersonSimilar" && !editorVm.newPersonSimilar.count)) {
+                    if (++tries < 150) demoTimer.start()
+                    return
+                }
+                root.applyV3DemoView(s)
             } else if (s === "speakerPopover" || s === "speakerPopoverPair") {
                 // A teljes beszélő: a sáv-fejléc első avatarjáról (Pair: a pár-választó nyitva).
                 if (root.laneCount > 0) root.openSpeakerPopover(editorVm.lanes[0].key, railHeader)
-                if (s === "speakerPopoverPair") speakerPopover.pairPicking = true
+                if (s === "speakerPopoverPair") speakerWhy.pairPicking = true
             } else if (s === "linePopover" || s === "lineToSpeakerPopover") {
                 const item = list.itemAtIndex(0)
                 if (item) root.openLinePopover(0, item.nameItem)
-                if (s === "lineToSpeakerPopover") speakerPopover.setScope("speaker")
+                if (s === "lineToSpeakerPopover") linePopover.setScope("speaker")
             } else if (s === "selectionPopover") {
                 editorVm.selectRows(2, 4)
                 const item = list.itemAtIndex(2)
@@ -925,10 +1089,48 @@ Item {
             }
         }
     }
+    // A v3 demó-állapotok nézet-része (a VM előkészítése után): panel, kinyitott csoport.
+    function applyV3DemoView(s) {
+        const keyOf = name => {
+            const lanes = editorVm.lanes
+            for (let i = 0; i < lanes.length; ++i) if (lanes[i].name === name) return i
+            return -1
+        }
+        if (s === "markers" || s === "fixLinePopover") {
+            list.positionViewAtBeginning()
+            if (s === "fixLinePopover") {
+                const item = list.itemAtIndex(2)
+                if (item) root.openLinePopover(2, item.nameItem)
+            }
+        } else if (s === "reviewGroups") {
+            reviewView.list.positionViewAtBeginning()
+        } else if (s === "reviewExpanded") {
+            const groupId = editorVm.reviewGroups.groupAt(0)
+            if (groupId !== "") editorVm.reviewGroups.setExpanded(groupId, true)
+            reviewView.step(1)
+            reviewView.list.positionViewAtBeginning()
+        } else if (s === "speakerWhy") {
+            list.positionViewAtBeginning()
+            const lane = Math.max(0, keyOf("Fehér Gábor"))
+            root.openSpeakerPopover(editorVm.lanes[lane].key, railHeader)
+            speakerWhy.x = Math.round(root.railX + 4 + lane * Theme.laneWidth - 7)
+        } else if (s === "contaminatedCore") {
+            reviewView.list.positionViewAtBeginning()
+            const key = editorVm.contaminated.speakerKey || ""
+            if (key !== "") root.openSpeakerWhyAt(key, root.width - speakerWhy.width - 20, headRow.y + headRow.height + 58)
+        }
+    }
+
     Component.onCompleted: {
         Qt.callLater(root.updateViewport)
         const s = demoState
         if (s === "") return
+        if (root.v3Demo) {
+            root.fixMode = true
+            editorVm.applyDemoState(s)
+            demoTimer.start()
+            return
+        }
         if (s === "playing") {
             editorVm.setPlaybackPosition(77000, true)
         } else if (s === "expanded") {

@@ -565,7 +565,9 @@ void TranscriptEditorViewModel::rebuildOverview()
             s << x << w;
         }
         lastEnd[row] = i;
-        if (m_suggestionShown && m_suggested.contains(i)) marks[row] << x << w;
+        // A kiemelt sorok accent jele: a „hasonló sorok" javaslat és az új személyhez hasonló sorok.
+        if ((m_suggestionShown && m_suggested.contains(i)) || (m_similarShown && m_similar.contains(i)))
+            marks[row] << x << w;
     }
 
     m_overview.clear();
@@ -2009,7 +2011,21 @@ QVariantList TranscriptEditorViewModel::whyNot(const QString& utteranceId) const
 QVariantList TranscriptEditorViewModel::speakerEvidence(const QString& speakerKey) const
 {
     if (!m_editor) return {};
-    return evidenceList(m_editor->speakerEvidence(speakerKey), speakerSideName(speakerKey), false, /*chipsOnly*/ true);
+    QVariantList out = evidenceList(m_editor->speakerEvidence(speakerKey), speakerSideName(speakerKey), false,
+                                    /*chipsOnly*/ true);
+    // A szennyezett mag (E2 „Miért?"): a megerősített sorai két hangra esnek → Szétválasztás.
+    if (m_contaminated.value(QStringLiteral("speakerKey")).toString() == speakerKey) {
+        out.prepend(QVariantMap{
+            {QStringLiteral("kind"), QStringLiteral("similarity")},
+            {QStringLiteral("polarity"), QStringLiteral("contradict")},
+            {QStringLiteral("label"), tr("Figyelem:")},
+            {QStringLiteral("sentence"), tr("a megerősített sorai két különböző hangra esnek (%1)")
+                                             .arg(m_contaminated.value(QStringLiteral("detail")).toString())},
+            {QStringLiteral("text"), tr("két hang")},
+            {QStringLiteral("fixTarget"), QStringLiteral("split")},
+            {QStringLiteral("fixLabel"), tr("Szétválasztás")}});
+    }
+    return out;
 }
 
 QVariantMap TranscriptEditorViewModel::lineInfo(const QString& utteranceId) const
@@ -2140,6 +2156,22 @@ void TranscriptEditorViewModel::rebuildReview()
             const QString ctx = sides.value(!g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey : g.currentSpeakerKey);
             v.evidence = evidenceList(g.evidence, ctx, g.kind == ReviewKind::SideConflict, true);
             v.actionable = g.kind != ReviewKind::ShortLines;
+            // A handoff szövegei (E2): az ok a címben, a javaslat az alcímben.
+            const QString curName = m_views.value(g.currentSpeakerKey).name;
+            const QString target = !g.proposedSpeakerKey.isEmpty() && m_views.contains(g.proposedSpeakerKey)
+                ? m_views.value(g.proposedSpeakerKey).name : g.proposedPersonName;
+            if (g.kind == ReviewKind::SideConflict) {
+                const QString cur = sides.value(g.currentSpeakerKey);
+                v.title = cur == QLatin1String("local") ? tr("A hívás hangján érkezett, de %1 nevén van").arg(curName)
+                        : cur == QLatin1String("remote") ? tr("A mikrofonon érkezett, de %1 nevén van").arg(curName)
+                                                         : tr("A másik sávon érkezett, de %1 nevén van").arg(curName);
+                v.subtitle = target.isEmpty() ? tr("Nincs azonos sávon beszélő jelölt") : tr("Javasolt: %1").arg(target);
+            } else if (g.kind == ReviewKind::CoreMismatch) {
+                v.title = tr("Hang alapján valószínűleg %1 mondta").arg(target);
+                v.subtitle = tr("Most %1 nevén.").arg(curName);
+            } else if (g.kind == ReviewKind::ShortLines) {
+                v.title = tr("Rövid sorok: ezeken a hang nem segít");
+            }
             if (g.kind == ReviewKind::ShortLines) {
                 v.subtitle = tr("%1 mp alattiak, csak fülre dönthetők; nem számítanak az átnézendők közé.")
                                  .arg(QLocale(QLocale::Hungarian).toString(speakeredit::kMinEmbedMs / 1000.0, 'f', 1));
@@ -2172,8 +2204,8 @@ void TranscriptEditorViewModel::rebuildReview()
             v.ids = it.value();
             v.currentKey = cur;
             v.proposedKey = likely;
-            v.title = tr("%n sor hangja inkább: %1", nullptr, int(v.ids.size())).arg(m_views.value(likely).name);
-            v.subtitle = tr("Most: %1").arg(m_views.value(cur).name);
+            v.title = tr("Hang alapján valószínűleg %1 mondta").arg(m_views.value(likely).name);
+            v.subtitle = tr("Most %1 nevén.").arg(m_views.value(cur).name);
             m_reviewViews.append(v);
         }
         if (!loose.isEmpty() && !m_skippedGroups.contains(QStringLiteral("u:"))) {
@@ -2181,7 +2213,7 @@ void TranscriptEditorViewModel::rebuildReview()
             v.id = QStringLiteral("u:");
             v.kind = QStringLiteral("uncertain");
             v.ids = loose;
-            v.title = tr("%n hangra kétes sor", nullptr, int(loose.size()));
+            v.title = tr("Hangra kétes sorok");
             v.subtitle = tr("A hang alapján nem dönthető el biztosan, kié — egyenként érdemes meghallgatni.");
             m_reviewViews.append(v);
         }
@@ -2242,6 +2274,7 @@ void TranscriptEditorViewModel::updateSimilar()
         }
     }
     m_rows->notifyUtterances(touched, {TranscriptListModel::SimilarRole});
+    scheduleOverview();
 }
 
 void TranscriptEditorViewModel::setSimilarShown(bool shown)
@@ -2273,6 +2306,7 @@ QVariantMap TranscriptEditorViewModel::newPersonSimilar() const
         return {{QStringLiteral("groupId"), v.id},
                 {QStringLiteral("count"), int(v.ids.size())},
                 {QStringLiteral("name"), m_views.value(m_newPersonKey).name},
+                {QStringLiteral("lines"), speakerInfo(m_newPersonKey).value(QStringLiteral("utteranceCount")).toInt()},
                 {QStringLiteral("detail"), parts.join(QStringLiteral(", "))}};
     }
     return {};

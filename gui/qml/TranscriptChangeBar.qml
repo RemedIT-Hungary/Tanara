@@ -10,6 +10,10 @@ import QtQuick
 // Ha a „hasonló sorok" javaslat azért hallgat, mert a két (elnevezett) hang túl hasonló, és
 // mindkettőnek van legalább 3 megerősített sora, a sáv egy második sorban a kettejük
 // átnézését ajánlja: „A és B hangja hasonló. Nézzem át…?" — Átnézés / Most nem.
+// Új személy után (handoff-v3 E4) a sáv három soros: „Új személy: X. N sor átkerült hozzá." +
+// Visszavonás · „Még N sor hangja hasonlít… (hang 76%, mind a hívás hangján)" + „Megmutatva a
+// sínen" / „Mind a N hozzá" (a SimilarToNewPerson csoport, egy lépés) · a hanglenyomat
+// készültsége („még kb. 9 mp kell") + „Hanglenyomat, ha elég".
 // A sáv a lista ALATT foglal helyet (nem takar sort). Eltűnik a következő szerkesztésre,
 // bezárásra, vagy ~12 mp után — amíg javaslat vagy ajánlat vár válaszra, addig nem jár le.
 Rectangle {
@@ -19,11 +23,20 @@ Rectangle {
     property int timeoutMs: 12000
     readonly property bool offer: vm.suggestionActive   // „Hasonló N sor is" vár válaszra
     readonly property bool pairOffer: vm.pairOfferActive // a két hasonló hang átnézése vár válaszra
+    // Új személy (E4): a hozzá hasonló sorok ajánlata és a hanglenyomat készültsége.
+    readonly property bool newPerson: vm.changeNewPerson
+    readonly property var similar: vm.newPersonSimilar
+    readonly property bool similarOffer: newPerson && (similar.count || 0) > 0
+    readonly property var readiness: vm.newPersonReadiness
+    readonly property bool readinessShown: newPerson && (readiness.text || "") !== ""
 
     // A tömeges folytatás megerősítést kér: a hívó nyitja a párbeszédablakot.
     signal restRequested()
+    // A hanglenyomat panelje (a „Hanglenyomat, ha elég" mellett, ha a hívó meg akarja mutatni).
+    signal voiceprintPanelRequested(string speakerKey)
 
-    implicitHeight: pairOffer ? 44 + pairRow.height : 44
+    implicitHeight: 44 + (pairOffer ? pairRow.height : 0) + (similarOffer ? similarRow.height : 0)
+                    + (readinessShown ? readinessRow.height : 0)
     radius: Theme.radiusPopup
     color: Theme.text
 
@@ -91,6 +104,7 @@ Rectangle {
         id: expiry
         interval: root.timeoutMs
         running: root.visible && root.vm.changeActive && !barHover.hovered && !root.offer && !root.pairOffer
+                 && !root.similarOffer && !root.readinessShown
         onTriggered: root.vm.dismissChange()
     }
     Connections {
@@ -107,9 +121,9 @@ Rectangle {
             id: doneIcon
             x: 14
             anchors.verticalCenter: parent.verticalCenter
-            name: root.vm.changeVoiceprintCreated ? "fingerprint" : "circle-check"
+            name: root.vm.changeVoiceprintCreated ? "fingerprint" : root.newPerson ? "user-plus" : "circle-check"
             size: 16
-            color: Theme.bg
+            color: root.newPerson ? Theme.success : Theme.bg
         }
         TLabel {
             id: message
@@ -137,8 +151,8 @@ Rectangle {
             BarAction {
                 objectName: "changeUndo"
                 visible: root.vm.changeUndoable
-                iconName: "undo-2"
-                text: qsTr("Visszavonás")
+                iconName: root.newPerson ? "" : "undo-2"
+                text: root.newPerson ? qsTr("Visszavonás · Ctrl+Z") : qsTr("Visszavonás")
                 strong: true
                 toolTipText: root.vm.changeVoiceprintCreated
                              ? qsTr("A most készült hanglenyomat törlése (az elnevezés marad)")
@@ -157,7 +171,7 @@ Rectangle {
             }
             BarAction {
                 objectName: "changeSimilar"
-                visible: root.offer
+                visible: root.offer && !root.newPerson
                 iconName: "wand-sparkles"
                 text: qsTr("Hasonló %n sor is", "", root.vm.suggestionCount)
                 strong: true
@@ -167,14 +181,14 @@ Rectangle {
             }
             BarAction {
                 objectName: "changeShow"
-                visible: root.offer
+                visible: root.offer && !root.newPerson
                 text: root.vm.suggestionShown ? qsTr("Elrejtem") : qsTr("Megmutatom")
                 toolTipText: qsTr("A hasonló sorok kiemelése a sávokon és az áttekintőn")
                 onClicked: root.vm.suggestionShown = !root.vm.suggestionShown
             }
             BarAction {
                 objectName: "changeRest"
-                visible: root.vm.changeRestCount > 0
+                visible: root.vm.changeRestCount > 0 && !root.newPerson
                 maximumWidth: Math.max(140, root.width - 620)
                 text: root.vm.changeRestText
                 toolTipText: qsTr("A beszélő összes megmaradt sora is átkerül (előbb megerősítést kér): %1")
@@ -190,12 +204,135 @@ Rectangle {
         }
     }
 
+    // Elválasztó a sáv sorai között (sötét sávon halvány vonal).
+    component RowRule: Rectangle {
+        x: 12
+        width: parent ? parent.width - 24 : 0
+        height: 1
+        color: Theme.alpha(Theme.bg, 0.18)
+    }
+
+    // ---- új személy: a hozzá hasonló sorok (E4, második sor) ----
+    Item {
+        id: similarRow
+        objectName: "newPersonSimilar"
+        visible: root.similarOffer
+        y: mainRow.height
+        width: parent.width
+        height: visible ? 42 : 0
+        RowRule {}
+        TIcon {
+            id: wandIcon
+            x: 14
+            anchors.verticalCenter: parent.verticalCenter
+            name: "wand-sparkles"
+            size: 15
+            color: Theme.accentLine
+        }
+        TLabel {
+            id: similarText
+            objectName: "newPersonSimilarText"
+            anchors.left: wandIcon.right
+            anchors.leftMargin: 8
+            anchors.right: similarActions.left
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.StyledText
+            elide: Text.ElideRight
+            color: Theme.bg
+            font.pixelSize: Theme.fontSmall
+            text: qsTr("Még <b>%n sor</b> hangja hasonlít a most megadott %1 sorhoz", "", root.similar.count || 0)
+                      .arg(root.similar.lines || 0)
+                  + ((root.similar.detail || "") !== "" ? " <font color=\"" + Theme.borderStrong + "\">(" + root.similar.detail + ")</font>" : "")
+                  + "."
+            HoverHandler { id: similarHover }
+            TToolTip { visible: similarHover.hovered && similarText.truncated; text: similarText.text }
+        }
+        Row {
+            id: similarActions
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            BarAction {
+                objectName: "similarShow"
+                text: root.vm.similarShown ? qsTr("Megmutatva a sínen") : qsTr("Megmutatom a sínen")
+                strong: root.vm.similarShown
+                toolTipText: qsTr("A hasonló sorok kék kerettel a sínen és jellel a térképen")
+                onClicked: root.vm.similarShown = !root.vm.similarShown
+            }
+            BarAction {
+                objectName: "similarAccept"
+                text: qsTr("Mind a %1 hozzá").arg(root.similar.count || 0)
+                strong: true
+                toolTipText: qsTr("Mind %1 sorai közé kerülnek — egy lépésben visszavonható (Ctrl+Z)").arg(root.similar.name || "")
+                onClicked: root.vm.acceptNewPersonSimilar()
+            }
+        }
+    }
+
+    // ---- új személy: a hanglenyomat készültsége (E4, harmadik sor) ----
+    Item {
+        id: readinessRow
+        objectName: "newPersonReadiness"
+        visible: root.readinessShown
+        y: mainRow.height + similarRow.height
+        width: parent.width
+        height: visible ? 32 : 0
+        TIcon {
+            id: printIcon
+            x: 14
+            anchors.verticalCenter: parent.verticalCenter
+            name: "fingerprint"
+            size: 15
+            color: Theme.bg
+            opacity: 0.85
+        }
+        TLabel {
+            objectName: "newPersonReadinessText"
+            anchors.left: printIcon.right
+            anchors.leftMargin: 8
+            anchors.right: readinessAction.left
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: root.readiness.text || ""
+            color: Theme.bg
+            opacity: 0.85
+            font.pixelSize: Theme.fontSmall - 0.5
+        }
+        TLabel {
+            id: readinessAction
+            objectName: "newPersonVoiceprint"
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.readiness.action || ""
+            color: Theme.bg
+            font.pixelSize: Theme.fontSmall - 0.5
+            font.weight: Theme.weightSemiBold
+            font.underline: root.readiness.pending !== true
+            opacity: root.readiness.pending === true ? 0.7 : 1
+            HoverHandler { id: readinessHover; cursorShape: root.readiness.pending === true ? Qt.ArrowCursor : Qt.PointingHandCursor }
+            TapHandler {
+                enabled: root.readiness.pending !== true
+                onTapped: root.vm.requestNewPersonVoiceprint()
+            }
+            TToolTip {
+                visible: readinessHover.hovered
+                text: root.readiness.ready === true
+                      ? qsTr("A hanglenyomat most elkészül az itteni soraiból")
+                      : qsTr("Amint elég tiszta beszéd gyűlik össze (további sorok hozzá), a hanglenyomat elkészül")
+            }
+        }
+    }
+
     // ---- a két hasonló hang átnézésének ajánlata (második sor) ----
     Item {
         id: pairRow
         objectName: "pairOffer"
         visible: root.pairOffer
-        y: mainRow.height
+        y: mainRow.height + similarRow.height + readinessRow.height
         width: parent.width
         height: visible ? 40 : 0
 
