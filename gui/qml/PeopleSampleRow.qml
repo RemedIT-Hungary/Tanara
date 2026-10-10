@@ -91,15 +91,32 @@ Item {
             wrapMode: Text.Wrap
         }
     }
-    TLabel {
+    // Dátum; alatta a modell-jelölés („2/2 modell”), ha több hangmodell van használatban vagy
+    // valamelyikkel még nincs lenyomat (súgóban: melyikkel van, melyikkel nincs).
+    Column {
         anchors.right: lengthLabel.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         width: 86
-        text: root.sample.date || ""
-        mono: true
-        muted: true
-        font.pixelSize: Theme.fontCaption
+        spacing: 1
+        TLabel {
+            text: root.sample.date || ""
+            mono: true
+            muted: true
+            font.pixelSize: Theme.fontCaption
+        }
+        TLabel {
+            id: modelMark
+            objectName: "sampleModels"
+            visible: (root.sample.modelText || "") !== ""
+            text: root.sample.modelText || ""
+            mono: true
+            color: root.sample.modelComplete === false ? Theme.warnInk : Theme.textMuted
+            font.pixelSize: Theme.fontMicro
+            Accessible.name: (root.sample.modelText || "") + " " + (root.sample.modelTip || "")
+            HoverHandler { id: modelHover }
+            TToolTip { visible: modelHover.hovered; text: root.sample.modelTip || "" }
+        }
     }
     TLabel {
         id: lengthLabel

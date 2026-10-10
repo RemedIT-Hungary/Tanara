@@ -3,8 +3,12 @@
 //    profilja (résztvevők „12 / 14”, kifejezések, gyakran együtt ≥ 2, megbeszélések);
 //  - átnevezés (ütközés, üres név), összevonás (jelöltek, eredmény-szöveg valódi számokkal),
 //    törlés (cím névelővel, szöveg) — mind visszavonható, toast-tal;
-//  - T13: üres készlet; a varrat: ál-backenddel a hívások és a frissülés.
+//  - T13: üres készlet; a varrat: ál-backenddel a hívások és a frissülés;
+//  - Személyek-lista (kézi + tanult, a számláló szerint): Ráteszem / levétel / elutasítás
+//    visszavonással; a törlés / összevonás szövege a személyekkel; a személyválasztó
+//    címke-módja (PersonListModel.tagId).
 #include "AppContext.h"
+#include "PersonListModel.h"
 #include "TagListModel.h"
 #include "TagsViewModel.h"
 #include "test_tag_backend.h"
@@ -47,7 +51,7 @@ private slots:
 
         const QVariantMap d = vm.detail();
         QCOMPARE(d.value("name").toString(), QStringLiteral("Nordvik"));
-        QCOMPARE(d.value("meta").toString(), QStringLiteral("14 megbeszélés · először: márc. 3. · utoljára: okt. 2."));
+        QCOMPARE(d.value("meta").toString(), QStringLiteral("14 megbeszélés · 5 személy · először: márc. 3. · utoljára: okt. 2."));
         const QVariantList people = d.value("participants").toList();
         QCOMPARE(people.size(), 4);
         QCOMPARE(people.at(0).toMap().value("name").toString(), QStringLiteral("Kovács Anna"));
@@ -130,6 +134,7 @@ private slots:
         QVERIFY2(result.contains("<b>16 megbeszélés</b> (1 közös)"), qPrintable(result));
         QVERIFY2(result.contains("A „Nordvik AS” név megszűnik"), qPrintable(result));
         QVERIFY2(result.contains("a mező a #Nordvik címkét ajánlja"), qPrintable(result));
+        QVERIFY2(result.contains("A címke 3 személyen is egyesül."), qPrintable(result));
 
         QSignalSpy toast(&vm, &TagsViewModel::toast);
         QCOMPARE(vm.merge("t-nordvikas", "t-nordvik"), QString());
@@ -150,7 +155,8 @@ private slots:
         vm.setDemoState("T12");
         QCOMPARE(vm.deleteTitle("t-nordvik"), QStringLiteral("Törlöd a #Nordvik címkét?"));
         QCOMPARE(vm.deleteTitle("t-ugyfel"), QStringLiteral("Törlöd az #Ügyféltámogatás címkét?"));
-        QVERIFY(vm.deleteText("t-nordvik").startsWith(QStringLiteral("14 megbeszélésről lekerül. Maguk a megbeszélések")));
+        QVERIFY(vm.deleteText("t-nordvik").startsWith(QStringLiteral("14 megbeszélésről és 3 személyről lekerül. Maguk a megbeszélések")));
+        QVERIFY(vm.deleteText("t-termek").startsWith(QStringLiteral("8 megbeszélésről lekerül. Maguk")));
         vm.remove("t-nordvik");
         QCOMPARE(vm.totalCount(), 11);
         QCOMPARE(vm.selectedId(), QStringLiteral("t-q4"));              // a lista első sora
@@ -204,6 +210,85 @@ private slots:
         QVERIFY(!vm.hasSelection());
         vm.undo();
         QVERIFY(backend.calls.contains("undo"));
+    }
+
+    void peopleListStates()
+    {
+        TagsViewModel vm;
+        vm.setDemoState("people");
+        auto people = [&] { return vm.detail().value("people").toList(); };
+        auto row = [&](const QString& name) {
+            for (const QVariant& v : people())
+                if (v.toMap().value("name").toString() == name) return v.toMap();
+            return QVariantMap();
+        };
+        // A számláló szerint, felrakott és tanult együtt; a saját személy (14 / 14) kimarad.
+        QStringList names;
+        for (const QVariant& v : people()) names << v.toMap().value("name").toString();
+        QCOMPARE(names, QStringList({"Fehér Gábor", "Varga Árpád", "Szabó Bence", "Bárány Gergely", "Molnár Eszter"}));
+        QCOMPARE(row("Fehér Gábor").value("countText").toString(), QStringLiteral("11 / 14"));
+        QVERIFY(!row("Fehér Gábor").value("manual").toBool());
+        QVERIFY(row("Varga Árpád").value("manual").toBool());
+        QCOMPARE(row("Molnár Eszter").value("countText").toString(), QStringLiteral("0 / 14"));
+        QCOMPARE(row("Fehér Gábor").value("monogram").toString(), QStringLiteral("FG"));
+
+        // Ráteszem → kézi lesz, egy visszavonható lépés.
+        QSignalSpy toast(&vm, &TagsViewModel::toast);
+        vm.addPerson("Fehér Gábor");
+        QVERIFY(row("Fehér Gábor").value("manual").toBool());
+        QCOMPARE(toast.count(), 1);
+        QVERIFY(toast.last().at(1).toBool());
+        QVERIFY(vm.deleteText("t-nordvik").startsWith(QStringLiteral("14 megbeszélésről és 4 személyről lekerül.")));
+        vm.undo();
+        QVERIFY(!row("Fehér Gábor").value("manual").toBool());
+
+        // ×: a tanult sor eltűnik (elutasítás), a felrakott levehető.
+        vm.rejectPerson("Bárány Gergely");
+        QVERIFY(row("Bárány Gergely").isEmpty());
+        vm.removePerson("Molnár Eszter");
+        QVERIFY(row("Molnár Eszter").isEmpty());           // 0 közös: már tanultként sem marad
+        QCOMPARE(people().size(), 3);
+        QVERIFY(vm.detail().value("meta").toString().contains("3 személy"));
+        vm.undo();
+        vm.undo();
+        QCOMPARE(people().size(), 5);
+
+        // Üres: magyarázó szöveg a címke nevével (névelővel).
+        vm.setDemoState("peopleEmpty");
+        QCOMPARE(vm.selectedId(), QStringLiteral("t-kutatas"));
+        QVERIFY(people().isEmpty());
+        QCOMPARE(vm.detail().value("emptyPeopleText").toString(),
+                 QStringLiteral("Még senki. Ha a #Kutatás megbeszéléseken elnevezed a beszélőket, itt megjelennek."));
+        QCOMPARE(vm.detail().value("meta").toString(), QStringLiteral("2 megbeszélés · először: jan. 20. · utoljára: ápr. 14."));
+    }
+
+    void personPickerTagMode()
+    {
+        // Controller nélkül: a demó-névsor; akin kézzel rajta van, és a saját személy kimarad,
+        // a tanult kapcsolatúak elöl a „#Nordvik · 11 / 14 · 16 megbeszélés” sorral.
+        PersonListModel model;
+        model.setTagId("t-nordvik");
+        QStringList names, hints, groups;
+        for (int i = 0; i < model.count(); ++i) {
+            const QModelIndex ix = model.index(i);
+            names << model.data(ix, PersonListModel::NameRole).toString();
+            hints << model.data(ix, PersonListModel::TagHintRole).toString();
+            groups << model.data(ix, PersonListModel::GroupRole).toString();
+        }
+        QCOMPARE(names, QStringList({"Fehér Gábor", "Bárány Gergely", "Dénes Zsófia", "Gál Bence", "Tóth Eszter"}));
+        QCOMPARE(hints.at(0), QStringLiteral("#Nordvik · 11 / 14 · 16 megbeszélés"));
+        QCOMPARE(hints.at(1), QStringLiteral("#Nordvik · 5 / 14 · 23 megbeszélés"));
+        QCOMPARE(hints.at(2), QString());
+        QCOMPARE(groups, QStringList({"tag", "tag", "other", "other", "other"}));
+        // 5 sor: nincs szakaszcím (≥ 6 kell).
+        QCOMPARE(model.tagSectionTitle(), QString());
+        // Címke-módban új személy nem jön létre.
+        model.setQuery("Új Ember");
+        QVERIFY(!model.canCreate());
+        model.setQuery("");
+        model.setTagId("t-q4");
+        QCOMPARE(model.tagSectionTitle(), QStringLiteral("A #Q4 tervezés alapján"));
+        QCOMPARE(model.data(model.index(0), PersonListModel::NameRole).toString(), QStringLiteral("Fehér Gábor"));
     }
 };
 

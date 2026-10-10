@@ -1,7 +1,9 @@
 #include "PersonListModel.h"
 
+#include "AppContext.h"
 #include "TranscriptEditorViewModel.h"
 
+#include "tanara/AppController.h"
 #include "tanara/edit/PeopleDirectory.h"
 
 #include <algorithm>
@@ -23,7 +25,9 @@ QHash<int, QByteArray> PersonListModel::roleNames() const
             {HasVoiceprintRole, "hasVoiceprint"},
             {MeetingCountRole, "meetingCount"},
             {InMeetingRole, "inMeeting"},
-            {MatchedAliasRole, "matchedAlias"}};
+            {MatchedAliasRole, "matchedAlias"},
+            {TagHintRole, "tagHint"},
+            {GroupRole, "group"}};
 }
 
 QVariant PersonListModel::data(const QModelIndex& index, int role) const
@@ -37,6 +41,8 @@ QVariant PersonListModel::data(const QModelIndex& index, int role) const
     case MeetingCountRole: return p.meetingCount;
     case InMeetingRole: return m_inMeeting.value(row);
     case MatchedAliasRole: return p.matchedAlias;
+    case TagHintRole: return m_hints.value(row);
+    case GroupRole: return m_groups.value(row);
     default: return {};
     }
 }
@@ -96,10 +102,89 @@ void PersonListModel::setParticipants(ParticipantsViewModel* participants)
     emit participantsChanged();
 }
 
+namespace {
+
+// A Címkék ablak demójának névsora (controller nélkül; a design-csomagok kitalált nevei).
+QVector<PersonInfo> demoPeople()
+{
+    const QList<std::pair<const char*, int>> rows{
+        {"Bárány Gergely", 23}, {"Dénes Zsófia", 17}, {"Fehér Gábor", 16}, {"Gál Bence", 12},
+        {"Kovács Lilla", 41}, {"Molnár Eszter", 0}, {"Szabó Bence", 8}, {"Tóth Eszter", 3}, {"Varga Árpád", 12}};
+    QVector<PersonInfo> out;
+    for (const auto& [name, n] : rows) {
+        PersonInfo p;
+        p.name = QString::fromUtf8(name);
+        p.meetingCount = n;
+        p.hasVoiceprint = n > 2;
+        out.append(p);
+    }
+    return out;
+}
+
+// Egy személy legjobb kapcsolata a viszonyítási címkék közül.
+struct TagLink {
+    QString tagName;
+    int shared = 0;
+    int total = 0;
+    bool manual = false;
+    bool better(const TagLink& o) const
+    {
+        if (manual != o.manual) return manual;
+        return shared > o.shared;
+    }
+};
+
+} // namespace
+
+void PersonListModel::setTagId(const QString& id)
+{
+    if (m_tagId == id) return;
+    m_tagId = id;
+    emit tagIdChanged();
+    refresh();
+}
+
+void PersonListModel::setTagBackend(TagBackend* backend)
+{
+    if (m_tags == backend) return;
+    if (m_tags) m_tags->disconnect(this);
+    if (m_ownTags) m_tags->deleteLater();
+    m_tags = backend;
+    m_ownTags = false;
+    if (m_tags) {
+        connect(m_tags, &TagBackend::personTagsChanged, this, &PersonListModel::refilter);
+        connect(m_tags, &TagBackend::personStatsChanged, this, &PersonListModel::refilter);
+        connect(m_tags, &TagBackend::meetingTagsChanged, this, &PersonListModel::refilter);
+    }
+    refilter();
+}
+
+TagBackend* PersonListModel::tagBackend()
+{
+    if (!m_tags) {
+        setTagBackend(createTagBackend(AppContext::instance()->controllerObject(), this));
+        m_ownTags = true;
+    }
+    return m_tags;
+}
+
+QStringList PersonListModel::contextTagIds() const
+{
+    if (!m_tagId.isEmpty()) return {m_tagId};
+    const QString meetingId = m_participants ? m_participants->meetingId()
+                            : m_editor ? m_editor->meetingId() : QString();
+    return meetingId.isEmpty() || !m_tags ? QStringList() : m_tags->tagsOf(meetingId);
+}
+
 void PersonListModel::refresh()
 {
-    m_all = m_participants ? m_participants->people()
-          : m_editor ? m_editor->people() : QVector<PersonInfo>();
+    if (m_participants) m_all = m_participants->people();
+    else if (m_editor) m_all = m_editor->people();
+    else if (!m_tagId.isEmpty()) {
+        // Önálló (Címkék ablak): a teljes névsor.
+        tanara::AppController* app = AppContext::instance()->controller();
+        m_all = app ? app->peopleDirectory() : demoPeople();
+    } else m_all.clear();
     refilter();
 }
 
@@ -110,6 +195,7 @@ QString PersonListModel::nameAt(int row) const
 
 void PersonListModel::refilter()
 {
+    TagBackend* tags = tagBackend();
     const QString needle = m_query.trimmed();
     QVector<PersonInfo> shown;
     if (needle.isEmpty()) {
@@ -122,24 +208,83 @@ void PersonListModel::refilter()
         shown = filterPeople(m_all, needle);
     }
 
+    // A viszonyítási címkék (a megbeszélésé, ill. a tagId) személyei: kézi + tanult ≥ küszöb.
+    QHash<QString, TagLink> links;   // foldForSearch(név) → legjobb kapcsolat
+    QHash<QString, QString> tagNames;
+    if (tags) {
+        for (const TagItem& t : tags->tags()) tagNames.insert(t.id, t.name);
+        for (const QString& t : contextTagIds()) {
+            for (const PersonTagItem& st : tags->peopleStats(t)) {
+                const TagLink link{tagNames.value(t), st.shared, st.tagTotal, st.manual};
+                const QString key = foldForSearch(st.name);
+                if (!links.contains(key) || link.better(links.value(key))) links.insert(key, link);
+            }
+        }
+    }
+    const QString selfKey = tags ? foldForSearch(tags->selfName()) : QString();
+
     const QString folded = foldForSearch(needle);
     bool exact = false;
-    QVector<PersonInfo> out;
-    QVector<bool> inMeeting;
+    struct Row { PersonInfo p; bool here; QString group; QString hint; TagLink link; };
+    QVector<Row> meeting, tagged, other;
     for (const PersonInfo& p : std::as_const(shown)) {
         if (!folded.isEmpty() && foldForSearch(p.name) == folded) exact = true;
         if (!m_exclude.isEmpty() && p.name.compare(m_exclude, Qt::CaseInsensitive) == 0) continue;
+        const QString key = foldForSearch(p.name);
+        // Címke-mód: akin kézzel rajta van, és a saját személy kimarad.
+        if (!m_tagId.isEmpty() && ((links.contains(key) && links.value(key).manual) || key == selfKey)) continue;
         const bool here = m_participants ? m_participants->isMeetingPerson(p.name)
                         : m_editor && m_editor->isMeetingPerson(p.name);
         if (here && (m_excludeMeeting || (m_hideMeeting && needle.isEmpty()))) continue;
-        out.append(p);
-        inMeeting.append(here);
+        Row r{p, here, QStringLiteral("other"), QString(), {}};
+        if (here) {
+            r.group = QStringLiteral("meeting");
+            meeting.append(r);
+        } else if (links.contains(key)) {
+            r.link = links.value(key);
+            r.group = QStringLiteral("tag");
+            r.hint = QStringLiteral("#%1 · %2 / %3 · ").arg(r.link.tagName).arg(r.link.shared).arg(r.link.total)
+                   + tr("%n megbeszélés", "", p.meetingCount);
+            tagged.append(r);
+        } else {
+            other.append(r);
+        }
+    }
+    std::stable_sort(tagged.begin(), tagged.end(), [](const Row& a, const Row& b) { return a.link.better(b.link); });
+    // A közös címkés csoport legfeljebb 5 soros; a többi a „többi” közé kerül, jelzés nélkül.
+    while (tagged.size() > 5) {
+        Row r = tagged.takeLast();
+        r.group = QStringLiteral("other");
+        r.hint.clear();
+        other.prepend(r);
+    }
+
+    QVector<PersonInfo> out;
+    QVector<bool> inMeeting;
+    QStringList hints, groups;
+    for (const QVector<Row>* part : {&meeting, &tagged, &other})
+        for (const Row& r : *part) {
+            out.append(r.p);
+            inMeeting.append(r.here);
+            hints.append(r.hint);
+            groups.append(r.group);
+        }
+    QString section;
+    if (!tagged.isEmpty() && out.size() >= 6) {
+        QStringList names;
+        for (const Row& r : std::as_const(tagged))
+            if (!names.contains(r.link.tagName)) names << r.link.tagName;
+        section = names.size() == 1 ? tr("A #%1 alapján").arg(names.first()) : tr("A címkék alapján");
     }
 
     beginResetModel();
     m_shown = out;
     m_inMeeting = inMeeting;
-    m_canCreate = !needle.isEmpty() && !exact;
+    m_hints = hints;
+    m_groups = groups;
+    m_tagSection = section;
+    // Címke-módban új személy nem jön létre innen (a Személyek ablak „Új személy” a helye).
+    m_canCreate = !needle.isEmpty() && !exact && m_tagId.isEmpty();
     endResetModel();
     emit countChanged();
 }

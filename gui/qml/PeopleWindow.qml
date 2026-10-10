@@ -14,7 +14,8 @@ import QtQuick.Layouts
 // A C++ gazda (tanara_qml::PeopleWindowHost) hozza létre; önállóan is betölthető képhez:
 //   tanara --qml-shot ki.png --qml-page PeopleWindow --size 960x1100 --qml-prop 'demoState="P04"'
 // demoState: P01 … P06 · newPerson · sampleNew · sampleMove · noResult · sort · allSamples ·
-//            deleteKeep · creating · toastPlain
+//            deleteKeep · creating · toastPlain · tagsSection · tagsSuggested · tagsSelf ·
+//            samplesModels · backfill
 ApplicationWindow {
     id: window
 
@@ -50,7 +51,8 @@ ApplicationWindow {
     Component.onCompleted: {
         if (hostController) model.controller = hostController
         else if (demoState !== "") {
-            model.demoState = ["P01", "P02", "P03", "P04", "P05", "P06", "noResult", "creating"].indexOf(demoState) >= 0
+            model.demoState = ["P01", "P02", "P03", "P04", "P05", "P06", "noResult", "creating",
+                                         "tagsSection", "tagsSuggested", "tagsSelf", "samplesModels", "backfill"].indexOf(demoState) >= 0
                 ? demoState : demoState === "toastPlain" ? "P03" : "P01"
             Qt.callLater(window.applyDemoOverlay)
         }

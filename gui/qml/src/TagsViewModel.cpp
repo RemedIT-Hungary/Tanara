@@ -82,6 +82,8 @@ void TagsViewModel::attach(TagBackend* backend)
     if (m_backend) {
         m_conns << connect(m_backend, &TagBackend::tagsChanged, this, &TagsViewModel::rebuild);
         m_conns << connect(m_backend, &TagBackend::undoChanged, this, &TagsViewModel::undoChanged);
+        m_conns << connect(m_backend, &TagBackend::personTagsChanged, this, &TagsViewModel::refreshDetail);
+        m_conns << connect(m_backend, &TagBackend::personStatsChanged, this, &TagsViewModel::refreshDetail);
     }
     rebuild();
     emit undoChanged();
@@ -101,7 +103,7 @@ void TagsViewModel::setDemoState(const QString& state)
     m_filter.clear();
     emit filterChanged();
     rebuild();
-    setSelectedId(QStringLiteral("t-nordvik"));
+    setSelectedId(state == QLatin1String("peopleEmpty") ? QStringLiteral("t-kutatas") : QStringLiteral("t-nordvik"));
 }
 
 const TagItem* TagsViewModel::find(const QString& id) const
@@ -210,9 +212,32 @@ void TagsViewModel::refreshDetail()
         d.insert(QStringLiteral("id"), t->id);
         d.insert(QStringLiteral("name"), t->name);
         d.insert(QStringLiteral("meetingCount"), t->meetingCount);
-        d.insert(QStringLiteral("meta"), tr("%1 megbeszélés · először: %2 · utoljára: %3")
-                                             .arg(t->meetingCount)
-                                             .arg(fmt::shortDate(t->firstUsedAt), fmt::shortDate(t->lastUsedAt)));
+        // Személyek: a számláló szerint (felrakott és tanult együtt); az elutasított tanult kimarad.
+        QVector<PersonTagItem> stats = m_backend->peopleStats(t->id);
+        stats.erase(std::remove_if(stats.begin(), stats.end(),
+                                   [](const PersonTagItem& s) { return !s.manual && s.rejected; }),
+                    stats.end());
+        std::stable_sort(stats.begin(), stats.end(), [](const PersonTagItem& a, const PersonTagItem& b) {
+            if (a.shared != b.shared) return a.shared > b.shared;
+            return a.manual && !b.manual;
+        });
+        QVariantList people;
+        for (const PersonTagItem& s : std::as_const(stats))
+            people << QVariantMap{{QStringLiteral("name"), s.name},
+                                  {QStringLiteral("monogram"), monogramOf(s.name)},
+                                  {QStringLiteral("countText"), QStringLiteral("%1 / %2").arg(s.shared).arg(s.tagTotal)},
+                                  {QStringLiteral("manual"), s.manual}};
+        d.insert(QStringLiteral("people"), people);
+        d.insert(QStringLiteral("peopleCount"), int(people.size()));
+        d.insert(QStringLiteral("peopleBusy"), m_backend->personStatsBusy());
+        d.insert(QStringLiteral("emptyPeopleText"),
+                 tr("Még senki. Ha %1 #%2 megbeszéléseken elnevezed a beszélőket, itt megjelennek.")
+                     .arg(tagArticle(t->name), t->name));
+        QString meta = tr("%1 megbeszélés").arg(t->meetingCount);
+        if (!people.isEmpty()) meta += QStringLiteral(" · ") + tr("%n személy", "", int(people.size()));
+        meta += QStringLiteral(" · ") + tr("először: %1 · utoljára: %2")
+                    .arg(fmt::shortDate(t->firstUsedAt), fmt::shortDate(t->lastUsedAt));
+        d.insert(QStringLiteral("meta"), meta);
         QVariantList participants;
         for (const auto& [name, n] : p.participants)
             participants << QVariantMap{{QStringLiteral("name"), name},
@@ -307,10 +332,16 @@ QString TagsViewModel::mergeResultText(const QString& fromId, const QString& kee
     for (const auto& [id, n] : m_backend->profile(keepId).cooccurring)
         if (id == fromId) common = n;
     const int total = keep->meetingCount + from->meetingCount - common;
-    return tr("Eredmény: <b>%1 megbeszélés</b> (%2 közös). A „%3” név megszűnik; ha valaki beírja, a mező %4 #%5 címkét ajánlja.")
+    QString text = tr("Eredmény: <b>%1 megbeszélés</b> (%2 közös). A „%3” név megszűnik; ha valaki beírja, a mező %4 #%5 címkét ajánlja.")
         .arg(total)
         .arg(common)
         .arg(from->name.toHtmlEscaped(), tagArticle(keep->name), keep->name.toHtmlEscaped());
+    // A személyeken is egyesül (a két címke kézi viselőinek uniója).
+    QStringList people = m_backend->peopleWith(fromId);
+    for (const QString& n : m_backend->peopleWith(keepId))
+        if (!people.contains(n, Qt::CaseInsensitive)) people << n;
+    if (!people.isEmpty()) text += QLatin1Char(' ') + tr("A címke %n személyen is egyesül.", "", int(people.size()));
+    return text;
 }
 
 QString TagsViewModel::merge(const QString& fromId, const QString& keepId)
@@ -338,8 +369,13 @@ QString TagsViewModel::deleteText(const QString& id) const
 {
     const TagItem* t = find(id);
     if (!t) return {};
-    return tr("%1 megbeszélésről lekerül. Maguk a megbeszélések, átiratok és összefoglalók megmaradnak. "
-              "A címke profilja és az együtt járási adatai törlődnek.").arg(t->meetingCount);
+    const int people = m_backend ? int(m_backend->peopleWith(id).size()) : 0;
+    const QString where = people > 0
+        ? tr("%1 megbeszélésről és %n személyről lekerül.", "", people).arg(t->meetingCount)
+        : tr("%1 megbeszélésről lekerül.").arg(t->meetingCount);
+    return where + QLatin1Char(' ')
+        + tr("Maguk a megbeszélések, átiratok és összefoglalók megmaradnak. "
+             "A címke profilja és az együtt járási adatai törlődnek.");
 }
 
 void TagsViewModel::remove(const QString& id)
@@ -350,6 +386,43 @@ void TagsViewModel::remove(const QString& id)
     m_backend->beginGroup(label);
     m_backend->remove(id);
     m_backend->endGroup();
+    step(label);
+}
+
+void TagsViewModel::addPerson(const QString& name)
+{
+    const TagItem* t = find(m_selected);
+    if (!t || !m_backend || name.trimmed().isEmpty()) return;
+    const QString label = tr("#%1 rákerült: %2").arg(t->name, name.trimmed());
+    m_backend->beginGroup(label);
+    const QString id = m_backend->addPersonTag(name.trimmed(), t->id);
+    m_backend->endGroup();
+    if (id.isEmpty()) return;
+    refreshDetail();
+    step(label);
+}
+
+void TagsViewModel::removePerson(const QString& name)
+{
+    const TagItem* t = find(m_selected);
+    if (!t || !m_backend) return;
+    const QString label = tr("#%1 levéve: %2").arg(t->name, name);
+    m_backend->beginGroup(label);
+    m_backend->removePersonTag(name, t->id);
+    m_backend->endGroup();
+    refreshDetail();
+    step(label);
+}
+
+void TagsViewModel::rejectPerson(const QString& name)
+{
+    const TagItem* t = find(m_selected);
+    if (!t || !m_backend) return;
+    const QString label = tr("Nem tartozik ide: %1").arg(name);
+    m_backend->beginGroup(label);
+    m_backend->rejectPersonTag(name, t->id);
+    m_backend->endGroup();
+    refreshDetail();
     step(label);
 }
 

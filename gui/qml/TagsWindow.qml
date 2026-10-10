@@ -12,7 +12,8 @@ import QtQuick.Layouts
 //
 // Önállóan is betölthető képhez (kitalált címkékkel):
 //   tanara --qml-shot ki.png --qml-page TagsWindow --size 960x660 --qml-prop 'demoState="T10"'
-// demoState: T10 (részletek) · T11 (összevonás) · T12 (törlés) · T13 (üres) · rename
+// demoState: T10 (részletek) · T11 (összevonás) · T12 (törlés) · T13 (üres) · rename ·
+//            people (Személyek-lista) · peopleEmpty (még senki) · peopleAdd (+ Személy választó)
 ApplicationWindow {
     id: window
 
@@ -25,11 +26,14 @@ ApplicationWindow {
     property alias toastItem: toast
     property alias mergeDialog: mergeDialog
     property alias deleteDialog: deleteDialog
+    property alias personPicker: personPicker
     property real listWidth: 288
 
     // A könyvtár szűrése erre a címkére / egy megbeszélés megnyitása (wave 2: a héj köti be).
     signal openInLibraryRequested(string tagId)
     signal meetingRequested(string meetingId)
+    // A Személyek-lista sora: a Személyek ablak ezen a személyen (a gazda köti be).
+    signal personRequested(string name)
 
     title: qsTr("Címkék")
     width: 960
@@ -59,6 +63,7 @@ ApplicationWindow {
         case "T11": openMerge(); break
         case "T12": openDelete(); break
         case "rename": detail.demoRenameText = "Nordvik partner"; detail.startRename(); break
+        case "peopleAdd": openPersonPicker(); break
         }
     }
 
@@ -66,6 +71,14 @@ ApplicationWindow {
     function openMerge() {
         if (!model.hasSelection || model.totalCount < 2) return
         mergeDialog.openFor(model.selectedId, "")
+    }
+    function openPersonPicker() {
+        if (!model.hasSelection) return
+        const anchor = detail.addPersonButton
+        const p = anchor.mapToItem(window.contentItem, 0, anchor.height)
+        personPicker.x = Math.max(8, Math.min(window.width - personPicker.width - 8, p.x + anchor.width - personPicker.width))
+        personPicker.y = p.y + 6
+        personPicker.open()
     }
     function openDelete() {
         if (!model.hasSelection) return
@@ -75,7 +88,7 @@ ApplicationWindow {
 
     onVisibleChanged: {
         if (visible) return
-        mergeDialog.close(); deleteDialog.close()
+        mergeDialog.close(); deleteDialog.close(); personPicker.close()
         toast.hide()
     }
 
@@ -112,6 +125,18 @@ ApplicationWindow {
         onTagClicked: (id) => window.selectTag(id)
         onMeetingRequested: (id) => window.meetingRequested(id)
         onOpenInLibraryRequested: (id) => window.openInLibraryRequested(id)
+        onPersonRequested: (name) => window.personRequested(name)
+        onAddPersonRequested: window.openPersonPicker()
+    }
+
+    PersonPicker {
+        id: personPicker
+        objectName: "tagPersonPicker"
+        parent: window.contentItem
+        tagId: model.selectedId
+        anonymousText: ""
+        hintText: qsTr("Akin már rajta van a címke, nem szerepel a listában.")
+        onPersonChosen: (name) => model.addPerson(name)
     }
 
     PeopleUndoToast {

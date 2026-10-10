@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 
 // A Címkék ablak jobb oldala (T10, T13): a kijelölt címke fejléce a műveletekkel (Átnevezés
 // helyben, Összevonás…, törlés), a „tanult, nem kell szerkeszteni” sor, a profil két oszlopban
-// (JELLEMZŐ RÉSZTVEVŐK · JELLEMZŐ KIFEJEZÉSEK + GYAKRAN EGYÜTT) és a megbeszélései. A
+// (SZEMÉLYEK · JELLEMZŐ KIFEJEZÉSEK + GYAKRAN EGYÜTT) és a megbeszélései. A
 // kifejezések kerek, „#” nélküli pirulák — így nem téveszthetők össze a címkékkel.
 // Üres készletnél (T13) a „Még nincs címke” állapot.
 Item {
@@ -21,6 +21,10 @@ Item {
     signal tagClicked(string id)
     signal meetingRequested(string meetingId)
     signal openInLibraryRequested(string id)
+    signal personRequested(string name)
+    signal addPersonRequested()
+    // A „+ Személy” gomb (a személyválasztó ehhez igazodik).
+    readonly property alias addPersonButton: peopleColumn.addButton
 
     function startRename() {
         if (emptyState) return
@@ -248,7 +252,7 @@ Item {
                     id: infoText
                     x: 34; y: 8
                     width: parent.width - 46
-                    text: qsTr("A profilt a rendszer a címke használatából tanulja; a javaslatok indoklása ebből jön. Nem kell szerkeszteni.")
+                    text: qsTr("A kifejezéseket és az együtt járást a rendszer a címke használatából tanulja; a javaslatok indoklása ebből jön. A személyeken a címkét te teheted fel vagy veheted le.")
                     muted: true
                     font.pixelSize: Theme.fontSmall
                     cssLineHeight: 1.35
@@ -261,60 +265,18 @@ Item {
                 width: parent.width
                 height: Math.max(peopleColumn.height, termsColumn.height)
 
-                Column {
+                TagPeopleList {
                     id: peopleColumn
+                    objectName: "tagPeople"
                     width: (parent.width - 20) / 2
-                    spacing: 8
-                    TSectionLabel { text: qsTr("Jellemző résztvevők") }
-                    Repeater {
-                        model: root.detail.participants !== undefined ? root.detail.participants : []
-                        Item {
-                            required property var modelData
-                            width: peopleColumn.width
-                            height: 26
-                            Rectangle {
-                                id: av
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 24; height: 24; radius: 12
-                                color: Theme.sunken
-                                border.width: 1
-                                border.color: Theme.border
-                                TLabel {
-                                    anchors.centerIn: parent
-                                    text: parent.parent.modelData.monogram
-                                    font.pixelSize: 9
-                                    font.weight: Theme.weightBold
-                                }
-                            }
-                            TLabel {
-                                anchors.left: av.right
-                                anchors.leftMargin: 10
-                                anchors.right: personCount.left
-                                anchors.rightMargin: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData.name
-                                font.pixelSize: Theme.fontSmall
-                                elide: Text.ElideRight
-                            }
-                            TLabel {
-                                id: personCount
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData.countText
-                                mono: true
-                                muted: true
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
-                    }
-                    TLabel {
-                        visible: root.detail.participants !== undefined && root.detail.participants.length === 0
-                        width: parent.width
-                        text: qsTr("Még nincs elég megbeszélés hozzá.")
-                        muted: true
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.Wrap
-                    }
+                    people: root.detail.people !== undefined ? root.detail.people : []
+                    emptyText: root.detail.emptyPeopleText !== undefined ? root.detail.emptyPeopleText : ""
+                    busy: root.detail.peopleBusy === true
+                    onAddRequested: root.addPersonRequested()
+                    onPersonClicked: (name) => root.personRequested(name)
+                    onAcceptRequested: (name) => root.vm.addPerson(name)
+                    onRejectRequested: (name) => root.vm.rejectPerson(name)
+                    onRemoveRequested: (name) => root.vm.removePerson(name)
                 }
 
                 Column {

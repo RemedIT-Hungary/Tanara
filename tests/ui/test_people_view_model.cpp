@@ -6,6 +6,9 @@
 //    kiemelés), rendezés, szakaszok, a műveletek az értesítéseikkel és a visszavonással,
 //    az összevonás / törlés szövegei valódi számokkal, minta-lejátszás (néma motor),
 //    hanglenyomat a megbeszélésekből (hamis embedder), 80+ személy;
+//  - címkék a személyen: szakasz-módok (szerkeszthető / saját / névtelen), javaslatok elfogadása,
+//    elutasítása, „Mind”, visszavonás a TagService vermén (a frissebb verem előbb), keresés
+//    címkére, összevonás-szöveg a címkékkel; minták modell-jelölése, lenyomat-pótlás jelzése;
 //  - a QML-ablak a gazdáján át: megnyitás személy-kijelöléssel, a demó-állapotok
 //    figyelmeztetés nélkül töltődnek be.
 // Valódi adathoz, hangkimenethez, modellhez nem nyúl.
@@ -23,6 +26,7 @@
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QElapsedTimer>
 #include <QJsonArray>
@@ -200,6 +204,164 @@ private slots:
         QCOMPARE(vm.mergeCandidates("gerg").first().toMap().value("similarity").toInt(), 88);
         QVERIFY(vm.mergeResultText(kGergo, true).contains(QStringLiteral("<b>27 megbeszélés</b>")));
         QVERIFY(vm.deleteText(false).contains(QStringLiteral("„Távoli 2”")));
+    }
+
+
+    // ---- címkék a személyen (demó) ----
+
+    void demoPersonTagsSectionAndSuggestions()
+    {
+        PeopleViewModel vm;
+        vm.setDemoState("tagsSection");
+        QCOMPARE(vm.selectedName(), QStringLiteral("Varga Árpád"));
+        QCOMPARE(vm.tagsMode(), QStringLiteral("edit"));
+        auto names = [](const QVariantList& list) {
+            QStringList out;
+            for (const QVariant& v : list) out << v.toMap().value("name").toString();
+            return out;
+        };
+        QCOMPARE(names(vm.personTags()), QStringList({"Nordvik", "Partnerek"}));
+        QCOMPARE(names(vm.tagSuggestions()), QStringList({"Q4 tervezés"}));
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("countText").toString(), QStringLiteral("4/9"));
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("toolTip").toString(),
+                 QStringLiteral("A #Q4 tervezés 9 megbeszéléséből 4 alkalommal ott volt."));
+        QCOMPARE(vm.tagHintText(), QString());
+
+        // Elfogadás: felkerül, a javaslat eltűnik; toast + Ctrl+Z a címke-vermen.
+        QSignalSpy toast(&vm, &PeopleViewModel::toast);
+        vm.acceptTagSuggestion(vm.tagSuggestions().first().toMap().value("id").toString());
+        QCOMPARE(names(vm.personTags()), QStringList({"Nordvik", "Partnerek", "Q4 tervezés"}));
+        QVERIFY(vm.tagSuggestions().isEmpty());
+        QCOMPARE(toast.last().at(0).toString(), QStringLiteral("Címke hozzáadva: #Q4 tervezés"));
+        QVERIFY(toast.last().at(1).toBool());
+        QVERIFY(vm.canUndo());
+        vm.undo();
+        QCOMPARE(names(vm.personTags()), QStringList({"Nordvik", "Partnerek"}));
+        QCOMPARE(names(vm.tagSuggestions()), QStringList({"Q4 tervezés"}));
+
+        // ×: tartós elutasítás, visszavonható.
+        vm.rejectTagSuggestion(vm.tagSuggestions().first().toMap().value("id").toString());
+        QVERIFY(vm.tagSuggestions().isEmpty());
+        vm.undo();
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+
+        // A mezőből: meglévő név, új név, levétel.
+        vm.addPersonTag(QStringLiteral("Belső"));
+        vm.addPersonTag(QStringLiteral("Vadonatúj"));
+        QCOMPARE(names(vm.personTags()), QStringList({"Nordvik", "Partnerek", "Belső", "Vadonatúj"}));
+        vm.removePersonTag(vm.personTags().first().toMap().value("id").toString());
+        QCOMPARE(names(vm.personTags()), QStringList({"Partnerek", "Belső", "Vadonatúj"}));
+
+        // Négy javaslat: a nézet hármat mutat + „+1”; „Mind” egy lépés.
+        vm.setDemoState("tagsSuggested");
+        QCOMPARE(vm.selectedName(), QStringLiteral("Fehér Gábor"));
+        QVERIFY(vm.personTags().isEmpty());
+        QCOMPARE(names(vm.tagSuggestions()), QStringList({"Nordvik", "Q4 tervezés", "Belső", "Partnerek"}));
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("countText").toString(), QStringLiteral("11/14"));
+        vm.acceptAllTagSuggestions();
+        QCOMPARE(vm.personTags().size(), 4);
+        QCOMPARE(toast.last().at(0).toString(), QStringLiteral("4 javasolt címke hozzáadva"));
+        vm.undo();
+        QVERIFY(vm.personTags().isEmpty());
+
+        // Kevés megbeszélés: magyarázó sor.
+        QVERIFY(vm.selectPerson(QStringLiteral("Molnár Eszter")));
+        QCOMPARE(vm.tagHintText(), QStringLiteral("A javaslathoz legalább két megbeszélés kell."));
+
+        // A saját személy: nincs szerkeszthető szakasz.
+        vm.setDemoState("tagsSelf");
+        QCOMPARE(vm.selectedName(), kSelf);
+        QCOMPARE(vm.tagsMode(), QStringLiteral("self"));
+        QVERIFY(vm.personTags().isEmpty());
+    }
+
+    void demoSearchFindsTagsAndSampleModels()
+    {
+        PeopleViewModel vm;
+        vm.setDemoState("tagsSection");
+        vm.setQuery(QStringLiteral("nordvik"));
+        const QStringList names = roleList(vm.people(), PeopleListModel::NameRole);
+        QCOMPARE(names, QStringList({"Molnár Eszter", "Szabó Bence", "Varga Árpád"}));
+        const int row = vm.people()->indexOfName(QStringLiteral("Varga Árpád"));
+        QVERIFY(vm.people()->data(vm.people()->index(row), PeopleListModel::MetaRole).toString()
+                    .startsWith(QStringLiteral("címke: #Nordvik · ")));
+        QVERIFY(vm.people()->data(vm.people()->index(row), PeopleListModel::TagHitRole).toBool());
+        vm.setQuery(QStringLiteral("#partn"));
+        QCOMPARE(roleList(vm.people(), PeopleListModel::NameRole), QStringList({"Varga Árpád"}));
+        vm.setQuery(QString());
+        // Keresés nélkül a sor metájába nem kerül címke.
+        QVERIFY(!roleList(vm.people(), PeopleListModel::MetaRole).join("|").contains(QStringLiteral("címke")));
+
+        // Minták modellenként: „2/2 modell”, a harmadik csak az alapmodellel.
+        vm.setDemoState("samplesModels");
+        QVERIFY(!vm.backfillRunning());
+        const QVariantMap first = vm.samples().at(0).toMap();
+        const QVariantMap third = vm.samples().at(2).toMap();
+        QCOMPARE(first.value("modelText").toString(), QStringLiteral("2/2 modell"));
+        QVERIFY(first.value("modelComplete").toBool());
+        QCOMPARE(third.value("modelText").toString(), QStringLiteral("1/2 modell"));
+        QVERIFY(!third.value("modelComplete").toBool());
+        QVERIFY(third.value("modelTip").toString().contains(QStringLiteral("Hiányzik: ")));
+        vm.setDemoState("backfill");
+        QVERIFY(vm.backfillRunning());
+        // Egy modellnél (a P01 demóban nincs modell-lista) nincs jelölés.
+        vm.setDemoState("P01");
+        QVERIFY(!vm.samples().at(0).toMap().contains("modelText"));
+    }
+
+    // ---- címkék a személyen (valódi controllerrel) ----
+
+    void personTagsWithRealTagService()
+    {
+        startApp();
+        Meeting a, b;
+        scenario(&a, &b);
+        TagService* tags = m_app->tags();
+        QVERIFY(tags);
+        const QString nordvik = tags->addTag(a.id, QStringLiteral("Nordvik")).id;
+        tags->addTag(b.id, nordvik);
+        tags->refreshPersonStatsNow();
+
+        PeopleViewModel vm;
+        vm.setController(m_app.get());
+        vm.setSelectedName(kGergely);
+        QCOMPARE(vm.tagsMode(), QStringLiteral("edit"));
+        QVERIFY(vm.personTags().isEmpty());
+        // Gergely mindkét #Nordvik megbeszélésen ott volt: 2/2.
+        QCOMPARE(vm.tagSuggestions().size(), 1);
+        QCOMPARE(vm.tagSuggestions().first().toMap().value("countText").toString(), QStringLiteral("2/2"));
+
+        // Előbb egy személy-lépés (becenév törlése), aztán egy címke-lépés: a Ctrl+Z a frissebbet.
+        QCOMPARE(vm.addAlias(QStringLiteral("Geri")), QString());
+        vm.removeAlias(QStringLiteral("Geri"));
+        vm.acceptTagSuggestion(nordvik);
+        QCOMPARE(tags->tagsOfPerson(kGergely), QStringList({nordvik}));
+        QCOMPARE(vm.personTags().size(), 1);
+        vm.undo();
+        QVERIFY(tags->tagsOfPerson(kGergely).isEmpty());
+        QVERIFY(!vm.aliases().contains(QStringLiteral("Geri")));
+        vm.undo();
+        QVERIFY(vm.aliases().contains(QStringLiteral("Geri")));
+
+        // Keresés címkére + összevonás-szöveg, ha mindkettőn van címke.
+        vm.acceptTagSuggestion(nordvik);
+        vm.setSelectedName(kGergo);
+        QCOMPARE(vm.tagHintText(), QStringLiteral("A javaslathoz legalább két megbeszélés kell."));
+        vm.addPersonTag(QStringLiteral("Partnerek"));
+        QCOMPARE(tags->tagsOfPerson(kGergo).size(), 1);
+        QVERIFY2(vm.mergeResultText(kGergely, false).contains(QStringLiteral("A címkék összeadódnak (#Partnerek, #Nordvik).")),
+                 qPrintable(vm.mergeResultText(kGergely, false)));
+        vm.setQuery(QStringLiteral("nordv"));
+        QCOMPARE(roleList(vm.people(), PeopleListModel::NameRole), QStringList({kGergely}));
+        vm.setQuery(QString());
+
+        // A saját személy és a mintatartó „Névtelen N”.
+        vm.setSelectedName(kSelf);
+        QCOMPARE(vm.tagsMode(), QStringLiteral("self"));
+        QCOMPARE(m_app->peopleService()->addPerson(QStringLiteral("Névtelen 3")).ok, true);
+        vm.refresh();
+        vm.setSelectedName(QStringLiteral("Névtelen 3"));
+        QCOMPARE(vm.tagsMode(), QStringLiteral("none"));
     }
 
     // ---- valódi controllerrel ----
@@ -623,6 +785,47 @@ private slots:
         QVERIFY(!host.isVisible());
     }
 
+    void tagsSectionInTheWindow()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "PeopleWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{"demoState", "tagsSuggested"}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        QTest::qWait(80);
+        auto* vm = qobject_cast<PeopleViewModel*>(win->property("vm").value<QObject*>());
+        auto* section = win->findChild<QQuickItem*>("personTagsSection");
+        QVERIFY(vm && section && section->isVisible());
+        // A Repeater sorai vizuális gyerekek (QObject-szülő nélkül): a childItems fán át.
+        std::function<int(QQuickItem*)> countChips = [&](QQuickItem* item) {
+            int n = item->objectName() == QLatin1String("personTagSuggestion") && item->isVisible();
+            for (QQuickItem* c : item->childItems()) n += countChips(c);
+            return n;
+        };
+        auto visibleChips = [&] { return countChips(section); };
+        QCOMPARE(visibleChips(), 3);                       // három + „+1”
+        auto* overflow = section->findChild<QQuickItem*>("personTagOverflow");
+        QVERIFY(overflow && overflow->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(overflow, "click"));
+        QTest::qWait(20);
+        QCOMPARE(visibleChips(), 4);
+        QVERIFY(!overflow->isVisible());
+        auto* all = section->findChild<QQuickItem*>("personTagAcceptAll");
+        QVERIFY(all && all->isVisible());
+        QVERIFY(QMetaObject::invokeMethod(all, "click"));
+        QCOMPARE(vm->personTags().size(), 4);
+        QVERIFY(win->property("toastItem").value<QObject*>()->property("shown").toBool());
+        // A saját személynél csak a magyarázó sor.
+        vm->setSelectedName(kSelf);
+        QTest::qWait(20);
+        QVERIFY(section->findChild<QQuickItem*>("personTagsSelf")->isVisible());
+        QVERIFY(!section->findChild<QQuickItem*>("personTagField")->isVisible());
+    }
+
     void demoStatesLoadWithoutWarnings()
     {
         QQmlEngine engine;
@@ -635,7 +838,10 @@ private slots:
                                      QStringLiteral("P04"), QStringLiteral("P05"), QStringLiteral("P06"),
                                      QStringLiteral("newPerson"), QStringLiteral("sampleNew"),
                                      QStringLiteral("sampleMove"), QStringLiteral("noResult"),
-                                     QStringLiteral("deleteKeep"), QStringLiteral("creating")}) {
+                                     QStringLiteral("deleteKeep"), QStringLiteral("creating"),
+                                     QStringLiteral("tagsSection"), QStringLiteral("tagsSuggested"),
+                                     QStringLiteral("tagsSelf"), QStringLiteral("samplesModels"),
+                                     QStringLiteral("backfill")}) {
             QQmlComponent comp(&engine);
             comp.loadFromModule("Tanara", "PeopleWindow");
             QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));

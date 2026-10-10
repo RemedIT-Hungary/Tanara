@@ -58,7 +58,140 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
     };
     for (const auto& [a, b, n] : pairs)
         m_state.cooccur.insert(pairKey(QString::fromLatin1(a), QString::fromLatin1(b)), n);
+    // Személyek: megbeszélés-szám, közös megbeszélések címkénként, kézi címkék (a vault
+    // UX-tervének kitalált példái: „#Nordvik 11 / 14”, előre felvett személy 0 / 14-gyel).
+    const QList<std::pair<const char*, int>> totals{
+        {"Kovács Lilla", 41}, {"Fehér Gábor", 16}, {"Varga Árpád", 12}, {"Szabó Bence", 8},
+        {"Bárány Gergely", 23}, {"Molnár Eszter", 0}, {"Gál Bence", 12}, {"Dénes Zsófia", 17}, {"Tóth Eszter", 3}};
+    for (const auto& [name, n] : totals) m_state.personTotal.insert(QString::fromUtf8(name), n);
+    const QList<std::tuple<const char*, const char*, int>> shared{
+        {"t-nordvik", "Kovács Lilla", 14}, {"t-nordvik", "Fehér Gábor", 11}, {"t-nordvik", "Varga Árpád", 9},
+        {"t-nordvik", "Szabó Bence", 6}, {"t-nordvik", "Bárány Gergely", 5}, {"t-nordvik", "Gál Bence", 1},
+        {"t-partnerek", "Fehér Gábor", 3}, {"t-partnerek", "Varga Árpád", 4}, {"t-partnerek", "Szabó Bence", 2},
+        {"t-q4", "Fehér Gábor", 5}, {"t-q4", "Varga Árpád", 4}, {"t-q4", "Dénes Zsófia", 6},
+        {"t-belso", "Fehér Gábor", 4}, {"t-belso", "Dénes Zsófia", 7}, {"t-termek", "Fehér Gábor", 2},
+        {"t-ugyfel", "Bárány Gergely", 4}};
+    for (const auto& [tag, name, n] : shared)
+        m_state.shared[QString::fromLatin1(tag)].insert(QString::fromUtf8(name), n);
+    m_state.personTags = {
+        {QStringLiteral("Varga Árpád"), {QStringLiteral("t-nordvik"), QStringLiteral("t-partnerek")}},
+        {QStringLiteral("Szabó Bence"), {QStringLiteral("t-nordvik")}},
+        {QStringLiteral("Molnár Eszter"), {QStringLiteral("t-nordvik")}},
+        {QStringLiteral("Dénes Zsófia"), {QStringLiteral("t-q4")}},
+        {QStringLiteral("Bárány Gergely"), {QStringLiteral("t-ugyfel")}},
+    };
     loadMeetingDemo(demoMeetingId(), QStringLiteral("few"));
+}
+
+void TagDemoBackend::setPersonStatsBusy(bool busy)
+{
+    if (m_statsBusy == busy) return;
+    m_statsBusy = busy;
+    emit personStatsChanged();
+}
+
+QStringList TagDemoBackend::tagsOfPerson(const QString& name) const
+{
+    QStringList out;
+    for (const QString& id : m_state.personTags.value(name))
+        if (indexOf(id) >= 0) out << id;
+    return out;
+}
+
+QString TagDemoBackend::addPersonTag(const QString& name, const QString& nameOrId)
+{
+    if (name.trimmed().isEmpty() || name == selfName()) return {};
+    QString id = idOf(nameOrId);
+    if (!id.isEmpty() && m_state.personTags.value(name).contains(id)) return id;
+    const QString clean = tagmatch::normalizeName(nameOrId);
+    if (id.isEmpty() && clean.isEmpty()) return {};
+    touch(tr("Címke a személyen"));
+    if (id.isEmpty()) {
+        id = QStringLiteral("t-new-%1").arg(++m_created);
+        m_state.tags.push_back({id, clean, 0, kNow, kNow});
+        emit tagsChanged();
+    }
+    m_state.personTags[name] << id;
+    emit personTagsChanged(name);
+    return id;
+}
+
+void TagDemoBackend::removePersonTag(const QString& name, const QString& tagId)
+{
+    if (!m_state.personTags.value(name).contains(tagId)) return;
+    touch(tr("Címke levétele a személyről"));
+    m_state.personTags[name].removeAll(tagId);
+    emit personTagsChanged(name);
+}
+
+void TagDemoBackend::rejectPersonTag(const QString& name, const QString& tagId)
+{
+    const QString key = name + QLatin1Char('|') + tagId;
+    if (m_state.personRejected.contains(key)) return;
+    touch(tr("Javaslat elutasítása"));
+    m_state.personRejected.insert(key);
+    emit personTagsChanged(name);
+}
+
+QStringList TagDemoBackend::peopleWith(const QString& tagId) const
+{
+    QStringList out;
+    for (auto it = m_state.personTags.cbegin(); it != m_state.personTags.cend(); ++it)
+        if (it.value().contains(tagId) && it.key() != selfName()) out << it.key();
+    std::sort(out.begin(), out.end(), [](const QString& a, const QString& b) { return a.localeAwareCompare(b) < 0; });
+    return out;
+}
+
+PersonTagItem TagDemoBackend::personItem(const QString& name, const QString& tagId) const
+{
+    PersonTagItem p;
+    p.name = name;
+    p.tagId = tagId;
+    p.shared = m_state.shared.value(tagId).value(name);
+    const int i = indexOf(tagId);
+    p.tagTotal = i >= 0 ? m_state.tags[i].meetingCount : 0;
+    p.personTotal = m_state.personTotal.value(name);
+    p.manual = m_state.personTags.value(name).contains(tagId);
+    p.rejected = m_state.personRejected.contains(name + QLatin1Char('|') + tagId);
+    return p;
+}
+
+QVector<PersonTagItem> TagDemoBackend::peopleStats(const QString& tagId) const
+{
+    // Ugyanazok a szabályok, mint a core-ban: kézi + tanult (≥ 2 közös és ≥ 30 %), saját nélkül.
+    QVector<PersonTagItem> out;
+    if (indexOf(tagId) < 0 || m_statsBusy) return out;
+    QStringList names = peopleWith(tagId);
+    const QHash<QString, int> counts = m_state.shared.value(tagId);
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it) {
+        if (it.key() == selfName() || names.contains(it.key())) continue;
+        const PersonTagItem p = personItem(it.key(), tagId);
+        if (p.shared >= 2 && p.shared * 100 >= 30 * p.tagTotal) names << it.key();
+    }
+    for (const QString& n : std::as_const(names)) out << personItem(n, tagId);
+    std::sort(out.begin(), out.end(), [](const PersonTagItem& a, const PersonTagItem& b) {
+        if (a.manual != b.manual) return a.manual;
+        if (a.shared != b.shared) return a.shared > b.shared;
+        return a.name.localeAwareCompare(b.name) < 0;
+    });
+    return out;
+}
+
+QVector<PersonTagItem> TagDemoBackend::suggestTagsForPerson(const QString& name) const
+{
+    QVector<PersonTagItem> out;
+    if (name == selfName() || m_statsBusy) return out;
+    for (const TagItem& t : m_state.tags) {
+        const PersonTagItem p = personItem(name, t.id);
+        if (p.manual || p.rejected || p.shared < 2) continue;
+        if (p.shared * 100 < 30 * p.tagTotal && p.shared * 100 < 50 * p.personTotal) continue;
+        out << p;
+    }
+    std::stable_sort(out.begin(), out.end(), [](const PersonTagItem& a, const PersonTagItem& b) {
+        if (a.shared != b.shared) return a.shared > b.shared;
+        return qint64(a.shared) * b.tagTotal > qint64(b.shared) * a.tagTotal;
+    });
+    return out;
 }
 
 void TagDemoBackend::clearAll()
@@ -411,6 +544,14 @@ void TagDemoBackend::merge(const QString& fromId, const QString& keepId)
         if (it.key().split(QLatin1Char('|')).contains(fromId)) it = m_state.cooccur.erase(it);
         else ++it;
     }
+    // A személyeken is egyesül.
+    for (auto it = m_state.personTags.begin(); it != m_state.personTags.end(); ++it) {
+        QStringList& ids = it.value();
+        const int pos = ids.indexOf(fromId);
+        if (pos < 0) continue;
+        if (ids.contains(keepId)) ids.removeAt(pos);
+        else ids[pos] = keepId;
+    }
     m_state.recentIds.removeAll(fromId);
     m_state.tags.removeAt(from);
     emitAll();
@@ -430,6 +571,7 @@ void TagDemoBackend::remove(const QString& tagId)
         if (it->endsWith(QLatin1Char('|') + tagId)) it = m_state.rejected.erase(it);
         else ++it;
     }
+    for (auto it = m_state.personTags.begin(); it != m_state.personTags.end(); ++it) it.value().removeAll(tagId);
     m_state.recentIds.removeAll(tagId);
     m_state.tags.removeAt(i);
     emitAll();
@@ -449,6 +591,7 @@ void TagDemoBackend::emitAll()
         emit meetingTagsChanged(it.key());
         emit suggestionsChanged(it.key());
     }
+    emit personTagsChanged(QString());
     emit undoChanged();
 }
 

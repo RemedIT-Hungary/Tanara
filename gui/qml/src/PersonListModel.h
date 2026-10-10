@@ -6,8 +6,18 @@
 // elöl. A lista a TranscriptEditorViewModel-től jön (éles: AppController::peopleDirectory,
 // demó: kitalált nevek).
 //
+// Címke-rangsor (vault UX-terv 2. fejezet, „Személyválasztó”): már résztvevő → közös
+// címkés (a megbeszélés címkéin kézzel rajta van, vagy a tanult kapcsolat eléri a küszöböt;
+// legfeljebb 5) → többi. A közös címkés sor `tagHint`-je: „#Nordvik · 11 / 14 · 12 megbeszélés”;
+// ha a lista legalább 6 soros, a csoport szakaszcíme `tagSectionTitle` („A #Nordvik alapján”),
+// a sorok `group` szerepe: "meeting" | "tag" | "other".
+// `tagId` mód (Címkék ablak „+ Személy”): a címke a viszonyítás, akin kézzel rajta van, kimarad;
+// ilyenkor editor / participants nélkül a teljes névsor (AppController::peopleDirectory, demóban
+// kitalált nevek) a forrás.
+//
 #include "ParticipantsViewModel.h"
 #include "TranscriptEditorViewModel.h"
+#include "TagBackend.h"
 
 #include "tanara/edit/SpeakerEditTypes.h"
 
@@ -36,10 +46,13 @@ class PersonListModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     // Igaz, ha a beírt név még nem létezik → „Új személy: „…"" sor.
     Q_PROPERTY(bool canCreate READ canCreate NOTIFY countChanged)
+    Q_PROPERTY(QString tagId READ tagId WRITE setTagId NOTIFY tagIdChanged)
+    Q_PROPERTY(QString tagSectionTitle READ tagSectionTitle NOTIFY countChanged)
 
 public:
     // MatchedAliasRole: ha a találat becenévből jött (nem a névből), az a becenév; különben üres.
-    enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole, MatchedAliasRole };
+    enum Role { NameRole = Qt::UserRole + 1, HasVoiceprintRole, MeetingCountRole, InMeetingRole, MatchedAliasRole,
+                TagHintRole, GroupRole };
 
     explicit PersonListModel(QObject* parent = nullptr);
 
@@ -61,6 +74,11 @@ public:
     void setExcludeMeetingPeople(bool exclude);
     int count() const { return int(m_shown.size()); }
     bool canCreate() const { return m_canCreate; }
+    QString tagId() const { return m_tagId; }
+    void setTagId(const QString& id);
+    QString tagSectionTitle() const { return m_tagSection; }
+    // Tesztekhez: a címke-adatforrás (nem veszi át).
+    void setTagBackend(TagBackend* backend);
 
     // A személylista újraolvasása (a panel megnyitásakor).
     Q_INVOKABLE void refresh();
@@ -74,9 +92,12 @@ signals:
     void hideMeetingPeopleChanged();
     void excludeMeetingPeopleChanged();
     void countChanged();
+    void tagIdChanged();
 
 private:
     void refilter();
+    TagBackend* tagBackend();
+    QStringList contextTagIds() const;
 
     QPointer<TranscriptEditorViewModel> m_editor;
     QPointer<ParticipantsViewModel> m_participants;
@@ -88,6 +109,12 @@ private:
     QVector<tanara::PersonInfo> m_all;
     QVector<tanara::PersonInfo> m_shown;
     QVector<bool> m_inMeeting;
+    QStringList m_hints;
+    QStringList m_groups;
+    QString m_tagId;
+    QString m_tagSection;
+    TagBackend* m_tags = nullptr;
+    bool m_ownTags = false;
 };
 
 } // namespace tanara_qml

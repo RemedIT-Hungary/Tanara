@@ -1,6 +1,7 @@
 #include "TagControllerBackend.h"
 
 #include "tanara/AppController.h"
+#include "tanara/tags/PersonTags.h"
 #include "tanara/tags/TagService.h"
 
 #include <QHash>
@@ -62,6 +63,11 @@ tanara::TagSource sourceOf(TagAddSource s)
     return tanara::TagSource::Manual;
 }
 
+PersonTagItem toItem(const tanara::PersonTagStat& s)
+{
+    return {s.name, s.tagId, s.shared, s.tagTotal, s.personTotal, s.manual, s.rejected};
+}
+
 // A szűrt újrakiadás felismerése: minden eleme benne van-e a korábbi listában.
 bool subsetOf(const QVector<tanara::TagSuggestion>& list, const QVector<tanara::TagSuggestion>& before)
 {
@@ -94,6 +100,10 @@ TagControllerBackend::TagControllerBackend(tanara::AppController* controller, QO
         connect(s, &tanara::TagService::tagsChanged, this, &TagBackend::tagsChanged);
         connect(s, &tanara::TagService::meetingTagsChanged, this, &TagBackend::meetingTagsChanged);
         connect(s, &tanara::TagService::undoChanged, this, &TagBackend::undoChanged);
+        connect(s, &tanara::TagService::personTagsChanged, this, &TagBackend::personTagsChanged);
+        // A személy-szintű elutasítás a rejected-listában él: a nézetnek ez is személy-változás.
+        connect(s, &tanara::TagService::rejectedChanged, this, [this] { emit personTagsChanged(QString()); });
+        connect(s, &tanara::TagService::personStatsChanged, this, &TagBackend::personStatsChanged);
     }
 }
 
@@ -261,6 +271,71 @@ QString TagControllerBackend::undoLabel() const
 void TagControllerBackend::undo()
 {
     if (tanara::TagService* s = service()) s->undo();
+}
+
+// ---- személyek ----
+
+QString TagControllerBackend::selfName() const
+{
+    tanara::TagService* s = service();
+    return s ? s->selfName() : QString();
+}
+
+QStringList TagControllerBackend::tagsOfPerson(const QString& name) const
+{
+    tanara::TagService* s = service();
+    return s ? s->tagsOfPerson(name) : QStringList();
+}
+
+QString TagControllerBackend::addPersonTag(const QString& name, const QString& nameOrId)
+{
+    tanara::TagService* s = service();
+    return s ? s->addPersonTag(name, nameOrId).id : QString();
+}
+
+void TagControllerBackend::removePersonTag(const QString& name, const QString& tagId)
+{
+    if (tanara::TagService* s = service()) s->removePersonTag(name, tagId);
+}
+
+void TagControllerBackend::rejectPersonTag(const QString& name, const QString& tagId)
+{
+    if (tanara::TagService* s = service()) s->rejectPersonTag(name, tagId);
+}
+
+QStringList TagControllerBackend::peopleWith(const QString& tagId) const
+{
+    tanara::TagService* s = service();
+    return s ? s->peopleWith(tagId) : QStringList();
+}
+
+QVector<PersonTagItem> TagControllerBackend::peopleStats(const QString& tagId) const
+{
+    QVector<PersonTagItem> out;
+    if (tanara::TagService* s = service())
+        for (const tanara::PersonTagStat& st : s->peopleStats(tagId)) out.push_back(tanara_qml::toItem(st));
+    return out;
+}
+
+QVector<PersonTagItem> TagControllerBackend::suggestTagsForPerson(const QString& name) const
+{
+    QVector<PersonTagItem> out;
+    if (tanara::TagService* s = service())
+        for (const tanara::PersonTagStat& st : s->suggestTagsForPerson(name, 0)) out.push_back(tanara_qml::toItem(st));
+    return out;
+}
+
+int TagControllerBackend::personMeetingCount(const QString& name) const
+{
+    tanara::TagService* s = service();
+    return s ? s->personStats()->personTotal(name) : 0;
+}
+
+bool TagControllerBackend::personStatsBusy() const
+{
+    // A régi pillanatkép az újraszámolás alatt is érvényes: „számol” csak az első eredményig.
+    tanara::TagService* s = service();
+    return s && s->personStatsBusy() && s->personStats()->meetingCount() == 0;
 }
 
 QVector<TagSuggestionItem> TagControllerBackend::draftSuggestions(const QString& title) const
