@@ -143,6 +143,12 @@ public:
     Q_INVOKABLE void resolveConfirm(bool accepted);
     // Az átirat előtti (hang-alapú) résztvevő-tipp utolsó eredménye erre a megbeszélésre.
     Q_INVOKABLE QString participantsGuess(const QString& meetingId) const;
+    // „Ki volt ott?” (handoff-v3 V2): a jóváhagyó párbeszéd megnyitása (participantsDialogRequested;
+    // a ParticipantsDialog magától nyílik rá). A banner, az eszközsor, a menü és a szerkesztő hívja.
+    Q_INVOKABLE void openParticipants(const QString& meetingId);
+    // Az Átirat fülre lépéskor (U1): ha a meeting jóváhagyásra vár, és ebben a munkamenetben még
+    // nem ajánlottuk fel (nem is nyitották meg), megnyitja. true, ha megnyitotta.
+    Q_INVOKABLE bool maybeOfferParticipants(const QString& meetingId);
     // A toast „Visszavonás” gombja (és a Ctrl+Z a címkesor fókuszában): undoRequested(undoKey).
     Q_INVOKABLE void undoFromToast(const QString& undoKey);
     // A könyvtár szűrése egy címkére (a fejléc chipje, a Címkék ablaka): tagFilterRequested.
@@ -178,6 +184,8 @@ signals:
     void windowActivationRequested();
     // Az átirat előtti résztvevő-tipp elkészült (PreTranscriptView megjelenítheti).
     void participantsGuessed(const QString& meetingId, const QString& summary);
+    // A „Ki volt ott?” párbeszéd kérése (ParticipantsDialog.openFor).
+    void participantsDialogRequested(const QString& meetingId);
 
 private:
     void attachController();
@@ -206,6 +214,7 @@ private:
     int m_readinessRevision = 0;
     QSet<QString> m_identifyRequested;              // a felhasználó kérte az azonosítást
     QHash<QString, QString> m_participantGuesses;   // meetingId → összegző mondat (munkamenet)
+    QSet<QString> m_participantsOffered;            // a „Ki volt ott?” már nyílt (munkamenet)
     // Az épp most rögzített, a megnyitott megbeszélés hibasávjában LÁTHATÓ feladat-hiba
     // üzenete (ugyanabban az esemény-körben érkező errorOccurred-ből nem lesz második toast).
     QString m_errorInBanner;

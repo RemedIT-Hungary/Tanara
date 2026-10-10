@@ -135,6 +135,12 @@ Item {
                         onTriggered: root.startRename()
                     }
                     TMenuItem {
+                        objectName: "participantsItem"
+                        text: qsTr("Ki volt ott?")
+                        iconName: "users"
+                        onTriggered: if (root.shell) root.shell.openParticipants(root.meetingId)
+                    }
+                    TMenuItem {
                         text: qsTr("Megnyitás mappában")
                         iconName: "folder-open"
                         onTriggered: if (root.shell) root.shell.revealInFolder(root.meetingId)
