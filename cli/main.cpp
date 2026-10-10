@@ -21,9 +21,11 @@
 //   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
 //   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
+//   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
+#include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/Logging.h"
@@ -114,6 +116,7 @@ int main(int argc, char** argv) {
     // AppController nélküli parancsok (nem indítják el az alkalmazás háttérmunkáit).
     if (cmd == "voice-models") return tanara::cli::runVoiceModelsCommand(args);
     if (cmd == "voice-eval")   return tanara::cli::runVoiceEvalCommand(args);
+    if (cmd == "track-sides")  return tanara::cli::runTrackSidesCommand(args);
 
     AppController app;
 
@@ -651,7 +654,8 @@ int main(int argc, char** argv) {
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
            "tags <list|add|remove|suggest> … | cloud <status|login|estimate|…> | "
-           "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json]"
+           "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
+           "track-sides <folder> [--frame-ms N --json --no-cache --write-cache]"
         << "\n";
     out.flush();
     return 0;
