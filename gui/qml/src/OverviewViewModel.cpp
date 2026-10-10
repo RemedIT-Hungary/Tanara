@@ -528,7 +528,7 @@ void OverviewViewModel::reload()
 void OverviewViewModel::loadDemo()
 {
     // Kitalált adat a handoff neveivel (V1 / V3 / V5 / V6).
-    const QString st = m_demoState.isEmpty() ? QStringLiteral("overviewProcessing") : m_demoState;
+    const QString st = m_demoState.isEmpty() ? QStringLiteral("overviewDone") : m_demoState;
     const bool done = st == QLatin1String("overviewDone");
     const bool empty = st == QLatin1String("overviewEmpty");
     const bool nobody = st == QLatin1String("overviewNobody");
