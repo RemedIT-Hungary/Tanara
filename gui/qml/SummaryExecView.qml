@@ -47,6 +47,7 @@ Item {
         return out
     }
     function hover(sid, on) {
+        if (sourcePopover.opened) return   // nyitott felugrónál az ő állítása marad kijelölve
         if (on) root.vm.activeStatementId = sid
         else if (root.vm.activeStatementId === sid && !(sourcePopover.opened && sourcePopover.statementId === sid))
             root.vm.activeStatementId = ""
