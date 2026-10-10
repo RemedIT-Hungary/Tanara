@@ -38,6 +38,7 @@
 namespace tanara {
 
 class AppController;
+struct SideReport;
 class MeetingStore;
 class PeopleStore;
 class PeopleStats;
@@ -49,6 +50,7 @@ struct PersonRecord {
     QString     note;
     bool        isSelf = false;
     int         sampleCount = 0;
+    QString     defaultSide;    // tanult sáv-oldal: "local" | "remote" | üres (people.json)
 };
 
 // Egy hangminta (lenyomat) megjelenítésre készen.
@@ -137,6 +139,10 @@ public:
     PeopleOpResult addAlias(const QString& name, const QString& alias);
     bool removeAlias(const QString& name, const QString& alias);
     void setNote(const QString& name, const QString& note);
+    // A tanult sáv-oldal frissítése egy elemzésből (SideAnalysis: sides::learnedDefaults — a
+    // megerősített sorokból vagy kézi beosztásból eredő Local / Remote). Vissza: hány személyé
+    // változott. Nem visszavonható (tanult érték, a következő elemzés felülírja).
+    int learnDefaultSides(const SideReport& report);
 
     PeopleOpResult removeSample(const QString& printId);
     // A minta átkerül `toName`-hez. Ha ilyen személy nincs, létrejön („új személy ebből a

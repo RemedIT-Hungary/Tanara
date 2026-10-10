@@ -3,6 +3,7 @@
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/TrackCatalog.h"
+#include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/people/PeopleStats.h"
@@ -116,6 +117,7 @@ struct PeopleService::Private {
             const PersonDetails d = people->details(name);
             r.aliases = d.aliases;
             r.note = d.note;
+            r.defaultSide = people->defaultSide(name);
         }
         r.sampleCount = voiceprints ? voiceprints->sampleCount(name) : 0;
         return r;
@@ -487,6 +489,17 @@ void PeopleService::setNote(const QString& name, const QString& note)
     if (d->people->details(name).note == note) return;
     d->people->setNote(name, note);
     emit changed();
+}
+
+int PeopleService::learnDefaultSides(const SideReport& report)
+{
+    if (!d->people) return 0;
+    int n = 0;
+    const QHash<QString, Side> learned = sides::learnedDefaults(report);
+    for (auto it = learned.cbegin(); it != learned.cend(); ++it)
+        n += d->people->setDefaultSide(it.key(), sideName(it.value())) ? 1 : 0;
+    if (n > 0) emit changed();
+    return n;
 }
 
 PeopleOpResult PeopleService::removeSample(const QString& printId)

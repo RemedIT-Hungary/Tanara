@@ -30,6 +30,7 @@
 //
 #include "tanara/store/SharedFile.h"
 
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -74,6 +75,14 @@ public:
     // Becenév visszatétele az eredeti helyére (visszavonás).
     bool insertAlias(const QString& name, const QString& alias, int index);
     void setNote(const QString& name, const QString& note);
+
+    // ---- tanult sáv-oldal (a megerősített sorokból / kézi sáv-beosztásból; SideAnalysis) ----
+    // A rekord "defaultSide" mezője: "local" | "remote"; üres = nincs tanult érték.
+    QString defaultSide(const QString& name) const;
+    // Üres side → a mező törlődik. true, ha változott.
+    bool setDefaultSide(const QString& name, const QString& side);
+    // Minden tanult érték: név → oldal.
+    QHash<QString, QString> defaultSides() const;
 
     // A listán kívüli, de adatot hordozó rekordok nevei (lásd fent: "unlisted").
     QStringList unlistedNames() const;
