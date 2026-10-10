@@ -197,11 +197,12 @@ struct TagService::Impl {
         return Row{ m.title, m.startedAt, m.tagIds, MeetingLibrary::participantsOf(m), m.durationMs };
     }
     void reloadRow(const QString& id) {
-        invalidateStats();
-        if (!rowsLoaded || !store) return;
-        const Meeting m = store->load(id);
-        if (m.id.isEmpty()) rows.remove(id);
-        else rows.insert(id, rowOf(m));
+        if (rowsLoaded && store) {
+            const Meeting m = store->load(id);
+            if (m.id.isEmpty()) rows.remove(id);
+            else rows.insert(id, rowOf(m));
+        }
+        invalidateStats();   // a frissített sorokból
     }
     QHash<QString, int> counts() const {
         ensureRows();
@@ -1197,7 +1198,13 @@ QVector<PersonTagStat> TagService::suggestTagsForPerson(const QString& name, int
         if (!persontags::suggestableForPerson(s.shared, s.tagTotal, s.personTotal)) continue;
         out.append(s);
     }
-    std::stable_sort(out.begin(), out.end(), statLess);
+    // A több közös megbeszélés, aztán a címke nagyobb hányada (2/3 előbb, mint 2/20).
+    std::stable_sort(out.begin(), out.end(), [](const PersonTagStat& a, const PersonTagStat& b) {
+        if (a.shared != b.shared) return a.shared > b.shared;
+        const qint64 l = qint64(a.shared) * b.tagTotal, r = qint64(b.shared) * a.tagTotal;
+        if (l != r) return l > r;
+        return a.lastShared > b.lastShared;
+    });
     if (limit > 0 && out.size() > limit) out.resize(limit);
     return out;
 }
@@ -1292,6 +1299,9 @@ void TagService::renamePersonRefs(const QString& oldName, const QString& newName
             const QStringList tags = s.persons.take(k);
             if (!merging) s.persons.insert(n, tags);
         }
+        // A lépés elutasítás-pillanatképe is az új névre (ne támassza fel a régit).
+        for (Rejected& r : s.rejected)
+            if (!r.person.isEmpty() && samePerson(r.person, o)) r.person = n;
     }
     SharedFileLock lock(d->path);
     d->syncFromDisk();
@@ -1318,9 +1328,13 @@ void TagService::forgetPerson(const QString& name)
 {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
-    for (UndoStep& s : d->undo)
+    for (UndoStep& s : d->undo) {
         for (const QString& k : s.persons.keys())
             if (samePerson(k, n)) s.persons.remove(k);
+        s.rejected.erase(std::remove_if(s.rejected.begin(), s.rejected.end(), [&](const Rejected& r) {
+            return !r.person.isEmpty() && samePerson(r.person, n);
+        }), s.rejected.end());
+    }
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     const auto before = d->rejected.size();
