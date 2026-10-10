@@ -776,7 +776,10 @@ private slots:
         // Több sor vegyes forrásból: darabszám van, tömeges folytatás nincs.
         vm.selectRows(0, 1);                                // B1 + B2
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
-        QCOMPARE(vm.changeText(), QStringLiteral("2 sor átkerült ide: Cili"));
+        // Új személy jött létre (v3 E4): a sáv így mondja, és a hasonló sorokat ajánlja.
+        QCOMPARE(vm.changeText(), QStringLiteral("Új személy: Cili. 2 sor átkerült hozzá."));
+        QVERIFY(vm.changeNewPerson());
+        QCOMPARE(vm.newPersonKey(), vm.speakerKeyForPerson(QStringLiteral("Cili")));
         QCOMPARE(vm.changeRestCount(), 0);
         QCOMPARE(vm.changeSourceKey(), QString());
         // Más szerkesztés (megerősítés) megszünteti az értesítést; bezárni is lehet.
