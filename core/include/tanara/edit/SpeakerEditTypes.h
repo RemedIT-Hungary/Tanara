@@ -104,9 +104,18 @@ struct VoiceprintResult {
 };
 
 // Az összefoglaló elavultsága: a készítése óta változott a beszélő-hozzárendelés.
+// Célzott elavulás (ha az összefoglalónak vannak forrás-hivatkozásos állításai): mely
+// állítások / teendők forrás-sorainak beszélője változott. Állítások nélkül (régi vagy
+// témánkénti összefoglaló) targeted == false, és csak az egész-dokumentum jelzés él.
 struct SummaryStaleInfo {
     bool stale = false;
     int  correctedSpeakers = 0; // „Az összefoglaló óta N beszélőt javítottál"
+    bool targeted = false;              // van statement-szintű adat (a lenti mezők érvényesek)
+    int  affectedStatements = 0;        // érintett állítás + döntés („2 állítás")
+    int  affectedTodos = 0;             // érintett teendő („1 teendő")
+    int  ownerChanges = 0;              // ebből: teendő, amelynek a felelőse is érintett
+    QStringList affectedStatementIds;   // a SummaryStatement::id-k
+    QStringList affectedUtteranceIds;   // a térkép kiemeléséhez
 };
 
 // Mi vész el újra-átíráskor (a megerősítő párbeszédhez).

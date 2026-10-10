@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Prompt-kiértékelő: összefoglaló-promptok × lokális modellek × átiratok, LM Studio-n át.
 //
+// Forrás-jelölős változatok: en7 (egylépéses), chunk:map1:red3 (darabolt); a jelölő-értelmező
+// LLM nélküli önellenőrzése: node selftest.mjs.
+//
 //   node run.mjs --models google/gemma-4-12b-qat,qwen/qwen3-coder-30b \
 //                --prompts hu0,en1,en2 --meetings S,M,L [--ctx 49152] [--max-tokens 8000]
 //                [--temp 0.2] [--lang Hungarian] [--tag r1] [--force]
@@ -13,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceStats } from './sources.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, def) => {
@@ -323,11 +327,13 @@ for (const model of MODELS) {
       decisions: a.parsed && Array.isArray(a.parsed.decisions) ? a.parsed.decisions.length : -1,
       actionItems: a.parsed && Array.isArray(a.parsed.actionItems) ? a.parsed.actionItems.length : -1,
       execChars: a.parsed && a.parsed.execSummary ? a.parsed.execSummary.length : 0,
+      // Forrás-jelölők (`[t=mm:ss]`): jelölt / feloldható / összes állítás (en7, red3 promptok).
+      sources: sourceStats(a.parsed, fs.readFileSync(path.join(DATA, m + '.md'), 'utf8')),
       text: r.text, parsed: a.parsed, chunks: r.chunks || 0, notes: r.notes || undefined,
     };
     if (!failed) fs.writeFileSync(file, JSON.stringify(row, null, 2));   // a hibás futás újrafuttatható marad
     rows.push(row);
-    console.log(`${p.padEnd(6)} ${m}  ${String(row.secs).padStart(6)} s  in ${row.promptTokens} out ${row.completionTokens} think ${row.reasoningChars}  ${row.finish.padEnd(7)} valid=${row.valid} dec=${row.decisions} act=${row.actionItems} exec=${row.execChars}${row.error ? ' ERR ' + row.error : ''}${row.parseError ? ' parse: ' + row.parseError : ''}`);
+    console.log(`${p.padEnd(6)} ${m}  ${String(row.secs).padStart(6)} s  in ${row.promptTokens} out ${row.completionTokens} think ${row.reasoningChars}  ${row.finish.padEnd(7)} valid=${row.valid} dec=${row.decisions} act=${row.actionItems} exec=${row.execChars}${row.sources && row.sources.marked ? ` src=${row.sources.resolved}/${row.sources.items}` : ''}${row.error ? ' ERR ' + row.error : ''}${row.parseError ? ' parse: ' + row.parseError : ''}`);
     if (failStreak >= 3) { console.log('\n3 egymást követő hiba — leállás.'); break outer; }
     await sleep(PAUSE_MS);
   }

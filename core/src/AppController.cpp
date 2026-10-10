@@ -2895,6 +2895,9 @@ void AppController::summarizeMeeting(const QString& meetingId)
 
     SummaryRequest req = summaryRequestFor(s, merged, m, cfg.model, cfg.maxTokens);
     req.temperature = cfg.temperature;
+    // A forrás-hivatkozásokhoz: a megszólalások a mostani (feloldott) beszélővel — ez lesz az
+    // összefoglaló beszélő-pillanatképe (a célzott elavulás ehhez hasonlít).
+    req.sourceLines = speakeredit::resolvedSourceLines(m);
     req.adaptToContext = !run;   // a Tanara Cloudnál a kontextus a gateway dolga
     const SummaryPlan plan = SummaryService::plan(req);
     const auto ctx = std::make_shared<Impl::LlmContextState>();
@@ -4481,8 +4484,31 @@ QVector<PersonInfo> AppController::peopleDirectory() const
 
 SummaryStaleInfo AppController::summaryStale(const QString& meetingId) const
 {
-    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) return ed->summaryStale();
-    return speakeredit::summaryStale(d->store->load(meetingId));
+    const Meeting m = d->store->load(meetingId);
+    SpeakerEditor* ed = d->speakerEditors.value(meetingId);
+    SummaryStaleInfo info = ed ? ed->summaryStale() : speakeredit::summaryStale(m);
+    // A szerkesztő minden lépés után perzisztál, így a célzott rész a lemezről számolható.
+    if (!m.id.isEmpty()) speakeredit::fillTargetedStale(m, info);
+    return info;
+}
+
+QVector<SummaryStatement> AppController::summaryStatements(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return {};
+    SummaryStaleInfo info;
+    QVector<SummaryStatement> out;
+    speakeredit::fillTargetedStale(m, info, &out);
+    return out;
+}
+
+bool AppController::flagStatement(const QString& meetingId, const QString& statementId)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || m.folder.isEmpty()) return false;
+    if (!summarystore::setStatementFlagged(m.folder, statementId, true)) return false;
+    emit summaryStatementsChanged(meetingId);
+    return true;
 }
 
 // Ugyanez már betöltött meetingre (a könyvtár soronként hívja — nincs újabb lemez-olvasás

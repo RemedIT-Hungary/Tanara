@@ -65,6 +65,11 @@ SummaryDocument load(const QString& meetingFolder);
 // A strukturált forma + metaadat mentése (summary.json). A summary.md-t NEM írja.
 bool save(const QString& meetingFolder, const SummaryDocument& doc);
 
+// „Nem így hangzott el? · Jelzem”: egy állítás megjelölése (később tanítóadat). Csak a
+// summary.json statements-ét írja át (a json módosítási ideje marad, hogy egy kézzel
+// szerkesztett summary.md továbbra is az igazság legyen). false: nincs ilyen állítás / írási hiba.
+bool setStatementFlagged(const QString& meetingFolder, const QString& statementId, bool flagged = true);
+
 QJsonObject    toJson(const SummaryDocument& doc);
 SummaryDocument fromJson(const QJsonObject& o);
 

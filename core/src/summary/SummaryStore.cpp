@@ -17,7 +17,7 @@ namespace summarystore {
 
 namespace {
 
-constexpr int kVersion = 2;   // 2: openQuestions + memo (a summary-ban), témánkénti openQuestions
+constexpr int kVersion = 3;   // 2: openQuestions + memo, témánkénti openQuestions; 3: statements + sourceSpeakers + memo.speakers
 
 QJsonObject topicToJson(const TopicAnalysis& a)
 {
@@ -384,6 +384,14 @@ SummaryDocument load(const QString& meetingFolder)
             for (TopicAnalysis& a : md.topics)
                 for (const TopicAnalysis& old : std::as_const(doc.topics))
                     if (old.title == a.title) { a.topicId = old.topicId; break; }
+            // A forrás-hivatkozások közül azok maradnak, amelyek szövege a kézzel szerkesztett
+            // markdownban is változatlanul megvan (a többinek nincs már mire mutatnia).
+            for (const SummaryStatement& st : std::as_const(doc.summary.statements))
+                if (!st.text.isEmpty() && markdown.contains(st.text)) md.summary.statements.append(st);
+            if (!md.summary.statements.isEmpty()) md.summary.sourceSpeakers = doc.summary.sourceSpeakers;
+            for (MemoSection& ms : md.summary.memo)
+                for (const MemoSection& old : std::as_const(doc.summary.memo))
+                    if (old.title == ms.title) { ms.speakers = old.speakers; break; }
             doc = md;
         }
         return doc;
@@ -405,6 +413,42 @@ bool save(const QString& meetingFolder, const SummaryDocument& doc)
     if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(QJsonDocument(toJson(doc)).toJson(QJsonDocument::Indented));
     return f.commit();
+}
+
+bool setStatementFlagged(const QString& meetingFolder, const QString& statementId, bool flagged)
+{
+    if (meetingFolder.isEmpty() || statementId.isEmpty()) return false;
+    const QString path = jsonPath(meetingFolder);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
+    QJsonArray sts = summary.value(QStringLiteral("statements")).toArray();
+    bool found = false;
+    for (int i = 0; i < sts.size(); ++i) {
+        QJsonObject so = sts.at(i).toObject();
+        if (so.value(QStringLiteral("id")).toString() != statementId) continue;
+        found = true;
+        if (so.value(QStringLiteral("flagged")).toBool() == flagged) return true;
+        if (flagged) so[QStringLiteral("flagged")] = true;
+        else so.remove(QStringLiteral("flagged"));
+        sts[i] = so;
+        break;
+    }
+    if (!found) return false;
+    summary[QStringLiteral("statements")] = sts;
+    root[QStringLiteral("summary")] = summary;
+
+    const QDateTime mtime = QFileInfo(path).lastModified();
+    QSaveFile out(path);
+    if (!out.open(QIODevice::WriteOnly)) return false;
+    out.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (!out.commit()) return false;
+    QFile touched(path);
+    if (touched.open(QIODevice::ReadWrite))
+        touched.setFileTime(mtime, QFileDevice::FileModificationTime);
+    return true;
 }
 
 } // namespace summarystore

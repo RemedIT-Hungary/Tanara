@@ -14,6 +14,7 @@
 // parseSingle. A vezénylés (hívások sorrendje, gyorsítótár, megszakítás) a SummaryService-ben él.
 //
 #include "tanara/Types.h"
+#include "tanara/summary/SummarySources.h"
 
 #include <QByteArray>
 #include <QJsonObject>
@@ -119,9 +120,13 @@ SingleResult parseSingle(const QString& raw, const TranscriptPart& part);
 // A beszélők (résztvevők) a beszéd-blokkokból, az első megszólalás sorrendjében.
 QStringList speakersOf(const QVector<Utterance>& segments);
 
-// A teljes Summary összeállítása: a rövid forma + memó + résztvevők.
+// A teljes Summary összeállítása: a rövid forma + memó + résztvevők. A forrás-jelölők
+// (`[t=mm:ss]`) lekerülnek a szövegekről, és a lines alapján statements + sourceSpeakers +
+// memó-szakasz beszélők lesznek belőlük (summarysrc::attachSources). Üres lines → az
+// állításoknak nincs forrása (a jelölők akkor is lekerülnek).
 Summary buildSummary(const MergeResult& merge, const QVector<PartNotes>& parts,
-                     const QStringList& participants);
+                     const QStringList& participants,
+                     const QVector<summarysrc::SourceLine>& lines = {});
 
 } // namespace summarypipe
 } // namespace tanara

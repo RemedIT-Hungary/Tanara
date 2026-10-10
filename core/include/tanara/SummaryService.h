@@ -49,6 +49,10 @@ struct SummaryRequest {
     // „Nem fér a kontextusba” hibánál (ha a szerver megmondja a kontextust) a hátralévő
     // részeket EGYSZER kisebbekre bontjuk és folytatjuk. A Tanara Cloudnál ki van kapcsolva.
     bool        adaptToContext = true;
+    // A forrás-hivatkozások feloldásához: az átirat megszólalásai (id + idő + beszélő, a
+    // transcript.segments.json + a beszélő-javítások szerint). Üres → a transcript beszéd-
+    // blokkjaiból képezzük ("u<startMs>" id-vel).
+    QVector<summarysrc::SourceLine> sourceLines;
 };
 
 // A futás terve (a feladat-szakaszokhoz és a költségbecsléshez — LLM-hívás nélkül).
@@ -123,6 +127,7 @@ private:
     QVector<summarypipe::PartNotes> m_notes;
     QVector<bool> m_done;
     QStringList m_speakers;
+    QVector<summarysrc::SourceLine> m_lines;
     QPointer<LlmJob> m_job;
     bool m_cancelled = false;
     bool m_running = false;

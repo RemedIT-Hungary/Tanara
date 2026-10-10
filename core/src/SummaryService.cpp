@@ -183,6 +183,7 @@ void SummaryService::summarize(const SummaryRequest& req)
     const QVector<Utterance> segs = m_req.transcript.segments();
     m_parts = splitTranscript(segs, m_req.partMs);
     m_speakers = speakersOf(segs);
+    m_lines = m_req.sourceLines.isEmpty() ? summarysrc::linesFromSegments(segs) : m_req.sourceLines;
     if (m_parts.isEmpty()) {
         emit summaryFailed(tr("Az átirat üres — nincs mit összefoglalni."));
         return;
@@ -425,7 +426,7 @@ void SummaryService::startMerge()
         }
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
-        emit summaryReady(buildSummary(r, m_notes, m_speakers));
+        emit summaryReady(buildSummary(r, m_notes, m_speakers, m_lines));
     });
 }
 
@@ -455,7 +456,7 @@ void SummaryService::startSingle()
         m_running = false;
         if (!m_req.cachePath.isEmpty()) QFile::remove(m_req.cachePath);
         m_notes[0] = r.notes;
-        emit summaryReady(buildSummary(r.merge, m_notes, m_speakers));
+        emit summaryReady(buildSummary(r.merge, m_notes, m_speakers, m_lines));
     }, /*adaptive*/ true);
 }
 

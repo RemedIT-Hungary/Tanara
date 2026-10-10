@@ -194,8 +194,18 @@ public:
 
     // Elavult-e az összefoglaló (a készítése óta változott a beszélő-hozzárendelés), és
     // hány beszélőt javítottak azóta. Megnyitott szerkesztő nélkül is hívható.
+    // Az egy-meetinges változat a CÉLZOTT elavulást is kitölti (targeted, affected…: mely
+    // állítások / teendők forrás-sorainak beszélője változott); a Meeting-es (könyvtár-sor)
+    // változat olcsó, csak az egész-dokumentum jelzést adja.
     tanara::SummaryStaleInfo summaryStale(const QString& meetingId) const;
     tanara::SummaryStaleInfo summaryStale(const tanara::Meeting& meeting) const;
+    // A gyors összefoglaló állításai (vezetői összefoglaló mondatai, döntések, teendők) a
+    // forrás-hivatkozásaikkal; a staleBecause / ownerStaleBecause a mostani beszélő-állapot
+    // szerint kitöltve. Régi / témánkénti összefoglalónál üres.
+    QVector<tanara::SummaryStatement> summaryStatements(const QString& meetingId) const;
+    // „Nem így hangzott el? · Jelzem”: az állítás megjelölése (summary.json, flagged = true).
+    // Siker esetén summaryStatementsChanged. false: nincs ilyen meeting / állítás.
+    bool flagStatement(const QString& meetingId, const QString& statementId);
     // Mi vész el újra-átíráskor (kézi javítások száma a megerősítő párbeszédhez).
     tanara::RetranscribeImpact retranscribeImpact(const QString& meetingId) const;
 
@@ -500,6 +510,9 @@ signals:
     void topicStatusChanged(QString meetingId, QString topicId);
     void speakerMapChanged(QString meetingId);              // beszélő-átnevezés után
     void summaryStaleChanged(QString meetingId);            // az összefoglaló elavult-jelzője változott
+    // Az összefoglaló állításai változtak (jelölés). A célzott elavulás változását a
+    // summaryStaleChanged jelzi — utána a summaryStatements is újraolvasandó.
+    void summaryStatementsChanged(QString meetingId);
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void voiceprintBackfillFinished(int added);             // a lusta pótlás lefutott (új lenyomatok)

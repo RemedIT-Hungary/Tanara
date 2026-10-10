@@ -1,5 +1,6 @@
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/library/MeetingNotes.h"
+#include "tanara/summary/SummarySources.h"
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QJsonValue>
@@ -125,9 +126,46 @@ QJsonObject toJson(const Summary& s)
         mo[QStringLiteral("startMs")] = static_cast<double>(m.startMs);
         mo[QStringLiteral("endMs")]   = static_cast<double>(m.endMs);
         mo[QStringLiteral("points")]  = stringListToArray(m.points);
+        if (!m.speakers.isEmpty())
+            mo[QStringLiteral("speakers")] = stringListToArray(m.speakers);
         memo.append(mo);
     }
     o[QStringLiteral("memo")] = memo;
+
+    // Forrás-hivatkozások: az állítások (a staleBecause futásidejű, nem tároljuk) és a
+    // hivatkozott megszólalások beszélője a készítéskor.
+    if (!s.statements.isEmpty()) {
+        QJsonArray sts;
+        for (const SummaryStatement& st : s.statements) {
+            QJsonObject so;
+            so[QStringLiteral("id")]   = st.id;
+            so[QStringLiteral("kind")] = summarysrc::kindToString(st.kind);
+            so[QStringLiteral("text")] = st.text;
+            if (!st.owner.isEmpty()) so[QStringLiteral("owner")] = st.owner;
+            if (st.flagged) so[QStringLiteral("flagged")] = true;
+            QJsonArray spans;
+            for (const SourceSpan& sp : st.sourceSpans) {
+                QJsonObject spo;
+                spo[QStringLiteral("startMs")] = static_cast<double>(sp.startMs);
+                spo[QStringLiteral("endMs")]   = static_cast<double>(sp.endMs);
+                spo[QStringLiteral("utteranceIds")] = stringListToArray(sp.utteranceIds);
+                spans.append(spo);
+            }
+            so[QStringLiteral("sourceSpans")] = spans;
+            sts.append(so);
+        }
+        o[QStringLiteral("statements")] = sts;
+    }
+    if (!s.sourceSpeakers.isEmpty()) {
+        QJsonObject ss;
+        for (auto it = s.sourceSpeakers.cbegin(); it != s.sourceSpeakers.cend(); ++it) {
+            QJsonObject so;
+            so[QStringLiteral("key")]  = it->key;
+            so[QStringLiteral("name")] = it->name;
+            ss[it.key()] = so;
+        }
+        o[QStringLiteral("sourceSpeakers")] = ss;
+    }
     return o;
 }
 
@@ -151,8 +189,34 @@ Summary summaryFromJson(const QJsonObject& o)
         m.startMs = static_cast<qint64>(mo.value(QStringLiteral("startMs")).toDouble(-1));
         m.endMs   = static_cast<qint64>(mo.value(QStringLiteral("endMs")).toDouble(-1));
         m.points  = arrayToStringList(mo.value(QStringLiteral("points")).toArray());
+        m.speakers = arrayToStringList(mo.value(QStringLiteral("speakers")).toArray());
         if (!m.title.isEmpty() || !m.points.isEmpty())
             s.memo.append(m);
+    }
+    // Régi summary.json: nincs statements / sourceSpeakers → üres.
+    for (const auto& v : o.value(QStringLiteral("statements")).toArray()) {
+        const QJsonObject so = v.toObject();
+        SummaryStatement st;
+        st.id      = so.value(QStringLiteral("id")).toString();
+        st.kind    = summarysrc::kindFromString(so.value(QStringLiteral("kind")).toString());
+        st.text    = so.value(QStringLiteral("text")).toString();
+        st.owner   = so.value(QStringLiteral("owner")).toString();
+        st.flagged = so.value(QStringLiteral("flagged")).toBool();
+        for (const auto& sv : so.value(QStringLiteral("sourceSpans")).toArray()) {
+            const QJsonObject spo = sv.toObject();
+            SourceSpan sp;
+            sp.startMs = static_cast<qint64>(spo.value(QStringLiteral("startMs")).toDouble(-1));
+            sp.endMs   = static_cast<qint64>(spo.value(QStringLiteral("endMs")).toDouble(-1));
+            sp.utteranceIds = arrayToStringList(spo.value(QStringLiteral("utteranceIds")).toArray());
+            st.sourceSpans.append(sp);
+        }
+        if (!st.id.isEmpty()) s.statements.append(st);
+    }
+    const QJsonObject ss = o.value(QStringLiteral("sourceSpeakers")).toObject();
+    for (auto it = ss.constBegin(); it != ss.constEnd(); ++it) {
+        const QJsonObject so = it.value().toObject();
+        s.sourceSpeakers.insert(it.key(), SourceSpeaker{so.value(QStringLiteral("key")).toString(),
+                                                        so.value(QStringLiteral("name")).toString()});
     }
     return s;
 }
