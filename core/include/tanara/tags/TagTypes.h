@@ -32,10 +32,11 @@ struct TagUsage {
 
 // Honnan került fel a címke (a TagService naplózza; a viselkedést nem befolyásolja).
 enum class TagSource { Manual, Suggestion, Llm, Bulk };
-// Melyik javasló adta a javaslatot.
-enum class SuggestionSource { Similar, Cooccur, Llm };
-// Egy indoklás-sor fajtája („Közös résztvevő” / „Közös kifejezések” / „Hasonló cím”).
-enum class ReasonKind { Participant, Terms, Title };
+// Melyik javasló adta a javaslatot (People: a résztvevők kézi címkéi alapján).
+enum class SuggestionSource { Similar, Cooccur, Llm, People };
+// Egy indoklás-sor fajtája („Közös résztvevő” / „Közös kifejezések” / „Hasonló cím” /
+// „Résztvevők címkéje”: a címkét viselő résztvevők nevei).
+enum class ReasonKind { Participant, Terms, Title, PeopleTags };
 
 struct SuggestionReason {
     ReasonKind  kind = ReasonKind::Terms;

@@ -8,9 +8,11 @@
 // A fájl alakja (2-es verzió):
 //   {
 //     "version": 2,
-//     "people":   [ {"name": "…", "aliases": ["…"], "note": "…"}, … ],   // a névlista
+//     "people":   [ {"name": "…", "aliases": ["…"], "note": "…", "tags": ["<tagId>"]}, … ],   // a névlista
 //     "unlisted": [ {"name": "…", "aliases": ["…"], "note": "…"}, … ]    // csak ha van ilyen
 //   }
+// - "tags": a személyre kézzel tett címkék azonosítói (a tags.json készletéből; csak ha van).
+//   Átnevezéskor / összevonáskor a rekorddal megy (összevonásnál unió).
 // - A személy azonosítója a NÉV (kisbetű-függetlenül), ahogy a voiceprints.json-ban is.
 // - Az ismeretlen (jövőbeli) mezőket a gyökérben és a rekordokban is megőrzi.
 // - "unlisted": olyan név adatai, amely NINCS a névlistán — pl. csak hanglenyomata van, vagy a
@@ -30,6 +32,7 @@
 //
 #include "tanara/store/SharedFile.h"
 
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -41,7 +44,8 @@ struct PersonDetails {
     QString     name;
     QStringList aliases;
     QString     note;
-    bool isEmpty() const { return aliases.isEmpty() && note.isEmpty(); }
+    QStringList tags;       // kézi címkék (tagId), felrakási sorrendben
+    bool isEmpty() const { return aliases.isEmpty() && note.isEmpty() && tags.isEmpty(); }
 };
 
 class PeopleStore {
@@ -74,6 +78,14 @@ public:
     // Becenév visszatétele az eredeti helyére (visszavonás).
     bool insertAlias(const QString& name, const QString& alias, int index);
     void setNote(const QString& name, const QString& note);
+
+    // ---- kézi címkék (tagId-k; a TagService kezeli, lásd tags/TagService.h) ----
+    QStringList tags(const QString& name) const { return details(name).tags; }
+    // A címkék cseréje (ismétlés nélkül, sorrendtartóan). Ismeretlen névhez listán kívüli
+    // rekordot hoz létre. true, ha változott.
+    bool setTags(const QString& name, const QStringList& tagIds);
+    // Minden címkés rekord (név → címkék), a listán kívüliek is.
+    QHash<QString, QStringList> allTags() const;
 
     // A listán kívüli, de adatot hordozó rekordok nevei (lásd fent: "unlisted").
     QStringList unlistedNames() const;

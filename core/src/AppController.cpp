@@ -1047,6 +1047,12 @@ AppController::AppController(QObject* parent)
     d->tags = new TagService(d->store, QDir(d->metaDir).filePath(QStringLiteral("tags.json")), this);
     d->profiles = new MeetingProfiles(d->store, this);
     d->tags->setProfiles(d->profiles);
+    // Címkék a személyeken: a kézi címkék a people.json-ban; a saját személy kimarad.
+    d->tags->setPeopleStore(d->people.get());
+    d->tags->setSelfNameProvider([this]() {
+        return d->settings ? d->settings->settings().userSpeakerName : QString();
+    });
+    connect(this, &AppController::peopleChanged, d->tags, &TagService::invalidatePersonStats);
     d->library->setTagService(d->tags);
     d->embeddings = new EmbeddingIndex(d->store, this);
     d->embeddings->setProfiles(d->profiles);
@@ -1064,6 +1070,8 @@ AppController::AppController(QObject* parent)
     // ettől kezdve a fő szál olvasói (címke-profil, tervezet-javaslat) sosem töltenek és
     // számolnak szinkron, a kész pillanatképet kapják.
     d->profiles->ensureBuilt();
+    // A személy ↔ címke statisztika is háttérszálon (a fő szál a kész pillanatképet olvassa).
+    d->tags->ensurePersonStats();
     // A hasonlóság-alapú lista addig érvényes, amíg a címkék, az átiratok és az index nem változnak.
     auto dropTagCache = [this]() { invalidateTagSuggestions(); };
     connect(d->tags, &TagService::tagsChanged, this, dropTagCache);
@@ -1608,7 +1616,8 @@ void AppController::enrollVoiceprintFromSample(const QString& name, const QStrin
 void AppController::renamePerson(const QString& oldName, const QString& newName) {
     const QString o = oldName.trimmed(), n = newName.trimmed();
     if (o.isEmpty() || n.isEmpty() || o == n) return;
-    if (d->people) d->people->rename(o, n);   // a teljes rekord megy (becenevek, megjegyzés)
+    if (d->tags) d->tags->renamePersonRefs(o, n);   // elutasítások + visszavonás (a rename ELŐTT)
+    if (d->people) d->people->rename(o, n);   // a teljes rekord megy (becenevek, megjegyzés, címkék)
     if (d->voiceprints) { d->voiceprints->renamePerson(o, n); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();
@@ -1644,6 +1653,7 @@ void AppController::removePerson(const QString& name) {
     const QString nm = name.trimmed();
     if (nm.isEmpty()) return;
     if (d->people) d->people->remove(nm);
+    if (d->tags) d->tags->forgetPerson(nm);
     if (d->voiceprints) { d->voiceprints->removePerson(nm); emit voiceprintsChanged(); }
 
     const QVector<Meeting> all = d->store->loadAll();

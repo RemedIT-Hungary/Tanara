@@ -26,6 +26,7 @@ QString sourceName(tanara::SuggestionSource s)
     switch (s) {
     case tanara::SuggestionSource::Cooccur: return QStringLiteral("cooccur");
     case tanara::SuggestionSource::Llm:     return QStringLiteral("llm");
+    case tanara::SuggestionSource::People:  return QStringLiteral("people");
     case tanara::SuggestionSource::Similar: break;
     }
     return QStringLiteral("similar");
@@ -35,6 +36,7 @@ tanara::SuggestionSource sourceOf(const QString& s)
 {
     if (s == QLatin1String("cooccur")) return tanara::SuggestionSource::Cooccur;
     if (s == QLatin1String("llm")) return tanara::SuggestionSource::Llm;
+    if (s == QLatin1String("people")) return tanara::SuggestionSource::People;
     return tanara::SuggestionSource::Similar;
 }
 
@@ -43,6 +45,7 @@ QString reasonName(tanara::ReasonKind k)
     switch (k) {
     case tanara::ReasonKind::Participant: return QStringLiteral("participant");
     case tanara::ReasonKind::Title:       return QStringLiteral("title");
+    case tanara::ReasonKind::PeopleTags:  return QStringLiteral("peopleTags");
     case tanara::ReasonKind::Terms:       break;
     }
     return QStringLiteral("terms");
