@@ -15,7 +15,7 @@ ICONS=(file-text sparkles user-check search users settings fingerprint ellipsis 
   chevron-right chevron-up chevron-left info circle-alert circle-check loader-circle refresh-cw
   user user-plus volume-x mic-off external-link clock sun moon circle-dot ellipsis-vertical
   file-audio file-video import plug key-round cloud monitor eye eye-off circle-x braces
-  arrow-right-left merge headphones "$@")
+  arrow-right-left merge headphones calendar phone book-open list-checks "$@")
 
 mkdir -p icons fonts
 for n in "${ICONS[@]}"; do
