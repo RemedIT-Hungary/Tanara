@@ -161,6 +161,13 @@ SpeakerOverlay loadOverlay(const QString& meetingFolder)
         ov.merged.insert(it.key(), it.value().toString());
     for (const QJsonValue& v : root.value(QStringLiteral("removed")).toArray())
         ov.removedRaw << v.toString();
+    const QJsonObject tracks = root.value(QStringLiteral("speakerTracks")).toObject();
+    for (auto it = tracks.constBegin(); it != tracks.constEnd(); ++it) {
+        QStringList ids;
+        for (const QJsonValue& v : it.value().toArray())
+            if (!v.toString().isEmpty()) ids << v.toString();
+        if (!ids.isEmpty()) ov.speakerTracks.insert(it.key(), ids);
+    }
 
     const QJsonObject utts = root.value(QStringLiteral("utterances")).toObject();
     for (auto it = utts.constBegin(); it != utts.constEnd(); ++it) {
@@ -202,6 +209,7 @@ SpeakerOverlay loadOverlayFor(const QString& meetingFolder, const QVector<Transc
         ov.merged.clear();
         ov.removedRaw.clear();
         ov.utterances.clear();
+        ov.speakerTracks.clear();
         ov.nextParticipant = 1;
         ov.nextAnonymous = 1;
     }
@@ -239,6 +247,12 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
         merged[it.key()] = it.value();
     root[QStringLiteral("merged")] = merged;
     root[QStringLiteral("removed")] = QJsonArray::fromStringList(ov.removedRaw);
+    if (!ov.speakerTracks.isEmpty()) {
+        QJsonObject tracks;
+        for (auto it = ov.speakerTracks.constBegin(); it != ov.speakerTracks.constEnd(); ++it)
+            if (!it.value().isEmpty()) tracks[it.key()] = QJsonArray::fromStringList(it.value());
+        root[QStringLiteral("speakerTracks")] = tracks;
+    }
 
     QJsonObject utts;
     for (auto it = ov.utterances.constBegin(); it != ov.utterances.constEnd(); ++it) {
@@ -546,6 +560,7 @@ void discardForNewTranscript(const QString& meetingFolder)
     ov.merged.clear();
     ov.removedRaw.clear();
     ov.utterances.clear();
+    ov.speakerTracks.clear();
     ov.identified.clear();      // az új diarizáció címkéi mást jelentenek
     ov.nextParticipant = 1;
     ov.nextAnonymous = 1;

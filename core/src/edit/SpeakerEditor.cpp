@@ -93,6 +93,7 @@ struct Step {
 bool sameEdits(const SpeakerOverlay& a, const SpeakerOverlay& b)
 {
     if (a.merged != b.merged || a.removedRaw != b.removedRaw) return false;
+    if (a.speakerTracks != b.speakerTracks) return false;
     if (a.participants.size() != b.participants.size()) return false;
     for (int i = 0; i < a.participants.size(); ++i) {
         const OverlayParticipant& x = a.participants[i];
@@ -975,6 +976,11 @@ struct SpeakerEditor::Private {
         }
         for (auto it = ov.merged.begin(); it != ov.merged.end(); ++it)
             if (it.value() == from) it.value() = into;
+        // A kézi sáv-beosztás: a célé marad; ha neki nincs, a forrásé öröklődik.
+        if (ov.speakerTracks.contains(from)) {
+            const QStringList tracks = ov.speakerTracks.take(from);
+            if (!ov.speakerTracks.contains(into)) ov.speakerTracks.insert(into, tracks);
+        }
         if (isParticipantKey(from)) {
             ov.participants.erase(
                 std::remove_if(ov.participants.begin(), ov.participants.end(),
