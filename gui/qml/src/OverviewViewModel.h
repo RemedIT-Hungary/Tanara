@@ -12,7 +12,8 @@
 // jobProgressChanged …) késleltetve (egy körrel) újraszámol.
 //
 // Controller nélkül (App.demo, képernyőkép) kitalált adat: demoState = overviewProcessing (V1)
-// | overviewDone (V3) | overviewEmpty (V5) | overviewNobody (V6).
+// | overviewDone (V3) | overviewEmpty (V5) | overviewNobody (V6) | overviewRecorded (U6: felvétel
+// után, átírás előtt) | overviewRecordedError (U6: az átírás nem sikerült).
 //
 #include <QObject>
 #include <QPointer>

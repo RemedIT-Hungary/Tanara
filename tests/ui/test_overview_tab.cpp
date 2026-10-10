@@ -2,7 +2,8 @@
 // nincs AppController): egysoros fejléc a négy füllel, a nem elérhető fül panelje, a
 // „Megbeszélés” menü, az Áttekintés részei (banner + „Később”, lépések, sávok, ADATOK,
 // összecsukott sorok, üres kártyák), az Átirat eszköz-sora (Olvasás / Javítás, Ctrl+E) és a
-// térkép-dokk (csak az Átirat / összefoglaló füleken; kattintás = ugrás).
+// térkép-dokk (csak az Átirat / összefoglaló füleken; kattintás = ugrás). U6: felvétel után,
+// átírás előtt is az Áttekintés jelenik meg, az „Átírás indítása” a FELDOLGOZÁS lépésében.
 #include "AppContext.h"
 #include "QmlApp.h"
 
@@ -16,6 +17,19 @@
 #include <memory>
 
 using namespace tanara_qml;
+
+// Ál-héj az Áttekintés indító gombjaihoz (a ShellActions szerződéses felületéből a kellő rész).
+class StartSpy : public QObject {
+    Q_OBJECT
+public:
+    QStringList calls;
+    Q_INVOKABLE void startTranscription(const QString& id) { calls << "startTranscription:" + id; }
+    Q_INVOKABLE void openSettings(const QString& page, const QString& field = QString())
+    {
+        calls << "openSettings:" + page + (field.isEmpty() ? QString() : ":" + field);
+    }
+    Q_INVOKABLE void toast(const QString&, const QString& = QString()) { calls << "toast"; }
+};
 
 class TestOverviewTab : public QObject {
     Q_OBJECT
@@ -224,6 +238,79 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QTRY_VERIFY(!shown("mapDock"));
         QVERIFY(shown("seekSlider"));
+    }
+
+    // U6 (V5): felvétel után, átírás előtt az Áttekintés látszik — üres résztvevő-kártya,
+    // sávok, lépések; az „Átirat” lépésben az „Átírás indítása”, ami a héj startTranscription
+    // akcióját hívja. Az Átirat fül halvány, a panelje is felajánlja az indítást.
+    void recorded_overviewBeforeTranscription()
+    {
+        load(QStringLiteral("overviewRecorded"));
+        QCOMPARE(tab(), 0);
+        QVERIFY(shown("overviewTab"));
+        QVERIFY(shown("pipelineSteps"));
+        QVERIFY(shown("step_transcript"));
+        QVERIFY(shown("trackList"));
+        QCOMPARE(items("trackSwitch").size(), 2);          // a sávok kapcsolhatók
+        QVERIFY(shown("peopleEmpty"));
+        QVERIFY(shown("soloButton"));
+        QVERIFY(shown("emptyAddParticipant"));
+        QVERIFY(shown("sourceDescribe"));
+        QVERIFY(shown("overviewTags"));
+        QVERIFY(!shown("approvalBanner"));
+        QVERIFY(!shown("statTiles"));
+        QVERIFY(!shown("transcribeError"));
+        QVERIFY(!shown("transcribeBlocker"));
+        QTRY_VERIFY(shown("identifySwitch"));             // a lépések a modell után töltődnek
+        QQuickItem* start = item("startTranscriptionButton");
+        QVERIFY(start && start->isVisible());
+        QVERIFY(start->isEnabled());
+
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        click(start);
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:")}));   // demóban üres id
+
+        // Az Átirat fül átírás előtt nem vált, a panel megmondja, mi hiányzik, és indít.
+        QObject* tip = object("tabTooltip");
+        QVERIFY(tip);
+        click(item("tab_transcript"));
+        QTRY_VERIFY(tip->property("opened").toBool());
+        QCOMPARE(tab(), 0);
+        QCOMPARE(tip->property("tipTitle").toString(), QStringLiteral("Még nincs átirat"));
+        QTRY_VERIFY(shown("tabTipAction"));
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTRY_VERIFY(!tip->property("opened").toBool());
+    }
+
+    // U6: az átírás hibája a lépésben — figyelmet kérő kör, hiba-doboz, „Újra” és a javító művelet.
+    void recordedError_retryAndFix()
+    {
+        load(QStringLiteral("overviewRecordedError"));
+        QCOMPARE(tab(), 0);
+        QTRY_VERIFY(shown("transcribeError"));
+        QVERIFY(!shown("startTranscriptionButton"));
+        QVERIFY(shown("transcribeFixButton"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        click(item("transcribeRetryButton"));
+        click(item("transcribeFixButton"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:"),
+                                         QStringLiteral("openSettings:providers:stt")}));
+    }
+
+    // Átírás közben / után nincs indító a lépésekben.
+    void processing_noStartButton()
+    {
+        load(QStringLiteral("overviewProcessing"));
+        QVERIFY(shown("pipelineSteps"));
+        QVERIFY(!shown("startTranscriptionButton"));
+        QVERIFY(!shown("transcribeError"));
+        QVERIFY(!shown("identifySwitch"));
     }
 
     // A „Megbeszélés” menü a menüsorban és a fejléc „…” gombján ugyanaz.

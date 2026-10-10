@@ -450,7 +450,8 @@ void OverviewViewModel::reload()
                               : tr("%n résztvevő", nullptr, known);
         voiceState = QStringLiteral("done");
     } else {
-        voiceSub = m.hasTranscript ? tr("nem futott") : tr("a lekeverés után");
+        voiceSub = m.hasTranscript ? tr("nem futott")
+                 : mixReady ? tr("az átírással párhuzamosan") : tr("a lekeverés után");
         voiceState = m.hasTranscript ? QStringLiteral("done") : QStringLiteral("waiting");
     }
     steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState, true,
@@ -532,9 +533,12 @@ void OverviewViewModel::loadDemo()
     const bool done = st == QLatin1String("overviewDone");
     const bool empty = st == QLatin1String("overviewEmpty");
     const bool nobody = st == QLatin1String("overviewNobody");
+    // U6: felvétel után, átírás előtt (V5-szerű, az „Átírás indítása” a lépésben); …Error: hibával.
+    const bool recordedError = st == QLatin1String("overviewRecordedError");
+    const bool recorded = recordedError || st == QLatin1String("overviewRecorded");
 
     m_hasTranscript = done || nobody;
-    m_transcribing = !m_hasTranscript;
+    m_transcribing = !m_hasTranscript && !recorded;
     m_allDone = done;
     m_analysisRunning = empty;
     m_approvalPending = st == QLatin1String("overviewProcessing");
@@ -543,7 +547,7 @@ void OverviewViewModel::loadDemo()
     // A leírás a demó-állapot első betöltésekor kap értéket (utána a setContextNote-é).
     if (m_demoLoadedFor != st) {
         m_demoLoadedFor = st;
-        m_contextNote = (empty || nobody) ? QString()
+        m_contextNote = (empty || nobody || recorded) ? QString()
                       : tr("Q4 partner review — napirend: Q3 számok, súgóoldalak, számlázási folyamat, Nordvik-megújítás.");
     }
 
@@ -556,7 +560,7 @@ void OverviewViewModel::loadDemo()
              << personRow(QStringLiteral("p5"), QStringLiteral("Távoli 1"), 4, tr("névtelen · elnevezhető"), {source(QStringLiteral("phone"), tr("hívás"))}, 0.07);
         m_peopleState = QStringLiteral("list");
         m_peopleHint = tr("jóváhagyva %1-kor").arg(QStringLiteral("okt. 1. 16:40"));
-    } else if (empty) {
+    } else if (empty || recorded) {
         m_peopleState = QStringLiteral("empty");
         m_peopleHint.clear();
     } else if (nobody) {
@@ -586,16 +590,21 @@ void OverviewViewModel::loadDemo()
             m_anonymous << QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("share"), share},
                                        {QStringLiteral("colorIndex"), i++}};
     }
-    m_sideWho = (empty || nobody) ? QVariantMap()
+    m_sideWho = (empty || nobody || recorded) ? QVariantMap()
               : QVariantMap{{QStringLiteral("mic"), QStringLiteral("Kovács Lilla")},
                             {QStringLiteral("loopback"), tr("%n résztvevő", nullptr, 4)}};
 
     QVariantList steps;
-    if (empty || nobody) {
+    if (empty || nobody || recorded) {
         steps << step(QStringLiteral("recording"), tr("Felvétel"), QStringLiteral("0:42:10 · ") + tr("%n sáv", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("tracks"), tr("Sávok"), tr("%n aktív", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("mixdown"), tr("Lekeverés"), tr("%n sávból", nullptr, 2), QStringLiteral("done"));
-        if (empty)
+        if (recorded)
+            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("az átírással párhuzamosan"), QStringLiteral("waiting"), true)
+                  << step(QStringLiteral("transcript"), tr("Átirat"), recordedError ? tr("nem sikerült") : tr("még nem indult"),
+                          recordedError ? QStringLiteral("attention") : QStringLiteral("waiting"), true)
+                  << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
+        else if (empty)
             steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), QStringLiteral("1 / 2 ") + tr("sáv"), QStringLiteral("running"), true, 40)
                   << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · 18% · ") + tr("kb. %n perc", nullptr, 6), QStringLiteral("running"), true, 18)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));

@@ -5,10 +5,15 @@ import QtQuick.Layouts
 // figyelmet kér = warnSoft „!”, a sor raised + warnLine keret; fut = 2 px accent gyűrű + 4 px
 // haladás-csík; vár = szaggatott borderStrong kör. A párhuzamos lépéseken mono „‖ párhuzamosan”.
 // steps: [{ key, title, sub, state, parallel, progress }] (OverviewViewModel.steps).
+// mixdownContent / voiceContent / transcriptContent: a lépés alá beágyazott tartalom (átirat
+// előtt az „Átírás indítása” a „transcript” lépésben, kézi lekeverésnél a „Lekeverés indítása”).
 ColumnLayout {
     id: root
 
     property var steps: []
+    property Component mixdownContent: null
+    property Component voiceContent: null
+    property Component transcriptContent: null
 
     spacing: 2
 
@@ -18,6 +23,9 @@ ColumnLayout {
             id: stepRow
             required property var modelData
             readonly property string state: modelData.state
+            readonly property Component extra: modelData.key === "transcript" ? root.transcriptContent
+                                              : modelData.key === "mixdown" ? root.mixdownContent
+                                              : modelData.key === "voice" ? root.voiceContent : null
             objectName: "step_" + modelData.key
             Layout.fillWidth: true
             Layout.leftMargin: -8
@@ -75,7 +83,7 @@ ColumnLayout {
                     spacing: 6
                     TLabel {
                         text: stepRow.modelData.title
-                        color: stepRow.state === "waiting" ? Theme.textMuted : Theme.text
+                        color: stepRow.state === "waiting" && !stepRow.extra ? Theme.textMuted : Theme.text
                         font.pixelSize: 13
                         font.weight: Theme.weightSemiBold
                     }
@@ -112,6 +120,13 @@ ColumnLayout {
                     thickness: 4
                     indeterminate: stepRow.modelData.progress === -2
                     value: Math.max(0, stepRow.modelData.progress) / 100
+                }
+                Loader {
+                    active: stepRow.extra !== null
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    sourceComponent: stepRow.extra
                 }
             }
         }

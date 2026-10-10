@@ -11,8 +11,13 @@ import QtQuick.Templates as T
 //       „Beemelem”); kész megbeszélésnél ADATOK 2×3 csempe és a lépések / sávok egy-egy sorba
 //       csukva. A régi Sávok fül teljes nézete (átnevezés, megkeresés, visszaállítás, végleges
 //       törlés, lekeverés) a „Részletek” panelen.
+// Átirat előtt (U6) is ez a fül látszik: a sávok hallgathatók / kapcsolhatók, résztvevő és címke
+//       adható, és az „Átírás indítása” (szolgáltató-állapot, hiányzó beállítás, hiba „Újra”-val)
+//       a FELDOLGOZÁS „Átirat” lépésében él (TranscribeStepPanel); kézi lekeverésnél a „Lekeverés”
+//       lépésben a „Lekeverés indítása”, a hanglenyomat-lépésben az azonosítás kapcsolója.
 // A „Ki volt ott?” párbeszéd (U3) a participantsRequested jelre nyílik (Main: shell.openParticipants).
-// Képernyőképhez: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody"'.
+// Képernyőképhez: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
+//   overviewRecorded|overviewRecordedError"'.
 Item {
     id: root
 
@@ -36,21 +41,44 @@ Item {
     property bool tracksOpen: false
     onMeetingIdChanged: { stepsOpen = false; tracksOpen = false }
 
+    // A V5-szerű (két sávos, üres) demó-állapotok.
+    readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
+                                           "overviewRecordedError"].indexOf(root.demoState) >= 0
+    // Átirat előtt, az átírás indítása előtt: a lépésekben az indító vezérlők.
+    readonly property bool beforeTranscription: !vm.hasTranscript && !vm.transcribing
+
     OverviewViewModel {
         id: vm
         meetingId: root.meetingId
         demoState: root.demoState
     }
+    // Az átírás kapuzása, hibája, a lekeverés állapota és az azonosítás kapcsolója (a régi
+    // átirat előtti nézet modellje) — csak amíg nincs átirat.
+    PreTranscriptViewModel {
+        id: pre
+        meetingId: vm.hasTranscript ? "" : root.meetingId
+        demoState: root.demoState === "overviewRecordedError" ? "failed"
+                 : root.demoState === "overviewRecorded" ? "ready" : ""
+    }
     TrackListModel {
         id: tracks
         meetingId: root.meetingId
-        demoState: root.demoState === "overviewEmpty" || root.demoState === "overviewNobody" ? "overviewTwo" : "overview"
+        demoState: root.demoTwoTracks ? "overviewTwo" : "overview"
     }
     // Saját címke-modell, ha a gazda nem ad (önálló képernyőkép): kitalált készlet.
     MeetingTagsModel {
         id: ownTags
-        demoState: root.demoState === "overviewEmpty" || root.demoState === "overviewNobody" ? "none"
+        demoState: root.demoTwoTracks ? "none"
                  : root.demoState === "overviewDone" ? "few" : "similar"
+    }
+    // A Beállítások bezárása után a kapuzás újraolvasása (kulcs került be / ki).
+    onVisibleChanged: if (visible && root.beforeTranscription) pre.refresh()
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && root.visible && root.beforeTranscription)
+                pre.refresh()
+        }
     }
     readonly property var effectiveTags: tagsModel ? tagsModel : ownTags
 
@@ -62,6 +90,8 @@ Item {
     }
     // A „Sávok részletei” panel (régi Sávok fül; a Main demó-állapota is ezt nyitja).
     function openTracks() { tracksDialog.open() }
+    // Átírás indítása előtt (a lépés gombja, a hiba „Újra”-ja) a félbehagyott leírás mentődik.
+    function commitSource() { if (sourceCard.editing) sourceCard.finish(true) }
     function solo() {
         if (!vm.setSolo() && root.shell)
             root.shell.toast(qsTr("Ehhez add meg a saját neved a Beállításokban (Általános › Te)."))
@@ -442,6 +472,10 @@ Item {
                         visible: !vm.allDone || root.stepsOpen
                         Layout.fillWidth: true
                         steps: vm.steps
+                        transcriptContent: root.beforeTranscription ? transcribeStep : null
+                        mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
+                                        ? mixdownStep : null
+                        voiceContent: root.beforeTranscription && pre.identifyAvailable ? identifyStep : null
                     }
 
                     // ---- sávok ----
@@ -463,6 +497,51 @@ Item {
                         sideWho: vm.sideWho
                     }
                 }
+            }
+        }
+    }
+
+    // ---- a lépésekbe ágyazott vezérlők (átirat előtt) ----
+    Component {
+        id: transcribeStep
+        TranscribeStepPanel {
+            vm: pre
+            shell: root.shell
+            meetingId: root.meetingId
+            onStartRequested: root.commitSource()
+        }
+    }
+    Component {
+        id: mixdownStep
+        RowLayout {
+            spacing: 8
+            TButton {
+                objectName: "startMixdownButton"
+                text: pre.mixdownState === "stale" ? qsTr("Lekeverés frissítése") : qsTr("Lekeverés indítása")
+                size: "small"
+                iconName: "audio-lines"
+                iconSize: 14
+                onClicked: pre.startMixdown()
+            }
+            Item { Layout.fillWidth: true }
+        }
+    }
+    Component {
+        id: identifyStep
+        RowLayout {
+            spacing: 8
+            TSwitch {
+                objectName: "identifySwitch"
+                checked: pre.identifyEnabled
+                onToggled: pre.identifyEnabled = checked
+                Accessible.name: qsTr("Résztvevők azonosítása hang alapján")
+            }
+            TLabel {
+                Layout.fillWidth: true
+                text: pre.identifyEnabled ? qsTr("Azonosítás hang alapján") : qsTr("Kihagyva: a beszélők névtelenek maradnak")
+                muted: true
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
             }
         }
     }
