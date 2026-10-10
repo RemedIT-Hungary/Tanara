@@ -5,7 +5,8 @@
 // az összes oszlop állapotát, így soronként nem kell oszloponkénti QML-elem:
 //   tömör blokk · bizonytalan (lágy kitöltés + 135°-os csíkok) · kijelölt (2 px keret, a
 //   többi oszlopban szaggatott ejtési cél) · javasolt (2 px accent keret) · húzás forrása
-//   (30 %) · húzás célja (lágy kitöltés + 2 px szaggatott keret a cél színében).
+//   (30 %) · húzás célja (lágy kitöltés + 2 px szaggatott keret a cél színében) · javasolt
+//   cél-oszlop (2 px accent keret az üres cellában: az új személyhez hasonló sor).
 // Oszlopok: `laneCount` darab 24 px-es beszélő-oszlop, utána (hasGroup) egy 20 px-es
 // „+N" csoport-oszlop. A „+" oszlop a sorokban üres.
 //
@@ -31,6 +32,8 @@ class SpeakerRailCells : public QQuickPaintedItem {
     Q_PROPERTY(bool selected MEMBER m_selected NOTIFY changed)
     Q_PROPERTY(bool suggested MEMBER m_suggested NOTIFY changed)
     Q_PROPERTY(bool dimmed MEMBER m_dimmed NOTIFY changed)
+    // Javasolt cél-oszlop (az új személyhez hasonló sor): 2 px accent keret az üres cellában (-1 = nincs).
+    Q_PROPERTY(int suggestLane MEMBER m_suggestLane NOTIFY changed)
     // Húzás célja ebben a sorban (-1 = nincs).
     Q_PROPERTY(int targetLane MEMBER m_targetLane NOTIFY changed)
     Q_PROPERTY(QColor targetLineColor MEMBER m_targetLine NOTIFY changed)
@@ -62,6 +65,7 @@ private:
     bool m_suggested = false;
     bool m_dimmed = false;
     int m_targetLane = -1;
+    int m_suggestLane = -1;
     QColor m_targetLine{Qt::gray};
     QColor m_targetSoft{Qt::lightGray};
     QColor m_outline{Qt::black};

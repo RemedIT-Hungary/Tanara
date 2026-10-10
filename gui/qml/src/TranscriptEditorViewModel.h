@@ -316,10 +316,9 @@ public:
     const QVector<tanara::EditorUtterance>& utterances() const { return m_utts; }
     SpeakerView speakerView(const QString& key) const { return m_views.value(key); }
     bool isSelected(int utterance) const { return m_selected.contains(utterance); }
-    bool isSuggested(int utterance) const
-    {
-        return (m_suggestionShown && m_suggested.contains(utterance)) || (m_similarShown && m_similar.contains(utterance));
-    }
+    bool isSuggested(int utterance) const { return m_suggestionShown && m_suggested.contains(utterance); }
+    // Az új személyhez hasonló sor, és épp mutatjuk (sín: keret az új személy oszlopában).
+    bool isSimilar(int utterance) const { return m_similarShown && m_similar.contains(utterance); }
     bool isShort(int utterance) const;
     bool isNewPerson(const QString& speakerKey) const { return !m_newPersonKey.isEmpty() && speakerKey == m_newPersonKey; }
     bool isSideConflict(const QString& utteranceId) const { return m_sideConflicts.contains(utteranceId); }

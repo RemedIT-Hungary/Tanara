@@ -51,6 +51,7 @@ QHash<int, QByteArray> TranscriptListModel::roleNames() const
         {ShortRole, "isShort"},
         {SideConflictRole, "sideConflict"},
         {NewPersonRole, "newPerson"},
+        {SimilarRole, "similar"},
     };
 }
 
@@ -90,7 +91,8 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
         case ConfirmedRole:
         case ShortRole:
         case SideConflictRole:
-        case NewPersonRole: return false;
+        case NewPersonRole:
+        case SimilarRole: return false;
         case StartMsRole:
         case EndMsRole:
         case ColorIndexRole: return 0;
@@ -129,6 +131,7 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
     case ShortRole: return m_vm->isShort(r.utterance);
     case SideConflictRole: return m_vm->isSideConflict(u.id);
     case NewPersonRole: return m_vm->isNewPerson(u.speakerKey);
+    case SimilarRole: return m_vm->isSimilar(r.utterance);
     default: return {};
     }
 }

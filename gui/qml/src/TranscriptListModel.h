@@ -54,6 +54,7 @@ public:
         ShortRole,                      // rövidebb, mint amit a hang-elemzés megbízhatóan megítél („rövid")
         SideConflictRole,               // a sor a beszélője oldalával ellentétes sávon szólt
         NewPersonRole,                  // a sor beszélője az imént létrehozott személy („új személy")
+        SimilarRole,                    // az új személyhez hasonló sor, kiemelve (sín: keret az oszlopában)
     };
     Q_ENUM(Role)
 

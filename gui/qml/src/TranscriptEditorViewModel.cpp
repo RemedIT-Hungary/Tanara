@@ -2241,7 +2241,7 @@ void TranscriptEditorViewModel::updateSimilar()
                            << qreal(std::max<qint64>(0, m_utts[i].endMs - m_utts[i].startMs)) / total;
         }
     }
-    m_rows->notifyUtterances(touched, {TranscriptListModel::SuggestedRole});
+    m_rows->notifyUtterances(touched, {TranscriptListModel::SimilarRole});
 }
 
 void TranscriptEditorViewModel::setSimilarShown(bool shown)
@@ -2252,7 +2252,7 @@ void TranscriptEditorViewModel::setSimilarShown(bool shown)
     m_similarMarks.clear();
     QSet<int> keep = m_similar;
     m_similar.clear();          // updateSimilar újraszámolja (és értesít)
-    for (int i : std::as_const(keep)) m_rows->notifyUtterances({i}, {TranscriptListModel::SuggestedRole});
+    for (int i : std::as_const(keep)) m_rows->notifyUtterances({i}, {TranscriptListModel::SimilarRole});
     updateSimilar();
     if (shown) {
         setRailVisible(true);
