@@ -137,7 +137,7 @@ bool VoiceModelDownloader::start(const VoiceModelSpec& spec, const QString& targ
 
     connect(reply, &QNetworkReply::readyRead, this, [this, id]() {
         Job* j = m_jobs.value(id);
-        if (!j || !j->reply) return;
+        if (!j || !j->reply || j->cancelled || !j->reply->isOpen()) return;
         const QByteArray chunk = j->reply->readAll();
         if (j->file->write(chunk) != chunk.size()) {
             j->writeFailed = true;
@@ -177,7 +177,7 @@ void VoiceModelDownloader::finishJob(const QString& id)
         fail(id, Failure::Network, QStringLiteral("Download interrupted."));
         return;
     }
-    if (!job->writeFailed && !job->cancelled) {
+    if (!job->writeFailed && !job->cancelled && reply->isOpen()) {
         const QByteArray rest = reply->readAll();
         if (!rest.isEmpty()) {
             if (job->file->write(rest) != rest.size()) job->writeFailed = true;
