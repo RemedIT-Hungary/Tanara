@@ -42,6 +42,14 @@ const char* const kContextRule = R"PROMPT(- The context notes come from the user
 
 const char* const kWriting = R"PROMPT(- Write fluent, correct {{LANGUAGE}}. Do not copy garbled or misheard words from the transcript: restore the intended word from context (and from the glossary when one is given), or leave the detail out when you cannot tell what was meant. Keep product names and technical terms in their original form.)PROMPT";
 
+// Forrás-jelölők a rövid formában (a parser: summary/SummarySources.h). Sima szöveg + jelölő,
+// mert a json_schema helyi modellel megbízhatatlan. %SOURCE_OF% a hívásonkénti forrás.
+const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS
+- End every sentence of execSummary, every decision and every action item "text" with a source marker in square brackets: [t=mm:ss], where mm:ss is %SOURCE_OF%. When a sentence draws on several places, give up to 3 times in one marker: [t=12:30, t=41:05].
+- Put the marker right after the sentence's final punctuation, for example: "The release moves to Friday. [t=12:30]"
+- Copy the time exactly as written in the input; never invent, estimate or round a time. When you cannot tell where a sentence comes from, write it without a marker.
+- In the JSON the markers are the only place for times: do not start a sentence or a list item with a time.)PROMPT";
+
 // Hosszabb megbeszélés: részenkénti jegyzet (map1 + a memó-követelmény).
 const char* const kNotes = R"PROMPT(You take notes on ONE PART of a longer meeting, from a speech-to-text transcript. The notes are used twice: they become the detailed memo of the meeting, and a later step builds the executive summary, decisions, open questions and action items from the notes of all parts. So they must be complete, concrete and factual for this part.
 
@@ -81,17 +89,19 @@ const char* const kMerge = R"PROMPT(You write the final meeting minutes from not
 OUTPUT
 Return exactly one JSON object with the keys in this order, and nothing else: no code fence, no commentary before or after.
 {
-  "decisions": ["{{LANGUAGE}} sentence"],
+  "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
   "openQuestions": ["{{LANGUAGE}} sentence"],
-  "actionItems": [{"text": "{{LANGUAGE}} task", "owner": "name", "due": ""}],
-  "execSummary": "{{LANGUAGE}} text"
+  "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}],
+  "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]"
 }
 
 FIELD RULES
-- decisions: keep a DECISIONS note only if it records an agreement between the participants about what will or will not be done. Drop everything else, even if a part listed it as a decision: descriptions of how a product or feature works, things shown in a demo, status remarks, opinions, one person's plan that nobody confirmed. Merge duplicates; when a later part changes an earlier decision keep only the final state. One self-contained sentence each, without the time. Most meetings have between 0 and 8 real decisions; a longer list means non-decisions slipped in. Use [] when there are none.
+- decisions: keep a DECISIONS note only if it records an agreement between the participants about what will or will not be done. Drop everything else, even if a part listed it as a decision: descriptions of how a product or feature works, things shown in a demo, status remarks, opinions, one person's plan that nobody confirmed. Merge duplicates; when a later part changes an earlier decision keep only the final state. One self-contained sentence each, ending with its source marker. Most meetings have between 0 and 8 real decisions; a longer list means non-decisions slipped in. Use [] when there are none.
 - openQuestions: at most 5: the unsettled matters that affect what happens next (pending approvals, choices not yet made, missing information). Drop minor points and points a later part settled. Use [] when there are none.
 - actionItems: keep an ACTIONS note only if it names a concrete task someone took on or was asked to do; merge duplicates; drop vague or empty ones. "text" is specific, says what is to be done, and is not phrased as a command to the reader. "owner" is the person who will do the task as written in the notes, or "" when the notes say "?". "due" only when the notes state one, otherwise "".
 - execSummary: written last, in {{LANGUAGE}} like the notes: what the meeting was about and what came out of it, written for someone who was not there. Cover the substantial topics of ALL parts in order, including the last parts, and name the concrete things (systems, products, numbers, dates, people). Use 4 to 12 sentences, depending on how much real content there is.
+
+%SOURCE_MARKERS%
 
 QUALITY RULES
 - Use only what is in the notes. Do not add anything, do not turn an OPEN item into a decision, and do not invent owners or deadlines. A wrong decision is worse than a missing one.
@@ -113,10 +123,10 @@ First the heading TOPICS with the notes, then the heading SUMMARY with exactly o
 
 SUMMARY
 {
-  "execSummary": "{{LANGUAGE}} text",
-  "decisions": ["{{LANGUAGE}} sentence"],
+  "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]",
+  "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
   "openQuestions": ["{{LANGUAGE}} sentence"],
-  "actionItems": [{"text": "{{LANGUAGE}} task", "owner": "name", "due": ""}]
+  "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}]
 }
 
 %EXAMPLES%
@@ -130,6 +140,8 @@ FIELD RULES
 - decisions: only what the participants explicitly agreed on or settled, including decisions not to do something. One self-contained sentence each. Use [] when there are none.
 - openQuestions: at most 5: things proposed, considered or left pending without agreement that affect what happens next. Anything you are not sure was agreed goes here, not into decisions. Use [] when there are none.
 - actionItems: only tasks that someone took on or was clearly asked to do. "text" is specific, says what is to be done, and is not phrased as a command to the reader. "owner" is the person who will DO the task, written exactly as in the speaker labels, or "" when it is not clear who does it. "due" is filled only when a time was stated, otherwise "".
+
+%SOURCE_MARKERS%
 
 QUALITY RULES
 - Use only what was said. Do not guess and do not add advice or interpretation. A wrong decision or a wrong owner is worse than a missing one.
@@ -186,9 +198,12 @@ pick: <candidate numbers separated by commas, or none>
 new: <new tag names separated by semicolons, or none>
 )PROMPT";
 
-QString compose(const char* tmpl)
+QString compose(const char* tmpl, const char* sourceOf = "")
 {
     QString s = QString::fromUtf8(tmpl);
+    s.replace(QStringLiteral("%SOURCE_MARKERS%"),
+              QString::fromUtf8(kSourceMarkers).replace(QStringLiteral("%SOURCE_OF%"),
+                                                        QString::fromUtf8(sourceOf)));
     s.replace(QStringLiteral("%INPUT%"), QString::fromUtf8(kInput));
     s.replace(QStringLiteral("%TOPICS_FORMAT%"), QString::fromUtf8(kTopicsFormat));
     s.replace(QStringLiteral("%TOPICS_RULES%"), QString::fromUtf8(kTopicsRules));
@@ -203,9 +218,10 @@ QString compose(const char* tmpl)
 QString promptBuiltin(const QString& id)
 {
     if (id == QLatin1String("single") || id == QLatin1String("simple"))   // "simple": a régi azonosító
-        return compose(kSingle);
+        return compose(kSingle, "the time of the transcript paragraph `[mm:ss]` where it was said");
     if (id == QLatin1String("notes"))    return compose(kNotes);
-    if (id == QLatin1String("merge"))    return compose(kMerge);
+    if (id == QLatin1String("merge"))
+        return compose(kMerge, "the time written in the notes it is based on (the [mm:ss] of a DECISIONS, OPEN or ACTIONS line, or the start time of a ### topic)");
     if (id == QLatin1String("topic"))    return compose(kTopic);
     if (id == QLatin1String("analysis")) return compose(kAnalysis);
     if (id == QLatin1String("reduce"))   return compose(kReduce);
@@ -356,7 +372,9 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "  \"actionItems\": [\n"
             "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
             "  ]\n"
-            "}");
+            "}\n"
+            "\n"
+            "Forrás-jelölő minden mondat / döntés / teendő végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
     } else if (id == QLatin1String("notes")) {
         f.kind = QStringLiteral("text");
         f.summary = QStringLiteral("TOPICS, DECISIONS, OPEN, ACTIONS");
@@ -385,7 +403,9 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "    { \"text\": string, \"owner\": string, \"due\": string }, …\n"
             "  ],\n"
             "  \"execSummary\": string\n"
-            "}");
+            "}\n"
+            "\n"
+            "Forrás-jelölő minden mondat / döntés / teendő végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
     } else if (id == QLatin1String("topic")) {
         f.kind = QStringLiteral("markdown");
         f.summary = QCoreApplication::translate("PromptLibrary", "## Cím + 1–2 mondat, témánként");
