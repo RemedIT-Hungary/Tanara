@@ -22,6 +22,7 @@
 #include <QGuiApplication>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QSet>
 
 #include <algorithm>
 
@@ -93,8 +94,13 @@ qint64 SummaryViewModel::splitTimestamp(const QString& text, QString* rest)
 }
 
 SummaryViewModel::SummaryViewModel(QObject* parent)
-    : QObject(parent), m_topics(new TopicListModel(this)), m_note(new MeetingNoteModel(this))
+    : QObject(parent), m_topics(new TopicListModel(this)), m_note(new MeetingNoteModel(this)),
+      m_sentences(new StatementListModel(this)), m_decisionItems(new StatementListModel(this)),
+      m_todoItems(new StatementListModel(this))
 {
+    connect(this, &SummaryViewModel::changed, this, &SummaryViewModel::generationLineChanged);
+    connect(this, &SummaryViewModel::sectionChanged, this, &SummaryViewModel::generationLineChanged);
+    connect(this, &SummaryViewModel::sectionChanged, this, &SummaryViewModel::marksChanged);
     connect(m_topics, &TopicListModel::countsChanged, this, &SummaryViewModel::changed);
     connect(m_note, &MeetingNoteModel::noteChanged, this, &SummaryViewModel::noteHintChanged);
 
@@ -135,6 +141,8 @@ void SummaryViewModel::setMeetingId(const QString& id)
     AppController* c = app();
     if (switching) {
         m_topicsOpen = false;
+        m_activeStatementId.clear();
+        m_activeSection = -1;
         setNoteOpen(false);
         if (m_section != QLatin1String("exec")) {   // új meetingnél mindig a rövid forma látszik
             m_section = QStringLiteral("exec");
@@ -156,8 +164,15 @@ void SummaryViewModel::setDemoState(const QString& state)
     // A memó-állapotok a memót mutatják (képernyőképhez); a többi a rövid formát.
     const bool memo = state == QLatin1String("memo") || state == QLatin1String("memoShort")
                    || state == QLatin1String("oldMemo");
-    setSection(memo ? QStringLiteral("memo") : QStringLiteral("exec"));
+    const bool memoV3 = state == QLatin1String("memoSections");
+    setSection(memo || memoV3 ? QStringLiteral("memo") : QStringLiteral("exec"));
     setNoteOpen(state == QLatin1String("noteOpen"));
+    // v3: a kijelölt állítás / szakasz és a Források kapcsoló a képernyőképekhez.
+    m_sourcesVisible = state != QLatin1String("sourcesOff");
+    m_activeStatementId = state == QLatin1String("sourcesOn") || state == QLatin1String("sourcePopover")
+        ? QStringLiteral("s1") : QString();
+    m_activeSection = memoV3 ? 2 : -1;
+    emit sourcesVisibleChanged();
     reload();
 }
 
@@ -253,6 +268,8 @@ void SummaryViewModel::connectController()
     });
     m_connections << connect(c, &AppController::summaryStaleChanged, this,
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
+    m_connections << connect(c, &AppController::summaryStatementsChanged, this,
+                             [this, mine](const QString& id) { if (mine(id)) reload(); });
     m_connections << connect(c, &AppController::transcriptReady, this,
                              [this, mine](const QString& id, const QString&) { if (mine(id)) reload(); });
     m_connections << connect(c, &AppController::speakerMapChanged, this,
@@ -336,6 +353,7 @@ void SummaryViewModel::reloadParticipants()
             m_speakers.append({s.displayName, s.personName, s.colorIndex, s.talkShare});
         utterances = editor->utteranceCount();
     }
+    m_sourceUtterances = utterances;
     m_transcriptLine = m_speakers.isEmpty()
         ? tr("Az átirat kész.")
         : tr("Az átirat kész, %1 beszélő, %2 megszólalás.").arg(m_speakers.size()).arg(utterances);
@@ -363,8 +381,15 @@ void SummaryViewModel::reloadParticipants()
         actions << a;
     }
     m_actions = actions;
+
+    // A memó-szakaszok beszélői és az állítások felelősei is a beszélő-színeket kapják.
+    m_memo.clear();
+    for (const MemoSection& sec : std::as_const(m_summary.memo))
+        m_memo << memoMapFor(sec);
+    buildStatements(m_rawStatements, m_affectedUtterances);
     emit participantsChanged();
     emit changed();
+    emit marksChanged();
 }
 
 void SummaryViewModel::reloadJobs()
@@ -429,6 +454,15 @@ void SummaryViewModel::reload()
     m_memo.clear();
     m_summary = Summary();
     m_summaryParticipants.clear();
+    m_metaDate.clear();
+    m_metaProvider.clear();
+    m_rawStatements.clear();
+    m_affectedUtterances.clear();
+    m_hasStatements = false;
+    m_staleTargeted = false;
+    m_affectedStatements = m_affectedTodos = m_ownerChanges = 0;
+    m_sourceUtterances = 0;
+    m_demoLines.clear();
     m_summaryNote.clear();
     m_summaryNoteKnown = false;
     m_jobKind = -1;
@@ -444,6 +478,9 @@ void SummaryViewModel::reload()
         watchEditor(nullptr);
         m_valid = true;
         loadDemo();
+        if (m_rawStatements.isEmpty())
+            buildStatements({}, {});
+        emit marksChanged();
         emit participantsChanged();
         emit jobChanged();
         emit changed();
@@ -454,6 +491,8 @@ void SummaryViewModel::reload()
         watchEditor(nullptr);
         m_valid = false;
         m_participants.clear();
+        buildStatements({}, {});
+        emit marksChanged();
         m_topics->clear();
         m_note->reload();
         emit noteHintChanged();
@@ -509,8 +548,6 @@ void SummaryViewModel::reload()
             m_decisions << decisionMap(d, m.durationMs);
         for (const QString& q : doc.summary.openQuestions)
             m_openQuestions << decisionMap(q, m.durationMs);
-        for (const MemoSection& sec : doc.summary.memo)
-            m_memo << memoMap(sec, m.durationMs);
         for (const ActionItem& a : doc.summary.actionItems)
             m_actions << QVariantMap{{QStringLiteral("text"), a.text}, {QStringLiteral("owner"), a.owner},
                                      {QStringLiteral("ownerIndex"), -1}, {QStringLiteral("owners"), QVariantList{}},
@@ -528,21 +565,35 @@ void SummaryViewModel::reload()
         }
         QStringList meta;
         if (doc.meta.createdAt.isValid())
-            meta << QLocale().toString(doc.meta.createdAt, tr("MMM d. HH:mm"));
+            meta << (m_metaDate = QLocale().toString(doc.meta.createdAt, tr("MMM d. HH:mm")));
         if (doc.meta.providerId == cloud::ProviderId) {
-            meta << QStringLiteral("Tanara Cloud");
+            meta << (m_metaProvider = QStringLiteral("Tanara Cloud"));
         } else if (!doc.meta.providerId.isEmpty()) {
             const QString name = LlmProviderRegistry::instance().descriptor(doc.meta.providerId).displayName;
-            meta << (name.isEmpty() ? tr("saját kulcs") : tr("%1 · saját kulcs").arg(name));
+            meta << (m_metaProvider = name.isEmpty() ? tr("saját kulcs") : tr("%1 · saját kulcs").arg(name));
         }
         m_metaLine = meta.join(QStringLiteral(" · "));
         m_modelLine = doc.meta.model;
         m_summaryNote = doc.meta.contextNote;
         m_summaryNoteKnown = doc.meta.contextNoteKnown;
 
-        const SummaryStaleInfo st = c->summaryStale(m);
-        m_stale = st.stale;
-        m_staleCount = st.correctedSpeakers;
+        if (doc.summary.statements.isEmpty()) {
+            const SummaryStaleInfo st = c->summaryStale(m);
+            m_stale = st.stale;
+            m_staleCount = st.correctedSpeakers;
+        } else {
+            // Forrásos gyors összefoglaló: a célzott elavulás és a mostani beszélő-állapot
+            // szerinti állítások (staleBecause) — két kis fájl-olvasás.
+            const SummaryStaleInfo st = c->summaryStale(m_meetingId);
+            m_stale = st.stale;
+            m_staleCount = st.correctedSpeakers;
+            m_staleTargeted = st.targeted;
+            m_affectedStatements = st.affectedStatements;
+            m_affectedTodos = st.affectedTodos;
+            m_ownerChanges = st.ownerChanges;
+            m_affectedUtterances = st.affectedUtteranceIds;
+            m_rawStatements = c->summaryStatements(m_meetingId);
+        }
     }
 
     reloadParticipants();   // beszélők → résztvevők, felelős-színek, átirat-sor (+ changed)
@@ -617,6 +668,18 @@ void SummaryViewModel::loadDemo()
     m_participants.clear();
 
     const bool empty = st.startsWith(QLatin1String("empty"));
+    static const QStringList v3{QStringLiteral("sourcesOn"), QStringLiteral("sourcesOff"),
+                                QStringLiteral("sourcePopover"), QStringLiteral("memoSections"),
+                                QStringLiteral("staleTargeted"), QStringLiteral("noSources")};
+    if (v3.contains(st)) {
+        if (m_topics->count() > 0 || m_topicsOpen) {
+            m_topics->clear();
+            m_topicsOpen = false;
+        }
+        m_note->setDemoContent(QString(), QString(), {});
+        loadDemoSources(st);
+        return;
+    }
 
     // A megjegyzés: kitalált, a helyesírás-javításokkal; az „emptyNote” / „noteOpen” állapot a
     // korábbi, hasonló című megbeszélések javaslataival.
@@ -763,7 +826,7 @@ void SummaryViewModel::loadDemo()
     if (!old && st != QLatin1String("topicsDoc"))
         loadDemoMemo(st != QLatin1String("memoShort"));
     for (const MemoSection& sec : std::as_const(m_summary.memo))
-        m_memo << memoMap(sec, m_durationMs);
+        m_memo << memoMapFor(sec);
     m_markdown = m_summary.renderMarkdown();
 
     if (st == QLatin1String("running"))
@@ -864,4 +927,469 @@ void SummaryViewModel::loadDemoMemo(bool longForm)
         m_summary.memo.append({rows[i].title, rows[i].from, rows[i].to, rows[i].points});
 }
 
+// ---- forrás-hivatkozások (v3: S1–S3) -------------------------------------------------------
+
+QVariantList SummaryViewModel::speakerChips(const QStringList& names) const
+{
+    QVariantList out;
+    for (const QString& n : names) {
+        const QString name = n.trimmed();
+        if (!name.isEmpty())
+            out << QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("colorIndex"), speakerIndexFor(name)}};
+    }
+    return out;
+}
+
+QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec) const
+{
+    QVariantMap map = memoMap(sec, m_durationMs);
+    const qint64 start = map.value(QStringLiteral("startMs")).toLongLong();
+    const qint64 end = map.value(QStringLiteral("endMs")).toLongLong();
+    map.insert(QStringLiteral("sourceRange"),
+               start < 0 ? QString()
+                         : end > start ? StatementListModel::stamp(start) + QStringLiteral("–") + StatementListModel::stamp(end)
+                                       : StatementListModel::stamp(start));
+    QStringList names;
+    for (const QString& n : sec.speakers)
+        if (!n.trimmed().isEmpty()) names << n.trimmed();
+    map.insert(QStringLiteral("speakers"), speakerChips(names));
+    map.insert(QStringLiteral("speakersText"), names.join(QStringLiteral(" · ")));
+    return map;
+}
+
+void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statements,
+                                       const QStringList& affectedUtterances)
+{
+    QVector<StatementListModel::Row> sentences, decisions, todos;
+    const QSet<QString> affectedIds(affectedUtterances.cbegin(), affectedUtterances.cend());
+    int todoIndex = 0;
+    for (const SummaryStatement& st : statements) {
+        StatementListModel::Row r;
+        r.id = st.id;
+        r.text = st.text.trimmed();
+        r.flagged = st.flagged;
+        r.staleBecause = st.staleBecause.join(QStringLiteral(", "));
+        r.ownerStale = st.ownerStaleBecause;
+        r.affected = !st.staleBecause.isEmpty() || !st.ownerStaleBecause.isEmpty();
+        for (const SourceSpan& sp : st.sourceSpans) {
+            if (sp.startMs < 0)
+                continue;
+            StatementListModel::Span span;
+            span.startMs = sp.startMs;
+            span.endMs = sp.endMs;
+            span.utteranceIds = sp.utteranceIds;
+            for (const QString& id : sp.utteranceIds)
+                span.affected |= affectedIds.contains(id);
+            r.spans << span;
+        }
+        if (!r.ownerStale.isEmpty()) {
+            // „X → Y?”: az új felelős (Y) színe a pöttyön.
+            QString to = r.ownerStale.section(QStringLiteral("→"), 1).trimmed();
+            if (to.endsWith(QLatin1Char('?'))) to.chop(1);
+            r.ownerStaleIndex = speakerIndexFor(to.trimmed());
+        }
+        switch (st.kind) {
+        case StatementKind::Statement:
+            r.kind = QStringLiteral("statement");
+            sentences << r;
+            break;
+        case StatementKind::Decision:
+            r.kind = QStringLiteral("decision");
+            decisions << r;
+            break;
+        case StatementKind::Todo: {
+            r.kind = QStringLiteral("todo");
+            r.owner = st.owner.trimmed();
+            r.owners = ownerList(r.owner);
+            // A teendők sorrendje az actionItems-ével egyezik: onnan a határidő.
+            if (todoIndex < m_summary.actionItems.size()) {
+                const ActionItem& a = m_summary.actionItems.at(todoIndex);
+                r.due = a.due;
+                if (r.owner.isEmpty() && !a.owner.trimmed().isEmpty()) {
+                    r.owner = a.owner.trimmed();
+                    r.owners = ownerList(r.owner);
+                }
+            }
+            ++todoIndex;
+            todos << r;
+            break;
+        }
+        }
+    }
+    m_hasStatements = !statements.isEmpty();
+    m_sentences->setRows(sentences);
+    m_decisionItems->setRows(decisions);
+    m_todoItems->setRows(todos);
+}
+
+void SummaryViewModel::setSourcesVisible(bool on)
+{
+    if (on == m_sourcesVisible)
+        return;
+    m_sourcesVisible = on;
+    emit sourcesVisibleChanged();
+    emit marksChanged();
+}
+
+void SummaryViewModel::setActiveStatementId(const QString& id)
+{
+    if (id == m_activeStatementId)
+        return;
+    m_activeStatementId = id;
+    emit marksChanged();
+}
+
+void SummaryViewModel::setActiveSection(int index)
+{
+    if (index == m_activeSection)
+        return;
+    m_activeSection = index;
+    emit marksChanged();
+}
+
+QVariantList SummaryViewModel::sourceMarks() const
+{
+    if (!m_hasStatements || !m_sourcesVisible)
+        return {};
+    // Kiemelés: a kijelölt állítás forrásai; kijelölés nélkül elavultnál az érintett források.
+    const bool staleMode = m_activeStatementId.isEmpty() && m_stale && m_staleTargeted;
+    QVector<QVariantMap> marks;
+    auto add = [&](const StatementListModel* model) {
+        for (const StatementListModel::Row& r : model->items()) {
+            for (const StatementListModel::Span& sp : r.spans) {
+                const bool active = staleMode ? sp.affected : r.id == m_activeStatementId;
+                bool merged = false;
+                for (QVariantMap& m : marks) {
+                    if (m.value(QStringLiteral("startMs")).toLongLong() == sp.startMs
+                        && m.value(QStringLiteral("endMs")).toLongLong() == sp.endMs) {
+                        if (active) m.insert(QStringLiteral("active"), true);
+                        merged = true;
+                        break;
+                    }
+                }
+                if (!merged)
+                    marks << QVariantMap{{QStringLiteral("startMs"), sp.startMs},
+                                         {QStringLiteral("endMs"), qMax(sp.endMs, sp.startMs)},
+                                         {QStringLiteral("active"), active}};
+            }
+        }
+    };
+    add(m_sentences);
+    add(m_decisionItems);
+    add(m_todoItems);
+    std::sort(marks.begin(), marks.end(), [](const QVariantMap& a, const QVariantMap& b) {
+        return a.value(QStringLiteral("startMs")).toLongLong() < b.value(QStringLiteral("startMs")).toLongLong();
+    });
+    QVariantList out;
+    for (const QVariantMap& m : std::as_const(marks))
+        out << m;
+    return out;
+}
+
+QVariantList SummaryViewModel::sectionBands() const
+{
+    QVariantList out;
+    for (int i = 0; i < m_memo.size(); ++i) {
+        const QVariantMap sec = m_memo.at(i).toMap();
+        const qint64 start = sec.value(QStringLiteral("startMs")).toLongLong();
+        if (start < 0)
+            continue;
+        qint64 end = sec.value(QStringLiteral("endMs")).toLongLong();
+        if (end < start) {   // ismeretlen vég: a következő szakasz eleje (vagy a felvétel vége)
+            end = i + 1 < m_memo.size() ? m_memo.at(i + 1).toMap().value(QStringLiteral("startMs")).toLongLong()
+                                        : m_durationMs;
+            end = qMax(end, start);
+        }
+        out << QVariantMap{{QStringLiteral("startMs"), start}, {QStringLiteral("endMs"), end},
+                           {QStringLiteral("active"), i == m_activeSection},
+                           {QStringLiteral("label"), QString::number(i + 1)},
+                           {QStringLiteral("index"), i}};
+    }
+    return out;
+}
+
+QString SummaryViewModel::mapHint() const
+{
+    if (m_section == QLatin1String("memo") && memoState() == QLatin1String("ready")) {
+        if (m_activeSection >= 0 && m_activeSection < m_memo.size()) {
+            const QString range = m_memo.at(m_activeSection).toMap().value(QStringLiteral("sourceRange")).toString();
+            if (!range.isEmpty())
+                return tr("a kiemelt szakasz: %1").arg(range);
+        }
+        return QString();
+    }
+    if (!m_hasStatements || !m_sourcesVisible)
+        return QString();
+    if (!m_activeStatementId.isEmpty())
+        return tr("kék: a kijelölt állítás forrása · halvány: az összes állításé");
+    if (m_stale && m_staleTargeted)
+        return tr("kék: a javítás által érintett források");
+    return tr("halvány: az összes állítás forrása");
+}
+
+QString SummaryViewModel::generationLine() const
+{
+    if (!m_hasSummary)
+        return QString();
+    QStringList parts;
+    const bool memo = m_section == QLatin1String("memo") && memoState() == QLatin1String("ready");
+    if (memo)
+        parts << tr("Memó") << tr("%n szakasz", nullptr, int(m_memo.size()));
+    else
+        parts << modeLabel();
+    if (!m_metaDate.isEmpty())
+        parts << m_metaDate;
+    if (m_stale && m_staleCount > 0 && !memo) {
+        parts << tr("azóta %n beszélő-javítás", nullptr, m_staleCount);
+    } else {
+        if (!m_metaProvider.isEmpty())
+            parts << m_metaProvider;
+        if (!memo && m_sourceUtterances > 0)
+            parts << tr("%n megszólalásból", nullptr, m_sourceUtterances);
+    }
+    return parts.join(QStringLiteral(" · "));
+}
+
+SummaryViewModel::QuoteLine SummaryViewModel::quoteLine(const QString& utteranceId) const
+{
+    AppController* c = app();
+    if (jobsupport::demoMode(c))
+        return m_demoLines.value(utteranceId);
+    QuoteLine q;
+    if (m_meetingId.isEmpty())
+        return q;
+    SpeakerEditor* editor = c->speakerEditor(m_meetingId);
+    if (!editor)
+        return q;
+    const int idx = editor->indexOf(utteranceId);
+    if (idx < 0)
+        return q;
+    const EditorUtterance u = editor->utteranceAt(idx);
+    q.startMs = u.startMs;
+    q.endMs = u.endMs;
+    q.text = u.text.trimmed();
+    for (const EditorSpeaker& s : editor->speakers()) {
+        if (s.key == u.speakerKey) {
+            q.name = s.displayName;
+            q.colorIndex = s.colorIndex;
+            break;
+        }
+    }
+    return q;
+}
+
+QVariantMap SummaryViewModel::sourceDetails(const QString& statementId) const
+{
+    const StatementListModel::Row* row = nullptr;
+    for (const StatementListModel* model : {m_sentences, m_decisionItems, m_todoItems}) {
+        const int i = model->indexOfId(statementId);
+        if (i >= 0) { row = &model->items().at(i); break; }
+    }
+    if (!row)
+        return {};
+    QVariantList quotes;
+    QSet<QString> seen;
+    for (const StatementListModel::Span& sp : row->spans) {
+        bool any = false;
+        for (const QString& id : sp.utteranceIds) {
+            if (seen.contains(id))
+                continue;
+            seen.insert(id);
+            const QuoteLine q = quoteLine(id);
+            if (q.text.isEmpty() && q.name.isEmpty())
+                continue;
+            any = true;
+            quotes << QVariantMap{{QStringLiteral("utteranceId"), id}, {QStringLiteral("name"), q.name},
+                                  {QStringLiteral("colorIndex"), q.colorIndex},
+                                  {QStringLiteral("startMs"), q.startMs}, {QStringLiteral("endMs"), q.endMs},
+                                  {QStringLiteral("stamp"), StatementListModel::stamp(q.startMs)},
+                                  {QStringLiteral("text"), q.text},
+                                  {QStringLiteral("affected"), sp.affected}};
+        }
+        if (!any)   // csak idő (a megszólalás nem található): a tartomány maga
+            quotes << QVariantMap{{QStringLiteral("utteranceId"), QString()}, {QStringLiteral("name"), QString()},
+                                  {QStringLiteral("colorIndex"), -1},
+                                  {QStringLiteral("startMs"), sp.startMs}, {QStringLiteral("endMs"), sp.endMs},
+                                  {QStringLiteral("stamp"), StatementListModel::stamp(sp.startMs)},
+                                  {QStringLiteral("text"), QString()},
+                                  {QStringLiteral("affected"), sp.affected}};
+    }
+    std::stable_sort(quotes.begin(), quotes.end(), [](const QVariant& a, const QVariant& b) {
+        return a.toMap().value(QStringLiteral("startMs")).toLongLong() < b.toMap().value(QStringLiteral("startMs")).toLongLong();
+    });
+    return {{QStringLiteral("statementId"), row->id}, {QStringLiteral("text"), row->text},
+            {QStringLiteral("kind"), row->kind}, {QStringLiteral("flagged"), row->flagged},
+            {QStringLiteral("staleBecause"), row->staleBecause},
+            {QStringLiteral("count"), quotes.size()}, {QStringLiteral("quotes"), quotes}};
+}
+
+bool SummaryViewModel::flagStatement(const QString& statementId)
+{
+    AppController* c = app();
+    if (!jobsupport::demoMode(c)) {
+        if (m_meetingId.isEmpty() || !c->flagStatement(m_meetingId, statementId))
+            return false;
+    }
+    // Azonnal látsszon (élesben a summaryStatementsChanged úgyis újratölt).
+    bool found = false;
+    for (StatementListModel* model : {m_sentences, m_decisionItems, m_todoItems})
+        found |= model->setFlagged(statementId, true);
+    return found;
+}
+
+// v3 mintaadat (handoff-v3 S1–S3): „Negyedéves partnertalálkozó”, 2:11:04, öt beszélő.
+void SummaryViewModel::loadDemoSources(const QString& state)
+{
+    auto t = [](int m, int s) { return qint64(m * 60 + s) * 1000; };
+    m_hasSummary = true;
+    m_mode = QStringLiteral("quick");
+    m_durationMs = t(131, 4);
+    m_providerLabel = QStringLiteral("LM Studio");
+    m_metaDate = tr("okt. 1. 17:05");
+    m_metaProvider = QStringLiteral("LM Studio");
+    m_metaLine = m_metaDate + QStringLiteral(" · ") + m_metaProvider;
+    m_modelLine = QStringLiteral("gemma-4-12b");
+    m_sourceUtterances = 1298;
+    m_transcriptLine = tr("Az átirat kész, %1 beszélő, %2 megszólalás.").arg(5).arg(1298);
+    m_speakers = {
+        {tr("Kovács Lilla"), tr("Kovács Lilla"), 0, 0.22}, {tr("Fehér Gábor"), tr("Fehér Gábor"), 1, 0.26},
+        {tr("Varga Árpád"), tr("Varga Árpád"), 2, 0.19},   {tr("Molnár Eszter"), tr("Molnár Eszter"), 3, 0.15},
+        {tr("Távoli 1"), QString(), 5, 0.07},
+    };
+    m_participants.clear();
+    for (const SpeakerRef& s : std::as_const(m_speakers))   // a design sorrendjében
+        m_participants << participantMap(s.name, s.colorIndex, int(s.share * 100.0 + 0.5));
+
+    // Kitalált megszólalások az idézetekhez (id: "u<startMs>").
+    struct Line { qint64 at; qint64 len; int speaker; QString text; };
+    const QVector<Line> lines{
+        {t(0, 4), 9000, 0, tr("Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.")},
+        {t(1, 16), 5000, 0, tr("Az összesre. Az újaknál még jobb az arány, de ott kicsi a minta.")},
+        {t(4, 18), 8000, 1, tr("A súgóoldalak júliusban mentek élesbe, és az első hat hétben a keresések kétharmada ott ért véget.")},
+        {t(12, 41), 7000, 2, tr("Nálunk a beállítási kérdések szinte eltűntek, a számlázásiak viszont maradtak, főleg a Nordvik-ügyfeleknél.")},
+        {t(13, 1), 6000, 1, tr("Az első változatot megcsinálom a dokumentációs csapattal, október közepére.")},
+        {t(13, 12), 6000, 0, tr("A negyedik negyedév elejére kell, különben a megújításnál újra előjön.")},
+        {t(22, 52), 5000, 0, tr("Akkor a súgóoldalakat a többi termékre is kiterjesztjük.")},
+        {t(31, 10), 7000, 0, tr("Én a számlázást javasolnám következő súgó-témának, ott a jegyek fele számlázási.")},
+        {t(33, 40), 6000, 1, tr("Vállalom, de két hét dokumentációs kapacitás kell hozzá.")},
+        {t(47, 2), 6000, 3, tr("A díjbekérős kérdéseket érdemes lenne külön kezelni a súgóban.")},
+        {t(58, 40), 5000, 2, tr("A létszámról a költségvetési tervezésnél döntünk.")},
+    };
+    for (const Line& l : lines) {
+        const SpeakerRef& sp = m_speakers.at(l.speaker);
+        m_demoLines.insert(QStringLiteral("u%1").arg(l.at), {l.at, l.at + l.len, l.text, sp.name, sp.colorIndex});
+    }
+    auto span = [&](std::initializer_list<qint64> starts) {
+        SourceSpan s;
+        for (qint64 at : starts) {
+            const QString id = QStringLiteral("u%1").arg(at);
+            s.utteranceIds << id;
+            if (s.startMs < 0) s.startMs = at;
+            s.endMs = m_demoLines.value(id).endMs;
+        }
+        return s;
+    };
+    auto statement = [](const QString& id, StatementKind kind, const QString& text,
+                        const QVector<SourceSpan>& spans, const QString& owner = QString()) {
+        SummaryStatement st;
+        st.id = id; st.kind = kind; st.text = text; st.sourceSpans = spans; st.owner = owner;
+        return st;
+    };
+
+    const QString s1 = tr("A harmadik negyedévben a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma 12%-kal nőtt.");
+    const QString s2 = tr("A javulás fő oka a júliusban élesített súgóoldalak: az első hat hétben a keresések kétharmada ott ért véget.");
+    const QString s3 = tr("A partnerek oldalán a beállítási kérdések szinte eltűntek, a számlázási kérdések viszont maradtak, főleg a Nordvik-ügyfeleknél.");
+    const QString s4 = tr("A számlázási súgónak a negyedik negyedév elejére el kell készülnie, különben a megújításnál újra előjön a probléma.");
+    m_summary.execSummary = QStringList{s1, s2, s3, s4}.join(QLatin1Char(' '));
+    m_summary.decisions = QStringList{
+        tr("A súgóoldalakat a többi termékre is kiterjesztik."),
+        tr("A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást."),
+        tr("A dokumentációs létszámról a költségvetési tervezés dönt."),
+    };
+    m_summary.actionItems = {
+        {tr("Számlázási súgó első változata a dokumentációs csapattal"), tr("Fehér Gábor"), tr("okt. 15.")},
+        {tr("Díjbekérő-kérdések külön kezelése a súgóban"), tr("Molnár Eszter"), tr("okt. 22.")},
+    };
+    for (const SpeakerRef& s : std::as_const(m_speakers))
+        m_summary.participants << s.name;
+
+    QVector<SummaryStatement> sts{
+        statement(QStringLiteral("s1"), StatementKind::Statement, s1, {span({t(0, 4), t(1, 16)})}),
+        statement(QStringLiteral("s2"), StatementKind::Statement, s2, {span({t(4, 18)})}),
+        statement(QStringLiteral("s3"), StatementKind::Statement, s3, {span({t(12, 41)}), span({t(47, 2)})}),
+        statement(QStringLiteral("s4"), StatementKind::Statement, s4, {span({t(13, 12)})}),
+        statement(QStringLiteral("d1"), StatementKind::Decision, m_summary.decisions.at(0), {span({t(22, 52)})}),
+        statement(QStringLiteral("d2"), StatementKind::Decision, m_summary.decisions.at(1), {span({t(31, 10)}), span({t(33, 40)})}),
+        statement(QStringLiteral("d3"), StatementKind::Decision, m_summary.decisions.at(2), {span({t(58, 40)})}),
+        statement(QStringLiteral("t1"), StatementKind::Todo, m_summary.actionItems.at(0).text, {span({t(13, 1)})}, tr("Fehér Gábor")),
+        statement(QStringLiteral("t2"), StatementKind::Todo, m_summary.actionItems.at(1).text, {span({t(47, 2)})}, tr("Molnár Eszter")),
+    };
+
+    if (state == QLatin1String("staleTargeted")) {
+        // Varga Árpád egy sorát Fehér Gáborról javították: az érintett állítás és teendő.
+        m_stale = true;
+        m_staleCount = 3;
+        m_staleTargeted = true;
+        sts[2].staleBecause = QStringList{tr("Fehér Gábor → Varga Árpád?")};
+        sts[7].staleBecause = QStringList{tr("Fehér Gábor → Varga Árpád?")};
+        sts[7].ownerStaleBecause = tr("Fehér Gábor → Varga Árpád?");
+        m_affectedStatements = 1;
+        m_affectedTodos = 1;
+        m_ownerChanges = 1;
+        m_affectedUtterances = QStringList{QStringLiteral("u%1").arg(t(12, 41)), QStringLiteral("u%1").arg(t(13, 1))};
+    }
+
+    // Memó: hét szakasz (a 3. a kiemelt).
+    struct Sec { qint64 from; qint64 to; QString title; QStringList speakers; QStringList points; };
+    const QString lilla = tr("Kovács Lilla"), gabor = tr("Fehér Gábor"), arpad = tr("Varga Árpád"),
+                  eszter = tr("Molnár Eszter"), tavoli = tr("Távoli 1");
+    const QVector<Sec> secs{
+        {t(0, 0), t(12, 30), tr("Nyitás, Q3 számok"), {lilla, gabor},
+         {tr("Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak."),
+          tr("A partnerek kérték, hogy a számlázás külön napirendi pont legyen.")}},
+        {t(12, 30), t(31, 10), tr("Súgóoldalak"), {gabor, arpad, lilla},
+         {tr("A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták."),
+          tr("A súgót a többi termékre is kiterjesztik.")}},
+        {t(31, 10), t(44, 5), tr("Számlázási súgó és a Nordvik-megújítás"), {lilla, gabor, eszter},
+         {tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja."),
+          tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá."),
+          tr("A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet."),
+          tr("Ha a súgó nem készül el a negyedév elejére, a megújítási tárgyalásokon újra előjön a probléma."),
+          tr("Nyitott kérdés: ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?")}},
+        {t(44, 5), t(64, 40), tr("Partneri visszajelzések"), {eszter, arpad, tavoli},
+         {tr("A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják."),
+          tr("A díjbekérős kérdéseket külön kezelik a súgóban.")}},
+        {t(64, 40), t(92, 10), tr("Nordvik-megújítás"), {arpad, lilla},
+         {tr("A Nordvik-szerződés megújítása a számlázási súgón múlik."),
+          tr("A tárgyalás a negyedik negyedév elején indul.")}},
+        {t(92, 10), t(115, 50), tr("Költségvetés"), {lilla, arpad, gabor},
+         {tr("A dokumentációs létszámról a költségvetési tervezés dönt.")}},
+        {t(115, 50), t(131, 4), tr("Lezárás, teendők"), {lilla, gabor, eszter},
+         {tr("Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát."),
+          tr("Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.")}},
+    };
+    for (const Sec& s : secs)
+        m_summary.memo.append({s.title, s.from, s.to, s.points, s.speakers});
+    for (const MemoSection& sec : std::as_const(m_summary.memo))
+        m_memo << memoMapFor(sec);
+
+    for (const QString& d : std::as_const(m_summary.decisions))
+        m_decisions << decisionMap(d, m_durationMs);
+    for (const ActionItem& a : std::as_const(m_summary.actionItems))
+        m_actions << QVariantMap{{QStringLiteral("text"), a.text}, {QStringLiteral("owner"), a.owner},
+                                 {QStringLiteral("ownerIndex"), speakerIndexFor(a.owner)},
+                                 {QStringLiteral("owners"), ownerList(a.owner)},
+                                 {QStringLiteral("due"), a.due}};
+    m_execSummary = m_summary.execSummary;
+    m_markdown = m_summary.renderMarkdown();
+
+    // „noSources”: régi (forrás nélküli) összefoglaló — a mai nézet.
+    if (state != QLatin1String("noSources")) {
+        m_summary.statements = sts;
+        m_rawStatements = sts;
+    }
+    buildStatements(m_rawStatements, m_affectedUtterances);
+}
+
 } // namespace tanara_qml
+
