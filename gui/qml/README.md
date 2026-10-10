@@ -174,8 +174,8 @@ decorations kept) · 276 px sidebar · content · 52 px player. `Main.qml` owns 
 theme, player volume in `<TANARA_HOME or ~/.tanara>/ui-state.json`). What shows is computed:
 
 - library empty → `EmptyLibraryView` · nothing selected → `NoSelectionView` · meeting without
-  transcript → `MeetingHeader` + the Áttekintés page showing `PreTranscriptView` (until the
-  transcription starts; then the Áttekintés itself) + `PlayerBar` · otherwise `MeetingHeader` +
+  transcript → `MeetingHeader` + the Áttekintés (`OverviewTab`, right after the recording; the
+  "Átírás indítása" lives in its `Átirat` step) + `PlayerBar` · otherwise `MeetingHeader` +
   four tabs (0 Áttekintés `OverviewTab`, 1 Átirat `TranscriptTab`, 2 Vezetői összefoglaló and
   3 Memó `SummaryTab`) + the map dock or `PlayerBar`. Details: "The v3 meeting view" below.
 - Content components get `meetingId` / `player` / `shell` as plain property bindings in `Main.qml`.
@@ -215,7 +215,7 @@ What the shell is made of, top to bottom:
 
 | Index | Tab | Shortcut | Content |
 |---|---|---|---|
-| 0 | Áttekintés | `Ctrl+1` | `OverviewTab` (before the transcript is started: `PreTranscriptView` in the same page) |
+| 0 | Áttekintés | `Ctrl+1` | `OverviewTab` (also before the transcription; `PreTranscriptView` is no longer in the shell) |
 | 1 | Átirat | `Ctrl+2` | `TranscriptTab` |
 | 2 | Vezetői összefoglaló | `Ctrl+3` | `SummaryTab` with `section = "exec"` |
 | 3 | Memó | `Ctrl+4` | the **same** `SummaryTab` with `section = "memo"` (`Main.syncSummarySection()`); the `StackLayout` index is `min(currentTab, 2)` |
@@ -242,6 +242,13 @@ everybody unknown: the raw speakers + "Elnevezem őket") · the approval banner 
 ("A hanglenyomat-elemzés kész: N jelölt", `Átnézem` opens the dialog, `Később` hides it for the session).
 **Right** (340 px): `FELDOLGOZÁS` (`PipelineSteps`) and `SÁVOK` (`TrackList`); when all is done:
 `ADATOK` (`StatTiles`, 2×3) and the steps / tracks collapsed to one row each (`stepsCollapsed`, `tracksCollapsed`).
+**Before the transcription** (U6, V5): the Áttekintés shows right after the recording (tracks playable and
+switchable, participants / tags / "Csak én beszéltem" usable); `PipelineSteps` embeds controls under a step
+(`transcriptContent` / `mixdownContent` / `voiceContent`): the `Átirat` step hosts `TranscribeStepPanel`
+(gating from `PreTranscriptViewModel`: missing setting → Beállítások, Tanara Cloud tier, `Átírás indítása`
+→ `shell.startTranscription`, error box with `Újra` + fix action), `Lekeverés` gets `Lekeverés indítása`
+when the mixdown is missing / stale (manual mixdown mode), the voiceprint step the identify switch.
+Without audio (import running, broken folder) the same tab says what is missing in the steps.
 
 #### The map dock (`MapDock`)
 
@@ -313,9 +320,9 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 
 | Screen | Spec (`gui/qml/shoot.sh …`) | `demoState` values |
 |---|---|---|
-| Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
+| Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `overviewRecorded` (U6: recorded, not transcribed, `Átírás indítása` in the step) · `overviewRecordedError` (U6: transcription failed) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
 | Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
-| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` |
+| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` |
 | Map dock alone | `MapDock:1100x200` | (invented lanes) |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
 | Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` |
@@ -337,7 +344,8 @@ reach the core through `TagBackend` → `TagControllerBackend` (`createControlle
   ones after a manual add; LLM ones arrive by themselves after a summary. A chip click →
   `shell.filterByTag(id)` → `tagFilterRequested` → `Main.filterLibraryByTag` (sets `tags` on the
   library model when it has that property). "Miért?" links → `shell.showMeeting`.
-- **Before transcript** the Áttekintés page shows `PreTranscriptView`; its step 1 of `PreTranscriptView` shows "Címkék"
+- **Before transcript** the Áttekintés shows `TagRowOverview` (as after it). The standalone `PreTranscriptView`
+  (no longer in the shell; kept for its tests and screenshots): its step 1 shows "Címkék"
   (`TagField` on `PreTranscriptViewModel.tags`) and the suggestion line (`tagSuggestions`,
   `tagSuggestionReason`: the meeting's normal suggestions, else `draftTagSuggestions(title)`). The
   note cards show the source meeting's tags (`MeetingNoteModel.suggestions[].tags`, mini chips).
