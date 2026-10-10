@@ -3,6 +3,7 @@
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/edit/TrackActivity.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
@@ -15,6 +16,7 @@
 #include <QJsonObject>
 
 #include <algorithm>
+#include <cmath>
 
 using namespace tanara;
 
@@ -43,8 +45,10 @@ struct Cast {
 // ortogonális), ahogy a core unit-tesztjei is teszik.
 class DemoEmbedder : public IUtteranceEmbedder {
 public:
-    explicit DemoEmbedder(std::shared_ptr<const QVector<Line>> lines, int dim)
-        : m_lines(std::move(lines)), m_dim(dim) {}
+    // noisy: a hang-vektor a beszélő tengelye mellett kis, determinisztikus zajt is kap (a v3
+    // változat bizonyíték-százalékai így nem mind 100% / 0%).
+    explicit DemoEmbedder(std::shared_ptr<const QVector<Line>> lines, int dim, bool noisy = false)
+        : m_lines(std::move(lines)), m_dim(dim), m_noisy(noisy) {}
     bool open(const QString&) override { return true; }
     QVector<float> embed(qint64 startMs, qint64 endMs) override
     {
@@ -54,12 +58,27 @@ public:
         if (it == m_lines->cbegin()) return {};
         const Line& l = *(it - 1);
         QVector<float> v(m_dim, 0.0f);
-        v[(l.voice >= 0 ? l.voice : l.speaker) % m_dim] = 1.0f;
+        const int axis = (l.voice >= 0 ? l.voice : l.speaker) % m_dim;
+        v[axis] = 1.0f;
+        if (m_noisy) {
+            quint64 x = quint64(l.startMs) * 2654435761ULL + 12345;
+            double norm = 0.0;
+            for (int k = 0; k < m_dim; ++k) {
+                x = (x * 6364136223846793005ULL + 1442695040888963407ULL);
+                const float r = float((x >> 33) % 1000) / 1000.0f;
+                if (k == axis) v[k] = 0.80f + 0.20f * r;
+                else v[k] = 0.22f * r;
+                norm += double(v[k]) * v[k];
+            }
+            const float n = float(std::sqrt(norm));
+            for (float& f : v) f /= n;
+        }
         return v;
     }
 private:
     std::shared_ptr<const QVector<Line>> m_lines;
     int m_dim;
+    bool m_noisy;
 };
 
 qint64 ts(int min, int sec) { return (qint64(min) * 60 + sec) * 1000; }
@@ -114,6 +133,11 @@ struct Scenario {
     int seedTarget = -1;
     qint64 durationMs = 0;
     bool transcript = true;
+    // v3 (a handoff-v3 nevei): sávok (mikrofon + hívás hangja) kitalált aktivitással, címkék,
+    // egy cast-on kívüli hang (az „új személy"), zajos hang-vektorok.
+    bool v3 = false;
+    int voices = 0;     // a hang-dimenzió (0 = a cast mérete)
+    int localVoice = 0; // ennek a hangnak a sorai a mikrofonon szólnak (a többi a híváson)
 };
 
 // Töltelék: a megadott időtől a meeting végéig, súlyozott beszélő-sorrenddel. `stray`:
@@ -280,6 +304,120 @@ Scenario manySpeakers()
     return sc;
 }
 
+// A handoff-v3 meetingje: Kovács Lilla a saját mikrofonján, a többiek a hívás hangján. A
+// forgatókönyv elején az E1–E4 sorai; utána töltelék, benne a csoportokhoz való „rossz" sorok:
+// Lilla nevén Gábor hangja a hívásról (sáv-ellentmondás), Gábor nevén Árpád hangja (mag-eltérés),
+// Gábor nevén egy cast-on kívüli hang (Nagy Péter, az E4 új személye), és rövid sorok.
+Scenario v3Scenario()
+{
+    Scenario sc;
+    sc.v3 = true;
+    sc.voices = 7;          // 6 beszélő + Nagy Péter hangja (6)
+    sc.localVoice = 0;
+    sc.cast = {
+        {QStringLiteral("Beszélő 1"), QStringLiteral("Kovács Lilla"), true, 1.2},
+        {QStringLiteral("Beszélő 2"), QStringLiteral("Fehér Gábor"), true, 1.5},
+        {QStringLiteral("Beszélő 3"), QStringLiteral("Varga Árpád"), true, 1.1},
+        {QStringLiteral("Beszélő 4"), QStringLiteral("Molnár Eszter"), true, 0.9},
+        {QStringLiteral("Beszélő 5"), QStringLiteral("Tóth Bence"), false, 0.6},
+        {QStringLiteral("Távoli 1"), QString(), false, 0.35},
+    };
+    sc.lines = {
+        {ts(0, 4), 6200, 0, -1,
+         QStringLiteral("Igen, és ide tartozik még, hogy a számlázási rész lesz a következő; ott a legtöbb a visszakérdezés.")},
+        {ts(0, 11), 1000, 1, -1, QStringLiteral("Pontosan.")},
+        // Lilla nevén, de Gábor hangja a hívásról: „bizonytalan · sáv".
+        {ts(0, 13), 7400, 0, 1,
+         QStringLiteral("Igen, ezt mi is láttuk a partnerportálon, főleg a Nordvik-ügyfeleknél, ott a jegyek fele számlázási volt.")},
+        // Eszter nevén, Árpád hangja: a „markers" állapot kézzel átteszi (javítva).
+        {ts(0, 22), 6600, 3, 2,
+         QStringLiteral("A mi oldalunkon ez a negyedik negyedév elejére kellene, különben a megújításnál újra elő fog jönni.")},
+        {ts(0, 30), 5200, 1, -1,
+         QStringLiteral("Ezt a részt én vállalom, de kellene hozzá két hét a dokumentációs csapattól.")},
+        {ts(0, 36), 900, 3, -1, QStringLiteral("Értem.")},
+        // Gábor nevén, de Nagy Péter hangja (E4: ez a három kerül az új személyhez).
+        {ts(0, 38), 3200, 1, 6,
+         QStringLiteral("És mikorra várható a számlázási súgó? Az ügyfeleink már kérdezik.")},
+        {ts(0, 42), 4400, 1, 6,
+         QStringLiteral("Én a pénzügy felől jövök: nálunk a számlázási kérdések fele a díjbekérőkről szól, nem magáról a számláról.")},
+        {ts(0, 47), 3000, 1, 6, QStringLiteral("Ha a súgó ezt külön kezelné, szerintem a maradék is eltűnne.")},
+    };
+    const QStringList shortPool{QStringLiteral("Igen."), QStringLiteral("Mhm."), QStringLiteral("Értem."),
+                                QStringLiteral("Jó."), QStringLiteral("Aha."), QStringLiteral("Pontosan.")};
+    quint64 x = 41;
+    auto rnd = [&x] { x = (x * 16807) % 2147483647ULL; return double(x) / 2147483647.0; };
+    double total = 0;
+    for (const Cast& c : std::as_const(sc.cast)) total += c.weight;
+    const QStringList& pool = fillerPool();
+    QVector<int> perSpeaker(sc.cast.size(), 0);
+    qint64 t = ts(1, 0);
+    const qint64 until = ts(44, 30);
+    int last = -1, n = 0;
+    while (t < until - 12000) {
+        int k = 0;
+        do {
+            double r = rnd() * total;
+            for (k = 0; k < sc.cast.size() - 1; ++k) {
+                r -= sc.cast[k].weight;
+                if (r < 0) break;
+            }
+        } while (k == last);
+        last = k;
+        const int paragraphs = 1 + int(rnd() * 2.2);
+        for (int p = 0; p < paragraphs && t < until - 8000; ++p) {
+            Line l;
+            l.startMs = t;
+            l.speaker = k;
+            l.voice = -1;
+            ++n;
+            const int own = ++perSpeaker[k];
+            if (n % 7 == 0) {
+                l.text = shortPool[n % shortPool.size()];
+                l.durMs = 700 + qint64(rnd() * 600);
+            } else {
+                l.text = pool[int(rnd() * pool.size()) % pool.size()];
+                l.durMs = qMax<qint64>(2200, qint64(l.text.size()) * 62);
+                if (k == 0 && own % 4 == 0) l.voice = 1;            // Lilla nevén Gábor (híváson)
+                else if (k == 1 && own % 5 == 0) l.voice = 2;       // Gábor nevén Árpád
+                else if (k == 1 && own % 11 == 0) l.voice = 6;      // Gábor nevén Nagy Péter
+            }
+            sc.lines.append(l);
+            t += l.durMs + 400 + qint64(rnd() * 2400);
+        }
+    }
+    sc.durationMs = until;
+    return sc;
+}
+
+// A kitalált sáv-aktivitás: a sor ideje alatt a mikrofon VAGY a hívás-sáv szól (a hang gazdája
+// szerint), a másik csendes.
+MeetingActivity demoActivity(const Scenario& sc)
+{
+    constexpr int frameMs = 50;
+    const int frames = int(sc.durationMs / frameMs) + 1;
+    TrackActivity mic, loop;
+    mic.trackId = QStringLiteral("mic");
+    mic.kind = TrackKind::Mic;
+    loop.trackId = QStringLiteral("loopback");
+    loop.kind = TrackKind::Loopback;
+    for (TrackActivity* a : {&mic, &loop}) {
+        a->frameMs = frameMs;
+        a->floorDb = -62.0f;
+        a->dbAboveFloor = QVector<float>(frames, 0.0f);
+    }
+    for (const Line& l : sc.lines) {
+        const int voice = l.voice >= 0 ? l.voice : l.speaker;
+        TrackActivity& on = voice == sc.localVoice ? mic : loop;
+        const int from = int(l.startMs / frameMs);
+        const int to = std::min<int>(frames, int((l.startMs + l.durMs) / frameMs));
+        for (int f = from; f < to; ++f) on.dbAboveFloor[f] = 28.0f + float((f * 7) % 5);
+    }
+    MeetingActivity act;
+    act.fingerprint = QStringLiteral("demo");
+    act.tracks = {mic, loop};
+    return act;
+}
+
 void writeJson(const QString& path, const QJsonDocument& doc)
 {
     QFile f(path);
@@ -293,6 +431,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     Scenario sc;
     if (variant == QLatin1String("two")) sc = twoSpeakers();
     else if (variant == QLatin1String("many")) sc = manySpeakers();
+    else if (variant == QLatin1String("v3")) sc = v3Scenario();
     else sc = fourSpeakers(variant == QLatin1String("long"));
     if (variant == QLatin1String("none")) sc.transcript = false;
 
@@ -301,8 +440,25 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     m_people = std::make_unique<PeopleStore>(m_dir.filePath(QStringLiteral("meta/people.json")));
     m_prints = std::make_unique<VoiceprintStore>(m_dir.filePath(QStringLiteral("meta/voiceprints.json")));
 
-    Meeting m = m_store->createMeeting(QStringLiteral("Termékcsapat heti egyeztetés"));
+    Meeting m = m_store->createMeeting(sc.v3 ? QStringLiteral("Negyedéves partnertalálkozó")
+                                             : QStringLiteral("Termékcsapat heti egyeztetés"));
     m.durationMs = sc.durationMs;
+    if (sc.v3) {
+        Track mic;
+        mic.id = QStringLiteral("mic");
+        mic.deviceName = QStringLiteral("Mikrofon");
+        mic.file = QStringLiteral("track_mic.ogg");
+        mic.kind = TrackKind::Mic;
+        Track loop;
+        loop.id = QStringLiteral("loopback");
+        loop.deviceName = QStringLiteral("Rendszerhang");
+        loop.file = QStringLiteral("track_loopback.ogg");
+        loop.kind = TrackKind::Loopback;
+        m.tracks = {mic, loop};
+        m_tracks = m.tracks;
+        m.tagIds = {QStringLiteral("nordvik")};
+        m_tagNames.insert(QStringLiteral("nordvik"), QStringLiteral("Nordvik"));
+    }
 
     if (sc.transcript) {
         QJsonArray segs;
@@ -319,7 +475,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     }
 
     // Nevek + hanglenyomatok (a sáv-fejléc pöttyéhez) + egy hang-azonosítási pontszám.
-    const int dim = int(sc.cast.size());
+    const int dim = sc.voices > 0 ? sc.voices : int(sc.cast.size());
     for (int k = 0; k < sc.cast.size(); ++k) {
         const Cast& c = sc.cast[k];
         if (c.person.isEmpty()) continue;
@@ -337,10 +493,31 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     if (sc.transcript && !sc.cast.isEmpty() && !sc.cast[0].person.isEmpty())
         speakeredit::recordIdentification(m.folder, sc.cast[0].raw, sc.cast[0].person, 0.82);
 
+    if (sc.v3) m_people->setDefaultSide(QStringLiteral("Fehér Gábor"), QStringLiteral("remote"));
+
     m_editor = std::make_unique<SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
+    if (sc.v3) {
+        m_editor->setUserSpeakerName(QStringLiteral("Kovács Lilla"));
+        const auto activity = std::make_shared<const MeetingActivity>(demoActivity(sc));
+        m_editor->setActivityProvider([activity](const Meeting&) { return *activity; });
+        m_editor->setPersonTagsProvider([](const QString& person) {
+            if (person == QLatin1String("Fehér Gábor") || person == QLatin1String("Varga Árpád"))
+                return QStringList{QStringLiteral("nordvik")};
+            if (person == QLatin1String("Molnár Eszter")) return QStringList{QStringLiteral("piac")};
+            return QStringList();
+        });
+        m_tagNames.insert(QStringLiteral("piac"), QStringLiteral("Piackutatás"));
+    }
     if (variant != QLatin1String("novoice")) {
         const auto lines = std::make_shared<const QVector<Line>>(sc.lines);
-        m_editor->setEmbedderFactory([lines, dim] { return std::make_unique<DemoEmbedder>(lines, dim); });
+        const bool noisy = sc.v3;
+        m_editor->setEmbedderFactory([lines, dim, noisy] { return std::make_unique<DemoEmbedder>(lines, dim, noisy); });
+    }
+    m_v3 = sc.v3;
+    for (const Line& l : std::as_const(sc.lines)) {
+        m_lineSpeaker << l.speaker;
+        m_lineVoice << (l.voice >= 0 ? l.voice : l.speaker);
+        m_lineDur << l.durMs;
     }
     if (sc.transcript && sc.seedLine >= 0) {
         m_seedId = m_editor->utteranceAt(sc.seedLine).id;
@@ -351,6 +528,37 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
 TranscriptDemoSession::~TranscriptDemoSession()
 {
     m_editor.reset();   // a háttérszál bevárása, mielőtt a store-ok megszűnnek
+}
+
+bool TranscriptDemoSession::stageV3(const QString& state)
+{
+    if (!m_v3 || !m_editor || m_editor->utteranceCount() != m_lineSpeaker.size()) return false;
+    constexpr int kScript = 9;      // a forgatókönyv eleji (E1–E4) sorok száma
+    auto id = [this](int i) { return m_editor->utteranceAt(i).id; };
+    // Megerősített mag: az elnevezett beszélők első 4 tiszta, saját hangú sora + az E1 első sora.
+    QStringList confirm{id(0)};
+    QHash<int, int> per;
+    for (int i = kScript; i < m_lineSpeaker.size(); ++i) {
+        const int k = m_lineSpeaker[i];
+        if (k > 4 || m_lineVoice[i] != k || m_lineDur[i] < 2500 || per.value(k) >= 4) continue;
+        ++per[k];
+        confirm << id(i);
+    }
+    // A szennyezett mag (E2 banner): Gábor nevén két Árpád-hangú sor is „Jó így"-t kapott.
+    if (state == QLatin1String("reviewGroups") || state == QLatin1String("reviewExpanded")
+        || state == QLatin1String("contaminatedCore")) {
+        int added = 0;
+        for (int i = kScript; i < m_lineSpeaker.size() && added < 2; ++i) {
+            if (m_lineSpeaker[i] != 1 || m_lineVoice[i] != 2) continue;
+            confirm << id(i);
+            ++added;
+        }
+    }
+    m_editor->confirmUtterances(confirm);
+    m_editor->setUtterancesNoisy({id(4)}, true);
+    // „javítva": Eszter nevén Árpád hangja → kézzel Árpádhoz.
+    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, QStringLiteral("Beszélő 3"));
+    return true;
 }
 
 QVector<PersonInfo> TranscriptDemoSession::people() const

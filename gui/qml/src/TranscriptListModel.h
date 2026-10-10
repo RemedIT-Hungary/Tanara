@@ -48,6 +48,12 @@ public:
         NoisyOverlapRole,               // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
         LikelySpeakerKeyRole,           // az újraellenőrzés javaslata: a hangra jobban illő beszélő
         LikelySpeakerNameRole,
+        // v3 sor-jelölők (handoff-v3 E1, 14. döntés)
+        UncertainReasonRole,            // "side" | "voice" | "tag" | "" — a „bizonytalan · …" pirula oka
+        ConfirmedRole,                  // „Jó így" (pipa)
+        ShortRole,                      // rövidebb, mint amit a hang-elemzés megbízhatóan megítél („rövid")
+        SideConflictRole,               // a sor a beszélője oldalával ellentétes sávon szólt
+        NewPersonRole,                  // a sor beszélője az imént létrehozott személy („új személy")
     };
     Q_ENUM(Role)
 
