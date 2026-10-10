@@ -115,10 +115,11 @@ Side classifyLevels(float micRelDb, float loopRelDb)
     if (std::isnan(micRelDb) || std::isnan(loopRelDb)) return Side::Unknown;
     const bool micHigh = micRelDb >= kSpeechDb;
     const bool loopHigh = loopRelDb >= kSpeechDb;
-    const bool micLow = micRelDb < kLowDb;
     if (micHigh && loopHigh) return loopRelDb <= kEchoDb ? Side::Local : Side::Mixed;
     if (micHigh) return Side::Local;
-    if (loopHigh && micLow) return Side::Remote;
+    // A loopback beszédszinten, a mic a beszédszint alatt (zaj vagy áthallás a hangszóróból):
+    // távoli. A köztes mic-sáv sem helyi beszéd — valódi mérésen 171 sor esett volna „ismeretlen"-be.
+    if (loopHigh) return Side::Remote;
     return Side::Unknown;
 }
 

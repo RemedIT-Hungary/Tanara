@@ -16,7 +16,7 @@
 //   * mic beszédszinten (≥ kSpeechDb)                       → Local vagy Mixed, SOHA Remote;
 //   * mindkettő beszédszinten: a loopback ≥ kEchoDb-lel a saját szintje alatt → Local (visszhang),
 //     különben Mixed (egymásra beszélés);
-//   * loopback beszédszinten ÉS a mic alacsony (< kLowDb) → Remote;
+//   * loopback beszédszinten, a mic a beszédszint alatt (zaj / áthallás) → Remote;
 //   * egyik sem (pl. a mic a kettő között: hangszóró-áthallás) → Unknown.
 // Unknown akkor is, ha valamelyik sávfajta nem fedi le a sort. Egysávos meeting (csak mic vagy
 // csak loopback, pl. import) → minden Unknown, nincs konfliktus (a funkció csendben inaktív).

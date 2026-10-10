@@ -325,7 +325,7 @@ private slots:
         QCOMPARE(sides::classifyLevels(0.0f, -8.0f), Side::Local);         // visszhang
         QCOMPARE(sides::classifyLevels(0.0f, -2.0f), Side::Mixed);         // egymásra beszélés
         QCOMPARE(sides::classifyLevels(-9.0f, 0.0f), Side::Mixed);         // a mic beszél → soha Remote
-        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Unknown);      // köztes mic: nem dönthető
+        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Remote);       // köztes mic (áthallás) + loopback beszél: távoli
         QCOMPARE(sides::classifyLevels(-inf, -inf), Side::Unknown);        // csend
         QCOMPARE(sides::classifyLevels(qQNaN(), 0.0f), Side::Unknown);     // nincs lefedés
         QCOMPARE(sides::classifyLevels(0.0f, -15.0f), Side::Local);        // a loopback halk

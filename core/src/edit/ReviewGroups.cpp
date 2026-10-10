@@ -333,8 +333,11 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const Row& r = rows[ri];
             QString pKey, pPerson;
             double voice = qQNaN();
-            const QVector<Candidate> cands = ranking::rankForLine(
-                ctx, r.emb ? *r.emb : QVector<float>(), c.lineSide, r.key, r.clean());
+            // Hang-beágyazás nélkül (rövid sor) nincs automatikus javaslat: a sáv csak azt mondja
+            // meg, melyik OLDAL, azt nem, hogy ki — ezeket egyenként kell eldönteni.
+            const QVector<Candidate> cands = r.emb
+                ? ranking::rankForLine(ctx, *r.emb, c.lineSide, r.key, r.clean())
+                : QVector<Candidate>();
             for (const Candidate& cand : cands) {
                 if (samePerson(ctx, r.key, cand) || cand.otherSide) continue;
                 const SpeakerProfile* p = findProfile(ctx, cand);
@@ -364,7 +367,7 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const QString target = nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonName);
             g.title = tr("%n sor a másik sávon", n);
             g.subtitle = hasProposal ? tr("Most: %1 · javaslat: %2").arg(curName, target)
-                                     : tr("Most: %1 · nincs azonos oldali jelölt").arg(curName);
+                                     : tr("Most: %1 · hang nélkül nem javaslok nevet, egyenként dönthető").arg(curName);
             g.evidence << makeEvidence(cur && cur->sideBasis == QLatin1String("manual") ? EvidenceKind::Manual : EvidenceKind::Side,
                                        Polarity::Contradict, -1.0, tr("másik sávon szóltak"),
                                        tr("%1: %2; a sorok: %3").arg(curName, ranking::sideLabel(curSide),
