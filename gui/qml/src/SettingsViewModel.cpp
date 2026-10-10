@@ -44,7 +44,7 @@ namespace {
 
 const QStringList kPages{QStringLiteral("general"), QStringLiteral("recording"),
                          QStringLiteral("watcher"), QStringLiteral("services"),
-                         QStringLiteral("summary")};
+                         QStringLiteral("speakers"), QStringLiteral("summary")};
 // A szerkeszthető promptok sorrendben: a gyors összefoglaló három promptja (egylépéses,
 // részenkénti jegyzet, összefésülés), majd a témánkénti elemzés kettő. A "reduce" (a
 // témánkénti elemzés záró összegzése) csak fájl-override-dal hangolható, itt nem szerepel.
@@ -220,6 +220,17 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     m_embedding = new SettingsEmbeddingModel(this);
     // A Cloud-választhatóság a bejelentkezéstől függ.
     connect(m_cloud, &SettingsCloudModel::accountChanged, m_embedding, &SettingsEmbeddingModel::notifyDraftChanged);
+    // Hangmodellek: a bekapcsolt lista a piszkozat része; a letöltés azonnali (nem piszkozat).
+    m_voiceModels = new VoiceModelListModel(this);
+    m_voiceModels->setDraftAccess([this] { return m_draft.voiceModels; },
+                                  [this](const QStringList& ids) {
+                                      if (m_draft.voiceModels == ids) return;
+                                      m_draft.voiceModels = ids;
+                                      touch();
+                                  });
+    connect(m_voiceModels, &VoiceModelListModel::openUrlRequested, this, [this](const QString& url) {
+        if (m_dialogs) m_dialogs->openUrl(url);
+    });
 
     m_detectTimer.setInterval(4000);
     connect(&m_detectTimer, &QTimer::timeout, this, &SettingsViewModel::pollDetector);
@@ -287,6 +298,7 @@ void SettingsViewModel::attach()
     m_connections.clear();
     m_cloud->attach();
     m_embedding->attach();
+    m_voiceModels->setController(m_controller);
 
     AppController* c = m_controller;
     if (!c) {
@@ -478,6 +490,7 @@ void SettingsViewModel::touch()
     updateServicesWarn();
     emit dirtyChanged();
     m_embedding->notifyDraftChanged();
+    m_voiceModels->notifyDraftChanged();
 }
 
 void SettingsViewModel::validate()
@@ -540,6 +553,11 @@ QString SettingsViewModel::footerText() const
     const bool toCloud = m_draft.sttProviderId == cloud::ProviderId && m_draft.llmProviderId == cloud::ProviderId
                          && (m_base.sttProviderId != cloud::ProviderId || m_base.llmProviderId != cloud::ProviderId);
     if (toCloud && m_changeCount <= 2) return tr("Tanara Cloud kiválasztva · mentéskor átvált");
+    // B08: új hangmodell bekapcsolva — mentéskor a meglévő minták pótlása indul.
+    bool modelAdded = false;
+    for (const QString& id : m_draft.voiceModels)
+        if (!m_base.voiceModels.contains(id)) modelAdded = true;
+    if (modelAdded && m_changeCount == 1) return tr("Új hangmodell · mentéskor indul a minták pótlása");
     return tr("%n nem mentett változás", nullptr, m_changeCount);
 }
 
@@ -568,6 +586,7 @@ void SettingsViewModel::openPage(const QString& page, const QString& focusField)
     QString target = page;
     if (page == QLatin1String("providers")) target = QStringLiteral("services");
     else if (page == QLatin1String("cloud")) target = QStringLiteral("services");
+    else if (page == QLatin1String("voiceModels")) target = QStringLiteral("speakers");
     else if (page.isEmpty()) target = m_page;
     if (kPages.contains(target)) setPage(target);
 
@@ -602,12 +621,15 @@ void SettingsViewModel::refreshVoiceprint()
     bool has = false;
     if (m_controller && m_controller->voiceprints()) {
         const QVector<Voiceprint> prints = m_controller->voiceprints()->printsFor(m_base.userSpeakerName);
-        QSet<QString> meetings;
-        for (const Voiceprint& p : prints)
+        // Egy minta egy tétel: a modellenkénti testvér-lenyomatok egynek számítanak.
+        QSet<QString> meetings, samples;
+        for (const Voiceprint& p : prints) {
             if (!p.sourceMeetingId.isEmpty()) meetings.insert(p.sourceMeetingId);
+            samples.insert(VoiceprintStore::siblingKey(p));
+        }
         has = !prints.isEmpty();
         if (has)
-            text = tr("Hanglenyomat: %n minta,", nullptr, prints.size()) + QLatin1Char(' ')
+            text = tr("Hanglenyomat: %n minta,", nullptr, samples.size()) + QLatin1Char(' ')
                    + tr("%n megbeszélésből", nullptr, meetings.size());
         else
             text = tr("Ehhez a névhez még nincs hanglenyomat.");
@@ -1221,7 +1243,9 @@ bool SettingsViewModel::save()
 
     // Érvénytelen mezővel nem mentünk: a hibás lapra váltunk, ott látszik a mező alatt.
     QString badPage;
-    if (m_errors.contains(QStringLiteral("userName")) || m_errors.contains(QStringLiteral("folder.audio"))
+    if (m_errors.contains(QStringLiteral("userName")))
+        badPage = QStringLiteral("speakers");
+    else if (m_errors.contains(QStringLiteral("folder.audio"))
         || m_errors.contains(QStringLiteral("folder.notes")) || m_errors.contains(QStringLiteral("folder.meta")))
         badPage = QStringLiteral("general");
     else if (m_errors.contains(QStringLiteral("watchedApps")))
@@ -1432,6 +1456,7 @@ void SettingsViewModel::loadDemo()
         : st == QLatin1String("B04modelChange") ? QStringLiteral("modelChange")
         : st == QLatin1String("B04embeddingNone") ? QStringLiteral("none") : QString();
     m_embedding->loadDemo(emb);
+    m_voiceModels->loadDemo(st.startsWith(QLatin1String("B08")) ? st : QStringLiteral("B08"));
     m_devices->rebuild();
     m_stt->reset();
     m_llm->reset();
@@ -1491,6 +1516,13 @@ void SettingsViewModel::loadDemo()
         m_base.summaryPrompt = m_draft.summaryPrompt = custom;
         if (st == QLatin1String("B07notes"))
             m_promptIndex = 1;      // a részenkénti jegyzet promptja
+    } else if (st.startsWith(QLatin1String("B08"))) {
+        m_page = QStringLiteral("speakers");
+        // A piszkozat bekapcsolt listája a demó modell-állapotához igazodik.
+        m_base.voiceModels = m_draft.voiceModels = st == QLatin1String("B08") || st == QLatin1String("B08backfill")
+                || st == QLatin1String("B08partial") || st == QLatin1String("B08bundled")
+            ? QStringList{QStringLiteral("campplus"), QStringLiteral("wespeaker-resnet34-lm")}
+            : QStringList{QStringLiteral("campplus")};
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         m_draft.userSpeakerName = QStringLiteral("Kovács Lilla Anna");
     }

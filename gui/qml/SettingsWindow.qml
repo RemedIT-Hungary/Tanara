@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // A Beállítások ablaka (design/handoff-settings, B01–B07): külön, átméretezhető ablak
-// (900 × 680), bal oldali navigáció öt lappal, görgethető tartalom, lábléc a mentetlen
+// (900 × 680), bal oldali navigáció hat lappal, görgethető tartalom, lábléc a mentetlen
 // változások jelzésével és a „Mégse” / „Mentés” gombokkal.
 //
 // A változások a „Mentés”-re érvényesülnek (kivétel a téma: azonnal látszik). Bezáráskor,
@@ -17,6 +17,8 @@ import QtQuick.Templates as T
 // demoState: B01 … B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
 // · B04embeddingNone · B04modelChange (C09, T14–T16) · rejectedReset (megerősítés)
+// · B08 · B08download · B08none · B08error · B08offline · B08backfill · B08partial · B08bundled
+//   (Beszélők lap: hangmodellek, lenyomat-pótlás)
 ApplicationWindow {
     id: window
 
@@ -106,6 +108,7 @@ ApplicationWindow {
         { key: "recording", label: qsTr("Rögzítés"), icon: "mic" },
         { key: "watcher", label: qsTr("Hívásfigyelő"), icon: "radar" },
         { key: "services", label: qsTr("Szolgáltatások"), icon: "plug" },
+        { key: "speakers", label: qsTr("Beszélők"), icon: "audio-lines" },
         { key: "summary", label: qsTr("Összefoglaló"), icon: "sparkles" }
     ]
 
@@ -181,6 +184,7 @@ ApplicationWindow {
                           + (recording.visible ? recording.implicitHeight : 0)
                           + (watcher.visible ? watcher.implicitHeight : 0)
                           + (services.visible ? services.implicitHeight : 0)
+                          + (speakers.visible ? speakers.implicitHeight : 0)
                           + (summary.visible ? summary.implicitHeight : 0)
 
                     SettingsGeneralPage {
@@ -211,6 +215,12 @@ ApplicationWindow {
                         demoDropdown: window.demoState === "B04"
                         onLogoutRequested: logoutDialog.open()
                         onRejectedResetRequested: rejectedDialog.open()
+                    }
+                    SettingsSpeakersPage {
+                        id: speakers
+                        visible: model.page === "speakers"
+                        width: Math.min(parent.width, 600)
+                        vm: model
                     }
                     SettingsSummaryPage {
                         id: summary

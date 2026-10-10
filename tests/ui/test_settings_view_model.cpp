@@ -471,7 +471,7 @@ private slots:
         QSignalSpy saved(&vm, &SettingsViewModel::saved);
         QVERIFY(!vm.save());
         QCOMPARE(saved.size(), 0);
-        QCOMPARE(vm.page(), QStringLiteral("general"));    // a hibás mező lapjára visz
+        QCOMPARE(vm.page(), QStringLiteral("speakers"));   // a hibás mező lapjára visz (a név a Beszélők lapon)
         QCOMPARE(live().userSpeakerName, before);          // semmi nem íródott
         QCOMPARE(live().audioQuality, QStringLiteral("best"));
 
@@ -1326,7 +1326,9 @@ private slots:
         for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B06", "B07", "B07notes", "advanced", "dirty", "unsaved",
                                "schema", "teaser", "cloudOut", "addApp", "logout", "reset",
                                "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
-                               "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset"})
+                               "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset",
+                               "B08", "B08download", "B08none", "B08error", "B08offline", "B08backfill",
+                               "B08partial", "B08bundled"})
             QTest::addRow("%s", st) << QString::fromLatin1(st);
     }
     void windowLoadsEveryDemoStateWithoutWarnings()
