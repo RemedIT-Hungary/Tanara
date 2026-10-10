@@ -1426,15 +1426,14 @@ struct SpeakerEditor::Private {
     // vagy új résztvevő), vagy új névtelen résztvevő.
     bool moveToTarget(const QVector<int>& idx, const QString& key, const QString& person, const QString& label)
     {
-        if (idx.isEmpty()) return false;
-        Step s = begin();
         QString target = (!key.isEmpty() && visible(key)) ? key : QString();
         if (target.isEmpty() && !person.isEmpty()) target = speakerKeyForPerson(canonicalPerson(person));
-        if (target.isEmpty()) target = createParticipant(canonicalPerson(person), s);
         QVector<int> move;
         for (int i : idx)
-            if (assigned[i] != target) move.append(i);
+            if (target.isEmpty() || assigned[i] != target) move.append(i);
         if (move.isEmpty()) return false;
+        Step s = begin();
+        if (target.isEmpty()) target = createParticipant(canonicalPerson(person), s);
         moveLines(move, target, s);
         commit(s, SpeakerEditor::tr("%1: %n sor ide: %2", nullptr, move.size()).arg(label, displayOf(target)));
         return true;
