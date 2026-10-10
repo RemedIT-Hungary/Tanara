@@ -756,7 +756,8 @@ QStringList speakersOf(const QVector<Utterance>& segments)
 }
 
 Summary buildSummary(const MergeResult& merge, const QVector<PartNotes>& parts,
-                     const QStringList& participants)
+                     const QStringList& participants,
+                     const QVector<summarysrc::SourceLine>& lines)
 {
     Summary s;
     s.execSummary = merge.execSummary;
@@ -765,6 +766,7 @@ Summary buildSummary(const MergeResult& merge, const QVector<PartNotes>& parts,
     s.actionItems = merge.actionItems;
     s.participants = participants;
     s.memo = assembleMemo(parts);
+    summarysrc::attachSources(s, lines);
     return s;
 }
 
