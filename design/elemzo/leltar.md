@@ -6,6 +6,34 @@ Contents: 0 Shell hooks . A Transcript analyzer/editor (A1 TranscriptTab, A2 too
 
 ---------------------------------------------------------------------------------------------------
 
+## v3 after (2026-10; read this first - the sections below describe the pre-v3 UI and stay as history)
+
+Design: `design/handoff-v3/README.md`. Module docs: `gui/qml/README.md` ("The v3 meeting view"). Where an old item below says tab / header / button, use this table to find its new place.
+
+| Pre-v3 item (sections 0, A1-A10) | Now |
+|---|---|
+| Tabs `Átirat` / `Összefoglaló` / `Sávok` (0, A8, A9) | Four tabs in the one-line header: 0 `Áttekintés`, 1 `Átirat`, 2 `Vezetői összefoglaló`, 3 `Memó` (Ctrl+1..4; `Main.showTab`). Summary and memo are two sections (`SummaryTab.section` `exec` / `memo`) of one `SummaryTab` |
+| `Sávok` tab (A6) | No tab. The Áttekintés shows `SÁVOK` (`TrackList`) in its right column; the full view (rename, locate, restore, permanent delete, mixdown) is the `Sávok részletei` dialog = `TracksTab` (`OverviewTab.openTracks()`; shot: `Main` `demoOverlay="tracks"`) |
+| Header meta line, tag row (A8, A10) | Gone from the header (now ONE 56 px line: title, tabs, `...`). The tag field with suggestions is `TagRowOverview` on the Áttekintés; date / length / counts are the `ADATOK` tiles (`StatTiles`) and the participant list |
+| Header button `Résztvevők azonosítása` (A8) | Removed from the header. Entry points: menu `Megbeszélés` > `Résztvevők azonosítása (hang alapján)` (old identify, `shell.identifyParticipants`), and the new `Ki volt ott?` dialog (`ParticipantsDialog`, `shell.openParticipants`; menu entry, Áttekintés banner `Átnézem`, `Ki volt ott?` in the transcript tool row, automatic offer when entering Átirat via `maybeOfferParticipants`) |
+| Header `...` menu (`További műveletek`) and the `Nézet` menu entries `Átirat` / `Összefoglaló` / `Sávok` / `Résztvevők azonosítása` (0, A8) | Menu row is `Fájl` / `Megbeszélés` / `Nézet`. `Megbeszélés` = `MeetingMenu` (the same menu as header `...`): Átnevezés, Ki volt ott?, identify, Újraellenőrzés…, Újra-átírás…, Exportálás archívumba…, Megnyitás mappában, Törlés…. `Nézet`: the four tabs, `Javítás` / `Olvasás` (Ctrl+E), `Beszélő-oszlopok` (Ctrl+L) |
+| Toolbar undo button (A2) | None. Ctrl+Z and the `TranscriptChangeBar` `Visszavonás` (also the toast for tag steps) |
+| Speaker rail toggle in the toolbar (A2/A3) | `Nézet` > `Beszélő-oszlopok` (Ctrl+L); `Javítás` mode turns the rail on |
+| Per-speaker overview lanes in the editor toolbar (A2) | `MapDock` above the player (tabs 1-3): lanes + extra rows `Forrás` / `Szakaszok` on the summary tabs |
+| `Bizonytalan` filter chip + inline action row (A2, A4) | Javítás mode: `Átnézendő N` chip -> `ReviewGroupsView` (grouped by reason, one decision / undo step per group, contaminated-core strip). Per-line `TranscriptMarker` replaces the old row state markers; `B` / `Shift+B` kept |
+| `SpeakerPopover` entry for a line (A5.1) | `LinePopover` (`Kinek a sora ez?`, candidates with `EvidenceChip`, `Miért nem X?`) for a line / selection; `SpeakerWhyPopover` (`Miért ő?`) for a whole speaker. Scope rules unchanged (line-scoped by default) |
+| `TranscriptChangeBar` (A5.5) | Kept; new-person variant (E4) with `Még N sor hangja hasonlít…` and voiceprint readiness |
+| Summary doc view (A9) | Statements with `TimeChip` sources + `SourcePopover` (`Honnan jön ez?`), memo with `MemoToc`; old summaries without statements keep `SummaryDocView`; `SummaryToolsRow` sits in the tool row (`Források` switch, Másolás, Újragenerálás) |
+| Player bar always at the bottom (A7) | Only on the Áttekintés (and where the dock has no lane data); on tabs 1-3 the transport controls are the 44 px control row of the `MapDock` |
+
+| People window detail (B) | New `Címkék` section above `Becenevek` (`PersonTagsSection`, modes none / self / edit, suggestion line `Ezeken szokott ott lenni…`); samples can be labelled by voice model (`samplesModels`) |
+| Tags window, `Jellemző résztvevők` (D) | `Személyek` list (`TagPeopleList`: `11 / 14`, `Ráteszem`, × reject, `+ Személy` via `PersonPicker` tag mode) |
+| Settings > Általános `Te` section (C) | Moved to the new sixth page `Beszélők` (`SettingsSpeakersPage`): `Te`, `Hangmodellek` (`SettingsVoiceModelCard`: missing / downloading / downloaded / bundled / error / offline), voiceprint backfill status. First steps (E) has `VoiceModelOnboardingRow` |
+
+New reusable parts (all in `Gallery.qml`): `EvidenceChip`, `EvidenceReason`, `CandidateRow`, `TimeChip`, `TranscriptMarker`, `TagRowOverview`, `StatTiles`, `PipelineSteps`, `MeetingToolsRow`, `TagPeopleList`, `SettingsVoiceModelCard` (`PersonTagsSection` and `VoiceModelOnboardingRow` need a view-model / controller: shoot them via PeopleWindow `tagsSection` and OnboardingWindow).
+
+---------------------------------------------------------------------------------------------------
+
 ## 0. Shell hooks that frame the analyzer
 
 | Item | Detail | Ref |
