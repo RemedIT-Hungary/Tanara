@@ -1254,7 +1254,13 @@ SpeakerEditor::~SpeakerEditor()
     d->waitMarkdown();   // a háttér-írás ne a félig lebontott objektumra fusson
 
     d->stopThread(/*notify*/ false);
-    d->flushMarkdown();
+    // A függő transcript.md-írás itt szinkron: egy most indított háttér-futás a már lebontott
+    // Private számlálóját (markdownInFlight) írná.
+    if (d->markdownPending && d->store) {
+        d->markdownPending = false;
+        const Meeting m = d->store->load(d->meetingId);
+        if (!m.id.isEmpty() && QDir(m.folder).exists()) regenerateTranscriptMarkdown(m);
+    }
 }
 
 void SpeakerEditor::flushPendingWrites()
