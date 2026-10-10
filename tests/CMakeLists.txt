@@ -43,9 +43,11 @@ if(TARGET tanara_qml)
     endforeach()
 endif()
 
-# A CLI voice-models / voice-eval parancsait a tanara-cli futtatásával teszteljük (QProcess).
-if(TARGET test_cli_voice_models AND TARGET tanara-cli)
-    add_dependencies(test_cli_voice_models tanara-cli)
-    target_compile_definitions(test_cli_voice_models PRIVATE TANARA_CLI_EXE="$<TARGET_FILE:tanara-cli>")
-    set_tests_properties(test_cli_voice_models PROPERTIES TIMEOUT 180)
-endif()
+# A CLI voice-models / voice-eval / track-sides parancsait a tanara-cli futtatásával teszteljük (QProcess).
+foreach(t test_cli_voice_models test_cli_track_sides)
+    if(TARGET ${t} AND TARGET tanara-cli)
+        add_dependencies(${t} tanara-cli)
+        target_compile_definitions(${t} PRIVATE TANARA_CLI_EXE="$<TARGET_FILE:tanara-cli>")
+        set_tests_properties(${t} PROPERTIES TIMEOUT 180)
+    endif()
+endforeach()
