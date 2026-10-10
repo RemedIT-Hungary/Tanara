@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B01 — Általános: saját név + hanglenyomat, nyelv és téma, a három mappa.
+// B01 — Általános: nyelv és téma, a három mappa. (A saját név és hanglenyomat a Beszélők lapon.)
 Column {
     id: root
 
@@ -10,102 +10,10 @@ Column {
 
     spacing: 22
 
-    // ---- TE ----
-    Column {
-        width: parent.width
-        spacing: 12
-        TSectionLabel { text: qsTr("Te") }
-        Column {
-            width: parent.width
-            spacing: 6
-            TLabel { text: qsTr("Saját neved"); font.weight: Theme.weightSemiBold }
-            SettingsTextField {
-                id: nameField
-                objectName: "userNameField"
-                width: Math.min(parent.width, 320)
-                value: root.vm ? root.vm.userName : ""
-                hasError: root.vm && root.vm.errors.userName !== undefined
-                Accessible.name: qsTr("Saját neved")
-                onEdited: (t) => root.vm.userName = t
-            }
-            TLabel {
-                width: parent.width
-                text: root.vm && root.vm.errors.userName !== undefined ? root.vm.errors.userName
-                    : qsTr("Így jelensz meg az átiratokban; a saját hanglenyomatod ehhez a névhez tartozik.")
-                color: root.vm && root.vm.errors.userName !== undefined ? Theme.dangerInk : Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                cssLineHeight: 1.45
-                wrapMode: Text.Wrap
-            }
-        }
-        Rectangle {
-            width: parent.width
-            height: 40
-            radius: Theme.radiusControl
-            color: Theme.surface
-            border.width: 1
-            border.color: Theme.border
-            TIcon {
-                x: 12
-                anchors.verticalCenter: parent.verticalCenter
-                name: "fingerprint"
-                size: 16
-                color: root.vm && root.vm.hasVoiceprint ? Theme.successInk : Theme.textMuted
-            }
-            TLabel {
-                x: 38
-                width: parent.width - 38 - peopleLink.width - 24
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.vm ? root.vm.voiceprintText : ""
-                font.pixelSize: Theme.fontSmall
-                elide: Text.ElideRight
-            }
-            T.AbstractButton {
-                id: peopleLink
-                anchors.right: parent.right
-                anchors.rightMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                width: linkRow.implicitWidth + 12
-                height: 28
-                hoverEnabled: true
-                activeFocusOnTab: true
-                Accessible.role: Accessible.Link
-                Accessible.name: qsTr("Személyek kezelése")
-                onClicked: root.vm.openPeople()
-                Keys.onReturnPressed: click()
-                Keys.onSpacePressed: click()
-                background: Rectangle {
-                    radius: Theme.radiusControl
-                    color: Theme.stateLayer
-                    opacity: peopleLink.down ? Theme.pressedOpacity : peopleLink.hovered ? Theme.hoverOpacity : 0
-                    TFocusRing { visible: peopleLink.visualFocus }
-                }
-                contentItem: Item {
-                    Row {
-                        id: linkRow
-                        anchors.centerIn: parent
-                        spacing: 4
-                        TLabel {
-                            text: qsTr("Személyek kezelése")
-                            color: Theme.accent
-                            font.pixelSize: Theme.fontSmall
-                            font.weight: Theme.weightMedium
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        TIcon { name: "arrow-right"; size: 14; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle { width: parent.width; height: 1; color: Theme.border }
-
     // ---- MEGJELENÉS ----
     Column {
         width: parent.width
         spacing: 12
-        topPadding: -4
         TSectionLabel { text: qsTr("Megjelenés") }
         GridLayout {
             width: parent.width

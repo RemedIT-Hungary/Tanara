@@ -14,17 +14,20 @@
 //
 // Al-modellek: `devices` (B02 eszközlista élő szinttel), `stt` / `llm` (szolgáltató-kártyák a
 // provider-registryből), `cloud` (Tanara Cloud fiók / várólista), `embedding` (C09: a
-// Beágyazás kártya, a könyvtár előkészítése és a címkejavaslat-kapcsolók).
+// Beágyazás kártya, a könyvtár előkészítése és a címkejavaslat-kapcsolók), `voiceModels` (a
+// Beszélők lap hangmodelljei és a lenyomat-pótlás állapota).
 //
 // Controller nélkül (--qml-shot / --demo, tesztek) KITALÁLT adatot ad; a `demoState`
 // ("B01" … "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut",
 // "B04embedding" / "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" /
-// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange") a design-állapotokat állítja be.
+// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" /
+// "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") a design-állapotokat állítja be.
 //
 #include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
+#include "VoiceModelListModel.h"
 
 #include "tanara/Types.h"
 #include "tanara/provider/ReadinessModel.h"
@@ -63,7 +66,7 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(bool demo READ demo NOTIFY controllerChanged)
 
     // ---- ablak ----
-    // "general" | "recording" | "watcher" | "services" | "summary"
+    // "general" | "recording" | "watcher" | "services" | "speakers" | "summary"
     Q_PROPERTY(QString page READ page WRITE setPage NOTIFY pageChanged)
     // Mély hivatkozás (B04): "" | "stt" | "llm" — melyik kártya hiányzó beállításához jött.
     Q_PROPERTY(QString focusField READ focusField NOTIFY focusChanged)
@@ -125,6 +128,9 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(tanara_qml::SettingsProviderModel* llm READ llm CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsCloudModel* cloud READ cloud CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsEmbeddingModel* embedding READ embedding CONSTANT)
+
+    // ---- B08 Beszélők: hangmodellek (letöltés azonnal, bekapcsolás a piszkozatba), pótlás ----
+    Q_PROPERTY(tanara_qml::VoiceModelListModel* voiceModels READ voiceModels CONSTANT)
 
     // ---- B07 Összefoglaló ----
     Q_PROPERTY(QString summaryLanguage READ summaryLanguage WRITE setSummaryLanguage NOTIFY summaryChanged)
@@ -220,6 +226,7 @@ public:
     SettingsProviderModel* llm() const { return m_llm; }
     SettingsCloudModel* cloud() const { return m_cloud; }
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
+    VoiceModelListModel* voiceModels() const { return m_voiceModels; }
 
     QString summaryLanguage() const { return m_draft.summaryLanguage; }
     void setSummaryLanguage(const QString& language);
@@ -392,6 +399,7 @@ private:
     SettingsProviderModel* m_llm = nullptr;
     SettingsCloudModel* m_cloud = nullptr;
     SettingsEmbeddingModel* m_embedding = nullptr;
+    VoiceModelListModel* m_voiceModels = nullptr;
 };
 
 } // namespace tanara_qml

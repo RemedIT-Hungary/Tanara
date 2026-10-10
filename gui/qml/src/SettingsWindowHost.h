@@ -39,7 +39,7 @@ public:
     ~SettingsWindowHost() override;
 
     // Az ablak megnyitása / előtérbe hozása a megadott lapon. page: "" | "general" |
-    // "recording" | "watcher" | "providers" | "cloud" | "summary"; focusField: "" | "stt" |
+    // "recording" | "watcher" | "providers" | "cloud" | "speakers" | "summary"; focusField: "" | "stt" |
     // "llm" (B04). Ha az ablak zárva volt, a beállításokat újratölti. false: QML-hiba.
     bool open(const QString& page = QString(), const QString& focusField = QString());
     // Bezárás kérdés nélkül (a folyamat leállásakor); a mentetlen piszkozat elvész.
