@@ -22,9 +22,11 @@
 //   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
+//   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
+#include "ReviewCommand.h"
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
@@ -117,6 +119,7 @@ int main(int argc, char** argv) {
     if (cmd == "voice-models") return tanara::cli::runVoiceModelsCommand(args);
     if (cmd == "voice-eval")   return tanara::cli::runVoiceEvalCommand(args);
     if (cmd == "track-sides")  return tanara::cli::runTrackSidesCommand(args);
+    if (cmd == "review")       return tanara::cli::runReviewCommand(args);
 
     AppController app;
 
