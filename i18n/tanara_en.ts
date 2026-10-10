@@ -8863,7 +8863,7 @@
     </message>
     <message>
         <source>Kovács Lilla (te)</source>
-        <translation>Kovács Lilla (you)</translation>
+        <translation>Lilla Kovács (you)</translation>
     </message>
     <message>
         <source>hang 84%</source>
@@ -11180,11 +11180,11 @@
     </message>
     <message>
         <source>Fehér Gábor</source>
-        <translation>Fehér Gábor</translation>
+        <translation>Gábor Fehér</translation>
     </message>
     <message>
         <source>Varga Árpád</source>
-        <translation>Varga Árpád</translation>
+        <translation>Árpád Varga</translation>
     </message>
     <message>
         <source>Távoli 1</source>
@@ -11268,7 +11268,7 @@
     </message>
     <message>
         <source>Fehér Gábor → Varga Árpád?</source>
-        <translation>Fehér Gábor → Varga Árpád?</translation>
+        <translation>Gábor Fehér → Árpád Varga?</translation>
     </message>
     <message>
         <source>Nyitás, Q3 számok</source>
@@ -11276,7 +11276,7 @@
     </message>
     <message>
         <source>Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak.</source>
-        <translation>Kovács Lilla summarized the quarter&apos;s numbers: tickets are down by a third, active users are up 12%.</translation>
+        <translation>Lilla Kovács summarized the quarter&apos;s numbers: tickets are down by a third, active users are up 12%.</translation>
     </message>
     <message>
         <source>Súgóoldalak</source>
@@ -11292,11 +11292,11 @@
     </message>
     <message>
         <source>Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.</source>
-        <translation>According to Kovács Lilla, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.</translation>
+        <translation>According to Lilla Kovács, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.</translation>
     </message>
     <message>
         <source>Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.</source>
-        <translation>Fehér Gábor took on the first version, but asks for two weeks of documentation capacity.</translation>
+        <translation>Gábor Fehér took on the first version, but asks for two weeks of documentation capacity.</translation>
     </message>
     <message>
         <source>A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet.</source>
@@ -11336,11 +11336,11 @@
     </message>
     <message>
         <source>Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát.</source>
-        <translation>Fehér Gábor will finish the first version of the billing help by October 15.</translation>
+        <translation>Gábor Fehér will finish the first version of the billing help by October 15.</translation>
     </message>
     <message>
         <source>Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.</source>
-        <translation>Molnár Eszter will work out the separate handling of proforma invoice questions by October 22.</translation>
+        <translation>Eszter Molnár will work out the separate handling of proforma invoice questions by October 22.</translation>
     </message>
 </context>
 <context>
