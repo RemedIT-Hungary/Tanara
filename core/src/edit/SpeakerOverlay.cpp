@@ -1,6 +1,7 @@
 #include "tanara/edit/SpeakerOverlay.h"
 
 #include "tanara/edit/UtteranceEmbeddings.h"
+#include "tanara/summary/SummaryStore.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -430,6 +431,44 @@ bool clearSummaryStale(const QString& meetingFolder)
     ++ov.summaryEpoch;
     saveOverlay(meetingFolder, ov);
     return was;
+}
+
+QVector<summarysrc::SourceLine> resolvedSourceLines(const Meeting& m)
+{
+    QVector<summarysrc::SourceLine> out;
+    if (m.folder.isEmpty()) return out;
+    const QVector<TranscriptLine> lines = loadTranscriptLines(m.folder);
+    if (lines.isEmpty()) return out;
+    const SpeakerOverlay ov = loadOverlayFor(m.folder, lines);
+    out.reserve(lines.size());
+    for (const TranscriptLine& l : lines) {
+        summarysrc::SourceLine sl;
+        sl.id = l.id;
+        sl.startMs = l.startMs;
+        sl.endMs = l.endMs;
+        sl.speakerKey = resolveSpeakerKey(ov, l);
+        sl.speakerName = speakerDisplayName(ov, m.speakerMap, sl.speakerKey);
+        out.append(sl);
+    }
+    return out;
+}
+
+void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info, QVector<SummaryStatement>* statements)
+{
+    if (statements) statements->clear();
+    if (!m.hasSummary || m.folder.isEmpty()) return;
+    const SummaryDocument doc = summarystore::load(m.folder);
+    QVector<SummaryStatement> sts = doc.summary.statements;
+    if (sts.isEmpty()) return;
+    QHash<QString, SourceSpeaker> now;
+    if (!doc.summary.sourceSpeakers.isEmpty()) {
+        for (const summarysrc::SourceLine& l : resolvedSourceLines(m))
+            if (doc.summary.sourceSpeakers.contains(l.id))
+                now.insert(l.id, SourceSpeaker{l.speakerKey, l.speakerName});
+    }
+    const SpeakerOverlay ov = loadOverlay(m.folder);
+    summarysrc::applyTargetedStaleness(sts, doc.summary.sourceSpeakers, now, ov.changedSinceSummary, info);
+    if (statements) *statements = sts;
 }
 
 // ---- az AppController horgai -----------------------------------------------

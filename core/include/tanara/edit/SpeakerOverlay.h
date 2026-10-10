@@ -12,6 +12,7 @@
 //
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/summary/SummarySources.h"
 
 #include <QMap>
 #include <QString>
@@ -142,6 +143,16 @@ QStringList markSummaryStaleKeys(const Meeting& m, const QStringList& speakerKey
 bool unmarkSummaryStale(const QString& meetingFolder, const QStringList& speakerKeys);
 // Összefoglaló (újra)generálva VAGY a felhasználó elfogadta („Rendben így").
 bool clearSummaryStale(const QString& meetingFolder);
+
+// Az átirat megszólalásai a MOSTANI feloldott beszélővel (kulcs + megjelenített név) — az
+// összefoglaló forrás-hivatkozásaihoz (a készítéskor pillanatkép, később az összevetés).
+// Üres, ha nincs transcript.segments.json.
+QVector<summarysrc::SourceLine> resolvedSourceLines(const Meeting& m);
+// A célzott elavulás kitöltése az info-ban (a summary.json állításai + a forrás-sorok
+// beszélője akkor vs. most + az overlay javított kulcsai). Az info.stale / correctedSpeakers
+// értékét nem bántja. statements != nullptr: az állítások a staleBecause mezőkkel.
+void fillTargetedStale(const Meeting& m, SummaryStaleInfo& info,
+                       QVector<SummaryStatement>* statements = nullptr);
 
 // ---- az AppController horgai ---------------------------------------------
 // A hang-azonosítás pontszámának rögzítése (nyers címke → személy, cosine).
