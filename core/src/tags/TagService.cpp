@@ -360,7 +360,10 @@ struct TagService::Impl {
         QThreadPool::globalInstance()->start([this, gen, selfName, copied, folders, fromDisk, guard] {
             const QVector<PersonTagRow> list = fromDisk ? readRows(folders) : copied;
             auto result = std::make_shared<const PersonTagStats>(PersonTagStats::compute(list, selfName));
-            QMetaObject::invokeMethod(q, [this, gen, result, guard] {
+            // A kontextus az alkalmazás (a TagService addigra megszűnhetett; az őr jelzi).
+            QCoreApplication* app = QCoreApplication::instance();
+            if (!app || !guard->load()) return;
+            QMetaObject::invokeMethod(app, [this, gen, result, guard] {
                 if (!guard->load()) return;
                 statsRunning = false;
                 if (gen == statsGen) {
