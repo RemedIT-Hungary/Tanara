@@ -4,12 +4,17 @@ import QtQuick.Templates as T
 // Személyválasztó panel (K5, 300 px): keresőmező (gépelésre szűr, ékezet-függetlenül), az
 // ismert személyek (monogram, név, „12 megbeszélés" / „nincs hanglenyomat", ujjlenyomat-ikon),
 // „Új személy: „…"" sor, alul súgó. Enter az első / kiemelt találatot választja, fel / le léptet.
+// Rendezés: már résztvevő → közös címkés („#Nordvik · 11 / 14 · 12 megbeszélés”; ≥ 6 sornál
+// „A #Nordvik alapján” szakaszcímmel) → többi (PersonListModel). tagId: a Címkék ablak
+// „+ Személy” módja (a címke a viszonyítás; akin már rajta van, kimarad).
 //   PersonPicker { id: picker; editor: vm; onPersonChosen: name => … ; onAnonymousChosen: … }
 TPopover {
     id: control
 
     property var editor: null               // TranscriptEditorViewModel
     property var participants: null         // ParticipantsViewModel (a „Ki volt ott?" párbeszédben)
+    property string tagId: ""               // Címkék ablak: ehhez a címkéhez választunk
+    property alias peopleModel: people
     property string initialQuery: ""
     // A névtelen lehetőség felirata (üres → nincs ilyen sor).
     property string anonymousText: qsTr("Névtelen résztvevő")
@@ -56,6 +61,7 @@ TPopover {
         id: people
         editor: control.editor
         participants: control.participants
+        tagId: control.tagId
         query: search.text
         onCountChanged: control.currentIndex = search.text.trim() === "" ? -1 : count > 0 ? 0 : count
     }
@@ -69,7 +75,7 @@ TPopover {
                 x: 10; y: 10
                 width: parent.width - 20
                 font.pixelSize: Theme.fontBody
-                placeholderText: qsTr("Név keresése vagy új személy")
+                placeholderText: control.tagId !== "" ? qsTr("Név keresése") : qsTr("Név keresése vagy új személy")
                 Keys.onDownPressed: control.currentIndex = Math.min(control.currentIndex + 1,
                                         people.count - (control.bottomRowShown ? 0 : 1))
                 Keys.onUpPressed: control.currentIndex = Math.max(0, control.currentIndex - 1)
@@ -87,9 +93,27 @@ TPopover {
                 id: list
                 x: 4; y: 4
                 width: parent.width - 8
-                height: Math.min(count, 5) * control.rowHeight
+                readonly property int sectionHeight: people.tagSectionTitle !== "" ? 26 : 0
+                height: Math.min(contentHeight, 5 * control.rowHeight + sectionHeight)
                 clip: true
                 model: people
+                section.property: "group"
+                section.delegate: Item {
+                    required property string section
+                    width: list.width
+                    height: section === "tag" ? list.sectionHeight : 0
+                    TLabel {
+                        visible: parent.height > 0
+                        x: 10
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        text: people.tagSectionTitle
+                        muted: true
+                        font.pixelSize: Theme.fontMicro
+                        font.weight: Theme.weightSemiBold
+                        font.letterSpacing: 0.66
+                    }
+                }
                 currentIndex: control.currentIndex
                 boundsBehavior: Flickable.StopAtBounds
                 T.ScrollBar.vertical: TScrollBar {}
@@ -100,12 +124,14 @@ TPopover {
                     required property int meetingCount
                     required property bool inMeeting
                     required property string matchedAlias
+                    required property string tagHint
                     width: list.width
                     height: control.rowHeight
                     personName: name
                     // Becenévre talált: a becenév is látszik, hogy érthető legyen, miért van a listában.
                     subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
                            + (inMeeting ? qsTr("már résztvevő")
+                           : tagHint !== "" ? tagHint
                            : hasVoiceprint ? qsTr("%n megbeszélés", "", meetingCount)
                            : qsTr("nincs hanglenyomat"))
                     voiceprint: hasVoiceprint
