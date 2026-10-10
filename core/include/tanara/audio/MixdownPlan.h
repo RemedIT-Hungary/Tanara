@@ -23,7 +23,7 @@ struct MixdownInput {
 };
 
 struct MixdownPlan {
-    QVector<MixdownInput> inputs;   // az aktív, lemezen meglévő sávok (a meeting.json sorrendjében)
+    QVector<MixdownInput> inputs;   // a bevont (Track::included), lemezen meglévő sávok (a meeting.json sorrendjében)
     QStringList missing;            // az aktív, de hiányzó fájlú sávok megjelenített neve
 
     // A meeting aktív sávjaiból (az eldobottak kimaradnak).
