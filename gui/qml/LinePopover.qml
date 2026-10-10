@@ -417,13 +417,16 @@ TPopover {
                         required property string name
                         required property int meetingCount
                         required property string matchedAlias
+                        required property string tagHint
                         objectName: "personChoice"
                         compact: true
                         x: 8
                         width: bodyColumn.width - 16
                         personName: name
+                        // Közös címkés személynél a tanult kapcsolat látszik („#Nordvik · 11 / 14 · 12 megbeszélés”).
                         subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
-                               + (meetingCount > 0 ? qsTr("%n megbeszélés", "", meetingCount) : qsTr("nincs hanglenyomat"))
+                               + (tagHint !== "" ? tagHint
+                               : meetingCount > 0 ? qsTr("%n megbeszélés", "", meetingCount) : qsTr("nincs hanglenyomat"))
                         highlighted: control.currentIndex - candidates.count === index || hovered
                         onClicked: control.choosePerson(name)
                     }

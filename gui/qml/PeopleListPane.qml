@@ -30,7 +30,7 @@ Rectangle {
             id: search
             objectName: "peopleSearch"
             width: parent.width - 38
-            placeholderText: qsTr("Név vagy becenév")
+            placeholderText: qsTr("Név, becenév vagy címke")
             font.pixelSize: Theme.fontBody
             // Szöveggel fókusz nélkül is kiemelt marad (P02).
             stateFocused: activeFocus || length > 0
