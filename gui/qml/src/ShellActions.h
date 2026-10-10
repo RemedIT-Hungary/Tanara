@@ -35,7 +35,8 @@ class ShellActions : public QObject {
     Q_OBJECT
     QML_ELEMENT
 
-    // A kijelölt megbeszélés ("" = nincs) és az aktív fül (0 átirat, 1 összefoglaló, 2 sávok).
+    // A kijelölt megbeszélés ("" = nincs) és az aktív fül (0 Áttekintés, 1 Átirat,
+    // 2 Vezetői összefoglaló, 3 Memó — design/handoff-v3).
     Q_PROPERTY(QString currentMeetingId READ currentMeetingId WRITE setCurrentMeetingId
                NOTIFY currentMeetingIdChanged)
     Q_PROPERTY(int currentTab READ currentTab WRITE setCurrentTab NOTIFY currentTabChanged)

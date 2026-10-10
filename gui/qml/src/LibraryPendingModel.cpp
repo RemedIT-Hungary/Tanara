@@ -91,7 +91,7 @@ QVariantList LibraryPendingModel::build(const QVector<PendingItem>& pending)
             {QStringLiteral("actionLabel"), tr("Frissítés")},
             {QStringLiteral("iconName"), QStringLiteral("sparkles")},
             {QStringLiteral("tone"), QStringLiteral("warn")},
-            {QStringLiteral("tab"), 1}});
+            {QStringLiteral("tab"), 2}});   // a Vezetői összefoglaló fül
     }
     // 3) Sikertelen átírások.
     for (int i = 0; i < failed.size() && i < maxPerKind; ++i) {

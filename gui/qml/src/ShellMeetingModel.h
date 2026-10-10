@@ -42,6 +42,8 @@ class ShellMeetingModel : public QObject {
     // (határozatlan haladásnál 0).
     Q_PROPERTY(int transcribePercent READ transcribePercent NOTIFY tasksChanged)
     Q_PROPERTY(int summarizePercent READ summarizePercent NOTIFY tasksChanged)
+    // Az összefoglaló szolgáltatója („LM Studio · saját kulcs”) — a fül tooltip-panelje mondja.
+    Q_PROPERTY(QString summaryProviderLabel READ summaryProviderLabel NOTIFY changed)
     // Van-e legalább egy aktív hangsáv (az azonosítás előfeltétele).
     Q_PROPERTY(bool canIdentify READ canIdentify NOTIFY changed)
     Q_PROPERTY(bool identifyRunning READ identifyRunning NOTIFY tasksChanged)
@@ -68,6 +70,7 @@ public:
     bool hasSummary() const { return m_hasSummary; }
     int transcribePercent() const { return m_transcribePercent; }
     int summarizePercent() const { return m_summarizePercent; }
+    QString summaryProviderLabel() const { return m_summaryProvider; }
     bool canIdentify() const { return m_canIdentify; }
     bool identifyRunning() const { return m_identifyRunning; }
     QVariantList tasks() const { return m_tasks; }
@@ -103,6 +106,7 @@ private:
     bool m_hasSummary = false;
     int m_transcribePercent = -1;
     int m_summarizePercent = -1;
+    QString m_summaryProvider;
     bool m_canIdentify = false;
     bool m_identifyRunning = false;
     bool m_demoTask = false;

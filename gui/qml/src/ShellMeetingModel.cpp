@@ -2,6 +2,7 @@
 
 #include "AppContext.h"
 #include "LibraryDemoData.h"
+#include "JobSupport.h"
 #include "ShellFormat.h"
 #include "SummaryProgress.h"
 
@@ -203,7 +204,7 @@ void ShellMeetingModel::onMeetingTouched(const QString& id)
 void ShellMeetingModel::reload()
 {
     bool exists = false, hasTranscript = false, stale = false, canIdentify = false, hasSummary = false;
-    QString title, meta;
+    QString title, meta, provider;
 
     if (!m_meetingId.isEmpty() && m_controller && m_controller->store()) {
         const tanara::Meeting m = m_controller->store()->load(m_meetingId);
@@ -225,6 +226,7 @@ void ShellMeetingModel::reload()
             meta = metaLine(m.startedAt, m.durationMs, tail);
             stale = m.hasSummary && m_controller->summaryStale(m).stale;
             hasSummary = m.hasSummary;
+            provider = jobsupport::providerLabel(m_controller, tanara::WorkflowStep::Summarize);
         }
     } else if (!m_meetingId.isEmpty() && !m_controller && AppContext::instance()->demo()) {
         if (const demo::DemoMeeting* d = demo::find(m_meetingId)) {
@@ -234,6 +236,7 @@ void ShellMeetingModel::reload()
             canIdentify = true;
             stale = d->entry.state.summaryStale;
             hasSummary = d->entry.hasSummary;
+            provider = tr("LM Studio · saját kulcs");
             meta = metaLine(d->entry.startedAt, d->entry.durationMs,
                             hasTranscript ? tr("%n beszélő", nullptr, d->speakers)
                                           : tr("%n sáv", nullptr, d->tracks));
@@ -242,7 +245,7 @@ void ShellMeetingModel::reload()
 
     if (exists != m_exists || title != m_title || meta != m_meta
         || hasTranscript != m_hasTranscript || stale != m_summaryStale
-        || canIdentify != m_canIdentify || hasSummary != m_hasSummary) {
+        || canIdentify != m_canIdentify || hasSummary != m_hasSummary || provider != m_summaryProvider) {
         m_exists = exists;
         m_title = title;
         m_meta = meta;
@@ -250,6 +253,7 @@ void ShellMeetingModel::reload()
         m_summaryStale = stale;
         m_canIdentify = canIdentify;
         m_hasSummary = hasSummary;
+        m_summaryProvider = provider;
         emit changed();
     }
     syncTags();
