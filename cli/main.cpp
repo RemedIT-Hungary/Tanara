@@ -19,12 +19,15 @@
 //   tags list [<meetingId>]          címkekészlet (darabszámmal) / egy meeting címkéi
 //   tags add|remove <meetingId> <name>  címke fel / le
 //   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
+//   tags people <tag> | tags person <name> | tags set-person <name> <tag,...>
+//                                    címkék a személyeken (TagPeopleCommands.cpp)
 //   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
+#include "TagPeopleCommands.h"
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
@@ -509,10 +512,11 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "tags") {
+        if (const int rc = tanara::cli::runTagPeopleCommand(app, args); rc >= 0) return rc;
         TagService* tags = app.tags();
         const QString sub = args.value(2), id = args.value(3), name = args.value(4);
         auto usage = [&]() {
-            err << QStringLiteral("Usage: tags list [<meetingId>] | tags add|remove <meetingId> <name> | tags suggest <meetingId> [--llm]") << "\n";
+            err << QStringLiteral("Usage: tags list [<meetingId>] | tags add|remove <meetingId> <name> | tags suggest <meetingId> [--llm] | tags people <tag> | tags person <name> | tags set-person <name> <tag,...>") << "\n";
             return 1;
         };
         if (sub == "list") {
@@ -653,7 +657,7 @@ int main(int argc, char** argv) {
            "import <file>… [--title T --date ISO --split-channels --own-track N] | reindex | "
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
-           "tags <list|add|remove|suggest> … | cloud <status|login|estimate|…> | "
+           "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
            "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache]"
         << "\n";
