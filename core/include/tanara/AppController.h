@@ -14,6 +14,8 @@
 #include "tanara/tags/TagTypes.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
 #include "tanara/voiceid/VoiceEmbedderSet.h"
+#include "tanara/edit/ParticipantAnalysis.h"
+#include "tanara/edit/TrackActivity.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -199,6 +201,17 @@ public:
     // Mi vész el újra-átíráskor (kézi javítások száma a megerősítő párbeszédhez).
     tanara::RetranscribeImpact retranscribeImpact(const QString& meetingId) const;
 
+    // ---- résztvevők („Ki volt ott?") és sáv-beszédarány --------------------------------
+    // A meeting résztvevői (kézi + a hangelemzés jelöltjei, bizonyítékokkal) a meeting.json-ból.
+    QVector<tanara::Participant> participants(const QString& meetingId) const;
+    // Fut-e a meeting átirat előtti hangelemzése (analyzeParticipants).
+    bool participantAnalysisRunning(const QString& meetingId) const;
+    // Kész az elemzés, de még nincs döntés (jóváhagyás / kihagyás / „csak én") → a banner látszik.
+    bool participantApprovalPending(const QString& meetingId) const;
+    // Teszt- / D-szelet-varrat: egy személy címkéi (címke-id-k, a Meeting::tagIds terében). Üres →
+    // nincs címke-bizonyíték.
+    void setPersonTagsProvider(std::function<QStringList(const QString& personName)> provider);
+
     // Teszt-varrat: a következő felvételek capture-motorjának gyártója (üres → valódi
     // miniaudio-motor). Lásd RecordingSession::setEngineFactory.
     void setRecordingEngineFactory(std::function<std::unique_ptr<tanara::AudioEngine>()> factory);
@@ -253,6 +266,16 @@ public slots:
 
     // Egy (felvétel után eldobott) sáv visszaállítása aktívvá — a fájl megvolt a lemezen.
     void restoreTrack(const QString& meetingId, const QString& trackId);
+    // A sávok beszéd-ellenőrzése (Track::speechRatio; a beszéd nélküli sáv kimarad a lekeverésből),
+    // háttérszálon. Felvétel / import után magától fut (az automatikus lekeverés előtt); a máshol
+    // (önálló felvevő-folyamat) készült meetingre a nézet hívja megnyitáskor. Csak a még nem mért
+    // sávokat méri; kész: tracksChanged (ha változott). false: nincs mit mérni / már fut.
+    bool checkTrackSpeech(const QString& meetingId);
+    // „Beemelem": a (beszéd nélküli vagy kézzel kivett) sáv vissza a lekeverésbe; „Kiveszem":
+    // kézi kizárás (excludedReason "manual"). Egy eszköz minden szakaszára hat. Mindkettő után
+    // tracksChanged és újralekeverés (ha maradt bevont sáv).
+    void includeTrack(const QString& meetingId, const QString& trackId);
+    void excludeTrack(const QString& meetingId, const QString& trackId);
     // Egy sáv VÉGLEGES törlése: a hangfájl fizikailag törlődik + kikerül a meetingből.
     void deleteTrack(const QString& meetingId, const QString& trackId);
 
@@ -368,6 +391,33 @@ public slots:
     // onProgress(done,total): opcionális; false → megszakítás (lásd autoIdentifyMeeting).
     QVector<tanara::ParticipantGuess> identifyParticipants(
         const QString& meetingId, const std::function<bool(int,int)>& onProgress = {});
+
+    // ---- résztvevők („Ki volt ott?") ----------------------------------------------------
+    // Átirat ELŐTTI hangelemzés háttérszálon (Soniox nélkül): a sávok beszéd-ablakaiból
+    // beágyazás, klaszterezés, párosítás a lenyomatokkal → Participant-jelöltek bizonyítékkal
+    // (edit/ParticipantAnalysis.h). A lekeverés után magától indul (amíg nincs döntés), az
+    // átírással párhuzamosan. Ha az átirat már megvan, a kötés is lefut. Vége:
+    // participantAnalysisFinished (+ participantsChanged). false: nincs modell / fut már / nincs ilyen.
+    bool analyzeParticipants(const QString& meetingId);
+    // A jelöltek kötése a nyers STT-beszélőkhöz (időbeli átfedés; kétoldalú nyers beszélő két
+    // résztvevőre bontva). Az átirat érkezésekor magától fut. participantsChanged, ha változott.
+    bool bindRawSpeakers(const QString& meetingId);
+    // „Tovább": a bejelölt résztvevők jóváhagyása. A meglévők id szerint (a név szerkeszthető),
+    // az ismeretlen id-jűek új, kézi résztvevőként. Ha van átirat: a nyers beszélők a nevekre
+    // kerülnek EGY visszavonási lépésben (SpeakerEditor::applyBindings), a ki nem jelöltekhez kötött
+    // nyers beszélők névtelenek maradnak; ha nincs, a kötés az átirat érkezésekor fut. approval mentve.
+    bool approveParticipants(const QString& meetingId, const QVector<tanara::Participant>& accepted);
+    // „Kihagyás": döntés kötés nélkül (a banner eltűnik, a jelöltek maradnak).
+    bool skipApproval(const QString& meetingId);
+    // „Ő nem volt ott": a résztvevő sorai névtelenek lesznek (egy visszavonási lépés), a
+    // jelölése törlődik.
+    bool unbindParticipant(const QString& meetingId, const QString& participantId);
+    // Kézi résztvevő felvétele (átírás előtt is): source = Manual; az elemzésben előnyt kap.
+    // Visszaad: a résztvevő id-ja (már meglévő névnél azé); üres, ha nincs ilyen meeting / név.
+    QString addParticipant(const QString& meetingId, const QString& personName);
+    // „Csak én beszéltem": minden nyers beszélő a saját névre (most, vagy az átirat érkezésekor),
+    // az azonosítás kimarad. false: nincs saját név beállítva / nincs ilyen meeting.
+    bool setSoloMeeting(const QString& meetingId);
 
     // Lenyomat felvétele egy tetszőleges hang-szegmensből (átírás előtti névadáshoz):
     // a meeting adott sávjának [startMs,endMs] részéből embeddinget számol és a név
@@ -504,7 +554,10 @@ signals:
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
     void voiceprintBackfillFinished(int added);             // a lusta pótlás lefutott (új lenyomatok)
     void voiceModelsChanged();                              // a használt modellek listája változott
-    void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve
+    void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve/beszédarány
+    void participantAnalysisStarted(QString meetingId);     // a hangelemzés elindult
+    void participantAnalysisFinished(QString meetingId);    // a hangelemzés kész (jelöltek a meetingen)
+    void participantsChanged(QString meetingId);            // résztvevők / jóváhagyás / kötés változott
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
     void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
     // ---- Tanara Cloud feldolgozás visszajelzései (K-07, K-09…K-12) ----
@@ -565,6 +618,18 @@ private:
     ProviderConfig llmConfigFor(CloudRunPtr& run, const QString& meetingId, const QString& kind,
                                 const QString& summaryMode) const;
     void finishCloudRun(const CloudRunPtr& run);                       // cloudCharged
+    // Sáv-beszédarány (háttérszálon), majd a kész meetingre alkalmazva; thenMixdown → lekeverés.
+    void startSpeechCheck(const QString& meetingId, bool thenMixdown);
+    void finishSpeechCheck(const QString& meetingId, const tanara::MeetingActivity& activity,
+                           bool thenMixdown);
+    void finishParticipantAnalysis(const QString& meetingId, tanara::ClusterSet clusters,
+                                   const QString& tracksKey);
+    // Az átirat megérkezett: kötés + a döntés (jóváhagyás / „csak én") alkalmazása. true, ha a
+    // döntés lefedte a beszélőket (az automatikus azonosítás kimarad).
+    bool applyParticipantsToTranscript(const QString& meetingId);
+    // A kötések a szerkesztőn át, egy visszavonási lépésben.
+    bool applySpeakerBindings(const QString& meetingId, const QVector<tanara::SpeakerBinding>& bindings,
+                              const QString& undoText);
     // Az átirat utáni automatikus azonosítás az átírás-feladat utolsó szakaszaként (aszinkron).
     bool startIdentify(const QString& meetingId, bool asTranscribeStage);
     // Címkejavaslatok: a kiszámolt lista kiadása (szűrve), ill. a beágyazás beállítása.
