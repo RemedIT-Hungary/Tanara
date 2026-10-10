@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexMono-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexMono-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/IBMPlexSans-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/IBMPlexSans-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/IBMPlexSans-600-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/IBMPlexSans-700-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}body{margin:0;background:#e6e6e4;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}a{color:#2f5aa8}a:hover{color:#1d3d78}</style>
+</helmet>
+<section style="width:2720px;padding:48px;display:flex;flex-direction:column;gap:36px;box-sizing:border-box">
+  <div style="display:grid;grid-template-columns:minmax(0,620px) minmax(0,1fr);gap:48px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#5d5f63">TANARA · ÁTIRAT · JAVÍTÁS MÓD · V3</div>
+      <div style="font:600 30px/1.2 'IBM Plex Sans',sans-serif;color:#1f2126">Ki mondta, miért gondoljuk, és hol javítható</div>
+      <div style="font:400 16px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">Az Átirat fül Javítás módja a v3 fejléccel. Minden javaslat mellett ott a bizonyíték, minden bizonyíték mellett ott, hol lehet javítani. A sorok egyenként és csoportban is átsorolhatók, és új személy bármikor felvehető; utána a gép megkeresi a hozzá hasonló sorokat.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+      <sc-for list="{{ rules }}" as="d" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;border-radius:8px;background:#f6f5f3;border:1px solid #d6d5d2">
+          <div style="font:600 14.5px/1.35 'IBM Plex Sans',sans-serif;color:#1f2126">{{ d.t }}</div>
+          <div style="font:400 13px/1.5 'IBM Plex Sans',sans-serif;color:#45484e;text-wrap:pretty">{{ d.b }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,1280px);gap:56px">
+    <sc-for list="{{ screens }}" as="f" hint-placeholder-count="4">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:none;font:600 13px/1 'IBM Plex Mono',monospace;background:#1f2126;color:#f3f3f1;padding:5px 8px;border-radius:5px">{{ f.id }}</div><div style="flex:1;font:600 17px/1.3 'IBM Plex Sans',sans-serif;color:#1f2126">{{ f.cap }}</div></div>
+          <div style="font:400 14px/1.45 'IBM Plex Sans',sans-serif;color:#55585e;text-wrap:pretty">{{ f.note }}</div>
+        </div>
+        <div data-shot="{{ f.id }}" data-screen-label="{{ f.id }}" style="width:1280px;height:820px;background:{{ f.t.bg }};color:{{ f.t.text }};border-radius:10px;border:1px solid {{ f.t.borderStrong }};overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 20px 50px oklch(0.2 0.01 260 / 0.18)">
+          <div style="height:36px;flex:none;display:flex;align-items:center;gap:22px;padding:0 14px;background:{{ f.t.surface }};border-bottom:1px solid {{ f.t.border }};font-size:13px"><div style="width:14px;height:14px;border-radius:3px;background:{{ f.t.accent }}"></div><div>Fájl</div><div>Megbeszélés</div><div>Nézet</div></div>
+          <div style="flex:1;min-height:0;display:flex">
+            <div style="width:276px;flex:none;display:flex;flex-direction:column;background:{{ f.t.surface }};border-right:1px solid {{ f.t.border }}">
+              <div style="padding:14px 12px 6px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;gap:6px"><div style="flex:1;height:34px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:6px;background:{{ f.t.rec }};color:#fff;font-size:14px;font-weight:600;white-space:nowrap"><div style="width:10px;height:10px;border-radius:50%;background:#fff"></div>Új felvétel</div><div style="width:34px;height:34px;flex:none;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }}"><div style="width:15px;height:15px">{{ i.download }}</div></div></div>
+                <div style="height:32px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }}"><div style="width:15px;height:15px;color:{{ f.t.muted }}">{{ i.search }}</div><div style="flex:1;font-size:14px;color:{{ f.t.muted }}">Keresés</div><div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">Ctrl+F</div></div>
+              </div>
+              <div style="flex:1;min-height:0;overflow:hidden;padding:0 8px 8px;display:flex;flex-direction:column">
+                <sc-for list="{{ f.lib }}" as="r" hint-placeholder-count="10"><div style="display:flex;flex-direction:column"><sc-if value="{{ r.isH }}" hint-placeholder-val="{{ false }}"><div style="padding:12px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ f.t.muted }}">{{ r.h }}</div></sc-if><sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:6px;background:{{ r.bg }}"><div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.t }}</div><div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ r.m }}</div></div></sc-if></div></sc-for>
+              </div>
+              <div style="padding:8px 10px;border-top:1px solid {{ f.t.border }};display:flex;align-items:center;gap:2px"><div style="height:32px;padding:0 8px;display:flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap"><div style="width:15px;height:15px">{{ i.users }}</div>Személyek</div><div style="height:32px;padding:0 8px;display:flex;align-items:center;gap:7px;font-size:13.5px;white-space:nowrap"><div style="width:15px;height:15px">{{ i.tag }}</div>Címkék</div><div style="flex:1"></div><div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center"><div style="width:16px;height:16px">{{ i.settings }}</div></div></div>
+            </div>
+
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+              <div style="height:56px;flex:none;box-sizing:border-box;padding:0 16px 0 24px;display:flex;align-items:stretch;gap:14px;border-bottom:1px solid {{ f.t.border }}">
+                <div style="display:flex;align-items:center;gap:8px"><div style="font-size:19px;font-weight:600;white-space:nowrap">Negyedéves partnertalálkozó</div><div style="width:15px;height:15px;color:{{ f.t.muted }}">{{ i.pencil }}</div></div>
+                <div style="width:1px;margin:17px 0;background:{{ f.t.border }}"></div>
+                <div style="display:flex;align-items:stretch;gap:2px"><sc-for list="{{ f.tabs }}" as="tb" hint-placeholder-count="4"><div style="display:flex;align-items:center;padding:0 11px;font-size:14px;font-weight:{{ tb.fw }};color:{{ tb.fg }};box-shadow:{{ tb.sh }};white-space:nowrap">{{ tb.l }}</div></sc-for></div>
+                <div style="flex:1"></div>
+                <div style="display:flex;align-items:center"><div style="width:34px;height:34px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid {{ f.t.borderStrong }};background:{{ f.t.raised }}"><div style="width:15px;height:15px">{{ i.dots }}</div></div></div>
+              </div>
+              <div style="height:46px;flex:none;box-sizing:border-box;padding:0 20px 0 24px;display:flex;align-items:center;gap:10px;border-bottom:1px solid {{ f.t.border }};white-space:nowrap">
+                <div style="display:flex;padding:3px;gap:2px;border-radius:7px;background:{{ f.t.sunken }}"><sc-for list="{{ f.seg }}" as="sg" hint-placeholder-count="2"><div style="height:26px;padding:0 11px;display:flex;align-items:center;gap:6px;border-radius:5px;background:{{ sg.bg }};box-shadow:{{ sg.sh }};font-size:13px;font-weight:{{ sg.fw }};color:{{ sg.fg }}"><div style="width:14px;height:14px">{{ sg.ic }}</div>{{ sg.l }}</div></sc-for></div>
+                <div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">Ctrl+E</div>
+                <div style="font-size:12.5px;color:{{ f.t.muted }};padding-left:6px">{{ f.status }}</div>
+                <div style="flex:1"></div>
+                <div style="height:28px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:14px;background:{{ f.chip.bg }};border:1px solid {{ f.chip.bd }};color:{{ f.chip.fg }};font-size:13px;font-weight:{{ f.chip.fw }}"><div style="width:14px;height:14px">{{ i.listChecks }}</div>Átnézendő<div style="font:500 12px/1 'IBM Plex Mono',monospace;padding:2px 5px;border-radius:4px;background:{{ f.chip.nBg }}">84</div><sc-if value="{{ f.filter }}" hint-placeholder-val="{{ false }}"><div style="width:12px;height:12px">{{ i.x }}</div></sc-if></div>
+                <div style="height:28px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:500"><div style="width:14px;height:14px">{{ i.users }}</div>Ki volt ott?</div>
+                <div style="width:30px;height:28px;display:flex;align-items:center;justify-content:center;color:{{ f.t.muted }}"><div style="width:15px;height:15px">{{ i.search }}</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 6px 24px;background:{{ f.t.surface }};border-bottom:1px solid {{ f.t.border }}">
+                <div style="display:flex;flex:none"><sc-for list="{{ f.railHead }}" as="rh" hint-placeholder-count="6"><div style="width:24px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:20px;height:20px;box-sizing:border-box;border-radius:50%;background:{{ rh.bg }};border:{{ rh.bd }};color:{{ rh.fg }};display:flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:700">{{ rh.m }}</div><div style="width:10px;height:10px;color:{{ f.t.muted }}">{{ rh.sic }}</div></div></sc-for></div>
+                <div style="font-size:12px;color:{{ f.t.muted }};white-space:nowrap">{{ f.railNote }}</div>
+              </div>
+              <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding-bottom:10px">
+                <sc-for list="{{ f.rows }}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex;flex-direction:column">
+                    <sc-if value="{{ r.isBanner }}" hint-placeholder-val="{{ false }}"><div style="margin:10px 20px 2px 24px;padding:9px 12px;display:flex;align-items:center;gap:12px;border-radius:8px;background:{{ f.t.warnSoft }};border:1px solid {{ f.t.warnLine }}"><div style="width:16px;height:16px;flex:none;color:{{ f.t.warnInk }}">{{ i.split }}</div><div style="flex:1;font-size:13.5px"><span style="font-weight:600">{{ r.t }}</span> <span style="color:{{ f.t.muted }}">{{ r.s }}</span></div><div style="height:28px;padding:0 12px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.raised }};border:1px solid {{ f.t.borderStrong }};font-size:13px;font-weight:600;white-space:nowrap">Szétválasztás</div><div style="font-size:13px;color:{{ f.t.muted }};white-space:nowrap">Miért?</div></div></sc-if>
+                    <sc-if value="{{ r.isGroup }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin:{{ r.mt }}px 20px 2px 24px;padding:11px 14px;display:flex;gap:12px;align-items:flex-start;border-radius:8px;background:{{ r.gbg }};border:1px solid {{ r.gbd }}">
+                        <div style="width:28px;height:28px;flex:none;border-radius:6px;background:{{ r.icBg }};color:{{ r.icFg }};display:flex;align-items:center;justify-content:center"><div style="width:15px;height:15px">{{ r.ic }}</div></div>
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+                          <div style="display:flex;align-items:baseline;gap:10px"><div style="font-size:14px;font-weight:600">{{ r.t }}</div><div style="font:500 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};white-space:nowrap">{{ r.n }}</div></div>
+                          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;color:{{ f.t.muted }}"><div>{{ r.s }}</div><sc-for list="{{ r.ev }}" as="e" hint-placeholder-count="2"><div style="height:20px;padding:0 7px 0 5px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ f.t.sunken }};color:{{ f.t.text }};font-size:12px;white-space:nowrap"><div style="width:11px;height:11px;color:{{ f.t.muted }}">{{ e.ic }}</div>{{ e.l }}</div></sc-for></div>
+                          <sc-if value="{{ r.hasBtns }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:6px;padding-top:2px"><sc-for list="{{ r.btns }}" as="b" hint-placeholder-count="3"><div style="white-space:nowrap;height:28px;padding:0 11px;display:flex;align-items:center;border-radius:6px;background:{{ b.bg }};border:1px solid {{ b.bd }};color:{{ b.fg }};font-size:13px;font-weight:{{ b.fw }}">{{ b.l }}</div></sc-for></div></sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ r.isGap }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:5px 20px 5px 192px;font:400 12px/1.3 'IBM Plex Mono',monospace;color:{{ f.t.muted }};white-space:nowrap">{{ r.t }}<div style="font-family:'IBM Plex Sans',sans-serif;font-weight:500;color:{{ f.t.accent }}">{{ r.link }}</div></div></sc-if>
+                    <sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;gap:12px;padding:0 20px 0 24px;background:{{ r.bg }};box-shadow:{{ r.sh }}">
+                        <div style="display:flex;flex:none;align-self:stretch"><sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="6"><div style="width:24px;padding:3px 4px;box-sizing:border-box;display:flex"><div style="flex:1;box-sizing:border-box;border-radius:3px;background:{{ c.bg }};border:{{ c.bd }};box-shadow:{{ c.sh }}"></div></div></sc-for></div>
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding:{{ r.pt }}px 0 4px">
+                          <sc-if value="{{ r.head }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><div style="font-size:13px;font-weight:600;color:{{ r.ink }};padding:1px 4px;margin-left:-4px;border-radius:4px;background:{{ r.nBg }};box-shadow:{{ r.nRing }}">{{ r.name }}</div><div style="font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ r.ts }}</div><sc-for list="{{ r.mk }}" as="m" hint-placeholder-count="1"><div style="height:18px;box-sizing:border-box;padding:0 {{ m.px }}px;display:flex;align-items:center;gap:4px;border-radius:9px;background:{{ m.bg }};border:1px solid {{ m.bd }};color:{{ m.fg }};font-size:11px;font-weight:600"><sc-if value="{{ m.hasIc }}" hint-placeholder-val="{{ false }}"><div style="width:11px;height:11px">{{ m.ic }}</div></sc-if><sc-if value="{{ m.hasL }}" hint-placeholder-val="{{ true }}"><div>{{ m.l }}</div></sc-if></div></sc-for></div></sc-if>
+                          <div style="font-size:14px;line-height:1.55;text-wrap:pretty">{{ r.x }}</div>
+                          <sc-if value="{{ r.hasAct }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;padding:4px 0 6px;white-space:nowrap"><sc-for list="{{ r.acts }}" as="a" hint-placeholder-count="4"><div style="height:26px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:6px;background:{{ a.bg }};border:1px solid {{ a.bd }};color:{{ a.fg }};font-size:12.5px;font-weight:{{ a.fw }}">{{ a.l }}<sc-if value="{{ a.hasK }}" hint-placeholder-val="{{ false }}"><div style="font:400 10.5px/1 'IBM Plex Mono',monospace;opacity:.7">{{ a.k }}</div></sc-if></div></sc-for></div></sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="flex:none;background:{{ f.t.surface }};border-top:1px solid {{ f.t.border }}">
+                <div style="padding:9px 24px 5px;display:flex;flex-direction:column;gap:4px;position:relative">
+                  <sc-for list="{{ f.lanes }}" as="ln" hint-placeholder-count="6"><div style="display:flex;align-items:center;gap:10px;height:12px"><div style="width:104px;flex:none;font-size:11.5px;font-weight:600;color:{{ ln.ink }};white-space:nowrap">{{ ln.n }}</div><div style="flex:1;height:7px;border-radius:2px;background:{{ f.t.sunken }};position:relative;overflow:hidden"><sc-for list="{{ ln.segs }}" as="sg" hint-placeholder-count="20"><div style="position:absolute;top:0;bottom:0;left:{{ sg.l }}%;width:{{ sg.w }}%;background:{{ sg.c }}"></div></sc-for></div><div style="width:30px;text-align:right;font:400 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">{{ ln.p }}</div></div></sc-for>
+                  <div style="position:absolute;top:4px;bottom:0;left:calc(138px + (100% - 202px) * 0.33);width:2px;background:{{ f.t.accent }}"></div>
+                </div>
+                <div style="height:42px;box-sizing:border-box;padding:0 24px;display:flex;align-items:center;gap:14px"><div style="width:30px;height:30px;border-radius:50%;background:{{ f.t.text }};color:{{ f.t.bg }};display:flex;align-items:center;justify-content:center"><div style="width:13px;height:13px">{{ i.play }}</div></div><div style="font:400 12px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }}">12:41 / 2:11:04</div><div style="flex:1"></div><div style="font:500 12px/1 'IBM Plex Mono',monospace;padding:4px 6px;border-radius:4px;border:1px solid {{ f.t.border }}">1×</div><div style="width:16px;height:16px;color:{{ f.t.muted }}">{{ i.vol }}</div></div>
+              </div>
+              <sc-if value="{{ f.hasSel }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:24px;right:20px;bottom:{{ f.barY }}px;padding:8px 10px 8px 14px;display:flex;align-items:center;gap:8px;border-radius:8px;background:{{ f.t.text }};color:{{ f.t.bg }};box-shadow:{{ f.t.shadow }};white-space:nowrap;z-index:3">
+                  <div style="font-size:13px;font-weight:600">3 sor kijelölve</div><div style="font-size:12.5px;opacity:.75;padding-left:4px">Áthelyezés:</div>
+                  <sc-for list="{{ f.selChips }}" as="sc" hint-placeholder-count="3"><div style="height:26px;padding:0 9px 0 6px;display:flex;align-items:center;gap:6px;border-radius:13px;background:{{ f.t.selChip }};font-size:12.5px;font-weight:600"><div style="width:16px;height:16px;border-radius:50%;background:{{ sc.line }};color:{{ f.t.onSpk }};display:flex;align-items:center;justify-content:center;font:700 9px/1 'IBM Plex Mono',monospace">{{ sc.k }}</div>{{ sc.n }}</div></sc-for>
+                  <div style="height:26px;padding:0 10px;display:flex;align-items:center;gap:5px;border-radius:13px;border:1px dashed {{ f.t.selDash }};font-size:12.5px"><div style="width:12px;height:12px">{{ i.plus }}</div>Új személy…</div>
+                  <div style="flex:1"></div><div style="font-size:13px;font-weight:500;padding:0 6px">Mégse</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ f.hasChange }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:24px;right:20px;bottom:{{ f.barY }}px;padding:10px 12px 10px 14px;display:flex;flex-direction:column;gap:8px;border-radius:8px;background:{{ f.t.text }};color:{{ f.t.bg }};box-shadow:{{ f.t.shadow }};z-index:3">
+                  <div style="display:flex;align-items:center;gap:10px;white-space:nowrap"><div style="width:15px;height:15px;color:{{ f.t.success }}">{{ i.userPlus }}</div><div style="flex:1;font-size:13.5px"><span style="font-weight:600">Új személy: Nagy Péter.</span> 3 sor átkerült hozzá.</div><div style="height:28px;padding:0 11px;display:flex;align-items:center;border-radius:6px;border:1px solid {{ f.t.selDash }};font-size:13px;font-weight:600">Visszavonás · Ctrl+Z</div><div style="width:14px;height:14px;opacity:.7">{{ i.x }}</div></div>
+                  <div style="display:flex;align-items:center;gap:10px;padding-top:8px;border-top:1px solid {{ f.t.selDash }};white-space:nowrap"><div style="width:15px;height:15px;color:{{ f.t.accentOn }}">{{ i.wand }}</div><div style="flex:1;font-size:13px">Még <b>14 sor</b> hangja hasonlít a most megadott 3 sorhoz <span style="opacity:.7">(hang 76%, mind a hívás hangján)</span>.</div><div style="height:28px;padding:0 11px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.selChip }};font-size:13px;font-weight:600">Megmutatva a sínen</div><div style="height:28px;padding:0 11px;display:flex;align-items:center;border-radius:6px;background:{{ f.t.accentOn }};color:{{ f.t.text }};font-size:13px;font-weight:600">Mind a 14 hozzá</div></div>
+                  <div style="display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:12.5px;opacity:.85"><div style="width:15px;height:15px">{{ i.finger }}</div><div style="flex:1">Hanglenyomathoz még kb. 9 mp tiszta beszéd kell (most 21 mp).</div><div style="font-weight:600;text-decoration:underline">Hanglenyomat, ha elég</div></div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <sc-if value="{{ f.hasPop }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:{{ f.pop.x }}px;top:{{ f.pop.y }}px;width:{{ f.pop.w }}px;background:{{ f.t.raised }};border:1px solid {{ f.t.border }};border-radius:8px;box-shadow:{{ f.t.shadow }};display:flex;flex-direction:column;z-index:6">
+              <div style="padding:12px 14px 10px;display:flex;align-items:flex-start;gap:10px"><div style="flex:1;display:flex;flex-direction:column;gap:3px"><div style="font-size:15px;font-weight:600">{{ f.pop.title }}</div><div style="font-size:12.5px;line-height:1.4;color:{{ f.t.muted }}">{{ f.pop.sub }}</div></div><div style="width:28px;height:28px;flex:none;box-sizing:border-box;border-radius:50%;border:1px solid {{ f.t.borderStrong }};display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px">{{ i.play }}</div></div></div>
+              <sc-for list="{{ f.pop.secs }}" as="ps" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;padding:{{ ps.pad }};border-top:{{ ps.bt }};background:{{ ps.bg }}">
+                  <sc-if value="{{ ps.hasLabel }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:baseline;gap:8px;padding:2px 4px 6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:{{ f.t.muted }};white-space:nowrap;flex:none">{{ ps.label }}</div><div style="font-size:11.5px;color:{{ f.t.muted }}">{{ ps.hint }}</div></div></sc-if>
+                  <sc-if value="{{ ps.isScope }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:16px;padding:0 4px"><sc-for list="{{ ps.items }}" as="it" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap"><div style="width:15px;height:15px;flex:none;box-sizing:border-box;border-radius:50%;border:{{ it.radio }}"></div>{{ it.l }}</div></sc-for></div></sc-if>
+                  <sc-if value="{{ ps.isSearch }}" hint-placeholder-val="{{ false }}"><div style="height:30px;box-sizing:border-box;padding:0 10px;display:flex;align-items:center;gap:8px;border-radius:6px;background:{{ f.t.sunken }};border:1px solid {{ f.t.border }};font-size:13px;color:{{ f.t.muted }}"><div style="width:13px;height:13px">{{ i.search }}</div>Név keresése vagy új személy</div></sc-if>
+                  <sc-if value="{{ ps.isWhy }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px"><sc-for list="{{ ps.items }}" as="w" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:9px;padding:5px 4px;font-size:13px"><div style="width:14px;height:14px;flex:none;color:{{ w.icFg }}">{{ w.ic }}</div><div style="flex:1;min-width:0"><span style="font-weight:500">{{ w.k }}</span> <span style="color:{{ f.t.muted }}">{{ w.v }}</span></div><div style="font-size:12.5px;font-weight:500;color:{{ f.t.accent }};white-space:nowrap">{{ w.fix }}</div></div></sc-for></div></sc-if>
+                  <sc-if value="{{ ps.isRows }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:1px">
+                      <sc-for list="{{ ps.items }}" as="it" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 6px;border-radius:6px;background:{{ it.bg }};opacity:{{ it.op }}">
+                          <div style="width:24px;height:24px;flex:none;box-sizing:border-box;border-radius:50%;background:{{ it.soft }};border:{{ it.ring }};color:{{ it.ink }};display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700">{{ it.m }}</div>
+                          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                            <div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><div style="font-size:13.5px;font-weight:600">{{ it.n }}</div><div style="font-size:12px;color:{{ f.t.muted }}">{{ it.sub }}</div></div>
+                            <sc-if value="{{ it.hasEv }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ it.ev }}" as="e" hint-placeholder-count="2"><div style="height:19px;box-sizing:border-box;padding:0 6px;display:flex;align-items:center;gap:4px;border-radius:4px;background:{{ e.bg }};border:1px {{ e.bs }} {{ e.bc }};color:{{ e.fg }};font-size:11.5px;white-space:nowrap"><div style="width:10px;height:10px">{{ e.ic }}</div>{{ e.l }}</div></sc-for></div></sc-if>
+                          </div>
+                          <sc-if value="{{ it.hasK }}" hint-placeholder-val="{{ false }}"><div style="font:500 11px/1 'IBM Plex Mono',monospace;color:{{ f.t.muted }};padding:2px 5px;border-radius:4px;border:1px solid {{ f.t.border }};margin-top:3px">{{ it.k }}</div></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ ps.isTracks }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;padding:0 4px;flex-wrap:wrap"><sc-for list="{{ ps.items }}" as="it" hint-placeholder-count="2"><div style="height:28px;padding:0 10px;display:flex;align-items:center;gap:7px;border-radius:6px;background:{{ it.bg }};border:1px solid {{ it.bd }};color:{{ it.fg }};font-size:13px;font-weight:{{ it.fw }};white-space:nowrap"><div style="width:14px;height:14px">{{ it.ic }}</div>{{ it.l }}</div></sc-for><div style="font-size:12px;color:{{ f.t.muted }};padding-left:4px">{{ ps.hint2 }}</div></div></sc-if>
+                  <sc-if value="{{ ps.isLinks }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:2px"><sc-for list="{{ ps.items }}" as="lk" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:9px;padding:6px 4px;font-size:13px"><div style="width:14px;height:14px;flex:none;color:{{ lk.icFg }}">{{ lk.ic }}</div><div style="font-weight:500;color:{{ lk.fg }}">{{ lk.l }}</div><div style="font-size:12px;color:{{ f.t.muted }}">{{ lk.h }}</div></div></sc-for></div></sc-if>
+                  <sc-if value="{{ ps.isCheck }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:flex-start;gap:8px;padding:0 4px;font-size:12.5px;line-height:1.4"><div style="width:15px;height:15px;flex:none;box-sizing:border-box;border-radius:4px;background:{{ f.t.accent }};color:{{ f.t.onAccent }};margin-top:1px"><div style="width:11px;height:11px;margin:2px">{{ i.check }}</div></div>{{ ps.text }}</div></sc-if>
+                </div>
+              </sc-for>
+              <div style="padding:9px 14px;border-top:1px solid {{ f.t.border }};font-size:12px;color:{{ f.t.muted }};border-radius:0 0 8px 8px;background:{{ f.pop.footBg }}">{{ f.pop.foot }}</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;'mixed'|'light'|'dark'&quot;}}">
+const ICONS = {"pencil":"<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /><path d=\"m15 5 4 4\" />","calendar":"<path d=\"M8 2v4\" /><path d=\"M16 2v4\" /><rect width=\"18\" height=\"18\" x=\"3\" y=\"4\" rx=\"2\" /><path d=\"M3 10h18\" />","fingerprint":"<path d=\"M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4\" /><path d=\"M14 13.12c0 2.38 0 6.38-1 8.88\" /><path d=\"M17.29 21.02c.12-.6.43-2.3.5-3.02\" /><path d=\"M2 12a10 10 0 0 1 18-6\" /><path d=\"M2 16h.01\" /><path d=\"M21.8 16c.2-2 .131-5.354 0-6\" /><path d=\"M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2\" /><path d=\"M8.65 22c.21-.66.45-1.32.57-2\" /><path d=\"M9 6.8a6 6 0 0 1 9 5.2v2\" />","book-open":"<path d=\"M12 7v14\" /><path d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\" />","check":"<path d=\"M20 6 9 17l-5-5\" />","split":"<path d=\"M16 3h5v5\" /><path d=\"M8 3H3v5\" /><path d=\"M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3\" /><path d=\"m15 9 6-6\" />","plus":"<path d=\"M5 12h14\" /><path d=\"M12 5v14\" />","audio-lines":"<path d=\"M2 10v3\" /><path d=\"M6 6v11\" /><path d=\"M10 3v18\" /><path d=\"M14 8v7\" /><path d=\"M18 5v13\" /><path d=\"M22 10v3\" />","tag":"<path d=\"M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z\" /><circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" />","download":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /><polyline points=\"7 10 12 15 17 10\" /><line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\" />","x":"<path d=\"M18 6 6 18\" /><path d=\"m6 6 12 12\" />","ellipsis":"<circle cx=\"12\" cy=\"12\" r=\"1\" /><circle cx=\"19\" cy=\"12\" r=\"1\" /><circle cx=\"5\" cy=\"12\" r=\"1\" />","mic":"<path d=\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\" /><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\" /><line x1=\"12\" x2=\"12\" y1=\"19\" y2=\"22\" />","users":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /><path d=\"M16 3.13a4 4 0 0 1 0 7.75\" />","arrow-left-right":"<path d=\"M8 3 4 7l4 4\" /><path d=\"M4 7h16\" /><path d=\"m16 21 4-4-4-4\" /><path d=\"M20 17H4\" />","ear":"<path d=\"M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0\" /><path d=\"M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4\" />","pencil-line":"<path d=\"M12 20h9\" /><path d=\"M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z\" /><path d=\"m15 5 3 3\" />","triangle-alert":"<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /><path d=\"M12 9v4\" /><path d=\"M12 17h.01\" />","volume-2":"<path d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z\" /><path d=\"M16 9a5 5 0 0 1 0 6\" /><path d=\"M19.364 18.364a9 9 0 0 0 0-12.728\" />","settings":"<path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\" /><circle cx=\"12\" cy=\"12\" r=\"3\" />","search":"<circle cx=\"11\" cy=\"11\" r=\"8\" /><path d=\"m21 21-4.3-4.3\" />","phone":"<path d=\"M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z\" />","list-checks":"<path d=\"m3 17 2 2 4-4\" /><path d=\"m3 7 2 2 4-4\" /><path d=\"M13 6h8\" /><path d=\"M13 12h8\" /><path d=\"M13 18h8\" />","play":"<polygon points=\"6 3 20 12 6 21 6 3\" />","list":"<path d=\"M3 12h.01\" /><path d=\"M3 18h.01\" /><path d=\"M3 6h.01\" /><path d=\"M8 12h13\" /><path d=\"M8 18h13\" /><path d=\"M8 6h13\" />","wand-sparkles":"<path d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\" /><path d=\"m14 7 3 3\" /><path d=\"M5 6v4\" /><path d=\"M19 14v4\" /><path d=\"M10 2v2\" /><path d=\"M7 8H3\" /><path d=\"M21 16h-4\" /><path d=\"M11 3H9\" />","user-plus":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\" /><line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\" />","merge":"<path d=\"m8 6 4-4 4 4\" /><path d=\"M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22\" /><path d=\"m20 22-5-5\" />","user-x":"<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /><circle cx=\"9\" cy=\"7\" r=\"4\" /><line x1=\"17\" x2=\"22\" y1=\"8\" y2=\"13\" /><line x1=\"22\" x2=\"17\" y1=\"8\" y2=\"13\" />"};
+const IC = n => React.createElement('svg', { viewBox: '0 0 24 24', width: '100%', height: '100%', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', style: { display: 'block' }, dangerouslySetInnerHTML: { __html: ICONS[n] || '' } });
+const L = { bg:'oklch(0.97 0.003 95)', surface:'oklch(0.987 0.002 95)', raised:'oklch(1 0 0)', sunken:'oklch(0.94 0.004 95)', border:'oklch(0.89 0.004 95)', borderStrong:'oklch(0.77 0.005 95)', text:'oklch(0.22 0.006 260)', muted:'oklch(0.47 0.007 260)', accent:'oklch(0.5 0.13 258)', onAccent:'oklch(0.99 0 0)', accentSoft:'oklch(0.94 0.025 258)', accentLine:'oklch(0.85 0.05 258)', warn:'oklch(0.72 0.14 75)', warnSoft:'oklch(0.95 0.045 85)', warnLine:'oklch(0.85 0.08 80)', warnInk:'oklch(0.45 0.1 70)', successSoft:'oklch(0.94 0.035 155)', successInk:'oklch(0.4 0.09 155)', success:'oklch(0.76 0.11 155)', rec:'oklch(0.57 0.2 25)', onSpk:'#fcfcfc', selChip:'oklch(0.32 0.007 260)', selDash:'oklch(0.45 0.008 260)', accentOn:'oklch(0.78 0.1 255)', shadow:'0 12px 32px oklch(0.2 0.02 260 / 0.18), 0 1px 3px oklch(0.2 0.02 260 / 0.12)' };
+const D = { bg:'oklch(0.19 0.005 260)', surface:'oklch(0.22 0.006 260)', raised:'oklch(0.265 0.007 260)', sunken:'oklch(0.165 0.005 260)', border:'oklch(0.32 0.007 260)', borderStrong:'oklch(0.44 0.008 260)', text:'oklch(0.94 0.004 95)', muted:'oklch(0.74 0.006 95)', accent:'oklch(0.75 0.11 255)', onAccent:'oklch(0.18 0.03 258)', accentSoft:'oklch(0.3 0.05 258)', accentLine:'oklch(0.42 0.08 258)', warn:'oklch(0.8 0.12 80)', warnSoft:'oklch(0.31 0.05 80)', warnLine:'oklch(0.45 0.08 80)', warnInk:'oklch(0.87 0.1 85)', successSoft:'oklch(0.31 0.05 155)', successInk:'oklch(0.86 0.08 155)', success:'oklch(0.55 0.1 155)', rec:'oklch(0.64 0.19 25)', onSpk:'#16181c', selChip:'oklch(0.85 0.004 95)', selDash:'oklch(0.7 0.005 95)', accentOn:'oklch(0.5 0.13 258)', shadow:'0 12px 32px oklch(0 0 0 / 0.5), 0 1px 3px oklch(0 0 0 / 0.35)' };
+const spk = (dark, h) => dark ? { line: `oklch(0.72 0.13 ${h})`, soft: `oklch(0.33 0.052 ${h})`, ink: `oklch(0.86 0.09 ${h})` } : { line: `oklch(0.6 0.13 ${h})`, soft: `oklch(0.93 0.04 ${h})`, ink: `oklch(0.42 0.12 ${h})` };
+const SP = [['Kovács Lilla', 'KL', 30, 'mic', '22%'], ['Fehér Gábor', 'FG', 230, 'call', '26%'], ['Varga Árpád', 'VÁ', 145, 'call', '19%'], ['Molnár Eszter', 'ME', 330, 'call', '15%'], ['Tóth Bence', 'TB', 75, 'call', '11%'], ['Távoli 1', 'T1', 270, 'call', '7%']];
+const NEW = ['Nagy Péter', 'NP', 0, 'call', '3%'];
+const LIB = [['Ma'], ['Termékcsapat heti egyeztetés', 'okt. 2. · 30 p'], ['Ügyféltámogatás átadás', 'okt. 2. · 52 p'], ['Tegnap'], ['Negyedéves partnertalálkozó', 'okt. 1. · 2 ó 11 p', 1], ['Ezen a héten'], ['Termékbemutató, 2. kör', 'szept. 30. · 44 p'], ['Árazás egyeztetés', 'szept. 29. · 27 p'], ['Nordvik heti meeting', 'szept. 29. · 55 p'], ['Korábban'], ['Infrastruktúra áttekintés', 'szept. 25. · 41 p']];
+const TX = {
+  l2: 'Igen, és ide tartozik még, hogy a számlázási rész lesz a következő; ott a legtöbb a visszakérdezés.',
+  ok: 'Pontosan.', sh: 'Értem.',
+  c1: 'Igen, ezt mi is láttuk a partnerportálon, főleg a Nordvik-ügyfeleknél, ott a jegyek fele számlázási volt.',
+  c2: 'És mikorra várható a számlázási súgó? Az ügyfeleink már kérdezik.',
+  c3: 'A mi oldalunkon ez a negyedik negyedév elejére kellene, különben a megújításnál újra elő fog jönni.',
+  g1: 'Ezt a részt én vállalom, de kellene hozzá két hét a dokumentációs csapattól.',
+  p1: 'Én a pénzügy felől jövök: nálunk a számlázási kérdések fele a díjbekérőkről szól, nem magáról a számláról.',
+  p2: 'Ha a súgó ezt külön kezelné, szerintem a maradék is eltűnne.'
+};
+const REASON = { hang: ['audio-lines', 'hang'], sav: ['arrow-left-right', 'sáv'], cimke: ['tag', 'címke'] };
+function mk(t, kind, r) {
+  if (kind === 'unc') return { l: 'bizonytalan · ' + REASON[r][1], hasL: true, hasIc: true, ic: IC(REASON[r][0]), bg: t.warnSoft, bd: 'transparent', fg: t.warnInk, px: 7 };
+  if (kind === 'ok') return { l: '', hasL: false, hasIc: true, ic: IC('check'), bg: 'transparent', bd: 'transparent', fg: t.muted, px: 2 };
+  if (kind === 'short') return { l: 'rövid', hasL: true, hasIc: true, ic: IC('ear'), bg: 'transparent', bd: t.borderStrong, fg: t.muted, px: 6 };
+  if (kind === 'fixed') return { l: 'javítva', hasL: true, hasIc: false, bg: t.successSoft, bd: 'transparent', fg: t.successInk, px: 7 };
+  if (kind === 'new') return { l: 'új személy', hasL: true, hasIc: true, ic: IC('user-plus'), bg: t.accentSoft, bd: 'transparent', fg: t.accent, px: 7 };
+  return { l: 'egymásra beszéltek', hasL: true, hasIc: false, bg: t.sunken, bd: 'transparent', fg: t.muted, px: 7 };
+}
+const btn = (t, l, kind = 'sec', k) => ({ l, k: k || '', hasK: !!k, bg: kind === 'pri' ? t.accent : kind === 'ghost' ? 'transparent' : t.raised, bd: kind === 'pri' ? t.accent : kind === 'ghost' ? 'transparent' : t.borderStrong, fg: kind === 'pri' ? t.onAccent : kind === 'ghost' ? t.muted : t.text, fw: kind === 'pri' ? 600 : 500 });
+function makeRow(t, dark, sp, s, ts, x, o = {}) {
+  const c = spk(dark, sp[s][2]);
+  return { isRow: true, isGroup: false, isGap: false, isBanner: false, head: o.head !== false, name: sp[s][0], ink: c.ink, ts, x, mk: (o.mk || []).map(m => mk(t, m[0], m[1])), hasAct: !!o.acts, acts: o.acts || [],
+    bg: o.sel ? t.raised : 'transparent', sh: o.sel ? `inset 0 0 0 1.5px ${t.accent}` : 'none', pt: o.head === false ? 2 : 13, nBg: o.open ? t.raised : 'transparent', nRing: o.open ? `0 0 0 1.5px ${t.accent}` : 'none',
+    cells: sp.map((p, j) => { const cc = spk(dark, p[2]); if (j === s) return { bg: o.unc ? `repeating-linear-gradient(135deg, ${cc.line} 0 3px, ${cc.soft} 3px 6px)` : cc.line, bd: 'none', sh: o.sel ? `0 0 0 2px ${t.text}` : 'none' }; if (j === o.sug) return { bg: 'transparent', bd: `2px solid ${t.accent}`, sh: 'none' }; if (o.sel) return { bg: 'transparent', bd: `1px dashed ${t.borderStrong}`, sh: 'none' }; return { bg: 'transparent', bd: 'none', sh: 'none' }; }) };
+}
+const NONE = { isRow: false, isGroup: false, isGap: false, isBanner: false };
+const gap = (t, link) => ({ ...NONE, isGap: true, t, link });
+const banner = (t, s) => ({ ...NONE, isBanner: true, t, s });
+function group(t, o) {
+  const info = o.kind === 'info';
+  return { ...NONE, isGroup: true, mt: o.mt || 10, t: o.t, n: o.n, s: o.s, ev: (o.ev || []).map(([ic, l]) => ({ ic: IC(ic), l })), ic: IC(o.ic), icBg: info ? t.sunken : t.accentSoft, icFg: info ? t.muted : t.accent, gbg: info ? 'transparent' : t.surface, gbd: o.active ? t.accentLine : t.border, hasBtns: !!o.btns, btns: o.btns || [] };
+}
+const EVK = { hang: 'audio-lines', sav: 'phone', mic: 'mic', cimke: 'tag', nap: 'calendar', sor: 'list', no: 'x' };
+function cand(t, dark, p, sub, ev, o = {}) {
+  const c = spk(dark, p[2]), ghost = !!o.ghost;
+  return { m: p[1], n: p[0], sub, soft: ghost ? 'transparent' : c.soft, ring: ghost ? `1.5px dashed ${t.borderStrong}` : `1.5px solid ${c.line}`, ink: ghost ? t.muted : c.ink, hasEv: ev.length > 0, ev: ev.map(([k, l, kind]) => ({ ic: IC(EVK[k]), l, bg: kind === 'bad' ? 'transparent' : kind === 'good' ? t.accentSoft : t.sunken, bs: kind === 'bad' ? 'dashed' : 'solid', bc: kind === 'bad' ? t.borderStrong : 'transparent', fg: kind === 'bad' ? t.muted : kind === 'good' ? t.accent : t.text })), bg: o.hl ? t.sunken : 'transparent', op: o.dim ? 0.6 : 1, hasK: !!o.k, k: o.k || '' };
+}
+const lanesOf = (dark, sp, o = {}) => sp.map((p, j) => { const c = spk(dark, p[2]); return { n: p[0], ink: c.ink, p: p[4], segs: Array.from({ length: j === 6 ? 6 : 24 }, (_, k) => ({ l: ((k * (j === 6 ? 13 : 4.1) + j * 1.9 + (k % 3) * 0.8) % 99).toFixed(1), w: (0.25 + ((k * (j + 2)) % 4) * 0.22).toFixed(2), c: o.hl && o.hl.includes(k) && j === 1 ? spk(dark, 0).line : c.line })) }; });
+const theme = (dark, force) => (force === 'dark' ? true : force === 'light' ? false : dark);
+
+function frame(def, force) {
+  const dark = theme(def.dark, force), t = dark ? D : L, sp = def.sp || SP;
+  const f = { id: def.id, cap: def.cap, note: def.note, t, status: def.status, filter: !!def.filter, railNote: def.railNote || '',
+    lib: LIB.map(b => b.length === 1 ? { isH: true, isRow: false, h: b[0] } : { isH: false, isRow: true, t: b[0], m: b[1], bg: b[2] ? t.accentSoft : 'transparent' }),
+    tabs: ['Áttekintés', 'Átirat', 'Vezetői összefoglaló', 'Memó'].map((l, k) => ({ l, fw: k === 1 ? 600 : 400, fg: k === 1 ? t.text : t.muted, sh: k === 1 ? `inset 0 -2px 0 ${t.accent}` : 'none' })),
+    seg: [['Olvasás', 'book-open', 0], ['Javítás', 'pencil-line', 1]].map(([l, ic, on]) => ({ l, ic: IC(ic), bg: on ? t.raised : 'transparent', sh: on ? '0 1px 2px oklch(0.2 0.01 260 / 0.2)' : 'none', fw: on ? 600 : 400, fg: on ? t.text : t.muted })),
+    chip: def.filter ? { bg: t.accentSoft, bd: t.accent, fg: t.accent, fw: 600, nBg: 'transparent' } : { bg: t.raised, bd: t.borderStrong, fg: t.text, fw: 500, nBg: t.sunken },
+    railHead: sp.map((p, j) => { const c = spk(dark, p[2]); const nw = p === NEW; return { m: p[1], bg: c.line, bd: nw ? `2px solid ${t.accent}` : 'none', fg: t.onSpk, sic: IC(p[3] === 'mic' ? 'mic' : 'phone') }; }),
+    rows: def.rows(t, dark, sp), lanes: lanesOf(dark, sp, { hl: def.hl }), hasSel: !!def.sel, hasChange: !!def.change, barY: 148, hasPop: !!def.pop,
+    selChips: [1, 2, 3].map(j => ({ k: String(j + 1), n: sp[j][0], line: spk(dark, sp[j][2]).line })) };
+  if (def.pop) f.pop = def.pop(t, dark, sp);
+  return f;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const force = this.props.theme ?? 'mixed';
+    const acts = (t, likely) => [btn(t, 'Meghallgatom'), btn(t, likely + ' mondta', 'pri', '1'), btn(t, 'Jó így'), btn(t, 'Más…', 'ghost')];
+    const screens = [
+      frame({ id: 'E1', dark: false, status: '1298 megszólalás · 5 beszélő', railNote: 'másik oszlopra kattintás: áthelyezés · 1–6: a kijelöltek áthelyezése · húzás',
+        cap: 'Sor javítása: „Kinek a sora ez?”, a jelöltek bizonyítékkal',
+        note: 'Kattintás a soron a névre vagy a sínen egy másik oszlopra. A felugró rangsorolja a jelölteket, mindegyik mellett a bizonyíték: hang, sáv, címke, hány sora van már itt. A másik sávon beszélő jelölt halvány, de nem tűnik el. Alul megmondja, miért nem a mostani beszélő, és hol javítható, ha a gép téved (sáv-beosztás). Új személy innen is felvehető.',
+        rows: (t, d, sp) => [makeRow(t, d, sp, 0, '12:30', TX.l2, { mk: [['ok']] }), makeRow(t, d, sp, 1, '12:38', TX.ok, { mk: [['short']] }), makeRow(t, d, sp, 0, '12:41', TX.c1, { mk: [['unc', 'sav']], unc: 1, sel: 1, open: 1 }), makeRow(t, d, sp, 2, '12:52', TX.c3, { mk: [['fixed']] }), makeRow(t, d, sp, 1, '13:01', TX.g1, { mk: [['noisy']] }), makeRow(t, d, sp, 3, '13:09', TX.sh, { mk: [['short']] })],
+        pop: (t, d, sp) => ({ x: 596, y: 100, w: 390, title: 'Kinek a sora ez?', sub: 'Most: Kovács Lilla · 12:41', footBg: 'transparent', foot: '1 sor kerül át · Ctrl+Z visszavonja · a gép tanul belőle',
+          secs: [
+            { isScope: true, hasLabel: false, pad: '0 14px 10px', bt: 'none', bg: 'transparent', items: [['Csak ez a sor', 1], ['Lilla mind a 368 sora', 0]].map(([l, on]) => ({ l, radio: on ? `5px solid ${t.accent}` : `1.5px solid ${t.borderStrong}` })) },
+            { isSearch: true, hasLabel: false, pad: '10px 14px', bt: `1px solid ${t.border}`, bg: 'transparent' },
+            { isRows: true, hasLabel: true, label: 'JAVASOLT', hint: 'a bizonyítékok sorrendjében', pad: '0 8px 6px', bt: 'none', bg: 'transparent', items: [
+              cand(t, d, sp[1], '86 sor itt', [['hang', 'hang 82%', 'good'], ['sav', 'ugyanaz a sáv', 'good'], ['cimke', '#Nordvik', 'good']], { k: '1', hl: 1 }),
+              cand(t, d, sp[2], '41 sor itt', [['hang', 'hang 64%'], ['sav', 'ugyanaz a sáv']], { k: '2' }),
+              cand(t, d, sp[3], '22 sor itt', [['hang', 'hang 51%'], ['sav', 'ugyanaz a sáv']], { k: '3' }),
+              cand(t, d, sp[0], 'most ő', [['mic', 'mikrofonon beszél', 'bad'], ['hang', 'hang 22%', 'bad']], { dim: 1 })
+            ] },
+            { isWhy: true, hasLabel: true, label: 'MIÉRT NEM KOVÁCS LILLA?', hint: '', pad: '8px 10px', bt: `1px solid ${t.border}`, bg: t.surface, items: [
+              { ic: IC('arrow-left-right'), icFg: t.warnInk, k: 'Sáv:', v: 'a sor a hívás hangján jött, Lilla a mikrofonon beszél.', fix: 'Sáv-beosztás' },
+              { ic: IC('audio-lines'), icFg: t.warnInk, k: 'Hang:', v: '22% a 23 mintájához.', fix: 'Minták' }
+            ] },
+            { isLinks: true, hasLabel: false, pad: '6px 10px', bt: `1px solid ${t.border}`, bg: 'transparent', items: [{ ic: IC('user-plus'), icFg: t.accent, fg: t.accent, l: 'Új személy ebből a sorból…', h: 'ha senki sem ő' }] }
+          ] }) }, force),
+      frame({ id: 'E2', dark: true, filter: true, sel: false, status: '84 / 1298 sor · 3 csoport', railNote: 'Átnézendő: csak a kétes sorok, okok szerint',
+        cap: 'Átnézendő szűrő: csoportok, egy döntéssel',
+        note: 'Az Átnézendő chip a sorokat okok szerint csoportosítja; a csoport fejlécében a bizonyíték és egy döntés: mind átsorolja, egyenként nézi, vagy kihagyja. Felül a „két hang” figyelmeztetés, mert amíg az nincs rendben, minden újraellenőrzés rossz irányba visz. A „Miért?” ugyanazt a magyarázatot nyitja, mint a felugró.',
+        rows: (t, d, sp) => [
+          banner('Fehér Gábor sorai két különböző hangnak tűnnek', '(57 / 86 sor)'),
+          group(t, { ic: 'arrow-left-right', t: 'A hívás hangján érkezett, de Kovács Lilla nevén van', n: '69 sor', s: 'Javasolt: Fehér Gábor', ev: [['audio-lines', 'hang 78%'], ['phone', 'ugyanaz a sáv'], ['tag', '#Nordvik']], btns: [btn(t, 'Mind a 69 → Fehér Gábor', 'pri'), btn(t, 'Egyenként'), btn(t, 'Kihagyom', 'ghost')], active: 1 }),
+          gap('··· 69 sor ebben a csoportban', 'Kinyitás'),
+          group(t, { ic: 'audio-lines', t: 'Hang alapján valószínűleg Varga Árpád mondta', n: '15 sor', s: 'Most Fehér Gábor nevén.', ev: [['audio-lines', 'hang 74% a 31 megerősített sorához']], btns: [btn(t, 'Mind a 15 → Varga Árpád', 'pri'), btn(t, 'Egyenként'), btn(t, 'Kihagyom', 'ghost')] }),
+          group(t, { kind: 'info', ic: 'ear', t: 'Rövid sorok: ezeken a hang nem segít', n: '426 sor', s: '1,5 mp alattiak, csak fülre dönthetők; nem számítanak a 84-be.', btns: [btn(t, 'Megmutatom')] })
+        ] }, force),
+      frame({ id: 'E3', dark: false, status: '1298 megszólalás · 5 beszélő', railNote: '',
+        cap: 'Egész beszélő: „Miért ő?” és hol javítható',
+        note: 'A beszélő nevére kattintva (a soron, a sínen vagy a térképen) nyílik. Elöl az, ami alapján a gép őt választotta, mindegyik mellett a javítás helye. Ha nem ő: másik személy (bizonyítékkal), új személy, összevonás, vagy „Ő nem volt ott”, ami a „Ki volt ott?” listát is frissíti. A sáv-beosztás itt és az Áttekintésben ugyanaz a beállítás.',
+        rows: (t, d, sp) => [makeRow(t, d, sp, 1, '13:01', TX.g1, { open: 1 }), makeRow(t, d, sp, 0, '13:05', TX.l2, { mk: [['ok']] }), makeRow(t, d, sp, 1, '13:12', TX.c3), makeRow(t, d, sp, 3, '13:20', TX.sh, { mk: [['short']] }), makeRow(t, d, sp, 2, '13:24', TX.c1)],
+        pop: (t, d, sp) => ({ x: 330, y: 96, w: 430, title: 'Fehér Gábor', sub: '86 sor ezen a megbeszélésen · azonosítva', footBg: t.warnSoft, foot: 'A teljes beszélőre vonatkozik: mind a 86 sor · Ctrl+Z visszavonja',
+          secs: [
+            { isWhy: true, hasLabel: true, label: 'MIÉRT Ő?', hint: 'erre támaszkodtunk', pad: '0 10px 8px', bt: 'none', bg: 'transparent', items: [
+              { ic: IC('audio-lines'), icFg: t.successInk, k: 'Hang: 82%', v: 'a 7 tárolt mintájához (2 modell)', fix: 'Minták' },
+              { ic: IC('calendar'), icFg: t.successInk, k: 'Naptár:', v: 'meghívott, szervező', fix: '' },
+              { ic: IC('tag'), icFg: t.successInk, k: 'Címke:', v: 'a #Nordvik megbeszéléseken szokott lenni', fix: 'Címkéi' },
+              { ic: IC('phone'), icFg: t.successInk, k: 'Sáv:', v: 'a hívás hangján beszél', fix: 'Módosítás' },
+              { ic: IC('triangle-alert'), icFg: t.warnInk, k: 'Figyelem:', v: 'Varga Árpád hangja nagyon hasonló (0,92)', fix: 'Kettejük átnézése' }
+            ] },
+            { isTracks: true, hasLabel: true, label: 'MELYIK SÁVON BESZÉL?', hint: 'ezen a megbeszélésen', pad: '8px 14px 10px', bt: `1px solid ${t.border}`, bg: 'transparent', hint2: 'tanult: jellemzően a hívás hangján', items: [['mic', 'Saját mikrofon', 0], ['phone', 'Hívás hangja', 1]].map(([ic, l, on]) => ({ ic: IC(ic), l, bg: on ? t.accentSoft : t.raised, bd: on ? t.accent : t.borderStrong, fg: on ? t.accent : t.text, fw: on ? 600 : 500 })) },
+            { isRows: true, hasLabel: true, label: 'NEM Ő? VALÓJÁBAN…', hint: '', pad: '8px 8px 4px', bt: `1px solid ${t.border}`, bg: 'transparent', items: [cand(t, d, sp[2], '12 megbeszélés', [['hang', 'hang 79%'], ['nap', 'naptár'], ['cimke', '#Nordvik']])] },
+            { isLinks: true, hasLabel: false, pad: '4px 10px 8px', bt: 'none', bg: 'transparent', items: [
+              { ic: IC('user-plus'), icFg: t.accent, fg: t.accent, l: 'Új személy…', h: 'a 86 sor egy új névhez kerül' },
+              { ic: IC('merge'), icFg: t.text, fg: t.text, l: 'Összevonás egy másik beszélővel…', h: '' },
+              { ic: IC('user-x'), icFg: t.text, fg: t.text, l: 'Ő nem volt ott', h: 'a „Ki volt ott?” is frissül' }
+            ] },
+            { isCheck: true, hasLabel: false, pad: '8px 14px 10px', bt: `1px solid ${t.border}`, bg: 'transparent', text: 'Ha másé, a sorai kerüljenek ki Fehér Gábor hanglenyomatából (téves felismerés)' }
+          ] }) }, force),
+      frame({ id: 'E4', dark: true, sp: [...SP, NEW], hl: [3, 7, 12, 18], status: '1298 megszólalás · 6 beszélő', railNote: 'új oszlop: Nagy Péter · kék keret: hozzá hasonló sorok',
+        cap: 'Új személy felvétele, utána: „hasonló sorok”',
+        note: 'Három kijelölt sor egy új névhez került. A gép rögtön megkeresi a hozzá hasonló hangú sorokat, és megmutatja őket a sínen (kék keret) és a térképen. Egy gombbal mind hozzá kerülhet. A változás-sáv megmondja, mi történt, mi alapján javasol, és mennyi beszéd kell még a hanglenyomathoz.',
+        change: true,
+        rows: (t, d, sp) => [makeRow(t, d, sp, 6, '47:02', TX.p1, { mk: [['new']] }), makeRow(t, d, sp, 6, '', TX.p2, { head: false }), makeRow(t, d, sp, 1, '47:31', TX.g1), makeRow(t, d, sp, 1, '47:44', TX.c2, { sug: 6 }), makeRow(t, d, sp, 0, '47:58', TX.l2, { mk: [['ok']] })] }, force)
+    ];
+    return {
+      i: { download: IC('download'), search: IC('search'), users: IC('users'), tag: IC('tag'), settings: IC('settings'), pencil: IC('pencil'), dots: IC('ellipsis'), listChecks: IC('list-checks'), x: IC('x'), play: IC('play'), vol: IC('volume-2'), plus: IC('plus'), check: IC('check'), split: IC('split'), userPlus: IC('user-plus'), wand: IC('wand-sparkles'), finger: IC('fingerprint') },
+      rules: [
+        { t: 'Minden javaslat mellett ott a „miért”', b: 'Hang, sáv, naptár, címke, hány sor van már itt. Ugyanazokkal a szavakkal és ikonokkal a sor felugrójában, a beszélő menüjében és a csoportfejlécben.' },
+        { t: 'Minden „miért” mellett ott a javítás helye', b: 'Rossz sáv-beosztás? „Sáv-beosztás”. Rossz minta? „Minták”. Két hasonló hang? „Kettejük átnézése”. Nem kell keresgélni.' },
+        { t: 'A cáfoló bizonyíték is látszik', b: 'Szaggatott kerettel: „mikrofonon beszél”, „nem volt meghívva”. A cáfolt jelölt halvány, de választható.' },
+        { t: 'Sor, kijelölés, egész beszélő', b: 'Ugyanaz a felugró, három hatókörrel. A sínen kattintás vagy húzás, 1–6 billentyű, és mindegyik egy lépésben visszavonható.' },
+        { t: 'Új személy bárhonnan', b: 'Sorból, kijelölésből, egész beszélőből. Utána a gép megkeresi a hozzá hasonló sorokat, és megmondja, mennyi kell még a hanglenyomathoz.' },
+        { t: '„Ő nem volt ott”', b: 'A beszélő menüjéből a téves azonosítás egy kattintással visszavonható; a „Ki volt ott?” lista is frissül.' }
+      ],
+      screens
+    };
+  }
+}
+</script>
+</body>
+</html>
