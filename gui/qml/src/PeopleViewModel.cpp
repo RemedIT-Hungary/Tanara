@@ -3,13 +3,19 @@
 #include "AppContext.h"
 #include "PlayerController.h"
 #include "ShellFormat.h"
+#include "TagBackend.h"
+#include "TagsViewModel.h"
 
 #include "tanara/AppController.h"
 #include "tanara/edit/PeopleDirectory.h"
 #include "tanara/people/PeopleService.h"
 #include "tanara/people/PeopleStats.h"
+#include "tanara/store/VoiceprintStore.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QCollator>
+#include <QCoreApplication>
+#include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
@@ -23,6 +29,28 @@ namespace {
 constexpr auto kSortAbc = "abc";
 constexpr auto kSortRecent = "recent";
 constexpr auto kSortMeetings = "meetings";
+
+QString capitalized(QString text)
+{
+    if (!text.isEmpty()) text[0] = text.at(0).toUpper();
+    return text;
+}
+
+const QString kTagsUndo = QStringLiteral("tags");
+const QString kPeopleUndo = QStringLiteral("people");
+
+// A címkés demó-állapotok (a design-csomagok további kitalált személyeivel).
+bool tagDemoState(const QString& state)
+{
+    return state == QLatin1String("tagsSection") || state == QLatin1String("tagsSuggested")
+        || state == QLatin1String("tagsSelf");
+}
+
+// A minták modell-jelölését mutató demó-állapotok.
+bool modelDemoState(const QString& state)
+{
+    return state == QLatin1String("samplesModels") || state == QLatin1String("backfill");
+}
 
 // Monogram: a szavak kezdőbetűi (legfeljebb kettő); a név eleji rövidítés („B. Gergő”) kimarad.
 QString monogramOf(const QString& name)
@@ -89,6 +117,9 @@ PeopleViewModel::PeopleViewModel(QObject* parent) : QObject(parent)
         if (m_backend && m_playEndMs > 0 && m_backend->position() >= m_playEndMs) finishPlayback();
     });
 
+    m_backfillPoll.setInterval(1000);
+    connect(&m_backfillPoll, &QTimer::timeout, this, &PeopleViewModel::refreshBackfill);
+
     AppContext* ctx = AppContext::instance();
     m_controller = ctx->controller();
     connect(ctx, &AppContext::controllerChanged, this, [this, ctx] {
@@ -135,11 +166,55 @@ void PeopleViewModel::attach()
         m_connections << connect(m_stats, &PeopleStats::changed, this, dirty);
         m_connections << connect(c, &AppController::peopleChanged, this, &PeopleViewModel::scheduleRebuild);
         m_connections << connect(c, &AppController::voiceprintsChanged, this, dirty);
+        // A lenyomat-pótlás kezdetére nincs jel: modellváltáskor (ott indul) és a végén nézzük.
+        m_connections << connect(c, &AppController::voiceModelsChanged, this, [this, dirty] {
+            dirty();
+            QTimer::singleShot(0, this, &PeopleViewModel::refreshBackfill);
+        });
+        m_connections << connect(c, &AppController::voiceprintBackfillFinished, this, [this, dirty] {
+            dirty();
+            refreshBackfill();
+        });
     } else {
         loadDemo();
     }
+    TagBackend* old = m_ownTagBackend;
+    m_ownTagBackend = createTagBackend(m_controller, this);
+    attachTags(m_ownTagBackend);
+    if (old) old->deleteLater();
+    m_undoOrder.clear();
     rebuild();
+    refreshBackfill();
     emit undoChanged();
+}
+
+void PeopleViewModel::setTagBackend(TagBackend* backend)
+{
+    attachTags(backend ? backend : m_ownTagBackend);
+    rebuild();
+}
+
+void PeopleViewModel::attachTags(TagBackend* backend)
+{
+    for (const QMetaObject::Connection& c : std::as_const(m_tagConnections)) disconnect(c);
+    m_tagConnections.clear();
+    m_tagBackend = backend;
+    if (!backend) return;
+    m_tagConnections << connect(backend, &TagBackend::personTagsChanged, this, &PeopleViewModel::refreshTags);
+    m_tagConnections << connect(backend, &TagBackend::personStatsChanged, this, &PeopleViewModel::refreshTags);
+    m_tagConnections << connect(backend, &TagBackend::tagsChanged, this, &PeopleViewModel::refreshTags);
+    m_tagConnections << connect(backend, &TagBackend::undoChanged, this, &PeopleViewModel::undoChanged);
+}
+
+void PeopleViewModel::refreshBackfill()
+{
+    const bool running = m_controller ? m_controller->voiceprintBackfillRunning()
+                                      : m_demo && m_demoState == QLatin1String("backfill");
+    if (running && !m_backfillPoll.isActive() && !m_demo) m_backfillPoll.start();
+    if (!running) m_backfillPoll.stop();
+    if (running == m_backfillRunning) return;
+    m_backfillRunning = running;
+    emit backfillChanged();
 }
 
 void PeopleViewModel::setDemoState(const QString& state)
@@ -157,11 +232,18 @@ void PeopleViewModel::setDemoState(const QString& state)
     rebuild();
     if (state == QStringLiteral("P03") || state == QStringLiteral("creating"))
         setSelectedName(QStringLiteral("Tóth Eszter"));
+    else if (state == QLatin1String("tagsSection"))
+        setSelectedName(QStringLiteral("Varga Árpád"));
+    else if (state == QLatin1String("tagsSuggested"))
+        setSelectedName(QStringLiteral("Fehér Gábor"));
+    else if (state == QLatin1String("tagsSelf"))
+        setSelectedName(QStringLiteral("Kovács Lilla"));
     else if (state != QStringLiteral("P06"))
         setSelectedName(QStringLiteral("Bárány Gergely"));
     // P01: a második minta épp szól.
     m_playingId = state == QStringLiteral("P01") ? QStringLiteral("demo-1") : QString();
     emit playingChanged();
+    refreshBackfill();
     if (state == QStringLiteral("creating")) {
         m_creating = true;
         m_creatingText = tr("%1 / %2 megbeszélés…").arg(2).arg(3);
@@ -175,6 +257,7 @@ void PeopleViewModel::refresh()
     m_planFor.clear();
     rebuild();
     if (m_stats) m_stats->refresh();
+    refreshBackfill();
 }
 
 void PeopleViewModel::scheduleRebuild()
@@ -257,15 +340,25 @@ QString PeopleViewModel::rowMeta(const Person& p, const QString& aliasHit) const
 void PeopleViewModel::rebuildList()
 {
     const QString needle = foldForSearch(m_query.trimmed());
-    struct Shown { const Person* p; int pos = 0; int len = 0; QString aliasHit; };
+    struct Shown { const Person* p; int pos = 0; int len = 0; QString aliasHit; QString tagHit; };
     QVector<Shown> shown;
+    // Címkére is talál („nordvik” vagy „#nordvik”): a személy kézi címkéi közt.
+    QString tagNeedle = needle;
+    while (tagNeedle.startsWith(QLatin1Char('#'))) tagNeedle.remove(0, 1);
+    QHash<QString, QString> tagNames;
+    if (!tagNeedle.isEmpty() && m_tagBackend)
+        for (const TagItem& t : m_tagBackend->tags()) tagNames.insert(t.id, t.name);
     for (const Person& p : std::as_const(m_persons)) {
         Shown s{&p};
         if (!needle.isEmpty() && !matchRange(p.name, needle, &s.pos, &s.len)) {
             // A névben nincs: a becenevek közt az első egyező.
             for (const QString& a : p.aliases)
                 if (foldForSearch(a).contains(needle)) { s.aliasHit = a; break; }
-            if (s.aliasHit.isEmpty()) continue;
+            if (s.aliasHit.isEmpty() && !tagNames.isEmpty() && !p.isSelf) {
+                for (const QString& id : m_tagBackend->tagsOfPerson(p.name))
+                    if (foldForSearch(tagNames.value(id)).contains(tagNeedle)) { s.tagHit = tagNames.value(id); break; }
+            }
+            if (s.aliasHit.isEmpty() && s.tagHit.isEmpty()) continue;
         }
         shown.append(s);
     }
@@ -299,7 +392,11 @@ void PeopleViewModel::rebuildList()
         r.isSelf = s.p->isSelf;
         r.hasVoiceprint = s.p->sampleCount > 0;
         r.meta = rowMeta(*s.p, s.aliasHit);
-        if (!needle.isEmpty() && s.aliasHit.isEmpty() && s.len > 0) {
+        if (!s.tagHit.isEmpty()) {
+            r.meta = tr("címke: #%1").arg(s.tagHit) + QStringLiteral(" · ") + r.meta;
+            r.tagHit = true;
+        }
+        if (!needle.isEmpty() && s.aliasHit.isEmpty() && s.tagHit.isEmpty() && s.len > 0) {
             r.before = s.p->name.left(s.pos);
             r.match = s.p->name.mid(s.pos, s.len);
             r.after = s.p->name.mid(s.pos + s.len);
@@ -400,8 +497,163 @@ void PeopleViewModel::refreshDetail()
             if (v.toMap().value(QStringLiteral("id")).toString() == m_playingId) { still = true; break; }
         if (!still) finishPlayback();
     }
+    decorateSamples();
     emit detailChanged();
     refreshPlan();
+    refreshTags();
+}
+
+// A minta modell-jelölése: melyik használt hangmodellel van lenyomata (a testvér-csoportból).
+void PeopleViewModel::decorateSamples()
+{
+    QStringList active;
+    if (m_controller) active = m_controller->activeVoiceModelIds();
+    else if (m_demo && modelDemoState(m_demoState)) active = {QStringLiteral("campplus"), QStringLiteral("eres2netv2")};
+    if (active.isEmpty()) return;
+    QHash<QString, QString> display;
+    for (const VoiceModelSpec& spec : VoiceModelRegistry::builtin()) display.insert(spec.id, spec.displayName);
+    auto label = [&](const QStringList& ids) {
+        QStringList out;
+        for (const QString& id : ids) out << display.value(id, id);
+        return out.join(QStringLiteral(", "));
+    };
+    VoiceprintStore* prints = m_controller ? m_controller->voiceprints() : nullptr;
+    for (int i = 0; i < m_samples.size(); ++i) {
+        QVariantMap sample = m_samples[i].toMap();
+        QStringList have;
+        if (prints) {
+            for (const Voiceprint& vp : prints->siblingsOf(sample.value(QStringLiteral("id")).toString()))
+                if (!have.contains(vp.model)) have << vp.model;
+        } else {
+            // Demó: minden harmadik minta még csak az alapmodellel van meg.
+            have = i % 3 == 2 ? QStringList{QStringLiteral("campplus")} : active;
+        }
+        QStringList present, missing;
+        for (const QString& id : std::as_const(active)) (have.contains(id) ? present : missing) << id;
+        // Egy modellnél, ha megvan, nincs mit jelezni.
+        if (active.size() < 2 && missing.isEmpty()) continue;
+        sample.insert(QStringLiteral("modelText"), tr("%1/%2 modell").arg(present.size()).arg(active.size()));
+        sample.insert(QStringLiteral("modelComplete"), missing.isEmpty());
+        QStringList tip;
+        if (!present.isEmpty()) tip << tr("Megvan: %1").arg(label(present));
+        if (!missing.isEmpty()) tip << tr("Hiányzik: %1").arg(label(missing));
+        sample.insert(QStringLiteral("modelTip"), tip.join(QLatin1Char('\n')));
+        m_samples[i] = sample;
+    }
+}
+
+// ---- címkék a személyen ----------------------------------------------------------
+
+bool PeopleViewModel::isPlaceholderName(const QString& name) const
+{
+    // A törlésnél mintatartóként létrejövő „Névtelen N” (PeopleService) nem címkézhető.
+    const QString pattern = QCoreApplication::translate("tanara::PeopleService", "Névtelen %1");
+    QStringList parts = pattern.split(QStringLiteral("%1"));
+    for (QString& part : parts) part = QRegularExpression::escape(part);
+    const QString rx = parts.join(QStringLiteral("\\d+"));
+    return QRegularExpression(QStringLiteral("^") + rx + QStringLiteral("$")).match(name.trimmed()).hasMatch();
+}
+
+QString PeopleViewModel::tagNameOf(const QString& id) const
+{
+    if (!m_tagBackend) return {};
+    for (const TagItem& t : m_tagBackend->tags())
+        if (t.id == id) return t.name;
+    return {};
+}
+
+void PeopleViewModel::refreshTags()
+{
+    QString mode = QStringLiteral("none");
+    QVariantList tags, suggestions;
+    QString hint;
+    if (m_tagBackend && hasSelection()) {
+        if (m_detail.isSelf) mode = QStringLiteral("self");
+        else if (!isPlaceholderName(m_selected)) mode = QStringLiteral("edit");
+    }
+    if (mode == QLatin1String("edit")) {
+        QHash<QString, QString> names;
+        for (const TagItem& t : m_tagBackend->tags()) names.insert(t.id, t.name);
+        for (const QString& id : m_tagBackend->tagsOfPerson(m_selected))
+            tags << QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("name"), names.value(id)}};
+        if (m_tagBackend->personStatsBusy()) {
+            hint = tr("Megbeszélések számolása…");
+        } else if (m_tagBackend->personMeetingCount(m_selected) < 2) {
+            hint = tr("A javaslathoz legalább két megbeszélés kell.");
+        } else {
+            for (const PersonTagItem& s : m_tagBackend->suggestTagsForPerson(m_selected)) {
+                const QString name = names.value(s.tagId);
+                if (name.isEmpty()) continue;
+                suggestions << QVariantMap{
+                    {QStringLiteral("id"), s.tagId},
+                    {QStringLiteral("name"), name},
+                    {QStringLiteral("countText"), QStringLiteral("%1/%2").arg(s.shared).arg(s.tagTotal)},
+                    {QStringLiteral("toolTip"), capitalized(tr("%1 #%2 %3 megbeszéléséből %4 alkalommal ott volt.")
+                                                                .arg(tagArticle(name), name).arg(s.tagTotal).arg(s.shared))},
+                };
+            }
+        }
+    }
+    if (mode == m_tagsMode && tags == m_personTags && suggestions == m_tagSuggestions && hint == m_tagHint) return;
+    m_tagsMode = mode;
+    m_personTags = tags;
+    m_tagSuggestions = suggestions;
+    m_tagHint = hint;
+    emit personTagsChanged();
+}
+
+void PeopleViewModel::tagStep(const QString& label)
+{
+    m_undoOrder << kTagsUndo;
+    refreshTags();
+    emit undoChanged();
+    emit toast(label, m_tagBackend && m_tagBackend->canUndo());
+}
+
+void PeopleViewModel::addPersonTag(const QString& nameOrId)
+{
+    if (!m_tagBackend || m_tagsMode != QLatin1String("edit") || nameOrId.trimmed().isEmpty()) return;
+    const QString existing = tagNameOf(nameOrId);
+    const QString shown = existing.isEmpty() ? nameOrId.trimmed() : existing;
+    const QString label = tr("Címke hozzáadva: #%1").arg(shown);
+    m_tagBackend->beginGroup(label);
+    const QString id = m_tagBackend->addPersonTag(m_selected, nameOrId.trimmed());
+    m_tagBackend->endGroup();
+    if (id.isEmpty()) return;
+    tagStep(tr("Címke hozzáadva: #%1").arg(tagNameOf(id)));
+}
+
+void PeopleViewModel::removePersonTag(const QString& tagId)
+{
+    if (!m_tagBackend || m_tagsMode != QLatin1String("edit")) return;
+    const QString label = tr("Címke levéve: #%1").arg(tagNameOf(tagId));
+    m_tagBackend->beginGroup(label);
+    m_tagBackend->removePersonTag(m_selected, tagId);
+    m_tagBackend->endGroup();
+    tagStep(label);
+}
+
+void PeopleViewModel::acceptTagSuggestion(const QString& tagId) { addPersonTag(tagId); }
+
+void PeopleViewModel::acceptAllTagSuggestions()
+{
+    if (!m_tagBackend || m_tagsMode != QLatin1String("edit") || m_tagSuggestions.isEmpty()) return;
+    const QVariantList all = m_tagSuggestions;
+    const QString label = tr("%n javasolt címke hozzáadva", "", int(all.size()));
+    m_tagBackend->beginGroup(label);
+    for (const QVariant& v : all) m_tagBackend->addPersonTag(m_selected, v.toMap().value(QStringLiteral("id")).toString());
+    m_tagBackend->endGroup();
+    tagStep(label);
+}
+
+void PeopleViewModel::rejectTagSuggestion(const QString& tagId)
+{
+    if (!m_tagBackend || m_tagsMode != QLatin1String("edit")) return;
+    const QString label = tr("Javaslat elutasítva: #%1").arg(tagNameOf(tagId));
+    m_tagBackend->beginGroup(label);
+    m_tagBackend->rejectPersonTag(m_selected, tagId);
+    m_tagBackend->endGroup();
+    tagStep(label);
 }
 
 // ---- hanglenyomat nélküli személy ---------------------------------------------
@@ -588,7 +840,12 @@ QString PeopleViewModel::selectedMonogram() const
 
 bool PeopleViewModel::personExists(const QString& name) const { return find(name.trimmed()) != nullptr; }
 
-bool PeopleViewModel::canUndo() const { return m_service && m_service->canUndo(); }
+bool PeopleViewModel::canUndo() const
+{
+    if (!m_undoOrder.isEmpty() && m_undoOrder.last() == kTagsUndo && m_tagBackend && m_tagBackend->canUndo())
+        return true;
+    return m_service && m_service->canUndo();
+}
 
 // ---- műveletek ------------------------------------------------------------------
 
@@ -611,7 +868,10 @@ QString PeopleViewModel::rename(const QString& newName)
     m_selected = r.name;
     rebuild();
     emit selectionChanged();
-    if (r.name != old) emit toast(tr("Átnevezve: %1").arg(r.name), true);
+    if (r.name != old) {
+        m_undoOrder << kPeopleUndo;
+        emit toast(tr("Átnevezve: %1").arg(r.name), true);
+    }
     return QString();
 }
 
@@ -628,6 +888,7 @@ void PeopleViewModel::removeAlias(const QString& alias)
     if (!m_service || m_selected.isEmpty()) return;
     if (!m_service->removeAlias(m_selected, alias)) return;
     rebuild();
+    m_undoOrder << kPeopleUndo;
     emit toast(tr("Becenév törölve: %1").arg(alias), true);
 }
 
@@ -647,6 +908,7 @@ void PeopleViewModel::removeSample(const QString& sampleId)
         emit toast(r.error, false);
         return;
     }
+    m_undoOrder << kPeopleUndo;
     const QString title = m_service->undoInfo().detail;
     emit toast(title.isEmpty() ? tr("Minta törölve") : tr("Minta törölve: %1").arg(title), true);
 }
@@ -658,6 +920,7 @@ QString PeopleViewModel::moveSample(const QString& sampleId, const QString& toNa
     const PeopleOpResult r = m_service->moveSample(sampleId, toName);
     if (!r.ok) return r.error;
     rebuild();
+    m_undoOrder << kPeopleUndo;
     emit toast(existed ? tr("Minta áthelyezve ide: %1").arg(r.name)
                        : tr("Új személy a mintából: %1").arg(r.name), true);
     return QString();
@@ -753,6 +1016,19 @@ QString PeopleViewModel::mergeResultText(const QString& other, bool keepSelected
     QString text = tr("Eredmény: <b>%1</b>, <b>%2</b>. „%3” becenév lesz.")
         .arg(tr("%n megbeszélés", "", meetingsN), tr("%n minta", "", samplesN), loser.toHtmlEscaped());
     if (stale > 0) text += QLatin1Char(' ') + tr("%n érintett összefoglaló elavultnak jelölődik.", "", stale);
+    // Ha mindkettőjüknek van címkéje: unió.
+    if (m_tagBackend) {
+        const QStringList a = m_tagBackend->tagsOfPerson(m_selected);
+        const QStringList b = m_tagBackend->tagsOfPerson(o->name);
+        if (!a.isEmpty() && !b.isEmpty()) {
+            QStringList names;
+            for (const QString& id : a + b) {
+                const QString n = QStringLiteral("#") + tagNameOf(id).toHtmlEscaped();
+                if (!names.contains(n)) names << n;
+            }
+            text += QLatin1Char(' ') + tr("A címkék összeadódnak (%1).").arg(names.join(QStringLiteral(", ")));
+        }
+    }
     text += QLatin1Char(' ') + tr("Az összevonás nem vonható vissza.");
     return text;
 }
@@ -825,6 +1101,20 @@ QString PeopleViewModel::deletePerson(bool keepSamples)
 
 void PeopleViewModel::undo()
 {
+    // A frissebb lépés: ha az egy címke-művelet volt, a TagService vermén.
+    if (!m_undoOrder.isEmpty() && m_undoOrder.last() == kTagsUndo) {
+        m_undoOrder.removeLast();
+        if (m_tagBackend && m_tagBackend->canUndo()) {
+            const QString label = m_tagBackend->undoLabel();
+            m_tagBackend->undo();
+            refreshTags();
+            emit undoChanged();
+            emit toast(tr("Visszavonva: %1").arg(label), false);
+            return;
+        }
+    } else if (!m_undoOrder.isEmpty()) {
+        m_undoOrder.removeLast();
+    }
     if (!m_service || !m_service->canUndo()) return;
     const PeopleUndoInfo info = m_service->undo();
     rebuild();
@@ -912,6 +1202,11 @@ void PeopleViewModel::loadDemo()
         {"Fazekas Ilona", 5, 2, false}, {"Gál Bence", 12, 7, false}, {"Halász Dóra", 9, 3, false},
         {"Szilágyi Bálint", 14, 5, false}, {"Tóth Eszter", 3, 0, false},
     };
+    // A címkés állapotokhoz a vault UX-tervének kitalált személyei is.
+    static const Row tagRows[] = {
+        {"Fehér Gábor", 16, 6, false}, {"Varga Árpád", 12, 4, false}, {"Szabó Bence", 8, 3, false},
+        {"Molnár Eszter", 0, 0, false},
+    };
     static const DemoSample samplePool[] = {
         {QStringLiteral("mic"), QStringLiteral("Trust USB mikrofon"),
          QStringLiteral("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai"),
@@ -950,7 +1245,9 @@ void PeopleViewModel::loadDemo()
     const int meetingPoolSize = int(std::size(meetingPool));
     const bool empty = m_demoState == QStringLiteral("P06");
     int n = 0;
-    for (const Row& row : rows) {
+    QVector<Row> all(std::begin(rows), std::end(rows));
+    if (tagDemoState(m_demoState)) all.append(QVector<Row>(std::begin(tagRows), std::end(tagRows)));
+    for (const Row& row : std::as_const(all)) {
         if (empty && !row.self) continue;
         Person p;
         p.name = QString::fromUtf8(row.name);

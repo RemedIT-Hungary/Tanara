@@ -22,6 +22,7 @@ struct PeopleListRow {
     QString before;     // a név a találat előtt (keresés nélkül a teljes név)
     QString match;
     QString after;
+    bool    tagHit = false; // a keresés a személy címkéjén talált (a meta: „címke: #Nordvik …”)
 
     bool operator==(const PeopleListRow& o) const = default;
 };
@@ -34,7 +35,7 @@ class PeopleListModel : public QAbstractListModel {
 
 public:
     enum Role { NameRole = Qt::UserRole + 1, MonogramRole, IsSelfRole, HasVoiceprintRole, MetaRole,
-                HeaderRole, BeforeRole, MatchRole, AfterRole };
+                HeaderRole, BeforeRole, MatchRole, AfterRole, TagHitRole };
 
     explicit PeopleListModel(QObject* parent = nullptr);
 

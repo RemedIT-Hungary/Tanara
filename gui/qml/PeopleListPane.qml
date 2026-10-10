@@ -141,6 +141,7 @@ Rectangle {
             before: model.before
             match: model.match
             after: model.after
+            tagHit: model.tagHit
             selected: root.showSelection && root.vm && root.vm.selectedName === model.name
             onClicked: { root.aboutToSelect(); root.personClicked(model.name); list.forceActiveFocus() }
         }

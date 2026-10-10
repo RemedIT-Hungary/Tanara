@@ -12,9 +12,20 @@
 // be (`statsReady`). Minden művelet a tanara::PeopleService-en megy át; a visszavonható
 // lépések után `toast(szöveg, visszavonható)` jelet ad (a QML ~8 mp-ig mutatja).
 //
+// Címkék a személyen (vault UX-terv 2., 3.2, 7.): a kijelölt személy kézi címkéi
+// (`personTags`), a „Ezeken szokott ott lenni” javaslatok (`tagSuggestions`, mind; a nézet
+// hármat mutat + „+N”), a TagBackend varraton át (TagService). A saját személynél és a
+// „Névtelen N” mintatartónál nincs címke-szakasz (`tagsMode`). A keresés címkére is talál
+// (a találat-sor metája: „címke: #Nordvik”). A címke-műveletek a TagService vermében
+// vonhatók vissza; a Ctrl+Z a két verem közül a frissebbet vonja vissza.
+//
+// Minták modellenként: egy minta (testvér-csoport) egy sor; a sor `modelText`-je („2/2
+// modell”) és `modelTip`-je mutatja, melyik használt hangmodellel van lenyomata. Amíg a
+// lenyomat-pótlás fut (`backfillRunning`), a fejléc ezt jelzi.
+//
 // Controller nélkül (demó, képernyőkép) kitalált személyeket szolgál ki (`demoState`:
-// P01 … P06 és a segéd-állapotok — lásd PeopleWindow.qml); ilyenkor a műveletek nem tesznek
-// semmit.
+// P01 … P06 és a segéd-állapotok — lásd PeopleWindow.qml); ilyenkor a személy-műveletek nem
+// tesznek semmit, a címke-műveletek a kitalált címkekészleten futnak.
 //
 #include "PeopleListModel.h"
 
@@ -37,6 +48,7 @@ class PeopleStats;
 namespace tanara_qml {
 
 class PlayerBackend;
+class TagBackend;
 
 class PeopleViewModel : public QObject {
     Q_OBJECT
@@ -89,6 +101,20 @@ class PeopleViewModel : public QObject {
     // ---- lejátszás, visszavonás ----
     Q_PROPERTY(QString playingSampleId READ playingSampleId NOTIFY playingChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
+
+    // ---- címkék a személyen ----
+    // "edit" (szerkeszthető) | "self" (saját személy: muted magyarázó sor) | "none" (névtelen)
+    Q_PROPERTY(QString tagsMode READ tagsMode NOTIFY personTagsChanged)
+    // [{ id, name }] a felrakás sorrendjében
+    Q_PROPERTY(QVariantList personTags READ personTags NOTIFY personTagsChanged)
+    // [{ id, name, countText, toolTip }] — mind; a nézet legfeljebb hármat mutat + „+N”
+    Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY personTagsChanged)
+    // A javaslat-sor helyén álló muted szöveg („Megbeszélések számolása…” / „A javaslathoz
+    // legalább két megbeszélés kell.”); üres: javaslatok vagy semmi.
+    Q_PROPERTY(QString tagHintText READ tagHintText NOTIFY personTagsChanged)
+
+    // ---- hangmodellek ----
+    Q_PROPERTY(bool backfillRunning READ backfillRunning NOTIFY backfillChanged)
 
 public:
     explicit PeopleViewModel(QObject* parent = nullptr);
@@ -173,6 +199,22 @@ public:
 
     Q_INVOKABLE void undo();
 
+    // ---- címkék a kijelölt személyen (mind egy-egy visszavonható lépés, toasttal) ----
+    QString tagsMode() const { return m_tagsMode; }
+    QVariantList personTags() const { return m_personTags; }
+    QVariantList tagSuggestions() const { return m_tagSuggestions; }
+    QString tagHintText() const { return m_tagHint; }
+    // A mezőből: név (új címke is) vagy id.
+    Q_INVOKABLE void addPersonTag(const QString& nameOrId);
+    Q_INVOKABLE void removePersonTag(const QString& tagId);
+    Q_INVOKABLE void acceptTagSuggestion(const QString& tagId);
+    Q_INVOKABLE void acceptAllTagSuggestions();
+    Q_INVOKABLE void rejectTagSuggestion(const QString& tagId);
+
+    bool backfillRunning() const { return m_backfillRunning; }
+    // Tesztekhez: a címke-adatforrás (nem veszi át); nullptr → a sajátja.
+    void setTagBackend(TagBackend* backend);
+
 signals:
     void controllerChanged();
     void demoStateChanged();
@@ -184,6 +226,8 @@ signals:
     void planChanged();
     void playingChanged();
     void undoChanged();
+    void personTagsChanged();
+    void backfillChanged();
     // Értesítés az ablak alján. undoable: „Visszavonás” gombbal.
     void toast(const QString& text, bool undoable);
 
@@ -214,6 +258,13 @@ private:
     void loadDemo();
     void ensureBackend();
     void finishPlayback();
+    void attachTags(TagBackend* backend);
+    void refreshTags();
+    void refreshBackfill();
+    QString tagNameOf(const QString& id) const;
+    void tagStep(const QString& label);
+    bool isPlaceholderName(const QString& name) const;
+    void decorateSamples();
 
     QPointer<tanara::AppController> m_controller;
     QPointer<tanara::AppController> m_attached;
@@ -253,6 +304,19 @@ private:
     QStringList m_createQueue;
     int m_createTotal = 0, m_createOk = 0, m_createFailed = 0;
     QString m_createError;
+
+    TagBackend* m_tagBackend = nullptr;
+    TagBackend* m_ownTagBackend = nullptr;
+    QList<QMetaObject::Connection> m_tagConnections;
+    QString m_tagsMode = QStringLiteral("none");
+    QVariantList m_personTags;
+    QVariantList m_tagSuggestions;
+    QString m_tagHint;
+    // A visszavonási sorrend a két verem között ("people" | "tags"), legújabb a végén.
+    QStringList m_undoOrder;
+
+    bool m_backfillRunning = false;
+    QTimer m_backfillPoll;
 
     PlayerBackend* m_backend = nullptr;
     QTimer m_playTick;

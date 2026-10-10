@@ -19,7 +19,8 @@ QHash<int, QByteArray> PeopleListModel::roleNames() const
             {HeaderRole, "header"},
             {BeforeRole, "before"},
             {MatchRole, "match"},
-            {AfterRole, "after"}};
+            {AfterRole, "after"},
+            {TagHitRole, "tagHit"}};
 }
 
 QVariant PeopleListModel::data(const QModelIndex& index, int role) const
@@ -37,6 +38,7 @@ QVariant PeopleListModel::data(const QModelIndex& index, int role) const
     case BeforeRole: return r.before;
     case MatchRole: return r.match;
     case AfterRole: return r.after;
+    case TagHitRole: return r.tagHit;
     default: return {};
     }
 }

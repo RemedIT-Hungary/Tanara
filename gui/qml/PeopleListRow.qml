@@ -15,6 +15,8 @@ Item {
     property string before: ""
     property string match: ""
     property string after: ""
+    // A keresés a személy címkéjén talált: címke-ikon a meta előtt („címke: #Nordvik …”).
+    property bool tagHit: false
     property bool selected: false
     signal clicked()
 
@@ -121,9 +123,9 @@ Item {
                 spacing: 5
                 TIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: root.hasVoiceprint ? "fingerprint" : "minus"
+                    name: root.tagHit ? "tag" : root.hasVoiceprint ? "fingerprint" : "minus"
                     size: 12
-                    color: root.hasVoiceprint ? Theme.successInk : Theme.textMuted
+                    color: root.hasVoiceprint && !root.tagHit ? Theme.successInk : Theme.textMuted
                 }
                 TLabel {
                     width: parent.width - 17

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Templates as T
 
 // A Személyek ablak jobb oldala (P01–P03, P06): a kijelölt személy fejléce a műveletekkel,
-// becenevek, megjegyzés, hangminták (vagy a „még nincs hanglenyomata” doboz) és a
+// címkék, becenevek, megjegyzés, hangminták (vagy a „még nincs hanglenyomata” doboz) és a
 // megbeszélései. Görgethető; a hosszú címek törnek.
 Item {
     id: root
@@ -190,6 +190,20 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
+                    // A lenyomat-pótlás fut (új hangmodell): a minták újraszámolódnak.
+                    Row {
+                        objectName: "backfillNote"
+                        visible: !root.renaming && root.vm && root.vm.backfillRunning
+                        spacing: 6
+                        TSpinner { anchors.verticalCenter: parent.verticalCenter; size: 12; color: Theme.textMuted }
+                        TLabel {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("A minták újraszámolása az új modellel…")
+                            muted: true
+                            font.pixelSize: Theme.fontCaption
+                        }
+                    }
+
                     // Átnevezés helyben (P02).
                     Row {
                         visible: root.renaming
@@ -286,6 +300,15 @@ Item {
                         onClicked: root.deleteRequested()
                     }
                 }
+            }
+
+            // ---- címkék (a becenevek fölött; a névtelen mintatartónál nincs) ----
+            PersonTagsSection {
+                id: tagsSection
+                objectName: "personTagsSection"
+                visible: root.vm && root.vm.tagsMode !== "none"
+                width: parent.width
+                vm: root.vm
             }
 
             // ---- becenevek + megjegyzés ----
