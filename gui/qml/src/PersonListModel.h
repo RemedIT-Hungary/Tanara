@@ -6,6 +6,7 @@
 // elöl. A lista a TranscriptEditorViewModel-től jön (éles: AppController::peopleDirectory,
 // demó: kitalált nevek).
 //
+#include "ParticipantsViewModel.h"
 #include "TranscriptEditorViewModel.h"
 
 #include "tanara/edit/SpeakerEditTypes.h"
@@ -22,6 +23,8 @@ class PersonListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(tanara_qml::TranscriptEditorViewModel* editor READ editor WRITE setEditor NOTIFY editorChanged)
+    // A „Ki volt ott?" párbeszéd forrása (az editor helyett): a személyek és a „már résztvevő".
+    Q_PROPERTY(tanara_qml::ParticipantsViewModel* participants READ participants WRITE setParticipants NOTIFY participantsChanged)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     // Ez a név kimarad (a popoverben a beszélő mostani személye).
     Q_PROPERTY(QString excludeName READ excludeName WRITE setExcludeName NOTIFY excludeNameChanged)
@@ -46,6 +49,8 @@ public:
 
     TranscriptEditorViewModel* editor() const { return m_editor; }
     void setEditor(TranscriptEditorViewModel* editor);
+    ParticipantsViewModel* participants() const { return m_participants; }
+    void setParticipants(ParticipantsViewModel* participants);
     QString query() const { return m_query; }
     void setQuery(const QString& query);
     QString excludeName() const { return m_exclude; }
@@ -63,6 +68,7 @@ public:
 
 signals:
     void editorChanged();
+    void participantsChanged();
     void queryChanged();
     void excludeNameChanged();
     void hideMeetingPeopleChanged();
@@ -73,6 +79,7 @@ private:
     void refilter();
 
     QPointer<TranscriptEditorViewModel> m_editor;
+    QPointer<ParticipantsViewModel> m_participants;
     QString m_query;
     QString m_exclude;
     bool m_hideMeeting = true;
