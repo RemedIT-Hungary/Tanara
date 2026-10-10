@@ -15,6 +15,8 @@
 // Példányt jellemzően az AppController::speakerEditor(meetingId) ad; tesztben közvetlenül,
 // explicit store-okkal is létrehozható.
 //
+#include "tanara/edit/CandidateRanker.h"
+#include "tanara/edit/ReviewGroups.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
 
@@ -22,6 +24,7 @@
 #include <QtNumeric>
 #include <QStringList>
 #include <QVector>
+#include <functional>
 #include <memory>
 
 namespace tanara {
@@ -210,6 +213,45 @@ public:
     // printId-je). false, ha már nincs ilyen. Ez sem undo-lépés.
     bool removeVoiceprint(const QString& printId);
 
+    // ---- kézi sáv-beosztás („Melyik sávon beszél?", v3 E3) ------------------
+    // A beszélő sávjai (Track::id); üres = nincs megkötés. A személy oldalának egyetlen igazsága,
+    // ha meg van adva (SideAnalysis); a megerősített sorokból tanult people.json-alapértéket is
+    // ez adja.
+    QStringList trackAssignment(const QString& speakerKey) const;
+    // Egy undo-lépés. A meeting sávjai közt nem szereplő id-k kimaradnak; üres lista = a
+    // megkötés törlése. false: nem változott / ismeretlen beszélő.
+    bool setTrackAssignment(const QString& speakerKey, const QStringList& trackIds);
+
+    // ---- bizonyíték, jelöltek, Átnézendő csoportok (v3 E1–E4) ----------------
+    // A sáv-aktivitás forrása (a háttérszálon hívódik!). Alap: a tracks.activity.bin cache; ha
+    // nincs, és van mic- és loopback-sáv is, kiszámolja (ffmpeg) és elmenti.
+    using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
+    void setActivityProvider(ActivityProvider provider);
+    // A személy-címkék (a D szelet adja). A fő szálon hívódik.
+    void setPersonTagsProvider(PersonTagsFn fn);
+
+    // A legutóbbi háttér-elemzés csoportjai (reviewGroupsChanged jelzi, ha frissült). Minden
+    // szerkesztés / visszavonás / embedding-futás után magától újraszámolódik.
+    QVector<ReviewGroup> reviewGroups() const;
+    bool isReviewRunning() const;
+    // A csoport javaslatának végrehajtása EGY undo-lépésben (ContaminatedCore: szétválasztás).
+    // ShortLines (csak tájékoztató) / ismeretlen id → false.
+    bool applyReviewGroup(const QString& groupId);
+    // A beszélő megerősített magjának szétválasztása (ContaminatedCore): a kisebb fél a legjobb
+    // jelölthöz, vagy új névtelen résztvevőhöz kerül. Egy undo-lépés; false, ha a mag nem szennyezett.
+    bool splitSpeaker(const QString& speakerKey);
+
+    // Jelöltek egy sorra (a mostani beszélő is szerepel) / egy egész beszélőre (ő maga nem),
+    // pontszám szerint. A legutóbbi elemzés kontextusán számol.
+    QVector<Candidate> lineCandidates(const QString& utteranceId) const;
+    QVector<Candidate> speakerCandidates(const QString& speakerKey) const;
+    // „Miért nem X?": a sor mostani beszélője ellen szóló bizonyítékok (fix-linkkel).
+    QVector<Evidence> whyNot(const QString& utteranceId) const;
+    // „Miért ő?": a beszélő mellett / ellen szóló bizonyítékok.
+    QVector<Evidence> speakerEvidence(const QString& speakerKey) const;
+    // A legutóbbi sáv-oldal elemzés (inaktív, amíg nem futott / nincs két oldal).
+    SideReport sideReport() const;
+
     // ---- összefoglaló-elavultság / újra-átírás ----------------------------
     SummaryStaleInfo summaryStale() const;
     RetranscribeImpact retranscribeImpact() const;
@@ -240,6 +282,9 @@ public slots:
     // Új átirat készült: teljes újratöltés, az undo-verem és a javaslat eldobva (reloaded jel).
     void reloadTranscript();
 
+    // Az Átnézendő csoportok újraszámolása a háttérben (reviewGroupsChanged a végén).
+    void refreshReviewGroups();
+
 signals:
     // A felsorolt megszólalások adata változott (beszélő / jelzők / bizonytalanság) —
     // a lista-modell ezekre ad dataChanged-et.
@@ -258,6 +303,9 @@ signals:
     void reloaded();
     // Lefutott egy újraellenőrzés (a nézet ilyenkor a „Bizonytalan" szűrőre válthat).
     void recheckFinished(int flagged, int speakersWithConfirmedCore, int confirmedLines);
+    // Elkészült egy háttér-elemzés: reviewGroups(), a jelöltek és a sáv-oldal frissült.
+    void reviewGroupsChanged();
+    void reviewRunningChanged(bool running);
 
     // Mellékhatások a többi komponens felé (az AppController a saját jeleire fordítja).
     void speakerMapChanged(QString meetingId);

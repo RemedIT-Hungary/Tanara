@@ -1,8 +1,10 @@
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/Logging.h"
 
+#include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/edit/TrackActivity.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -62,9 +64,10 @@ struct RowState {
     bool uncertain = false;
     bool noisy = false;
     QString likely;
+    QString reason;
     bool operator==(const RowState& o) const {
         return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
-            && uncertain == o.uncertain && noisy == o.noisy && likely == o.likely;
+            && uncertain == o.uncertain && noisy == o.noisy && likely == o.likely && reason == o.reason;
     }
 };
 
@@ -126,6 +129,27 @@ qint64 sampleRefStartMs(const QString& ref)
     return ok ? start : -1;
 }
 
+// Az alap sáv-aktivitás forrás (háttérszálon): a cache; ha nincs, és van mic- és loopback-sáv
+// is, kiszámolva és elmentve.
+MeetingActivity defaultActivity(const Meeting& m)
+{
+    if (m.folder.isEmpty()) return {};
+    bool mic = false, loop = false;
+    for (const Track& t : m.tracks) {
+        if (!t.active) continue;
+        mic |= t.kind == TrackKind::Mic;
+        loop |= t.kind == TrackKind::Loopback;
+    }
+    if (!mic || !loop) return {};
+    const QString fp = trackactivity::activityFingerprint(m, m.folder);
+    MeetingActivity act = MeetingActivity::load(m.folder, fp);
+    if (act.isEmpty()) {
+        act = computeMeetingActivity(m, m.folder);
+        if (!act.isEmpty()) act.save(m.folder);
+    }
+    return act;
+}
+
 } // namespace
 
 struct SpeakerEditor::Private {
@@ -148,6 +172,7 @@ struct SpeakerEditor::Private {
     QMap<QString, QString> speakerMap;
     QVector<QString> assigned;          // soronként a feloldott beszélő-kulcs
     QVector<bool> uncertain;
+    QVector<bool> voiceUncertain;       // csak a hang-ítélet (az uncertainReason-höz)
     QVector<bool> overlapNoisy;         // soronként: más beszélővel átfed (automatikus, nem perzisztál)
 
     QVector<Command> undoStack;
@@ -170,6 +195,18 @@ struct SpeakerEditor::Private {
     int embTotal = 0;
     QString embError;
 
+    // ---- v3: sáv-oldal, jelöltek, Átnézendő csoportok (háttérszál) ----
+    SpeakerEditor::ActivityProvider activityProvider;
+    PersonTagsFn personTags;
+    QStringList meetingTags;            // Meeting::tagIds
+    std::optional<MeetingActivity> activity;    // az első számítás után a memóriában
+    ReviewResult review;                // a legutóbbi elemzés
+    int  reviewEpoch = 0;               // nő minden (újra)töltésnél — a régi eredményt eldobjuk
+    bool reviewRunning = false;
+    bool reviewPending = false;         // futás közben újabb kérés jött
+    bool reviewScheduled = false;
+    QString newPersonKey;               // az imént létrehozott személy (SimilarToNewPerson)
+
     // A transcript.md késleltetett újragenerálása (lásd persist()).
     QTimer* markdownTimer = nullptr;
     bool markdownPending = false;
@@ -188,6 +225,7 @@ struct SpeakerEditor::Private {
         folder = m.folder;
         hasSummary = m.hasSummary;
         speakerMap = m.speakerMap;
+        meetingTags = m.tagIds;
         audioPath = m.folder.isEmpty() ? QString() : mixdownPath(m);
         audioRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
         const qint64 tMeeting = perf.elapsed();
@@ -209,7 +247,11 @@ struct SpeakerEditor::Private {
         ++epoch;
         recomputeAssigned();
         const qint64 tAssigned = perf.elapsed();
+        ++reviewEpoch;
+        review = ReviewResult();
+        newPersonKey.clear();
         recomputeUncertain();
+        scheduleReview();
         qCDebug(lcPerf).noquote()
             << QStringLiteral("SpeakerEditor::load %1 sor: meeting %2 ms, átirat %3 ms, overlay %4 ms, "
                               "embedding-cache %5 ms, feloldás %6 ms, bizonytalanság %7 ms, össz %8 ms")
@@ -399,6 +441,7 @@ struct SpeakerEditor::Private {
         u.noisyOverlap = overlapNoisy.value(i);
         u.rechecked = recheckedAt(i);
         if (u.rechecked) u.likelySpeakerKey = likelyAt(i);
+        u.uncertainReason = reasonAt(i);
         return u;
     }
 
@@ -499,6 +542,44 @@ struct SpeakerEditor::Private {
         // Az újraellenőrzés jelzései (perzisztensek) a hang-elemzéstől függetlenül megmaradnak.
         for (int i = 0; i < lines.size(); ++i)
             if (recheckedAt(i)) uncertain[i] = true;
+        voiceUncertain = uncertain;
+        // A sáv-ellentmondás is a bizonytalanság egy oka (v3, 14. döntés).
+        for (int i = 0; i < lines.size(); ++i)
+            if (sideConflictAt(i)) uncertain[i] = true;
+    }
+
+    bool lockedAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        return it != ov.utterances.constEnd() && (it->corrected || it->confirmed);
+    }
+
+    // A legutóbbi elemzés szerint a sor a MOSTANI beszélője oldalával ellentétes sávon szólt.
+    bool sideConflictAt(int i) const
+    {
+        const auto it = review.sideConflicts.constFind(lines[i].id);
+        return it != review.sideConflicts.constEnd() && it.value() == assigned.value(i) && !lockedAt(i);
+    }
+
+    // A beszélő személyének címkéi nem illenek a megbeszéléshez (mindkét oldalon van címke, de nincs közös).
+    bool tagMismatch(const QString& key) const
+    {
+        if (!personTags || meetingTags.isEmpty()) return false;
+        const QString person = personOf(key);
+        if (person.isEmpty()) return false;
+        const QStringList tags = personTags(person);
+        if (tags.isEmpty()) return false;
+        for (const QString& t : tags)
+            if (meetingTags.contains(t, Qt::CaseInsensitive)) return false;
+        return true;
+    }
+
+    QString reasonAt(int i) const
+    {
+        if (!uncertain.value(i)) return {};
+        if (sideConflictAt(i)) return QStringLiteral("side");
+        if (voiceUncertain.value(i) && tagMismatch(assigned.value(i))) return QStringLiteral("tag");
+        return QStringLiteral("voice");
     }
 
     // Egy minta (sampleRef) lenyomatai a használt modellekkel, fúziós vektorként. A testvér-
@@ -612,6 +693,7 @@ struct SpeakerEditor::Private {
             out[i].uncertain = uncertain.value(i);
             out[i].noisy = noisyAt(i);
             out[i].likely = recheckedAt(i) ? likelyAt(i) : QString();
+            out[i].reason = reasonAt(i);
             const auto it = ov.utterances.constFind(lines[i].id);
             if (it != ov.utterances.constEnd()) {
                 out[i].corrected = it->corrected;
@@ -865,6 +947,7 @@ struct SpeakerEditor::Private {
         redoStack.clear();
 
         emitChanges(s, !delta.isEmpty(), !s.peopleAdded.isEmpty(), !s.voiceprints.isEmpty());
+        scheduleReview();
     }
 
     // Egy korábbi overlay-állapot visszatöltése (undo/redo). Az azonosítás mindig a mostani;
@@ -921,6 +1004,7 @@ struct SpeakerEditor::Private {
         persist(c.map, /*forward*/ !undoing, namesChanged);
         recomputeUncertain();
         emitChanges(s, !c.map.isEmpty(), !c.peopleAdded.isEmpty(), !c.voiceprints.isEmpty());
+        scheduleReview();
     }
 
     // ---- a műveletek építőkövei ---------------------------------------------
@@ -1231,6 +1315,129 @@ struct SpeakerEditor::Private {
             emit q->uncertainCountChanged(uncertainCount());
         }
         emit q->embeddingFinished(complete);
+        scheduleReview();
+    }
+
+    // ---- v3: háttér-elemzés (sáv-oldal + jelöltek + Átnézendő csoportok) ----------
+    void scheduleReview()
+    {
+        if (lines.isEmpty() || folder.isEmpty() || reviewScheduled) return;
+        reviewScheduled = true;
+        QTimer::singleShot(0, q, [this] {
+            reviewScheduled = false;
+            startReview();
+        });
+    }
+
+    // A pillanatkép a fő szálon (a store-ok és a címke-seam nem szálbiztosak).
+    ReviewInput makeInput() const
+    {
+        ReviewInput in;
+        if (store) in.meeting = store->load(meetingId);
+        in.meeting.speakerMap = speakerMap;
+        if (in.meeting.folder.isEmpty()) in.meeting.folder = folder;
+        in.lines = lines;
+        in.overlay = ov;
+        in.embeddings = fused;
+        in.userName = userName;
+        if (voiceprints && !fused.isEmpty()) {
+            const int dim = fused.constBegin()->size();
+            for (const QString& person : voiceprints->people()) {
+                QVector<QVector<float>> vecs;
+                for (const FusedPrint& fp : fusedPrints(person))
+                    if (fp.vec.size() == dim) vecs.append(fp.vec);
+                if (!vecs.isEmpty()) in.personPrints.insert(person, vecs);
+            }
+        }
+        if (personTags) {
+            QHash<QString, QStringList> tags;
+            QStringList persons = in.personPrints.keys();
+            for (const QString& key : visibleKeys()) persons << personOf(key);
+            for (const QString& p : std::as_const(persons))
+                if (!p.isEmpty() && !tags.contains(p.toCaseFolded())) tags.insert(p.toCaseFolded(), personTags(p));
+            in.personTags = [tags](const QString& p) { return tags.value(p.toCaseFolded()); };
+        }
+        if (people) {
+            const QHash<QString, QString> learned = people->defaultSides();
+            for (auto it = learned.cbegin(); it != learned.cend(); ++it)
+                in.sideHints.learnedSides.insert(it.key().toCaseFolded(), sideFromName(it.value()));
+        }
+        if (!newPersonKey.isEmpty() && visible(newPersonKey)) in.newPersonKey = newPersonKey;
+        return in;
+    }
+
+    void startReview()
+    {
+        if (lines.isEmpty() || folder.isEmpty()) return;
+        if (reviewRunning) { reviewPending = true; return; }
+        reviewRunning = true;
+        reviewPending = false;
+        emit q->reviewRunningChanged(true);
+        const int ep = reviewEpoch;
+        const ReviewInput in = makeInput();
+        const std::optional<MeetingActivity> cached = activity;
+        const SpeakerEditor::ActivityProvider provider = activityProvider;
+        QPointer<SpeakerEditor> self(q);
+        auto job = [this, self, ep, in, cached, provider] {
+            const MeetingActivity act = cached ? *cached : provider ? provider(in.meeting) : defaultActivity(in.meeting);
+            ReviewResult result = analyzeReview(in, act);
+            QMetaObject::invokeMethod(qApp, [this, self, ep, act, result = std::move(result)]() mutable {
+                if (!self) return;
+                onReview(ep, act, std::move(result));
+            }, Qt::QueuedConnection);
+        };
+        QThreadPool::globalInstance()->start(job);
+    }
+
+    void onReview(int ep, const MeetingActivity& act, ReviewResult result)
+    {
+        reviewRunning = false;
+        if (ep == reviewEpoch) activity = act;
+        if (ep != reviewEpoch || reviewPending) {
+            // Közben változott valami: a friss állapotra újra.
+            emit q->reviewRunningChanged(false);
+            reviewPending = false;
+            startReview();
+            return;
+        }
+        const QVector<RowState> before = rows();
+        const int uncertainBefore = uncertainCount();
+        review = std::move(result);
+        recomputeUncertain();
+        const QVector<RowState> now = rows();
+        QStringList changed;
+        for (int i = 0; i < now.size() && i < before.size(); ++i)
+            if (!(now[i] == before[i])) changed << lines[i].id;
+        if (!changed.isEmpty()) emit q->utterancesChanged(changed);
+        if (uncertainCount() != uncertainBefore) emit q->uncertainCountChanged(uncertainCount());
+        // A people.json tanult sáv-oldalai (megerősített sorokból / kézi beosztásból).
+        if (people) {
+            bool any = false;
+            const QHash<QString, Side> learned = sides::learnedDefaults(review.sides);
+            for (auto it = learned.cbegin(); it != learned.cend(); ++it)
+                any |= people->setDefaultSide(it.key(), sideName(it.value()));
+            if (any) emit q->peopleChanged();
+        }
+        emit q->reviewRunningChanged(false);
+        emit q->reviewGroupsChanged();
+    }
+
+    // Sorok átrakása egy célhoz EGY lépésben: a meglévő kulcs, egy személy (meglévő beszélője
+    // vagy új résztvevő), vagy új névtelen résztvevő.
+    bool moveToTarget(const QVector<int>& idx, const QString& key, const QString& person, const QString& label)
+    {
+        if (idx.isEmpty()) return false;
+        Step s = begin();
+        QString target = (!key.isEmpty() && visible(key)) ? key : QString();
+        if (target.isEmpty() && !person.isEmpty()) target = speakerKeyForPerson(canonicalPerson(person));
+        if (target.isEmpty()) target = createParticipant(canonicalPerson(person), s);
+        QVector<int> move;
+        for (int i : idx)
+            if (assigned[i] != target) move.append(i);
+        if (move.isEmpty()) return false;
+        moveLines(move, target, s);
+        commit(s, SpeakerEditor::tr("%1: %n sor ide: %2", nullptr, move.size()).arg(label, displayOf(target)));
+        return true;
     }
 };
 
@@ -1283,6 +1490,7 @@ void SpeakerEditor::setUserSpeakerName(const QString& name)
     if (d->userName == name.trimmed()) return;
     d->userName = name.trimmed();
     emit speakersChanged();
+    d->scheduleReview();
 }
 
 void SpeakerEditor::setEmbedderFactory(UtteranceEmbedderFactory factory)
@@ -1297,6 +1505,7 @@ void SpeakerEditor::setVoiceModelIds(const QStringList& ids)
     // A futó szál eredménye modellenként a cache-be kerül, így a váltás után is érvényes.
     d->modelIds = norm;
     d->rebuildFused();
+    d->scheduleReview();
     const QVector<bool> before = d->uncertain;
     d->recomputeUncertain();
     QStringList changed;
@@ -1389,6 +1598,7 @@ QString SpeakerEditor::moveUtterancesToPerson(const QStringList& utteranceIds,
     Step s = d->begin();
     const QString key = d->createParticipant(person, s);
     d->moveLines(idx, key, s);
+    d->newPersonKey = key;
     d->commit(s, tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(person));
     d->proposeSuggestion(s, idx, key);
     return key;
@@ -1402,6 +1612,7 @@ QString SpeakerEditor::moveUtterancesToNewParticipant(const QStringList& utteran
     Step s = d->begin();
     const QString key = d->createParticipant(QString(), s);
     d->moveLines(idx, key, s);
+    d->newPersonKey = key;
     d->commit(s, tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(d->displayOf(key)));
     d->proposeSuggestion(s, idx, key);
     return key;
@@ -2041,6 +2252,7 @@ void SpeakerEditor::refreshFromDisk()
     d->recomputeAssigned();
     d->recomputeUncertain();
     d->emitChanges(s, false, false, false);
+    d->scheduleReview();
 }
 
 void SpeakerEditor::reloadTranscript()
@@ -2065,6 +2277,122 @@ void SpeakerEditor::reloadTranscript()
     const SummaryStaleInfo st = d->staleInfo();
     if (st.stale != before.stale || st.correctedSpeakers != before.correctedSpeakers)
         emit summaryStaleChanged(st.stale, st.correctedSpeakers);
+}
+
+// ---- v3: kézi sáv-beosztás -----------------------------------------------------
+
+QStringList SpeakerEditor::trackAssignment(const QString& speakerKey) const
+{
+    return d->ov.speakerTracks.value(speakerKey);
+}
+
+bool SpeakerEditor::setTrackAssignment(const QString& speakerKey, const QStringList& trackIds)
+{
+    if (!d->visible(speakerKey)) return false;
+    const Meeting m = d->store ? d->store->load(d->meetingId) : Meeting();
+    QStringList ids;
+    for (const QString& id : trackIds) {
+        if (id.isEmpty() || ids.contains(id)) continue;
+        const bool known = std::any_of(m.tracks.cbegin(), m.tracks.cend(), [&](const Track& t) { return t.id == id; });
+        if (known) ids << id;
+    }
+    if (ids == d->ov.speakerTracks.value(speakerKey)) return false;
+    Step s = d->begin();
+    if (ids.isEmpty()) d->ov.speakerTracks.remove(speakerKey);
+    else d->ov.speakerTracks.insert(speakerKey, ids);
+    d->commit(s, ids.isEmpty() ? tr("Sáv-beosztás törlése: %1").arg(d->displayOf(speakerKey))
+                               : tr("Sáv-beosztás: %1").arg(d->displayOf(speakerKey)));
+    return true;
+}
+
+// ---- v3: bizonyíték, jelöltek, Átnézendő -----------------------------------------
+
+void SpeakerEditor::setActivityProvider(ActivityProvider provider)
+{
+    d->activityProvider = std::move(provider);
+    d->activity.reset();
+    d->scheduleReview();
+}
+
+void SpeakerEditor::setPersonTagsProvider(PersonTagsFn fn)
+{
+    d->personTags = std::move(fn);
+    d->scheduleReview();
+}
+
+QVector<ReviewGroup> SpeakerEditor::reviewGroups() const { return d->review.groups; }
+bool SpeakerEditor::isReviewRunning() const { return d->reviewRunning; }
+SideReport SpeakerEditor::sideReport() const { return d->review.sides; }
+
+void SpeakerEditor::refreshReviewGroups() { d->scheduleReview(); }
+
+bool SpeakerEditor::applyReviewGroup(const QString& groupId)
+{
+    const auto it = std::find_if(d->review.groups.cbegin(), d->review.groups.cend(),
+                                 [&](const ReviewGroup& g) { return g.id == groupId; });
+    if (it == d->review.groups.cend()) return false;
+    const ReviewGroup g = *it;
+    if (g.kind == ReviewKind::ShortLines) return false;
+    QVector<int> idx;
+    for (int i : d->indicesOf(g.utteranceIds)) {
+        // Ami közben máshova került, kimarad.
+        if (g.kind == ReviewKind::SimilarToNewPerson ? d->assigned[i] == g.proposedSpeakerKey
+                                                     : d->assigned[i] != g.currentSpeakerKey)
+            continue;
+        idx.append(i);
+    }
+    const QString label = g.kind == ReviewKind::ContaminatedCore ? tr("Szétválasztás") : tr("Átnézendő");
+    if (!d->moveToTarget(idx, g.proposedSpeakerKey, g.proposedPersonName, label)) return false;
+    d->review.groups.erase(std::remove_if(d->review.groups.begin(), d->review.groups.end(),
+                                          [&](const ReviewGroup& x) { return x.id == groupId; }),
+                           d->review.groups.end());
+    emit reviewGroupsChanged();
+    return true;
+}
+
+bool SpeakerEditor::splitSpeaker(const QString& speakerKey)
+{
+    if (!d->visible(speakerKey) || d->fused.isEmpty()) return false;
+    const ReviewInput in = d->makeInput();
+    const SideReport sr = analyzeSides(in.meeting, in.lines, in.overlay, d->activity.value_or(MeetingActivity{}),
+                                       in.userName, in.sideHints);
+    const ranking::RankContext ctx = buildRankContext(in, sr);
+    for (const ReviewGroup& g : buildReviewGroups(in, sr, ctx)) {
+        if (g.kind != ReviewKind::ContaminatedCore || g.currentSpeakerKey != speakerKey) continue;
+        return d->moveToTarget(d->indicesOf(g.utteranceIds), g.proposedSpeakerKey, g.proposedPersonName,
+                               tr("Szétválasztás"));
+    }
+    return false;
+}
+
+QVector<Candidate> SpeakerEditor::lineCandidates(const QString& utteranceId) const
+{
+    const int i = d->indexById.value(utteranceId, -1);
+    if (i < 0) return {};
+    const QVector<float> emb = d->fused.value(utteranceId);
+    Side side = Side::Unknown;
+    if (i < d->review.sides.lines.size() && d->review.sides.lines[i].utteranceId == utteranceId)
+        side = d->review.sides.lines[i].side;
+    return ranking::rankForLine(d->review.context, emb, side, d->assigned[i], !emb.isEmpty() && !d->noisyAt(i));
+}
+
+QVector<Candidate> SpeakerEditor::speakerCandidates(const QString& speakerKey) const
+{
+    return ranking::rankForSpeaker(d->review.context, speakerKey);
+}
+
+QVector<Evidence> SpeakerEditor::whyNot(const QString& utteranceId) const
+{
+    const int i = d->indexById.value(utteranceId, -1);
+    if (i < 0) return {};
+    for (const Candidate& c : lineCandidates(utteranceId))
+        if (c.speakerKey == d->assigned[i]) return ranking::whyNot(c);
+    return {};
+}
+
+QVector<Evidence> SpeakerEditor::speakerEvidence(const QString& speakerKey) const
+{
+    return ranking::selfEvidence(d->review.context, speakerKey);
 }
 
 } // namespace tanara
