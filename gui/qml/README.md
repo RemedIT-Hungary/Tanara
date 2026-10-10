@@ -50,7 +50,7 @@ log file, so they do not touch `~/.tanara` or `~/Tanara`.
 ## Screenshots without a window
 
 ```bash
-build/gui/tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x2900
+build/gui/tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x3600
 build/gui/tanara --qml-shot out.png --qml-page Main --theme light --size 1280x820 \
     --qml-prop 'shellState="empty"'
 build/gui/tanara --qml-shot out.png --qml-page SummaryTab --size 1004x640 --scale 2
@@ -72,6 +72,9 @@ gui/qml/shoot.sh TranscriptTab:1004x640 'Main:1280x820:shellState="noSelection"'
 
 The log line reports the number of QML warnings; treat anything above 0 as a bug.
 `shoot.sh` takes `Type[:WxH[:name=value,…]]` specs and always renders both themes.
+`SHOT_DELAY=<ms>` passes `--delay` to every shot; without it `shoot.sh` uses the default, except for
+`TranscriptTab` (2500 ms: its demo meeting loads asynchronously). The v3 recipes are in "Demo states
+(screenshots)" under "The v3 meeting view".
 
 The software renderer is used on purpose: the module uses **no shader effects**, so the
 PNG matches the live window. Keep it that way — no `MultiEffect`, `layer.effect`,
@@ -145,48 +148,190 @@ Compare against the design: `design/handoff/renders/main-{light,dark}--m01…m10
 | `TSplitHandle` | `SplitView { handle: TSplitHandle {} }` |
 | `TDivider`, `TDashedRect`, `TShadow`, `TFocusRing` | building blocks |
 | `TPlaceholder` | dashed box for not-yet-built regions |
+| `EvidenceChip` | `kind`: `voice` \| `side` \| `calendar` \| `tag` \| `lines` \| `similarity` \| `manual`; `polarity`: `support` \| `neutral` \| `contradict`; `side` (`mic` \| `loopback`), `quiet`, `text` |
+| `EvidenceReason` | `evidence` (an `evidenceMap()` object: `kind`, `polarity`, `label`, `sentence`, `fixLabel`), `fixEnabled`; `fixClicked(evidence)` |
+| `CandidateRow` | `personName`, `colorIndex` (< 0 = outside the meeting), `subText`, `evidence`, `keyHint`, `dimmed`, `highlighted`, `strongEvidence`; `clicked()` |
+| `TimeChip` | `text`, `active`, `warn`, `iconName`, `large`, `toolTipText`; `stateHovered` / `stateFocused` |
+| `TranscriptMarker` | `kind`: `confirmed` \| `short` \| `uncertain` \| `corrected` \| `newPerson` \| `noisy`; `reason` (`side` \| `voice` \| `tag`) for `uncertain` |
+| `TagRowOverview` | `model` (a `MeetingTagsModel`), `maxVisibleSuggestions`; `tagClicked(id)` — tags, inline input and suggestions in one field |
+| `StatTiles` | `stats`: `[{ label, value, sub }]`, 2 columns |
+| `PipelineSteps` | `steps`: `[{ key, title, sub, state, parallel, progress }]`, `state`: `done` \| `running` \| `attention` \| `waiting`; `progress` 0–100, `-2` = indeterminate, `-1` = none |
+| `MeetingToolsRow` | the 46 px per-tab tool-row slot under the header (children go in; empty = hidden) |
+| `MapDock`, `SourceCard`, `MemoToc` | see "The v3 meeting view" |
 
 ## Shell (`Main.qml`)
 
-`ApplicationWindow` 1280×820 (minimum 960×600): menu row (Fájl / Nézet, native window
+`ApplicationWindow` 1280×820 (minimum 960×600): menu row (Fájl / Megbeszélés / Nézet, native window
 decorations kept) · 276 px sidebar · content · 52 px player. `Main.qml` owns the view-models
 `ShellActions` (the `shell` of `CONTRACT.md`: navigation + gated actions), `PlayerController`,
 `ShellMeetingModel` (header, stale flag, task strip) and `ShellUiState` (window size, selection,
 theme, player volume in `<TANARA_HOME or ~/.tanara>/ui-state.json`). What shows is computed:
 
 - library empty → `EmptyLibraryView` · nothing selected → `NoSelectionView` · meeting without
-  transcript → `MeetingHeader` + `PreTranscriptView` + `PlayerBar` · otherwise `MeetingHeader` +
-  tabs (`TranscriptTab`, `SummaryTab`, `TracksTab`) + `PlayerBar`. `showTab(2)` before a
-  transcript shows `TracksTab` with a back button instead of `PreTranscriptView`.
+  transcript → `MeetingHeader` + the Áttekintés page showing `PreTranscriptView` (until the
+  transcription starts; then the Áttekintés itself) + `PlayerBar` · otherwise `MeetingHeader` +
+  four tabs (0 Áttekintés `OverviewTab`, 1 Átirat `TranscriptTab`, 2 Vezetői összefoglaló and
+  3 Memó `SummaryTab`) + the map dock or `PlayerBar`. Details: "The v3 meeting view" below.
 - Content components get `meetingId` / `player` / `shell` as plain property bindings in `Main.qml`.
 
-Keyboard: `Ctrl+F` library search · `Ctrl+Shift+F` search in the transcript · `Ctrl+1/2/3` tabs ·
-`F2` rename · `Space` play / pause (never while a text field or a keyboard-focused control has
+Keyboard: `Ctrl+F` library search · `Ctrl+Shift+F` search in the transcript · `Ctrl+1/2/3/4` tabs
+(Áttekintés / Átirat / Vezetői összefoglaló / Memó) · `Ctrl+E` Olvasás / Javítás · `F2` rename · `Space` play / pause (never while a text field or a keyboard-focused control has
 focus). With the focus in the transcript: arrows, `Enter` (play from the line), `1`–`9` (move the
 selection), `B` / `Shift+B` (next / previous uncertain line), `Ctrl+C` (copy the selected lines),
-`Ctrl+A`, `Ctrl+L` (rail), `Ctrl+Z` / `Ctrl+Shift+Z`. Right click on a line: copy / play menu.
+`Ctrl+A`, `Ctrl+L` (rail), `Ctrl+E` (Olvasás / Javítás), `Ctrl+Z` / `Ctrl+Shift+Z`. Right click on a line: copy / play menu.
 An inline editor that hides itself must give the focus back (`releaseHiddenFocus()` pattern):
 an invisible `TextInput` keeps the active focus and would swallow every key.
 
-Overrides for `--demo` / `--qml-shot` (leave unset with a real controller):
+Overrides for `--demo` / `--qml-shot` (leave unset with a real controller; `demoState` below):
 `shellState` (`"empty" | "noSelection" | "preTranscript" | "meeting"`, `""` = computed),
 `taskRunning` (sample task strip), `demoSearch` (sidebar search text), `demoOverlay`
 (`retranscribe | delete | close | stop | confirm | toast | toastError | cloudToast | filters |
 rename | tracks | import | importSplit | importProbing | importError | importEmpty | importFailed |
-importProgress | importStrip | drop`).
+importProgress | importStrip | drop`; also `tagToast`, `selection`; `tracks` opens the
+"Sávok részletei" dialog on the Áttekintés), `demoTags` (header tag-model states), and `demoState`
+(the v3 states: `overviewProcessing | overviewDone | overviewEmpty | overviewNobody | readingMap |
+tabTooltip | summarySources | memoSections`).
+
+### The v3 meeting view (design: `design/handoff-v3/`)
+
+Spec and decision log: `design/handoff-v3/README.md` (V1–V6 shell, E1–E4 editor, S1–S3 summary).
+What the shell is made of, top to bottom:
+
+| Part | File | What it does |
+|---|---|---|
+| Menu row | `Main.qml` | **Fájl · Megbeszélés · Nézet** (Alt+F / Alt+M / Alt+N). `Megbeszélés` is `MeetingMenu` |
+| Header, **one 56 px line** | `MeetingHeader.qml` | title 19/600 + pencil (F2 / double click renames in place) · separator · four tabs · `…` button (the same `MeetingMenu`). No meta line, no tag row, no "identify" button any more |
+| Tool row, 46 px | `MeetingToolsRow.qml` | a slot under the header whose content changes per tab: Átirat → `TranscriptToolbar` (lives in the editor); Vezetői összefoglaló / Memó → `SummaryToolsRow`; Áttekintés → none (the row hides itself when empty) |
+| Content | `Main.qml` `StackLayout` | one page per tab (see below) |
+| Bottom | `MapDock.qml` or `PlayerBar.qml` | tabs Átirat / Vezetői összefoglaló / Memó **with a transcript**: the map dock; Áttekintés (and no lane data): the plain player bar. `Main.mapDockShown` |
+
+**Tabs and indices** (`ShellActions.currentTab`, `Main.currentTab`, `Main.showTab(i)`, `MeetingHeader.currentTab`):
+
+| Index | Tab | Shortcut | Content |
+|---|---|---|---|
+| 0 | Áttekintés | `Ctrl+1` | `OverviewTab` (before the transcript is started: `PreTranscriptView` in the same page) |
+| 1 | Átirat | `Ctrl+2` | `TranscriptTab` |
+| 2 | Vezetői összefoglaló | `Ctrl+3` | `SummaryTab` with `section = "exec"` |
+| 3 | Memó | `Ctrl+4` | the **same** `SummaryTab` with `section = "memo"` (`Main.syncSummarySection()`); the `StackLayout` index is `min(currentTab, 2)` |
+
+A tab that is not available yet is dimmed: Átirat needs a transcript (or a running transcription,
+the tab then shows `62%`), the two summary tabs need a summary (`MeetingHeader.tabAvailable`).
+Hover or click opens a panel that says what is missing and offers the action (`demoState="tabTooltip"`).
+A running step shows as a pill on its tab; a stale summary as a warn pill on the summary tab.
+The old **Sávok** tab is gone: its full view is the "Sávok részletei" dialog of the Áttekintés
+(`OverviewTab.openTracks()`, `objectName: "tracksDialog"`, it hosts `TracksTab`).
+
+`MeetingMenu` (`Megbeszélés`): Átnevezés (F2) · Ki volt ott? · Résztvevők azonosítása (hang alapján) ·
+Újraellenőrzés… · Újra-átírás… · Exportálás archívumba… · Megnyitás mappában · — · Törlés….
+The "identify" entry is the old voice-identification entry point; the Ki volt ott? dialog is the
+new one (see below). `Nézet` lists the four tabs, then **Javítás / Olvasás** (Ctrl+E) and
+**Beszélő-oszlopok** (Ctrl+L).
+
+#### Áttekintés (`OverviewTab`, `src/OverviewViewModel`)
+
+Two columns. **Left**: `MIRŐL SZÓL` (`SourceCard`: the manual description, calendar is a placeholder) ·
+the tag field `TagRowOverview` (tags + suggestions with source label and "Miért?") · `KIK VOLTAK OTT`
+(`ParticipantList` with source badges and speech share; empty: "+ Résztvevő" / "Csak én beszéltem";
+everybody unknown: the raw speakers + "Elnevezem őket") · the approval banner `approvalBanner`
+("A hanglenyomat-elemzés kész: N jelölt", `Átnézem` opens the dialog, `Később` hides it for the session).
+**Right** (340 px): `FELDOLGOZÁS` (`PipelineSteps`) and `SÁVOK` (`TrackList`); when all is done:
+`ADATOK` (`StatTiles`, 2×3) and the steps / tracks collapsed to one row each (`stepsCollapsed`, `tracksCollapsed`).
+
+#### The map dock (`MapDock`)
+
+One 13 px row per speaker (name 104 px in the speaker's ink · 8 px lane · speech share), an accent
+play line, the visible part of the list as a faint band, the 44 px control row below. A click on the
+lane seeks; a click on the name opens the speaker menu (`speakerClicked`); the fingerprint mark at
+the end of the name column opens the voiceprint panel (`voiceprintClicked`). Inputs: `lanes`
+(`TranscriptEditorViewModel.overview`), `viewportStart` / `viewportSize` (only on the Átirat tab),
+`collapsedCount` / `lanesExpanded` ("Egyéb (N)"), `timelineMs`, and the two extra-row lists
+**`sourceMarks`** (row "Forrás": accent = the active statement, accentLine = the others; the speaker
+lanes dim to 45 %) and **`sectionBands`** (row "Szakaszok", memo sections as bands, the active one
+accent). Items are `{ startMs, endMs, active }`; `Main` takes them from `SummaryTab.sourceMarks` /
+`.sectionBands` on tabs 2 / 3. `SummaryMapRows` is the same two rows as a stand-alone component.
+
+#### "Ki volt ott?" (`ParticipantsDialog`, `src/ParticipantsViewModel`)
+
+An 820 px dialog that approves the voice analysis' participant candidates. Groups (an empty one is
+hidden): Biztos · Kétséges · Meghívott, de nem hallottuk · added in the dialog; a name field
+(`PersonPicker`) with tag-based suggestions; footer: the info about unbound raw speakers, `Kihagyás`
+(`skip()`), `Tovább · N résztvevő` (`approve()`). While the analysis runs it shows a spinner; Esc
+closes it without a decision ("later"). `Main.qml` hosts it (`participantsDialog`); it opens itself
+on `ShellActions.participantsDialogRequested`.
+
+`ShellActions` entry points: `openParticipants(meetingId)` (banner, tool row, Megbeszélés menu, editor),
+`maybeOfferParticipants(meetingId)` (called by `Main.showTab(1)`: opens the dialog once per session when
+an approval is pending; returns `true` if it opened), `participantsGuess(meetingId)` (the pre-transcript
+voice guess), `identifyParticipants(meetingId)` and `recheckSpeakers(meetingId)` (the menu entries).
+
+#### Átirat: Olvasás and Javítás (`TranscriptTab`)
+
+`TranscriptTab.fixMode` (Ctrl+E, the segment in `TranscriptToolbar`, `Nézet › Javítás`): **Olvasás** is
+the plain list; **Javítás** switches the speaker rail on (`onFixModeChanged` sets
+`editorVm.railVisible`) and shows the per-line markers and the "Átnézendő N" chip. There is no
+permanent undo button: `Ctrl+Z` and the `TranscriptChangeBar` at the bottom (Visszavonás).
+`B` / `Shift+B` step over the lines to review (over the groups in the Átnézendő view).
+
+| Type | Role |
+|---|---|
+| `LinePopover` (E1, 390 px, `objectName: "linePopover"`) | "Kinek a sora ez?": scope (this line / selection / the whole speaker), JAVASOLT candidates (`CandidateRow` + `EvidenceChip`s, keys 1–3), "Miért nem X?" (`EvidenceReason` rows, each with the place to fix it), "Új személy ebből a sorból…". `TranscriptTab.openLinePopover(row, anchor)` / `openLinePopoverFor(utteranceId, anchor)` |
+| `SpeakerWhyPopover` (E3, 430 px, `"speakerWhyPopover"`) | "Miért ő?" for a whole speaker: reasons, which track he speaks on (the manual side assignment, the one truth), "Nem ő? valójában…", new person, merge, pair review, "Ő nem volt ott". `openSpeakerWhyAt(key, x, y, focusTracks)` |
+| `ReviewGroupsView` (E2, `"reviewView"`) + `ReviewGroupCard` + `ContaminatedCoreBanner` | the "Átnézendő" view: doubtful lines grouped by reason, one decision (and one undo step) per group: "Mind a N → X", "Egyenként", "Kihagyom"; the contaminated-core strip on top ("Szétválasztás", "Miért?") |
+| `TranscriptMarker` | per-line mark in Javítás mode: `confirmed`, `short`, `uncertain` (`reason`: side / voice / tag), `corrected`, `newPerson`, `noisy` |
+| `EvidenceChip` | 20 px chip: `kind` voice / side (`side`: mic / loopback) / calendar / tag / lines / similarity / manual; `polarity` support / neutral / contradict (dashed outline, muted text, × / ⚠ icon); `quiet` |
+| `EvidenceReason` | one reason row (`evidence` = `TranscriptEditorViewModel.evidenceMap()`), `fixClicked(evidence)` |
+| `CandidateRow` | a person candidate with avatar, sub line, evidence chips and the 1–3 key hint; `dimmed` for the other-track and current speaker |
+| `TranscriptChangeBar` | after a reassignment; after a **new person** (E4) three lines: what happened, "Még N sor hangja hasonlít…" + "Mind a N hozzá", voiceprint readiness |
+
+#### Vezetői összefoglaló and Memó (`SummaryTab`, `src/SummaryViewModel`)
+
+`SummaryTab.section` (`"exec"` | `"memo"`, set by the shell) picks the form; `sourcesLayout` is true for a
+summary with statements (`vm.hasStatements`), an old summary keeps `SummaryDocView`. In the shell
+`embedToolsRow`, `embedMapRows` and `showSectionSwitch` are `false`: the tool row and the dock own them.
+
+| Type | Role |
+|---|---|
+| `SummaryExecView` (S1/S3) | the sentences as one flowing paragraph, a `TimeChip` after each; decisions and to-dos with an owner chip; the right column (250 px): participants with speech share, note, remaining actions. Stale summary (S3): a banner counts the affected statements, the affected sentence is underlined (`warnLine`), the affected source chip is `warn`. `popover` is the `SourcePopover` |
+| `SourcePopover` (S1, 440 px) | "Honnan jön ez?": the quotes of one statement with "Meghallgatom", "Ugrás az átiratba", "Nem így hangzott el? · Jelzem". `openFor(statementId, anchor)` |
+| `SummaryMemoView` (S2) + `MemoToc` | memo sections: table of contents (236 px, `picked(index)`) and the sections in time order with a range `TimeChip` (`large`, `iconName: "play"`); the active section follows the scrolling |
+| `SummaryToolsRow` | generation meta · **Források** switch · Másolás · Újragenerálás |
+| `SummaryMapRows` | the "Forrás" / "Szakaszok" rows of the dock as a component |
+| `TimeChip` | monospace time chip: default accentSoft, `active` (selected statement), `warn` (the speaker changed in its source), `iconName`, `large` |
+
+#### Demo states (screenshots)
+
+`--qml-prop` values are JSON, so strings carry their quotes. `shoot.sh` renders both themes. The
+**TranscriptTab** states build their fictional meeting asynchronously: use `--delay 2500` (`shoot.sh`
+does that by itself for `TranscriptTab`; override with `SHOT_DELAY=<ms>`). Names in the samples:
+Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
+
+| Screen | Spec (`gui/qml/shoot.sh …`) | `demoState` values |
+|---|---|---|
+| Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
+| Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
+| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` |
+| Map dock alone | `MapDock:1100x200` | (invented lanes) |
+| Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
+| Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` |
+| Átirat (Javítás) | `TranscriptTab:1100x760:demoState="fixLinePopover"` | `markers` · `fixLinePopover` (E1) · `reviewGroups` · `reviewExpanded` (E2) · `contaminatedCore` · `speakerWhy` (E3) · `newPersonSimilar` (E4) — plus the older ones listed in the header of `TranscriptTab.qml` |
+| Összefoglaló | `SummaryTab:1100x720:demoState="sourcesOn"` | `sourcesOn` · `sourcesOff` · `sourcePopover` · `memoSections` · `staleTargeted` · `noSources` — plus the older `stale`, `done`, `memo`, `running`, `empty*`, `topics` … |
+
+A `Main` demo state needs `App.demo` (set by `--qml-shot`): the shell then picks the sample meeting
+`demo-partner`, and `Main.demoState` forwards the value to the content components.
+
 
 ### Tags in the shell
 
 Spec: `design/handoff-tags/README.md` (C03/C04, C07), contract `CONTRACT-TAGS.md`. The view-models
 reach the core through `TagBackend` → `TagControllerBackend` (`createControllerTagBackend`).
 
-- **Header** (`MeetingHeader` → `TagRow`, under the meta line, every tab): the model is
-  `ShellMeetingModel.tags` (a `MeetingTagsModel` bound to the selected meeting). Suggestions are
+- **Áttekintés** (v3: the header has no tag row any more; `OverviewTab` → `TagRowOverview`, the
+  "Címkék" field of the left column): the model is `ShellMeetingModel.tags` (a `MeetingTagsModel` bound to the selected meeting). Suggestions are
   requested when a transcribed meeting is shown and when its transcript arrives; co-occurring
   ones after a manual add; LLM ones arrive by themselves after a summary. A chip click →
   `shell.filterByTag(id)` → `tagFilterRequested` → `Main.filterLibraryByTag` (sets `tags` on the
   library model when it has that property). "Miért?" links → `shell.showMeeting`.
-- **Before transcript** the header has no tag row; step 1 of `PreTranscriptView` shows "Címkék"
+- **Before transcript** the Áttekintés page shows `PreTranscriptView`; its step 1 of `PreTranscriptView` shows "Címkék"
   (`TagField` on `PreTranscriptViewModel.tags`) and the suggestion line (`tagSuggestions`,
   `tagSuggestionReason`: the meeting's normal suggestions, else `draftTagSuggestions(title)`). The
   note cards show the source meeting's tags (`MeetingNoteModel.suggestions[].tags`, mini chips).
@@ -269,7 +414,10 @@ in their own engines).
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
 
-### Tracks tab (`TracksTab.qml`, `TrackRow.qml`, `src/TrackListModel`)
+### Tracks (`TracksTab.qml`, `TrackRow.qml`, `src/TrackListModel`)
+
+Since v3 this is no longer a tab: the Áttekintés shows the tracks in its right column (`TrackList`),
+and the full view below lives in the "Sávok részletei" dialog (`OverviewTab.openTracks()`).
 
 One row per track file: play (preview), source icon, friendly name (rename in place), a second
 line, the waveform, the file length, and the action (dropped → „Visszaállítás”, missing file →

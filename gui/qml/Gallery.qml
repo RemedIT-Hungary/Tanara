@@ -7,6 +7,8 @@ import QtQuick.Templates as T
 //   képernyőkép:    tanara --qml-shot ki.png --qml-page Gallery --theme dark --size 1280x2600
 // overlay: "" | "dialog" | "menu" | "popover" — induláskor megnyit egy VALÓDI felugrót
 // (pl. --qml-prop overlay=dialog), a fátyol / árnyék / pozicionálás ellenőrzéséhez.
+// v3 héj-elemek (EvidenceChip, TimeChip, TranscriptMarker, CandidateRow, EvidenceReason, TagRowOverview,
+// StatTiles, PipelineSteps): lásd a „Bizonyíték-chip” … „Áttekintés” szakaszokat.
 // section: "" (minden) | "tags" — csak az adott szakasz (pl. --qml-prop 'section="tags"').
 // A mintaszövegek fejlesztői tartalom → szándékosan nincsenek qsTr()-ben.
 Item {
@@ -694,6 +696,152 @@ Item {
             Section {
                 title: "Címkék (T01: chip, beviteli mező, a fejléc címkesora)"
                 TagGallerySection { width: page.width }
+            }
+
+            // ------------------------------------------------- v3 héj: bizonyíték, idő, jelölő
+            Section {
+                title: "Bizonyíték-chip (EvidenceChip): 3 polaritás × fajták"
+                flowSpacing: 10
+                // support
+                Shown { caption: "support · voice"; EvidenceChip { kind: "voice"; polarity: "support"; text: "hang 84%" } }
+                Shown { caption: "support · side mic"; EvidenceChip { kind: "side"; side: "mic"; polarity: "support"; text: "mikrofon-sáv" } }
+                Shown { caption: "support · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "support"; text: "hívás-sáv" } }
+                Shown { caption: "support · calendar"; EvidenceChip { kind: "calendar"; polarity: "support"; text: "meghívott" } }
+                Shown { caption: "support · tag"; EvidenceChip { kind: "tag"; polarity: "support"; text: "#Nordvik" } }
+                Shown { caption: "support · lines"; EvidenceChip { kind: "lines"; polarity: "support"; text: "86 sor" } }
+                Shown { caption: "support · similarity"; EvidenceChip { kind: "similarity"; polarity: "support"; text: "hasonló hang" } }
+                Shown { caption: "support · manual"; EvidenceChip { kind: "manual"; polarity: "support"; text: "kézi beosztás" } }
+                Shown { caption: "support · quiet (V2 sorok)"; EvidenceChip { kind: "voice"; polarity: "support"; quiet: true; text: "hang 91%" } }
+                // neutral
+                Shown { caption: "neutral · voice"; EvidenceChip { kind: "voice"; polarity: "neutral"; text: "hang 52%" } }
+                Shown { caption: "neutral · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: "hívás-sáv" } }
+                Shown { caption: "neutral · side"; EvidenceChip { kind: "side"; polarity: "neutral"; text: "egyik sáv" } }
+                Shown { caption: "neutral · lines"; EvidenceChip { kind: "lines"; polarity: "neutral"; text: "7 sor" } }
+                // contradict
+                Shown { caption: "contradict · voice"; EvidenceChip { kind: "voice"; polarity: "contradict"; text: "hang 31%" } }
+                Shown { caption: "contradict · side"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "contradict"; text: "másik sávon" } }
+                Shown { caption: "contradict · tag (⚠)"; EvidenceChip { kind: "tag"; polarity: "contradict"; text: "#Nordvik nélkül" } }
+            }
+
+            Section {
+                title: "Idő-chip (TimeChip): alap · hover · fókusz · aktív · figyelmeztető · szakasz (play)"
+                flowSpacing: 14
+                Shown { caption: "alap"; TimeChip { text: "12:41" } }
+                Shown { caption: "stateHovered"; TimeChip { text: "12:41"; stateHovered: true } }
+                Shown { caption: "stateFocused"; TimeChip { text: "12:41"; stateFocused: true } }
+                Shown { caption: "active"; TimeChip { text: "12:41"; active: true } }
+                Shown { caption: "warn"; TimeChip { text: "12:41"; warn: true } }
+                Shown { caption: "iconName play"; TimeChip { text: "31:10–44:05"; iconName: "play" } }
+                Shown { caption: "large + play"; TimeChip { text: "31:10–44:05"; iconName: "play"; large: true } }
+                Shown { caption: "large + active"; TimeChip { text: "44:05–58:30"; iconName: "play"; large: true; active: true } }
+            }
+
+            Section {
+                title: "Átirat-jelölő (TranscriptMarker): Javítás mód, soronként"
+                flowSpacing: 14
+                Shown { caption: "confirmed"; TranscriptMarker { kind: "confirmed" } }
+                Shown { caption: "short"; TranscriptMarker { kind: "short" } }
+                Shown { caption: "uncertain · side"; TranscriptMarker { kind: "uncertain"; reason: "side" } }
+                Shown { caption: "uncertain · voice"; TranscriptMarker { kind: "uncertain"; reason: "voice" } }
+                Shown { caption: "uncertain · tag"; TranscriptMarker { kind: "uncertain"; reason: "tag" } }
+                Shown { caption: "corrected"; TranscriptMarker { kind: "corrected" } }
+                Shown { caption: "newPerson"; TranscriptMarker { kind: "newPerson" } }
+                Shown { caption: "noisy"; TranscriptMarker { kind: "noisy" } }
+            }
+
+            Section {
+                title: "Jelölt-sor (CandidateRow) és ok-sor (EvidenceReason)"
+                flowSpacing: 18
+                Shown {
+                    caption: "CandidateRow · javasolt (erős bizonyíték, 1)"
+                    CandidateRow {
+                        width: 380
+                        personName: "Fehér Gábor"; colorIndex: 1; subText: "86 sor itt"; keyHint: "1"
+                        strongEvidence: true; highlighted: true
+                        evidence: [{ kind: "voice", polarity: "support", text: "hang 84%" },
+                                   { kind: "side", side: "loopback", polarity: "support", text: "hívás-sáv" }]
+                    }
+                }
+                Shown {
+                    caption: "CandidateRow · most ő (halvány) / meetingen kívüli"
+                    Column {
+                        spacing: 6
+                        CandidateRow {
+                            width: 380
+                            personName: "Kovács Lilla"; colorIndex: 0; subText: "most ő"; keyHint: "2"; dimmed: true
+                            evidence: [{ kind: "voice", polarity: "contradict", text: "hang 31%" }]
+                        }
+                        CandidateRow {
+                            width: 380
+                            personName: "Varga Árpád"; colorIndex: -1; subText: "12 megbeszélés"; keyHint: "3"
+                            evidence: [{ kind: "tag", polarity: "support", text: "#Nordvik" },
+                                       { kind: "voice", polarity: "neutral", text: "hang 52%" }]
+                        }
+                    }
+                }
+                Shown {
+                    caption: "EvidenceReason · mellette szól / ellene szól (javítás-link)"
+                    Column {
+                        spacing: 4
+                        EvidenceReason {
+                            width: 420
+                            evidence: ({ kind: "voice", polarity: "support", label: "Hang:",
+                                         sentence: "a mintáihoz 84%-ban hasonlít", fixLabel: "Minták" })
+                        }
+                        EvidenceReason {
+                            width: 420
+                            evidence: ({ kind: "side", side: "loopback", polarity: "contradict", label: "Sáv:",
+                                         sentence: "a hívás-sávon szól, ő a mikrofonon szokott", fixLabel: "Sáv-beosztás" })
+                        }
+                        EvidenceReason {
+                            width: 420
+                            evidence: ({ kind: "similarity", polarity: "neutral", label: "Hasonló hang:",
+                                         sentence: "Fehér Gáboré is közel van", fixLabel: "Kettejük átnézése" })
+                        }
+                    }
+                }
+            }
+
+            Section {
+                title: "Áttekintés: címkemező javaslattal (TagRowOverview) · ADATOK csempék (StatTiles) · FELDOLGOZÁS lépései (PipelineSteps)"
+                flowSpacing: 24
+                Shown {
+                    caption: "TagRowOverview · felrakott címkék + javaslatok (MeetingTagsModel demoState=\"similar\")"
+                    TagRowOverview {
+                        width: 520
+                        model: MeetingTagsModel { demoState: "similar" }
+                    }
+                }
+                Shown {
+                    caption: "TagRowOverview · üres (demoState=\"none\")"
+                    TagRowOverview {
+                        width: 340
+                        model: MeetingTagsModel { demoState: "none" }
+                    }
+                }
+                Shown {
+                    caption: "StatTiles · 2 × 3"
+                    StatTiles {
+                        width: 340
+                        stats: [{ label: "HOSSZ", value: "2:11:04", sub: "felvétel" },
+                                { label: "MEGSZÓLALÁS", value: "1298", sub: "átirat" },
+                                { label: "BESZÉLŐ", value: "5", sub: "4 azonosítva" },
+                                { label: "SÁV", value: "3", sub: "1 eldobott" },
+                                { label: "FÁJLOK", value: "412 MB", sub: "hang" },
+                                { label: "ÁTLAG", value: "84%", sub: "hang-biztonság" }]
+                    }
+                }
+                Shown {
+                    caption: "PipelineSteps · done · running (haladás) · attention · waiting · párhuzamos"
+                    PipelineSteps {
+                        width: 340
+                        steps: [{ key: "recording", title: "Felvétel", sub: "2:11:04 · 3 sáv", state: "done", parallel: false, progress: -1 },
+                                { key: "mixdown", title: "Lekeverés", sub: "elavult — újra kell készíteni", state: "attention", parallel: false, progress: -1 },
+                                { key: "voice", title: "Hanglenyomat-elemzés", sub: "42%", state: "running", parallel: true, progress: 42 },
+                                { key: "transcript", title: "Átirat", sub: "fut", state: "running", parallel: true, progress: -2 },
+                                { key: "summary", title: "Összefoglaló", sub: "az átirat után", state: "waiting", parallel: false, progress: -1 }]
+                    }
+                }
             }
 
             Section {
