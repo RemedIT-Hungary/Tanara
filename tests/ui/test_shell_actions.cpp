@@ -235,16 +235,16 @@ private slots:
         player.setController(m_app.get());
         m_shell->setPlayer(&player);
 
-        m_shell->showTab(2);
-        QCOMPARE(m_shell->currentTab(), 2);
+        m_shell->showTab(3);
+        QCOMPARE(m_shell->currentTab(), 3);
         m_shell->showTab(9);
-        QCOMPARE(m_shell->currentTab(), 2);      // határon belül marad
+        QCOMPARE(m_shell->currentTab(), 3);      // határon belül marad (0 Áttekintés … 3 Memó)
 
-        // seekTo: kijelöl, az Átirat fülre vált, a lejátszót tekeri, az Editornak jelez.
+        // seekTo: kijelöl, az Átirat fülre (1) vált, a lejátszót tekeri, az Editornak jelez.
         m_shell->seekTo(a.id, 1500);
         QCOMPARE(m_shell->currentMeetingId(), a.id);
         QCOMPARE(current.count(), 1);
-        QCOMPARE(m_shell->currentTab(), 0);
+        QCOMPARE(m_shell->currentTab(), 1);
         QCOMPARE(player.meetingId(), a.id);
         QCOMPARE(player.positionMs(), 1500);
         QCOMPARE(positions.count(), 1);
@@ -687,7 +687,7 @@ private slots:
         QCOMPARE(m_toasts.last(), QStringLiteral("3 kétséges sort jelöltem meg — a Bizonytalan szűrőben találod."));
         QCOMPARE(ed->uncertainUtteranceIds(),
                  (QStringList{QStringLiteral("u15000"), QStringLiteral("u30000"), QStringLiteral("u45000")}));
-        QCOMPARE(m_shell->currentTab(), 0);              // az Átirat fülre vált
+        QCOMPARE(m_shell->currentTab(), 1);              // az Átirat fülre vált
 
         // Elutasítva: semmi sem történik (nincs újabb toast).
         answer = false;

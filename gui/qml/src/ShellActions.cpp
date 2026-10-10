@@ -232,7 +232,7 @@ void ShellActions::setCurrentMeetingId(const QString& id)
 
 void ShellActions::setCurrentTab(int index)
 {
-    index = qBound(0, index, 2);
+    index = qBound(0, index, 3);   // 0 Áttekintés · 1 Átirat · 2 Vezetői összefoglaló · 3 Memó
     if (index == m_currentTab)
         return;
     m_currentTab = index;
@@ -261,7 +261,7 @@ void ShellActions::seekTo(const QString& meetingId, int ms)
 {
     if (!meetingId.isEmpty())
         showMeeting(meetingId);
-    showTab(0);
+    showTab(1);   // az Átirat fül
     if (m_player) {
         // A lejátszó meetingId-je a Main.qml kötésén át követi a kijelölést; ha a kötés még
         // nem futott le (vagy nincs), itt biztosítjuk, hogy a jó hangot tekerjük.
@@ -678,7 +678,7 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
     const tanara::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
     QString msg;
     if (r.flagged > 0) {
-        if (meetingId == m_currentMeetingId) showTab(0);
+        if (meetingId == m_currentMeetingId) showTab(1);   // az Átirat fül
         msg = tr("%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.", "", r.flagged);
     } else {
         msg = tr("A megerősített sorok alapján nem találtam kétséges sort.");

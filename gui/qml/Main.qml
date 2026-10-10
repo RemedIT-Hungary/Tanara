@@ -2,8 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Tanara — főablak (héj). Szerkezet (design/handoff/README.md, „Window structure”):
-//   menüsor (36) · oldalsáv (276) · tartalom · lejátszó (52)
+// Tanara — főablak (héj). Szerkezet (design/handoff/README.md, „Window structure”; a
+// megbeszélés-nézet a design/handoff-v3 szerint):
+//   menüsor (36: Fájl · Megbeszélés · Nézet) · oldalsáv (276) · tartalom:
+//   egysoros fejléc (56: cím, fülek Áttekintés · Átirat · Vezetői összefoglaló · Memó, „…”) ·
+//   fülenkénti eszköz-sor (46) · a fül tartalma · alul a lejátszó (52, Áttekintésen) vagy a
+//   térkép-dokk (beszélő-sávok + 44 px vezérlősor, az Átirat és az összefoglaló füleken).
 // Itt él a kijelölés, a „melyik nézet látszik” döntés, a menük, a gyorsbillentyűk, az ablak
 // megjegyzett mérete és a bezárás-védelem; a régiókat külön komponensek töltik ki. A
 // tartalom-komponensek (TranscriptTab, SummaryTab, TracksTab, PreTranscriptView) a szerződés
@@ -28,6 +32,11 @@ ApplicationWindow {
     // Demóban: a fejléc címkesorának kitalált állapota (MeetingTagsModel.demoState: none | few |
     // many | computing | similar | cooccur | llm | why).
     property string demoTags: ""
+    // Demóban / képernyőképhez a v3 megbeszélés-nézet állapota (design/handoff-v3):
+    // "overviewProcessing" (V1) | "overviewDone" (V3) | "overviewEmpty" (V5) |
+    // "overviewNobody" (V6) | "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
+    property string demoState: ""
+    readonly property bool demoOverview: demoState.startsWith("overview")
 
     // ---- állapot ----
     readonly property string computedState: sidebar.library.totalCount === 0 ? "empty"
@@ -35,11 +44,15 @@ ApplicationWindow {
                                           : currentMeeting.hasTranscript ? "meeting" : "preTranscript"
     readonly property string viewState: shellState !== "" ? shellState : computedState
     readonly property bool hasMeeting: viewState === "meeting" || viewState === "preTranscript"
-    // Átirat előtt a „Sávok” (Nézet menü / Ctrl+3) a lépések helyén mutatja a sávokat.
-    readonly property bool tracksBeforeTranscript: viewState === "preTranscript" && shellActions.currentTab === 2
-    readonly property bool tabsShown: viewState === "meeting" || tracksBeforeTranscript
-    // 0 = Átirat, 1 = Összefoglaló, 2 = Sávok
+    // 0 = Áttekintés, 1 = Átirat, 2 = Vezetői összefoglaló, 3 = Memó
     property alias currentTab: shellActions.currentTab
+    // Átirat előtt, amíg az átírás el sem indult, az Áttekintés helyén az átirat előtti lépések
+    // (kontextus, előkészítés, „Átírás indítása”, hiba-kártya) látszanak; futás közben és utána
+    // az Áttekintés.
+    readonly property bool preTranscriptSteps: viewState === "preTranscript" && !demoOverview
+                                               && !overviewTab.vm.transcribing
+    // Alul a térkép-dokk (Átirat és összefoglaló fülek, ha van átirat), különben a lejátszó.
+    readonly property bool mapDockShown: currentTab > 0 && header.hasTranscript && transcriptTab.editor.overview.length > 0
     // A tartalom-komponensek demó-módban üres azonosítót kapnak (→ saját mintatartalom).
     readonly property string contentMeetingId: App.demo ? "" : shellActions.currentMeetingId
 
@@ -51,6 +64,8 @@ ApplicationWindow {
     readonly property alias importModel: importModel
     readonly property alias importDialog: importDialog
     readonly property alias meetingHeader: header
+    readonly property alias overview: overviewTab
+    readonly property alias mapDock: mapDock
 
     property bool quitConfirmed: false
     property bool restoring: true
@@ -58,7 +73,7 @@ ApplicationWindow {
     // A Szóköz a lejátszóé, kivéve ha szövegmezőben vagyunk, billentyűzettel fókuszált
     // vezérlőn állunk (ott a Szóköz azt aktiválja), vagy párbeszédablak van nyitva.
     readonly property bool spaceTogglesPlayer: {
-        if (!hasMeeting || dialogs.anyOpen || importDialog.visible)
+        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
             return false
         const it = window.activeFocusItem
         if (!it)
@@ -76,7 +91,7 @@ ApplicationWindow {
         return false
     }
     readonly property bool tagUndoActive: {
-        if (!hasMeeting || dialogs.anyOpen || importDialog.visible || !currentMeeting.tags.canUndo)
+        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible || !currentMeeting.tags.canUndo)
             return false
         if (focusInTranscript && transcriptTab.visible)
             return false
@@ -90,6 +105,30 @@ ApplicationWindow {
         if (tagId !== "")
             sidebar.filterByTag(tagId)
     }
+
+    // „Ki volt ott?” (U3): a párbeszédet a ShellActions.openParticipants nyitja; amíg az nincs
+    // beépítve, egy rövid jelzés.
+    function openParticipants() {
+        const id = shellActions.currentMeetingId
+        if (typeof shellActions.openParticipants === "function")
+            shellActions.openParticipants(id)
+        else
+            toast.show(qsTr("A „Ki volt ott?” párbeszéd még nincs beépítve ebbe a változatba."), "", "", false)
+    }
+    // Fülváltás. Az Átiratra lépve a jóváhagyásra váró elemzést felajánlja (U3:
+    // ShellActions.maybeOfferParticipants).
+    function showTab(index) {
+        shellActions.showTab(index)
+        if (index === 1 && typeof shellActions.maybeOfferParticipants === "function")
+            shellActions.maybeOfferParticipants(shellActions.currentMeetingId)
+    }
+    // A Vezetői összefoglaló és a Memó ugyanaz a SummaryTab, más szakasszal (U4: a SummaryTab
+    // `section` property-je, "exec" | "memo").
+    function syncSummarySection() {
+        if (summaryTab && "section" in summaryTab && currentTab >= 2)
+            summaryTab.section = currentTab === 3 ? "memo" : "exec"
+    }
+    onCurrentTabChanged: syncSummarySection()
 
     width: 1280
     height: 820
@@ -152,6 +191,27 @@ ApplicationWindow {
         property: "demoState"
         value: window.demoTags
     }
+    // v3 demó-állapotok: a fejléc fül-állapota a képernyőnek megfelelően (V1/V3/V4/V5/V6).
+    Binding {
+        when: App.demo && window.demoState !== ""
+        target: header; property: "hasTranscript"
+        value: window.demoState !== "overviewProcessing" && window.demoState !== "overviewEmpty"
+    }
+    Binding {
+        when: App.demo && window.demoState !== ""
+        target: header; property: "hasSummary"
+        value: window.demoState === "overviewDone"
+    }
+    Binding {
+        when: App.demo && window.demoState !== ""
+        target: header; property: "summaryStale"
+        value: false
+    }
+    Binding {
+        when: App.demo && window.demoState !== ""
+        target: header; property: "transcribePercent"
+        value: window.demoState === "overviewProcessing" ? 62 : window.demoState === "overviewEmpty" ? 18 : -1
+    }
     // A címkesor lépései (elfogadás, elutasítás, levétel) a héj toastján, „Visszavonás”-sal.
     Connections {
         target: currentMeeting.tags
@@ -188,6 +248,8 @@ ApplicationWindow {
                 shellActions.currentMeetingId = "demo-bemutato"
             else if (shellState === "" || shellState === "meeting")
                 shellActions.currentMeetingId = "demo-partner"
+            if (demoState === "readingMap" || demoState === "tabTooltip")
+                Qt.callLater(() => shellActions.showTab(1))
             if (demoSearch !== "")
                 sidebar.searchText = demoSearch
             // A felugrók a kijelölés lefutása után nyílnak (a fül-visszaállítás utáni körben).
@@ -245,7 +307,7 @@ ApplicationWindow {
         case "filters": sidebar.applyDemo("filters"); break       // T04: címke-szűrők + popover
         case "selection": sidebar.applyDemo("selection"); break   // T05
         case "rename": header.startRename(); break
-        case "tracks": shellActions.showTab(2); break
+        case "tracks": shellActions.showTab(0); overviewTab.openTracks(); break
         case "import": importModel.demoState = "files"; importDialog.open(); break
         case "importSplit": importModel.demoState = "split"; importDialog.open(); break
         case "importProbing": importModel.demoState = "probing"; importDialog.open(); break
@@ -266,6 +328,7 @@ ApplicationWindow {
     // ---- gyorsbillentyűk ----
     Shortcut { sequences: [StandardKey.Quit]; onActivated: window.close() }
     Shortcut { sequence: "Alt+F"; onActivated: fileMenu.open() }
+    Shortcut { sequence: "Alt+M"; enabled: window.hasMeeting; onActivated: meetingMenu.open() }
     Shortcut { sequence: "Alt+N"; onActivated: viewMenu.open() }
     // Ctrl+F: a könyvtár keresője (a mező ezt a tippet mutatja); Ctrl+Shift+F: keresés a
     // megnyitott átiratban.
@@ -273,15 +336,16 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+Shift+F"
         enabled: window.viewState === "meeting"
-        onActivated: { shellActions.showTab(0); transcriptTab.openSearch() }
+        onActivated: { window.showTab(1); transcriptTab.openSearch() }
     }
     Shortcut { sequence: "Ctrl+N"; onActivated: shellActions.openRecorder() }
-    Shortcut { sequence: "Ctrl+I"; enabled: !dialogs.anyOpen && !importDialog.visible; onActivated: shellActions.openImport() }
+    Shortcut { sequence: "Ctrl+I"; enabled: !dialogs.anyOpen && !participantsDialog.opened && !importDialog.visible; onActivated: shellActions.openImport() }
     Shortcut { sequence: "Ctrl+,"; onActivated: shellActions.openSettings("") }
-    Shortcut { sequence: "Ctrl+1"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(0) }
-    Shortcut { sequence: "Ctrl+2"; enabled: window.viewState === "meeting"; onActivated: shellActions.showTab(1) }
-    Shortcut { sequence: "Ctrl+3"; enabled: window.hasMeeting; onActivated: shellActions.showTab(2) }
-    Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen; onActivated: header.startRename() }
+    Shortcut { sequence: "Ctrl+1"; enabled: window.hasMeeting; onActivated: window.showTab(0) }
+    Shortcut { sequence: "Ctrl+2"; enabled: window.viewState === "meeting"; onActivated: window.showTab(1) }
+    Shortcut { sequence: "Ctrl+3"; enabled: window.viewState === "meeting"; onActivated: window.showTab(2) }
+    Shortcut { sequence: "Ctrl+4"; enabled: window.viewState === "meeting"; onActivated: window.showTab(3) }
+    Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen && !participantsDialog.opened; onActivated: header.startRename() }
     Shortcut {
         sequence: "Ctrl+Z"
         enabled: window.tagUndoActive
@@ -375,6 +439,28 @@ ApplicationWindow {
                     }
                 }
                 TButton {
+                    id: meetingButton
+                    objectName: "meetingMenuButton"
+                    text: qsTr("Megbeszélés")
+                    variant: "ghost"; size: "small"
+                    leftPadding: 7; rightPadding: 7
+                    font.weight: Theme.weightRegular
+                    enabled: window.hasMeeting
+                    down: pressed || meetingMenu.visible
+                    onClicked: meetingMenu.open()
+                    MeetingMenu {
+                        id: meetingMenu
+                        y: meetingButton.height + 2
+                        shell: shellActions
+                        meetingId: shellActions.currentMeetingId
+                        hasMeeting: window.hasMeeting
+                        hasTranscript: header.hasTranscript
+                        canIdentify: header.canIdentify
+                        onRenameRequested: Qt.callLater(header.startRename)
+                        onParticipantsRequested: window.openParticipants()
+                    }
+                }
+                TButton {
                     id: viewButton
                     text: qsTr("Nézet")
                     variant: "ghost"; size: "small"
@@ -386,33 +472,56 @@ ApplicationWindow {
                         id: viewMenu
                         y: viewButton.height + 2
                         TMenuItem {
+                            text: qsTr("Áttekintés")
+                            iconName: "info"
+                            shortcutText: "Ctrl+1"
+                            enabled: window.hasMeeting
+                            checked: window.hasMeeting && window.currentTab === 0
+                            onTriggered: window.showTab(0)
+                        }
+                        TMenuItem {
                             text: qsTr("Átirat")
                             iconName: "file-text"
-                            shortcutText: "Ctrl+1"
-                            enabled: window.viewState === "meeting"
-                            onTriggered: shellActions.showTab(0)
-                        }
-                        TMenuItem {
-                            text: qsTr("Összefoglaló")
-                            iconName: "sparkles"
                             shortcutText: "Ctrl+2"
                             enabled: window.viewState === "meeting"
-                            onTriggered: shellActions.showTab(1)
+                            checked: window.viewState === "meeting" && window.currentTab === 1
+                            onTriggered: window.showTab(1)
                         }
                         TMenuItem {
-                            text: qsTr("Sávok")
-                            iconName: "audio-lines"
+                            text: qsTr("Vezetői összefoglaló")
+                            iconName: "sparkles"
                             shortcutText: "Ctrl+3"
-                            enabled: window.hasMeeting
-                            onTriggered: shellActions.showTab(2)
+                            enabled: window.viewState === "meeting"
+                            checked: window.viewState === "meeting" && window.currentTab === 2
+                            onTriggered: window.showTab(2)
+                        }
+                        TMenuItem {
+                            text: qsTr("Memó")
+                            iconName: "list-tree"
+                            shortcutText: "Ctrl+4"
+                            enabled: window.viewState === "meeting"
+                            checked: window.viewState === "meeting" && window.currentTab === 3
+                            onTriggered: window.showTab(3)
                         }
                         TMenuSeparator {}
                         TMenuItem {
-                            text: qsTr("Résztvevők azonosítása (hang alapján)")
-                            iconName: "fingerprint"
-                            enabled: window.hasMeeting && currentMeeting.canIdentify && !currentMeeting.identifyRunning
-                            onTriggered: shellActions.identifyParticipants(shellActions.currentMeetingId)
+                            objectName: "fixModeItem"
+                            text: transcriptTab.fixMode ? qsTr("Olvasás") : qsTr("Javítás")
+                            iconName: transcriptTab.fixMode ? "book-open" : "pencil"
+                            shortcutText: "Ctrl+E"
+                            enabled: window.viewState === "meeting"
+                            onTriggered: { window.showTab(1); transcriptTab.fixMode = !transcriptTab.fixMode }
                         }
+                        TMenuItem {
+                            objectName: "railItem"
+                            text: qsTr("Beszélő-oszlopok")
+                            iconName: "panel-left"
+                            shortcutText: "Ctrl+L"
+                            enabled: window.viewState === "meeting"
+                            checked: transcriptTab.editor.railVisible
+                            onTriggered: { window.showTab(1); transcriptTab.editor.railVisible = !transcriptTab.editor.railVisible }
+                        }
+                        TMenuSeparator {}
                         TMenuItem {
                             text: qsTr("Felvétel-ablak előtérbe")
                             iconName: "mic"
@@ -517,21 +626,27 @@ ApplicationWindow {
                         shell: shellActions
                     }
 
-                    // Fejléc + feladat-sáv + fülek: 16/24/0 belső margó, 12 térköz.
-                    ColumnLayout {
+                    // ---- egysoros fejléc (56) ----
+                    MeetingHeader {
+                        id: header
                         visible: window.hasMeeting
+                        Layout.fillWidth: true
+                        shell: shellActions
+                        meeting: currentMeeting
+                        currentTab: shellActions.currentTab
+                        demoState: window.demoState === "tabTooltip" ? "tabTooltip" : ""
+                        onTabRequested: (index) => window.showTab(index)
+                        onParticipantsRequested: window.openParticipants()
+                    }
+                    // Futó, megszakítható feladatok (export, azonosítás, újra-átírás …).
+                    ColumnLayout {
+                        visible: window.hasMeeting && currentMeeting.tasks.length > 0
                         Layout.fillWidth: true
                         Layout.leftMargin: Theme.space5
                         Layout.rightMargin: Theme.space5
-                        Layout.topMargin: Theme.space4
-                        spacing: Theme.space3
-
-                        MeetingHeader {
-                            id: header
-                            Layout.fillWidth: true
-                            shell: shellActions
-                            meeting: currentMeeting
-                        }
+                        Layout.topMargin: Theme.space2
+                        Layout.bottomMargin: Theme.space1
+                        spacing: Theme.space2
                         Repeater {
                             model: currentMeeting.tasks
                             TaskStrip {
@@ -542,52 +657,41 @@ ApplicationWindow {
                                 task: modelData
                             }
                         }
-                        TTabBar {
-                            id: tabs
-                            visible: window.viewState === "meeting"
-                            Layout.fillWidth: true
-                            onCurrentIndexChanged: if (shellActions.currentTab !== currentIndex) shellActions.currentTab = currentIndex
-                            TTabButton { text: qsTr("Átirat") }
-                            TTabButton {
-                                text: qsTr("Összefoglaló")
-                                pillText: currentMeeting.summaryStale ? qsTr("elavult") : ""
-                                pillTone: "warn"
-                            }
-                            TTabButton { text: qsTr("Sávok") }
-                            Connections {
-                                target: shellActions
-                                function onCurrentTabChanged() {
-                                    if (tabs.currentIndex !== shellActions.currentTab)
-                                        tabs.currentIndex = shellActions.currentTab
-                                }
-                            }
-                        }
-                        // Átirat előtt a sávok nézete: visszaút a lépésekhez.
-                        RowLayout {
-                            visible: window.tracksBeforeTranscript
-                            Layout.fillWidth: true
-                            spacing: Theme.space2
-                            TButton {
-                                text: qsTr("Vissza az előkészítéshez")
-                                iconName: "chevron-left"
-                                size: "small"
-                                onClicked: shellActions.showTab(0)
-                            }
-                            TLabel {
-                                Layout.fillWidth: true
-                                text: qsTr("A felvétel sávjai — az átírás előtt is visszaállíthatsz eldobott sávot.")
-                                muted: true
-                                font.pixelSize: Theme.fontSmall
-                                elide: Text.ElideRight
-                            }
-                        }
                     }
 
+                    // ---- a fülek tartalma ----
                     StackLayout {
-                        visible: window.tabsShown
+                        id: pages
+                        visible: window.hasMeeting
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        currentIndex: shellActions.currentTab
+                        currentIndex: Math.min(shellActions.currentTab, 2)
+
+                        // 0 — Áttekintés (átirat előtt, indítás előtt: az átirat előtti lépések)
+                        Item {
+                            OverviewTab {
+                                id: overviewTab
+                                objectName: "overviewTab"
+                                anchors.fill: parent
+                                visible: !window.preTranscriptSteps
+                                meetingId: window.contentMeetingId
+                                player: playerController
+                                shell: shellActions
+                                tagsModel: window.demoOverview ? null : currentMeeting.tags
+                                editor: transcriptTab.editor
+                                demoState: window.demoOverview ? window.demoState : ""
+                                onParticipantsRequested: window.openParticipants()
+                            }
+                            PreTranscriptView {
+                                id: preTranscriptView
+                                anchors.fill: parent
+                                visible: window.preTranscriptSteps
+                                meetingId: window.contentMeetingId
+                                player: playerController
+                                shell: shellActions
+                            }
+                        }
+                        // 1 — Átirat (az eszköz-sor a szerkesztő tetején: TranscriptToolbar)
                         TranscriptTab {
                             id: transcriptTab
                             objectName: "transcriptTab"
@@ -595,32 +699,45 @@ ApplicationWindow {
                             player: playerController
                             shell: shellActions
                             undoAllowed: !window.tagUndoActive
+                            onParticipantsRequested: window.openParticipants()
                         }
-                        SummaryTab {
-                            id: summaryTab
-                            meetingId: window.contentMeetingId
-                            player: playerController
-                            shell: shellActions
+                        // 2–3 — Vezetői összefoglaló / Memó (ugyanaz a nézet, más szakasszal)
+                        ColumnLayout {
+                            spacing: 0
+                            // U4: ide kerül az összefoglaló eszköz-sora (generálás-meta · Források ·
+                            // Másolás · Újragenerálás) — a SummaryTab `toolsRow` komponense.
+                            MeetingToolsRow {
+                                id: summaryTools
+                                objectName: "summaryTools"
+                                Layout.fillWidth: true
+                                SummaryToolsRow {
+                                    objectName: "summaryToolsRow"
+                                    anchors.fill: parent
+                                    visible: summaryTab.sourcesLayout
+                                    vm: summaryTab.vm
+                                    meetingId: window.contentMeetingId
+                                    shell: shellActions
+                                }
+                            }
+                            SummaryTab {
+                                id: summaryTab
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                meetingId: window.contentMeetingId
+                                player: playerController
+                                shell: shellActions
+                                // A héj eszköz-sora és térkép-dokkja veszi át (U1 ↔ U4 bekötés).
+                                embedToolsRow: false
+                                embedMapRows: false
+                                showSectionSwitch: false
+                                Component.onCompleted: window.syncSummarySection()
+                            }
                         }
-                        TracksTab {
-                            id: tracksTab
-                            meetingId: window.contentMeetingId
-                            player: playerController
-                            shell: shellActions
-                        }
-                    }
-                    PreTranscriptView {
-                        id: preTranscriptView
-                        meetingId: window.contentMeetingId
-                        player: playerController
-                        shell: shellActions
-                        visible: window.viewState === "preTranscript" && !window.tracksBeforeTranscript
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
                     }
 
+                    // ---- alul: lejátszó (Áttekintés) vagy térkép-dokk (Átirat, összefoglaló) ----
                     Rectangle {
-                        visible: window.hasMeeting
+                        visible: window.hasMeeting && !window.mapDockShown
                         Layout.fillWidth: true
                         implicitHeight: Theme.playerHeight
                         color: Theme.surface
@@ -630,6 +747,39 @@ ApplicationWindow {
                             player: playerController
                         }
                         TDivider { anchors { left: parent.left; right: parent.right; top: parent.top } }
+                    }
+                    MapDock {
+                        id: mapDock
+                        objectName: "mapDock"
+                        visible: window.hasMeeting && window.mapDockShown
+                        Layout.fillWidth: true
+                        player: playerController
+                        lanes: transcriptTab.editor.overview
+                        viewportStart: shellActions.currentTab === 1 ? transcriptTab.viewportStart : 0
+                        viewportSize: shellActions.currentTab === 1 ? transcriptTab.viewportSize : 0
+                        collapsedCount: transcriptTab.editor.collapsedCount
+                        lanesExpanded: transcriptTab.editor.lanesExpanded
+                        timelineMs: transcriptTab.editor.timelineMs > 0 ? transcriptTab.editor.timelineMs
+                                                                        : playerController.durationMs
+                        // U4: a SummaryTab `sourceMarks` / `sectionBands` listái ({ startMs, endMs, active }).
+                        sourceMarks: shellActions.currentTab === 2 && summaryTab && ("sourceMarks" in summaryTab)
+                                     ? summaryTab.sourceMarks : []
+                        sectionBands: shellActions.currentTab === 3 && summaryTab && ("sectionBands" in summaryTab)
+                                      ? summaryTab.sectionBands : []
+                        onSeekRequested: (fraction) => {
+                            if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
+                            else playerController.seek(transcriptTab.editor.timeAtFraction(fraction))
+                        }
+                        onSpeakerClicked: (key, anchor) => {
+                            if (shellActions.currentTab !== 1) window.showTab(1)
+                            Qt.callLater(() => transcriptTab.openSpeakerPopover(key, anchor))
+                        }
+                        onVoiceprintClicked: (key, anchor) => {
+                            if (shellActions.currentTab !== 1) window.showTab(1)
+                            Qt.callLater(() => transcriptTab.openVoiceprintPopover(key, anchor))
+                        }
+                        onExpandRequested: transcriptTab.editor.lanesExpanded = true
+                        onCollapseRequested: transcriptTab.editor.lanesExpanded = false
                     }
                 }
 
@@ -648,7 +798,8 @@ ApplicationWindow {
                     objectName: "toast"
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: (window.hasMeeting ? Theme.playerHeight : 0) + Theme.space4
+                    anchors.bottomMargin: (!window.hasMeeting ? 0 : window.mapDockShown ? mapDock.height
+                                                                     : Theme.playerHeight) + Theme.space4
                     width: Math.min(implicitWidth, parent.width - 2 * Theme.space5)
                     onUsageLinkActivated: if (App.bridge) App.bridge.openUsageLog()
                     onUndoActivated: (undoKey) => { toast.hide(); shellActions.undoFromToast(undoKey) }
@@ -662,7 +813,7 @@ ApplicationWindow {
     DropArea {
         id: windowDrop
         anchors.fill: parent
-        enabled: !dialogs.anyOpen && !importDialog.visible
+        enabled: !dialogs.anyOpen && !participantsDialog.opened && !importDialog.visible
         onEntered: (drag) => { drag.accepted = drag.hasUrls }
         onDropped: (drop) => {
             if (!drop.hasUrls)
@@ -726,6 +877,12 @@ ApplicationWindow {
     ShellImportDialog {
         id: importDialog
         model: importModel
+        shell: shellActions
+    }
+
+    // „Ki volt ott?” (U3): a ShellActions.participantsDialogRequested jelre nyílik.
+    ParticipantsDialog {
+        id: participantsDialog
         shell: shellActions
     }
 

@@ -30,6 +30,9 @@ Item {
     // a héj fülei állítják.
     property alias section: summaryVm.section
     readonly property alias vm: summaryVm
+    // A héj térkép-dokkjának (U1) sorai: Forrás-jelek és Memó-szakaszok ({ startMs, endMs, active }).
+    readonly property var sourceMarks: summaryVm.sourceMarks
+    readonly property var sectionBands: summaryVm.sectionBands
 
     // Ideiglenes beágyazások (amíg a héj eszköz-sora / térkép-dokkja nem veszi át).
     property bool embedToolsRow: true

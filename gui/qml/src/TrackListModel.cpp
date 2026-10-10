@@ -214,6 +214,13 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case PeaksRole:        return QVariant::fromValue(r.peaks);
     case PeaksStateRole:   return r.peaksState;
     case ColorIndexRole:   return r.colorIndex;
+    case SpeechRatioRole:  return r.view.track.speechRatio;
+    case ExcludedReasonRole: return r.view.track.excludedReason;
+    case IncludedRole:     return r.view.track.included() && !r.view.fileMissing;
+    case KindRole:
+        return r.view.track.kind == tanara::TrackKind::Mic ? QStringLiteral("mic")
+             : r.view.track.kind == tanara::TrackKind::Loopback ? QStringLiteral("loopback")
+                                                                 : QStringLiteral("other");
     default: break;
     }
     return {};
@@ -228,6 +235,8 @@ QHash<int, QByteArray> TrackListModel::roleNames() const
         {DurationTextRole, "durationText"}, {PeaksRole, "peaks"}, {PeaksStateRole, "peaksState"},
         {ColorIndexRole, "colorIndex"}, {WaveStartRole, "waveStart"}, {WaveSpanRole, "waveSpan"},
         {SegmentRole, "segment"}, {StartOffsetRole, "startOffsetMs"},
+        {SpeechRatioRole, "speechRatio"}, {ExcludedReasonRole, "excludedReason"},
+        {IncludedRole, "included"}, {KindRole, "kind"},
     };
 }
 
@@ -245,6 +254,20 @@ int TrackListModel::activeCount() const
 {
     return int(std::count_if(m_rows.cbegin(), m_rows.cend(),
                              [](const Row& r) { return r.view.track.active && !r.view.fileMissing; }));
+}
+
+int TrackListModel::includedCount() const
+{
+    return int(std::count_if(m_rows.cbegin(), m_rows.cend(), [](const Row& r) {
+        return r.view.track.included() && !r.view.fileMissing;
+    }));
+}
+
+int TrackListModel::excludedCount() const
+{
+    return int(std::count_if(m_rows.cbegin(), m_rows.cend(), [](const Row& r) {
+        return !r.view.track.excludedReason.isEmpty();
+    }));
 }
 
 int TrackListModel::droppedCount() const
@@ -470,6 +493,23 @@ void TrackListModel::restore(int row)
     c->restoreTrack(m_meetingId, m_rows[row].view.track.id);
 }
 
+void TrackListModel::setIncluded(int row, bool included)
+{
+    if (row < 0 || row >= m_rows.size())
+        return;
+    AppController* c = app();
+    if (jobsupport::demoMode(c)) {
+        tanara::Track& t = m_rows[row].view.track;
+        t.excludedReason = included ? QString() : QStringLiteral("manual");
+        t.active = included || t.active;
+        emit dataChanged(index(row), index(row), {IncludedRole, ExcludedReasonRole, ActiveRole});
+        emit changed();
+        return;
+    }
+    if (included) c->includeTrack(m_meetingId, m_rows[row].view.track.id);
+    else c->excludeTrack(m_meetingId, m_rows[row].view.track.id);
+}
+
 QString TrackListModel::trackIdAt(int row) const
 {
     return row >= 0 && row < m_rows.size() ? m_rows[row].view.track.id : QString();
@@ -540,6 +580,9 @@ void TrackListModel::loadDemo()
 {
     const QString st = m_demoState.isEmpty() ? QStringLiteral("default") : m_demoState;
     const bool loading = st == QLatin1String("loading");
+    // Áttekintés (V1/V3): saját mikrofon + hívás + beszéd nélküli rendszerhang;
+    // „overviewTwo” (V5/V6): csak a két beszédes sáv.
+    const bool overview = st.startsWith(QLatin1String("overview"));
     m_meetingDurationMs = (30 * 60 + 34) * 1000;
 
     auto make = [&](const char* id, TrackRole role, const QString& name, const QString& raw,
@@ -572,7 +615,22 @@ void TrackListModel::loadDemo()
                  QStringLiteral("Microsoft Teams · Monitor of Built-in Audio Analog Stereo"),
                  QStringLiteral("track-02.ogg"), true, false, 1, 0.9);
     rows.last().view.track.startOffsetMs = 2 * 60 * 1000 + 30 * 1000;   // később bekapcsolva
-    if (st != QLatin1String("idle")) {
+    rows[0].view.track.kind = tanara::TrackKind::Mic;
+    rows[1].view.track.kind = tanara::TrackKind::Loopback;
+    if (overview) {
+        const bool two = st == QLatin1String("overviewTwo");
+        rows[0].view.track.speechRatio = two ? 0.44 : 0.38;
+        rows[1].view.track.speechRatio = two ? 0.52 : 0.61;
+        rows[1].view.track.startOffsetMs = 0;
+        if (!two) {
+            rows << make("system", TrackRole::SystemAudio, tr("Rendszerhang"),
+                         QStringLiteral("Monitor of HDMI / DisplayPort 1 Output"),
+                         QStringLiteral("track-03.ogg"), false, false, 2, 0.004);
+            rows.last().view.track.kind = tanara::TrackKind::Loopback;
+            rows.last().view.track.speechRatio = 0.0;
+            rows.last().view.track.excludedReason = QStringLiteral("noSpeech");
+        }
+    } else if (st != QLatin1String("idle")) {
         rows << make("system", TrackRole::SystemAudio, tr("Rendszerhang"),
                      QStringLiteral("Monitor of HDMI / DisplayPort 1 Output"),
                      QStringLiteral("track-03.ogg"), false, false, 2, 0.004)
@@ -591,7 +649,7 @@ void TrackListModel::loadDemo()
     m_mixdownPeaksLoading = false;
     m_mixdownPeaks.clear();
     m_mixdownDurationMs = m_meetingDurationMs;
-    if (st == QLatin1String("idle")) {
+    if (st == QLatin1String("idle") || overview) {
         m_mixdownState = QStringLiteral("ready");
         m_mixdownPercent = -1;
         m_mixdownPeaks = demoPeaks(9, 0.85);

@@ -60,6 +60,16 @@ private slots:
             for (const char* state : {"meeting", "empty", "noSelection", "preTranscript"})
                 QTest::addRow("Main-%s-%s", state, theme)
                     << "Main" << t << QVariantMap{{"shellState", state}, {"taskRunning", true}};
+            // design/handoff-v3: Áttekintés (V1/V3/V5/V6), Átirat + térkép-dokk (V4), fül-panel.
+            for (const char* state : {"overviewProcessing", "overviewDone", "overviewEmpty", "overviewNobody",
+                                      "readingMap", "tabTooltip"})
+                QTest::addRow("Main-v3-%s-%s", state, theme)
+                    << "Main" << t << QVariantMap{{"demoState", state}};
+            for (const char* state : {"overviewProcessing", "overviewDone", "overviewEmpty", "overviewNobody"})
+                QTest::addRow("OverviewTab-%s-%s", state, theme)
+                    << "OverviewTab" << t << QVariantMap{{"demoState", state}};
+            QTest::addRow("MapDock-%s", theme) << "MapDock" << t << QVariantMap{};
+            QTest::addRow("MeetingHeader-%s", theme) << "MeetingHeader" << t << QVariantMap{{"demoState", "tabTooltip"}};
         }
     }
     void pagesLoadWithoutWarnings()
@@ -181,11 +191,13 @@ private slots:
         QVERIFY(search && list && transcriptSearch);
         auto tab = [window] { return window->property("currentTab").toInt(); };
 
-        // Ctrl+1/2/3: fülváltás — bárhol áll a fókusz.
+        // Ctrl+1…4: fülváltás (Áttekintés · Átirat · Vezetői összefoglaló · Memó) — bárhol áll a fókusz.
         QTest::keyClick(window, Qt::Key_2, Qt::ControlModifier);
         QCOMPARE(tab(), 1);
         QTest::keyClick(window, Qt::Key_3, Qt::ControlModifier);
         QCOMPARE(tab(), 2);
+        QTest::keyClick(window, Qt::Key_4, Qt::ControlModifier);
+        QCOMPARE(tab(), 3);
         QTest::keyClick(window, Qt::Key_1, Qt::ControlModifier);
         QCOMPARE(tab(), 0);
 
@@ -201,9 +213,9 @@ private slots:
         QCOMPARE(search->property("text").toString(), QString());
 
         // Ctrl+Shift+F: keresés a megnyitott átiratban (bármelyik fülről oda vált).
-        QTest::keyClick(window, Qt::Key_2, Qt::ControlModifier);
+        QTest::keyClick(window, Qt::Key_3, Qt::ControlModifier);
         QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier | Qt::ShiftModifier);
-        QCOMPARE(tab(), 0);
+        QCOMPARE(tab(), 1);
         QTRY_VERIFY(transcriptSearch->hasActiveFocus());
         QTest::keyClick(window, Qt::Key_A);
         QTest::keyClick(window, Qt::Key_Space);

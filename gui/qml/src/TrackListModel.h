@@ -40,6 +40,9 @@ class TrackListModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(int activeCount READ activeCount NOTIFY changed)
     Q_PROPERTY(int droppedCount READ droppedCount NOTIFY changed)
+    // A lekeverésbe kerülő sávok / a beszéd nélkül kimaradtak száma (Áttekintés › Sávok).
+    Q_PROPERTY(int includedCount READ includedCount NOTIFY changed)
+    Q_PROPERTY(int excludedCount READ excludedCount NOTIFY changed)
     // A leghangosabb sáv csúcsa — a hullámformák közös skálája.
     Q_PROPERTY(qreal peakReference READ peakReference NOTIFY peaksChanged)
 
@@ -77,6 +80,12 @@ public:
         WaveSpanRole,
         SegmentRole,          // az eszköz szakaszának sorszáma (1..), 0 = egyetlen fájl
         StartOffsetRole,      // ms
+        // Beszéd-ellenőrzés (Track::speechRatio): 0..1, -1 = még nem mérték.
+        SpeechRatioRole,
+        // Miért maradt ki a lekeverésből: "" | "noSpeech" | "manual" (Track::excludedReason).
+        ExcludedReasonRole,
+        IncludedRole,         // a lekeverésben van (Track::included())
+        KindRole,             // "mic" | "loopback" | "other" (melyik oldal hangja)
     };
 
     // A hullámforma helye a megbeszélés idővonalán: {kezdet, hossz} 0..1 arányban. Ismeretlen
@@ -102,6 +111,8 @@ public:
     int count() const { return int(m_rows.size()); }
     int activeCount() const;
     int droppedCount() const;
+    int includedCount() const;
+    int excludedCount() const;
     qreal peakReference() const;
 
     QString mixdownState() const { return m_mixdownState; }
@@ -118,6 +129,9 @@ public:
     Q_INVOKABLE bool rename(int row, const QString& name);
     // Eldobott sáv visszaállítása aktívvá.
     Q_INVOKABLE void restore(int row);
+    // „Beemelem” / kapcsoló: a sáv vissza a lekeverésbe, ill. kézi kizárás
+    // (AppController::includeTrack / excludeTrack; utána újralekeverés).
+    Q_INVOKABLE void setIncluded(int row, bool included);
     // Hiányzó fájl megkeresése: a kiválasztott fájl a meeting mappájába másolódik. Üres
     // visszatérés = siker; különben az emberi hibaüzenet.
     QString relocate(int row, const QString& filePath);

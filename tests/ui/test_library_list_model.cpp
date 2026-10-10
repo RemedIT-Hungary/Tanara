@@ -302,7 +302,7 @@ private slots:
         QCOMPARE(items.at(0).toMap().value("kind").toString(), QStringLiteral("awaiting"));
         QVERIFY(items.at(0).toMap().value("title").toString().startsWith(QStringLiteral("1 ")));
         QCOMPARE(items.at(1).toMap().value("kind").toString(), QStringLiteral("stale"));
-        QCOMPARE(items.at(1).toMap().value("tab").toInt(), 1);
+        QCOMPARE(items.at(1).toMap().value("tab").toInt(), 2);   // a Vezetői összefoglaló fül
         QCOMPARE(items.at(2).toMap().value("kind").toString(), QStringLiteral("failed"));
         QCOMPARE(items.at(2).toMap().value("tone").toString(), QStringLiteral("danger"));
     }

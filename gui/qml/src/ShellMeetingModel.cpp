@@ -2,6 +2,7 @@
 
 #include "AppContext.h"
 #include "LibraryDemoData.h"
+#include "JobSupport.h"
 #include "ShellFormat.h"
 #include "SummaryProgress.h"
 
@@ -202,8 +203,8 @@ void ShellMeetingModel::onMeetingTouched(const QString& id)
 
 void ShellMeetingModel::reload()
 {
-    bool exists = false, hasTranscript = false, stale = false, canIdentify = false;
-    QString title, meta;
+    bool exists = false, hasTranscript = false, stale = false, canIdentify = false, hasSummary = false;
+    QString title, meta, provider;
 
     if (!m_meetingId.isEmpty() && m_controller && m_controller->store()) {
         const tanara::Meeting m = m_controller->store()->load(m_meetingId);
@@ -224,6 +225,8 @@ void ShellMeetingModel::reload()
             }
             meta = metaLine(m.startedAt, m.durationMs, tail);
             stale = m.hasSummary && m_controller->summaryStale(m).stale;
+            hasSummary = m.hasSummary;
+            provider = jobsupport::providerLabel(m_controller, tanara::WorkflowStep::Summarize);
         }
     } else if (!m_meetingId.isEmpty() && !m_controller && AppContext::instance()->demo()) {
         if (const demo::DemoMeeting* d = demo::find(m_meetingId)) {
@@ -232,6 +235,8 @@ void ShellMeetingModel::reload()
             hasTranscript = d->entry.hasTranscript;
             canIdentify = true;
             stale = d->entry.state.summaryStale;
+            hasSummary = d->entry.hasSummary;
+            provider = tr("LM Studio · saját kulcs");
             meta = metaLine(d->entry.startedAt, d->entry.durationMs,
                             hasTranscript ? tr("%n beszélő", nullptr, d->speakers)
                                           : tr("%n sáv", nullptr, d->tracks));
@@ -240,13 +245,15 @@ void ShellMeetingModel::reload()
 
     if (exists != m_exists || title != m_title || meta != m_meta
         || hasTranscript != m_hasTranscript || stale != m_summaryStale
-        || canIdentify != m_canIdentify) {
+        || canIdentify != m_canIdentify || hasSummary != m_hasSummary || provider != m_summaryProvider) {
         m_exists = exists;
         m_title = title;
         m_meta = meta;
         m_hasTranscript = hasTranscript;
         m_summaryStale = stale;
         m_canIdentify = canIdentify;
+        m_hasSummary = hasSummary;
+        m_summaryProvider = provider;
         emit changed();
     }
     syncTags();
@@ -308,10 +315,16 @@ void ShellMeetingModel::reloadTasks()
 {
     QVariantList tasks;
     bool identify = false;
+    int transcribe = -1, summarize = -1;
     if (m_exists && m_controller && m_controller->jobs()) {
         const QVector<tanara::JobProgress> jobs = m_controller->processingState(m_meetingId).jobs;
         for (const tanara::JobProgress& job : jobs) {
             if (job.kind == JobKind::Identify) identify = true;
+            // A fülek pirulája: a futó lépés haladása (határozatlannál 0).
+            if (job.kind == JobKind::Transcribe)
+                transcribe = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
+            if (job.kind == JobKind::Summarize || job.kind == JobKind::AnalyzeTopics)
+                summarize = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
             // Az ELSŐ átírást az átirat előtti nézet szakasz-listája mutatja (M04); a sávba
             // csak az újra-átírás kerül (ott a fülek látszanak, nincs más jelzés).
             if (job.kind == JobKind::Transcribe && !m_hasTranscript) continue;
@@ -327,10 +340,13 @@ void ShellMeetingModel::reloadTasks()
         tasks.append(describeJob(job));
         identify = true;
     }
-    if (tasks == m_tasks && identify == m_identifyRunning)
+    if (tasks == m_tasks && identify == m_identifyRunning && transcribe == m_transcribePercent
+        && summarize == m_summarizePercent)
         return;
     m_tasks = tasks;
     m_identifyRunning = identify;
+    m_transcribePercent = transcribe;
+    m_summarizePercent = summarize;
     emit tasksChanged();
 }
 

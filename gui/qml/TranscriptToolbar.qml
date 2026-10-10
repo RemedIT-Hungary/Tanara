@@ -1,26 +1,32 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az átirat-szerkesztő felső sávja: „ÁTTEKINTÉS" címke (vagy a kereső), „Bizonytalan N"
-// szűrő, „Sávok" kapcsoló, visszavonás / újra, keresés — alatta az áttekintő (beszélőnkénti
-// idővonal). Padding 12/24/10, alul 1 px elválasztó.
+// Az Átirat fül eszköz-sora (design/handoff-v3 V4, 3. döntés): 46 px, alul 1 px vonal.
+// Olvasás / Javítás szegmens (Ctrl+E) · állapot („1298 megszólalás · 5 beszélő”, hangelemzés) ·
+// … · „Ki volt ott?” · „N átnézendő sor” (a szűrő; 0-nál az újraellenőrzés) · keresés.
+// Nincs állandó visszavonás-gomb (Ctrl+Z, értesítő sáv) és sáv-kapcsoló (Nézet › Beszélő-
+// oszlopok, Ctrl+L); a beszélőnkénti idővonal a lejátszó fölötti térkép-dokkba került (MapDock).
+// A Javítás mód tartalma (sín, jelölők, Átnézendő csoportok) a szerkesztőé.
 Item {
     id: root
 
     required property var vm                // TranscriptEditorViewModel
     property bool searchOpen: false
-    // Az épp látható lista-szakasz az idővonalon (0..1).
+    property bool fixMode: false
+    // Megmaradt a régi felület (a térkép-dokk kapja a Main.qml-ben).
     property real viewportStart: 0
     property real viewportSize: 0
 
-    signal seekRequested(real fraction)     // kattintás az áttekintőn
+    signal fixModeToggled(bool on)          // Olvasás / Javítás
+    signal participantsRequested()          // „Ki volt ott?”
     signal searchStepRequested(int direction)
-    signal nextUncertainRequested()         // „Következő bizonytalan"
-    signal recheckRequested()               // „Bizonytalan 0": újraellenőrzés a megerősített sorok alapján
-    signal speakerClicked(string speakerKey, Item anchor)   // név az áttekintőn: a teljes beszélő
-    signal voiceprintClicked(string speakerKey, Item anchor) // ujjlenyomat-jel: a hanglenyomat panelje
+    signal nextUncertainRequested()         // „Következő átnézendő" (B)
+    signal recheckRequested()               // 0 átnézendő: újraellenőrzés a megerősített sorok alapján
+    signal seekRequested(real fraction)
+    signal speakerClicked(string speakerKey, Item anchor)
+    signal voiceprintClicked(string speakerKey, Item anchor)
 
-    implicitHeight: column.implicitHeight + 22
+    implicitHeight: 46
     height: implicitHeight
 
     function openSearch() {
@@ -32,390 +38,283 @@ Item {
         searchOpen = false
         vm.searchQuery = ""
     }
-    // A beszélő ujjlenyomat-jele az áttekintőn (a panel horgonya); null, ha nincs ilyen sor.
-    function voiceprintMark(speakerKey) {
-        for (let i = 0; i < laneRepeater.count; ++i) {
-            const row = laneRepeater.itemAt(i)
-            if (row && row.modelData.key === speakerKey) return row.mark
-        }
-        return null
-    }
+    // A hanglenyomat-jel a térkép-dokkban él; önálló képernyőképnél az állapot-felirat a horgony.
+    function voiceprintMark(speakerKey) { return statusLabel }
 
-    // Eszköztár-gomb (28 px): ikon + felirat + billentyű-tipp. `checked`: accent stílus.
-    component ToolButton: Item {
-        id: tb
+    // Csendes eszköz-gomb (28 px): ikon + felirat; `checked`: accentSoft / accent.
+    component QuietButton: Item {
+        id: qb
         property string text: ""
         property string iconName: ""
-        property string hint: ""
         property bool checked: false
-        property bool outlined: false
-        property bool round: false
-        property bool muted: false
         property string toolTipText: ""
-        property alias hovered: hover.hovered
-        default property alias extra: lead.data
         signal clicked()
-
-        readonly property color ink: !enabled ? Theme.textMuted : checked ? Theme.accent
-                                   : muted ? Theme.textMuted : Theme.text
         implicitHeight: 28
-        implicitWidth: content.implicitWidth + (text === "" ? 0 : 20)
-        opacity: enabled ? 1 : 0.5
+        implicitWidth: qbRow.implicitWidth + (text === "" ? 0 : 20)
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: text !== "" ? text : toolTipText
         Keys.onSpacePressed: clicked()
         Keys.onReturnPressed: clicked()
-
+        readonly property color ink: !enabled ? Theme.borderStrong : checked ? Theme.accent : Theme.textMuted
         Rectangle {
             anchors.fill: parent
-            radius: tb.round ? height / 2 : Theme.radiusControl
-            color: tb.checked ? Theme.accentSoft : "transparent"
-            border.width: tb.outlined || tb.checked ? 1 : 0
-            border.color: tb.checked ? Theme.accent : Theme.borderStrong
+            radius: Theme.radiusControl
+            color: qb.checked ? Theme.accentSoft : "transparent"
+            border.width: qb.checked ? 1 : 0
+            border.color: Theme.accentLine
             Rectangle {
                 anchors.fill: parent
                 radius: parent.radius
                 color: Theme.stateLayer
-                opacity: !tb.enabled ? 0 : tap.pressed ? Theme.pressedOpacity : hover.hovered ? Theme.hoverOpacity : 0
+                opacity: !qb.enabled ? 0 : qbTap.pressed ? Theme.pressedOpacity : qbHover.hovered ? Theme.hoverOpacity : 0
             }
-            TFocusRing { visible: tb.activeFocus; targetRadius: parent.radius }
+            TFocusRing { visible: qb.activeFocus; targetRadius: parent.radius }
         }
         Row {
-            id: content
+            id: qbRow
             anchors.centerIn: parent
             spacing: 6
-            Row { id: lead; anchors.verticalCenter: parent.verticalCenter }
             TIcon {
-                visible: tb.iconName !== ""
+                visible: qb.iconName !== ""
                 anchors.verticalCenter: parent.verticalCenter
-                name: tb.iconName
-                size: 15
-                color: tb.ink
-                width: tb.text === "" ? 28 : 15
+                name: qb.iconName
+                size: 14
+                color: qb.ink
+                width: qb.text === "" ? 30 : 14
             }
             TLabel {
-                visible: tb.text !== ""
+                visible: qb.text !== ""
                 anchors.verticalCenter: parent.verticalCenter
-                text: tb.text
-                color: tb.ink
-                font.pixelSize: Theme.fontCaption
-                font.weight: tb.checked || tb.iconName === "panel-left" ? Theme.weightSemiBold : Theme.weightMedium
-            }
-            TLabel {
-                visible: tb.hint !== ""
-                anchors.verticalCenter: parent.verticalCenter
-                text: tb.hint
-                mono: true
-                color: tb.checked ? Theme.accent : Theme.textMuted
-                opacity: tb.checked ? 0.75 : 1
-                font.pixelSize: Theme.fontMicro
+                text: qb.text
+                color: qb.checked ? Theme.accent : !qb.enabled ? Theme.borderStrong : Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                font.weight: qb.checked ? Theme.weightSemiBold : Theme.weightRegular
             }
         }
-        HoverHandler { id: hover }
-        TapHandler { id: tap; enabled: tb.enabled; onTapped: tb.clicked() }
-        TToolTip { visible: tb.toolTipText !== "" && hover.hovered; text: tb.toolTipText }
+        HoverHandler { id: qbHover }
+        TapHandler { id: qbTap; enabled: qb.enabled; onTapped: qb.clicked() }
+        TToolTip { visible: qb.toolTipText !== "" && qbHover.hovered; text: qb.toolTipText }
     }
 
-    ColumnLayout {
-        id: column
-        x: Theme.space5
-        y: 12
-        width: root.width - 2 * Theme.space5
-        spacing: 8
+    RowLayout {
+        anchors { fill: parent; leftMargin: Theme.space5; rightMargin: 20 }
+        spacing: 10
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            TSectionLabel {
-                visible: !root.searchOpen
-                Layout.fillWidth: true
-                text: qsTr("Áttekintés")
-            }
-
-            // Keresés az átiratban (a címke helyén).
-            RowLayout {
-                visible: root.searchOpen
-                Layout.fillWidth: true
-                spacing: 6
-                TSearchField {
-                    id: searchField
-                    objectName: "transcriptSearch"
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: 280
-                    Layout.preferredHeight: 28
-                    placeholderText: qsTr("Keresés az átiratban")
-                    onTextChanged: root.vm.searchQuery = text
-                    Keys.onReturnPressed: event => root.searchStepRequested(event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                    Keys.onEnterPressed: event => root.searchStepRequested(event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                    Keys.onEscapePressed: root.closeSearch()
-                    Connections {
-                        target: root.vm
-                        function onSearchChanged() {
-                            if (root.vm.searchQuery !== "" && !root.searchOpen) root.searchOpen = true
-                            if (searchField.text !== root.vm.searchQuery) searchField.text = root.vm.searchQuery
+        // ---- Olvasás / Javítás ----
+        Rectangle {
+            id: segment
+            objectName: "modeSegment"
+            implicitWidth: segRow.implicitWidth + 6
+            implicitHeight: 32
+            radius: 7
+            color: Theme.sunken
+            Row {
+                id: segRow
+                anchors.centerIn: parent
+                spacing: 2
+                Repeater {
+                    model: [
+                        { label: qsTr("Olvasás"), icon: "book-open", fix: false, name: "modeRead" },
+                        { label: qsTr("Javítás"), icon: "pencil", fix: true, name: "modeFix" }
+                    ]
+                    Item {
+                        id: seg
+                        required property var modelData
+                        objectName: modelData.name
+                        readonly property bool active: root.fixMode === modelData.fix
+                        implicitWidth: segContent.implicitWidth + 22
+                        implicitHeight: 26
+                        width: implicitWidth
+                        height: implicitHeight
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData.label
+                        Accessible.checked: active
+                        Keys.onSpacePressed: root.fixModeToggled(modelData.fix)
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 5
+                            color: seg.active ? Theme.raised : segHover.hovered ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                            border.width: seg.active ? 1 : 0
+                            border.color: Theme.border
+                            TFocusRing { visible: seg.activeFocus; targetRadius: parent.radius }
+                        }
+                        Row {
+                            id: segContent
+                            anchors.centerIn: parent
+                            spacing: 6
+                            TIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: seg.modelData.icon
+                                size: 14
+                                color: seg.active ? Theme.text : Theme.textMuted
+                            }
+                            TLabel {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: seg.modelData.label
+                                color: seg.active ? Theme.text : Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                font.weight: seg.active ? Theme.weightSemiBold : Theme.weightRegular
+                            }
+                        }
+                        HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.fixModeToggled(seg.modelData.fix) }
+                        TToolTip {
+                            visible: segHover.hovered
+                            text: seg.modelData.fix ? qsTr("Javítás: beszélő-oszlopok, jelölők, átnézendő sorok (Ctrl+E)")
+                                                    : qsTr("Olvasás: tiszta lista (Ctrl+E)")
                         }
                     }
                 }
-                TLabel {
-                    visible: root.vm.searchQuery.trim() !== ""
-                    text: root.vm.searchMatchCount === 0 ? qsTr("Nincs találat")
-                        : qsTr("%1 / %2").arg(root.vm.searchCurrent + 1).arg(root.vm.searchMatchCount)
-                    mono: root.vm.searchMatchCount > 0
-                    color: root.vm.searchMatchCount === 0 ? Theme.dangerInk : Theme.textMuted
-                    font.pixelSize: Theme.fontCaption
-                }
-                ToolButton {
-                    iconName: "chevron-up"
-                    enabled: root.vm.searchMatchCount > 0
-                    toolTipText: qsTr("Előző találat (Shift+Enter)")
-                    onClicked: root.searchStepRequested(-1)
-                }
-                ToolButton {
-                    iconName: "chevron-down"
-                    enabled: root.vm.searchMatchCount > 0
-                    toolTipText: qsTr("Következő találat (Enter)")
-                    onClicked: root.searchStepRequested(1)
-                }
-                Item { Layout.fillWidth: true }
-            }
-
-            ToolButton {
-                id: uncertainChip
-                round: true
-                outlined: true
-                objectName: "uncertainChip"
-                // Nincs (több) bizonytalan sor: a gomb az újraellenőrzést kínálja — a megerősített
-                // és javított sorok hangjához méri a többit.
-                readonly property bool offersRecheck: !root.vm.uncertainOnly && root.vm.uncertainCount === 0
-                                                      && root.vm.voiceAvailable && !root.vm.embeddingRunning
-                checked: root.vm.uncertainOnly
-                enabled: root.vm.voiceAvailable || root.vm.uncertainOnly
-                text: qsTr("Bizonytalan")
-                iconName: offersRecheck && root.vm.canRecheck ? "refresh-cw" : ""
-                hint: String(root.vm.uncertainCount)
-                toolTipText: !root.vm.voiceAvailable ? root.vm.voiceNote
-                           : root.vm.uncertainOnly ? qsTr("Minden sor mutatása")
-                           : offersRecheck && root.vm.canRecheck
-                             ? qsTr("Nincs bizonytalan sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.")
-                           : offersRecheck ? qsTr("Nincs bizonytalan sor. Újraellenőrzéshez: %1").arg(root.vm.recheckBlocker)
-                           : qsTr("Csak azok a sorok, ahol a beszélő hang alapján kétséges")
-                onClicked: offersRecheck ? root.recheckRequested() : (root.vm.uncertainOnly = !root.vm.uncertainOnly)
-                SpeakerHatch {
-                    width: 12; height: 12
-                    radius: 2
-                    stripe: 1.5
-                    color: uncertainChip.checked ? Theme.accent : Theme.textMuted
-                }
-            }
-            ToolButton {
-                visible: root.vm.uncertainCount > 0
-                iconName: "chevrons-down"
-                toolTipText: qsTr("Következő bizonytalan sor (B)")
-                onClicked: root.nextUncertainRequested()
-            }
-            ToolButton {
-                outlined: true
-                checked: root.vm.railVisible
-                iconName: "panel-left"
-                text: qsTr("Sávok")
-                hint: root.searchOpen ? "" : "Ctrl+L"
-                toolTipText: root.vm.railVisible ? qsTr("Beszélő-sávok elrejtése") : qsTr("Beszélő-sávok mutatása a javításhoz")
-                onClicked: root.vm.railVisible = !root.vm.railVisible
-            }
-            ToolButton {
-                iconName: "undo-2"
-                text: root.searchOpen ? "" : qsTr("Visszavonás")
-                hint: root.searchOpen ? "" : "Ctrl+Z"
-                enabled: root.vm.canUndo
-                toolTipText: root.vm.canUndo ? qsTr("Visszavonás: %1").arg(root.vm.undoText) : qsTr("Nincs mit visszavonni")
-                onClicked: root.vm.undo()
-            }
-            ToolButton {
-                iconName: "redo-2"
-                muted: true
-                enabled: root.vm.canRedo
-                toolTipText: root.vm.canRedo ? qsTr("Újra: %1 (Ctrl+Shift+Z)").arg(root.vm.redoText) : qsTr("Nincs mit újra végrehajtani")
-                onClicked: root.vm.redo()
-            }
-            ToolButton {
-                iconName: root.searchOpen ? "x" : "search"
-                checked: false
-                toolTipText: root.searchOpen ? qsTr("Keresés bezárása") : qsTr("Keresés az átiratban (Ctrl+Shift+F)")
-                onClicked: root.searchOpen ? root.closeSearch() : root.openSearch()
             }
         }
+        TLabel {
+            visible: !root.searchOpen
+            text: "Ctrl+E"
+            mono: true
+            muted: true
+            font.pixelSize: Theme.fontMicro
+        }
 
-        // Áttekintő: beszélőnként egy 12 px-es sor (név · ujjlenyomat-jel · idővonal · beszédidő %).
-        // Az ujjlenyomat-jel a név-oszlop végén, rögzített helyen áll (az idővonal nem mozdul):
-        // teli zöld = a személynek van hanglenyomata; halvány körvonal = elnevezett, de még
-        // nincs; névtelennél áttetsző és nem kattintható. Kattintásra a hanglenyomat panelje.
-        Item {
-            id: overview
+        // ---- állapot ----
+        TLabel {
+            id: statusLabel
+            objectName: "transcriptStatus"
+            visible: !root.searchOpen
+            Layout.leftMargin: 6
             Layout.fillWidth: true
-            implicitHeight: lanes.implicitHeight
+            Layout.minimumWidth: 60
+            text: qsTr("%1 megszólalás · %2 beszélő").arg(root.vm.utteranceCount).arg(root.vm.speakerCount)
+            muted: true
+            font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+        // Hang-elemzés: futás közben halk folyamatjelző; ha nem érhető el, egy rövid jelzés.
+        Row {
+            visible: !root.searchOpen && root.vm.embeddingRunning
+            spacing: 8
+            TLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Hangelemzés… %1%").arg(Math.round(root.vm.embeddingProgress * 100))
+                muted: true
+                font.pixelSize: Theme.fontCaption
+            }
+            TProgressBar {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 64
+                value: root.vm.embeddingProgress
+            }
+        }
+        Row {
+            objectName: "voiceNote"
+            visible: !root.searchOpen && !root.vm.embeddingRunning && root.vm.voiceNote !== ""
+            spacing: 6
+            TIcon { anchors.verticalCenter: parent.verticalCenter; name: "info"; size: 13; color: Theme.textMuted }
+            TLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Hangelemzés nélkül")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+            }
+            HoverHandler { id: voiceNoteHover }
+            TToolTip { visible: voiceNoteHover.hovered; text: root.vm.voiceNote; delay: 150 }
+        }
 
-            readonly property real trackX: 120
-            readonly property real trackWidth: Math.max(10, width - trackX - 44)
-
-            Column {
-                id: lanes
-                width: parent.width
-                spacing: 3
-                Repeater {
-                    id: laneRepeater
-                    model: root.vm.overview
-                    Item {
-                        id: laneRow
-                        required property var modelData
-                        readonly property bool other: modelData.colorIndex < 0
-                        readonly property string voiceprint: modelData.voiceprint || ""
-                        readonly property alias mark: voiceprintMark
-                        width: lanes.width
-                        height: 12
-                        TLabel {
-                            id: laneName
-                            objectName: "overviewName"
-                            width: laneRow.other ? 110 : 94
-                            anchors.verticalCenter: parent.verticalCenter
-                            // Azonos nevű beszélőknél a nyers címke különbözteti meg a sorokat.
-                            text: laneRow.modelData.name
-                                  + (laneRow.modelData.nameDuplicate && laneRow.modelData.rawLabel
-                                     ? " · " + laneRow.modelData.rawLabel : "")
-                            color: laneRow.other ? Theme.textMuted : Theme.speakerInk(laneRow.modelData.colorIndex)
-                            font.pixelSize: Theme.fontMicro
-                            font.weight: Theme.weightSemiBold
-                            font.underline: laneNameHover.hovered
-                            elide: Text.ElideRight
-                            // A név a TELJES beszélőt jelenti: átnevezés, összevonás, hanglenyomat.
-                            // Az „Egyéb (N)" sor kattintásra kibomlik (a keveset beszélők külön sort
-                            // kapnak, így az ő hanglenyomatuk is elérhető).
-                            HoverHandler {
-                                id: laneNameHover
-                                cursorShape: Qt.PointingHandCursor
-                            }
-                            TapHandler {
-                                onTapped: {
-                                    if (laneRow.other) root.vm.lanesExpanded = true
-                                    else root.speakerClicked(laneRow.modelData.key, laneName)
-                                }
-                            }
-                            TToolTip {
-                                visible: laneNameHover.hovered
-                                text: laneRow.other
-                                      ? qsTr("%n keveset beszélő résztvevő — kattintásra külön sort kapnak", "",
-                                             root.vm.collapsedCount)
-                                      : qsTr("A teljes beszélő átnevezése vagy összevonása")
-                            }
-                        }
-                        Item {
-                            id: voiceprintMark
-                            objectName: "overviewVoiceprint"
-                            readonly property bool has: laneRow.voiceprint === "has"
-                            readonly property bool anonymous: laneRow.voiceprint === "anonymous"
-                            property string speakerKey: laneRow.modelData.key
-                            property string voiceprint: laneRow.voiceprint
-                            visible: laneRow.voiceprint !== ""
-                            x: 97
-                            width: 16; height: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            opacity: anonymous ? 0.4 : 1
-                            activeFocusOnTab: !anonymous
-                            Accessible.role: Accessible.Button
-                            Accessible.name: voiceprintTip.text
-                            Keys.onSpacePressed: if (!anonymous) root.voiceprintClicked(speakerKey, voiceprintMark)
-                            Keys.onReturnPressed: if (!anonymous) root.voiceprintClicked(speakerKey, voiceprintMark)
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: 14; height: 14; radius: 7
-                                color: voiceprintMark.has ? Theme.success
-                                     : voiceprintHover.hovered && !voiceprintMark.anonymous
-                                       ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
-                                TFocusRing { visible: voiceprintMark.activeFocus; targetRadius: parent.radius }
-                            }
-                            TIcon {
-                                anchors.centerIn: parent
-                                name: "fingerprint"
-                                size: voiceprintMark.has ? 10 : 12
-                                strokeWidth: voiceprintMark.has ? 2.5 : 2
-                                color: voiceprintMark.has ? Theme.textOnSpeaker : Theme.textMuted
-                            }
-                            HoverHandler {
-                                id: voiceprintHover
-                                cursorShape: voiceprintMark.anonymous ? Qt.ArrowCursor : Qt.PointingHandCursor
-                            }
-                            TapHandler {
-                                enabled: !voiceprintMark.anonymous
-                                onTapped: root.voiceprintClicked(voiceprintMark.speakerKey, voiceprintMark)
-                            }
-                            TToolTip {
-                                id: voiceprintTip
-                                visible: voiceprintHover.hovered
-                                text: voiceprintMark.has ? qsTr("Van hanglenyomata — kattintásra a részletek")
-                                    : voiceprintMark.anonymous
-                                      ? qsTr("Névtelen beszélő: hanglenyomat csak elnevezett beszélőhöz készíthető")
-                                      : qsTr("Még nincs hanglenyomata — kattintásra itt készíthető")
-                            }
-                        }
-                        TranscriptLaneStrip {
-                            x: overview.trackX
-                            width: overview.trackWidth
-                            height: 12
-                            segments: laneRow.modelData.segments
-                            marks: laneRow.modelData.marks
-                            trackColor: Theme.sunken
-                            color: laneRow.other ? Theme.borderStrong : Theme.speakerLine(laneRow.modelData.colorIndex)
-                            markColor: Theme.accent
-                        }
-                        TLabel {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: laneRow.modelData.pct + "%"
-                            mono: true
-                            muted: true
-                            font.pixelSize: Theme.fontMicro
-                        }
-                    }
-                }
-                // Kibontott „Egyéb" mellett: vissza az összecsukott nézethez.
-                Item {
-                    visible: root.vm.collapsedCount > 0 && root.vm.lanesExpanded
-                    width: lanes.width
-                    height: 12
-                    TLabel {
-                        id: collapseLabel
-                        objectName: "overviewCollapse"
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Keveset beszélők összecsukása")
-                        muted: true
-                        font.pixelSize: Theme.fontMicro
-                        font.weight: Theme.weightMedium
-                        font.underline: collapseHover.hovered
-                        HoverHandler { id: collapseHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: root.vm.lanesExpanded = false }
+        // ---- keresés (az állapot helyén) ----
+        RowLayout {
+            visible: root.searchOpen
+            Layout.fillWidth: true
+            spacing: 6
+            TSearchField {
+                id: searchField
+                objectName: "transcriptSearch"
+                Layout.fillWidth: true
+                Layout.maximumWidth: 300
+                Layout.preferredHeight: 28
+                placeholderText: qsTr("Keresés az átiratban")
+                onTextChanged: root.vm.searchQuery = text
+                Keys.onReturnPressed: event => root.searchStepRequested(event.modifiers & Qt.ShiftModifier ? -1 : 1)
+                Keys.onEnterPressed: event => root.searchStepRequested(event.modifiers & Qt.ShiftModifier ? -1 : 1)
+                Keys.onEscapePressed: root.closeSearch()
+                Connections {
+                    target: root.vm
+                    function onSearchChanged() {
+                        if (root.vm.searchQuery !== "" && !root.searchOpen) root.searchOpen = true
+                        if (searchField.text !== root.vm.searchQuery) searchField.text = root.vm.searchQuery
                     }
                 }
             }
-
-            // A lista épp látható szakasza.
-            Rectangle {
-                visible: root.viewportSize > 0 && lanes.height > 0
-                x: overview.trackX + Math.round(root.viewportStart * overview.trackWidth)
-                y: -2
-                width: Math.max(4, Math.round(root.viewportSize * overview.trackWidth))
-                height: lanes.height + 4
-                radius: 2
-                color: Theme.alpha(Theme.text, 0.12)
+            TLabel {
+                visible: root.vm.searchQuery.trim() !== ""
+                text: root.vm.searchMatchCount === 0 ? qsTr("Nincs találat")
+                    : qsTr("%1 / %2").arg(root.vm.searchCurrent + 1).arg(root.vm.searchMatchCount)
+                mono: root.vm.searchMatchCount > 0
+                color: root.vm.searchMatchCount === 0 ? Theme.dangerInk : Theme.textMuted
+                font.pixelSize: Theme.fontCaption
             }
-
-            MouseArea {
-                x: overview.trackX
-                width: overview.trackWidth
-                height: parent.height
-                cursorShape: Qt.PointingHandCursor
-                onClicked: mouse => root.seekRequested(mouse.x / width)
+            QuietButton {
+                iconName: "chevron-up"
+                enabled: root.vm.searchMatchCount > 0
+                toolTipText: qsTr("Előző találat (Shift+Enter)")
+                onClicked: root.searchStepRequested(-1)
             }
+            QuietButton {
+                iconName: "chevron-down"
+                enabled: root.vm.searchMatchCount > 0
+                toolTipText: qsTr("Következő találat (Enter)")
+                onClicked: root.searchStepRequested(1)
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        QuietButton {
+            objectName: "whoWasThereButton"
+            visible: !root.searchOpen
+            text: qsTr("Ki volt ott?")
+            iconName: "users"
+            toolTipText: qsTr("A résztvevők átnézése: kik voltak ott, és melyik beszélő kicsoda")
+            onClicked: root.participantsRequested()
+        }
+        QuietButton {
+            id: reviewButton
+            objectName: "uncertainChip"
+            // Nincs (több) átnézendő sor: a gomb az újraellenőrzést kínálja — a megerősített és
+            // javított sorok hangjához méri a többit.
+            readonly property bool offersRecheck: !root.vm.uncertainOnly && root.vm.uncertainCount === 0
+                                                  && root.vm.voiceAvailable && !root.vm.embeddingRunning
+            checked: root.vm.uncertainOnly
+            enabled: root.vm.voiceAvailable || root.vm.uncertainOnly
+            iconName: offersRecheck && root.vm.canRecheck ? "refresh-cw" : "list-checks"
+            text: offersRecheck ? qsTr("Nincs átnézendő sor")
+                                : qsTr("%n átnézendő sor", "", root.vm.uncertainCount)
+            toolTipText: !root.vm.voiceAvailable ? root.vm.voiceNote
+                       : root.vm.uncertainOnly ? qsTr("Minden sor mutatása")
+                       : offersRecheck && root.vm.canRecheck
+                         ? qsTr("Nincs átnézendő sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.")
+                       : offersRecheck ? qsTr("Nincs átnézendő sor. Újraellenőrzéshez: %1").arg(root.vm.recheckBlocker)
+                       : qsTr("Csak azok a sorok, ahol a beszélő hang alapján kétséges (B: a következő)")
+            onClicked: {
+                if (offersRecheck) {
+                    root.recheckRequested()
+                    return
+                }
+                const on = !root.vm.uncertainOnly
+                if (on && !root.fixMode) root.fixModeToggled(true)
+                root.vm.uncertainOnly = on
+            }
+        }
+        QuietButton {
+            visible: root.vm.uncertainOnly && root.vm.uncertainCount > 0
+            iconName: "chevrons-down"
+            toolTipText: qsTr("Következő átnézendő sor (B)")
+            onClicked: root.nextUncertainRequested()
+        }
+        QuietButton {
+            objectName: "searchButton"
+            iconName: root.searchOpen ? "x" : "search"
+            toolTipText: root.searchOpen ? qsTr("Keresés bezárása") : qsTr("Keresés az átiratban (Ctrl+Shift+F)")
+            onClicked: root.searchOpen ? root.closeSearch() : root.openSearch()
         }
     }
 
