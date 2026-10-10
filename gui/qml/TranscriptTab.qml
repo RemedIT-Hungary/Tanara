@@ -40,6 +40,12 @@ Item {
     // A héj kikapcsolhatja a Ctrl+Z-t, amíg a fókusz nem a szerkesztőben van (ott a címke-lépés
     // visszavonása él; lásd Main.qml tagUndoActive).
     property bool undoAllowed: true
+    // Olvasás (tiszta lista) / Javítás (sín, jelölők, átnézendők) — Ctrl+E, eszköz-sor szegmens.
+    // Belépéskor a megbeszélés megjegyzett sín-állapota dönt; a Javítás bekapcsolja a sínt.
+    property bool fixMode: false
+    onFixModeChanged: if (editorVm.hasTranscript && editorVm.railVisible !== fixMode) editorVm.railVisible = fixMode
+    // „Ki volt ott?” (eszköz-sor) — a héj nyitja a résztvevő-párbeszédet.
+    signal participantsRequested()
 
     // ---- a sorok (TranscriptRow) ezt olvassák ----
     readonly property bool railShown: editorVm.railVisible && editorVm.hasTranscript
@@ -149,14 +155,27 @@ Item {
         viewportStart = start
         viewportSize = Math.max(0, editorVm.rowEndFraction(last) - start)
     }
-    // A TELJES beszélő panelje (sáv-fejléc avatar, áttekintő név).
+    // Ugrás az idővonal egy pontjára (a térkép-dokk kattintása): a lista odagörget, a lejátszó teker.
+    function seekToFraction(fraction) {
+        const ms = editorVm.timeAtFraction(fraction)
+        root.revealRow(editorVm.rowForTime(ms), ListView.Beginning)
+        if (root.player) { root.followNext = false; root.player.seek(ms) }
+    }
+    // A panel a horgony alá kerül; ha ott nem fér el (pl. a lejátszó fölötti térkép-dokk
+    // neve), fölé.
+    function popoverY(anchorItem, popupHeight) {
+        const below = anchorItem.mapToItem(root, 0, anchorItem.height).y + 6
+        if (below + popupHeight <= root.height) return Math.round(below)
+        return Math.round(Math.max(0, anchorItem.mapToItem(root, 0, 0).y - popupHeight - 6))
+    }
+    // A TELJES beszélő panelje (sáv-fejléc avatar, térkép-dokk név).
     function openSpeakerPopover(speakerKey, anchorItem) {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
         speakerPopover.speakerKey = speakerKey
         speakerPopover.utteranceId = ""
         speakerPopover.selectionCount = 0
         speakerPopover.x = Math.round(p.x - 7)
-        speakerPopover.y = Math.round(p.y + 6)
+        speakerPopover.y = root.popoverY(anchorItem, speakerPopover.implicitHeight)
         speakerPopoverRow = -1
         speakerPopover.open()
     }
@@ -165,7 +184,7 @@ Item {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
         voiceprintPopover.speakerKey = speakerKey
         voiceprintPopover.x = Math.round(p.x - 12)
-        voiceprintPopover.y = Math.round(p.y + 6)
+        voiceprintPopover.y = root.popoverY(anchorItem, voiceprintPopover.implicitHeight)
         voiceprintPopover.open()
     }
     // EGY SOR panelje (a sor neve, „Más mondta…", helyi menü): alapból csak ez a sor megy;
@@ -238,6 +257,7 @@ Item {
         onNotice: text => { if (root.shell && root.shell.toast) root.shell.toast(text) }
         onOverviewChanged: Qt.callLater(root.updateViewport)
         onSessionChanged: {
+            root.fixMode = editorVm.railVisible
             root.lastPlayingRow = -1
             root.speakerPopoverRow = -1
             speakerPopover.close()
@@ -271,6 +291,11 @@ Item {
     }
 
     // ---- billentyűk ----
+    Shortcut {
+        sequences: ["Ctrl+E"]
+        enabled: root.visible && editorVm.hasTranscript
+        onActivated: root.fixMode = !root.fixMode
+    }
     Shortcut {
         sequences: ["Ctrl+L"]
         enabled: root.visible && editorVm.hasTranscript
@@ -410,13 +435,12 @@ Item {
             id: toolbar
             Layout.fillWidth: true
             vm: editorVm
+            fixMode: root.fixMode
             viewportStart: root.viewportStart
             viewportSize: root.viewportSize
-            onSeekRequested: fraction => {
-                const ms = editorVm.timeAtFraction(fraction)
-                root.revealRow(editorVm.rowForTime(ms), ListView.Beginning)
-                if (root.player) { root.followNext = false; root.player.seek(ms) }
-            }
+            onFixModeToggled: on => root.fixMode = on
+            onParticipantsRequested: root.participantsRequested()
+            onSeekRequested: fraction => root.seekToFraction(fraction)
             onSearchStepRequested: direction => editorVm.searchStep(direction)
             onNextUncertainRequested: root.nextUncertain(1)
             onRecheckRequested: root.recheckSpeakers()
@@ -429,8 +453,11 @@ Item {
         // Rögzített fejléc: a sín oszlopfejei + a megszólalás-számláló + a hang-elemzés állapota.
         Rectangle {
             id: headRow
+            // Csak a sín oszlopfejei (a számláló és a hangelemzés az eszköz-soré); rejtett sínnél 0
+            // magas (nem `visible: false`: a láthatóság-váltás után az elrendezés késve frissülne).
             Layout.fillWidth: true
-            implicitHeight: root.railShown ? railHeader.implicitHeight : 26
+            implicitHeight: root.railShown ? railHeader.implicitHeight : 0
+            clip: true
             color: Theme.surface
 
             SpeakerRailHeader {
@@ -448,52 +475,6 @@ Item {
                 width: 1
                 height: parent.height
                 color: Theme.border
-            }
-            TLabel {
-                id: countLabel
-                x: root.textX + 24
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: root.railShown ? 8 : 5
-                text: qsTr("%1 megszólalás · %2 beszélő").arg(editorVm.utteranceCount).arg(editorVm.speakerCount)
-                muted: true
-                font.pixelSize: Theme.fontCaption
-            }
-
-            // Hang-elemzés: futás közben halk folyamatjelző; ha nem érhető el, egy rövid jelzés.
-            Row {
-                anchors.right: parent.right
-                anchors.rightMargin: 24
-                anchors.verticalCenter: countLabel.verticalCenter
-                spacing: 8
-                visible: editorVm.embeddingRunning
-                TLabel {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Hangelemzés… %1%").arg(Math.round(editorVm.embeddingProgress * 100))
-                    muted: true
-                    font.pixelSize: Theme.fontCaption
-                }
-                TProgressBar {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 72
-                    value: editorVm.embeddingProgress
-                }
-            }
-            Row {
-                id: voiceNote
-                anchors.right: parent.right
-                anchors.rightMargin: 24
-                anchors.verticalCenter: countLabel.verticalCenter
-                spacing: 6
-                visible: !editorVm.embeddingRunning && editorVm.voiceNote !== ""
-                TIcon { anchors.verticalCenter: parent.verticalCenter; name: "info"; size: 13; color: Theme.textMuted }
-                TLabel {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Hangelemzés nélkül")
-                    muted: true
-                    font.pixelSize: Theme.fontCaption
-                }
-                HoverHandler { id: voiceNoteHover }
-                TToolTip { visible: voiceNoteHover.hovered; text: editorVm.voiceNote; delay: 150 }
             }
             TDivider { anchors.bottom: parent.bottom; width: parent.width }
         }

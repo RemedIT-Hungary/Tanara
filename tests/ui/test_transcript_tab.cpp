@@ -6,7 +6,7 @@
 // CSAK az a sor (kijelölésnél a kijelölt sorok), teljes beszélő a sáv-fejlécről / áttekintőről,
 // összevonás előtt megerősítés, minden átsorolás után értesítő sáv (Visszavonás / Hasonló N
 // sor is / „mind a N sora"), és a „Bizonytalan" szűrő nem ugrik el a javított sor alól.
-// Hanglenyomat: jelző az áttekintő minden során + saját panel, a blokk a sorról nyitott panel
+// Hanglenyomat: jelző a térkép-dokk (MapDock) minden során + saját panel, a blokk a sorról nyitott panel
 // teljes-beszélő hatókörében, ajánlat a sávon egy teljes beszélő elnevezése után, és a most
 // készült lenyomat visszavonása.
 #include "AppContext.h"
@@ -61,11 +61,30 @@ ApplicationWindow {
         function toast(text) { toasts += text + ";" }
     }
     TranscriptTab {
+        id: tab
         objectName: "tab"
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: dock.top }
         player: fakePlayer
         shell: fakeShell
         demoVariant: parent ? variant : ""
+    }
+    // A beszélőnkénti idővonal a lejátszó fölötti térkép-dokkban él (a Main.qml-hez hasonlóan bekötve).
+    MapDock {
+        id: dock
+        objectName: "mapDock"
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        player: fakePlayer
+        lanes: tab.editor.overview
+        viewportStart: tab.viewportStart
+        viewportSize: tab.viewportSize
+        collapsedCount: tab.editor.collapsedCount
+        lanesExpanded: tab.editor.lanesExpanded
+        timelineMs: tab.editor.timelineMs
+        onSeekRequested: fraction => tab.seekToFraction(fraction)
+        onSpeakerClicked: (key, anchor) => tab.openSpeakerPopover(key, anchor)
+        onVoiceprintClicked: (key, anchor) => tab.openVoiceprintPopover(key, anchor)
+        onExpandRequested: tab.editor.lanesExpanded = true
+        onCollapseRequested: tab.editor.lanesExpanded = false
     }
 }
 )";

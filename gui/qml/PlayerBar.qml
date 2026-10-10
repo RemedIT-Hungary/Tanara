@@ -1,20 +1,25 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Lejátszó-sáv (52 px): kerek lejátszás / szünet, idő („00:17 / 30:34”, mono), pozíció-csúszka
-// (húzható), sebesség („1×”) és hangerő. A PlayerControllert `player`-ként kapja; nélküle
-// (önálló képernyőkép) álló mintaállapot látszik.
+// Lejátszó-sáv (52 px): kerek lejátszás / szünet, idő („00:17 / 30:34”, mono), mi szól
+// („lekevert hang”), pozíció-csúszka (húzható), sebesség („1×”) és hangerő. A PlayerControllert
+// `player`-ként kapja; nélküle (önálló képernyőkép) álló mintaállapot látszik.
+// A térkép-dokkban (MapDock) csúszka nélkül, egy rövid tippel áll: ott a térkép a keresősáv.
 Item {
     id: root
 
     property var player: null                // PlayerController vagy null
+    property string label: qsTr("lekevert hang")
+    property bool showSlider: true
+    property string hint: ""
 
     readonly property bool available: player ? player.available : true
     readonly property bool playing: player ? player.playing : false
     readonly property int positionMs: player ? player.positionMs : 0
     readonly property int durationMs: player ? player.durationMs : 1834000
-    readonly property real rate: player ? player.rate : 1.0
-    readonly property real volume: player ? player.volume : 1.0
+    // A térkép-dokk tesztjeiben egyszerű ál-lejátszó is jöhet: a hiányzó mezőnél az alapérték.
+    readonly property real rate: player && player.rate !== undefined ? player.rate : 1.0
+    readonly property real volume: player && player.volume !== undefined ? player.volume : 1.0
     readonly property var rates: [0.75, 1.0, 1.25, 1.5, 2.0]
 
     function clock(ms) {
@@ -50,9 +55,18 @@ Item {
             muted: true
             font.pixelSize: Theme.fontCaption
         }
+        TLabel {
+            visible: text !== ""
+            text: root.player && root.player.previewPath ? qsTr("sáv-előnézet") : root.showSlider ? root.label : root.hint
+            Layout.fillWidth: !root.showSlider
+            elide: Text.ElideRight
+            muted: true
+            font.pixelSize: Theme.fontCaption
+        }
         ShellSlider {
             id: seek
             objectName: "seekSlider"
+            visible: root.showSlider
             Layout.fillWidth: true
             enabled: root.available && root.durationMs > 0
             value: root.durationMs > 0 ? root.positionMs / root.durationMs : 0
