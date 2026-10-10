@@ -37,6 +37,14 @@ struct EditorUtterance {
     QString likelySpeakerKey;
 };
 
+// Egy kötés a résztvevő-jóváhagyáshoz (SpeakerEditor::applyBindings): a nyers beszélő (vagy
+// csak a megadott sorai) személyhez kerül; üres personName = névtelenre állítás.
+struct SpeakerBinding {
+    QString     rawLabel;
+    QString     personName;
+    QStringList utteranceIds;   // üres = a nyers beszélő egésze
+};
+
 // A meeting egy beszélője (a sáv/oszlop a szerkesztőben).
 struct EditorSpeaker {
     QString key;                // stabil kulcs: nyers címke VAGY "participant:N"
