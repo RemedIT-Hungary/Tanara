@@ -93,6 +93,9 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
             &QmlShellBridge::tagFilterRequested);
     connect(m_tags, &tanara_qml::TagsWindowHost::meetingRequested, this,
             &QmlShellBridge::showMeetingRequested);
+    // A címke személy-listájának sora → a Személyek ablak azon a személyen (U5).
+    connect(m_tags, &tanara_qml::TagsWindowHost::personRequested, this,
+            [this](const QString& person) { openPeopleAt(person); });
     m_settings = new tanara_qml::SettingsWindowHost(m_controller, m_settingsDialogs, this);
     m_settings->setPersistTheme(false);   // a témát a főablak jegyzi meg (themeModeSaved)
     connect(m_settings, &tanara_qml::SettingsWindowHost::saved, this, [this] {
