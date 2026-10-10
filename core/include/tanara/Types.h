@@ -16,6 +16,9 @@
 #include <QPair>
 
 #include <functional>
+#include <optional>
+
+#include "tanara/edit/Evidence.h"
 
 namespace tanara {
 
@@ -57,6 +60,14 @@ struct Track {
     // (adelay); a sávfájlból olvasók a megbeszélés-időt ennyivel tolják (tracktiming). Régi /
     // máshonnan hozott mappánál a CLI `align` parancsa állítja (--auto: közös vég feltételezve).
     qint64 startOffsetMs = 0;
+    // A beszédszint-közeli keretek aránya a sáv lefedett idejében (0..1); -1 = még nem mérték.
+    // A felvétel / import utáni beszéd-ellenőrzés tölti (edit/TrackSpeech.h).
+    double speechRatio = -1.0;
+    // Miért maradt ki a lekeverésből: "" = benne van, "noSpeech" = nincs rajta beszéd
+    // (automatikus), "manual" = a felhasználó vette ki. Kimaradt sávnál active == false is.
+    QString excludedReason;
+    // A lekeverésbe (és az elemzésekbe) kerül-e.
+    bool included() const { return active && excludedReason.isEmpty(); }
 };
 
 // ---- transcript ------------------------------------------------------------
@@ -178,6 +189,41 @@ struct TopicAnalysis {
     QString renderMarkdown() const;      // impl: SummaryService modul
 };
 
+// ---- résztvevők („Ki volt ott?") -------------------------------------------
+// Honnan jött a résztvevő: kézzel felvett, hang-elemzés, címke-javaslat, naptár (később).
+enum class ParticipantSource { Manual, Voice, Tag, Calendar };
+// A jóváhagyó párbeszéd csoportjai: Biztos (hang + másik forrás), Kétséges (csak hang, vagy
+// ellentmondó bizonyíték), Meghívott, de nem hallottuk (naptár, hang nélkül).
+enum class ParticipantGroup { Sure, Doubt, InvitedNotHeard };
+
+struct Participant {
+    QString id;                     // stabil azonosító a meetingen belül
+    QString personName;             // üres = névtelen (ismeretlen hang)
+    QStringList rawSpeakerIds;      // a kötött nyers STT-beszélők („Beszélő 1")
+    ParticipantSource source = ParticipantSource::Voice;
+    bool approved = false;          // a felhasználó jóváhagyta („Ki volt ott?")
+    QStringList sides;              // "mic" | "loopback" — melyik oldalon hallottuk
+    QVector<Evidence> evidence;
+    double talkShare = 0.0;         // 0..1, a beszédidő hányada
+};
+
+// Egy jelölt állapota a döntés pillanatában.
+struct ParticipantApprovalEntry {
+    QString participantId;
+    QString personName;
+    ParticipantGroup group = ParticipantGroup::Doubt;
+    bool checked = false;
+    QStringList rawSpeakerIds;
+};
+
+struct ParticipantApproval {
+    QString at;                     // ISO-8601
+    QStringList modelIds;           // a döntés alapjául szolgáló elemzés hangmodelljei
+    QVector<ParticipantApprovalEntry> candidates;
+    bool skipped = false;           // „Kihagyás": nincs kötés, a jelölések maradnak
+    bool solo = false;              // „Csak én beszéltem": minden nyers beszélő a saját névre
+};
+
 // ---- meeting --------------------------------------------------------------
 struct Meeting {
     QString id;
@@ -202,6 +248,10 @@ struct Meeting {
     // A megbeszélés címkéinek azonosítói, a felrakás sorrendjében (a címkekészlet:
     // <metadataDir>/tags.json, lásd tags/TagService.h). A meeting.json-ban "tags".
     QStringList tagIds;
+    // Résztvevők (kézi + hang-elemzés jelöltjei) és a jóváhagyás. A meeting.json-ban
+    // "participants" / "participantApproval".
+    QVector<Participant> participants;
+    std::optional<ParticipantApproval> approval;
 };
 
 // ---- beszélő-azonosítás (voice fingerprint) -------------------------------
@@ -427,6 +477,8 @@ Q_DECLARE_METATYPE(tanara::SummaryTopic)
 Q_DECLARE_METATYPE(QVector<tanara::SummaryTopic>)
 Q_DECLARE_METATYPE(tanara::TopicAnalysis)
 Q_DECLARE_METATYPE(tanara::Meeting)
+Q_DECLARE_METATYPE(tanara::Participant)
+Q_DECLARE_METATYPE(QVector<tanara::Participant>)
 Q_DECLARE_METATYPE(tanara::Voiceprint)
 Q_DECLARE_METATYPE(tanara::VoiceMatch)
 Q_DECLARE_METATYPE(tanara::ProviderConfig)

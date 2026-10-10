@@ -24,9 +24,11 @@
 //   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache]   sáv-oldal mérés (TrackSidesCommand.cpp)
+//   participants <meeting-folder> [--analyze [--write]] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
+#include "ParticipantsCommand.h"
 #include "TagPeopleCommands.h"
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
@@ -120,6 +122,9 @@ int main(int argc, char** argv) {
     if (cmd == "voice-models") return tanara::cli::runVoiceModelsCommand(args);
     if (cmd == "voice-eval")   return tanara::cli::runVoiceEvalCommand(args);
     if (cmd == "track-sides")  return tanara::cli::runTrackSidesCommand(args);
+    // participants <meeting-folder> (új, mappára); a régi „participants <meetingId>" lent marad.
+    if (cmd == "participants" && QFileInfo(args.value(2)).isDir())
+        return tanara::cli::runParticipantsCommand(args);
 
     AppController app;
 
@@ -659,7 +664,8 @@ int main(int argc, char** argv) {
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
            "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
            "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
-           "track-sides <folder> [--frame-ms N --json --no-cache --write-cache]"
+           "track-sides <folder> [--frame-ms N --json --no-cache --write-cache] | "
+           "participants <folder> [--analyze [--write]] [--json]"
         << "\n";
     out.flush();
     return 0;

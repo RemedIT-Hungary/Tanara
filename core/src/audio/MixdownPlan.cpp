@@ -21,7 +21,7 @@ MixdownPlan MixdownPlan::fromMeeting(const Meeting& m)
     MixdownPlan plan;
     QVector<TrackView> views;   // a hiányzó sávok nevéhez — csak ha kell
     for (const Track& t : m.tracks) {
-        if (!t.active) continue;
+        if (!t.included()) continue;   // eldobott / beszéd nélküli / kézzel kivett sáv
         const QString path = QDir(m.folder).filePath(t.file);
         if (t.file.isEmpty() || !QFileInfo(path).isFile()) {
             if (views.isEmpty()) views = TrackCatalog::tracks(m);

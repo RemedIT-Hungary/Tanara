@@ -41,6 +41,8 @@
 #include "tanara/edit/PeopleDirectory.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/edit/TrackSpeech.h"
+#include "tanara/edit/ParticipantAnalysis.h"
 #include "tanara/tags/TagService.h"
 #include "tanara/tags/TagNames.h"
 #include "tanara/tags/MeetingProfiles.h"
@@ -437,35 +439,7 @@ VoiceSource resolveVoiceSource(const Meeting& m, const MergedTranscript& mt,
     return {};
 }
 
-// Agglomeratív klaszterezés cosine-centroid alapján: minden embedding-hez klaszter-címke
-// (a címke a klaszter egy reprezentáns indexe). mergeThreshold felett von össze.
-QVector<int> clusterEmbeddings(const QVector<QVector<float>>& embs, double mergeThreshold) {
-    const int n = embs.size();
-    QVector<int> label(n);
-    for (int i = 0; i < n; ++i) label[i] = i;
-    if (n <= 1) return label;
-
-    QVector<QVector<float>> cent = embs;   // L2-normalizált embeddingek
-    QVector<int> sz(n, 1);
-    QVector<bool> alive(n, true);
-    for (;;) {
-        double best = -2.0; int a = -1, b = -1;
-        for (int i = 0; i < n; ++i) if (alive[i])
-            for (int j = i + 1; j < n; ++j) if (alive[j]) {
-                const double s = VoiceprintStore::cosineSimilarity(cent[i], cent[j]);
-                if (s > best) { best = s; a = i; b = j; }
-            }
-        if (a < 0 || best < mergeThreshold) break;
-        const int na = sz[a], nb = sz[b];
-        QVector<float> mrg(cent[a].size());
-        for (int k = 0; k < mrg.size(); ++k)
-            mrg[k] = (cent[a][k] * na + cent[b][k] * nb) / (na + nb);
-        cent[a] = VoiceprintStore::l2normalize(mrg);
-        sz[a] = na + nb; alive[b] = false;
-        for (int i = 0; i < n; ++i) if (label[i] == b) label[i] = a;
-    }
-    return label;
-}
+using participants::clusterEmbeddings;   // agglomeratív klaszterezés (edit/ParticipantAnalysis.h)
 
 // Cosine-küszöb az auto-azonosításhoz (a validáció: azonos 0.77, kereszt ≤0.35).
 constexpr double kVoiceMatchThreshold = 0.5;
@@ -547,6 +521,14 @@ struct AppController::Impl {
     bool             backfillAgain = false;
     std::shared_ptr<std::atomic<bool>> backfillCancel = std::make_shared<std::atomic<bool>>(false);
     QSet<QString>    backfillLogged;    // a hiányzó hang miatt már naplózott lenyomatok
+    // Sáv-beszédarány és átirat előtti hangelemzés (háttérszál; a GUI-szál nem vár).
+    QThreadPool      analysisPool;
+    QSet<QString>    speechCheckRunning;  // meetingId-k, amelyeken épp mérünk
+    QSet<QString>    speechChecked;       // ebben a folyamatban már mérve (hibánál se ismételjük)
+    QHash<QString, std::shared_ptr<std::atomic<bool>>> analysisRuns;   // meetingId → megszakítás
+    std::shared_ptr<std::atomic<bool>> analysisShutdown = std::make_shared<std::atomic<bool>>(false);
+    std::function<QStringList(const QString&)> personTags;   // D-szelet varrata (személy címkéi)
+    participants::CandidateContext candidateContext() const;
     bool             voiceModelsApplied = false;
     // A szerkesztő modell-listája: a használt modellek; ha egy sem használható (nincs modellfájl),
     // a bekapcsoltak — a meeting cache-ében korábban számolt vektorokkal az elemzés így is megy.
@@ -984,9 +966,13 @@ AppController::AppController(QObject* parent)
     connect(d->importer, &AudioImporter::finished, this, [this](const QString& id, const Meeting& m) {
         d->jobs->finish(id, JobKind::Import);
         emit importFinished(m);
-        // Lekeverés: pontosan úgy, mint egy felvétel végén (lásd a RecordingSession::finished ágat).
-        if (d->autoMixdown && d->settings->settings().mixdownMode != QStringLiteral("manual"))
-            regenerateMixdown(m.id);
+        // Lekeverés: pontosan úgy, mint egy felvétel végén (lásd a RecordingSession::finished ágat):
+        // előtte a sávok beszéd-ellenőrzése (a beszéd nélküli sáv kimarad a keverékből).
+        if (d->autoMixdown) {
+            const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual");
+            if (trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
+            else if (mix) regenerateMixdown(m.id);
+        }
     });
     connect(d->importer, &AudioImporter::failed, this,
             [this](const QString& id, const QString& message, const QString& detail) {
@@ -1029,6 +1015,8 @@ AppController::AppController(QObject* parent)
     d->voiceModelPath = paths::resolveVoiceModelPath(d->metaDir, d->appDir);
     d->backfillPool.setMaxThreadCount(1);
     d->backfillPool.setObjectName(QStringLiteral("tanara-voiceprint-backfill"));
+    d->analysisPool.setMaxThreadCount(2);
+    d->analysisPool.setObjectName(QStringLiteral("tanara-participant-analysis"));
 
     // Személyek ablak: háttérben számolt statisztika, és a műveletek (összevonás,
     // minta-áthelyezés …). A becenevek / megjegyzés a people.json rekordjaiban élnek.
@@ -1156,6 +1144,11 @@ AppController::~AppController()
     d->backfillCancel->store(true);
     d->backfillPool.clear();
     d->backfillPool.waitForDone();
+    // A sáv-mérés / hangelemzés: a sorban állók elmaradnak, a futó a következő ablaknál kilép.
+    d->analysisShutdown->store(true);
+    for (const auto& c : std::as_const(d->analysisRuns)) c->store(true);
+    d->analysisPool.clear();
+    d->analysisPool.waitForDone();
     // A futó címkejavaslat a profilokat / az indexet olvassa: azok előtt kell végeznie.
     d->tagPool.clear();
     d->tagPool.waitForDone();
@@ -1707,6 +1700,8 @@ void AppController::deleteMeeting(const QString& meetingId) {
     if (meetingId.isEmpty()) return;
     // Futó feladatok leállítása, mielőtt a mappa eltűnik alóluk.
     cancelAllJobs(meetingId);
+    if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
+        it.value()->store(true);   // a hangelemzés eredménye a törölt meetingre már nem kerül
     d->waveforms->cancel(meetingId);
     closeSpeakerEditor(meetingId);   // a nyitott beszélő-szerkesztő ne írjon a törölt mappába
     d->mergedCache.remove(meetingId);
@@ -1718,7 +1713,11 @@ void AppController::restoreTrack(const QString& meetingId, const QString& trackI
     if (m.id.isEmpty()) return;
     bool changed = false;
     for (Track& t : m.tracks)
-        if (t.id == trackId && !t.active) { t.active = true; changed = true; }
+        if (t.id == trackId && !t.included()) {
+            t.active = true;
+            t.excludedReason.clear();
+            changed = true;
+        }
     if (!changed) return;
     m.mixdownDirty = true;   // megváltozott az aktív sáv-halmaz → a mixdown elavult
     d->store->saveMeeting(m);
@@ -1865,6 +1864,15 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         emit mixdownUpdated(meetingId, ok);
         emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
         proc->deleteLater();
+        // Az átirat előtti hangelemzés a lekeverés után magától indul (az átírással párhuzamosan),
+        // amíg nincs döntés, és ha a bevont sávok az előző elemzés óta változtak.
+        if (ok && d->voiceModelUsable() && !d->analysisRuns.contains(meetingId)) {
+            const Meeting a = d->store->load(meetingId);
+            if (!a.id.isEmpty() && !a.approval
+                && ParticipantAnalysisFile::load(a.folder).tracksKey
+                       != trackactivity::activityFingerprint(a, a.folder))
+                analyzeParticipants(meetingId);
+        }
     };
     connect(proc, &QProcess::finished, this, [done](int code, QProcess::ExitStatus status) {
         done(status == QProcess::NormalExit && code == 0);
@@ -2185,9 +2193,14 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
         // hallgatásra kell; az átíráshoz a per-sáv .ogg-k elegendők.)
         // Az önálló felvevő-folyamatban (setAutoMixdownAfterRecording(false)) nem indul: az a
         // folyamat kilép a felvétel után, a lekeverést az elemző készíti el, amikor kell.
-        if (d->autoMixdown && d->settings->settings().mixdownMode != QStringLiteral("manual")
-            && m.mixdownFile.isEmpty())
-            regenerateMixdown(m.id);
+        // Előtte a sávok beszéd-ellenőrzése (háttérszálon): a beszéd nélküli sáv kimarad a
+        // keverékből (Track::excludedReason "noSpeech"); a mérés végén indul a lekeverés.
+        if (d->autoMixdown) {
+            const bool mix = d->settings->settings().mixdownMode != QStringLiteral("manual")
+                && m.mixdownFile.isEmpty();
+            if (trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
+            else if (mix) regenerateMixdown(m.id);
+        }
     });
 
     sess->start(use);
@@ -2823,7 +2836,13 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
         // Voice-ID: a diarizált beszélők auto-párosítása a lenyomat-DB ellen — háttérszálon,
         // az átírás-feladat utolsó szakaszaként (a UI közben használható, megszakítható).
         // (Ha a felhasználó az M03 kapcsolóval kihagyta, az átirat névtelen beszélőkkel kész.)
-        if (d->skipIdentifyAfterTranscribe.contains(meetingId)
+        // A „Ki volt ott?" döntés (jóváhagyás / „csak én") az átirat előtt megszületett: azt
+        // alkalmazzuk, az automatikus azonosítás kimarad. Különben a jelöltek kötése + azonosítás.
+        const bool decided = applyParticipantsToTranscript(meetingId);
+        if (decided && d->voiceModelUsable())
+            d->jobs->setStage(meetingId, JobKind::Transcribe, QStringLiteral("identify"),
+                              StageState::Skipped);
+        if (decided || d->skipIdentifyAfterTranscribe.contains(meetingId)
             || !startIdentify(meetingId, /*asTranscribeStage*/ true))
             d->jobs->finish(meetingId, JobKind::Transcribe);
     });
@@ -4544,6 +4563,444 @@ void AppController::dismissSummaryStale(const QString& meetingId)
     const Meeting m = d->store->load(meetingId);
     if (!m.folder.isEmpty() && speakeredit::clearSummaryStale(m.folder))
         emit summaryStaleChanged(meetingId);
+}
+
+
+// ---- résztvevők („Ki volt ott?") és sáv-beszédarány ----------------------------------------
+// A tiszta logika: edit/TrackSpeech.h, edit/ParticipantAnalysis.h. Itt csak a szálkezelés, a
+// mentés és a szerkesztőn át történő kötés.
+
+participants::CandidateContext AppController::Impl::candidateContext() const
+{
+    participants::CandidateContext ctx;
+    ctx.selfName = settings->settings().userSpeakerName.trimmed();
+    VoiceprintStore* vp = voiceprints.get();
+    ctx.rank = [vp](const EmbeddingSet& set) {
+        return vp ? vp->rankedMatches(set, set.keys()) : QVector<VoiceMatch>();
+    };
+    ctx.hasVoiceprint = [vp](const QString& name) { return vp && vp->printCount(name) > 0; };
+    TagService* ts = tags;
+    // A személy címkéi: a beállított varrat, különben a TagService kézi címkéi (D-szelet).
+    ctx.personTags = personTags ? personTags
+                                : [ts](const QString& name) { return ts ? ts->tagsOfPerson(name) : QStringList(); };
+    ctx.tagName = [ts](const QString& id) {
+        const QString n = ts ? ts->tag(id).name : QString();
+        return n.isEmpty() ? id : n;
+    };
+    return ctx;
+}
+
+void AppController::setPersonTagsProvider(std::function<QStringList(const QString&)> provider)
+{
+    d->personTags = std::move(provider);
+}
+
+QVector<Participant> AppController::participants(const QString& meetingId) const
+{
+    return d->store->load(meetingId).participants;
+}
+
+bool AppController::participantAnalysisRunning(const QString& meetingId) const
+{
+    return d->analysisRuns.contains(meetingId);
+}
+
+bool AppController::participantApprovalPending(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || m.approval || d->analysisRuns.contains(meetingId)) return false;
+    for (const Participant& p : m.participants)
+        if (p.source != ParticipantSource::Manual || !p.sides.isEmpty()) return true;
+    return false;
+}
+
+void AppController::startSpeechCheck(const QString& meetingId, bool thenMixdown)
+{
+    if (d->speechCheckRunning.contains(meetingId)) return;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    d->speechCheckRunning.insert(meetingId);
+    const QString folder = m.folder;
+    const auto stop = d->analysisShutdown;
+    QPointer<AppController> self(this);
+    d->analysisPool.start([self, m, folder, stop, meetingId, thenMixdown]() {
+        if (stop->load()) return;
+        const QString fp = trackactivity::activityFingerprint(m, folder);
+        MeetingActivity act = MeetingActivity::load(folder, fp);
+        if (act.isEmpty()) {
+            act = computeMeetingActivity(m, folder);
+            if (!act.isEmpty()) act.save(folder);
+        }
+        QMetaObject::invokeMethod(qApp, [self, meetingId, act, thenMixdown]() {
+            if (self) self->finishSpeechCheck(meetingId, act, thenMixdown);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void AppController::finishSpeechCheck(const QString& meetingId, const MeetingActivity& activity,
+                                      bool thenMixdown)
+{
+    d->speechCheckRunning.remove(meetingId);
+    d->speechChecked.insert(meetingId);   // hibánál (nem dekódolható sáv) se ismételjük
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    const trackspeech::SpeechCheckResult r = trackspeech::applySpeechRatios(m, activity);
+    if (r.changed()) {
+        if (!r.excluded.isEmpty()) {
+            m.mixdownDirty = true;
+            qCInfo(lcAudio).noquote() << "Beszéd nélküli sáv kimarad a lekeverésből:"
+                                      << r.excluded.join(QStringLiteral(", "));
+            // A sáv-aktivitás cache a bevont sávokhoz tartozik: a kimaradtak nélkül mentjük újra.
+            MeetingActivity kept;
+            kept.fingerprint = trackactivity::activityFingerprint(m, m.folder);
+            for (const TrackActivity& t : activity.tracks)
+                if (!r.excluded.contains(t.trackId)) kept.tracks.append(t);
+            if (!kept.isEmpty()) kept.save(m.folder);
+        }
+        d->store->saveMeeting(m);
+        emit tracksChanged(meetingId);
+    }
+    if (thenMixdown) regenerateMixdown(meetingId);
+}
+
+bool AppController::checkTrackSpeech(const QString& meetingId)
+{
+    if (d->speechCheckRunning.contains(meetingId) || d->speechChecked.contains(meetingId)) return false;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || !trackspeech::needsSpeechCheck(m)) return false;
+    startSpeechCheck(meetingId, /*thenMixdown*/ false);
+    return true;
+}
+
+void AppController::includeTrack(const QString& meetingId, const QString& trackId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    int lead = -1;
+    for (int i = 0; i < m.tracks.size(); ++i)
+        if (m.tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+    if (lead < 0) return;
+    bool changed = false;
+    for (int i = 0; i < m.tracks.size(); ++i) {
+        const int l = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+        Track& t = m.tracks[i];
+        if (l != lead || t.included()) continue;
+        t.active = true;
+        t.excludedReason.clear();
+        changed = true;
+    }
+    if (!changed) return;
+    m.mixdownDirty = true;
+    d->store->saveMeeting(m);
+    emit tracksChanged(meetingId);
+    regenerateMixdown(meetingId);
+}
+
+void AppController::excludeTrack(const QString& meetingId, const QString& trackId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    int lead = -1;
+    for (int i = 0; i < m.tracks.size(); ++i)
+        if (m.tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+    if (lead < 0) return;
+    bool changed = false;
+    for (int i = 0; i < m.tracks.size(); ++i) {
+        const int l = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+        Track& t = m.tracks[i];
+        if (l != lead || t.excludedReason == trackspeech::kManual) continue;
+        t.active = false;
+        t.excludedReason = trackspeech::kManual;
+        changed = true;
+    }
+    if (!changed) return;
+    m.mixdownDirty = true;
+    d->store->saveMeeting(m);
+    emit tracksChanged(meetingId);
+    bool anyIncluded = false;
+    for (const Track& t : m.tracks) anyIncluded = anyIncluded || t.included();
+    if (anyIncluded) regenerateMixdown(meetingId);
+}
+
+bool AppController::analyzeParticipants(const QString& meetingId)
+{
+    if (d->analysisRuns.contains(meetingId)) return false;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || !d->voiceModelUsable()) return false;
+    if (m.approval && m.approval->solo) return false;   // „csak én": nincs mit azonosítani
+
+    auto cancel = std::make_shared<std::atomic<bool>>(false);
+    d->analysisRuns.insert(meetingId, cancel);
+    emit participantAnalysisStarted(meetingId);
+    const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
+    const auto stop = d->analysisShutdown;
+    QPointer<AppController> self(this);
+    d->analysisPool.start([self, m, proto, cancel, stop, meetingId]() {
+        const QString fp = trackactivity::activityFingerprint(m, m.folder);
+        ClusterSet cs;
+        if (!stop->load() && !cancel->load()) {
+            MeetingActivity act = MeetingActivity::load(m.folder, fp);
+            if (act.isEmpty()) {
+                act = computeMeetingActivity(m, m.folder);
+                if (!act.isEmpty()) act.save(m.folder);
+            }
+            const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+            cs = participants::computeVoiceClusters(
+                m, act, emb, participants::filePcmReader(m),
+                [cancel, stop](int, int) { return !cancel->load() && !stop->load(); });
+        } else {
+            cs.cancelled = true;
+        }
+        QMetaObject::invokeMethod(qApp, [self, meetingId, cs, fp]() {
+            if (self) self->finishParticipantAnalysis(meetingId, cs, fp);
+        }, Qt::QueuedConnection);
+    });
+    return true;
+}
+
+void AppController::finishParticipantAnalysis(const QString& meetingId, ClusterSet clusters,
+                                              const QString& tracksKey)
+{
+    d->analysisRuns.remove(meetingId);
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return;
+    if (clusters.cancelled || !clusters.error.isEmpty()) {
+        if (!clusters.error.isEmpty())
+            qCInfo(lcVoice).noquote() << "Résztvevő-elemzés nem futott:" << clusters.error;
+        emit participantAnalysisFinished(meetingId);
+        return;
+    }
+    if (m.approval && m.approval->solo) {   // közben „csak én" lett: az elemzés eredménye nem kell
+        emit participantAnalysisFinished(meetingId);
+        return;
+    }
+    m.participants = participants::buildParticipants(clusters, m, d->candidateContext());
+
+    ParticipantAnalysisFile file;
+    file.at = QDateTime::currentDateTime().toString(Qt::ISODate);
+    file.modelIds = clusters.modelIds;
+    file.tracksKey = tracksKey;
+    file.clusters = clusters.clusters;
+    if (!file.save(m.folder))
+        qCWarning(lcVoice).noquote() << "Résztvevő-elemzés: nem írható:" << ParticipantAnalysisFile::filePath(m.folder);
+
+    // Ha az átirat már megvan: a kötés most fut (különben az átirat érkezésekor).
+    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
+    if (!lines.isEmpty()) participants::bindRawSpeakers(m.participants, file.clusters, lines);
+    d->store->saveMeeting(m);
+    qCInfo(lcVoice).noquote() << "Résztvevő-elemzés kész:" << m.participants.size() << "jelölt,"
+                              << clusters.clusters.size() << "klaszter," << clusters.windows << "ablak";
+    emit participantsChanged(meetingId);
+    emit participantAnalysisFinished(meetingId);
+}
+
+bool AppController::bindRawSpeakers(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || m.participants.isEmpty()) return false;
+    const ParticipantAnalysisFile file = ParticipantAnalysisFile::load(m.folder);
+    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
+    if (file.isEmpty() || lines.isEmpty()) return false;
+    if (!participants::bindRawSpeakers(m.participants, file.clusters, lines)) return false;
+    d->store->saveMeeting(m);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool AppController::applySpeakerBindings(const QString& meetingId, const QVector<SpeakerBinding>& bindings,
+                                         const QString& undoText)
+{
+    if (bindings.isEmpty()) return false;
+    SpeakerEditor* ed = speakerEditor(meetingId);
+    if (!ed || !ed->hasTranscript()) return false;
+    return ed->applyBindings(bindings, undoText);
+}
+
+bool AppController::applyParticipantsToTranscript(const QString& meetingId)
+{
+    bindRawSpeakers(meetingId);
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || !m.approval || m.approval->skipped) return false;
+    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
+    if (lines.isEmpty()) return false;
+    QVector<SpeakerBinding> bindings;
+    if (m.approval->solo) {
+        const QString self = d->settings->settings().userSpeakerName.trimmed();
+        if (self.isEmpty()) return false;
+        QStringList raws;
+        for (const TranscriptLine& l : lines)
+            if (!l.rawLabel.isEmpty() && !raws.contains(l.rawLabel)) raws << l.rawLabel;
+        for (const QString& r : raws) bindings.append({r, self, {}});
+        applySpeakerBindings(meetingId, bindings, tr("Csak én beszéltem"));
+        return true;
+    }
+    QStringList accepted;
+    for (const Participant& p : m.participants)
+        if (p.approved) accepted << p.id;
+    const ParticipantAnalysisFile file = ParticipantAnalysisFile::load(m.folder);
+    const MeetingActivity act =
+        MeetingActivity::load(m.folder, trackactivity::activityFingerprint(m, m.folder));
+    bindings = participants::approvalBindings(m.participants, accepted, lines, file.clusters,
+                                              act.isEmpty() ? nullptr : &act);
+    applySpeakerBindings(meetingId, bindings, tr("Résztvevők jóváhagyása"));
+    return true;
+}
+
+bool AppController::approveParticipants(const QString& meetingId, const QVector<Participant>& accepted)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    const participants::CandidateContext ctx = d->candidateContext();
+    QStringList acceptedIds;
+    for (const Participant& a : accepted) {
+        int idx = -1;
+        for (int i = 0; i < m.participants.size(); ++i)
+            if (!a.id.isEmpty() && m.participants.at(i).id == a.id) idx = i;
+        if (idx < 0) {
+            // A párbeszédben felvett új személy.
+            Participant p = a;
+            p.personName = a.personName.trimmed();
+            if (p.personName.isEmpty()) continue;
+            p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
+            p.source = ParticipantSource::Manual;
+            p.evidence = participants::participantEvidence(p, !p.sides.isEmpty(), -1.0, m, ctx);
+            m.participants.append(p);
+            idx = m.participants.size() - 1;
+        } else if (!a.personName.trimmed().isEmpty()) {
+            m.participants[idx].personName = a.personName.trimmed();   // név szerkesztve
+        }
+        acceptedIds << m.participants.at(idx).id;
+    }
+
+    ParticipantApproval ap;
+    ap.at = QDateTime::currentDateTime().toString(Qt::ISODate);
+    ap.modelIds = ParticipantAnalysisFile::load(m.folder).modelIds;
+    for (Participant& p : m.participants) {
+        p.approved = acceptedIds.contains(p.id) && !p.personName.isEmpty();
+        if (p.approved && d->people) d->people->add(p.personName);
+        ap.candidates.append({p.id, p.personName, participants::participantGroup(p), p.approved,
+                              p.rawSpeakerIds});
+    }
+    m.approval = ap;
+    d->store->saveMeeting(m);
+    emit participantsChanged(meetingId);
+    // Ha az átirat már megvan: a kötés most (egy visszavonási lépés); különben az átirat érkezésekor.
+    if (m.hasTranscript) applyParticipantsToTranscript(meetingId);
+    return true;
+}
+
+bool AppController::skipApproval(const QString& meetingId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    ParticipantApproval ap;
+    ap.at = QDateTime::currentDateTime().toString(Qt::ISODate);
+    ap.modelIds = ParticipantAnalysisFile::load(m.folder).modelIds;
+    ap.skipped = true;
+    for (const Participant& p : m.participants)
+        ap.candidates.append({p.id, p.personName, participants::participantGroup(p), false, p.rawSpeakerIds});
+    m.approval = ap;
+    d->store->saveMeeting(m);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+bool AppController::unbindParticipant(const QString& meetingId, const QString& participantId)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return false;
+    int idx = -1;
+    for (int i = 0; i < m.participants.size(); ++i)
+        if (m.participants.at(i).id == participantId) idx = i;
+    if (idx < 0) return false;
+    Participant& p = m.participants[idx];
+
+    // A sorai névtelenre: a kötött nyers beszélők (kétoldalúnál csak az adott oldal sorai), és
+    // minden beszélő, aki a személyhez van kötve (pl. korábbi automatikus azonosításból).
+    QVector<SpeakerBinding> bindings;
+    if (m.hasTranscript) {
+        const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
+        const ParticipantAnalysisFile file = ParticipantAnalysisFile::load(m.folder);
+        const MeetingActivity act =
+            MeetingActivity::load(m.folder, trackactivity::activityFingerprint(m, m.folder));
+        Participant named = p;   // csak az ő kötései (névvel, hogy a kétoldalú sorok kiadódjanak)
+        if (named.personName.isEmpty()) named.personName = QStringLiteral("?");
+        for (SpeakerBinding b : participants::approvalBindings({named}, {p.id}, lines, file.clusters,
+                                                               act.isEmpty() ? nullptr : &act)) {
+            b.personName.clear();
+            bindings.append(b);
+        }
+        if (!p.personName.isEmpty())
+            if (SpeakerEditor* ed = speakerEditor(meetingId))
+                for (const EditorSpeaker& s : ed->speakers())
+                    if (s.personName.compare(p.personName, Qt::CaseInsensitive) == 0)
+                        bindings.append({s.key, QString(), {}});
+    }
+    p.approved = false;
+    p.rawSpeakerIds.clear();
+    if (m.approval)
+        for (ParticipantApprovalEntry& e : m.approval->candidates)
+            if (e.participantId == participantId) e.checked = false;
+    d->store->saveMeeting(m);
+    applySpeakerBindings(meetingId, bindings, tr("Nem volt ott: %1").arg(p.personName));
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+QString AppController::addParticipant(const QString& meetingId, const QString& personName)
+{
+    const QString name = personName.trimmed();
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || name.isEmpty()) return {};
+    for (const Participant& p : m.participants)
+        if (p.personName.compare(name, Qt::CaseInsensitive) == 0) return p.id;
+    Participant p;
+    p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
+    p.personName = name;
+    p.source = ParticipantSource::Manual;
+    p.evidence = participants::participantEvidence(p, false, -1.0, m, d->candidateContext());
+    m.participants.append(p);
+    d->store->saveMeeting(m);
+    if (d->people) d->people->add(name);
+    emit participantsChanged(meetingId);
+    return p.id;
+}
+
+bool AppController::setSoloMeeting(const QString& meetingId)
+{
+    const QString self = d->settings->settings().userSpeakerName.trimmed();
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || self.isEmpty()) return false;
+    if (const auto it = d->analysisRuns.constFind(meetingId); it != d->analysisRuns.constEnd())
+        it.value()->store(true);   // a futó elemzés eredménye már nem kell
+
+    bool have = false;
+    for (Participant& p : m.participants) {
+        const bool me = p.personName.compare(self, Qt::CaseInsensitive) == 0;
+        p.approved = me;
+        have = have || me;
+    }
+    if (!have) {
+        Participant p;
+        p.id = QStringLiteral("m-") + QUuid::createUuid().toString(QUuid::Id128).left(8);
+        p.personName = self;
+        p.source = ParticipantSource::Manual;
+        p.approved = true;
+        p.evidence = participants::participantEvidence(p, false, -1.0, m, d->candidateContext());
+        m.participants.append(p);
+    }
+    ParticipantApproval ap;
+    ap.at = QDateTime::currentDateTime().toString(Qt::ISODate);
+    ap.solo = true;
+    for (const Participant& p : m.participants)
+        ap.candidates.append({p.id, p.personName, participants::participantGroup(p), p.approved, p.rawSpeakerIds});
+    m.approval = ap;
+    d->store->saveMeeting(m);
+    if (m.hasTranscript) applyParticipantsToTranscript(meetingId);
+    emit participantsChanged(meetingId);
+    return true;
 }
 
 } // namespace tanara

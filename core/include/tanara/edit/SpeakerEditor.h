@@ -90,6 +90,11 @@ public:
     // A beszélő visszaállítása névtelenre. fixVoiceprints: a meeting mintái kikerülnek a
     // korábbi személy lenyomatából.
     bool revertSpeakerToAnonymous(const QString& speakerKey, bool fixVoiceprints = false);
+    // Több kötés EGY visszavonási lépésben (a „Ki volt ott?" jóváhagyása, „Csak én beszéltem",
+    // „Ő nem volt ott"). Egész nyers beszélőnél: személyhez kötés (ha a személy már beszélő,
+    // összevonás) vagy névtelenre állítás; sorlistánál a sorok a személyhez (szükség esetén új
+    // résztvevőhöz) kerülnek. A nem látható / változatlan kötés kimarad. false: nem változott semmi.
+    bool applyBindings(const QVector<SpeakerBinding>& bindings, const QString& undoText);
     // fromKey minden sora intoKey-hez kerül; fromKey megszűnik.
     bool mergeSpeakers(const QString& fromKey, const QString& intoKey);
 

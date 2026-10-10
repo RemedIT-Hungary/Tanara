@@ -44,7 +44,7 @@ if(TARGET tanara_qml)
 endif()
 
 # A CLI voice-models / voice-eval / track-sides parancsait a tanara-cli futtatásával teszteljük (QProcess).
-foreach(t test_cli_voice_models test_cli_track_sides test_cli_person_tags)
+foreach(t test_cli_voice_models test_cli_track_sides test_cli_person_tags test_cli_participants)
     if(TARGET ${t} AND TARGET tanara-cli)
         add_dependencies(${t} tanara-cli)
         target_compile_definitions(${t} PRIVATE TANARA_CLI_EXE="$<TARGET_FILE:tanara-cli>")

@@ -1442,6 +1442,55 @@ bool SpeakerEditor::revertSpeakerToAnonymous(const QString& speakerKey, bool fix
     return true;
 }
 
+bool SpeakerEditor::applyBindings(const QVector<SpeakerBinding>& bindings, const QString& undoText)
+{
+    Step s = d->begin();
+    bool changed = false;
+    for (const SpeakerBinding& b : bindings) {
+        const QString person = d->canonicalPerson(b.personName);
+        if (b.utteranceIds.isEmpty()) {
+            const QString key = b.rawLabel;
+            if (!d->visible(key)) continue;
+            const QString old = d->personOf(key);
+            if (person.isEmpty()) {
+                if (old.isEmpty()) continue;
+                if (OverlayParticipant* p = d->ov.participant(key)) {
+                    p->person.clear();
+                    if (p->label.isEmpty()) p->label = tr("Új beszélő %1").arg(d->ov.nextAnonymous++);
+                } else {
+                    d->speakerMap.remove(key);
+                }
+                appendUnique(s.affectedSpeakers, key);
+                changed = true;
+                continue;
+            }
+            if (old.compare(person, Qt::CaseInsensitive) == 0) continue;
+            const QString existing = d->speakerKeyForPerson(person, key);
+            if (!existing.isEmpty()) d->mergeInto(key, existing, s);
+            else d->setPerson(key, person, s);
+            changed = true;
+            continue;
+        }
+        const QVector<int> all = d->indicesOf(b.utteranceIds);
+        if (all.isEmpty()) continue;
+        QString key = d->speakerKeyForPerson(person);
+        if (key.isEmpty()) key = d->createParticipant(person, s);
+        QVector<int> idx;
+        for (int i : all) {
+            const auto o = d->ov.utterances.constFind(d->lines[i].id);
+            const QString cur = (o != d->ov.utterances.constEnd() && !o->speaker.isEmpty())
+                ? o->speaker : d->assigned.value(i);
+            if (cur != key) idx.append(i);
+        }
+        if (idx.isEmpty()) continue;
+        d->moveLines(idx, key, s);
+        changed = true;
+    }
+    if (!changed) return false;
+    d->commit(s, undoText);
+    return true;
+}
+
 bool SpeakerEditor::mergeSpeakers(const QString& fromKey, const QString& intoKey)
 {
     if (fromKey == intoKey || !d->visible(fromKey) || !d->visible(intoKey)) return false;

@@ -491,16 +491,11 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         qWarning().noquote() << "RecordingSession: hibásan lezárt sávfájl(ok):"
                              << failedFiles.join(QStringLiteral(", "));
 
-    // Csendes sávok meghatározása ELŐRE (a mixdownhoz is kell): a csúcs-RMS-küszöb
-    // alattiak inaktívak (auto-eldobás, reverzibilis — a FÁJL MARAD). Ha MINDEN sáv
-    // néma lenne, egyiket sem dobjuk (inkább maradjon meg minden).
-    constexpr float kSilencePeak = 0.01f;   // tunálható; reverzibilis, ezért óvatosan alacsony
+    // Minden sáv aktív marad: a csendes sávot a felvétel UTÁNI beszéd-ellenőrzés veszi ki a
+    // lekeverésből (Track::speechRatio / excludedReason, edit/TrackSpeech.h — az AppController
+    // a lekeverés előtt futtatja). A csúcsszintet tájékoztatásul megőrizzük.
     const int nTr = static_cast<int>(impl_->tracks.size());
     auto peakOf = [&](int i) { return (i < impl_->trackPeak.size()) ? impl_->trackPeak[i] : 0.0f; };
-    bool anyAbove = false;
-    for (int i = 0; i < nTr; ++i)
-        if (peakOf(i) >= kSilencePeak) anyAbove = true;
-    auto isActive = [&](int i) { return anyAbove ? (peakOf(i) >= kSilencePeak) : true; };
 
     // Mixdown SZÁNDÉKOSAN nem itt készül. Korábban a fő szálon, szinkron
     // `QProcess::waitForFinished()`-sel futott — egy 1,5 órás meetingnél ez 15-20 mp-re
@@ -538,7 +533,7 @@ void RecordingSession::onFinalized(const QStringList& failedFiles) {
         tr.sampleRate = 48000;
         tr.channels = t.channels;
         tr.peakLevel = peakOf(i);
-        tr.active = isActive(i);
+        tr.active = true;
         tr.startOffsetMs = t.startOffsetMs;
         m.tracks.push_back(tr);
     }
