@@ -572,19 +572,19 @@
     <name>ContaminatedCoreBanner</name>
     <message>
         <source>(%1 / %2 sor)</source>
-        <translation type="unfinished"></translation>
+        <translation>(%1 / %2 lines)</translation>
     </message>
     <message>
         <source>Szétválasztás</source>
-        <translation type="unfinished"></translation>
+        <translation>Split</translation>
     </message>
     <message>
         <source> — visszavonható: Ctrl+Z</source>
-        <translation type="unfinished"></translation>
+        <translation> — undo with Ctrl+Z</translation>
     </message>
     <message>
         <source>Miért?</source>
-        <translation type="unfinished">Why?</translation>
+        <translation>Why?</translation>
     </message>
 </context>
 <context>
@@ -944,160 +944,160 @@
     <name>LinePopover</name>
     <message>
         <source>Meghallgatás: ez a sor</source>
-        <translation type="unfinished">Listen: this line</translation>
+        <translation>Listen: this line</translation>
     </message>
     <message>
         <source>Meghallgatás: egy jellemző, hosszabb megszólalás ettől a beszélőtől</source>
-        <translation type="unfinished">Listen: a typical, longer utterance from this speaker</translation>
+        <translation>Listen: a typical, longer utterance from this speaker</translation>
     </message>
     <message>
         <source>Meghallgatás</source>
-        <translation type="unfinished">Listen</translation>
+        <translation>Listen</translation>
     </message>
     <message>
         <source>Kinek a sora ez?</source>
-        <translation type="unfinished">Whose line is this?</translation>
+        <translation>Whose line is this?</translation>
     </message>
     <message numerus="yes">
         <source>Kié a kijelölt %n sor?</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>Whose is the %n selected line?</numerusform>
             <numerusform>Whose are the %n selected lines?</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 valójában…</source>
-        <translation type="unfinished">%1 is actually…</translation>
+        <translation>%1 is actually…</translation>
     </message>
     <message>
         <source>A kattintott sor most: %1</source>
-        <translation type="unfinished">The clicked line is now: %1</translation>
+        <translation>The clicked line is now: %1</translation>
     </message>
     <message>
         <source>Most: %1 · %2</source>
-        <translation type="unfinished">Now: %1 · %2</translation>
+        <translation>Now: %1 · %2</translation>
     </message>
     <message>
         <source>Miért ő?</source>
-        <translation type="unfinished"></translation>
+        <translation>Why them?</translation>
     </message>
     <message>
         <source>Csak ez a sor</source>
-        <translation type="unfinished">Only this line</translation>
+        <translation>Only this line</translation>
     </message>
     <message numerus="yes">
         <source>Kijelölt %n sor</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n selected line</numerusform>
             <numerusform>%n selected lines</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 mind az %2 sora</source>
-        <translation type="unfinished"></translation>
+        <translation>All %2 lines are %1&apos;s</translation>
     </message>
     <message>
         <source>%1 mind a %2 sora</source>
-        <translation type="unfinished"></translation>
+        <translation>All %2 lines are %1&apos;s</translation>
     </message>
     <message>
         <source>Az új személy neve (üresen: névtelen)</source>
-        <translation type="unfinished"></translation>
+        <translation>New person&apos;s name (leave empty for unnamed)</translation>
     </message>
     <message>
         <source>Név keresése vagy új személy</source>
-        <translation type="unfinished">Search name or new person</translation>
+        <translation>Search name or new person</translation>
     </message>
     <message>
         <source>EBBEN A MEGBESZÉLÉSBEN</source>
-        <translation type="unfinished"></translation>
+        <translation>IN THIS MEETING</translation>
     </message>
     <message>
         <source>ÖSSZEVONÁS VAGY ÁTNEVEZÉS</source>
-        <translation type="unfinished"></translation>
+        <translation>MERGE OR RENAME</translation>
     </message>
     <message>
         <source>JAVASOLT</source>
-        <translation type="unfinished"></translation>
+        <translation>SUGGESTED</translation>
     </message>
     <message>
         <source>a bizonyítékok sorrendjében</source>
-        <translation type="unfinished"></translation>
+        <translation>in order of evidence</translation>
     </message>
     <message>
         <source>MÁSIK SZEMÉLY</source>
-        <translation type="unfinished"></translation>
+        <translation>SOMEONE ELSE</translation>
     </message>
     <message>
         <source>„%1”</source>
-        <translation type="unfinished">&quot;%1&quot;</translation>
+        <translation>&quot;%1&quot;</translation>
     </message>
     <message numerus="yes">
         <source>%n megbeszélés</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n meeting</numerusform>
             <numerusform>%n meetings</numerusform>
         </translation>
     </message>
     <message>
         <source>nincs hanglenyomat</source>
-        <translation type="unfinished">no voiceprint</translation>
+        <translation>no voiceprint</translation>
     </message>
     <message>
         <source>Új személy: „%1”</source>
-        <translation type="unfinished">New person: &quot;%1&quot;</translation>
+        <translation>New person: &quot;%1&quot;</translation>
     </message>
     <message>
         <source>Névtelen beszélő</source>
-        <translation type="unfinished">Unnamed speaker</translation>
+        <translation>Unnamed speaker</translation>
     </message>
     <message>
         <source>Új névtelen résztvevő</source>
-        <translation type="unfinished">New unnamed participant</translation>
+        <translation>New unnamed participant</translation>
     </message>
     <message>
         <source>MIÉRT NEM %1?</source>
-        <translation type="unfinished"></translation>
+        <translation>WHY NOT %1?</translation>
     </message>
     <message>
         <source>Ha másé, a sorai kerüljenek ki %1 hanglenyomatából (téves felismerés)</source>
-        <translation type="unfinished"></translation>
+        <translation>If it&apos;s someone else&apos;s, remove its lines from %1&apos;s voiceprint (wrong match)</translation>
     </message>
     <message>
         <source>Új személy a kijelölt sorokból…</source>
-        <translation type="unfinished"></translation>
+        <translation>New person from the selected lines…</translation>
     </message>
     <message>
         <source>Új személy ebből a sorból…</source>
-        <translation type="unfinished"></translation>
+        <translation>New person from this line…</translation>
     </message>
     <message>
         <source>ha senki sem ő</source>
-        <translation type="unfinished"></translation>
+        <translation>if it&apos;s nobody</translation>
     </message>
     <message numerus="yes">
         <source>%n sor kerül át · Ctrl+Z visszavonja · a gép tanul belőle</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n line will move · Ctrl+Z undoes it · the app learns from it</numerusform>
+            <numerusform>%n lines will move · Ctrl+Z undoes it · the app learns from it</numerusform>
         </translation>
     </message>
     <message>
         <source>Ctrl+Z visszavonja</source>
-        <translation type="unfinished"></translation>
+        <translation>Ctrl+Z undoes it</translation>
     </message>
     <message numerus="yes">
         <source>A teljes beszélőre vonatkozik: mind az %n sor · Ctrl+Z visszavonja</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Applies to the whole speaker: all %n line · Ctrl+Z undoes it</numerusform>
+            <numerusform>Applies to the whole speaker: all %n lines · Ctrl+Z undoes it</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>A teljes beszélőre vonatkozik: mind a %n sor · Ctrl+Z visszavonja</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Applies to the whole speaker: all %n line · Ctrl+Z undoes it</numerusform>
+            <numerusform>Applies to the whole speaker: all %n lines · Ctrl+Z undoes it</numerusform>
         </translation>
     </message>
 </context>
@@ -1176,7 +1176,7 @@
     </message>
     <message>
         <source>Megbeszélés</source>
-        <translation type="unfinished">Meeting</translation>
+        <translation>Meeting</translation>
     </message>
     <message>
         <source>Nézet</source>
@@ -1184,27 +1184,27 @@
     </message>
     <message>
         <source>Áttekintés</source>
-        <translation type="unfinished">Overview</translation>
+        <translation>Overview</translation>
     </message>
     <message>
         <source>Vezetői összefoglaló</source>
-        <translation type="unfinished">Executive summary</translation>
+        <translation>Executive summary</translation>
     </message>
     <message>
         <source>Memó</source>
-        <translation type="unfinished">Memo</translation>
+        <translation>Memo</translation>
     </message>
     <message>
         <source>Olvasás</source>
-        <translation type="unfinished"></translation>
+        <translation>Read</translation>
     </message>
     <message>
         <source>Javítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Correct</translation>
     </message>
     <message>
         <source>Beszélő-oszlopok</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaker columns</translation>
     </message>
     <message>
         <source>Felvétel-ablak előtérbe</source>
@@ -1248,7 +1248,7 @@
     </message>
     <message>
         <source>A „Ki volt ott?” párbeszéd még nincs beépítve ebbe a változatba.</source>
-        <translation type="unfinished"></translation>
+        <translation>The &quot;Who was there?&quot; dialog is not available in this version yet.</translation>
     </message>
     <message>
         <source>Lejátszási hiba: %1</source>
@@ -1263,42 +1263,42 @@
     <name>MapDock</name>
     <message>
         <source>Forrás</source>
-        <translation type="unfinished"></translation>
+        <translation>Source</translation>
     </message>
     <message>
         <source>Szakaszok</source>
-        <translation type="unfinished"></translation>
+        <translation>Sections</translation>
     </message>
     <message numerus="yes">
         <source>%n keveset beszélő résztvevő — kattintásra külön sort kapnak</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n participant who spoke little — click to give them their own row</numerusform>
             <numerusform>%n participants who spoke little — click to give them their own rows</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 — a beszélő menüje (átnevezés, összevonás, hanglenyomat)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 — speaker menu (rename, merge, voiceprint)</translation>
     </message>
     <message>
         <source>Van hanglenyomata — kattintásra a részletek</source>
-        <translation type="unfinished">Has a voiceprint — click for details</translation>
+        <translation>Has a voiceprint — click for details</translation>
     </message>
     <message>
         <source>Névtelen beszélő: hanglenyomat csak elnevezett beszélőhöz készíthető</source>
-        <translation type="unfinished">Unnamed speaker: a voiceprint can only be created for a named speaker</translation>
+        <translation>Unnamed speaker: a voiceprint can only be created for a named speaker</translation>
     </message>
     <message>
         <source>Még nincs hanglenyomata — kattintásra itt készíthető</source>
-        <translation type="unfinished">No voiceprint yet — click to create one here</translation>
+        <translation>No voiceprint yet — click to create one here</translation>
     </message>
     <message>
         <source>Keveset beszélők összecsukása</source>
-        <translation type="unfinished">Collapse speakers who spoke little</translation>
+        <translation>Collapse speakers who spoke little</translation>
     </message>
     <message>
         <source>a beszélő-térkép a keresősáv: kattintás = ugrás, név = beszélő menü</source>
-        <translation type="unfinished"></translation>
+        <translation>the speaker map is the seek bar: click = jump, name = speaker menu</translation>
     </message>
 </context>
 <context>
@@ -1408,7 +1408,7 @@
     <name>MeetingHeader</name>
     <message>
         <source>Átnevezés (F2)</source>
-        <translation type="unfinished"></translation>
+        <translation>Rename (F2)</translation>
     </message>
     <message>
         <source>A megbeszélés címe</source>
@@ -1416,106 +1416,106 @@
     </message>
     <message>
         <source>Áttekintés</source>
-        <translation type="unfinished">Overview</translation>
+        <translation>Overview</translation>
     </message>
     <message>
         <source>Átirat</source>
-        <translation type="unfinished">Transcript</translation>
+        <translation>Transcript</translation>
     </message>
     <message>
         <source>Vezetői összefoglaló</source>
-        <translation type="unfinished">Executive summary</translation>
+        <translation>Executive summary</translation>
     </message>
     <message>
         <source>Memó</source>
-        <translation type="unfinished">Memo</translation>
+        <translation>Memo</translation>
     </message>
     <message>
         <source>elavult</source>
-        <translation type="unfinished">outdated</translation>
+        <translation>outdated</translation>
     </message>
     <message>
         <source>Megbeszélés: átnevezés, azonosítás, újra-átírás, export, törlés</source>
-        <translation type="unfinished"></translation>
+        <translation>Meeting: rename, identify, re-transcribe, export, delete</translation>
     </message>
     <message>
         <source>Még nincs átirat</source>
-        <translation type="unfinished"></translation>
+        <translation>No transcript yet</translation>
     </message>
     <message>
         <source>Még nincs memó</source>
-        <translation type="unfinished"></translation>
+        <translation>No memo yet</translation>
     </message>
     <message>
         <source>Még nincs vezetői összefoglaló</source>
-        <translation type="unfinished"></translation>
+        <translation>No executive summary yet</translation>
     </message>
     <message>
         <source>Az átírás fut (%1%). Ha elkészül, itt olvashatod és javíthatod.</source>
-        <translation type="unfinished"></translation>
+        <translation>Transcription is running (%1%). When it finishes, you can read and correct it here.</translation>
     </message>
     <message>
         <source>A felvételt még nem írtuk át. Az átírás után itt olvashatod és javíthatod a beszélőket.</source>
-        <translation type="unfinished"></translation>
+        <translation>The recording has not been transcribed yet. After transcription you can read it here and correct the speakers.</translation>
     </message>
     <message>
         <source>Az összefoglaló az átiratból készül: előbb az átírásnak kell elkészülnie.</source>
-        <translation type="unfinished"></translation>
+        <translation>The summary is built from the transcript, so transcription has to finish first.</translation>
     </message>
     <message>
         <source>Készül az összefoglaló (%1%).</source>
-        <translation type="unfinished"></translation>
+        <translation>Building the summary (%1%).</translation>
     </message>
     <message>
         <source>Az átirat kész. A gyors összefoglaló kb. 1 perc, a Memó ugyanabból készül.</source>
-        <translation type="unfinished"></translation>
+        <translation>The transcript is ready. The quick summary takes about 1 minute; the Memo is built from the same material.</translation>
     </message>
     <message>
         <source>Átírás indítása</source>
-        <translation type="unfinished">Start transcription</translation>
+        <translation>Start transcription</translation>
     </message>
     <message>
         <source>Összefoglaló készítése</source>
-        <translation type="unfinished"></translation>
+        <translation>Create summary</translation>
     </message>
     <message>
         <source>Más lehetőségek…</source>
-        <translation type="unfinished"></translation>
+        <translation>More options…</translation>
     </message>
 </context>
 <context>
     <name>MeetingMenu</name>
     <message>
         <source>Átnevezés</source>
-        <translation type="unfinished">Rename</translation>
+        <translation>Rename</translation>
     </message>
     <message>
         <source>Ki volt ott?</source>
-        <translation type="unfinished"></translation>
+        <translation>Who was there?</translation>
     </message>
     <message>
         <source>Résztvevők azonosítása (hang alapján)</source>
-        <translation type="unfinished">Identify participants (by voice)</translation>
+        <translation>Identify participants (by voice)</translation>
     </message>
     <message>
         <source>Újraellenőrzés…</source>
-        <translation type="unfinished"></translation>
+        <translation>Re-check…</translation>
     </message>
     <message>
         <source>Újra-átírás…</source>
-        <translation type="unfinished">Re-transcribe…</translation>
+        <translation>Re-transcribe…</translation>
     </message>
     <message>
         <source>Exportálás archívumba…</source>
-        <translation type="unfinished">Export to archive…</translation>
+        <translation>Export to archive…</translation>
     </message>
     <message>
         <source>Megnyitás mappában</source>
-        <translation type="unfinished">Show in folder</translation>
+        <translation>Show in folder</translation>
     </message>
     <message>
         <source>Törlés…</source>
-        <translation type="unfinished">Delete…</translation>
+        <translation>Delete…</translation>
     </message>
 </context>
 <context>
@@ -1596,14 +1596,14 @@
     <name>MemoToc</name>
     <message numerus="yes">
         <source>Tartalom · %n szakasz</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Contents · %n section</numerusform>
+            <numerusform>Contents · %n sections</numerusform>
         </translation>
     </message>
     <message>
         <source>Egyéb</source>
-        <translation type="unfinished">Other</translation>
+        <translation>Other</translation>
     </message>
 </context>
 <context>
@@ -1824,245 +1824,245 @@
     <name>OverviewTab</name>
     <message>
         <source>Ehhez add meg a saját neved a Beállításokban (Általános › Te).</source>
-        <translation type="unfinished"></translation>
+        <translation>To do this, enter your own name in Settings (General › You).</translation>
     </message>
     <message>
         <source>MIRŐL SZÓLT</source>
-        <translation type="unfinished"></translation>
+        <translation>WHAT IT WAS ABOUT</translation>
     </message>
     <message>
         <source>MIRŐL SZÓL</source>
-        <translation type="unfinished"></translation>
+        <translation>WHAT IT IS ABOUT</translation>
     </message>
     <message>
         <source>Forrás</source>
-        <translation type="unfinished"></translation>
+        <translation>Source</translation>
     </message>
     <message>
         <source>Leírás</source>
-        <translation type="unfinished"></translation>
+        <translation>Description</translation>
     </message>
     <message>
         <source>Naptár-esemény (hamarosan)</source>
-        <translation type="unfinished"></translation>
+        <translation>Calendar event (coming soon)</translation>
     </message>
     <message>
         <source>KIK VOLTAK OTT</source>
-        <translation type="unfinished"></translation>
+        <translation>WHO WAS THERE</translation>
     </message>
     <message>
         <source>Módosítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Edit</translation>
     </message>
     <message>
         <source>+ Résztvevő</source>
-        <translation type="unfinished"></translation>
+        <translation>+ Participant</translation>
     </message>
     <message>
         <source>Még nem tudjuk, kik voltak ott</source>
-        <translation type="unfinished"></translation>
+        <translation>We don&apos;t know yet who was there</translation>
     </message>
     <message>
         <source>Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter who was there: the speakers will get their names, and next time we&apos;ll recognize them by voice too.</translation>
     </message>
     <message>
         <source>A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.</source>
-        <translation type="unfinished"></translation>
+        <translation>Candidates will appear here after the voiceprint analysis. If you know, enter them now: identification will be more accurate.</translation>
     </message>
     <message>
         <source>Csak én beszéltem</source>
-        <translation type="unfinished"></translation>
+        <translation>Only I spoke</translation>
     </message>
     <message>
         <source>Minden beszéd a te nevedre kerül, az azonosítás kimarad</source>
-        <translation type="unfinished"></translation>
+        <translation>All speech goes under your name; identification is skipped</translation>
     </message>
     <message numerus="yes">
         <source>%n beszélő, ismeretlen hanggal</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n speaker with an unknown voice</numerusform>
+            <numerusform>%n speakers with unknown voices</numerusform>
         </translation>
     </message>
     <message>
         <source>Egyikük hangja sem hasonlít egy ismert emberére sem. Elnevezheted őket; legközelebb már felismerjük a hangjukat.</source>
-        <translation type="unfinished"></translation>
+        <translation>None of their voices resemble anyone known. You can name them; next time we&apos;ll recognize their voices.</translation>
     </message>
     <message>
         <source>Elnevezem őket</source>
-        <translation type="unfinished"></translation>
+        <translation>Name them</translation>
     </message>
     <message numerus="yes">
         <source>A hanglenyomat-elemzés kész: %n jelölt</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Voiceprint analysis finished: %n candidate</numerusform>
+            <numerusform>Voiceprint analysis finished: %n candidates</numerusform>
         </translation>
     </message>
     <message>
         <source>Nézd át, kik voltak ott. Ebből kötöm az átirat beszélőit a nevekhez.</source>
-        <translation type="unfinished"></translation>
+        <translation>Review who was there. I use this to match the transcript&apos;s speakers to names.</translation>
     </message>
     <message>
         <source>Nézd át, kik voltak ott. Ebből köti az átirat a beszélőket, amikor megérkezik.</source>
-        <translation type="unfinished"></translation>
+        <translation>Review who was there. The transcript uses this to match speakers to names when it arrives.</translation>
     </message>
     <message>
         <source>Átnézem</source>
-        <translation type="unfinished"></translation>
+        <translation>Review</translation>
     </message>
     <message>
         <source>Később</source>
-        <translation type="unfinished">Later</translation>
+        <translation>Later</translation>
     </message>
     <message>
         <source>ADATOK</source>
-        <translation type="unfinished"></translation>
+        <translation>DETAILS</translation>
     </message>
     <message>
         <source>FELDOLGOZÁS ÉS SÁVOK</source>
-        <translation type="unfinished"></translation>
+        <translation>PROCESSING AND TRACKS</translation>
     </message>
     <message>
         <source>Minden lépés kész</source>
-        <translation type="unfinished"></translation>
+        <translation>All steps done</translation>
     </message>
     <message>
         <source>Sávok</source>
-        <translation type="unfinished"></translation>
+        <translation>Tracks</translation>
     </message>
     <message numerus="yes">
         <source>%n aktív</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n active</numerusform>
+            <numerusform>%n active</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n kimaradt</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n skipped</numerusform>
+            <numerusform>%n skipped</numerusform>
         </translation>
     </message>
     <message>
         <source>FELDOLGOZÁS</source>
-        <translation type="unfinished"></translation>
+        <translation>PROCESSING</translation>
     </message>
     <message>
         <source>SÁVOK</source>
-        <translation type="unfinished"></translation>
+        <translation>TRACKS</translation>
     </message>
     <message>
         <source>Részletek</source>
-        <translation type="unfinished">Details</translation>
+        <translation>Details</translation>
     </message>
     <message>
         <source>Sávok részletei</source>
-        <translation type="unfinished"></translation>
+        <translation>Track details</translation>
     </message>
     <message>
         <source>Bezárás</source>
-        <translation type="unfinished">Close</translation>
+        <translation>Close</translation>
     </message>
 </context>
 <context>
     <name>ParticipantList</name>
     <message>
         <source>Hozzáadás</source>
-        <translation type="unfinished">Add</translation>
+        <translation>Add</translation>
     </message>
     <message>
         <source>Nem volt ott (a javaslat eltűnik)</source>
-        <translation type="unfinished"></translation>
+        <translation>Wasn&apos;t there (the suggestion disappears)</translation>
     </message>
     <message>
         <source>Nem volt ott: a jelölése törlődik, a sorai névtelenek lesznek</source>
-        <translation type="unfinished"></translation>
+        <translation>Wasn&apos;t there: the mark is removed and their lines become unnamed</translation>
     </message>
 </context>
 <context>
     <name>ParticipantRow</name>
     <message>
         <source>Elnevezés…</source>
-        <translation type="unfinished"></translation>
+        <translation>Name…</translation>
     </message>
     <message>
         <source>Elvetés</source>
-        <translation type="unfinished">Discard</translation>
+        <translation>Discard</translation>
     </message>
 </context>
 <context>
     <name>ParticipantsDialog</name>
     <message numerus="yes">
         <source>Résztvevők jóváhagyva: %n.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Participants approved: %n.</numerusform>
+            <numerusform>Participants approved: %n.</numerusform>
         </translation>
     </message>
     <message>
         <source>A bejelölt hang ennek a személynek a nevére kerül.</source>
-        <translation type="unfinished"></translation>
+        <translation>The selected voice will be assigned to this person.</translation>
     </message>
     <message>
         <source>Ki volt ott?</source>
-        <translation type="unfinished"></translation>
+        <translation>Who was there?</translation>
     </message>
     <message>
         <source>hanglenyomat-elemzés · fut</source>
-        <translation type="unfinished"></translation>
+        <translation>voiceprint analysis · running</translation>
     </message>
     <message>
         <source>Vedd ki, akit tévesen talált, és add hozzá, akit nem ismert fel. A bejelöltek nevére kerülnek a beszélőik; később is módosíthatod.</source>
-        <translation type="unfinished"></translation>
+        <translation>Remove anyone it found by mistake and add anyone it missed. The speakers will be assigned to the checked names; you can change this later.</translation>
     </message>
     <message>
         <source>Vedd ki, akit tévesen talált, és add hozzá, akit nem ismert fel. Az átirat ebből köti a beszélőket, amikor megérkezik; később is módosíthatod.</source>
-        <translation type="unfinished"></translation>
+        <translation>Remove anyone it found by mistake and add anyone it missed. The transcript uses this to match speakers when it arrives; you can change this later.</translation>
     </message>
     <message>
         <source>Hanglenyomat-elemzés fut…</source>
-        <translation type="unfinished"></translation>
+        <translation>Voiceprint analysis running…</translation>
     </message>
     <message>
         <source>A jelöltek pár másodperc múlva itt lesznek. Addig is felvehetsz résztvevőt kézzel.</source>
-        <translation type="unfinished"></translation>
+        <translation>Candidates will be here in a few seconds. Meanwhile you can add a participant manually.</translation>
     </message>
     <message>
         <source>Még nincs jelölt: a hangelemzés senkit sem talált. Vedd fel kézzel, akik ott voltak.</source>
-        <translation type="unfinished"></translation>
+        <translation>No candidates yet: the voice analysis found no one. Add the people who were there manually.</translation>
     </message>
     <message>
         <source>Résztvevő hozzáadása…</source>
-        <translation type="unfinished"></translation>
+        <translation>Add participant…</translation>
     </message>
     <message>
         <source>A felvett résztvevő a „Tovább”-bal kerül a megbeszélésre.</source>
-        <translation type="unfinished"></translation>
+        <translation>The participant you add is attached to the meeting with &quot;Continue&quot;.</translation>
     </message>
     <message>
         <source>Javasolt résztvevő: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested participant: %1</translation>
     </message>
     <message>
         <source>Később</source>
-        <translation type="unfinished">Later</translation>
+        <translation>Later</translation>
     </message>
     <message>
         <source>Kihagyás</source>
-        <translation type="unfinished"></translation>
+        <translation>Skip</translation>
     </message>
     <message>
         <source>Nem kötünk senkit; a jelöltek megmaradnak, később is jóváhagyhatod.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nobody will be matched; the candidates stay and you can approve them later.</translation>
     </message>
     <message numerus="yes">
         <source>Tovább · %n résztvevő</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Continue · %n participant</numerusform>
+            <numerusform>Continue · %n participants</numerusform>
         </translation>
     </message>
 </context>
@@ -2452,14 +2452,14 @@
     <name>PipelineSteps</name>
     <message>
         <source>‖ párhuzamosan</source>
-        <translation type="unfinished"></translation>
+        <translation>‖ in parallel</translation>
     </message>
 </context>
 <context>
     <name>PlayerBar</name>
     <message>
         <source>lekevert hang</source>
-        <translation type="unfinished"></translation>
+        <translation>mixed audio</translation>
     </message>
     <message>
         <source>Ehhez a megbeszéléshez nincs lejátszható hang</source>
@@ -2475,7 +2475,7 @@
     </message>
     <message>
         <source>sáv-előnézet</source>
-        <translation type="unfinished"></translation>
+        <translation>track preview</translation>
     </message>
     <message>
         <source>Pozíció</source>
@@ -3004,120 +3004,120 @@
     <name>ReviewGroupCard</name>
     <message numerus="yes">
         <source>%n sor</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n line</numerusform>
             <numerusform>%n lines</numerusform>
         </translation>
     </message>
     <message>
         <source>Mind az %1 → %2</source>
-        <translation type="unfinished"></translation>
+        <translation>All %1 → %2</translation>
     </message>
     <message>
         <source>Mind a %1 → %2</source>
-        <translation type="unfinished"></translation>
+        <translation>All %1 → %2</translation>
     </message>
     <message>
         <source>A csoport minden sora ide kerül: %1 — egy lépésben visszavonható (Ctrl+Z)</source>
-        <translation type="unfinished"></translation>
+        <translation>Every line in the group goes here: %1 — undoable in one step (Ctrl+Z)</translation>
     </message>
     <message>
         <source>Összecsukás</source>
-        <translation type="unfinished">Collapse</translation>
+        <translation>Collapse</translation>
     </message>
     <message>
         <source>Egyenként</source>
-        <translation type="unfinished"></translation>
+        <translation>One by one</translation>
     </message>
     <message>
         <source>Elrejtem</source>
-        <translation type="unfinished">Hide</translation>
+        <translation>Hide</translation>
     </message>
     <message>
         <source>Megmutatom</source>
-        <translation type="unfinished">Show</translation>
+        <translation>Show</translation>
     </message>
     <message>
         <source>Kihagyom</source>
-        <translation type="unfinished">Skip</translation>
+        <translation>Skip</translation>
     </message>
     <message>
         <source>Most nem foglalkozom vele: a csoport eltűnik a listából (a sorok maradnak, ahogy vannak)</source>
-        <translation type="unfinished"></translation>
+        <translation>Not dealing with it now: the group disappears from the list (the lines stay as they are)</translation>
     </message>
 </context>
 <context>
     <name>ReviewGroupsView</name>
     <message>
         <source>javítva</source>
-        <translation type="unfinished">corrected</translation>
+        <translation>corrected</translation>
     </message>
     <message>
         <source>Meghallgatom</source>
-        <translation type="unfinished">Listen</translation>
+        <translation>Listen</translation>
     </message>
     <message>
         <source>%1 mondta</source>
-        <translation type="unfinished">%1 said it</translation>
+        <translation>%1 said it</translation>
     </message>
     <message>
         <source>A sor átkerül hozzá: %1 (1)</source>
-        <translation type="unfinished"></translation>
+        <translation>The line moves to them: %1 (1)</translation>
     </message>
     <message>
         <source>Jó így</source>
-        <translation type="unfinished">Looks right</translation>
+        <translation>Looks right</translation>
     </message>
     <message>
         <source>A beszélő rendben van: a sor többé nem kétes</source>
-        <translation type="unfinished"></translation>
+        <translation>The speaker is right: the line is no longer in doubt</translation>
     </message>
     <message>
         <source>Jó így, de nem minta</source>
-        <translation type="unfinished">Fine, but not a sample</translation>
+        <translation>Fine, but not a sample</translation>
     </message>
     <message>
         <source>Jó így, de ne használd mintának: a beszélő rendben van, de egymásra beszéltek, ezért a sor hangja nem lesz minta</source>
-        <translation type="unfinished">Fine, but don’t use it as a sample: the speaker is right, but there is cross-talk, so this line’s voice won’t be a sample</translation>
+        <translation>Fine, but don’t use it as a sample: the speaker is right, but there is cross-talk, so this line’s voice won’t be a sample</translation>
     </message>
     <message>
         <source>Más…</source>
-        <translation type="unfinished"></translation>
+        <translation>Other…</translation>
     </message>
     <message>
         <source>Csak ez a sor kerül át ahhoz, akit választasz</source>
-        <translation type="unfinished">Only this line moves to the person you choose</translation>
+        <translation>Only this line moves to the person you choose</translation>
     </message>
     <message numerus="yes">
         <source>··· %n sor ebben a csoportban</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>··· %n line in this group</numerusform>
+            <numerusform>··· %n lines in this group</numerusform>
         </translation>
     </message>
     <message>
         <source>Kinyitás</source>
-        <translation type="unfinished">Expand</translation>
+        <translation>Expand</translation>
     </message>
     <message>
         <source>Átnézendők frissítése…</source>
-        <translation type="unfinished"></translation>
+        <translation>Refresh items to review…</translation>
     </message>
     <message>
         <source>Az átnézendő sorok keresése…</source>
-        <translation type="unfinished"></translation>
+        <translation>Looking for lines to review…</translation>
     </message>
     <message>
         <source>Nincs átnézendő sor — minden megszólalás beszélője rendben van.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nothing to review — every utterance has the right speaker.</translation>
     </message>
     <message>
         <source>Beszélők újraellenőrzése…</source>
-        <translation type="unfinished">Re-check speakers…</translation>
+        <translation>Re-check speakers…</translation>
     </message>
     <message>
         <source>A megerősített és javított sorok hangjához mérem a többi sort</source>
-        <translation type="unfinished">Compares the other lines with the voice of the confirmed and corrected lines</translation>
+        <translation>Compares the other lines with the voice of the confirmed and corrected lines</translation>
     </message>
 </context>
 <context>
@@ -4184,97 +4184,97 @@
     <name>SourceCard</name>
     <message>
         <source>Leírás</source>
-        <translation type="unfinished"></translation>
+        <translation>Description</translation>
     </message>
     <message>
         <source>kézzel megadva</source>
-        <translation type="unfinished"></translation>
+        <translation>entered manually</translation>
     </message>
     <message>
         <source>Szerkesztés</source>
-        <translation type="unfinished"></translation>
+        <translation>Edit</translation>
     </message>
     <message>
         <source>Nincs hozzá naptár-esemény</source>
-        <translation type="unfinished"></translation>
+        <translation>No calendar event attached</translation>
     </message>
     <message>
         <source>Egy rövid leírás vagy egy összekapcsolt esemény segít a címkéknél, a résztvevőknél és az átírásnál is. Nem kötelező.</source>
-        <translation type="unfinished"></translation>
+        <translation>A short description or a linked event helps with tags, participants and transcription. Optional.</translation>
     </message>
     <message>
         <source>Leírás megadása</source>
-        <translation type="unfinished"></translation>
+        <translation>Add description</translation>
     </message>
     <message>
         <source>Naptár összekapcsolása</source>
-        <translation type="unfinished"></translation>
+        <translation>Link calendar</translation>
     </message>
     <message>
         <source>Hamarosan: Google Naptár és Outlook. Addig a leírás segít.</source>
-        <translation type="unfinished"></translation>
+        <translation>Coming soon: Google Calendar and Outlook. Until then, the description helps.</translation>
     </message>
     <message>
         <source>Miről szól? Téma, résztvevők, szakszavak, ismert félrehallások („A „…” helyesen: …”).</source>
-        <translation type="unfinished"></translation>
+        <translation>What is it about? Topic, participants, jargon, known mishearings (&quot;&apos;…&apos; should be: …&quot;).</translation>
     </message>
     <message>
         <source>Az átírás és az összefoglaló is felhasználja. Ctrl+Enter: mentés · Esc: mégse</source>
-        <translation type="unfinished"></translation>
+        <translation>Used by transcription and the summary. Ctrl+Enter: save · Esc: cancel</translation>
     </message>
     <message>
         <source>Mégse</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Mentés</source>
-        <translation type="unfinished">Save</translation>
+        <translation>Save</translation>
     </message>
 </context>
 <context>
     <name>SourcePopover</name>
     <message>
         <source>Jelezted, hogy ez nem így hangzott el. Újrageneráláskor figyelembe veszem.</source>
-        <translation type="unfinished"></translation>
+        <translation>You flagged that this was not said this way. It will be taken into account when regenerating.</translation>
     </message>
     <message>
         <source>Honnan jön ez?</source>
-        <translation type="unfinished"></translation>
+        <translation>Where does this come from?</translation>
     </message>
     <message numerus="yes">
         <source>%n helyen hangzott el</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Said in %n place</numerusform>
+            <numerusform>Said in %n places</numerusform>
         </translation>
     </message>
     <message>
         <source>A forrásban azóta más a beszélő: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>In the source the speaker is different now: %1</translation>
     </message>
     <message>
         <source>Meghallgatom</source>
-        <translation type="unfinished">Listen</translation>
+        <translation>Listen</translation>
     </message>
     <message>
         <source>Az átirat sora nem található (újra-átírás után a hivatkozás elavulhat).</source>
-        <translation type="unfinished"></translation>
+        <translation>The transcript line was not found (the link may become outdated after re-transcription).</translation>
     </message>
     <message>
         <source>Ugrás az átiratba</source>
-        <translation type="unfinished"></translation>
+        <translation>Jump to transcript</translation>
     </message>
     <message>
         <source>Nem így hangzott el?</source>
-        <translation type="unfinished"></translation>
+        <translation>Not said like this?</translation>
     </message>
     <message>
         <source>Jelezve</source>
-        <translation type="unfinished"></translation>
+        <translation>Flagged</translation>
     </message>
     <message>
         <source>Jelzem</source>
-        <translation type="unfinished"></translation>
+        <translation>Flag</translation>
     </message>
 </context>
 <context>
@@ -4304,15 +4304,15 @@
     </message>
     <message>
         <source>A mikrofonon beszél.</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaks on the microphone.</translation>
     </message>
     <message>
         <source>A hívás hangján beszél.</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaks on the call audio.</translation>
     </message>
     <message>
         <source>Kattintásra: miért ő, és hol javítható</source>
-        <translation type="unfinished"></translation>
+        <translation>Click to see why them and where to fix it</translation>
     </message>
     <message numerus="yes">
         <source>%n keveset beszélő résztvevő — kattintásra külön oszlopot kapnak</source>
@@ -4334,121 +4334,121 @@
     <name>SpeakerWhyPopover</name>
     <message>
         <source>Meghallgatás: egy jellemző, hosszabb megszólalás ettől a beszélőtől</source>
-        <translation type="unfinished">Listen: a typical, longer utterance from this speaker</translation>
+        <translation>Listen: a typical, longer utterance from this speaker</translation>
     </message>
     <message>
         <source>Meghallgatás</source>
-        <translation type="unfinished">Listen</translation>
+        <translation>Listen</translation>
     </message>
     <message numerus="yes">
         <source>%n sor ezen a megbeszélésen</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n line in this meeting</numerusform>
+            <numerusform>%n lines in this meeting</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 · azonosítva</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 · identified</translation>
     </message>
     <message>
         <source>%1 · kézzel elnevezve</source>
-        <translation type="unfinished">%1 · named manually</translation>
+        <translation>%1 · named manually</translation>
     </message>
     <message>
         <source>%1 · névtelen beszélő</source>
-        <translation type="unfinished">%1 · unnamed speaker</translation>
+        <translation>%1 · unnamed speaker</translation>
     </message>
     <message>
         <source>MIÉRT Ő?</source>
-        <translation type="unfinished"></translation>
+        <translation>WHY THEM?</translation>
     </message>
     <message>
         <source>erre támaszkodtunk</source>
-        <translation type="unfinished"></translation>
+        <translation>what we relied on</translation>
     </message>
     <message>
         <source>MELYIK SÁVON BESZÉL?</source>
-        <translation type="unfinished"></translation>
+        <translation>WHICH TRACK DO THEY SPEAK ON?</translation>
     </message>
     <message>
         <source>ezen a megbeszélésen</source>
-        <translation type="unfinished"></translation>
+        <translation>in this meeting</translation>
     </message>
     <message>
         <source>A kézi beosztás törlése (a gép újra maga dönti el)</source>
-        <translation type="unfinished"></translation>
+        <translation>Delete the manual assignment (the app decides again by itself)</translation>
     </message>
     <message>
         <source>%1 ezen a sávon beszél — a sáv-ellentmondás ehhez igazodik (Ctrl+Z)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 speaks on this track — the track conflict follows this (Ctrl+Z)</translation>
     </message>
     <message>
         <source>NEM Ő? VALÓJÁBAN…</source>
-        <translation type="unfinished"></translation>
+        <translation>NOT THEM? ACTUALLY…</translation>
     </message>
     <message>
         <source>Új személy…</source>
-        <translation type="unfinished"></translation>
+        <translation>New person…</translation>
     </message>
     <message numerus="yes">
         <source>a %n sor egy új névhez kerül</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>the %n line will go to a new name</numerusform>
+            <numerusform>the %n lines will go to a new name</numerusform>
         </translation>
     </message>
     <message>
         <source>Összevonás egy másik beszélővel…</source>
-        <translation type="unfinished"></translation>
+        <translation>Merge with another speaker…</translation>
     </message>
     <message numerus="yes">
         <source>%n sor</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n line</numerusform>
             <numerusform>%n lines</numerusform>
         </translation>
     </message>
     <message>
         <source>Átnézés másik beszélővel…</source>
-        <translation type="unfinished">Review with another speaker…</translation>
+        <translation>Review with another speaker…</translation>
     </message>
     <message>
         <source>ha két hang sorai összekeveredtek</source>
-        <translation type="unfinished"></translation>
+        <translation>if the lines of two voices got mixed up</translation>
     </message>
     <message>
         <source>Ő nem volt ott</source>
-        <translation type="unfinished"></translation>
+        <translation>They weren&apos;t there</translation>
     </message>
     <message>
         <source>a „Ki volt ott?” is frissül</source>
-        <translation type="unfinished"></translation>
+        <translation>&quot;Who was there?&quot; is updated too</translation>
     </message>
     <message>
         <source>Üres oszlop eltávolítása</source>
-        <translation type="unfinished">Remove empty column</translation>
+        <translation>Remove empty column</translation>
     </message>
     <message>
         <source>Ha másé, a sorai kerüljenek ki %1 hanglenyomatából (téves felismerés)</source>
-        <translation type="unfinished"></translation>
+        <translation>If it&apos;s someone else&apos;s, remove its lines from %1&apos;s voiceprint (wrong match)</translation>
     </message>
     <message>
         <source>Ctrl+Z visszavonja</source>
-        <translation type="unfinished"></translation>
+        <translation>Ctrl+Z undoes it</translation>
     </message>
     <message numerus="yes">
         <source>A teljes beszélőre vonatkozik: mind az %n sor · Ctrl+Z visszavonja</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Applies to the whole speaker: all %n line · Ctrl+Z undoes it</numerusform>
+            <numerusform>Applies to the whole speaker: all %n lines · Ctrl+Z undoes it</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>A teljes beszélőre vonatkozik: mind a %n sor · Ctrl+Z visszavonja</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Applies to the whole speaker: all %n line · Ctrl+Z undoes it</numerusform>
+            <numerusform>Applies to the whole speaker: all %n lines · Ctrl+Z undoes it</numerusform>
         </translation>
     </message>
 </context>
@@ -4692,155 +4692,155 @@
     <name>SummaryExecView</name>
     <message>
         <source>A felelősök és a résztvevők elavultak lehetnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>The owners and participants may be outdated.</translation>
     </message>
     <message>
         <source>%1 és %2 forrásában más lett a beszélő; ezeket jelöltük.</source>
-        <translation type="unfinished"></translation>
+        <translation>The speaker changed in the sources of %1 and %2; we flagged them.</translation>
     </message>
     <message numerus="yes">
         <source>%n állítás</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n claim</numerusform>
+            <numerusform>%n claims</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n teendő</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n action item</numerusform>
+            <numerusform>%n action items</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n állítás forrásában más lett a beszélő; ezeket jelöltük.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>The speaker changed in the source of %n claim; we flagged it.</numerusform>
+            <numerusform>The speaker changed in the sources of %n claims; we flagged them.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n teendő forrásában más lett a beszélő; ezeket jelöltük.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>The speaker changed in the source of %n action item; we flagged it.</numerusform>
+            <numerusform>The speaker changed in the sources of %n action items; we flagged them.</numerusform>
         </translation>
     </message>
     <message>
         <source>Egyik állítás forrását sem érinti.</source>
-        <translation type="unfinished"></translation>
+        <translation>None of the claims&apos; sources are affected.</translation>
     </message>
     <message>
         <source>Nincs forrás: ehhez a modell nem jelölt időpontot.</source>
-        <translation type="unfinished"></translation>
+        <translation>No source: the model did not mark a time for this.</translation>
     </message>
     <message>
         <source>Honnan jön ez? (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Where does this come from? (%1)</translation>
     </message>
     <message numerus="yes">
         <source>Az összefoglaló óta %n beszélőt javítottál.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>You have corrected %n speaker since the summary.</numerusform>
+            <numerusform>You have corrected %n speakers since the summary.</numerusform>
         </translation>
     </message>
     <message>
         <source>Az összefoglaló óta változtak a beszélők.</source>
-        <translation type="unfinished"></translation>
+        <translation>The speakers have changed since the summary.</translation>
     </message>
     <message>
         <source>Frissítés</source>
-        <translation type="unfinished">Update</translation>
+        <translation>Update</translation>
     </message>
     <message>
         <source>Rendben így</source>
-        <translation type="unfinished">Keep as is</translation>
+        <translation>Keep as is</translation>
     </message>
     <message>
         <source>Döntések</source>
-        <translation type="unfinished">Decisions</translation>
+        <translation>Decisions</translation>
     </message>
     <message>
         <source>Nyitott kérdések</source>
-        <translation type="unfinished">Open questions</translation>
+        <translation>Open questions</translation>
     </message>
     <message>
         <source>Teendők</source>
-        <translation type="unfinished">Action items</translation>
+        <translation>Action items</translation>
     </message>
     <message>
         <source>Résztvevők</source>
-        <translation type="unfinished">Participants</translation>
+        <translation>Participants</translation>
     </message>
     <message>
         <source>A források a megerősített beszélőkre mutatnak. Ha az Átiratban javítasz, az érintett állítások jelölést kapnak.</source>
-        <translation type="unfinished"></translation>
+        <translation>The sources point to the confirmed speakers. If you correct the Transcript, the affected claims get flagged.</translation>
     </message>
     <message>
         <source>Megjegyzés a megbeszéléshez</source>
-        <translation type="unfinished">Note on the meeting</translation>
+        <translation>Note on the meeting</translation>
     </message>
     <message>
         <source>Nincs megjegyzés. Ide írhatod a neveket, szakszavakat és a félrehallott szavak helyes alakját.</source>
-        <translation type="unfinished">No note. Write names, jargon and the correct form of misheard words here.</translation>
+        <translation>No note. Write names, jargon and the correct form of misheard words here.</translation>
     </message>
     <message>
         <source>Nevek, szakszavak, ismert félrehallások (A „…” helyesen: …). Az újragenerált összefoglaló és egy újra-átírás is ezt kapja.</source>
-        <translation type="unfinished">Names, jargon, known mishearings (“…” is really …). A regenerated summary and a re-transcription both get this note.</translation>
+        <translation>Names, jargon, known mishearings (“…” is really …). A regenerated summary and a re-transcription both get this note.</translation>
     </message>
     <message>
         <source>A megjegyzés azóta változott; újrageneráláskor már az új számít.</source>
-        <translation type="unfinished">The note has changed since; regenerating uses the new one.</translation>
+        <translation>The note has changed since; regenerating uses the new one.</translation>
     </message>
     <message>
         <source>Témánkénti elemzés</source>
-        <translation type="unfinished">Topic-by-topic analysis</translation>
+        <translation>Topic-by-topic analysis</translation>
     </message>
     <message>
         <source>Megnyitás mappában</source>
-        <translation type="unfinished">Show in folder</translation>
+        <translation>Show in folder</translation>
     </message>
 </context>
 <context>
     <name>SummaryMapRows</name>
     <message>
         <source>Szakaszok</source>
-        <translation type="unfinished"></translation>
+        <translation>Sections</translation>
     </message>
     <message>
         <source>Forrás</source>
-        <translation type="unfinished"></translation>
+        <translation>Source</translation>
     </message>
 </context>
 <context>
     <name>SummaryMemoView</name>
     <message numerus="yes">
         <source>Az összefoglaló óta %n beszélőt javítottál, ezért a memó beszélői elavultak lehetnek.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>You have corrected %n speaker since the summary, so the speakers in the memo may be outdated.</numerusform>
+            <numerusform>You have corrected %n speakers since the summary, so the speakers in the memo may be outdated.</numerusform>
         </translation>
     </message>
     <message>
         <source>Az összefoglaló óta változtak a beszélők, ezért a memó beszélői elavultak lehetnek.</source>
-        <translation type="unfinished"></translation>
+        <translation>The speakers have changed since the summary, so the speakers in the memo may be outdated.</translation>
     </message>
     <message>
         <source>Frissítés</source>
-        <translation type="unfinished">Update</translation>
+        <translation>Update</translation>
     </message>
     <message>
         <source>Rendben így</source>
-        <translation type="unfinished">Keep as is</translation>
+        <translation>Keep as is</translation>
     </message>
     <message>
         <source>Egyéb</source>
-        <translation type="unfinished">Other</translation>
+        <translation>Other</translation>
     </message>
     <message>
         <source>Lejátszás innen: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Play from %1</translation>
     </message>
 </context>
 <context>
@@ -4916,51 +4916,51 @@
     <name>SummaryToolsRow</name>
     <message>
         <source>A vezetői összefoglaló a vágólapra került.</source>
-        <translation type="unfinished">The executive summary was copied to the clipboard.</translation>
+        <translation>The executive summary was copied to the clipboard.</translation>
     </message>
     <message>
         <source>A memó a vágólapra került.</source>
-        <translation type="unfinished">The memo was copied to the clipboard.</translation>
+        <translation>The memo was copied to the clipboard.</translation>
     </message>
     <message>
         <source>Az összefoglaló a vágólapra került.</source>
-        <translation type="unfinished">Summary copied to the clipboard.</translation>
+        <translation>Summary copied to the clipboard.</translation>
     </message>
     <message>
         <source>Vezetői összefoglaló</source>
-        <translation type="unfinished">Executive summary</translation>
+        <translation>Executive summary</translation>
     </message>
     <message>
         <source>Memó</source>
-        <translation type="unfinished">Memo</translation>
+        <translation>Memo</translation>
     </message>
     <message>
         <source>Források</source>
-        <translation type="unfinished">Sources</translation>
+        <translation>Sources</translation>
     </message>
     <message>
         <source>Az idő-chipek és a forrás-jelölések elrejtése</source>
-        <translation type="unfinished"></translation>
+        <translation>Hide the time chips and source markers</translation>
     </message>
     <message>
         <source>Minden állítás mellett: hol hangzott el</source>
-        <translation type="unfinished"></translation>
+        <translation>Next to every claim: where it was said</translation>
     </message>
     <message>
         <source>Másolás</source>
-        <translation type="unfinished">Copy</translation>
+        <translation>Copy</translation>
     </message>
     <message>
         <source>A memó másolása</source>
-        <translation type="unfinished"></translation>
+        <translation>Copy the memo</translation>
     </message>
     <message>
         <source>A vezetői összefoglaló másolása (források nélkül)</source>
-        <translation type="unfinished"></translation>
+        <translation>Copy the executive summary (without sources)</translation>
     </message>
     <message>
         <source>Újragenerálás</source>
-        <translation type="unfinished">Regenerate</translation>
+        <translation>Regenerate</translation>
     </message>
 </context>
 <context>
@@ -5149,27 +5149,27 @@
     <name>TagRowOverview</name>
     <message>
         <source>Címkék</source>
-        <translation type="unfinished">Tags</translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Címke…</source>
-        <translation type="unfinished">Tag…</translation>
+        <translation>Tag…</translation>
     </message>
     <message>
         <source>A résztvevők alapján:</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on the participants:</translation>
     </message>
     <message>
         <source>Kattintás: hozzáadás · ×: nem illik ide</source>
-        <translation type="unfinished">Click: add · ×: doesn’t fit</translation>
+        <translation>Click: add · ×: doesn’t fit</translation>
     </message>
     <message>
         <source>Miért ezek a javaslatok?</source>
-        <translation type="unfinished">Why these suggestions?</translation>
+        <translation>Why these suggestions?</translation>
     </message>
     <message>
         <source>Miért?</source>
-        <translation type="unfinished">Why?</translation>
+        <translation>Why?</translation>
     </message>
 </context>
 <context>
@@ -5509,51 +5509,51 @@
     <name>TrackList</name>
     <message>
         <source>hiányzik a hangfájl</source>
-        <translation type="unfinished"></translation>
+        <translation>audio file missing</translation>
     </message>
     <message>
         <source>nincs beszéd · kimaradt a lekeverésből</source>
-        <translation type="unfinished"></translation>
+        <translation>no speech · left out of the mix</translation>
     </message>
     <message>
         <source>kivetted a lekeverésből</source>
-        <translation type="unfinished"></translation>
+        <translation>you removed it from the mix</translation>
     </message>
     <message>
         <source>eldobott · csendes</source>
-        <translation type="unfinished">discarded · silent</translation>
+        <translation>discarded · silent</translation>
     </message>
     <message>
         <source>beszéd-ellenőrzés…</source>
-        <translation type="unfinished"></translation>
+        <translation>checking for speech…</translation>
     </message>
     <message>
         <source>beszéd %1%</source>
-        <translation type="unfinished"></translation>
+        <translation>speech %1%</translation>
     </message>
     <message>
         <source>A hangfájl hiányzik</source>
-        <translation type="unfinished">The audio file is missing</translation>
+        <translation>The audio file is missing</translation>
     </message>
     <message>
         <source>Előnézet leállítása</source>
-        <translation type="unfinished">Stop preview</translation>
+        <translation>Stop preview</translation>
     </message>
     <message>
         <source>Sáv meghallgatása</source>
-        <translation type="unfinished">Listen to track</translation>
+        <translation>Listen to track</translation>
     </message>
     <message>
         <source>Beemelem</source>
-        <translation type="unfinished"></translation>
+        <translation>Add back</translation>
     </message>
     <message>
         <source>A sáv visszakerül a lekeverésbe (utána újrakeverés)</source>
-        <translation type="unfinished"></translation>
+        <translation>The track goes back into the mix (then it is re-mixed)</translation>
     </message>
     <message>
         <source>A lekeverésben</source>
-        <translation type="unfinished"></translation>
+        <translation>In the mix</translation>
     </message>
 </context>
 <context>
@@ -5699,7 +5699,7 @@
     </message>
     <message>
         <source>Visszavonás · Ctrl+Z</source>
-        <translation type="unfinished"></translation>
+        <translation>Undo · Ctrl+Z</translation>
     </message>
     <message>
         <source>A most készült hanglenyomat törlése (az elnevezés marad)</source>
@@ -5753,38 +5753,38 @@
     </message>
     <message numerus="yes">
         <source>Még &lt;b&gt;%n sor&lt;/b&gt; hangja hasonlít a most megadott %1 sorhoz</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>&lt;b&gt;%n more line&lt;/b&gt; sounds like the %1 line you just set</numerusform>
+            <numerusform>&lt;b&gt;%n more lines&lt;/b&gt; sound like the %1 line you just set</numerusform>
         </translation>
     </message>
     <message>
         <source>Megmutatva a sínen</source>
-        <translation type="unfinished"></translation>
+        <translation>Shown on the rail</translation>
     </message>
     <message>
         <source>Megmutatom a sínen</source>
-        <translation type="unfinished"></translation>
+        <translation>Show on the rail</translation>
     </message>
     <message>
         <source>A hasonló sorok kék kerettel a sínen és jellel a térképen</source>
-        <translation type="unfinished"></translation>
+        <translation>Similar lines get a blue frame on the rail and a marker on the map</translation>
     </message>
     <message>
         <source>Mind a %1 hozzá</source>
-        <translation type="unfinished"></translation>
+        <translation>All %1 to them</translation>
     </message>
     <message>
         <source>Mind %1 sorai közé kerülnek — egy lépésben visszavonható (Ctrl+Z)</source>
-        <translation type="unfinished"></translation>
+        <translation>Moves them among %1&apos;s lines — undoable in one step (Ctrl+Z)</translation>
     </message>
     <message>
         <source>A hanglenyomat most elkészül az itteni soraiból</source>
-        <translation type="unfinished"></translation>
+        <translation>The voiceprint will now be created from their lines here</translation>
     </message>
     <message>
         <source>Amint elég tiszta beszéd gyűlik össze (további sorok hozzá), a hanglenyomat elkészül</source>
-        <translation type="unfinished"></translation>
+        <translation>The voiceprint will be created as soon as enough clean speech has accumulated (with more lines added)</translation>
     </message>
     <message>
         <source>Átnézés</source>
@@ -5807,39 +5807,39 @@
     <name>TranscriptMarker</name>
     <message>
         <source>rövid</source>
-        <translation type="unfinished"></translation>
+        <translation>short</translation>
     </message>
     <message>
         <source>javítva</source>
-        <translation type="unfinished">corrected</translation>
+        <translation>corrected</translation>
     </message>
     <message>
         <source>új személy</source>
-        <translation type="unfinished"></translation>
+        <translation>new person</translation>
     </message>
     <message>
         <source>egymásra beszéltek</source>
-        <translation type="unfinished">cross-talk</translation>
+        <translation>cross-talk</translation>
     </message>
     <message>
         <source>sáv</source>
-        <translation type="unfinished"></translation>
+        <translation>track</translation>
     </message>
     <message>
         <source>címke</source>
-        <translation type="unfinished"></translation>
+        <translation>tag</translation>
     </message>
     <message>
         <source>hang</source>
-        <translation type="unfinished"></translation>
+        <translation>voice</translation>
     </message>
     <message>
         <source>bizonytalan</source>
-        <translation type="unfinished">uncertain</translation>
+        <translation>uncertain</translation>
     </message>
     <message>
         <source>bizonytalan · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>uncertain · %1</translation>
     </message>
 </context>
 <context>
@@ -5865,31 +5865,31 @@
     </message>
     <message>
         <source>Most vetted fel: a hozzá hasonló hangú sorok kék kerettel látszanak a sínen</source>
-        <translation type="unfinished"></translation>
+        <translation>You just added this: lines with a similar voice show with a blue frame on the rail</translation>
     </message>
     <message>
         <source>Kézzel javítottad a beszélőjét</source>
-        <translation type="unfinished"></translation>
+        <translation>You corrected its speaker manually</translation>
     </message>
     <message>
         <source>A sor a beszélője oldalával ellentétes sávon szólt (mikrofon / hívás hangja)</source>
-        <translation type="unfinished"></translation>
+        <translation>The line was on the track opposite its speaker&apos;s side (microphone / call audio)</translation>
     </message>
     <message>
         <source>Hangra kétes, és a beszélő címkéi nem illenek a megbeszéléshez</source>
-        <translation type="unfinished"></translation>
+        <translation>Doubtful by voice, and the speaker&apos;s tags don&apos;t fit the meeting</translation>
     </message>
     <message>
         <source>Hangra kétes, kié a sor</source>
-        <translation type="unfinished"></translation>
+        <translation>Doubtful by voice whose line it is</translation>
     </message>
     <message>
         <source>Megerősítetted: a beszélő rendben van</source>
-        <translation type="unfinished"></translation>
+        <translation>You confirmed it: the speaker is right</translation>
     </message>
     <message>
         <source>Túl rövid a hang-ellenőrzéshez: csak fülre dönthető el, kié</source>
-        <translation type="unfinished"></translation>
+        <translation>Too short for the voice check: only by ear can it be decided whose it is</translation>
     </message>
     <message>
         <source>Hangra inkább %1 sorának tűnik</source>
@@ -5927,7 +5927,7 @@
     </message>
     <message>
         <source>Új személy…</source>
-        <translation type="unfinished"></translation>
+        <translation>New person…</translation>
     </message>
     <message>
         <source>Mégse</source>
@@ -5958,19 +5958,19 @@
     </message>
     <message>
         <source>Átnézendő: csak a kétes sorok, okok szerint</source>
-        <translation type="unfinished"></translation>
+        <translation>To review: only the doubtful lines, grouped by reason</translation>
     </message>
     <message>
         <source>új oszlop: %1 · kék keret: hozzá hasonló sorok</source>
-        <translation type="unfinished"></translation>
+        <translation>new column: %1 · blue frame: similar lines</translation>
     </message>
     <message>
         <source>másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · húzás</source>
-        <translation type="unfinished"></translation>
+        <translation>click another column: move · 1–%1: move the selected lines · drag</translation>
     </message>
     <message>
         <source>Nincs átnézendő sor.</source>
-        <translation type="unfinished"></translation>
+        <translation>No lines to review.</translation>
     </message>
     <message>
         <source>Névtelen résztvevő</source>
@@ -5982,7 +5982,7 @@
     </message>
     <message>
         <source>Névtelen beszélő</source>
-        <translation type="unfinished">Unnamed speaker</translation>
+        <translation>Unnamed speaker</translation>
     </message>
     <message>
         <source>Összevonod a két beszélőt?</source>
@@ -6055,38 +6055,38 @@
     <name>TranscriptToolbar</name>
     <message>
         <source>Olvasás</source>
-        <translation type="unfinished"></translation>
+        <translation>Read</translation>
     </message>
     <message>
         <source>Javítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Correct</translation>
     </message>
     <message>
         <source>Javítás: beszélő-oszlopok, jelölők, átnézendő sorok (Ctrl+E)</source>
-        <translation type="unfinished"></translation>
+        <translation>Correct: speaker columns, markers, lines to review (Ctrl+E)</translation>
     </message>
     <message>
         <source>Olvasás: tiszta lista (Ctrl+E)</source>
-        <translation type="unfinished"></translation>
+        <translation>Read: clean list (Ctrl+E)</translation>
     </message>
     <message numerus="yes">
         <source>%1 / %2 sor · %n csoport</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%1 / %2 lines · %n group</numerusform>
+            <numerusform>%1 / %2 lines · %n groups</numerusform>
         </translation>
     </message>
     <message>
         <source>%1 megszólalás · %2 beszélő</source>
-        <translation type="unfinished">%1 utterances · %2 speakers</translation>
+        <translation>%1 utterances · %2 speakers</translation>
     </message>
     <message>
         <source>Hangelemzés… %1%</source>
-        <translation type="unfinished">Analyzing voices… %1%</translation>
+        <translation>Analyzing voices… %1%</translation>
     </message>
     <message>
         <source>Hangelemzés nélkül</source>
-        <translation type="unfinished">No voice analysis</translation>
+        <translation>No voice analysis</translation>
     </message>
     <message>
         <source>Keresés az átiratban</source>
@@ -6110,42 +6110,42 @@
     </message>
     <message>
         <source>Nincs átnézendő sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nothing to review. Click and the other lines are re-checked against the voice of the confirmed and corrected lines.</translation>
     </message>
     <message>
         <source>Nincs átnézendő sor. Újraellenőrzéshez: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Nothing to review. To re-check: %1</translation>
     </message>
     <message>
         <source>A kétes sorok okok szerint csoportosítva, csoportonként egy döntéssel (B: a következő)</source>
-        <translation type="unfinished"></translation>
+        <translation>Doubtful lines grouped by reason, one decision per group (B: next)</translation>
     </message>
     <message>
         <source>Átnézendő</source>
-        <translation type="unfinished"></translation>
+        <translation>To review</translation>
     </message>
     <message>
         <source>Nincs átnézendő sor</source>
-        <translation type="unfinished"></translation>
+        <translation>Nothing to review</translation>
     </message>
     <message numerus="yes">
         <source>%n átnézendő sor</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n line to review</numerusform>
+            <numerusform>%n lines to review</numerusform>
         </translation>
     </message>
     <message>
         <source>Következő átnézendő sor (B)</source>
-        <translation type="unfinished"></translation>
+        <translation>Next line to review (B)</translation>
     </message>
     <message>
         <source>Ki volt ott?</source>
-        <translation type="unfinished"></translation>
+        <translation>Who was there?</translation>
     </message>
     <message>
         <source>A résztvevők átnézése: kik voltak ott, és melyik beszélő kicsoda</source>
-        <translation type="unfinished"></translation>
+        <translation>Review the participants: who was there, and which speaker is who</translation>
     </message>
     <message>
         <source>Minden sor mutatása</source>
@@ -6287,99 +6287,99 @@
     <name>tanara</name>
     <message>
         <source>új résztvevő</source>
-        <translation type="unfinished"></translation>
+        <translation>new participant</translation>
     </message>
     <message>
         <source>hang %1</source>
-        <translation type="unfinished"></translation>
+        <translation>voice %1</translation>
     </message>
     <message>
         <source>átlag %1 hangjához</source>
-        <translation type="unfinished"></translation>
+        <translation>average for %1&apos;s voice</translation>
     </message>
     <message>
         <source>%n sor a másik sávon</source>
-        <translation type="unfinished"></translation>
+        <translation>%n line(s) on the other track</translation>
     </message>
     <message>
         <source>Most: %1 · javaslat: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>Now: %1 · suggestion: %2</translation>
     </message>
     <message>
         <source>Most: %1 · hang nélkül nem javaslok nevet, egyenként dönthető</source>
-        <translation type="unfinished"></translation>
+        <translation>Now: %1 · no name suggested without voice data, decide one by one</translation>
     </message>
     <message>
         <source>másik sávon szóltak</source>
-        <translation type="unfinished"></translation>
+        <translation>spoke on a different track</translation>
     </message>
     <message>
         <source>%1: %2; a sorok: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2; lines: %3</translation>
     </message>
     <message>
         <source>%1 a hívás hangján beszél</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 speaks on the call audio</translation>
     </message>
     <message>
         <source>%1 a mikrofonon beszél</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 speaks on the microphone</translation>
     </message>
     <message>
         <source>Még %n sor hangja hasonlít: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>%n more line(s) sound similar: %1</translation>
     </message>
     <message>
         <source>hang %1, mind a(z) %2 oldalon</source>
-        <translation type="unfinished"></translation>
+        <translation>voice %1, all on the %2 side</translation>
     </message>
     <message>
         <source>mind a hívás hangján</source>
-        <translation type="unfinished"></translation>
+        <translation>all on the call audio</translation>
     </message>
     <message>
         <source>mind a mikrofonon</source>
-        <translation type="unfinished"></translation>
+        <translation>all on the microphone</translation>
     </message>
     <message>
         <source>%1 megerősített sorai két hangra esnek</source>
-        <translation type="unfinished"></translation>
+        <translation>%1&apos;s confirmed lines fall into two voices</translation>
     </message>
     <message>
         <source>Szétválasztás: %n sor → %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Split: %n line(s) → %1</translation>
     </message>
     <message>
         <source>két hang: %1 egyezés</source>
-        <translation type="unfinished"></translation>
+        <translation>two voices: %1 match</translation>
     </message>
     <message>
         <source>%1 + %2 megerősített sor</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 + %2 confirmed lines</translation>
     </message>
     <message>
         <source>%n sor hangja inkább: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>the voice of %n line(s) is more like: %1</translation>
     </message>
     <message>
         <source>Most: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Now: %1</translation>
     </message>
     <message>
         <source>%1 hangjához csak %2</source>
-        <translation type="unfinished"></translation>
+        <translation>to %1&apos;s voice only %2</translation>
     </message>
     <message>
         <source>a megerősített soraihoz mérve</source>
-        <translation type="unfinished"></translation>
+        <translation>measured against their confirmed lines</translation>
     </message>
     <message>
         <source>%n rövid sor</source>
-        <translation type="unfinished"></translation>
+        <translation>%n short line(s)</translation>
     </message>
     <message>
         <source>Túl rövidek a hang-ellenőrzéshez — csak tájékoztató</source>
-        <translation type="unfinished"></translation>
+        <translation>Too short for the voice check — informational only</translation>
     </message>
 </context>
 <context>
@@ -6674,15 +6674,15 @@
     </message>
     <message>
         <source>Csak én beszéltem</source>
-        <translation type="unfinished"></translation>
+        <translation>Only I spoke</translation>
     </message>
     <message>
         <source>Résztvevők jóváhagyása</source>
-        <translation type="unfinished"></translation>
+        <translation>Approve participants</translation>
     </message>
     <message>
         <source>Nem volt ott: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Not there: %1</translation>
     </message>
 </context>
 <context>
@@ -6983,9 +6983,9 @@
     </message>
     <message numerus="yes">
         <source>%1: %n sor ide: %2</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%1: %n line to %2</numerusform>
+            <numerusform>%1: %n lines to %2</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -7144,19 +7144,19 @@
     </message>
     <message>
         <source>Sáv-beosztás törlése: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Delete track assignment: %1</translation>
     </message>
     <message>
         <source>Sáv-beosztás: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Track assignment: %1</translation>
     </message>
     <message>
         <source>Szétválasztás</source>
-        <translation type="unfinished"></translation>
+        <translation>Split</translation>
     </message>
     <message>
         <source>Átnézendő</source>
-        <translation type="unfinished"></translation>
+        <translation>To review</translation>
     </message>
 </context>
 <context>
@@ -7244,15 +7244,15 @@
     </message>
     <message>
         <source>Személy címkéinek módosítása</source>
-        <translation type="unfinished"></translation>
+        <translation>Change a person&apos;s tags</translation>
     </message>
     <message>
         <source>Címke a személyen</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag on a person</translation>
     </message>
     <message>
         <source>Címke levétele a személyről</source>
-        <translation type="unfinished"></translation>
+        <translation>Remove tag from a person</translation>
     </message>
 </context>
 <context>
@@ -7352,87 +7352,87 @@
     <name>tanara::ranking</name>
     <message>
         <source>nincs hangadat</source>
-        <translation type="unfinished"></translation>
+        <translation>no voice data</translation>
     </message>
     <message>
         <source>hang %1</source>
-        <translation type="unfinished"></translation>
+        <translation>voice %1</translation>
     </message>
     <message>
         <source>a megerősített soraihoz mérve</source>
-        <translation type="unfinished"></translation>
+        <translation>measured against their confirmed lines</translation>
     </message>
     <message>
         <source>a hanglenyomatához mérve</source>
-        <translation type="unfinished"></translation>
+        <translation>measured against their voiceprint</translation>
     </message>
     <message>
         <source>a többi sorához mérve</source>
-        <translation type="unfinished"></translation>
+        <translation>measured against their other lines</translation>
     </message>
     <message>
         <source>másik sávon beszél</source>
-        <translation type="unfinished"></translation>
+        <translation>speaks on a different track</translation>
     </message>
     <message>
         <source>%1: %2; ez: %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2; this one: %3</translation>
     </message>
     <message>
         <source>a hívás hangján</source>
-        <translation type="unfinished"></translation>
+        <translation>on the call audio</translation>
     </message>
     <message>
         <source>a mikrofonon</source>
-        <translation type="unfinished"></translation>
+        <translation>on the microphone</translation>
     </message>
     <message>
         <source>kézi sáv-beosztás</source>
-        <translation type="unfinished"></translation>
+        <translation>manual track assignment</translation>
     </message>
     <message>
         <source>nincs közös címke</source>
-        <translation type="unfinished"></translation>
+        <translation>no tag in common</translation>
     </message>
     <message>
         <source>%n közös címke</source>
-        <translation type="unfinished"></translation>
+        <translation>%n tag(s) in common</translation>
     </message>
     <message>
         <source>%n sor itt</source>
-        <translation type="unfinished"></translation>
+        <translation>%n line(s) here</translation>
     </message>
     <message>
         <source>nincs hanglenyomata</source>
-        <translation type="unfinished"></translation>
+        <translation>has no voiceprint</translation>
     </message>
     <message>
         <source>a sorai a másik sávon szólnak</source>
-        <translation type="unfinished"></translation>
+        <translation>its lines are on the other track</translation>
     </message>
     <message>
         <source>hasonló hang: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>similar voice: %1</translation>
     </message>
     <message>
         <source>a két megerősített hang %1-ban egyezik</source>
-        <translation type="unfinished"></translation>
+        <translation>the two confirmed voices match at %1</translation>
     </message>
     <message>
         <source>mikrofon</source>
-        <translation type="unfinished"></translation>
+        <translation>microphone</translation>
     </message>
     <message>
         <source>hívás hangja</source>
-        <translation type="unfinished"></translation>
+        <translation>call audio</translation>
     </message>
     <message>
         <source>vegyes</source>
-        <translation type="unfinished"></translation>
+        <translation>mixed</translation>
     </message>
     <message>
         <source>ismeretlen</source>
-        <translation type="unfinished"></translation>
+        <translation>unknown</translation>
     </message>
 </context>
 <context>
@@ -8026,18 +8026,18 @@
     <name>tanara_qml::CandidateListModel</name>
     <message>
         <source>most ő</source>
-        <translation type="unfinished"></translation>
+        <translation>currently them</translation>
     </message>
     <message numerus="yes">
         <source>%n sor itt</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n line here</numerusform>
+            <numerusform>%n lines here</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n megbeszélés</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n meeting</numerusform>
             <numerusform>%n meetings</numerusform>
         </translation>
@@ -8368,421 +8368,421 @@
     <name>tanara_qml::OverviewViewModel</name>
     <message>
         <source>te</source>
-        <translation type="unfinished">you</translation>
+        <translation>you</translation>
     </message>
     <message>
         <source>kézi</source>
-        <translation type="unfinished"></translation>
+        <translation>manual</translation>
     </message>
     <message>
         <source>naptár</source>
-        <translation type="unfinished"></translation>
+        <translation>calendar</translation>
     </message>
     <message>
         <source>mikrofon</source>
-        <translation type="unfinished"></translation>
+        <translation>microphone</translation>
     </message>
     <message>
         <source>hívás</source>
-        <translation type="unfinished"></translation>
+        <translation>call</translation>
     </message>
     <message>
         <source>%1 (te)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 (you)</translation>
     </message>
     <message>
         <source>névtelen · elnevezhető</source>
-        <translation type="unfinished"></translation>
+        <translation>unnamed · can be named</translation>
     </message>
     <message>
         <source>Ismeretlen hang %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Unknown voice %1</translation>
     </message>
     <message>
         <source>javasolt</source>
-        <translation type="unfinished"></translation>
+        <translation>suggested</translation>
     </message>
     <message>
         <source>a #%1 alapján · %2 / %3</source>
-        <translation type="unfinished"></translation>
+        <translation>based on #%1 · %2 / %3</translation>
     </message>
     <message>
         <source>csak én beszéltem</source>
-        <translation type="unfinished"></translation>
+        <translation>only I spoke</translation>
     </message>
     <message>
         <source>jóváhagyva %1-kor</source>
-        <translation type="unfinished"></translation>
+        <translation>approved at %1</translation>
     </message>
     <message>
         <source>jóváhagyva</source>
-        <translation type="unfinished"></translation>
+        <translation>approved</translation>
     </message>
     <message>
         <source>naptár · hang · címke · kézi</source>
-        <translation type="unfinished"></translation>
+        <translation>calendar · voice · tag · manual</translation>
     </message>
     <message>
         <source>névtelen</source>
-        <translation type="unfinished"></translation>
+        <translation>unnamed</translation>
     </message>
     <message numerus="yes">
         <source>%n résztvevő</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n participant</numerusform>
+            <numerusform>%n participants</numerusform>
         </translation>
     </message>
     <message>
         <source>Felvétel</source>
-        <translation type="unfinished">Recording</translation>
+        <translation>Recording</translation>
     </message>
     <message numerus="yes">
         <source>%1 · %n sáv</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%1 · %n track</numerusform>
+            <numerusform>%1 · %n tracks</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n aktív</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n active</numerusform>
+            <numerusform>%n active</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n kimaradt, nincs rajta beszéd</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n skipped, no speech</numerusform>
+            <numerusform>%n skipped, no speech</numerusform>
         </translation>
     </message>
     <message>
         <source>Sávok</source>
-        <translation type="unfinished"></translation>
+        <translation>Tracks</translation>
     </message>
     <message>
         <source>Lekeverés</source>
-        <translation type="unfinished">Mixdown</translation>
+        <translation>Mixdown</translation>
     </message>
     <message>
         <source>fut · %1%</source>
-        <translation type="unfinished"></translation>
+        <translation>running · %1%</translation>
     </message>
     <message>
         <source>a sávok változtak azóta</source>
-        <translation type="unfinished"></translation>
+        <translation>the tracks have changed since</translation>
     </message>
     <message numerus="yes">
         <source>%n sávból</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>from %n track</numerusform>
+            <numerusform>from %n tracks</numerusform>
         </translation>
     </message>
     <message>
         <source>fut</source>
-        <translation type="unfinished">running</translation>
+        <translation>running</translation>
     </message>
     <message numerus="yes">
         <source>%n jelölt · jóváhagyásra vár</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n candidate · awaiting approval</numerusform>
+            <numerusform>%n candidates · awaiting approval</numerusform>
         </translation>
     </message>
     <message>
         <source>nincs ismert hang</source>
-        <translation type="unfinished"></translation>
+        <translation>no known voice</translation>
     </message>
     <message>
         <source>nem futott</source>
-        <translation type="unfinished"></translation>
+        <translation>did not run</translation>
     </message>
     <message>
         <source>a lekeverés után</source>
-        <translation type="unfinished"></translation>
+        <translation>after the mixdown</translation>
     </message>
     <message>
         <source>Hanglenyomat-elemzés</source>
-        <translation type="unfinished"></translation>
+        <translation>Voiceprint analysis</translation>
     </message>
     <message numerus="yes">
         <source>kb. %n perc</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>about %n minute</numerusform>
+            <numerusform>about %n minutes</numerusform>
         </translation>
     </message>
     <message>
         <source>Átirat</source>
-        <translation type="unfinished">Transcript</translation>
+        <translation>Transcript</translation>
     </message>
     <message numerus="yes">
         <source>%n megszólalás</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n utterance</numerusform>
             <numerusform>%n utterances</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n beszélő</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n speaker</numerusform>
             <numerusform>%n speakers</numerusform>
         </translation>
     </message>
     <message>
         <source>kész</source>
-        <translation type="unfinished">done</translation>
+        <translation>done</translation>
     </message>
     <message>
         <source>nem sikerült</source>
-        <translation type="unfinished">failed</translation>
+        <translation>failed</translation>
     </message>
     <message>
         <source>még nem indult</source>
-        <translation type="unfinished"></translation>
+        <translation>not started yet</translation>
     </message>
     <message>
         <source>Összefoglaló</source>
-        <translation type="unfinished">Summary</translation>
+        <translation>Summary</translation>
     </message>
     <message>
         <source>elavult</source>
-        <translation type="unfinished">outdated</translation>
+        <translation>outdated</translation>
     </message>
     <message>
         <source>még nem készült</source>
-        <translation type="unfinished"></translation>
+        <translation>not created yet</translation>
     </message>
     <message>
         <source>az átirat után</source>
-        <translation type="unfinished"></translation>
+        <translation>after the transcript</translation>
     </message>
     <message>
         <source>felvétel · lekeverés · átirat · összefoglaló</source>
-        <translation type="unfinished"></translation>
+        <translation>recording · mixdown · transcript · summary</translation>
     </message>
     <message>
         <source>HOSSZ</source>
-        <translation type="unfinished"></translation>
+        <translation>LENGTH</translation>
     </message>
     <message>
         <source>felvétel</source>
-        <translation type="unfinished"></translation>
+        <translation>recording</translation>
     </message>
     <message>
         <source>BESZÉD</source>
-        <translation type="unfinished"></translation>
+        <translation>SPEECH</translation>
     </message>
     <message numerus="yes">
         <source>%n sávon</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>on %n track</numerusform>
+            <numerusform>on %n tracks</numerusform>
         </translation>
     </message>
     <message>
         <source>BESZÉLŐK</source>
-        <translation type="unfinished"></translation>
+        <translation>SPEAKERS</translation>
     </message>
     <message numerus="yes">
         <source>%n névtelen</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n unnamed</numerusform>
+            <numerusform>%n unnamed</numerusform>
         </translation>
     </message>
     <message>
         <source>mind elnevezve</source>
-        <translation type="unfinished"></translation>
+        <translation>all named</translation>
     </message>
     <message>
         <source>MEGSZÓLALÁS</source>
-        <translation type="unfinished"></translation>
+        <translation>UTTERANCES</translation>
     </message>
     <message numerus="yes">
         <source>%n javítva</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n corrected</numerusform>
+            <numerusform>%n corrected</numerusform>
         </translation>
     </message>
     <message>
         <source>ÁTNÉZENDŐ</source>
-        <translation type="unfinished"></translation>
+        <translation>TO REVIEW</translation>
     </message>
     <message>
         <source>az Átirat fülön</source>
-        <translation type="unfinished"></translation>
+        <translation>in the Transcript tab</translation>
     </message>
     <message>
         <source>ÖSSZEFOGLALÓ</source>
-        <translation type="unfinished"></translation>
+        <translation>SUMMARY</translation>
     </message>
     <message>
         <source>nincs</source>
-        <translation type="unfinished"></translation>
+        <translation>none</translation>
     </message>
     <message>
         <source>Q4 partner review — napirend: Q3 számok, súgóoldalak, számlázási folyamat, Nordvik-megújítás.</source>
-        <translation type="unfinished"></translation>
+        <translation>Q4 partner review — agenda: Q3 numbers, help pages, billing process, Nordvik renewal.</translation>
     </message>
     <message>
         <source>Kovács Lilla (te)</source>
-        <translation type="unfinished"></translation>
+        <translation>Kovács Lilla (you)</translation>
     </message>
     <message>
         <source>hang 84%</source>
-        <translation type="unfinished"></translation>
+        <translation>voice 84%</translation>
     </message>
     <message>
         <source>hang 79%</source>
-        <translation type="unfinished"></translation>
+        <translation>voice 79%</translation>
     </message>
     <message>
         <source>hang 71%</source>
-        <translation type="unfinished"></translation>
+        <translation>voice 71%</translation>
     </message>
     <message>
         <source>nem hallottuk</source>
-        <translation type="unfinished"></translation>
+        <translation>not heard</translation>
     </message>
     <message>
         <source>Beszélő 1</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaker 1</translation>
     </message>
     <message>
         <source>Beszélő 2</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaker 2</translation>
     </message>
     <message>
         <source>Beszélő 3</source>
-        <translation type="unfinished"></translation>
+        <translation>Speaker 3</translation>
     </message>
     <message numerus="yes">
         <source>%n sáv</source>
-        <translation type="unfinished">
+        <translation>
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
     </message>
     <message>
         <source>sáv</source>
-        <translation type="unfinished"></translation>
+        <translation>track</translation>
     </message>
 </context>
 <context>
     <name>tanara_qml::ParticipantsViewModel</name>
     <message>
         <source>most</source>
-        <translation type="unfinished"></translation>
+        <translation>now</translation>
     </message>
     <message numerus="yes">
         <source>%n perce</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n minute ago</numerusform>
+            <numerusform>%n minutes ago</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n órája</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n hour ago</numerusform>
+            <numerusform>%n hours ago</numerusform>
         </translation>
     </message>
     <message>
         <source>tegnap</source>
-        <translation type="unfinished"></translation>
+        <translation>yesterday</translation>
     </message>
     <message>
         <source>hanglenyomat-elemzés</source>
-        <translation type="unfinished"></translation>
+        <translation>voiceprint analysis</translation>
     </message>
     <message>
         <source>kézzel felvéve</source>
-        <translation type="unfinished"></translation>
+        <translation>added manually</translation>
     </message>
     <message>
         <source>A #%1 alapján:</source>
-        <translation type="unfinished"></translation>
+        <translation>Based on #%1:</translation>
     </message>
     <message>
         <source>%1 / %2 megbeszélésen</source>
-        <translation type="unfinished"></translation>
+        <translation>in %1 / %2 meetings</translation>
     </message>
     <message>
         <source>-sáv</source>
-        <translation type="unfinished"></translation>
+        <translation> track</translation>
     </message>
     <message>
         <source>átirat után</source>
-        <translation type="unfinished"></translation>
+        <translation>after transcript</translation>
     </message>
     <message>
         <source>Ismeretlen hang</source>
-        <translation type="unfinished"></translation>
+        <translation>Unknown voice</translation>
     </message>
     <message>
         <source>%1 (te)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 (you)</translation>
     </message>
     <message>
         <source>BIZTOS</source>
-        <translation type="unfinished"></translation>
+        <translation>CERTAIN</translation>
     </message>
     <message>
         <source>KÉTSÉGES</source>
-        <translation type="unfinished"></translation>
+        <translation>DOUBTFUL</translation>
     </message>
     <message>
         <source>MEGHÍVOTT, DE NEM HALLOTTUK</source>
-        <translation type="unfinished"></translation>
+        <translation>INVITED, BUT NOT HEARD</translation>
     </message>
     <message>
         <source>KÉZZEL FELVÉVE</source>
-        <translation type="unfinished"></translation>
+        <translation>ADDED MANUALLY</translation>
     </message>
     <message>
         <source>a hang mellett még egy forrás egyezik</source>
-        <translation type="unfinished"></translation>
+        <translation>another source matches besides the voice</translation>
     </message>
     <message>
         <source>amit valami cáfol, alapból nincs bejelölve</source>
-        <translation type="unfinished"></translation>
+        <translation>anything contradicted is unchecked by default</translation>
     </message>
     <message>
         <source>a hangját még nem hallottuk</source>
-        <translation type="unfinished"></translation>
+        <translation>their voice has not been heard yet</translation>
     </message>
     <message>
         <source>A hanglenyomat-elemzés fut; a jelöltek pár másodperc múlva itt lesznek.</source>
-        <translation type="unfinished"></translation>
+        <translation>Voiceprint analysis is running; the candidates will be here in a few seconds.</translation>
     </message>
     <message>
         <source>Az átirat ebből köti a beszélőket, amikor megérkezik; a kimaradók névtelenek maradnak.</source>
-        <translation type="unfinished"></translation>
+        <translation>The transcript uses this to match speakers when it arrives; anyone left out stays unnamed.</translation>
     </message>
     <message>
         <source>Minden nyers beszélő résztvevőhöz kötődik.</source>
-        <translation type="unfinished"></translation>
+        <translation>Every raw speaker is linked to a participant.</translation>
     </message>
     <message>
         <source>A %1. nyers beszélő senkihez sincs kötve, ezért névtelen marad.</source>
-        <translation type="unfinished"></translation>
+        <translation>Raw speaker %1 is not linked to anyone, so it stays unnamed.</translation>
     </message>
     <message>
         <source>„%1” senkihez sincs kötve, ezért névtelen marad.</source>
-        <translation type="unfinished"></translation>
+        <translation>&quot;%1&quot; is not linked to anyone, so it stays unnamed.</translation>
     </message>
     <message numerus="yes">
         <source>%n nyers beszélő senkihez sincs kötve (%1), ezért névtelenek maradnak.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n raw speaker is not linked to anyone (%1), so it stays unnamed.</numerusform>
+            <numerusform>%n raw speakers are not linked to anyone (%1), so they stay unnamed.</numerusform>
         </translation>
     </message>
 </context>
@@ -9309,11 +9309,11 @@
     <name>tanara_qml::ReviewGroupsModel</name>
     <message>
         <source>javítva</source>
-        <translation type="unfinished">corrected</translation>
+        <translation>corrected</translation>
     </message>
     <message>
         <source>jó így</source>
-        <translation type="unfinished"></translation>
+        <translation>looks right</translation>
     </message>
 </context>
 <context>
@@ -10331,7 +10331,7 @@
     </message>
     <message>
         <source>LM Studio · saját kulcs</source>
-        <translation type="unfinished"></translation>
+        <translation>LM Studio · own key</translation>
     </message>
     <message>
         <source>%1 / %2 beszélő</source>
@@ -10835,208 +10835,208 @@
     </message>
     <message>
         <source>a kiemelt szakasz: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>highlighted section: %1</translation>
     </message>
     <message>
         <source>kék: a kijelölt állítás forrása · halvány: az összes állításé</source>
-        <translation type="unfinished"></translation>
+        <translation>blue: the source of the selected claim · faint: the sources of all claims</translation>
     </message>
     <message>
         <source>kék: a javítás által érintett források</source>
-        <translation type="unfinished"></translation>
+        <translation>blue: the sources affected by the correction</translation>
     </message>
     <message>
         <source>halvány: az összes állítás forrása</source>
-        <translation type="unfinished"></translation>
+        <translation>faint: the sources of all claims</translation>
     </message>
     <message>
         <source>Memó</source>
-        <translation type="unfinished">Memo</translation>
+        <translation>Memo</translation>
     </message>
     <message numerus="yes">
         <source>%n szakasz</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n section</numerusform>
+            <numerusform>%n sections</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>azóta %n beszélő-javítás</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n speaker correction since</numerusform>
+            <numerusform>%n speaker corrections since</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>%n megszólalásból</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>from %n utterance</numerusform>
+            <numerusform>from %n utterances</numerusform>
         </translation>
     </message>
     <message>
         <source>Fehér Gábor</source>
-        <translation type="unfinished"></translation>
+        <translation>Fehér Gábor</translation>
     </message>
     <message>
         <source>Varga Árpád</source>
-        <translation type="unfinished"></translation>
+        <translation>Varga Árpád</translation>
     </message>
     <message>
         <source>Távoli 1</source>
-        <translation type="unfinished"></translation>
+        <translation>Remote 1</translation>
     </message>
     <message>
         <source>Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.</source>
-        <translation type="unfinished"></translation>
+        <translation>First and most important: the number of support tickets fell by a third while the number of active users grew by about twelve percent.</translation>
     </message>
     <message>
         <source>Az összesre. Az újaknál még jobb az arány, de ott kicsi a minta.</source>
-        <translation type="unfinished"></translation>
+        <translation>On the total. The ratio is even better for new users, but the sample is small there.</translation>
     </message>
     <message>
         <source>A súgóoldalak júliusban mentek élesbe, és az első hat hétben a keresések kétharmada ott ért véget.</source>
-        <translation type="unfinished"></translation>
+        <translation>The help pages went live in July, and in the first six weeks two thirds of searches ended there.</translation>
     </message>
     <message>
         <source>Nálunk a beállítási kérdések szinte eltűntek, a számlázásiak viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
-        <translation type="unfinished"></translation>
+        <translation>On our side, setup questions have almost disappeared, but the billing ones remain, mainly with Nordvik customers.</translation>
     </message>
     <message>
         <source>Az első változatot megcsinálom a dokumentációs csapattal, október közepére.</source>
-        <translation type="unfinished"></translation>
+        <translation>I&apos;ll do the first version with the documentation team, by mid-October.</translation>
     </message>
     <message>
         <source>A negyedik negyedév elejére kell, különben a megújításnál újra előjön.</source>
-        <translation type="unfinished"></translation>
+        <translation>It&apos;s needed by the start of the fourth quarter, otherwise it will come up again at the renewal.</translation>
     </message>
     <message>
         <source>Akkor a súgóoldalakat a többi termékre is kiterjesztjük.</source>
-        <translation type="unfinished"></translation>
+        <translation>Then we&apos;ll extend the help pages to the other products too.</translation>
     </message>
     <message>
         <source>Én a számlázást javasolnám következő súgó-témának, ott a jegyek fele számlázási.</source>
-        <translation type="unfinished"></translation>
+        <translation>I&apos;d suggest billing as the next help topic; half the tickets there are about billing.</translation>
     </message>
     <message>
         <source>Vállalom, de két hét dokumentációs kapacitás kell hozzá.</source>
-        <translation type="unfinished"></translation>
+        <translation>I&apos;ll take it, but it needs two weeks of documentation capacity.</translation>
     </message>
     <message>
         <source>A díjbekérős kérdéseket érdemes lenne külön kezelni a súgóban.</source>
-        <translation type="unfinished"></translation>
+        <translation>It would be worth handling the proforma invoice questions separately in the help.</translation>
     </message>
     <message>
         <source>A létszámról a költségvetési tervezésnél döntünk.</source>
-        <translation type="unfinished"></translation>
+        <translation>We&apos;ll decide on headcount during budget planning.</translation>
     </message>
     <message>
         <source>A harmadik negyedévben a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma 12%-kal nőtt.</source>
-        <translation type="unfinished"></translation>
+        <translation>In the third quarter the number of support tickets fell by a third while the number of active users grew by 12%.</translation>
     </message>
     <message>
         <source>A javulás fő oka a júliusban élesített súgóoldalak: az első hat hétben a keresések kétharmada ott ért véget.</source>
-        <translation type="unfinished"></translation>
+        <translation>The main reason for the improvement is the help pages that went live in July: in the first six weeks two thirds of searches ended there.</translation>
     </message>
     <message>
         <source>A partnerek oldalán a beállítási kérdések szinte eltűntek, a számlázási kérdések viszont maradtak, főleg a Nordvik-ügyfeleknél.</source>
-        <translation type="unfinished"></translation>
+        <translation>On the partners&apos; side, setup questions have almost disappeared, but billing questions remain, mainly with Nordvik customers.</translation>
     </message>
     <message>
         <source>A számlázási súgónak a negyedik negyedév elejére el kell készülnie, különben a megújításnál újra előjön a probléma.</source>
-        <translation type="unfinished"></translation>
+        <translation>The billing help must be ready by the start of the fourth quarter, otherwise the problem will come up again at the renewal.</translation>
     </message>
     <message>
         <source>A számlázásnál előbb a folyamatot egyszerűsítik, utána a leírást.</source>
-        <translation type="unfinished"></translation>
+        <translation>For billing, the process is simplified first, then the documentation.</translation>
     </message>
     <message>
         <source>Számlázási súgó első változata a dokumentációs csapattal</source>
-        <translation type="unfinished"></translation>
+        <translation>First version of the billing help with the documentation team</translation>
     </message>
     <message>
         <source>Díjbekérő-kérdések külön kezelése a súgóban</source>
-        <translation type="unfinished"></translation>
+        <translation>Handle proforma invoice questions separately in the help</translation>
     </message>
     <message>
         <source>okt. 22.</source>
-        <translation type="unfinished"></translation>
+        <translation>Oct 22</translation>
     </message>
     <message>
         <source>Fehér Gábor → Varga Árpád?</source>
-        <translation type="unfinished"></translation>
+        <translation>Fehér Gábor → Varga Árpád?</translation>
     </message>
     <message>
         <source>Nyitás, Q3 számok</source>
-        <translation type="unfinished"></translation>
+        <translation>Opening, Q3 numbers</translation>
     </message>
     <message>
         <source>Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak.</source>
-        <translation type="unfinished"></translation>
+        <translation>Kovács Lilla summarized the quarter&apos;s numbers: tickets are down by a third, active users are up 12%.</translation>
     </message>
     <message>
         <source>Súgóoldalak</source>
-        <translation type="unfinished"></translation>
+        <translation>Help pages</translation>
     </message>
     <message>
         <source>A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták.</source>
-        <translation type="unfinished"></translation>
+        <translation>The help pages that went live in July closed two thirds of searches in the first six weeks.</translation>
     </message>
     <message>
         <source>Számlázási súgó és a Nordvik-megújítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Billing help and the Nordvik renewal</translation>
     </message>
     <message>
         <source>Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.</source>
-        <translation type="unfinished"></translation>
+        <translation>According to Kovács Lilla, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.</translation>
     </message>
     <message>
         <source>Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.</source>
-        <translation type="unfinished"></translation>
+        <translation>Fehér Gábor took on the first version, but asks for two weeks of documentation capacity.</translation>
     </message>
     <message>
         <source>A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Questions about proforma invoices make up half of the billing questions; handled separately, the rest may disappear too.</translation>
     </message>
     <message>
         <source>Ha a súgó nem készül el a negyedév elejére, a megújítási tárgyalásokon újra előjön a probléma.</source>
-        <translation type="unfinished"></translation>
+        <translation>If the help isn&apos;t ready by the start of the quarter, the problem will come up again in the renewal talks.</translation>
     </message>
     <message>
         <source>Nyitott kérdés: ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?</source>
-        <translation type="unfinished"></translation>
+        <translation>Open question: who provides the documentation capacity if the team works on extending the help in the fourth quarter?</translation>
     </message>
     <message>
         <source>A díjbekérős kérdéseket külön kezelik a súgóban.</source>
-        <translation type="unfinished"></translation>
+        <translation>Proforma invoice questions will be handled separately in the help.</translation>
     </message>
     <message>
         <source>Nordvik-megújítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Nordvik renewal</translation>
     </message>
     <message>
         <source>A Nordvik-szerződés megújítása a számlázási súgón múlik.</source>
-        <translation type="unfinished"></translation>
+        <translation>Renewing the Nordvik contract depends on the billing help.</translation>
     </message>
     <message>
         <source>A tárgyalás a negyedik negyedév elején indul.</source>
-        <translation type="unfinished"></translation>
+        <translation>Negotiations start at the beginning of the fourth quarter.</translation>
     </message>
     <message>
         <source>Költségvetés</source>
-        <translation type="unfinished"></translation>
+        <translation>Budget</translation>
     </message>
     <message>
         <source>Lezárás, teendők</source>
-        <translation type="unfinished"></translation>
+        <translation>Wrap-up, action items</translation>
     </message>
     <message>
         <source>Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát.</source>
-        <translation type="unfinished"></translation>
+        <translation>Fehér Gábor will finish the first version of the billing help by October 15.</translation>
     </message>
     <message>
         <source>Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.</source>
-        <translation type="unfinished"></translation>
+        <translation>Molnár Eszter will work out the separate handling of proforma invoice questions by October 22.</translation>
     </message>
 </context>
 <context>
@@ -11320,9 +11320,9 @@
     </message>
     <message numerus="yes">
         <source>Új személy: %1. %n sor átkerült hozzá.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>New person: %1. %n line moved to them.</numerusform>
+            <numerusform>New person: %1. %n lines moved to them.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -11390,209 +11390,209 @@
     </message>
     <message>
         <source>a hívás hangján</source>
-        <translation type="unfinished"></translation>
+        <translation>on the call audio</translation>
     </message>
     <message>
         <source>a mikrofonon</source>
-        <translation type="unfinished"></translation>
+        <translation>on the microphone</translation>
     </message>
     <message>
         <source>hívás</source>
-        <translation type="unfinished"></translation>
+        <translation>call</translation>
     </message>
     <message>
         <source>mikrofon</source>
-        <translation type="unfinished"></translation>
+        <translation>microphone</translation>
     </message>
     <message>
         <source>Hang:</source>
-        <translation type="unfinished"></translation>
+        <translation>Voice:</translation>
     </message>
     <message>
         <source>%1, %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1, %2</translation>
     </message>
     <message>
         <source>Sáv:</source>
-        <translation type="unfinished"></translation>
+        <translation>Track:</translation>
     </message>
     <message>
         <source>ugyanaz a sáv</source>
-        <translation type="unfinished"></translation>
+        <translation>same track</translation>
     </message>
     <message>
         <source>beszél</source>
-        <translation type="unfinished"></translation>
+        <translation>speaks</translation>
     </message>
     <message>
         <source>%1 beszél</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 speaks</translation>
     </message>
     <message>
         <source> (kézi sáv-beosztás)</source>
-        <translation type="unfinished"></translation>
+        <translation> (manual track assignment)</translation>
     </message>
     <message>
         <source>Címke:</source>
-        <translation type="unfinished"></translation>
+        <translation>Tag:</translation>
     </message>
     <message>
         <source>közös címke a megbeszéléssel: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>tag in common with the meeting: %1</translation>
     </message>
     <message>
         <source>nincs közös címkéje a megbeszéléssel</source>
-        <translation type="unfinished"></translation>
+        <translation>no tag in common with the meeting</translation>
     </message>
     <message>
         <source>Figyelem:</source>
-        <translation type="unfinished"></translation>
+        <translation>Attention:</translation>
     </message>
     <message>
         <source>%1 hangja nagyon hasonló (%2)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1&apos;s voice is very similar (%2)</translation>
     </message>
     <message>
         <source>Sorok:</source>
-        <translation type="unfinished"></translation>
+        <translation>Lines:</translation>
     </message>
     <message>
         <source>Naptár:</source>
-        <translation type="unfinished"></translation>
+        <translation>Calendar:</translation>
     </message>
     <message>
         <source>Sáv-beosztás</source>
-        <translation type="unfinished"></translation>
+        <translation>Track assignment</translation>
     </message>
     <message>
         <source>Módosítás</source>
-        <translation type="unfinished"></translation>
+        <translation>Edit</translation>
     </message>
     <message>
         <source>Minták</source>
-        <translation type="unfinished"></translation>
+        <translation>Samples</translation>
     </message>
     <message>
         <source>Címkéi</source>
-        <translation type="unfinished"></translation>
+        <translation>Tags</translation>
     </message>
     <message>
         <source>Kettejük átnézése</source>
-        <translation type="unfinished"></translation>
+        <translation>Review the two</translation>
     </message>
     <message>
         <source>a sor %1 jött, %2 %3 beszél.</source>
-        <translation type="unfinished"></translation>
+        <translation>the line came %1, %2 speaks %3.</translation>
     </message>
     <message>
         <source>a megerősített sorai két különböző hangra esnek (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>its confirmed lines fall into two different voices (%1)</translation>
     </message>
     <message>
         <source>két hang</source>
-        <translation type="unfinished"></translation>
+        <translation>two voices</translation>
     </message>
     <message>
         <source>Szétválasztás</source>
-        <translation type="unfinished"></translation>
+        <translation>Split</translation>
     </message>
     <message>
         <source>Saját mikrofon</source>
-        <translation type="unfinished">My microphone</translation>
+        <translation>My microphone</translation>
     </message>
     <message>
         <source>Hívás hangja</source>
-        <translation type="unfinished">Call audio</translation>
+        <translation>Call audio</translation>
     </message>
     <message>
         <source>kézi beosztás: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>manual assignment: %1</translation>
     </message>
     <message>
         <source>tanult: jellemzően %1</source>
-        <translation type="unfinished"></translation>
+        <translation>learned: typically %1</translation>
     </message>
     <message>
         <source>a megerősített sorai alapján: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>based on its confirmed lines: %1</translation>
     </message>
     <message>
         <source>te vagy: a saját mikrofonodon</source>
-        <translation type="unfinished"></translation>
+        <translation>that&apos;s you: on your own microphone</translation>
     </message>
     <message>
         <source>%1 sorai két különböző hangnak tűnnek</source>
-        <translation type="unfinished"></translation>
+        <translation>%1&apos;s lines seem to be two different voices</translation>
     </message>
     <message>
         <source>A hívás hangján érkezett, de %1 nevén van</source>
-        <translation type="unfinished"></translation>
+        <translation>It came in on the call audio, but it is under %1&apos;s name</translation>
     </message>
     <message>
         <source>A mikrofonon érkezett, de %1 nevén van</source>
-        <translation type="unfinished"></translation>
+        <translation>It came in on the microphone, but it is under %1&apos;s name</translation>
     </message>
     <message>
         <source>A másik sávon érkezett, de %1 nevén van</source>
-        <translation type="unfinished"></translation>
+        <translation>It came in on the other track, but it is under %1&apos;s name</translation>
     </message>
     <message>
         <source>Nincs azonos sávon beszélő jelölt</source>
-        <translation type="unfinished"></translation>
+        <translation>No candidate speaks on the same track</translation>
     </message>
     <message>
         <source>Javasolt: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Suggested: %1</translation>
     </message>
     <message>
         <source>Hang alapján valószínűleg %1 mondta</source>
-        <translation type="unfinished"></translation>
+        <translation>By voice, it was probably %1</translation>
     </message>
     <message>
         <source>Most %1 nevén.</source>
-        <translation type="unfinished"></translation>
+        <translation>Currently under %1&apos;s name.</translation>
     </message>
     <message>
         <source>Rövid sorok: ezeken a hang nem segít</source>
-        <translation type="unfinished"></translation>
+        <translation>Short lines: voice doesn&apos;t help on these</translation>
     </message>
     <message>
         <source>%1 mp alattiak, csak fülre dönthetők; nem számítanak az átnézendők közé.</source>
-        <translation type="unfinished"></translation>
+        <translation>Shorter than %1 s, can be decided only by ear; they don&apos;t count as lines to review.</translation>
     </message>
     <message>
         <source>Hangra kétes sorok</source>
-        <translation type="unfinished"></translation>
+        <translation>Lines doubtful by voice</translation>
     </message>
     <message>
         <source>A hang alapján nem dönthető el biztosan, kié — egyenként érdemes meghallgatni.</source>
-        <translation type="unfinished"></translation>
+        <translation>It can&apos;t be decided with certainty by voice whose it is — worth listening to one by one.</translation>
     </message>
     <message>
         <source>Elég tiszta beszéd van a hanglenyomathoz (%1 mp).</source>
-        <translation type="unfinished"></translation>
+        <translation>There is enough clean speech for the voiceprint (%1 s).</translation>
     </message>
     <message>
         <source>Hanglenyomathoz még kb. %1 mp tiszta beszéd kell (most %2 mp).</source>
-        <translation type="unfinished"></translation>
+        <translation>The voiceprint needs about %1 s more clean speech (now %2 s).</translation>
     </message>
     <message>
         <source>Hanglenyomat készítése</source>
-        <translation type="unfinished">Create voiceprint</translation>
+        <translation>Create voiceprint</translation>
     </message>
     <message>
         <source>Elkészül, ha elég lesz</source>
-        <translation type="unfinished"></translation>
+        <translation>Created when there is enough</translation>
     </message>
     <message>
         <source>Hanglenyomat, ha elég</source>
-        <translation type="unfinished"></translation>
+        <translation>Voiceprint, when enough</translation>
     </message>
     <message numerus="yes">
         <source>Szétválasztás: %n sor átkerült ide: %1</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Split: %n line moved to %1</numerusform>
+            <numerusform>Split: %n lines moved to %1</numerusform>
         </translation>
     </message>
 </context>
