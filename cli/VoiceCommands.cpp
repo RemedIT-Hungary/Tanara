@@ -9,6 +9,7 @@
 #include "tanara/store/MeetingStore.h"
 #include "tanara/voiceid/VoiceEmbedderSet.h"
 #include "tanara/voiceid/VoiceEval.h"
+#include "tanara/voiceid/VoiceModelDownloader.h"
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QCoreApplication>
@@ -17,10 +18,6 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QSaveFile>
 #include <QTextStream>
 
 #include <cmath>
@@ -109,72 +106,45 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
         err() << "No download URL for " << id << "\n";
         return 1;
     }
-    const QString target = QDir(metaDirOf(sm)).filePath(QStringLiteral("models/") + spec->fileName);
+    const QString target = VoiceModelDownloader::targetPath(*spec, metaDirOf(sm));
     out() << "Model:    " << spec->displayName << " (" << spec->id << ")\n"
           << "License:  " << spec->license << "\n"
           << "Source:   " << spec->sourceUrl << "\n"
           << "Download: " << spec->downloadUrl << "\n"
           << "Target:   " << QDir::toNativeSeparators(target) << "\n";
     out().flush();
-    if (QFileInfo::exists(target) && !force) {
-        err() << "The file already exists; use --force to overwrite it.\n";
-        return 1;
-    }
-    QDir().mkpath(QFileInfo(target).absolutePath());
-    QSaveFile file(target);
-    if (!file.open(QIODevice::WriteOnly)) {
-        err() << "Cannot write " << target << ": " << file.errorString() << "\n";
-        return 1;
-    }
 
-    QNetworkAccessManager nam;
-    QNetworkRequest req{QUrl(spec->downloadUrl)};
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    QNetworkReply* reply = nam.get(req);
+    // A letöltés a GUI-val közös VoiceModelDownloaderen megy (QSaveFile, méret-ellenőrzés).
+    VoiceModelDownloader dl;
     QEventLoop loop;
-    qint64 written = 0;
-    bool writeFailed = false;
+    bool done = false, ok = false;
+    QString error;
     int lastPct = -1;
-    QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&]() {
-        const QByteArray chunk = reply->readAll();
-        if (file.write(chunk) != chunk.size()) { writeFailed = true; reply->abort(); }
-        written += chunk.size();
-    });
-    QObject::connect(reply, &QNetworkReply::downloadProgress, &loop, [&](qint64 got, qint64 total) {
-        if (total <= 0 && spec->sizeBytes > 0) total = spec->sizeBytes;
+    QObject::connect(&dl, &VoiceModelDownloader::progress, &loop, [&](const QString&, qint64 got, qint64 total) {
         const int pct = total > 0 ? int(got * 100 / total) : -1;
-        if (pct != lastPct) {
-            lastPct = pct;
-            err() << "\rDownloading: " << (got / 1024 / 1024) << " MiB"
-                  << (pct >= 0 ? QStringLiteral(" (%1%)").arg(pct) : QString());
-            err().flush();
-        }
+        if (pct == lastPct) return;
+        lastPct = pct;
+        err() << "\rDownloading: " << (got / 1024 / 1024) << " MiB"
+              << (pct >= 0 ? QStringLiteral(" (%1%)").arg(pct) : QString());
+        err().flush();
     });
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-    err() << "\n";
-    const QByteArray rest = reply->readAll();
-    if (!rest.isEmpty() && file.write(rest) != rest.size()) writeFailed = true;
-    written += rest.size();
-    const bool netError = reply->error() != QNetworkReply::NoError;
-    const QString netMsg = reply->errorString();
-    reply->deleteLater();
-    if (netError || writeFailed) {
-        file.cancelWriting();
-        err() << "Download failed: " << (writeFailed ? file.errorString() : netMsg) << "\n";
+    QObject::connect(&dl, &VoiceModelDownloader::finished, &loop, [&](const QString&, bool success, const QString& e) {
+        done = true;
+        ok = success;
+        error = e;
+        loop.quit();
+    });
+    if (dl.start(*spec, target, force) && !done) loop.exec();
+    if (lastPct >= 0) err() << "\n";
+    if (!ok) {
+        if (dl.lastFailure(id) == VoiceModelDownloader::Failure::Exists)
+            err() << "The file already exists; use --force to overwrite it.\n";
+        else
+            err() << "Download failed: " << error << "\n";
+        err().flush();
         return 1;
     }
-    if (spec->sizeBytes > 0 && written != spec->sizeBytes) {
-        file.cancelWriting();
-        err() << "Size mismatch: got " << written << " bytes, expected " << spec->sizeBytes
-              << " — nothing was written.\n";
-        return 1;
-    }
-    if (!file.commit()) {
-        err() << "Cannot save " << target << ": " << file.errorString() << "\n";
-        return 1;
-    }
-    out() << "Saved " << written << " bytes to " << QDir::toNativeSeparators(target) << "\n"
+    out() << "Saved " << QFileInfo(target).size() << " bytes to " << QDir::toNativeSeparators(target) << "\n"
           << "Enable it with: tanara-cli voice-models enable " << id << "\n";
     out().flush();
     return 0;
