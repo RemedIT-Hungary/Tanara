@@ -36,6 +36,12 @@ class ShellMeetingModel : public QObject {
     Q_PROPERTY(QString metaText READ metaText NOTIFY changed)
     Q_PROPERTY(bool hasTranscript READ hasTranscript NOTIFY changed)
     Q_PROPERTY(bool summaryStale READ summaryStale NOTIFY changed)
+    // Van-e (gyors vagy témánkénti) összefoglalója — a Vezetői összefoglaló / Memó fül elérhető-e.
+    Q_PROPERTY(bool hasSummary READ hasSummary NOTIFY changed)
+    // Futó átírás / összefoglaló a fülek pirulájához: -1 = nem fut; különben 0…100
+    // (határozatlan haladásnál 0).
+    Q_PROPERTY(int transcribePercent READ transcribePercent NOTIFY tasksChanged)
+    Q_PROPERTY(int summarizePercent READ summarizePercent NOTIFY tasksChanged)
     // Van-e legalább egy aktív hangsáv (az azonosítás előfeltétele).
     Q_PROPERTY(bool canIdentify READ canIdentify NOTIFY changed)
     Q_PROPERTY(bool identifyRunning READ identifyRunning NOTIFY tasksChanged)
@@ -59,6 +65,9 @@ public:
     QString metaText() const { return m_meta; }
     bool hasTranscript() const { return m_hasTranscript; }
     bool summaryStale() const { return m_summaryStale; }
+    bool hasSummary() const { return m_hasSummary; }
+    int transcribePercent() const { return m_transcribePercent; }
+    int summarizePercent() const { return m_summarizePercent; }
     bool canIdentify() const { return m_canIdentify; }
     bool identifyRunning() const { return m_identifyRunning; }
     QVariantList tasks() const { return m_tasks; }
@@ -91,6 +100,9 @@ private:
     QString m_meta;
     bool m_hasTranscript = false;
     bool m_summaryStale = false;
+    bool m_hasSummary = false;
+    int m_transcribePercent = -1;
+    int m_summarizePercent = -1;
     bool m_canIdentify = false;
     bool m_identifyRunning = false;
     bool m_demoTask = false;
