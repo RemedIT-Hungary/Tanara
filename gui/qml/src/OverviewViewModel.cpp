@@ -135,6 +135,7 @@ void OverviewViewModel::setMeetingId(const QString& id)
         return;
     m_meetingId = id;
     m_hiddenSuggestions.clear();
+    m_removedIds.clear();
     emit meetingIdChanged();
     reload();
 }
@@ -247,6 +248,9 @@ void OverviewViewModel::removeParticipant(const QString& id)
         emit changed();
         return;
     }
+    // A core nem töröl résztvevőt (csak a kötését és a jelölését veszi el): a sort ebben a
+    // munkamenetben rejtjük el. Hiányzó core-API: AppController::removeParticipant.
+    m_removedIds.insert(id);
     c->unbindParticipant(m_meetingId, id);
     scheduleReload();
 }
@@ -345,6 +349,7 @@ void OverviewViewModel::reload()
     } else {
         int i = 0;
         for (const Participant& p : parts) {
+            if (m_removedIds.contains(p.id)) continue;
             const bool self = sameName(p.personName, selfName);
             QString name = p.personName.isEmpty() ? tr("Ismeretlen hang %1").arg(i + 1) : p.personName;
             if (self) name = tr("%1 (te)").arg(name);
@@ -381,12 +386,12 @@ void OverviewViewModel::reload()
             m_peopleState = QStringLiteral("list");
     }
     m_participants = rows;
-    if (m_approved && m.approval->at.size() > 0) {
+    if (m.approval && m.approval->solo) {
+        m_peopleHint = tr("csak én beszéltem");
+    } else if (m_approved && m.approval->at.size() > 0) {
         const QDateTime at = QDateTime::fromString(m.approval->at, Qt::ISODate).toLocalTime();
         m_peopleHint = at.isValid() ? tr("jóváhagyva %1-kor").arg(QLocale().toString(at, QStringLiteral("MMM d. HH:mm")))
                                     : tr("jóváhagyva");
-    } else if (m.approval && m.approval->solo) {
-        m_peopleHint = tr("csak én beszéltem");
     } else {
         m_peopleHint = m_peopleState == QLatin1String("list") ? tr("naptár · hang · címke · kézi") : QString();
     }

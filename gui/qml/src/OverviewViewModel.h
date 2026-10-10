@@ -132,7 +132,8 @@ private:
     QString m_meetingId;
     QString m_demoState;
     QString m_demoLoadedFor;
-    QSet<QString> m_hiddenSuggestions;   // munkamenetben elutasított címke-javaslatok (név)
+    QSet<QString> m_hiddenSuggestions;
+    QSet<QString> m_removedIds;          // ×-szel kivett résztvevők (a core nem törli őket)   // munkamenetben elutasított címke-javaslatok (név)
 
     bool m_hasTranscript = false;
     bool m_transcribing = false;
