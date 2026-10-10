@@ -19,7 +19,7 @@ DELAY="${SHOT_DELAY:-}"
 mkdir -p "$OUT"
 
 if [ $# -eq 0 ]; then
-  set -- "Gallery:1280x3600" "Gallery:1280x820:overlay=\"dialog\"" "Gallery:1280x820:overlay=\"menu\"" \
+  set -- "Gallery:1280x6400" "Gallery:1280x820:overlay=\"dialog\"" "Gallery:1280x820:overlay=\"menu\"" \
          "Main:1280x820" "Main:1280x820:shellState=\"empty\"" "Main:1280x820:shellState=\"noSelection\"" \
          "Main:1280x820:shellState=\"preTranscript\",taskRunning=true" \
          "SettingsWindow:900x800:demoState=\"B01\"" "SettingsWindow:900x780:demoState=\"B02\"" \

@@ -56,7 +56,7 @@ log file, so they do not touch `~/.tanara` or `~/Tanara`.
 ## Screenshots without a window
 
 ```bash
-build/gui/tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x3600
+build/gui/tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x6400
 build/gui/tanara --qml-shot out.png --qml-page Main --theme light --size 1280x820 \
     --qml-prop 'shellState="empty"'
 build/gui/tanara --qml-shot out.png --qml-page SummaryTab --size 1004x640 --scale 2
