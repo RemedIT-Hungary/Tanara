@@ -307,11 +307,44 @@ bool PeopleStore::setTags(const QString& name, const QStringList& tagIds)
     return true;
 }
 
+QString PeopleStore::defaultSide(const QString& name) const
+{
+    const int i = indexOf(name);
+    return i < 0 ? QString() : m_entries[i].raw.value(QStringLiteral("defaultSide")).toString();
+}
+
+bool PeopleStore::setDefaultSide(const QString& name, const QString& side)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return false;
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
+    const int i = indexOf(n);
+    if (i < 0 && side.isEmpty()) return false;
+    Entry& e = ensure(n);
+    const QString key = QStringLiteral("defaultSide");
+    if (e.raw.value(key).toString() == side) return false;
+    if (side.isEmpty()) e.raw.remove(key);
+    else e.raw.insert(key, side);
+    persist();
+    return true;
+}
+
 QHash<QString, QStringList> PeopleStore::allTags() const
 {
     QHash<QString, QStringList> out;
     for (const Entry& e : m_entries)
         if (!e.d.tags.isEmpty()) out.insert(e.d.name, e.d.tags);
+    return out;
+}
+
+QHash<QString, QString> PeopleStore::defaultSides() const
+{
+    QHash<QString, QString> out;
+    for (const Entry& e : m_entries) {
+        const QString s = e.raw.value(QStringLiteral("defaultSide")).toString();
+        if (!s.isEmpty()) out.insert(e.d.name, s);
+    }
     return out;
 }
 

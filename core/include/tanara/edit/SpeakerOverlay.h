@@ -14,6 +14,7 @@
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/summary/SummarySources.h"
 
+#include <QHash>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -73,6 +74,9 @@ struct SpeakerOverlay {
     int nextParticipant = 1;                        // a következő "participant:N" sorszáma
     int nextAnonymous = 1;                          // a következő „Új beszélő N" sorszáma
     QMap<QString, QString> merged;                  // összevont nyers címke → cél beszélő-kulcs
+    // Kézi sáv-beosztás („Melyik sávon beszél?"): beszélő-kulcs → sáv-id-k. Hiányzó / üres =
+    // nincs megkötés. A személy oldalának egyetlen igazsága, ha meg van adva (SideAnalysis).
+    QHash<QString, QStringList> speakerTracks;
     QStringList removedRaw;                         // eltávolított (üres) nyers beszélő-oszlopok
     QMap<QString, OverlayUtterance> utterances;     // megszólalás-id → felülírás
     QMap<QString, OverlayIdentification> identified;// nyers címke → hang-azonosítás eredménye
@@ -82,7 +86,7 @@ struct SpeakerOverlay {
     // Van-e sor-/beszélő-szintű javítás (az azonosítás és az elavult-jelző nem számít).
     bool hasEdits() const {
         return !participants.isEmpty() || !merged.isEmpty() || !removedRaw.isEmpty()
-            || !utterances.isEmpty();
+            || !utterances.isEmpty() || !speakerTracks.isEmpty();
     }
     bool isEmpty() const {
         return !hasEdits() && identified.isEmpty() && changedSinceSummary.isEmpty()

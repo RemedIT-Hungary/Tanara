@@ -86,6 +86,13 @@ public:
     bool setTags(const QString& name, const QStringList& tagIds);
     // Minden címkés rekord (név → címkék), a listán kívüliek is.
     QHash<QString, QStringList> allTags() const;
+    // ---- tanult sáv-oldal (a megerősített sorokból / kézi sáv-beosztásból; SideAnalysis) ----
+    // A rekord "defaultSide" mezője: "local" | "remote"; üres = nincs tanult érték.
+    QString defaultSide(const QString& name) const;
+    // Üres side → a mező törlődik. true, ha változott.
+    bool setDefaultSide(const QString& name, const QString& side);
+    // Minden tanult érték: név → oldal.
+    QHash<QString, QString> defaultSides() const;
 
     // A listán kívüli, de adatot hordozó rekordok nevei (lásd fent: "unlisted").
     QStringList unlistedNames() const;

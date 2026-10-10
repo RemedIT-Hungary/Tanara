@@ -35,6 +35,10 @@ struct EditorUtterance {
     bool    rechecked = false;          // az újraellenőrzés jelölte bizonytalannak
     // A hangra jobban illő beszélő kulcsa (az újraellenőrzés javaslata); üres = nincs.
     QString likelySpeakerKey;
+    // Miért bizonytalan (v3, 14. döntés — a pirula felirata): "side" (a sor a beszélője oldalával
+    // ellentétes sávon szólt), "tag" (hangra kétes, és a beszélő címkéi nem illenek a
+    // megbeszéléshez), "voice" (hangra kétes); üres, ha nem bizonytalan.
+    QString uncertainReason;
 };
 
 // Egy kötés a résztvevő-jóváhagyáshoz (SpeakerEditor::applyBindings): a nyers beszélő (vagy

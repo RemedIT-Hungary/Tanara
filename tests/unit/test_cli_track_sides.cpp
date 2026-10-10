@@ -111,8 +111,16 @@ private slots:
         // Szöveges kimenet.
         r = cli({"track-sides", folder});
         QCOMPARE(r.code, 0);
-        QVERIFY(r.out.contains("localShare histogram"));
+        QVERIFY(!r.out.contains("localShare histogram"));
         QVERIFY(r.out.contains("Conflicts: 2"));
+        r = cli({"track-sides", folder, "--legacy"});
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains("localShare histogram"));
+        QVERIFY(r.out.contains("Legacy lines: local 2  remote 2"));
+        r = cli({"track-sides", folder, "--json", "--legacy"});
+        j = QJsonDocument::fromJson(r.out.toUtf8()).object();
+        QCOMPARE(j.value("legacy").toObject().value("totals").toObject().value("remote").toInt(), 2);
+        QCOMPARE(j.value("lines").toArray().at(0).toObject().value("legacySide").toString(), QStringLiteral("local"));
         QCOMPARE(snapshot(folder), before);
 
         // --write-cache: létrejön a cache, a következő futás abból számol.

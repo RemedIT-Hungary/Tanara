@@ -7,6 +7,7 @@
 #include <QtTest>
 
 #include <cmath>
+#include <limits>
 
 #include "tanara/edit/SideAnalysis.h"
 
@@ -292,19 +293,142 @@ private slots:
     void micBleedStillSeparates()
     {
         // A távoli sorok alatt a mikrofonon is van jel (hangszóró-áthallás): 26 dB a loopback 28 dB-je
-        // mellett → localShare ≈ 0.39. Az alap küszöbbel Mixed lenne; az adaptív Remote-nak látja.
+        // mellett → localShare ≈ 0.39. A RÉGI besorolás: az alap küszöbbel Mixed lenne; az adaptív
+        // Remote-nak látja. Az ÚJ (beszédszint-normalizált): a mic 26 dB-je csak 4 dB-lel van a mic
+        // beszédszintje (30) alatt → a mic „beszél" → soha nem Remote; a loopback is beszédszinten
+        // van → Mixed (ennyire erős áthallás egymásra beszélésnek látszik).
         Synth s = synth("LRLRRLRRLRLR", {"Beszélő 1"}, 30.0f, 28.0f, 26.0f);
         const SideReport r = analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, "Ádám");
         QVERIFY(r.thresholds.adaptive);
+        QCOMPARE(r.legacyTotals.local, 5);
+        QCOMPARE(r.legacyTotals.remote, 7);
+        QCOMPARE(r.legacyTotals.mixed, 0);
         QCOMPARE(r.totals.local, 5);
-        QCOMPARE(r.totals.remote, 7);
-        QCOMPARE(r.totals.mixed, 0);
+        QCOMPARE(r.totals.remote, 0);
+        QCOMPARE(r.totals.mixed, 7);
         for (const LineSide& l : r.lines)
-            if (l.side == Side::Remote) {
+            if (l.legacySide == Side::Remote) {
                 QVERIFY(l.localShare > 0.35f && l.localShare < 0.45f);
                 QVERIFY(std::abs(l.micDb - 26.0f) < 0.1f);
                 QVERIFY(std::abs(l.loopDb - 28.0f) < 0.1f);
+                QVERIFY(std::abs(l.micRelDb - (-4.0f)) < 0.1f);
+                QCOMPARE(l.side, Side::Mixed);
             }
+    }
+
+    void classifyLevelsRules()
+    {
+        const float inf = std::numeric_limits<float>::infinity();
+        QCOMPARE(sides::classifyLevels(0.0f, -inf), Side::Local);          // tiszta helyi
+        QCOMPARE(sides::classifyLevels(-inf, 0.0f), Side::Remote);         // tiszta távoli
+        QCOMPARE(sides::classifyLevels(-25.0f, 0.0f), Side::Remote);       // halk mic-zaj
+        QCOMPARE(sides::classifyLevels(0.0f, -8.0f), Side::Local);         // visszhang
+        QCOMPARE(sides::classifyLevels(0.0f, -2.0f), Side::Mixed);         // egymásra beszélés
+        QCOMPARE(sides::classifyLevels(-9.0f, 0.0f), Side::Mixed);         // a mic beszél → soha Remote
+        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Unknown);      // köztes mic: nem dönthető
+        QCOMPARE(sides::classifyLevels(-inf, -inf), Side::Unknown);        // csend
+        QCOMPARE(sides::classifyLevels(qQNaN(), 0.0f), Side::Unknown);     // nincs lefedés
+        QCOMPARE(sides::classifyLevels(0.0f, -15.0f), Side::Local);        // a loopback halk
+    }
+
+    void speechLevelIsActivePercentile()
+    {
+        // 100 aktív keret 1..100 dB, plusz csend és lyuk: a 90. percentilis ~90.
+        TrackActivity t;
+        t.trackId = "mic";
+        t.kind = TrackKind::Mic;
+        for (int i = 1; i <= 100; ++i) t.dbAboveFloor << float(i);
+        t.dbAboveFloor << 0.0f << 0.0f << qQNaN();
+        const float lvl = sides::speechLevelDb(t);
+        QVERIFY(lvl >= 88.0f && lvl <= 92.0f);
+        TrackActivity silent;
+        silent.dbAboveFloor = QVector<float>(20, 1.0f);
+        QVERIFY(std::isnan(sides::speechLevelDb(silent)));
+    }
+
+    void echoOnLoopbackIsLocal()
+    {
+        // A mic halk (15 dB), a felhasználó hangja a loopbackon visszhangként visszajön (22 dB),
+        // a valódi távoli beszéd 30 dB. A régi arány a helyi sorokat Remote-nak látta (0.16);
+        // az új a mic beszédszintjén (0 dB) lévő sort Local-nak, a visszhangot (−8 dB) annak.
+        QVector<TranscriptLine> lines;
+        QVector<Span> mic, loop;
+        const QString kinds = "LLRLRRLRLL";
+        for (int i = 0; i < kinds.size(); ++i) {
+            const qint64 st = i * 2500, en = st + 2000;
+            lines << line(QStringLiteral("u%1").arg(st), st, en, "B1");
+            if (kinds[i] == 'L') { mic << Span{st, en, 15.0f}; loop << Span{st, en, 22.0f}; }
+            else loop << Span{st, en, 30.0f};
+        }
+        MeetingActivity act;
+        act.tracks = {activity("mic", TrackKind::Mic, 26000, mic), activity("loop", TrackKind::Loopback, 26000, loop)};
+        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        QVERIFY(r.active);
+        QCOMPARE(r.totals.local, 6);
+        QCOMPARE(r.totals.remote, 4);
+        QCOMPARE(r.legacyTotals.local, 0);   // a régi metrika hibája
+        for (const LineSide& l : r.lines)
+            if (l.side == Side::Local) QVERIFY(std::abs(l.loopRelDb - (-8.0f)) < 0.1f);
+    }
+
+    void overlapIsMixed()
+    {
+        // Mindkét oldal beszédszinten (a loopback a saját szintjén) → egymásra beszélés.
+        QVector<TranscriptLine> lines{line("a", 0, 2000, "B1"), line("b", 2500, 4500, "B1"),
+                                      line("c", 5000, 7000, "B1")};
+        MeetingActivity act;
+        act.tracks = {activity("mic", TrackKind::Mic, 8000, {{0, 2000, 30.0f}, {5000, 7000, 30.0f}}),
+                      activity("loop", TrackKind::Loopback, 8000, {{2500, 4500, 30.0f}, {5000, 7000, 30.0f}})};
+        const SideReport r = analyzeSides(Meeting{}, lines, SpeakerOverlay{}, act, {});
+        QCOMPARE(r.lines[0].side, Side::Local);
+        QCOMPARE(r.lines[1].side, Side::Remote);
+        QCOMPARE(r.lines[2].side, Side::Mixed);
+    }
+
+    void manualTracksDecidePersonSide()
+    {
+        // A felhasználó (alapból Local) kézzel a loopback-sávra osztva → Remote ("manual"); a
+        // helyi sorai ellentmondások. A kézi beosztás az overlay-ből és a hints-ből is jöhet.
+        Synth s = synth("LLLR", {"Beszélő 1"});
+        Meeting m;
+        Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic;
+        Track loop; loop.id = "loop"; loop.kind = TrackKind::Loopback;
+        m.tracks = {mic, loop};
+        m.speakerMap["Beszélő 1"] = "Ádám";
+        SpeakerOverlay ov;
+        ov.speakerTracks["Beszélő 1"] = QStringList{"loop"};
+        SideReport r = analyzeSides(m, s.lines, ov, s.act, "Ádám");
+        const PersonSide* p = person(r, "Beszélő 1");
+        QCOMPARE(p->side, Side::Remote);
+        QCOMPARE(p->basis, QStringLiteral("manual"));
+        QCOMPARE(p->manualTracks, QStringList{"loop"});
+        QCOMPARE(r.conflicts.size(), 3);
+        QCOMPARE(sides::learnedDefaults(r).value("Ádám"), Side::Remote);
+
+        SideHints h;
+        h.speakerTracks["Beszélő 1"] = QStringList{"mic", "loop"};
+        r = analyzeSides(m, s.lines, ov, s.act, "Ádám", h);
+        QCOMPARE(person(r, "Beszélő 1")->side, Side::Mixed);
+        QVERIFY(r.conflicts.isEmpty());
+        QCOMPARE(sides::sideOfTracks(m, {"nincs"}), Side::Unknown);
+    }
+
+    void learnedSideBeatsUserName()
+    {
+        // A tanult alapérték (Remote) megelőzi a saját-név alapértelmezést; gyenge adat nem írja felül.
+        Synth s = synth("RRL", {"Beszélő 1"});
+        Meeting m;
+        m.speakerMap["Beszélő 1"] = "Béla";
+        SideHints h;
+        h.learnedSides.insert(QStringLiteral("béla"), Side::Remote);
+        const SideReport r = analyzeSides(m, s.lines, SpeakerOverlay{}, s.act, "Béla", h);
+        const PersonSide* p = person(r, "Beszélő 1");
+        QCOMPARE(p->side, Side::Remote);
+        QCOMPARE(p->basis, QStringLiteral("learned"));
+        QCOMPARE(p->learnedSide, Side::Remote);
+        QCOMPARE(r.conflicts.size(), 1);
+        // A tanult alapérték maga nem tanul tovább (csak adatból / kézből).
+        QVERIFY(sides::learnedDefaults(r).isEmpty());
     }
 
     void silenceAndGapsAreUnknown()

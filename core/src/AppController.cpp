@@ -4479,6 +4479,8 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     // és javaslat nélkül is teljes értékű.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
     ed->setEmbedderFactory(utteranceEmbedderFactory());
+    // A személy címkéi a jelölt-rangsorhoz (D-szelet): a beállított varrat, különben a TagService.
+    ed->setPersonTagsProvider(d->candidateContext().personTags);
     d->speakerEditors.insert(meetingId, ed);
 
     // A szerkesztő mellékhatásai a megszokott jeleken mennek ki (régi UI, könyvtár).

@@ -52,7 +52,7 @@ QString countsText(const SideCounts& c)
 }
 
 QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QString& folder, bool fromCache,
-                   qint64 meetingMs)
+                   qint64 meetingMs, bool legacy)
 {
     QJsonObject root;
     root["meetingFolder"] = folder;
@@ -62,16 +62,23 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
     for (const TrackActivity& t : act.tracks)
         tracks.append(QJsonObject{{"id", t.trackId}, {"kind", kindName(t.kind)}, {"frameMs", t.frameMs},
                                   {"originMs", double(t.originMs)}, {"floorDb", double(t.floorDb)},
+                                  {"speechDb", jnum(r.speechLevels.value(t.trackId, qQNaN()))},
                                   {"coveredMs", double(t.coveredMs())},
                                   {"coverage", meetingMs > 0 ? double(t.coveredMs()) / double(meetingMs) : 0.0}});
     root["tracks"] = tracks;
-    root["thresholds"] = QJsonObject{{"loRemote", double(r.thresholds.loRemote)}, {"hiLocal", double(r.thresholds.hiLocal)},
-                                     {"adaptive", r.thresholds.adaptive},
-                                     {"centerRemote", jnum(r.thresholds.centerRemote)},
-                                     {"centerLocal", jnum(r.thresholds.centerLocal)}};
-    QJsonArray hist;
-    for (int h : r.histogram) hist.append(h);
-    root["histogram"] = hist;
+    root["levels"] = QJsonObject{{"speechDb", double(sides::kSpeechDb)}, {"lowDb", double(sides::kLowDb)},
+                                 {"echoDb", double(sides::kEchoDb)}};
+    if (legacy) {
+        QJsonArray hist;
+        for (int h : r.histogram) hist.append(h);
+        root["legacy"] = QJsonObject{
+            {"thresholds", QJsonObject{{"loRemote", double(r.thresholds.loRemote)}, {"hiLocal", double(r.thresholds.hiLocal)},
+                                       {"adaptive", r.thresholds.adaptive},
+                                       {"centerRemote", jnum(r.thresholds.centerRemote)},
+                                       {"centerLocal", jnum(r.thresholds.centerLocal)}}},
+            {"histogram", hist},
+            {"totals", countsJson(r.legacyTotals)}};
+    }
     root["totals"] = countsJson(r.totals);
     QJsonObject raw;
     for (auto it = r.rawLabels.cbegin(); it != r.rawLabels.cend(); ++it) raw[it.key()] = countsJson(it.value());
@@ -83,6 +90,8 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
         persons.append(QJsonObject{{"speakerKey", p.speakerKey}, {"person", p.personName}, {"name", p.displayName},
                                    {"side", sideName(p.side)}, {"defaultSide", sideName(p.defaultSide)},
                                    {"basis", p.basis}, {"confidence", double(p.confidence)},
+                                   {"learnedSide", sideName(p.learnedSide)},
+                                   {"manualTracks", QJsonArray::fromStringList(p.manualTracks)},
                                    {"confirmed", QJsonObject{{"local", p.localLines}, {"remote", p.remoteLines},
                                                              {"mixed", p.mixedLines}}},
                                    {"all", countsJson(p.allLines)},
@@ -95,21 +104,26 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
                                      {"personSide", sideName(c.personSide)}, {"localShare", jnum(c.localShare)}});
     root["conflicts"] = conflicts;
     QJsonArray lines;
-    for (const LineSide& l : r.lines)
-        lines.append(QJsonObject{{"id", l.utteranceId}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
-                                 {"speakerKey", l.speakerKey}, {"rawLabel", l.rawLabel}, {"side", sideName(l.side)},
-                                 {"localShare", jnum(l.localShare)}, {"micDb", jnum(l.micDb)},
-                                 {"loopDb", jnum(l.loopDb)}, {"locked", l.locked}, {"noisy", l.noisy}});
+    for (const LineSide& l : r.lines) {
+        QJsonObject o{{"id", l.utteranceId}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
+                      {"speakerKey", l.speakerKey}, {"rawLabel", l.rawLabel}, {"side", sideName(l.side)},
+                      {"localShare", jnum(l.localShare)}, {"micDb", jnum(l.micDb)},
+                      {"loopDb", jnum(l.loopDb)}, {"micRelDb", jnum(l.micRelDb)}, {"loopRelDb", jnum(l.loopRelDb)},
+                      {"locked", l.locked}, {"noisy", l.noisy}};
+        if (legacy) o["legacySide"] = sideName(l.legacySide);
+        lines.append(o);
+    }
     root["lines"] = lines;
     return root;
 }
 
-void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, qint64 meetingMs)
+void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, qint64 meetingMs, bool legacy)
 {
     out() << "Tracks (activity " << (fromCache ? "from cache" : "computed") << "):\n";
     for (const TrackActivity& t : act.tracks)
         out() << "  " << t.trackId.leftJustified(24) << " " << kindName(t.kind).leftJustified(8)
-              << " floor " << num(t.floorDb, 1).rightJustified(6) << " dBFS   covered " << clock(t.coveredMs())
+              << " floor " << num(t.floorDb, 1).rightJustified(6) << " dBFS   speech "
+              << num(r.speechLevels.value(t.trackId, qQNaN()), 1).rightJustified(5) << " dB   covered " << clock(t.coveredMs())
               << (meetingMs > 0 ? QStringLiteral(" (%1%)").arg(qRound(100.0 * t.coveredMs() / meetingMs)) : QString())
               << "   origin " << clock(t.originMs) << "\n";
     if (act.tracks.isEmpty()) out() << "  (none)\n";
@@ -120,19 +134,28 @@ void printText(const SideReport& r, const MeetingActivity& act, bool fromCache, 
         return;
     }
 
-    const auto& th = r.thresholds;
-    out() << "\nThresholds: remote <= " << num(th.loRemote) << ", local >= " << num(th.hiLocal)
-          << (th.adaptive ? QStringLiteral("  (adaptive; centers %1 / %2)").arg(num(th.centerRemote), num(th.centerLocal))
-                          : QStringLiteral("  (default)"))
-          << "\n";
-    out() << "\nlocalShare histogram (0 = remote only, 1 = local only):\n";
-    int maxH = 1;
-    for (int h : r.histogram) maxH = std::max(maxH, h);
-    for (int i = 0; i < r.histogram.size(); ++i)
-        out() << QStringLiteral("  %1-%2 ").arg(i / 10.0, 0, 'f', 1).arg((i + 1) / 10.0, 0, 'f', 1)
-              << QString::number(r.histogram[i]).rightJustified(5) << " "
-              << QString(qRound(40.0 * r.histogram[i] / maxH), QLatin1Char('#')) << "\n";
+    out() << "\nSide rule (relative to each track's speech level): mic >= " << num(sides::kSpeechDb, 0)
+          << " dB -> local/mixed; loopback >= " << num(sides::kSpeechDb, 0) << " dB and mic < " << num(sides::kLowDb, 0)
+          << " dB -> remote; both high: loopback <= " << num(sides::kEchoDb, 0) << " dB -> local (echo), else mixed\n";
     out() << "\nLines: " << countsText(r.totals) << "\n";
+    if (legacy) {
+        const auto& th = r.thresholds;
+        out() << "\nLegacy (power ratio) thresholds: remote <= " << num(th.loRemote) << ", local >= " << num(th.hiLocal)
+              << (th.adaptive ? QStringLiteral("  (adaptive; centers %1 / %2)").arg(num(th.centerRemote), num(th.centerLocal))
+                              : QStringLiteral("  (default)"))
+              << "\n";
+        out() << "\nlocalShare histogram (0 = remote only, 1 = local only):\n";
+        int maxH = 1;
+        for (int h : r.histogram) maxH = std::max(maxH, h);
+        for (int i = 0; i < r.histogram.size(); ++i)
+            out() << QStringLiteral("  %1-%2 ").arg(i / 10.0, 0, 'f', 1).arg((i + 1) / 10.0, 0, 'f', 1)
+                  << QString::number(r.histogram[i]).rightJustified(5) << " "
+                  << QString(qRound(40.0 * r.histogram[i] / maxH), QLatin1Char('#')) << "\n";
+        out() << "\nLegacy lines: " << countsText(r.legacyTotals) << "\n";
+        int changed = 0;
+        for (const LineSide& l : r.lines) changed += l.side != l.legacySide;
+        out() << "Lines classified differently (new vs legacy): " << changed << "\n";
+    }
 
     out() << "\nRaw diarization labels:\n";
     for (auto it = r.rawLabels.cbegin(); it != r.rawLabels.cend(); ++it)
@@ -167,18 +190,19 @@ int runTrackSidesCommand(const QStringList& args)
 {
     QString folder;
     int frameMs = trackactivity::kDefaultFrameMs;
-    bool json = false, noCache = false, writeCache = false;
+    bool json = false, noCache = false, writeCache = false, legacy = false;
     for (int i = 2; i < args.size(); ++i) {
         const QString a = args.at(i);
         if (a == "--frame-ms" && i + 1 < args.size()) frameMs = args.at(++i).toInt();
         else if (a == "--json") json = true;
         else if (a == "--no-cache") noCache = true;
         else if (a == "--write-cache") writeCache = true;
+        else if (a == "--legacy") legacy = true;
         else if (folder.isEmpty() && !a.startsWith("--")) folder = a;
         else { err() << "Unknown argument: " << a << "\n"; return 2; }
     }
     if (folder.isEmpty() || frameMs < 10 || frameMs > 1000) {
-        err() << "Usage: track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache]\n";
+        err() << "Usage: track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]\n";
         return 2;
     }
     folder = QFileInfo(folder).absoluteFilePath();
@@ -213,10 +237,10 @@ int runTrackSidesCommand(const QStringList& args)
 
     const SideReport r = analyzeSides(m, lines, ov, act, userName);
     if (json) {
-        out() << QJsonDocument(toJson(r, act, folder, fromCache, meetingMs)).toJson(QJsonDocument::Indented);
+        out() << QJsonDocument(toJson(r, act, folder, fromCache, meetingMs, legacy)).toJson(QJsonDocument::Indented);
         out().flush();
     } else {
-        printText(r, act, fromCache, meetingMs);
+        printText(r, act, fromCache, meetingMs, legacy);
     }
     return 0;
 }

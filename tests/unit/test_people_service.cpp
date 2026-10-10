@@ -21,6 +21,7 @@
 #include "tanara/edit/PeopleDirectory.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/edit/SideAnalysis.h"
 #include "tanara/people/PeopleService.h"
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/MeetingStore.h"
@@ -102,6 +103,7 @@ private slots:
     void selfRenameChangesSettingAndSelfCannotBeDeleted();
     void aliasAddRemoveUndo();
     void noteIsStored();
+    void learnedDefaultSide();
     void sampleRemoveAndUndo();
     void sampleMoveMarksStaleAndUndoRestores();
     void newPersonFromSampleAndUndoRemovesPerson();
@@ -765,6 +767,32 @@ void PeopleServiceTest::noteIsStored()
     QCOMPARE(changed.count(), 1);    // változatlan: nincs írás
     QCOMPARE(PeopleStore(metaFile("people.json")).details(kGergely).note,
              QStringLiteral("Northwind oldali projektvezető.\nGyakran telefonról csatlakozik."));
+}
+
+void PeopleServiceTest::learnedDefaultSide()
+{
+    QVERIFY(svc()->addPerson(kGergely).ok);
+    QVERIFY(svc()->person(kGergely).defaultSide.isEmpty());
+    // Egy elemzés: Gergely a megerősített soraiból Remote, Eszter csak alapértelmezésből Local
+    // (az nem tanul), egy névtelen beszélő kimarad.
+    SideReport r;
+    PersonSide g; g.speakerKey = "Beszélő 1"; g.personName = kGergely; g.side = Side::Remote; g.basis = "lines";
+    PersonSide e; e.speakerKey = "Beszélő 2"; e.personName = kEszter; e.side = Side::Local; e.basis = "user-name";
+    PersonSide a; a.speakerKey = "Beszélő 3"; a.side = Side::Local; a.basis = "lines";
+    r.persons = {g, e, a};
+    QSignalSpy changed(svc(), &PeopleService::changed);
+    QCOMPARE(svc()->learnDefaultSides(r), 1);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(svc()->person(kGergely).defaultSide, QStringLiteral("remote"));
+    QVERIFY(svc()->person(kEszter).defaultSide.isEmpty());
+    QCOMPARE(svc()->learnDefaultSides(r), 0);    // változatlan: nincs írás
+    // A people.json-ban a rekord mezője; a többi adat megmarad, és törölhető.
+    PeopleStore store(metaFile("people.json"));
+    QCOMPARE(store.defaultSide(kGergely), QStringLiteral("remote"));
+    QCOMPARE(store.defaultSides().value(kGergely), QStringLiteral("remote"));
+    QVERIFY(store.setDefaultSide(kGergely, QString()));
+    QVERIFY(PeopleStore(metaFile("people.json")).defaultSide(kGergely).isEmpty());
+    QVERIFY(PeopleStore(metaFile("people.json")).names().contains(kGergely));
 }
 
 // ---- minták ----------------------------------------------------------------------

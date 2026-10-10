@@ -23,12 +23,14 @@
 //                                    címkék a személyeken (TagPeopleCommands.cpp)
 //   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
-//   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache]   sáv-oldal mérés (TrackSidesCommand.cpp)
+//   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //   participants <meeting-folder> [--analyze [--write]] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
+//   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
 #include "ParticipantsCommand.h"
+#include "ReviewCommand.h"
 #include "TagPeopleCommands.h"
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
@@ -125,6 +127,7 @@ int main(int argc, char** argv) {
     // participants <meeting-folder> (új, mappára); a régi „participants <meetingId>" lent marad.
     if (cmd == "participants" && QFileInfo(args.value(2)).isDir())
         return tanara::cli::runParticipantsCommand(args);
+    if (cmd == "review")       return tanara::cli::runReviewCommand(args);
 
     AppController app;
 
@@ -664,8 +667,8 @@ int main(int argc, char** argv) {
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
            "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
            "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
-           "track-sides <folder> [--frame-ms N --json --no-cache --write-cache] | "
-           "participants <folder> [--analyze [--write]] [--json]"
+           "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
+           "participants <folder> [--analyze [--write]] [--json] | review <folder> [--json --models a,b]"
         << "\n";
     out.flush();
     return 0;
