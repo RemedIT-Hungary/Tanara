@@ -341,6 +341,8 @@ Item {
         timelineMs: (root.player && root.player.durationMs) || 0
 
         onRevealRequested: row => root.revealRow(row)
+        // Az Átnézendő nézet a Javítás mód része (újraellenőrzés után a VM maga is bekapcsolja).
+        onUncertainOnlyChanged: if (uncertainOnly && hasTranscript) root.fixMode = true
         onChangeChanged: {
             root.keepVisibleRow = changeActive ? changeRow : -1
             if (root.keepVisibleRow >= 0) Qt.callLater(root.keepRowVisible)
