@@ -281,9 +281,10 @@ Item {
     function markNotPresent(speakerKey, fixVoiceprints) {
         const person = editorVm.personOf(speakerKey)
         let participantId = ""
+        let participantsVm = null
         if (person !== "" && !editorVm.demo) {
-            participantsVm.reload()
-            const groups = participantsVm.groups
+            participantsVm = participantsComponent.createObject(root, { meetingId: root.meetingId })
+            const groups = participantsVm ? participantsVm.groups : []
             for (let g = 0; g < groups.length && participantId === ""; ++g)
                 for (let r = 0; r < groups[g].rows.length; ++r)
                     if ((groups[g].rows[r].name || "").toLowerCase() === person.toLowerCase()) {
@@ -293,6 +294,7 @@ Item {
         }
         if (fixVoiceprints || participantId === "") editorVm.revertSpeakerToAnonymous(speakerKey, fixVoiceprints)
         if (participantId !== "") participantsVm.unbind(participantId)
+        if (participantsVm) participantsVm.destroy()
     }
     // Két beszélő összevonása előtt megerősítés, számokkal. request: { kind: "merge" |
     // "reassign" | "rest", fromKey, intoKey, personName, fix }. Üres forrásnál nincs mit kérdezni.
@@ -883,10 +885,11 @@ Item {
         }
     }
 
-    // „Ő nem volt ott": a „Ki volt ott?" jelölés is frissül (a résztvevő kötése megszűnik).
-    ParticipantsViewModel {
-        id: participantsVm
-        meetingId: root.meetingId
+    // „Ő nem volt ott": a „Ki volt ott?" jelölés is frissül (a résztvevő kötése megszűnik). Csak
+    // a művelethez jön létre (ne töltse a résztvevőket minden megbeszélés-váltáskor).
+    Component {
+        id: participantsComponent
+        ParticipantsViewModel {}
     }
 
     // A hanglenyomat panelje: állapot, használható anyag, készítés (és a most készült
