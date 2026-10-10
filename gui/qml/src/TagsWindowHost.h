@@ -44,6 +44,8 @@ signals:
     void closed();
     void openInLibraryRequested(const QString& tagId);
     void meetingRequested(const QString& meetingId);
+    // A Személyek-lista sorára kattintott: a Személyek ablak nyíljon ezen a személyen.
+    void personRequested(const QString& name);
 
 private:
     bool ensureWindow();

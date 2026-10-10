@@ -9,7 +9,12 @@
 // járó címkék, megbeszélések. Műveletek: átnevezés, összevonás, törlés — mind visszavonható
 // lépés a backendben; utánuk `toast(szöveg, visszavonható)`.
 //
-// Controller nélkül a kitalált 12 címke; `demoState`: T10 | T11 | T12 | T13 | rename.
+// Személyek (a „Jellemző résztvevők” utódja): a címke kézi viselői + a tanult kapcsolat
+// (≥ küszöb), a számláló szerint; a sorban „címkéje” (×: levétel) vagy „+ Ráteszem” / ×
+// (elutasítás). A saját személy és az elutasított tanult sor kimarad.
+//
+// Controller nélkül a kitalált 12 címke; `demoState`: T10 | T11 | T12 | T13 | rename |
+// people | peopleEmpty | peopleAdd.
 //
 #include "TagListModel.h"
 
@@ -45,7 +50,8 @@ class TagsViewModel : public QObject {
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged)
     // { id, name, meta, meetingCount, participants: [{ name, monogram, countText }], terms: [..],
     //   cooccurring: [{ id, name, countText }], meetings: [{ meetingId, title, dateText,
-    //   durationText }], meetingsMeta }
+    //   durationText }], meetingsMeta, people: [{ name, monogram, countText, manual }],
+    //   peopleCount, peopleBusy, emptyPeopleText }
     Q_PROPERTY(QVariantMap detail READ detail NOTIFY detailChanged)
 
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
@@ -94,6 +100,10 @@ public:
     Q_INVOKABLE QString deleteTitle(const QString& id) const;
     Q_INVOKABLE QString deleteText(const QString& id) const;
     Q_INVOKABLE void remove(const QString& id);
+    // Személy-címke a kijelölt címkével (mind visszavonható lépés, utána toast).
+    Q_INVOKABLE void addPerson(const QString& name);
+    Q_INVOKABLE void removePerson(const QString& name);
+    Q_INVOKABLE void rejectPerson(const QString& name);
     Q_INVOKABLE void undo();
 
 signals:

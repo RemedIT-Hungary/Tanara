@@ -1,5 +1,5 @@
 // A címke-vezérlők QML-oldala, valódi ablak nélkül (offscreen + szoftveres renderer):
-//  - a Címkék ablak minden demó-állapota (T10–T13, rename) mindkét témában QML-figyelmeztetés
+//  - a Címkék ablak minden demó-állapota (T10–T13, rename, people, peopleEmpty, peopleAdd) mindkét témában QML-figyelmeztetés
 //    nélkül töltődik be, és a T11 / T12 párbeszéde nyitva van;
 //  - a galéria „Címkék” szakasza (section="tags") és az önálló komponensek (TagChip, TagInput,
 //    TagField, TagRow a „Miért?” panellel) adat nélkül is figyelmeztetés nélkül rajzolódnak;
@@ -47,7 +47,7 @@ private slots:
         QTest::addColumn<QString>("theme");
         QTest::addColumn<QString>("state");
         for (const char* theme : {"light", "dark"})
-            for (const char* state : {"T10", "T11", "T12", "T13", "rename"})
+            for (const char* state : {"T10", "T11", "T12", "T13", "rename", "people", "peopleEmpty", "peopleAdd"})
                 QTest::addRow("%s-%s", state, theme) << QString::fromLatin1(theme) << QString::fromLatin1(state);
     }
     void tagsWindowStates()
@@ -79,6 +79,16 @@ private slots:
             QCOMPARE(del->property("title").toString(), QStringLiteral("Törlöd a #Nordvik címkét?"));
         if (state == QLatin1String("rename"))
             QVERIFY(win->property("detailPane").value<QObject*>()->property("renaming").toBool());
+        // Személyek-lista: a választó csak a „+ Személy” állapotban nyitott.
+        QCOMPARE(win->property("personPicker").value<QObject*>()->property("visible").toBool(),
+                 state == QLatin1String("peopleAdd"));
+        if (state == QLatin1String("people") || state == QLatin1String("peopleEmpty")) {
+            auto* list = win->findChild<QQuickItem*>(QStringLiteral("tagPeopleList"));
+            auto* empty = win->findChild<QQuickItem*>(QStringLiteral("tagPeopleEmpty"));
+            QVERIFY(list && empty);
+            QCOMPARE(list->property("count").toInt(), state == QLatin1String("people") ? 5 : 0);
+            QCOMPARE(empty->isVisible(), state == QLatin1String("peopleEmpty"));
+        }
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
