@@ -9,9 +9,12 @@ TPopover {
     id: control
 
     property var editor: null               // TranscriptEditorViewModel
+    property var participants: null         // ParticipantsViewModel (a „Ki volt ott?" párbeszédben)
     property string initialQuery: ""
     // A névtelen lehetőség felirata (üres → nincs ilyen sor).
     property string anonymousText: qsTr("Névtelen résztvevő")
+    // Az alsó súgósor.
+    property string hintText: qsTr("A beszélő névtelenül is maradhat; később is elnevezheted.")
 
     signal personChosen(string name)
     signal anonymousChosen()
@@ -52,6 +55,7 @@ TPopover {
     PersonListModel {
         id: people
         editor: control.editor
+        participants: control.participants
         query: search.text
         onCountChanged: control.currentIndex = search.text.trim() === "" ? -1 : count > 0 ? 0 : count
     }
@@ -157,7 +161,7 @@ TPopover {
                 muted: true
                 font.pixelSize: Theme.fontCaption
                 cssLineHeight: 1.4
-                text: qsTr("A beszélő névtelenül is maradhat; később is elnevezheted.")
+                text: control.hintText
             }
         }
     }

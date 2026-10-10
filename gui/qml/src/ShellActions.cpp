@@ -689,6 +689,21 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
     toast(msg);
 }
 
+void ShellActions::openParticipants(const QString& meetingId)
+{
+    if (meetingId.isEmpty()) return;
+    m_participantsOffered.insert(meetingId);
+    emit participantsDialogRequested(meetingId);
+}
+
+bool ShellActions::maybeOfferParticipants(const QString& meetingId)
+{
+    if (meetingId.isEmpty() || m_participantsOffered.contains(meetingId)) return false;
+    if (!m_controller || !m_controller->participantApprovalPending(meetingId)) return false;
+    openParticipants(meetingId);
+    return true;
+}
+
 QString ShellActions::participantsGuess(const QString& meetingId) const
 {
     return m_participantGuesses.value(meetingId);
