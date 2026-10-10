@@ -10,7 +10,7 @@ import QtQuick.Layouts
 //   térkép-dokk (beszélő-sávok + 44 px vezérlősor, az Átirat és az összefoglaló füleken).
 // Itt él a kijelölés, a „melyik nézet látszik” döntés, a menük, a gyorsbillentyűk, az ablak
 // megjegyzett mérete és a bezárás-védelem; a régiókat külön komponensek töltik ki. A
-// tartalom-komponensek (TranscriptTab, SummaryTab, TracksTab, PreTranscriptView) a szerződés
+// tartalom-komponensek (OverviewTab, TranscriptTab, SummaryTab) a szerződés
 // (CONTRACT.md) három property-jét kapják: meetingId / player / shell.
 ApplicationWindow {
     id: window
@@ -34,9 +34,14 @@ ApplicationWindow {
     property string demoTags: ""
     // Demóban / képernyőképhez a v3 megbeszélés-nézet állapota (design/handoff-v3):
     // "overviewProcessing" (V1) | "overviewDone" (V3) | "overviewEmpty" (V5) |
-    // "overviewNobody" (V6) | "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
+    // "overviewNobody" (V6) | "overviewRecorded" (U6: felvétel után, átírás előtt; az „Átírás
+    // indítása” a lépésben) | "overviewRecordedError" (U6: az átírás nem sikerült) |
+    // "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
     property string demoState: ""
     readonly property bool demoOverview: demoState.startsWith("overview")
+    // Demóban átirat nélküli állapotok (a fejléc Átirat füle ilyenkor nem / csak futva elérhető).
+    readonly property bool demoNoTranscript: ["overviewProcessing", "overviewEmpty", "overviewRecorded",
+                                              "overviewRecordedError"].indexOf(demoState) >= 0
     // "summarySources" (S1: 2. fül, forrás-chipek) | "memoSections" (S2: 3. fül) — a bekötött
     // eszköz-sor és a dokk Forrás/Szakaszok sorának képernyőképéhez.
     readonly property bool demoSummary: demoState === "summarySources" || demoState === "memoSections"
@@ -49,11 +54,6 @@ ApplicationWindow {
     readonly property bool hasMeeting: viewState === "meeting" || viewState === "preTranscript"
     // 0 = Áttekintés, 1 = Átirat, 2 = Vezetői összefoglaló, 3 = Memó
     property alias currentTab: shellActions.currentTab
-    // Átirat előtt, amíg az átírás el sem indult, az Áttekintés helyén az átirat előtti lépések
-    // (kontextus, előkészítés, „Átírás indítása”, hiba-kártya) látszanak; futás közben és utána
-    // az Áttekintés.
-    readonly property bool preTranscriptSteps: viewState === "preTranscript" && !demoOverview
-                                               && !overviewTab.vm.transcribing
     // Alul a térkép-dokk (Átirat és összefoglaló fülek, ha van átirat), különben a lejátszó.
     readonly property bool mapDockShown: currentTab > 0 && header.hasTranscript && transcriptTab.editor.overview.length > 0
     // A tartalom-komponensek demó-módban üres azonosítót kapnak (→ saját mintatartalom).
@@ -198,7 +198,7 @@ ApplicationWindow {
     Binding {
         when: App.demo && window.demoState !== ""
         target: header; property: "hasTranscript"
-        value: window.demoState !== "overviewProcessing" && window.demoState !== "overviewEmpty"
+        value: !window.demoNoTranscript
     }
     Binding {
         when: App.demo && window.demoState !== ""
@@ -674,29 +674,20 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         currentIndex: Math.min(shellActions.currentTab, 2)
 
-                        // 0 — Áttekintés (átirat előtt, indítás előtt: az átirat előtti lépések)
-                        Item {
-                            OverviewTab {
-                                id: overviewTab
-                                objectName: "overviewTab"
-                                anchors.fill: parent
-                                visible: !window.preTranscriptSteps
-                                meetingId: window.contentMeetingId
-                                player: playerController
-                                shell: shellActions
-                                tagsModel: window.demoOverview ? null : currentMeeting.tags
-                                editor: transcriptTab.editor
-                                demoState: window.demoOverview ? window.demoState : ""
-                                onParticipantsRequested: window.openParticipants()
-                            }
-                            PreTranscriptView {
-                                id: preTranscriptView
-                                anchors.fill: parent
-                                visible: window.preTranscriptSteps
-                                meetingId: window.contentMeetingId
-                                player: playerController
-                                shell: shellActions
-                            }
+                        // 0 — Áttekintés: a felvétel után azonnal, átírás előtt is (U6). Az „Átírás
+                        // indítása”, a hiányzó beállítás és a hiba a FELDOLGOZÁS „Átirat” lépésében
+                        // van; hang nélkül (importálás közben, sérült mappa) ugyanez a fül a hiányt
+                        // a lépésekben mondja meg (a régi PreTranscriptView itt már nem kell).
+                        OverviewTab {
+                            id: overviewTab
+                            objectName: "overviewTab"
+                            meetingId: window.contentMeetingId
+                            player: playerController
+                            shell: shellActions
+                            tagsModel: window.demoOverview ? null : currentMeeting.tags
+                            editor: transcriptTab.editor
+                            demoState: window.demoOverview ? window.demoState : ""
+                            onParticipantsRequested: window.openParticipants()
                         }
                         // 1 — Átirat (az eszköz-sor a szerkesztő tetején: TranscriptToolbar)
                         TranscriptTab {
