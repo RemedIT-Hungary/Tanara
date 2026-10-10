@@ -35,6 +35,20 @@ const char* kQuickJson =
     "\"actionItems\":[{\"text\":\"Ajánlat elküldése\",\"owner\":\"Beszélő 2\",\"due\":\"holnap\"}],"
     "\"participants\":[\"Beszélő 1\",\"Vendég\"]}";
 
+// Forrás-jelölős gyors összefoglaló (v3): a mondatok, a döntés és a teendő a két megszólalásra
+// mutat (u0: „Sziasztok, az ajánlatot” — Beszélő 1; u900: „holnap küldjük.” — Beszélő 2); a
+// második mondatnak nincs jelölője.
+const char* kSourcedJson =
+    "{\"execSummary\":\"Rövid egyeztetés az ajánlatról. [t=00:00] Holnap küldik. [t=00:01] Jelölő nélküli mondat.\","
+    "\"decisions\":[\"Az ajánlat holnap megy ki. [t=00:01]\"],"
+    "\"actionItems\":[{\"text\":\"Ajánlat elküldése [t=00:01]\",\"owner\":\"Beszélő 2\",\"due\":\"holnap\"}],"
+    "\"participants\":[\"Beszélő 1\",\"Beszélő 2\"]}";
+
+QString rowId(tanara_qml::StatementListModel* model, int row)
+{
+    return model->data(model->index(row), tanara_qml::StatementListModel::StatementIdRole).toString();
+}
+
 } // namespace
 
 class TestSummaryViewModel : public QObject {
@@ -622,6 +636,166 @@ private slots:
         sb.app->summarizeMeeting(m.id);
         QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty() && !vm.jobRunning(), 10000);
         QCOMPARE(vm.fixReloadContext(), 0);
+    }
+    // v3 demó-állapotok (S1–S3): állítások, chipek, térkép-sorok, idézetek, célzott elavulás.
+    void sourcesDemoStates()
+    {
+        SummaryViewModel vm;
+        vm.setDemoState(QStringLiteral("sourcesOn"));
+        QVERIFY(vm.hasStatements());
+        QCOMPARE(vm.view(), QStringLiteral("summary"));
+        QCOMPARE(vm.sentences()->count(), 4);
+        QCOMPARE(vm.decisionItems()->count(), 3);
+        QCOMPARE(vm.todoItems()->count(), 2);
+        QAbstractItemModelTester tester(vm.sentences(), QAbstractItemModelTester::FailureReportingMode::QtTest);
+        const QVariantMap s1 = vm.sentences()->get(0);
+        QCOMPARE(s1.value("statementId").toString(), QStringLiteral("s1"));
+        QCOMPARE(s1.value("spans").toList().at(0).toMap().value("stamp").toString(), QStringLiteral("00:04"));
+        // Teendő: felelős a beszélő színében + határidő az actionItems-ből.
+        const QVariantMap t1 = vm.todoItems()->get(0);
+        QCOMPARE(t1.value("owners").toList().at(0).toMap().value("index").toInt(), 1);
+        QCOMPARE(t1.value("due").toString(), QStringLiteral("okt. 15."));
+        // A térkép „Forrás” sora: az összes forrás, az s1-é kiemelve.
+        QCOMPARE(vm.activeStatementId(), QStringLiteral("s1"));
+        int active = 0;
+        for (const QVariant& m : vm.sourceMarks()) active += m.toMap().value("active").toBool();
+        QCOMPARE(active, 1);
+        QVERIFY(vm.sourceMarks().size() >= 9);
+        QVERIFY(vm.mapHint().startsWith(QStringLiteral("kék")));
+        QVERIFY2(vm.generationLine().contains(QStringLiteral("1298 megszólalásból")), qPrintable(vm.generationLine()));
+        // „Honnan jön ez?”: az s1 két megszólalásból jön, időrendben.
+        const QVariantMap det = vm.sourceDetails(QStringLiteral("s1"));
+        QCOMPARE(det.value("count").toInt(), 2);
+        const QVariantList quotes = det.value("quotes").toList();
+        QCOMPARE(quotes.at(0).toMap().value("name").toString(), QStringLiteral("Kovács Lilla"));
+        QCOMPARE(quotes.at(1).toMap().value("stamp").toString(), QStringLiteral("01:16"));
+        QVERIFY(!quotes.at(0).toMap().value("text").toString().isEmpty());
+        QVERIFY(vm.sourceDetails(QStringLiteral("nincs")).isEmpty());
+        // Jelzés (demóban memóriában).
+        QVERIFY(vm.flagStatement(QStringLiteral("d2")));
+        QVERIFY(vm.decisionItems()->get(1).value("flagged").toBool());
+        QVERIFY(vm.sourceDetails(QStringLiteral("d2")).value("flagged").toBool());
+        // Források ki: a térkép-sor üres.
+        QSignalSpy marks(&vm, &SummaryViewModel::marksChanged);
+        vm.setSourcesVisible(false);
+        QVERIFY(marks.count() > 0);
+        QVERIFY(vm.sourceMarks().isEmpty());
+        vm.setDemoState(QStringLiteral("sourcesOff"));
+        QVERIFY(!vm.sourcesVisible());
+
+        // Memó: hét szakasz sávként, a 3. kiemelve; a szakaszok beszélői színnel.
+        vm.setDemoState(QStringLiteral("memoSections"));
+        QCOMPARE(vm.section(), QStringLiteral("memo"));
+        QCOMPARE(vm.sectionBands().size(), 7);
+        QVERIFY(vm.sectionBands().at(2).toMap().value("active").toBool());
+        QCOMPARE(vm.mapHint(), QStringLiteral("a kiemelt szakasz: 31:10–44:05"));
+        const QVariantMap sec = vm.memo().at(2).toMap();
+        QCOMPARE(sec.value("sourceRange").toString(), QStringLiteral("31:10–44:05"));
+        QCOMPARE(sec.value("speakers").toList().size(), 3);
+        QCOMPARE(sec.value("speakers").toList().at(1).toMap().value("colorIndex").toInt(), 1);
+        QCOMPARE(vm.memo().at(6).toMap().value("sourceRange").toString(), QStringLiteral("115:50–131:04"));
+        QVERIFY(vm.generationLine().startsWith(QStringLiteral("Memó · 7 szakasz")));
+        vm.setActiveSection(4);
+        QVERIFY(vm.sectionBands().at(4).toMap().value("active").toBool());
+
+        // Célzott elavulás: az érintett állítás / forrás / felelős.
+        vm.setDemoState(QStringLiteral("staleTargeted"));
+        QVERIFY(vm.stale());
+        QVERIFY(vm.staleTargeted());
+        QCOMPARE(vm.affectedStatements(), 1);
+        QCOMPARE(vm.affectedTodos(), 1);
+        const QVariantMap s3 = vm.sentences()->get(2);
+        QVERIFY(s3.value("affected").toBool());
+        QVERIFY(s3.value("spans").toList().at(0).toMap().value("affected").toBool());
+        QVERIFY(!s3.value("spans").toList().at(1).toMap().value("affected").toBool());
+        const QVariantMap staleTodo = vm.todoItems()->get(0);
+        QCOMPARE(staleTodo.value("ownerStale").toString(), QStringLiteral("Fehér Gábor → Varga Árpád?"));
+        QCOMPARE(staleTodo.value("ownerStaleIndex").toInt(), 2);
+        // Kijelölés nélkül a térkép az érintett forrásokat emeli ki.
+        QVERIFY(vm.activeStatementId().isEmpty());
+        active = 0;
+        for (const QVariant& m : vm.sourceMarks()) active += m.toMap().value("active").toBool();
+        QCOMPARE(active, 2);
+        QCOMPARE(vm.mapHint(), QStringLiteral("kék: a javítás által érintett források"));
+        QVERIFY(vm.generationLine().contains(QStringLiteral("azóta 3 beszélő-javítás")));
+
+        // Forrás nélküli (régi) összefoglaló: a mai nézet.
+        vm.setDemoState(QStringLiteral("noSources"));
+        QVERIFY(!vm.hasStatements());
+        QCOMPARE(vm.sentences()->count(), 0);
+        QVERIFY(vm.sourceMarks().isEmpty());
+        QCOMPARE(vm.memoState(), QStringLiteral("ready"));
+        // A régi demó-állapotok sem kapnak állításokat.
+        vm.setDemoState(QStringLiteral("done"));
+        QVERIFY(!vm.hasStatements());
+    }
+
+    // Valódi controllerrel: jelölős gyors összefoglaló → állítások a megszólalásokra kötve,
+    // idézet az átiratból, jelzés a lemezre, beszélő-javítás → célzott elavulás.
+    void sourcesFromController()
+    {
+        jobtest::Sandbox sb;
+        const Meeting m = sb.transcribed("Forrásos");
+        SummaryViewModel vm;
+        vm.setController(sb.app.get());
+        vm.setMeetingId(m.id);
+        sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
+            if (r.path.endsWith("/chat/completions")) return {200, jobtest::chat(QString::fromUtf8(kSourcedJson))};
+            return {404, "{}"};
+        };
+        QSignalSpy arrived(&vm, &SummaryViewModel::summaryArrived);
+        sb.app->summarizeMeeting(m.id);
+        QVERIFY(arrived.wait(15000));
+        QVERIFY(vm.hasStatements());
+        QCOMPARE(vm.sentences()->count(), 3);
+        QCOMPARE(vm.decisionItems()->count(), 1);
+        QCOMPARE(vm.todoItems()->count(), 1);
+        // A jelölők a szövegből lekerültek; a 2. mondat a „holnap küldjük.” sorra mutat.
+        QCOMPARE(vm.sentences()->get(0).value("text").toString(), QStringLiteral("Rövid egyeztetés az ajánlatról."));
+        const QVariantList spans = vm.sentences()->get(1).value("spans").toList();
+        QCOMPARE(spans.size(), 1);
+        QCOMPARE(spans.at(0).toMap().value("utteranceIds").toStringList(), QStringList{QStringLiteral("u900")});
+        // Jelölő nélküli mondat: nincs forrás (nem hiba).
+        QVERIFY(!vm.sentences()->get(2).value("hasSources").toBool());
+        QCOMPARE(vm.todoItems()->get(0).value("due").toString(), QStringLiteral("holnap"));
+        QCOMPARE(vm.todoItems()->get(0).value("owners").toList().at(0).toMap().value("index").toInt(), 1);
+        QCOMPARE(vm.sourceMarks().size(), 2);
+        // Idézet a beszélő-szerkesztőből.
+        const QVariantMap det = vm.sourceDetails(rowId(vm.sentences(), 1));
+        QCOMPARE(det.value("count").toInt(), 1);
+        const QVariantMap q = det.value("quotes").toList().at(0).toMap();
+        QCOMPARE(q.value("text").toString(), QStringLiteral("holnap küldjük."));
+        QCOMPARE(q.value("name").toString(), QStringLiteral("Beszélő 2"));
+        QCOMPARE(q.value("startMs").toLongLong(), 900);
+        QVERIFY(!vm.staleTargeted() || vm.affectedStatements() == 0);
+
+        // Jelzés → summary.json; újratöltés után is jelzett.
+        const QString did = rowId(vm.decisionItems(), 0);
+        QVERIFY(vm.flagStatement(did));
+        QTRY_VERIFY(vm.decisionItems()->get(0).value("flagged").toBool());
+        vm.refresh();
+        QVERIFY(vm.decisionItems()->get(0).value("flagged").toBool());
+        QVERIFY(!vm.flagStatement(QStringLiteral("nincs-ilyen")));
+
+        // Beszélő-javítás: a „Beszélő 2” sorára mutató állítások és a teendő felelőse érintett.
+        SpeakerEditor* editor = sb.app->speakerEditor(m.id);
+        QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), QStringLiteral("Minta Márta")));
+        QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
+        QVERIFY(vm.staleTargeted());
+        QCOMPARE(vm.affectedStatements(), 2);   // a 2. mondat + a döntés
+        QCOMPARE(vm.affectedTodos(), 1);
+        QVERIFY(vm.sentences()->get(1).value("affected").toBool());
+        QVERIFY(!vm.sentences()->get(0).value("affected").toBool());
+        QVERIFY(vm.sentences()->get(1).value("spans").toList().at(0).toMap().value("affected").toBool());
+        QVERIFY2(vm.todoItems()->get(0).value("ownerStale").toString().contains(QStringLiteral("Minta Márta")),
+                 qPrintable(vm.todoItems()->get(0).value("ownerStale").toString()));
+        int active = 0;
+        for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
+        QCOMPARE(active, 1);
+        // „Rendben így”: nincs több jelölés.
+        vm.dismissStale();
+        QTRY_VERIFY_WITH_TIMEOUT(!vm.stale(), 5000);
+        QVERIFY(!vm.sentences()->get(1).value("affected").toBool());
     }
 };
 

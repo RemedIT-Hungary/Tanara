@@ -25,18 +25,28 @@
 // "emptyErrorContext" (kontextus-hiba, LM Studio-javítással) | "emptyNote" (üres, sablon-
 // javaslatokkal a megjegyzéshez) | "noteOpen" (kész, a megjegyzés-blokk nyitva, javaslatokkal) |
 // "noteChanged" (kész, a megjegyzés az összefoglaló óta változott) |
-// "topics".
+// "topics" | v3 (S1–S3, a handoff-v3 mintaadatával): "sourcesOn" (forrás-chipek, az első
+// állítás kijelölve) | "sourcesOff" (a Források kapcsoló kikapcsolva) | "sourcePopover" (a
+// „Honnan jön ez?” nyitva) | "memoSections" (memó tartalomjegyzékkel, 3. szakasz) |
+// "staleTargeted" (célzott elavulás) | "noSources" (ugyanez állítások nélkül: a régi nézet).
+//
+// Forrás-hivatkozások (v3, S1–S3): a gyors összefoglaló állításai (AppController::
+// summaryStatements) három StatementListModel-ben; a forrás-idézetek a beszélő-szerkesztő
+// megszólalásaiból (sourceDetails). A térkép-dokk sorai: sourceMarks (az állítások forrásai,
+// active = a kijelölt / az elavulás által érintett) és sectionBands (memó-szakaszok).
 //
 // A megbeszélés-megjegyzés (note, MeetingNoteModel) itt is szerkeszthető: az összefoglaló és
 // egy újra-átírás is ezt kapja. Ha az összefoglaló óta változott (a summary.json rögzíti, mivel
 // készült), noteChangedSinceSummary szelíden jelzi — a könyvtárban NEM jelöli elavultnak.
 //
 #include "MeetingNoteModel.h"
+#include "StatementListModel.h"
 #include "TopicListModel.h"
 
 #include "tanara/Types.h"
 #include "tanara/jobs/JobTypes.h"
 
+#include <QHash>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -127,12 +137,41 @@ class SummaryViewModel : public QObject {
     // Témánkénti összefoglaló témaszekciói: [{ title, detail, decisions, openQuestions, actions }]
     Q_PROPERTY(QVariantList topicSections READ topicSections NOTIFY changed)
     // A memó szakaszai időrendben: [{ title, startMs (-1: ismeretlen), endMs, stamp („12:40”,
-    // üres ha ismeretlen), range („12:40–15:55”), points: [string] }]
+    // üres ha ismeretlen), range („12:40–15:55”), sourceRange („31:10–44:05”, perc:mp), points:
+    // [string], speakers: [{ name, colorIndex }], speakersText („A · B · C”) }]
     Q_PROPERTY(QVariantList memo READ memo NOTIFY changed)
     // "none" (témánkénti mód: nincs memó-nézet) | "missing" (régi összefoglaló) | "ready"
     Q_PROPERTY(QString memoState READ memoState NOTIFY changed)
     // A kész összefoglaló látható része: "exec" (vezetői összefoglaló) | "memo"
     Q_PROPERTY(QString section READ section WRITE setSection NOTIFY sectionChanged)
+
+    // ---- forrás-hivatkozások (v3: S1–S3) ----
+    Q_PROPERTY(bool hasStatements READ hasStatements NOTIFY changed)
+    Q_PROPERTY(tanara_qml::StatementListModel* sentences READ sentences CONSTANT)
+    Q_PROPERTY(tanara_qml::StatementListModel* decisionItems READ decisionItems CONSTANT)
+    Q_PROPERTY(tanara_qml::StatementListModel* todoItems READ todoItems CONSTANT)
+    // A „Források” kapcsoló: idő-chipek és a térkép „Forrás” sora (alapból be).
+    Q_PROPERTY(bool sourcesVisible READ sourcesVisible WRITE setSourcesVisible NOTIFY sourcesVisibleChanged)
+    // A kijelölt (rámutatott / felugróban nyitott) állítás; "" = nincs.
+    Q_PROPERTY(QString activeStatementId READ activeStatementId WRITE setActiveStatementId NOTIFY marksChanged)
+    // A memó kiemelt szakasza (a tartalomjegyzék / görgetés szerint); -1 = nincs.
+    Q_PROPERTY(int activeSection READ activeSection WRITE setActiveSection NOTIFY marksChanged)
+    // Térkép-dokk: [{ startMs, endMs, active }] — az összes állítás forrás-tartománya
+    // (a Források kapcsoló kikapcsolva: üres).
+    Q_PROPERTY(QVariantList sourceMarks READ sourceMarks NOTIFY marksChanged)
+    // Térkép-dokk: [{ startMs, endMs, active, label }] — a memó szakaszai (label: „3”).
+    Q_PROPERTY(QVariantList sectionBands READ sectionBands NOTIFY marksChanged)
+    // A dokk vezérlősorának súgója („kék: a kijelölt állítás forrása · …”).
+    Q_PROPERTY(QString mapHint READ mapHint NOTIFY marksChanged)
+    Q_PROPERTY(qint64 durationMs READ durationMs NOTIFY changed)
+    // Az eszköz-sor generálás-adata: „Gyors összefoglaló · okt. 1. 17:05 · LM Studio · 1298
+    // megszólalásból” (memónál „Memó · 7 szakasz · …”; elavultnál „· azóta 3 beszélő-javítás”).
+    Q_PROPERTY(QString generationLine READ generationLine NOTIFY generationLineChanged)
+    // Célzott elavulás (staleTargeted: van állítás-szintű adat).
+    Q_PROPERTY(bool staleTargeted READ staleTargeted NOTIFY changed)
+    Q_PROPERTY(int affectedStatements READ affectedStatements NOTIFY changed)
+    Q_PROPERTY(int affectedTodos READ affectedTodos NOTIFY changed)
+    Q_PROPERTY(int ownerChanges READ ownerChanges NOTIFY changed)
 
     // ---- megbeszélés-megjegyzés ----
     Q_PROPERTY(tanara_qml::MeetingNoteModel* note READ note CONSTANT)
@@ -205,6 +244,26 @@ public:
     QString section() const { return m_section; }
     void setSection(const QString& section);
 
+    bool hasStatements() const { return m_hasStatements; }
+    StatementListModel* sentences() const { return m_sentences; }
+    StatementListModel* decisionItems() const { return m_decisionItems; }
+    StatementListModel* todoItems() const { return m_todoItems; }
+    bool sourcesVisible() const { return m_sourcesVisible; }
+    void setSourcesVisible(bool on);
+    QString activeStatementId() const { return m_activeStatementId; }
+    void setActiveStatementId(const QString& id);
+    int activeSection() const { return m_activeSection; }
+    void setActiveSection(int index);
+    QVariantList sourceMarks() const;
+    QVariantList sectionBands() const;
+    QString mapHint() const;
+    qint64 durationMs() const { return m_durationMs; }
+    QString generationLine() const;
+    bool staleTargeted() const { return m_staleTargeted; }
+    int affectedStatements() const { return m_affectedStatements; }
+    int affectedTodos() const { return m_affectedTodos; }
+    int ownerChanges() const { return m_ownerChanges; }
+
     MeetingNoteModel* note() const { return m_note; }
     bool noteOpen() const { return m_noteOpen; }
     void setNoteOpen(bool open);
@@ -221,6 +280,13 @@ public:
     // A megmaradt hiba elvetése.
     Q_INVOKABLE void clearError();
 
+    // „Honnan jön ez?”: { statementId, text, kind, flagged, count, quotes: [{ utteranceId, name,
+    // colorIndex (-1: ismeretlen), startMs, endMs, stamp, text }] } — idézetenként egy
+    // megszólalás a forrás-tartományokból, időrendben. Ismeretlen állítás → üres map.
+    Q_INVOKABLE QVariantMap sourceDetails(const QString& statementId) const;
+    // „Nem így hangzott el? · Jelzem”: AppController::flagStatement (demóban memóriában).
+    Q_INVOKABLE bool flagStatement(const QString& statementId);
+
     // Egy döntés elejéről az időbélyeg leválasztása: „[12:52] szöveg” → ms + szöveg.
     // Nincs időbélyeg → -1 és a szöveg változatlan. (Publikus: a teszt is hívja.)
     static qint64 splitTimestamp(const QString& text, QString* rest);
@@ -230,6 +296,9 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void sectionChanged();
+    void sourcesVisibleChanged();
+    void marksChanged();
+    void generationLineChanged();
     void noteOpenChanged();
     void noteHintChanged();
     void participantsChanged();
@@ -246,6 +315,12 @@ private:
     void reloadParticipants();
     void loadDemo();
     void loadDemoMemo(bool longForm);
+    void loadDemoSources(const QString& state);
+    void reloadStatements();
+    void buildStatements(const QVector<tanara::SummaryStatement>& statements,
+                         const QStringList& affectedUtterances);
+    QVariantMap memoMapFor(const tanara::MemoSection& sec) const;
+    QVariantList speakerChips(const QStringList& names) const;
     void applyJob(const tanara::JobProgress& job);
     void watchEditor(tanara::SpeakerEditor* editor);
     int speakerIndexFor(const QString& name) const;
@@ -311,11 +386,35 @@ private:
     QString m_section = QStringLiteral("exec");
     tanara::Summary m_summary;           // a strukturált forma (a részenkénti másoláshoz)
     QStringList m_summaryParticipants;   // az összefoglaló szerinti résztvevő-nevek
+    QString m_metaDate;                  // „okt. 1. 17:05” (a generálás-sorhoz)
+    QString m_metaProvider;              // „LM Studio · saját kulcs”
 
     // A meeting beszélői (név → szín-index, arány) a felelős-chipekhez és a résztvevőkhöz.
     struct SpeakerRef { QString name; QString personName; int colorIndex = 0; double share = 0.0; };
     QVector<SpeakerRef> m_speakers;
     qint64 m_durationMs = 0;
+
+    // ---- forrás-hivatkozások ----
+    StatementListModel* m_sentences = nullptr;
+    StatementListModel* m_decisionItems = nullptr;
+    StatementListModel* m_todoItems = nullptr;
+    bool m_hasStatements = false;
+    bool m_sourcesVisible = true;
+    QString m_activeStatementId;
+    int m_activeSection = -1;
+    bool m_staleTargeted = false;
+    int m_affectedStatements = 0;
+    int m_affectedTodos = 0;
+    int m_ownerChanges = 0;
+    int m_sourceUtterances = 0;
+    // A core állításai + az elavulás által érintett megszólalások (a felelős-színekhez a
+    // beszélők betöltése után épülnek a modellek).
+    QVector<tanara::SummaryStatement> m_rawStatements;
+    QStringList m_affectedUtterances;          // a megbeszélés megszólalásai („1298 megszólalásból”)
+    // Egy megszólalás az idézethez (demóban kitalált; élesben a beszélő-szerkesztőből).
+    struct QuoteLine { qint64 startMs = 0; qint64 endMs = 0; QString text; QString name; int colorIndex = -1; };
+    QHash<QString, QuoteLine> m_demoLines;
+    QuoteLine quoteLine(const QString& utteranceId) const;
 };
 
 } // namespace tanara_qml
