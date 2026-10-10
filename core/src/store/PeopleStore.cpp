@@ -25,6 +25,7 @@ const QLatin1String kUnlistedKey("unlisted");
 const QLatin1String kNameKey("name");
 const QLatin1String kAliasesKey("aliases");
 const QLatin1String kNoteKey("note");
+const QLatin1String kTagsKey("tags");
 
 bool sameName(const QString& a, const QString& b)
 {
@@ -46,6 +47,10 @@ void readRecord(QJsonObject obj, PersonDetails* d, QJsonObject* raw)
         if (!s.isEmpty() && !sameName(s, d->name) && !containsAlias(d->aliases, s)) d->aliases << s;
     }
     d->note = obj.take(kNoteKey).toString();
+    for (const QJsonValue& t : obj.take(kTagsKey).toArray()) {
+        const QString id = t.toString().trimmed();
+        if (!id.isEmpty() && !d->tags.contains(id)) d->tags << id;
+    }
     *raw = obj;
 }
 
@@ -59,6 +64,8 @@ void absorb(PersonDetails& dst, QJsonObject& dstRaw, const PersonDetails& src, c
     if (dst.note.trimmed().isEmpty()) dst.note = src.note;
     else if (!src.note.trimmed().isEmpty() && src.note != dst.note)
         dst.note = dst.note + QLatin1Char('\n') + src.note;
+    for (const QString& t : src.tags)
+        if (!dst.tags.contains(t)) dst.tags << t;
     for (auto it = srcRaw.constBegin(); it != srcRaw.constEnd(); ++it)
         if (!dstRaw.contains(it.key())) dstRaw.insert(it.key(), it.value());
 }
@@ -69,6 +76,7 @@ QJsonObject writeRecord(const PersonDetails& d, const QJsonObject& raw)
     o[kNameKey] = d.name;
     o[kAliasesKey] = QJsonArray::fromStringList(d.aliases);
     o[kNoteKey] = d.note;
+    if (!d.tags.isEmpty()) o[kTagsKey] = QJsonArray::fromStringList(d.tags);
     return o;
 }
 
@@ -279,6 +287,32 @@ void PeopleStore::setNote(const QString& name, const QString& note)
     if (e.d.note == note) return;
     e.d.note = note;
     persist();
+}
+
+bool PeopleStore::setTags(const QString& name, const QStringList& tagIds)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty()) return false;
+    QStringList clean;
+    for (const QString& t : tagIds)
+        if (!t.trimmed().isEmpty() && !clean.contains(t.trimmed())) clean << t.trimmed();
+    const SharedFileLock lock(m_filePath);
+    reloadIfChanged();
+    const int i = indexOf(n);
+    if (i < 0 && clean.isEmpty()) return false;
+    Entry& e = ensure(n);
+    if (e.d.tags == clean) return false;
+    e.d.tags = clean;
+    persist();
+    return true;
+}
+
+QHash<QString, QStringList> PeopleStore::allTags() const
+{
+    QHash<QString, QStringList> out;
+    for (const Entry& e : m_entries)
+        if (!e.d.tags.isEmpty()) out.insert(e.d.name, e.d.tags);
+    return out;
 }
 
 void PeopleStore::reloadIfChanged()
