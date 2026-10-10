@@ -22,6 +22,12 @@ and in `tanara --record`. The old Widgets main window (`tanara --classic`) is go
 | `tests/ui/*.cpp` | Qt Test, one executable per file, links `tanara_qml` | glob |
 | `gui/src/` | `main.cpp`, the bridge to the Widgets world and the remaining Widgets dialogs (`cloud/`); may include module headers | glob |
 
+**Build gotcha.** A new `QObject` header under `core/include/` in an *existing* build directory is not
+picked up by the core's AUTOMOC cache: delete the core autogen cache
+(`build/core/tanara_core_autogen` and `build/core/CMakeFiles/tanara_core_autogen.dir`) and re-run
+`cmake -S . -B build`, otherwise the link fails with undefined `vtable` / `staticMetaObject` symbols.
+A fresh build directory is always fine.
+
 **Adding a file never needs a CMake edit.** The globs use `CONFIGURE_DEPENDS`, so the
 next `cmake --build build` re-configures by itself. Targets: `tanara_qml` (static
 library with the C++ and the compiled QML), `tanara_qmlplugin` (linked into `tanara`).
@@ -37,7 +43,7 @@ cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --
 build/gui/tanara                      # the main window (uses the real AppController / user data)
 build/gui/tanara --meeting <id>       # same, with that meeting selected; handed over to a running main window
 build/gui/tanara --record …           # the floating recorder (see "Recorder")
-build/gui/tanara --settings [page]    # only the Settings window (general | recording | watcher | providers | cloud | summary);
+build/gui/tanara --settings [page]    # only the Settings window (general | recording | watcher | services | speakers | summary; the old names providers / cloud / voiceModels still map);
                                       # handed over to a running main window, otherwise a stand-alone process
 build/gui/tanara --gallery            # control gallery, interactive — no AppController
 build/gui/tanara --demo               # Main.qml with App.demo = true — no AppController
@@ -595,13 +601,15 @@ classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 ## Settings window (`Settings*.qml`, `src/Settings*`)
 
 Spec: `design/handoff-settings/README.md` (B01–B07). A separate, resizable, **non-modal** window
-(900 × 680) with five pages; native decorations are kept, so the spec's own 36 px title bar is
+(900 × 680) with six pages (Általános · Rögzítés · Hívásfigyelő · Szolgáltatások · **Beszélők** · Összefoglaló); native decorations are kept, so the spec's own 36 px title bar is
 not drawn.
 
 | Piece | Role |
 |---|---|
 | `SettingsWindow.qml` | the window: navigation, scrolling content, footer (dirty indicator, Mégse / Mentés), the unsaved-changes / reset / logout / output-format dialogs |
 | `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsProviderFields`, `SettingsEmbeddingCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 (+ C09) |
+| `SettingsSpeakersPage` (E01, B08) + `SettingsVoiceModelCard` | the **Beszélők** page: the "Te" section (own name and voiceprint, moved here from Általános), "Hangmodellek" (one card per speaker model, `vm.voiceModels` = `VoiceModelListModel`; enabling is part of the draft, downloading is immediate), the voiceprint backfill status. Card `state_`: `missing` \| `downloading` (`progress`, `progressText`, Mégse) \| `downloaded` \| `bundled` \| `error` (`errorText`, Újra) \| `offline`; `enabledModel` / `canEnable`, `recommended`; licence, source link, size and dimension are shown before the download. With no model at all the page offers "CAM++ letöltése (N MB)" |
+| `VoiceModelOnboardingRow` | the same downloader as one row in the First steps window (Szolgáltatások step; hidden when the default model exists); `demoState: "B08none"` |
 | `SettingsSegmented`, `SettingsRadio`, `SettingsSwitchRow`, `SettingsStepper`, `SettingsCombo`, `SettingsTextField`, `SettingsNavItem`, `SettingsStatusPill` | the window's controls (the device rows reuse the recorder's `RecorderSwitch`, `VuMeter`, `RecorderGroupHeader`, `RecorderDefaultPill`) |
 | `SettingsViewModel` | the draft: a copy of `AppSettings` + secrets + default sources + theme. Pages write the draft; `save()` applies **only the difference** onto the core's current settings (so nothing this window does not show, or that changed meanwhile, is lost), `discard()` drops it. `dirty` / `changeCount` / `footerText`, `errors`, `servicesWarn`, `openPage(page, focusField)` |
 | `SettingsDeviceModel` (`vm.devices`) | B02 device rows: switch = default source, rename, live level (`AppController::retainLevelMonitoring`, only while the page is visible) |
@@ -647,7 +655,9 @@ build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --q
 
 `demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
 `logout` · `reset` · C09: `B04embedding` (local, idle) · `B04embeddingRunning` (T14) · `B04embeddingError` ·
-`B04embeddingDone` · `B04embeddingCloud` (T16) · `B04embeddingNone` · `B04modelChange` (T15) · `rejectedReset`.
+`B04embeddingDone` · `B04embeddingCloud` (T16) · `B04embeddingNone` · `B04modelChange` (T15) · `rejectedReset` ·
+E01 (Beszélők page): `B08` (models on) · `B08download` (WeSpeaker downloading, 46 %) · `B08none` (nothing downloaded) · `B08error` · `B08offline` · `B08backfill` (voiceprint backfill running) · `B08partial` (backfill finished with failures) · `B08bundled` (CAM++ shipped with the app).
+Example: `gui/qml/shoot.sh 'SettingsWindow:900x880:demoState="B08"'`.
 
 ## People window (`People*.qml`, `src/People*`)
 
@@ -659,6 +669,7 @@ pane's width is draggable (names are not elided in normal widths).
 |---|---|
 | `PeopleWindow.qml` | the window: list pane, detail pane, shortcuts, undo toast, the delete / new-person dialogs |
 | `PeopleListPane` + `PeopleListRow` | search (names and aliases), "Új személy", count, sort menu, list with section headers, the P06 hint and the no-result link |
+| `PersonTagsSection` (U5) | the "Címkék" section of the detail pane, above "Becenevek": an editable person → `TagField` + the suggestion line ("Ezeken szokott ott lenni: [+ #Nordvik 11/14] … · Mind", at most 3 shown, rest behind "+N"; click accepts, × rejects); own person → one muted line; a nameless sample holder → hidden. Mode: `vm.tagsMode` = `none` \| `self` \| `edit` |
 | `PeopleDetailPane` + `PeopleSampleRow` | header with inline rename, aliases, note (autosave on blur), voiceprint samples with play and the "…" menu, the no-voiceprint box (P03), meetings |
 | `PeopleMergeDialog`, `PeopleSampleTargetDialog`, `PeopleUndoToast` | merge (P04), "new person from this sample" / "move to another person", the inverted toast with "Visszavonás" (~8 s) |
 | `PeopleViewModel` (+ `PeopleListModel`) | list (filter, sort, sections, match parts), the selected person's detail, operations, toast texts; fictional people without a controller (`demoState`) |
@@ -709,7 +720,9 @@ build/gui/tanara --qml-shot out.png --qml-page PeopleWindow --size 960x1100 --qm
 ```
 
 `demoState`: `P01` … `P06` · `newPerson` · `sampleNew` · `sampleMove` · `noResult` · `sort` ·
-`allSamples` · `deleteKeep` · `creating` · `toastPlain`.
+`allSamples` · `deleteKeep` · `creating` · `toastPlain` · U5/E01: `tagsSection` · `tagsSuggested` · `tagsSelf` · `samplesModels` (samples labelled by model) · `backfill`.
+
+The **Címkék window** has the mirror view (U5): `TagPeopleList` ("SZEMÉLYEK" + count + "+ Személy"; row = avatar, name, "11 / 14", a "# címkéje" state or a dashed "+ Ráteszem" chip with × to reject; `personClicked` opens the Személyek window; `PersonPicker` has a tag mode, `tagId`, for "+ Személy"). `TagsWindow` `demoState`: `T10` … `T13` · `rename` · `people` · `peopleEmpty` · `peopleAdd`.
 
 ## First steps window (`OnboardingWindow.qml`, `src/Onboarding*`)
 

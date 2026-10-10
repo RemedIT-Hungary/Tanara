@@ -26,7 +26,11 @@ Design: `design/handoff-v3/README.md`. Module docs: `gui/qml/README.md` ("The v3
 | Summary doc view (A9) | Statements with `TimeChip` sources + `SourcePopover` (`Honnan jön ez?`), memo with `MemoToc`; old summaries without statements keep `SummaryDocView`; `SummaryToolsRow` sits in the tool row (`Források` switch, Másolás, Újragenerálás) |
 | Player bar always at the bottom (A7) | Only on the Áttekintés (and where the dock has no lane data); on tabs 1-3 the transport controls are the 44 px control row of the `MapDock` |
 
-New reusable parts (all in `Gallery.qml`): `EvidenceChip`, `EvidenceReason`, `CandidateRow`, `TimeChip`, `TranscriptMarker`, `TagRowOverview`, `StatTiles`, `PipelineSteps`, `MeetingToolsRow`.
+| People window detail (B) | New `Címkék` section above `Becenevek` (`PersonTagsSection`, modes none / self / edit, suggestion line `Ezeken szokott ott lenni…`); samples can be labelled by voice model (`samplesModels`) |
+| Tags window, `Jellemző résztvevők` (D) | `Személyek` list (`TagPeopleList`: `11 / 14`, `Ráteszem`, × reject, `+ Személy` via `PersonPicker` tag mode) |
+| Settings > Általános `Te` section (C) | Moved to the new sixth page `Beszélők` (`SettingsSpeakersPage`): `Te`, `Hangmodellek` (`SettingsVoiceModelCard`: missing / downloading / downloaded / bundled / error / offline), voiceprint backfill status. First steps (E) has `VoiceModelOnboardingRow` |
+
+New reusable parts (all in `Gallery.qml`): `EvidenceChip`, `EvidenceReason`, `CandidateRow`, `TimeChip`, `TranscriptMarker`, `TagRowOverview`, `StatTiles`, `PipelineSteps`, `MeetingToolsRow`, `TagPeopleList`, `SettingsVoiceModelCard` (`PersonTagsSection` and `VoiceModelOnboardingRow` need a view-model / controller: shoot them via PeopleWindow `tagsSection` and OnboardingWindow).
 
 ---------------------------------------------------------------------------------------------------
 

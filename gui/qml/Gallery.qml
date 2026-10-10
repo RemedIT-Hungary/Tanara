@@ -845,6 +845,65 @@ Item {
             }
 
             Section {
+                title: "Személyek-címkék és hangmodellek: TagPeopleList · SettingsVoiceModelCard (állapotonként)"
+                flowSpacing: 24
+                Shown {
+                    caption: "TagPeopleList · felrakott / csak tanult / előre felvett"
+                    TagPeopleList {
+                        width: 420
+                        people: [{ name: "Kovács Lilla", monogram: "KL", countText: "11 / 14", manual: true },
+                                 { name: "Fehér Gábor", monogram: "FG", countText: "9 / 14", manual: false },
+                                 { name: "Varga Árpád", monogram: "VÁ", countText: "0 / 14", manual: true }]
+                    }
+                }
+                Shown {
+                    caption: "TagPeopleList · üres"
+                    TagPeopleList { width: 420; people: []; emptyText: "Még nincs személy ezen a címkén." }
+                }
+                Shown {
+                    caption: "SettingsVoiceModelCard · missing (ajánlott)"
+                    SettingsVoiceModelCard {
+                        width: 420
+                        name: "CAM++"; recommended: true; blurb: "Gyors, magyar beszédre is jó beszélő-felismerő."
+                        license: "Apache-2.0"; sourceText: "modelscope"; sizeText: "28 MB"; dimText: "192 dim"
+                        state_: "missing"
+                    }
+                }
+                Shown {
+                    caption: "downloading"
+                    SettingsVoiceModelCard {
+                        width: 420
+                        name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."
+                        license: "CC-BY-4.0"; sizeText: "26 MB"; dimText: "256 dim"
+                        state_: "downloading"; progress: 0.42; progressText: "11 / 26 MB"
+                    }
+                }
+                Shown {
+                    caption: "downloaded · bekapcsolva"
+                    SettingsVoiceModelCard {
+                        width: 420
+                        name: "CAM++"; recommended: true; blurb: "Gyors, magyar beszédre is jó beszélő-felismerő."
+                        license: "Apache-2.0"; sizeText: "28 MB"; dimText: "192 dim"
+                        state_: "downloaded"; enabledModel: true; canEnable: true
+                    }
+                }
+                Shown {
+                    caption: "error / offline"
+                    Column {
+                        spacing: 8
+                        SettingsVoiceModelCard {
+                            width: 420; name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."; license: "CC-BY-4.0"
+                            sizeText: "26 MB"; state_: "error"; errorText: "A letöltés megszakadt (hálózati hiba)."
+                        }
+                        SettingsVoiceModelCard {
+                            width: 420; name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."; license: "CC-BY-4.0"
+                            sizeText: "26 MB"; state_: "offline"
+                        }
+                    }
+                }
+            }
+
+            Section {
                 title: "Egyéb: elválasztó, szaggatott keret, helykitöltő"
                 TDivider { width: 200 }
                 TDashedRect { width: 120; height: 34 }
