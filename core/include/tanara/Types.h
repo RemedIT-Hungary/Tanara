@@ -106,6 +106,39 @@ struct MemoSection {
     qint64      startMs = -1;
     qint64      endMs = -1;
     QStringList points;
+    QStringList speakers;   // a szakasz időkeretébe eső megszólalások beszélői (első megszólalás sorrendjében)
+};
+
+// Egy összefoglaló-állítás forrása az átiratban: időtartomány + a megszólalások azonosítói
+// (a transcript.segments.json "u<startMs>" id-i).
+struct SourceSpan {
+    qint64      startMs = -1;
+    qint64      endMs = -1;
+    QStringList utteranceIds;
+};
+
+enum class StatementKind { Statement, Decision, Todo };
+
+// A vezetői összefoglaló egy mondata, egy döntés vagy egy teendő, a forrás-hivatkozásaival.
+// A sorrend a Summary mezőivel egyezik: a Statement-ek az execSummary mondatai sorban, a
+// Decision-ök a decisions[i], a Todo-k az actionItems[i]. Üres sourceSpans = „nincs forrás”.
+struct SummaryStatement {
+    QString       id;               // "s1", "d1", "t1" … (a summary-n belül stabil)
+    QString       text;             // jelölők nélkül
+    StatementKind kind = StatementKind::Statement;
+    QVector<SourceSpan> sourceSpans;
+    QString       owner;            // teendőnél a felelős
+    bool          flagged = false;  // „Nem így hangzott el?” — a felhasználó jelezte
+    // Futásidejű (nem tárolt): a forrás-sorok beszélője az összefoglaló óta változott
+    // („X → Y?”); ownerStaleBecause: a teendő felelőse is érintett („X → Y?”).
+    QStringList   staleBecause;
+    QString       ownerStaleBecause;
+};
+
+// Egy forrás-megszólalás beszélője az összefoglaló készítésekor (a célzott elavuláshoz).
+struct SourceSpeaker {
+    QString key;     // a feloldott beszélő-kulcs (nyers címke vagy "participant:N")
+    QString name;    // a megjelenített név, ahogy az LLM látta
 };
 
 // Egy összefoglaló-futás eredménye: a RÖVID forma (vezetői összefoglaló + listák) és a
@@ -117,6 +150,9 @@ struct Summary {
     QVector<ActionItem> actionItems;
     QStringList participants;
     QVector<MemoSection> memo;           // a megbeszélés részletes jegyzete, időrendben
+    // Forrás-hivatkozások (a gyors összefoglalónál; régi / témánkénti összefoglalónál üres).
+    QVector<SummaryStatement> statements;
+    QMap<QString, SourceSpeaker> sourceSpeakers;   // utteranceId → beszélő akkor
     QString renderMarkdown() const;      // impl: SummaryService modul
 };
 
@@ -383,6 +419,9 @@ Q_DECLARE_METATYPE(tanara::Utterance)
 Q_DECLARE_METATYPE(tanara::MergedTranscript)
 Q_DECLARE_METATYPE(tanara::ActionItem)
 Q_DECLARE_METATYPE(tanara::MemoSection)
+Q_DECLARE_METATYPE(tanara::SourceSpan)
+Q_DECLARE_METATYPE(tanara::SummaryStatement)
+Q_DECLARE_METATYPE(QVector<tanara::SummaryStatement>)
 Q_DECLARE_METATYPE(tanara::Summary)
 Q_DECLARE_METATYPE(tanara::SummaryTopic)
 Q_DECLARE_METATYPE(QVector<tanara::SummaryTopic>)
