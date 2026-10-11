@@ -7,7 +7,7 @@
 //
 // Források: AppController::participants / participantApprovalPending /
 // participantAnalysisRunning, a SpeakerEditor (beszélők, megszólalások, átnézendők), a
-// MeetingJobTracker (futó átírás / lekeverés / összefoglaló), TagService::suggestPeopleForTag.
+// MeetingJobTracker (futó átírás / lekeverés / összefoglaló), TagService::suggestPeopleForMeeting.
 // A core jeleire (participantsChanged, tracksChanged, transcriptReady, summaryReady,
 // jobProgressChanged …) késleltetve (egy körrel) újraszámol.
 //
@@ -17,7 +17,6 @@
 //
 #include <QObject>
 #include <QPointer>
-#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -50,10 +49,12 @@ class OverviewViewModel : public QObject {
     // ---- kik voltak ott ----
     // "list" (sorok) | "empty" (még senki: V5) | "nobody" (átirat van, de mindenki névtelen: V6)
     Q_PROPERTY(QString peopleState READ peopleState NOTIFY changed)
-    // Sorok: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable,
+    // Sorok: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable, unheard,
     //          talkShare (0..1, -1 = nincs), speakerKey (átirat után a beszélő kulcsa, különben ""),
     //          anonymous (névtelen, elnevezhető), sources: [{ icon, text, negative, accent, detail }] }
-    // A jelvény detail-je a tooltip (a bizonyíték magyarázata).
+    // A jelvény detail-je a tooltip (a bizonyíték magyarázata). Átirat után a beszélők sorai után
+    // halványan a nem hallott / kézzel felvett résztvevők (unheard, „nem hallottuk” jelvény,
+    // AppController::unheardParticipants), utánuk legfeljebb 3 címke alapú javaslat.
     Q_PROPERTY(QVariantList participants READ participants NOTIFY changed)
     // A V6 nyers beszélői: [{ name, share (0..1), colorIndex }]
     Q_PROPERTY(QVariantList anonymousSpeakers READ anonymousSpeakers NOTIFY changed)
@@ -109,8 +110,9 @@ public:
 
     // „+ Résztvevő” / „Hozzáadás” (címke-javaslat): kézi résztvevő. Vissza: az id ("" = hiba).
     Q_INVOKABLE QString addParticipant(const QString& name);
-    // ×: a résztvevő jelölése törlődik (a sorai névtelenek lesznek) — unbindParticipant.
-    // Címke-javaslatnál (id "suggest:<név>") csak ebben a munkamenetben rejtjük el.
+    // ×: a résztvevő TARTÓS törlése (AppController::removeParticipant: a sorai névtelenek lesznek,
+    // a meeting közös visszavonásában egy lépés). Címke-javaslatnál (id "suggest:<név>") tartós,
+    // erre a megbeszélésre szóló elutasítás (TagService::rejectPersonForMeeting, egy lépés).
     Q_INVOKABLE void removeParticipant(const QString& id);
     // „Csak én beszéltem” (V5): setSoloMeeting. false: nincs saját név beállítva.
     Q_INVOKABLE bool setSolo();
@@ -148,8 +150,6 @@ private:
     QString m_meetingId;
     QString m_demoState;
     QString m_demoLoadedFor;
-    QSet<QString> m_hiddenSuggestions;   // munkamenetben elutasított címke-javaslatok (név)
-    QSet<QString> m_removedIds;          // ×-szel kivett résztvevők (a core nem törli őket)
 
     // A hangelemzés haladása (participantAnalysisProgress): sáv k / N és százalék.
     struct AnalysisProgress {

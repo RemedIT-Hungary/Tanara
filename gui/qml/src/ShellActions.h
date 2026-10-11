@@ -25,6 +25,7 @@
 
 namespace tanara {
 class AppController;
+class MeetingUndoService;
 }
 
 namespace tanara_qml {
@@ -47,6 +48,13 @@ class ShellActions : public QObject {
     // Növekszik, ha a lépések futtathatósága megváltozhatott (beállítások, cloud be-/kilépés):
     // a nézetek kötésbe véve újraértékelhetik a canRun-t.
     Q_PROPERTY(int readinessRevision READ readinessRevision NOTIFY readinessRevisionChanged)
+    // A kijelölt megbeszélés KÖZÖS visszavonási verme (AppController::meetingUndo →
+    // tanara::MeetingUndoService: a szerkesztő, a meetinghez tartozó címke-lépések és a
+    // résztvevő-műveletek időrendben). A Main egyetlen Ctrl+Z-je és a változás-sáv „Visszavonás”-a
+    // ezt hívja (undoMeeting). hasMeetingUndo: van-e ilyen verem (controller nélkül / demóban nincs).
+    Q_PROPERTY(bool hasMeetingUndo READ hasMeetingUndo NOTIFY meetingUndoChanged)
+    Q_PROPERTY(bool canUndoMeeting READ canUndoMeeting NOTIFY meetingUndoChanged)
+    Q_PROPERTY(QString meetingUndoText READ meetingUndoText NOTIFY meetingUndoChanged)
 
 public:
     explicit ShellActions(QObject* parent = nullptr);
@@ -63,6 +71,9 @@ public:
     void setPlayer(PlayerController* player);
     bool recording() const;
     int readinessRevision() const { return m_readinessRevision; }
+    bool hasMeetingUndo() const { return !m_meetingUndo.isNull(); }
+    bool canUndoMeeting() const;
+    QString meetingUndoText() const;
 
     // ---- a szerződés műveletei ----
     // page: "" | "providers" | "watcher" | "cloud" | "summary" | "recording";
@@ -154,8 +165,12 @@ public:
     // A4: az Áttekintés résztvevő-jelvényéről a szerkesztő „Miért ő?” panelje egy beszélőre:
     // a megbeszélés kijelölése, az Átirat fül, majd speakerWhyRequested (Main → TranscriptTab).
     Q_INVOKABLE void openSpeakerWhy(const QString& meetingId, const QString& speakerKey);
-    // A toast „Visszavonás” gombja (és a Ctrl+Z a címkesor fókuszában): undoRequested(undoKey).
+    // A toast „Visszavonás” gombja: undoRequested(undoKey). A "meeting" kulcs a közös verem
+    // (undoMeeting) — ezt a héj maga intézi, jel nélkül.
     Q_INVOKABLE void undoFromToast(const QString& undoKey);
+    // A közös verem legfrissebb lépésének visszavonása (Ctrl+Z, változás-sáv). false: nincs mit.
+    // Utána meetingChangeUndone(text, source).
+    Q_INVOKABLE bool undoMeeting();
     // A könyvtár szűrése egy címkére (a fejléc chipje, a Címkék ablaka): tagFilterRequested.
     Q_INVOKABLE void filterByTag(const QString& tagId);
     // Van-e a megbeszélésnek átirata / létezik-e (a QML gyors kérdései).
@@ -167,6 +182,14 @@ signals:
     void playerChanged();
     void recordingChanged();
     void readinessRevisionChanged();
+    // A közös verem cseréje (másik megbeszélés) vagy állapot-változása (canUndo / undoText).
+    void meetingUndoChanged();
+    // Új lépés a közös verem tetején (egy eseménykörön belül összevonva): a változás-sáv / toast
+    // „<text> · Visszavonás” üzenete. source: tanara::MeetingUndoService::Source
+    // (0 Speakers — szerkesztő, 1 Tags — címkék, 2 Participants — résztvevő-műveletek).
+    void meetingChangePosted(const QString& text, int source);
+    // A közös verem egy lépése visszavonva (bármelyik útvonalon): „Visszavonva: <text>”.
+    void meetingChangeUndone(const QString& text, int source);
 
     // Az Editor a megadott időpontú megszólaláshoz görget (szerződés).
     void transcriptPositionRequested(int ms);
@@ -207,6 +230,9 @@ private:
     void onJobFinished(const QString& meetingId, tanara::JobKind kind, tanara::JobOutcome outcome);
     QString speakerSummary(const QString& meetingId) const;
     void runRecheck(const QString& meetingId, const QString& title, const QString& text);
+    // A kijelölt megbeszélés közös vermének (újra)csatolása; a jelenlegi tartalma nem „új lépés”.
+    void attachMeetingUndo();
+    void checkMeetingUndo();
 
     QPointer<tanara::AppController> m_controller;
     QPointer<tanara::AppController> m_attachedController;
@@ -226,6 +252,15 @@ private:
     // üzenete (ugyanabban az esemény-körben érkező errorOccurred-ből nem lesz második toast).
     QString m_errorInBanner;
     QString m_lastArchiveDir;   // az utolsó export célmappája (munkameneten belül)
+
+    // A közös visszavonás (G7b): a figyelt verem és a legutóbb látott állapota (az új lépés
+    // felismeréséhez: több bejegyzés, vagy azonos számnál más a legfrissebb szövege).
+    QPointer<tanara::MeetingUndoService> m_meetingUndo;
+    QList<QMetaObject::Connection> m_meetingUndoConns;
+    QMetaObject::Connection m_undoStoreConn;
+    int m_undoSeenCount = 0;
+    QString m_undoSeenTop;
+    bool m_undoCheckPending = false;
 
     // confirm(): beágyazott eseményhurok, amíg a QML-ablak válaszol.
     class QEventLoop* m_confirmLoop = nullptr;

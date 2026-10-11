@@ -24,6 +24,11 @@ import QtQuick.Templates as T
 //       gombbal elnevezhető: átirat után személyválasztó → editor.reassignSpeaker; átirat előtt a
 //       „Ki volt ott?” párbeszéd (ott a név szerkeszthető). A hanglenyomat-lépésen „Újraelemzés” (D4).
 // A „Ki volt ott?” párbeszéd (U3) a participantsRequested jelre nyílik (Main: shell.openParticipants).
+// Változás-sáv (G7b, v3 4. döntés): az Áttekintés minden művelete (jóváhagyás, „Csak én beszéltem”,
+//       sáv be / ki, leírás, résztvevő felvétele / törlése, javaslat elutasítása, címke, elnevezés) a
+//       megbeszélés KÖZÖS visszavonási vermébe kerül (MeetingUndoService); a Main a héj
+//       meetingChangePosted jelére showChange(text)-et hív → sötét sáv a bal oszlop alján:
+//       „<mi történt> · Visszavonás · Ctrl+Z · ×”; visszavonás után „Visszavonva: …” (showUndone).
 // Képernyőképhez: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
 //   overviewRecorded|overviewRecordedError|overviewTranscribing"'.
 Item {
@@ -38,6 +43,7 @@ Item {
 
     readonly property alias vm: vm
     readonly property alias tracks: tracks
+    readonly property alias changeBar: changeBar
 
     signal participantsRequested()
 
@@ -47,7 +53,7 @@ Item {
     // Kész állapotban az összecsukott sorok nyitása.
     property bool stepsOpen: false
     property bool tracksOpen: false
-    onMeetingIdChanged: { stepsOpen = false; tracksOpen = false }
+    onMeetingIdChanged: { stepsOpen = false; tracksOpen = false; changeBar.dismiss() }
 
     // A V5-szerű (két sávos, üres) demó-állapotok.
     readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
@@ -144,6 +150,11 @@ Item {
         namePicker.y = p.y + 6
         namePicker.open()
     }
+    // A változás-sáv (a Main hívja a közös verem jeleire; demóban a képernyőképhez).
+    function showChange(text) { changeBar.post(text, false) }
+    function showUndone(text) { changeBar.post(qsTr("Visszavonva: %1").arg(text), true) }
+    function hideChange() { changeBar.dismiss() }
+
     // „Újraelemzés” (D4): átirat után a menü „Hanglenyomat-elemzés újra”-jával azonos (héj),
     // átirat előtt a hangelemzés újra (analyzeParticipants).
     function reanalyze() {
@@ -238,214 +249,342 @@ Item {
         }
     }
 
+    // Sötét változás-sáv (a TranscriptChangeBar formanyelvén): üzenet · Visszavonás · Ctrl+Z · ×.
+    // Rámutatás alatt nem jár le; az új üzenet a régit váltja.
+    component ChangeBar: Rectangle {
+        id: bar
+        property string text: ""
+        property bool undone: false     // „Visszavonva: …” — nincs több teendő rajta
+        property bool shown: false
+        function post(message, isUndone) {
+            bar.text = message
+            bar.undone = isUndone
+            bar.shown = message !== ""
+            expiry.restart()
+        }
+        function dismiss() { bar.shown = false; expiry.stop() }
+        objectName: "overviewChangeBar"
+        visible: shown
+        height: 44
+        radius: Theme.radiusPopup
+        color: Theme.text
+        TShadow { radius: bar.radius }
+        HoverHandler { id: barHover }
+        Timer {
+            id: expiry
+            interval: bar.undone ? 5000 : 12000
+            running: bar.shown && !barHover.hovered
+            onTriggered: bar.shown = false
+        }
+        TIcon {
+            id: barIcon
+            x: 14
+            anchors.verticalCenter: parent.verticalCenter
+            name: bar.undone ? "undo-2" : "circle-check"
+            size: 16
+            color: Theme.bg
+        }
+        TLabel {
+            id: barText
+            objectName: "overviewChangeText"
+            anchors { left: barIcon.right; leftMargin: 8; right: barActions.left; rightMargin: 12
+                      verticalCenter: parent.verticalCenter }
+            text: bar.text
+            color: Theme.bg
+            elide: Text.ElideRight
+            font.weight: Theme.weightSemiBold
+        }
+        Row {
+            id: barActions
+            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            spacing: 6
+            BarAction {
+                objectName: "overviewChangeUndo"
+                visible: !bar.undone
+                strong: true
+                iconName: "undo-2"
+                text: qsTr("Visszavonás · Ctrl+Z")
+                onClicked: {
+                    const hasUndo = root.shell && root.shell.hasMeetingUndo === true
+                    if (hasUndo) root.shell.undoMeeting()
+                    else bar.post(qsTr("Visszavonva: %1").arg(bar.text), true)   // demó
+                }
+            }
+            BarAction {
+                objectName: "overviewChangeClose"
+                iconName: "x"
+                toolTipText: qsTr("Bezárás")
+                onClicked: bar.dismiss()
+            }
+        }
+    }
+    // Sötét sávra írt művelet (felirat + opcionális ikon). `strong`: keretes, hangsúlyos.
+    component BarAction: Item {
+        id: action
+        property string text: ""
+        property string iconName: ""
+        property bool strong: false
+        property string toolTipText: ""
+        signal clicked()
+        implicitWidth: actionRow.implicitWidth + 20
+        width: implicitWidth
+        height: 28
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: text !== "" ? text : toolTipText
+        Keys.onSpacePressed: clicked()
+        Keys.onReturnPressed: clicked()
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusControl
+            color: Theme.alpha(Theme.bg, actionTap.pressed ? 0.24 : actionHover.hovered ? 0.16 : action.strong ? 0.08 : 0)
+            border.width: action.strong ? 1 : 0
+            border.color: Theme.alpha(Theme.bg, 0.4)
+            TFocusRing { visible: action.activeFocus; targetRadius: parent.radius }
+        }
+        Row {
+            id: actionRow
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            TIcon {
+                visible: action.iconName !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                name: action.iconName
+                size: 14
+                color: Theme.bg
+            }
+            TLabel {
+                visible: action.text !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                text: action.text
+                color: Theme.bg
+                font.pixelSize: Theme.fontSmall
+                font.weight: Theme.weightMedium
+            }
+        }
+        HoverHandler { id: actionHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { id: actionTap; onTapped: action.clicked() }
+        TToolTip { visible: action.toolTipText !== "" && actionHover.hovered; text: action.toolTipText }
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
 
         // ================= bal oszlop =================
-        Flickable {
-            id: leftFlick
-            objectName: "overviewLeft"
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentHeight: left.implicitHeight + 36
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            T.ScrollBar.vertical: TScrollBar {}
+            Flickable {
+                id: leftFlick
+                objectName: "overviewLeft"
+                anchors.fill: parent
+                // A lebegő változás-sáv ne takarja az utolsó sort.
+                contentHeight: left.implicitHeight + 36 + (changeBar.visible ? changeBar.height + 12 : 0)
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                T.ScrollBar.vertical: TScrollBar {}
 
-            ColumnLayout {
-                id: left
-                x: Theme.space5
-                y: 18
-                width: leftFlick.width - 2 * Theme.space5
-                spacing: 10
+                ColumnLayout {
+                    id: left
+                    x: Theme.space5
+                    y: 18
+                    width: leftFlick.width - 2 * Theme.space5
+                    spacing: 10
 
-                SectionHeader {
-                    Layout.fillWidth: true
-                    title: vm.hasTranscript ? qsTr("MIRŐL SZÓLT") : qsTr("MIRŐL SZÓL")
-                    actionText: qsTr("Forrás")
-                    actionIcon: "plus"
-                    actionName: "addSourceLink"
-                    onActionClicked: (anchor) => sourceMenu.popup(anchor, anchor.width - sourceMenu.width, anchor.height + 4)
-                    TMenu {
-                        id: sourceMenu
-                        TMenuItem { text: qsTr("Leírás"); iconName: "file-text"; onTriggered: sourceCard.startEdit() }
-                        TMenuItem { text: qsTr("Naptár-esemény (hamarosan)"); iconName: "calendar"; enabled: false }
-                    }
-                }
-                SourceCard {
-                    id: sourceCard
-                    Layout.fillWidth: true
-                    note: vm.contextNote
-                    suggestions: vm.hasTranscript ? [] : pre.note.suggestions
-                    detectedCallApp: vm.hasTranscript ? "" : pre.note.detectedCallApp
-                    onSaveRequested: (note) => vm.setContextNote(note)
-                }
-                TagRowOverview {
-                    objectName: "overviewTags"
-                    Layout.fillWidth: true
-                    model: root.effectiveTags
-                    onTagClicked: (id) => { if (root.shell) root.shell.filterByTag(id) }
-                    onMeetingRequested: (id) => { if (root.shell) root.shell.showMeeting(id) }
-                }
-
-                SectionHeader {
-                    Layout.fillWidth: true
-                    Layout.topMargin: 8
-                    title: qsTr("KIK VOLTAK OTT")
-                    hint: vm.peopleHint
-                    actionText: vm.approved ? qsTr("Módosítás") : vm.peopleState === "list" ? qsTr("+ Résztvevő") : ""
-                    actionName: "participantsAction"
-                    onActionClicked: (anchor) => vm.approved ? root.participantsRequested() : root.openPicker(anchor)
-                }
-                ParticipantList {
-                    objectName: "participantList"
-                    visible: vm.peopleState === "list"
-                    Layout.fillWidth: true
-                    people: vm.participants
-                    canExplain: vm.hasTranscript
-                    trackBinder: trackBinder
-                    onAddRequested: (name) => vm.addParticipant(name)
-                    onRemoveRequested: (id) => vm.removeParticipant(id)
-                    onWhyRequested: (key) => root.explainSpeaker(key)
-                    onNameRequested: (row, anchor) => root.nameRow(row, anchor)
-                }
-                EmptyCard {
-                    objectName: "peopleEmpty"
-                    visible: vm.peopleState === "empty"
-                    Layout.fillWidth: true
-                    iconName: "users"
-                    title: qsTr("Még nem tudjuk, kik voltak ott")
-                    text: vm.hasTranscript ? qsTr("Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.")
-                                           : qsTr("A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.")
-                    TButton {
-                        id: addPersonButton
-                        objectName: "emptyAddParticipant"
-                        text: qsTr("+ Résztvevő")
-                        size: "small"
-                        onClicked: root.openPicker(addPersonButton)
-                    }
-                    TButton {
-                        objectName: "soloButton"
-                        text: qsTr("Csak én beszéltem")
-                        size: "small"
-                        toolTipText: qsTr("Minden beszéd a te nevedre kerül, az azonosítás kimarad")
-                        onClicked: root.solo()
-                    }
-                }
-                EmptyCard {
-                    objectName: "peopleNobody"
-                    visible: vm.peopleState === "nobody"
-                    Layout.fillWidth: true
-                    iconName: "fingerprint"
-                    title: qsTr("%n beszélő, ismeretlen hanggal", "", vm.anonymousSpeakers.length)
-                    text: qsTr("Egyikük hangja sem hasonlít egy ismert emberére sem. Elnevezheted őket; legközelebb már felismerjük a hangjukat.")
-                    Repeater {
-                        model: vm.anonymousSpeakers
-                        Rectangle {
-                            required property var modelData
-                            width: chipRow.implicitWidth + 12
-                            height: 26
-                            radius: 13
-                            color: Theme.speakerSoft(modelData.colorIndex)
-                            border.width: 1
-                            border.color: Theme.speakerLine(modelData.colorIndex)
-                            Row {
-                                id: chipRow
-                                x: 3
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
-                                TAvatar {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    size: 20
-                                    variant: "solid"
-                                    speakerIndex: modelData.colorIndex
-                                    monogram: "B" + (modelData.colorIndex + 1)
-                                }
-                                TLabel {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.name
-                                    color: Theme.speakerInk(modelData.colorIndex)
-                                    font.pixelSize: 12
-                                    font.weight: Theme.weightSemiBold
-                                }
-                                TLabel {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: Math.round(modelData.share * 100) + "%"
-                                    mono: true
-                                    color: Theme.speakerInk(modelData.colorIndex)
-                                    opacity: 0.75
-                                    font.pixelSize: Theme.fontMicro
-                                }
-                            }
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: vm.hasTranscript ? qsTr("MIRŐL SZÓLT") : qsTr("MIRŐL SZÓL")
+                        actionText: qsTr("Forrás")
+                        actionIcon: "plus"
+                        actionName: "addSourceLink"
+                        onActionClicked: (anchor) => sourceMenu.popup(anchor, anchor.width - sourceMenu.width, anchor.height + 4)
+                        TMenu {
+                            id: sourceMenu
+                            TMenuItem { text: qsTr("Leírás"); iconName: "file-text"; onTriggered: sourceCard.startEdit() }
+                            TMenuItem { text: qsTr("Naptár-esemény (hamarosan)"); iconName: "calendar"; enabled: false }
                         }
                     }
-                    TButton {
-                        objectName: "nameThemButton"
-                        text: qsTr("Elnevezem őket")
-                        variant: "primary"
-                        size: "small"
-                        onClicked: root.participantsRequested()
+                    SourceCard {
+                        id: sourceCard
+                        Layout.fillWidth: true
+                        note: vm.contextNote
+                        suggestions: vm.hasTranscript ? [] : pre.note.suggestions
+                        detectedCallApp: vm.hasTranscript ? "" : pre.note.detectedCallApp
+                        onSaveRequested: (note) => vm.setContextNote(note)
                     }
-                }
+                    TagRowOverview {
+                        objectName: "overviewTags"
+                        Layout.fillWidth: true
+                        model: root.effectiveTags
+                        onTagClicked: (id) => { if (root.shell) root.shell.filterByTag(id) }
+                        onMeetingRequested: (id) => { if (root.shell) root.shell.showMeeting(id) }
+                    }
 
-                // Jóváhagyás-banner (a hangelemzés kész, még nincs döntés).
-                Rectangle {
-                    objectName: "approvalBanner"
-                    visible: root.bannerShown
-                    Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    implicitHeight: bannerRow.implicitHeight + 22
-                    radius: Theme.radiusPopup
-                    color: Theme.accentSoft
-                    border.width: 1
-                    border.color: Theme.accentLine
-                    RowLayout {
-                        id: bannerRow
-                        x: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 28
-                        spacing: 12
-                        TIcon { name: "fingerprint"; size: 18; color: Theme.accent }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            TLabel {
-                                Layout.fillWidth: true
-                                text: qsTr("A hanglenyomat-elemzés kész: %n jelölt", "", vm.candidateCount)
-                                font.pixelSize: Theme.fontBody
-                                font.weight: Theme.weightSemiBold
-                                wrapMode: Text.Wrap
-                            }
-                            TLabel {
-                                Layout.fillWidth: true
-                                text: vm.hasTranscript ? qsTr("Nézd át, kik voltak ott. Ebből kötöm az átirat beszélőit a nevekhez.")
-                                                       : qsTr("Nézd át, kik voltak ott. Ebből köti az átirat a beszélőket, amikor megérkezik.")
-                                muted: true
-                                font.pixelSize: 12
-                                cssLineHeight: 1.4
-                                wrapMode: Text.Wrap
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        title: qsTr("KIK VOLTAK OTT")
+                        hint: vm.peopleHint
+                        actionText: vm.approved ? qsTr("Módosítás") : vm.peopleState === "list" ? qsTr("+ Résztvevő") : ""
+                        actionName: "participantsAction"
+                        onActionClicked: (anchor) => vm.approved ? root.participantsRequested() : root.openPicker(anchor)
+                    }
+                    ParticipantList {
+                        objectName: "participantList"
+                        visible: vm.peopleState === "list"
+                        Layout.fillWidth: true
+                        people: vm.participants
+                        canExplain: vm.hasTranscript
+                        trackBinder: trackBinder
+                        onAddRequested: (name) => vm.addParticipant(name)
+                        onRemoveRequested: (id) => vm.removeParticipant(id)
+                        onWhyRequested: (key) => root.explainSpeaker(key)
+                        onNameRequested: (row, anchor) => root.nameRow(row, anchor)
+                    }
+                    EmptyCard {
+                        objectName: "peopleEmpty"
+                        visible: vm.peopleState === "empty"
+                        Layout.fillWidth: true
+                        iconName: "users"
+                        title: qsTr("Még nem tudjuk, kik voltak ott")
+                        text: vm.hasTranscript ? qsTr("Add meg, kik voltak ott: a beszélők így a nevükre kerülnek, és legközelebb a hangjukról is felismerjük őket.")
+                                               : qsTr("A hanglenyomat-elemzés után ide jönnek a jelöltek. Ha tudod, add meg most: az azonosítás így pontosabb lesz.")
+                        TButton {
+                            id: addPersonButton
+                            objectName: "emptyAddParticipant"
+                            text: qsTr("+ Résztvevő")
+                            size: "small"
+                            onClicked: root.openPicker(addPersonButton)
+                        }
+                        TButton {
+                            objectName: "soloButton"
+                            text: qsTr("Csak én beszéltem")
+                            size: "small"
+                            toolTipText: qsTr("Minden beszéd a te nevedre kerül, az azonosítás kimarad")
+                            onClicked: root.solo()
+                        }
+                    }
+                    EmptyCard {
+                        objectName: "peopleNobody"
+                        visible: vm.peopleState === "nobody"
+                        Layout.fillWidth: true
+                        iconName: "fingerprint"
+                        title: qsTr("%n beszélő, ismeretlen hanggal", "", vm.anonymousSpeakers.length)
+                        text: qsTr("Egyikük hangja sem hasonlít egy ismert emberére sem. Elnevezheted őket; legközelebb már felismerjük a hangjukat.")
+                        Repeater {
+                            model: vm.anonymousSpeakers
+                            Rectangle {
+                                required property var modelData
+                                width: chipRow.implicitWidth + 12
+                                height: 26
+                                radius: 13
+                                color: Theme.speakerSoft(modelData.colorIndex)
+                                border.width: 1
+                                border.color: Theme.speakerLine(modelData.colorIndex)
+                                Row {
+                                    id: chipRow
+                                    x: 3
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 6
+                                    TAvatar {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        size: 20
+                                        variant: "solid"
+                                        speakerIndex: modelData.colorIndex
+                                        monogram: "B" + (modelData.colorIndex + 1)
+                                    }
+                                    TLabel {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.name
+                                        color: Theme.speakerInk(modelData.colorIndex)
+                                        font.pixelSize: 12
+                                        font.weight: Theme.weightSemiBold
+                                    }
+                                    TLabel {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: Math.round(modelData.share * 100) + "%"
+                                        mono: true
+                                        color: Theme.speakerInk(modelData.colorIndex)
+                                        opacity: 0.75
+                                        font.pixelSize: Theme.fontMicro
+                                    }
+                                }
                             }
                         }
                         TButton {
-                            objectName: "reviewButton"
-                            text: qsTr("Átnézem")
+                            objectName: "nameThemButton"
+                            text: qsTr("Elnevezem őket")
                             variant: "primary"
+                            size: "small"
                             onClicked: root.participantsRequested()
                         }
-                        TButton {
-                            objectName: "laterButton"
-                            text: qsTr("Később")
-                            variant: "ghost"
-                            muted: true
-                            onClicked: {
-                                const later = Object.assign({}, root.laterFor)
-                                later[root.meetingId] = true
-                                root.laterFor = later
+                    }
+
+                    // Jóváhagyás-banner (a hangelemzés kész, még nincs döntés).
+                    Rectangle {
+                        objectName: "approvalBanner"
+                        visible: root.bannerShown
+                        Layout.fillWidth: true
+                        Layout.topMargin: 2
+                        implicitHeight: bannerRow.implicitHeight + 22
+                        radius: Theme.radiusPopup
+                        color: Theme.accentSoft
+                        border.width: 1
+                        border.color: Theme.accentLine
+                        RowLayout {
+                            id: bannerRow
+                            x: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 28
+                            spacing: 12
+                            TIcon { name: "fingerprint"; size: 18; color: Theme.accent }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                TLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("A hanglenyomat-elemzés kész: %n jelölt", "", vm.candidateCount)
+                                    font.pixelSize: Theme.fontBody
+                                    font.weight: Theme.weightSemiBold
+                                    wrapMode: Text.Wrap
+                                }
+                                TLabel {
+                                    Layout.fillWidth: true
+                                    text: vm.hasTranscript ? qsTr("Nézd át, kik voltak ott. Ebből kötöm az átirat beszélőit a nevekhez.")
+                                                           : qsTr("Nézd át, kik voltak ott. Ebből köti az átirat a beszélőket, amikor megérkezik.")
+                                    muted: true
+                                    font.pixelSize: 12
+                                    cssLineHeight: 1.4
+                                    wrapMode: Text.Wrap
+                                }
+                            }
+                            TButton {
+                                objectName: "reviewButton"
+                                text: qsTr("Átnézem")
+                                variant: "primary"
+                                onClicked: root.participantsRequested()
+                            }
+                            TButton {
+                                objectName: "laterButton"
+                                text: qsTr("Később")
+                                variant: "ghost"
+                                muted: true
+                                onClicked: {
+                                    const later = Object.assign({}, root.laterFor)
+                                    later[root.meetingId] = true
+                                    root.laterFor = later
+                                }
                             }
                         }
                     }
                 }
+            }
+            ChangeBar {
+                id: changeBar
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                          leftMargin: Theme.space5; rightMargin: Theme.space5; bottomMargin: 10 }
             }
         }
 

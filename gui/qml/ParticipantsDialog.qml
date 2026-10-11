@@ -57,7 +57,10 @@ Item {
         dialog.close()
         // Tanulási kérdés (UX-terv 5.): ha van, a sáv kérdez (a jóváhagyás toastja helyett).
         if (learnPopup.openIfAsked()) return
-        if (root.shell)
+        // G7b: a jóváhagyás a megbeszélés közös visszavonásának lépése — a héj változás-sávja
+        // (Áttekintés) ill. toastja „Visszavonás”-sal mondja ki (shell.meetingChangePosted).
+        // Közös verem nélkül (demó) a régi, visszavonás nélküli visszajelzés.
+        if (root.shell && root.shell.hasMeetingUndo !== true)
             root.shell.toast(qsTr("Résztvevők jóváhagyva: %n.", "", n))
     }
 

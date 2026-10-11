@@ -27,7 +27,8 @@ ApplicationWindow {
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
     // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
     // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop" |
-    // "tagToast" (címke-lépés toast „Visszavonás”-sal) | "selection" (T05: többes kijelölés)
+    // "tagToast" (címke-lépés toast „Visszavonás”-sal) | "selection" (T05: többes kijelölés) |
+    // "overviewChange" (G7b: az Áttekintés változás-sávja „Visszavonás”-sal)
     property string demoOverlay: ""
     // Demóban: a fejléc címkesorának kitalált állapota (MeetingTagsModel.demoState: none | few |
     // many | computing | similar | cooccur | llm | why).
@@ -87,20 +88,24 @@ ApplicationWindow {
         return it.visualFocus !== true
     }
 
-    // Ctrl+Z: az átirat-szerkesztőben a szerkesztő saját visszavonása; máshol (fejléc, címkesor,
-    // lépések) a legutóbbi címke-lépés visszavonása. Szövegmezőben a mező saját visszavonása él.
-    readonly property bool focusInTranscript: {
-        for (let it = window.activeFocusItem; it; it = it.parent)
-            if (it === transcriptTab) return true
-        return false
-    }
-    readonly property bool tagUndoActive: {
-        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible || !currentMeeting.tags.canUndo)
-            return false
-        if (focusInTranscript && transcriptTab.visible)
+    // Ctrl+Z (G7b): EGY kulcs a megbeszélés-nézetben — a megbeszélés közös visszavonási verme
+    // (shellActions.undoMeeting → MeetingUndoService: szerkesztő, címkék, résztvevő-műveletek
+    // időrendben), bármelyik fülön és fókuszban. Szövegmezőben a mező saját visszavonása él; a
+    // Személyek / Címkék ablak a saját vermét vonja vissza. Controller nélkül (demó) a címke-modell
+    // és a szerkesztő saját visszavonása marad.
+    readonly property bool undoKeyFree: {
+        if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
             return false
         const it = window.activeFocusItem
         return !(it instanceof TextInput || it instanceof TextEdit)
+    }
+    readonly property bool meetingUndoActive: undoKeyFree && shellActions.hasMeetingUndo && shellActions.canUndoMeeting
+    readonly property bool demoTagUndoActive: {
+        if (!undoKeyFree || shellActions.hasMeetingUndo || !currentMeeting.tags.canUndo)
+            return false
+        for (let it = window.activeFocusItem; it; it = it.parent)
+            if (it === transcriptTab) return !transcriptTab.visible
+        return true
     }
 
     // A könyvtár szűrése egy címkére (fejléc-chip, Címkék ablak): a keresés, a többi szűrő és a
@@ -167,6 +172,20 @@ ApplicationWindow {
         // A címke-lépések egy közös visszavonási vermen vannak (TagService): bármelyik modell
         // visszavonása a legutóbbi lépést veszi vissza.
         onUndoRequested: (undoKey) => { if (undoKey === "tags") currentMeeting.tags.undo() }
+        // G7b: a közös verem új lépése. Az Áttekintésen a változás-sáv mondja ki („… · Visszavonás”);
+        // máshol a résztvevő-lépés (pl. a „Ki volt ott?” jóváhagyása az Átiratból) toastot kap, a
+        // szerkesztő-lépést az Átirat saját sávja, a címke-lépést a címkesor toastja mutatja.
+        onMeetingChangePosted: (text, source) => {
+            if (shellActions.currentTab === 0 && window.hasMeeting) {
+                overviewTab.showChange(text)
+            } else if (source === 2) {
+                toast.show(text, "", "", false, "meeting")
+            }
+        }
+        onMeetingChangeUndone: (text, source) => {
+            if (shellActions.currentTab === 0 && window.hasMeeting) overviewTab.showUndone(text)
+            else toast.show(qsTr("Visszavonva: %1").arg(text), "", "", false)
+        }
         onTagFilterRequested: (tagId) => window.filterLibraryByTag(tagId)
         onConfirmRequested: (title, text, confirmLabel, danger) => dialogs.openConfirm(title, text, confirmLabel, danger)
         onRetranscribeDialogRequested: (meetingId) => dialogs.openRetranscribe(meetingId)
@@ -228,7 +247,11 @@ ApplicationWindow {
     // A címkesor lépései (elfogadás, elutasítás, levétel) a héj toastján, „Visszavonás”-sal.
     Connections {
         target: currentMeeting.tags
-        function onToast(text, undoable) { shellActions.toast(text, undoable ? "tags" : "") }
+        function onToast(text, undoable) {
+            // Az Áttekintésen a visszavonható címke-lépést a közös változás-sáv mondja ki.
+            if (undoable && shellActions.hasMeetingUndo && shellActions.currentTab === 0) return
+            shellActions.toast(text, undoable ? "tags" : "")
+        }
     }
 
     Connections {
@@ -320,6 +343,7 @@ ApplicationWindow {
         case "toast": toast.show("Elkészült az átirat: Negyedéves partnertalálkozó", "", "", false); break
         case "toastError": toast.show("Nincs rögzíthető hangeszköz.", "danger", "", false); break
         case "tagToast": toast.show("Javaslat elutasítva: #Nordvik", "", "", false, "tags"); break
+        case "overviewChange": overviewTab.showChange("Résztvevő eltávolítva: Lantos Réka"); break
         case "cloudToast": toast.show("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "", "req_8f3a2c71d0", true); break
         case "filters": sidebar.applyDemo("filters"); break       // T04: címke-szűrők + popover
         case "selection": sidebar.applyDemo("selection"); break   // T05
@@ -365,8 +389,12 @@ ApplicationWindow {
     Shortcut { sequence: "F2"; enabled: window.hasMeeting && !dialogs.anyOpen && !participantsDialog.opened; onActivated: header.startRename() }
     Shortcut {
         sequence: "Ctrl+Z"
-        enabled: window.tagUndoActive
-        onActivated: { toast.hide(); currentMeeting.tags.undo() }
+        enabled: window.meetingUndoActive || window.demoTagUndoActive
+        onActivated: {
+            toast.hide()
+            if (shellActions.hasMeetingUndo) shellActions.undoMeeting()
+            else currentMeeting.tags.undo()
+        }
     }
     Shortcut {
         sequence: "Space"
@@ -706,7 +734,8 @@ ApplicationWindow {
                             meetingId: window.contentMeetingId
                             player: playerController
                             shell: shellActions
-                            undoAllowed: !window.tagUndoActive
+                            // A közös verem alatt a szerkesztő Ctrl+Z-je a Main-é (egy kulcs).
+                            undoAllowed: !shellActions.hasMeetingUndo && !window.demoTagUndoActive
                             onParticipantsRequested: window.openParticipants()
                         }
                         // 2–3 — Vezetői összefoglaló / Memó (ugyanaz a nézet, más szakasszal)

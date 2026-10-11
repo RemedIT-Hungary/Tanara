@@ -102,7 +102,20 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("sources"), sources}, {QStringLiteral("talkShare"), talkShare},
             {QStringLiteral("self"), self}, {QStringLiteral("suggested"), suggested},
             {QStringLiteral("dimmed"), dimmed}, {QStringLiteral("removable"), removable},
-            {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false}};
+            {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false},
+            {QStringLiteral("unheard"), false}};
+}
+
+// A7: átirat után a beszélőhöz nem kötött (meg nem szólalt / kézzel felvett) résztvevő: halvány
+// sor „nem hallottuk” jelvénnyel, törölhető.
+QVariantMap unheardRow(const Participant& p, int colorIndex)
+{
+    QVariantList src = sourcesOf(p, false);
+    src.prepend(source(QStringLiteral("fingerprint"), OverviewViewModel::tr("nem hallottuk"), true, false,
+                       OverviewViewModel::tr("Az átiratban nem találtuk a hangját: nincs beszélő a nevén")));
+    QVariantMap row = personRow(p.id, p.personName, colorIndex, QString(), src, -1.0, false, false, true, true);
+    row.insert(QStringLiteral("unheard"), true);
+    return row;
 }
 
 // A sor az átirat egy beszélője (a „Miért ő?” és az „Elnevezés…” ehhez a kulcshoz kötődik).
@@ -112,6 +125,9 @@ QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymo
     row.insert(QStringLiteral("anonymous"), anonymous);
     return row;
 }
+
+// A címke alapú személy-javaslatok száma az Áttekintésen (UX-terv 3.1).
+constexpr int kMaxSuggestedPeople = 3;
 
 bool sameName(const QString& a, const QString& b)
 {
@@ -150,8 +166,6 @@ void OverviewViewModel::setMeetingId(const QString& id)
     if (id == m_meetingId)
         return;
     m_meetingId = id;
-    m_hiddenSuggestions.clear();
-    m_removedIds.clear();
     m_analysisProgress = {};
     emit meetingIdChanged();
     reload();
@@ -245,7 +259,6 @@ QString OverviewViewModel::addParticipant(const QString& name)
         emit changed();
         return id;
     }
-    m_hiddenSuggestions.insert(n.toLower());
     const QString id = c->addParticipant(m_meetingId, n);
     scheduleReload();
     return id;
@@ -253,17 +266,9 @@ QString OverviewViewModel::addParticipant(const QString& name)
 
 void OverviewViewModel::removeParticipant(const QString& id)
 {
-    if (id.startsWith(QLatin1String("suggest:"))) {
-        m_hiddenSuggestions.insert(id.mid(8).toLower());
-        QVariantList rows;
-        for (const QVariant& v : std::as_const(m_participants))
-            if (v.toMap().value(QStringLiteral("id")).toString() != id) rows << v;
-        m_participants = rows;
-        emit changed();
-        return;
-    }
     AppController* c = app();
     if (jobsupport::demoMode(c)) {
+        // Demóban (képernyőkép) helyben: a sor eltűnik.
         QVariantList rows;
         for (const QVariant& v : std::as_const(m_participants))
             if (v.toMap().value(QStringLiteral("id")).toString() != id) rows << v;
@@ -271,10 +276,17 @@ void OverviewViewModel::removeParticipant(const QString& id)
         emit changed();
         return;
     }
-    // A core nem töröl résztvevőt (csak a kötését és a jelölését veszi el): a sort ebben a
-    // munkamenetben rejtjük el. Hiányzó core-API: AppController::removeParticipant.
-    m_removedIds.insert(id);
-    c->unbindParticipant(m_meetingId, id);
+    if (m_meetingId.isEmpty() || id.isEmpty())
+        return;
+    if (id.startsWith(QLatin1String("suggest:"))) {
+        // A javaslat tartós, erre a megbeszélésre szóló elutasítása (a közös visszavonás lépése;
+        // a verem előbb jöjjön létre, mert a csatolás előtti címke-lépéseket nem veszi fel).
+        c->meetingUndo(m_meetingId);
+        if (TagService* tags = c->tags())
+            tags->rejectPersonForMeeting(id.mid(8), m_meetingId);
+    } else {
+        c->removeParticipant(m_meetingId, id);
+    }
     scheduleReload();
 }
 
@@ -409,12 +421,21 @@ void OverviewViewModel::reload()
                                      {QStringLiteral("share"), s.talkShare},
                                      {QStringLiteral("colorIndex"), s.colorIndex}};
         }
+        // A7: a beszélőhöz nem kötött, névvel bíró résztvevők (kézi / meg nem szólalt) a beszélők
+        // után, halványan; törölhetők.
+        const QVector<Participant> unheard = c->unheardParticipants(m.id);
+        int colorIndex = int(sorted.size());
+        for (const Participant& p : unheard) {
+            if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, p.personName); }))
+                continue;
+            rows << unheardRow(p, colorIndex++);
+            names << p.personName;
+        }
         m_peopleState = rows.isEmpty() ? QStringLiteral("empty")
-                      : anyNamed ? QStringLiteral("list") : QStringLiteral("nobody");
+                      : (anyNamed || !unheard.isEmpty()) ? QStringLiteral("list") : QStringLiteral("nobody");
     } else {
         int i = 0;
         for (const Participant& p : parts) {
-            if (m_removedIds.contains(p.id)) continue;
             const bool self = sameName(p.personName, selfName);
             QString name = p.personName.isEmpty() ? tr("Ismeretlen hang %1").arg(i + 1) : p.personName;
             if (self) name = tr("%1 (te)").arg(name);
@@ -431,23 +452,22 @@ void OverviewViewModel::reload()
     m_anonymous = m_peopleState == QLatin1String("nobody") ? anonymous : QVariantList();
 
     // Címke alapú javaslat (D): a megbeszélés címkéin tanult személyek, akik még nincsenek itt.
-    if (TagService* tags = c->tags(); tags && m_peopleState != QLatin1String("nobody")) {
+    // A core szűri a már itt lévőket, a saját személyt és az erre a megbeszélésre elutasítottakat
+    // (rejectPersonForMeeting); legfeljebb 3 (UX-terv 3.1).
+    if (TagService* tags = c->tags(); tags && !m.id.isEmpty() && m_peopleState != QLatin1String("nobody")) {
         int added = 0;
-        for (const QString& tagId : m.tagIds) {
-            const QVector<PersonTagStat> stats = tags->suggestPeopleForTag(tagId, names, 2);
-            for (const PersonTagStat& st : stats) {
-                if (added >= 2 || m_hiddenSuggestions.contains(st.name.toLower())) continue;
-                if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, st.name); }))
-                    continue;
-                const QString tagName = tags->tag(tagId).name;
-                rows << personRow(QStringLiteral("suggest:") + st.name, st.name, -1, tr("javasolt"),
-                                  {source(QStringLiteral("tag"),
-                                          tr("a #%1 alapján · %2 / %3").arg(tagName).arg(st.shared).arg(st.tagTotal),
-                                          false, true)},
-                                  -1.0, false, true, false, true);
-                names << st.name;
-                ++added;
-            }
+        const QVector<PersonTagStat> stats = tags->suggestPeopleForMeeting(m.id, names, kMaxSuggestedPeople);
+        for (const PersonTagStat& st : stats) {
+            if (std::any_of(names.cbegin(), names.cend(), [&](const QString& n) { return sameName(n, st.name); }))
+                continue;
+            const QString tagName = tags->tag(st.tagId).name;
+            rows << personRow(QStringLiteral("suggest:") + st.name, st.name, -1, tr("javasolt"),
+                              {source(QStringLiteral("tag"),
+                                      tr("a #%1 alapján · %2 / %3").arg(tagName).arg(st.shared).arg(st.tagTotal),
+                                      false, true)},
+                              -1.0, false, true, false, true);
+            names << st.name;
+            ++added;
         }
         if (added > 0 && m_peopleState == QLatin1String("empty"))
             m_peopleState = QStringLiteral("list");
@@ -653,6 +673,12 @@ void OverviewViewModel::loadDemo()
              << withSpeaker(personRow(QStringLiteral("S5"), QStringLiteral("Távoli 1"), 4, tr("névtelen · elnevezhető"),
                                       {callSide}, 0.07),
                             QStringLiteral("S5"), true);
+        // A7: meghívott, de nem szólalt meg (kézzel felvéve): halványan, a beszélők után.
+        Participant invited;
+        invited.id = QStringLiteral("p5");
+        invited.personName = QStringLiteral("Lantos Réka");
+        invited.source = ParticipantSource::Manual;
+        rows << unheardRow(invited, 5);
         m_peopleState = QStringLiteral("list");
         m_peopleHint = tr("jóváhagyva %1-kor").arg(QStringLiteral("okt. 1. 16:40"));
     } else if (empty || recorded || transcribingOnly) {
@@ -678,10 +704,7 @@ void OverviewViewModel::loadDemo()
         m_peopleState = QStringLiteral("list");
         m_peopleHint = tr("naptár · hang · címke · kézi");
     }
-    QVariantList filtered;
-    for (const QVariant& v : std::as_const(rows))
-        if (!m_hiddenSuggestions.contains(v.toMap().value(QStringLiteral("name")).toString().toLower())) filtered << v;
-    m_participants = filtered;
+    m_participants = rows;
     m_anonymous.clear();
     if (nobody) {
         const QList<QPair<QString, double>> anon = {{tr("Beszélő 1"), 0.46}, {tr("Beszélő 2"), 0.38}, {tr("Beszélő 3"), 0.16}};

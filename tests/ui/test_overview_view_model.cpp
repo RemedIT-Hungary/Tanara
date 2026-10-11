@@ -10,7 +10,9 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/edit/MeetingUndo.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -148,6 +150,21 @@ private slots:
         QVERIFY(!vm.reanalyze());
         QVERIFY(!vm.nameSpeakerInDemo(QStringLiteral("x"), QStringLiteral("Y")));   // valódi adaton nem demó
 
+        // A6: a × tartós (meeting.json), és a közös veremből visszavonható.
+        vm.removeParticipant(id);
+        QTRY_COMPARE(vm.peopleState(), QStringLiteral("empty"));
+        QVERIFY(m_app->participants(m.id).isEmpty());
+        {
+            OverviewViewModel fresh;
+            fresh.setController(m_app.get());
+            fresh.setMeetingId(m.id);
+            QCOMPARE(fresh.peopleState(), QStringLiteral("empty"));
+        }
+        tanara::MeetingUndoService* undo = m_app->meetingUndo(m.id);
+        QVERIFY(undo);
+        QCOMPARE(undo->undoText(), QStringLiteral("Résztvevő eltávolítva: Fehér Gábor"));
+        QVERIFY(undo->undo());
+        QTRY_COMPARE(names(vm), QStringList{QStringLiteral("Fehér Gábor")});
         vm.removeParticipant(id);
         QTRY_COMPARE(vm.peopleState(), QStringLiteral("empty"));
 
@@ -205,6 +222,95 @@ private slots:
         QCOMPARE(vm.stats().at(2).toMap().value("sub").toString(), QStringLiteral("2 névtelen"));
         QCOMPARE(vm.stats().at(3).toMap().value("value").toString(), QStringLiteral("3"));
         QCOMPARE(vm.stats().at(5).toMap().value("value").toString(), QStringLiteral("nincs"));
+    }
+
+    // A7: átirat után a beszélőhöz nem kötött (kézzel felvett, meg nem szólalt) résztvevő a
+    // beszélők után halványan, „nem hallottuk” jelvénnyel; tartósan törölhető, visszavonható.
+    void afterTranscript_unheardParticipant()
+    {
+        const tanara::Meeting m = transcribed(QStringLiteral("Nem hallott"));
+        OverviewViewModel vm;
+        vm.setController(m_app.get());
+        vm.setMeetingId(m.id);
+        QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
+        const QString id = vm.addParticipant(QStringLiteral("Lantos Réka"));
+        QVERIFY(!id.isEmpty());
+        QTRY_COMPARE(vm.participants().size(), 3);
+        QCOMPARE(vm.peopleState(), QStringLiteral("list"));
+        const QVariantMap row = vm.participants().last().toMap();
+        QCOMPARE(row.value("id").toString(), id);
+        QCOMPARE(row.value("name").toString(), QStringLiteral("Lantos Réka"));
+        QVERIFY(row.value("unheard").toBool());
+        QVERIFY(row.value("dimmed").toBool());
+        QVERIFY(row.value("removable").toBool());
+        QVERIFY(row.value("speakerKey").toString().isEmpty());
+        const QVariantMap badge = row.value("sources").toList().first().toMap();
+        QCOMPARE(badge.value("text").toString(), QStringLiteral("nem hallottuk"));
+        QVERIFY(badge.value("negative").toBool());
+        // A beszélők sorai elöl, nem halványan.
+        QVERIFY(!vm.participants().first().toMap().value("unheard").toBool());
+
+        vm.removeParticipant(id);
+        QTRY_COMPARE(vm.participants().size(), 2);
+        QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
+        QVERIFY(m_app->participants(m.id).isEmpty());
+        QVERIFY(m_app->meetingUndo(m.id)->undo());
+        QTRY_COMPARE(vm.participants().size(), 3);
+    }
+
+    // A6: címke alapú személy-javaslat — legfeljebb 3; a × tartós, erre a megbeszélésre szóló
+    // elutasítás (TagService::rejectPersonForMeeting), a közös veremből visszavonható.
+    void tagSuggestions_limitAndDurableReject()
+    {
+        tanara::TagService* tags = m_app->tags();
+        const tanara::Tag nord = tags->create(QStringLiteral("Nordvik"));
+        const QStringList crew{QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád"),
+                               QStringLiteral("Molnár Eszter"), QStringLiteral("Szabó Bence")};
+        for (int i = 1; i <= 3; ++i) {
+            tanara::Meeting t = m_app->store()->createMeeting(QStringLiteral("Nordvik %1").arg(i));
+            t.startedAt = QDateTime(QDate(2026, 9, i), QTime(10, 0));
+            for (int k = 0; k < crew.size(); ++k)
+                t.speakerMap.insert(QStringLiteral("Beszélő %1").arg(k + 1), crew.at(k));
+            t.tagIds = {nord.id};
+            m_app->store()->saveMeeting(t);
+        }
+        tanara::Meeting m = recording(QStringLiteral("Új Nordvik"));
+        m.tagIds = {nord.id};
+        m_app->store()->saveMeeting(m);
+        tags->refreshPersonStatsNow();
+
+        OverviewViewModel vm;
+        vm.setController(m_app.get());
+        vm.setMeetingId(m.id);
+        auto suggested = [&vm] {
+            QStringList out;
+            for (const QVariant& v : vm.participants())
+                if (v.toMap().value("suggested").toBool()) out << v.toMap().value("name").toString();
+            return out;
+        };
+        QCOMPARE(suggested().size(), 3);
+        QCOMPARE(vm.peopleState(), QStringLiteral("list"));
+        const QString rejected = suggested().first();
+        vm.removeParticipant(QStringLiteral("suggest:") + rejected);
+        QTRY_VERIFY(!suggested().contains(rejected));
+        QCOMPARE(suggested().size(), 3);   // a negyedik jön a helyére
+        QVERIFY(tags->isPersonRejectedForMeeting(rejected, m.id));
+        {
+            OverviewViewModel fresh;
+            fresh.setController(m_app.get());
+            fresh.setMeetingId(m.id);
+            for (const QVariant& v : fresh.participants())
+                QVERIFY(v.toMap().value("name").toString() != rejected);
+        }
+        QVERIFY(m_app->meetingUndo(m.id)->undo());
+        QVERIFY(!tags->isPersonRejectedForMeeting(rejected, m.id));
+        vm.refresh();
+        QVERIFY(suggested().contains(rejected));
+
+        // „Hozzáadás”: résztvevő lesz, és kikerül a javaslatok közül.
+        QVERIFY(!vm.addParticipant(rejected).isEmpty());
+        QTRY_VERIFY(!suggested().contains(rejected));
+        QVERIFY(names(vm).contains(rejected));
     }
 
     // A sávok beszédaránya, a kimaradás oka és a „Beemelem” (TrackListModel → AppController).
@@ -280,14 +386,23 @@ private slots:
         // A5: a névtelen sor demóban helyben elnevezhető; A4: a kész sorok beszélő-kulccsal.
         vm.setDemoState(QStringLiteral("overviewDone"));
         bool found = false;
+        int unheard = 0;
         for (const QVariant& v : vm.participants()) {
             const QVariantMap row = v.toMap();
+            // A7: a nem hallott meghívott halványan, beszélő-kulcs nélkül.
+            if (row.value("unheard").toBool()) {
+                ++unheard;
+                QVERIFY(row.value("dimmed").toBool());
+                QVERIFY(row.value("speakerKey").toString().isEmpty());
+                continue;
+            }
             QVERIFY(!row.value("speakerKey").toString().isEmpty());
             if (!row.value("anonymous").toBool()) continue;
             found = true;
             QVERIFY(vm.nameSpeakerInDemo(row.value("speakerKey").toString(), QStringLiteral("Szabó Bence")));
         }
         QVERIFY(found);
+        QCOMPARE(unheard, 1);
         QVERIFY(names(vm).contains(QStringLiteral("Szabó Bence")));
         QVERIFY(vm.canReanalyze());
 

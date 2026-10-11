@@ -176,6 +176,31 @@ private slots:
         QCOMPARE(tab(), 2);
     }
 
+    // G7b: az Áttekintés változás-sávja (a Main a közös verem jelére hívja): üzenet ·
+    // „Visszavonás · Ctrl+Z” · ×; visszavonás után „Visszavonva: …” teendő nélkül. Demóban (közös
+    // verem nélkül) a sáv maga mondja ki a visszavonást.
+    void done_changeBar()
+    {
+        load(QStringLiteral("overviewDone"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(!shown("overviewChangeBar"));
+        QMetaObject::invokeMethod(overview, "showChange", Q_ARG(QVariant, QStringLiteral("Résztvevő eltávolítva: Lantos Réka")));
+        QTRY_VERIFY(shown("overviewChangeBar"));
+        QCOMPARE(item("overviewChangeText")->property("text").toString(), QStringLiteral("Résztvevő eltávolítva: Lantos Réka"));
+        QVERIFY(shown("overviewChangeUndo"));
+        click(item("overviewChangeUndo"));
+        QTRY_COMPARE(item("overviewChangeText")->property("text").toString(),
+                     QStringLiteral("Visszavonva: Résztvevő eltávolítva: Lantos Réka"));
+        QVERIFY(!shown("overviewChangeUndo"));
+        click(item("overviewChangeClose"));
+        QTRY_VERIFY(!shown("overviewChangeBar"));
+        // A nem hallott meghívott (A7) halványan a beszélők után.
+        bool dimmedLast = false;
+        for (QQuickItem* row : items("participantRow"))
+            if (row->isVisible()) dimmedLast = row->opacity() < 1.0;
+        QVERIFY(dimmedLast);
+    }
+
     // V5 / V6: az üres részek szaggatott kártyák a műveletekkel.
     void emptyAndNobodyCards()
     {
@@ -404,7 +429,7 @@ private slots:
         QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S2")}));
         QVERIFY(shown("participantTrackChips"));
 
-        QCOMPARE(items("participantNameButton").size(), 5);
+        QCOMPARE(items("participantNameButton").size(), 6);   // + a nem hallott meghívott (A7)
         int visibleName = 0;
         for (QQuickItem* it : items("participantNameButton")) visibleName += it->isVisible() ? 1 : 0;
         QCOMPARE(visibleName, 1);                         // csak a névtelen „Távoli 1”

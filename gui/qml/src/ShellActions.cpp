@@ -7,6 +7,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/cloud/CloudTypes.h"
+#include "tanara/edit/MeetingUndo.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingArchive.h"
@@ -68,13 +69,21 @@ void ShellActions::attachController()
 {
     if (m_controller == m_attachedController)
         return;
-    if (m_attachedController)
+    if (m_attachedController) {
         m_attachedController->disconnect(this);
+        disconnect(m_undoStoreConn);
+    }
     m_attachedController = m_controller;
     emit recordingChanged();
+    attachMeetingUndo();
     tanara::AppController* c = m_controller;
     if (!c)
         return;
+    // A kijelölés pillanatában még nem létező megbeszélés (új felvétel / import) verme később.
+    if (tanara::MeetingStore* store = c->store())
+        m_undoStoreConn = connect(store, &tanara::MeetingStore::meetingUpdated, this, [this](const QString& id) {
+            if (id == m_currentMeetingId && !m_meetingUndo) attachMeetingUndo();
+        });
 
     connect(c, &tanara::AppController::recordingStateChanged, this,
             [this](tanara::RecordingState) { emit recordingChanged(); });
@@ -227,7 +236,85 @@ void ShellActions::setCurrentMeetingId(const QString& id)
     if (id == m_currentMeetingId)
         return;
     m_currentMeetingId = id;
+    attachMeetingUndo();
     emit currentMeetingIdChanged();
+}
+
+// ---- közös visszavonás (G7b) ----
+
+void ShellActions::attachMeetingUndo()
+{
+    tanara::AppController* c = m_controller;
+    tanara::MeetingUndoService* u = (c && !m_currentMeetingId.isEmpty()) ? c->meetingUndo(m_currentMeetingId) : nullptr;
+    if (u == m_meetingUndo && (u || m_meetingUndoConns.isEmpty()))
+        return;
+    for (const QMetaObject::Connection& conn : std::as_const(m_meetingUndoConns))
+        disconnect(conn);
+    m_meetingUndoConns.clear();
+    m_meetingUndo = u;
+    m_undoSeenCount = u ? u->count() : 0;
+    const QStringList texts = u ? u->texts() : QStringList();
+    m_undoSeenTop = texts.isEmpty() ? QString() : texts.last();
+    if (u) {
+        m_meetingUndoConns << connect(u, &tanara::MeetingUndoService::changed, this, [this] {
+            emit meetingUndoChanged();
+            // Egy művelet több jelet is adhat (a szerkesztő-lépés, majd az elnyelő résztvevő-lépés):
+            // a kör végén nézzük meg, mi lett a tetején.
+            if (m_undoCheckPending) return;
+            m_undoCheckPending = true;
+            QMetaObject::invokeMethod(this, &ShellActions::checkMeetingUndo, Qt::QueuedConnection);
+        });
+        m_meetingUndoConns << connect(u, &tanara::MeetingUndoService::undone, this,
+                                      [this](const QString& text, tanara::MeetingUndoService::Source source) {
+            emit meetingChangeUndone(text, int(source));
+        });
+        // A meeting törlésével a verem megszűnik.
+        m_meetingUndoConns << connect(u, &QObject::destroyed, this, [this] {
+            m_meetingUndoConns.clear();
+            m_meetingUndo = nullptr;
+            m_undoSeenCount = 0;
+            m_undoSeenTop.clear();
+            emit meetingUndoChanged();
+        });
+    }
+    emit meetingUndoChanged();
+}
+
+void ShellActions::checkMeetingUndo()
+{
+    m_undoCheckPending = false;
+    tanara::MeetingUndoService* u = m_meetingUndo;
+    if (!u) return;
+    const int count = u->count();
+    const QStringList texts = u->texts();
+    const QString top = texts.isEmpty() ? QString() : texts.last();
+    const bool posted = count > m_undoSeenCount || (count > 0 && count == m_undoSeenCount && top != m_undoSeenTop);
+    m_undoSeenCount = count;
+    m_undoSeenTop = top;
+    if (posted && u->canUndo() && !u->undoText().isEmpty())
+        emit meetingChangePosted(u->undoText(), int(u->undoSource()));
+}
+
+bool ShellActions::canUndoMeeting() const
+{
+    return m_meetingUndo && m_meetingUndo->canUndo();
+}
+
+QString ShellActions::meetingUndoText() const
+{
+    return m_meetingUndo ? m_meetingUndo->undoText() : QString();
+}
+
+bool ShellActions::undoMeeting()
+{
+    tanara::MeetingUndoService* u = m_meetingUndo;
+    if (!u) return false;
+    const bool ok = u->undo();
+    // A visszavonás nem „új lépés”: az állapotot most rögzítjük.
+    m_undoSeenCount = u->count();
+    const QStringList texts = u->texts();
+    m_undoSeenTop = texts.isEmpty() ? QString() : texts.last();
+    return ok;
 }
 
 void ShellActions::setCurrentTab(int index)
@@ -280,7 +367,9 @@ void ShellActions::toast(const QString& text, const QString& undoKey)
 
 void ShellActions::undoFromToast(const QString& undoKey)
 {
-    if (!undoKey.isEmpty())
+    if (undoKey == QLatin1String("meeting"))
+        undoMeeting();
+    else if (!undoKey.isEmpty())
         emit undoRequested(undoKey);
 }
 

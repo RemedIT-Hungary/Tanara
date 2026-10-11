@@ -257,6 +257,55 @@ private slots:
         m_shell->setPlayer(nullptr);
     }
 
+    // G7b: a kijelölt megbeszélés közös visszavonási verme — új lépés → meetingChangePosted
+    // (egy eseménykörön belül egyszer), visszavonás (Ctrl+Z / sáv / toast "meeting" kulcs) →
+    // meetingChangeUndone, és a visszavonás nem „új lépés”.
+    void sharedMeetingUndo()
+    {
+        const tanara::Meeting a = recording(QStringLiteral("Közös verem"));
+        const tanara::Meeting b = recording(QStringLiteral("Másik"));
+        QSignalSpy posted(m_shell.get(), &ShellActions::meetingChangePosted);
+        QSignalSpy undone(m_shell.get(), &ShellActions::meetingChangeUndone);
+        QVERIFY(!m_shell->hasMeetingUndo());
+        QVERIFY(!m_shell->undoMeeting());
+        m_shell->setCurrentMeetingId(a.id);
+        QVERIFY(m_shell->hasMeetingUndo());
+        QVERIFY(!m_shell->canUndoMeeting());
+
+        QVERIFY(!m_app->addParticipant(a.id, QStringLiteral("Fehér Gábor")).isEmpty());
+        QTRY_COMPARE(posted.count(), 1);
+        QCOMPARE(posted.at(0).at(0).toString(), QStringLiteral("Résztvevő felvéve: Fehér Gábor"));
+        QCOMPARE(posted.at(0).at(1).toInt(), 2);   // Source::Participants
+        QVERIFY(m_shell->canUndoMeeting());
+        QCOMPARE(m_shell->meetingUndoText(), QStringLiteral("Résztvevő felvéve: Fehér Gábor"));
+        m_app->setMeetingContextNote(a.id, QStringLiteral("Q4"));
+        QTRY_COMPARE(posted.count(), 2);
+        // Más megbeszélés lépése nem kerül ide.
+        m_app->setMeetingContextNote(b.id, QStringLiteral("más"));
+        QTest::qWait(20);
+        QCOMPARE(posted.count(), 2);
+
+        m_shell->undoFromToast(QStringLiteral("meeting"));
+        QCOMPARE(undone.count(), 1);
+        QCOMPARE(undone.at(0).at(0).toString(), QStringLiteral("Leírás módosítva"));
+        QVERIFY(m_app->store()->load(a.id).contextNote.isEmpty());
+        QVERIFY(m_shell->undoMeeting());
+        QCOMPARE(undone.count(), 2);
+        QVERIFY(m_app->participants(a.id).isEmpty());
+        QTest::qWait(20);
+        QCOMPARE(posted.count(), 2);
+        QVERIFY(!m_shell->canUndoMeeting());
+        QVERIFY(!m_shell->undoMeeting());
+
+        // Váltás: a másik megbeszélés verme; a rajta lévő lépés nem „új”.
+        m_shell->setCurrentMeetingId(b.id);
+        QVERIFY(m_shell->canUndoMeeting());
+        QTest::qWait(20);
+        QCOMPARE(posted.count(), 2);
+        m_shell->setCurrentMeetingId(QString());
+        QVERIFY(!m_shell->hasMeetingUndo());
+    }
+
     void importOpensPickerThenDialog()
     {
         QSignalSpy requested(m_shell.get(), &ShellActions::importDialogRequested);

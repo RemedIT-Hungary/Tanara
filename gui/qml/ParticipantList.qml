@@ -6,8 +6,10 @@ import QtQuick.Templates as T
 // 26 px avatar (beszélő-színű lágy kitöltés + gyűrű, monogram) · név 13.5/600 (150 px, alatta
 // opcionális alszöveg) · forrás-jelvények (20 px, sugár 4, sunken + 11 px ikon; ellentmondó =
 // szaggatott borderStrong, halvány; címke-javaslat = accentSoft) · beszédarány-sáv (a beszélő
-// vonalszínével) vagy „+ Hozzáadás” · ×. A lemondott meghívott 55 %; a javasolt személy
-// szaggatott avatarral, halvány névvel, „javasolt” alszöveggel.
+// vonalszínével) vagy „+ Hozzáadás” · ×. A lemondott meghívott és az átirat után nem hallott
+// (unheard: „nem hallottuk” jelvény) résztvevő 55 %; a javasolt személy szaggatott avatarral,
+// halvány névvel, „javasolt” alszöveggel. A × tartós (törlés / a javaslat elutasítása erre a
+// megbeszélésre); a közös visszavonás (Ctrl+Z, változás-sáv) hozza vissza.
 // A jelvény (13. döntés, „bizonyíték mindenhol, javítás helye mindenhol”): tooltipje a bizonyíték
 // magyarázata (source.detail); átirat után (a sornak van beszélő-kulcsa) kattintható, és a
 // szerkesztő „Miért ő?” paneljét nyitja arra a beszélőre (whyRequested). A névtelen sor
@@ -206,7 +208,8 @@ Rectangle {
                         ParticipantTrackChips {
                             id: trackChips
                             binder: root.trackBinder
-                            participantId: row.suggested ? "" : (row.modelData.id || "")
+                            // A nem hallott résztvevőnek nincs beszéde: nincs mit sávhoz kötni.
+                            participantId: row.suggested || row.modelData.unheard === true ? "" : (row.modelData.id || "")
                         }
                     }
                     RowLayout {
@@ -262,8 +265,9 @@ Rectangle {
                         iconName: "x"
                         iconSize: 13
                         iconColor: Theme.textMuted
-                        toolTipText: row.suggested ? qsTr("Nem volt ott (a javaslat eltűnik)")
-                                                   : qsTr("Nem volt ott: a jelölése törlődik, a sorai névtelenek lesznek")
+                        toolTipText: row.suggested ? qsTr("Nem volt ott: a javaslat ennél a megbeszélésnél nem jön elő (Ctrl+Z visszahozza)")
+                                   : row.modelData.unheard === true ? qsTr("Törlés a résztvevők közül (Ctrl+Z visszavonja)")
+                                   : qsTr("Nem volt ott: törlés a résztvevők közül, a sorai névtelenek lesznek (Ctrl+Z visszavonja)")
                         onClicked: root.removeRequested(row.modelData.id)
                     }
                 }
