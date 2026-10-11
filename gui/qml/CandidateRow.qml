@@ -5,6 +5,8 @@ import QtQuick
 // semleges, szaggatott), név 13.5/600 + alsor („86 sor itt" / „most ő" / „12 megbeszélés"),
 // alatta a bizonyíték-chipek (EvidenceChip), jobbra a gyorsbillentyű (1–3). A másik sávon
 // beszélő jelölt és a mostani beszélő halvány (60 %), de választható.
+// quickTagLabel: nem üres → a chipek végén szaggatott accent „+ #Nordvik" (a megbeszélés címkéje
+// még nincs a személyen): egy kattintás ráteszi (quickTagClicked), a sor választása nélkül.
 Item {
     id: root
 
@@ -17,9 +19,11 @@ Item {
     property bool highlighted: false
     // A támogató bizonyíték accent színnel (a legjobb jelöltnél); különben semleges.
     property bool strongEvidence: false
+    property string quickTagLabel: ""
     readonly property alias hovered: hover.hovered
 
     signal clicked()
+    signal quickTagClicked()
 
     implicitHeight: Math.max(38, content.implicitHeight + 14)
     opacity: dimmed ? 0.6 : 1
@@ -79,7 +83,7 @@ Item {
             }
         }
         Flow {
-            visible: root.evidence.length > 0
+            visible: root.evidence.length > 0 || root.quickTagLabel !== ""
             width: parent.width
             spacing: 4
             Repeater {
@@ -94,6 +98,37 @@ Item {
                     HoverHandler { id: chipHover }
                     TToolTip { visible: chipHover.hovered && (modelData.detail || "") !== ""; text: modelData.detail || ""; delay: 300 }
                 }
+            }
+            // Gyors címke: szaggatott accent chip (a sor kattintását nem váltja ki).
+            Item {
+                id: quickTag
+                objectName: "quickTagChip"
+                visible: root.quickTagLabel !== ""
+                width: quickLabel.implicitWidth + 12
+                height: 20
+                activeFocusOnTab: visible
+                Accessible.role: Accessible.Button
+                Accessible.name: root.quickTagLabel
+                Keys.onSpacePressed: root.quickTagClicked()
+                Keys.onReturnPressed: root.quickTagClicked()
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusTag
+                    color: quickHover.hovered ? Theme.accentSoft : "transparent"
+                    TFocusRing { visible: quickTag.activeFocus; targetRadius: parent.radius }
+                }
+                TDashedRect { anchors.fill: parent; radius: Theme.radiusTag; color: Theme.accent }
+                TLabel {
+                    id: quickLabel
+                    anchors.centerIn: parent
+                    text: root.quickTagLabel
+                    color: Theme.accent
+                    font.pixelSize: Theme.fontMicro + 1
+                    font.weight: Theme.weightSemiBold
+                }
+                HoverHandler { id: quickHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: root.quickTagClicked() }
+                TToolTip { visible: quickHover.hovered; text: qsTr("Rátesszük a címkét a személyre — egy kattintás, visszavonható") }
             }
         }
     }
@@ -121,5 +156,13 @@ Item {
     }
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-    TapHandler { onTapped: root.clicked() }
+    TapHandler {
+        id: rowTap
+        // A gyors címke-chipre eső kattintás nem választja a jelöltet. A lenyomáskor döntünk: a
+        // chip a saját kattintására eltűnik, mire ez a kezelő a felengedést megkapja.
+        property bool onQuickTag: false
+        onPressedChanged: if (pressed) onQuickTag = quickTag.visible
+                                                   && quickTag.contains(quickTag.mapFromItem(root, point.position))
+        onTapped: if (!onQuickTag) root.clicked()
+    }
 }

@@ -9,6 +9,8 @@
 // ezek elhúzzák, így a rendes ítélet nem jelzi őket. Ha Anna 3 valódi sorát megerősítjük, az
 // újraellenőrzés pontosan ezt a 3 sort találja kétesnek, Béla javaslattal.
 //
+#include "tanara/voiceid/VoiceModelRegistry.h"
+
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -1011,6 +1013,32 @@ private slots:
         QCOMPARE(r.confirmedLines, 2);
         QCOMPARE(r.referenceSummary(),
                  QStringLiteral("Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat."));
+        // A visszajelzés alapja (T5): megerősített sorok, tárolt minták (ebből itteni), modell.
+        QCOMPARE(r.localPrints, 1);
+        QCOMPARE(r.priorPrints, 1);
+        const QString model = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId())->displayName;
+        QCOMPARE(r.models, QStringList{model});
+        QCOMPARE(r.basisSummary(),
+                 QStringLiteral("Alapja: 2 megerősített sor · 2 tárolt minta (ebből 1 erről a megbeszélésről) · modell: %1.")
+                     .arg(model));
+    }
+
+    // A „két nagyon hasonló hang" figyelmeztetés szövege (magyar tizedesvessző, a legerősebb pár).
+    void recheck_similarVoicesNote()
+    {
+        QVERIFY(SpeakerEditor::similarVoicesNote({}).isEmpty());
+        SpeakerEditor::SimilarVoices a;
+        a.nameA = QStringLiteral("Fehér Gábor");
+        a.nameB = QStringLiteral("Varga Árpád");
+        a.similarity = 0.9234;
+        QCOMPARE(SpeakerEditor::similarVoicesNote({a}),
+                 QStringLiteral("Figyelem: Fehér Gábor és Varga Árpád hangja nagyon hasonló (0,92), "
+                                "kettejük sorait érdemes átnézni."));
+        SpeakerEditor::SimilarVoices b = a;
+        b.similarity = 0.91;
+        QVERIFY(SpeakerEditor::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
+        SpeakerEditor::RecheckResult none;
+        QVERIFY(none.basisSummary().isEmpty());     // nem futott
     }
 
     void editor_recheckWithoutPrints_noSummary()
@@ -1022,6 +1050,9 @@ private slots:
         QCOMPARE(r.references.size(), 1);
         QCOMPARE(r.references[0].lines, 3);
         QVERIFY(r.referenceSummary().isEmpty());
+        QCOMPARE(r.storedPrints(), 0);
+        QVERIFY(r.basisSummary().startsWith(QStringLiteral("Alapja: 3 megerősített sor · tárolt minta nélkül · modell")));
+        QVERIFY(r.similar.isEmpty());       // két jól elkülönülő hang
     }
 
     void editor_pairRecheckUsesStoredVoiceprints()

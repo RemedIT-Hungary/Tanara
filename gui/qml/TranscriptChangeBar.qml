@@ -378,7 +378,7 @@ Rectangle {
                 text: qsTr("Átnézés")
                 strong: true
                 toolTipText: qsTr("Csak a két beszélő sorait mérem a megerősített soraik hangjához; a kétségeseket "
-                                  + "bizonytalannak jelölöm (visszavonható: Ctrl+Z)")
+                                  + "az Átnézendő szűrőbe teszem (visszavonható: Ctrl+Z)")
                 onClicked: root.vm.acceptPairOffer()
             }
             BarAction {

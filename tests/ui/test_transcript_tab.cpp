@@ -86,6 +86,7 @@ ApplicationWindow {
         onVoiceprintClicked: (key, anchor) => tab.openVoiceprintPopover(key, anchor)
         onExpandRequested: tab.editor.lanesExpanded = true
         onCollapseRequested: tab.editor.lanesExpanded = false
+        similarMarks: tab.similarMarks
     }
 }
 )";
@@ -747,6 +748,118 @@ private slots:
         QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
         undoKey();
         QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
+    }
+
+    // T3: a sáv-chipek kapcsolók — több sáv is jelölhető, minden kattintás egy visszavonási lépés.
+    void speakerWhy_multiTrackToggle()
+    {
+        load(QStringLiteral("v3"));
+        m_vm->setRailVisible(true);
+        pump();
+        const QString key = laneKey(1);
+        click(center(visuals("laneHead").at(1)));
+        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QTRY_VERIFY(visual("tracksBlock"));
+        click(center(visuals("trackChip").at(1)));          // hívás
+        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+        click(center(visuals("trackChip").at(0)));          // + mikrofon: mindkettő
+        QCOMPARE(m_vm->editor()->trackAssignment(key),
+                 (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
+        QTRY_VERIFY(visuals("trackChip").at(0)->property("checked").toBool());
+        QVERIFY(visuals("trackChip").at(1)->property("checked").toBool());
+        click(center(visuals("trackChip").at(1)));          // − hívás
+        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("mic")});
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("speakerWhyPopover"));
+        undoKey();
+        QCOMPARE(m_vm->editor()->trackAssignment(key),
+                 (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
+        undoKey();
+        QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
+    }
+
+    // T2: gyors „+ #Nordvik" a „Miért ő?" címke-sorában és a jelölt-sorokon: egy kattintás
+    // ráteszi, visszavonható toast jön (undoKey "tags"), az ajánlat eltűnik; a jelölt nem választódik.
+    void speakerWhy_quickTag()
+    {
+        load(QStringLiteral("v3"));
+        m_vm->setRailVisible(true);
+        pump();
+        const QString eszter = keyOfName(QStringLiteral("Molnár Eszter"));
+        QVERIFY(!eszter.isEmpty());
+        QMetaObject::invokeMethod(m_tab, "openSpeakerPopover", Q_ARG(QVariant, eszter),
+                                  Q_ARG(QVariant, QVariant::fromValue<QObject*>(m_tab)), Q_ARG(QVariant, false));
+        QTRY_VERIFY(popupOpen("speakerWhyPopover"));
+        QTRY_VERIFY(visual("quickTagLink"));
+        QCOMPARE(textOf("quickTagLink"), QStringLiteral("+ #Nordvik ráteszem"));
+        QVERIFY(visual("fixLink"));                         // a „Címkéi" link marad
+        click(center(visual("quickTagLink")));
+        QVERIFY(m_vm->editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Molnár Eszter címkéje lett: #Nordvik")));
+        QTRY_VERIFY(!visual("quickTagLink"));
+        QVERIFY(popupOpen("speakerWhyPopover"));            // a panel nyitva marad
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("speakerWhyPopover"));
+    }
+
+    // T2 a sor-panelen (E1): a jelölt chipje ráteszi a címkét, a sort NEM helyezi át.
+    void linePopover_quickTagChip()
+    {
+        load(QStringLiteral("v3"));
+        reveal(2);
+        const QString before = speakerOf(2);
+        click(center(nameOf(2)));
+        QTRY_VERIFY(popupOpen("linePopover"));
+        type(QStringLiteral("moln"));
+        QQuickItem* row = nullptr;
+        QTRY_VERIFY((row = choice("speakerChoice", QStringLiteral("Molnár Eszter"))));
+        QQuickItem* chip = row->findChild<QQuickItem*>(QStringLiteral("quickTagChip"));
+        QVERIFY(chip && chip->isVisible());
+        QCOMPARE(chip->property("width").toReal() > 0, true);
+        click(center(chip));
+        QVERIFY(m_vm->editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QCOMPARE(speakerOf(2), before);
+        QVERIFY(popupOpen("linePopover"));
+        QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("#Nordvik")));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(popupGone("linePopover"));
+    }
+
+    // D3: a sor-panel alján halk „Hanglenyomat-minta ebből a sorból (N mp)" sor; kattintásra minta.
+    void linePopover_sampleRow()
+    {
+        load(QStringLiteral("v3"));
+        reveal(0);
+        QQuickItem* name = nameOf(0);
+        QVERIFY(name);
+        click(center(name));
+        QTRY_VERIFY(popupOpen("linePopover"));
+        QTRY_VERIFY(visual("lineSampleRow"));
+        const QString text = textOf("lineSampleLink");
+        QVERIFY2(text.contains(QStringLiteral("anglenyomat-minta ebből a sorból (")), qPrintable(text));
+        const QString person = m_vm->speakerInfo(speakerOf(0)).value(QStringLiteral("personName")).toString();
+        const int before = printCount(person);
+        // A teljes beszélő hatókörén a sor nem látszik (ott a hanglenyomat-panel él).
+        click(center(visual("scopeSpeaker")));
+        QTRY_VERIFY(!visual("lineSampleRow"));
+        click(center(visual("scopeLine")));
+        QTRY_VERIFY(visual("lineSampleRow"));
+        click(center(visual("lineSampleRow")));
+        QTRY_VERIFY(popupGone("linePopover"));
+        QTRY_COMPARE(printCount(person), before + 1);
+        QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Hanglenyomat-minta készült")));
+    }
+
+    // T1: az új személyhez hasonló sorok accent jelei a térkép-dokkon (MapDock.similarMarks).
+    void mapDock_similarMarks()
+    {
+        load(QStringLiteral("v3"));
+        QVERIFY(visuals("mapSimilarMark").isEmpty());
+        m_vm->applyDemoState(QStringLiteral("newPersonSimilar"));
+        QTRY_VERIFY_WITH_TIMEOUT(!m_vm->similarMarks().isEmpty(), 15000);
+        QTRY_COMPARE(int(visuals("mapSimilarMark").size()), int(m_vm->similarMarks().size() / 2));
+        m_vm->setSimilarShown(false);
+        QTRY_VERIFY(visuals("mapSimilarMark").isEmpty());
     }
 
     // A sáv „Hasonló N sor is" és „Megmutatom" művelete (rejtett sín mellett, a névről indulva).

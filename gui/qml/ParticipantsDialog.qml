@@ -376,19 +376,34 @@ Item {
                 Layout.bottomMargin: 16
                 spacing: 10
                 TIcon {
-                    visible: info.text !== ""
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 1
                     name: "info"
                     size: 15
                     color: Theme.textMuted
                 }
-                TLabel {
-                    id: info
-                    objectName: "participantsInfo"
+                ColumnLayout {
                     Layout.fillWidth: true
-                    muted: true
-                    wrapMode: Text.Wrap
-                    font.pixelSize: Theme.fontCaption
-                    text: vm.infoText
+                    spacing: 2
+                    TLabel {
+                        id: info
+                        objectName: "participantsInfo"
+                        visible: text !== ""
+                        Layout.fillWidth: true
+                        muted: true
+                        wrapMode: Text.Wrap
+                        font.pixelSize: Theme.fontCaption
+                        text: vm.infoText
+                    }
+                    // K1: a címke csak rangsorol, a döntés a hangé (UX-terv 4.).
+                    TLabel {
+                        objectName: "participantsRule"
+                        Layout.fillWidth: true
+                        muted: true
+                        wrapMode: Text.Wrap
+                        font.pixelSize: Theme.fontCaption
+                        text: vm.footerText
+                    }
                 }
                 TButton {
                     objectName: "participantsSkip"

@@ -670,7 +670,7 @@ private slots:
         connect(m_shell.get(), &ShellActions::confirmRequested, this,
                 [&](const QString& title, const QString& text, const QString& label, bool danger) {
             shown << title + QLatin1Char('|') + label + (danger ? QStringLiteral("|danger") : QString());
-            QVERIFY(text.contains(QStringLiteral("bizonytalanként jelölöm meg")));
+            QVERIFY(text.contains(QStringLiteral("az Átnézendő szűrőbe teszem")));
             QTimer::singleShot(10, m_shell.get(), [&] { m_shell->resolveConfirm(answer); });
         });
 
@@ -686,7 +686,10 @@ private slots:
         m_shell->showTab(2);
         m_shell->identifyParticipants(m.id);
         QCOMPARE(shown, QStringList{QStringLiteral("Mindenki azonosítva|Újraellenőrzés")});
-        QCOMPARE(m_toasts.last(), QStringLiteral("3 kétséges sort jelöltem meg — a Bizonytalan szűrőben találod."));
+        // T5: a toast megmondja, mire támaszkodott (megerősített sorok, tárolt minták, modell).
+        QVERIFY2(m_toasts.last().startsWith(QStringLiteral("3 kétséges sort jelöltem meg — az Átnézendő szűrőben találod. "
+                                                           "Alapja: 3 megerősített sor · tárolt minta nélkül")),
+                 qPrintable(m_toasts.last()));
         QCOMPARE(ed->uncertainUtteranceIds(),
                  (QStringList{QStringLiteral("u15000"), QStringLiteral("u30000"), QStringLiteral("u45000")}));
         QCOMPARE(m_shell->currentTab(), 1);              // az Átirat fülre vált
@@ -702,7 +705,8 @@ private slots:
         answer = true;
         QVERIFY(ed->confirmUtterances(ed->uncertainUtteranceIds()));
         m_shell->recheckSpeakers(m.id);
-        QCOMPARE(m_toasts.last(), QStringLiteral("A megerősített sorok alapján nem találtam kétséges sort."));
+        QVERIFY2(m_toasts.last().startsWith(QStringLiteral("A megerősített sorok alapján nem találtam kétséges sort. Alapja: ")),
+                 qPrintable(m_toasts.last()));
     }
 
     void identifyBeforeTranscriptUsesThePreview()

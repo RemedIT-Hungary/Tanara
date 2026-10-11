@@ -15,6 +15,7 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHash>
+#include <QLocale>
 #include <QPair>
 #include <QSet>
 #include <QThread>
@@ -1842,6 +1843,16 @@ SpeakerEditor::RecheckResult SpeakerEditor::recheckFromConfirmed()
         const ReferenceInfo& info = a.refs.value(g);
         if (info.refLocal() || info.refPrior()) r.references.append(d->referenceOf(groupKey[g], info));
     }
+    // A visszajelzéshez: a beszállt tárolt minták, a használt modellek és a nagyon hasonló hangok.
+    for (const SpeakerReference& ref : std::as_const(r.references)) {
+        r.localPrints += ref.localPrints;
+        r.priorPrints += ref.priorPrints;
+    }
+    for (const QString& id : std::as_const(d->modelIds)) {
+        const auto spec = VoiceModelRegistry::spec(id);
+        r.models << (spec && !spec->displayName.isEmpty() ? spec->displayName : id);
+    }
+    r.similar = similarVoices();
 
     Step s = d->begin();
     for (int i = 0; i < d->lines.size(); ++i) {
@@ -1882,6 +1893,41 @@ QString SpeakerEditor::referenceSummary(const QVector<SpeakerReference>& refs)
     }
     if (parts.isEmpty()) return {};
     return tr("Referencia: %1.").arg(parts.join(QStringLiteral(", ")));
+}
+
+QString SpeakerEditor::recheckBasisSummary(const RecheckResult& r)
+{
+    if (!r.ran) return {};
+    QStringList parts;
+    parts << tr("%n megerősített sor", nullptr, r.confirmedLines);
+    if (r.storedPrints() > 0) {
+        QString prints = tr("%n tárolt minta", nullptr, r.storedPrints());
+        if (r.localPrints > 0 && r.priorPrints > 0)
+            prints += QLatin1Char(' ') + tr("(ebből %1 erről a megbeszélésről)").arg(r.localPrints);
+        else if (r.localPrints > 0)
+            prints += QLatin1Char(' ') + tr("(mind erről a megbeszélésről)");
+        else
+            prints += QLatin1Char(' ') + tr("(korábbi megbeszélésekből)");
+        parts << prints;
+    } else {
+        parts << tr("tárolt minta nélkül");
+    }
+    if (!r.models.isEmpty())
+        parts << (r.models.size() == 1 ? tr("modell: %1").arg(r.models.first())
+                                       : tr("modellek: %1").arg(r.models.join(QStringLiteral(", "))));
+    return tr("Alapja: %1.").arg(parts.join(QStringLiteral(" · ")));
+}
+
+QString SpeakerEditor::similarVoicesNote(const QVector<SimilarVoices>& similar)
+{
+    if (similar.isEmpty()) return {};
+    const SimilarVoices& v = similar.first();
+    const QString value = QLocale(QLocale::Hungarian).toString(v.similarity, 'f', 2);
+    QString text = tr("Figyelem: %1 és %2 hangja nagyon hasonló (%3), kettejük sorait érdemes átnézni.")
+                       .arg(v.nameA, v.nameB, value);
+    if (similar.size() > 1)
+        text += QLatin1Char(' ') + tr("(További %n hasonló pár.)", nullptr, int(similar.size()) - 1);
+    return text;
 }
 
 // ---- páronkénti átnézés -----------------------------------------------------
@@ -2379,6 +2425,15 @@ void SpeakerEditor::setPersonTagsProvider(PersonTagsFn fn)
     d->scheduleReview();
 }
 
+QStringList SpeakerEditor::meetingTagIds() const { return d->meetingTags; }
+
+QStringList SpeakerEditor::personTagIds(const QString& personName) const
+{
+    return d->personTags && !personName.trimmed().isEmpty() ? d->personTags(personName) : QStringList();
+}
+
+void SpeakerEditor::notifyPersonTagsChanged() { d->scheduleReview(); }
+
 QVector<ReviewGroup> SpeakerEditor::reviewGroups() const { return d->review.groups; }
 bool SpeakerEditor::isReviewRunning() const { return d->reviewRunning; }
 SideReport SpeakerEditor::sideReport() const { return d->review.sides; }
@@ -2452,6 +2507,33 @@ QVector<Evidence> SpeakerEditor::whyNot(const QString& utteranceId) const
 QVector<Evidence> SpeakerEditor::speakerEvidence(const QString& speakerKey) const
 {
     return ranking::selfEvidence(d->review.context, speakerKey);
+}
+
+QVector<SpeakerEditor::SimilarVoices> SpeakerEditor::similarVoices() const
+{
+    QVector<SimilarVoices> out;
+    QSet<QString> seen;
+    const ranking::RankContext& ctx = d->review.context;
+    for (const ranking::SpeakerProfile& p : ctx.speakers) {
+        if (p.key.isEmpty() || !d->visible(p.key)) continue;
+        for (const Evidence& e : ranking::similarityWarnings(ctx, p.key)) {
+            const QString other = e.fixTarget.mid(5);   // "pair:<key>"
+            if (other.isEmpty() || !d->visible(other)) continue;
+            const QString pair = p.key < other ? p.key + QLatin1Char('|') + other : other + QLatin1Char('|') + p.key;
+            if (seen.contains(pair)) continue;
+            seen.insert(pair);
+            SimilarVoices v;
+            v.keyA = p.key;
+            v.nameA = d->displayOf(p.key);
+            v.keyB = other;
+            v.nameB = d->displayOf(other);
+            v.similarity = e.value;
+            out.append(v);
+        }
+    }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const SimilarVoices& a, const SimilarVoices& b) { return a.similarity > b.similarity; });
+    return out;
 }
 
 } // namespace tanara

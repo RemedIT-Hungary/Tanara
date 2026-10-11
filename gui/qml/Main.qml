@@ -778,6 +778,8 @@ ApplicationWindow {
                                      ? summaryTab.sourceMarks : []
                         sectionBands: shellActions.currentTab === 3 && summaryTab && ("sectionBands" in summaryTab)
                                       ? summaryTab.sectionBands : []
+                        // T1 / E4: az új személyhez hasonló sorok accent jelei (csak az Átirat fülön).
+                        similarMarks: shellActions.currentTab === 1 ? transcriptTab.similarMarks : []
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
                             else playerController.seek(transcriptTab.editor.timeAtFraction(fraction))

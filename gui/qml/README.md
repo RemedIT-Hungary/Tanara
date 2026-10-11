@@ -323,7 +323,7 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 | Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `overviewRecorded` (U6: recorded, not transcribed, `Átírás indítása` in the step) · `overviewRecordedError` (U6: transcription failed) · `overviewTranscribing` (A1: first transcription running, stages + `Megszakítás` in the step) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
 | Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
 | Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` · `overviewTranscribing` |
-| Map dock alone | `MapDock:1100x200` | (invented lanes) |
+| Map dock alone | `MapDock:1100x200` | (invented lanes) · `similarMarks` (E4: accent ticks of the lines similar to the new person) |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
 | Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` |
 | Átirat (Javítás) | `TranscriptTab:1100x760:demoState="fixLinePopover"` | `markers` · `fixLinePopover` (E1) · `reviewGroups` · `reviewExpanded` (E2) · `contaminatedCore` · `speakerWhy` (E3) · `newPersonSimilar` (E4) — plus the older ones listed in the header of `TranscriptTab.qml` |

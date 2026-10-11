@@ -138,14 +138,33 @@ public:
     // magos / lenyomatos beszélők; üres, ha egyik referencia sem használt lenyomatot (akkor
     // nincs újdonság a megszokotthoz képest).
     static QString referenceSummary(const QVector<SpeakerReference>& refs);
+    // Két nagyon hasonló hangú beszélő (a megerősített magjaik cosine-ja ≥ ranking::kSimilarWarn) —
+    // ugyanaz az érték, amit a „Miért ő?" „Figyelem:" sora mutat (ranking::similarityWarnings).
+    struct SimilarVoices {
+        QString keyA, nameA;
+        QString keyB, nameB;
+        double  similarity = 0.0;
+    };
     struct RecheckResult {
         int flagged = 0;                    // ennyi sort jelölt kétségesnek
         int speakersWithConfirmedCore = 0;  // ennyi beszélőnél épült centroid a zárolt soraiból
         int confirmedLines = 0;             // ennyi zárolt sor alkotta ezeket a magokat
         bool ran = false;                   // lefutott-e (canRecheck volt-e)
         QVector<SpeakerReference> references;   // beszélőnként a referencia (a magos / lenyomatosak)
+        // A visszajelzéshez: mire támaszkodott az újraellenőrzés.
+        int localPrints = 0;                // a referenciába beszállt tárolt minták: erről a megbeszélésről
+        int priorPrints = 0;                //   … és korábbiak (más megbeszélésből)
+        QStringList models;                 // a használt hangmodellek megjelenítendő neve (ábécérendben id szerint)
+        QVector<SimilarVoices> similar;     // nagyon hasonló hangú beszélőpárok (csökkenő hasonlóság)
+        int storedPrints() const { return localPrints + priorPrints; }
         QString referenceSummary() const { return SpeakerEditor::referenceSummary(references); }
+        // „Alapja: 23 megerősített sor · 5 tárolt minta (ebből 2 erről a megbeszélésről) · modell: CAM++."
+        QString basisSummary() const { return SpeakerEditor::recheckBasisSummary(*this); }
+        // „Figyelem: Fehér Gábor és Varga Árpád hangja nagyon hasonló (0,92) …" — üres, ha nincs ilyen pár.
+        QString similarityNote() const { return SpeakerEditor::similarVoicesNote(similar); }
     };
+    static QString recheckBasisSummary(const RecheckResult& r);
+    static QString similarVoicesNote(const QVector<SimilarVoices>& similar);
     RecheckResult recheckFromConfirmed();
     // Futtatható-e: van embedding, nem fut a hang-elemzés, és legalább egy beszélőnek van
     // legalább kMinSpeakerLines megerősített / javított (embeddelt) sora.
@@ -237,6 +256,12 @@ public:
     void setActivityProvider(ActivityProvider provider);
     // A személy-címkék (a D szelet adja). A fő szálon hívódik.
     void setPersonTagsProvider(PersonTagsFn fn);
+    // A megbeszélés címkéi (Meeting::tagIds, betöltéskor) és egy személy címkéi a fenti
+    // forrásból (üres, ha nincs forrás) — a gyors „+ #Címke" ajánlathoz.
+    QStringList meetingTagIds() const;
+    QStringList personTagIds(const QString& personName) const;
+    // A személy címkéi változtak (pl. gyors „+ #Címke"): a jelöltek / bizonyítékok újraszámolása.
+    void notifyPersonTagsChanged();
 
     // A legutóbbi háttér-elemzés csoportjai (reviewGroupsChanged jelzi, ha frissült). Minden
     // szerkesztés / visszavonás / embedding-futás után magától újraszámolódik.
@@ -257,6 +282,8 @@ public:
     QVector<Evidence> whyNot(const QString& utteranceId) const;
     // „Miért ő?": a beszélő mellett / ellen szóló bizonyítékok.
     QVector<Evidence> speakerEvidence(const QString& speakerKey) const;
+    // A legutóbbi elemzés nagyon hasonló hangú beszélőpárjai (csökkenő hasonlóság szerint).
+    QVector<SimilarVoices> similarVoices() const;
     // A legutóbbi sáv-oldal elemzés (inaktív, amíg nem futott / nincs két oldal).
     SideReport sideReport() const;
 

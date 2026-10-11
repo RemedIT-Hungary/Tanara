@@ -5,12 +5,16 @@ import QtQuick
 // helye (accent link: Sáv-beosztás · Minták · Címkéi · Módosítás · Kettejük átnézése).
 //   EvidenceReason { evidence: editorVm.whyNot(id)[0]; onFixClicked: ev => … }
 // `evidence`: a TranscriptEditorViewModel.evidenceMap() térképe.
+// quickLabel: nem üres → a javítás-link előtt egy kattintásos gyors művelet (a címke-sorban:
+// „+ #Nordvik ráteszem", quickClicked) — a „Címkéi" link mellette marad.
 Item {
     id: root
 
     property var evidence: ({})
     property bool fixEnabled: true
+    property string quickLabel: ""
     signal fixClicked(var evidence)
+    signal quickClicked()
 
     readonly property string kind: evidence.kind || ""
     readonly property string polarity: evidence.polarity || "neutral"
@@ -45,13 +49,31 @@ Item {
         id: label
         x: 27
         y: 5
-        width: root.width - x - (fix.visible ? fix.implicitWidth + 14 : 4)
+        width: root.width - x - (fix.visible ? fix.implicitWidth + 14 : 4) - (quick.visible ? quick.implicitWidth + 12 : 0)
         wrapMode: Text.Wrap
         textFormat: Text.StyledText
         font.pixelSize: Theme.fontSmall
         cssLineHeight: 1.4
         text: "<span style=\"font-weight:500\">" + root.escaped(root.evidence.label) + "</span> "
               + "<font color=\"" + Theme.textMuted + "\">" + root.escaped(root.evidence.sentence || root.evidence.text) + "</font>"
+    }
+    TLabel {
+        id: quick
+        objectName: "quickTagLink"
+        visible: root.quickLabel !== ""
+        anchors.right: fix.visible ? fix.left : parent.right
+        anchors.rightMargin: fix.visible ? 12 : 4
+        y: 5
+        text: root.quickLabel
+        color: Theme.accent
+        font.pixelSize: Theme.fontSmall - 0.5
+        font.weight: Theme.weightSemiBold
+        font.underline: quickHover.hovered
+        HoverHandler { id: quickHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: root.quickClicked() }
+        TToolTip { visible: quickHover.hovered; text: qsTr("Egy kattintás, visszavonható") }
+        Accessible.role: Accessible.Button
+        Accessible.name: text
     }
     TLabel {
         id: fix

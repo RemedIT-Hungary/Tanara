@@ -10,6 +10,9 @@ import QtQuick.Templates as T
 //   MIÉRT NEM X?: a mostani beszélő ellen szóló okok, mindegyik mellett a javítás helye
 //   (Sáv-beosztás → a beszélő „Miért ő?" panelje a sáv-chipekkel; Minták → hanglenyomat).
 //   „Új személy ebből a sorból…": név megadása (üresen: új névtelen résztvevő).
+//   Alul halkan: „Hanglenyomat-minta ebből a sorból (N mp)" — bizonytalan soron „Jó így +
+//   hanglenyomat-minta…" (a jobb klikkes menüpont is megmarad); a jelölt-sorokon gyors
+//   „+ #Címke", ha a megbeszélés címkéje még nincs a személyen.
 // Minden választás egy visszavonási lépés; a hívó (TranscriptTab) kéri a megerősítést.
 TPopover {
     id: control
@@ -36,6 +39,8 @@ TPopover {
     // A teljes beszélő „Miért ő?" panelje (a „Miért ő?" linkről, a Sáv-beosztás javításról).
     signal speakerWhyRequested(string speakerKey, bool tracks)
     signal voiceprintRequested(string speakerKey)
+    // Gyors címke került egy személyre: a hívó visszavonható toastot mutat (undoKey "tags").
+    signal tagAdded(string text)
 
     width: 390
     padding: 0
@@ -56,6 +61,25 @@ TPopover {
     property int whyRevision: 0
     // A billentyűzettel kiemelt sor: 0…candidates.count-1 a jelöltek, utána a „Másik személy" lista.
     property int currentIndex: -1
+    // „Hanglenyomat-minta ebből a sorból" (D3): { ok, reason, seconds, personName, confirmFirst }.
+    readonly property var sampleInfo: scope === "line" && editor && utteranceId !== "" && whyRevision >= 0
+                                      ? editor.lineSampleInfo(utteranceId) : ({})
+    readonly property bool sampleShown: scope === "line" && !naming && !typed && (sampleInfo.personName || "") !== ""
+
+    function quickTagFor(personName) {
+        return editor && personName && whyRevision >= 0 ? editor.quickTagFor(personName) : ({})
+    }
+    function addQuickTag(personName, tag) {
+        if (!tag || !tag.tagId || !editor.addQuickTag(personName, tag.tagId)) return
+        whyRevision++
+        tagAdded(qsTr("%1 címkéje lett: #%2").arg(personName).arg(tag.name))
+    }
+    function createSample() {
+        if (sampleInfo.ok !== true) return
+        const id = utteranceId
+        close()
+        editor.createVoiceprintFromLine(id)
+    }
 
     function refresh() {
         info = editor ? editor.speakerInfo(speakerKey) : ({})
@@ -361,7 +385,7 @@ TPopover {
             width: parent.width
             // A fej, a kereső, az „Új személy" sor és a lábléc mellett a lista a többi helyet kapja
             // (a hívó a panelt feljebb tolja, ha a sor alatt nem fér el).
-            readonly property real maxHeight: T.Overlay.overlay ? T.Overlay.overlay.height - 2 * control.margins - 236 : 420
+            readonly property real maxHeight: T.Overlay.overlay ? T.Overlay.overlay.height - 2 * control.margins - 236 - sampleRow.height : 420
             height: Math.min(bodyColumn.implicitHeight, Math.max(160, maxHeight))
             contentHeight: bodyColumn.implicitHeight
             clip: true
@@ -400,6 +424,9 @@ TPopover {
                             dimmed: model.dimmed
                             strongEvidence: index === 0 && !model.current
                             highlighted: control.currentIndex === index
+                            readonly property var quick: model.current ? ({}) : control.quickTagFor(model.personName)
+                            quickTagLabel: quick.tagId ? quick.label : ""
+                            onQuickTagClicked: control.addQuickTag(model.personName, quick)
                             onClicked: control.chooseCandidate(index)
                         }
                     }
@@ -559,6 +586,65 @@ TPopover {
                     muted: true
                     font.pixelSize: Theme.fontCaption
                 }
+            }
+        }
+
+        // ---- „Hanglenyomat-minta ebből a sorból" (D3): halk sor; nem mintázható sornál az ok ----
+        Item {
+            id: sampleRow
+            objectName: "lineSampleRow"
+            visible: control.sampleShown
+            readonly property bool ok: control.sampleInfo.ok === true
+            width: parent.width
+            height: visible ? 32 : 0
+            activeFocusOnTab: visible && ok
+            Accessible.role: Accessible.Button
+            Accessible.name: sampleLabel.text
+            Keys.onSpacePressed: control.createSample()
+            Keys.onReturnPressed: control.createSample()
+            TDivider { width: parent.width }
+            Rectangle {
+                anchors.fill: parent
+                anchors.topMargin: 1
+                color: sampleHover.hovered && sampleRow.ok ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                TFocusRing { visible: sampleRow.activeFocus; targetRadius: 0 }
+            }
+            Row {
+                x: 14
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                opacity: sampleRow.ok ? 1 : 0.6
+                TIcon { anchors.verticalCenter: parent.verticalCenter; name: "fingerprint"; size: 13; color: Theme.textMuted }
+                TLabel {
+                    id: sampleLabel
+                    objectName: "lineSampleLink"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: control.sampleInfo.confirmFirst === true
+                          ? qsTr("Jó így + hanglenyomat-minta ebből a sorból (%1 mp)").arg(control.sampleInfo.seconds || 0)
+                          : qsTr("Hanglenyomat-minta ebből a sorból (%1 mp)").arg(control.sampleInfo.seconds || 0)
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    font.underline: sampleHover.hovered && sampleRow.ok
+                }
+                TLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !sampleRow.ok && (control.sampleInfo.reason || "") !== ""
+                    text: control.sampleInfo.reason || ""
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, sampleRow.width - 14 - sampleLabel.implicitWidth - 13 - 18 - 14)
+                }
+            }
+            HoverHandler { id: sampleHover; cursorShape: sampleRow.ok ? Qt.PointingHandCursor : Qt.ArrowCursor }
+            TapHandler { enabled: sampleRow.ok; onTapped: control.createSample() }
+            TToolTip {
+                visible: sampleHover.hovered
+                text: sampleRow.ok
+                      ? (control.sampleInfo.confirmFirst === true
+                         ? qsTr("A sort megerősítem („Jó így”), és a hangja %1 hanglenyomat-mintája lesz").arg(control.sampleInfo.personName)
+                         : qsTr("A sor hangja %1 hanglenyomat-mintája lesz").arg(control.sampleInfo.personName))
+                      : (control.sampleInfo.reason || "")
             }
         }
 

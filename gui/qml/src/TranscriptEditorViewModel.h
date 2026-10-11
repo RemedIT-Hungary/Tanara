@@ -481,6 +481,14 @@ public:
     Q_INVOKABLE bool setSpeakerTracks(const QString& speakerKey, const QStringList& trackIds);
     // „tanult: jellemzően a hívás hangján" — üres, ha nincs tanult / kézi alap.
     Q_INVOKABLE QString sideBasisText(const QString& speakerKey) const;
+    // Gyors „+ #Címke" (E1 jelölt-sor, E3 címke-sora): a megbeszélés első olyan címkéje, amely
+    // még nincs a személyen — { tagId, name, label: "+ #Nordvik" }; üres, ha nincs ilyen (nincs
+    // címke a megbeszélésen, névtelen / saját személy, vagy minden címke rajta van már).
+    Q_INVOKABLE QVariantMap quickTagFor(const QString& personName) const;
+    // A címke rátétele a személyre (TagService::addPersonTag: egy lépés a címke-vermen, a héj
+    // „tags" visszavonása veszi vissza); utána a jelöltek / bizonyítékok újraszámolódnak.
+    // Siker esetén notice-t nem ad: a hívó a visszavonható toastot mutatja.
+    Q_INVOKABLE bool addQuickTag(const QString& personName, const QString& tagId);
     // A csoport javaslatának végrehajtása (egy undo-lépés; a változás-sáv kiírja).
     Q_INVOKABLE bool applyReviewGroup(const QString& groupId);
     // „Kihagyom": a csoport ebben a munkamenetben nem jelenik meg újra.

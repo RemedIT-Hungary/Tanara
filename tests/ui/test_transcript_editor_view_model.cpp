@@ -573,7 +573,7 @@ private slots:
         QCOMPARE(ed->undoText(), QStringLiteral("Átnézés: Anna és Béla"));
         QCOMPARE(notices.count(), 1);
         QCOMPARE(notices.last().at(0).toString(),
-                 QStringLiteral("2 kétséges sor Anna és Béla között — a Bizonytalan szűrőben. "
+                 QStringLiteral("2 kétséges sor Anna és Béla között — az Átnézendő szűrőben. "
                                 "A két hang nagyon hasonló (0,85), az eredmény bizonytalan — hallgass bele."));
         for (int row : {6, 10}) {
             const int r6 = vm.rows()->rowOfUtterance(row);
@@ -657,7 +657,7 @@ private slots:
         QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 3);
         QVERIFY(!r.value(QStringLiteral("fallbackB")).toBool());
         const QString expected =
-            QStringLiteral("3 kétséges sor Anna és Béla között — a Bizonytalan szűrőben. "
+            QStringLiteral("3 kétséges sor Anna és Béla között — az Átnézendő szűrőben. "
                            "Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat.");
         QCOMPARE(r.value(QStringLiteral("message")).toString(), expected);
         QCOMPARE(notices.last().at(0).toString(), expected);

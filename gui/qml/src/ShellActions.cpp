@@ -622,7 +622,7 @@ void ShellActions::identifyParticipants(const QString& meetingId)
             runRecheck(meetingId, tr("Mindenki azonosítva"),
                        tr("Ebben a megbeszélésben már minden beszélőnek van neve. Újraellenőrizzem a "
                           "sorokat a megerősített és javított sorok hangja alapján? A kétséges sorokat "
-                          "bizonytalanként jelölöm meg, hogy átnézhesd őket."));
+                          "az Átnézendő szűrőbe teszem, hogy átnézhesd őket."));
         } else if (!m_controller->voiceIdentificationAvailable()) {
             toast(tr("Az azonosításhoz nincs telepítve a hangmodell."));
         } else {
@@ -651,7 +651,7 @@ void ShellActions::recheckSpeakers(const QString& meetingId)
 {
     runRecheck(meetingId, tr("Beszélők újraellenőrzése"),
                tr("Újraellenőrizzem a sorokat a megerősített és javított sorok hangja alapján? "
-                  "A kétséges sorokat bizonytalanként jelölöm meg, hogy átnézhesd őket."));
+                  "A kétséges sorokat az Átnézendő szűrőbe teszem, hogy átnézhesd őket."));
 }
 
 void ShellActions::runRecheck(const QString& meetingId, const QString& title, const QString& text)
@@ -674,18 +674,21 @@ void ShellActions::runRecheck(const QString& meetingId, const QString& title, co
         toast(ed->recheckBlocker());
         return;
     }
-    // A „Bizonytalan" szűrőt a szerkesztő nézetmodellje kapcsolja be (recheckFinished jel).
+    // Az „Átnézendő" nézetet a szerkesztő nézetmodellje kapcsolja be (recheckFinished jel).
     const tanara::SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
     QString msg;
     if (r.flagged > 0) {
         if (meetingId == m_currentMeetingId) showTab(1);   // az Átirat fül
-        msg = tr("%n kétséges sort jelöltem meg — a Bizonytalan szűrőben találod.", "", r.flagged);
+        msg = tr("%n kétséges sort jelöltem meg — az Átnézendő szűrőben találod.", "", r.flagged);
     } else {
         msg = tr("A megerősített sorok alapján nem találtam kétséges sort.");
     }
-    // Ha tárolt lenyomat is beszállt a referenciába: miből állt össze.
-    const QString refs = r.referenceSummary();
-    if (!refs.isEmpty()) msg += QLatin1Char(' ') + refs;
+    // Mire támaszkodott: megerősített sorok, tárolt minták (ebből mennyi erről a megbeszélésről),
+    // modellek; és ha két hang nagyon hasonló, figyelmeztet (ugyanaz az érték, mint a „Miért ő?"-ben).
+    const QString basis = r.basisSummary();
+    if (!basis.isEmpty()) msg += QLatin1Char(' ') + basis;
+    const QString similar = r.similarityNote();
+    if (!similar.isEmpty()) msg += QLatin1Char(' ') + similar;
     toast(msg);
 }
 

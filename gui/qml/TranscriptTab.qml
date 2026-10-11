@@ -132,7 +132,7 @@ Item {
         if (from < 0) from = list.indexAt(list.width / 2, list.contentY + 1) - (direction < 0 ? 0 : 1)
         root.forceActiveFocus()
         if (editorVm.stepUncertain(from, direction) < 0 && root.shell)
-            root.shell.toast(qsTr("Nincs bizonytalan sor."))
+            root.shell.toast(qsTr("Nincs átnézendő sor."))
     }
     // Újraellenőrzés a megerősített / javított sorok hangja alapján. A héjon át (megerősítő
     // ablak + visszajelzés); héj nélkül (demó, képernyőkép) közvetlenül.
@@ -143,6 +143,7 @@ Item {
         }
         const r = editorVm.recheckSpeakers()
         if (!r.ran && r.blocker && root.shell) root.shell.toast(r.blocker)
+        else if (r.ran && r.message && root.shell) root.shell.toast(r.message)
     }
     function copySelectionOrCurrent() {
         if (editorVm.selectedCount > 0) editorVm.copySelection()
@@ -852,6 +853,7 @@ Item {
             root.afterPopupClose = () => root.openSpeakerWhyAt(key, x, y, tracks)
         }
         onVoiceprintRequested: key => root.afterPopupClose = () => root.openVoiceprintFor(key)
+        onTagAdded: text => { if (root.shell && root.shell.toast) root.shell.toast(text, "tags") }
         onClosed: {
             root.speakerPopoverRow = -1
             if (root.runAfterPopupClose()) return
@@ -881,6 +883,7 @@ Item {
             }
         }
         onNotPresentRequested: (key, fix) => root.markNotPresent(key, fix)
+        onTagAdded: text => { if (root.shell && root.shell.toast) root.shell.toast(text, "tags") }
         onClosed: {
             if (root.runAfterPopupClose()) return
             if (!mergeDialog.visible) root.forceActiveFocus()

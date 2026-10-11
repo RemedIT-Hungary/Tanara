@@ -58,6 +58,8 @@ class ParticipantsViewModel : public QObject {
     Q_PROPERTY(int checkedCount READ checkedCount NOTIFY changed)
     // A lábléc információs sora (a kötetlen nyers beszélők névtelenek maradnak).
     Q_PROPERTY(QString infoText READ infoText NOTIFY changed)
+    // A lábléc állandó szabály-mondata (UX-terv 4.): „A címkék csak sorrendet adnak; a hang dönt."
+    Q_PROPERTY(QString footerText READ footerText CONSTANT)
     // Címke-alapú javaslat: „A #Nordvik alapján:" + [{ name, countText }] (legfeljebb 3).
     Q_PROPERTY(QString tagSuggestionLabel READ tagSuggestionLabel NOTIFY changed)
     Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY changed)
@@ -81,6 +83,7 @@ public:
     int rowCount() const { return int(m_rows.size()); }
     int checkedCount() const;
     QString infoText() const;
+    QString footerText() const { return tr("A címkék csak sorrendet adnak; a hang dönt."); }
     QString tagSuggestionLabel() const { return m_tagLabel; }
     QVariantList tagSuggestions() const;
 

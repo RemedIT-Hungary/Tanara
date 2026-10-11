@@ -498,15 +498,15 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
 
     m_editor = std::make_unique<SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
     if (sc.v3) {
-        m_editor->setUserSpeakerName(QStringLiteral("Kovács Lilla"));
+        m_selfName = QStringLiteral("Kovács Lilla");
+        m_editor->setUserSpeakerName(m_selfName);
         const auto activity = std::make_shared<const MeetingActivity>(demoActivity(sc));
         m_editor->setActivityProvider([activity](const Meeting&) { return *activity; });
-        m_editor->setPersonTagsProvider([](const QString& person) {
-            if (person == QStringLiteral("Fehér Gábor") || person == QStringLiteral("Varga Árpád"))
-                return QStringList{QStringLiteral("nordvik")};
-            if (person == QStringLiteral("Molnár Eszter")) return QStringList{QStringLiteral("piac")};
-            return QStringList();
-        });
+        m_personTags->insert(QStringLiteral("Fehér Gábor"), {QStringLiteral("nordvik")});
+        m_personTags->insert(QStringLiteral("Varga Árpád"), {QStringLiteral("nordvik")});
+        m_personTags->insert(QStringLiteral("Molnár Eszter"), {QStringLiteral("piac")});
+        const auto tags = m_personTags;
+        m_editor->setPersonTagsProvider([tags](const QString& person) { return tags->value(person); });
         m_tagNames.insert(QStringLiteral("piac"), QStringLiteral("Piackutatás"));
     }
     if (variant != QLatin1String("novoice")) {
@@ -524,6 +524,14 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         m_seedId = m_editor->utteranceAt(sc.seedLine).id;
         m_seedTarget = sc.cast[sc.seedTarget].raw;
     }
+}
+
+bool TranscriptDemoSession::addPersonTag(const QString& person, const QString& tagId)
+{
+    if (person.isEmpty() || tagId.isEmpty() || person.compare(m_selfName, Qt::CaseInsensitive) == 0) return false;
+    QStringList& tags = (*m_personTags)[person];
+    if (!tags.contains(tagId)) tags << tagId;
+    return true;
 }
 
 TranscriptDemoSession::~TranscriptDemoSession()
@@ -559,6 +567,15 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     m_editor->setUtterancesNoisy({id(4)}, true);
     // „javítva": Árpád nevén Eszter hangja → kézzel Eszterhez.
     if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, QStringLiteral("Beszélő 4"));
+    if (state == QLatin1String("speakerWhy")) {
+        // E3: Gábor két sávon is beszél (kézi beosztás, több sáv), Árpádon még nincs #Nordvik
+        // (a „NEM Ő?" jelöltjén a gyors „+ #Nordvik" látszik).
+        for (const EditorSpeaker& sp : m_editor->speakers())
+            if (sp.personName == QStringLiteral("Fehér Gábor"))
+                m_editor->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
+        m_personTags->remove(QStringLiteral("Varga Árpád"));
+        m_editor->notifyPersonTagsChanged();
+    }
     return true;
 }
 

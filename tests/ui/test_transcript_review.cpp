@@ -8,6 +8,7 @@
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
 
+#include <QSignalSpy>
 #include <QtTest>
 
 using namespace tanara;
@@ -188,6 +189,75 @@ private slots:
         QVERIFY(speaker.count() > 0);
         for (int i = 0; i < speaker.count(); ++i)
             QVERIFY(speaker.get(i).value(QStringLiteral("speakerKey")).toString() != gabor);
+    }
+
+    // Gyors „+ #Címke" (T2): a megbeszélés címkéje, ha még nincs a személyen; a saját személy
+    // és aki már viseli, nem kap ajánlatot. A rátétel után a jelöltek újraszámolódnak.
+    void quickTag_offeredOnlyWhenMissing()
+    {
+        TranscriptEditorViewModel vm;
+        vm.setDemoVariant(QStringLiteral("v3"));
+        vm.resolveSession();
+        QVERIFY(waitIdle(vm));
+        QVERIFY(vm.quickTagFor(QStringLiteral("Kovács Lilla")).isEmpty());     // saját személy
+        QVERIFY(vm.quickTagFor(QStringLiteral("Fehér Gábor")).isEmpty());      // már #Nordvik
+        QVERIFY(vm.quickTagFor(QString()).isEmpty());
+        const QVariantMap q = vm.quickTagFor(QStringLiteral("Molnár Eszter"));
+        QCOMPARE(q.value(QStringLiteral("tagId")).toString(), QStringLiteral("nordvik"));
+        QCOMPARE(q.value(QStringLiteral("name")).toString(), QStringLiteral("Nordvik"));
+        QCOMPARE(q.value(QStringLiteral("label")).toString(), QStringLiteral("+ #Nordvik"));
+
+        QSignalSpy review(&vm, &TranscriptEditorViewModel::reviewChanged);
+        QVERIFY(vm.addQuickTag(QStringLiteral("Molnár Eszter"), QStringLiteral("nordvik")));
+        QVERIFY(review.count() > 0);
+        QVERIFY(vm.quickTagFor(QStringLiteral("Molnár Eszter")).isEmpty());
+        QVERIFY(vm.editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
+        QVERIFY(!vm.addQuickTag(QStringLiteral("Kovács Lilla"), QStringLiteral("nordvik")));
+        QVERIFY(settle(vm));
+        // A címke-bizonyíték már a közös címkét mutatja.
+        bool shared = false;
+        for (const QVariant& e : vm.speakerEvidence(keyOf(vm, QStringLiteral("Molnár Eszter"))))
+            shared |= e.toMap().value(QStringLiteral("kind")).toString() == QLatin1String("tag")
+                   && e.toMap().value(QStringLiteral("polarity")).toString() == QLatin1String("support");
+        QVERIFY(shared);
+    }
+
+    // A „speakerWhy" demó (E3): Gábor két sávon (kézi, több sáv), Árpádon még nincs #Nordvik.
+    void speakerWhyDemo_multiTrackAndQuickTag()
+    {
+        TranscriptEditorViewModel vm;
+        vm.setDemoVariant(QStringLiteral("v3"));
+        vm.resolveSession();
+        QVERIFY(waitIdle(vm));
+        vm.applyDemoState(QStringLiteral("speakerWhy"));
+        QVERIFY(settle(vm));
+        const QString gabor = keyOf(vm, QStringLiteral("Fehér Gábor"));
+        QCOMPARE(vm.editor()->trackAssignment(gabor), (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
+        const QVariantList tracks = vm.trackOptions(gabor);
+        QCOMPARE(tracks.size(), 2);
+        QVERIFY(tracks.at(0).toMap().value(QStringLiteral("checked")).toBool());
+        QVERIFY(tracks.at(1).toMap().value(QStringLiteral("checked")).toBool());
+        QCOMPARE(vm.quickTagFor(QStringLiteral("Varga Árpád")).value(QStringLiteral("name")).toString(),
+                 QStringLiteral("Nordvik"));
+    }
+
+    // Újraellenőrzés (T5): az eredmény megmondja, mire támaszkodott (sorok, minták, modellek).
+    void recheck_reportsBasis()
+    {
+        TranscriptEditorViewModel vm;
+        vm.setDemoVariant(QStringLiteral("v3"));
+        vm.resolveSession();
+        QVERIFY(waitIdle(vm));
+        vm.applyDemoState(QStringLiteral("markers"));
+        QVERIFY(settle(vm));
+        const QVariantMap r = vm.recheckSpeakers();
+        qInfo() << r;
+        QVERIFY(r.value(QStringLiteral("ran")).toBool());
+        QVERIFY(r.value(QStringLiteral("basisSummary")).toString().startsWith(QStringLiteral("Alapja: ")));
+        QVERIFY(r.value(QStringLiteral("basisSummary")).toString().contains(QStringLiteral("megerősített sor")));
+        QVERIFY(!r.value(QStringLiteral("models")).toStringList().isEmpty());
+        QVERIFY(r.value(QStringLiteral("message")).toString().contains(r.value(QStringLiteral("basisSummary")).toString()));
+        QVERIFY(!r.value(QStringLiteral("message")).toString().contains(QStringLiteral("Bizonytalan")));
     }
 
     void newPerson_similarLines()

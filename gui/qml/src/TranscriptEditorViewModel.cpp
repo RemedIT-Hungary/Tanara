@@ -752,7 +752,7 @@ QVariantMap TranscriptEditorViewModel::recheckPair(const QString& speakerKeyA, c
     out[QStringLiteral("centroidSimilarity")] = r.centroidSimilarity;
 
     QString text = r.flagged > 0
-        ? tr("%n kétséges sor %1 és %2 között — a Bizonytalan szűrőben.", nullptr, r.flagged).arg(nameA, nameB)
+        ? tr("%n kétséges sor %1 és %2 között — az Átnézendő szűrőben.", nullptr, r.flagged).arg(nameA, nameB)
         : tr("A megerősített sorok alapján nem találtam kétséges sort %1 és %2 között.").arg(nameA, nameB);
     // Ha valamelyiküknél kevés volt a megerősített sor, a referencia az összes sora (szennyezett lehet).
     QStringList few;
@@ -1524,6 +1524,22 @@ QVariantMap TranscriptEditorViewModel::recheckSpeakers()
     out[QStringLiteral("speakersWithConfirmedCore")] = r.speakersWithConfirmedCore;
     out[QStringLiteral("confirmedLines")] = r.confirmedLines;
     out[QStringLiteral("referenceSummary")] = r.referenceSummary();
+    // Mire támaszkodott (T5): tárolt minták, modellek, nagyon hasonló hangok.
+    out[QStringLiteral("storedPrints")] = r.storedPrints();
+    out[QStringLiteral("localPrints")] = r.localPrints;
+    out[QStringLiteral("models")] = r.models;
+    out[QStringLiteral("basisSummary")] = r.basisSummary();
+    out[QStringLiteral("similarityNote")] = r.similarityNote();
+    QVariantList similar;
+    for (const SpeakerEditor::SimilarVoices& v : r.similar)
+        similar << QVariantMap{{QStringLiteral("nameA"), v.nameA}, {QStringLiteral("nameB"), v.nameB},
+                               {QStringLiteral("similarity"), v.similarity}};
+    out[QStringLiteral("similar")] = similar;
+    out[QStringLiteral("message")] = (r.flagged > 0
+        ? tr("%n kétséges sort jelöltem meg — az Átnézendő szűrőben találod.", nullptr, r.flagged)
+        : tr("A megerősített sorok alapján nem találtam kétséges sort."))
+        + QLatin1Char(' ') + r.basisSummary()
+        + (r.similarityNote().isEmpty() ? QString() : QLatin1Char(' ') + r.similarityNote());
     return out;
 }
 
@@ -1869,7 +1885,8 @@ QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QStr
     const QString polarity = ranking::polarityName(e.polarity);
     QString side;
     if (kind == QLatin1String("side")) {
-        QString s = sideContext;
+        // A kontextus csak egyértelmű oldalnál dönt (vegyes / több sávos beszélőnél a szöveg).
+        QString s = sideContext == QLatin1String("remote") || sideContext == QLatin1String("local") ? sideContext : QString();
         if (s.isEmpty()) {
             if (e.text.contains(tr("hívás"))) s = QStringLiteral("remote");
             else if (e.text.contains(tr("mikrofon"))) s = QStringLiteral("local");
@@ -2082,14 +2099,55 @@ bool TranscriptEditorViewModel::setSpeakerTracks(const QString& speakerKey, cons
     return ok;
 }
 
+QVariantMap TranscriptEditorViewModel::quickTagFor(const QString& personName) const
+{
+    const QString person = personName.trimmed();
+    if (!m_editor || person.isEmpty()) return {};
+    // A saját személy minden címke-szabályból kimarad.
+    QString self;
+    if (m_demoSession) self = m_demoSession->selfName();
+    else if (m_controller && m_controller->tags()) self = m_controller->tags()->selfName();
+    if (!self.isEmpty() && self.compare(person, Qt::CaseInsensitive) == 0) return {};
+    const QStringList has = m_editor->personTagIds(person);
+    for (const QString& id : m_editor->meetingTagIds()) {
+        if (has.contains(id, Qt::CaseInsensitive)) continue;
+        const QString name = tagLabel(id);
+        if (name.isEmpty()) continue;
+        return QVariantMap{{QStringLiteral("tagId"), id},
+                           {QStringLiteral("name"), name},
+                           {QStringLiteral("label"), tr("+ #%1").arg(name)}};
+    }
+    return {};
+}
+
+bool TranscriptEditorViewModel::addQuickTag(const QString& personName, const QString& tagId)
+{
+    const QString person = personName.trimmed();
+    if (!m_editor || person.isEmpty() || tagId.isEmpty()) return false;
+    bool ok = false;
+    if (m_demoSession) ok = m_demoSession->addPersonTag(person, tagId);
+    else if (m_controller && m_controller->tags()) ok = m_controller->tags()->addPersonTag(person, tagId).isValid();
+    if (!ok) return false;
+    m_editor->notifyPersonTagsChanged();
+    emit reviewChanged();
+    return true;
+}
+
 QString TranscriptEditorViewModel::sideBasisText(const QString& speakerKey) const
 {
     if (!m_editor) return {};
     const SideReport r = m_editor->sideReport();
     for (const PersonSide& p : r.persons) {
         if (p.speakerKey != speakerKey) continue;
-        if (p.basis == QLatin1String("manual"))
-            return tr("kézi beosztás: %1").arg(sidePhrase(sideOf(p.manualSide)));
+        if (p.basis == QLatin1String("manual")) {
+            // Több sáv (mikrofon és hívás is): „mindkét sávon"; a tanult oldal mellette marad.
+            QString manual = sidePhrase(sideOf(p.manualSide));
+            if (manual.isEmpty()) manual = tr("több sávon");
+            QString text = tr("kézi beosztás: %1").arg(manual);
+            if (p.learnedSide == Side::Local || p.learnedSide == Side::Remote)
+                text += QStringLiteral(" · ") + tr("tanult: jellemzően %1").arg(sidePhrase(sideOf(p.learnedSide)));
+            return text;
+        }
         if (p.learnedSide == Side::Local || p.learnedSide == Side::Remote)
             return tr("tanult: jellemzően %1").arg(sidePhrase(sideOf(p.learnedSide)));
         if (p.basis == QLatin1String("lines") && (p.side == Side::Local || p.side == Side::Remote))

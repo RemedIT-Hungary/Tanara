@@ -6,8 +6,12 @@ import QtQuick.Templates as T
 //   MIÉRT Ő?: amire a gép támaszkodott (hang a mintákhoz, sáv, címke, hasonló hang), mindegyik
 //     mellett a javítás helye: Minták (hanglenyomat), Címkéi (Személyek ablak), Módosítás (a
 //     sáv-chipek lent), Kettejük átnézése (páronkénti átnézés).
-//   MELYIK SÁVON BESZÉL?: a kézi sáv-beosztás (egyetlen igazság, ugyanaz, mint az Áttekintésben);
+//   MELYIK SÁVON BESZÉL?: a kézi sáv-beosztás (egyetlen igazság, ugyanaz, mint az Áttekintésben),
+//     a chipek kapcsolók: több sáv is jelölhető (mindegyik kattintás egy visszavonási lépés);
 //     alatta, amit a gép tanult.
+//   Gyors címke: ha a megbeszélés címkéje még nincs a személyen, a címke-sorban (vagy ha nincs
+//     ilyen sor, egy pótolt sorban) „+ #Nordvik ráteszem", a jelöltek chipjei végén „+ #Nordvik";
+//     egy kattintás (TagService, a címke-vermen visszavonható), a „Címkéi" link marad.
 //   NEM Ő? VALÓJÁBAN…: jelöltek bizonyítékkal (a beszélő minden sora hozzájuk kerül).
 //   Új személy… · Összevonás egy másik beszélővel… · Átnézés másik beszélővel… · Ő nem volt ott.
 //   „Ha másé, a sorai kerüljenek ki X hanglenyomatából" (téves felismerés).
@@ -32,6 +36,8 @@ TPopover {
     signal newPersonRequested(string speakerKey, bool fixVoiceprints)
     // „Ő nem volt ott": a sorai névtelenek lesznek, a „Ki volt ott?" is frissül (a hívó intézi).
     signal notPresentRequested(string speakerKey, bool fixVoiceprints)
+    // Gyors címke került egy személyre: a hívó visszavonható toastot mutat (undoKey "tags").
+    signal tagAdded(string text)
 
     width: 430
     padding: 0
@@ -48,6 +54,22 @@ TPopover {
     readonly property var others: editor && revision >= 0 ? editor.speakersMatching("", speakerKey) : []
     readonly property var pairCandidates: editor && named && revision >= 0 ? editor.pairCandidates(speakerKey) : []
     readonly property bool fix: fixBox.visible && fixBox.checked
+    // A beszélő személyére tehető gyors címke ({ tagId, name, label } vagy üres).
+    readonly property var selfQuickTag: editor && named && revision >= 0 ? editor.quickTagFor(info.personName || "") : ({})
+    readonly property bool hasTagReason: {
+        for (let i = 0; i < reasons.length; ++i) if (reasons[i].kind === "tag") return true
+        return false
+    }
+    // Ha a személynek nincs címke-sora (nincs címkéje), a gyors címke egy pótolt sorban jelenik meg.
+    readonly property var shownReasons: {
+        if (hasTagReason || !selfQuickTag.tagId) return reasons
+        const out = []
+        for (let i = 0; i < reasons.length; ++i) out.push(reasons[i])
+        out.push({ kind: "tag", polarity: "neutral", label: qsTr("Címke:"),
+                   sentence: qsTr("még nincs közös címkéje a megbeszéléssel"),
+                   fixLabel: qsTr("Címkéi"), fixTarget: "tags" })
+        return out
+    }
 
     function refresh() {
         info = editor ? editor.speakerInfo(speakerKey) : ({})
@@ -64,10 +86,24 @@ TPopover {
         else
             editor.reassignSpeaker(key, c.personName, fixPrints)
     }
-    // Sáv-chip: kattintás = csak ez a sáv; a kijelölt újra = a megkötés törlése.
+    // Sáv-chip = kapcsoló: a kattintott sáv be / ki, a többi marad (több sáv is jelölhető); ha
+    // egy sem marad, a megkötés törlődik (a gép újra maga dönt). Minden kattintás egy lépés.
     function toggleTrack(trackId, checked) {
-        editor.setSpeakerTracks(speakerKey, checked ? [] : [trackId])
+        const ids = []
+        for (let i = 0; i < tracks.length; ++i) {
+            const t = tracks[i]
+            if (t.id === trackId ? !checked : t.checked === true) ids.push(t.id)
+        }
+        editor.setSpeakerTracks(speakerKey, ids)
         revision++
+    }
+    function quickTagFor(personName) {
+        return editor && personName && revision >= 0 ? editor.quickTagFor(personName) : ({})
+    }
+    function addQuickTag(personName, tag) {
+        if (!tag || !tag.tagId || !editor.addQuickTag(personName, tag.tagId)) return
+        revision++
+        tagAdded(qsTr("%1 címkéje lett: #%2").arg(personName).arg(tag.name))
     }
     function applyFix(ev) {
         if (ev.fixTarget === "samples") {
@@ -270,13 +306,16 @@ TPopover {
                     bottomPadding: 8
                     SectionHead { x: 4; label: qsTr("MIÉRT Ő?"); hint: qsTr("erre támaszkodtunk") }
                     Repeater {
-                        model: control.reasons
+                        model: control.shownReasons
                         EvidenceReason {
                             required property var modelData
                             objectName: "whyReason"
                             width: parent.width
                             evidence: modelData
+                            quickLabel: modelData.kind === "tag" && control.selfQuickTag.tagId
+                                        ? qsTr("+ #%1 ráteszem").arg(control.selfQuickTag.name) : ""
                             onFixClicked: ev => control.applyFix(ev)
+                            onQuickClicked: control.addQuickTag(control.info.personName || "", control.selfQuickTag)
                         }
                     }
                 }
@@ -294,7 +333,7 @@ TPopover {
                         x: 14; y: 8
                         width: parent.width - 28
                         spacing: 6
-                        SectionHead { label: qsTr("MELYIK SÁVON BESZÉL?"); hint: qsTr("ezen a megbeszélésen") }
+                        SectionHead { label: qsTr("MELYIK SÁVON BESZÉL?"); hint: qsTr("ezen a megbeszélésen · több is jelölhető") }
                         Flow {
                             width: parent.width
                             spacing: 6
@@ -348,8 +387,8 @@ TPopover {
                                     TapHandler { onTapped: control.toggleTrack(chip.modelData.id, chip.checked) }
                                     TToolTip {
                                         visible: chipHover.hovered
-                                        text: chip.checked ? qsTr("A kézi beosztás törlése (a gép újra maga dönti el)")
-                                                           : qsTr("%1 ezen a sávon beszél — a sáv-ellentmondás ehhez igazodik (Ctrl+Z)").arg(control.speakerName)
+                                        text: chip.checked ? qsTr("%1 nem ezen a sávon beszél (ha egy sáv sem marad, a gép újra maga dönt) — Ctrl+Z").arg(control.speakerName)
+                                                           : qsTr("%1 ezen a sávon (is) beszél — a sáv-ellentmondás ehhez igazodik (Ctrl+Z)").arg(control.speakerName)
                                     }
                                 }
                             }
@@ -388,6 +427,9 @@ TPopover {
                                 subText: model.subText
                                 evidence: model.evidence
                                 dimmed: model.otherSide
+                                readonly property var quick: control.quickTagFor(model.personName)
+                                quickTagLabel: quick.tagId ? quick.label : ""
+                                onQuickTagClicked: control.addQuickTag(model.personName, quick)
                                 onClicked: control.chooseCandidate(index)
                             }
                         }

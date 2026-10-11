@@ -15,7 +15,10 @@ import QtQuick.Layouts
 // sourceMarks / sectionBands: az összefoglaló fülek extra sora (U4: SummaryViewModel), elemei
 // { startMs, endMs, active } — „Forrás” (accent = aktív állítás, accentLine = a többi; a
 // beszélő-sávok ilyenkor 45 %-ra halványulnak) ill. „Szakaszok” (aktív szakasz accent).
-// Önállóan (képernyőkép) kitalált mintával rajzol.
+// similarMarks: az új személyhez hasonló sorok (E4; TranscriptTab.similarMarks, [x, w, x, w, …]
+// 0..1 az idővonalon): accent jelek a sávok fölött + halvány accent oszlop a sávokon át, hogy a
+// beszélőtől függetlenül látsszon, hol vannak (a sorok a saját sávjukon is accent jelet kapnak).
+// Önállóan (képernyőkép) kitalált mintával rajzol; demoState: "" | "similarMarks" (E4 jelek).
 Rectangle {
     id: root
 
@@ -27,6 +30,8 @@ Rectangle {
     property bool lanesExpanded: false
     property var sourceMarks: []
     property var sectionBands: []
+    property var similarMarks: demoState === "similarMarks" ? demoSimilarMarks : []
+    property string demoState: ""
     property int timelineMs: player ? player.durationMs : 2 * 3600000 + 11 * 60000 + 4000
 
     signal seekRequested(real fraction)
@@ -62,6 +67,10 @@ Rectangle {
         }
         return out
     }
+
+    readonly property var demoSimilarMarks: [0.06, 0.004, 0.17, 0.003, 0.29, 0.005, 0.41, 0.003, 0.48, 0.004,
+                                             0.55, 0.003, 0.63, 0.004, 0.71, 0.003, 0.78, 0.005, 0.86, 0.003,
+                                             0.91, 0.004, 0.97, 0.003]
 
     function fractionOf(ms) { return timelineMs > 0 ? Math.max(0, Math.min(1, ms / timelineMs)) : 0 }
 
@@ -241,6 +250,35 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Az új személyhez hasonló sorok (E4): halvány accent oszlop a sávokon át + accent jel fölöttük.
+    Repeater {
+        objectName: "mapSimilarMarks"
+        model: Math.floor(root.similarMarks.length / 2)
+        Item {
+            id: similarMark
+            required property int index
+            objectName: "mapSimilarMark"
+            readonly property real fx: root.similarMarks[2 * index]
+            readonly property real fw: root.similarMarks[2 * index + 1]
+            x: root.trackX + Math.round(fx * root.trackWidth)
+            y: 3
+            width: Math.max(2, Math.round(fw * root.trackWidth))
+            height: lanesColumn.height + 9
+            Rectangle {
+                width: parent.width
+                height: 5
+                radius: 1
+                color: Theme.accent
+            }
+            Rectangle {
+                y: 7
+                width: parent.width
+                height: parent.height - 7
+                color: Theme.alpha(Theme.accent, 0.16)
             }
         }
     }

@@ -48,6 +48,11 @@ public:
     QString suggestionTargetKey() const { return m_seedTarget; }
     // A kitalált címke-azonosítók neve (a bizonyíték-chipekhez); ismeretlennél üres.
     QString tagName(const QString& id) const { return m_tagNames.value(id); }
+    // A kitalált személy-címkék (a jelölt-rangsor forrása); a gyors „+ #Címke" ide ír.
+    QStringList personTags(const QString& person) const { return m_personTags->value(person); }
+    bool addPersonTag(const QString& person, const QString& tagId);
+    // A saját személy (a v3 változatban Kovács Lilla); máshol üres.
+    QString selfName() const { return m_selfName; }
     // A v3 demó-állapotok előkészítése a forgatókönyv ismeretében (megerősített magok, egy
     // „egymásra beszéltek" sor, a szennyezett maghoz két idegen hangú megerősített sor, a
     // „javítva" sor). Más változatban nem csinál semmit. Vissza: igaz, ha v3 a változat.
@@ -64,6 +69,8 @@ private:
     QString m_seedId;
     QString m_seedTarget;
     QHash<QString, QString> m_tagNames;
+    std::shared_ptr<QHash<QString, QStringList>> m_personTags = std::make_shared<QHash<QString, QStringList>>();
+    QString m_selfName;
     QVector<tanara::Track> m_tracks;
     bool m_v3 = false;
     QVector<int> m_lineSpeaker;     // forgatókönyv-sor → beszélő (cast-index)

@@ -355,6 +355,10 @@ private slots:
         QCOMPARE(approve->property("text").toString(), QStringLiteral("Tovább · 4 résztvevő"));
         QVERIFY(visual("participantGroup_sure") && visual("participantGroup_doubt"));
         QVERIFY(!visual("participantGroup_invited"));     // üres csoport rejtve
+        // K1: a lábléc szabály-mondata (a címke csak sorrendet ad).
+        QQuickItem* rule = visual("participantsRule");
+        QVERIFY(rule);
+        QCOMPARE(rule->property("text").toString(), QStringLiteral("A címkék csak sorrendet adnak; a hang dönt."));
 
         // Jelölés kattintással: Tóth Bence (ellentmondó, alapból ki) be.
         click(visual("participantCheck_v-bence"));
