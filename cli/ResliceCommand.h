@@ -1,6 +1,6 @@
 #pragma once
-// tanara-cli reslice — egy meglévő átirat újraszeletelése a transcript.tokens.json-ból a Soniox
-// token-időzítés korrekciójával (tanara/edit/TranscriptReslice.h). AppController NÉLKÜL fut.
+// tanara-cli reslice — egy meglévő Soniox-átirat sorainak párnázása a transcript.tokens.json-ból
+// (a csoportosítás változatlan; tanara/edit/TranscriptReslice.h). AppController NÉLKÜL fut.
 // --dry-run: csak a különbségeket írja ki. A kimenet ANGOL, átirat-szöveget nem ír ki.
 #include <QStringList>
 

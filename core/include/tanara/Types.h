@@ -85,6 +85,9 @@ struct TrackTranscript {
     QString speakerLabel;
     QString language;
     QVector<TranscriptToken> tokens;
+    // A token-idők a token KIADÁSÁNAK pillanatát jelölik (Soniox), nem valódi szó-tartományt:
+    // a sorokra utólagos elő-/utó-futás kell (MergedTranscript::segments). Csak a SonioxProvider állítja.
+    bool emissionTiming = false;
 };
 
 // Egy összefüggő beszéd-blokk (egy beszélő, szünetig). A lejátszó-szinkronhoz
@@ -99,6 +102,9 @@ struct Utterance {
 struct MergedTranscript {
     QString language;
     QVector<TranscriptToken> tokens;     // startMs szerint rendezve, sávok összefésülve
+    // Kiadási-pillanat időzítés (lásd TrackTranscript): a segments() a csoportosítás UTÁN
+    // a kész sorokat párnázza (sonioxtiming::padUtterances). tokens.json: "timing": "emission".
+    bool emissionTiming = false;
     QVector<Utterance> segments() const; // beszélőnként, szünet-alapú blokkok időrendben
     QString renderMarkdown() const;      // impl: TranscriptMerger modul
 };

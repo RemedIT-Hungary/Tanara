@@ -1,8 +1,9 @@
 //
 // tanara-cli reslice: a valódi CLI (QProcess), IZOLÁLT TANARA_HOME-mal, kitalált megbeszélésen
 // (szintetikus Soniox-féle tokens.json + segments.json + overlay + summary.json). Ellenőrzi:
-// --dry-run nem ír; az írás után az id-k átmentek (overlay-javítások, megerősítések, noisy,
-// summary-források), az ujjlenyomat stimmel, a .bak egyszer készül; a második futás és a
+// --dry-run nem ír; a sorok száma nem változik (a rövid sor a hosszú után külön marad); az
+// írás után az id-k átmentek (overlay-javítások, megerősítések, noisy, summary-források), az
+// ujjlenyomat stimmel, a tokenek érintetlenek, a .bak egyszer készül; a második futás és a
 // valódi szó-időzítés „nothing to do". Átirat-szöveg nem kerül a kimenetre.
 //
 #include <QtTest>
@@ -178,7 +179,6 @@ private slots:
         QCOMPARE(dj.value("lines").toObject().value("textChanged").toInt(), 0);
         QCOMPARE(dj.value("startShiftHistogramMs").toObject().value("201-300").toInt(), 6);
         QCOMPARE(dj.value("overlay").toObject().value("renamed").toInt(), 4);
-        QCOMPARE(dj.value("overlay").toObject().value("conflicts").toInt(), 0);
         QCOMPARE(dj.value("summary").toObject().value("renamed").toInt(), 4);
         QVERIFY(!r.out.contains("Titkos") && !r.out.contains("Egyszerre"));
 
@@ -231,9 +231,29 @@ private slots:
         QVERIFY(!sum.value("sourceSpeakers").toObject().contains("u1000"));
 
         const QJsonObject tokRoot = readObject(QDir(folder).filePath("transcript.tokens.json"));
-        QCOMPARE(tokRoot.value("timing").toString(), QStringLiteral("soniox-corrected"));
+        QCOMPARE(tokRoot.value("timing").toString(), QStringLiteral("emission"));
         QCOMPARE(tokRoot.value("language").toString(), QStringLiteral("hu"));
         QCOMPARE(tokRoot.value("tokens").toArray().size(), kSoniox.size());
+        // A tokenek a Soniox szerinti időkkel maradnak.
+        QCOMPARE(tokRoot.value("tokens").toArray().at(0).toObject().value("startMs").toInt(), 1000);
+        QCOMPARE(tokRoot.value("tokens").toArray().at(0).toObject().value("endMs").toInt(), 1060);
+        // Az app a tokenekből ugyanazokat a sorokat szeleteli, mint a segments.json.
+        {
+            MergedTranscript mt;
+            mt.emissionTiming = true;
+            for (const QJsonValue& v : tokRoot.value("tokens").toArray()) {
+                const QJsonObject o = v.toObject();
+                mt.tokens.append(TranscriptToken{o.value("text").toString(), o.value("speaker").toString(),
+                                                 qint64(o.value("startMs").toDouble()), qint64(o.value("endMs").toDouble()),
+                                                 0.9, o.value("trackId").toString()});
+            }
+            const QVector<Utterance> segs = mt.segments();
+            QCOMPARE(segs.size(), now.size());
+            for (int i = 0; i < segs.size(); ++i) {
+                QCOMPARE(segs.at(i).startMs, now.at(i).startMs);
+                QCOMPARE(segs.at(i).endMs, now.at(i).endMs);
+            }
+        }
 
         QFile md(QDir(folder).filePath("transcript.md"));
         QVERIFY(md.open(QIODevice::ReadOnly));
@@ -243,8 +263,39 @@ private slots:
         const auto after = snapshot(folder);
         r = cli({"reslice", folder});
         QCOMPARE(r.code, 0);
-        QVERIFY(r.out.contains("already corrected; nothing to do"));
+        QVERIFY(r.out.contains("already padded (timing: emission); nothing to do"));
         QCOMPARE(snapshot(folder), after);
+    }
+
+    // A valódi meetingen mért eset: egy hosszú sor után 1560 ms szünettel ugyanannak a
+    // beszélőnek egy rövid sora („Mi az?"). Külön sor marad; a sorok száma nem változik.
+    void shortLineAfterLongLineStaysSeparate()
+    {
+        QTemporaryDir dir;
+        const QString folder = dir.path();
+        QVector<Tok> toks;
+        for (qint64 t = 0; t <= 13000; t += 1000) toks.append({" hosszú", "A", "t1", t, t + 60});
+        toks.append({" Mi", "A", "t1", 14620, 14680});        // 14620 − 13060 = 1560 ms szünet
+        toks.append({" az?", "A", "t1", 14740, 14800});
+        toks.append({" Igen.", "B", "t2", 16000, 16060});
+        writeMeeting(folder, toks);
+        const QVector<TranscriptLine> old = speakeredit::loadTranscriptLines(folder);
+        QCOMPARE(old.size(), 3);
+
+        Run r = cli({"reslice", folder, "--json"});
+        QVERIFY2(r.code == 0, qPrintable(r.err + r.out));
+        const QJsonObject j = QJsonDocument::fromJson(r.out.toUtf8()).object();
+        QCOMPARE(j.value("lines").toObject().value("old").toInt(), 3);
+        QCOMPARE(j.value("lines").toObject().value("new").toInt(), 3);
+        QCOMPARE(j.value("lines").toObject().value("mergedLines").toInt(), 0);
+        const QVector<TranscriptLine> now = speakeredit::loadTranscriptLines(folder);
+        QCOMPARE(now.size(), 3);
+        QCOMPARE(now.at(0).startMs, 0);                  // 0 alá nem megy
+        QCOMPARE(now.at(0).endMs, 13160);                // +100
+        QCOMPARE(now.at(1).startMs, 14320);              // −300 (az előző sor vége messze van)
+        QCOMPARE(now.at(1).endMs, 14900);
+        QCOMPARE(now.at(1).text, old.at(1).text);
+        QCOMPARE(now.at(2).startMs, 15700);
     }
 
     // Egy .bak már létezik (korábbi kézi mentés): nem írjuk felül.

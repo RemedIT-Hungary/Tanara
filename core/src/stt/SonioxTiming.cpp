@@ -1,33 +1,44 @@
 #include "tanara/stt/SonioxTiming.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace tanara::sonioxtiming {
 
-void correctTrackTokens(QVector<TranscriptToken>& tokens)
+void padUtterances(QVector<Utterance>& u)
 {
-    if (tokens.isEmpty()) return;
-    std::stable_sort(tokens.begin(), tokens.end(),
-                     [](const TranscriptToken& a, const TranscriptToken& b) { return a.startMs < b.startMs; });
+    const int n = int(u.size());
+    if (n == 0) return;
 
-    // 1) kezdetek: előre kLeadMs-mel, de az előző token (eredeti) végénél nem korábbra.
-    const int n = int(tokens.size());
+    // 1) kezdetek: a szigorúan korábban kezdődő sorok legkésőbbi végéig (azonos kezdetűek csoportban).
     std::vector<qint64> starts(size_t(n), 0);
-    for (int i = 0; i < n; ++i) {
-        const qint64 s = tokens[i].startMs;
-        qint64 ns = s - kLeadMs;
-        if (i > 0) ns = std::max(ns, tokens[i - 1].endMs);
-        ns = std::min(ns, s);        // átfedő bemenetnél sem kerül későbbre
-        starts[size_t(i)] = std::max<qint64>(0, ns);
+    qint64 prefixEnd = std::numeric_limits<qint64>::min();
+    for (int i = 0; i < n;) {
+        int j = i;
+        while (j < n && u[j].startMs == u[i].startMs) ++j;
+        for (int k = i; k < j; ++k) {
+            const qint64 s = u[k].startMs;
+            qint64 ns = std::max(prefixEnd, s - kLeadMs);
+            ns = std::min(ns, s);
+            starts[size_t(k)] = std::max<qint64>(0, ns);
+        }
+        for (int k = i; k < j; ++k) prefixEnd = std::max(prefixEnd, u[k].endMs);
+        i = j;
     }
-    // 2) végek: hátra kTailMs-mel, de a következő token új kezdeténél nem későbbre.
-    for (int i = 0; i < n; ++i) {
-        qint64 ne = tokens[i].endMs + kTailMs;
-        if (i + 1 < n) ne = std::min(ne, starts[size_t(i + 1)]);
-        tokens[i].startMs = starts[size_t(i)];
-        tokens[i].endMs = std::max(ne, tokens[i].startMs);
+    // 2) végek: a szigorúan később kezdődő sorok legkorábbi új kezdetéig.
+    qint64 suffixStart = std::numeric_limits<qint64>::max();
+    for (int j = n; j > 0;) {
+        int i = j - 1;
+        while (i > 0 && u[i - 1].startMs == u[j - 1].startMs) --i;
+        for (int k = i; k < j; ++k) {
+            const qint64 e = u[k].endMs;
+            u[k].endMs = std::max(e, std::min(suffixStart, e + kTailMs));
+        }
+        for (int k = i; k < j; ++k) suffixStart = std::min(suffixStart, starts[size_t(k)]);
+        j = i;
     }
+    for (int k = 0; k < n; ++k) u[k].startMs = starts[size_t(k)];
 }
 
 qint64 medianTokenWidthMs(const QVector<TranscriptToken>& tokens)

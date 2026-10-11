@@ -113,6 +113,7 @@ void writeTokensJson(const QString& path, const MergedTranscript& mt) {
     }
     QJsonObject root;
     root["language"] = mt.language;
+    if (mt.emissionTiming) root["timing"] = QStringLiteral("emission");   // a sorok párnázandók (Soniox)
     root["tokens"] = arr;
     QSaveFile f(path);
     if (f.open(QIODevice::WriteOnly)) {
@@ -144,6 +145,7 @@ MergedTranscript readTokensJson(const QString& path) {
     if (!f.open(QIODevice::ReadOnly)) return mt;
     const auto root = QJsonDocument::fromJson(f.readAll()).object();
     mt.language = root["language"].toString();
+    mt.emissionTiming = root["timing"].toString() == QLatin1String("emission");
     for (const auto& v : root["tokens"].toArray()) {
         const auto o = v.toObject();
         TranscriptToken t;

@@ -56,6 +56,7 @@ MergedTranscript readTokens(const QString& path)
     if (!f.open(QIODevice::ReadOnly)) return mt;
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     mt.language = root.value(QStringLiteral("language")).toString();
+    mt.emissionTiming = root.value(QStringLiteral("timing")).toString() == QLatin1String("emission");
     const QJsonArray arr = root.value(QStringLiteral("tokens")).toArray();
     mt.tokens.reserve(arr.size());
     for (const QJsonValue& v : arr) {

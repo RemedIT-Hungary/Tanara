@@ -26,7 +26,7 @@
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
 //   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
-//   reslice <meeting-folder> [--dry-run] [--json] [--force]   Soniox-időzítés korrekciója + újraszeletelés (ResliceCommand.cpp)
+//   reslice <meeting-folder> [--dry-run] [--json]   Soniox-sorok párnázása, id-átvezetéssel (ResliceCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
@@ -672,7 +672,7 @@ int main(int argc, char** argv) {
            "voice-models [enable|disable|fetch|verify|delete <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
            "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b] | "
-           "reslice <folder> [--dry-run --json --force]"
+           "reslice <folder> [--dry-run --json]"
         << "\n";
     out.flush();
     return 0;

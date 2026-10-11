@@ -24,7 +24,7 @@ QString verdictName(reslice::Verdict v)
 {
     switch (v) {
     case reslice::Verdict::RealWordSpans:    return QStringLiteral("real-word-spans");
-    case reslice::Verdict::AlreadyCorrected: return QStringLiteral("already-corrected");
+    case reslice::Verdict::AlreadyPadded:    return QStringLiteral("already-padded");
     case reslice::Verdict::Reslice:          return QStringLiteral("reslice");
     default:                                 return QStringLiteral("error");
     }
@@ -40,12 +40,11 @@ QJsonObject planJson(const QString& folder, const reslice::Plan& p, bool dryRun)
     QJsonObject hist;
     for (const QString& b : kBuckets) hist[b] = p.shiftHistogram.value(b);
     o["lines"] = QJsonObject{{"old", int(p.oldLines.size())}, {"new", int(p.newLines.size())},
-                             {"renamedIds", p.renamedIds}, {"mergedLines", p.mergedLines},
+                             {"renamedIds", p.renamedIds}, {"mergedLines", 0},
                              {"textChanged", p.textChanged}};
     o["startShiftHistogramMs"] = hist;
     o["overlay"] = QJsonObject{{"present", p.overlayPresent}, {"stale", p.overlayStale},
-                               {"refs", p.overlayRefs}, {"renamed", p.overlayRenamed},
-                               {"conflicts", p.overlayConflicts}};
+                               {"refs", p.overlayRefs}, {"renamed", p.overlayRenamed}};
     o["summary"] = QJsonObject{{"present", p.summaryPresent}, {"refs", p.summaryRefs},
                                {"renamed", p.summaryRenamed}};
     o["embeddingsCache"] = p.embeddingsPresent;
@@ -56,15 +55,14 @@ void printPlan(const reslice::Plan& p)
 {
     out() << "Tokens: " << p.tokenCount << "  median width: " << p.medianWidthMs << " ms\n"
           << "Lines: " << p.oldLines.size() << " -> " << p.newLines.size()
-          << "  (ids renamed: " << p.renamedIds << ", merged lines: " << p.mergedLines
+          << "  (ids renamed: " << p.renamedIds << ", merged lines: 0"
           << ", text changed: " << p.textChanged << ")\n"
           << "Start shift (ms earlier):";
     for (const QString& b : kBuckets) out() << "  " << b << ": " << p.shiftHistogram.value(b);
     out() << "\n";
     if (!p.overlayPresent) out() << "Overlay: none\n";
     else if (p.overlayStale) out() << "Overlay: belongs to an older transcript; left untouched\n";
-    else out() << "Overlay: " << p.overlayRefs << " id references, " << p.overlayRenamed << " renamed"
-               << (p.overlayConflicts ? QStringLiteral(", %1 conflicts").arg(p.overlayConflicts) : QString()) << "\n";
+    else out() << "Overlay: " << p.overlayRefs << " id references, " << p.overlayRenamed << " renamed\n";
     if (!p.summaryPresent) out() << "Summary: none\n";
     else out() << "Summary: " << p.summaryRefs << " id references, " << p.summaryRenamed << " renamed\n";
     out() << "Utterance embedding cache: " << (p.embeddingsPresent ? "will be deleted" : "none") << "\n";
@@ -75,17 +73,16 @@ void printPlan(const reslice::Plan& p)
 int runResliceCommand(const QStringList& args)
 {
     QString folder;
-    bool dryRun = false, json = false, force = false;
+    bool dryRun = false, json = false;
     for (int i = 2; i < args.size(); ++i) {
         const QString& a = args.at(i);
         if (a == "--dry-run") dryRun = true;
         else if (a == "--json") json = true;
-        else if (a == "--force") force = true;
         else if (folder.isEmpty() && !a.startsWith("--")) folder = a;
         else { err() << "Unknown argument: " << a << "\n"; return 2; }
     }
     if (folder.isEmpty()) {
-        err() << "Usage: reslice <meeting-folder> [--dry-run] [--json] [--force]\n";
+        err() << "Usage: reslice <meeting-folder> [--dry-run] [--json]\n";
         return 2;
     }
     if (!QFileInfo(folder).isDir()) { err() << "Not a folder: " << folder << "\n"; return 1; }
@@ -107,8 +104,8 @@ int runResliceCommand(const QStringList& args)
         if (!json) out() << "Median token width " << p.medianWidthMs
                          << " ms: timing looks like real word spans; nothing to do\n";
         return finish(0);
-    case reslice::Verdict::AlreadyCorrected:
-        if (!json) out() << "Token timing is already corrected; nothing to do\n";
+    case reslice::Verdict::AlreadyPadded:
+        if (!json) out() << "Lines are already padded (timing: emission); nothing to do\n";
         return finish(0);
     case reslice::Verdict::Reslice:
         break;
@@ -119,7 +116,7 @@ int runResliceCommand(const QStringList& args)
         if (!json) out() << "Dry run: nothing written.\n";
         return finish(0);
     }
-    const reslice::ApplyResult r = reslice::apply(folder, p, force);
+    const reslice::ApplyResult r = reslice::apply(folder, p);
     jo["applied"] = r.ok;
     jo["backups"] = QJsonArray::fromStringList(r.backups);
     jo["written"] = QJsonArray::fromStringList(r.written);

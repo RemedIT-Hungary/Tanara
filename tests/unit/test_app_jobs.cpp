@@ -349,6 +349,24 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
                           "mixdown.mp3", "track_mic.wav"})
         QVERIFY2(QDir(m.folder).exists(f), f);
     QVERIFY(!QDir(m.folder).exists("mixdown.part.mp3"));
+    // Soniox-időzítés: a tokenek érintetlenek, a tokens.json "timing": "emission" jelzőt kap,
+    // a sorok (segments.json) párnázottak (−300 / +100 ms, a szomszéd sorig).
+    {
+        QFile tf(QDir(m.folder).filePath("transcript.tokens.json"));
+        QVERIFY(tf.open(QIODevice::ReadOnly));
+        const QJsonObject root = QJsonDocument::fromJson(tf.readAll()).object();
+        QCOMPARE(root.value("timing").toString(), QStringLiteral("emission"));
+        QCOMPARE(root.value("tokens").toArray().at(1).toObject().value("startMs").toInt(), 400);
+        QCOMPARE(root.value("tokens").toArray().at(1).toObject().value("endMs").toInt(), 900);
+        QFile sf(QDir(m.folder).filePath("transcript.segments.json"));
+        QVERIFY(sf.open(QIODevice::ReadOnly));
+        const QJsonArray segs = QJsonDocument::fromJson(sf.readAll()).array();
+        QCOMPARE(segs.size(), 2);
+        QCOMPARE(segs.at(0).toObject().value("startMs").toInt(), 0);
+        QCOMPARE(segs.at(0).toObject().value("endMs").toInt(), 1000);
+        QCOMPARE(segs.at(1).toObject().value("startMs").toInt(), 1700);
+        QCOMPARE(segs.at(1).toObject().value("endMs").toInt(), 2600);
+    }
     QCOMPARE(m_http->count("POST", "/files"), 1);             // a dupla indítás nem küldött még egyet
     QTRY_COMPARE(m_http->count("DELETE", "/"), 2);            // szolgáltató-oldali takarítás
 

@@ -1,4 +1,5 @@
 #include "tanara/TranscriptMerger.h"
+#include "tanara/stt/SonioxTiming.h"
 
 #include <QString>
 #include <QStringList>
@@ -14,6 +15,7 @@ MergedTranscript mergeTranscripts(const QVector<TrackTranscript>& tracks) {
         merged.language = tracks.first().language;
 
     for (const TrackTranscript& tr : tracks) {
+        merged.emissionTiming = merged.emissionTiming || tr.emissionTiming;
         for (TranscriptToken tok : tr.tokens) {
             tok.trackId = tr.trackId;
             // A token beszélője a sáv fix beszélője, kivéve ha a token már
@@ -81,6 +83,9 @@ QVector<Utterance> MergedTranscript::segments() const {
     }
     std::stable_sort(out.begin(), out.end(),
                      [](const Utterance& a, const Utterance& b) { return a.startMs < b.startMs; });
+    // Kiadási-pillanat időzítés (Soniox): a csoportosítás az EREDETI token-időkkel történt (így
+    // a sorok se nem olvadnak össze, se nem válnak szét); most a kész sorok kapnak elő-/utó-futást.
+    if (emissionTiming) sonioxtiming::padUtterances(out);
     return out;
 }
 
