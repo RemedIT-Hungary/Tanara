@@ -16,7 +16,6 @@ namespace summarypipe {
 
 namespace {
 
-QString tr(const char* s) { return QCoreApplication::translate("SummaryPipeline", s); }
 
 // Időpont: m:ss, mm:ss, mmm:ss vagy h:mm:ss.
 const QString kTime = QStringLiteral("\\d{1,3}:\\d{2}(?::\\d{2})?");
@@ -532,7 +531,7 @@ QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts)
                               && (t.title.isEmpty() || sameSubject(out.last().title, t.title));
             if (!join) {
                 MemoSection m = t;
-                if (m.title.isEmpty()) m.title = tr("Jegyzet");
+                if (m.title.isEmpty()) m.title = QCoreApplication::translate("SummaryPipeline", "Jegyzet");
                 out.append(m);
                 continue;
             }
@@ -746,8 +745,8 @@ MergeResult parseMergeJson(const QString& raw)
     const QByteArray json = extractJsonObject(raw);
     if (json.isEmpty()) {
         r.error = raw.trimmed().isEmpty()
-            ? tr("a modell válasza üres")
-            : tr("a válaszban nincs JSON-objektum (eleje: „%1”)").arg(raw.simplified().left(80));
+            ? QCoreApplication::translate("SummaryPipeline", "a modell válasza üres")
+            : QCoreApplication::translate("SummaryPipeline", "a válaszban nincs JSON-objektum (eleje: „%1”)").arg(raw.simplified().left(80));
         return r;
     }
     QJsonParseError perr{};
@@ -757,7 +756,7 @@ MergeResult parseMergeJson(const QString& raw)
         const QByteArray fixed = repairJson(json);
         doc = QJsonDocument::fromJson(fixed, &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
-            r.error = tr("a válasz nem érvényes JSON (%1 a(z) %2. karakternél: „%3”)")
+            r.error = QCoreApplication::translate("SummaryPipeline", "a válasz nem érvényes JSON (%1 a(z) %2. karakternél: „%3”)")
                           .arg(first.errorString()).arg(first.offset)
                           .arg(snippetAround(json, first.offset));
             return r;
@@ -772,7 +771,7 @@ MergeResult parseMergeJson(const QString& raw)
                                            "open_items", "open"}, &any));
     r.actionItems = actionList(firstOf(o, {"actionItems", "action_items", "actions", "tasks"}, &any));
     if (!any) {
-        r.error = tr("a JSON-ban nincs egyik várt mező sem (execSummary, decisions, openQuestions, actionItems)");
+        r.error = QCoreApplication::translate("SummaryPipeline", "a JSON-ban nincs egyik várt mező sem (execSummary, decisions, openQuestions, actionItems)");
         return r;
     }
     if (r.openQuestions.size() > kMaxOpenQuestions)

@@ -10,7 +10,6 @@ namespace ranking {
 
 namespace {
 
-QString tr(const char* s, int n = -1) { return QCoreApplication::translate("CandidateRanker", s, nullptr, n); }
 
 bool decided(Side s) { return s == Side::Local || s == Side::Remote; }
 
@@ -41,15 +40,15 @@ Evidence voiceEvidence(double v, const QString& basis)
     if (std::isnan(v)) {
         e.polarity = Polarity::Neutral;
         e.value = 0.0;
-        e.text = tr("nincs hangadat");
+        e.text = QCoreApplication::translate("CandidateRanker", "nincs hangadat");
         return e;
     }
     e.value = v;
     e.polarity = v >= kVoiceGood ? Polarity::Support : v < kVoiceBad ? Polarity::Contradict : Polarity::Neutral;
-    e.text = tr("hang %1").arg(percent(v));
-    e.detail = basis == QLatin1String("core")   ? tr("a megerősített soraihoz mérve")
-             : basis == QLatin1String("prints") ? tr("a hanglenyomatához mérve")
-                                                : tr("a többi sorához mérve");
+    e.text = QCoreApplication::translate("CandidateRanker", "hang %1").arg(percent(v));
+    e.detail = basis == QLatin1String("core")   ? QCoreApplication::translate("CandidateRanker", "a megerősített soraihoz mérve")
+             : basis == QLatin1String("prints") ? QCoreApplication::translate("CandidateRanker", "a hanglenyomatához mérve")
+                                                : QCoreApplication::translate("CandidateRanker", "a többi sorához mérve");
     return e;
 }
 
@@ -64,13 +63,13 @@ bool sideEvidence(const SpeakerProfile& p, Side probeSide, Evidence* out)
     if (opposite(p.side, probeSide)) {
         e.polarity = Polarity::Contradict;
         e.value = -1.0;
-        e.text = tr("másik sávon beszél");
-        e.detail = tr("%1: %2; ez: %3").arg(p.displayName, sideLabel(p.side), sideLabel(probeSide));
+        e.text = QCoreApplication::translate("CandidateRanker", "másik sávon beszél");
+        e.detail = QCoreApplication::translate("CandidateRanker", "%1: %2; ez: %3").arg(p.displayName, sideLabel(p.side), sideLabel(probeSide));
     } else {
         e.polarity = Polarity::Support;
         e.value = 1.0;
-        e.text = p.side == Side::Remote ? tr("a hívás hangján") : tr("a mikrofonon");
-        e.detail = manual ? tr("kézi sáv-beosztás") : QString();
+        e.text = p.side == Side::Remote ? QCoreApplication::translate("CandidateRanker", "a hívás hangján") : QCoreApplication::translate("CandidateRanker", "a mikrofonon");
+        e.detail = manual ? QCoreApplication::translate("CandidateRanker", "kézi sáv-beosztás") : QString();
     }
     *out = e;
     return true;
@@ -108,7 +107,7 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
         l.kind = EvidenceKind::LineCount;
         l.polarity = Polarity::Support;
         l.value = p.lines;
-        l.text = tr("%n sor itt", p.lines);
+        l.text = QCoreApplication::translate("CandidateRanker", "%n sor itt", nullptr, p.lines);
         c.evidence.append(l);
     }
     if (!p.key.isEmpty()) c.evidence += similarityWarnings(ctx, p.key);
@@ -225,7 +224,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
             Evidence e;
             e.kind = EvidenceKind::Voice;
             e.polarity = Polarity::Neutral;
-            e.text = p->prints.isEmpty() ? tr("nincs hanglenyomata") : tr("nincs hangadat");
+            e.text = p->prints.isEmpty() ? QCoreApplication::translate("CandidateRanker", "nincs hanglenyomata") : QCoreApplication::translate("CandidateRanker", "nincs hangadat");
             e.fixTarget = QStringLiteral("samples");
             out.append(e);
         } else {
@@ -234,7 +233,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
     }
     Evidence e;
     if (ctx.sidesActive && sideEvidence(*p, p->lineSide, &e)) {
-        if (e.polarity == Polarity::Contradict) e.text = tr("a sorai a másik sávon szólnak");
+        if (e.polarity == Polarity::Contradict) e.text = QCoreApplication::translate("CandidateRanker", "a sorai a másik sávon szólnak");
         out.append(e);
     }
     if (tagEvidenceOf(p->tagEvidence, p->personName, &e)) out.append(e);
@@ -243,7 +242,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
         l.kind = EvidenceKind::LineCount;
         l.polarity = Polarity::Support;
         l.value = p->lines;
-        l.text = tr("%n sor itt", p->lines);
+        l.text = QCoreApplication::translate("CandidateRanker", "%n sor itt", nullptr, p->lines);
         out.append(l);
     }
     out += similarityWarnings(ctx, speakerKey);
@@ -271,8 +270,8 @@ QVector<Evidence> similarityWarnings(const RankContext& ctx, const QString& spea
         e.kind = EvidenceKind::Similarity;
         e.polarity = Polarity::Neutral;
         e.value = v;
-        e.text = tr("hasonló hang: %1").arg(o.displayName);
-        e.detail = tr("a két megerősített hang %1-ban egyezik").arg(percent(v));
+        e.text = QCoreApplication::translate("CandidateRanker", "hasonló hang: %1").arg(o.displayName);
+        e.detail = QCoreApplication::translate("CandidateRanker", "a két megerősített hang %1-ban egyezik").arg(percent(v));
         e.fixTarget = QStringLiteral("pair:") + o.key;
         out.append(e);
     }
@@ -282,12 +281,12 @@ QVector<Evidence> similarityWarnings(const RankContext& ctx, const QString& spea
 QString sideLabel(Side s)
 {
     switch (s) {
-    case Side::Local:   return tr("mikrofon");
-    case Side::Remote:  return tr("hívás hangja");
-    case Side::Mixed:   return tr("vegyes");
+    case Side::Local:   return QCoreApplication::translate("CandidateRanker", "mikrofon");
+    case Side::Remote:  return QCoreApplication::translate("CandidateRanker", "hívás hangja");
+    case Side::Mixed:   return QCoreApplication::translate("CandidateRanker", "vegyes");
     case Side::Unknown: break;
     }
-    return tr("ismeretlen");
+    return QCoreApplication::translate("CandidateRanker", "ismeretlen");
 }
 
 QString evidenceKindName(EvidenceKind k)
@@ -327,27 +326,27 @@ bool tagEvidenceOf(const TagEvidence& tag, const QString& personName, Evidence* 
         e.polarity = Polarity::Support;
         e.text = tag.text;
         e.detail = f.manual && !personName.trimmed().isEmpty()
-            ? tr("%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).")
+            ? QCoreApplication::translate("CandidateRanker", "%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).")
                   .arg(personName.trimmed(), hashed(f.name)).arg(f.shared).arg(f.total)
-            : tr("A %1 megbeszéléseken szokott lenni (%2 / %3).").arg(hashed(f.name)).arg(f.shared).arg(f.total);
+            : QCoreApplication::translate("CandidateRanker", "A %1 megbeszéléseken szokott lenni (%2 / %3).").arg(hashed(f.name)).arg(f.shared).arg(f.total);
         if (tag.items.size() > 1) {
             QStringList all;
             for (const TagEvidenceItem& it : tag.items)
                 all << QStringLiteral("%1 %2 / %3").arg(hashed(it.name)).arg(it.shared).arg(it.total);
-            e.detail += QLatin1Char(' ') + tr("Közös címkék: %1.").arg(all.join(QStringLiteral(", ")));
+            e.detail += QLatin1Char(' ') + QCoreApplication::translate("CandidateRanker", "Közös címkék: %1.").arg(all.join(QStringLiteral(", ")));
         }
     } else {
         e.polarity = Polarity::Contradict;
-        e.text = tr("más címkék");
+        e.text = QCoreApplication::translate("CandidateRanker", "más címkék");
         QStringList meeting;
         for (const TagEvidenceItem& it : tag.items) meeting << hashed(it.name);
         QStringList other;
         for (const QString& n : tag.personTagNames) other << hashed(n);
         const QString none = tag.items.size() == 1
-            ? tr("A %1 %2 megbeszéléséből egyiken sem volt.").arg(meeting.first()).arg(f.total)
-            : tr("A %1 megbeszélésein egyiken sem volt.").arg(meeting.join(QStringLiteral(", ")));
+            ? QCoreApplication::translate("CandidateRanker", "A %1 %2 megbeszéléséből egyiken sem volt.").arg(meeting.first()).arg(f.total)
+            : QCoreApplication::translate("CandidateRanker", "A %1 megbeszélésein egyiken sem volt.").arg(meeting.join(QStringLiteral(", ")));
         e.detail = other.isEmpty() ? none
-                                   : tr("Más címkéken szokott lenni: %1.").arg(other.join(QStringLiteral(", ")))
+                                   : QCoreApplication::translate("CandidateRanker", "Más címkéken szokott lenni: %1.").arg(other.join(QStringLiteral(", ")))
                                          + QLatin1Char(' ') + none;
     }
     *out = e;

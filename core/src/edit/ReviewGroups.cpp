@@ -16,7 +16,6 @@ using ranking::SpeakerProfile;
 
 namespace {
 
-QString tr(const char* s, int n = -1) { return QCoreApplication::translate("ReviewGroups", s, nullptr, n); }
 
 bool decided(Side s) { return s == Side::Local || s == Side::Remote; }
 
@@ -85,7 +84,7 @@ QString nameOf(const RankContext& ctx, const QString& key, const QString& person
 {
     if (!key.isEmpty())
         if (const SpeakerProfile* p = ctx.profile(key)) return p->displayName;
-    return person.isEmpty() ? tr("új résztvevő") : person;
+    return person.isEmpty() ? QCoreApplication::translate("ReviewGroups", "új résztvevő") : person;
 }
 
 bool samePerson(const RankContext& ctx, const QString& keyA, const Candidate& c)
@@ -119,7 +118,7 @@ Evidence makeEvidence(EvidenceKind k, Polarity p, double v, const QString& text,
 Evidence voiceSupport(double avg, const QString& who)
 {
     return makeEvidence(EvidenceKind::Voice, avg >= ranking::kVoiceGood ? Polarity::Support : Polarity::Neutral,
-                        avg, tr("hang %1").arg(percent(avg)), tr("átlag %1 hangjához").arg(who),
+                        avg, QCoreApplication::translate("ReviewGroups", "hang %1").arg(percent(avg)), QCoreApplication::translate("ReviewGroups", "átlag %1 hangjához").arg(who),
                         QStringLiteral("samples"));
 }
 
@@ -366,12 +365,12 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             const QString curName = nameOf(ctx, g.currentSpeakerKey, QString());
             const bool hasProposal = !g.proposedSpeakerKey.isEmpty() || !g.proposedPersonName.isEmpty();
             const QString target = nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonName);
-            g.title = tr("%n sor a másik sávon", n);
-            g.subtitle = hasProposal ? tr("Most: %1 · javaslat: %2").arg(curName, target)
-                                     : tr("Most: %1 · hang nélkül nem javaslok nevet, egyenként dönthető").arg(curName);
+            g.title = QCoreApplication::translate("ReviewGroups", "%n sor a másik sávon", nullptr, n);
+            g.subtitle = hasProposal ? QCoreApplication::translate("ReviewGroups", "Most: %1 · javaslat: %2").arg(curName, target)
+                                     : QCoreApplication::translate("ReviewGroups", "Most: %1 · hang nélkül nem javaslok nevet, egyenként dönthető").arg(curName);
             g.evidence << makeEvidence(cur && cur->sideBasis == QLatin1String("manual") ? EvidenceKind::Manual : EvidenceKind::Side,
-                                       Polarity::Contradict, -1.0, tr("másik sávon szóltak"),
-                                       tr("%1: %2; a sorok: %3").arg(curName, ranking::sideLabel(curSide),
+                                       Polarity::Contradict, -1.0, QCoreApplication::translate("ReviewGroups", "másik sávon szóltak"),
+                                       QCoreApplication::translate("ReviewGroups", "%1: %2; a sorok: %3").arg(curName, ranking::sideLabel(curSide),
                                                                      ranking::sideLabel(lineSide)),
                                        QStringLiteral("tracks"));
             const QVector<double> vs = voiceSums.value(g.id);
@@ -382,8 +381,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
             }
             if (hasProposal)
                 g.evidence << makeEvidence(EvidenceKind::Side, Polarity::Support, 1.0,
-                                           lineSide == Side::Remote ? tr("%1 a hívás hangján beszél").arg(target)
-                                                                    : tr("%1 a mikrofonon beszél").arg(target),
+                                           lineSide == Side::Remote ? QCoreApplication::translate("ReviewGroups", "%1 a hívás hangján beszél").arg(target)
+                                                                    : QCoreApplication::translate("ReviewGroups", "%1 a mikrofonon beszél").arg(target),
                                            QString(), QStringLiteral("tracks"));
             const SpeakerProfile* prop = g.proposedSpeakerKey.isEmpty() ? nullptr : ctx.profile(g.proposedSpeakerKey);
             const PersonSide* curSideInfo = nullptr;
@@ -428,14 +427,14 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
                     g.utteranceIds = ids;
                     const int n = int(ids.size());
                     const double avg = sumSim / n;
-                    g.title = tr("Még %n sor hangja hasonlít: %1", n).arg(np->displayName);
+                    g.title = QCoreApplication::translate("ReviewGroups", "Még %n sor hangja hasonlít: %1", nullptr, n).arg(np->displayName);
                     g.subtitle = sides.active && decided(newSide)
-                        ? tr("hang %1, mind a(z) %2 oldalon").arg(percent(avg), ranking::sideLabel(newSide))
-                        : tr("hang %1").arg(percent(avg));
+                        ? QCoreApplication::translate("ReviewGroups", "hang %1, mind a(z) %2 oldalon").arg(percent(avg), ranking::sideLabel(newSide))
+                        : QCoreApplication::translate("ReviewGroups", "hang %1").arg(percent(avg));
                     g.evidence << voiceSupport(avg, np->displayName);
                     if (sides.active && decided(newSide))
                         g.evidence << makeEvidence(EvidenceKind::Side, Polarity::Support, 1.0,
-                                                   newSide == Side::Remote ? tr("mind a hívás hangján") : tr("mind a mikrofonon"),
+                                                   newSide == Side::Remote ? QCoreApplication::translate("ReviewGroups", "mind a hívás hangján") : QCoreApplication::translate("ReviewGroups", "mind a mikrofonon"),
                                                    QString(), QStringLiteral("tracks"));
                     // A leggyakoribb forrás a „jelenlegi".
                     int best = 0;
@@ -480,11 +479,11 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         ReviewGroup& g = groupFor(ReviewKind::ContaminatedCore, p.key, pKey, pPerson);
         g.utteranceIds = split.minority;
         const int n = int(split.minority.size());
-        g.title = tr("%1 megerősített sorai két hangra esnek").arg(p.displayName);
-        g.subtitle = tr("Szétválasztás: %n sor → %1", n).arg(nameOf(ctx, pKey, pPerson));
+        g.title = QCoreApplication::translate("ReviewGroups", "%1 megerősített sorai két hangra esnek").arg(p.displayName);
+        g.subtitle = QCoreApplication::translate("ReviewGroups", "Szétválasztás: %n sor → %1", nullptr, n).arg(nameOf(ctx, pKey, pPerson));
         g.evidence << makeEvidence(EvidenceKind::Similarity, Polarity::Contradict, split.similarity,
-                                   tr("két hang: %1 egyezés").arg(percent(split.similarity)),
-                                   tr("%1 + %2 megerősített sor").arg(split.majority.size()).arg(split.minority.size()),
+                                   QCoreApplication::translate("ReviewGroups", "két hang: %1 egyezés").arg(percent(split.similarity)),
+                                   QCoreApplication::translate("ReviewGroups", "%1 + %2 megerősített sor").arg(split.majority.size()).arg(split.minority.size()),
                                    QStringLiteral("samples"));
         if (!std::isnan(voice)) g.evidence << voiceSupport(voice, nameOf(ctx, pKey, pPerson));
         g.confirmedBasis = p.confirmedLines;
@@ -518,8 +517,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         const int n = int(g.utteranceIds.size());
         const QString target = nameOf(ctx, g.proposedSpeakerKey, g.proposedPersonName);
         const QString curName = nameOf(ctx, g.currentSpeakerKey, QString());
-        g.title = tr("%n sor hangja inkább: %1", n).arg(target);
-        g.subtitle = tr("Most: %1").arg(curName);
+        g.title = QCoreApplication::translate("ReviewGroups", "%n sor hangja inkább: %1", nullptr, n).arg(target);
+        g.subtitle = QCoreApplication::translate("ReviewGroups", "Most: %1").arg(curName);
         auto avgOf = [](const QVector<double>& v) {
             double s = 0.0;
             for (double x : v) s += x;
@@ -529,8 +528,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         const double toOwn = avgOf(voiceSums.value(g.id + QStringLiteral("#own")));
         g.evidence << voiceSupport(toTarget, target);
         g.evidence << makeEvidence(EvidenceKind::Voice, Polarity::Contradict, toOwn,
-                                   tr("%1 hangjához csak %2").arg(curName, percent(toOwn)),
-                                   tr("a megerősített soraihoz mérve"), QStringLiteral("samples"));
+                                   QCoreApplication::translate("ReviewGroups", "%1 hangjához csak %2").arg(curName, percent(toOwn)),
+                                   QCoreApplication::translate("ReviewGroups", "a megerősített soraihoz mérve"), QStringLiteral("samples"));
         const SpeakerProfile* prop = ctx.profile(g.proposedSpeakerKey);
         const SpeakerProfile* cur = ctx.profile(g.currentSpeakerKey);
         g.confirmedBasis = (prop ? prop->confirmedLines : 0) + (cur ? cur->confirmedLines : 0);
@@ -548,8 +547,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
         if (!ids.isEmpty()) {
             ReviewGroup& g = groupFor(ReviewKind::ShortLines, QString(), QString(), QString());
             g.utteranceIds = ids;
-            g.title = tr("%n rövid sor", int(ids.size()));
-            g.subtitle = tr("Túl rövidek a hang-ellenőrzéshez — csak tájékoztató");
+            g.title = QCoreApplication::translate("ReviewGroups", "%n rövid sor", nullptr, int(ids.size()));
+            g.subtitle = QCoreApplication::translate("ReviewGroups", "Túl rövidek a hang-ellenőrzéshez — csak tájékoztató");
         }
     }
 
