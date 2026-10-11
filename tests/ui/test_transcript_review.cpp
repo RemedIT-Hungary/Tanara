@@ -4,6 +4,7 @@
 // visszavonási lépés, szennyezett mag + szétválasztás, jelöltek bizonyítékkal, „Miért nem X?",
 // kézi sáv-beosztás, új személy + hasonló sorok. Kijelző nélkül fut; a felhasználó adataihoz nem nyúl.
 #include "CandidateListModel.h"
+#include "tanara/edit/PeopleDirectory.h"
 #include "ReviewGroupsModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
@@ -159,6 +160,21 @@ private slots:
         qInfo() << "top" << top << cands.data(cands.index(0), CandidateListModel::EvidenceRole);
         QCOMPARE(top.value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
         QCOMPARE(cands.rowForKey(1), 0);
+        // A kereső a becenévre is talál (a többi személy-listával egyezően), a találat az alszövegben.
+        vm.setPeopleProvider([] {
+            PersonInfo p;
+            p.name = QStringLiteral("Fehér Gábor");
+            p.aliases = QStringList{QStringLiteral("Gabi")};
+            return QVector<PersonInfo>{p};
+        });
+        cands.setQuery(QStringLiteral("gabi"));
+        QVERIFY(cands.count() >= 1);
+        QCOMPARE(cands.get(0).value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
+        QVERIFY(cands.data(cands.index(0), CandidateListModel::SubTextRole).toString().contains(QStringLiteral("Gabi")));
+        cands.setQuery(QStringLiteral("zzz"));
+        QCOMPARE(cands.count(), 0);
+        cands.setQuery(QString());
+        vm.setPeopleProvider({});
         // A mostani beszélő a végén, halványan.
         const int last = cands.count() - 1;
         QVERIFY(cands.data(cands.index(last), CandidateListModel::CurrentRole).toBool());

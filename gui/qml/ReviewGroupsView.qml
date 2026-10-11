@@ -31,14 +31,19 @@ Item {
         Qt.callLater(() => list.positionViewAtIndex(row, ListView.Contain))
         return true
     }
+    // A sor a javasolt beszélőhöz: kulccsal a meeting beszélőjéhez, kulcs nélkül (a csoport csak
+    // nevet javasol, pl. a meetingen kívüli személyt) a személyhez.
+    function moveToLikely(utteranceId, likelyKey, likelyName) {
+        if (likelyKey !== "") return vm.moveUtteranceToSpeaker(utteranceId, likelyKey)
+        if (likelyName !== "") return vm.moveUtteranceToPerson(utteranceId, likelyName)
+        return false
+    }
     // „1": a kiválasztott sor a javasolt beszélőhöz.
     function acceptCurrent() {
         const row = currentUtterance !== "" ? vm.reviewGroups.rowOfLine(currentUtterance) : -1
         const item = row >= 0 ? list.itemAtIndex(row) : null
-        if (item && item.lineItem && item.lineItem.likelyKey !== "" && !item.lineItem.decided) {
-            vm.moveUtteranceToSpeaker(currentUtterance, item.lineItem.likelyKey)
-            return true
-        }
+        if (item && item.lineItem && item.lineItem.likelyName !== "" && !item.lineItem.decided)
+            return moveToLikely(currentUtterance, item.lineItem.likelyKey, item.lineItem.likelyName)
         return false
     }
 
@@ -148,7 +153,7 @@ Item {
                     toolTipText: qsTr("A sor átkerül hozzá: %1 (1)").arg(line.likelyName)
                     onClicked: {
                         root.currentUtterance = line.utteranceId
-                        root.vm.moveUtteranceToSpeaker(line.utteranceId, line.likelyKey)
+                        root.moveToLikely(line.utteranceId, line.likelyKey, line.likelyName)
                     }
                 }
                 TButton {

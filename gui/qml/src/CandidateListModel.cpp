@@ -131,7 +131,18 @@ void CandidateListModel::refresh()
         }
         const QString needle = foldForSearch(m_query.trimmed());
         QHash<QString, int> meetings;
-        for (const PersonInfo& p : m_editor->people()) meetings.insert(p.name.toCaseFolded(), p.meetingCount);
+        QHash<QString, QStringList> aliases;   // becenevek a kereséshez (név szerint)
+        for (const PersonInfo& p : m_editor->people()) {
+            meetings.insert(p.name.toCaseFolded(), p.meetingCount);
+            if (!p.aliases.isEmpty()) aliases.insert(foldForSearch(p.name), p.aliases);
+        }
+        // A kereső a névre vagy a becenévre; a talált becenév az alszövegbe („Dompa” · …).
+        auto matchedAlias = [&](const QString& name, const QString& personName) -> QString {
+            for (const QString& key : {foldForSearch(name), foldForSearch(personName)})
+                for (const QString& a : aliases.value(key))
+                    if (foldForSearch(a).contains(needle)) return a;
+            return {};
+        };
 
         Item current;
         bool hasCurrent = false;
@@ -147,7 +158,11 @@ void CandidateListModel::refresh()
                 it.name = c.personName;
             }
             if (it.name.isEmpty()) continue;
-            if (!needle.isEmpty() && !foldForSearch(it.name).contains(needle)) continue;
+            QString aliasHit;
+            if (!needle.isEmpty() && !foldForSearch(it.name).contains(needle)) {
+                aliasHit = matchedAlias(it.name, c.personName);
+                if (aliasHit.isEmpty()) continue;
+            }
             it.otherSide = c.otherSide;
             it.current = lineMode && c.speakerKey == currentKey;
             it.score = c.score;
@@ -159,6 +174,7 @@ void CandidateListModel::refresh()
             if (it.current) it.subText = tr("most ő");
             else if (!c.speakerKey.isEmpty()) it.subText = tr("%n sor itt", nullptr, c.linesHere);
             else it.subText = tr("%n megbeszélés", nullptr, meetings.value(c.personName.toCaseFolded()));
+            if (!aliasHit.isEmpty()) it.subText = tr("„%1”").arg(aliasHit) + QStringLiteral(" · ") + it.subText;
             if (it.current) {
                 current = it;
                 hasCurrent = true;
