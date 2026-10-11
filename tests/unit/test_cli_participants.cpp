@@ -83,7 +83,7 @@ private slots:
         const Run t = cli({"participants", dir.path()});
         QCOMPARE(t.code, 0);
         QVERIFY(t.out.contains("SURE (1)"));
-        QVERIFY(t.out.contains("Beszélő 1 · mikrofon"));
+        QVERIFY(t.out.contains("Beszélő 1 · microphone"));
         QVERIFY(t.out.contains("excluded (noSpeech)"));
         QCOMPARE(readAll(meetingJson), before);   // csak olvas
 

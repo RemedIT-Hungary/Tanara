@@ -1,5 +1,7 @@
 #include "tanara/edit/ParticipantAnalysis.h"
 
+#include <QCoreApplication>
+
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/TrackTiming.h"
 #include "tanara/edit/CandidateRanker.h"
@@ -129,8 +131,8 @@ QString sideOf(TrackKind kind)
 
 QString sideLabel(const QString& side)
 {
-    if (side == kSideMic) return QStringLiteral("mikrofon");
-    if (side == kSideLoopback) return QStringLiteral("hívás");
+    if (side == kSideMic) return QCoreApplication::translate("ParticipantAnalysis", "mikrofon");
+    if (side == kSideLoopback) return QCoreApplication::translate("ParticipantAnalysis", "hívás");
     return QString();
 }
 
@@ -308,14 +310,14 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
     QVector<Evidence> ev;
     const bool named = !p.personName.isEmpty();
     if (p.source == ParticipantSource::Manual)
-        ev.append({EvidenceKind::Manual, Polarity::Support, 1.0, QStringLiteral("kézzel felvéve"), {}, {}});
+        ev.append({EvidenceKind::Manual, Polarity::Support, 1.0, QCoreApplication::translate("ParticipantAnalysis", "kézzel felvéve"), {}, {}});
 
     // Hang.
     if (heard && named) {
         ev.append({EvidenceKind::Voice, Polarity::Support, score,
-                   QStringLiteral("hang %1%").arg(percent(score)), {}, QStringLiteral("samples")});
+                   QCoreApplication::translate("ParticipantAnalysis", "hang %1%").arg(percent(score)), {}, QStringLiteral("samples")});
     } else if (heard) {
-        ev.append({EvidenceKind::Voice, Polarity::Neutral, score, QStringLiteral("ismeretlen hang"),
+        ev.append({EvidenceKind::Voice, Polarity::Neutral, score, QCoreApplication::translate("ParticipantAnalysis", "ismeretlen hang"),
                    {}, QStringLiteral("samples")});
     } else if (named) {
         const bool prints = ctx.hasVoiceprint && ctx.hasVoiceprint(p.personName);
@@ -337,14 +339,14 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
         QStringList labels;
         for (const QString& s : manualSides) labels << sideLabel(s);
         ev.append({EvidenceKind::Side, Polarity::Support, 1.0,
-                   QStringLiteral("kézzel: %1").arg(labels.join(QStringLiteral(" és "))), {},
+                   QCoreApplication::translate("ParticipantAnalysis", "kézzel: %1").arg(labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "))), {},
                    QStringLiteral("tracks")});
     }
     // Különben a hallott oldal: a saját hang a mikrofonon várható.
     else if (heard && !p.sides.isEmpty()) {
         QStringList labels;
         for (const QString& s : p.sides) labels << sideLabel(s);
-        const QString text = labels.join(QStringLiteral(" és "));
+        const QString text = labels.join(QCoreApplication::translate("ParticipantAnalysis", " és "));
         const bool self = isSelf(p.personName, ctx.selfName);
         const bool onMic = p.sides.contains(kSideMic);
         if (self && onMic)

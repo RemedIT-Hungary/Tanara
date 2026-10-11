@@ -1399,6 +1399,10 @@
         <translation>Playback error: %1</translation>
     </message>
     <message>
+        <source>Visszavonva: %1</source>
+        <translation>Undone: %1</translation>
+    </message>
+    <message>
         <source>Az importálás nem sikerült: %1</source>
         <translation>Import failed: %1</translation>
     </message>
@@ -1971,6 +1975,14 @@
         <translation>To do this, enter your own name: Settings › Speakers › You.</translation>
     </message>
     <message>
+        <source>Visszavonva: %1</source>
+        <translation>Undone: %1</translation>
+    </message>
+    <message>
+        <source>Visszavonás · Ctrl+Z</source>
+        <translation>Undo · Ctrl+Z</translation>
+    </message>
+    <message>
         <source>MIRŐL SZÓLT</source>
         <translation>WHAT IT WAS ABOUT</translation>
     </message>
@@ -2148,6 +2160,37 @@
     </message>
 </context>
 <context>
+    <name>ParticipantAnalysis</name>
+    <message>
+        <source>mikrofon</source>
+        <translation>microphone</translation>
+    </message>
+    <message>
+        <source>hívás</source>
+        <translation>call</translation>
+    </message>
+    <message>
+        <source>kézzel felvéve</source>
+        <translation>added by hand</translation>
+    </message>
+    <message>
+        <source>hang %1%</source>
+        <translation>voice %1%</translation>
+    </message>
+    <message>
+        <source>ismeretlen hang</source>
+        <translation>unknown voice</translation>
+    </message>
+    <message>
+        <source>kézzel: %1</source>
+        <translation>by hand: %1</translation>
+    </message>
+    <message>
+        <source> és </source>
+        <translation> and </translation>
+    </message>
+</context>
+<context>
     <name>ParticipantList</name>
     <message>
         <source>Kattints: Miért ő? (javítás a szerkesztőben)</source>
@@ -2166,12 +2209,16 @@
         <translation>Add</translation>
     </message>
     <message>
-        <source>Nem volt ott (a javaslat eltűnik)</source>
-        <translation>Wasn&apos;t there (the suggestion disappears)</translation>
+        <source>Nem volt ott: a javaslat ennél a megbeszélésnél nem jön elő (Ctrl+Z visszahozza)</source>
+        <translation>Was not there: the suggestion will not come up for this meeting (Ctrl+Z brings it back)</translation>
     </message>
     <message>
-        <source>Nem volt ott: a jelölése törlődik, a sorai névtelenek lesznek</source>
-        <translation>Wasn&apos;t there: the mark is removed and their lines become unnamed</translation>
+        <source>Törlés a résztvevők közül (Ctrl+Z visszavonja)</source>
+        <translation>Remove from the participants (Ctrl+Z undoes it)</translation>
+    </message>
+    <message>
+        <source>Nem volt ott: törlés a résztvevők közül, a sorai névtelenek lesznek (Ctrl+Z visszavonja)</source>
+        <translation>Was not there: removed from the participants, their lines become unnamed (Ctrl+Z undoes it)</translation>
     </message>
 </context>
 <context>
@@ -3338,6 +3385,13 @@
         <source>átlag %1 hangjához</source>
         <translation>average for %1&apos;s voice</translation>
     </message>
+    <message numerus="yes">
+        <source>%n sor a másik sávon</source>
+        <translation>
+            <numerusform>%n line on the other track</numerusform>
+            <numerusform>%n lines on the other track</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Most: %1 · javaslat: %2</source>
         <translation>Now: %1 · suggestion: %2</translation>
@@ -3362,6 +3416,13 @@
         <source>%1 a mikrofonon beszél</source>
         <translation>%1 speaks on the microphone</translation>
     </message>
+    <message numerus="yes">
+        <source>Még %n sor hangja hasonlít: %1</source>
+        <translation>
+            <numerusform>%n more line sounds alike: %1</numerusform>
+            <numerusform>%n more lines sound alike: %1</numerusform>
+        </translation>
+    </message>
     <message>
         <source>hang %1, mind a(z) %2 oldalon</source>
         <translation>voice %1, all on the %2 side</translation>
@@ -3378,6 +3439,13 @@
         <source>%1 megerősített sorai két hangra esnek</source>
         <translation>%1&apos;s confirmed lines fall into two voices</translation>
     </message>
+    <message numerus="yes">
+        <source>Szétválasztás: %n sor → %1</source>
+        <translation>
+            <numerusform>Split: %n line → %1</numerusform>
+            <numerusform>Split: %n lines → %1</numerusform>
+        </translation>
+    </message>
     <message>
         <source>két hang: %1 egyezés</source>
         <translation>two voices: %1 match</translation>
@@ -3385,6 +3453,13 @@
     <message>
         <source>%1 + %2 megerősített sor</source>
         <translation>%1 + %2 confirmed lines</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor hangja inkább: %1</source>
+        <translation>
+            <numerusform>%n line sounds more like: %1</numerusform>
+            <numerusform>%n lines sound more like: %1</numerusform>
+        </translation>
     </message>
     <message>
         <source>Most: %1</source>
@@ -3397,6 +3472,13 @@
     <message>
         <source>a megerősített soraihoz mérve</source>
         <translation>measured against their confirmed lines</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n rövid sor</source>
+        <translation>
+            <numerusform>%n short line</numerusform>
+            <numerusform>%n short lines</numerusform>
+        </translation>
     </message>
     <message>
         <source>Túl rövidek a hang-ellenőrzéshez — csak tájékoztató</source>
@@ -9222,6 +9304,10 @@
     <message>
         <source>A hívás hangján (távoli oldal) beszél</source>
         <translation>Speaks on the call audio (remote side)</translation>
+    </message>
+    <message>
+        <source>Az átiratban nem találtuk a hangját: nincs beszélő a nevén</source>
+        <translation>Their voice was not found in the transcript: no speaker carries their name</translation>
     </message>
     <message>
         <source>%1 (te)</source>
