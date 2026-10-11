@@ -2,11 +2,11 @@ import QtQuick
 
 // Beszélő → sáv kötés chipjei a KIK VOLTAK OTT sorban (G6): sávonként egy chip (mikrofon / hívás
 // hangja; több sáv is bekapcsolható), kattintva váltható. A következtetett oldal sávjai halványan
-// (sunken, muted), a kézi kötés accent (accentSoft + accent ikon/felirat); a ki nem kapcsolt sáv
-// szaggatott keretes. Ugyanaz az adat, mint a szerkesztő „Miért ő?" MELYIK SÁVON BESZÉL? chipjei
+// (sunken + keret), a kézi kötés accent (accentSoft + accent ikon/felirat); a ki nem kapcsolt sáv
+// szaggatott keretes, halvány. Egy sorban, rövid névvel („mikrofon” / „hívás”, ha abból egy van). Ugyanaz az adat, mint a szerkesztő „Miért ő?" MELYIK SÁVON BESZÉL? chipjei
 // (ParticipantTrackBinder → AppController::setParticipantTracks).
 //   ParticipantTrackChips { binder: trackBinder; participantId: modelData.id }
-Flow {
+Row {
     id: root
 
     property var binder: null                 // ParticipantTrackBinder
@@ -27,13 +27,15 @@ Flow {
             objectName: "participantTrackChip_" + modelData.trackId
             implicitWidth: chipRow.implicitWidth + 12
             implicitHeight: 20
-            opacity: chip.on && !chip.manual ? 0.7 : 1
+            opacity: chip.on ? 1 : 0.8
 
             Rectangle {
                 anchors.fill: parent
                 visible: chip.on
                 radius: Theme.radiusTag
                 color: chip.manual ? Theme.accentSoft : Theme.sunken
+                border.width: chip.manual ? 0 : 1
+                border.color: Theme.border
             }
             TDashedRect {
                 anchors.fill: parent
@@ -61,7 +63,7 @@ Flow {
                 TLabel {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.min(implicitWidth, 96)
-                    text: chip.modelData.name || ""
+                    text: chip.modelData.shortName || chip.modelData.name || ""
                     elide: Text.ElideRight
                     color: chip.on && chip.manual ? Theme.accent : chip.on ? Theme.text : Theme.textMuted
                     font.pixelSize: 12

@@ -4977,7 +4977,14 @@ bool AppController::setParticipantTracks(const QString& meetingId, const QString
     if (pIdx < 0 && keys.isEmpty()) return false;
     bool changed = false;
     if (pIdx >= 0 && m.participants.at(pIdx).tracks != ids) {
-        m.participants[pIdx].tracks = ids;
+        Participant& p = m.participants[pIdx];
+        p.tracks = ids;
+        // A sáv-oldal bizonyítéka a kézi kötésből (a hang-bizonyíték változatlan).
+        double score = -1.0;
+        const bool heard = !p.sides.isEmpty() || p.talkShare > 0.0;
+        for (const Evidence& e : p.evidence)
+            if (e.kind == EvidenceKind::Voice) score = e.value;
+        p.evidence = participants::participantEvidence(p, heard, score, m, d->candidateContext());
         d->store->saveMeeting(m);
         changed = true;
     }

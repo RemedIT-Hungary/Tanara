@@ -260,7 +260,12 @@ private slots:
         QVERIFY(shown("pipelineSteps"));
         QVERIFY(shown("step_transcript"));
         QVERIFY(shown("trackList"));
-        QCOMPARE(items("trackSwitch").size(), 2);          // a sávok kapcsolhatók
+        int switches = 0;                                  // a sávok kapcsolhatók (a látható kapcsolók)
+        for (QQuickItem* it : items("trackSwitch")) switches += it->isVisible() ? 1 : 0;
+        QCOMPARE(switches, 2);
+        int strips = 0;                                    // és beszéd-csíkkal meghallgathatók
+        for (QQuickItem* it : items("trackActivityStrip")) strips += it->isVisible() ? 1 : 0;
+        QVERIFY(strips >= 2);
         QVERIFY(shown("peopleEmpty"));
         QVERIFY(shown("soloButton"));
         QVERIFY(shown("emptyAddParticipant"));
@@ -393,8 +398,11 @@ private slots:
         QObject* overview = object("overviewTab");
         StartSpy spy;
         overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        // Az első sor (S1) egyetlen jelvénye az oldal volt („mikrofon”): azt a sáv-chipek váltják
+        // (G6), így az első kattintható jelvény a másodiké (S2, #Nordvik).
         click(item("participantBadge"));
-        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S1")}));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S2")}));
+        QVERIFY(shown("participantTrackChips"));
 
         QCOMPARE(items("participantNameButton").size(), 5);
         int visibleName = 0;

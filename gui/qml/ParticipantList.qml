@@ -12,13 +12,17 @@ import QtQuick.Templates as T
 // magyarázata (source.detail); átirat után (a sornak van beszélő-kulcsa) kattintható, és a
 // szerkesztő „Miért ő?” paneljét nyitja arra a beszélőre (whyRequested). A névtelen sor
 // („elnevezhető”) kattintásra és a jobb szélső „Elnevezés…” gombbal elnevezhető (nameRequested).
-// people: OverviewViewModel.participants
+// Sáv-chipek (G6): a forrás-jelvények után a beszélő sávjai (ParticipantTrackChips; kattintva a
+// kötés vált, ugyanaz az adat, mint a „Miért ő?” MELYIK SÁVON BESZÉL? chipjei).
+// people: OverviewViewModel.participants · trackBinder: ParticipantTrackBinder
 Rectangle {
     id: root
 
     property var people: []
     // Kattintható-e a jelvény („Miért ő?”): átirat után igen.
     property bool canExplain: true
+    // Beszélő → sáv kötés (G6): ParticipantTrackBinder; null → nincsenek sáv-chipek.
+    property var trackBinder: null
 
     signal addRequested(string name)
     signal removeRequested(string id)
@@ -187,12 +191,22 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Repeater {
-                            model: row.modelData.sources
+                            // A sáv-chipek mutatják az oldalt: a (nem ellentmondó) mikrofon / hívás
+                            // jelvény ilyenkor kimarad.
+                            model: trackChips.visible
+                                   ? (row.modelData.sources || []).filter(s => s.negative === true
+                                                                         || (s.icon !== "mic" && s.icon !== "phone"))
+                                   : row.modelData.sources
                             SourceBadge {
                                 required property var modelData
                                 source: modelData
                                 speakerKey: row.modelData.speakerKey || ""
                             }
+                        }
+                        ParticipantTrackChips {
+                            id: trackChips
+                            binder: root.trackBinder
+                            participantId: row.suggested ? "" : (row.modelData.id || "")
                         }
                     }
                     RowLayout {

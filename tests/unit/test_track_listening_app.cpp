@@ -15,6 +15,7 @@
 #include <QJsonObject>
 
 #include "tanara/AppController.h"
+#include "tanara/edit/ParticipantAnalysis.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/TrackActivity.h"
 #include "tanara/store/JsonSerialization.h"
@@ -51,6 +52,7 @@ private slots:
     void bindingBeforeTranscript();
     void bindingAfterTranscriptIsTheEditorAssignment();
     void bindingCopiedToOverlayOnTranscript();
+    void manualTracksSteerClusterMatchAndEvidence();
 
 private:
     Meeting makeMeeting();
@@ -271,6 +273,49 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
     QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participantTracks(m.id, "v1").trackIds, (QStringList{"mic", "loop"}));
     QVERIFY(m_app->participantTracks(m.id, "v1").manual);
+}
+
+// Átirat előtti elemzés: a kézi sáv-kötés a párosítást (más sávon szóló klaszter nem lehet ő)
+// és a bizonyítékot („kézzel: hívás") is meghatározza; az újraelemzés megtartja a kötést.
+void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
+{
+    Meeting m = makeMeeting();
+    m.participants[1].tracks = {"loop"};            // Béla kézzel a hívás sávjára kötve
+    m.participants[1].source = ParticipantSource::Voice;
+    ClusterSet cs;
+    VoiceCluster onMic;
+    onMic.trackId = "mic";
+    onMic.side = "mic";
+    onMic.windows = {{0, 4000}};
+    VoiceCluster onLoop = onMic;
+    onLoop.trackId = "loop";
+    onLoop.side = "loopback";
+    onLoop.windows = {{8000, 12000}};
+    cs.clusters = {onMic, onLoop};
+    participants::CandidateContext ctx;
+    // Mindkét klaszter Bélára hasonlít a legjobban (pl. visszhang a mikrofonon).
+    ctx.rank = [](const EmbeddingSet&) { return QVector<VoiceMatch>{{QStringLiteral("Béla"), 0.8}}; };
+    const QVector<Participant> out = participants::buildParticipants(cs, m, ctx);
+    QCOMPARE(cs.clusters[0].matchName, QString());              // a mikrofon-klaszter nem ő
+    QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
+    const Participant* bela = nullptr;
+    for (const Participant& p : out)
+        if (p.personName == QStringLiteral("Béla")) bela = &p;
+    QVERIFY(bela);
+    QCOMPARE(bela->tracks, QStringList{"loop"});                 // az újraelemzés megtartja
+    bool manualSide = false;
+    for (const Evidence& e : bela->evidence)
+        if (e.kind == EvidenceKind::Side && e.text == QStringLiteral("kézzel: hívás")
+            && e.polarity == Polarity::Support)
+            manualSide = true;
+    QVERIFY(manualSide);
+
+    // Az AppController a kötés váltásakor a bizonyítékot is frissíti.
+    QVERIFY(m_app->setParticipantTracks(m.id, "v1", {"mic", "loop"}));
+    bool both = false;
+    for (const Evidence& e : m_app->participants(m.id).at(0).evidence)
+        both = both || (e.kind == EvidenceKind::Side && e.text == QStringLiteral("kézzel: mikrofon és hívás"));
+    QVERIFY(both);
 }
 
 QTEST_MAIN(TrackListeningAppTest)

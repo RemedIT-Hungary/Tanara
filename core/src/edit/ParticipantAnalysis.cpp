@@ -327,8 +327,21 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
                        {}, QStringLiteral("samples")});
     }
 
-    // Sáv-oldal: a saját hang a mikrofonon várható.
-    if (heard && !p.sides.isEmpty()) {
+    // Sáv-oldal: a kézi sáv-kötés (Participant::tracks) az igazság, ha van.
+    QStringList manualSides;   // mikrofon elöl
+    for (const QString& side : {kSideMic, kSideLoopback})
+        for (const Track& t : m.tracks)
+            if (p.tracks.contains(t.id) && sideOf(t.kind) == side && !manualSides.contains(side))
+                manualSides << side;
+    if (!manualSides.isEmpty()) {
+        QStringList labels;
+        for (const QString& s : manualSides) labels << sideLabel(s);
+        ev.append({EvidenceKind::Side, Polarity::Support, 1.0,
+                   QStringLiteral("kézzel: %1").arg(labels.join(QStringLiteral(" és "))), {},
+                   QStringLiteral("tracks")});
+    }
+    // Különben a hallott oldal: a saját hang a mikrofonon várható.
+    else if (heard && !p.sides.isEmpty()) {
         QStringList labels;
         for (const QString& s : p.sides) labels << sideLabel(s);
         const QString text = labels.join(QStringLiteral(" és "));
@@ -389,7 +402,13 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
         double pickScore = -1.0, bestEff = -2.0;
         for (const VoiceMatch& vm : ranked) {
             if (vm.name.isEmpty()) continue;
-            const double eff = vm.score + (manualNames.contains(vm.name.toLower()) ? kManualBoost : 0.0);
+            // Kézi sáv-kötés („Melyik sávon beszél?"): más sávon szóló klaszter nem lehet ő; a
+            // kötött sávon szóló előnyt kap (mint a kézi résztvevő).
+            const auto bound = manualTracks.constFind(vm.name.toLower());
+            const bool hasBinding = bound != manualTracks.constEnd();
+            if (hasBinding && !c.trackId.isEmpty() && !bound->contains(c.trackId)) continue;
+            const double eff = vm.score + (manualNames.contains(vm.name.toLower()) ? kManualBoost : 0.0)
+                             + (hasBinding ? kManualBoost : 0.0);
             if (eff > bestEff) { bestEff = eff; pick = vm.name; pickScore = vm.score; }
         }
         if (bestEff >= kMatchThreshold) { c.matchName = pick; c.matchScore = pickScore; }

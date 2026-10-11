@@ -82,6 +82,12 @@ Item {
         meetingId: root.meetingId
         demoState: root.demoTwoTracks ? "overviewTwo" : "overview"
     }
+    // Beszélő → sáv kötés a KIK VOLTAK OTT soraiban (G6, sáv-chipek).
+    ParticipantTrackBinder {
+        id: trackBinder
+        objectName: "participantTrackBinder"
+        meetingId: root.meetingId
+    }
     // Saját címke-modell, ha a gazda nem ad (önálló képernyőkép): kitalált készlet.
     MeetingTagsModel {
         id: ownTags
@@ -298,6 +304,7 @@ Item {
                     Layout.fillWidth: true
                     people: vm.participants
                     canExplain: vm.hasTranscript
+                    trackBinder: trackBinder
                     onAddRequested: (name) => vm.addParticipant(name)
                     onRemoveRequested: (id) => vm.removeParticipant(id)
                     onWhyRequested: (key) => root.explainSpeaker(key)

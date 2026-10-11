@@ -7,7 +7,7 @@
 // a „Miért ő?" MELYIK SÁVON BESZÉL? chipjeivel közös). A kézi kötés nélkül a következtetett oldal
 // sávjai látszanak (halványan).
 //
-// Chip: { trackId, name, icon ("mic" | "phone" | "audio-lines"), on, manual }.
+// Chip: { trackId, name, shortName, icon ("mic" | "phone" | "audio-lines"), on, manual }.
 // Kattintás: a mostani halmaz ⊕ a sáv (kézi kötés lesz belőle); ha a kézi halmaz üres maradna →
 // a kézi kötés törlődik (vissza a következtetésre); a következtetett egyetlen sáv kattintása a
 // kötés megerősítése.

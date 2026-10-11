@@ -7,6 +7,8 @@
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/store/MeetingStore.h"
 
+#include <algorithm>
+
 namespace tanara_qml {
 
 using namespace tanara;
@@ -120,10 +122,18 @@ QVariantList ParticipantTrackBinder::chips(const QString& id) const
         return out;
     bool manual = false;
     const QStringList on = binding(id, &manual);
-    for (const TrackChoice& t : m_tracks)
+    // Rövid név a sorhoz: „mikrofon” / „hívás”, ha abból a fajtából egy sáv van; különben a sáv neve.
+    auto count = [this](const QString& icon) {
+        return std::count_if(m_tracks.cbegin(), m_tracks.cend(), [&icon](const TrackChoice& t) { return t.icon == icon; });
+    };
+    for (const TrackChoice& t : m_tracks) {
+        QString shortName = t.name;
+        if (t.icon == QLatin1String("mic") && count(t.icon) == 1) shortName = tr("mikrofon");
+        else if (t.icon == QLatin1String("phone") && count(t.icon) == 1) shortName = tr("hívás");
         out << QVariantMap{{QStringLiteral("trackId"), t.id}, {QStringLiteral("name"), t.name},
                            {QStringLiteral("icon"), t.icon}, {QStringLiteral("on"), on.contains(t.id)},
-                           {QStringLiteral("manual"), manual}};
+                           {QStringLiteral("manual"), manual}, {QStringLiteral("shortName"), shortName}};
+    }
     return out;
 }
 
