@@ -31,7 +31,8 @@
 // "staleTargeted" (célzott elavulás) | "noSources" (ugyanez állítások nélkül: a régi nézet).
 //
 // Forrás-hivatkozások (v3, S1–S3): a gyors összefoglaló állításai (AppController::
-// summaryStatements) három StatementListModel-ben; a forrás-idézetek a beszélő-szerkesztő
+// summaryStatements) öt StatementListModel-ben (mondatok, döntések, nyitott kérdések,
+// teendők, memó); a forrás-idézetek a beszélő-szerkesztő
 // megszólalásaiból (sourceDetails). A térkép-dokk sorai: sourceMarks (az állítások forrásai,
 // active = a kijelölt / az elavulás által érintett) és sectionBands (memó-szakaszok).
 //
@@ -138,7 +139,10 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(QVariantList topicSections READ topicSections NOTIFY changed)
     // A memó szakaszai időrendben: [{ title, startMs (-1: ismeretlen), endMs, stamp („12:40”,
     // üres ha ismeretlen), range („12:40–15:55”), sourceRange („31:10–44:05”, perc:mp), points:
-    // [string], speakers: [{ name, colorIndex }], speakersText („A · B · C”) }]
+    // [string], speakers: [{ name, colorIndex }], speakersText („A · B · C”), introRows: [sor]
+    // (a bevezető mondatai), blocks: [{ key ("" | arguments | open | saját), title (üres a
+    // törzsnél), rows: [sor] }] }] — a sor a StatementListModel::rowMap alakja (állítás nélkül
+    // statementId "" és nincs forrás).
     Q_PROPERTY(QVariantList memo READ memo NOTIFY changed)
     // "none" (témánkénti mód: nincs memó-nézet) | "missing" (régi összefoglaló) | "ready"
     Q_PROPERTY(QString memoState READ memoState NOTIFY changed)
@@ -150,6 +154,11 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(tanara_qml::StatementListModel* sentences READ sentences CONSTANT)
     Q_PROPERTY(tanara_qml::StatementListModel* decisionItems READ decisionItems CONSTANT)
     Q_PROPERTY(tanara_qml::StatementListModel* todoItems READ todoItems CONSTANT)
+    // A nyitott kérdések állításként (forrás-chippel); üres: régi összefoglaló (openQuestions marad).
+    Q_PROPERTY(tanara_qml::StatementListModel* questionItems READ questionItems CONSTANT)
+    // A memó állításai (szakasz-bevezetők mondatai „i<n>.<k>”, pontok „m<n>.<k>”) egy listában —
+    // a memo[] szakaszai ezekből kapják az introRows / blocks sorait.
+    Q_PROPERTY(tanara_qml::StatementListModel* memoItems READ memoItems CONSTANT)
     // A „Források” kapcsoló: idő-chipek és a térkép „Forrás” sora (alapból be).
     Q_PROPERTY(bool sourcesVisible READ sourcesVisible WRITE setSourcesVisible NOTIFY sourcesVisibleChanged)
     // A kijelölt (rámutatott / felugróban nyitott) állítás; "" = nincs.
@@ -248,6 +257,8 @@ public:
     StatementListModel* sentences() const { return m_sentences; }
     StatementListModel* decisionItems() const { return m_decisionItems; }
     StatementListModel* todoItems() const { return m_todoItems; }
+    StatementListModel* questionItems() const { return m_questionItems; }
+    StatementListModel* memoItems() const { return m_memoItems; }
     bool sourcesVisible() const { return m_sourcesVisible; }
     void setSourcesVisible(bool on);
     QString activeStatementId() const { return m_activeStatementId; }
@@ -319,7 +330,9 @@ private:
     void reloadStatements();
     void buildStatements(const QVector<tanara::SummaryStatement>& statements,
                          const QStringList& affectedUtterances);
-    QVariantMap memoMapFor(const tanara::MemoSection& sec) const;
+    QVariantMap memoMapFor(const tanara::MemoSection& sec, int index) const;
+    void rebuildMemo();
+    QList<StatementListModel*> statementModels() const;
     QVariantList speakerChips(const QStringList& names) const;
     void applyJob(const tanara::JobProgress& job);
     void watchEditor(tanara::SpeakerEditor* editor);
@@ -398,6 +411,8 @@ private:
     StatementListModel* m_sentences = nullptr;
     StatementListModel* m_decisionItems = nullptr;
     StatementListModel* m_todoItems = nullptr;
+    StatementListModel* m_questionItems = nullptr;
+    StatementListModel* m_memoItems = nullptr;
     bool m_hasStatements = false;
     bool m_sourcesVisible = true;
     QString m_activeStatementId;

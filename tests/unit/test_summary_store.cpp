@@ -301,7 +301,7 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
     QCOMPARE(back.summary.memo[1].points, s.memo[1].points);
     QFile jf(summarystore::jsonPath(dir.path()));
     QVERIFY(jf.open(QIODevice::ReadOnly));
-    QCOMPARE(QJsonDocument::fromJson(jf.readAll()).object().value("version").toInt(), 3);
+    QCOMPARE(QJsonDocument::fromJson(jf.readAll()).object().value("version").toInt(), 4);
 }
 
 void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()

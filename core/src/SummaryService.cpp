@@ -520,9 +520,18 @@ QString Summary::renderMarkdown() const
             else if (m.startMs >= 0)
                 md += QStringLiteral(" (%1)").arg(summarypipe::formatTimestamp(m.startMs));
             md += QStringLiteral("\n\n");
-            for (const QString& p : m.points)
-                md += QStringLiteral("- ") + p + QStringLiteral("\n");
-            md += QStringLiteral("\n");
+            if (!m.intro.trimmed().isEmpty())
+                md += m.intro.trimmed() + QStringLiteral("\n\n");
+            // A törzs pontjai, utána az alszakaszok („**Elhangzott érvek:**”, „**Nyitott kérdés:**”).
+            for (const auto& g : summarysrc::memoGroups(m)) {
+                if (!g.first.isEmpty())
+                    md += QStringLiteral("**") + summarysrc::memoGroupLabel(g.first) + QStringLiteral(":**\n\n");
+                for (int i : g.second)
+                    md += QStringLiteral("- ") + m.points.at(i) + QStringLiteral("\n");
+                md += QStringLiteral("\n");
+            }
+            if (m.points.isEmpty() && m.intro.trimmed().isEmpty())
+                md += QStringLiteral("\n");
         }
     }
 

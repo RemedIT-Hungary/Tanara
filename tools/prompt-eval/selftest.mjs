@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractMarkers, sentences, sourceStats, strictTime } from './sources.mjs';
+import { extractMarkers, memoSourceStats, parseTopics, sentences, sourceStats, strictTime } from './sources.mjs';
+import { builtinPrompt } from './builtin.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 let n = 0;
@@ -46,6 +47,9 @@ t('lefedettség hamis válaszon (tűrés ±5 s)', () => {
     actionItems: [{ text: 'Ajánlat küldése [t=05:02]', owner: 'Béla', due: 'péntek' }],
   };
   assert.deepEqual(sourceStats(parsed, transcript), { items: 6, marked: 5, resolved: 4, coverage: 0.67 });
+  // A nyitott kérdések is állítások (v4).
+  assert.deepEqual(sourceStats({ ...parsed, openQuestions: ['Mennyi az ár? [t=01:06]', 'Kérdés jelölő nélkül'] }, transcript),
+    { items: 8, marked: 6, resolved: 5, coverage: 0.63 });
   assert.equal(sourceStats(null, transcript), null);
 });
 t('a jelölős promptok kérik a jelölőt', () => {
@@ -59,5 +63,52 @@ t('a beépített promptok (PromptLibrary.cpp) is kérik a jelölőt', () => {
   const cpp = fs.readFileSync(path.join(HERE, '..', '..', 'core', 'src', 'PromptLibrary.cpp'), 'utf8');
   assert.ok(cpp.includes('const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS'));
   assert.equal((cpp.match(/%SOURCE_MARKERS%/g) || []).length, 3);   // merge + single + a csere
+});
+// ---- memó (TOPICS): bevezető, pontok, alszakaszok — hamis jegyzet-válasszal ----
+const notes = [
+  'TOPICS',
+  '### [00:00-02:30] Árazás',
+  'Az árról egyeztettek. [t=00:03] Béla száz eurót javasolt. [t=01:05]',
+  '- A javaslat száz euró. [t=01:05]',
+  '#### Arguments',
+  '- Ádám szerint drága. [t=02:00]',
+  '- Tördelt',
+  '  pont jelölő nélkül.',
+  '#### Unresolved',
+  'Ki dönt az árról? [t=40:00]',
+  '### [05:00-05:30] Ajánlat',
+  '- Béla péntekig küldi. [t=05:01]',
+  'DECISIONS',
+  '- none',
+  'OPEN',
+  '- [01:05] Ár?',
+].join('\n');
+t('memó-jegyzet szerkezete (bevezető, pontok, alszakaszok)', () => {
+  const topics = parseTopics(notes);
+  assert.equal(topics.length, 2);
+  assert.equal(topics[0].intro, 'Az árról egyeztettek. [t=00:03] Béla száz eurót javasolt. [t=01:05]');
+  assert.deepEqual(topics[0].points.map((p) => p.group), ['', 'arguments', 'arguments', 'open']);
+  assert.equal(topics[0].points[2].text, 'Tördelt pont jelölő nélkül.');
+  assert.equal(topics[1].points.length, 1);
+});
+t('memó forrás-lefedettség (kitalált idő nem oldható fel)', () => {
+  assert.deepEqual(memoSourceStats(notes, transcript),
+    { topics: 2, items: 7, marked: 6, resolved: 5, coverage: 0.71, groups: { arguments: 2, open: 1, other: 0 } });
+  assert.equal(memoSourceStats('', transcript).items, 0);
+});
+t('a beépített promptok összeállnak (@single, @notes, @merge)', () => {
+  for (const id of ['single', 'notes', 'merge']) {
+    const p = builtinPrompt(id, 'Hungarian');
+    assert.ok(!/%[A-Z_]+%/.test(p), id + ': feloldatlan helyőrző');
+    assert.ok(!p.includes('{{LANGUAGE}}'), id);
+    assert.ok(p.includes('[t=mm:ss]'), id);
+  }
+  for (const id of ['single', 'notes']) {
+    const p = builtinPrompt(id);
+    assert.ok(p.includes('#### Arguments') && p.includes('#### Unresolved'), id);
+    assert.ok(p.includes('Every gist sentence and every point ends with a source marker'), id);
+  }
+  assert.ok(builtinPrompt('merge').includes('every open question'));
+  assert.throws(() => builtinPrompt('nincs'));
 });
 console.log(`${n} eset rendben`);

@@ -96,7 +96,8 @@ qint64 SummaryViewModel::splitTimestamp(const QString& text, QString* rest)
 SummaryViewModel::SummaryViewModel(QObject* parent)
     : QObject(parent), m_topics(new TopicListModel(this)), m_note(new MeetingNoteModel(this)),
       m_sentences(new StatementListModel(this)), m_decisionItems(new StatementListModel(this)),
-      m_todoItems(new StatementListModel(this))
+      m_todoItems(new StatementListModel(this)), m_questionItems(new StatementListModel(this)),
+      m_memoItems(new StatementListModel(this))
 {
     connect(this, &SummaryViewModel::changed, this, &SummaryViewModel::generationLineChanged);
     connect(this, &SummaryViewModel::sectionChanged, this, &SummaryViewModel::generationLineChanged);
@@ -383,10 +384,7 @@ void SummaryViewModel::reloadParticipants()
     m_actions = actions;
 
     // A memó-szakaszok beszélői és az állítások felelősei is a beszélő-színeket kapják.
-    m_memo.clear();
-    for (const MemoSection& sec : std::as_const(m_summary.memo))
-        m_memo << memoMapFor(sec);
-    buildStatements(m_rawStatements, m_affectedUtterances);
+    buildStatements(m_rawStatements, m_affectedUtterances);   // + a memó-szakaszok (rebuildMemo)
     emit participantsChanged();
     emit changed();
     emit marksChanged();
@@ -825,8 +823,7 @@ void SummaryViewModel::loadDemo()
 
     if (!old && st != QLatin1String("topicsDoc"))
         loadDemoMemo(st != QLatin1String("memoShort"));
-    for (const MemoSection& sec : std::as_const(m_summary.memo))
-        m_memo << memoMapFor(sec);
+    rebuildMemo();
     m_markdown = m_summary.renderMarkdown();
 
     if (st == QLatin1String("running"))
@@ -940,9 +937,53 @@ QVariantList SummaryViewModel::speakerChips(const QStringList& names) const
     return out;
 }
 
-QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec) const
+QList<StatementListModel*> SummaryViewModel::statementModels() const
+{
+    return {m_sentences, m_decisionItems, m_questionItems, m_todoItems, m_memoItems};
+}
+
+void SummaryViewModel::rebuildMemo()
+{
+    m_memo.clear();
+    for (int i = 0; i < m_summary.memo.size(); ++i)
+        m_memo << memoMapFor(m_summary.memo.at(i), i);
+}
+
+QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec, int index) const
 {
     QVariantMap map = memoMap(sec, m_durationMs);
+    // Állítás-sorok: a memó-állítás, ha van („i<n>.<k>” / „m<n>.<k>”), különben a puszta szöveg.
+    const QString n = QString::number(index + 1) + QLatin1Char('.');
+    auto plainRow = [](const QString& text) {
+        StatementListModel::Row r;
+        r.kind = QStringLiteral("memoPoint");
+        r.text = text.trimmed();
+        return StatementListModel::rowMap(r);
+    };
+    QVariantList introRows;
+    for (const StatementListModel::Row& r : m_memoItems->items())
+        if (r.id.startsWith(QLatin1Char('i') + n))
+            introRows << StatementListModel::rowMap(r);
+    if (introRows.isEmpty() && !sec.intro.trimmed().isEmpty())
+        introRows << plainRow(sec.intro);
+    QVariantList blocks;
+    for (const auto& g : tanara::summarysrc::memoGroups(sec)) {
+        QVariantList rows;
+        for (int i : g.second) {
+            if (sec.points.at(i).trimmed().isEmpty())
+                continue;
+            const int row = m_memoItems->indexOfId(QLatin1Char('m') + n + QString::number(i + 1));
+            rows << (row >= 0 ? m_memoItems->get(row) : plainRow(sec.points.at(i)));
+        }
+        if (rows.isEmpty())
+            continue;
+        const QString title = g.first == QLatin1String("arguments") ? tr("Elhangzott érvek")
+                            : g.first == QLatin1String("open")      ? tr("Nyitott kérdés") : g.first;
+        blocks << QVariantMap{{QStringLiteral("key"), g.first}, {QStringLiteral("title"), title},
+                              {QStringLiteral("rows"), rows}};
+    }
+    map.insert(QStringLiteral("introRows"), introRows);
+    map.insert(QStringLiteral("blocks"), blocks);
     const qint64 start = map.value(QStringLiteral("startMs")).toLongLong();
     const qint64 end = map.value(QStringLiteral("endMs")).toLongLong();
     map.insert(QStringLiteral("sourceRange"),
@@ -960,7 +1001,7 @@ QVariantMap SummaryViewModel::memoMapFor(const MemoSection& sec) const
 void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statements,
                                        const QStringList& affectedUtterances)
 {
-    QVector<StatementListModel::Row> sentences, decisions, todos;
+    QVector<StatementListModel::Row> sentences, decisions, todos, questions, memo;
     const QSet<QString> affectedIds(affectedUtterances.cbegin(), affectedUtterances.cend());
     int todoIndex = 0;
     for (const SummaryStatement& st : statements) {
@@ -1014,12 +1055,27 @@ void SummaryViewModel::buildStatements(const QVector<SummaryStatement>& statemen
             todos << r;
             break;
         }
+        case StatementKind::OpenQuestion:
+            r.kind = QStringLiteral("openQuestion");
+            questions << r;
+            break;
+        case StatementKind::MemoIntro:
+            r.kind = QStringLiteral("intro");
+            memo << r;
+            break;
+        case StatementKind::MemoPoint:
+            r.kind = QStringLiteral("memoPoint");
+            memo << r;
+            break;
         }
     }
     m_hasStatements = !statements.isEmpty();
     m_sentences->setRows(sentences);
     m_decisionItems->setRows(decisions);
     m_todoItems->setRows(todos);
+    m_questionItems->setRows(questions);
+    m_memoItems->setRows(memo);
+    rebuildMemo();   // a szakaszok sorai a memó-állításokból
 }
 
 void SummaryViewModel::setSourcesVisible(bool on)
@@ -1051,13 +1107,23 @@ QVariantList SummaryViewModel::sourceMarks() const
 {
     if (!m_hasStatements || !m_sourcesVisible)
         return {};
-    // Kiemelés: a kijelölt állítás forrásai; kijelölés nélkül elavultnál az érintett források.
+    // Kiemelés: a kijelölt állítás forrásai; kijelölés nélkül elavultnál az érintett források,
+    // a memóban (kijelölés nélkül) a kiemelt szakasz állításaié. A memó-nézet a memó-állítások
+    // forrásait mutatja, a vezetői nézet a többiét.
+    const bool memoView = m_section == QLatin1String("memo") && memoState() == QLatin1String("ready");
     const bool staleMode = m_activeStatementId.isEmpty() && m_stale && m_staleTargeted;
+    const QString activeSec = m_activeSection >= 0 ? QString::number(m_activeSection + 1) + QLatin1Char('.')
+                                                   : QString();
+    auto isActive = [&](const StatementListModel::Row& r, const StatementListModel::Span& sp) {
+        if (!m_activeStatementId.isEmpty()) return r.id == m_activeStatementId;
+        if (staleMode) return sp.affected;
+        return memoView && !activeSec.isEmpty() && r.id.mid(1).startsWith(activeSec);
+    };
     QVector<QVariantMap> marks;
     auto add = [&](const StatementListModel* model) {
         for (const StatementListModel::Row& r : model->items()) {
             for (const StatementListModel::Span& sp : r.spans) {
-                const bool active = staleMode ? sp.affected : r.id == m_activeStatementId;
+                const bool active = isActive(r, sp);
                 bool merged = false;
                 for (QVariantMap& m : marks) {
                     if (m.value(QStringLiteral("startMs")).toLongLong() == sp.startMs
@@ -1074,9 +1140,14 @@ QVariantList SummaryViewModel::sourceMarks() const
             }
         }
     };
-    add(m_sentences);
-    add(m_decisionItems);
-    add(m_todoItems);
+    if (memoView) {
+        add(m_memoItems);
+    } else {
+        add(m_sentences);
+        add(m_decisionItems);
+        add(m_questionItems);
+        add(m_todoItems);
+    }
     std::sort(marks.begin(), marks.end(), [](const QVariantMap& a, const QVariantMap& b) {
         return a.value(QStringLiteral("startMs")).toLongLong() < b.value(QStringLiteral("startMs")).toLongLong();
     });
@@ -1181,7 +1252,7 @@ SummaryViewModel::QuoteLine SummaryViewModel::quoteLine(const QString& utterance
 QVariantMap SummaryViewModel::sourceDetails(const QString& statementId) const
 {
     const StatementListModel::Row* row = nullptr;
-    for (const StatementListModel* model : {m_sentences, m_decisionItems, m_todoItems}) {
+    for (const StatementListModel* model : statementModels()) {
         const int i = model->indexOfId(statementId);
         if (i >= 0) { row = &model->items().at(i); break; }
     }
@@ -1232,8 +1303,12 @@ bool SummaryViewModel::flagStatement(const QString& statementId)
     }
     // Azonnal látsszon (élesben a summaryStatementsChanged úgyis újratölt).
     bool found = false;
-    for (StatementListModel* model : {m_sentences, m_decisionItems, m_todoItems})
+    for (StatementListModel* model : statementModels())
         found |= model->setFlagged(statementId, true);
+    if (found && m_memoItems->indexOfId(statementId) >= 0) {
+        rebuildMemo();   // a szakaszok sorai másolatok: a jelzés ott is látsszon
+        emit changed();
+    }
     return found;
 }
 
@@ -1272,7 +1347,13 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         {t(22, 52), 5000, 0, tr("Akkor a súgóoldalakat a többi termékre is kiterjesztjük.")},
         {t(31, 10), 7000, 0, tr("Én a számlázást javasolnám következő súgó-témának, ott a jegyek fele számlázási.")},
         {t(33, 40), 6000, 1, tr("Vállalom, de két hét dokumentációs kapacitás kell hozzá.")},
+        {t(36, 2), 7000, 3, tr("A számlázási kérdések felét a díjbekérők adják; ha azokat külön kezeljük, a maradék is eltűnhet.")},
+        {t(39, 20), 6000, 2, tr("Ha a súgó nem lesz kész a negyedév elejére, a megújításnál újra előjön ugyanez.")},
+        {t(41, 5), 5000, 0, tr("A Nordvik-tárgyalás pont akkor indul, addig kell valami kézzelfogható.")},
+        {t(42, 48), 6000, 1, tr("A partnerportálon a leggyakoribb keresés a „számla letöltése”.")},
+        {t(43, 30), 7000, 3, tr("És ki adja a dokumentációs kapacitást, ha közben a kiterjesztésen dolgoztok?")},
         {t(47, 2), 6000, 3, tr("A díjbekérős kérdéseket érdemes lenne külön kezelni a súgóban.")},
+        {t(50, 15), 6000, 4, tr("A nyomtatható változatot többen kérdezték, de nem tudom, megéri-e.")},
         {t(58, 40), 5000, 2, tr("A létszámról a költségvetési tervezésnél döntünk.")},
     };
     for (const Line& l : lines) {
@@ -1339,7 +1420,15 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         m_affectedUtterances = QStringList{QStringLiteral("u%1").arg(t(12, 41)), QStringLiteral("u%1").arg(t(13, 1))};
     }
 
-    // Memó: hét szakasz (a 3. a kiemelt).
+    // Nyitott kérdések (S2: állításként, forrás-chippel).
+    m_summary.openQuestions = QStringList{
+        tr("Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?"),
+        tr("Megéri-e elkészíteni a súgó nyomtatható változatát?"),
+    };
+    sts << statement(QStringLiteral("q1"), StatementKind::OpenQuestion, m_summary.openQuestions.at(0), {span({t(43, 30)})})
+        << statement(QStringLiteral("q2"), StatementKind::OpenQuestion, m_summary.openQuestions.at(1), {span({t(50, 15)})});
+
+    // Memó: hét szakasz (a 3. a kiemelt), bevezetővel és alszakaszokkal (S2).
     struct Sec { qint64 from; qint64 to; QString title; QStringList speakers; QStringList points; };
     const QString lilla = tr("Kovács Lilla"), gabor = tr("Fehér Gábor"), arpad = tr("Varga Árpád"),
                   eszter = tr("Molnár Eszter"), tavoli = tr("Távoli 1");
@@ -1351,11 +1440,10 @@ void SummaryViewModel::loadDemoSources(const QString& state)
          {tr("A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták."),
           tr("A súgót a többi termékre is kiterjesztik.")}},
         {t(31, 10), t(44, 5), tr("Számlázási súgó és a Nordvik-megújítás"), {lilla, gabor, eszter},
-         {tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja."),
-          tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá."),
-          tr("A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet."),
+         {tr("A díjbekérőkkel kapcsolatos kérdések a számlázási kérdések felét adják; külön kezelve a maradék is eltűnhet."),
           tr("Ha a súgó nem készül el a negyedév elejére, a megújítási tárgyalásokon újra előjön a probléma."),
-          tr("Nyitott kérdés: ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?")}},
+          tr("A partnerportál keresési adatai alapján a „számla letöltése” a leggyakoribb keresés."),
+          tr("Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?")}},
         {t(44, 5), t(64, 40), tr("Partneri visszajelzések"), {eszter, arpad, tavoli},
          {tr("A partnerek a keresőt dicsérték, a nyomtatható változatot hiányolják."),
           tr("A díjbekérős kérdéseket külön kezelik a súgóban.")}},
@@ -1370,11 +1458,43 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     };
     for (const Sec& s : secs)
         m_summary.memo.append({s.title, s.from, s.to, s.points, s.speakers});
-    for (const MemoSection& sec : std::as_const(m_summary.memo))
-        m_memo << memoMapFor(sec);
+    // A 3. szakasz: kétmondatos bevezető, „Elhangzott érvek” és „Nyitott kérdés” alszakasz.
+    MemoSection& third = m_summary.memo[2];
+    third.intro = tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.")
+                + QLatin1Char(' ')
+                + tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.");
+    third.pointGroups = QStringList{QStringLiteral("arguments"), QStringLiteral("arguments"),
+                                    QStringLiteral("arguments"), QStringLiteral("open")};
+    m_summary.memo[0].intro = tr("A negyedév számai jók, a számlázás külön napirendi pontot kapott.");
+    // A memó állításai (a pontok és a bevezető mondatai forrással; néhány pont forrás nélkül).
+    auto memoSt = [&](const QString& id, StatementKind kind, const QString& text,
+                      const QVector<SourceSpan>& spans) { sts << statement(id, kind, text, spans); };
+    memoSt(QStringLiteral("i1.1"), StatementKind::MemoIntro, m_summary.memo[0].intro, {span({t(0, 4)})});
+    memoSt(QStringLiteral("m1.1"), StatementKind::MemoPoint, m_summary.memo[0].points.at(0), {span({t(0, 4)}), span({t(1, 16)})});
+    memoSt(QStringLiteral("m1.2"), StatementKind::MemoPoint, m_summary.memo[0].points.at(1), {});
+    memoSt(QStringLiteral("m2.1"), StatementKind::MemoPoint, m_summary.memo[1].points.at(0), {span({t(4, 18)})});
+    memoSt(QStringLiteral("m2.2"), StatementKind::MemoPoint, m_summary.memo[1].points.at(1), {span({t(22, 52)})});
+    memoSt(QStringLiteral("i3.1"), StatementKind::MemoIntro,
+           tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja."),
+           {span({t(31, 10)})});
+    memoSt(QStringLiteral("i3.2"), StatementKind::MemoIntro,
+           tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá."),
+           {span({t(33, 40)})});
+    memoSt(QStringLiteral("m3.1"), StatementKind::MemoPoint, third.points.at(0), {span({t(36, 2)})});
+    memoSt(QStringLiteral("m3.2"), StatementKind::MemoPoint, third.points.at(1), {span({t(39, 20)}), span({t(41, 5)})});
+    memoSt(QStringLiteral("m3.3"), StatementKind::MemoPoint, third.points.at(2), {span({t(42, 48)})});
+    memoSt(QStringLiteral("m3.4"), StatementKind::MemoPoint, third.points.at(3), {span({t(43, 30)})});
+    memoSt(QStringLiteral("m4.1"), StatementKind::MemoPoint, m_summary.memo[3].points.at(0), {span({t(50, 15)})});
+    memoSt(QStringLiteral("m4.2"), StatementKind::MemoPoint, m_summary.memo[3].points.at(1), {span({t(47, 2)})});
+    memoSt(QStringLiteral("m6.1"), StatementKind::MemoPoint, m_summary.memo[5].points.at(0), {span({t(58, 40)})});
+    memoSt(QStringLiteral("m7.1"), StatementKind::MemoPoint, m_summary.memo[6].points.at(0), {span({t(13, 1)})});
+    memoSt(QStringLiteral("m7.2"), StatementKind::MemoPoint, m_summary.memo[6].points.at(1), {span({t(47, 2)})});
+    rebuildMemo();
 
     for (const QString& d : std::as_const(m_summary.decisions))
         m_decisions << decisionMap(d, m_durationMs);
+    for (const QString& q : std::as_const(m_summary.openQuestions))
+        m_openQuestions << decisionMap(q, m_durationMs);
     for (const ActionItem& a : std::as_const(m_summary.actionItems))
         m_actions << QVariantMap{{QStringLiteral("text"), a.text}, {QStringLiteral("owner"), a.owner},
                                  {QStringLiteral("ownerIndex"), speakerIndexFor(a.owner)},

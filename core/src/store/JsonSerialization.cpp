@@ -137,6 +137,10 @@ QJsonObject toJson(const Summary& s)
         mo[QStringLiteral("points")]  = stringListToArray(m.points);
         if (!m.speakers.isEmpty())
             mo[QStringLiteral("speakers")] = stringListToArray(m.speakers);
+        if (!m.intro.isEmpty())
+            mo[QStringLiteral("intro")] = m.intro;
+        if (!m.pointGroups.isEmpty())
+            mo[QStringLiteral("pointGroups")] = stringListToArray(m.pointGroups);
         memo.append(mo);
     }
     o[QStringLiteral("memo")] = memo;
@@ -199,7 +203,9 @@ Summary summaryFromJson(const QJsonObject& o)
         m.endMs   = static_cast<qint64>(mo.value(QStringLiteral("endMs")).toDouble(-1));
         m.points  = arrayToStringList(mo.value(QStringLiteral("points")).toArray());
         m.speakers = arrayToStringList(mo.value(QStringLiteral("speakers")).toArray());
-        if (!m.title.isEmpty() || !m.points.isEmpty())
+        m.intro    = mo.value(QStringLiteral("intro")).toString();          // v4
+        m.pointGroups = arrayToStringList(mo.value(QStringLiteral("pointGroups")).toArray());
+        if (!m.title.isEmpty() || !m.points.isEmpty() || !m.intro.isEmpty())
             s.memo.append(m);
     }
     // Régi summary.json: nincs statements / sourceSpeakers → üres.

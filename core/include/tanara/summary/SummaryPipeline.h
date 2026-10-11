@@ -74,6 +74,10 @@ QString formatTimestamp(qint64 ms);
 // tárgy-cím nélküli pontok névtelen szakaszba kerülnek. A „- none” sorok kimaradnak. A
 // hiányzó időket a rész kerete és a szomszédos tárgyak alapján tölti ki. Ha a szövegben nincs
 // felismerhető fejléc, a sorai egyetlen tárgy pontjai lesznek (nem dobjuk el a részt).
+// Egy tárgyon belül: a cím utáni pötty nélküli sor(ok) a bevezető (MemoSection::intro); a
+// „#### Arguments” / „#### Unresolved” (ill. bármely ####) al-cím utáni pontok az alszakaszé
+// (pointGroups; a #### sor sosem szakasz-fejléc). A forrás-jelölők itt még a szövegben maradnak
+// (a merge-bemenet is viszi őket); a buildSummary veszi le őket.
 PartNotes parseNotes(const QString& raw, const TranscriptPart& part);
 
 // A memó a részek TOPICS-jegyzeteiből: időrendben összefűzve; az egymás után következő,

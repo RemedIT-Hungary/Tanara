@@ -1,8 +1,9 @@
 #pragma once
 //
-// Tanara QML — a vezetői összefoglaló forrás-hivatkozásos állításai (S1/S3) egy fajtából:
-// a SummaryViewModel háromat birtokol (sentences: a vezetői összefoglaló mondatai,
-// decisionItems: a döntések, todoItems: a teendők). Soronként: szöveg, a forrás-tartományok
+// Tanara QML — az összefoglaló forrás-hivatkozásos állításai (S1–S3) egy fajtából:
+// a SummaryViewModel ötöt birtokol (sentences: a vezetői összefoglaló mondatai,
+// decisionItems: a döntések, questionItems: a nyitott kérdések, todoItems: a teendők,
+// memoItems: a memó bevezető-mondatai és pontjai). Soronként: szöveg, a forrás-tartományok
 // idő-chipjei (üres = „nincs forrás”), teendőnél felelős + határidő, és a célzott elavulás
 // (az állítás / egy forrás-tartomány / a felelős érintett-e a beszélő-javítás óta).
 //
@@ -33,8 +34,8 @@ public:
         bool affected = false;      // a forrás-sorok egyikének beszélője változott azóta
     };
     struct Row {
-        QString id;                 // "s1", "d1", "t1" …
-        QString kind;               // statement | decision | todo
+        QString id;                 // "s1", "d1", "q1", "t1", "i3.1", "m3.2" …
+        QString kind;               // statement | decision | openQuestion | todo | intro | memoPoint
         QString text;
         QVector<Span> spans;
         QString owner;              // teendő felelőse (nyers szöveg)

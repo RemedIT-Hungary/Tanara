@@ -208,7 +208,7 @@ private slots:
         int active = 0;
         for (const QVariant& m : m_vm->sourceMarks()) active += m.toMap().value(QStringLiteral("active")).toBool();
         QCOMPARE(active, 1);
-        QTest::mouseMove(m_window.get(), QPoint(300, 660));    // üres terület
+        QTest::mouseMove(m_window.get(), QPoint(900, 670));    // a jobb oszlop alja (nem állítás)
         QTRY_COMPARE(m_vm->activeStatementId(), QString());
 
         click(visual("sourcesToggle"));
@@ -255,6 +255,38 @@ private slots:
         QVERIFY(chip);
         click(chip);
         QVERIFY2(playerLog().contains(QStringLiteral("seek:5530000;play;")), qPrintable(playerLog()));
+    }
+
+    // S2: a memó-pontok és a bevezető mondatai chipet kapnak, az alszakaszok címet; a chip a
+    // „Honnan jön ez?” felugrót nyitja az adott állításra; a Források kapcsoló itt is rejt.
+    void memoPointsHaveSourceChips()
+    {
+        load(QStringLiteral("memoSections"));
+        QTRY_VERIFY(visuals("memoTimeChip").size() >= 15);
+        QStringList titles;
+        for (QQuickItem* t : visuals("memoBlockTitle")) titles << t->property("text").toString();
+        QVERIFY2(titles.contains(QStringLiteral("Elhangzott érvek")), qPrintable(titles.join(u'|')));
+        QVERIFY(titles.contains(QStringLiteral("Nyitott kérdés")));
+        QVERIFY(visuals("memoIntro").size() >= 2);
+        // A 3. szakasz „39:20” chipje (m3.2) → felugró az m3.2 két idézetével.
+        QQuickItem* chip = nullptr;
+        for (QQuickItem* c : visuals("memoTimeChip"))
+            if (c->property("text").toString() == QStringLiteral("39:20")) chip = c;
+        QVERIFY(chip);
+        click(chip);
+        QObject* open = nullptr;
+        QTRY_VERIFY([&]() {
+            for (QObject* p : m_window->findChildren<QObject*>(QStringLiteral("sourcePopover")))
+                if (p->property("opened").toBool()) open = p;
+            return open != nullptr;
+        }());
+        QCOMPARE(open->property("statementId").toString(), QStringLiteral("m3.2"));
+        QCOMPARE(m_vm->activeStatementId(), QStringLiteral("m3.2"));
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QTRY_VERIFY(!open->property("opened").toBool());
+        m_vm->setSourcesVisible(false);
+        QTRY_COMPARE(visuals("memoTimeChip").size(), 0);
+        QVERIFY(m_warnings.isEmpty());
     }
 
     void noSourcesKeepsOldView()

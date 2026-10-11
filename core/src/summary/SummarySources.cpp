@@ -351,10 +351,13 @@ void attachSources(Summary& s, const QVector<SourceLine>& lines)
     }
     s.decisions = decisions;
 
+    k = 0;
     QStringList open;
     for (const QString& q : std::as_const(s.openQuestions)) {
-        const QString t = stripMarkers(q);
-        if (!t.isEmpty()) open << t;
+        const MarkedText mt = extractMarkers(q);
+        if (mt.text.isEmpty()) continue;
+        open << mt.text;
+        add(StatementKind::OpenQuestion, QStringLiteral("q"), ++k, mt.text, mt.refs, QString());
     }
     s.openQuestions = open;
 
@@ -375,16 +378,81 @@ void attachSources(Summary& s, const QVector<SourceLine>& lines)
     }
     s.actionItems = items;
 
-    for (MemoSection& m : s.memo)
-        for (QString& p : m.points) p = stripMarkers(p);
+    // Memó: szakaszonként a bevezető mondatai ("i<n>.<k>") és a pontok ("m<n>.<k>", a points
+    // indexe szerint — a jelölő nélkül üres pont előbb kimarad, a pointGroups vele együtt).
+    for (int n = 0; n < s.memo.size(); ++n) {
+        MemoSection& m = s.memo[n];
+        const QString sec = QString::number(n + 1) + QLatin1Char('.');
+        k = 0;
+        for (const MarkedText& mt : splitSentences(m.intro))
+            add(StatementKind::MemoIntro, QStringLiteral("i") + sec, ++k, mt.text, mt.refs, QString());
+        m.intro = stripMarkers(m.intro);
+        QStringList points, groups;
+        QVector<MarkedText> marked;
+        for (int i = 0; i < m.points.size(); ++i) {
+            const MarkedText mt = extractMarkers(m.points.at(i));
+            if (mt.text.isEmpty()) continue;
+            points << mt.text;
+            groups << m.groupOf(i);
+            marked << mt;
+        }
+        m.points = points;
+        m.pointGroups = std::all_of(groups.cbegin(), groups.cend(), [](const QString& g) { return g.isEmpty(); })
+                            ? QStringList() : groups;
+        for (int i = 0; i < marked.size(); ++i)
+            add(StatementKind::MemoPoint, QStringLiteral("m") + sec, i + 1, marked.at(i).text, marked.at(i).refs, QString());
+    }
     fillMemoSpeakers(s.memo, lines);
+}
+
+QString memoGroupKey(const QString& heading)
+{
+    QString t = heading.trimmed();
+    static const QRegularExpression deco(QStringLiteral("^[#*_\\s]+|[#*_:\\s]+$"));
+    t.remove(deco);
+    if (t.isEmpty()) return QString();
+    const QString f = textfold::foldQuery(t).trimmed();
+    static const QStringList args{QStringLiteral("arguments"), QStringLiteral("argument"),
+                                  QStringLiteral("arguments raised"), QStringLiteral("pros and cons"),
+                                  QStringLiteral("elhangzott ervek"), QStringLiteral("ervek")};
+    static const QStringList open{QStringLiteral("unresolved"), QStringLiteral("open question"),
+                                  QStringLiteral("open questions"), QStringLiteral("open"),
+                                  QStringLiteral("nyitott kerdes"), QStringLiteral("nyitott kerdesek"),
+                                  QStringLiteral("nyitott")};
+    if (args.contains(f)) return QStringLiteral("arguments");
+    if (open.contains(f)) return QStringLiteral("open");
+    return t;
+}
+
+QString memoGroupLabel(const QString& key)
+{
+    if (key == QLatin1String("arguments")) return QStringLiteral("Elhangzott érvek");
+    if (key == QLatin1String("open"))      return QStringLiteral("Nyitott kérdés");
+    return key;
+}
+
+QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m)
+{
+    QVector<QPair<QString, QVector<int>>> out;
+    out.append({QString(), {}});
+    for (int i = 0; i < m.points.size(); ++i) {
+        const QString g = m.groupOf(i);
+        auto it = std::find_if(out.begin(), out.end(), [&g](const auto& p) { return p.first == g; });
+        if (it == out.end()) { out.append({g, {i}}); continue; }
+        it->second.append(i);
+    }
+    if (out.first().second.isEmpty()) out.removeFirst();
+    return out;
 }
 
 QString kindToString(StatementKind k)
 {
     switch (k) {
-    case StatementKind::Decision: return QStringLiteral("decision");
-    case StatementKind::Todo:     return QStringLiteral("todo");
+    case StatementKind::Decision:     return QStringLiteral("decision");
+    case StatementKind::Todo:         return QStringLiteral("todo");
+    case StatementKind::OpenQuestion: return QStringLiteral("openQuestion");
+    case StatementKind::MemoIntro:    return QStringLiteral("intro");
+    case StatementKind::MemoPoint:    return QStringLiteral("memoPoint");
     case StatementKind::Statement: break;
     }
     return QStringLiteral("statement");
@@ -392,8 +460,11 @@ QString kindToString(StatementKind k)
 
 StatementKind kindFromString(const QString& s)
 {
-    if (s == QLatin1String("decision")) return StatementKind::Decision;
-    if (s == QLatin1String("todo"))     return StatementKind::Todo;
+    if (s == QLatin1String("decision"))     return StatementKind::Decision;
+    if (s == QLatin1String("todo"))         return StatementKind::Todo;
+    if (s == QLatin1String("openQuestion")) return StatementKind::OpenQuestion;
+    if (s == QLatin1String("intro"))        return StatementKind::MemoIntro;
+    if (s == QLatin1String("memoPoint"))    return StatementKind::MemoPoint;
     return StatementKind::Statement;
 }
 

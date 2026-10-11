@@ -17,6 +17,7 @@
 
 #include <QHash>
 #include <QMap>
+#include <QPair>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -73,12 +74,25 @@ QVector<SourceSpan> resolveRefs(const QVector<SourceRef>& refs, const QVector<So
 void fillMemoSpeakers(QVector<MemoSection>& memo, const QVector<SourceLine>& lines);
 
 // A modell kimenetéből épült Summary kiegészítése: a jelölők lekerülnek minden mezőről
-// (execSummary, decisions, openQuestions, actionItems, memo), a statements és a
-// sourceSpeakers kitöltődik, a memó-szakaszok beszélőket kapnak.
+// (execSummary, decisions, openQuestions, actionItems, a memó bevezetői és pontjai), a
+// statements és a sourceSpeakers kitöltődik (a vezetői összefoglaló mondatai, döntések,
+// nyitott kérdések, teendők, a memó bevezető-mondatai és pontjai — az id-k a Types.h szerint),
+// a memó-szakaszok beszélőket kapnak. A jelölő nélkül üres elemek kimaradnak.
 void attachSources(Summary& s, const QVector<SourceLine>& lines);
 
-QString kindToString(StatementKind k);          // "statement" | "decision" | "todo"
+// "statement" | "decision" | "todo" | "openQuestion" | "intro" | "memoPoint"
+QString kindToString(StatementKind k);
 StatementKind kindFromString(const QString& s);
+
+// Memó-alszakasz: a kanonikus kulcs egy al-címből (angol vagy magyar, ékezet- és kisbetű-
+// függetlenül, a díszítések — #, **, kettőspont — nélkül): "arguments" (Arguments / Elhangzott
+// érvek), "open" (Unresolved / Open question / Nyitott kérdés), egyébként a cím maga. Üres → "".
+QString memoGroupKey(const QString& heading);
+// A kulcs magyar címkéje a summary.md-hez („Elhangzott érvek”, „Nyitott kérdés”, más: maga).
+QString memoGroupLabel(const QString& key);
+// A szakasz pontjainak indexei alszakaszonként: elöl a törzs (""), utána az alszakaszok az
+// első előfordulásuk sorrendjében. [(kulcs, [pont-indexek])]
+QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m);
 
 // Célzott elavulás. then: az összefoglaló készítésekor rögzített beszélők (Summary::
 // sourceSpeakers); now: a mostani feloldás (utteranceId → beszélő); changedKeys: az

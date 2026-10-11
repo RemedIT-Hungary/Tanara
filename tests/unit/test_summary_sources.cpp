@@ -118,6 +118,9 @@ private slots:
     void attachSourcesBuildsStatements();
     void missingMarkerMeansNoSource();
     void memoSectionTimesAndSpeakers();
+    void memoPointsIntroAndGroups();
+    void memoJoinKeepsGroupsAndDedupesMarkers();
+    void memoGroupKeys();
     // vezénylés hamis LLM-mel
     void serviceSingleCallWithMarkers();
     void serviceMergeWithMarkers();
@@ -126,9 +129,11 @@ private slots:
     void oldJsonLoadsWithoutStatements();
     void flagStatementKeepsJsonMtime();
     void handEditedMarkdownKeepsMatchingStatements();
+    void memoStatementsRoundTrip();
     // célzott elavulás
     void targetedStalenessPure();
     void targetedStalenessFromOverlay();
+    void targetedStalenessCoversMemoAndQuestions();
     // prompt
     void promptTemplatesAskForMarkers();
 };
@@ -292,7 +297,7 @@ void SummarySourcesTest::attachSourcesBuildsStatements()
     QCOMPARE(s.actionItems[0].text, QStringLiteral("Ajánlat küldése"));
     QVERIFY(!s.renderMarkdown().contains(QStringLiteral("[t=")));
 
-    QCOMPARE(s.statements.size(), 4);
+    QCOMPARE(s.statements.size(), 5);
     QCOMPARE(s.statements[0].id, QStringLiteral("s1"));
     QCOMPARE(s.statements[0].kind, StatementKind::Statement);
     QCOMPARE(s.statements[0].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u60000")});
@@ -300,11 +305,16 @@ void SummarySourcesTest::attachSourcesBuildsStatements()
     QCOMPARE(s.statements[1].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u120000")});
     QCOMPARE(s.statements[2].id, QStringLiteral("d1"));
     QCOMPARE(s.statements[2].kind, StatementKind::Decision);
-    QCOMPARE(s.statements[3].id, QStringLiteral("t1"));
-    QCOMPARE(s.statements[3].kind, StatementKind::Todo);
-    QCOMPARE(s.statements[3].owner, QStringLiteral("Béla"));
-    QCOMPARE(s.statements[3].text, QStringLiteral("Ajánlat küldése"));
-    QCOMPARE(s.statements[3].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u300000")});
+    // A nyitott kérdés is állítás (v4), a teendők előtt.
+    QCOMPARE(s.statements[3].id, QStringLiteral("q1"));
+    QCOMPARE(s.statements[3].kind, StatementKind::OpenQuestion);
+    QCOMPARE(s.statements[3].text, QStringLiteral("Mennyi a végső ár?"));
+    QCOMPARE(s.statements[3].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u120000")});
+    QCOMPARE(s.statements[4].id, QStringLiteral("t1"));
+    QCOMPARE(s.statements[4].kind, StatementKind::Todo);
+    QCOMPARE(s.statements[4].owner, QStringLiteral("Béla"));
+    QCOMPARE(s.statements[4].text, QStringLiteral("Ajánlat küldése"));
+    QCOMPARE(s.statements[4].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u300000")});
     // A beszélő-pillanatkép csak a hivatkozott sorokra.
     QCOMPARE(s.sourceSpeakers.size(), 3);
     QCOMPARE(s.sourceSpeakers.value(QStringLiteral("u120000")).name, QStringLiteral("Béla"));
@@ -358,6 +368,111 @@ void SummarySourcesTest::memoSectionTimesAndSpeakers()
     QCOMPARE(s.memo[2].speakers, QStringList{QStringLiteral("Ádám")});
 }
 
+void SummarySourcesTest::memoPointsIntroAndGroups()
+{
+    // Egy tárgy bevezetővel, törzs-ponttal, „#### Arguments” és „#### Open questions” al-címmel
+    // (ez utóbbi NEM az OPEN szakasz), az alszakasz első sora pötty nélkül; utána a valódi OPEN.
+    summarypipe::TranscriptPart p;
+    p.index = 0; p.startMs = 0; p.endMs = 400000;
+    const summarypipe::PartNotes n = summarypipe::parseNotes(QStringLiteral(
+        "TOPICS\n"
+        "### [01:00-05:10] Számlázási súgó\n"
+        "Lilla a számlázást javasolja. [t=01:05] Béla vállalta.\n"
+        "[t=02:00]\n"
+        "- A díjbekérők adják a felét. [t=02:10]\n"
+        "#### Arguments\n"
+        "- Ha nem készül el, újra előjön. [t=01:10, t=05:02]\n"
+        "- Tördelt\n  pont.\n"
+        "#### Open questions\n"
+        "Ki adja a kapacitást? [t=05:05]\n"
+        "OPEN\n- [05:00] Kapacitás?\n"), p);
+    QCOMPARE(n.topics.size(), 1);
+    const MemoSection& t = n.topics[0];
+    QCOMPARE(t.points.size(), 4);
+    QCOMPARE(t.pointGroups, QStringList({QString(), QStringLiteral("arguments"), QStringLiteral("arguments"),
+                                         QStringLiteral("open")}));
+    QCOMPARE(t.points[2], QStringLiteral("Tördelt pont."));
+    QCOMPARE(n.open, QStringList{QStringLiteral("[05:00] Kapacitás?")});
+    // A merge-bemenet az al-címeket és a jelölőket is viszi.
+    const QString merged = summarypipe::renderNotesForMerge({n}, {});
+    QVERIFY(merged.contains(QStringLiteral("#### Arguments")));
+    QVERIFY(merged.contains(QStringLiteral("#### Unresolved")));
+    QVERIFY(merged.contains(QStringLiteral("[t=02:10]")));
+
+    summarypipe::MergeResult mr;
+    mr.ok = true;
+    mr.execSummary = QStringLiteral("Összegzés.");
+    mr.openQuestions = {QStringLiteral("Ki adja a kapacitást? [t=05:05]")};
+    const Summary s = summarypipe::buildSummary(mr, {n}, {}, threeLines());
+    const MemoSection& m = s.memo.value(0);
+    QCOMPARE(m.intro, QStringLiteral("Lilla a számlázást javasolja. Béla vállalta."));
+    QCOMPARE(m.points[0], QStringLiteral("A díjbekérők adják a felét."));
+    QCOMPARE(m.pointGroups.size(), 4);
+
+    auto byId = [&s](const QString& id) {
+        for (const SummaryStatement& st : s.statements) if (st.id == id) return st;
+        return SummaryStatement{};
+    };
+    QCOMPARE(byId(QStringLiteral("q1")).kind, StatementKind::OpenQuestion);
+    QCOMPARE(byId(QStringLiteral("q1")).sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u300000")});
+    // Bevezető: mondatonként; a különálló sorban álló jelölő az előző mondaté.
+    QCOMPARE(byId(QStringLiteral("i1.1")).kind, StatementKind::MemoIntro);
+    QCOMPARE(byId(QStringLiteral("i1.1")).sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u60000")});
+    QCOMPARE(byId(QStringLiteral("i1.2")).text, QStringLiteral("Béla vállalta."));
+    QCOMPARE(byId(QStringLiteral("i1.2")).sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u120000")});
+    QCOMPARE(byId(QStringLiteral("m1.1")).kind, StatementKind::MemoPoint);
+    QCOMPARE(byId(QStringLiteral("m1.1")).sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u120000")});
+    QCOMPARE(byId(QStringLiteral("m1.2")).sourceSpans.size(), 2);
+    QVERIFY(byId(QStringLiteral("m1.3")).sourceSpans.isEmpty());
+    QCOMPARE(byId(QStringLiteral("m1.4")).text, QStringLiteral("Ki adja a kapacitást?"));
+    QCOMPARE(byId(QStringLiteral("m1.4")).sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u300000")});
+
+    // A markdown tiszta (jelölő nélkül), az alszakaszok magyar címkével.
+    const QString md = s.renderMarkdown();
+    QVERIFY(!md.contains(QStringLiteral("[t=")));
+    QVERIFY(md.contains(QStringLiteral("Lilla a számlázást javasolja. Béla vállalta.\n\n- A díjbekérők")));
+    QVERIFY(md.contains(QStringLiteral("**Elhangzott érvek:**")));
+    QVERIFY(md.contains(QStringLiteral("**Nyitott kérdés:**\n\n- Ki adja a kapacitást?")));
+}
+
+void SummarySourcesTest::memoJoinKeepsGroupsAndDedupesMarkers()
+{
+    // A részhatáron folytatódó tárgy: a bevezetők összefűződnek, az alszakaszok megmaradnak,
+    // az ugyanaz-a-pont-más-jelölővel ismétlés kimarad.
+    summarypipe::TranscriptPart p0; p0.index = 0; p0.endMs = 15 * 60000;
+    summarypipe::TranscriptPart p1; p1.index = 1; p1.startMs = 15 * 60000; p1.endMs = 30 * 60000;
+    const summarypipe::PartNotes a = summarypipe::parseNotes(QStringLiteral(
+        "TOPICS\n### [10:00-15:00] Raktárrendszer migráció\nA migráció indul. [t=10:00]\n"
+        "- az adatok exportja [t=11:00]\n"), p0);
+    const summarypipe::PartNotes b = summarypipe::parseNotes(QStringLiteral(
+        "TOPICS\n### [15:00-20:00] Raktárrendszer migráció\nA teszt jövő héten. [t=15:30]\n"
+        "- az adatok exportja [t=15:10]\n#### Unresolved\n- Ki teszteli? [t=19:00]\n"), p1);
+    const QVector<MemoSection> memo = summarypipe::assembleMemo({a, b});
+    QCOMPARE(memo.size(), 1);
+    QCOMPARE(memo[0].intro, QStringLiteral("A migráció indul. [t=10:00] A teszt jövő héten. [t=15:30]"));
+    QCOMPARE(memo[0].points.size(), 2);
+    QCOMPARE(memo[0].pointGroups, QStringList({QString(), QStringLiteral("open")}));
+    const auto groups = memoGroups(memo[0]);
+    QCOMPARE(groups.size(), 2);
+    QCOMPARE(groups[1].first, QStringLiteral("open"));
+    QCOMPARE(groups[1].second, QVector<int>{1});
+}
+
+void SummarySourcesTest::memoGroupKeys()
+{
+    QCOMPARE(memoGroupKey(QStringLiteral("#### Arguments")), QStringLiteral("arguments"));
+    QCOMPARE(memoGroupKey(QStringLiteral("**Elhangzott érvek:**")), QStringLiteral("arguments"));
+    QCOMPARE(memoGroupKey(QStringLiteral("Unresolved")), QStringLiteral("open"));
+    QCOMPARE(memoGroupKey(QStringLiteral("Nyitott kérdések")), QStringLiteral("open"));
+    QCOMPARE(memoGroupKey(QStringLiteral("Kockázatok:")), QStringLiteral("Kockázatok"));
+    QVERIFY(memoGroupKey(QStringLiteral("  ** ")).isEmpty());
+    QCOMPARE(memoGroupLabel(QStringLiteral("open")), QStringLiteral("Nyitott kérdés"));
+    QCOMPARE(memoGroupLabel(QStringLiteral("Kockázatok")), QStringLiteral("Kockázatok"));
+    QCOMPARE(kindFromString(kindToString(StatementKind::MemoPoint)), StatementKind::MemoPoint);
+    QCOMPARE(kindFromString(kindToString(StatementKind::MemoIntro)), StatementKind::MemoIntro);
+    QCOMPARE(kindFromString(kindToString(StatementKind::OpenQuestion)), StatementKind::OpenQuestion);
+}
+
 // ---- vezénylés hamis LLM-mel ------------------------------------------------------------
 
 void SummarySourcesTest::serviceSingleCallWithMarkers()
@@ -365,7 +480,8 @@ void SummarySourcesTest::serviceSingleCallWithMarkers()
     FakeProvider llm;
     llm.script = [](int, const LlmRequest&) {
         return QStringLiteral(
-            "TOPICS\n### [00:00-01:00] Árazás\n- Az ár 100 euró.\n### [01:00-02:30] Pilot\n- Két helyszín.\n"
+            "TOPICS\n### [00:00-01:00] Árazás\nAz árról egyeztettek. [t=00:05]\n- Az ár 100 euró. [t=00:31]\n"
+            "### [01:00-02:30] Pilot\n- Két helyszín.\n"
             "SUMMARY\n"
             R"({"execSummary":"Az árról volt szó. [t=00:05] A pilot két helyszínen indul. [t=01:30, t=02:00]",)"
             R"("decisions":["Két helyszín lesz. [t=01:31]"],"openQuestions":[],)"
@@ -388,7 +504,18 @@ void SummarySourcesTest::serviceSingleCallWithMarkers()
     QCOMPARE(s.execSummary, QStringLiteral("Az árról volt szó. A pilot két helyszínen indul."));
     QCOMPARE(s.decisions, QStringList{QStringLiteral("Két helyszín lesz.")});
     QCOMPARE(s.actionItems.value(0).text, QStringLiteral("Ajánlat küldése"));
-    QCOMPARE(s.statements.size(), 4);
+    // 2 mondat + döntés + teendő, majd a memó: az 1. szakasz bevezetője és pontja, a 2. pontja.
+    QCOMPARE(s.statements.size(), 7);
+    QCOMPARE(s.statements[4].id, QStringLiteral("i1.1"));
+    QCOMPARE(s.statements[4].kind, StatementKind::MemoIntro);
+    QCOMPARE(s.statements[4].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u0")});
+    QCOMPARE(s.statements[5].id, QStringLiteral("m1.1"));
+    QCOMPARE(s.statements[5].kind, StatementKind::MemoPoint);
+    QCOMPARE(s.statements[5].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u30000")});
+    QCOMPARE(s.statements[6].id, QStringLiteral("m2.1"));
+    QVERIFY(s.statements[6].sourceSpans.isEmpty());          // jelölő nélküli pont: nincs forrás
+    QCOMPARE(s.memo.value(0).intro, QStringLiteral("Az árról egyeztettek."));
+    QCOMPARE(s.memo.value(0).points, QStringList{QStringLiteral("Az ár 100 euró.")});
     // Sorok nélkül a beszéd-blokkokból: "u<startMs>" id-k.
     QCOMPARE(s.statements[0].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u0")});
     QCOMPARE(s.statements[1].sourceSpans.size(), 2);
@@ -436,7 +563,8 @@ void SummarySourcesTest::serviceMergeWithMarkers()
     QCOMPARE(llm.requests.size(), 3);
     QVERIFY(llm.requests[2].messages[0].content.contains(QStringLiteral("SOURCE MARKERS")));
     const Summary s = qvariant_cast<Summary>(ready[0][0]);
-    QCOMPARE(s.statements.size(), 3);
+    QCOMPARE(s.statements.size(), 5);                          // + a két memó-pont (m1.1, m2.1)
+    QCOMPARE(s.statements[3].id, QStringLiteral("m1.1"));
     QCOMPARE(s.statements[0].sourceSpans.size(), 2);
     QCOMPARE(s.statements[1].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u960000")});
     QCOMPARE(s.statements[2].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u180000")});
@@ -472,7 +600,7 @@ void SummarySourcesTest::storeRoundTrip()
     doc.meta.mode = SummaryMode::Quick;
     QVERIFY(summarystore::save(dir.path(), doc));
     const SummaryDocument back = summarystore::load(dir.path());
-    QCOMPARE(back.summary.statements.size(), 3);
+    QCOMPARE(back.summary.statements.size(), 4);              // s1, s2, t1, m1.1
     const SummaryStatement& b0 = back.summary.statements[0];
     QCOMPARE(b0.id, QStringLiteral("s1"));
     QCOMPARE(b0.text, QStringLiteral("Az árról volt szó."));
@@ -699,6 +827,86 @@ void SummarySourcesTest::targetedStalenessFromOverlay()
     QVERIFY(sts.isEmpty());
 }
 
+void SummarySourcesTest::memoStatementsRoundTrip()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Summary s;
+    s.execSummary = QStringLiteral("Összegzés. [t=01:00]");
+    s.openQuestions = {QStringLiteral("Mennyi az ár? [t=02:05]")};
+    MemoSection m;
+    m.title = QStringLiteral("Árazás");
+    m.startMs = 60000;
+    m.endMs = 310000;
+    m.intro = QStringLiteral("Az árról volt szó. [t=01:02]");
+    m.points = {QStringLiteral("Az ár 100 euró. [t=02:00]"), QStringLiteral("Drága. [t=05:01]"),
+                QStringLiteral("Ki dönt? [t=05:03]")};
+    m.pointGroups = {QString(), QStringLiteral("arguments"), QStringLiteral("open")};
+    s.memo = {m};
+    attachSources(s, threeLines());
+    s.statements.last().flagged = true;
+    SummaryDocument doc;
+    doc.exists = true;
+    doc.summary = s;
+    doc.meta.mode = SummaryMode::Quick;
+    QVERIFY(summarystore::save(dir.path(), doc));
+
+    QFile f(summarystore::jsonPath(dir.path()));
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    QCOMPARE(root.value(QStringLiteral("version")).toInt(), 4);
+
+    const SummaryDocument back = summarystore::load(dir.path());
+    QCOMPARE(back.summary.statements.size(), 6);              // s1, q1, i1.1, m1.1–m1.3
+    QStringList ids;
+    for (const SummaryStatement& st : back.summary.statements) ids << st.id;
+    QCOMPARE(ids, QStringList({QStringLiteral("s1"), QStringLiteral("q1"), QStringLiteral("i1.1"),
+                               QStringLiteral("m1.1"), QStringLiteral("m1.2"), QStringLiteral("m1.3")}));
+    QCOMPARE(back.summary.statements[1].kind, StatementKind::OpenQuestion);
+    QCOMPARE(back.summary.statements[2].kind, StatementKind::MemoIntro);
+    QCOMPARE(back.summary.statements[5].kind, StatementKind::MemoPoint);
+    QVERIFY(back.summary.statements[5].flagged);
+    QCOMPARE(back.summary.statements[4].sourceSpans.value(0).utteranceIds, QStringList{QStringLiteral("u300000")});
+    const MemoSection& bm = back.summary.memo.value(0);
+    QCOMPARE(bm.intro, QStringLiteral("Az árról volt szó."));
+    QCOMPARE(bm.points, QStringList({QStringLiteral("Az ár 100 euró."), QStringLiteral("Drága."),
+                                     QStringLiteral("Ki dönt?")}));
+    QCOMPARE(bm.pointGroups, m.pointGroups);
+    QVERIFY(summarystore::setStatementFlagged(dir.path(), QStringLiteral("q1")));
+
+    // A summary.md visszaolvasva is ugyanaz a memó (kézi szerkesztés / régi út).
+    const SummaryDocument md = summarystore::parseMarkdown(back.summary.renderMarkdown());
+    QCOMPARE(md.summary.memo.size(), 1);
+    QCOMPARE(md.summary.memo[0].intro, bm.intro);
+    QCOMPARE(md.summary.memo[0].points, bm.points);
+    QCOMPARE(md.summary.memo[0].pointGroups, bm.pointGroups);
+    QCOMPARE(md.summary.openQuestions, QStringList{QStringLiteral("Mennyi az ár?")});
+}
+
+void SummarySourcesTest::targetedStalenessCoversMemoAndQuestions()
+{
+    Summary s;
+    s.openQuestions = {QStringLiteral("Mennyi az ár? [t=02:05]")};
+    MemoSection m;
+    m.title = QStringLiteral("Árazás");
+    m.points = {QStringLiteral("Béla szerint drága. [t=02:10]"), QStringLiteral("Ádám bemutatta. [t=01:05]")};
+    s.memo = {m};
+    attachSources(s, threeLines());
+    // Béla sorát (u120000) Csabára javították.
+    QHash<QString, SourceSpeaker> now;
+    for (auto it = s.sourceSpeakers.cbegin(); it != s.sourceSpeakers.cend(); ++it) now.insert(it.key(), it.value());
+    now[QStringLiteral("u120000")] = SourceSpeaker{QStringLiteral("Csaba"), QStringLiteral("Csaba")};
+    SummaryStaleInfo info;
+    applyTargetedStaleness(s.statements, s.sourceSpeakers, now, {QStringLiteral("Béla")}, info);
+    QVERIFY(info.targeted);
+    QCOMPARE(info.affectedStatementIds, QStringList({QStringLiteral("q1"), QStringLiteral("m1.1")}));
+    QCOMPARE(info.affectedStatements, 2);
+    QCOMPARE(info.affectedTodos, 0);
+    QCOMPARE(info.affectedUtteranceIds, QStringList{QStringLiteral("u120000")});
+    for (const SummaryStatement& st : s.statements)
+        if (st.id == QLatin1String("m1.1")) QCOMPARE(st.staleBecause, QStringList{QStringLiteral("Béla → Csaba?")});
+}
+
 // ---- prompt -------------------------------------------------------------------------------
 
 void SummarySourcesTest::promptTemplatesAskForMarkers()
@@ -711,8 +919,17 @@ void SummarySourcesTest::promptTemplatesAskForMarkers()
     }
     QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("the time written in the notes")));
     QVERIFY(promptBuiltin(QStringLiteral("single")).contains(QStringLiteral("transcript paragraph")));
-    // A jegyzet-prompt nem változott: a memó-pontok jelölő nélküliek maradnak.
+    // A jegyzet-prompt (és az egylépéses TOPICS-része) a memó-pontokra és a bevezetőre is kér
+    // jelölőt, és leírja az alszakaszokat; a rövid forma a nyitott kérdésekre is.
+    for (const char* id : {"notes", "single"}) {
+        const QString p = promptBuiltin(QString::fromLatin1(id));
+        QVERIFY2(p.contains(QStringLiteral("Every gist sentence and every point ends with a source marker")), id);
+        QVERIFY2(p.contains(QStringLiteral("#### Arguments")), id);
+        QVERIFY2(p.contains(QStringLiteral("#### Unresolved")), id);
+    }
     QVERIFY(!promptBuiltin(QStringLiteral("notes")).contains(QStringLiteral("SOURCE MARKERS")));
+    QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("every open question")));
+    QVERIFY(promptBuiltin(QStringLiteral("merge")).contains(QStringLiteral("a [t=mm:ss] marker in TOPICS")));
     // A Beállítások kimeneti sémája is mutatja a jelölőt.
     QVERIFY(promptOutputFormat(QStringLiteral("merge")).body.contains(QStringLiteral("[t=mm:ss]")));
 }

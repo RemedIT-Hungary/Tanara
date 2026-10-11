@@ -8,10 +8,11 @@ import QtQuick.Templates as T
 // Bal oldalt a szöveg: a mondatok egy folyó bekezdésben, mindegyik után a forrás-idő-chip(ek);
 // rámutatva a mondat accentSoft hátteret kap és a térkép „Forrás” sorában kigyullad. A chip
 // kattintásra (Enter / Szóköz) a „Honnan jön ez?” felugrót nyitja. Döntések és teendők: a
-// sor végén a chipek; teendőnél a felelős-chip a beszélő színében. Elavultnál (S3) a banner
+// sor végén a chipek (a nyitott kérdéseknél is); teendőnél a felelős-chip a beszélő színében. Elavultnál (S3) a banner
 // megszámolja az érintett állításokat / teendőket, az érintett mondat 2 px warnLine
 // aláhúzást, az érintett forrás warn chipet, az érintett felelős szaggatott „X → Y?” chipet
-// kap. Jelölő nélküli állítás: nincs chip, rámutatva „Nincs forrás”.
+// kap. Jelölő nélküli állítás: nincs chip, rámutatva „Nincs forrás”. A nyitott kérdések is
+// állítások (chippel); a régebbi összefoglalónál forrás nélküli lista.
 // Jobb oldalt (250 px) a résztvevők beszédidő-aránnyal, egy rövid magyarázat, a megbeszélés-
 // megjegyzés és a megmaradt műveletek (Témánkénti elemzés, Megnyitás mappában).
 Item {
@@ -345,9 +346,25 @@ Item {
                     }
                 }
 
-                // ---- nyitott kérdések (nem állítás: forrás nélkül) ----
+                // ---- nyitott kérdések: állításként, forrás-chippel (S2) ----
                 ColumnLayout {
-                    visible: root.vm.openQuestions.length > 0
+                    objectName: "openQuestionItems"
+                    visible: root.vm.questionItems.count > 0
+                    Layout.fillWidth: true
+                    spacing: 7
+                    TSectionLabel { Layout.topMargin: 4; text: qsTr("Nyitott kérdések") }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Repeater {
+                            model: root.vm.questionItems.rows
+                            StatementItem {}
+                        }
+                    }
+                }
+                // Régebbi (v3 előtti) forrásos összefoglaló: a nyitott kérdéseknek nincs állítása.
+                ColumnLayout {
+                    visible: root.vm.questionItems.count === 0 && root.vm.openQuestions.length > 0
                     Layout.fillWidth: true
                     Layout.maximumWidth: 780
                     spacing: 7

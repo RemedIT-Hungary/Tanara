@@ -647,6 +647,12 @@ private slots:
         QCOMPARE(vm.sentences()->count(), 4);
         QCOMPARE(vm.decisionItems()->count(), 3);
         QCOMPARE(vm.todoItems()->count(), 2);
+        // S2: a nyitott kérdések is állítások, forrás-chippel.
+        QCOMPARE(vm.questionItems()->count(), 2);
+        QCOMPARE(vm.questionItems()->get(0).value("statementId").toString(), QStringLiteral("q1"));
+        QCOMPARE(vm.questionItems()->get(0).value("spans").toList().at(0).toMap().value("stamp").toString(),
+                 QStringLiteral("43:30"));
+        QCOMPARE(vm.sourceDetails(QStringLiteral("q2")).value("count").toInt(), 1);
         QAbstractItemModelTester tester(vm.sentences(), QAbstractItemModelTester::FailureReportingMode::QtTest);
         const QVariantMap s1 = vm.sentences()->get(0);
         QCOMPARE(s1.value("statementId").toString(), QStringLiteral("s1"));
@@ -695,6 +701,42 @@ private slots:
         QCOMPARE(sec.value("speakers").toList().at(1).toMap().value("colorIndex").toInt(), 1);
         QCOMPARE(vm.memo().at(6).toMap().value("sourceRange").toString(), QStringLiteral("115:50–131:04"));
         QVERIFY(vm.generationLine().startsWith(QStringLiteral("Memó · 7 szakasz")));
+        // S2: a memó-pontok és -bevezetők is állítások; a 3. szakasz bevezetője két mondat
+        // (chippel), utána „Elhangzott érvek” (3 pont) és „Nyitott kérdés” (1).
+        QCOMPARE(vm.memoItems()->count(), 16);
+        const QVariantList intro = sec.value("introRows").toList();
+        QCOMPARE(intro.size(), 2);
+        QCOMPARE(intro.at(0).toMap().value("statementId").toString(), QStringLiteral("i3.1"));
+        QCOMPARE(intro.at(1).toMap().value("spans").toList().at(0).toMap().value("stamp").toString(),
+                 QStringLiteral("33:40"));
+        const QVariantList blocks = sec.value("blocks").toList();
+        QCOMPARE(blocks.size(), 2);
+        QCOMPARE(blocks.at(0).toMap().value("key").toString(), QStringLiteral("arguments"));
+        QCOMPARE(blocks.at(0).toMap().value("title").toString(), QStringLiteral("Elhangzott érvek"));
+        QCOMPARE(blocks.at(0).toMap().value("rows").toList().size(), 3);
+        const QVariantMap m32 = blocks.at(0).toMap().value("rows").toList().at(1).toMap();
+        QCOMPARE(m32.value("statementId").toString(), QStringLiteral("m3.2"));
+        QCOMPARE(m32.value("spans").toList().size(), 2);
+        QCOMPARE(blocks.at(1).toMap().value("title").toString(), QStringLiteral("Nyitott kérdés"));
+        QCOMPARE(vm.sourceDetails(QStringLiteral("m3.2")).value("count").toInt(), 2);
+        // Állítás nélküli pont (5. szakasz): puszta sor, forrás nélkül.
+        const QVariantMap plain = vm.memo().at(4).toMap().value("blocks").toList().at(0).toMap()
+                                      .value("rows").toList().at(0).toMap();
+        QVERIFY(plain.value("statementId").toString().isEmpty());
+        QVERIFY(!plain.value("hasSources").toBool());
+        // A térkép „Forrás” sora a memóban: a memó-állítások forrásai, a kiemelt szakaszé aktív.
+        active = 0;
+        for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
+        QCOMPARE(active, 7);
+        vm.setActiveStatementId(QStringLiteral("m3.2"));
+        active = 0;
+        for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
+        QCOMPARE(active, 2);
+        vm.setActiveStatementId(QString());
+        // Jelzés egy memó-ponton: a szakasz sora is jelzett.
+        QVERIFY(vm.flagStatement(QStringLiteral("m3.1")));
+        QVERIFY(vm.memo().at(2).toMap().value("blocks").toList().at(0).toMap().value("rows").toList()
+                    .at(0).toMap().value("flagged").toBool());
         vm.setActiveSection(4);
         QVERIFY(vm.sectionBands().at(4).toMap().value("active").toBool());
 

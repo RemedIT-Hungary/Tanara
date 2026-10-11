@@ -176,12 +176,27 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
         if (n.topics.isEmpty()) n.topics.append(MemoSection{});
         return n.topics.last();
     };
+    // A futó tárgy állapota: a cím utáni nem-pont sorok a bevezető (introOpen), az al-cím
+    // (#### Arguments / #### Unresolved) utáni pontok az alszakaszé (group); groupFresh: az
+    // alszakasznak még nincs pontja (a nem-pont sor ilyenkor új pont, nem az előző folytatása).
+    bool introOpen = false;
+    QString group;
+    bool groupFresh = false;
+    auto addPoint = [&](MemoSection& m, const QString& point) {
+        while (m.pointGroups.size() < m.points.size()) m.pointGroups << QString();
+        m.points << point;
+        m.pointGroups << group;
+        introOpen = false;
+        groupFresh = false;
+    };
 
     for (const QString& rawLine : raw.split(QLatin1Char('\n'))) {
         const QString line = rawLine.trimmed();
         if (line.isEmpty()) continue;
         if (line.startsWith(QLatin1String("```"))) continue;   // kódkerítés
-        const Sec h = headingOf(line);
+        // A tárgyon belüli al-cím (####) sosem szakasz-fejléc („#### Open questions” ≠ OPEN).
+        const bool subHeading = sec == Sec::Topics && line.startsWith(QLatin1String("####"));
+        const Sec h = subHeading ? Sec::None : headingOf(line);
         if (h != Sec::None) {
             sawHeading = true;
             sec = h;
@@ -201,21 +216,41 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
                                    && unwrapEmphasis(line).size() < 160;
             const bool rangeTitle = !bm.hasMatch() && rangeRe().match(line).hasMatch()
                                     && rangeRe().match(line).capturedStart() <= 1;
+            // Al-cím: „####” sor, vagy egy ismert alszakasz-név (#/** díszítéssel) egy tárgyon belül.
+            if (!n.topics.isEmpty() && (subHeading || hashTitle || boldTitle)) {
+                QString t = line;
+                while (t.startsWith(QLatin1Char('#'))) t.remove(0, 1);
+                const QString key = summarysrc::memoGroupKey(unwrapEmphasis(t));
+                const bool known = key == QLatin1String("arguments") || key == QLatin1String("open");
+                if (subHeading || known) {
+                    group = key;
+                    groupFresh = true;
+                    introOpen = false;
+                    continue;
+                }
+            }
             if (hashTitle || boldTitle || rangeTitle) {
                 QString t = line;
                 while (t.startsWith(QLatin1Char('#'))) t.remove(0, 1);
                 MemoSection m = topicFromTitle(t);
                 n.topics.append(m);
+                introOpen = true;
+                group.clear();
+                groupFresh = false;
                 continue;
             }
             if (looksLikeJson(line)) continue;
             QString point = bm.hasMatch() ? bm.captured(1).trimmed() : line;
             if (point.isEmpty() || isNoneItem(point)) continue;
             MemoSection& cur = currentTopic();
-            if (!bm.hasMatch() && !cur.points.isEmpty())
+            if (!bm.hasMatch() && introOpen) {
+                // A cím utáni próza: a szakasz bevezetője.
+                cur.intro += (cur.intro.isEmpty() ? QString() : QStringLiteral(" ")) + point;
+            } else if (!bm.hasMatch() && !cur.points.isEmpty() && !groupFresh) {
                 cur.points.last() += QLatin1Char(' ') + point;      // tördelt sor folytatása
-            else
-                cur.points << point;
+            } else {
+                addPoint(cur, point);
+            }
             continue;
         }
         if (list) {
@@ -240,10 +275,16 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
         if (!m.points.isEmpty()) n.topics.append(m);
     }
 
-    // Üres (pont és cím nélküli) tárgyak ki.
+    // Üres (pont, bevezető és cím nélküli) tárgyak ki; alszakasz nélkül a pointGroups üres.
     n.topics.erase(std::remove_if(n.topics.begin(), n.topics.end(),
-                                  [](const MemoSection& m) { return m.title.isEmpty() && m.points.isEmpty(); }),
+                                  [](const MemoSection& m) {
+                                      return m.title.isEmpty() && m.points.isEmpty() && m.intro.isEmpty();
+                                  }),
                    n.topics.end());
+    for (MemoSection& m : n.topics) {
+        if (std::all_of(m.pointGroups.cbegin(), m.pointGroups.cend(), [](const QString& g) { return g.isEmpty(); }))
+            m.pointGroups.clear();
+    }
     fillTimes(n.topics, part.startMs, part.endMs);
     return n;
 }
@@ -481,7 +522,7 @@ QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts)
     QVector<MemoSection> out;
     for (const PartNotes& p : parts) {
         for (const MemoSection& t : p.topics) {
-            if (t.points.isEmpty() && t.title.isEmpty()) continue;
+            if (t.points.isEmpty() && t.title.isEmpty() && t.intro.isEmpty()) continue;
             // Összevonás csak észszerű hosszig: egy 20 percnél hosszabb szakasz már nem olvasható
             // memó-egység (a modell néha egy egész részt egyetlen, az előzővel azonos című blokkba
             // tesz) — ilyenkor azonos címmel, külön időkerettel marad.
@@ -496,12 +537,21 @@ QVector<MemoSection> assembleMemo(const QVector<PartNotes>& parts)
                 continue;
             }
             MemoSection& last = out.last();
-            for (const QString& pt : t.points) {
-                const QString f = foldedTitle(pt);
+            if (!t.intro.isEmpty())
+                last.intro += (last.intro.isEmpty() ? QString() : QStringLiteral(" ")) + t.intro;
+            const bool grouped = !last.pointGroups.isEmpty() || !t.pointGroups.isEmpty();
+            if (grouped)
+                while (last.pointGroups.size() < last.points.size()) last.pointGroups << QString();
+            for (int i = 0; i < t.points.size(); ++i) {
+                const QString& pt = t.points.at(i);
+                // Az ismétlés a jelölők nélkül számít (ugyanaz a pont más időponttal is ismétlés).
+                const QString f = foldedTitle(summarysrc::stripMarkers(pt));
                 bool dup = false;
                 for (const QString& e : std::as_const(last.points))
-                    if (foldedTitle(e) == f) { dup = true; break; }
-                if (!dup) last.points << pt;
+                    if (foldedTitle(summarysrc::stripMarkers(e)) == f) { dup = true; break; }
+                if (dup) continue;
+                last.points << pt;
+                if (grouped) last.pointGroups << t.groupOf(i);
             }
             if (t.startMs >= 0 && (last.startMs < 0 || t.startMs < last.startMs)) last.startMs = t.startMs;
             if (t.endMs > last.endMs) last.endMs = t.endMs;
@@ -528,7 +578,15 @@ QString renderNotesForMerge(const QVector<PartNotes>& parts, const QStringList& 
         for (const MemoSection& t : p.topics) {
             out += QStringLiteral("### [%1-%2] %3\n")
                        .arg(formatTimestamp(t.startMs), formatTimestamp(t.endMs), t.title);
-            for (const QString& pt : t.points) out += QStringLiteral("- ") + pt + QLatin1Char('\n');
+            if (!t.intro.isEmpty()) out += t.intro + QLatin1Char('\n');
+            for (const auto& g : summarysrc::memoGroups(t)) {
+                if (!g.first.isEmpty())
+                    out += QStringLiteral("#### ")
+                         + (g.first == QLatin1String("arguments") ? QStringLiteral("Arguments")
+                            : g.first == QLatin1String("open")    ? QStringLiteral("Unresolved") : g.first)
+                         + QLatin1Char('\n');
+                for (int i : g.second) out += QStringLiteral("- ") + t.points.at(i) + QLatin1Char('\n');
+            }
         }
         list("DECISIONS", p.decisions);
         list("OPEN", p.open);

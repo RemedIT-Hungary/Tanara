@@ -58,13 +58,14 @@ export function sentences(text) {
   return out;
 }
 
-// A rövid forma forrás-lefedettsége: hány állítás (mondat / döntés / teendő) kapott jelölőt,
+// A rövid forma forrás-lefedettsége: hány állítás (mondat / döntés / nyitott kérdés / teendő) kapott jelölőt,
 // és ebből hány oldható fel az átiratra (transcript nélkül csak a jelölt szám).
 export function sourceStats(parsed, transcript) {
   if (!parsed) return null;
   const items = [
     ...sentences(parsed.execSummary),
     ...(Array.isArray(parsed.decisions) ? parsed.decisions : []),
+    ...(Array.isArray(parsed.openQuestions) ? parsed.openQuestions : []),
     ...(Array.isArray(parsed.actionItems) ? parsed.actionItems.map((a) => (a && typeof a === 'object' ? a.text : a)) : []),
   ].map((t) => extractMarkers(t));
   const paras = transcript ? paragraphTimes(transcript) : null;
@@ -72,4 +73,59 @@ export function sourceStats(parsed, transcript) {
   const resolved = paras ? marked.filter((i) => i.refs.some((r) => resolves(r, paras))) : marked;
   return { items: items.length, marked: marked.length, resolved: resolved.length,
     coverage: items.length ? Number((resolved.length / items.length).toFixed(2)) : 0 };
+}
+
+// A memó-jegyzet (TOPICS) szerkezete, mint az appban (SummaryPipeline::parseNotes): `### cím`,
+// utána a bevezető (pötty nélküli sorok), a pontok (`- …`), és az al-címek (`#### Arguments`,
+// `#### Unresolved`). → [{ title, intro, points: [{ text, group }] }]
+export function parseTopics(notes) {
+  const topics = [];
+  let cur = null, group = '', introOpen = false, fresh = false, inTopics = false;
+  for (const raw of String(notes || '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('```')) continue;
+    if (/^(TOPICS|T[ÉE]M[ÁA]K)\s*:?$/i.test(line.replace(/[#*]/g, '').trim())) { inTopics = true; continue; }
+    if (/^(DECISIONS|OPEN|ACTIONS|SUMMARY)\s*:?$/i.test(line.replace(/[#*]/g, '').trim())) { inTopics = false; continue; }
+    if (!inTopics) continue;
+    if (line.startsWith('####') && cur) {
+      const h = line.replace(/^#+\s*/, '').replace(/[*:]+$/g, '').trim().toLowerCase();
+      group = /^(arguments?|elhangzott érvek|érvek)$/.test(h) ? 'arguments'
+        : /^(unresolved|open questions?|nyitott kérdés(ek)?)$/.test(h) ? 'open' : h;
+      fresh = true; introOpen = false;
+      continue;
+    }
+    if (line.startsWith('#')) {
+      cur = { title: line.replace(/^#+\s*/, '').trim(), intro: '', points: [] };
+      topics.push(cur); group = ''; introOpen = true; fresh = false;
+      continue;
+    }
+    if (!cur) { cur = { title: '', intro: '', points: [] }; topics.push(cur); }
+    const b = line.match(/^(?:[-*•–]|\d+[.)])\s+(.*)$/);
+    if (!b && introOpen) { cur.intro += (cur.intro ? ' ' : '') + line; continue; }
+    if (!b && cur.points.length && !fresh) { cur.points[cur.points.length - 1].text += ' ' + line; continue; }
+    cur.points.push({ text: b ? b[1].trim() : line, group });
+    introOpen = false; fresh = false;
+  }
+  return topics;
+}
+
+// A memó forrás-lefedettsége: a bevezető-mondatok és a pontok közül hány kapott (feloldható)
+// jelölőt; az alszakaszok száma (arguments / open).
+export function memoSourceStats(notes, transcript) {
+  const topics = parseTopics(notes);
+  const items = [];
+  const groups = { arguments: 0, open: 0, other: 0 };
+  for (const t of topics) {
+    for (const s of sentences(t.intro)) items.push(extractMarkers(s));
+    for (const p of t.points) {
+      items.push(extractMarkers(p.text));
+      if (p.group === 'arguments' || p.group === 'open') ++groups[p.group];
+      else if (p.group) ++groups.other;
+    }
+  }
+  const paras = transcript ? paragraphTimes(transcript) : null;
+  const marked = items.filter((i) => i.refs.length > 0);
+  const resolved = paras ? marked.filter((i) => i.refs.some((r) => resolves(r, paras))) : marked;
+  return { topics: topics.length, items: items.length, marked: marked.length, resolved: resolved.length,
+    coverage: items.length ? Number((resolved.length / items.length).toFixed(2)) : 0, groups };
 }

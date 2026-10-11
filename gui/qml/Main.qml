@@ -762,7 +762,9 @@ ApplicationWindow {
                         timelineMs: transcriptTab.editor.timelineMs > 0 ? transcriptTab.editor.timelineMs
                                                                         : playerController.durationMs
                         // U4: a SummaryTab `sourceMarks` / `sectionBands` listái ({ startMs, endMs, active }).
-                        sourceMarks: shellActions.currentTab === 2 && summaryTab && ("sourceMarks" in summaryTab)
+                        // S2: a memó (3. fül) állításainak forrásai is (a vm a nézet szerint adja).
+                        sourceMarks: (shellActions.currentTab === 2 || shellActions.currentTab === 3)
+                                     && summaryTab && ("sourceMarks" in summaryTab)
                                      ? summaryTab.sourceMarks : []
                         sectionBands: shellActions.currentTab === 3 && summaryTab && ("sectionBands" in summaryTab)
                                       ? summaryTab.sectionBands : []

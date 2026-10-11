@@ -118,6 +118,13 @@ struct MemoSection {
     qint64      endMs = -1;
     QStringList points;
     QStringList speakers;   // a szakasz időkeretébe eső megszólalások beszélői (első megszólalás sorrendjében)
+    // A szakasz bevezetője: 1–2 mondat a tárgy lényegéről (jelölő nélkül; üres = nincs).
+    QString     intro;
+    // A pontok alszakasza, a points-szal párhuzamosan (rövidebb lista = a többi a törzsé):
+    // "" = a szakasz törzse, "arguments" = „Elhangzott érvek”, "open" = „Nyitott kérdés”,
+    // más szöveg: a modell saját al-címe. Az alszakaszok a pontok sorrendjében követik egymást.
+    QStringList pointGroups;
+    QString groupOf(int i) const { return i >= 0 && i < pointGroups.size() ? pointGroups.at(i) : QString(); }
 };
 
 // Egy összefoglaló-állítás forrása az átiratban: időtartomány + a megszólalások azonosítói
@@ -128,13 +135,17 @@ struct SourceSpan {
     QStringList utteranceIds;
 };
 
-enum class StatementKind { Statement, Decision, Todo };
+// Statement: a vezetői összefoglaló egy mondata; Decision / Todo / OpenQuestion: a decisions /
+// actionItems / openQuestions egy eleme; MemoIntro: egy memó-szakasz bevezetőjének egy mondata;
+// MemoPoint: egy memó-pont (bármelyik alszakaszban).
+enum class StatementKind { Statement, Decision, Todo, OpenQuestion, MemoIntro, MemoPoint };
 
-// A vezetői összefoglaló egy mondata, egy döntés vagy egy teendő, a forrás-hivatkozásaival.
-// A sorrend a Summary mezőivel egyezik: a Statement-ek az execSummary mondatai sorban, a
-// Decision-ök a decisions[i], a Todo-k az actionItems[i]. Üres sourceSpans = „nincs forrás”.
+// Az összefoglaló egy forrás-hivatkozásos állítása. A sorrend és az id a Summary mezőit követi:
+// "s<k>" az execSummary k. mondata, "d<k>" a decisions[k-1], "q<k>" az openQuestions[k-1],
+// "t<k>" az actionItems[k-1], "i<n>.<k>" a memo[n-1].intro k. mondata, "m<n>.<k>" a
+// memo[n-1].points[k-1]. Üres sourceSpans = „nincs forrás”.
 struct SummaryStatement {
-    QString       id;               // "s1", "d1", "t1" … (a summary-n belül stabil)
+    QString       id;               // "s1", "d1", "q1", "t1", "i3.1", "m3.2" … (a summary-n belül stabil)
     QString       text;             // jelölők nélkül
     StatementKind kind = StatementKind::Statement;
     QVector<SourceSpan> sourceSpans;

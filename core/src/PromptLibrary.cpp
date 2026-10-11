@@ -27,12 +27,19 @@ const char* const kClassifyExamples = R"PROMPT(HOW TO CLASSIFY (the examples are
 // A memó-jegyzet (TOPICS) formája és szabályai — a „notes” és a „single” közös része.
 const char* const kTopicsFormat = R"PROMPT(TOPICS
 ### [mm:ss-mm:ss] short title of the subject
-- one point per line: what was said about it, with the concrete names, numbers, dates and reasons; who proposed, objected or reported something when that matters
-(one ### block per subject, in the order discussed; the times are where the subject starts and ends))PROMPT";
+One or two sentences without a dash: the gist of the subject and where it ended up. [t=mm:ss]
+- one point per line: what was said about it, with the concrete names, numbers, dates and reasons; who proposed, objected or reported something when that matters [t=mm:ss]
+#### Arguments
+- an argument for or against a proposal, and who made it [t=mm:ss]
+#### Unresolved
+- a question about this subject that was left open [t=mm:ss]
+(one ### block per subject, in the order discussed; the times in the ### line are where the subject starts and ends. The "#### Arguments" and "#### Unresolved" parts are optional: write them only when there were real arguments or a real open question, otherwise leave the heading out)
+Every gist sentence and every point ends with a source marker [t=mm:ss]: the time of the transcript paragraph `[mm:ss]` where it was said; up to 3 times in one marker when it draws on several places: [t=12:30, t=14:05]. Copy the time exactly as written; never invent, estimate or round a time; leave the marker out when you cannot tell.)PROMPT";
 
 const char* const kTopicsRules = R"PROMPT(- TOPICS is the memo someone reads to learn what happened: cover every subject up to the last minute, with 2 to 8 points each depending on how much was said.
 - A subject is one theme of the discussion and usually lasts a few minutes, rarely more than 10. Split a long discussion into its parts (for example the goal, the cost, who does what, the schedule) instead of writing one long block, but do not start a new block when the same point merely continues after a short aside. 15 minutes of meeting usually contain 2 to 5 subjects. Write the titles in {{LANGUAGE}}. Each point is a short self-contained sentence with the specifics; do not write vague points such as "they discussed the details".
-- Things merely shown, explained or reported (for example during a demo or a status update) belong in TOPICS, not among the decisions or tasks.)PROMPT";
+- Things merely shown, explained or reported (for example during a demo or a status update) belong in TOPICS, not among the decisions or tasks.
+- The sub-headings "#### Arguments" and "#### Unresolved" stay in English exactly as shown; the text under them is in {{LANGUAGE}}.)PROMPT";
 
 const char* const kInput = R"PROMPT(- The transcript was produced by automatic speech recognition: expect misheard words, broken sentences and filler. Speaker labels are mostly right. A label such as "Beszélő 2" means the speaker was not identified.
 %CONTEXT_RULE%)PROMPT";
@@ -45,7 +52,7 @@ const char* const kWriting = R"PROMPT(- Write fluent, correct {{LANGUAGE}}. Do n
 // Forrás-jelölők a rövid formában (a parser: summary/SummarySources.h). Sima szöveg + jelölő,
 // mert a json_schema helyi modellel megbízhatatlan. %SOURCE_OF% a hívásonkénti forrás.
 const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS
-- End every sentence of execSummary, every decision and every action item "text" with a source marker in square brackets: [t=mm:ss], where mm:ss is %SOURCE_OF%. When a sentence draws on several places, give up to 3 times in one marker: [t=12:30, t=41:05].
+- End every sentence of execSummary, every decision, every open question and every action item "text" with a source marker in square brackets: [t=mm:ss], where mm:ss is %SOURCE_OF%. When a sentence draws on several places, give up to 3 times in one marker: [t=12:30, t=41:05].
 - Put the marker right after the sentence's final punctuation, for example: "The release moves to Friday. [t=12:30]"
 - Copy the time exactly as written in the input; never invent, estimate or round a time. When you cannot tell where a sentence comes from, write it without a marker.
 - In the JSON the markers are the only place for times: do not start a sentence or a list item with a time.)PROMPT";
@@ -90,7 +97,7 @@ OUTPUT
 Return exactly one JSON object with the keys in this order, and nothing else: no code fence, no commentary before or after.
 {
   "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
-  "openQuestions": ["{{LANGUAGE}} sentence"],
+  "openQuestions": ["{{LANGUAGE}} question or sentence. [t=mm:ss]"],
   "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}],
   "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]"
 }
@@ -125,7 +132,7 @@ SUMMARY
 {
   "execSummary": "{{LANGUAGE}} sentence. [t=mm:ss] {{LANGUAGE}} sentence. [t=mm:ss]",
   "decisions": ["{{LANGUAGE}} sentence. [t=mm:ss]"],
-  "openQuestions": ["{{LANGUAGE}} sentence"],
+  "openQuestions": ["{{LANGUAGE}} question or sentence. [t=mm:ss]"],
   "actionItems": [{"text": "{{LANGUAGE}} task [t=mm:ss]", "owner": "name", "due": ""}]
 }
 
@@ -221,7 +228,7 @@ QString promptBuiltin(const QString& id)
         return compose(kSingle, "the time of the transcript paragraph `[mm:ss]` where it was said");
     if (id == QLatin1String("notes"))    return compose(kNotes);
     if (id == QLatin1String("merge"))
-        return compose(kMerge, "the time written in the notes it is based on (the [mm:ss] of a DECISIONS, OPEN or ACTIONS line, or the start time of a ### topic)");
+        return compose(kMerge, "the time written in the notes it is based on (the [mm:ss] of a DECISIONS, OPEN or ACTIONS line, a [t=mm:ss] marker in TOPICS, or the start time of a ### topic)");
     if (id == QLatin1String("topic"))    return compose(kTopic);
     if (id == QLatin1String("analysis")) return compose(kAnalysis);
     if (id == QLatin1String("reduce"))   return compose(kReduce);
@@ -362,7 +369,12 @@ PromptOutputFormat promptOutputFormat(const QString& id)
         f.body = QStringLiteral(
             "TOPICS\n"
             "### [mm:ss-mm:ss] <téma címe>\n"
-            "- <pont>\n"
+            "<bevezető: 1–2 mondat> [t=mm:ss]\n"
+            "- <pont> [t=mm:ss]\n"
+            "#### Arguments  (opcionális: elhangzott érvek)\n"
+            "- <érv> [t=mm:ss]\n"
+            "#### Unresolved  (opcionális: nyitott kérdés)\n"
+            "- <kérdés> [t=mm:ss]\n"
             "\n"
             "SUMMARY\n"
             "{\n"
@@ -374,14 +386,19 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "  ]\n"
             "}\n"
             "\n"
-            "Forrás-jelölő minden mondat / döntés / teendő végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
     } else if (id == QLatin1String("notes")) {
         f.kind = QStringLiteral("text");
         f.summary = QStringLiteral("TOPICS, DECISIONS, OPEN, ACTIONS");
         f.body = QStringLiteral(
             "TOPICS\n"
             "### [mm:ss-mm:ss] <téma címe>\n"
-            "- <pont>\n"
+            "<bevezető: 1–2 mondat> [t=mm:ss]\n"
+            "- <pont> [t=mm:ss]\n"
+            "#### Arguments  (opcionális: elhangzott érvek)\n"
+            "- <érv> [t=mm:ss]\n"
+            "#### Unresolved  (opcionális: nyitott kérdés)\n"
+            "- <kérdés> [t=mm:ss]\n"
             "\n"
             "DECISIONS\n"
             "- [mm:ss] <döntés>  |  - none\n"
@@ -405,7 +422,7 @@ PromptOutputFormat promptOutputFormat(const QString& id)
             "  \"execSummary\": string\n"
             "}\n"
             "\n"
-            "Forrás-jelölő minden mondat / döntés / teendő végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
+            "Forrás-jelölő minden mondat / döntés / nyitott kérdés / teendő / memó-pont végén: [t=mm:ss] (több: [t=mm:ss, t=mm:ss])");
     } else if (id == QLatin1String("topic")) {
         f.kind = QStringLiteral("markdown");
         f.summary = QCoreApplication::translate("PromptLibrary", "## Cím + 1–2 mondat, témánként");

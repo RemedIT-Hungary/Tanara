@@ -1,6 +1,7 @@
 #include "tanara/summary/SummaryStore.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/summary/SummaryPipeline.h"
+#include "tanara/summary/SummarySources.h"
 #include "tanara/library/TextFold.h"
 #include "tanara/store/JsonSerialization.h"
 
@@ -17,7 +18,9 @@ namespace summarystore {
 
 namespace {
 
-constexpr int kVersion = 3;   // 2: openQuestions + memo, témánkénti openQuestions; 3: statements + sourceSpeakers + memo.speakers
+// 2: openQuestions + memo, témánkénti openQuestions; 3: statements + sourceSpeakers + memo.speakers;
+// 4: memó-pontok, -bevezetők és nyitott kérdések is állítások (q / i / m), memo.intro + pointGroups
+constexpr int kVersion = 4;
 
 QJsonObject topicToJson(const TopicAnalysis& a)
 {
@@ -148,6 +151,8 @@ SummaryDocument parseMarkdown(const QString& markdown)
     QStringList para;            // a futó bekezdés sorai (Exec / Unknown / téma-detail)
     QString unknownHeading;      // ismeretlen szakasz címe (a szöveg elé kerül)
     bool inTopic = false;
+    QString memoGroup;           // a futó memó-alszakasz kulcsa ("" = a szakasz törzse)
+    bool memoGroupFresh = false; // az alszakasznak még nincs pontja
 
     auto flushPara = [&]() {
         if (para.isEmpty()) return;
@@ -193,6 +198,8 @@ SummaryDocument parseMarkdown(const QString& markdown)
                 }
                 ms.title = title;
                 doc.summary.memo.append(ms);
+                memoGroup.clear();
+                memoGroupFresh = false;
             } else if (sec == Section::Topics) {
                 TopicAnalysis a;
                 QString title = m3.captured(1).trimmed();
@@ -254,10 +261,27 @@ SummaryDocument parseMarkdown(const QString& markdown)
             break;
         case Section::Memo: {
             if (doc.summary.memo.isEmpty()) doc.summary.memo.append(MemoSection{});
-            QStringList& pts = doc.summary.memo.last().points;
-            if (bm.hasMatch()) pts << bm.captured(1).trimmed();
-            else if (!pts.isEmpty()) pts.last() += QLatin1Char(' ') + t;
-            else pts << t;
+            MemoSection& ms = doc.summary.memo.last();
+            QStringList& pts = ms.points;
+            // „**Elhangzott érvek:**” / „**Nyitott kérdés:**” → alszakasz.
+            const QRegularExpressionMatch bl = boldLabel.match(t);
+            if (bl.hasMatch()) {
+                memoGroup = summarysrc::memoGroupKey(bl.captured(1));
+                memoGroupFresh = true;
+                break;
+            }
+            auto addPoint = [&](const QString& p) {
+                if (!memoGroup.isEmpty())
+                    while (ms.pointGroups.size() < pts.size()) ms.pointGroups << QString();
+                pts << p;
+                if (!memoGroup.isEmpty() || !ms.pointGroups.isEmpty()) ms.pointGroups << memoGroup;
+                memoGroupFresh = false;
+            };
+            if (bm.hasMatch()) addPoint(bm.captured(1).trimmed());
+            else if (pts.isEmpty() && memoGroup.isEmpty())      // a cím utáni próza: a bevezető
+                ms.intro += (ms.intro.isEmpty() ? QString() : QStringLiteral(" ")) + t;
+            else if (!pts.isEmpty() && !memoGroupFresh) pts.last() += QLatin1Char(' ') + t;
+            else addPoint(t);
             break;
         }
         case Section::Actions: {

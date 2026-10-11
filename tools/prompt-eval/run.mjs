@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Prompt-kiértékelő: összefoglaló-promptok × lokális modellek × átiratok, LM Studio-n át.
 //
-// Forrás-jelölős változatok: en7 (egylépéses), chunk:map1:red3 (darabolt); a jelölő-értelmező
-// LLM nélküli önellenőrzése: node selftest.mjs.
+// Forrás-jelölős változatok: en7 (egylépéses), chunk:map1:red3 (darabolt); az app beépített
+// promptjai (core/src/PromptLibrary.cpp, újrafordítás nélkül): @single, chunk:@notes:@merge —
+// ezeknél a memó (TOPICS: bevezető, pontok, #### Arguments / Unresolved) forrás-lefedettsége is
+// mérődik (memoSources). A jelölő-értelmező LLM nélküli önellenőrzése: node selftest.mjs.
 //
 //   node run.mjs --models google/gemma-4-12b-qat,qwen/qwen3-coder-30b \
 //                --prompts hu0,en1,en2 --meetings S,M,L [--ctx 49152] [--max-tokens 8000]
@@ -16,7 +18,8 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sourceStats } from './sources.mjs';
+import { memoSourceStats, sourceStats } from './sources.mjs';
+import { builtinPrompt } from './builtin.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, def) => {
@@ -166,7 +169,7 @@ function splitTranscript(text, minutes) {
 async function chatChunked(model, spec, meeting, remind = false) {
   const [, mapId, redId, minStr] = spec.split(':');
   const minutes = Number(minStr || CHUNK_MIN_DEFAULT);
-  const load = (id) => fs.readFileSync(path.join(HERE, 'prompts', id + '.md'), 'utf8').trim().replaceAll('{{NYELV}}', LANG);
+  const load = (id) => promptText(id, LANG);
   const transcript = fs.readFileSync(path.join(DATA, meeting + '.md'), 'utf8').trim();
   const ctxFile = path.join(DATA, meeting + '.ctx');
   const ctx = fs.existsSync(ctxFile) ? fs.readFileSync(ctxFile, 'utf8').trim() : '';
@@ -188,6 +191,21 @@ async function chatChunked(model, spec, meeting, remind = false) {
   agg.secs += r.secs; agg.usage.prompt_tokens += r.usage.prompt_tokens || 0; agg.usage.completion_tokens += r.usage.completion_tokens || 0;
   agg.reasoning += r.reasoning;
   return { ...agg, httpStatus: r.httpStatus, error: r.error, finish: r.finish, text: r.text, chunks: chunks.length };
+}
+
+// Egy prompt szövege: "@<id>" = az app beépített promptja, különben prompts/<id>.md.
+function promptText(id, lang) {
+  if (id.startsWith('@')) return builtinPrompt(id.slice(1), lang).trim();
+  return fs.readFileSync(path.join(HERE, 'prompts', id + '.md'), 'utf8').trim().replaceAll('{{NYELV}}', lang);
+}
+
+// A memó-jegyzet a kimenetből: egylépésesnél a SUMMARY előtti rész, daraboltnál a részjegyzetek.
+function memoNotes(r) {
+  if (Array.isArray(r.notes) && r.notes.length) return r.notes.join('\n\n');
+  const text = String(r.text || '');
+  if (!/^\s*(#+\s*)?TOPICS\b/m.test(text)) return '';
+  const cut = text.search(/^\s*(#+\s*)?SUMMARY\b|^\s*\{/m);
+  return cut >= 0 ? text.slice(0, cut) : text;
 }
 
 // Nyelvi emlékeztető az átirat után (a legutolsó, amit a modell olvas).
@@ -283,8 +301,7 @@ for (const model of MODELS) {
     const chunked = p.startsWith('chunk:');
     const remind = p.endsWith('+L');
     const pFile = remind ? p.slice(0, -2) : p;
-    const system = chunked ? '' : fs.readFileSync(path.join(HERE, 'prompts', pFile + '.md'), 'utf8').trim()
-      .replaceAll('{{NYELV}}', english ? LANG : 'magyar');
+    const system = chunked ? '' : promptText(pFile, english ? LANG : 'magyar');
     let r = null, tries = 0;
     for (; tries <= MAX_RETRY; ++tries) {
       if (gpuWasReset()) break;
@@ -329,6 +346,8 @@ for (const model of MODELS) {
       execChars: a.parsed && a.parsed.execSummary ? a.parsed.execSummary.length : 0,
       // Forrás-jelölők (`[t=mm:ss]`): jelölt / feloldható / összes állítás (en7, red3 promptok).
       sources: sourceStats(a.parsed, fs.readFileSync(path.join(DATA, m + '.md'), 'utf8')),
+      // A memó (TOPICS) jelölői: bevezető-mondatok + pontok, alszakaszok (ha a kimenetben van jegyzet).
+      memoSources: memoNotes(r) ? memoSourceStats(memoNotes(r), fs.readFileSync(path.join(DATA, m + '.md'), 'utf8')) : null,
       text: r.text, parsed: a.parsed, chunks: r.chunks || 0, notes: r.notes || undefined,
     };
     if (!failed) fs.writeFileSync(file, JSON.stringify(row, null, 2));   // a hibás futás újrafuttatható marad
