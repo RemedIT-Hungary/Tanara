@@ -270,11 +270,23 @@ private slots:
         fx.meeting.tagIds = {"t-projekt"};
         fx.store->saveMeeting(fx.meeting);
         auto ed = fx.editor();
-        ed->setPersonTagsProvider([](const QString& p) { return p == "Anna" ? QStringList{"t-marketing"} : QStringList{}; });
+        // Az ellentmondás csak a szigorú őrökkel (UX-terv 4.): Annának kézi címkéje van, a
+        // megbeszélés címkéje beért (5 megbeszélés) és Anna egyiken sem volt.
+        PersonTagSnapshot snap;
+        QVector<PersonTagRow> rows;
+        for (int i = 0; i < 5; ++i)
+            rows << PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"t-projekt"}, {QStringLiteral("Béla")}};
+        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QString()));
+        snap.tagNames = {{"t-projekt", "Projekt"}, {"t-marketing", "Marketing"}};
+        snap.manual.insert(persontags::personKey("Anna"), {"t-marketing"});
+        ed->setTagEvidenceProvider([snap](const QString& p, const QStringList& tags, const QString& mid) {
+            return snap.evidence(p, tags, mid);
+        });
         QVERIFY(waitReview(*ed));
         bool tagContra = false;
         for (const Evidence& e : ed->speakerEvidence("A"))
-            tagContra |= e.kind == EvidenceKind::Tag && e.polarity == Polarity::Contradict && e.fixTarget == "tags";
+            tagContra |= e.kind == EvidenceKind::Tag && e.polarity == Polarity::Contradict && e.fixTarget == "tags"
+                         && e.text == QStringLiteral("más címkék") && e.detail.contains(QStringLiteral("#Marketing"));
         QVERIFY(tagContra);
     }
 };

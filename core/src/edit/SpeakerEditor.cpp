@@ -199,8 +199,10 @@ struct SpeakerEditor::Private {
 
     // ---- v3: sáv-oldal, jelöltek, Átnézendő csoportok (háttérszál) ----
     SpeakerEditor::ActivityProvider activityProvider;
-    PersonTagsFn personTags;
+    TagEvidenceFn tagEvidence;
+    SpeakerEditor::PersonTagsFn personTags;   // kézi címkék a gyors „+ #Címke"-hez
     QStringList meetingTags;            // Meeting::tagIds
+    mutable QHash<QString, TagEvidence> tagEvidenceCache;   // case-folded személy → bizonyíték
     std::optional<MeetingActivity> activity;    // az első számítás után a memóriában
     ReviewResult review;                // a legutóbbi elemzés
     int  reviewEpoch = 0;               // nő minden (újra)töltésnél — a régi eredményt eldobjuk
@@ -228,6 +230,7 @@ struct SpeakerEditor::Private {
         hasSummary = m.hasSummary;
         speakerMap = m.speakerMap;
         meetingTags = m.tagIds;
+        tagEvidenceCache.clear();
         audioPath = m.folder.isEmpty() ? QString() : mixdownPath(m);
         audioRel = m.mixdownFile.isEmpty() ? QStringLiteral("mixdown.mp3") : m.mixdownFile;
         const qint64 tMeeting = perf.elapsed();
@@ -563,17 +566,22 @@ struct SpeakerEditor::Private {
         return it != review.sideConflicts.constEnd() && it.value() == assigned.value(i) && !lockedAt(i);
     }
 
-    // A beszélő személyének címkéi nem illenek a megbeszéléshez (mindkét oldalon van címke, de nincs közös).
+    // A személy címke-bizonyítéka ezen a megbeszélésen (a fő szálon; az elemzésenként ürülő
+    // gyorsítótárból).
+    TagEvidence tagEvidenceOf(const QString& person) const
+    {
+        if (!tagEvidence || person.isEmpty() || meetingTags.isEmpty()) return {};
+        const QString k = person.toCaseFolded();
+        auto it = tagEvidenceCache.constFind(k);
+        if (it == tagEvidenceCache.constEnd()) it = tagEvidenceCache.insert(k, tagEvidence(person, meetingTags, meetingId));
+        return *it;
+    }
+
+    // A beszélő személyének címkéi ellentmondanak a megbeszélésnek (a szigorú őrök után;
+    // PersonTagSnapshot::evidence).
     bool tagMismatch(const QString& key) const
     {
-        if (!personTags || meetingTags.isEmpty()) return false;
-        const QString person = personOf(key);
-        if (person.isEmpty()) return false;
-        const QStringList tags = personTags(person);
-        if (tags.isEmpty()) return false;
-        for (const QString& t : tags)
-            if (meetingTags.contains(t, Qt::CaseInsensitive)) return false;
-        return true;
+        return tagEvidenceOf(personOf(key)).isContradiction();
     }
 
     QString reasonAt(int i) const
@@ -1353,13 +1361,16 @@ struct SpeakerEditor::Private {
                 if (!vecs.isEmpty()) in.personPrints.insert(person, vecs);
             }
         }
-        if (personTags) {
-            QHash<QString, QStringList> tags;
+        if (tagEvidence) {
+            tagEvidenceCache.clear();
+            QHash<QString, TagEvidence> tags;
             QStringList persons = in.personPrints.keys();
             for (const QString& key : visibleKeys()) persons << personOf(key);
             for (const QString& p : std::as_const(persons))
-                if (!p.isEmpty() && !tags.contains(p.toCaseFolded())) tags.insert(p.toCaseFolded(), personTags(p));
-            in.personTags = [tags](const QString& p) { return tags.value(p.toCaseFolded()); };
+                if (!p.isEmpty() && !tags.contains(p.toCaseFolded())) tags.insert(p.toCaseFolded(), tagEvidenceOf(p));
+            in.tagEvidence = [tags](const QString& p, const QStringList&, const QString&) {
+                return tags.value(p.toCaseFolded());
+            };
         }
         if (people) {
             const QHash<QString, QString> learned = people->defaultSides();
@@ -2419,10 +2430,16 @@ void SpeakerEditor::setActivityProvider(ActivityProvider provider)
     d->scheduleReview();
 }
 
+void SpeakerEditor::setTagEvidenceProvider(TagEvidenceFn fn)
+{
+    d->tagEvidence = std::move(fn);
+    d->tagEvidenceCache.clear();
+    d->scheduleReview();
+}
+
 void SpeakerEditor::setPersonTagsProvider(PersonTagsFn fn)
 {
     d->personTags = std::move(fn);
-    d->scheduleReview();
 }
 
 QStringList SpeakerEditor::meetingTagIds() const { return d->meetingTags; }

@@ -507,6 +507,34 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         m_personTags->insert(QStringLiteral("Molnár Eszter"), {QStringLiteral("piac")});
         const auto tags = m_personTags;
         m_editor->setPersonTagsProvider([tags](const QString& person) { return tags->value(person); });
+        // Címke-bizonyíték (UX-terv 4.) kitalált előzményekből: a #Nordvik 14 megbeszéléséből
+        // Gábor 11-en (kézi címkéje is), Árpád 6-on (csak tanult); Eszter kézi címkéje
+        // #Piackutatás, a #Nordvik-on sosem volt → ellentmond.
+        PersonTagSnapshot snap;
+        QVector<PersonTagRow> rows;
+        for (int i = 0; i < 14; ++i) {
+            QStringList who;
+            if (i < 11) who << QStringLiteral("Fehér Gábor");
+            if (i < 6) who << QStringLiteral("Varga Árpád");
+            rows << PersonTagRow{QStringLiteral("demo-n%1").arg(i), QDateTime(), {QStringLiteral("nordvik")}, who};
+        }
+        for (int i = 0; i < 3; ++i)
+            rows << PersonTagRow{QStringLiteral("demo-p%1").arg(i), QDateTime(), {QStringLiteral("piac")},
+                                 {QStringLiteral("Molnár Eszter")}};
+        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QStringLiteral("Kovács Lilla")));
+        snap.tagNames = {{QStringLiteral("nordvik"), QStringLiteral("Nordvik")},
+                         {QStringLiteral("piac"), QStringLiteral("Piackutatás")}};
+        snap.selfKey = persontags::personKey(QStringLiteral("Kovács Lilla"));
+        // A kézi címkék a demó élő térképéből jönnek (a gyors „+ #Címke" ide ír), a tanult
+        // statisztika a fenti kitalált előzményekből.
+        m_editor->setTagEvidenceProvider([snap, tags](const QString& person, const QStringList& meetingTags,
+                                                      const QString& mid) {
+            PersonTagSnapshot live = snap;
+            live.manual.clear();
+            for (auto it = tags->cbegin(); it != tags->cend(); ++it)
+                live.manual.insert(persontags::personKey(it.key()), it.value());
+            return live.evidence(person, meetingTags, mid);
+        });
         m_tagNames.insert(QStringLiteral("piac"), QStringLiteral("Piackutatás"));
     }
     if (variant != QLatin1String("novoice")) {

@@ -2,6 +2,7 @@
 
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/TrackTiming.h"
+#include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/TrackSpeech.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -342,15 +343,14 @@ QVector<Evidence> participantEvidence(const Participant& p, bool heard, double s
             ev.append({EvidenceKind::Side, Polarity::Neutral, 0.0, text, {}, QStringLiteral("tracks")});
     }
 
-    // Címke: a megbeszélés és a személy közös címkéi.
-    if (named && ctx.personTags) {
-        QStringList common;
-        for (const QString& id : ctx.personTags(p.personName))
-            if (m.tagIds.contains(id)) common << (ctx.tagName ? ctx.tagName(id) : id);
-        if (!common.isEmpty())
-            ev.append({EvidenceKind::Tag, Polarity::Support, double(common.size()),
-                       QStringLiteral("címke: %1").arg(common.first()), common.join(QStringLiteral(", ")),
-                       QStringLiteral("tags")});
+    // Címke (UX-terv 4.): kézi címke VAGY tanult kapcsolat támogat; az ellentmondás itt csak
+    // tájékoztat (semleges): a „Ki volt ott?” csoportját és alapjelölését a hang dönti el.
+    if (named && ctx.tagEvidence) {
+        Evidence e;
+        if (ranking::tagEvidenceOf(ctx.tagEvidence(p.personName, m.tagIds, m.id), p.personName, &e)) {
+            if (e.polarity == Polarity::Contradict) e.polarity = Polarity::Neutral;
+            ev.append(e);
+        }
     }
     return ev;
 }

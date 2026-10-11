@@ -86,6 +86,17 @@ Item {
             flick.contentY = 0
         }
         function onDetailChanged() { if (!noteArea.activeFocus) noteArea.text = root.vm.note }
+        // Mély hivatkozás egy szakaszra (C4: a „Címkéi” link → a Címkék szakasz).
+        function onSectionRequested(section) { Qt.callLater(root.scrollToSection, section) }
+    }
+    // A szakasz a nézet tetejére (amennyire a görgetés engedi); a kijelölés-váltás utáni
+    // elrendezés után fut.
+    function scrollToSection(section) {
+        if (section !== "tags" || !tagsSection.visible) return
+        const target = content.y + tagsSection.y - 20
+        flick.contentY = Math.max(0, Math.min(target, flick.contentHeight - flick.height))
+        tagsFlash.opacity = 1
+        tagsFlashFade.restart()
     }
     Component.onCompleted: if (vm) noteArea.text = vm.note
 
@@ -137,6 +148,25 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         clip: true
         T.ScrollBar.vertical: TScrollBar {}
+
+        // A mély hivatkozás célja egy pillanatra kiemelve (a Column-on kívül, hogy ne rendezze).
+        Rectangle {
+            id: tagsFlash
+            objectName: "tagsFlash"
+            x: content.x - 10
+            y: content.y + tagsSection.y - 8
+            width: content.width + 20
+            height: tagsSection.height + 16
+            radius: Theme.radiusControl
+            color: Theme.accentSoft
+            opacity: 0
+            visible: opacity > 0
+            SequentialAnimation {
+                id: tagsFlashFade
+                PauseAnimation { duration: 900 }
+                NumberAnimation { target: tagsFlash; property: "opacity"; to: 0; duration: Theme.durationNormal * 3 }
+            }
+        }
 
         Column {
             id: content
@@ -299,6 +329,43 @@ Item {
                         toolTipText: qsTr("Személy törlése")
                         onClicked: root.deleteRequested()
                     }
+                }
+            }
+
+            // ---- tanult sáv-oldal (brief E02 3.): „Jellemzően: helyi / távoli / nincs adat” ----
+            Row {
+                objectName: "defaultSideRow"
+                visible: root.vm && root.vm.defaultSideVisible
+                spacing: 10
+                TLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Jellemzően:")
+                    muted: true
+                    font.pixelSize: Theme.fontSmall
+                }
+                SettingsSegmented {
+                    objectName: "defaultSideSegment"
+                    anchors.verticalCenter: parent.verticalCenter
+                    options: [{ value: "local", label: qsTr("helyi"), iconName: "mic",
+                                toolTip: qsTr("Jellemzően a mikrofonon szól (melletted ül)") },
+                              { value: "remote", label: qsTr("távoli"), iconName: "phone",
+                                toolTip: qsTr("Jellemzően a hívás hangján szól") },
+                              { value: "", label: qsTr("nincs adat") }]
+                    value: root.vm ? root.vm.defaultSide : ""
+                    onPicked: (v) => root.vm.setDefaultSide(v)
+                }
+                TLabel {
+                    objectName: "defaultSideNote"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: text !== ""
+                    text: root.vm ? root.vm.defaultSideNote : ""
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    TToolTip {
+                        visible: noteHover.hovered
+                        text: qsTr("A sáv-beosztás ebből indul ki, ha a hang nem dönt egyértelműen. A kézzel beállított értéket a program nem írja felül.")
+                    }
+                    HoverHandler { id: noteHover }
                 }
             }
 

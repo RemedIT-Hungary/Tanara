@@ -68,13 +68,10 @@ QVariantList sourcesOf(const Participant& p, bool self)
                                                                        : QStringLiteral("phone"),
                           e.text, neg, false, e.detail);
             break;
-        case EvidenceKind::Tag: {
-            const QString first = e.detail.section(QStringLiteral(", "), 0, 0);
-            out << source(QStringLiteral("tag"),
-                          first.isEmpty() ? e.text : QStringLiteral("#") + first, neg, false,
-                          e.detail.isEmpty() ? e.text : OverviewViewModel::tr("Közös címke: %1").arg(e.detail));
+        case EvidenceKind::Tag:
+            // A chip („#Nordvik”, „#Nordvik +1”); a magyarázat a detail-ben (ranking::tagEvidenceOf).
+            out << source(QStringLiteral("tag"), e.text, neg);
             break;
-        }
         case EvidenceKind::Calendar:
             out << source(QStringLiteral("calendar"), e.text.isEmpty() ? OverviewViewModel::tr("naptár") : e.text,
                           neg, false, e.detail);

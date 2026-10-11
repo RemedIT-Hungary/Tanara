@@ -239,8 +239,8 @@ public:
     // A kötés: a kézi sávok (manual), különben a következtetett oldal (átirat után a szerkesztő
     // oldal-elemzése, előtte a Participant::sides) bevont sávjai.
     tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id);
-    // Teszt- / D-szelet-varrat: egy személy címkéi (címke-id-k, a Meeting::tagIds terében). Üres →
-    // nincs címke-bizonyíték.
+    // Teszt-varrat: egy személy kézi címkéi (címke-id-k, a Meeting::tagIds terében) a TagService
+    // kézi címkéi helyett; a tanult kapcsolat (c(p,t)) továbbra is a TagService-ből jön.
     void setPersonTagsProvider(std::function<QStringList(const QString& personName)> provider);
 
     // Teszt-varrat: a következő felvételek capture-motorjának gyártója (üres → valódi

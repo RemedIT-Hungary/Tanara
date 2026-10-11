@@ -11,7 +11,8 @@ import QtQuick.Templates as T
 //
 // A ShellDialogs mintájára a Main.qml hostolja:  ParticipantsDialog { shell: shellActions }
 // A shell.openParticipants(id) / maybeOfferParticipants(id) jelére magától nyílik.
-// Képernyőkép: demoState = allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet
+// Képernyőkép: demoState = allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet |
+// learnQuestion | learnNewPerson (a „Tovább” utáni tanulási kérdés, TagLearnPopup)
 Item {
     id: root
 
@@ -39,6 +40,12 @@ Item {
 
     Component.onCompleted: {
         if (root.demoState === "") return
+        // A jóváhagyás utáni tanulási kérdés (képernyőkép): a párbeszéd már bezárult.
+        if (root.demoState.startsWith("learn")) {
+            vm.approve()
+            Qt.callLater(learnPopup.openIfAsked)
+            return
+        }
         dialog.open()
         if (root.demoState === "addPerson")
             Qt.callLater(() => { addPicker.initialQuery = "Na"; addPicker.open() })
@@ -48,8 +55,17 @@ Item {
         const n = vm.checkedCount
         if (!vm.approve()) return
         dialog.close()
+        // Tanulási kérdés (UX-terv 5.): ha van, a sáv kérdez (a jóváhagyás toastja helyett).
+        if (learnPopup.openIfAsked()) return
         if (root.shell)
             root.shell.toast(qsTr("Résztvevők jóváhagyva: %n.", "", n))
+    }
+
+    // „X és Y másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?”
+    TagLearnPopup {
+        id: learnPopup
+        vm: root.viewModel
+        shell: root.shell
     }
     function skip() {
         if (vm.skip()) dialog.close()

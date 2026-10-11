@@ -305,10 +305,13 @@ void ShellActions::openSettings(const QString& page, const QString& focusField)
     }
 }
 
-void ShellActions::openPeople(const QString& person)
+void ShellActions::openPeople(const QString& person, const QString& section)
 {
-    if (ShellBridge* b = bridge())
-        person.trimmed().isEmpty() ? b->openPeople() : b->openPeopleAt(person.trimmed());
+    if (ShellBridge* b = bridge()) {
+        if (!section.isEmpty()) b->openPeopleAtSection(person.trimmed(), section);
+        else if (person.trimmed().isEmpty()) b->openPeople();
+        else b->openPeopleAt(person.trimmed());
+    }
     else
         toast(tr("A Személyek ebben a módban nem érhetők el."));
 }

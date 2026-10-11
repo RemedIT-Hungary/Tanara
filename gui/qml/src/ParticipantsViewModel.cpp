@@ -2,6 +2,7 @@
 
 #include "AppContext.h"
 #include "JobSupport.h"
+#include "TagLearning.h"
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
@@ -319,6 +320,20 @@ void ParticipantsViewModel::loadDemo()
     emit changed();
 }
 
+// A jóváhagyás utáni kérdés kitalált mintája (képernyőkép, demó).
+void ParticipantsViewModel::loadDemoLearn()
+{
+    if (m_demoState == QLatin1String("learnNewPerson")) {
+        setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
+                                    {QStringLiteral("Szabó Bence")}, true}});
+        return;
+    }
+    setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
+                                {QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád")}, false},
+              PersonTagQuestion{QStringLiteral("demo-partnerek"), QStringLiteral("Partnerek"),
+                                {QStringLiteral("Fehér Gábor")}, false}});
+}
+
 void ParticipantsViewModel::reloadTagSuggestions()
 {
     m_tagLabel.clear();
@@ -572,7 +587,10 @@ void ParticipantsViewModel::removeAdded(const QString& id)
 
 bool ParticipantsViewModel::approve()
 {
-    if (demo()) return true;
+    if (demo()) {
+        if (m_demoState.startsWith(QLatin1String("learn"))) loadDemoLearn();
+        return true;
+    }
     AppController* c = app();
     if (!c || m_meetingId.isEmpty()) return false;
     QVector<Participant> accepted;
@@ -585,7 +603,68 @@ bool ParticipantsViewModel::approve()
         p.sides = r.sides;
         accepted.append(p);
     }
-    return c->approveParticipants(m_meetingId, accepted);
+    if (!c->approveParticipants(m_meetingId, accepted)) return false;
+    // Tanulási kérdés (UX-terv 5.): egyszer, a jóváhagyott nevekre.
+    QVector<PersonTagQuestion> questions;
+    if (TagService* tags = c->tags()) {
+        QStringList names;
+        for (const Participant& p : std::as_const(accepted)) names << p.personName;
+        questions = tags->learningQuestions(m_meetingId, names);
+        tags->markLearningAsked(m_meetingId, questions);
+    }
+    setLearn(questions);
+    return true;
+}
+
+void ParticipantsViewModel::setLearn(const QVector<PersonTagQuestion>& questions)
+{
+    m_learn = questions;
+    m_learnPairs = taglearning::pairs(questions);
+    emit learnChanged();
+}
+
+QVariantMap ParticipantsViewModel::learnQuestion() const
+{
+    if (m_learn.isEmpty()) return {};
+    const PersonTagQuestion& q = m_learn.first();
+    return {{QStringLiteral("text"), taglearning::questionText(q)},
+            {QStringLiteral("tagName"), q.tagName},
+            {QStringLiteral("people"), q.people},
+            {QStringLiteral("newPeople"), q.newPeople},
+            {QStringLiteral("pairs"), m_learnPairs.size() > 1 ? taglearning::pairMaps(m_learnPairs) : QVariantList()}};
+}
+
+QString ParticipantsViewModel::answer(const PersonTagQuestion& q, bool yes)
+{
+    if (!demo())
+        if (AppController* c = app(); c && c->tags()) c->tags()->answerLearning(q, yes);
+    return taglearning::answeredText(q, yes);
+}
+
+QString ParticipantsViewModel::answerLearn(bool yes)
+{
+    if (m_learn.isEmpty()) return {};
+    const PersonTagQuestion q = m_learn.first();
+    setLearn({});
+    return answer(q, yes);
+}
+
+QString ParticipantsViewModel::answerLearnPair(int index, bool yes)
+{
+    if (index < 0 || index >= m_learnPairs.size()) return {};
+    const PersonTagQuestion pair = m_learnPairs.at(index);
+    // A pár kikerül a kérdésből (és az üres csoport is).
+    QVector<PersonTagQuestion> rest = m_learn;
+    for (PersonTagQuestion& q : rest)
+        if (q.tagId == pair.tagId && q.newPeople == pair.newPeople) q.people.removeAll(pair.people.value(0));
+    rest.removeIf([](const PersonTagQuestion& q) { return q.people.isEmpty(); });
+    setLearn(rest);
+    return answer(pair, yes);
+}
+
+void ParticipantsViewModel::dismissLearn()
+{
+    if (!m_learn.isEmpty()) setLearn({});
 }
 
 bool ParticipantsViewModel::skip()

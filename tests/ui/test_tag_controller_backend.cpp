@@ -237,6 +237,39 @@ private slots:
         QCOMPARE(m.suggestions().size(), 2);
     }
 
+    // C1: a résztvevők kézi címkéiből jövő javaslat („A résztvevők alapján”), átírás előtt is.
+    void participantTagSuggestionsAndLabel()
+    {
+        tanara::TagService* tags = m_app->tags();
+        const QString nord = tags->create(QStringLiteral("Nordvik")).id;
+        tags->setPersonTags(QStringLiteral("Fehér Gábor"), {nord});
+        tags->setPersonTags(QStringLiteral("Varga Árpád"), {nord});
+        const QString mid = m_app->store()->createMeeting(QStringLiteral("Friss felvétel")).id;
+        m_app->addParticipant(mid, QStringLiteral("Fehér Gábor"));
+        m_app->addParticipant(mid, QStringLiteral("Varga Árpád"));
+
+        MeetingTagsModel m;
+        m.setController(m_app.get());
+        m.setMeetingId(mid);
+        m.requestSuggestions();
+        QTRY_VERIFY_WITH_TIMEOUT(!m.suggestions().isEmpty() && !m.computing(), 10000);
+        TagSuggestionState st = m.backend()->suggestions(mid);
+        QCOMPARE(st.source, QStringLiteral("people"));
+        QCOMPARE(st.items.first().tagId, nord);
+        QCOMPARE(st.items.first().reasons.first().kind, QStringLiteral("peopleTags"));
+        QCOMPARE(m.suggestionSource(), QStringLiteral("people"));
+        QCOMPARE(m.suggestionLabel(), QStringLiteral("A résztvevők alapján"));
+        const QVariantMap reason = m.whyData().first().toMap().value("reasons").toList().first().toMap();
+        QCOMPARE(reason.value("label").toString(), QStringLiteral("Résztvevők címkéje"));
+        QCOMPARE(reason.value("text").toString(), QStringLiteral("Fehér Gábor, Varga Árpád (mindkettőjükön)"));
+
+        // Felrakás után eltűnik; a résztvevő-változás nem hozza vissza.
+        m.accept(0);
+        QVERIFY(m.suggestions().isEmpty());
+        m_app->addParticipant(mid, QStringLiteral("Szabó Bence"));
+        QVERIFY(m.suggestions().isEmpty());
+    }
+
     void draftSuggestions()
     {
         TagBackend* b = m_backend.get();

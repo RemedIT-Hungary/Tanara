@@ -69,8 +69,9 @@ public:
     // focusField: "" | "stt" | "llm" — a hiányzó szolgáltatóhoz vezető mély hivatkozás (B04).
     Q_INVOKABLE void openSettings(const QString& page = QString(),
                                   const QString& focusField = QString());
-    // person: ez a személy legyen kijelölve a Személyek ablakban (üres: nincs kérés).
-    Q_INVOKABLE void openPeople(const QString& person = QString());
+    // person: ez a személy legyen kijelölve a Személyek ablakban (üres: nincs kérés);
+    // section: erre a szakaszra görgetve ("tags": a Címkék szakasz; üres: nincs kérés).
+    Q_INVOKABLE void openPeople(const QString& person = QString(), const QString& section = QString());
     // A Címkék ablaka; tagId: ez a címke legyen kijelölve (üres: nincs kérés).
     Q_INVOKABLE void openTags(const QString& tagId = QString());
     // Az „Első lépések” ablak (Fájl › „Első lépések…”).

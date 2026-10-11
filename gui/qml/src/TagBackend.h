@@ -34,7 +34,7 @@ enum class TagAddSource { Manual, Suggestion, Llm, Bulk };
 
 // Egy indok-sor a „Miért?” panelben (core: SuggestionReason).
 struct TagReasonItem {
-    QString kind;               // "participant" | "terms" | "title"
+    QString kind;               // "participant" | "terms" | "title" | "peopleTags"
     QStringList values;
 };
 
@@ -51,7 +51,7 @@ struct TagSuggestionItem {
     QString tagId;              // üres, ha isNew
     QString name;
     bool isNew = false;         // a nyelvi modell új neve, még nincs a készletben
-    QString source;             // "similar" | "cooccur" | "llm"
+    QString source;             // "similar" | "cooccur" | "llm" | "people"
     double score = 0.0;
     QVector<TagReasonItem> reasons;
     QVector<TagMeetingItem> similarMeetings;
@@ -60,7 +60,7 @@ struct TagSuggestionItem {
 // Egy megbeszélés javaslat-állapota: a legutóbbi eredmény (bármely forrásból) + fut-e számolás.
 struct TagSuggestionState {
     bool computing = false;
-    QString source;             // "similar" | "cooccur" | "llm" (az items forrása)
+    QString source;             // "similar" | "cooccur" | "llm" | "people" (az items forrása)
     QString baseTagId;          // cooccur: melyik címke „mellé gyakran”
     QVector<TagSuggestionItem> items;
 };

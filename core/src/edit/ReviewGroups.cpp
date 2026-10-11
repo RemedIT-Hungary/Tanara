@@ -219,7 +219,8 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         printNames.insert(it.key().toCaseFolded(), it.key());
     }
     auto tagsOf = [&](const QString& person) {
-        return (in.personTags && !person.isEmpty()) ? in.personTags(person) : QStringList();
+        return (in.tagEvidence && !person.isEmpty()) ? in.tagEvidence(person, in.meeting.tagIds, in.meeting.id)
+                                                     : TagEvidence();
     };
 
     for (const PersonSide& ps : sides.persons) {
@@ -231,7 +232,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         p.sideBasis = ps.basis;
         p.lineSide = majoritySide(ps.allLines.local, ps.allLines.remote);
         if (!p.personName.isEmpty()) p.prints = prints.value(p.personName.toCaseFolded());
-        p.tags = tagsOf(p.personName);
+        p.tagEvidence = tagsOf(p.personName);
         ctx.index.insert(p.key, int(ctx.speakers.size()));
         ctx.speakers.append(p);
     }
@@ -246,7 +247,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
                                      : in.sideHints.learnedSides.value(op.person.toCaseFolded(), Side::Unknown);
         p.sideBasis = decided(p.side) ? QStringLiteral("learned") : QStringLiteral("none");
         if (!p.personName.isEmpty()) p.prints = prints.value(p.personName.toCaseFolded());
-        p.tags = tagsOf(p.personName);
+        p.tagEvidence = tagsOf(p.personName);
         ctx.index.insert(p.key, int(ctx.speakers.size()));
         ctx.speakers.append(p);
     }
@@ -290,7 +291,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
         p.prints = prints.value(folded);
         p.side = in.sideHints.learnedSides.value(folded, Side::Unknown);
         p.sideBasis = decided(p.side) ? QStringLiteral("learned") : QStringLiteral("none");
-        p.tags = tagsOf(p.personName);
+        p.tagEvidence = tagsOf(p.personName);
         ctx.speakers.append(p);
     }
     return ctx;

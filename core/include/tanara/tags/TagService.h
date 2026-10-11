@@ -137,10 +137,14 @@ public:
     // egyetlen nem-saját résztvevő van és rajta van; a meetingen lévő és ott elutasított kimarad.
     // source = People, indoklás ReasonKind::PeopleTags (a címkét viselő résztvevők nevei).
     QVector<TagSuggestion> suggestTagsForPeople(const QStringList& names, const QString& meetingId) const;
-    // Ugyanez a meeting nevesített résztvevőivel (MeetingLibrary::participantsOf).
+    // Ugyanez a meeting nevesített résztvevőivel: a beszélő-térkép és a saját sáv
+    // (MeetingLibrary::participantsOf), valamint a kézi, naptári és jóváhagyott résztvevők —
+    // így átírás előtt is.
     QVector<TagSuggestion> suggestMeetingTagsFromParticipants(const QString& meetingId) const;
-    // A címke mint azonosítási bizonyíték (lásd PersonTagSnapshot::evidence).
-    TagEvidence tagEvidence(const QString& personName, const QStringList& meetingTagIds) const;
+    // A címke mint azonosítási bizonyíték (lásd PersonTagSnapshot::evidence; meetingId: a saját
+    // sora kimarad a számokból).
+    TagEvidence tagEvidence(const QString& personName, const QStringList& meetingTagIds,
+                            const QString& meetingId = QString()) const;
 
     // (személy, címke) elutasítás; meetingId üres = tartós, különben csak arra a megbeszélésre.
     void rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId = QString());
@@ -164,6 +168,17 @@ public:
     // (összevonásnál unió), a visszavonási verem személy-pillanatképei követik a nevet.
     void renamePersonRefs(const QString& oldName, const QString& newName);
     void forgetPerson(const QString& name);
+
+    // ---- tanulási kérdés (UX-terv 5.) ----
+    // A jóváhagyás / új személy utáni kérdések (PersonTagSnapshot::learningQuestions; a
+    // tartósan elutasított pár és a már feltett kérdés kimarad). A kérdést a felület egyszer
+    // teszi fel: utána markLearningAsked (a futás idejére megjegyezve; a ki nem válaszolt
+    // kérdés nem elutasítás).
+    QVector<PersonTagQuestion> learningQuestions(const QString& meetingId, const QStringList& names) const;
+    void markLearningAsked(const QString& meetingId, const QVector<PersonTagQuestion>& questions);
+    // „Igen”: a címke minden személyre (kézi címke); „Nem”: tartós (személy, címke) elutasítás.
+    // Mindkettő EGY visszavonási lépés.
+    void answerLearning(const PersonTagQuestion& question, bool accept);
 
     // ---- elutasított javaslatok ----
     void reject(const QString& meetingId, const TagSuggestion& suggestion);

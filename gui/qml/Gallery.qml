@@ -813,6 +813,13 @@ Item {
                     }
                 }
                 Shown {
+                    caption: "TagRowOverview · a résztvevők címkéiből (demoState=\"people\", átírás előtt is)"
+                    TagRowOverview {
+                        width: 520
+                        model: MeetingTagsModel { demoState: "people" }
+                    }
+                }
+                Shown {
                     caption: "TagRowOverview · üres (demoState=\"none\")"
                     TagRowOverview {
                         width: 340

@@ -90,6 +90,7 @@ public:
     void openSettingsAt(const QString& page, const QString& focusField) override;
     void openPeople() override;
     void openPeopleAt(const QString& person) override;
+    void openPeopleAtSection(const QString& person, const QString& section) override;
     void openTags() override;
     void openTagsAt(const QString& tagId) override;
     void openOnboarding() override;

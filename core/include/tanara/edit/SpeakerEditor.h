@@ -254,7 +254,9 @@ public:
     // nincs, és van mic- és loopback-sáv is, kiszámolja (ffmpeg) és elmenti.
     using ActivityProvider = std::function<MeetingActivity(const Meeting&)>;
     void setActivityProvider(ActivityProvider provider);
-    // A személy-címkék (a D szelet adja). A fő szálon hívódik.
+    // A személy KÉZI címkéi (TagService::tagsOfPerson) — csak a gyors „+ #Címke" ajánlathoz;
+    // a jelölt-rangsor bizonyítékát a setTagEvidenceProvider adja. A fő szálon hívódik.
+    using PersonTagsFn = std::function<QStringList(const QString& personName)>;
     void setPersonTagsProvider(PersonTagsFn fn);
     // A megbeszélés címkéi (Meeting::tagIds, betöltéskor) és egy személy címkéi a fenti
     // forrásból (üres, ha nincs forrás) — a gyors „+ #Címke" ajánlathoz.
@@ -262,6 +264,9 @@ public:
     QStringList personTagIds(const QString& personName) const;
     // A személy címkéi változtak (pl. gyors „+ #Címke"): a jelöltek / bizonyítékok újraszámolása.
     void notifyPersonTagsChanged();
+    // A címke-bizonyíték (kézi címke + tanult kapcsolat; PersonTagSnapshot::evidence). A fő
+    // szálon hívódik, elemzésenként személyenként egyszer.
+    void setTagEvidenceProvider(TagEvidenceFn fn);
 
     // A legutóbbi háttér-elemzés csoportjai (reviewGroupsChanged jelzi, ha frissült). Minden
     // szerkesztés / visszavonás / embedding-futás után magától újraszámolódik.

@@ -6,13 +6,15 @@
 //
 // Pontszám = hang (cosine a jelölt referenciájához, 0..1) · kVoiceWeight
 //          + sáv (azonos oldal: +kSideSupport; ellenkező oldal: −kSidePenalty, otherSide)
-//          + címke (közös címkénként +kTagSupport, legfeljebb kTagMaxShared; nincs közös: −kTagMismatch)
+//          + címke (PersonTagSnapshot::evidence — kézi VAGY tanult: +kTagSupport, egyszer; a szigorú
+//            ellentmondás-őrök után: −kTagMismatch; UX-terv 4.)
 //          + sorok itt (kLineWeight · min(1, sorok / kLineSaturation)).
 // A tiltott (másik) oldal LEJJEBB sorol, nem tüntet el. A hasonlóság-figyelmeztetés (két mag
 // cosine-ja ≥ kSimilarWarn) csak tájékoztat, a pontszámot nem érinti.
 //
 #include "tanara/edit/Evidence.h"
 #include "tanara/edit/SideAnalysis.h"
+#include "tanara/tags/PersonTags.h"
 
 #include <QHash>
 #include <QString>
@@ -23,18 +25,18 @@
 
 namespace tanara {
 
-// A személy címkéi (a D szelet adja; addig üres seam). A visszaadott értékek a meeting
-// címkéivel (Meeting::tagIds) összevethető azonosítók.
-using PersonTagsFn = std::function<QStringList(const QString& personName)>;
+// A címke-bizonyíték varrata: TagEvidenceFn (tags/PersonTags.h) — a kézi címke ÉS a tanult
+// kapcsolat (c(p,t)) együtt, ugyanaz a szabály a jelölt-rangsorban és a „Ki volt ott?”-ban.
 
 namespace ranking {
 
 inline constexpr double kVoiceWeight = 1.0;
 inline constexpr double kSideSupport = 0.10;
 inline constexpr double kSidePenalty = 0.40;
-inline constexpr double kTagSupport = 0.05;
-inline constexpr int    kTagMaxShared = 2;
-inline constexpr double kTagMismatch = 0.03;
+// Címke: rangsor-előny, nem döntés (UX-terv 4.): támogat +0,04 (kézi és tanult egyformán, nem
+// adódik össze), ellentmond −0,02.
+inline constexpr double kTagSupport = 0.04;
+inline constexpr double kTagMismatch = 0.02;
 inline constexpr double kLineWeight = 0.05;
 inline constexpr int    kLineSaturation = 20;
 // Két beszélő megerősített magja ennél hasonlóbb → figyelmeztetés („Kettejük átnézése").
@@ -59,7 +61,7 @@ struct SpeakerProfile {
     QVector<double> sum;                // minden tiszta, beágyazott sorának összege (leave-one-out-hoz)
     int     sumCount = 0;
     QVector<QVector<float>> prints;     // a személy tárolt lenyomatai (fúziós, L2)
-    QStringList tags;
+    TagEvidence tagEvidence;            // a személy címke-bizonyítéka ezen a megbeszélésen
 };
 
 struct RankContext {
@@ -105,6 +107,9 @@ QVector<Evidence> similarityWarnings(const RankContext& ctx, const QString& spea
 QString sideLabel(Side s);
 QString evidenceKindName(EvidenceKind k);   // "voice" | "side" | … (CLI / JSON)
 QString polarityName(Polarity p);           // "support" | "contradict" | "neutral"
+// A címke-bizonyíték Evidence-ként: text a chip („#Nordvik”, „#Nordvik +1”, ellentmondásnál
+// „más címkék”), detail a magyarázó mondat a számokkal („… (11 / 14)”). false: nincs bizonyíték.
+bool tagEvidenceOf(const TagEvidence& tag, const QString& personName, Evidence* out);
 
 } // namespace ranking
 } // namespace tanara

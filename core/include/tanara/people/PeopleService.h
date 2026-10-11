@@ -51,6 +51,7 @@ struct PersonRecord {
     bool        isSelf = false;
     int         sampleCount = 0;
     QString     defaultSide;    // tanult sáv-oldal: "local" | "remote" | üres (people.json)
+    bool        defaultSideManual = false;   // a felhasználó írta át (a tanulás nem írja felül)
 };
 
 // Egy hangminta (lenyomat) megjelenítésre készen.
@@ -143,6 +144,10 @@ public:
     // megerősített sorokból vagy kézi beosztásból eredő Local / Remote). Vissza: hány személyé
     // változott. Nem visszavonható (tanult érték, a következő elemzés felülírja).
     int learnDefaultSides(const SideReport& report);
+    // A sáv-oldal kézi átírása (Személyek ablak: „Jellemzően: helyi / távoli / nincs adat”):
+    // "local" | "remote" védett kézi érték; üres = törlés (a tanulás újra írhatja). true, ha
+    // változott (changed jel).
+    bool setDefaultSide(const QString& name, const QString& side);
 
     PeopleOpResult removeSample(const QString& printId);
     // A minta átkerül `toName`-hez. Ha ilyen személy nincs, létrejön („új személy ebből a

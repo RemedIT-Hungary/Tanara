@@ -58,6 +58,13 @@ public:
         Q_UNUSED(person);
         openPeople();
     }
+    // Ugyanez egy szakaszra görgetve (section: "tags" — a „Címkéi” javító link). Az
+    // alapértelmezés a sima openPeopleAt.
+    Q_INVOKABLE virtual void openPeopleAtSection(const QString& person, const QString& section)
+    {
+        Q_UNUSED(section);
+        openPeopleAt(person);
+    }
     // A Címkék ablaka (TagsWindow.qml); tagId: ez a címke legyen kijelölve (üres: a korábbi
     // kijelölés marad). Az alapértelmezés semmit sem tesz (a tesztek ál-hídjainak nem kell
     // tudniuk róla).

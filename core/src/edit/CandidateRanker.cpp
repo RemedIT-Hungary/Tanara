@@ -76,30 +76,6 @@ bool sideEvidence(const SpeakerProfile& p, Side probeSide, Evidence* out)
     return true;
 }
 
-bool tagEvidence(const SpeakerProfile& p, const QStringList& meetingTags, Evidence* out, int* shared)
-{
-    *shared = 0;
-    if (meetingTags.isEmpty() || p.tags.isEmpty()) return false;
-    QStringList common;
-    for (const QString& t : p.tags)
-        if (meetingTags.contains(t, Qt::CaseInsensitive) && !common.contains(t, Qt::CaseInsensitive)) common << t;
-    *shared = int(common.size());
-    Evidence e;
-    e.kind = EvidenceKind::Tag;
-    e.fixTarget = QStringLiteral("tags");
-    e.value = common.size();
-    if (common.isEmpty()) {
-        e.polarity = Polarity::Contradict;
-        e.text = tr("nincs közös címke");
-    } else {
-        e.polarity = Polarity::Support;
-        e.text = tr("%n közös címke", int(common.size()));
-        e.detail = common.join(QStringLiteral(", "));
-    }
-    *out = e;
-    return true;
-}
-
 Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& probe)
 {
     Candidate c;
@@ -122,9 +98,8 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
         }
         c.evidence.append(e);
     }
-    int shared = 0;
-    if (tagEvidence(p, ctx.meetingTags, &e, &shared)) {
-        s += shared > 0 ? kTagSupport * std::min(shared, kTagMaxShared) : -kTagMismatch;
+    if (tagEvidenceOf(p.tagEvidence, p.personName, &e)) {
+        s += e.polarity == Polarity::Support ? kTagSupport : -kTagMismatch;
         c.evidence.append(e);
     }
     if (p.lines > 0) {
@@ -262,8 +237,7 @@ QVector<Evidence> selfEvidence(const RankContext& ctx, const QString& speakerKey
         if (e.polarity == Polarity::Contradict) e.text = tr("a sorai a másik sávon szólnak");
         out.append(e);
     }
-    int shared = 0;
-    if (tagEvidence(*p, ctx.meetingTags, &e, &shared)) out.append(e);
+    if (tagEvidenceOf(p->tagEvidence, p->personName, &e)) out.append(e);
     if (p->lines > 0) {
         Evidence l;
         l.kind = EvidenceKind::LineCount;
@@ -338,6 +312,46 @@ QString polarityName(Polarity p)
     case Polarity::Neutral:    break;
     }
     return QStringLiteral("neutral");
+}
+
+bool tagEvidenceOf(const TagEvidence& tag, const QString& personName, Evidence* out)
+{
+    if (tag.isEmpty() || tag.items.isEmpty()) return false;
+    auto hashed = [](const QString& name) { return QStringLiteral("#") + name; };
+    const TagEvidenceItem& f = tag.items.first();
+    Evidence e;
+    e.kind = EvidenceKind::Tag;
+    e.fixTarget = QStringLiteral("tags");
+    e.value = tag.items.size();
+    if (tag.isSupport()) {
+        e.polarity = Polarity::Support;
+        e.text = tag.text;
+        e.detail = f.manual && !personName.trimmed().isEmpty()
+            ? tr("%1 címkéje: %2 (%3 / %4 megbeszélésen volt ott).")
+                  .arg(personName.trimmed(), hashed(f.name)).arg(f.shared).arg(f.total)
+            : tr("A %1 megbeszéléseken szokott lenni (%2 / %3).").arg(hashed(f.name)).arg(f.shared).arg(f.total);
+        if (tag.items.size() > 1) {
+            QStringList all;
+            for (const TagEvidenceItem& it : tag.items)
+                all << QStringLiteral("%1 %2 / %3").arg(hashed(it.name)).arg(it.shared).arg(it.total);
+            e.detail += QLatin1Char(' ') + tr("Közös címkék: %1.").arg(all.join(QStringLiteral(", ")));
+        }
+    } else {
+        e.polarity = Polarity::Contradict;
+        e.text = tr("más címkék");
+        QStringList meeting;
+        for (const TagEvidenceItem& it : tag.items) meeting << hashed(it.name);
+        QStringList other;
+        for (const QString& n : tag.personTagNames) other << hashed(n);
+        const QString none = tag.items.size() == 1
+            ? tr("A %1 %2 megbeszéléséből egyiken sem volt.").arg(meeting.first()).arg(f.total)
+            : tr("A %1 megbeszélésein egyiken sem volt.").arg(meeting.join(QStringLiteral(", ")));
+        e.detail = other.isEmpty() ? none
+                                   : tr("Más címkéken szokott lenni: %1.").arg(other.join(QStringLiteral(", ")))
+                                         + QLatin1Char(' ') + none;
+    }
+    *out = e;
+    return true;
 }
 
 } // namespace ranking

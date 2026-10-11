@@ -3,7 +3,8 @@ import QtQuick.Templates as T
 
 // „Miért ezek?” (T02): 420 px-es panel a címkesor „Miért?” gombja alatt. Javaslatonként: a
 // chip, „Hozzáadás” (elsődleges, 26 px) és „Nem illik ide”; az indokok rácsban (130 px | többi):
-// „Közös résztvevő”, „Közös kifejezések”, „Hasonló cím”; a „Hasonló megbeszélés” linkek accent
+// „Közös résztvevő”, „Közös kifejezések”, „Hasonló cím”, „Résztvevők címkéje” (a címkét viselő
+// résztvevők, „(mindkettőjükön)”); a „Hasonló megbeszélés” linkek accent
 // színnel (megnyitják azt a megbeszélést). Alul: az elutasított javaslat itt nem jön újra.
 //   suggestions: [{ name, isNew, reasons: [{ kind, values, label?, text? }],
 //                   similarMeetings: [{ meetingId, title, dateText }] }] (MeetingTagsModel.whyData())
@@ -19,7 +20,8 @@ TPopover {
     function reasonLabel(r) {
         if (r.label) return r.label
         return r.kind === "participant" ? qsTr("Közös résztvevő")
-             : r.kind === "title" ? qsTr("Hasonló cím") : qsTr("Közös kifejezések")
+             : r.kind === "title" ? qsTr("Hasonló cím")
+             : r.kind === "peopleTags" ? qsTr("Résztvevők címkéje") : qsTr("Közös kifejezések")
     }
 
     width: 420

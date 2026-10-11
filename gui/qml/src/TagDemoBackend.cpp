@@ -296,6 +296,20 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
                        {reason("title", {QStringLiteral("Negyedéves partnertalálkozó (júl. 2.)")}),
                         reason("terms", {QStringLiteral("támogatási igény"), QStringLiteral("súgóoldalak")})},
                        {quarterly})};
+    } else if (state == QLatin1String("people") || state == QLatin1String("peopleWhy")) {
+        // UX-terv 3.3: a résztvevők kézi címkéiből („A résztvevők alapján”), átírás előtt is; a
+        // „Miért?” panelben „Résztvevők címkéje: … (mindkettőjükön)”. peopleWhy: egy hasonlóság-
+        // alapú javaslat is van (a forrás-címke akkor is a résztvevőké, mert ők állnak elöl).
+        tags = ids({"Q4 tervezés"});
+        s.source = QStringLiteral("people");
+        s.items = {sug("Nordvik", "people",
+                       {reason("peopleTags", {QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád")})}),
+                   sug("Partnerek", "people", {reason("peopleTags", {QStringLiteral("Fehér Gábor")})})};
+        if (state == QLatin1String("peopleWhy"))
+            s.items << sug("Ügyféltámogatás", "similar",
+                           {reason("participant", {QStringLiteral("Fehér Gábor")}),
+                            reason("terms", {QStringLiteral("támogatási igény"), QStringLiteral("súgóoldalak")})},
+                           {handover});
     } else if (state == QLatin1String("cooccur")) {
         tags = ids({"MuseumPlus"});
         s.source = QStringLiteral("cooccur");

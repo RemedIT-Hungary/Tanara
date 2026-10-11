@@ -177,10 +177,20 @@ TagSuggestionState TagControllerBackend::suggestions(const QString& meetingId) c
         return !sg.isNew && (!svc || !svc->tag(sg.tagId).isValid());
     }), list.end());
     for (const tanara::TagSuggestion& sg : list) state.items.push_back(toItem(sg));
-    // Egy kiadott lista egy forrásból jön; az együtt járónál az alapcímke is.
+    // A sor forrás-címkéje: „A résztvevők alapján”, ha a látható (legfeljebb 2, C03) javaslatok
+    // mind a résztvevőkből jönnek (ezek állnak elöl); különben a többi forrásé (egy kiadott
+    // lista azokból egy forrásból jön; az együtt járónál az alapcímke is).
     if (!list.isEmpty()) {
-        state.source = sourceName(list.first().source);
-        if (list.first().source == tanara::SuggestionSource::Cooccur) state.baseTagId = list.first().baseTagId;
+        const int head = std::min<int>(2, int(list.size()));
+        bool people = true;
+        for (int i = 0; i < head; ++i)
+            people = people && list.at(i).source == tanara::SuggestionSource::People;
+        const auto rest = std::find_if(list.cbegin(), list.cend(), [](const tanara::TagSuggestion& sg) {
+            return sg.source != tanara::SuggestionSource::People;
+        });
+        const tanara::TagSuggestion& basis = people || rest == list.cend() ? list.first() : *rest;
+        state.source = sourceName(basis.source);
+        if (basis.source == tanara::SuggestionSource::Cooccur) state.baseTagId = basis.baseTagId;
     }
     return state;
 }

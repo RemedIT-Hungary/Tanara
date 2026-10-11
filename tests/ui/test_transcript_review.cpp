@@ -288,6 +288,38 @@ private slots:
         vm.undo();
         QCOMPARE(vm.speakerInfo(np).value(QStringLiteral("utteranceCount")).toInt(), before);
     }
+
+    // C2: új személy címkés megbeszélésen — a változás-sáv egyszer kérdez (UX-terv 5.).
+    void newPerson_tagQuestion()
+    {
+        TranscriptEditorViewModel vm;
+        vm.setDemoVariant(QStringLiteral("v3"));
+        vm.resolveSession();
+        QVERIFY(waitIdle(vm));
+        vm.applyDemoState(QStringLiteral("newPersonTag"));
+        QVERIFY(settle(vm));
+        QVERIFY(vm.changeNewPerson());
+        QVariantMap q = vm.changeTagQuestion();
+        QCOMPARE(q.value(QStringLiteral("text")).toString(),
+                 QStringLiteral("Nagy Péter új személy. Ráteszem a #Nordvik címkét?"));
+        QVERIFY(q.value(QStringLiteral("pairs")).toList().isEmpty());
+        vm.answerChangeTag(true);
+        q = vm.changeTagQuestion();
+        QCOMPARE(q.value(QStringLiteral("answer")).toString(),
+                 QStringLiteral("Címke a személyen: #Nordvik · Nagy Péter"));
+        vm.undoChangeTagAnswer();
+        QVERIFY(vm.changeTagQuestion().isEmpty());
+        QVERIFY(vm.changeActive());                     // az átsorolás értesítése marad
+
+        // A hasonló-sor demóban (és bármely nem címkés helyzetben) nincs kérdés.
+        TranscriptEditorViewModel other;
+        other.setDemoVariant(QStringLiteral("v3"));
+        other.resolveSession();
+        QVERIFY(waitIdle(other));
+        other.applyDemoState(QStringLiteral("newPersonSimilar"));
+        QVERIFY(settle(other));
+        QVERIFY(other.changeTagQuestion().isEmpty());
+    }
 };
 
 QTEST_MAIN(TestTranscriptReview)

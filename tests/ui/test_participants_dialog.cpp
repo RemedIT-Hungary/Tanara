@@ -11,6 +11,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/tags/TagService.h"
 
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -84,6 +85,30 @@ ApplicationWindow {
         objectName: "host"
         anchors.fill: parent
         shell: fakeShell
+    }
+}
+)";
+
+// A jóváhagyás utáni tanulási kérdés (demó): a párbeszéd nélkül, a sáv magától nyílik.
+const char* kLearnHost = R"(
+import QtQuick
+import QtQuick.Controls
+import Tanara
+ApplicationWindow {
+    width: 1100; height: 760
+    color: Theme.bg
+    QtObject {
+        id: fakeShell
+        objectName: "shell"
+        signal participantsDialogRequested(string meetingId)
+        property string toasts: ""
+        function toast(text, undoKey) { toasts += text + "|" + (undoKey || "") + ";" }
+    }
+    ParticipantsDialog {
+        objectName: "host"
+        anchors.fill: parent
+        shell: fakeShell
+        demoState: "learnQuestion"
     }
 }
 )";
@@ -317,6 +342,90 @@ private slots:
         QVERIFY(!shell.maybeOfferParticipants(m_meetingId));
         QVERIFY(!shell.maybeOfferParticipants(QString()));
         QCOMPARE(spy.count(), 2);
+    }
+
+    // C2: a „Tovább” után egyszer kérdez — Gábor másodszor van #Nordvik megbeszélésen, Szabó
+    // Bence új személy; „Igen” egy visszavonható lépés; újbóli jóváhagyásnál nincs kérdés.
+    void learnQuestionAfterApproval()
+    {
+        TagService* tags = m_app->tags();
+        const QString nord = tags->create(QStringLiteral("Nordvik")).id;
+        Meeting before = m_app->store()->createMeeting(QStringLiteral("Előző egyeztetés"));
+        before.speakerMap.insert(QStringLiteral("Beszélő 2"), QStringLiteral("Fehér Gábor"));
+        before.tagIds = {nord};
+        m_app->store()->saveMeeting(before);
+        seedMeeting(false);
+        tags->addTag(m_meetingId, nord);
+        tags->refreshPersonStatsNow();   // az alkalmazásban háttérszálon számolódik; itt most
+
+        ParticipantsViewModel vm;
+        vm.setController(m_app.get());
+        vm.setMeetingId(m_meetingId);
+        QVERIFY(vm.learnQuestion().isEmpty());
+        vm.addPerson(QStringLiteral("Szabó Bence"));
+        QSignalSpy learn(&vm, &ParticipantsViewModel::learnChanged);
+        QVERIFY(vm.approve());
+        QVERIFY(!learn.isEmpty());
+        QVariantMap q = vm.learnQuestion();
+        QCOMPARE(q.value("text").toString(),
+                 QStringLiteral("Fehér Gábor másodszor van #Nordvik megbeszélésen. Ráteszem a címkét?"));
+        const QVariantList pairs = q.value("pairs").toList();
+        QCOMPARE(pairs.size(), 2);                                    // + Szabó Bence (új személy)
+        QCOMPARE(pairs.at(1).toMap().value("name").toString(), QStringLiteral("Szabó Bence"));
+
+        // Egy pár az „Egyenként…”-ből: Bence „Nem” (tartós elutasítás); a kérdés marad Gáborra.
+        QVERIFY(vm.answerLearnPair(1, false).contains(QStringLiteral("#Nordvik")));
+        QVERIFY(tags->isRejectedForPerson(QStringLiteral("Szabó Bence"), nord));
+        QVERIFY(vm.learnQuestion().value("pairs").toList().isEmpty());
+        // „Igen”: a címke Gáboron, egy lépés.
+        QVERIFY(vm.answerLearn(true).contains(QStringLiteral("Fehér Gábor")));
+        QCOMPARE(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")), QStringList{nord});
+        QVERIFY(vm.learnQuestion().isEmpty());
+        tags->undo();
+        QVERIFY(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")).isEmpty());
+
+        // Egyszer kérdez: az újbóli jóváhagyás nem hoz kérdést.
+        vm.reload();
+        QVERIFY(vm.approve());
+        QVERIFY(vm.learnQuestion().isEmpty());
+    }
+
+    void learnBarDemoInteractions()
+    {
+        AppContext::instance()->setDemo(true);
+        AppContext::instance()->setThemeMode(QStringLiteral("light"));
+        m_engine = std::make_unique<QQmlEngine>();
+        setupEngine(*m_engine);
+        connect(m_engine.get(), &QQmlEngine::warnings, this, [this](const QList<QQmlError>& list) {
+            for (const QQmlError& e : list) m_warnings << e.toString();
+        });
+        QQmlComponent comp(m_engine.get());
+        comp.setData(kLearnHost, QUrl(QStringLiteral("qrc:/qt/qml/Tanara/TagLearnProbe.qml")));
+        QObject* obj = comp.create();
+        QVERIFY2(obj, qPrintable(comp.errorString()));
+        m_window.reset(qobject_cast<QQuickWindow*>(obj));
+        QVERIFY(m_window);
+        m_window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(m_window.get()));
+        QObject* shell = m_window->findChild<QObject*>(QStringLiteral("shell"));
+        QObject* host = m_window->findChild<QObject*>(QStringLiteral("host"));
+        QVERIFY(shell && host);
+        QVERIFY(!host->property("opened").toBool());                 // a párbeszéd már bezárult
+        QTRY_VERIFY(visual("learnText"));
+        QCOMPARE(visual("learnText")->property("text").toString(),
+                 QStringLiteral("Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. "
+                                "Rájuk teszem a címkét?"));
+        // „Egyenként…” → három pár; egy pár „Igen” → toast „Visszavonás”-sal (címke-verem).
+        click(visual("learnEach"));
+        QTRY_VERIFY(visual("learnPairs"));
+        QVERIFY(visual("learnPair_2"));
+        click(visual("learnPairYes_2"));
+        QVERIFY(shell->property("toasts").toString().contains(QStringLiteral("#Partnerek · Fehér Gábor|tags")));
+        QVERIFY(visual("learnText"));                                // a többi pár még vár
+        click(visual("learnYes"));
+        QTRY_VERIFY(!visual("learnText"));
+        QVERIFY(shell->property("toasts").toString().contains(QStringLiteral("#Nordvik · Fehér Gábor és Varga Árpád|tags")));
+        AppContext::instance()->setDemo(false);
     }
 
     void dialogDemoInteractions()

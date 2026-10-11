@@ -204,6 +204,22 @@ private slots:
                  QStringLiteral("Hasonló cím"));
     }
 
+    void peopleSourceDemo()
+    {
+        MeetingTagsModel m;
+        m.setDemoState("peopleWhy");
+        QCOMPARE(m.suggestionSource(), QStringLiteral("people"));
+        QCOMPARE(m.suggestionLabel(), QStringLiteral("A résztvevők alapján"));
+        const QVariantList why = m.whyData();
+        QCOMPARE(why.size(), 3);
+        const QVariantMap r0 = why.at(0).toMap().value("reasons").toList().at(0).toMap();
+        QCOMPARE(r0.value("label").toString(), QStringLiteral("Résztvevők címkéje"));
+        QCOMPARE(r0.value("text").toString(), QStringLiteral("Fehér Gábor, Varga Árpád (mindkettőjükön)"));
+        const QVariantMap r1 = why.at(1).toMap().value("reasons").toList().at(0).toMap();
+        QCOMPARE(r1.value("text").toString(), QStringLiteral("Fehér Gábor"));
+        QCOMPARE(why.at(2).toMap().value("source").toString(), QStringLiteral("similar"));
+    }
+
     void separateMeetingsAreIndependent()
     {
         MeetingTagsModel a, b;

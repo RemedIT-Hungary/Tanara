@@ -34,7 +34,8 @@ import QtQuick.Templates as T
 //                "changePairOffer" | "speakerPopoverPair" |
 //                v3 Javítás mód (a „v3" kitalált meetingen, ha demoVariant üres):
 //                "markers" | "fixLinePopover" | "reviewGroups" | "reviewExpanded" |
-//                "contaminatedCore" | "speakerWhy" | "newPersonSimilar"
+//                "contaminatedCore" | "speakerWhy" | "newPersonSimilar" | "newPersonTag" (a sáv
+//                címke-kérdése: „X új személy. Ráteszem a #Nordvik címkét?”)
 Item {
     id: root
 
@@ -57,7 +58,7 @@ Item {
 
     // ---- v3 Javítás mód (a térkép-dokk és az eszköz-sor ezeket olvassa) ----
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
-                                         "contaminatedCore", "speakerWhy", "newPersonSimilar"]
+                                         "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
     // Az Átnézendő csoport-nézet látszik (az „Átnézendő" chip = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
@@ -870,7 +871,8 @@ Item {
         onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
         onMergeRequested: request => root.requestMerge(request)
         onVoiceprintRequested: key => root.afterPopupClose = () => root.openVoiceprintFor(key)
-        onPeopleRequested: person => { if (root.shell && root.shell.openPeople) root.shell.openPeople(person) }
+        // A „Címkéi” javító link: a Személyek ablak a Címkék szakaszra görgetve (C4).
+        onPeopleRequested: person => { if (root.shell && root.shell.openPeople) root.shell.openPeople(person, "tags") }
         onNewPersonRequested: (key, fix) => {
             const x = speakerWhy.x, y = speakerWhy.y
             root.afterPopupClose = () => {

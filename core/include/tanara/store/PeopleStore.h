@@ -89,8 +89,11 @@ public:
     // ---- tanult sáv-oldal (a megerősített sorokból / kézi sáv-beosztásból; SideAnalysis) ----
     // A rekord "defaultSide" mezője: "local" | "remote"; üres = nincs tanult érték.
     QString defaultSide(const QString& name) const;
-    // Üres side → a mező törlődik. true, ha változott.
-    bool setDefaultSide(const QString& name, const QString& side);
+    // Üres side → a mező törlődik. true, ha változott. manual: a felhasználó írta át (Személyek
+    // ablak) — a "defaultSideManual" jelző a tanult felülírástól védi (a manual nélküli hívás
+    // ilyenkor nem változtat); kézi ürítés a jelzőt is törli (a tanulás újra írhatja).
+    bool setDefaultSide(const QString& name, const QString& side, bool manual = false);
+    bool defaultSideManual(const QString& name) const;
     // Minden tanult érték: név → oldal.
     QHash<QString, QString> defaultSides() const;
 

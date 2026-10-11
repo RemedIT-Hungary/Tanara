@@ -15,7 +15,7 @@ import QtQuick.Layouts
 //   tanara --qml-shot ki.png --qml-page PeopleWindow --size 960x1100 --qml-prop 'demoState="P04"'
 // demoState: P01 … P06 · newPerson · sampleNew · sampleMove · noResult · sort · allSamples ·
 //            deleteKeep · creating · toastPlain · tagsSection · tagsSuggested · tagsSelf ·
-//            samplesModels · backfill
+//            samplesModels · backfill · tagsFocus (a „Címkéi” link: a Címkék szakaszra görgetve)
 ApplicationWindow {
     id: window
 
@@ -52,7 +52,8 @@ ApplicationWindow {
         if (hostController) model.controller = hostController
         else if (demoState !== "") {
             model.demoState = ["P01", "P02", "P03", "P04", "P05", "P06", "noResult", "creating",
-                                         "tagsSection", "tagsSuggested", "tagsSelf", "samplesModels", "backfill"].indexOf(demoState) >= 0
+                                         "tagsSection", "tagsSuggested", "tagsSelf", "samplesModels", "backfill",
+                                         "tagsFocus"].indexOf(demoState) >= 0
                 ? demoState : demoState === "toastPlain" ? "P03" : "P01"
             Qt.callLater(window.applyDemoOverlay)
         }
@@ -77,6 +78,7 @@ ApplicationWindow {
         case "sampleMove": sampleTargetDialog.openFor("demo-2", "move", ""); break
         case "sort": listPane.demoSortOpen = true; break
         case "allSamples": detail.showAllSamples = true; break
+        case "tagsFocus": model.requestSection("tags"); break
         }
     }
 

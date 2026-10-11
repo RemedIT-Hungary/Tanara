@@ -17,6 +17,7 @@
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/edit/TrackActivity.h"
+#include "tanara/tags/PersonTags.h"
 #include "tanara/voiceid/EmbeddingSet.h"
 
 #include <QPair>
@@ -119,8 +120,9 @@ struct CandidateContext {
     QString selfName;                                                  // a mikrofon gazdája
     std::function<QVector<VoiceMatch>(const EmbeddingSet&)> rank;      // lenyomat-rangsor, csökkenő
     std::function<bool(const QString& person)> hasVoiceprint;
-    std::function<QStringList(const QString& person)> personTags;     // a személy címke-id-i
-    std::function<QString(const QString& tagId)> tagName;             // megjelenítéshez; üres → id
+    // A címke-bizonyíték (kézi címke és tanult kapcsolat; ugyanaz a varrat, mint a
+    // jelölt-rangsoré: PersonTagSnapshot::evidence). Üres = nincs címke-bizonyíték.
+    TagEvidenceFn tagEvidence;
 };
 
 // 2. lépés: a klaszterekből résztvevők. A meglévő kézi résztvevők megmaradnak (bizonyítékkal

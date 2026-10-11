@@ -188,6 +188,7 @@ QString MeetingTagsModel::suggestionLabel() const
     if (m_source == QLatin1String("cooccur")) return tr("%1 mellé gyakran").arg(tagName(m_baseTagId));
     if (m_source == QLatin1String("llm")) return tr("Az összefoglaló alapján");
     if (m_source == QLatin1String("title")) return tr("A cím alapján");
+    if (m_source == QLatin1String("people")) return tr("A résztvevők alapján");
     return tr("Javasolt");
 }
 
@@ -283,11 +284,18 @@ QVariantList MeetingTagsModel::whyData() const
         for (const TagReasonItem& r : s.reasons) {
             const QString label = r.kind == QLatin1String("participant") ? tr("Közös résztvevő")
                                 : r.kind == QLatin1String("title")       ? tr("Hasonló cím")
+                                : r.kind == QLatin1String("peopleTags")  ? tr("Résztvevők címkéje")
                                                                          : tr("Közös kifejezések");
+            QString text = r.values.join(QStringLiteral(", "));
+            // „Fehér Gábor, Varga Árpád (mindkettőjükön)” (UX-terv 3.3).
+            if (r.kind == QLatin1String("peopleTags") && r.values.size() == 2) text += tr(" (mindkettőjükön)");
+            else if (r.kind == QLatin1String("peopleTags") && r.values.size() == 3) text += tr(" (mindhármukon)");
+            else if (r.kind == QLatin1String("peopleTags") && r.values.size() > 3)
+                text += tr(" (%n résztvevőn)", nullptr, int(r.values.size()));
             reasons << QVariantMap{{QStringLiteral("kind"), r.kind},
                                    {QStringLiteral("values"), r.values},
                                    {QStringLiteral("label"), label},
-                                   {QStringLiteral("text"), r.values.join(QStringLiteral(", "))}};
+                                   {QStringLiteral("text"), text}};
         }
         QVariantList meetings;
         for (const TagMeetingItem& m : s.similarMeetings)

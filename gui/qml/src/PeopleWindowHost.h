@@ -33,8 +33,8 @@ public:
 
     // Az ablak megnyitása / előtérbe hozása; person: ez a személy legyen kijelölve (üres: a
     // korábbi kijelölés marad). Megnyitáskor a lista a lemez friss állapotát mutatja.
-    // false: QML-hiba.
-    bool open(const QString& person = QString());
+    // section: erre a szakaszra görgetve ("tags"; üres: nincs kérés). false: QML-hiba.
+    bool open(const QString& person = QString(), const QString& section = QString());
     void closeNow();
     bool isVisible() const;
     QQuickWindow* window() const;

@@ -118,6 +118,7 @@ struct PeopleService::Private {
             r.aliases = d.aliases;
             r.note = d.note;
             r.defaultSide = people->defaultSide(name);
+            r.defaultSideManual = people->defaultSideManual(name);
         }
         r.sampleCount = voiceprints ? voiceprints->sampleCount(name) : 0;
         return r;
@@ -489,6 +490,15 @@ void PeopleService::setNote(const QString& name, const QString& note)
     if (d->people->details(name).note == note) return;
     d->people->setNote(name, note);
     emit changed();
+}
+
+bool PeopleService::setDefaultSide(const QString& name, const QString& side)
+{
+    if (!d->people || name.trimmed().isEmpty()) return false;
+    const QString clean = side == QLatin1String("local") || side == QLatin1String("remote") ? side : QString();
+    if (!d->people->setDefaultSide(name, clean, /*manual*/ true)) return false;
+    emit changed();
+    return true;
 }
 
 int PeopleService::learnDefaultSides(const SideReport& report)

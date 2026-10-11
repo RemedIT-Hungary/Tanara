@@ -25,6 +25,7 @@
 #include "tanara/people/PeopleService.h"
 #include "tanara/people/PeopleStats.h"
 #include "tanara/store/MeetingStore.h"
+#include "tanara/store/PeopleStore.h"
 #include "tanara/store/VoiceprintStore.h"
 #include "tanara/tags/TagService.h"
 
@@ -826,6 +827,111 @@ private slots:
         QVERIFY(!section->findChild<QQuickItem*>("personTagField")->isVisible());
     }
 
+    // ---- C3: tanult sáv-oldal, átírható ----
+
+    void defaultSideLearnedAndManual()
+    {
+        startApp();
+        scenario();
+        // Egy második tár ugyanarra a people.json-ra (a tanulás útja: SpeakerEditor / PeopleService).
+        PeopleStore learner(QDir(m_app->settings()->settings().metadataDir).filePath(QStringLiteral("people.json")));
+        PeopleViewModel vm;
+        vm.setController(m_app.get());
+        vm.setSelectedName(kGergely);
+        QVERIFY(vm.defaultSideVisible());
+        QCOMPARE(vm.defaultSide(), QString());
+        QCOMPARE(vm.defaultSideNote(), QString());
+
+        // Kézi átírás → védett a tanulástól.
+        vm.setDefaultSide(QStringLiteral("remote"));
+        QCOMPARE(vm.defaultSide(), QStringLiteral("remote"));
+        QCOMPARE(vm.defaultSideNote(), QStringLiteral("kézzel beállítva"));
+        PersonRecord r = m_app->peopleService()->person(kGergely);
+        QCOMPARE(r.defaultSide, QStringLiteral("remote"));
+        QVERIFY(r.defaultSideManual);
+        QVERIFY(!learner.setDefaultSide(kGergely, QStringLiteral("local")));   // tanult írás
+        QCOMPARE(m_app->peopleService()->person(kGergely).defaultSide, QStringLiteral("remote"));
+
+        // „nincs adat”: törlés, a tanulás újra írhat.
+        vm.setDefaultSide(QString());
+        QCOMPARE(vm.defaultSide(), QString());
+        QVERIFY(learner.setDefaultSide(kGergely, QStringLiteral("local")));
+        m_app->peopleService()->reload();
+        vm.refresh();
+        vm.setSelectedName(kGergely);
+        QCOMPARE(vm.defaultSide(), QStringLiteral("local"));
+        QCOMPARE(vm.defaultSideNote(), QStringLiteral("tanult"));
+
+        // A saját személynél nincs ilyen sor.
+        vm.setSelectedName(kSelf);
+        QVERIFY(!vm.defaultSideVisible());
+    }
+
+    void defaultSideSegmentInTheWindow()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "PeopleWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{"demoState", "P01"}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        QTest::qWait(80);
+        auto* vm = qobject_cast<PeopleViewModel*>(win->property("vm").value<QObject*>());
+        auto* row = win->findChild<QQuickItem*>("defaultSideRow");
+        auto* seg = win->findChild<QQuickItem*>("defaultSideSegment");
+        QVERIFY(vm && row && seg && row->isVisible());
+        QCOMPARE(seg->property("value").toString(), QStringLiteral("remote"));   // Bárány Gergely: tanult
+        QVERIFY(QMetaObject::invokeMethod(seg, "picked", Q_ARG(QString, QStringLiteral("local"))));
+        QCOMPARE(vm->defaultSide(), QStringLiteral("local"));
+        QCOMPARE(vm->defaultSideNote(), QStringLiteral("kézzel beállítva"));
+        vm->setSelectedName(QStringLiteral("Kovács Lilla"));
+        QTest::qWait(20);
+        QVERIFY(!row->isVisible());
+    }
+
+    // ---- C4: a „Címkéi” link a Címkék szakaszra görget ----
+
+    void hostOpensAtTagsSection()
+    {
+        startApp();
+        scenario();
+        PeopleWindowHost host(m_app.get());
+        QVERIFY(host.open(kEszter));
+        PeopleViewModel* vm = host.viewModel();
+        QVERIFY(vm);
+        QSignalSpy section(vm, &PeopleViewModel::sectionRequested);
+        QVERIFY(host.open(kGergely, QStringLiteral("tags")));
+        QCOMPARE(vm->selectedName(), kGergely);
+        QCOMPARE(section.size(), 1);
+        QCOMPARE(section.first().first().toString(), QStringLiteral("tags"));
+        host.closeNow();
+    }
+
+    void tagsFocusScrollsAndHighlights()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "PeopleWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        // Alacsony ablak, hogy legyen mit görgetni.
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{"demoState", "tagsFocus"}, {"height", 560}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        auto* flash = win->findChild<QQuickItem*>("tagsFlash");
+        QVERIFY(flash);
+        QTRY_VERIFY(flash->property("opacity").toDouble() > 0.5);
+        auto* section = win->findChild<QQuickItem*>("personTagsSection");
+        QVERIFY(section && section->isVisible());
+        // A szakasz a görgetett nézet tetején (a fejléc kigördült).
+        const QPointF top = section->mapToItem(win->contentItem(), QPointF(0, 0));
+        QVERIFY2(top.y() < 60, qPrintable(QString::number(top.y())));
+    }
+
     void demoStatesLoadWithoutWarnings()
     {
         QQmlEngine engine;
@@ -841,7 +947,7 @@ private slots:
                                      QStringLiteral("deleteKeep"), QStringLiteral("creating"),
                                      QStringLiteral("tagsSection"), QStringLiteral("tagsSuggested"),
                                      QStringLiteral("tagsSelf"), QStringLiteral("samplesModels"),
-                                     QStringLiteral("backfill")}) {
+                                     QStringLiteral("backfill"), QStringLiteral("tagsFocus")}) {
             QQmlComponent comp(&engine);
             comp.loadFromModule("Tanara", "PeopleWindow");
             QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));

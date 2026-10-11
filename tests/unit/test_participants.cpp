@@ -222,15 +222,23 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     // Közös címke → Biztos.
     Meeting tagged = m;
     tagged.tagIds = {QStringLiteral("t1")};
-    ctx.personTags = [](const QString& n) { return n == QStringLiteral("Béla") ? QStringList{"t1"} : QStringList{}; };
-    ctx.tagName = [](const QString&) { return QStringLiteral("Projekt"); };
+    // A varrat a PersonTagSnapshot szabályával: Béla kézi címkéje a megbeszélés címkéje.
+    PersonTagSnapshot snap;
+    snap.stats = std::make_shared<PersonTagStats>();
+    snap.tagNames.insert(QStringLiteral("t1"), QStringLiteral("Projekt"));
+    snap.manual.insert(persontags::personKey(QStringLiteral("Béla")), {QStringLiteral("t1")});
+    ctx.tagEvidence = [snap](const QString& n, const QStringList& tags, const QString& mid) {
+        return snap.evidence(n, tags, mid);
+    };
     ClusterSet cs2 = cs;
     const QVector<Participant> ps2 = participants::buildParticipants(cs2, tagged, ctx);
     QCOMPARE(ps2.first().personName, QStringLiteral("Béla"));   // a Biztos csoport elöl
     QCOMPARE(participants::participantGroup(ps2.first()), ParticipantGroup::Sure);
     bool tagEv = false;
     for (const Evidence& e : ps2.first().evidence)
-        if (e.kind == EvidenceKind::Tag && e.text == QStringLiteral("címke: Projekt")) tagEv = true;
+        if (e.kind == EvidenceKind::Tag && e.text == QStringLiteral("#Projekt") && e.polarity == Polarity::Support
+            && e.detail.contains(QStringLiteral("0 / 0")))
+            tagEv = true;
     QVERIFY(tagEv);
 }
 

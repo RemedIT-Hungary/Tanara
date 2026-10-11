@@ -201,6 +201,14 @@ void QmlShellBridge::openPeopleAt(const QString& person)
     m_people->open(person);
 }
 
+void QmlShellBridge::openPeopleAtSection(const QString& person, const QString& section)
+{
+    if (m_shutDown)
+        return;
+    m_people->setTransientParent(m_window);
+    m_people->open(person, section);
+}
+
 QObject* QmlShellBridge::peopleWindow() const
 {
     return m_people ? m_people->window() : nullptr;

@@ -1,6 +1,7 @@
 #include "TranscriptEditorViewModel.h"
 
 #include "AppContext.h"
+#include "TagLearning.h"
 #include "TranscriptDemoSession.h"
 
 #include "tanara/AppController.h"
@@ -1216,6 +1217,7 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
         publishChange(created ? tr("Új személy: %1. %n sor átkerült hozzá.", nullptr, moved).arg(name)
                               : tr("%n sor átkerült ide: %1", nullptr, moved).arg(name),
                       mixed ? QString() : source, key, last, false, created);
+        if (created && kind == MoveTarget::Person) askNewPersonTag(value);
     }
     if (created) emit reviewChanged();
     return key;
@@ -1913,16 +1915,10 @@ QVariantMap TranscriptEditorViewModel::evidenceMap(const Evidence& e, const QStr
         }
         break;
     case EvidenceKind::Tag: {
+        // A chip „#Nordvik” / „#Nordvik +1” / „más címkék”; a mondat a számokkal (UX-terv 4.,
+        // ranking::tagEvidenceOf): „A #Nordvik megbeszéléseken szokott lenni (11 / 14).”
         label = tr("Címke:");
-        if (e.polarity == Polarity::Support) {
-            QStringList names;
-            for (const QString& id : e.detail.split(QStringLiteral(", "), Qt::SkipEmptyParts))
-                names << QStringLiteral("#") + tagLabel(id.trimmed());
-            if (!names.isEmpty()) text = names.join(QStringLiteral(" "));
-            sentence = tr("közös címke a megbeszéléssel: %1").arg(names.join(QStringLiteral(", ")));
-        } else {
-            sentence = tr("nincs közös címkéje a megbeszéléssel");
-        }
+        sentence = e.detail.isEmpty() ? e.text : e.detail;
         break;
     }
     case EvidenceKind::Similarity: {
@@ -2478,6 +2474,71 @@ bool TranscriptEditorViewModel::acceptNewPersonSimilar()
 
 // ---- demó-állapotok ---------------------------------------------------------
 
+// ---- új személy: címke-kérdés (UX-terv 5.) -------------------------------------------------
+
+void TranscriptEditorViewModel::askNewPersonTag(const QString& name)
+{
+    if (!m_change.active || !m_change.newPerson || name.trimmed().isEmpty()) return;
+    QVector<PersonTagQuestion> questions;
+    if (demo()) {
+        if (m_demoTagQuestion)
+            questions = {PersonTagQuestion{QStringLiteral("nordvik"), QStringLiteral("Nordvik"), {name.trimmed()}, true}};
+    } else if (m_controller && m_controller->tags()) {
+        questions = m_controller->tags()->learningQuestions(m_meetingId, {name.trimmed()});
+        m_controller->tags()->markLearningAsked(m_meetingId, questions);
+    }
+    if (questions.isEmpty()) return;
+    m_change.tagQuestions = questions;
+    m_change.tagAnswer.clear();
+    emit changeChanged();
+}
+
+QVariantMap TranscriptEditorViewModel::changeTagQuestion() const
+{
+    if (!m_change.active) return {};
+    if (!m_change.tagAnswer.isEmpty()) return {{QStringLiteral("answer"), m_change.tagAnswer}};
+    if (m_change.tagQuestions.isEmpty()) return {};
+    const QVector<PersonTagQuestion> pairs = taglearning::pairs(m_change.tagQuestions);
+    return {{QStringLiteral("text"), taglearning::questionText(m_change.tagQuestions.first())},
+            {QStringLiteral("pairs"), pairs.size() > 1 ? taglearning::pairMaps(pairs) : QVariantList()}};
+}
+
+void TranscriptEditorViewModel::answerTagQuestion(const PersonTagQuestion& q, bool yes)
+{
+    if (!demo() && m_controller && m_controller->tags()) m_controller->tags()->answerLearning(q, yes);
+    m_change.tagAnswer = taglearning::answeredText(q, yes);
+}
+
+void TranscriptEditorViewModel::answerChangeTag(bool yes)
+{
+    if (m_change.tagQuestions.isEmpty()) return;
+    const PersonTagQuestion q = m_change.tagQuestions.first();
+    m_change.tagQuestions.clear();
+    answerTagQuestion(q, yes);
+    emit changeChanged();
+}
+
+void TranscriptEditorViewModel::answerChangeTagPair(int index, bool yes)
+{
+    const QVector<PersonTagQuestion> pairs = taglearning::pairs(m_change.tagQuestions);
+    if (index < 0 || index >= pairs.size()) return;
+    const PersonTagQuestion pair = pairs.at(index);
+    for (PersonTagQuestion& q : m_change.tagQuestions)
+        if (q.tagId == pair.tagId && q.newPeople == pair.newPeople) q.people.removeAll(pair.people.value(0));
+    m_change.tagQuestions.removeIf([](const PersonTagQuestion& q) { return q.people.isEmpty(); });
+    answerTagQuestion(pair, yes);
+    emit changeChanged();
+}
+
+void TranscriptEditorViewModel::undoChangeTagAnswer()
+{
+    if (m_change.tagAnswer.isEmpty()) return;
+    if (!demo() && m_controller && m_controller->tags() && m_controller->tags()->canUndo())
+        m_controller->tags()->undo();
+    m_change.tagAnswer.clear();
+    emit changeChanged();
+}
+
 void TranscriptEditorViewModel::applyDemoState(const QString& state)
 {
     m_pendingDemoState = state;
@@ -2603,14 +2664,15 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     } else if (state == QLatin1String("markers") || state == QLatin1String("fixLinePopover")
                || state == QLatin1String("reviewGroups") || state == QLatin1String("reviewExpanded")
                || state == QLatin1String("contaminatedCore") || state == QLatin1String("speakerWhy")
-               || state == QLatin1String("newPersonSimilar")) {
+               || state == QLatin1String("newPersonSimilar") || state == QLatin1String("newPersonTag")) {
         // v3 Javítás mód (a „v3" kitalált meetingen): megerősített magok, jelölők; a panelt /
         // a csoport kinyitását a TranscriptTab végzi.
         setRailVisible(true);
         if (m_demoSession) m_demoSession->stageV3(state);
         if (state.startsWith(QLatin1String("review")) || state == QLatin1String("contaminatedCore"))
             setUncertainOnly(true);
-        if (state == QLatin1String("newPersonSimilar") && m_utts.size() > 8) {
+        m_demoTagQuestion = state == QLatin1String("newPersonTag");
+        if ((state == QLatin1String("newPersonSimilar") || m_demoTagQuestion) && m_utts.size() > 8) {
             setSelection({6, 7, 8}, 6);
             moveSelectionToPerson(QStringLiteral("Nagy Péter"));
             const int row = m_rows->nearestRow(6);

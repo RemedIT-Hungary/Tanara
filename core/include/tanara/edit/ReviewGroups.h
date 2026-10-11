@@ -57,7 +57,7 @@ struct ReviewInput {
     QHash<QString, QVector<float>> embeddings;          // megszólalás-id → fúziós, L2-normalizált vektor
     QString userName;
     QHash<QString, QVector<QVector<float>>> personPrints;   // személynév → fúziós lenyomatok (L2)
-    PersonTagsFn personTags;                            // üres = nincs személy-címke (D szelet)
+    TagEvidenceFn tagEvidence;                          // üres = nincs címke-bizonyíték (PersonTags.h)
     SideHints sideHints;                                // tanult oldalak (a kézi beosztás az overlay-ből jön)
     QString newPersonKey;                               // az imént létrehozott személy (SimilarToNewPerson)
 };

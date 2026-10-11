@@ -313,7 +313,13 @@ QString PeopleStore::defaultSide(const QString& name) const
     return i < 0 ? QString() : m_entries[i].raw.value(QStringLiteral("defaultSide")).toString();
 }
 
-bool PeopleStore::setDefaultSide(const QString& name, const QString& side)
+bool PeopleStore::defaultSideManual(const QString& name) const
+{
+    const int i = indexOf(name);
+    return i >= 0 && m_entries[i].raw.value(QStringLiteral("defaultSideManual")).toBool();
+}
+
+bool PeopleStore::setDefaultSide(const QString& name, const QString& side, bool manual)
 {
     const QString n = name.trimmed();
     if (n.isEmpty()) return false;
@@ -321,11 +327,17 @@ bool PeopleStore::setDefaultSide(const QString& name, const QString& side)
     reloadIfChanged();
     const int i = indexOf(n);
     if (i < 0 && side.isEmpty()) return false;
-    Entry& e = ensure(n);
     const QString key = QStringLiteral("defaultSide");
-    if (e.raw.value(key).toString() == side) return false;
+    const QString manualKey = QStringLiteral("defaultSideManual");
+    // A kézi érték a tanulástól védett.
+    if (!manual && i >= 0 && m_entries[i].raw.value(manualKey).toBool()) return false;
+    Entry& e = ensure(n);
+    const bool flag = manual && !side.isEmpty();
+    if (e.raw.value(key).toString() == side && e.raw.value(manualKey).toBool() == flag) return false;
     if (side.isEmpty()) e.raw.remove(key);
     else e.raw.insert(key, side);
+    if (flag) e.raw.insert(manualKey, true);
+    else e.raw.remove(manualKey);
     persist();
     return true;
 }

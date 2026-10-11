@@ -165,8 +165,18 @@ private slots:
         // Azonos hang: a címke és a sorok száma dönt.
         SpeakerProfile a = profile("A", "Anna", Side::Unknown, 20, {voice(0), voice(0)}, false);
         SpeakerProfile b = profile("B", "Béla", Side::Unknown, 2, {voice(0), voice(0)}, false);
-        a.tags = {"projekt-x"};
-        b.tags = {"marketing"};
+        // A címke-bizonyíték a PersonTagSnapshot szabályával: Anna kézi címkéje a megbeszélésé;
+        // Béla kézi címkés, a megbeszélés címkéi beértek (5 megbeszélés), és egyiken sem volt.
+        PersonTagSnapshot snap;
+        QVector<PersonTagRow> rows;
+        for (int i = 0; i < 5; ++i)
+            rows << PersonTagRow{QStringLiteral("m%1").arg(i), QDateTime(), {"projekt-x", "heti"}, {"Cecil"}};
+        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QString()));
+        snap.tagNames = {{"projekt-x", "Projekt X"}, {"heti", "Heti"}, {"marketing", "Marketing"}};
+        snap.manual.insert(persontags::personKey("Anna"), {"projekt-x"});
+        snap.manual.insert(persontags::personKey("Béla"), {"marketing"});
+        a.tagEvidence = snap.evidence("Anna", {"projekt-x", "heti"});
+        b.tagEvidence = snap.evidence("Béla", {"projekt-x", "heti"});
         RankContext ctx = context({a, b});
         ctx.meetingTags = {"projekt-x", "heti"};
         const QVector<Candidate> cs = rankForLine(ctx, voice(0), Side::Unknown, "", false);
@@ -179,6 +189,18 @@ private slots:
         QVERIFY(hasEvidence(cb->evidence, EvidenceKind::Tag, Polarity::Contradict, "tags"));
         QVERIFY(hasEvidence(ca->evidence, EvidenceKind::LineCount, Polarity::Support));
         QCOMPARE(ca->linesHere, 20);
+        // A chip és a magyarázat (UX-terv 4.).
+        for (const Evidence& e : ca->evidence)
+            if (e.kind == EvidenceKind::Tag) {
+                QCOMPARE(e.text, QStringLiteral("#Projekt X"));
+                QVERIFY(e.detail.contains(QStringLiteral("0 / 5")));
+            }
+        for (const Evidence& e : cb->evidence)
+            if (e.kind == EvidenceKind::Tag) QCOMPARE(e.text, QStringLiteral("más címkék"));
+        // Fiatal címke (< 5 megbeszélés) nem büntet: nincs címke-bizonyíték.
+        QVector<PersonTagRow> young = rows.mid(0, 2);
+        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(young, QString()));
+        QVERIFY(snap.evidence("Béla", {"projekt-x", "heti"}).isEmpty());
     }
 
     void leaveOneOutAndPrints()

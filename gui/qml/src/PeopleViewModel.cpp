@@ -43,7 +43,7 @@ const QString kPeopleUndo = QStringLiteral("people");
 bool tagDemoState(const QString& state)
 {
     return state == QLatin1String("tagsSection") || state == QLatin1String("tagsSuggested")
-        || state == QLatin1String("tagsSelf");
+        || state == QLatin1String("tagsSelf") || state == QLatin1String("tagsFocus");
 }
 
 // A minták modell-jelölését mutató demó-állapotok.
@@ -234,7 +234,7 @@ void PeopleViewModel::setDemoState(const QString& state)
         setSelectedName(QStringLiteral("Tóth Eszter"));
     else if (state == QLatin1String("tagsSection"))
         setSelectedName(QStringLiteral("Varga Árpád"));
-    else if (state == QLatin1String("tagsSuggested"))
+    else if (state == QLatin1String("tagsSuggested") || state == QLatin1String("tagsFocus"))
         setSelectedName(QStringLiteral("Fehér Gábor"));
     else if (state == QLatin1String("tagsSelf"))
         setSelectedName(QStringLiteral("Kovács Lilla"));
@@ -292,6 +292,8 @@ void PeopleViewModel::rebuild()
             p.aliases = r.aliases;
             p.note = r.note;
             p.sampleCount = r.sampleCount;
+            p.defaultSide = r.defaultSide;
+            p.defaultSideManual = r.defaultSideManual;
             if (m_statsReady) {
                 const PersonStats s = m_stats->stats(r.name);
                 p.meetingCount = s.meetingCount;
@@ -892,6 +894,39 @@ void PeopleViewModel::removeAlias(const QString& alias)
     emit toast(tr("Becenév törölve: %1").arg(alias), true);
 }
 
+QString PeopleViewModel::defaultSideNote() const
+{
+    if (m_detail.defaultSide.isEmpty()) return {};
+    return m_detail.defaultSideManual ? tr("kézzel beállítva") : tr("tanult");
+}
+
+bool PeopleViewModel::defaultSideVisible() const
+{
+    return !m_selected.isEmpty() && !m_detail.isSelf && !isPlaceholderName(m_selected);
+}
+
+void PeopleViewModel::setDefaultSide(const QString& side)
+{
+    if (m_selected.isEmpty() || !defaultSideVisible()) return;
+    const QString clean = side == QLatin1String("local") || side == QLatin1String("remote") ? side : QString();
+    if (m_demo) {
+        for (Person& p : m_persons)
+            if (p.name == m_selected) {
+                p.defaultSide = clean;
+                p.defaultSideManual = !clean.isEmpty();
+            }
+        refreshDetail();
+        return;
+    }
+    if (!m_service || !m_service->setDefaultSide(m_selected, clean)) return;
+    rebuild();
+}
+
+void PeopleViewModel::requestSection(const QString& section)
+{
+    if (!section.isEmpty()) emit sectionRequested(section);
+}
+
 void PeopleViewModel::setNote(const QString& note)
 {
     if (!m_service || m_selected.isEmpty() || note == m_detail.note) return;
@@ -1274,6 +1309,13 @@ void PeopleViewModel::loadDemo()
                         {QStringLiteral("Kickoff: új számlázó"), QStringLiteral("2026-09-03"), QStringLiteral("3 p")}};
         } else if (p.name == QStringLiteral("Gál Bence")) {
             p.aliases = {QStringLiteral("Gergő kollégája")};
+        }
+        // Tanult / kézi sáv-oldal („Jellemzően: …”).
+        if (p.name == QStringLiteral("Bárány Gergely") || p.name == QStringLiteral("Fehér Gábor"))
+            p.defaultSide = QStringLiteral("remote");
+        else if (p.name == QStringLiteral("Varga Árpád") || p.name == QStringLiteral("Dénes Zsófia")) {
+            p.defaultSide = QStringLiteral("local");
+            p.defaultSideManual = true;
         }
         m_demoSamples.insert(p.name, samples);
         m_demoMeetings.insert(p.name, meetings);

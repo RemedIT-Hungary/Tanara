@@ -20,6 +20,7 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
 #include <memory>
 
 namespace tanara {
@@ -59,11 +60,24 @@ struct TagEvidence {
     QStringList supportTagIds;       // a megbeszélés címkéi, amelyek a személyt támogatják
     QStringList contradictTagIds;    // ellentmondásnál: a megbeszélés címkéi (egyikhez sem tartozik)
     QVector<TagEvidenceItem> items;  // a támogató, ill. ellentmondó címkék számokkal
-    QStringList personTagIds;        // a személy kézi címkéi (a „Más címkéken szokott lenni” szöveghez)
-    QString text;                    // „#Nordvik · 11 / 14”, több címkénél „#Nordvik +1 · 11 / 14”
+    // A személy címkéi a „Más címkéken szokott lenni” szöveghez: a kézi címkék, ezek híján a
+    // tanult (c ≥ 1) címkék a közös megbeszélések száma szerint.
+    QStringList personTagIds;
+    QStringList personTagNames;      // ugyanezek nevei
+    QString text;                    // a chip: „#Nordvik”, több címkénél „#Nordvik +1”
+    QString detail;                  // a tooltip száma: „11 / 14” (az első címkéé)
     bool isSupport() const { return !supportTagIds.isEmpty(); }
     bool isContradiction() const { return !contradictTagIds.isEmpty(); }
     bool isEmpty() const { return !isSupport() && !isContradiction(); }
+};
+
+// Tanulási kérdés (UX-terv 5.): a megbeszélés egy címkéje ezekre a személyekre kerülhetne.
+// A jóváhagyott résztvevők címkéi sosem kerülnek fel maguktól; a felület egyszer kérdez.
+struct PersonTagQuestion {
+    QString tagId;
+    QString tagName;
+    QStringList people;       // a megjelenítési nevek, a bemenet sorrendjében
+    bool newPeople = false;   // első megbeszélésük (új személy): „X új személy. Ráteszem…?”
 };
 
 namespace persontags {
@@ -73,6 +87,10 @@ constexpr int kMinShared = 2;            // ≥ 2 közös megbeszélés
 constexpr int kTagRatioPct = 30;         // ≥ 30 % a címke megbeszéléseiből
 constexpr int kPersonRatioPct = 50;      // vagy ≥ 50 % a személy megbeszéléseiből (csak 3.2)
 constexpr int kMaxSuggestions = 3;
+// Ellentmondás-őrök (UX-terv 4.): a személynek ennyi címkézett megbeszélése (kézi címke
+// híján), ill. a megbeszélés címkéinek ennyi megbeszélése („beért” címke) kell legalább.
+constexpr int kContradictPersonTagged = 5;
+constexpr int kMatureTagMeetings = 5;
 
 // A személy-név összehasonlító kulcsa (kisbetű-független, szélek nélkül).
 QString personKey(const QString& name);
@@ -92,6 +110,11 @@ public:
 
     int tagTotal(const QString& tagId) const { return m_tagTotal.value(tagId); }
     int personTotal(const QString& person) const { return m_personTotal.value(persontags::personKey(person)); }
+    // A személy címkézett (≥ 1 címkés) megbeszéléseinek száma.
+    int personTagged(const QString& person) const { return m_personTagged.value(persontags::personKey(person)); }
+    // A megbeszélés sora a számolásban: címkéi és (kulcsolt) résztvevői; ismeretlennél üres.
+    QStringList meetingTags(const QString& meetingId) const { return m_meetingTags.value(meetingId); }
+    bool meetingHasPerson(const QString& meetingId, const QString& person) const;
     int shared(const QString& person, const QString& tagId) const;
     QDateTime lastShared(const QString& person, const QString& tagId) const;
     // A tárolt megjelenítési írásmód (a legutóbbi megbeszélésé); ismeretlennél a bemenet.
@@ -108,6 +131,9 @@ private:
     QHash<QString, QHash<QString, int>> m_shared;            // tagId → personKey → c
     QHash<QString, QHash<QString, QDateTime>> m_last;        // tagId → personKey → utolsó közös
     QHash<QString, QStringList> m_tagsOf;                    // personKey → tagId-k
+    QHash<QString, int> m_personTagged;                      // personKey → címkézett megbeszélései
+    QHash<QString, QStringList> m_meetingTags;               // meetingId → címkék (a sorrendben)
+    QHash<QString, QStringList> m_meetingPeople;             // meetingId → personKey-ek
     int m_meetings = 0;
 };
 
@@ -118,14 +144,33 @@ struct PersonTagSnapshot {
     QHash<QString, QString> tagNames;              // tagId → név
     QString selfKey;                               // a saját személy kulcsa (üres = nincs)
 
-    // A bizonyíték (tiszta függvény). Szabályok:
-    //  - támogat: a megbeszélés címkéje kézzel rajta van a személyen, vagy a tanult kapcsolat
-    //    eléri a 3.1 küszöböt (kézi címke nélkül is);
-    //  - ellentmond (szigorú): a megbeszélésnek van címkéje, a személynek VAN kézi címkéje,
-    //    egyik sem a megbeszélésé, és a tanult kapcsolat egyikkel sem éri el a küszöböt;
+    // A bizonyíték (tiszta függvény; UX-terv 4.). Szabályok:
+    //  - támogat: a megbeszélés egy címkéje kézzel rajta van a személyen, VAGY a tanult kapcsolat
+    //    eléri a 3.1 küszöböt (c ≥ 2 és ≥ 30 %), kézi címke nélkül is;
+    //  - ellentmond, CSAK ha mind a négy teljesül: (1) a megbeszélésnek van címkéje; (2) a
+    //    személynek van kézi címkéje, vagy ≥ 5 címkézett megbeszélése; (3) a megbeszélés minden
+    //    címkéjére c = 0 és egyik sincs rajta kézzel; (4) ezek a címkék beértek (|M(t)| ≥ 5);
     //  - különben (és a saját személynél, címke nélküli megbeszélésnél) üres.
-    TagEvidence evidence(const QString& personName, const QStringList& meetingTagIds) const;
+    // meetingId: a vizsgált megbeszélés saját sora kimarad a számokból (különben a személy a
+    // saját mostani jelenlétével támogatná önmagát); üres = minden sor számít.
+    TagEvidence evidence(const QString& personName, const QStringList& meetingTagIds,
+                         const QString& meetingId = QString()) const;
+
+    // Tanulási kérdések egy megbeszélés résztvevőire (tiszta függvény; UX-terv 5.). A megbeszélés
+    // saját sora kimarad a számolásból, így a pillanatkép frissessége nem számít. Személyenként:
+    //  - új személy (más megbeszélésen még nem volt): a megbeszélés minden címkéje;
+    //  - különben a t címke, ha vele most lesz c(p,t) = 2 (más megbeszélésen pontosan 1);
+    //  - kimarad: saját személy, üres név, a kézzel már rajta lévő és az elutasított (rejected).
+    // Címkénként csoportosítva (külön az új személyek), a több személyes kérdés előbb.
+    QVector<PersonTagQuestion> learningQuestions(
+        const QString& meetingId, const QStringList& meetingTagIds, const QStringList& names,
+        const std::function<bool(const QString& name, const QString& tagId)>& rejected = {}) const;
 };
+
+// A bizonyíték varrata (azonosítás, jelölt-rangsor, „Ki volt ott?”): a személy, a megbeszélés
+// címkéi és azonosítója → TagEvidence. Az AppController a TagService pillanatképére köti.
+using TagEvidenceFn = std::function<TagEvidence(const QString& personName, const QStringList& meetingTagIds,
+                                                const QString& meetingId)>;
 
 } // namespace tanara
 

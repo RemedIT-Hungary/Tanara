@@ -62,6 +62,21 @@ struct UndoStep {
     bool isEmpty() const { return !hasSet && meetings.isEmpty() && persons.isEmpty(); }
 };
 
+// A megbeszélés nevesített résztvevői a személy ↔ címke számoláshoz (UX-terv 3.: M(p)): a
+// beszélő-térkép és a saját sáv (MeetingLibrary::participantsOf), továbbá a kézzel felvett,
+// a naptárból jött és a jóváhagyott („Ki volt ott?”) résztvevők — így átírás előtt is.
+QStringList namedParticipants(const Meeting& m)
+{
+    QStringList out = MeetingLibrary::participantsOf(m);
+    for (const Participant& p : m.participants) {
+        const QString n = p.personName.trimmed();
+        if (n.isEmpty() || out.contains(n)) continue;
+        if (p.approved || p.source == ParticipantSource::Manual || p.source == ParticipantSource::Calendar)
+            out << n;
+    }
+    return out;
+}
+
 bool samePerson(const QString& a, const QString& b)
 {
     return persontags::personKey(a) == persontags::personKey(b);
@@ -96,6 +111,7 @@ struct TagService::Impl {
     bool statsAsync = false;
     bool statsRunning = false;
     bool statsAgain = false;
+    QSet<QString> askedLearning;   // a már feltett tanulási kérdések (megbeszélés, személy, címke)
     int  statsGen = 0;
     std::shared_ptr<std::atomic_bool> alive = std::make_shared<std::atomic_bool>(true);
 
@@ -198,7 +214,7 @@ struct TagService::Impl {
         rowsLoaded = true;
     }
     static Row rowOf(const Meeting& m) {
-        return Row{ m.title, m.startedAt, m.tagIds, MeetingLibrary::participantsOf(m), m.durationMs };
+        return Row{ m.title, m.startedAt, m.tagIds, namedParticipants(m), m.durationMs };
     }
     void reloadRow(const QString& id) {
         if (rowsLoaded && store) {
@@ -336,7 +352,7 @@ struct TagService::Impl {
         for (const auto& f : folders) {
             const Meeting m = MeetingStore::readMeetingFolder(f.second);
             if (m.id.isEmpty() && m.title.isEmpty()) continue;
-            out.append(PersonTagRow{ f.first, m.startedAt, m.tagIds, MeetingLibrary::participantsOf(m) });
+            out.append(PersonTagRow{ f.first, m.startedAt, m.tagIds, namedParticipants(m) });
         }
         return out;
     }
@@ -1287,9 +1303,50 @@ QVector<TagSuggestion> TagService::suggestMeetingTagsFromParticipants(const QStr
     return suggestTagsForPeople(d->rows.value(meetingId).participants, meetingId);
 }
 
-TagEvidence TagService::tagEvidence(const QString& personName, const QStringList& meetingTagIds) const
+TagEvidence TagService::tagEvidence(const QString& personName, const QStringList& meetingTagIds,
+                                    const QString& meetingId) const
 {
-    return personTagSnapshot().evidence(personName, meetingTagIds);
+    return personTagSnapshot().evidence(personName, meetingTagIds, meetingId);
+}
+
+QVector<PersonTagQuestion> TagService::learningQuestions(const QString& meetingId, const QStringList& names) const
+{
+    if (meetingId.isEmpty()) return {};
+    const QStringList meetingTags = tagsOf(meetingId);
+    if (meetingTags.isEmpty()) return {};
+    const PersonTagSnapshot snap = personTagSnapshot();
+    // Induláskor, amíg az első háttér-számolás nem kész, mindenki „új” volna: inkább nem kérdez.
+    if (snap.stats->meetingCount() == 0 && personStatsBusy()) return {};
+    QVector<PersonTagQuestion> out = snap.learningQuestions(
+        meetingId, meetingTags, names,
+        [this](const QString& name, const QString& tagId) { return isRejectedForPerson(name, tagId); });
+    // Egyszer kérdez: a már feltett (megbeszélés, személy, címke) hármas kimarad.
+    for (PersonTagQuestion& q : out)
+        q.people.removeIf([&](const QString& name) {
+            return d->askedLearning.contains(meetingId + QChar(0x1f) + persontags::personKey(name) + QChar(0x1f) + q.tagId);
+        });
+    out.removeIf([](const PersonTagQuestion& q) { return q.people.isEmpty(); });
+    return out;
+}
+
+void TagService::markLearningAsked(const QString& meetingId, const QVector<PersonTagQuestion>& questions)
+{
+    for (const PersonTagQuestion& q : questions)
+        for (const QString& name : q.people)
+            d->askedLearning.insert(meetingId + QChar(0x1f) + persontags::personKey(name) + QChar(0x1f) + q.tagId);
+}
+
+void TagService::answerLearning(const PersonTagQuestion& question, bool accept)
+{
+    if (question.tagId.isEmpty() || question.people.isEmpty() || !tag(question.tagId).isValid()) return;
+    // Egy kérdés egy visszavonási lépés („Igen” és „Nem” egyaránt).
+    beginGroup(accept ? tr("Címke a személyeken: #%1").arg(tag(question.tagId).name)
+                      : tr("Javaslat elutasítása"));
+    for (const QString& name : question.people) {
+        if (accept) addPersonTag(name, question.tagId);
+        else rejectPersonTag(name, question.tagId);
+    }
+    endGroup();
 }
 
 void TagService::rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId)

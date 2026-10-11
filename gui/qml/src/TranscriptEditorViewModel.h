@@ -16,6 +16,7 @@
 
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/edit/SpeakerEditor.h"
+#include "tanara/tags/PersonTags.h"
 
 #include <QColor>
 #include <QHash>
@@ -160,6 +161,11 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // „Még N sor hangja hasonlít…": { groupId, count, name, lines (az új személy sorai), detail } —
     // üres, ha nincs hasonló sor.
     Q_PROPERTY(QVariantMap newPersonSimilar READ newPersonSimilar NOTIFY reviewChanged)
+    // Új személy címkés megbeszélésen (vault UX-terv 5.): a változás-sáv kérdése
+    // { text, pairs: [{ index, name, tagName, text }], answer } — „Szabó Bence új személy.
+    // Ráteszem a #Nordvik címkét?”; a válasz után answer a visszajelzés (Visszavonás-sal). Üres
+    // map: nincs kérdés. Egyszer kérdez (TagService::markLearningAsked).
+    Q_PROPERTY(QVariantMap changeTagQuestion READ changeTagQuestion NOTIFY changeChanged)
     // Lenyomat-készültség az új személynél: { text, ready, pending } — üres, ha nem értelmes.
     Q_PROPERTY(QVariantMap newPersonReadiness READ newPersonReadiness NOTIFY reviewChanged)
     // Az új személyhez hasonló sorok kiemelése (sín: 2 px accent keret, térkép: accent jel).
@@ -276,6 +282,7 @@ public:
     QVariantMap contaminated() const { return m_contaminated; }
     QString newPersonKey() const { return m_newPersonKey; }
     bool changeNewPerson() const { return m_change.active && m_change.newPerson; }
+    QVariantMap changeTagQuestion() const;
     QVariantMap newPersonSimilar() const;
     QVariantMap newPersonReadiness() const;
     bool similarShown() const { return m_similarShown; }
@@ -501,6 +508,12 @@ public:
     Q_INVOKABLE bool acceptNewPersonSimilar();
     // „Hanglenyomat, ha elég": most, ha elég az anyag; különben amint elég lesz (kifejezett kérés).
     Q_INVOKABLE QVariantMap requestNewPersonVoiceprint();
+    // Az új személy címke-kérdésének válasza (Igen: a címke rá; Nem: tartós elutasítás) — egy
+    // visszavonási lépés a címke-vermen; pár: az „Egyenként…” listából.
+    Q_INVOKABLE void answerChangeTag(bool yes);
+    Q_INVOKABLE void answerChangeTagPair(int index, bool yes);
+    // A most adott válasz visszavonása (a címke-verem legutóbbi lépése).
+    Q_INVOKABLE void undoChangeTagAnswer();
     // A személy (a „Ki volt ott?" résztvevő) neve a beszélőhöz; üres = névtelen.
     Q_INVOKABLE QString personOf(const QString& speakerKey) const;
 
@@ -643,6 +656,9 @@ private:
         Voiceprint voiceprint = None;
         QString printId;                // a sávról készült lenyomat (a visszavonásához)
         bool newPerson = false;         // az átsorolás új személyt hozott létre (E4)
+        // Új személy címkés megbeszélésen: a tanulási kérdés (UX-terv 5.) és a válasz szövege.
+        QVector<tanara::PersonTagQuestion> tagQuestions;
+        QString tagAnswer;
     };
     Change m_change;
     int m_changeSerial = 0;
@@ -679,6 +695,9 @@ private:
     QSet<QString> m_sideConflicts;          // a sáv-ellentmondásos sorok azonosítói
     QHash<QString, QString> m_speakerSides; // beszélő-kulcs → "local" | "remote" | "mixed" | "unknown"
     QString m_newPersonKey;
+    bool m_demoTagQuestion = false;     // demó: az új személy címke-kérdése (newPersonTag)
+    void askNewPersonTag(const QString& name);
+    void answerTagQuestion(const tanara::PersonTagQuestion& q, bool yes);
     QString m_newPersonGroupId;
     QSet<int> m_similar;
     bool m_similarShown = false;

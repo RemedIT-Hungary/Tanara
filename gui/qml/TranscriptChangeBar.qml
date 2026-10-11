@@ -14,6 +14,9 @@ import QtQuick
 // Visszavonás · „Még N sor hangja hasonlít… (hang 76%, mind a hívás hangján)" + „Megmutatva a
 // sínen" / „Mind a N hozzá" (a SimilarToNewPerson csoport, egy lépés) · a hanglenyomat
 // készültsége („még kb. 9 mp kell") + „Hanglenyomat, ha elég".
+// Új személy címkés megbeszélésen (vault UX-terv 5.) egy további sor kérdez: „Szabó Bence új
+// személy. Ráteszem a #Nordvik címkét? · Igen · Nem” (TagLearnBar); a válasz után a sor a
+// visszajelzést mutatja „Visszavonás”-sal (a címke-verem lépése).
 // A sáv a lista ALATT foglal helyet (nem takar sort). Eltűnik a következő szerkesztésre,
 // bezárásra, vagy ~12 mp után — amíg javaslat vagy ajánlat vár válaszra, addig nem jár le.
 Rectangle {
@@ -29,6 +32,10 @@ Rectangle {
     readonly property bool similarOffer: newPerson && (similar.count || 0) > 0
     readonly property var readiness: vm.newPersonReadiness
     readonly property bool readinessShown: newPerson && (readiness.text || "") !== ""
+    // Új személy: a címke-kérdés (vagy a már megadott válasz).
+    readonly property var tagQuestion: vm.changeTagQuestion
+    readonly property bool tagAsked: (tagQuestion.text || "") !== ""
+    readonly property bool tagAnswered: (tagQuestion.answer || "") !== ""
 
     // A tömeges folytatás megerősítést kér: a hívó nyitja a párbeszédablakot.
     signal restRequested()
@@ -36,7 +43,7 @@ Rectangle {
     signal voiceprintPanelRequested(string speakerKey)
 
     implicitHeight: 44 + (pairOffer ? pairRow.height : 0) + (similarOffer ? similarRow.height : 0)
-                    + (readinessShown ? readinessRow.height : 0)
+                    + (readinessShown ? readinessRow.height : 0) + tagRow.height
     radius: Theme.radiusPopup
     color: Theme.text
 
@@ -104,7 +111,7 @@ Rectangle {
         id: expiry
         interval: root.timeoutMs
         running: root.visible && root.vm.changeActive && !barHover.hovered && !root.offer && !root.pairOffer
-                 && !root.similarOffer && !root.readinessShown
+                 && !root.similarOffer && !root.readinessShown && !root.tagAsked
         onTriggered: root.vm.dismissChange()
     }
     Connections {
@@ -387,6 +394,60 @@ Rectangle {
                 toolTipText: qsTr("Ebben a munkamenetben erre a két beszélőre nem kérdezek rá újra")
                 onClicked: root.vm.declinePairOffer()
             }
+        }
+    }
+
+    // ---- új személy: címke-kérdés (UX-terv 5.) ----
+    Item {
+        id: tagRow
+        objectName: "newPersonTagRow"
+        visible: root.tagAsked || root.tagAnswered
+        y: mainRow.height + similarRow.height + readinessRow.height + pairRow.height
+        width: parent.width
+        height: !visible ? 0 : root.tagAsked ? tagBar.implicitHeight : 40
+        RowRule {}
+        TagLearnBar {
+            id: tagBar
+            visible: root.tagAsked
+            width: parent.width
+            embedded: true
+            question: root.tagQuestion
+            onAnswered: (yes) => root.vm.answerChangeTag(yes)
+            onPairAnswered: (index, yes) => root.vm.answerChangeTagPair(index, yes)
+        }
+        TIcon {
+            id: tagDoneIcon
+            visible: root.tagAnswered
+            x: 14
+            anchors.verticalCenter: parent.verticalCenter
+            name: "tag"
+            size: 15
+            color: Theme.accentLine
+        }
+        TLabel {
+            objectName: "newPersonTagAnswer"
+            visible: root.tagAnswered
+            anchors.left: tagDoneIcon.right
+            anchors.leftMargin: 8
+            anchors.right: tagUndo.left
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.tagQuestion.answer || ""
+            color: Theme.bg
+            elide: Text.ElideRight
+            font.pixelSize: Theme.fontSmall
+        }
+        BarAction {
+            id: tagUndo
+            objectName: "newPersonTagUndo"
+            visible: root.tagAnswered
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "undo-2"
+            text: qsTr("Visszavonás")
+            toolTipText: qsTr("A címke-döntés visszavonása")
+            onClicked: root.vm.undoChangeTagAnswer()
         }
     }
 }

@@ -13,11 +13,19 @@
 //
 // „Ő nem volt ott" (az átirat-szerkesztőből): unbind(participantId) → unbindParticipant.
 //
+// Tanulási kérdés (vault UX-terv 5.): a „Tovább” után, ha a jóváhagyott résztvevők közül
+// valakinél a megbeszélés egy címkéjére most lett c(p,t) = 2 (vagy új személy címkés
+// megbeszélésen), és a címke nincs rajta / nincs elutasítva, a `learnQuestion` egy kérdést ad
+// (a legnagyobb csoportot; a többi az „Egyenként…” listában). Egyszer kérdez
+// (TagService::markLearningAsked). „Igen” / „Nem” egy-egy visszavonási lépés a címke-vermen.
+//
 // Controller nélkül vagy App.demo mellett KITALÁLT mintaadat (a handoff nevei); a demoState
-// választ: allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet.
+// választ: allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet |
+// learnQuestion (jóváhagyás utáni kérdés, több pár) | learnNewPerson (új személy).
 //
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/tags/PersonTags.h"
 
 #include <QObject>
 #include <QPointer>
@@ -63,6 +71,10 @@ class ParticipantsViewModel : public QObject {
     // Címke-alapú javaslat: „A #Nordvik alapján:" + [{ name, countText }] (legfeljebb 3).
     Q_PROPERTY(QString tagSuggestionLabel READ tagSuggestionLabel NOTIFY changed)
     Q_PROPERTY(QVariantList tagSuggestions READ tagSuggestions NOTIFY changed)
+    // A jóváhagyás utáni tanulási kérdés: { text, tagName, people, newPeople, pairs: [{ index,
+    // name, tagName, text }] } — üres map: nincs kérdés. A pairs csak egynél több párnál nem üres
+    // („Egyenként…”).
+    Q_PROPERTY(QVariantMap learnQuestion READ learnQuestion NOTIFY learnChanged)
 
 public:
     explicit ParticipantsViewModel(QObject* parent = nullptr);
@@ -107,6 +119,14 @@ public:
     Q_INVOKABLE void removeAdded(const QString& id);
     // „Tovább": a bejelöltek jóváhagyása. false: nincs meeting / a controller elutasította.
     Q_INVOKABLE bool approve();
+    QVariantMap learnQuestion() const;
+    // A kérdés megválaszolása (Igen: a címke a személyekre; Nem: tartós elutasítás). Visszaad:
+    // a visszajelző szöveg (toast „Visszavonás”-sal); üres = nem történt semmi. Utána nincs kérdés.
+    Q_INVOKABLE QString answerLearn(bool yes);
+    // Egy pár az „Egyenként…” listából (index a pairs-ben); a kérdés a maradékkal él tovább.
+    Q_INVOKABLE QString answerLearnPair(int index, bool yes);
+    // A sáv bezárása / lejárata: nem elutasítás (a javaslat a Személyek ablakban megmarad).
+    Q_INVOKABLE void dismissLearn();
     // „Kihagyás": döntés kötés nélkül.
     Q_INVOKABLE bool skip();
     // „Ő nem volt ott": a résztvevő sorai névtelenek lesznek, a jelölése törlődik.
@@ -117,6 +137,7 @@ signals:
     void meetingIdChanged();
     void demoStateChanged();
     void changed();
+    void learnChanged();
 
 private:
     struct Row {
@@ -137,6 +158,7 @@ private:
     void connectController();
     void load();
     void loadDemo();
+    void loadDemoLearn();
     void reloadTagSuggestions();
     QVariantMap rowMap(const Row& r) const;
     bool rawBoundToChecked(const QString& rawLabel, const QString& exceptId) const;
@@ -164,6 +186,10 @@ private:
     QString m_tagLabel;
     QVector<TagSuggestion> m_tagSuggestions;
     QString m_demoInfo;                 // a demó lábléc-sora (ha nem számolható)
+    void setLearn(const QVector<tanara::PersonTagQuestion>& questions);
+    QString answer(const tanara::PersonTagQuestion& q, bool yes);
+    QVector<tanara::PersonTagQuestion> m_learn;   // a kérdés: az első; a többi az „Egyenként…”-ben
+    QVector<tanara::PersonTagQuestion> m_learnPairs;
     QVector<tanara::PersonInfo> m_demoPeople;
 };
 

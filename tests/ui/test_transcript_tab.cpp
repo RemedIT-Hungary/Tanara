@@ -1749,7 +1749,7 @@ private slots:
                 QTest::addRow("%s-%s", *variant ? variant : "default", *state ? state : "plain")
                     << QString::fromLatin1(variant) << QString::fromLatin1(state);        // v3 Javítás mód: üres változattal a „v3" kitalált meetingen futnak.
         for (const char* state : {"markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
-                                  "contaminatedCore", "speakerWhy", "newPersonSimilar"})
+                                  "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag"})
             QTest::addRow("v3-%s", state) << QString() << QString::fromLatin1(state);
     }
     void statesLoadWithoutWarnings()

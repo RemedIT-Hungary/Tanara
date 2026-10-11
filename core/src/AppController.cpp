@@ -1174,6 +1174,15 @@ AppController::AppController(QObject* parent)
         invalidateTagSuggestions();
         if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
     });
+    // A résztvevők (kézi / jóváhagyott) és a személyek címkéi változtak: a „résztvevők alapján”
+    // javaslat újra kimegy (a kiadott lista a hasonlóság-alapú részt megtartja).
+    connect(this, &AppController::participantsChanged, this, [this](const QString& id) {
+        if (d->pendingTags.contains(id)) publishTagSuggestions(id, d->pendingTags.value(id));
+    });
+    connect(d->tags, &TagService::personTagsChanged, this, [this]() {
+        const QStringList ids = d->pendingTags.keys();
+        for (const QString& id : ids) publishTagSuggestions(id, d->pendingTags.value(id));
+    });
     connect(d->tags, &TagService::rejectedChanged, this, [this]() {
         invalidateTagSuggestions();
         const QStringList ids = d->pendingTags.keys();
@@ -3951,6 +3960,26 @@ MeetingProcessingState AppController::processingState(const QString& meetingId) 
 
 void AppController::publishTagSuggestions(const QString& meetingId, QVector<TagSuggestion> list)
 {
+    // A résztvevők kézi címkéiből jövő javaslat (UX-terv 3.3, „A résztvevők alapján”) mindig
+    // frissen számolódik: a korábbi People-elemek kiesnek, az újak elöl állnak (a sor forrás-
+    // címkéje ezekből). Ha egy címkét a hasonlóság is javasol, egy elem marad, az indokok
+    // összeadódnak. Átírás előtt is működik (kézi / jóváhagyott résztvevők).
+    list.erase(std::remove_if(list.begin(), list.end(), [](const TagSuggestion& sg) {
+        return sg.source == SuggestionSource::People;
+    }), list.end());
+    if (d->settings->settings().tagSuggestions) {
+        QVector<TagSuggestion> people = d->tags->suggestMeetingTagsFromParticipants(meetingId);
+        for (TagSuggestion& p : people) {
+            const auto dup = std::find_if(list.begin(), list.end(), [&](const TagSuggestion& sg) {
+                return !sg.isNew && sg.tagId == p.tagId;
+            });
+            if (dup == list.end()) continue;
+            p.reasons += dup->reasons;
+            p.similarMeetings = dup->similarMeetings;
+            list.erase(dup);
+        }
+        list = people + list;
+    }
     // A már felrakott és az elutasított javaslat kimarad (az LLM új név-ötlete is, ha közben
     // ilyen nevű címke került a meetingre).
     const QStringList applied = d->tags->tagsOf(meetingId);
@@ -4594,8 +4623,14 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     // és javaslat nélkül is teljes értékű.
     ed->setVoiceModelIds(d->editorModelIds(d->settings));
     ed->setEmbedderFactory(utteranceEmbedderFactory());
-    // A személy címkéi a jelölt-rangsorhoz (D-szelet): a beállított varrat, különben a TagService.
-    ed->setPersonTagsProvider(d->candidateContext().personTags);
+    // A címke-bizonyíték a jelölt-rangsorhoz (kézi címke + tanult kapcsolat; D5).
+    ed->setTagEvidenceProvider(d->candidateContext().tagEvidence);
+    // A kézi címkék a gyors „+ #Címke" ajánlathoz (a teszt-varrat, különben a TagService).
+    {
+        TagService* ts = d->tags;
+        ed->setPersonTagsProvider(d->personTags ? d->personTags
+                                                : [ts](const QString& n) { return ts ? ts->tagsOfPerson(n) : QStringList(); });
+    }
     d->speakerEditors.insert(meetingId, ed);
     meetingUndo(meetingId);   // G4: a közös visszavonás a szerkesztő első lépésétől követi
 
@@ -4698,12 +4733,14 @@ participants::CandidateContext AppController::Impl::candidateContext() const
     };
     ctx.hasVoiceprint = [vp](const QString& name) { return vp && vp->printCount(name) > 0; };
     TagService* ts = tags;
-    // A személy címkéi: a beállított varrat, különben a TagService kézi címkéi (D-szelet).
-    ctx.personTags = personTags ? personTags
-                                : [ts](const QString& name) { return ts ? ts->tagsOfPerson(name) : QStringList(); };
-    ctx.tagName = [ts](const QString& id) {
-        const QString n = ts ? ts->tag(id).name : QString();
-        return n.isEmpty() ? id : n;
+    // A címke-bizonyíték (UX-terv 4.): a TagService pillanatképe — kézi címke és tanult
+    // kapcsolat; a beállított varrat (tesztek) a kézi címkéket írja felül.
+    ctx.tagEvidence = [ts, override = personTags](const QString& name, const QStringList& meetingTags,
+                                                  const QString& meetingId) {
+        if (!ts) return TagEvidence();
+        PersonTagSnapshot snap = ts->personTagSnapshot();
+        if (override) snap.manual.insert(persontags::personKey(name), override(name));
+        return snap.evidence(name, meetingTags, meetingId);
     };
     return ctx;
 }

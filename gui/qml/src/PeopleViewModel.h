@@ -113,6 +113,14 @@ class PeopleViewModel : public QObject {
     // legalább két megbeszélés kell.”); üres: javaslatok vagy semmi.
     Q_PROPERTY(QString tagHintText READ tagHintText NOTIFY personTagsChanged)
 
+    // ---- tanult sáv-oldal (brief E02 3.) ----
+    // "local" | "remote" | "" (nincs adat) — a „Jellemzően: …” szegmens értéke.
+    Q_PROPERTY(QString defaultSide READ defaultSide NOTIFY detailChanged)
+    // A forrás a szegmens mellett: „tanult” | „kézzel beállítva” | "" (nincs adat).
+    Q_PROPERTY(QString defaultSideNote READ defaultSideNote NOTIFY detailChanged)
+    // Látszik-e a sor (nem a saját személy — az ő hangja a mikrofon — és nem a mintatartó).
+    Q_PROPERTY(bool defaultSideVisible READ defaultSideVisible NOTIFY detailChanged)
+
     // ---- hangmodellek ----
     Q_PROPERTY(bool backfillRunning READ backfillRunning NOTIFY backfillChanged)
 
@@ -211,6 +219,15 @@ public:
     Q_INVOKABLE void acceptAllTagSuggestions();
     Q_INVOKABLE void rejectTagSuggestion(const QString& tagId);
 
+    QString defaultSide() const { return m_detail.defaultSide; }
+    QString defaultSideNote() const;
+    bool defaultSideVisible() const;
+    // A sáv-oldal kézi átírása ("local" | "remote" | "" = nincs adat / felejtés).
+    Q_INVOKABLE void setDefaultSide(const QString& side);
+    // Mély hivatkozás egy szakaszra ("tags": a Címkék szakasz) — a nézet odagörget
+    // (sectionRequested). A „Címkéi” javító link így nyitja az ablakot (C4).
+    Q_INVOKABLE void requestSection(const QString& section);
+
     bool backfillRunning() const { return m_backfillRunning; }
     // Tesztekhez: a címke-adatforrás (nem veszi át); nullptr → a sajátja.
     void setTagBackend(TagBackend* backend);
@@ -230,6 +247,8 @@ signals:
     void backfillChanged();
     // Értesítés az ablak alján. undoable: „Visszavonás” gombbal.
     void toast(const QString& text, bool undoable);
+    // A nézet görgessen a szakaszhoz ("tags").
+    void sectionRequested(const QString& section);
 
 private:
     struct Person {
@@ -241,6 +260,8 @@ private:
         int meetingCount = 0;
         qint64 talkMs = 0;
         QDateTime lastSeen;
+        QString defaultSide;            // "local" | "remote" | ""
+        bool defaultSideManual = false;
     };
     struct DemoSample { QString kind, label, meeting, date, length; };
     struct DemoMeeting { QString title, date, talk; };
