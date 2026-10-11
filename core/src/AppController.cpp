@@ -4660,9 +4660,15 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
             if (!kept.isEmpty()) kept.save(m.folder);
         }
         d->store->saveMeeting(m);
-        emit tracksChanged(meetingId);
     }
+    // Akkor is jelzünk, ha nem változott semmi: a nézet a „mérés fut” állapotból csak erre lép ki.
+    emit tracksChanged(meetingId);
     if (thenMixdown) regenerateMixdown(meetingId);
+}
+
+bool AppController::speechCheckRunning(const QString& meetingId) const
+{
+    return d->speechCheckRunning.contains(meetingId);
 }
 
 bool AppController::checkTrackSpeech(const QString& meetingId)

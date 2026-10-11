@@ -422,9 +422,14 @@ void OverviewViewModel::reload()
                   m.tracks.isEmpty() ? QStringLiteral("waiting") : QStringLiteral("done"));
     QString tracksSub = tr("%n aktív", nullptr, included);
     if (excluded > 0) tracksSub += QStringLiteral(" · ") + tr("%n kimaradt, nincs rajta beszéd", nullptr, excluded);
+    // A még nem mért sávok beszéd-ellenőrzését a nézet indítja (a külön felvevő-folyamatban vagy
+    // régebben készült meetingen senki más nem tenné); a lépés csak addig „fut”, amíg a core
+    // tényleg mér — különben a csík örökre pörögne.
+    if (measured < m.tracks.size() && !m.hasTranscript) c->checkTrackSpeech(m_meetingId);
+    const bool speechRunning = c->speechCheckRunning(m_meetingId);
     steps << step(QStringLiteral("tracks"), tr("Sávok"), tracksSub,
-                  measured < m.tracks.size() && !m.hasTranscript ? QStringLiteral("running") : QStringLiteral("done"),
-                  false, measured < m.tracks.size() && !m.hasTranscript ? -2 : -1);
+                  speechRunning ? QStringLiteral("running") : QStringLiteral("done"),
+                  false, speechRunning ? -2 : -1);
     const bool mixRunning = proc.mixdownRunning || mixdownJob;
     const bool mixReady = !m.mixdownFile.isEmpty() && !m.mixdownDirty;
     steps << step(QStringLiteral("mixdown"), tr("Lekeverés"),

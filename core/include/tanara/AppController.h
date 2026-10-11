@@ -281,6 +281,8 @@ public slots:
     // (önálló felvevő-folyamat) készült meetingre a nézet hívja megnyitáskor. Csak a még nem mért
     // sávokat méri; kész: tracksChanged (ha változott). false: nincs mit mérni / már fut.
     bool checkTrackSpeech(const QString& meetingId);
+    // Fut-e épp a sávok beszéd-ellenőrzése (a nézet „futó” állapotához).
+    bool speechCheckRunning(const QString& meetingId) const;
     // „Beemelem": a (beszéd nélküli vagy kézzel kivett) sáv vissza a lekeverésbe; „Kiveszem":
     // kézi kizárás (excludedReason "manual"). Egy eszköz minden szakaszára hat. Mindkettő után
     // tracksChanged és újralekeverés (ha maradt bevont sáv).
