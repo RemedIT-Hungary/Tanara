@@ -52,7 +52,8 @@ ApplicationWindow {
         function play() { log += "play;"; playing = true }
         function pause() { log += "pause;"; playing = false }
         function toggle() { log += "toggle;"; playing = !playing }
-        function playRange(a, b) { log += "range:" + a + "-" + b + ";" }
+        property var bounds: []
+        function playRange(a, b, lo, hi) { log += "range:" + a + "-" + b + ";"; bounds = [lo, hi] }
     }
     QtObject {
         id: fakeShell
@@ -1204,6 +1205,17 @@ private slots:
         click(center(listen));
         QCOMPARE(m_player->property("log").toString(),
                  QStringLiteral("range:%1-%2;").arg(m_vm->rowStartMs(0)).arg(m_vm->rowEndMs(0)));
+        // A szomszéd-határok a lejátszónak (elő-/utó-futás korlátja): az első sor előtt nincs sor,
+        // a következő sor kezdete legalább a sor vége.
+        {
+            const QVariantList bounds = m_player->property("bounds").toList();
+            QCOMPARE(bounds.size(), 2);
+            const QVariantMap expected = m_vm->playBounds(m_vm->rowStartMs(0), m_vm->rowEndMs(0));
+            QCOMPARE(bounds.at(0).toInt(), expected.value(QStringLiteral("minStartMs")).toInt());
+            QCOMPARE(bounds.at(1).toInt(), expected.value(QStringLiteral("maxEndMs")).toInt());
+            QCOMPARE(bounds.at(0).toInt(), -1);
+            QVERIFY(bounds.at(1).toInt() >= m_vm->rowEndMs(0));
+        }
         QVERIFY(popupOpen("linePopover"));
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("linePopover"));

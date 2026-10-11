@@ -1,4 +1,5 @@
 #include "tanara/stt/SonioxProvider.h"
+#include "tanara/stt/SonioxTiming.h"
 #include "tanara/cloud/CloudTypes.h"
 
 #include <QNetworkAccessManager>
@@ -19,6 +20,11 @@ namespace tanara {
 
 namespace {
 constexpr int kPollIntervalMs = 2000;
+// Token-időzítés: a Soniox a token KIADÁSÁNAK pillanatát adja (~60 ms széles, a szó vége
+// felé; mérve: „R" 127410–127470, „ok" 127530–127590), nem a hang kezdetét. A beolvasás után
+// a kezdet sonioxtiming::kLeadMs (300 ms) ms-mal előrébb, a vég kTailMs (100 ms) ms-mal hátrébb
+// kerül, a szomszéd tokenekig korlátozva — a konstansok és a mérés: tanara/stt/SonioxTiming.h
+// (a `tanara-cli reslice` ugyanezt alkalmazza a meglévő átiratokra).
 
 QString defaultModel(const ProviderConfig& cfg) {
     return cfg.model.isEmpty() ? QStringLiteral("stt-async-v5") : cfg.model;
@@ -388,6 +394,8 @@ void SonioxJob::fetchTranscript() {
             }
             tt.tokens.append(tok);
         }
+        // Kiadási pillanat → hang-tartomány (időrendben, a sáv tokenjein; nem fednek át).
+        sonioxtiming::correctTrackTokens(tt.tokens);
 
         // Best-effort takarítás a háttérben, majd kész jelzés.
         cleanup();

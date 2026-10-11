@@ -157,6 +157,23 @@ private slots:
         QCOMPARE(vm.utteranceForTime(30000), 5);
         QCOMPARE(vm.rowForTime(107000), 17);
         QCOMPARE(vm.timeAtFraction(0.5), 54000);
+
+        // Lejátszási szomszéd-határok: az előző sor vége, a következő sor kezdete.
+        for (int r : {1, 5, 10}) {
+            const int s = vm.rowStartMs(r), e = vm.rowEndMs(r);
+            QVERIFY(vm.rowEndMs(r - 1) <= s && vm.rowStartMs(r + 1) >= e);   // nem fednek át
+            const QVariantMap b = vm.playBounds(s, e);
+            QCOMPARE(b.value(QStringLiteral("minStartMs")).toInt(), vm.rowEndMs(r - 1));
+            QCOMPARE(b.value(QStringLiteral("maxEndMs")).toInt(), vm.rowStartMs(r + 1));
+        }
+        QCOMPARE(vm.playBounds(vm.rowStartMs(0), vm.rowEndMs(0)).value(QStringLiteral("minStartMs")).toInt(), -1);
+        QCOMPARE(vm.playBounds(vm.rowStartMs(17), vm.rowEndMs(17)).value(QStringLiteral("maxEndMs")).toInt(), -1);
+        // Átfedő szomszéd: a határ a soron belülre esne → a sor szélei (nincs elő-/utó-futás).
+        {
+            const int s = vm.rowStartMs(2) - 1, e = vm.rowStartMs(3) + 1;
+            const QVariantMap b = vm.playBounds(s, e);
+            QCOMPARE(b.value(QStringLiteral("maxEndMs")).toInt(), e);
+        }
     }
 
     // Két nyers beszélő ugyanarra a névre azonosítva: a felület a nyers címkével különbözteti

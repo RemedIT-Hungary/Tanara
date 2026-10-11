@@ -168,8 +168,11 @@ Item {
         player.seek(ms)
         if (player.playing !== true) player.play()
     }
+    // Egy sor meghallgatása kis elő-/utó-futással, a szomszéd sorok határáig (PlayerController).
     function playLine(startMs, endMs) {
-        if (player) player.playRange(startMs, endMs)
+        if (!player) return
+        const b = editorVm.playBounds(startMs, endMs)
+        player.playRange(startMs, endMs, b.minStartMs, b.maxEndMs)
     }
     function revealRow(row, mode) {
         if (row < 0 || row >= list.count) return

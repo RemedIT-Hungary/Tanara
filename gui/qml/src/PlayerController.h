@@ -109,6 +109,12 @@ public:
     Q_INVOKABLE void toggle();
     Q_INVOKABLE void seek(int ms);
     Q_INVOKABLE void playRange(int startMs, int endMs);
+    // Egy sor lejátszása kPreRollMs elő- és kPostRollMs utó-futással, a szomszéd sorok határáig
+    // korlátozva: minStartMs = az előző sor vége, maxEndMs = a következő sor kezdete (< 0 = nincs
+    // korlát). A futás sosem rövidebb a [startMs, endMs] tartománynál.
+    Q_INVOKABLE void playRange(int startMs, int endMs, int minStartMs, int maxEndMs);
+    static constexpr int kPreRollMs = 150;
+    static constexpr int kPostRollMs = 100;
     Q_INVOKABLE void playFile(const QString& absolutePath);
     Q_INVOKABLE void stopPreview();
     // Sáv meghallgatása megbeszélés-időben: meetingMs < 0 → ahol abbahagyta (ugyanaz a sáv),

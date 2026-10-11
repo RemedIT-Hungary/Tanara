@@ -353,6 +353,10 @@ public:
     // A sor megszólalása a soronkénti panelhez: { utteranceId, speakerKey, timeLabel, startMs,
     // endMs }; elválasztónál / érvénytelen sornál üres.
     Q_INVOKABLE QVariantMap rowInfo(int row) const;
+    // Egy sor lejátszásának szomszéd-határai (minden megszólalás, szűrőtől függetlenül):
+    // { minStartMs: az előtte kezdődő sorok legkésőbbi vége (legfeljebb startMs), maxEndMs: az
+    // utána kezdődő sorok legkorábbi kezdete (legalább endMs) }; -1 = nincs ilyen szomszéd.
+    Q_INVOKABLE QVariantMap playBounds(int startMs, int endMs) const;
 
     // ---- kijelölés --------------------------------------------------------
     // Kattintás egy soron: sima → csak ez (újra rákattintva megszűnik); toggle (Ctrl) →

@@ -26,10 +26,12 @@
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
 //   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
+//   reslice <meeting-folder> [--dry-run] [--json] [--force]   Soniox-időzítés korrekciója + újraszeletelés (ResliceCommand.cpp)
 //
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
 #include "ParticipantsCommand.h"
+#include "ResliceCommand.h"
 #include "ReviewCommand.h"
 #include "TagPeopleCommands.h"
 #include "TrackSidesCommand.h"
@@ -128,6 +130,7 @@ int main(int argc, char** argv) {
     if (cmd == "participants" && QFileInfo(args.value(2)).isDir())
         return tanara::cli::runParticipantsCommand(args);
     if (cmd == "review")       return tanara::cli::runReviewCommand(args);
+    if (cmd == "reslice")      return tanara::cli::runResliceCommand(args);
 
     AppController app;
 
@@ -668,7 +671,8 @@ int main(int argc, char** argv) {
            "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
            "voice-models [enable|disable|fetch|verify|delete <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
-           "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b]"
+           "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b] | "
+           "reslice <folder> [--dry-run --json --force]"
         << "\n";
     out.flush();
     return 0;

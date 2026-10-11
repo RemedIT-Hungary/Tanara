@@ -351,6 +351,17 @@ void PlayerController::playRange(int startMs, int endMs)
     startMix();
 }
 
+void PlayerController::playRange(int startMs, int endMs, int minStartMs, int maxEndMs)
+{
+    int from = startMs - kPreRollMs;
+    if (minStartMs >= 0) from = qMax(from, minStartMs);
+    from = qMax(0, qMin(from, startMs));
+    int to = endMs + kPostRollMs;
+    if (maxEndMs >= 0) to = qMin(to, maxEndMs);
+    to = qMax(to, endMs);
+    playRange(from, to);
+}
+
 void PlayerController::playFile(const QString& absolutePath)
 {
     if (absolutePath.isEmpty())

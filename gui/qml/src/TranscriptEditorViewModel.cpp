@@ -1000,6 +1000,20 @@ int TranscriptEditorViewModel::rowEndMs(int row) const
     return u >= 0 ? int(m_utts[u].endMs) : -1;
 }
 
+QVariantMap TranscriptEditorViewModel::playBounds(int startMs, int endMs) const
+{
+    qint64 minStart = -1, maxEnd = -1;
+    for (const EditorUtterance& u : m_utts) {
+        if (u.startMs == startMs && u.endMs == endMs) continue;     // maga a sor
+        if (u.startMs < startMs) minStart = qMax(minStart, qMin(u.endMs, qint64(startMs)));
+        else if (u.startMs > startMs) {
+            const qint64 b = qMax(u.startMs, qint64(endMs));
+            maxEnd = maxEnd < 0 ? b : qMin(maxEnd, b);
+        }
+    }
+    return {{QStringLiteral("minStartMs"), int(minStart)}, {QStringLiteral("maxEndMs"), int(maxEnd)}};
+}
+
 QVariantMap TranscriptEditorViewModel::rowInfo(int row) const
 {
     const int u = m_rows->utteranceOfRow(row);

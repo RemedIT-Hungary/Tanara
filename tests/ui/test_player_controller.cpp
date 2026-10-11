@@ -139,6 +139,36 @@ private slots:
         p.pause();
     }
 
+    // Sor-lejátszás elő-/utó-futással (150 / 100 ms), a szomszéd sorok határáig korlátozva.
+    void playRangeWithBoundsPadsAndClamps()
+    {
+        PlayerController p;
+        p.setMeetingId(demo::defaultMeetingId());
+        // Korlát nélkül: 150 ms-mal előbb indul, 100 ms-mal később áll meg.
+        p.playRange(5000, 5250, -1, -1);
+        QVERIFY(p.playing());
+        QCOMPARE(p.positionMs(), 4850);
+        QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
+        QVERIFY2(p.positionMs() >= 5350 && p.positionMs() < 5700, qPrintable(QString::number(p.positionMs())));
+
+        // Az előző sor 4950-kor ér véget, a következő 5300-kor kezdődik.
+        p.playRange(5000, 5250, 4950, 5300);
+        QCOMPARE(p.positionMs(), 4950);
+        QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
+        QVERIFY2(p.positionMs() >= 5300 && p.positionMs() < 5650, qPrintable(QString::number(p.positionMs())));
+
+        // Átfedő szomszéd (a határ a soron belül): nincs elő-/utó-futás, de a sor egésze szól.
+        p.playRange(5000, 5250, 5100, 5200);
+        QCOMPARE(p.positionMs(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
+        QVERIFY(p.positionMs() >= 5250);
+
+        // A megbeszélés elején nem megy 0 alá.
+        p.playRange(50, 300, -1, -1);
+        QCOMPARE(p.positionMs(), 0);
+        p.pause();
+    }
+
     void rateSpeedsUpAndEndIsHandled()
     {
         PlayerController p;
