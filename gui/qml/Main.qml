@@ -831,7 +831,11 @@ ApplicationWindow {
                         similarMarks: shellActions.currentTab === 1 ? transcriptTab.similarMarks : []
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
-                            else playerController.seek(transcriptTab.editor.timeAtFraction(fraction))
+                            else {
+                                const ms = transcriptTab.editor.timeAtFraction(fraction)
+                                playerController.seek(ms)
+                                transcriptTab.selectRowAt(ms)
+                            }
                         }
                         // Előző / következő sor: az Átirat logikája (lejátszás közben ugrás, állva kijelölés).
                         onLineStepRequested: delta => {

@@ -125,6 +125,31 @@ Item {
     // felhasználó nem görgetett el), vagy ugrás történt (keresősáv, időbélyeg).
     property int lastPlayingRow: -1
     property bool followNext: false
+    // Egy kurzor: a kijelölt sor és a lejátszó pozíciója kétirányban együtt mozog. Állva a sor
+    // kiválasztása a sor elejére teker (lejátszás nélkül); lejátszás közben a lejátszó alatti sor
+    // lesz a kijelölt (több soros kijelölést nem bont meg). A cursorSync őr a visszacsatolás ellen
+    // (kijelölés → tekerés → pozíció → kijelölés).
+    property bool cursorSync: false
+    // A lejátszó a sor elejére (sima seek; lejátszás közben szól tovább). Ha a pozíció már a soron
+    // belül van, nincs tekerés.
+    function seekToRow(row) {
+        if (!root.player || row < 0 || root.cursorSync) return
+        const start = editorVm.rowStartMs(row)
+        if (start < 0) return
+        const pos = root.playerPosition
+        if (root.playerActive && pos >= start && pos < editorVm.rowEndMs(row)) return
+        root.cursorSync = true
+        root.followNext = true
+        root.player.seek(start)
+        root.cursorSync = false
+    }
+    // A pozíció alatti sor lesz a kijelölt (a lejátszó követése, térkép-ugrás).
+    function selectRowAtCursor(row) {
+        if (row < 0 || root.cursorSync || editorVm.selectedCount > 1 || editorVm.currentRow === row) return
+        root.cursorSync = true
+        editorVm.selectOnly(row)
+        root.cursorSync = false
+    }
 
     property real viewportStart: 0
     property real viewportSize: 0
@@ -180,23 +205,35 @@ Item {
 
     function rowClicked(index, modifiers) {
         root.forceActiveFocus()
-        editorVm.selectRow(index, (modifiers & Qt.ControlModifier) !== 0, (modifiers & Qt.ShiftModifier) !== 0)
+        const toggle = (modifiers & Qt.ControlModifier) !== 0
+        const range = (modifiers & Qt.ShiftModifier) !== 0
+        editorVm.selectRow(index, toggle, range)
+        // Egy sor kiválasztása = a kurzor oda (állva tekerés, lejátszás közben ugrás és tovább szól).
+        if (!toggle && !range && editorVm.selectedCount === 1 && editorVm.isRowSelected(index))
+            root.seekToRow(index)
     }
     function playFrom(ms) {
         if (!player || ms < 0) return
         followNext = true
+        root.cursorSync = true
+        editorVm.selectOnly(editorVm.rowForTime(ms))
+        root.cursorSync = false
         player.seek(ms)
         if (player.playing !== true) player.play()
     }
     // Egy sor meghallgatása kis elő-/utó-futással, a szomszéd sorok határáig (PlayerController).
     function playLine(startMs, endMs) {
         if (!player) return
+        root.cursorSync = true
+        if (editorVm.selectedCount <= 1) editorVm.selectOnly(editorVm.rowForTime(startMs))
+        root.cursorSync = false
         const b = editorVm.playBounds(startMs, endMs)
         player.playRange(startMs, endMs, b.minStartMs, b.maxEndMs)
     }
     // Előző / következő sor (térkép-dokk gombjai, nyilak). Lejátszás közben a lejátszó alatti
-    // sortól lép, a cél elejére teker és szól tovább (sima ugrás, nem playRange); állva csak
-    // kijelöli és megmutatja. Az Átnézendő nézetben a csoportok sorain lép (mint a B).
+    // sortól lép, a cél elejére teker és szól tovább (sima ugrás, nem playRange); állva kijelöli,
+    // megmutatja és a lejátszót a sor elejére teszi (lejátszás nélkül; a Szóköz innen indít).
+    // Az Átnézendő nézetben a csoportok sorain lép (mint a B).
     function stepLine(delta) {
         if (!editorVm.hasTranscript) return -1
         const playing = !!root.player && root.player.playing === true
@@ -204,15 +241,21 @@ Item {
             if (!reviewView.step(delta)) return -1
             const id = reviewView.currentUtterance
             const startMs = id !== "" ? editorVm.lineInfo(id).startMs : undefined
-            if (playing && startMs !== undefined) root.player.seek(startMs)
+            if (root.player && startMs !== undefined) {
+                root.cursorSync = true
+                root.player.seek(startMs)
+                root.cursorSync = false
+            }
             return 0
         }
         const r = editorVm.stepLine(delta, playing)
         if (r.row < 0) return -1
         list.positionViewAtIndex(r.row, ListView.Contain)
-        if (playing && r.startMs >= 0) {
-            root.followNext = true
+        if (root.player && r.startMs >= 0) {
+            root.cursorSync = true
+            root.followNext = playing
             root.player.seek(r.startMs)
+            root.cursorSync = false
         }
         return r.row
     }
@@ -239,10 +282,25 @@ Item {
         viewportSize = Math.max(0, editorVm.rowEndFraction(last) - start)
     }
     // Ugrás az idővonal egy pontjára (a térkép-dokk kattintása): a lista odagörget, a lejátszó teker.
+    // A pozíció alatti sor lesz a kijelölt (lejátszás közben és állva is).
     function seekToFraction(fraction) {
         const ms = editorVm.timeAtFraction(fraction)
-        root.revealRow(editorVm.rowForTime(ms), ListView.Beginning)
-        if (root.player) { root.followNext = false; root.player.seek(ms) }
+        const row = editorVm.rowForTime(ms)
+        root.revealRow(row, ListView.Beginning)
+        if (root.player) {
+            root.followNext = false
+            root.cursorSync = true
+            root.player.seek(ms)
+            root.cursorSync = false
+        }
+        root.selectRowAt(ms)
+    }
+    // A térkép-ugrás más fülről (Main.qml): a pozíció alatti sor kijelölése.
+    function selectRowAt(ms) {
+        if (!editorVm.hasTranscript) return
+        root.cursorSync = true
+        if (editorVm.selectedCount <= 1) editorVm.selectOnly(editorVm.rowForTime(ms))
+        root.cursorSync = false
     }
     // A panel a horgony alá kerül; ha ott nem fér el (pl. a lejátszó fölötti térkép-dokk
     // neve), fölé.
@@ -428,6 +486,8 @@ Item {
                 if (root.followNext || jumped || root.isRowVisible(root.lastPlayingRow))
                     list.positionViewAtIndex(row, ListView.Contain)
                 root.followNext = false
+                // Lejátszás közben a lejátszó alatti sor a kijelölt (egy kurzor).
+                if (root.player && root.player.playing === true) root.selectRowAtCursor(row)
             }
             root.lastPlayingRow = row
         }

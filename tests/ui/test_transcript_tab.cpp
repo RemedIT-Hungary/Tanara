@@ -1359,7 +1359,10 @@ private slots:
         QVERIFY(m_tab->hasActiveFocus() || !nextButton->hasActiveFocus());
         click(center(prevButton));
         QCOMPARE(m_vm->currentRow(), 2);
-        QCOMPARE(playerLog(), QString());                    // állva: sem tekerés, sem lejátszás
+        // Állva: minden lépés a sor elejére teker (egy kurzor), lejátszás nélkül.
+        const QString s2 = QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(2));
+        const QString sn = QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(next));
+        QCOMPARE(playerLog(), sn + s2 + sn + s2 + sn + s2);
         QVERIFY(!m_player->property("playing").toBool());
 
         // A lista nem görget magától a nyilakra (a kijelölt sor látható marad).
@@ -1368,6 +1371,85 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Left);
         pump();
         QCOMPARE(m_list->property("contentY").toReal(), y);
+    }
+
+    // Egy kurzor (állva): a sor kiválasztása a sor elejére teker — egyetlen seek, lejátszás
+    // nélkül —, és a Szóköz innen indít. Ha a pozíció már a soron belül van, nincs tekerés.
+    void cursor_selectWhilePausedMovesPosition()
+    {
+        load();
+        m_player->setProperty("log", QString());
+        click(textPoint(3));
+        QCOMPARE(m_vm->currentRow(), 3);
+        const int start = m_vm->rowStartMs(3);
+        QCOMPARE(playerLog(), QStringLiteral("seek:%1;").arg(start));
+        QCOMPARE(m_player->property("positionMs").toInt(), start);
+        QVERIFY(!m_player->property("playing").toBool());
+        QCOMPARE(m_vm->currentRow(), 3);                     // nincs visszacsatolás
+
+        m_player->setProperty("log", QString());
+        click(textPoint(3));                                 // ugyanaz a sor: a pozíció benne van
+        QVERIFY(!playerLog().contains(QStringLiteral("seek:")));
+
+        // Szóköz: a kijelölt sor elejéről szól.
+        m_player->setProperty("log", QString());
+        QTest::keyClick(m_window.get(), Qt::Key_Space);
+        QVERIFY(m_player->property("playing").toBool());
+        QCOMPARE(m_player->property("positionMs").toInt(), start);
+        QVERIFY(!playerLog().contains(QStringLiteral("seek:")));
+    }
+
+    // Lejátszás közben a lejátszó alatti sor a kijelölt, ahogy a pozíció halad.
+    void cursor_playingUpdatesCurrentRow()
+    {
+        load();
+        m_player->setProperty("playing", true);
+        const int a = lineAfter(0, 1);
+        const int b = lineAfter(a, 1);
+        m_player->setProperty("positionMs", m_vm->rowStartMs(a) + 5);
+        QTRY_COMPARE(m_vm->currentRow(), a);
+        m_player->setProperty("positionMs", m_vm->rowStartMs(b) + 5);
+        QTRY_COMPARE(m_vm->currentRow(), b);
+        QCOMPARE(m_vm->selectedCount(), 1);
+        QVERIFY(!playerLog().contains(QStringLiteral("seek:")));   // a követés nem teker
+    }
+
+    // A térkép-dokk ugrása a pozíció alatti sort jelöli ki (állva és lejátszás közben is).
+    void cursor_dockSeekSelectsRow()
+    {
+        load();
+        const int row = lineAfter(lineAfter(lineAfter(0, 1), 1), 1);
+        const double fraction = m_vm->rowStartFraction(row) + 0.0001;
+        QMetaObject::invokeMethod(m_tab, "seekToFraction", Q_ARG(QVariant, fraction));
+        pump();
+        QCOMPARE(m_vm->currentRow(), m_vm->rowForTime(m_player->property("positionMs").toInt()));
+        QVERIFY(!m_player->property("playing").toBool());
+        const int first = m_vm->currentRow();
+        QVERIFY(first >= 0);
+
+        m_player->setProperty("playing", true);
+        const int later = lineAfter(lineAfter(first, 1), 1);
+        QMetaObject::invokeMethod(m_tab, "seekToFraction", Q_ARG(QVariant, m_vm->rowStartFraction(later) + 0.0001));
+        pump();
+        QCOMPARE(m_vm->currentRow(), m_vm->rowForTime(m_player->property("positionMs").toInt()));
+        QVERIFY(m_vm->currentRow() != first);
+        QVERIFY(m_player->property("playing").toBool());
+    }
+
+    // Lejátszás közben egy másik sorra kattintva a lejátszás oda ugrik és szól tovább.
+    void cursor_rowClickWhilePlayingSeeks()
+    {
+        load();
+        m_player->setProperty("playing", true);
+        m_player->setProperty("positionMs", m_vm->rowStartMs(1) + 5);
+        QTRY_COMPARE(m_vm->currentRow(), 1);
+        m_player->setProperty("log", QString());
+        click(textPoint(3));
+        QCOMPARE(m_vm->currentRow(), 3);
+        QCOMPARE(playerLog(), QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(3)));
+        QVERIFY(m_player->property("playing").toBool());
+        QTRY_COMPARE(m_vm->playingRow(), 3);
+        QCOMPARE(m_vm->currentRow(), 3);
     }
 
     // Lejátszás közben: a lejátszó alatti sortól lép, a cél elejére teker (sima seek, nem
@@ -1506,7 +1588,8 @@ private slots:
     {
         load();
         m_vm->setRailVisible(true);
-        click(textPoint(1));
+        click(textPoint(1));                                 // a kurzor a sorra teker (egy kurzor)
+        m_player->setProperty("log", QString());
         const QString speaker = speakerOf(1);
         QMetaObject::invokeMethod(m_tab, "openSearch");
         pump();

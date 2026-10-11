@@ -351,8 +351,16 @@ has the focus, not in a text field or a dialog; the list does not scroll on its 
 `MapDock` controls (`PlayerBar.lineSteps`, `MapDock.lineStepRequested`). Both call
 `TranscriptTab.stepLine(delta)` → `editor.stepLine(delta, playing)` (`{ row, startMs }`): while playing
 it steps from the line under the playhead, seeks to the target line's start and keeps playing (a plain
-seek, not `playRange`); when stopped it steps from the selected line and only selects and reveals the
-target. In the Átnézendő view the arrows step over the groups' lines (like `B`).
+seek, not `playRange`); when stopped it steps from the selected line, selects and reveals the
+target and seeks to its start (no autoplay). In the Átnézendő view the arrows step over the groups' lines (like `B`).
+
+**One cursor:** the selected line and the player position move together. Selecting a line (click,
+arrows, dock buttons) while stopped seeks to its start without playing, so `Space` plays from there;
+while playing, a click on another line jumps there and keeps playing; the line under the playhead
+becomes the selected one as playback advances (a multi-line selection is left alone), and the list
+follows it as before. A map-dock jump selects the line under the new position; "Meghallgatom" /
+`playFrom` select their line too. `TranscriptTab.cursorSync` guards against the feedback loop, and no
+seek happens when the position already lies inside the selected line (`seekToRow`).
 
 | Type | Role |
 |---|---|
