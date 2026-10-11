@@ -192,7 +192,8 @@ Item {
     }
 
     // Bekapcsoláskor a nézet tetejéről (a szennyezett-mag sávjával) indul.
-    onVisibleChanged: if (visible) Qt.callLater(() => list.positionViewAtBeginning())
+    // A késleltetett hívásra a nézet már meg is szűnhetett (demo-állapotváltás, teszt): őrzés.
+    onVisibleChanged: if (visible) Qt.callLater(() => { if (list) list.positionViewAtBeginning() })
 
     ListView {
         id: list
