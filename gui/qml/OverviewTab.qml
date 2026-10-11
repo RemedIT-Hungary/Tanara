@@ -60,13 +60,14 @@ Item {
                                            "overviewRecordedError", "overviewTranscribing"].indexOf(root.demoState) >= 0
     // Átirat előtt, az átírás indítása előtt: a lépésekben az indító vezérlők.
     readonly property bool beforeTranscription: !vm.hasTranscript && !vm.transcribing
-    // A hanglenyomat-lépés állapota (az „Újraelemzés” csak lefutott elemzés után látszik).
+    // A hanglenyomat-lépés állapota: várakozva „Elemzés indítása”, lefutott elemzés után „Újraelemzés”.
     readonly property string voiceState: {
         for (const s of vm.steps) if (s.key === "voice") return s.state
         return ""
     }
     readonly property bool identifyShown: root.beforeTranscription && pre.identifyAvailable
-    readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention")
+    readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention"
+                                                               || root.voiceState === "waiting")
 
     OverviewViewModel {
         id: vm
@@ -155,8 +156,8 @@ Item {
     function showUndone(text) { changeBar.post(qsTr("Visszavonva: %1").arg(text), true) }
     function hideChange() { changeBar.dismiss() }
 
-    // „Újraelemzés” (D4): átirat után a menü „Hanglenyomat-elemzés újra”-jával azonos (héj),
-    // átirat előtt a hangelemzés újra (analyzeParticipants).
+    // „Elemzés indítása” / „Újraelemzés” (D4): átirat után a menü „Hanglenyomat-elemzés újra”-jával
+    // azonos (héj), átirat előtt a nyers sávok hangelemzése (analyzeParticipants).
     function reanalyze() {
         if (vm.hasTranscript) { if (root.shell) root.shell.identifyParticipants(root.meetingId) }
         else vm.reanalyze()
@@ -752,12 +753,13 @@ Item {
             TButton {
                 objectName: "reanalyzeButton"
                 visible: root.reanalyzeShown
-                text: qsTr("Újraelemzés")
+                text: root.voiceState === "waiting" ? qsTr("Elemzés indítása") : qsTr("Újraelemzés")
                 size: "small"
-                iconName: "refresh-cw"
+                iconName: root.voiceState === "waiting" ? "play" : "refresh-cw"
                 iconSize: 14
                 toolTipText: vm.hasTranscript ? qsTr("A hanglenyomat-elemzés újra: a névtelen beszélők a mentett hangmintákhoz")
-                                              : qsTr("A hanglenyomat-elemzés újra a sávokon")
+                           : root.voiceState === "waiting" ? qsTr("Hanglenyomat-elemzés a nyers sávokon, átirat nélkül")
+                                                           : qsTr("A hanglenyomat-elemzés újra a sávokon")
                 onClicked: root.reanalyze()
             }
         }

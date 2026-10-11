@@ -513,6 +513,8 @@ void OverviewViewModel::reload()
     // régebben készült meetingen senki más nem tenné); a lépés csak addig „fut”, amíg a core
     // tényleg mér — különben a csík örökre pörögne.
     if (measured < m.tracks.size() && !m.hasTranscript) c->checkTrackSpeech(m_meetingId);
+    // Az átirat előtti hangelemzés a nyers sávokból, megnyitáskor is (ha még nem futott ezeken).
+    if (!m.hasTranscript) c->maybeAnalyzeParticipants(m_meetingId);
     const bool speechRunning = c->speechCheckRunning(m_meetingId);
     steps << step(QStringLiteral("tracks"), tr("Sávok"), tracksSub,
                   speechRunning ? QStringLiteral("running") : QStringLiteral("done"),
@@ -550,8 +552,7 @@ void OverviewViewModel::reload()
                               : tr("%n résztvevő", nullptr, known);
         voiceState = QStringLiteral("done");
     } else {
-        voiceSub = m.hasTranscript ? tr("nem futott")
-                 : mixReady ? tr("az átírással párhuzamosan") : tr("a lekeverés után");
+        voiceSub = c->voiceIdentificationAvailable() ? tr("nem futott") : tr("nincs hangmodell");
         voiceState = m.hasTranscript ? QStringLiteral("done") : QStringLiteral("waiting");
     }
     steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState, true,
@@ -723,11 +724,11 @@ void OverviewViewModel::loadDemo()
               << step(QStringLiteral("tracks"), tr("Sávok"), tr("%n aktív", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("mixdown"), tr("Lekeverés"), tr("%n sávból", nullptr, 2), QStringLiteral("done"));
         if (transcribingOnly)
-            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("az átírással párhuzamosan"), QStringLiteral("waiting"), true)
+            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("nem futott"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · ") + tr("feltöltés"), QStringLiteral("running"), true, -2)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
         else if (recorded)
-            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("az átírással párhuzamosan"), QStringLiteral("waiting"), true)
+            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("nem futott"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), recordedError ? tr("nem sikerült") : tr("még nem indult"),
                           recordedError ? QStringLiteral("attention") : QStringLiteral("waiting"), true)
                   << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));

@@ -89,6 +89,7 @@ private slots:
     void speechCheckExcludesSilentTrack();
     void analysisApproveUndoUnbindSolo();
     void manualParticipantKeptThroughAnalysis();
+    void maybeAnalyzeGates();
 
 private:
     Meeting makeMeeting(bool withSilent);
@@ -314,6 +315,43 @@ void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
     QVERIFY(m_app->skipApproval(m.id));
     QVERIFY(!m_app->participantApprovalPending(m.id));
     QVERIFY(m_app->store()->load(m.id).approval->skipped);
+}
+
+// A közös indító (maybeAnalyzeParticipants): a nyers sávokból, lekeverés nélkül; nem indul újra
+// ugyanazokon a sávokon, döntés (approval) után, és a beszéd-mérés előtt (azt a mérés vége indítja).
+void ParticipantsAppTest::maybeAnalyzeGates()
+{
+    // Beszéd nélküli sáv: előbb a mérés; a mérés vége magától indítja az elemzést.
+    const Meeting s0 = makeMeeting(/*withSilent*/ true);
+    QVERIFY(!m_app->maybeAnalyzeParticipants(s0.id));
+    QVERIFY(!m_app->participantAnalysisRunning(s0.id));
+    QSignalSpy started(m_app.get(), &AppController::participantAnalysisStarted);
+    QSignalSpy finished(m_app.get(), &AppController::participantAnalysisFinished);
+    QVERIFY(m_app->checkTrackSpeech(s0.id));
+    QVERIFY(started.wait(30000));
+    QCOMPARE(started.last().at(0).toString(), s0.id);
+    QVERIFY(finished.count() > 0 || finished.wait(60000));
+    QVERIFY(!m_app->participantAnalysisRunning(s0.id));
+    QVERIFY(!m_app->maybeAnalyzeParticipants(s0.id));   // ugyanezeken a sávokon már lefutott
+
+    // Beszédes sávok, lekeverés nélkül: rögtön indul; futás közben és utána nem indul újra.
+    Meeting m = makeMeeting(/*withSilent*/ false);
+    QVERIFY(m.mixdownFile.isEmpty());
+    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));   // a sávok még mérés előtt: a mérés vége hív
+    for (Track& t : m.tracks) t.speechRatio = 0.5;     // „mérve" (a mérés megkerülve)
+    m_app->store()->saveMeeting(m);
+    finished.clear();
+    QVERIFY(m_app->maybeAnalyzeParticipants(m.id));
+    QVERIFY(m_app->participantAnalysisRunning(m.id));
+    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
+    QVERIFY(finished.wait(60000));
+    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
+    QVERIFY(!m_app->participants(m.id).isEmpty());
+
+    // Döntés után sem.
+    QVERIFY(m_app->skipApproval(m.id));
+    QVERIFY(m_app->store()->load(m.id).approval.has_value());
+    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
 }
 
 QTEST_GUILESS_MAIN(ParticipantsAppTest)

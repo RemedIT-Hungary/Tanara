@@ -443,11 +443,16 @@ public slots:
     // ---- résztvevők („Ki volt ott?") ----------------------------------------------------
     // Átirat ELŐTTI hangelemzés háttérszálon (Soniox nélkül): a sávok beszéd-ablakaiból
     // beágyazás, klaszterezés, párosítás a lenyomatokkal → Participant-jelöltek bizonyítékkal
-    // (edit/ParticipantAnalysis.h). A lekeverés után magától indul (amíg nincs döntés), az
-    // átírással párhuzamosan. Ha az átirat már megvan, a kötés is lefut. Vége:
+    // (edit/ParticipantAnalysis.h). A NYERS sávfájlokból dolgozik, a lekeveréstől független;
+    // magától a maybeAnalyzeParticipants indítja. Ha az átirat már megvan, a kötés is lefut. Vége:
     // participantAnalysisFinished (+ participantsChanged). false: nincs modell / fut már / nincs ilyen.
     // Közben participantAnalysisProgress (sáv k / N, százalék).
     bool analyzeParticipants(const QString& meetingId);
+    // Az elemzés indítása, ha indokolt: van használható modell, nem fut, a sávok megvannak és a
+    // beszéd-mérésük nem fut / nem hiányzik, nincs még döntés (approval), és a sávok az előző
+    // elemzés óta változtak (vagy nem volt elemzés). Hívói: a felvétel vége, a beszéd-mérés vége,
+    // a lekeverés vége, az átírás indítása és a meeting megnyitása (Áttekintés). true: most indult.
+    bool maybeAnalyzeParticipants(const QString& meetingId);
     // A jelöltek kötése a nyers STT-beszélőkhöz (időbeli átfedés; kétoldalú nyers beszélő két
     // résztvevőre bontva). Az átirat érkezésekor magától fut. participantsChanged, ha változott.
     bool bindRawSpeakers(const QString& meetingId);

@@ -2143,8 +2143,16 @@
         <translation>Re-analyze</translation>
     </message>
     <message>
+        <source>Elemzés indítása</source>
+        <translation>Start analysis</translation>
+    </message>
+    <message>
         <source>A hanglenyomat-elemzés újra: a névtelen beszélők a mentett hangmintákhoz</source>
         <translation>Re-run the voiceprint analysis: anonymous speakers are matched against the saved voice samples</translation>
+    </message>
+    <message>
+        <source>Hanglenyomat-elemzés a nyers sávokon, átirat nélkül</source>
+        <translation>Voice-print analysis on the raw tracks, without a transcript</translation>
     </message>
     <message>
         <source>A hanglenyomat-elemzés újra a sávokon</source>
@@ -9444,14 +9452,6 @@
         <translation>did not run</translation>
     </message>
     <message>
-        <source>a lekeverés után</source>
-        <translation>after the mixdown</translation>
-    </message>
-    <message>
-        <source>az átírással párhuzamosan</source>
-        <translation>in parallel with the transcription</translation>
-    </message>
-    <message>
         <source>Hanglenyomat-elemzés</source>
         <translation>Voiceprint analysis</translation>
     </message>
@@ -9608,6 +9608,10 @@
     <message>
         <source>nem hallottuk</source>
         <translation>not heard</translation>
+    </message>
+    <message>
+        <source>nincs hangmodell</source>
+        <translation>no voice model</translation>
     </message>
     <message>
         <source>Beszélő 1</source>

@@ -1990,15 +1990,9 @@ void AppController::regenerateMixdown(const QString& meetingId) {
         emit mixdownUpdated(meetingId, ok);
         emit tracksChanged(meetingId);   // a nézet frissüljön (gomb-állapot, mixdownFile)
         proc->deleteLater();
-        // Az átirat előtti hangelemzés a lekeverés után magától indul (az átírással párhuzamosan),
-        // amíg nincs döntés, és ha a bevont sávok az előző elemzés óta változtak.
-        if (ok && d->voiceModelUsable() && !d->analysisRuns.contains(meetingId)) {
-            const Meeting a = d->store->load(meetingId);
-            if (!a.id.isEmpty() && !a.approval
-                && ParticipantAnalysisFile::load(a.folder).tracksKey
-                       != trackactivity::activityFingerprint(a, a.folder))
-                analyzeParticipants(meetingId);
-        }
+        // Az átirat előtti hangelemzés a nyers sávokból fut, a lekeveréstől független; itt csak
+        // azért próbálkozunk, mert a keverés sávváltozás (kizárt sáv) után is futhat.
+        if (ok) maybeAnalyzeParticipants(meetingId);
     };
     connect(proc, &QProcess::finished, this, [done](int code, QProcess::ExitStatus status) {
         done(status == QProcess::NormalExit && code == 0);
@@ -2326,6 +2320,9 @@ void AppController::startRecording(const QString& title, const QVector<AudioDevi
                 && m.mixdownFile.isEmpty();
             if (trackspeech::needsSpeechCheck(m)) startSpeechCheck(m.id, mix);
             else if (mix) regenerateMixdown(m.id);
+            // Az átirat előtti hangelemzés a nyers sávokból, rögtön a felvétel után (ha a
+            // beszéd-mérés még hátravan, annak a vége indítja).
+            maybeAnalyzeParticipants(m.id);
         }
     });
 
@@ -2656,6 +2653,8 @@ void AppController::transcribeMeeting(const QString& meetingId)
         emit errorOccurred(tr("Ismeretlen meeting: %1").arg(meetingId));
         return;
     }
+    // A hangelemzés az átírással párhuzamosan fut (ha még nem futott le ezeken a sávokon).
+    maybeAnalyzeParticipants(meetingId);
 
     ReadinessResult res = canRun(WorkflowStep::Transcribe, meetingId);
     if (!res.runnable) {
@@ -4822,6 +4821,8 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
     // Akkor is jelzünk, ha nem változott semmi: a nézet a „mérés fut” állapotból csak erre lép ki.
     emit tracksChanged(meetingId);
     if (thenMixdown) regenerateMixdown(meetingId);
+    // A beszéd nélküli sávok kiszűrve: mehet a hangelemzés a maradék nyers sávokon.
+    if (d->autoMixdown) maybeAnalyzeParticipants(meetingId);
 }
 
 bool AppController::speechCheckRunning(const QString& meetingId) const
@@ -5104,6 +5105,20 @@ void AppController::excludeTrack(const QString& meetingId, const QString& trackI
     bool anyIncluded = false;
     for (const Track& t : m.tracks) anyIncluded = anyIncluded || t.included();
     if (anyIncluded) regenerateMixdown(meetingId);
+}
+
+bool AppController::maybeAnalyzeParticipants(const QString& meetingId)
+{
+    if (!d->voiceModelUsable() || d->analysisRuns.contains(meetingId)) return false;
+    if (d->speechCheckRunning.contains(meetingId)) return false;   // a mérés vége hív újra
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || m.tracks.isEmpty() || m.approval.has_value()) return false;
+    // A beszéd nélküli sávok még nincsenek kiszűrve: előbb a mérés (annak a vége hív újra).
+    if (!m.hasTranscript && trackspeech::needsSpeechCheck(m) && !d->speechChecked.contains(meetingId))
+        return false;
+    if (ParticipantAnalysisFile::load(m.folder).tracksKey == trackactivity::activityFingerprint(m, m.folder))
+        return false;   // ugyanezeken a sávokon már lefutott
+    return analyzeParticipants(meetingId);
 }
 
 bool AppController::analyzeParticipants(const QString& meetingId)
