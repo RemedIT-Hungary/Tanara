@@ -29,8 +29,14 @@ struct VoiceModelSpec {
 
 class VoiceModelRegistry {
 public:
-    // Az alapmodell id-ja (a régi, modell-mező nélküli lenyomatok és cache-ek ehhez tartoznak).
+    // A „régi” egymodelles utak modell-id-ja (a modell-mező nélküli lenyomatok és cache-ek ehhez
+    // tartoznak: "campplus"). NEM az ajánlott modell — ahhoz lásd: recommendedModelId().
     static QString defaultModelId() { return QStringLiteral("campplus"); }
+    // Az ajánlott (és alapból bekapcsolt) modell: WeSpeaker ResNet34-LM. Négy valódi megbeszélésen
+    // ez választotta szét legjobban a beszélőket.
+    static QString recommendedModelId() { return QStringLiteral("wespeaker-resnet34-lm"); }
+    // Az alapértelmezett engedélyezett lista (ha a settings.json-ban nincs "voiceModels" kulcs).
+    static QStringList defaultEnabledIds() { return {recommendedModelId()}; }
 
     // Beépített leírók, id szerint ábécérendben: "campplus", "eres2netv2", "wespeaker-resnet34-lm".
     static QVector<VoiceModelSpec> builtin();
@@ -44,8 +50,13 @@ public:
 
     // A használható modellek: engedélyezett ∩ elérhető (fájl megvan), id szerint ábécérendben.
     // Az ismeretlen / hiányzó fájlú engedélyezett id-k kimaradnak.
+    // Tartalék, amíg a WeSpeaker nincs letöltve: ha az engedélyezett ∩ elérhető üres, de a
+    // "campplus" elérhető (pl. a csomagban van), az egyedül ["campplus"] lesz.
     static QVector<VoiceModelSpec> active(const QStringList& enabledIds, const QString& metaDir,
                                           const QString& appDir);
+    // Igaz pontosan akkor, ha az active() a CAM++ tartalékra váltott (a felület ezt jelzi).
+    static bool isFallbackActive(const QStringList& enabledIds, const QString& metaDir,
+                                 const QString& appDir);
 
     // Id-lista determinisztikus alakja: trimmelt, üresek nélkül, egyedi, ábécérendben.
     static QStringList normalizeIds(const QStringList& ids);

@@ -102,9 +102,9 @@ private slots:
     {
         QTemporaryDir meta;
         SettingsManager sm(meta.path());
-        QCOMPARE(sm.enabledVoiceModels(), QStringList{"campplus"});
+        QCOMPARE(sm.enabledVoiceModels(), QStringList{"wespeaker-resnet34-lm"});
         // Első indításkor kiírt fájlban is ott az alapérték.
-        QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"campplus"}));
+        QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"wespeaker-resnet34-lm"}));
 
         QSignalSpy changed(&sm, &SettingsManager::settingsChanged);
         sm.setEnabledVoiceModels({"zeta", "campplus", "zeta"});
@@ -132,7 +132,7 @@ private slots:
             QVERIFY(f.open(QIODevice::WriteOnly));
             f.write(R"({"userSpeakerName":"Teszt"})");
         }
-        QCOMPARE(SettingsManager(meta.path()).enabledVoiceModels(), QStringList{"campplus"});
+        QCOMPARE(SettingsManager(meta.path()).enabledVoiceModels(), QStringList{"wespeaker-resnet34-lm"});
         {
             QFile f(file);
             QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));

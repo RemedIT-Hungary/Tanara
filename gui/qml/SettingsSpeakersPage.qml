@@ -157,8 +157,8 @@ Column {
                         size: "small"
                         iconName: "arrow-down-to-line"
                         enabled: root.models !== null && root.models.defaultState === "missing"
-                        text: qsTr("CAM++ letöltése (%1)").arg(root.models ? root.models.defaultSizeText : "")
-                        onClicked: root.models.download("campplus")
+                        text: qsTr("WeSpeaker letöltése (%1)").arg(root.models ? root.models.defaultSizeText : "")
+                        onClicked: root.models.download("wespeaker-resnet34-lm")
                     }
                     TLabel {
                         visible: root.models !== null && root.models.defaultState === "downloading"
@@ -175,9 +175,47 @@ Column {
         TBanner {
             objectName: "voiceModelsAllOff"
             visible: root.models !== null && root.models.anyAvailable && root.models.activeCount === 0
+                && !root.models.fallbackActive
             width: parent.width
             tone: "warn"
             text: qsTr("Egy hangmodell sincs bekapcsolva, ezért a hangelemzés ki van kapcsolva.")
+        }
+
+        // A WeSpeaker nincs meg (vagy nincs bekapcsolva), ezért a CAM++ tartalék fut.
+        Rectangle {
+            objectName: "voiceModelsFallback"
+            visible: root.models !== null && root.models.fallbackActive
+            width: parent.width
+            implicitHeight: fbRow.implicitHeight + 20
+            radius: Theme.radiusControl
+            color: Theme.sunken
+            border.width: 1
+            border.color: Theme.border
+            RowLayout {
+                id: fbRow
+                x: 14; y: 10
+                width: parent.width - 28
+                spacing: 10
+                TIcon { name: "info"; size: 16; color: Theme.textMuted }
+                TLabel {
+                    objectName: "voiceModelsFallbackText"
+                    Layout.fillWidth: true
+                    text: root.models && root.models.defaultState === "missing"
+                        ? qsTr("Most a CAM++ tartalék fut, mert a WeSpeaker nincs letöltve.")
+                        : qsTr("Most a CAM++ tartalék fut, mert a WeSpeaker nincs bekapcsolva.")
+                    muted: true
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.Wrap
+                }
+                TButton {
+                    objectName: "voiceModelsFallbackDownload"
+                    visible: root.models !== null && root.models.defaultState === "missing"
+                    size: "small"
+                    iconName: "arrow-down-to-line"
+                    text: qsTr("Letöltés (%1)").arg(root.models ? root.models.defaultSizeText : "")
+                    onClicked: root.models.download("wespeaker-resnet34-lm")
+                }
+            }
         }
 
         // Nincs hálózat: a letöltés nem indul.
@@ -323,7 +361,7 @@ Column {
             }
             TLabel {
                 width: parent.width
-                text: qsTr("Ajánlott: CAM++ és WeSpeaker együtt.")
+                text: qsTr("Ajánlott: WeSpeaker egyedül; a CAM++ tartalék.")
                 muted: true
                 font.pixelSize: Theme.fontSmall
                 cssLineHeight: 1.45

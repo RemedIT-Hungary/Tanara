@@ -59,26 +59,32 @@ private slots:
             QVERIFY(r.out.contains(s.id));
             QVERIFY(r.out.contains(s.license));
         }
-        // Alapból csak a campplus be; fájl sehol (a homokozóban nincs modell).
+        // Alapból csak a wespeaker be (és az ajánlott); fájl sehol (a homokozóban nincs modell).
         const QStringList lines = r.out.split('\n');
         for (const QString& l : lines) {
-            if (l.startsWith("campplus ")) QVERIFY(l.contains(" yes "));
-            if (l.startsWith("wespeaker-resnet34-lm ")) QVERIFY(l.contains(" no "));
+            if (l.startsWith("wespeaker-resnet34-lm ")) {
+                QVERIFY(l.contains(" yes "));
+                QVERIFY(l.contains("(recommended)"));
+            }
+            if (l.startsWith("campplus ")) {
+                QVERIFY(l.contains(" no "));
+                QVERIFY(!l.contains("(recommended)"));
+            }
         }
 
-        r = cli({"voice-models", "enable", "wespeaker-resnet34-lm"});
+        r = cli({"voice-models", "enable", "campplus"});
         QCOMPARE(r.code, 0);
         QVERIFY(r.out.contains("model file is missing"));
         QCOMPARE(settingsModels(), QStringList({"campplus", "wespeaker-resnet34-lm"}));
 
-        r = cli({"voice-models", "disable", "campplus"});
+        r = cli({"voice-models", "disable", "wespeaker-resnet34-lm"});
         QCOMPARE(r.code, 0);
-        QCOMPARE(settingsModels(), QStringList({"wespeaker-resnet34-lm"}));
+        QCOMPARE(settingsModels(), QStringList({"campplus"}));
 
         r = cli({"voice-models", "enable", "nincs-ilyen"});
         QCOMPARE(r.code, 1);
         QVERIFY(r.err.contains("Unknown voice model"));
-        QCOMPARE(settingsModels(), QStringList({"wespeaker-resnet34-lm"}));
+        QCOMPARE(settingsModels(), QStringList({"campplus"}));
 
         // A meglévő fájl helye a listában.
         touch(modelFile("wespeaker-resnet34-lm"));
@@ -141,6 +147,8 @@ private slots:
         if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) QSKIP("nincs ffmpeg");
         QDir().mkpath(QFileInfo(modelFile("campplus")).absolutePath());
         QVERIFY(QFile::link(real, modelFile("campplus")));   // csak olvasva használjuk
+        QVERIFY(cli({"voice-models", "enable", "campplus"}).code == 0);
+        QVERIFY(cli({"voice-models", "disable", "wespeaker-resnet34-lm"}).code == 0);
 
         // Kitalált megbeszélés: A (200 Hz) és B (700+1300 Hz) 4 mp-enként váltakozik.
         QTemporaryDir meetingDir;

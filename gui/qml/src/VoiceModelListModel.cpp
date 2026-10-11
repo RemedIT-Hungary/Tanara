@@ -23,15 +23,17 @@ namespace tanara_qml {
 
 namespace {
 
-// Ajánlott alapállapot: CAM++ + WeSpeaker; az ERes2NetV2 magyar beszéden gyengébb.
-const QString kWespeaker = QStringLiteral("wespeaker-resnet34-lm");
+// Ajánlott alapállapot: egyedül a WeSpeaker (négy valódi megbeszélésen ez választotta szét
+// legjobban a beszélőket); a CAM++ tartalék, az ERes2NetV2 magyar beszéden gyengébb.
+const QString kWespeaker = VoiceModelRegistry::recommendedModelId();
+const QString kCamplus = VoiceModelRegistry::defaultModelId();
 const QString kEres = QStringLiteral("eres2netv2");
 
-// Megjelenítési sorrend: az ajánlottak elöl (CAM++, WeSpeaker), utána a többi.
+// Megjelenítési sorrend: WeSpeaker, CAM++, utána a többi.
 QVector<VoiceModelSpec> ordered(QVector<VoiceModelSpec> specs)
 {
     auto rank = [](const VoiceModelSpec& s) {
-        return s.id == VoiceModelRegistry::defaultModelId() ? 0 : s.id == kWespeaker ? 1 : 2;
+        return s.id == kWespeaker ? 0 : s.id == kCamplus ? 1 : 2;
     };
     std::stable_sort(specs.begin(), specs.end(),
                      [&](const VoiceModelSpec& a, const VoiceModelSpec& b) { return rank(a) < rank(b); });
@@ -86,7 +88,7 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
     if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size()) return {};
     const Row& r = m_rows.at(index.row());
     const VoiceModelSpec& s = r.spec;
-    const bool def = s.id == VoiceModelRegistry::defaultModelId();
+    const bool def = s.id == kCamplus;
     switch (role) {
     case IdRole: return s.id;
     case NameRole: {
@@ -95,9 +97,9 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
         return p > 0 ? s.displayName.left(p) : s.displayName;
     }
     case BlurbRole:
-        if (def) return r.state == QLatin1String("bundled") ? tr("Alap, a csomagban.")
-                                                           : tr("Alap: ezzel indul a hangelemzés.");
-        if (s.id == kWespeaker) return tr("Jobb elválasztás, ajánlott a CAM++ mellé.");
+        if (def) return r.state == QLatin1String("bundled") ? tr("A csomagban · tartalék.")
+                                                           : tr("Tartalék: ezt használja, amíg a WeSpeaker nincs letöltve.");
+        if (s.id == kWespeaker) return tr("Ajánlott alap: négy valódi megbeszélésen ez választotta szét legjobban a beszélőket.");
         if (s.id == kEres) return tr("Rövid sorokra; magyar beszéden nem ajánlott.");
         return QString();
     case LicenseRole: return s.license;
@@ -126,7 +128,7 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
     case EnabledRole: return enabledIds().contains(s.id);
     case CanEnableRole:
         return r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled");
-    case RecommendedRole: return def || s.id == kWespeaker;
+    case RecommendedRole: return s.id == kWespeaker;
     case NotRecommendedRole: return s.id == kEres;
     }
     return {};
@@ -201,7 +203,7 @@ void VoiceModelListModel::loadDemo(const QString& state)
         return i >= 0 ? &m_rows[i] : nullptr;
     };
     m_offline = false;
-    m_demoEnabled = {VoiceModelRegistry::defaultModelId(), kWespeaker};
+    m_demoEnabled = {kWespeaker};
     if (Row* e = row(kEres)) e->state = QStringLiteral("missing");
     if (state == QLatin1String("B08download")) {
         if (Row* w = row(kWespeaker)) {
@@ -209,23 +211,27 @@ void VoiceModelListModel::loadDemo(const QString& state)
             w->total = w->spec.sizeBytes;
             w->received = qint64(w->total * 0.46);
         }
-        m_demoEnabled = {VoiceModelRegistry::defaultModelId()};
+        m_demoEnabled = {kWespeaker};
     } else if (state == QLatin1String("B08none")) {
         for (Row& r : m_rows) r.state = QStringLiteral("missing");
-        m_demoEnabled = {VoiceModelRegistry::defaultModelId()};
+        m_demoEnabled = {kWespeaker};
     } else if (state == QLatin1String("B08error")) {
         if (Row* w = row(kWespeaker)) {
             w->state = QStringLiteral("error");
             w->errorText = tr("A letöltés megszakadt: a kapcsolat 12 MB után megszűnt. Semmi nem került a gépre.");
         }
-        m_demoEnabled = {VoiceModelRegistry::defaultModelId()};
+        m_demoEnabled = {kWespeaker};
     } else if (state == QLatin1String("B08offline")) {
         m_offline = true;
         if (Row* w = row(kWespeaker)) w->state = QStringLiteral("offline");
         if (Row* e = row(kEres)) e->state = QStringLiteral("offline");
-        m_demoEnabled = {VoiceModelRegistry::defaultModelId()};
+        m_demoEnabled = {kWespeaker};
     } else if (state == QLatin1String("B08bundled")) {
-        if (Row* c = row(VoiceModelRegistry::defaultModelId())) c->state = QStringLiteral("bundled");
+        if (Row* c = row(kCamplus)) c->state = QStringLiteral("bundled");
+    } else if (state == QLatin1String("B08fallback")) {
+        // A WeSpeaker nincs letöltve, a csomagolt CAM++ fut tartalékként.
+        if (Row* w = row(kWespeaker)) w->state = QStringLiteral("missing");
+        if (Row* c = row(kCamplus)) c->state = QStringLiteral("bundled");
     }
     endResetModel();
 
@@ -386,33 +392,41 @@ int VoiceModelListModel::activeCount() const
     return n;
 }
 
+bool VoiceModelListModel::fallbackActive() const
+{
+    // Ugyanaz a szabály, mint a VoiceModelRegistry::active()-é, a piszkozat szerint.
+    if (activeCount() > 0) return false;
+    const int i = indexOf(kCamplus);
+    return i >= 0 && (m_rows.at(i).state == QLatin1String("downloaded") || m_rows.at(i).state == QLatin1String("bundled"));
+}
+
 QString VoiceModelListModel::defaultState() const
 {
-    const int i = indexOf(VoiceModelRegistry::defaultModelId());
+    const int i = indexOf(kWespeaker);
     return i >= 0 ? m_rows.at(i).state : QString();
 }
 
 QString VoiceModelListModel::defaultSizeText() const
 {
-    const auto s = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId());
+    const auto s = VoiceModelRegistry::spec(kWespeaker);
     return s ? SettingsViewModel::formatBytes(s->sizeBytes) : QString();
 }
 
 QString VoiceModelListModel::defaultProgressText() const
 {
-    const int i = indexOf(VoiceModelRegistry::defaultModelId());
+    const int i = indexOf(kWespeaker);
     return i >= 0 ? data(index(i), ProgressTextRole).toString() : QString();
 }
 
 double VoiceModelListModel::defaultProgress() const
 {
-    const int i = indexOf(VoiceModelRegistry::defaultModelId());
+    const int i = indexOf(kWespeaker);
     return i >= 0 ? data(index(i), ProgressRole).toDouble() : -1.0;
 }
 
 QString VoiceModelListModel::defaultErrorText() const
 {
-    const int i = indexOf(VoiceModelRegistry::defaultModelId());
+    const int i = indexOf(kWespeaker);
     return i >= 0 ? m_rows.at(i).errorText : QString();
 }
 
@@ -494,7 +508,7 @@ void VoiceModelListModel::onProgress(const QString& id, qint64 received, qint64 
     r.total = total;
     if (step) {
         emitRow(i);
-        if (id == VoiceModelRegistry::defaultModelId()) emit summaryChanged();
+        if (id == kWespeaker) emit summaryChanged();
     }
 }
 

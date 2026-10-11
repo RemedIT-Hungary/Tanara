@@ -183,7 +183,12 @@ void VoiceModelsAppTest::enrolCreatesOnePrintPerModel()
     QCOMPARE(m_app->voiceprints()->printsFor("Béla").size(), 1);
     QCOMPARE(m_app->voiceprints()->printsFor("Béla").first().model, kWe);
 
-    // Egy sem használható → nincs lenyomat, nincs azonosítás.
+    // Egy sem bekapcsolva, de a campplus fájlja megvan → a tartalék fut (egy lenyomat).
+    enable({});
+    QCOMPARE(m_app->activeVoiceModelIds(), QStringList{kCamp});
+    // Egy sem használható (a tartalék fájlja sincs) → nincs lenyomat, nincs azonosítás.
+    QVERIFY(QFile::remove(QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(kCamp)->fileName)));
+    enable({kWe, "nincs-ilyen"});
     enable({});
     QVERIFY(!m_app->voiceIdentificationAvailable());
     m_app->enrollVoiceprintFromSample("Cili", m.id, "mic", 2000, 5000);

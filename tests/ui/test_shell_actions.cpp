@@ -157,6 +157,8 @@ class TestShellActions : public QObject {
     // közvetlenül íródik — nincs modell, nincs hang): Anna címkéje alá 3 Béla-hangú sor került.
     tanara::Meeting namedWithVoices(const QString& title)
     {
+        // A kitalált cache a „campplus” kulcs alatt van → ezt a modellt kapcsoljuk be.
+        m_app->settings()->setEnabledVoiceModels({QStringLiteral("campplus")});
         tanara::Meeting m = recording(title);
         struct L { int start; const char* raw; char voice; };
         const QVector<L> rows{{0, "Beszélő 1", 'A'}, {5, "Beszélő 2", 'B'}, {10, "Beszélő 1", 'A'},

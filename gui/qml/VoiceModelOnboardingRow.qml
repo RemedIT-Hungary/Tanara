@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Első lépések › Szolgáltatások: egy sor a hangmodellről. Ha hiányzik az alapmodell (CAM++),
+// Első lépések › Szolgáltatások: egy sor a hangmodellről. Ha hiányzik az ajánlott modell (WeSpeaker),
 // „Hangmodell letöltése (28 MB)” gomb ugyanazzal a letöltővel, mint a Beállítások › Beszélők
 // lap; kihagyható (a lépés „Kihagyom”-ja vagy egyszerűen a „Tovább”). Ha a modell megvan,
 // nem látszik.
@@ -76,8 +76,8 @@ Rectangle {
                 iconName: "arrow-down-to-line"
                 text: qsTr("Hangmodell letöltése (%1)").arg(list.defaultSizeText)
                 onClicked: {
-                    if (root.st === "error") list.retry("campplus")
-                    else { list.refresh(); list.download("campplus") }
+                    if (root.st === "error") list.retry("wespeaker-resnet34-lm")
+                    else { list.refresh(); list.download("wespeaker-resnet34-lm") }
                 }
             }
             TLabel {
@@ -100,7 +100,7 @@ Rectangle {
                 indeterminate: list.defaultProgress < 0
             }
             TLabel { text: list.defaultProgressText; mono: true; muted: true; font.pixelSize: Theme.fontCaption }
-            TButton { size: "small"; text: qsTr("Mégse"); onClicked: list.cancel("campplus") }
+            TButton { size: "small"; text: qsTr("Mégse"); onClicked: list.cancel("wespeaker-resnet34-lm") }
         }
     }
 }

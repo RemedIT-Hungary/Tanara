@@ -17,7 +17,7 @@ import QtQuick.Templates as T
 // demoState: B01 … B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
 // · B04embeddingNone · B04modelChange (C09, T14–T16) · rejectedReset (megerősítés)
-// · B08 · B08download · B08none · B08error · B08offline · B08backfill · B08partial · B08bundled
+// · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
 //   (Beszélők lap: hangmodellek, lenyomat-pótlás)
 ApplicationWindow {
     id: window

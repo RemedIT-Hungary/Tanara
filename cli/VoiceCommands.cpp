@@ -49,7 +49,10 @@ int listModels(const SettingsManager& sm)
     QVector<QStringList> rows;
     for (const VoiceModelSpec& s : VoiceModelRegistry::builtin()) {
         const QString path = VoiceModelRegistry::resolvePath(s, meta, appDir());
-        rows.append({s.id, s.displayName, enabled.contains(s.id) ? "yes" : "no",
+        rows.append({s.id,
+                     s.id == VoiceModelRegistry::recommendedModelId() ? s.displayName + QStringLiteral(" (recommended)")
+                                                                       : s.displayName,
+                     enabled.contains(s.id) ? "yes" : "no",
                      QFileInfo::exists(path) ? QDir::toNativeSeparators(path) : QStringLiteral("-"),
                      s.dim > 0 ? QString::number(s.dim) : QStringLiteral("?"), s.license, s.sourceUrl});
     }

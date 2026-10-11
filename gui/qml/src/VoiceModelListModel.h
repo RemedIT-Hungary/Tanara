@@ -14,7 +14,7 @@
 //    még valamelyik használt modell lenyomata) számolódik.
 //
 // Controller nélkül (demó, --qml-shot) KITALÁLT adatot ad; demoState: B08 | B08download |
-// B08none | B08error | B08offline | B08backfill | B08partial | B08bundled.
+// B08none | B08fallback | B08error | B08offline | B08backfill | B08partial | B08bundled.
 //
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
@@ -48,7 +48,9 @@ class VoiceModelListModel : public QAbstractListModel {
     // Bekapcsolt ÉS meglévő modellek száma (a piszkozat szerint) — 0: a hangelemzés ki van kapcsolva.
     Q_PROPERTY(int activeCount READ activeCount NOTIFY summaryChanged)
     Q_PROPERTY(bool offline READ offline NOTIFY summaryChanged)
-    // Az alapmodell (CAM++) — az onboarding és az üres állapot CTA-ja.
+    // Az ajánlott modell (WeSpeaker) — az onboarding és az üres állapot CTA-ja.
+    // Igaz, ha nincs használható bekapcsolt modell, és a CAM++ tartalék fut helyette.
+    Q_PROPERTY(bool fallbackActive READ fallbackActive NOTIFY summaryChanged)
     Q_PROPERTY(QString defaultState READ defaultState NOTIFY summaryChanged)
     Q_PROPERTY(QString defaultSizeText READ defaultSizeText CONSTANT)
     Q_PROPERTY(QString defaultProgressText READ defaultProgressText NOTIFY summaryChanged)
@@ -103,6 +105,7 @@ public:
     bool anyAvailable() const;
     int activeCount() const;
     bool offline() const { return m_offline; }
+    bool fallbackActive() const;
     QString defaultState() const;
     QString defaultSizeText() const;
     QString defaultProgressText() const;

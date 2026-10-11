@@ -1519,10 +1519,7 @@ void SettingsViewModel::loadDemo()
     } else if (st.startsWith(QLatin1String("B08"))) {
         m_page = QStringLiteral("speakers");
         // A piszkozat bekapcsolt listája a demó modell-állapotához igazodik.
-        m_base.voiceModels = m_draft.voiceModels = st == QLatin1String("B08") || st == QLatin1String("B08backfill")
-                || st == QLatin1String("B08partial") || st == QLatin1String("B08bundled")
-            ? QStringList{QStringLiteral("campplus"), QStringLiteral("wespeaker-resnet34-lm")}
-            : QStringList{QStringLiteral("campplus")};
+        m_base.voiceModels = m_draft.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
         m_draft.userSpeakerName = QStringLiteral("Kovács Lilla Anna");
     }

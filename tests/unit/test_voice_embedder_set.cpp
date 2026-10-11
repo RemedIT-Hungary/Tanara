@@ -119,7 +119,34 @@ private slots:
         const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(enabled, meta.path(), QString());
         QCOMPARE(set.modelIds(), QStringList({"campplus", "wespeaker-resnet34-lm"}));
         QVERIFY(!set.isEmpty());
-        QVERIFY(VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).isEmpty());
+        // Tartalék: az engedélyezett ∩ elérhető üres, de a campplus megvan → egyedül az fut.
+        QVERIFY(!VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).isEmpty());
+        QCOMPARE(VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).modelIds(), QStringList{"campplus"});
+        QVERIFY(VoiceEmbedderSet::fromSettings({}, QString("/nincs/ilyen"), QString()).isEmpty());
+    }
+
+    void registry_defaultIsWespeakerAndCampplusIsFallback()
+    {
+        QCOMPARE(VoiceModelRegistry::defaultEnabledIds(), QStringList{"wespeaker-resnet34-lm"});
+        QCOMPARE(VoiceModelRegistry::recommendedModelId(), QStringLiteral("wespeaker-resnet34-lm"));
+        QCOMPARE(VoiceModelRegistry::defaultModelId(), QStringLiteral("campplus"));   // régi utak
+        QTemporaryDir meta;
+        const QStringList enabled = VoiceModelRegistry::defaultEnabledIds();
+        // Semmi nincs letöltve: nincs modell, nincs tartalék.
+        QVERIFY(VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
+        QVERIFY(!VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
+        // Csak a campplus fájl van meg → ["campplus"] tartalék.
+        touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("campplus")->fileName));
+        const auto fb = VoiceModelRegistry::active(enabled, meta.path(), QString());
+        QCOMPARE(fb.size(), 1);
+        QCOMPARE(fb[0].id, QStringLiteral("campplus"));
+        QVERIFY(VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
+        // A WeSpeaker megérkezik: ő fut egyedül, a tartalék kikapcsol.
+        touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
+        const auto ok = VoiceModelRegistry::active(enabled, meta.path(), QString());
+        QCOMPARE(ok.size(), 1);
+        QCOMPARE(ok[0].id, QStringLiteral("wespeaker-resnet34-lm"));
+        QVERIFY(!VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
     }
 
     void set_lazyLoadAndEmbed()

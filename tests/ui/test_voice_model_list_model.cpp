@@ -138,22 +138,25 @@ private slots:
         VoiceModelListModel m;
         m.setDemoState(QStringLiteral("B08"));
         QCOMPARE(m.rowCount(), 3);
-        // Az ajánlottak elöl.
-        QCOMPARE(role(m, 0, "modelId").toString(), kCamp);
-        QCOMPARE(role(m, 1, "modelId").toString(), kWe);
+        // WeSpeaker, CAM++, ERes2NetV2; ajánlott csak a WeSpeaker.
+        QCOMPARE(role(m, 0, "modelId").toString(), kWe);
+        QCOMPARE(role(m, 1, "modelId").toString(), kCamp);
         QCOMPARE(role(m, 2, "modelId").toString(), kEres);
         QVERIFY(role(m, 0, "recommended").toBool());
-        QVERIFY(role(m, 1, "recommended").toBool());
+        QVERIFY(!role(m, 1, "recommended").toBool());
         QVERIFY(role(m, 2, "notRecommended").toBool());
-        QCOMPARE(role(m, 1, "license").toString(), QStringLiteral("CC-BY-4.0"));
-        QVERIFY(!role(m, 1, "licenseNote").toString().isEmpty());          // CC BY: attribúció
-        QVERIFY(role(m, 0, "licenseNote").toString().isEmpty());
-        QCOMPARE(role(m, 1, "sourceText").toString(), QStringLiteral("huggingface.co/Wespeaker/…"));
-        QCOMPARE(role(m, 0, "sizeText").toString(), QStringLiteral("28 MB"));
-        QCOMPARE(role(m, 1, "dimText").toString(), QStringLiteral("256 dim."));
+        QCOMPARE(role(m, 0, "license").toString(), QStringLiteral("CC-BY-4.0"));
+        QVERIFY(!role(m, 0, "licenseNote").toString().isEmpty());          // CC BY: attribúció
+        QVERIFY(role(m, 1, "licenseNote").toString().isEmpty());
+        QCOMPARE(role(m, 0, "sourceText").toString(), QStringLiteral("huggingface.co/Wespeaker/…"));
+        QCOMPARE(role(m, 1, "sizeText").toString(), QStringLiteral("28 MB"));
+        QCOMPARE(role(m, 0, "dimText").toString(), QStringLiteral("256 dim."));
+        QVERIFY(role(m, 0, "blurb").toString().contains(QStringLiteral("Ajánlott alap")));
+        QVERIFY(role(m, 1, "blurb").toString().contains(QStringLiteral("Tartalék")));
+        QVERIFY(!m.fallbackActive());
         QCOMPARE(stateOf(m, kEres), QStringLiteral("missing"));
         QVERIFY(m.anyAvailable());
-        QCOMPARE(m.activeCount(), 2);
+        QCOMPARE(m.activeCount(), 1);
         QCOMPARE(m.backfillState(), QString());
 
         m.setDemoState(QStringLiteral("B08download"));
@@ -165,7 +168,8 @@ private slots:
         QVERIFY(!m.anyAvailable());
         QCOMPARE(m.activeCount(), 0);
         QCOMPARE(m.defaultState(), QStringLiteral("missing"));
-        QCOMPARE(m.defaultSizeText(), QStringLiteral("28 MB"));
+        QCOMPARE(m.defaultSizeText(), QStringLiteral("27 MB"));
+        QVERIFY(!m.fallbackActive());   // nincs CAM++ sem: nincs tartalék, a hangelemzés ki van kapcsolva
 
         m.setDemoState(QStringLiteral("B08error"));
         QCOMPARE(stateOf(m, kWe), QStringLiteral("error"));
@@ -186,7 +190,16 @@ private slots:
 
         m.setDemoState(QStringLiteral("B08bundled"));
         QCOMPARE(stateOf(m, kCamp), QStringLiteral("bundled"));
-        QVERIFY(role(m, 0, "blurb").toString().contains(QStringLiteral("csomagban")));
+        QVERIFY(role(m, 1, "blurb").toString().contains(QStringLiteral("csomagban")));
+        QVERIFY(!m.fallbackActive());
+
+        // A WeSpeaker hiányzik, a csomagolt CAM++ tartalékként fut.
+        m.setDemoState(QStringLiteral("B08fallback"));
+        QCOMPARE(stateOf(m, kWe), QStringLiteral("missing"));
+        QCOMPARE(stateOf(m, kCamp), QStringLiteral("bundled"));
+        QCOMPARE(m.activeCount(), 0);
+        QVERIFY(m.fallbackActive());
+        QCOMPARE(m.defaultState(), QStringLiteral("missing"));
     }
 
     void settingsDemoOpensTheSpeakersPage()
@@ -214,18 +227,18 @@ private slots:
         QVERIFY(m_app->activeVoiceModelIds().isEmpty());
 
         // Letöltés előtt nem kapcsolható be.
-        m.setEnabled(kWe, true);
-        QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kWe));
+        m.setEnabled(kCamp, true);
+        QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kCamp));
 
         QSignalSpy done(&m, &VoiceModelListModel::downloadFinished);
-        m.download(kCamp);
+        m.download(kWe);
         QCOMPARE(m.defaultState(), QStringLiteral("downloading"));
         QVERIFY(done.wait(5000));
         QVERIFY(done.first().at(1).toBool());
         QCOMPARE(m.defaultState(), QStringLiteral("downloaded"));
-        QVERIFY(QFileInfo::exists(modelPath(kCamp)));
+        QVERIFY(QFileInfo::exists(modelPath(kWe)));
         // Az alapmodell eleve be volt kapcsolva: a core most már használja.
-        QVERIFY(QTest::qWaitFor([&] { return m_app->activeVoiceModelIds() == QStringList{kCamp}; }, 3000));
+        QVERIFY(QTest::qWaitFor([&] { return m_app->activeVoiceModelIds() == QStringList{kWe}; }, 3000));
         QVERIFY(m.anyAvailable());
         QCOMPARE(m.activeCount(), 1);
     }
@@ -233,7 +246,7 @@ private slots:
     void downloadEnablesInTheDraftAndSaveWritesIt()
     {
         startApp();
-        placeModel(kCamp, 10);
+        placeModel(kWe, 10);
         SettingsViewModel vm;
         vm.voiceModels()->setSpecsForTest(localSpecs());
         vm.setController(m_app.get());
@@ -241,33 +254,33 @@ private slots:
         m->downloader()->setReachableOverride(true);
         // A helyőrző mérete eltér a leíróétól → „sérült” → hiba.
         m->refresh();
-        QCOMPARE(stateOf(*m, kCamp), QStringLiteral("error"));
-        QVERIFY(role(*m, rowOf(*m, kCamp), "errorText").toString().contains(QStringLiteral("mérete")));
+        QCOMPARE(stateOf(*m, kWe), QStringLiteral("error"));
+        QVERIFY(role(*m, rowOf(*m, kWe), "errorText").toString().contains(QStringLiteral("mérete")));
         // Újra: a sérült fájlt lecseréli.
         QSignalSpy done(m, &VoiceModelListModel::downloadFinished);
-        m->retry(kCamp);
+        m->retry(kWe);
         QVERIFY(done.wait(5000));
-        QCOMPARE(stateOf(*m, kCamp), QStringLiteral("downloaded"));
+        QCOMPARE(stateOf(*m, kWe), QStringLiteral("downloaded"));
         QVERIFY(!vm.dirty());
 
         done.clear();
-        m->download(kWe);
+        m->download(kCamp);
         QVERIFY(done.wait(5000));
-        QCOMPARE(stateOf(*m, kWe), QStringLiteral("downloaded"));
+        QCOMPARE(stateOf(*m, kCamp), QStringLiteral("downloaded"));
         // A letöltés azonnali, a bekapcsolás piszkozat: Mentésig a core nem használja.
-        QVERIFY(role(*m, rowOf(*m, kWe), "enabled").toBool());
+        QVERIFY(role(*m, rowOf(*m, kCamp), "enabled").toBool());
         QVERIFY(vm.dirty());
-        QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kWe));
+        QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kCamp));
         QVERIFY(vm.footerText().contains(QStringLiteral("pótlás")));
         QVERIFY(vm.save());
         QCOMPARE(m_app->settings()->enabledVoiceModels(), QStringList({kCamp, kWe}));
         QVERIFY(QTest::qWaitFor([&] { return m_app->activeVoiceModelIds() == QStringList({kCamp, kWe}); }, 3000));
 
         // Kikapcsolás + Mégse: semmi nem íródik.
-        m->setEnabled(kWe, false);
+        m->setEnabled(kCamp, false);
         QVERIFY(vm.dirty());
         vm.discard();
-        QVERIFY(role(*m, rowOf(*m, kWe), "enabled").toBool());
+        QVERIFY(role(*m, rowOf(*m, kCamp), "enabled").toBool());
         QCOMPARE(m_app->settings()->enabledVoiceModels(), QStringList({kCamp, kWe}));
     }
 
@@ -358,6 +371,28 @@ private slots:
         again.setController(m_app.get());
         QCOMPARE(again.backfillState(), QStringLiteral("partial"));
         QCOMPARE(again.backfillSkipped(), 2);
+    }
+
+    void fallbackLineShownOnThePage()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QQmlComponent comp(&engine);
+        comp.loadFromModule("Tanara", "SettingsWindow");
+        QVERIFY2(!comp.isError(), qPrintable(comp.errorString()));
+        std::unique_ptr<QObject> obj(comp.createWithInitialProperties({{QStringLiteral("demoState"), QStringLiteral("B08fallback")}}));
+        auto* win = qobject_cast<QQuickWindow*>(obj.get());
+        QVERIFY(win);
+        win->show();
+        QTest::qWait(200);
+        auto* line = findItem(win->contentItem(), QStringLiteral("voiceModelsFallback"));
+        QVERIFY(line);
+        QVERIFY(line->isVisible());
+        QCOMPARE(findItem(win->contentItem(), QStringLiteral("voiceModelsFallbackText"))->property("text").toString(),
+                 QStringLiteral("Most a CAM++ tartalék fut, mert a WeSpeaker nincs letöltve."));
+        QVERIFY(findItem(win->contentItem(), QStringLiteral("voiceModelsNone"))->isVisible() == false);
+        auto* allOff = findItem(win->contentItem(), QStringLiteral("voiceModelsAllOff"));
+        QVERIFY(!allOff || !allOff->isVisible());
     }
 
     // ---- a lap a Beállítások-ablakban ----------------------------------------------------

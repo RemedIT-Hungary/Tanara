@@ -104,15 +104,37 @@ QVector<VoiceModelSpec> VoiceModelRegistry::available(const QString& metaDir, co
     return out;
 }
 
+namespace {
+QVector<VoiceModelSpec> enabledAvailable(const QStringList& ids, const QString& metaDir, const QString& appDir)
+{
+    QVector<VoiceModelSpec> out;
+    for (const QString& id : VoiceModelRegistry::normalizeIds(ids)) {
+        const auto s = VoiceModelRegistry::spec(id);
+        if (s && QFileInfo::exists(VoiceModelRegistry::resolvePath(*s, metaDir, appDir))) out.append(*s);
+    }
+    return out;
+}
+} // namespace
+
 QVector<VoiceModelSpec> VoiceModelRegistry::active(const QStringList& enabledIds, const QString& metaDir,
                                                    const QString& appDir)
 {
-    QVector<VoiceModelSpec> out;
-    for (const QString& id : normalizeIds(enabledIds)) {
-        const auto s = spec(id);
-        if (s && QFileInfo::exists(resolvePath(*s, metaDir, appDir))) out.append(*s);
+    QVector<VoiceModelSpec> out = enabledAvailable(enabledIds, metaDir, appDir);
+    // Tartalék, amíg a WeSpeaker nincs letöltve: nincs használható engedélyezett modell, de a
+    // CAM++ megvan (a Windows-csomagban benne van) → az fut.
+    if (out.isEmpty()) {
+        const auto cam = spec(defaultModelId());
+        if (cam && QFileInfo::exists(resolvePath(*cam, metaDir, appDir))) out.append(*cam);
     }
     return out;
+}
+
+bool VoiceModelRegistry::isFallbackActive(const QStringList& enabledIds, const QString& metaDir,
+                                          const QString& appDir)
+{
+    if (!enabledAvailable(enabledIds, metaDir, appDir).isEmpty()) return false;
+    const auto cam = spec(defaultModelId());
+    return cam && QFileInfo::exists(resolvePath(*cam, metaDir, appDir));
 }
 
 QStringList VoiceModelRegistry::normalizeIds(const QStringList& ids)

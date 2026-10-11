@@ -20,7 +20,7 @@
 // Controller nélkül (--qml-shot / --demo, tesztek) KITALÁLT adatot ad; a `demoState`
 // ("B01" … "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut",
 // "B04embedding" / "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" /
-// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" /
+// "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
 // "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") a design-állapotokat állítja be.
 //
 #include "SettingsCloudModel.h"

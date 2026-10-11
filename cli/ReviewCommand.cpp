@@ -109,8 +109,10 @@ int runReviewCommand(const QStringList& args)
     // Beágyazások: a cache-ből (a kért, vagy az alapmodell, vagy amelyik van).
     const UtteranceEmbeddingCache cache = UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
     if (models.isEmpty()) {
+        const QString rec = VoiceModelRegistry::recommendedModelId();
         const QString def = VoiceModelRegistry::defaultModelId();
-        if (cache.models.contains(def) || cache.models.isEmpty()) models << def;
+        if (cache.models.contains(rec)) models << rec;
+        else if (cache.models.contains(def) || cache.models.isEmpty()) models << def;
         else models << cache.models.firstKey();
     }
     models = VoiceModelRegistry::normalizeIds(models);

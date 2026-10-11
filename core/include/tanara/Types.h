@@ -447,8 +447,8 @@ struct AppSettings {
 
     // Bekapcsolt beszélő-embedding modellek (VoiceModelRegistry id-k), ábécérendben. Lenyomatnál
     // és elemzésnél mindegyik számít (fúzió); a hiányzó modellfájl futáskor kimarad, a beállítás
-    // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["campplus"].
-    QStringList voiceModels{QStringLiteral("campplus")};
+    // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["wespeaker-resnet34-lm"].
+    QStringList voiceModels{QStringLiteral("wespeaker-resnet34-lm")};
 
     // Meeting-figyelő (háttér-detektor + tray). A figyelő olvassa; az elemző/felvevő
     // nem függ tőle. detectorId üres → a registry az első elérhető detektort választja.

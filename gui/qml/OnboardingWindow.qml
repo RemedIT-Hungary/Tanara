@@ -509,7 +509,7 @@ ApplicationWindow {
                             iconName: "cloud"
                             text: qsTr("Tanara Cloud: hamarosan — átírás és összefoglaló saját kulcs nélkül.")
                         }
-                        // Hangmodell (E01): ha hiányzik a CAM++, letölthető innen is; kihagyható.
+                        // Hangmodell (E01): ha hiányzik a WeSpeaker, letölthető innen is; kihagyható.
                         VoiceModelOnboardingRow {
                             width: parent.width
                             controller: window.hostController
