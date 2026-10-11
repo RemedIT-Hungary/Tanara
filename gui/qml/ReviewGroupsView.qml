@@ -21,6 +21,11 @@ Item {
     readonly property bool railShown: tab.railShown
     readonly property real contentX: railShown ? tab.textX + 8 : 24
     readonly property real contentRight: 20
+    // Húzás a sínen (egy sor): a megfogott sor és a cél-oszlop; a cella és a lebegő címke ebből rajzol.
+    property string dragUtterance: ""
+    property bool dragActive: false
+    property int dragLane: -1
+    readonly property int dragColorIndex: dragLane >= 0 && dragLane < tab.laneCount ? vm.lanes[dragLane].colorIndex : 0
 
     // A kulcs oszlopa a sínen (-1 = nincs látható oszlopa).
     function laneOfKey(key) {
@@ -91,6 +96,7 @@ Item {
         readonly property bool decided: model.decided === true
         readonly property bool current: root.currentUtterance === utteranceId
         readonly property int lane: model.lane === undefined ? -2 : model.lane
+        readonly property bool dragging: root.dragActive && root.dragUtterance === utteranceId
         readonly property alias railCells: railLoader
         width: list.width
         height: lineColumn.implicitHeight + 16
@@ -115,6 +121,10 @@ Item {
                 uncertain: !line.decided
                 selected: line.current
                 suggestLane: line.decided ? -1 : root.laneOfKey(line.likelyKey)
+                dimmed: line.dragging && root.dragLane >= 0 && root.dragLane !== line.lane
+                targetLane: line.dragging ? root.dragLane : -1
+                targetLineColor: Theme.speakerLine(root.dragColorIndex)
+                targetSoftColor: Theme.speakerSoft(root.dragColorIndex)
                 outlineColor: Theme.text
                 dashColor: Theme.borderStrong
                 accentColor: Theme.accent
@@ -371,8 +381,10 @@ Item {
         }
     }
 
-    // A sín kattintása egy rétegben a sorok felett (a Javítás railArea-jának mintájára; húzás nincs).
-    // Csoport- és „további" sorokon semleges: a kattintás átmegy a kártyára.
+    // A sín kattintása és húzása egy rétegben a sorok felett (a Javítás railArea-jának mintájára).
+    // Kattintás: railClicked. Húzás (egy sor): a megfogott sor cellája a cél-oszlopot mutatja,
+    // lebegő „→ Név" címkével; elengedéskor a sor oda kerül. Csoport- és „további" sorokon
+    // semleges: a kattintás átmegy a kártyára.
     MouseArea {
         id: railArea
         objectName: "reviewRailArea"
@@ -381,18 +393,79 @@ Item {
         width: root.tab.railWidth
         height: list.height
         z: 2
-        onPressed: mouse => {
-            const row = list.indexAt(list.width / 2, list.contentY + mouse.y)
+        preventStealing: true
+
+        property var pressItem: null
+        property real pressX: 0
+        property real pressY: 0
+
+        function lineAt(y) {
+            const row = list.indexAt(list.width / 2, list.contentY + Math.max(1, Math.min(list.height - 2, y)))
             const item = row >= 0 ? list.itemAtIndex(row) : null
-            if (!item || !item.lineItem) mouse.accepted = false
+            return item && item.lineItem ? item.lineItem : null
         }
-        onClicked: mouse => {
-            const row = list.indexAt(list.width / 2, list.contentY + mouse.y)
-            const item = row >= 0 ? list.itemAtIndex(row) : null
-            if (!item || !item.lineItem) return
+        function resetDrag() {
+            root.dragActive = false
+            root.dragUtterance = ""
+            root.dragLane = -1
+            pressItem = null
+        }
+        function updateDrag(x, y) {
+            const lane = root.tab.railLaneAt(x)
+            root.dragLane = lane >= 0 ? lane : -1
+            dragChip.x = Math.min(list.width - dragChip.width - 12, railArea.x + x + 14)
+            dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
+        }
+
+        onPressed: mouse => {
+            pressItem = lineAt(mouse.y)
+            if (!pressItem) { mouse.accepted = false; return }
+            pressX = mouse.x
+            pressY = mouse.y
+        }
+        onPositionChanged: mouse => {
+            if (!pressItem) return
+            if (!root.dragActive) {
+                if (Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) < 7) return
+                root.dragUtterance = pressItem.utteranceId
+                root.dragActive = true
+            }
+            updateDrag(mouse.x, mouse.y)
+        }
+        onReleased: mouse => {
+            if (!pressItem) return
+            const li = pressItem
             root.tab.forceActiveFocus()
-            const li = item.lineItem
+            if (root.dragActive) {
+                const lane = root.dragLane
+                resetDrag()
+                if (lane >= 0 && lane !== li.lane) root.railClicked(li.utteranceId, li.lane, lane, li.railCells)
+                return
+            }
+            resetDrag()
             root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells)
+        }
+        onCanceled: resetDrag()
+    }
+
+    // Húzás közbeni lebegő címke: „→ Név" (a Javítás dragChip-jének mintájára).
+    Rectangle {
+        id: dragChip
+        objectName: "reviewDragChip"
+        visible: root.dragActive && root.dragLane >= 0
+        z: 3
+        width: dragLabel.implicitWidth + 18
+        height: dragLabel.implicitHeight + 6
+        radius: 10
+        color: Theme.accent
+        TLabel {
+            id: dragLabel
+            anchors.centerIn: parent
+            text: root.dragLane >= 0 && root.dragLane < root.tab.laneCount
+                  ? "→ " + root.vm.lanes[root.dragLane].name : ""
+            color: Theme.textOnAccent
+            font.pixelSize: Theme.fontCaption
+            font.weight: Theme.weightSemiBold
         }
     }
 
