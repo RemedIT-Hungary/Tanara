@@ -363,8 +363,10 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
     QSet<QString> manualNames;
     QSet<QString> approvedNames;
     QSet<QString> usedIds;
+    QHash<QString, QStringList> manualTracks;   // név → kézi sáv-kötés (az újraelemzés is megtartja)
     for (const Participant& p : m.participants) {
         if (p.approved && !p.personName.isEmpty()) approvedNames.insert(p.personName.toLower());
+        if (!p.tracks.isEmpty() && !p.personName.isEmpty()) manualTracks.insert(p.personName.toLower(), p.tracks);
         if (p.source != ParticipantSource::Manual) continue;
         Participant k = p;
         k.sides.clear();
@@ -416,6 +418,7 @@ QVector<Participant> buildParticipants(ClusterSet& clusters, const Meeting& m,
             p.personName = c.matchName;
             p.source = ParticipantSource::Voice;
             p.approved = !p.personName.isEmpty() && approvedNames.contains(p.personName.toLower());
+            if (!p.personName.isEmpty()) p.tracks = manualTracks.value(p.personName.toLower());
             out.append(p);
             idx = out.size() - 1;
             if (!p.personName.isEmpty()) byName.insert(p.personName.toLower(), idx);

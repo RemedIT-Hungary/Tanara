@@ -187,11 +187,17 @@ QString MeetingActivity::filePath(const QString& meetingFolder)
     return QDir(meetingFolder).filePath(QStringLiteral("tracks.activity.bin"));
 }
 
-MeetingActivity MeetingActivity::load(const QString& meetingFolder, const QString& fingerprint)
+QString MeetingActivity::viewFilePath(const QString& meetingFolder)
+{
+    return QDir(meetingFolder).filePath(QStringLiteral("tracks.activity.view.bin"));
+}
+
+MeetingActivity MeetingActivity::load(const QString& meetingFolder, const QString& fingerprint,
+                                      const QString& path)
 {
     MeetingActivity a;
     a.fingerprint = fingerprint;
-    QFile f(filePath(meetingFolder));
+    QFile f(path.isEmpty() ? filePath(meetingFolder) : path);
     if (!f.open(QIODevice::ReadOnly)) return a;
     QDataStream in(&f);
     in.setVersion(QDataStream::Qt_6_0);
@@ -213,9 +219,9 @@ MeetingActivity MeetingActivity::load(const QString& meetingFolder, const QStrin
     return a;
 }
 
-bool MeetingActivity::save(const QString& meetingFolder) const
+bool MeetingActivity::save(const QString& meetingFolder, const QString& path) const
 {
-    QSaveFile f(filePath(meetingFolder));
+    QSaveFile f(path.isEmpty() ? filePath(meetingFolder) : path);
     if (!f.open(QIODevice::WriteOnly)) return false;
     QDataStream out(&f);
     out.setVersion(QDataStream::Qt_6_0);

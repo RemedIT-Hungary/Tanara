@@ -214,8 +214,18 @@ struct Participant {
     ParticipantSource source = ParticipantSource::Voice;
     bool approved = false;          // a felhasználó jóváhagyta („Ki volt ott?")
     QStringList sides;              // "mic" | "loopback" — melyik oldalon hallottuk
+    // Kézi beszélő → sáv kötés (sáv-id-k, „Melyik sávon beszél?"); üres = a következtetett oldal
+    // (sides) érvényes. Átirat után a SpeakerOverlay::speakerTracks a párja (a core szinkronban tartja).
+    QStringList tracks;
     QVector<Evidence> evidence;
     double talkShare = 0.0;         // 0..1, a beszédidő hányada
+};
+
+// Egy résztvevő / beszélő sáv-kötése a UI-nak: a kézi sávok (manual), különben a következtetett
+// oldal sávjai (a lekeverésbe bevont mikrofon / hívás sávok vezető id-jai).
+struct ParticipantTrackBinding {
+    QStringList trackIds;
+    bool manual = false;
 };
 
 // Egy jelölt állapota a döntés pillanatában.

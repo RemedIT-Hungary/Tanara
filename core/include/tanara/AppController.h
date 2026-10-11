@@ -218,6 +218,25 @@ public:
     bool participantAnalysisRunning(const QString& meetingId) const;
     // Kész az elemzés, de még nincs döntés (jóváhagyás / kihagyás / „csak én") → a banner látszik.
     bool participantApprovalPending(const QString& meetingId) const;
+
+    // ---- sávok meghallgatása: beszéd-csík, beszélő → sáv kötés ----------------------------
+    // A meeting MINDEN sávjának aktivitása (a lekeverésből kimaradtaké is) a beszéd-csíkhoz:
+    // logikai sávonként egy TrackActivity (trackId = a vezető szakasz id-ja), megbeszélés-időben.
+    // Memóriából / a tracks.activity.view.bin gyorsítótárból (ha minden sáv bevont, a
+    // tracks.activity.bin is jó); ha nincs, ÜRES eredményt ad, a háttérben számol, és kész:
+    // trackActivityReady(meetingId). Nincs ilyen meeting / sáv → üres, jel nélkül.
+    tanara::MeetingActivity trackActivity(const QString& meetingId);
+    bool trackActivityComputing(const QString& meetingId) const;
+    // Beszélő → sáv kötés („Melyik sávon beszél?"). id: résztvevő-id (Participant::id) vagy
+    // beszélő-kulcs (átirat után). A Participant::tracks-ba kerül; ha van átirat, a résztvevő
+    // minden beszélő-kulcsára a szerkesztő kézi sáv-beosztásába is (SpeakerOverlay::speakerTracks,
+    // visszavonható) — EGY adat a „Miért ő?" chipjeivel. Üres lista = a kötés törlése (vissza a
+    // következtetett oldalra). Az ismeretlen sáv-id-k kimaradnak. true, ha változott;
+    // participantsChanged.
+    bool setParticipantTracks(const QString& meetingId, const QString& id, const QStringList& trackIds);
+    // A kötés: a kézi sávok (manual), különben a következtetett oldal (átirat után a szerkesztő
+    // oldal-elemzése, előtte a Participant::sides) bevont sávjai.
+    tanara::ParticipantTrackBinding participantTracks(const QString& meetingId, const QString& id);
     // Teszt- / D-szelet-varrat: egy személy címkéi (címke-id-k, a Meeting::tagIds terében). Üres →
     // nincs címke-bizonyíték.
     void setPersonTagsProvider(std::function<QStringList(const QString& personName)> provider);
@@ -573,6 +592,7 @@ signals:
     void participantAnalysisStarted(QString meetingId);     // a hangelemzés elindult
     void participantAnalysisFinished(QString meetingId);    // a hangelemzés kész (jelöltek a meetingen)
     void participantsChanged(QString meetingId);            // résztvevők / jóváhagyás / kötés változott
+    void trackActivityReady(QString meetingId);             // elkészült a sávok aktivitása (beszéd-csík)
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye
     void mixdownProgress(QString meetingId, int pct);       // lekeverés haladása 0..100
     // ---- Tanara Cloud feldolgozás visszajelzései (K-07, K-09…K-12) ----
@@ -639,6 +659,11 @@ private:
                            bool thenMixdown);
     void finishParticipantAnalysis(const QString& meetingId, tanara::ClusterSet clusters,
                                    const QString& tracksKey);
+    void finishTrackActivity(const QString& meetingId, const tanara::MeetingActivity& activity);
+    // A résztvevő (id) vagy beszélő-kulcs beszélő-kulcsai a szerkesztőben (átirat után).
+    QStringList speakerKeysFor(const tanara::Meeting& m, const QString& id);
+    // Átirat érkezésekor: a résztvevők kézi sáv-kötése a még üres beszélő-beosztásokba.
+    void copyParticipantTracksToOverlay(const QString& meetingId);
     // Az átirat megérkezett: kötés + a döntés (jóváhagyás / „csak én") alkalmazása. true, ha a
     // döntés lefedte a beszélőket (az automatikus azonosítás kimarad).
     bool applyParticipantsToTranscript(const QString& meetingId);

@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Sávok fül (M09): a felvétel hangsávjai érthető forrásnévvel, hullámformával és állapottal
-// (eldobott · csendes → visszaállítható; hiányzó fájl → megkereshető), alatta a lekeverés
+// „Sávok részletei” (M09, G6): a felvétel hangsávjai érthető forrásnévvel, beszéd-csíkkal
+// (kattintva oda ugrik és a sávon szól), kapcsolóval és állapottal (eldobott · csendes →
+// visszaállítható; hiányzó fájl → megkereshető; végleges törlés), alatta a lekeverés
 // sora (kész / elavult → frissíthető / fut % megszakítással), végül az eldobott sávok
 // végleges törlése megerősítéssel.
 // Képernyőképhez: --qml-prop 'demoState="default|loading|idle"'.
@@ -17,9 +18,18 @@ Item {
 
     readonly property string previewPath: player ? player.previewPath : ""
     readonly property real nameWidth: Math.max(180, Math.min(300, width * 0.3))
+    // A sorok így kapják (a TrackRow saját `tracks` / `activity` property-je elfedné az id-t).
+    readonly property alias trackModel: tracks
+    readonly property alias activityModel: activity
 
     TrackListModel {
         id: tracks
+        meetingId: root.meetingId
+        demoState: root.demoState
+    }
+    // A beszéd-csíkok adatai (a core sáv-aktivitása; ha nincs, a háttérben számol).
+    TrackActivityModel {
+        id: activity
         meetingId: root.meetingId
         demoState: root.demoState
     }
@@ -32,14 +42,17 @@ Item {
     onMeetingIdChanged: Qt.callLater(ensureWaveforms)
     Component.onCompleted: ensureWaveforms()
 
+    // A sávonkénti műveletek (lejátszás a csíkon, kapcsoló, átnevezés, megkeresés, visszaállítás,
+    // végleges törlés) a TrackRow-ban vannak — ugyanaz a komponens, mint az Áttekintés SÁVOK-sora.
+    // Az alábbi kettő a fül saját (fájl-szintű) felülete: egy sávfájl előnézete és egy sor
+    // hangfájljának megkeresése.
     function togglePreview(path) {
         if (!root.player) return
         if (root.previewPath === path) root.player.stopPreview()
         else root.player.playFile(path)
     }
-    // A fájlválasztó és a megerősítés beágyazott eseményhurkot futtat: közben a kijelölés
-    // másik megbeszélésre válthat (pl. véget ér egy felvétel). Ezért a megbeszélést és a sáv
-    // azonosítóját ELŐTTE jegyezzük meg, és a modell csak akkor hajtja végre, ha még egyezik.
+    // A fájlválasztó beágyazott eseményhurkot futtat: a megbeszélést és a sáv azonosítóját
+    // ELŐTTE jegyezzük meg, és a modell csak akkor hajtja végre, ha még egyezik.
     function locate(row) {
         if (!root.shell) return
         const meeting = tracks.meetingId
@@ -99,31 +112,12 @@ Item {
                     Repeater {
                         model: tracks
                         TrackRow {
-                            required property int index
-                            required property var model
                             width: rows.width
-                            first: index === 0
                             nameWidth: root.nameWidth
-                            displayName: model.displayName
-                            friendlyName: model.friendlyName
-                            renamed: model.renamed
-                            rawName: model.rawName
-                            iconName: model.iconName
-                            active: model.active
-                            missing: model.missing
-                            durationText: model.durationText
-                            peaks: model.peaks
-                            peaksState: model.peaksState
-                            peakReference: { model.peaks; tracks.peakReference; return tracks.rowReference(index) }
-                            colorIndex: model.colorIndex
-                            waveStart: model.waveStart
-                            waveSpan: model.waveSpan
-                            canPlay: !model.missing && (root.player !== null || tracks.demo)
-                            playing: root.previewPath !== "" && root.previewPath === model.path
-                            onPlayRequested: root.togglePreview(model.path)
-                            onRenameRequested: (name) => tracks.rename(index, name)
-                            onRestoreRequested: tracks.restore(index)
-                            onLocateRequested: root.locate(index)
+                            tracks: root.trackModel
+                            player: root.player
+                            activity: root.activityModel
+                            shell: root.shell
                         }
                     }
                 }

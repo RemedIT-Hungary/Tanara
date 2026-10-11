@@ -4,6 +4,7 @@
 #include "LibraryDemoData.h"
 
 #include "tanara/AppController.h"
+#include "tanara/audio/TrackCatalog.h"
 #include "tanara/store/MeetingStore.h"
 
 #include <QDir>
@@ -116,6 +117,32 @@ QString meetingAudioPath(const tanara::Meeting& m)
 }
 
 } // namespace
+
+PlayerController::TrackSeek PlayerController::resolveTrackSeek(const QVector<tanara::Track>& tracks,
+                                                               const QString& trackId, qint64 meetingMs)
+{
+    TrackSeek out;
+    const QVector<tanara::tracknames::SegmentInfo> seg = tanara::tracknames::segments(tracks);
+    int lead = -1;
+    for (int i = 0; i < tracks.size() && lead < 0; ++i)
+        if (tracks.at(i).id == trackId) lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+    if (lead < 0) return out;
+    // A logikai sáv szakaszai a kezdetük sorrendjében.
+    QVector<int> members;
+    for (int i = 0; i < tracks.size(); ++i)
+        if ((seg.value(i).leader >= 0 ? seg.value(i).leader : i) == lead) members << i;
+    std::stable_sort(members.begin(), members.end(), [&tracks](int a, int b) {
+        return tracks.at(a).startOffsetMs < tracks.at(b).startOffsetMs;
+    });
+    int pick = members.first();
+    for (int i : members)
+        if (qMax<qint64>(0, tracks.at(i).startOffsetMs) <= meetingMs) pick = i;
+    out.index = pick;
+    out.leaderId = tracks.at(lead).id;
+    out.offsetMs = qMax<qint64>(0, tracks.at(pick).startOffsetMs);
+    out.fileMs = qMax<qint64>(0, meetingMs - out.offsetMs);
+    return out;
+}
 
 void PlayerController::setBackendFactory(BackendFactory factory)
 {
@@ -333,19 +360,83 @@ void PlayerController::playFile(const QString& absolutePath)
         emit errorOccurred(tr("A hangfájl nem található: %1").arg(absolutePath));
         return;
     }
+    m_previewTrackId.clear();
+    m_previewSegmentId.clear();
+    m_previewOffsetMs = 0;
+    m_previewPath.clear();       // mindig újratöltjük (a fájl elejétől)
+    loadPreview(absolutePath, 0);
+}
+
+void PlayerController::loadPreview(const QString& absolutePath, qint64 fileMs)
+{
     ensureBackend();
     if (m_playing)
         m_backend->pause();
     m_mixLoaded = false;         // a motor forrása mostantól az előnézet
     setPlaying(false);
+    const bool samePath = absolutePath == m_previewPath;
     m_previewPath = absolutePath;
-    m_previewPositionMs = 0;
-    m_previewDurationMs = 0;
+    m_previewPositionMs = fileMs;
+    if (!samePath) {
+        m_previewDurationMs = 0;
+        // Néma motor (demó / teszt): a hossz a megbeszélésé.
+        m_backend->setSource(absolutePath, backendFactory() ? 0 : m_durationMs);
+    }
+    m_backend->setPosition(fileMs);
     emit previewPathChanged();
     emit previewPositionMsChanged();
     emit previewDurationMsChanged();
-    m_backend->setSource(absolutePath, backendFactory() ? 0 : m_durationMs);
     m_backend->play();
+}
+
+void PlayerController::playTrack(const QString& trackId, int meetingMs)
+{
+    if (trackId.isEmpty())
+        return;
+    QString path;
+    TrackSeek seek;
+    if (m_controller && m_controller->store() && !m_meetingId.isEmpty()) {
+        const tanara::Meeting m = m_controller->store()->load(m_meetingId);
+        qint64 at = meetingMs;
+        if (at < 0) {
+            // Folytatás: ugyanaz a sáv → ahol abbahagyta; különben a sáv eleje.
+            seek = resolveTrackSeek(m.tracks, trackId, 0);
+            at = seek.leaderId == m_previewTrackId && !m_previewTrackId.isEmpty()
+                     ? previewMeetingMs() : seek.offsetMs;
+        }
+        seek = resolveTrackSeek(m.tracks, trackId, at);
+        if (seek.index < 0)
+            return;
+        const tanara::Track& t = m.tracks.at(seek.index);
+        path = QDir(m.folder).filePath(t.file);
+        if (backendFactory() && !QFileInfo::exists(path)) {
+            emit errorOccurred(tr("A hangfájl nem található: %1").arg(path));
+            return;
+        }
+        m_previewSegmentId = t.id;
+    } else if (AppContext::instance()->demo() || !m_controller) {
+        // Demó: nincs fájl, a néma motor a megbeszélés hosszán „játszik".
+        seek.leaderId = trackId;
+        seek.fileMs = meetingMs >= 0 ? meetingMs
+                    : (trackId == m_previewTrackId ? m_previewPositionMs : 0);
+        path = QStringLiteral("demo:") + trackId;
+        m_previewSegmentId = trackId;
+    } else {
+        return;
+    }
+    m_previewTrackId = seek.leaderId;
+    m_previewOffsetMs = seek.offsetMs;
+    loadPreview(path, seek.fileMs);
+}
+
+void PlayerController::toggleTrack(const QString& trackId)
+{
+    if (!m_previewTrackId.isEmpty() && m_previewTrackId == trackId && !m_previewPath.isEmpty() && m_backend) {
+        if (m_previewPlaying) m_backend->pause();
+        else m_backend->play();
+        return;
+    }
+    playTrack(trackId, -1);
 }
 
 void PlayerController::stopPreview()
@@ -355,6 +446,9 @@ void PlayerController::stopPreview()
     if (m_backend)
         m_backend->pause();
     m_previewPath.clear();
+    m_previewTrackId.clear();
+    m_previewSegmentId.clear();
+    m_previewOffsetMs = 0;
     emit previewPathChanged();
     if (m_previewPlaying) {
         m_previewPlaying = false;
@@ -460,6 +554,22 @@ void PlayerController::onBackendDuration(qint64 ms)
 void PlayerController::onBackendFinished()
 {
     if (!m_previewPath.isEmpty()) {
+        // Sáv-előnézet: a logikai sáv következő szakasza (ha van) folytatja.
+        if (!m_previewTrackId.isEmpty() && m_controller && m_controller->store() && !m_meetingId.isEmpty()) {
+            const tanara::Meeting m = m_controller->store()->load(m_meetingId);
+            const qint64 here = m_previewOffsetMs;
+            qint64 next = -1;
+            const TrackSeek cur = resolveTrackSeek(m.tracks, m_previewTrackId, here);
+            for (const tanara::Track& t : m.tracks) {
+                const TrackSeek s = resolveTrackSeek(m.tracks, t.id, qMax<qint64>(0, t.startOffsetMs));
+                if (s.leaderId == cur.leaderId && s.offsetMs > here && (next < 0 || s.offsetMs < next))
+                    next = s.offsetMs;
+            }
+            if (next > here) {
+                playTrack(m_previewTrackId, int(next));
+                return;
+            }
+        }
         stopPreview();
         return;
     }

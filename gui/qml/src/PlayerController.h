@@ -13,12 +13,20 @@
 //    previewPositionMs / previewDurationMs). stopPreview() visszatér a lekeveréshez.
 //    Az előnézet a sávfájlt ÖNMAGÁBAN játssza (fájl-idő, 0-tól): egy később kezdődő sáv
 //    (Track::startOffsetMs) előnézete a sáv saját elejétől szól, a megbeszélés-idő nem számít.
+//  - playTrack() / toggleTrack() egy SÁVOT hallgat MEGBESZÉLÉS-időben (a beszéd-csík ugrása):
+//    a logikai sáv (egy eszköz szakaszai) azon fájlja szól, amelyik a kért időt fedi, a fájl-idő
+//    = megbeszélés-idő − Track::startOffsetMs; a szakasz végén a következő szakasz jön. Ez is
+//    előnézet (previewPath), plusz previewTrackId (a vezető szakasz id-ja) és previewMeetingMs.
+//    A sáv-előnézet szüneteltethető (toggleTrack): a pozíció megmarad, a forrás nem ürül.
 //
 #include "PlayerBackend.h"
+
+#include "tanara/Types.h"
 
 #include <QObject>
 #include <QPointer>
 #include <QTimer>
+#include <QVector>
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
@@ -47,8 +55,24 @@ class PlayerController : public QObject {
     Q_PROPERTY(int previewDurationMs READ previewDurationMs NOTIFY previewDurationMsChanged)
     // A lejátszott hangfájl (lekeverés vagy tartalék-sáv) abszolút útja; üres, ha nincs.
     Q_PROPERTY(QString audioPath READ audioPath NOTIFY availableChanged)
+    // A sáv-előnézet (playTrack): a logikai sáv vezető id-ja (üres = nem sáv szól) és a
+    // lejátszás-fej MEGBESZÉLÉS-időben.
+    Q_PROPERTY(QString previewTrackId READ previewTrackId NOTIFY previewPathChanged)
+    Q_PROPERTY(int previewMeetingMs READ previewMeetingMs NOTIFY previewPositionMsChanged)
 
 public:
+    // Egy sáv megbeszélés-idejű pontja: melyik szakasz-fájl (a meeting.tracks indexe) és azon
+    // belül hol. index -1: nincs ilyen sáv. A kért idő előtti / szakaszok közti résben a
+    // következő szakasz eleje; az utolsó szakasz után az utolsó szakasz (a vége felé).
+    struct TrackSeek {
+        int index = -1;
+        QString leaderId;
+        qint64 fileMs = 0;
+        qint64 offsetMs = 0;    // a szakasz Track::startOffsetMs-a
+    };
+    static TrackSeek resolveTrackSeek(const QVector<tanara::Track>& tracks, const QString& trackId,
+                                      qint64 meetingMs);
+
     using BackendFactory = std::function<PlayerBackend*(QObject* parent)>;
     // A valódi hang-motor gyára (a main.cpp állítja be). Üres → beépített néma motor.
     static void setBackendFactory(BackendFactory factory);
@@ -77,6 +101,8 @@ public:
     int previewPositionMs() const { return int(m_previewPositionMs); }
     int previewDurationMs() const { return int(m_previewDurationMs); }
     QString audioPath() const { return m_mixPath; }
+    QString previewTrackId() const { return m_previewTrackId; }
+    int previewMeetingMs() const { return int(m_previewOffsetMs + m_previewPositionMs); }
 
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
@@ -85,6 +111,11 @@ public:
     Q_INVOKABLE void playRange(int startMs, int endMs);
     Q_INVOKABLE void playFile(const QString& absolutePath);
     Q_INVOKABLE void stopPreview();
+    // Sáv meghallgatása megbeszélés-időben: meetingMs < 0 → ahol abbahagyta (ugyanaz a sáv),
+    // különben a sáv eleje. A lekeverés pozíciója és `playing` érintetlen.
+    Q_INVOKABLE void playTrack(const QString& trackId, int meetingMs = -1);
+    // Lejátszás / szünet a sávon (a szünet megtartja a forrást és a pozíciót).
+    Q_INVOKABLE void toggleTrack(const QString& trackId);
     // A forrás újra-feloldása (pl. elkészült a lekeverés) a pozíció megtartásával.
     Q_INVOKABLE void reload();
 
@@ -133,6 +164,10 @@ private:
     qreal m_rate = 1.0;
     qreal m_volume = 1.0;
 
+    void loadPreview(const QString& absolutePath, qint64 fileMs);
+    QString m_previewTrackId;   // sáv-előnézetnél a logikai sáv vezető id-ja
+    QString m_previewSegmentId; // a most szóló szakasz id-ja
+    qint64 m_previewOffsetMs = 0;
     QString m_previewPath;
     bool m_previewPlaying = false;
     qint64 m_previewPositionMs = 0;

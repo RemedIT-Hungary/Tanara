@@ -41,10 +41,14 @@ struct MeetingActivity {
 
     bool isEmpty() const { return tracks.isEmpty(); }
     static QString filePath(const QString& meetingFolder);   // tracks.activity.bin
+    // A megjelenítés (beszéd-csík) gyorsítótára: MINDEN sávé, a lekeverésből kimaradtaké is
+    // (a megtartom / kihagyom döntéshez). Lásd AppController::trackActivity.
+    static QString viewFilePath(const QString& meetingFolder);   // tracks.activity.view.bin
     // Üres (fingerprint-tel kitöltött, sáv nélküli) eredmény, ha nincs fájl / más a lenyomat /
-    // ismeretlen a formátum.
-    static MeetingActivity load(const QString& meetingFolder, const QString& fingerprint);
-    bool save(const QString& meetingFolder) const;
+    // ismeretlen a formátum. path: a gyorsítótár-fájl (üres → filePath(meetingFolder)).
+    static MeetingActivity load(const QString& meetingFolder, const QString& fingerprint,
+                                const QString& path = {});
+    bool save(const QString& meetingFolder, const QString& path = {}) const;
 };
 
 namespace trackactivity {

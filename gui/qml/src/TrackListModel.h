@@ -86,6 +86,9 @@ public:
         ExcludedReasonRole,
         IncludedRole,         // a lekeverésben van (Track::included())
         KindRole,             // "mic" | "loopback" | "other" (melyik oldal hangja)
+        // A logikai sáv (az eszköz szakaszai) vezető szakaszának id-ja: a beszéd-csík, a
+        // sáv-lejátszás (PlayerController::previewTrackId) és a beszélő → sáv kötés kulcsa.
+        GroupIdRole,
     };
 
     // A hullámforma helye a megbeszélés idővonalán: {kezdet, hossz} 0..1 arányban. Ismeretlen
@@ -150,6 +153,9 @@ public:
     Q_INVOKABLE QString relocateTrack(const QString& meetingId, const QString& trackId,
                                       const QString& filePath);
     Q_INVOKABLE int deleteDroppedIn(const QString& meetingId);
+    // EGY sáv végleges törlése (a hangfájl is; AppController::deleteTrack). A megerősítés a
+    // hívó dolga; a megbeszélés-ellenőrzés mint a deleteDroppedIn-nél. true: törölve.
+    Q_INVOKABLE bool deleteTrackIn(const QString& meetingId, const QString& trackId);
     // A lekeverés (újra)készítése az aktív sávokból.
     Q_INVOKABLE void refreshMixdown();
 
@@ -164,6 +170,7 @@ signals:
 private:
     struct Row {
         tanara::TrackView view;
+        QString groupId;
         QList<qreal> peaks;
         QString peaksState = QStringLiteral("none");
         qint64 durationMs = -1;

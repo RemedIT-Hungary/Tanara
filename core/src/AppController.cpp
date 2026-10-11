@@ -525,6 +525,8 @@ struct AppController::Impl {
     QThreadPool      analysisPool;
     QSet<QString>    speechCheckRunning;  // meetingId-k, amelyeken épp mérünk
     QSet<QString>    speechChecked;       // ebben a folyamatban már mérve (hibánál se ismételjük)
+    QHash<QString, MeetingActivity> activityView;   // a beszéd-csík aktivitása (minden sáv), lenyomattal
+    QSet<QString>    activityViewRunning; // meetingId-k, amelyeken épp számoljuk
     QHash<QString, std::shared_ptr<std::atomic<bool>>> analysisRuns;   // meetingId → megszakítás
     std::shared_ptr<std::atomic<bool>> analysisShutdown = std::make_shared<std::atomic<bool>>(false);
     std::function<QStringList(const QString&)> personTags;   // D-szelet varrata (személy címkéi)
@@ -4652,6 +4654,9 @@ void AppController::finishSpeechCheck(const QString& meetingId, const MeetingAct
             m.mixdownDirty = true;
             qCInfo(lcAudio).noquote() << "Beszéd nélküli sáv kimarad a lekeverésből:"
                                       << r.excluded.join(QStringLiteral(", "));
+            // A teljes mérés a beszéd-csík gyorsítótára lesz (a kimaradt sáv is látsszon, és ne
+            // kelljen újra dekódolni); az elemzés cache-e a bevont sávoké.
+            activity.save(m.folder, MeetingActivity::viewFilePath(m.folder));
             // A sáv-aktivitás cache a bevont sávokhoz tartozik: a kimaradtak nélkül mentjük újra.
             MeetingActivity kept;
             kept.fingerprint = trackactivity::activityFingerprint(m, m.folder);
@@ -4678,6 +4683,213 @@ bool AppController::checkTrackSpeech(const QString& meetingId)
     if (m.id.isEmpty() || !trackspeech::needsSpeechCheck(m)) return false;
     startSpeechCheck(meetingId, /*thenMixdown*/ false);
     return true;
+}
+
+// ---- sávok meghallgatása: beszéd-csík, beszélő → sáv kötés ---------------------------------
+
+namespace {
+
+// A meeting bevont, adott oldalú logikai sávjainak vezető id-jai (a sávok sorrendjében).
+QStringList includedLeaders(const Meeting& m, bool mic, bool loop)
+{
+    QStringList out;
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    for (int i = 0; i < m.tracks.size(); ++i) {
+        const int lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+        const Track& t = m.tracks.at(i);
+        if (!t.included()) continue;
+        if (!((mic && t.kind == TrackKind::Mic) || (loop && t.kind == TrackKind::Loopback))) continue;
+        const QString id = m.tracks.at(lead).id;
+        if (!out.contains(id)) out << id;
+    }
+    return out;
+}
+
+// A sáv-id-k a meeting logikai sávjainak vezető id-jaira (ismeretlen kimarad, ismétlés nélkül).
+QStringList normalizeTrackIds(const Meeting& m, const QStringList& trackIds)
+{
+    QStringList out;
+    const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+    for (const QString& id : trackIds) {
+        for (int i = 0; i < m.tracks.size(); ++i) {
+            if (m.tracks.at(i).id != id) continue;
+            const int lead = seg.value(i).leader >= 0 ? seg.value(i).leader : i;
+            const QString leadId = m.tracks.at(lead).id;
+            if (!out.contains(leadId)) out << leadId;
+            break;
+        }
+    }
+    return out;
+}
+
+const Participant* participantById(const Meeting& m, const QString& id)
+{
+    for (const Participant& p : m.participants)
+        if (!id.isEmpty() && p.id == id) return &p;
+    return nullptr;
+}
+
+} // namespace
+
+MeetingActivity AppController::trackActivity(const QString& meetingId)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || m.tracks.isEmpty()) return {};
+    // A csík MINDEN sávot mutat (a kimaradtat is): a lenyomat mindet aktívnak veszi.
+    Meeting all = m;
+    for (Track& t : all.tracks) t.active = true;
+    const QString fp = trackactivity::activityFingerprint(all, m.folder);
+    if (const auto it = d->activityView.constFind(meetingId);
+        it != d->activityView.constEnd() && it->fingerprint == fp)
+        return *it;
+    MeetingActivity a = MeetingActivity::load(m.folder, fp);   // ha minden sáv bevont, ez az
+    if (a.isEmpty()) a = MeetingActivity::load(m.folder, fp, MeetingActivity::viewFilePath(m.folder));
+    if (!a.isEmpty()) {
+        d->activityView.insert(meetingId, a);
+        return a;
+    }
+    if (!d->activityViewRunning.contains(meetingId)) {
+        d->activityViewRunning.insert(meetingId);
+        const auto stop = d->analysisShutdown;
+        QPointer<AppController> self(this);
+        const QString folder = m.folder;
+        d->analysisPool.start([self, all, folder, fp, stop, meetingId]() {
+            MeetingActivity act;
+            act.fingerprint = fp;
+            if (!stop->load()) {
+                act = computeMeetingActivity(all, folder);
+                act.fingerprint = fp;
+                if (!act.isEmpty()) act.save(folder, MeetingActivity::viewFilePath(folder));
+            }
+            QMetaObject::invokeMethod(qApp, [self, meetingId, act]() {
+                if (self) self->finishTrackActivity(meetingId, act);
+            }, Qt::QueuedConnection);
+        });
+    }
+    MeetingActivity pending;
+    pending.fingerprint = fp;
+    return pending;
+}
+
+bool AppController::trackActivityComputing(const QString& meetingId) const
+{
+    return d->activityViewRunning.contains(meetingId);
+}
+
+void AppController::finishTrackActivity(const QString& meetingId, const MeetingActivity& activity)
+{
+    d->activityViewRunning.remove(meetingId);
+    // Az üres eredmény is a lenyomatával kerül be: nem számolunk újra, amíg a sávok nem változnak.
+    d->activityView.insert(meetingId, activity);
+    emit trackActivityReady(meetingId);
+}
+
+QStringList AppController::speakerKeysFor(const Meeting& m, const QString& id)
+{
+    if (!m.hasTranscript || id.isEmpty()) return {};
+    SpeakerEditor* ed = speakerEditor(m.id);
+    if (!ed || !ed->hasTranscript()) return {};
+    const QVector<EditorSpeaker> speakers = ed->speakers();
+    const Participant* p = participantById(m, id);
+    if (!p) {
+        for (const EditorSpeaker& s : speakers)
+            if (s.key == id) return {id};
+        return {};
+    }
+    QStringList raws;   // a kötött nyers beszélők ("Beszélő 1" vagy "Beszélő 1@mic")
+    for (const QString& r : p->rawSpeakerIds) raws << r.section(QLatin1Char('@'), 0, 0);
+    QStringList keys;
+    for (const EditorSpeaker& s : speakers) {
+        const bool byName = !p->personName.isEmpty()
+                         && s.personName.compare(p->personName, Qt::CaseInsensitive) == 0;
+        const bool byRaw = !s.rawLabel.isEmpty() && raws.contains(s.rawLabel);
+        if ((byName || byRaw) && !keys.contains(s.key)) keys << s.key;
+    }
+    return keys;
+}
+
+bool AppController::setParticipantTracks(const QString& meetingId, const QString& id,
+                                         const QStringList& trackIds)
+{
+    Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || id.isEmpty()) return false;
+    const QStringList ids = normalizeTrackIds(m, trackIds);
+    int pIdx = -1;
+    for (int i = 0; i < m.participants.size(); ++i)
+        if (m.participants.at(i).id == id) pIdx = i;
+    const QStringList keys = speakerKeysFor(m, id);
+    if (pIdx < 0 && !keys.isEmpty()) {
+        // Beszélő-kulcs: a hozzá tartozó résztvevő (ha van) is megkapja.
+        for (int i = 0; i < m.participants.size() && pIdx < 0; ++i)
+            if (speakerKeysFor(m, m.participants.at(i).id).contains(id)) pIdx = i;
+    }
+    if (pIdx < 0 && keys.isEmpty()) return false;
+    bool changed = false;
+    if (pIdx >= 0 && m.participants.at(pIdx).tracks != ids) {
+        m.participants[pIdx].tracks = ids;
+        d->store->saveMeeting(m);
+        changed = true;
+    }
+    if (!keys.isEmpty())
+        if (SpeakerEditor* ed = speakerEditor(meetingId))
+            for (const QString& key : keys)
+                changed = ed->setTrackAssignment(key, ids) || changed;
+    if (changed) emit participantsChanged(meetingId);
+    return changed;
+}
+
+ParticipantTrackBinding AppController::participantTracks(const QString& meetingId, const QString& id)
+{
+    ParticipantTrackBinding b;
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty()) return b;
+    const Participant* p = participantById(m, id);
+    const QStringList keys = speakerKeysFor(m, id);
+    SpeakerEditor* ed = keys.isEmpty() ? nullptr : speakerEditor(meetingId);
+    // Kézi: átirat után a szerkesztő beosztása az igazság (a „Miért ő?" chipjei), előtte a résztvevőé.
+    if (ed) {
+        for (const QString& key : keys) {
+            const QStringList t = ed->trackAssignment(key);
+            if (!t.isEmpty()) {
+                b.trackIds = t;
+                b.manual = true;
+                return b;
+            }
+        }
+    } else if (p && !p->tracks.isEmpty()) {
+        b.trackIds = normalizeTrackIds(m, p->tracks);
+        b.manual = !b.trackIds.isEmpty();
+        if (b.manual) return b;
+    }
+    // Következtetett: a szerkesztő oldal-elemzése, különben a hangelemzés oldalai.
+    bool mic = false, loop = false;
+    if (ed) {
+        const SideReport r = ed->sideReport();
+        for (const PersonSide& ps : r.persons) {
+            if (!keys.contains(ps.speakerKey)) continue;
+            mic = mic || ps.side == Side::Local || ps.side == Side::Mixed;
+            loop = loop || ps.side == Side::Remote || ps.side == Side::Mixed;
+        }
+    }
+    if (!mic && !loop && p) {
+        mic = p->sides.contains(QStringLiteral("mic"));
+        loop = p->sides.contains(QStringLiteral("loopback"));
+    }
+    b.trackIds = includedLeaders(m, mic, loop);
+    return b;
+}
+
+void AppController::copyParticipantTracksToOverlay(const QString& meetingId)
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || !m.hasTranscript) return;
+    SpeakerEditor* ed = speakerEditor(meetingId);
+    if (!ed || !ed->hasTranscript()) return;
+    for (const Participant& p : m.participants) {
+        if (p.tracks.isEmpty()) continue;
+        for (const QString& key : speakerKeysFor(m, p.id))
+            if (ed->trackAssignment(key).isEmpty()) ed->setTrackAssignment(key, p.tracks);
+    }
 }
 
 void AppController::includeTrack(const QString& meetingId, const QString& trackId)
@@ -4829,6 +5041,8 @@ bool AppController::applySpeakerBindings(const QString& meetingId, const QVector
 bool AppController::applyParticipantsToTranscript(const QString& meetingId)
 {
     bindRawSpeakers(meetingId);
+    // Az átirat előtt beállított kézi sáv-kötés átkerül a beszélők beosztásába (egy adat).
+    copyParticipantTracksToOverlay(meetingId);
     const Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || !m.approval || m.approval->skipped) return false;
     const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);

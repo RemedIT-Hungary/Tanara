@@ -12,6 +12,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 
 #include <algorithm>
 #include <cmath>
@@ -217,6 +218,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const
     case SpeechRatioRole:  return r.view.track.speechRatio;
     case ExcludedReasonRole: return r.view.track.excludedReason;
     case IncludedRole:     return r.view.track.included() && !r.view.fileMissing;
+    case GroupIdRole:      return r.groupId.isEmpty() ? r.view.track.id : r.groupId;
     case KindRole:
         return r.view.track.kind == tanara::TrackKind::Mic ? QStringLiteral("mic")
              : r.view.track.kind == tanara::TrackKind::Loopback ? QStringLiteral("loopback")
@@ -236,7 +238,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const
         {ColorIndexRole, "colorIndex"}, {WaveStartRole, "waveStart"}, {WaveSpanRole, "waveSpan"},
         {SegmentRole, "segment"}, {StartOffsetRole, "startOffsetMs"},
         {SpeechRatioRole, "speechRatio"}, {ExcludedReasonRole, "excludedReason"},
-        {IncludedRole, "included"}, {KindRole, "kind"},
+        {IncludedRole, "included"}, {KindRole, "kind"}, {GroupIdRole, "groupId"},
     };
 }
 
@@ -321,10 +323,15 @@ void TrackListModel::reload()
         if (!m.mixdownFile.isEmpty())
             m_mixdownPath = QDir(m.folder).filePath(m.mixdownFile);
         const QVector<TrackView> views = TrackCatalog::tracks(m);
+        QHash<QString, QString> groupOf;   // szakasz-id → a logikai sáv vezetőjének id-ja
+        const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
+        for (int i = 0; i < m.tracks.size(); ++i)
+            groupOf.insert(m.tracks.at(i).id, m.tracks.at(seg.value(i).leader >= 0 ? seg.value(i).leader : i).id);
         int color = 0;
         for (const TrackView& v : views) {
             Row row;
             row.view = v;
+            row.groupId = groupOf.value(v.track.id, v.track.id);
             row.durationMs = v.durationMs;
             row.colorIndex = color++;
             // A korábban betöltött csúcsok megmaradnak (ugyanaz a sáv, ugyanaz a fájl).
@@ -565,6 +572,26 @@ int TrackListModel::deleteDroppedIn(const QString& meetingId)
     if (meetingId.isEmpty() || meetingId != m_meetingId)
         return -1;
     return c->tracks()->deleteDroppedTracks(meetingId);
+}
+
+bool TrackListModel::deleteTrackIn(const QString& meetingId, const QString& trackId)
+{
+    AppController* c = app();
+    if (jobsupport::demoMode(c)) {
+        for (int i = 0; i < m_rows.size(); ++i) {
+            if (m_rows[i].view.track.id != trackId) continue;
+            beginRemoveRows(QModelIndex(), i, i);
+            m_rows.removeAt(i);
+            endRemoveRows();
+            emit changed();
+            return true;
+        }
+        return false;
+    }
+    if (meetingId.isEmpty() || meetingId != m_meetingId || trackId.isEmpty())
+        return false;
+    c->deleteTrack(meetingId, trackId);
+    return true;
 }
 
 void TrackListModel::refreshMixdown()
