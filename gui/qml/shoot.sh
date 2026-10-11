@@ -9,6 +9,12 @@
 #   Ha nincs megadva: a tanara alapja (300 ms), kivéve a TranscriptTab-ot (v3 demo-állapotai a
 #   kitalált megbeszélést aszinkron töltik be), ott 2500 ms.
 # A v3 héj felvételei (alap-készlet után): lásd a gui/qml/README.md „Screenshot recipes (v3)" részét.
+# A javító kör állapotai (példák):
+#   gui/qml/shoot.sh 'Main:1280x820:demoState="overviewTranscribing"' 'TracksTab:1004x640:demoState="default"' \
+#     'ParticipantsDialog:1000x760:demoState="learnQuestion"' 'MapDock:1100x200:demoState="similarMarks"' \
+#     'SettingsWindow:900x880:demoState="B08verify"' 'SettingsWindow:900x880:demoState="B08partial"' \
+#     'PeopleWindow:960x1100:demoState="tagsFocus"' 'TranscriptTab:1100x760:demoState="newPersonTag"'
+# A Gallery új szakasza („Sávok és tanulás”) a lap alján van: a teljes lap magassága 6900.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -19,7 +25,7 @@ DELAY="${SHOT_DELAY:-}"
 mkdir -p "$OUT"
 
 if [ $# -eq 0 ]; then
-  set -- "Gallery:1280x6400" "Gallery:1280x820:overlay=\"dialog\"" "Gallery:1280x820:overlay=\"menu\"" \
+  set -- "Gallery:1280x6900" "Gallery:1280x820:overlay=\"dialog\"" "Gallery:1280x820:overlay=\"menu\"" \
          "Main:1280x820" "Main:1280x820:shellState=\"empty\"" "Main:1280x820:shellState=\"noSelection\"" \
          "Main:1280x820:shellState=\"preTranscript\",taskRunning=true" \
          "SettingsWindow:900x800:demoState=\"B01\"" "SettingsWindow:900x780:demoState=\"B02\"" \

@@ -26,7 +26,22 @@ and in `tanara --record`. The old Widgets main window (`tanara --classic`) is go
 picked up by the core's AUTOMOC cache: delete the core autogen cache
 (`build/core/tanara_core_autogen` and `build/core/CMakeFiles/tanara_core_autogen.dir`) and re-run
 `cmake -S . -B build`, otherwise the link fails with undefined `vtable` / `staticMetaObject` symbols.
-A fresh build directory is always fine.
+A fresh build directory is always fine. (The same holds for a new `QObject` header under
+`gui/qml/src/`; there the stale file is `build/gui/qml/tanara_qml_autogen/timestamp`.)
+
+**Core pieces the QML relies on** (UI-independent, `core/`):
+
+- **`MeetingUndoService`** (`core/include/tanara/edit/MeetingUndo.h`, `AppController::meetingUndo(meetingId)`):
+  ONE shared undo timeline per meeting. It orders the steps of the three sources by time and undoes the
+  newest through its own source: the transcript editor's stack (`SpeakerEditor`), the tag steps of the
+  meeting (`TagService`, global stack, only the meeting's own steps count) and its own participant
+  steps (approve, skip, "Csak én beszéltem", track bind, add / delete a participant, note). So `Ctrl+Z`
+  and the toast / change-bar "Visszavonás" take back whatever was done last, in the Áttekintés as well.
+- **CLI** (`tanara-cli`, English only): `participants <folder> [--analyze [--write] | --remove <id>] [--json]`
+  (`--remove` deletes a participant for good), `voice-models [list | enable | disable | fetch <id> [--force]
+  | verify <id> | delete <id>]` (`verify` checks the file size; `delete` removes the DOWNLOADED file only),
+  `review <folder> [--json --models a,b]` (the Átnézendő groups without a GUI), `track-sides <folder>
+  [--frame-ms N --json --no-cache --write-cache --legacy]` (`--legacy` adds the old per-line side verdict).
 
 **Adding a file never needs a CMake edit.** The globs use `CONFIGURE_DEPENDS`, so the
 next `cmake --build build` re-configures by itself. Targets: `tanara_qml` (static
@@ -195,8 +210,9 @@ Overrides for `--demo` / `--qml-shot` (leave unset with a real controller; `demo
 rename | tracks | import | importSplit | importProbing | importError | importEmpty | importFailed |
 importProgress | importStrip | drop`; also `tagToast`, `selection`; `tracks` opens the
 "Sávok részletei" dialog on the Áttekintés), `demoTags` (header tag-model states), and `demoState`
-(the v3 states: `overviewProcessing | overviewDone | overviewEmpty | overviewNobody | readingMap |
-tabTooltip | summarySources | memoSections`).
+(the v3 states: `overviewProcessing | overviewDone | overviewEmpty | overviewNobody | overviewRecorded |
+overviewRecordedError | overviewTranscribing | readingMap | tabTooltip | summarySources | memoSections`;
+`memoSections` also shows the memo intros, sub-sections and open questions with source chips).
 
 ### The v3 meeting view (design: `design/handoff-v3/`)
 
@@ -250,6 +266,37 @@ switchable, participants / tags / "Csak én beszéltem" usable); `PipelineSteps`
 when the mixdown is missing / stale (manual mixdown mode), the voiceprint step the identify switch.
 Without audio (import running, broken folder) the same tab says what is missing in the steps.
 
+Details added in the fix round (all verified against `OverviewTab.qml`, `ParticipantList.qml`, `SourceCard.qml`):
+
+- **First transcription running (A1).** The `Átirat` step keeps hosting `TranscribeStepPanel` while
+  `vm.state === "running"`: a compact stage list (state circle, name, progress; `JobStageRow` states
+  waiting / running / done / failed / skipped), the "Közben nyugodtan dolgozz tovább" line and
+  `Megszakítás` (`shell.cancelJob(meetingId, JobKinds.Transcribe)`). The overall progress and the estimate
+  are in the step's sub line and bar. Demo: `overviewTranscribing`.
+- **`SourceCard` before the transcription (A3).** Below the card: "Sablon hasonló megbeszélésből:" chips
+  (`suggestions` = `MeetingNoteModel.suggestions`; shown while `suggestions.length > 0 && (editing || note === "")`;
+  a click puts the text into the editor: replaces an empty field, otherwise appends; saving stays the user's)
+  and the info line "Észlelt hívás: …" (`detectedCallApp`, `MeetingNoteModel.detectedCallApp`, informational).
+  After the transcription both are hidden.
+- **Title-based tag suggestion (A2).** Before the transcription `OverviewTab` binds
+  `MeetingTagsModel.draftTitle` to the meeting title (`vm.title`); `TagRowOverview` then suggests tags from the
+  title when there is no regular suggestion. Cleared (`""`) once a transcript exists.
+- **Clickable badges (A4).** The source badges of a `ParticipantList` row show the evidence in the tooltip;
+  after the transcript (`canExplain`, row has a speaker key) a click emits `whyRequested(speakerKey, badge)` and
+  `OverviewTab` calls `shell.openSpeakerWhy(meetingId, speakerKey)` → the editor's "Miért ő?" panel.
+- **"Elnevezés…" (A5).** An unnamed row (`anonymous` and not a suggestion: raw speakers) is nameable by a click or by the right-hand
+  `Elnevezés…` button (`nameRequested(row, anchor)`): after the transcript a `PersonPicker` →
+  `editor.reassignSpeaker`; before it the "Ki volt ott?" dialog.
+- **"Újraelemzés" (D4).** The voiceprint step shows `Újraelemzés` when `vm.canReanalyze` (audio and a model are
+  there, nothing runs) and the step is `done` / `attention`. After the transcript it calls the same as the menu's
+  "Hanglenyomat-elemzés újra" (`shell.identifyParticipants`); before it `vm.reanalyze()`
+  (`AppController::analyzeParticipants`).
+- **Analysis progress (A8).** While `vm.analysisRunning`, the voiceprint step's sub line reads "k / N sáv" and its
+  bar follows the percent, from `AppController::participantAnalysisProgress(meetingId, tracksDone, tracksTotal,
+  percent)`; before the first signal it says "fut" (indeterminate).
+- **Speaker → track chips (G6).** In every `ParticipantList` row, after the badges: `ParticipantTrackChips`
+  (see "Tracks" below), bound by `OverviewTab`'s `ParticipantTrackBinder`.
+
 #### The map dock (`MapDock`)
 
 One 13 px row per speaker (name 104 px in the speaker's ink · 8 px lane · speech share), an accent
@@ -262,14 +309,19 @@ the end of the name column opens the voiceprint panel (`voiceprintClicked`). Inp
 lanes dim to 45 %) and **`sectionBands`** (row "Szakaszok", memo sections as bands, the active one
 accent). Items are `{ startMs, endMs, active }`; `Main` takes them from `SummaryTab.sourceMarks` /
 `.sectionBands` on tabs 2 / 3. `SummaryMapRows` is the same two rows as a stand-alone component.
+**`similarMarks`** (E4) is a flat list `[x, w, x, w, …]` (0..1 on the timeline; fed by
+`TranscriptTab.similarMarks` after a new person): an accent tick above the lanes plus a faint accent column
+through them for every line that sounds like the new person (`objectName: "mapSimilarMarks"` / `"mapSimilarMark"`).
+Stand-alone demo: `MapDock:1100x200:demoState="similarMarks"`.
 
 #### "Ki volt ott?" (`ParticipantsDialog`, `src/ParticipantsViewModel`)
 
 An 820 px dialog that approves the voice analysis' participant candidates. Groups (an empty one is
 hidden): Biztos · Kétséges · Meghívott, de nem hallottuk · added in the dialog; a name field
-(`PersonPicker`) with tag-based suggestions; footer: the info about unbound raw speakers, `Kihagyás`
+(`PersonPicker`) with tag-based suggestions; footer: the info about unbound raw speakers and the standing rule sentence "A címkék csak sorrendet adnak; a hang dönt." (`vm.footerText`), `Kihagyás`
 (`skip()`), `Tovább · N résztvevő` (`approve()`). While the analysis runs it shows a spinner; Esc
-closes it without a decision ("later"). `Main.qml` hosts it (`participantsDialog`); it opens itself
+closes it without a decision ("later"). After `Tovább` a **learning question** may follow
+(`TagLearnPopup`, below). `Main.qml` hosts it (`participantsDialog`); it opens itself
 on `ShellActions.participantsDialogRequested`.
 
 `ShellActions` entry points: `openParticipants(meetingId)` (banner, tool row, Megbeszélés menu, editor),
@@ -287,14 +339,14 @@ permanent undo button: `Ctrl+Z` and the `TranscriptChangeBar` at the bottom (Vis
 
 | Type | Role |
 |---|---|
-| `LinePopover` (E1, 390 px, `objectName: "linePopover"`) | "Kinek a sora ez?": scope (this line / selection / the whole speaker), JAVASOLT candidates (`CandidateRow` + `EvidenceChip`s, keys 1–3), "Miért nem X?" (`EvidenceReason` rows, each with the place to fix it), "Új személy ebből a sorból…". `TranscriptTab.openLinePopover(row, anchor)` / `openLinePopoverFor(utteranceId, anchor)` |
-| `SpeakerWhyPopover` (E3, 430 px, `"speakerWhyPopover"`) | "Miért ő?" for a whole speaker: reasons, which track he speaks on (the manual side assignment, the one truth), "Nem ő? valójában…", new person, merge, pair review, "Ő nem volt ott". `openSpeakerWhyAt(key, x, y, focusTracks)` |
+| `LinePopover` (E1, 390 px, `objectName: "linePopover"`) | "Kinek a sora ez?": scope (this line / selection / the whole speaker), JAVASOLT candidates (`CandidateRow` + `EvidenceChip`s, keys 1–3), "Miért nem X?" (`EvidenceReason` rows, each with the place to fix it), "Új személy ebből a sorból…", and — for a line scope with a named current speaker — the **sample row** (D3, `objectName: "lineSampleRow"`, `editor.lineSampleInfo(utteranceId)`: "Hanglenyomat-minta ebből a sorból (N mp)", or "Jó így + hanglenyomat-minta …" when the line is not confirmed yet, with the reason when it is not possible; a click → `createSample()` → `editor.createVoiceprintFromLine`). The candidates carry the quick "+ #Címke" (`editor.quickTagFor(personName)` → `{ tagId, name, label }`, `editor.addQuickTag(personName, tagId)`: one `TagService` step, undone by the shell's "tags" undo). `TranscriptTab.openLinePopover(row, anchor)` / `openLinePopoverFor(utteranceId, anchor)` |
+| `SpeakerWhyPopover` (E3, 430 px, `"speakerWhyPopover"`) | "Miért ő?" for a whole speaker: reasons, which track he speaks on (the manual side assignment, the one truth; the chips are switches and **several tracks can be marked**, each click is one undo step, `editor.setSpeakerTracks(key, ids)`; the reason text then says "kézi beosztás: mindkét sávon" and keeps the learned side next to it), the quick "+ #Címke" row (a filled-in row when the evidence list has no tag row) and at the end of the candidates, "Nem ő? valójában…", new person, merge, pair review, "Ő nem volt ott". `openSpeakerWhyAt(key, x, y, focusTracks)` |
 | `ReviewGroupsView` (E2, `"reviewView"`) + `ReviewGroupCard` + `ContaminatedCoreBanner` | the "Átnézendő" view: doubtful lines grouped by reason, one decision (and one undo step) per group: "Mind a N → X", "Egyenként", "Kihagyom"; the contaminated-core strip on top ("Szétválasztás", "Miért?") |
 | `TranscriptMarker` | per-line mark in Javítás mode: `confirmed`, `short`, `uncertain` (`reason`: side / voice / tag), `corrected`, `newPerson`, `noisy` |
 | `EvidenceChip` | 20 px chip: `kind` voice / side (`side`: mic / loopback) / calendar / tag / lines / similarity / manual; `polarity` support / neutral / contradict (dashed outline, muted text, × / ⚠ icon); `quiet` |
-| `EvidenceReason` | one reason row (`evidence` = `TranscriptEditorViewModel.evidenceMap()`), `fixClicked(evidence)` |
-| `CandidateRow` | a person candidate with avatar, sub line, evidence chips and the 1–3 key hint; `dimmed` for the other-track and current speaker |
-| `TranscriptChangeBar` | after a reassignment; after a **new person** (E4) three lines: what happened, "Még N sor hangja hasonlít…" + "Mind a N hozzá", voiceprint readiness |
+| `EvidenceReason` | one reason row (`evidence` = `TranscriptEditorViewModel.evidenceMap()`), `fixClicked(evidence)`; **`quickLabel`** (e.g. "+ #Nordvik ráteszem", `objectName: "quickTagLink"`, `quickClicked()`) is a one-click action before the fix link, which stays |
+| `CandidateRow` | a person candidate with avatar, sub line, evidence chips and the 1–3 key hint; `dimmed` for the other-track and current speaker. **`quickTagLabel`** (non-empty → a dashed accent "+ #Nordvik" chip at the end of the chips, `objectName: "quickTagChip"`, signal `quickTagClicked()`): the meeting's tag is not on the person yet; one click puts it there without choosing the row |
+| `TranscriptChangeBar` | after a reassignment; **recheck feedback**: the result message carries the basis ("Alapja: 23 megerősített sor · 5 tárolt minta (ebből 2 erről a megbeszélésről) · modell: WeSpeaker.", `RecheckResult::basisSummary()`) and, if two confirmed cores are too alike, a "Figyelem: A és B hangja nagyon hasonló (0,92) …" note (`similarityNote()`); the filter wording is "Átnézendő" everywhere; after a **new person** (E4) three lines: what happened, "Még N sor hangja hasonlít…" + "Mind a N hozzá", voiceprint readiness |
 
 #### Vezetői összefoglaló and Memó (`SummaryTab`, `src/SummaryViewModel`)
 
@@ -305,8 +357,9 @@ summary with statements (`vm.hasStatements`), an old summary keeps `SummaryDocVi
 | Type | Role |
 |---|---|
 | `SummaryExecView` (S1/S3) | the sentences as one flowing paragraph, a `TimeChip` after each; decisions and to-dos with an owner chip; the right column (250 px): participants with speech share, note, remaining actions. Stale summary (S3): a banner counts the affected statements, the affected sentence is underlined (`warnLine`), the affected source chip is `warn`. `popover` is the `SourcePopover` |
+| statement models (`SummaryViewModel`) | `sentences`, `decisionItems`, `todoItems`, **`questionItems`** (open questions as statements with source chips; empty for an old summary, `openQuestions` stays) and **`memoItems`** (all memo statements in one list: intro sentences `i<n>.<k>`, points `m<n>.<k>`; the `memo[]` rows are built from it). `StatementListModel::Row.kind` = statement \| decision \| openQuestion \| todo \| intro \| memoPoint; the same stale-by-speaker logic (`affected`, `staleBecause`) applies to all |
 | `SourcePopover` (S1, 440 px) | "Honnan jön ez?": the quotes of one statement with "Meghallgatom", "Ugrás az átiratba", "Nem így hangzott el? · Jelzem". `openFor(statementId, anchor)` |
-| `SummaryMemoView` (S2) + `MemoToc` | memo sections: table of contents (236 px, `picked(index)`) and the sections in time order with a range `TimeChip` (`large`, `iconName: "play"`); the active section follows the scrolling |
+| `SummaryMemoView` (S2) + `MemoToc` | memo sections: table of contents (236 px, `picked(index)`) and the sections in time order with a range `TimeChip` (`large`, `iconName: "play"`); the active section follows the scrolling. Each section (`vm.memo[]`) has an **intro** (`introRows`: flowing paragraph, a time chip after each sentence) and **blocks** (`blocks[]`: `{ key ("" body | arguments | open | custom), title, rows }`; "ELHANGZOTT ÉRVEK" with points, "NYITOTT KÉRDÉS" as paragraphs without bullets). Every row is a statement, so each has its time chip(s) and the "Honnan jön ez?" popover; hovering highlights it (and its mark in the dock's "Forrás" row) |
 | `SummaryToolsRow` | generation meta · **Források** switch · Másolás · Újragenerálás |
 | `SummaryMapRows` | the "Forrás" / "Szakaszok" rows of the dock as a component |
 | `TimeChip` | monospace time chip: default accentSoft, `active` (selected statement), `warn` (the speaker changed in its source), `iconName`, `large` |
@@ -324,9 +377,10 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 | Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
 | Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` · `overviewTranscribing` |
 | Map dock alone | `MapDock:1100x200` | (invented lanes) · `similarMarks` (E4: accent ticks of the lines similar to the new person) |
+| Tracks (details) | `TracksTab:1004x640:demoState="default"` | `default` · `loading` (strips pulse: activity still computing) · `idle` (the "Hívás hangja" row starts at 2:30); `overview…` states of `TrackListModel` feed the Áttekintés |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
-| Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` |
-| Átirat (Javítás) | `TranscriptTab:1100x760:demoState="fixLinePopover"` | `markers` · `fixLinePopover` (E1) · `reviewGroups` · `reviewExpanded` (E2) · `contaminatedCore` · `speakerWhy` (E3) · `newPersonSimilar` (E4) — plus the older ones listed in the header of `TranscriptTab.qml` |
+| Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` · `learnQuestion` (the question after `Tovább`: two people / two tags, "Egyenként…") · `learnNewPerson` (new person: "X új személy. Ráteszem…?") |
+| Átirat (Javítás) | `TranscriptTab:1100x760:demoState="fixLinePopover"` | `markers` · `fixLinePopover` (E1) · `reviewGroups` · `reviewExpanded` (E2) · `contaminatedCore` · `speakerWhy` (E3) · `newPersonSimilar` (E4) · `newPersonTag` (E4 + the bar's tag question "X új személy. Ráteszem a #Nordvik címkét?") — plus the older ones listed in the header of `TranscriptTab.qml` |
 | Összefoglaló | `SummaryTab:1100x720:demoState="sourcesOn"` | `sourcesOn` · `sourcesOff` · `sourcePopover` · `memoSections` · `staleTargeted` · `noSources` — plus the older `stale`, `done`, `memo`, `running`, `empty*`, `topics` … |
 
 A `Main` demo state needs `App.demo` (set by `--qml-shot`): the shell then picks the sample meeting
@@ -356,8 +410,19 @@ reach the core through `TagBackend` → `TagControllerBackend` (`createControlle
 - **Tags window**: `shell.openTags(tagId)` → `ShellBridge::openTagsAt` → `TagsWindowHost`
   ("Megnyitás a könyvtárban szűrőként" → `ShellBridge::tagFilterRequested`; meeting links →
   `showMeetingRequested`). QA: `App.bridge.tagsWindow()`.
-- Screenshots: `Main` with `demoTags` (`none | few | many | computing | similar | cooccur | llm |
-  why`) and `demoOverlay="tagToast"`; `MeetingHeader:1004x120:demoState="cooccur"` (T03),
+- **From the participants.** A transcript-less meeting also gets suggestions from the manual tags of its
+  participants (source "A résztvevők alapján"; the "Miért?" panel reads "Résztvevők címkéje: … (mindkettőjükön)").
+  Demo: `demoTags` = `people` / `peopleWhy` (plus one similarity suggestion).
+- **Learning question** (UX plan 5.). After "Ki volt ott?" `Tovább`, when the core (`TagService::learningQuestions`) finds people who keep appearing on meetings with a tag that is
+  not on them (and not rejected), `TagLearnPopup` (`objectName: "tagLearnPopup"`,
+  a dark non-modal bar, ~8 s, stays while hovered or the list is open; `ParticipantsViewModel.learnQuestion`
+  = `{ text, pairs: [{ index, name, tagName, text }] }`) asks "… Rájuk teszem a címkét?" with `TagLearnBar`:
+  Igen · Nem · Egyenként… (a small list, Igen / Nem per pair) · ×. Closing is not a rejection. Answers
+  (`answerLearn(yes)`, `answerLearnPair(index, yes)`) are tag-stack steps, so the toast's "Visszavonás" works.
+  After a **new person** in the editor the same `TagLearnBar` (`embedded: true`: no own background, shadow or ×)
+  is a row in `TranscriptChangeBar`.
+- Screenshots: `Main` with `demoTags` (`none | few | many | computing | similar | cooccur | llm | people |
+  peopleWhy | why`) and `demoOverlay="tagToast"`; `MeetingHeader:1004x120:demoState="cooccur"` (T03),
   `"llm"` (T06), `MeetingHeader:1004x520:demoState="why"` (T02, panel open);
   `PreTranscriptView:1004x640:demoState="note"` (T07).
 
@@ -428,14 +493,53 @@ in their own engines).
 Build trap: after adding a C++ file to `gui/qml/src/`, AUTOMOC may not re-run (link errors
 about `staticMetaObject` / vtable): delete `build/gui/qml/tanara_qml_autogen/timestamp`.
 
-### Tracks (`TracksTab.qml`, `TrackRow.qml`, `src/TrackListModel`)
+### Tracks (`TracksTab.qml`, `TrackRow.qml`, `TrackActivityStrip.qml`, `src/TrackListModel`, `src/TrackActivityModel`)
 
 Since v3 this is no longer a tab: the Áttekintés shows the tracks in its right column (`TrackList`),
-and the full view below lives in the "Sávok részletei" dialog (`OverviewTab.openTracks()`).
+and the full view below lives in the "Sávok részletei" dialog (`OverviewTab.openTracks()`). Both use the
+**same row component**, `TrackRow` (G6):
 
-One row per track file: play (preview), source icon, friendly name (rename in place), a second
-line, the waveform, the file length, and the action (dropped → „Visszaállítás”, missing file →
-„Megkeresés…”). Below: the mixdown row and the permanent delete of the dropped tracks.
+| Mode | Where | What the row has |
+|---|---|---|
+| `compact: true` | Áttekintés › SÁVOK (`TrackList`) | 26 px round play / pause · source icon + name · sub line ("beszéd 38% · Kovács Lilla", from `sideWho`) · mixdown switch 30×18 (a dropped track: "Beemelem") · an 18 px `TrackActivityStrip` below |
+| full | "Sávok részletei" (`TracksTab`) | the same with a 40 px strip, plus rename (pencil / double click), raw device name, "Megkeresés…" for a missing file, "Visszaállítás" for a dropped track, permanent delete (with confirmation) |
+
+Row inputs: `tracks` (`TrackListModel`), `player` (`PlayerController`), `activity` (`TrackActivityModel`),
+`shell`, `sideWho`, `nameWidth`.
+
+- **Speech strip.** `TrackActivityStrip { activity; trackId; compact; positionMs; color; dimmed }`
+  draws one track on the meeting's whole timeline: frames at or above the track's speech level minus 10 dB
+  (the same yardstick as the side analysis) in the track's colour, silence as a thin baseline, no data
+  (device started later / gap between segments) empty; the playhead is a vertical line. A click or drag emits
+  `seekRequested(ms)` (meeting time) and the row plays THAT track from there; hover shows a time bubble
+  (`objectName: "trackActivityTime"`). While the core still computes it pulses grey (`loading`).
+  `objectName: "trackActivityStrip"`, playhead `"trackActivityPlayhead"`.
+- **`TrackActivityModel`** (`QML_ELEMENT`, one per meeting; `meetingId`, `demoState`, `state` = none \| loading \|
+  ready, `durationMs`, `revision`): reads `AppController::trackActivity()` (50 ms frames) and refreshes on
+  `trackActivityReady`. **`TrackActivityItem`** (C++ `QQuickItem`, `model`, `trackId`, `durationMs`, `color`,
+  `quietColor`, `emptyColor`, `hasData`) paints from the model's frame arrays directly, with no QML array copy
+  (2 h × 50 ms = 144 000 frames). A segment id maps to its leading segment. Without a controller the model
+  serves deterministic fictional frames for the tracks `mic`, `call`, `system` (silent), `mic2`.
+- **Per-track playback.** `PlayerController::playTrack(trackId, meetingMs = -1)` and `toggleTrack(trackId)`
+  listen to ONE track in *meeting time*: the segment file that covers the time plays at
+  `meetingMs − Track::startOffsetMs`, the next segment follows at the end of one. It is a preview
+  (`previewPath`) plus `previewTrackId` (leading segment id) and `previewMeetingMs`; `toggleTrack` pauses without
+  dropping the source. (`playFile` still plays a bare file from its own start.) The play button starts at the
+  first speech when there is activity data.
+- **Speaker → track binding.** `ParticipantTrackBinder` (`QML_ELEMENT`, `controller`, `meetingId`, `revision`,
+  `available` = at least two choosable tracks; `chips(id)`, `toggle(id, trackId)`, `reset(id)`) reads and
+  writes `AppController::participantTracks` / `setParticipantTracks` (before the transcript
+  `Participant::tracks`, after it the editor's manual side assignment `SpeakerOverlay::speakerTracks`, the same
+  data as the "Miért ő?" MELYIK SÁVON BESZÉL? chips). A chip is `{ trackId, name, shortName, icon (mic | phone |
+  audio-lines), on, manual }`; a click toggles that track in the current set (the result is a manual binding;
+  emptying it removes the manual binding and returns to the inferred one); `suggest:` rows get no chips.
+  `ParticipantTrackChips { binder; participantId }` renders them in one row: inferred = faint (sunken + border),
+  manual = accent, off = dashed and faint; `objectName: "participantTrackChip_<trackId>"`. Demo (no
+  controller): participant `p1` = mic, others = call, `p3` bound to both by hand.
+
+One row per track file as before: friendly name (rename in place), a second line, the waveform replaced by the
+strip, the file length, and the action (dropped → "Visszaállítás", missing file → "Megkeresés…"). Below: the
+mixdown row and the permanent delete of the dropped tracks.
 
 - **Timeline.** A track file holds only what was captured: a device switched on later starts
   at `Track::startOffsetMs`. `waveStart` / `waveSpan` (0..1, `TrackListModel::waveExtent`)
@@ -449,8 +553,8 @@ line, the waveform, the file length, and the action (dropped → „Visszaállí
   segments; drop / restore / locate stay per file.
 - **Preview** (`PlayerController::playFile`) plays the file on its own, from the file's start
   (file time, not meeting time).
-- Demo (`--qml-page TracksTab --qml-prop 'demoState="idle"'`): the „Hívás hangja” row starts at
-  2:30.
+- Demo (`--qml-page TracksTab --qml-prop 'demoState="idle"'`): the "Hívás hangja" row starts at
+  2:30; `loading` shows pulsing strips.
 
 ## Transcript editor: the scope of a speaker correction
 
@@ -616,7 +720,7 @@ not drawn.
 |---|---|
 | `SettingsWindow.qml` | the window: navigation, scrolling content, footer (dirty indicator, Mégse / Mentés), the unsaved-changes / reset / logout / output-format dialogs |
 | `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsProviderFields`, `SettingsEmbeddingCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 (+ C09) |
-| `SettingsSpeakersPage` (E01, B08) + `SettingsVoiceModelCard` | the **Beszélők** page: the "Te" section (own name and voiceprint, moved here from Általános), "Hangmodellek" (one card per speaker model, `vm.voiceModels` = `VoiceModelListModel`; enabling is part of the draft, downloading is immediate), the voiceprint backfill status. Card `state_`: `missing` \| `downloading` (`progress`, `progressText`, Mégse) \| `downloaded` \| `bundled` \| `error` (`errorText`, Újra) \| `offline`; `enabledModel` / `canEnable`, `recommended`; licence, source link, size and dimension are shown before the download. With no model at all the page offers "WeSpeaker letöltése (N MB)"; with only the bundled CAM++ present a quiet fallback line ("Most a CAM++ tartalék fut…", `fallbackActive`) with a download button is shown |
+| `SettingsSpeakersPage` (E01, B08) + `SettingsVoiceModelCard` | the **Beszélők** page: the "Te" section (own name and voiceprint, moved here from Általános), "Hangmodellek" (one card per speaker model, `vm.voiceModels` = `VoiceModelListModel`; enabling is part of the draft, downloading is immediate), the voiceprint backfill status. Card `state_`: `missing` \| `downloading` (`progress`, `progressText`, Mégse) \| `verifying` ("ellenőrzés…": after a download and when the page opens, `VoiceModelListModel.verify` checks the file size) \| `downloaded` \| `bundled` \| `error` (`errorText`, Újra; a size mismatch is `error` + corrupt and Újra replaces the file) \| `offline`; `enabledModel` / `canEnable`, `recommended`; licence, source link, size and dimension are shown before the download. The card's menu has **Törlés…** (`canDelete`; removes only the DOWNLOADED file under `<metaDir>/models`, never the bundled one, disabled while downloading / verifying; the page asks first — `askDelete(id, name)` — then calls `list.deleteModel(id)`). A quiet **Újraolvasás** link under the cards (`objectName: "voiceModelsRescan"`; `models.rescan()` → `AppController::rescanVoiceModels`) re-reads the folder and re-verifies after a model file was copied in by hand. **Backfill** shows the real "k / N" from `voiceprintBackfillStarted / Progress / Finished`; after a run with skips a "Melyik minták? (N)" toggle opens the list of skipped samples (`objectName: "voiceBackfillSkips"` / `"voiceBackfillSkip"`: person, sample, reason, missing model; one entry per sample; the person's name is a link that opens the People window on them, `"voiceBackfillSkipPerson"`; source: `AppController::backfillSkippedSamples`). With no model at all the page offers "WeSpeaker letöltése (N MB)"; with only the bundled CAM++ present a quiet fallback line ("Most a CAM++ tartalék fut…", `fallbackActive`) with a download button is shown |
 | `VoiceModelOnboardingRow` | the same downloader as one row in the First steps window (Szolgáltatások step; hidden when the default model exists); `demoState: "B08none"` |
 | `SettingsSegmented`, `SettingsRadio`, `SettingsSwitchRow`, `SettingsStepper`, `SettingsCombo`, `SettingsTextField`, `SettingsNavItem`, `SettingsStatusPill` | the window's controls (the device rows reuse the recorder's `RecorderSwitch`, `VuMeter`, `RecorderGroupHeader`, `RecorderDefaultPill`) |
 | `SettingsViewModel` | the draft: a copy of `AppSettings` + secrets + default sources + theme. Pages write the draft; `save()` applies **only the difference** onto the core's current settings (so nothing this window does not show, or that changed meanwhile, is lost), `discard()` drops it. `dirty` / `changeCount` / `footerText`, `errors`, `servicesWarn`, `openPage(page, focusField)` |
@@ -664,7 +768,7 @@ build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --q
 `demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
 `logout` · `reset` · C09: `B04embedding` (local, idle) · `B04embeddingRunning` (T14) · `B04embeddingError` ·
 `B04embeddingDone` · `B04embeddingCloud` (T16) · `B04embeddingNone` · `B04modelChange` (T15) · `rejectedReset` ·
-E01 (Beszélők page): `B08` (models on) · `B08download` (WeSpeaker downloading, 46 %) · `B08none` (nothing downloaded) · `B08error` · `B08offline` · `B08backfill` (voiceprint backfill running) · `B08partial` (backfill finished with failures) · `B08bundled` (CAM++ shipped with the app) · `B08fallback` (WeSpeaker missing, bundled CAM++ runs as fallback).
+E01 (Beszélők page): `B08` (models on) · `B08download` (WeSpeaker downloading, 46 %) · `B08none` (nothing downloaded) · `B08error` · `B08offline` · `B08backfill` (voiceprint backfill running) · `B08partial` (backfill finished with failures; the skipped-samples list is open) · `B08bundled` (CAM++ shipped with the app) · `B08fallback` (WeSpeaker missing, bundled CAM++ runs as fallback) · `B08verify` (a model being verified + a size-mismatch error card) · `B08delete` (the delete confirmation open for CAM++).
 Example: `gui/qml/shoot.sh 'SettingsWindow:900x880:demoState="B08"'`.
 
 ## People window (`People*.qml`, `src/People*`)
@@ -678,7 +782,7 @@ pane's width is draggable (names are not elided in normal widths).
 | `PeopleWindow.qml` | the window: list pane, detail pane, shortcuts, undo toast, the delete / new-person dialogs |
 | `PeopleListPane` + `PeopleListRow` | search (names and aliases), "Új személy", count, sort menu, list with section headers, the P06 hint and the no-result link |
 | `PersonTagsSection` (U5) | the "Címkék" section of the detail pane, above "Becenevek": an editable person → `TagField` + the suggestion line ("Ezeken szokott ott lenni: [+ #Nordvik 11/14] … · Mind", at most 3 shown, rest behind "+N"; click accepts, × rejects); own person → one muted line; a nameless sample holder → hidden. Mode: `vm.tagsMode` = `none` \| `self` \| `edit` |
-| `PeopleDetailPane` + `PeopleSampleRow` | header with inline rename, aliases, note (autosave on blur), voiceprint samples with play and the "…" menu, the no-voiceprint box (P03), meetings |
+| `PeopleDetailPane` + `PeopleSampleRow` | header with inline rename, aliases, note (autosave on blur), voiceprint samples with play and the "…" menu, the no-voiceprint box (P03), meetings. **Default side** (brief E02 3., `objectName: "defaultSideRow"`, shown when `vm.defaultSideVisible`): "Jellemzően:" + a `SettingsSegmented` **helyi / távoli / nincs adat** (`defaultSideSegment`, `vm.defaultSide` = local \| remote \| "", `vm.setDefaultSide(v)`) and a note (`defaultSideNote`: learned vs set by hand; a hand-set value is never overwritten); the track assignment starts from it when the voice does not decide. **Skipped samples**: `BackfillSkipNote` (C++, `person`, `demoState`; `count`, `text` "1 minta nem pótolható: hiányzó felvétel", `detail` for the tooltip) puts a muted line in the header after a backfill with skips |
 | `PeopleMergeDialog`, `PeopleSampleTargetDialog`, `PeopleUndoToast` | merge (P04), "new person from this sample" / "move to another person", the inverted toast with "Visszavonás" (~8 s) |
 | `PeopleViewModel` (+ `PeopleListModel`) | list (filter, sort, sections, match parts), the selected person's detail, operations, toast texts; fictional people without a controller (`demoState`) |
 | `PeopleWindowHost` | C++ host with its own engine: `open(person)`, `closed()` |
@@ -713,8 +817,10 @@ Core behind it (`core/include/tanara/people/`, `store/PeopleStore.h`):
 Keyboard: `Ctrl+F` search · `F2` rename · `Del` delete (asks) · `Space` plays the selected sample
 · `Ctrl+Z` undo (inside a text field the field's own undo applies) · `Ctrl+W` closes.
 
-Where it opens: `ShellActions.openPeople(person = "")` (sidebar footer, Fájl menu) →
-`QmlShellBridge::openPeopleAt` → host; the "Személyek kezelése →" link in Settings › Általános
+Where it opens: `ShellActions.openPeople(person = "", section = "")` (sidebar footer, Fájl menu) →
+`ShellBridge::openPeople()` / `openPeopleAt(person)` / `openPeopleAtSection(person, section)` → host. A
+`section` (`"tags"`) scrolls the detail pane to that block (`PeopleViewModel.requestSection`, signal
+`sectionRequested`): the editor's "Címkéi" fix link opens the person on the Címkék section (demo `tagsFocus`); the "Személyek kezelése →" link in Settings › Általános
 (`SettingsDialogs::openPeopleAt`, with the user's own person selected; in the stand-alone
 recorder / `tanara --settings` processes `SettingsWidgetsDialogs` owns a host of its own).
 
@@ -728,7 +834,7 @@ build/gui/tanara --qml-shot out.png --qml-page PeopleWindow --size 960x1100 --qm
 ```
 
 `demoState`: `P01` … `P06` · `newPerson` · `sampleNew` · `sampleMove` · `noResult` · `sort` ·
-`allSamples` · `deleteKeep` · `creating` · `toastPlain` · U5/E01: `tagsSection` · `tagsSuggested` · `tagsSelf` · `samplesModels` (samples labelled by model) · `backfill`.
+`allSamples` · `deleteKeep` · `creating` · `toastPlain` · U5/E01: `tagsSection` · `tagsSuggested` · `tagsSelf` · `samplesModels` (samples labelled by model; also shows a skipped-sample note) · `backfill` · `tagsFocus` (opened on the Címkék section, Fehér Gábor).
 
 The **Címkék window** has the mirror view (U5): `TagPeopleList` ("SZEMÉLYEK" + count + "+ Személy"; row = avatar, name, "11 / 14", a "# címkéje" state or a dashed "+ Ráteszem" chip with × to reject; `personClicked` opens the Személyek window; `PersonPicker` has a tag mode, `tagId`, for "+ Személy"). `TagsWindow` `demoState`: `T10` … `T13` · `rename` · `people` · `peopleEmpty` · `peopleAdd`.
 

@@ -9,6 +9,8 @@ import QtQuick.Templates as T
 // (pl. --qml-prop overlay=dialog), a fátyol / árnyék / pozicionálás ellenőrzéséhez.
 // v3 héj-elemek (EvidenceChip, TimeChip, TranscriptMarker, CandidateRow, EvidenceReason, TagRowOverview,
 // StatTiles, PipelineSteps): lásd a „Bizonyíték-chip” … „Áttekintés” szakaszokat.
+// Javító kör: TrackActivityStrip (kitalált beszéd-keretekkel), ParticipantTrackChips, TagLearnBar,
+// BackfillSkipNote, gyors „+ #Címke” — lásd a „Sávok és tanulás” szakaszt.
 // section: "" (minden) | "tags" — csak az adott szakasz (pl. --qml-prop 'section="tags"').
 // A mintaszövegek fejlesztői tartalom → szándékosan nincsenek qsTr()-ben.
 Item {
@@ -906,6 +908,110 @@ Item {
                             width: 420; name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."; license: "CC-BY-4.0"
                             sizeText: "26 MB"; state_: "offline"
                         }
+                    }
+                }
+            }
+
+            Section {
+                title: "Sávok és tanulás (javító kör): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote"
+                flowSpacing: 24
+                // Kitalált, determinisztikus beszéd-keretek (TrackActivityModel demó-adata: mic, call, system, mic2).
+                TrackActivityModel { id: galleryActivity }
+                TrackActivityModel { id: galleryActivityLoading; demoState: "loading" }
+                Shown {
+                    caption: "TrackActivityStrip · compact (18 px) · lejátszás-fejjel"
+                    TrackActivityStrip {
+                        width: 320
+                        compact: true
+                        activity: galleryActivity; trackId: "mic"; positionMs: 612000
+                    }
+                }
+                Shown {
+                    caption: "TrackActivityStrip · nagy (40 px), hívás-sáv a sáv színével"
+                    TrackActivityStrip {
+                        width: 420
+                        activity: galleryActivity; trackId: "call"; color: Theme.speakerLine(1); positionMs: 1200000
+                    }
+                }
+                Shown {
+                    caption: "TrackActivityStrip · néma sáv · dimmed (kimaradt) · számol (lüktet)"
+                    Column {
+                        spacing: 8
+                        TrackActivityStrip { width: 420; compact: true; activity: galleryActivity; trackId: "system" }
+                        TrackActivityStrip { width: 420; compact: true; activity: galleryActivity; trackId: "mic2"; dimmed: true }
+                        TrackActivityStrip { width: 420; compact: true; activity: galleryActivityLoading; trackId: "mic" }
+                    }
+                }
+                ParticipantTrackBinder { id: galleryBinder }
+                Shown {
+                    caption: "ParticipantTrackChips · tanult mikrofon (p1) · tanult hívás (p2) · kézzel mindkettő (p3)"
+                    Column {
+                        spacing: 8
+                        ParticipantTrackChips { binder: galleryBinder; participantId: "p1" }
+                        ParticipantTrackChips { binder: galleryBinder; participantId: "p2" }
+                        ParticipantTrackChips { binder: galleryBinder; participantId: "p3" }
+                    }
+                }
+                Shown {
+                    caption: "CandidateRow · gyors „+ #Címke” (quickTagLabel) · EvidenceReason · quickLabel"
+                    Column {
+                        spacing: 8
+                        CandidateRow {
+                            width: 380
+                            personName: "Fehér Gábor"; colorIndex: 1; subText: "86 sor itt"; keyHint: "1"
+                            quickTagLabel: "+ #Nordvik"
+                            evidence: [{ kind: "voice", polarity: "support", text: "hang 84%" }]
+                        }
+                        EvidenceReason {
+                            width: 420
+                            quickLabel: "+ #Nordvik ráteszem"
+                            evidence: ({ kind: "tag", polarity: "neutral", label: "Címke:",
+                                         sentence: "a #Nordvik még nincs rajta", fixLabel: "Címkéi" })
+                        }
+                    }
+                }
+                Shown {
+                    caption: "TagLearnBar · kérdés két párral (Igen · Nem · Egyenként…)"
+                    TagLearnBar {
+                        width: 640
+                        question: ({ text: "Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?",
+                                     pairs: [{ index: 0, name: "Fehér Gábor", tagName: "Nordvik", text: "másodszor" },
+                                             { index: 1, name: "Varga Árpád", tagName: "Nordvik", text: "másodszor" }] })
+                    }
+                }
+                Shown {
+                    caption: "TagLearnBar · az „Egyenként…” lista nyitva (expanded)"
+                    TagLearnBar {
+                        width: 640
+                        expanded: true
+                        question: ({ text: "Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?",
+                                     pairs: [{ index: 0, name: "Fehér Gábor", tagName: "Nordvik", text: "másodszor" },
+                                             { index: 1, name: "Varga Árpád", tagName: "Nordvik", text: "másodszor" }] })
+                    }
+                }
+                Shown {
+                    caption: "TagLearnBar · embedded (a változás-sáv sorában, saját háttér nélkül)"
+                    Rectangle {
+                        width: 640; height: 52; radius: Theme.radiusPopup; color: Theme.text
+                        TagLearnBar {
+                            anchors.fill: parent
+                            embedded: true
+                            question: ({ text: "Szabó Bence új személy. Ráteszem a #Nordvik címkét?", pairs: [] })
+                        }
+                    }
+                }
+                // C++ segéd (nem vizuális): a Személyek részletek-panel „N minta nem pótolható” sora.
+                BackfillSkipNote { id: gallerySkipNote; person: "Fehér Gábor"; demoState: "samplesModels" }
+                Shown {
+                    caption: "BackfillSkipNote · text + detail (tooltip) — a Személyek ablak jelzése"
+                    Column {
+                        spacing: 4
+                        Row {
+                            spacing: 6
+                            TIcon { anchors.verticalCenter: parent.verticalCenter; name: "triangle-alert"; size: 13; color: Theme.warn }
+                            TLabel { text: gallerySkipNote.text; muted: true; font.pixelSize: Theme.fontSmall }
+                        }
+                        Caption { text: gallerySkipNote.detail }
                     }
                 }
             }
