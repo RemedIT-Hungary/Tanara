@@ -58,6 +58,7 @@ QHash<int, QByteArray> ReviewGroupsModel::roleNames() const
         {LikelyNameRole, "likelyName"},
         {DecidedRole, "decided"},
         {DecidedTextRole, "decidedText"},
+        {LaneRole, "lane"},
     };
 }
 
@@ -106,6 +107,7 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
         case StartMsRole:
         case EndMsRole:
         case ColorIndexRole: return 0;
+        case LaneRole: return -2;
         case DecidedRole: return false;
         default: return QString();
         }
@@ -119,6 +121,7 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
     case SpeakerKeyRole: return u.speakerKey;
     case SpeakerNameRole: return m_vm->speakerView(u.speakerKey).name;
     case ColorIndexRole: return m_vm->speakerView(u.speakerKey).colorIndex;
+    case LaneRole: return m_vm->speakerView(u.speakerKey).lane;
     case TimeLabelRole: return TranscriptEditorViewModel::timeLabel(u.startMs);
     case LineTextRole: return u.text;
     case StartMsRole: return int(u.startMs);

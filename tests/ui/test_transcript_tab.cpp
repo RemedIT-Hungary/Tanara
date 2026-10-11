@@ -1046,6 +1046,74 @@ private slots:
         QCOMPARE(m_vm->reviewGroups()->rowOfLine(id), -1);
     }
 
+    // Az Átnézendő nézet sorai mellett is ott a beszélő-sín (G9): a sor saját oszlopa kiválaszt,
+    // másik oszlop áthelyezi a sort (egy visszavonási lépés), a „+N" oszlop ki/be csukja a ritka
+    // beszélőket. A csoport-kártyák és a sorok a sín mellől indulnak.
+    void reviewView_railClickMovesLine()
+    {
+        load(QStringLiteral("many"));
+        m_vm->setRailVisible(true);
+        pump();
+        openReview();
+        QQuickItem* view = visual("reviewView");
+        QVERIFY(view);
+        const qreal textX = m_tab->property("textX").toReal();
+        QVERIFY(textX > 100.0);
+        // A kártya és a sor bal széle a sín mellett van.
+        QQuickItem* card = visual("reviewGroup");
+        QVERIFY(card);
+        QVERIFY(card->mapToItem(m_tab, QPointF(0, 0)).x() >= textX);
+        QVERIFY(visual("reviewRailCells"));
+
+        // Egy döntésre váró sor, aminek látható oszlopa van.
+        QQuickItem* line = nullptr;
+        for (QQuickItem* fix : visuals("lineFix")) {
+            for (QQuickItem* it = fix; it; it = it->parentItem())
+                if (it->property("railCells").isValid()) {
+                    if (it->property("lane").toInt() >= 0 && !line) line = it;
+                    break;
+                }
+        }
+        QVERIFY(line);
+        const QString id = line->property("utteranceId").toString();
+        const int own = line->property("lane").toInt();
+        const QString from = m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString();
+        QCOMPARE(laneKey(own), from);
+        QVERIFY(m_vm->reviewGroups()->data(m_vm->reviewGroups()->index(m_vm->reviewGroups()->rowOfLine(id)),
+                                           ReviewGroupsModel::LaneRole).toInt() == own);
+        auto railAt = [&](qreal laneX) {
+            const QPointF p = line->mapToScene(QPointF(0, line->height() / 2));
+            const qreal x = m_tab->property("railX").toReal() + 4 + laneX;
+            return QPoint(int(m_tab->mapToScene(QPointF(x, 0)).x()), int(p.y()));
+        };
+
+        // Saját oszlop: kiválasztás, áthelyezés nélkül.
+        view->setProperty("currentUtterance", QString());
+        click(railAt(own * 24 + 12));
+        QCOMPARE(view->property("currentUtterance").toString(), id);
+        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), from);
+        QVERIFY(!m_vm->canUndo());
+
+        // Másik oszlop: a sor átkerül, egy lépésben visszavonható.
+        const int other = own == 0 ? 1 : 0;
+        click(railAt(other * 24 + 12));
+        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), laneKey(other));
+        QCOMPARE(view->property("currentUtterance").toString(), id);
+        QVERIFY(m_vm->canUndo());
+        m_vm->undo();
+        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), from);
+        QVERIFY(!m_vm->canUndo());
+
+        // „+N": a ritka beszélők oszlopai ki- és becsukódnak.
+        QVERIFY(m_vm->collapsedCount() > 0);
+        QVERIFY(!m_vm->lanesExpanded());
+        const int lanes = int(m_vm->lanes().size());
+        click(railAt(lanes * 24 + 10));
+        QVERIFY(m_vm->lanesExpanded());
+        pump();
+        QVERIFY(int(m_vm->lanes().size()) > lanes);
+    }
+
     void addParticipant_viaPicker()
     {
         load();

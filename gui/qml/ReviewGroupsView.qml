@@ -16,6 +16,41 @@ Item {
     // A billentyűzettel / kattintással kiválasztott sor (sor-azonosító); "" = nincs.
     property string currentUtterance: ""
     readonly property alias list: list
+    // A beszélő-sín (a Javítás nézetéé, tab.railX / railWidth) a sorok mellett: a kártyák, a
+    // kijelölés-keret és a szöveg a sín jobb széle mellől indulnak; sín nélkül a régi margók.
+    readonly property bool railShown: tab.railShown
+    readonly property real contentX: railShown ? tab.textX + 8 : 24
+    readonly property real contentRight: 20
+
+    // A kulcs oszlopa a sínen (-1 = nincs látható oszlopa).
+    function laneOfKey(key) {
+        if (!key) return -1
+        const lanes = vm.lanes
+        for (let i = 0; i < lanes.length; ++i) if (lanes[i].key === key) return i
+        return -1
+    }
+    // Kattintás a sín egy oszlopára egy sor mellett (a Javítás sín-kattintásának mintájára):
+    //  saját oszlop → a sor kiválasztása; másik oszlop → a sor átkerül ahhoz a beszélőhöz;
+    //  „+N" → az összecsukott oszlopok ki/be; „+" → a sor személyválasztója.
+    function railClicked(utteranceId, ownLane, lane, anchor) {
+        if (utteranceId === "") return false
+        root.currentUtterance = utteranceId
+        if (lane === -9) return false
+        if (lane === ownLane) return true
+        if (lane >= 0) {
+            const key = lane < vm.lanes.length ? vm.lanes[lane].key : ""
+            return key !== "" && vm.moveUtteranceToSpeaker(utteranceId, key)
+        }
+        if (lane === -1) {
+            vm.lanesExpanded = !vm.lanesExpanded
+            return true
+        }
+        if (lane === -3) {
+            root.lineFixRequested(utteranceId, anchor)
+            return true
+        }
+        return false
+    }
 
     signal splitRequested(string speakerKey)
     signal speakerWhyRequested(string speakerKey, Item anchor)
@@ -55,12 +90,40 @@ Item {
         readonly property string likelyName: model.likelyName || ""
         readonly property bool decided: model.decided === true
         readonly property bool current: root.currentUtterance === utteranceId
+        readonly property int lane: model.lane === undefined ? -2 : model.lane
+        readonly property alias railCells: railLoader
         width: list.width
         height: lineColumn.implicitHeight + 16
 
+        // A sín ezen sorra eső szelete (a kattintást a lista feletti railArea kezeli).
+        Loader {
+            id: railLoader
+            objectName: "reviewRailCells"
+            active: root.railShown
+            x: root.tab.railX
+            width: root.tab.railWidth
+            height: line.height
+            sourceComponent: SpeakerRailCells {
+                laneCount: root.tab.laneCount
+                hasGroup: root.tab.groupShown
+                leftInset: 4
+                laneWidth: Theme.laneWidth
+                groupWidth: Theme.laneGroupWidth
+                ownLane: line.lane
+                lineColor: Theme.speakerLine(line.model.colorIndex)
+                softColor: Theme.speakerSoft(line.model.colorIndex)
+                uncertain: !line.decided
+                selected: line.current
+                suggestLane: line.decided ? -1 : root.laneOfKey(line.likelyKey)
+                outlineColor: Theme.text
+                dashColor: Theme.borderStrong
+                accentColor: Theme.accent
+            }
+        }
+
         Rectangle {
-            x: 24
-            width: parent.width - 44
+            x: root.contentX
+            width: parent.width - x - root.contentRight
             height: parent.height - 4
             y: 2
             radius: Theme.radiusControl
@@ -70,15 +133,17 @@ Item {
             border.color: Theme.accent
         }
         MouseArea {
-            anchors.fill: parent
+            x: root.contentX
+            width: parent.width - x
+            height: parent.height
             onClicked: root.currentUtterance = line.utteranceId
             onDoubleClicked: root.tab.playFrom(line.model.startMs)
         }
         Column {
             id: lineColumn
-            x: 66
+            x: root.contentX + 42
             y: 8
-            width: parent.width - x - 32
+            width: parent.width - x - root.contentRight - 12
             spacing: 4
             opacity: line.decided ? 0.7 : 1
             Row {
@@ -216,15 +281,16 @@ Item {
                 id: banner
                 objectName: "contaminatedBanner"
                 visible: (root.vm.contaminated.speakerKey || "") !== ""
-                x: 24
+                x: root.contentX
                 y: 10
-                width: parent.width - 44
+                width: parent.width - x - root.contentRight
                 info: root.vm.contaminated
                 onSplitRequested: key => root.splitRequested(key)
                 onWhyRequested: (key, anchor) => root.speakerWhyRequested(key, anchor)
             }
         }
         footer: Item { width: 1; height: 16 }
+
         delegate: Item {
             id: delegate
             required property var model
@@ -247,9 +313,9 @@ Item {
                     ReviewGroupCard {
                         id: card
                         objectName: "reviewGroup"
-                        x: 24
+                        x: root.contentX
                         y: 10
-                        width: parent.width - 44
+                        width: parent.width - x - root.contentRight
                         groupId: delegate.model.groupId
                         iconName: delegate.model.iconName
                         title: delegate.model.title
@@ -278,7 +344,7 @@ Item {
                     width: delegate.width
                     height: 28
                     Row {
-                        x: 24 + 54 + 92
+                        x: root.contentX + 54 + 92
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
                         TLabel {
@@ -302,6 +368,31 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // A sín kattintása egy rétegben a sorok felett (a Javítás railArea-jának mintájára; húzás nincs).
+    // Csoport- és „további" sorokon semleges: a kattintás átmegy a kártyára.
+    MouseArea {
+        id: railArea
+        objectName: "reviewRailArea"
+        visible: root.railShown
+        x: root.tab.railX
+        width: root.tab.railWidth
+        height: list.height
+        z: 2
+        onPressed: mouse => {
+            const row = list.indexAt(list.width / 2, list.contentY + mouse.y)
+            const item = row >= 0 ? list.itemAtIndex(row) : null
+            if (!item || !item.lineItem) mouse.accepted = false
+        }
+        onClicked: mouse => {
+            const row = list.indexAt(list.width / 2, list.contentY + mouse.y)
+            const item = row >= 0 ? list.itemAtIndex(row) : null
+            if (!item || !item.lineItem) return
+            root.tab.forceActiveFocus()
+            const li = item.lineItem
+            root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells)
         }
     }
 

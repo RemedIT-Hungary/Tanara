@@ -108,6 +108,20 @@ Item {
     readonly property real textX: railShown ? railX + railWidth + 1 : 0
     readonly property int laneCount: editorVm.lanes.length
     readonly property bool groupShown: railHeader.groupShown
+    // A sín oszlopa a sín bal szélétől mért x alapján (a Javítás és az Átnézendő sín-kattintása):
+    // >= 0 beszélő; -1 „+N" csoport; -3 „+"; -9 semmi.
+    function railLaneAt(x) {
+        let lx = x - 4
+        if (lx < 0) return -9
+        const n = laneCount
+        if (lx < n * Theme.laneWidth) return Math.floor(lx / Theme.laneWidth)
+        lx -= n * Theme.laneWidth
+        if (railHeader.groupShown || railHeader.collapseShown) {
+            if (lx < Theme.laneGroupWidth) return -1
+            lx -= Theme.laneGroupWidth
+        }
+        return lx < Theme.laneWidth ? -3 : -9
+    }
     property bool dragActive: false
     property int dragFromRow: -1
     property int dragToRow: -1
@@ -768,19 +782,7 @@ Item {
                     function rowAt(y) {
                         return list.indexAt(list.width / 2, list.contentY + Math.max(1, Math.min(list.height - 2, y)))
                     }
-                    // Oszlop az x alapján: >= 0 beszélő; -1 „+N" csoport; -3 „+"; -9 semmi.
-                    function laneAt(x) {
-                        let lx = x - 4
-                        if (lx < 0) return -9
-                        const n = root.laneCount
-                        if (lx < n * Theme.laneWidth) return Math.floor(lx / Theme.laneWidth)
-                        lx -= n * Theme.laneWidth
-                        if (railHeader.groupShown || railHeader.collapseShown) {
-                            if (lx < Theme.laneGroupWidth) return -1
-                            lx -= Theme.laneGroupWidth
-                        }
-                        return lx < Theme.laneWidth ? -3 : -9
-                    }
+                    function laneAt(x) { return root.railLaneAt(x) }
                     function resetDrag() {
                         root.dragActive = false
                         root.dragFromRow = -1

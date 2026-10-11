@@ -519,6 +519,7 @@ void TranscriptEditorViewModel::setLanesExpanded(bool expanded)
     m_lanesExpanded = expanded;
     rebuildSpeakers(false);
     m_rows->notifyAll({TranscriptListModel::LaneRole});
+    m_review->refreshAll();     // az Átnézendő sorok sín-oszlopa is változik
     emit speakersChanged();
     rebuildOverview();
 }
