@@ -12,8 +12,9 @@ import QtQuick.Templates as T
 //  - a TELJES beszélő a beszélő-szintű helyekről javítható: sín-fejléc avatar, térkép-dokk név,
 //    a sor-panel „Miért ő?" linkje → „Miért ő?" panel (SpeakerWhyPopover, handoff-v3 E3);
 //  - a sor-panel (LinePopover, E1): jelöltek bizonyítékkal, „Miért nem X?" + a javítás helye;
-//  - Javítás módban az „Átnézendő" chip a csoport-nézetet kapcsolja (ReviewGroupsView, E2): a
-//    kétes sorok okok szerint, csoportonként egy döntés / egy visszavonási lépés;
+//  - három nézet az eszköz-sor szegmensén: Olvasás · Javítás · Átnézendő (N) — az utóbbi a
+//    csoport-nézet (ReviewGroupsView, E2): a kétes sorok okok szerint, csoportonként egy döntés
+//    / egy visszavonási lépés; 0 sornál üres állapot + újraellenőrzés;
 //  - új személy után a hozzá hasonló sorok a sínen (accent keret) és a térképen (E4);
 //  - hanglenyomat CSAK kifejezett műveletre készül: a térkép ujjlenyomat-jele (saját panel), a
 //    „Miért ő?" Minták-linkje, a sor-panel teljes-beszélő hatóköre, és — egy teljes beszélő
@@ -53,6 +54,27 @@ Item {
     // Belépéskor a megbeszélés megjegyzett sín-állapota dönt; a Javítás bekapcsolja a sínt.
     property bool fixMode: false
     onFixModeChanged: if (editorVm.hasTranscript && editorVm.railVisible !== fixMode) editorVm.railVisible = fixMode
+    // A három nézet (eszköz-sor szegmens, Nézet menü): "read" | "fix" | "review". Az Átnézendő
+    // a Javítás része (sín, jelölők, soronkénti műveletek; alatta editorVm.uncertainOnly);
+    // kilépve a belépés előtti mód (Olvasás vagy Javítás) jön vissza.
+    readonly property string viewMode: reviewShown ? "review" : fixMode ? "fix" : "read"
+    property bool reviewEntered: false
+    property bool reviewReturnFix: false
+    function setViewMode(mode) {
+        if (!editorVm.hasTranscript) return
+        if (mode === "review") {
+            editorVm.uncertainOnly = true
+            return
+        }
+        const fix = mode === "fix"
+        if (editorVm.uncertainOnly) {
+            root.reviewReturnFix = fix          // az onUncertainOnlyChanged ezt állítja vissza
+            editorVm.uncertainOnly = false
+        }
+        root.fixMode = fix
+    }
+    // Ctrl+E: Olvasás ↔ Javítás; az Átnézendőből (ami Javítás-jellegű) az Olvasásba.
+    function toggleFixMode() { setViewMode(viewMode === "read" ? "fix" : "read") }
     // „Ki volt ott?” (eszköz-sor) — a héj nyitja a résztvevő-párbeszédet.
     signal participantsRequested()
 
@@ -60,7 +82,7 @@ Item {
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                          "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
-    // Az Átnézendő csoport-nézet látszik (az „Átnézendő" chip = editorVm.uncertainOnly).
+    // Az Átnézendő csoport-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
     // Az új személyhez hasonló sorok a térképnek: [x, w, …] (0..1); ugyanezek az
     // editorVm.overview `marks` listáiban is (a MapDock accent jelei).
@@ -123,17 +145,15 @@ Item {
         if (it && !it.visible) root.forceActiveFocus()
     }
     // „Következő bizonytalan": a kijelölt (különben az első látható) sortól lép tovább.
+    // Az Átnézendő nézeten kívül oda vált (0 sornál az üres állapot látszik, nincs jelzés).
     function nextUncertain(direction) {
-        if (root.reviewShown) {
-            root.forceActiveFocus()
-            if (!reviewView.step(direction) && root.shell) root.shell.toast(qsTr("Nincs átnézendő sor."))
+        root.forceActiveFocus()
+        if (!root.reviewShown) {
+            root.setViewMode("review")
+            if (editorVm.reviewCount > 0) Qt.callLater(() => reviewView.step(direction))
             return
         }
-        let from = editorVm.currentRow
-        if (from < 0) from = list.indexAt(list.width / 2, list.contentY + 1) - (direction < 0 ? 0 : 1)
-        root.forceActiveFocus()
-        if (editorVm.stepUncertain(from, direction) < 0 && root.shell)
-            root.shell.toast(qsTr("Nincs átnézendő sor."))
+        if (!reviewView.step(direction) && root.shell) root.shell.toast(qsTr("Nincs átnézendő sor."))
     }
     // Újraellenőrzés a megerősített / javított sorok hangja alapján. A héjon át (megerősítő
     // ablak + visszajelzés); héj nélkül (demó, képernyőkép) közvetlenül.
@@ -173,6 +193,28 @@ Item {
         if (!player) return
         const b = editorVm.playBounds(startMs, endMs)
         player.playRange(startMs, endMs, b.minStartMs, b.maxEndMs)
+    }
+    // Előző / következő sor (térkép-dokk gombjai, nyilak). Lejátszás közben a lejátszó alatti
+    // sortól lép, a cél elejére teker és szól tovább (sima ugrás, nem playRange); állva csak
+    // kijelöli és megmutatja. Az Átnézendő nézetben a csoportok sorain lép (mint a B).
+    function stepLine(delta) {
+        if (!editorVm.hasTranscript) return -1
+        const playing = !!root.player && root.player.playing === true
+        if (root.reviewShown) {
+            if (!reviewView.step(delta)) return -1
+            const id = reviewView.currentUtterance
+            const startMs = id !== "" ? editorVm.lineInfo(id).startMs : undefined
+            if (playing && startMs !== undefined) root.player.seek(startMs)
+            return 0
+        }
+        const r = editorVm.stepLine(delta, playing)
+        if (r.row < 0) return -1
+        list.positionViewAtIndex(r.row, ListView.Contain)
+        if (playing && r.startMs >= 0) {
+            root.followNext = true
+            root.player.seek(r.startMs)
+        }
+        return r.row
     }
     function revealRow(row, mode) {
         if (row < 0 || row >= list.count) return
@@ -347,7 +389,19 @@ Item {
 
         onRevealRequested: row => root.revealRow(row)
         // Az Átnézendő nézet a Javítás mód része (újraellenőrzés után a VM maga is bekapcsolja).
-        onUncertainOnlyChanged: if (uncertainOnly && hasTranscript) root.fixMode = true
+        // Újraellenőrzés után a VM maga is bekapcsolja; kilépéskor a korábbi mód tér vissza.
+        onUncertainOnlyChanged: {
+            if (uncertainOnly && hasTranscript) {
+                if (!root.reviewEntered) {
+                    root.reviewEntered = true
+                    root.reviewReturnFix = root.fixMode
+                }
+                root.fixMode = true
+            } else if (!uncertainOnly && root.reviewEntered) {
+                root.reviewEntered = false
+                root.fixMode = root.reviewReturnFix
+            }
+        }
         onChangeChanged: {
             root.keepVisibleRow = changeActive ? changeRow : -1
             if (root.keepVisibleRow >= 0) Qt.callLater(root.keepRowVisible)
@@ -355,6 +409,7 @@ Item {
         onNotice: text => { if (root.shell && root.shell.toast) root.shell.toast(text) }
         onOverviewChanged: Qt.callLater(root.updateViewport)
         onSessionChanged: {
+            root.reviewEntered = false
             root.fixMode = editorVm.railVisible
             root.lastPlayingRow = -1
             root.speakerPopoverRow = -1
@@ -393,7 +448,7 @@ Item {
     Shortcut {
         sequences: ["Ctrl+E"]
         enabled: root.visible && editorVm.hasTranscript
-        onActivated: root.fixMode = !root.fixMode
+        onActivated: root.toggleFixMode()
     }
     Shortcut {
         sequences: ["Ctrl+L"]
@@ -420,19 +475,18 @@ Item {
         } else if (ctrlOnly && event.key === Qt.Key_A) {
             editorVm.selectAll()
             event.accepted = true
-        } else if (plain && event.key === Qt.Key_B && root.reviewShown) {
-            root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
-            event.accepted = true
-        } else if (plain && event.key === Qt.Key_B && editorVm.uncertainCount > 0) {
+        } else if (plain && event.key === Qt.Key_B) {
+            // B: a következő átnézendő sor — az Átnézendő nézetben (oda vált, ha még nem ott van).
             root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
             event.accepted = true
         } else if (plain && event.key === Qt.Key_1 && root.reviewShown && reviewView.currentUtterance !== "") {
             // Az Átnézendő nézet kiválasztott sora a javasolt beszélőhöz („X mondta").
             reviewView.acceptCurrent()
             event.accepted = true
-        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
-            const row = editorVm.stepSelection(event.key === Qt.Key_Down ? 1 : -1)
-            if (row >= 0) list.positionViewAtIndex(row, ListView.Contain)
+        } else if (plain && (event.key === Qt.Key_Down || event.key === Qt.Key_Up
+                             || event.key === Qt.Key_Left || event.key === Qt.Key_Right)) {
+            // Nyilak: előző / következő sor (Olvasás, Javítás, Átnézendő); a lista nem görget.
+            root.stepLine(event.key === Qt.Key_Down || event.key === Qt.Key_Right ? 1 : -1)
             event.accepted = true
         } else if (plain && event.key >= Qt.Key_1 && event.key <= Qt.Key_9 && editorVm.selectedCount > 0) {
             editorVm.moveSelectionToLane(event.key - Qt.Key_1)
@@ -542,9 +596,10 @@ Item {
             Layout.fillWidth: true
             vm: editorVm
             fixMode: root.fixMode
+            viewMode: root.viewMode
             viewportStart: root.viewportStart
             viewportSize: root.viewportSize
-            onFixModeToggled: on => root.fixMode = on
+            onModeRequested: mode => root.setViewMode(mode)
             onParticipantsRequested: root.participantsRequested()
             onSeekRequested: fraction => root.seekToFraction(fraction)
             onSearchStepRequested: direction => editorVm.searchStep(direction)
@@ -1139,7 +1194,7 @@ Item {
         const s = demoState
         if (s === "") return
         if (root.v3Demo) {
-            root.fixMode = true
+            root.setViewMode("fix")
             editorVm.applyDemoState(s)
             demoTimer.start()
             return

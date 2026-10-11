@@ -2,24 +2,26 @@ import QtQuick
 import QtQuick.Layouts
 
 // Az Átirat fül eszköz-sora (design/handoff-v3 V4, 3. döntés): 46 px, alul 1 px vonal.
-// Olvasás / Javítás szegmens (Ctrl+E) · állapot („1298 megszólalás · 5 beszélő”, hangelemzés) ·
-// … · „Ki volt ott?” · „N átnézendő sor” (a szűrő; 0-nál az újraellenőrzés) · keresés.
+// Olvasás · Javítás · Átnézendő (N) szegmens (Ctrl+E: Olvasás ↔ Javítás; B: Átnézendő) · állapot
+// („1298 megszólalás · 5 beszélő”, hangelemzés) · … · Olvasáskor a csendes „N átnézendő sor”
+// (0-nál az újraellenőrzés) · „Ki volt ott?” · keresés.
 // Nincs állandó visszavonás-gomb (Ctrl+Z, értesítő sáv) és sáv-kapcsoló (Nézet › Beszélő-
 // oszlopok, Ctrl+L); a beszélőnkénti idővonal a lejátszó fölötti térkép-dokkba került (MapDock).
-// A Javítás mód tartalma (sín, jelölők, Átnézendő csoportok) a szerkesztőé: Javítás módban az
-// átnézendő-gomb az „Átnézendő N" chip (handoff-v3 E1/E2: kerek, mono darabszám, bekapcsolva
-// accentSoft + ×), és az állapot az Átnézendő nézetben „84 / 1298 sor · 3 csoport".
+// A Javítás mód tartalma (sín, jelölők, Átnézendő csoportok) a szerkesztőé. Az Átnézendő szegmens
+// mindig mutatja a darabszámot (0-t is: akkor az üres állapot látszik, nem üres lista); az
+// állapot az Átnézendő nézetben „84 / 1298 sor · 3 csoport".
 Item {
     id: root
 
     required property var vm                // TranscriptEditorViewModel
     property bool searchOpen: false
     property bool fixMode: false
+    property string viewMode: fixMode ? "fix" : "read"     // "read" | "fix" | "review"
     // Megmaradt a régi felület (a térkép-dokk kapja a Main.qml-ben).
     property real viewportStart: 0
     property real viewportSize: 0
 
-    signal fixModeToggled(bool on)          // Olvasás / Javítás
+    signal modeRequested(string mode)       // Olvasás / Javítás / Átnézendő
     signal participantsRequested()          // „Ki volt ott?”
     signal searchStepRequested(int direction)
     signal nextUncertainRequested()         // „Következő átnézendő" (B)
@@ -103,7 +105,7 @@ Item {
         anchors { fill: parent; leftMargin: Theme.space5; rightMargin: 20 }
         spacing: 10
 
-        // ---- Olvasás / Javítás ----
+        // ---- Olvasás · Javítás · Átnézendő (N) ----
         Rectangle {
             id: segment
             objectName: "modeSegment"
@@ -117,23 +119,25 @@ Item {
                 spacing: 2
                 Repeater {
                     model: [
-                        { label: qsTr("Olvasás"), icon: "book-open", fix: false, name: "modeRead" },
-                        { label: qsTr("Javítás"), icon: "pencil", fix: true, name: "modeFix" }
+                        { label: qsTr("Olvasás"), icon: "book-open", mode: "read", name: "modeRead" },
+                        { label: qsTr("Javítás"), icon: "pencil", mode: "fix", name: "modeFix" },
+                        { label: qsTr("Átnézendő"), icon: "list-checks", mode: "review", name: "modeReview" }
                     ]
                     Item {
                         id: seg
                         required property var modelData
                         objectName: modelData.name
-                        readonly property bool active: root.fixMode === modelData.fix
+                        readonly property bool active: root.viewMode === modelData.mode
+                        readonly property bool review: modelData.mode === "review"
                         implicitWidth: segContent.implicitWidth + 22
                         implicitHeight: 26
                         width: implicitWidth
                         height: implicitHeight
                         activeFocusOnTab: true
                         Accessible.role: Accessible.RadioButton
-                        Accessible.name: modelData.label
+                        Accessible.name: review ? qsTr("Átnézendő (%1)").arg(root.vm.reviewCount) : modelData.label
                         Accessible.checked: active
-                        Keys.onSpacePressed: root.fixModeToggled(modelData.fix)
+                        Keys.onSpacePressed: root.modeRequested(modelData.mode)
                         Rectangle {
                             anchors.fill: parent
                             radius: 5
@@ -159,13 +163,40 @@ Item {
                                 font.pixelSize: Theme.fontSmall
                                 font.weight: seg.active ? Theme.weightSemiBold : Theme.weightRegular
                             }
+                            // Az Átnézendő darabszáma: mindig látszik, 0-nál is.
+                            Rectangle {
+                                visible: seg.review
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: countText.implicitWidth + 10
+                                height: 18
+                                radius: Theme.radiusTag
+                                color: seg.active ? Theme.accentSoft : Theme.raised
+                                TLabel {
+                                    id: countText
+                                    objectName: "reviewCount"
+                                    anchors.centerIn: parent
+                                    text: String(root.vm.reviewCount)
+                                    mono: true
+                                    color: seg.active ? Theme.accent : root.vm.reviewCount > 0 ? Theme.text : Theme.textMuted
+                                    font.pixelSize: Theme.fontCaption
+                                    font.weight: Theme.weightMedium
+                                }
+                            }
+                            // Háttér-elemzés közben finom jelzés.
+                            TSpinner {
+                                visible: seg.review && root.vm.reviewRunning
+                                anchors.verticalCenter: parent.verticalCenter
+                                size: 11
+                                color: Theme.textMuted
+                            }
                         }
                         HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: root.fixModeToggled(seg.modelData.fix) }
+                        TapHandler { onTapped: root.modeRequested(seg.modelData.mode) }
                         TToolTip {
                             visible: segHover.hovered
-                            text: seg.modelData.fix ? qsTr("Javítás: beszélő-oszlopok, jelölők, átnézendő sorok (Ctrl+E)")
-                                                    : qsTr("Olvasás: tiszta lista (Ctrl+E)")
+                            text: seg.modelData.mode === "fix" ? qsTr("Javítás: beszélő-oszlopok, jelölők, soronkénti javítás (Ctrl+E)")
+                                : seg.review ? qsTr("Átnézendő: a kétes sorok okok szerint csoportosítva, csoportonként egy döntéssel (B: a következő)")
+                                : qsTr("Olvasás: tiszta lista (Ctrl+E)")
                         }
                     }
                 }
@@ -187,7 +218,7 @@ Item {
             Layout.leftMargin: 6
             Layout.fillWidth: true
             Layout.minimumWidth: 60
-            text: root.vm.uncertainOnly && root.fixMode
+            text: root.viewMode === "review"
                   ? qsTr("%1 / %2 sor · %n csoport", "", root.vm.reviewGroupCount).arg(root.vm.reviewCount).arg(root.vm.utteranceCount)
                   : qsTr("%1 megszólalás · %2 beszélő").arg(root.vm.utteranceCount).arg(root.vm.speakerCount)
             muted: true
@@ -272,123 +303,28 @@ Item {
             Item { Layout.fillWidth: true }
         }
 
-        // Átnézendő: olvasáskor csendes „N átnézendő sor", Javítás módban az „Átnézendő N" chip.
-        // Nincs (több) átnézendő sor: az újraellenőrzést kínálja — a megerősített és javított
-        // sorok hangjához méri a többit.
-        Item {
+        // Olvasáskor a csendes „N átnézendő sor" (kattintásra az Átnézendő nézet). Nincs (több)
+        // átnézendő sor: az újraellenőrzést kínálja — a megerősített és javított sorok hangjához
+        // méri a többit. Javítás / Átnézendő módban a szegmens darabszáma elég.
+        QuietButton {
             id: reviewButton
             objectName: "uncertainChip"
             readonly property int count: root.vm.reviewCount
-            readonly property bool offersRecheck: !root.vm.uncertainOnly && count === 0 && root.vm.uncertainCount === 0
+            readonly property bool offersRecheck: count === 0 && root.vm.uncertainCount === 0
                                                   && root.vm.voiceAvailable && !root.vm.embeddingRunning
-            readonly property bool checked: root.vm.uncertainOnly
-            readonly property bool chip: root.fixMode && !offersRecheck
-            readonly property string toolTipText: !root.vm.voiceAvailable ? root.vm.voiceNote
-                       : root.vm.uncertainOnly ? qsTr("Minden sor mutatása")
+            visible: root.viewMode === "read"
+            enabled: root.vm.voiceAvailable || count > 0
+            iconName: offersRecheck && root.vm.canRecheck ? "refresh-cw" : "list-checks"
+            text: offersRecheck ? qsTr("Nincs átnézendő sor") : qsTr("%n átnézendő sor", "", count)
+            toolTipText: !root.vm.voiceAvailable ? root.vm.voiceNote
                        : offersRecheck && root.vm.canRecheck
                          ? qsTr("Nincs átnézendő sor. Kattints, és a megerősített és javított sorok hangja alapján újraellenőrzöm a többit.")
                        : offersRecheck ? qsTr("Nincs átnézendő sor. Újraellenőrzéshez: %1").arg(root.vm.recheckBlocker)
                        : qsTr("A kétes sorok okok szerint csoportosítva, csoportonként egy döntéssel (B: a következő)")
-            enabled: root.vm.voiceAvailable || root.vm.uncertainOnly
-            implicitWidth: chip ? chipRow.implicitWidth + 22 : quiet.implicitWidth
-            implicitHeight: 28
-            activeFocusOnTab: true
-            Accessible.role: Accessible.Button
-            Accessible.name: qsTr("Átnézendő")
-            Keys.onSpacePressed: clicked()
-            Keys.onReturnPressed: clicked()
-            function clicked() {
-                if (offersRecheck) {
-                    root.recheckRequested()
-                    return
-                }
-                const on = !root.vm.uncertainOnly
-                if (on && !root.fixMode) root.fixModeToggled(true)
-                root.vm.uncertainOnly = on
-            }
-
-            QuietButton {
-                id: quiet
-                visible: !reviewButton.chip
-                enabled: reviewButton.enabled
-                checked: reviewButton.checked
-                iconName: reviewButton.offersRecheck && root.vm.canRecheck ? "refresh-cw" : "list-checks"
-                text: reviewButton.offersRecheck ? qsTr("Nincs átnézendő sor")
-                                                 : qsTr("%n átnézendő sor", "", reviewButton.count)
-                toolTipText: reviewButton.toolTipText
-                onClicked: reviewButton.clicked()
-            }
-            Rectangle {
-                visible: reviewButton.chip
-                anchors.fill: parent
-                radius: height / 2
-                color: reviewButton.checked ? Theme.accentSoft : Theme.raised
-                border.width: 1
-                border.color: reviewButton.checked ? Theme.accent : Theme.borderStrong
-                opacity: reviewButton.enabled ? 1 : 0.5
-                Rectangle {
-                    anchors.fill: parent
-                    radius: parent.radius
-                    color: Theme.stateLayer
-                    opacity: chipTap.pressed ? Theme.pressedOpacity : chipHover.hovered ? Theme.hoverOpacity : 0
-                }
-                TFocusRing { visible: reviewButton.activeFocus; targetRadius: parent.radius }
-                Row {
-                    id: chipRow
-                    anchors.centerIn: parent
-                    spacing: 6
-                    TIcon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "list-checks"
-                        size: 14
-                        color: reviewButton.checked ? Theme.accent : Theme.text
-                    }
-                    TLabel {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Átnézendő")
-                        color: reviewButton.checked ? Theme.accent : Theme.text
-                        font.pixelSize: Theme.fontSmall
-                        font.weight: reviewButton.checked ? Theme.weightSemiBold : Theme.weightMedium
-                    }
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: countText.implicitWidth + 10
-                        height: 18
-                        radius: Theme.radiusTag
-                        color: reviewButton.checked ? "transparent" : Theme.sunken
-                        TLabel {
-                            id: countText
-                            objectName: "reviewCount"
-                            anchors.centerIn: parent
-                            text: String(reviewButton.count)
-                            mono: true
-                            color: reviewButton.checked ? Theme.accent : Theme.text
-                            font.pixelSize: Theme.fontCaption
-                            font.weight: Theme.weightMedium
-                        }
-                    }
-                    TIcon {
-                        visible: reviewButton.checked
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "x"
-                        size: 12
-                        color: Theme.accent
-                    }
-                    // Háttér-elemzés közben finom jelzés.
-                    TSpinner {
-                        visible: root.vm.reviewRunning && !reviewButton.checked
-                        anchors.verticalCenter: parent.verticalCenter
-                        size: 11
-                        color: Theme.textMuted
-                    }
-                }
-                HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { id: chipTap; enabled: reviewButton.enabled; onTapped: reviewButton.clicked() }
-                TToolTip { visible: chipHover.hovered && reviewButton.toolTipText !== ""; text: reviewButton.toolTipText }
-            }
+            onClicked: offersRecheck ? root.recheckRequested() : root.modeRequested("review")
         }
         QuietButton {
-            visible: root.vm.uncertainOnly && root.vm.reviewCount > 0
+            visible: root.viewMode === "review" && root.vm.reviewCount > 0
             iconName: "chevrons-down"
             toolTipText: qsTr("Következő átnézendő sor (B)")
             onClicked: root.nextUncertainRequested()

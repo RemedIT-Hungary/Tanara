@@ -549,13 +549,33 @@ ApplicationWindow {
                             onTriggered: window.showTab(3)
                         }
                         TMenuSeparator {}
+                        // Az Átirat három nézete (az eszköz-sor szegmensével azonos).
                         TMenuItem {
-                            objectName: "fixModeItem"
-                            text: transcriptTab.fixMode ? qsTr("Olvasás") : qsTr("Javítás")
-                            iconName: transcriptTab.fixMode ? "book-open" : "pencil"
+                            objectName: "modeReadItem"
+                            text: qsTr("Olvasás")
+                            iconName: "book-open"
                             shortcutText: "Ctrl+E"
-                            enabled: window.viewState === "meeting"
-                            onTriggered: { window.showTab(1); transcriptTab.fixMode = !transcriptTab.fixMode }
+                            enabled: window.viewState === "meeting" && transcriptTab.editor.hasTranscript
+                            checked: window.viewState === "meeting" && transcriptTab.viewMode === "read"
+                            onTriggered: { window.showTab(1); transcriptTab.setViewMode("read") }
+                        }
+                        TMenuItem {
+                            objectName: "modeFixItem"
+                            text: qsTr("Javítás")
+                            iconName: "pencil"
+                            shortcutText: "Ctrl+E"
+                            enabled: window.viewState === "meeting" && transcriptTab.editor.hasTranscript
+                            checked: window.viewState === "meeting" && transcriptTab.viewMode === "fix"
+                            onTriggered: { window.showTab(1); transcriptTab.setViewMode("fix") }
+                        }
+                        TMenuItem {
+                            objectName: "modeReviewItem"
+                            text: qsTr("Átnézendő (%1)").arg(transcriptTab.editor.reviewCount)
+                            iconName: "list-checks"
+                            shortcutText: "B"
+                            enabled: window.viewState === "meeting" && transcriptTab.editor.hasTranscript
+                            checked: window.viewState === "meeting" && transcriptTab.viewMode === "review"
+                            onTriggered: { window.showTab(1); transcriptTab.setViewMode("review") }
                         }
                         TMenuItem {
                             objectName: "railItem"
@@ -812,6 +832,11 @@ ApplicationWindow {
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
                             else playerController.seek(transcriptTab.editor.timeAtFraction(fraction))
+                        }
+                        // Előző / következő sor: az Átirat logikája (lejátszás közben ugrás, állva kijelölés).
+                        onLineStepRequested: delta => {
+                            transcriptTab.stepLine(delta)
+                            if (shellActions.currentTab === 1) transcriptTab.forceActiveFocus()
                         }
                         onSpeakerClicked: (key, anchor) => {
                             if (shellActions.currentTab !== 1) window.showTab(1)

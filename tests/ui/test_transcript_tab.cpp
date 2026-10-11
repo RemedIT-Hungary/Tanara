@@ -88,6 +88,7 @@ ApplicationWindow {
         onExpandRequested: tab.editor.lanesExpanded = true
         onCollapseRequested: tab.editor.lanesExpanded = false
         similarMarks: tab.similarMarks
+        onLineStepRequested: delta => tab.stepLine(delta)
     }
 }
 )";
@@ -1278,30 +1279,37 @@ private slots:
         QCOMPARE(m_vm->selectedCount(), 0);
     }
 
-    // „Következő bizonytalan": a B billentyű (és az eszköztár gombja) a következő bizonytalan
-    // sorra lép, körbefordulva; szövegmezőbe gépelve a betű nem lép.
-    void nextUncertain_jumps()
+    QString viewMode() const { return m_tab->property("viewMode").toString(); }
+    void setViewMode(const char* mode)
+    {
+        QMetaObject::invokeMethod(m_tab, "setViewMode", Q_ARG(QVariant, QString::fromLatin1(mode)));
+        pump();
+    }
+
+    // „Következő átnézendő": a B billentyű az Átnézendő nézetre vált, és ott a csoportok sorain
+    // lépked (Shift+B visszafelé); szövegmezőbe gépelve a betű nem lép.
+    void nextUncertain_switchesToReview()
     {
         load();
-        QVERIFY(m_vm->uncertainCount() > 0);
-        click(textPoint(0));
-        QTest::keyClick(m_window.get(), Qt::Key_Escape);
+        QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
+        setViewMode("read");
+        QCOMPARE(viewMode(), QStringLiteral("read"));
         QTest::keyClick(m_window.get(), Qt::Key_B);
-        const int first = m_vm->currentRow();
-        QVERIFY(first >= 0);
-        QVERIFY(cell(first, Role::UncertainRole).toBool());
-        QVERIFY(rowItem(first) != nullptr);
-        QSet<int> seen{first};
-        for (int i = 1; i < m_vm->uncertainCount(); ++i) {
-            QTest::keyClick(m_window.get(), Qt::Key_B);
-            QVERIFY(cell(m_vm->currentRow(), Role::UncertainRole).toBool());
-            seen.insert(m_vm->currentRow());
-        }
-        QCOMPARE(int(seen.size()), m_vm->uncertainCount());
+        pump(60);
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+        QVERIFY(m_vm->uncertainOnly());
+        QVERIFY(m_vm->railVisible());                        // a Javítás sínje
+        QQuickItem* view = visual("reviewView");
+        QVERIFY(view);
+        QTRY_VERIFY(!view->property("currentUtterance").toString().isEmpty());
+        const QString first = view->property("currentUtterance").toString();
         QTest::keyClick(m_window.get(), Qt::Key_B);
-        QCOMPARE(m_vm->currentRow(), first);                 // körbefordult
+        pump();
+        const QString next = view->property("currentUtterance").toString();
+        QVERIFY(next != first);
         QTest::keyClick(m_window.get(), Qt::Key_B, Qt::ShiftModifier);
-        QVERIFY(m_vm->currentRow() != first);                // visszafelé
+        pump();
+        QCOMPARE(view->property("currentUtterance").toString(), first);
 
         // A keresőmezőben a „b" betű szöveg, nem ugrás; a Ctrl+Z ott a mezőé.
         const int before = m_vm->currentRow();
@@ -1313,6 +1321,184 @@ private slots:
         QCOMPARE(m_vm->searchQuery(), QStringLiteral("b1"));
         QCOMPARE(m_vm->currentRow(), before);
         QVERIFY(!m_vm->canUndo());
+    }
+
+    // A következő / előző SOR (nem rés) a listában.
+    int lineAfter(int row, int dir) const
+    {
+        for (int r = row + dir; r >= 0 && r < m_vm->rows()->rowCount(); r += dir)
+            if (!m_vm->rowUtteranceId(r).isEmpty()) return r;
+        return -1;
+    }
+    QString playerLog() const { return m_player->property("log").toString(); }
+
+    // Sor-léptetés állva: a nyilak (←/↑ előző, →/↓ következő) és a térkép-dokk gombjai csak
+    // kijelölnek és megmutatnak; nincs tekerés, nincs lejátszás.
+    void lineStep_notPlaying()
+    {
+        load();
+        click(textPoint(2));
+        QCOMPARE(m_vm->currentRow(), 2);
+        m_player->setProperty("log", QString());
+        const int next = lineAfter(2, 1);
+        QTest::keyClick(m_window.get(), Qt::Key_Right);
+        QCOMPARE(m_vm->currentRow(), next);
+        QTest::keyClick(m_window.get(), Qt::Key_Left);
+        QCOMPARE(m_vm->currentRow(), 2);
+        QTest::keyClick(m_window.get(), Qt::Key_Down);
+        QCOMPARE(m_vm->currentRow(), next);
+        QTest::keyClick(m_window.get(), Qt::Key_Up);
+        QCOMPARE(m_vm->currentRow(), 2);
+        QCOMPARE(m_vm->selectedCount(), 1);
+
+        QQuickItem* nextButton = visual("nextLineButton");
+        QQuickItem* prevButton = visual("prevLineButton");
+        QVERIFY(nextButton && prevButton);
+        click(center(nextButton));
+        QCOMPARE(m_vm->currentRow(), next);
+        QVERIFY(m_tab->hasActiveFocus() || !nextButton->hasActiveFocus());
+        click(center(prevButton));
+        QCOMPARE(m_vm->currentRow(), 2);
+        QCOMPARE(playerLog(), QString());                    // állva: sem tekerés, sem lejátszás
+        QVERIFY(!m_player->property("playing").toBool());
+
+        // A lista nem görget magától a nyilakra (a kijelölt sor látható marad).
+        const qreal y = m_list->property("contentY").toReal();
+        QTest::keyClick(m_window.get(), Qt::Key_Right);
+        QTest::keyClick(m_window.get(), Qt::Key_Left);
+        pump();
+        QCOMPARE(m_list->property("contentY").toReal(), y);
+    }
+
+    // Lejátszás közben: a lejátszó alatti sortól lép, a cél elejére teker (sima seek, nem
+    // playRange), és szól tovább.
+    void lineStep_playing()
+    {
+        load();
+        click(textPoint(1));
+        QCOMPARE(m_vm->currentRow(), 1);
+        const int playingRow = lineAfter(lineAfter(1, 1), 1);
+        QVERIFY(playingRow > 1);
+        m_player->setProperty("playing", true);
+        m_player->setProperty("positionMs", m_vm->rowStartMs(playingRow) + 10);
+        QTRY_COMPARE(m_vm->playingRow(), playingRow);
+        m_player->setProperty("log", QString());
+
+        const int next = lineAfter(playingRow, 1);
+        QTest::keyClick(m_window.get(), Qt::Key_Right);
+        QCOMPARE(playerLog(), QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(next)));
+        QVERIFY(m_player->property("playing").toBool());
+        QCOMPARE(m_vm->currentRow(), next);
+        QTRY_COMPARE(m_vm->playingRow(), next);
+
+        // A dokk „Előző sor” gombja: a most szóló sor előtti sor eleje.
+        m_player->setProperty("log", QString());
+        QQuickItem* prevButton = visual("prevLineButton");
+        QVERIFY(prevButton);
+        click(center(prevButton));
+        QCOMPARE(playerLog(), QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(playingRow)));
+        QVERIFY(m_player->property("playing").toBool());
+        QCOMPARE(m_vm->currentRow(), playingRow);
+        QVERIFY(!playerLog().contains(QStringLiteral("range:")));
+    }
+
+    // Az Átnézendő nézetben a nyilak a csoportok sorain lépnek (mint a B).
+    void lineStep_reviewView()
+    {
+        load();
+        QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 1; }, 10000));
+        setViewMode("review");
+        m_tab->forceActiveFocus();
+        QQuickItem* view = visual("reviewView");
+        QVERIFY(view);
+        QTest::keyClick(m_window.get(), Qt::Key_Right);
+        pump();
+        const QString first = view->property("currentUtterance").toString();
+        QVERIFY(!first.isEmpty());
+        QTest::keyClick(m_window.get(), Qt::Key_Down);
+        pump();
+        QVERIFY(view->property("currentUtterance").toString() != first);
+        QTest::keyClick(m_window.get(), Qt::Key_Left);
+        pump();
+        QCOMPARE(view->property("currentUtterance").toString(), first);
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+    }
+
+    // Olvasás · Javítás · Átnézendő (N): a szegmens három eleme; az Átnézendő a Javítás része, és
+    // kilépve a belépés előtti mód jön vissza; Ctrl+E Olvasás ↔ Javítás (az Átnézendőből Olvasás).
+    void viewModes_segmentAndReturn()
+    {
+        load();
+        QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
+        setViewMode("fix");
+        QCOMPARE(viewMode(), QStringLiteral("fix"));
+        QQuickItem* review = visual("modeReview");
+        QVERIFY(review);
+        QCOMPARE(textOf("reviewCount"), QString::number(m_vm->reviewCount()));
+        QVERIFY(!visual("uncertainChip"));                   // Javításkor csak a szegmens
+        click(center(review));
+        QTRY_COMPARE(viewMode(), QStringLiteral("review"));
+        QVERIFY(m_vm->uncertainOnly());
+        QVERIFY(m_tab->property("fixMode").toBool());
+        QTRY_VERIFY(visual("reviewView"));
+        QVERIFY(!visual("uncertainChip"));
+        click(center(visual("modeRead")));
+        QTRY_COMPARE(viewMode(), QStringLiteral("read"));
+        QVERIFY(!m_vm->uncertainOnly());
+        QVERIFY(!m_vm->railVisible());
+        QVERIFY(visual("uncertainChip"));                    // Olvasáskor a csendes „N átnézendő sor"
+
+        // Kilépés nem a szegmensen át (pl. időbélyeg-ugrás): a belépés előtti mód jön vissza.
+        setViewMode("fix");
+        m_vm->setUncertainOnly(true);
+        pump();
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+        m_vm->setUncertainOnly(false);
+        pump();
+        QCOMPARE(viewMode(), QStringLiteral("fix"));
+        setViewMode("read");
+        m_vm->setUncertainOnly(true);                        // pl. az újraellenőrzés eredménye
+        pump();
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+        m_vm->setUncertainOnly(false);
+        pump();
+        QCOMPARE(viewMode(), QStringLiteral("read"));
+
+        // Ctrl+E: Olvasás ↔ Javítás; az Átnézendőből az Olvasásba.
+        QTest::keyClick(m_window.get(), Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(viewMode(), QStringLiteral("fix"));
+        setViewMode("review");
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+        QTest::keyClick(m_window.get(), Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(viewMode(), QStringLiteral("read"));
+        QTest::keyClick(m_window.get(), Qt::Key_E, Qt::ControlModifier);
+        QCOMPARE(viewMode(), QStringLiteral("fix"));
+    }
+
+    // 0 átnézendő sor: az Átnézendő szegmens 0-t mutat, és a nézet az üres állapot
+    // (felirat + „Beszélők újraellenőrzése…"), nem üres lista.
+    void viewModes_reviewEmptyState()
+    {
+        load();
+        QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
+        for (int round = 0; round < 5 && m_vm->reviewCount() > 0; ++round) {
+            QStringList ids;
+            for (const auto& v : m_vm->reviewViews()) ids += v.ids;
+            for (const QString& id : std::as_const(ids)) m_vm->confirmUtterance(id);
+            QTest::qWaitFor([this] { return !m_vm->reviewRunning(); }, 10000);
+            pump(60);
+        }
+        QStringList kinds;
+        for (const auto& v : m_vm->reviewViews()) kinds << QStringLiteral("%1:%2").arg(v.kind).arg(v.ids.size());
+        QVERIFY2(m_vm->reviewCount() == 0, qPrintable(QStringLiteral("%1 maradt: %2").arg(m_vm->reviewCount()).arg(kinds.join(u' '))));
+        pump();
+        QCOMPARE(textOf("reviewCount"), QStringLiteral("0"));
+        setViewMode("review");
+        QCOMPARE(viewMode(), QStringLiteral("review"));
+        QTRY_VERIFY(visual("reviewView"));
+        QVERIFY(visual("reviewEmpty"));
+        QVERIFY(findByText(visual("reviewEmpty"), QStringLiteral("Beszélők újraellenőrzése…")));
+        QVERIFY(visual("emptyFilterRecheck"));
     }
 
     // Szövegmezőbe gépelve a szerkesztő billentyűi (1–9, Szóköz, Ctrl+Y) nem sülnek el.

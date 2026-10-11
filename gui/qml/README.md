@@ -329,13 +329,30 @@ on `ShellActions.participantsDialogRequested`.
 an approval is pending; returns `true` if it opened), `participantsGuess(meetingId)` (the pre-transcript
 voice guess), `identifyParticipants(meetingId)` and `recheckSpeakers(meetingId)` (the menu entries).
 
-#### Átirat: Olvasás and Javítás (`TranscriptTab`)
+#### Átirat: Olvasás, Javítás and Átnézendő (`TranscriptTab`)
 
-`TranscriptTab.fixMode` (Ctrl+E, the segment in `TranscriptToolbar`, `Nézet › Javítás`): **Olvasás** is
-the plain list; **Javítás** switches the speaker rail on (`onFixModeChanged` sets
-`editorVm.railVisible`) and shows the per-line markers and the "Átnézendő N" chip. There is no
-permanent undo button: `Ctrl+Z` and the `TranscriptChangeBar` at the bottom (Visszavonás).
-`B` / `Shift+B` step over the lines to review (over the groups in the Átnézendő view).
+Three views on one segmented control in `TranscriptToolbar` ("Olvasás · Javítás · Átnézendő (N)",
+`objectName`s `modeRead` / `modeFix` / `modeReview`) and in the `Nézet` menu (`modeReadItem` …);
+`TranscriptTab.viewMode` (`"read"` | `"fix"` | `"review"`) and `setViewMode(mode)`. **Olvasás** is
+the plain list; **Javítás** (`fixMode`) switches the speaker rail on (`onFixModeChanged` sets
+`editorVm.railVisible`) and shows the per-line markers; **Átnézendő** is the groups view on top of
+Javítás (rail, markers, per-line actions; the underlying switch stays `editorVm.uncertainOnly`, so the
+recheck result still opens it). The segment always shows the count (`reviewCount`, also 0); with 0
+lines the view shows the empty state ("Nincs átnézendő sor…" + "Beszélők újraellenőrzése…"), never a
+blank list. Leaving it any other way than the segment (time link, VM reset) returns to the mode that
+was active before. `Ctrl+E` toggles Olvasás / Javítás (from Átnézendő: Olvasás); `B` / `Shift+B`
+switch to Átnézendő and step over its lines. In Olvasás the quiet "N átnézendő sor" button stays (0:
+the recheck offer). There is no permanent undo button: `Ctrl+Z` and the `TranscriptChangeBar` at the
+bottom (Visszavonás).
+
+**Line navigation** (all three views): `←`/`↑` previous line, `→`/`↓` next line (only when the editor
+has the focus, not in a text field or a dialog; the list does not scroll on its own), and the
+"Előző sor" / "Következő sor" buttons (`prevLineButton` / `nextLineButton`) beside play/pause in the
+`MapDock` controls (`PlayerBar.lineSteps`, `MapDock.lineStepRequested`). Both call
+`TranscriptTab.stepLine(delta)` → `editor.stepLine(delta, playing)` (`{ row, startMs }`): while playing
+it steps from the line under the playhead, seeks to the target line's start and keeps playing (a plain
+seek, not `playRange`); when stopped it steps from the selected line and only selects and reveals the
+target. In the Átnézendő view the arrows step over the groups' lines (like `B`).
 
 | Type | Role |
 |---|---|

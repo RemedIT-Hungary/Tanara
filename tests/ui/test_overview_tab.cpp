@@ -233,6 +233,7 @@ private slots:
         load(QStringLiteral("readingMap"));
         QTRY_COMPARE(tab(), 1);
         QVERIFY(shown("modeSegment"));
+        QVERIFY(shown("modeReview"));                 // Olvasás · Javítás · Átnézendő (N)
         QVERIFY(shown("whoWasThereButton"));
         QTRY_VERIFY(shown("mapDock"));
         QVERIFY(!shown("seekSlider"));

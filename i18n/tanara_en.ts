@@ -1347,6 +1347,10 @@
         <translation>Correct</translation>
     </message>
     <message>
+        <source>Átnézendő (%1)</source>
+        <translation>To review (%1)</translation>
+    </message>
+    <message>
         <source>Beszélő-oszlopok</source>
         <translation>Speaker columns</translation>
     </message>
@@ -2787,6 +2791,10 @@
         <translation>mixed audio</translation>
     </message>
     <message>
+        <source>Előző sor (←)</source>
+        <translation>Previous line (←)</translation>
+    </message>
+    <message>
         <source>Ehhez a megbeszéléshez nincs lejátszható hang</source>
         <translation>This meeting has no playable audio</translation>
     </message>
@@ -2797,6 +2805,10 @@
     <message>
         <source>Lejátszás (Szóköz)</source>
         <translation>Play (Space)</translation>
+    </message>
+    <message>
+        <source>Következő sor (→)</source>
+        <translation>Next line (→)</translation>
     </message>
     <message>
         <source>sáv-előnézet</source>
@@ -6983,10 +6995,6 @@
         <translation>Correct</translation>
     </message>
     <message>
-        <source>Javítás: beszélő-oszlopok, jelölők, átnézendő sorok (Ctrl+E)</source>
-        <translation>Correct: speaker columns, markers, lines to review (Ctrl+E)</translation>
-    </message>
-    <message>
         <source>Olvasás: tiszta lista (Ctrl+E)</source>
         <translation>Read: clean list (Ctrl+E)</translation>
     </message>
@@ -7046,6 +7054,18 @@
         <translation>To review</translation>
     </message>
     <message>
+        <source>Átnézendő (%1)</source>
+        <translation>To review (%1)</translation>
+    </message>
+    <message>
+        <source>Javítás: beszélő-oszlopok, jelölők, soronkénti javítás (Ctrl+E)</source>
+        <translation>Fix: speaker columns, markers, per-line fixes (Ctrl+E)</translation>
+    </message>
+    <message>
+        <source>Átnézendő: a kétes sorok okok szerint csoportosítva, csoportonként egy döntéssel (B: a következő)</source>
+        <translation>To review: doubtful lines grouped by reason, one decision per group (B: next)</translation>
+    </message>
+    <message>
         <source>Nincs átnézendő sor</source>
         <translation>Nothing to review</translation>
     </message>
@@ -7067,10 +7087,6 @@
     <message>
         <source>A résztvevők átnézése: kik voltak ott, és melyik beszélő kicsoda</source>
         <translation>Review the participants: who was there, and which speaker is who</translation>
-    </message>
-    <message>
-        <source>Minden sor mutatása</source>
-        <translation>Show all lines</translation>
     </message>
     <message>
         <source>Keresés bezárása</source>

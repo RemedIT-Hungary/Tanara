@@ -319,6 +319,7 @@ Item {
 
     // Nincs átnézendő sor (innen is kérhető az újraellenőrzés).
     Column {
+        objectName: "reviewEmpty"
         visible: list.count === 0 && (root.vm.contaminated.speakerKey || "") === ""
         anchors.centerIn: parent
         spacing: Theme.space3

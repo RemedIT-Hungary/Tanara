@@ -3,8 +3,8 @@ import QtQuick.Layouts
 
 // Térkép-dokk (design/handoff-v3 V4, 12. döntés): a lejátszó fölött beszélőnként egy 13 px-es
 // sor (név 104 px a beszélő tintájával · 8 px-es sáv · beszédarány %), accent lejátszás-vonal,
-// a lista épp látható szakasza halvány sávként; alatta a 44 px-es vezérlősor (lejátszás, idő,
-// tipp, sebesség, hangerő). A térkép a keresősáv: kattintás = ugrás; a név = a beszélő menüje.
+// a lista épp látható szakasza halvány sávként; alatta a 44 px-es vezérlősor (előző sor,
+// lejátszás, következő sor, idő, tipp, sebesség, hangerő). A térkép a keresősáv: kattintás = ugrás; a név = a beszélő menüje.
 // Az Átirat (Olvasás és Javítás) és az összefoglaló fülek alján látszik.
 // A név-oszlop végén (rögzített helyen, a sávot nem tolja el) a hanglenyomat-jel: teli zöld =
 // van hanglenyomata, halvány körvonal = elnevezett, de még nincs, névtelennél áttetsző és nem
@@ -39,6 +39,7 @@ Rectangle {
     signal voiceprintClicked(string speakerKey, Item anchor)
     signal expandRequested()
     signal collapseRequested()
+    signal lineStepRequested(int delta)     // „Előző sor” / „Következő sor” (a vezérlősorban)
 
     readonly property real nameWidth: 104
     readonly property real trackX: Theme.space5 + nameWidth + 10
@@ -318,6 +319,8 @@ Rectangle {
         height: 44
         player: root.player
         showSlider: false
+        lineSteps: true
+        onLineStepRequested: delta => root.lineStepRequested(delta)
         hint: qsTr("a beszélő-térkép a keresősáv: kattintás = ugrás, név = beszélő menü")
     }
 }

@@ -367,6 +367,10 @@ public:
     Q_INVOKABLE void clearSelection();
     // Fel / le: a kijelölés léptetése; vissza: az új sor (-1 = nem mozdult).
     Q_INVOKABLE int stepSelection(int delta);
+    // Előző / következő sor (térkép-dokk gombjai, nyilak): lejátszás közben a lejátszó alatti
+    // sortól, különben a kijelölt (aktuális) sortól lép; a célsort kijelöli.
+    // { row, startMs } — row = -1, ha nincs hova lépni.
+    Q_INVOKABLE QVariantMap stepLine(int delta, bool playing);
     Q_INVOKABLE bool isRowSelected(int row) const;
 
     // ---- műveletek (mind egy visszavonási lépés) --------------------------

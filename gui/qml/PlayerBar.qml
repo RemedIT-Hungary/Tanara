@@ -5,6 +5,7 @@ import QtQuick.Layouts
 // („lekevert hang”), pozíció-csúszka (húzható), sebesség („1×”) és hangerő. A PlayerControllert
 // `player`-ként kapja; nélküle (önálló képernyőkép) álló mintaállapot látszik.
 // A térkép-dokkban (MapDock) csúszka nélkül, egy rövid tippel áll: ott a térkép a keresősáv.
+// lineSteps: a lejátszás-gomb két oldalán „Előző sor” / „Következő sor” (lineStepRequested).
 Item {
     id: root
 
@@ -12,6 +13,9 @@ Item {
     property string label: qsTr("lekevert hang")
     property bool showSlider: true
     property string hint: ""
+    property bool lineSteps: false
+
+    signal lineStepRequested(int delta)
 
     readonly property bool available: player ? player.available : true
     readonly property bool playing: player ? player.playing : false
@@ -37,6 +41,17 @@ Item {
         spacing: 14
 
         TIconButton {
+            objectName: "prevLineButton"
+            visible: root.lineSteps
+            implicitWidth: 28; implicitHeight: 28
+            variant: "flat"
+            iconName: "chevron-left"
+            iconSize: 16
+            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (nyilak, B)
+            toolTipText: qsTr("Előző sor (←)")
+            onClicked: root.lineStepRequested(-1)
+        }
+        TIconButton {
             objectName: "playButton"
             implicitWidth: 32; implicitHeight: 32
             variant: "solid"
@@ -47,6 +62,17 @@ Item {
             toolTipText: !root.available ? qsTr("Ehhez a megbeszéléshez nincs lejátszható hang")
                        : root.playing ? qsTr("Szünet (Szóköz)") : qsTr("Lejátszás (Szóköz)")
             onClicked: if (root.player) root.player.toggle()
+        }
+        TIconButton {
+            objectName: "nextLineButton"
+            visible: root.lineSteps
+            implicitWidth: 28; implicitHeight: 28
+            variant: "flat"
+            iconName: "chevron-right"
+            iconSize: 16
+            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (nyilak, B)
+            toolTipText: qsTr("Következő sor (→)")
+            onClicked: root.lineStepRequested(1)
         }
         TLabel {
             text: root.clock(seek.dragging ? seek.dragValue * root.durationMs : root.positionMs)

@@ -1139,6 +1139,24 @@ int TranscriptEditorViewModel::stepSelection(int delta)
     return -1;
 }
 
+QVariantMap TranscriptEditorViewModel::stepLine(int delta, bool playing)
+{
+    QVariantMap out{{QStringLiteral("row"), -1}, {QStringLiteral("startMs"), -1}};
+    const auto& rows = m_rows->rows();
+    if (rows.isEmpty() || delta == 0) return out;
+    const int step = delta > 0 ? 1 : -1;
+    int row = playing && m_playingRow >= 0 ? m_playingRow : currentRow();
+    if (row < 0) row = m_playingRow >= 0 ? m_playingRow - step : (delta > 0 ? -1 : int(rows.size()));
+    for (int r = row + step; r >= 0 && r < rows.size(); r += step) {
+        if (rows[r].gap) continue;
+        setSelection({rows[r].utterance}, rows[r].utterance);
+        out[QStringLiteral("row")] = r;
+        out[QStringLiteral("startMs")] = rowStartMs(r);
+        return out;
+    }
+    return out;
+}
+
 bool TranscriptEditorViewModel::isRowSelected(int row) const
 {
     const int u = m_rows->utteranceOfRow(row);
