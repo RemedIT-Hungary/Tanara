@@ -4967,9 +4967,36 @@ bool AppController::analyzeParticipants(const QString& meetingId)
                 if (!act.isEmpty()) act.save(m.folder);
             }
             const VoiceEmbedderSet emb = proto.freshCopy();   // a szál saját modell-példányai
+            // Haladás (A8): az ablak-sorszámból a sáv (k / N, csak a beszédes sávok) és a
+            // százalék; a fő szálra csak változáskor megy jel.
+            QVector<int> ends;   // a beszédes sávok kumulált ablak-száma
+            int windows = 0;
+            for (const TrackActivity& ta : act.tracks) {
+                const int n = int(participants::speechWindows(ta, QString()).size());
+                if (n == 0) continue;
+                windows += n;
+                ends.append(windows);
+            }
+            auto last = std::make_shared<QPair<int, int>>(-1, -1);
+            auto report = [self, meetingId, ends, last](int done, int total) {
+                if (total <= 0 || ends.isEmpty()) return;
+                int track = 1;
+                while (track < ends.size() && done > ends.at(track - 1)) ++track;
+                const int pct = qBound(0, done * 100 / total, 100);
+                if (last->first == track && last->second == pct) return;
+                *last = {track, pct};
+                const int tracks = int(ends.size());
+                QMetaObject::invokeMethod(qApp, [self, meetingId, track, tracks, pct]() {
+                    if (self && self->d->analysisRuns.contains(meetingId))
+                        emit self->participantAnalysisProgress(meetingId, track, tracks, pct);
+                }, Qt::QueuedConnection);
+            };
             cs = participants::computeVoiceClusters(
                 m, act, emb, participants::filePcmReader(m),
-                [cancel, stop](int, int) { return !cancel->load() && !stop->load(); });
+                [cancel, stop, report](int done, int total) {
+                    report(done, total);
+                    return !cancel->load() && !stop->load();
+                });
         } else {
             cs.cancelled = true;
         }

@@ -15,9 +15,17 @@ import QtQuick.Templates as T
 //       adható, és az „Átírás indítása” (szolgáltató-állapot, hiányzó beállítás, hiba „Újra”-val)
 //       a FELDOLGOZÁS „Átirat” lépésében él (TranscribeStepPanel); kézi lekeverésnél a „Lekeverés”
 //       lépésben a „Lekeverés indítása”, a hanglenyomat-lépésben az azonosítás kapcsolója.
+// Az első átírás futása közben (A1) ugyanebben a lépésben a szakaszok, a „Közben nyugodtan
+//       dolgozz tovább” sor és a „Megszakítás”. Átírás előtt a forrás-kártya alatt a jegyzet-
+//       sablonok hasonló megbeszélésekből és az észlelt hívás (A3); a címkesor a cím alapján
+//       javasol, ha nincs más javaslat (A2, MeetingTagsModel.draftTitle).
+// A résztvevő-sor jelvényei (A4): tooltip a bizonyítékkal; átirat után kattintásra a szerkesztő
+//       „Miért ő?” panelje (shell.openSpeakerWhy). A névtelen sor (A5) kattintásra / „Elnevezés…”
+//       gombbal elnevezhető: átirat után személyválasztó → editor.reassignSpeaker; átirat előtt a
+//       „Ki volt ott?” párbeszéd (ott a név szerkeszthető). A hanglenyomat-lépésen „Újraelemzés” (D4).
 // A „Ki volt ott?” párbeszéd (U3) a participantsRequested jelre nyílik (Main: shell.openParticipants).
 // Képernyőképhez: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
-//   overviewRecorded|overviewRecordedError"'.
+//   overviewRecorded|overviewRecordedError|overviewTranscribing"'.
 Item {
     id: root
 
@@ -43,9 +51,16 @@ Item {
 
     // A V5-szerű (két sávos, üres) demó-állapotok.
     readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
-                                           "overviewRecordedError"].indexOf(root.demoState) >= 0
+                                           "overviewRecordedError", "overviewTranscribing"].indexOf(root.demoState) >= 0
     // Átirat előtt, az átírás indítása előtt: a lépésekben az indító vezérlők.
     readonly property bool beforeTranscription: !vm.hasTranscript && !vm.transcribing
+    // A hanglenyomat-lépés állapota (az „Újraelemzés” csak lefutott elemzés után látszik).
+    readonly property string voiceState: {
+        for (const s of vm.steps) if (s.key === "voice") return s.state
+        return ""
+    }
+    readonly property bool identifyShown: root.beforeTranscription && pre.identifyAvailable
+    readonly property bool reanalyzeShown: vm.canReanalyze && (root.voiceState === "done" || root.voiceState === "attention")
 
     OverviewViewModel {
         id: vm
@@ -58,7 +73,9 @@ Item {
         id: pre
         meetingId: vm.hasTranscript ? "" : root.meetingId
         demoState: root.demoState === "overviewRecordedError" ? "failed"
-                 : root.demoState === "overviewRecorded" ? "ready" : ""
+                 : root.demoState === "overviewRecorded" ? "readyNote"
+                 : root.demoState === "overviewTranscribing" ? "uploading"
+                 : root.demoState === "overviewProcessing" || root.demoState === "overviewEmpty" ? "running" : ""
     }
     TrackListModel {
         id: tracks
@@ -81,6 +98,12 @@ Item {
         }
     }
     readonly property var effectiveTags: tagsModel ? tagsModel : ownTags
+    // A2: átírás előtt a cím alapú tartalék-javaslat (ha nincs rendes javaslat).
+    Binding {
+        target: root.effectiveTags
+        property: "draftTitle"
+        value: vm.hasTranscript ? "" : vm.title
+    }
 
     function openPicker(anchor) {
         const p = anchor.mapToItem(root, 0, anchor.height)
@@ -93,8 +116,33 @@ Item {
     // Átírás indítása előtt (a lépés gombja, a hiba „Újra”-ja) a félbehagyott leírás mentődik.
     function commitSource() { if (sourceCard.editing) sourceCard.finish(true) }
     function solo() {
-        if (!vm.setSolo() && root.shell)
-            root.shell.toast(qsTr("Ehhez add meg a saját neved a Beállításokban (Általános › Te)."))
+        if (vm.setSolo() || !root.shell) return
+        root.shell.toast(qsTr("Ehhez add meg a saját neved: Beállítások › Beszélők › Te."))
+        root.shell.openSettings("speakers")
+    }
+    // A4: a jelvény → a szerkesztő „Miért ő?” panelje arra a beszélőre (Átirat fül).
+    function explainSpeaker(speakerKey) {
+        if (root.shell && typeof root.shell.openSpeakerWhy === "function")
+            root.shell.openSpeakerWhy(root.meetingId, speakerKey)
+    }
+    // A5: a névtelen sor elnevezése. Átirat után személyválasztó (→ editor.reassignSpeaker);
+    // átirat előtt a „Ki volt ott?” párbeszéd (a core ott engedi a név megadását).
+    function nameRow(row, anchor) {
+        if (!vm.hasTranscript || (row.speakerKey || "") === "") {
+            root.participantsRequested()
+            return
+        }
+        namePicker.speakerKey = row.speakerKey
+        const p = anchor.mapToItem(root, 0, anchor.height)
+        namePicker.x = Math.max(8, Math.min(root.width - namePicker.width - 8, p.x + anchor.width - namePicker.width))
+        namePicker.y = p.y + 6
+        namePicker.open()
+    }
+    // „Újraelemzés” (D4): átirat után a menü „Hanglenyomat-elemzés újra”-jával azonos (héj),
+    // átirat előtt a hangelemzés újra (analyzeParticipants).
+    function reanalyze() {
+        if (vm.hasTranscript) { if (root.shell) root.shell.identifyParticipants(root.meetingId) }
+        else vm.reanalyze()
     }
 
     // Szakasz-fejléc: 12/600 nagybetűs címke · halvány tipp · jobbra accent hivatkozás.
@@ -223,6 +271,8 @@ Item {
                     id: sourceCard
                     Layout.fillWidth: true
                     note: vm.contextNote
+                    suggestions: vm.hasTranscript ? [] : pre.note.suggestions
+                    detectedCallApp: vm.hasTranscript ? "" : pre.note.detectedCallApp
                     onSaveRequested: (note) => vm.setContextNote(note)
                 }
                 TagRowOverview {
@@ -247,8 +297,11 @@ Item {
                     visible: vm.peopleState === "list"
                     Layout.fillWidth: true
                     people: vm.participants
+                    canExplain: vm.hasTranscript
                     onAddRequested: (name) => vm.addParticipant(name)
                     onRemoveRequested: (id) => vm.removeParticipant(id)
+                    onWhyRequested: (key) => root.explainSpeaker(key)
+                    onNameRequested: (row, anchor) => root.nameRow(row, anchor)
                 }
                 EmptyCard {
                     objectName: "peopleEmpty"
@@ -472,10 +525,12 @@ Item {
                         visible: !vm.allDone || root.stepsOpen
                         Layout.fillWidth: true
                         steps: vm.steps
-                        transcriptContent: root.beforeTranscription ? transcribeStep : null
+                        // Átírás előtt az indító, az első átírás közben a szakaszok + „Megszakítás” (A1).
+                        transcriptContent: !vm.hasTranscript && (root.beforeTranscription || vm.transcribing)
+                                           ? transcribeStep : null
                         mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
                                         ? mixdownStep : null
-                        voiceContent: root.beforeTranscription && pre.identifyAvailable ? identifyStep : null
+                        voiceContent: root.identifyShown || root.reanalyzeShown ? voiceStep : null
                     }
 
                     // ---- sávok ----
@@ -527,21 +582,37 @@ Item {
         }
     }
     Component {
-        id: identifyStep
-        RowLayout {
-            spacing: 8
-            TSwitch {
-                objectName: "identifySwitch"
-                checked: pre.identifyEnabled
-                onToggled: pre.identifyEnabled = checked
-                Accessible.name: qsTr("Résztvevők azonosítása hang alapján")
-            }
-            TLabel {
+        id: voiceStep
+        ColumnLayout {
+            spacing: 6
+            RowLayout {
+                visible: root.identifyShown
                 Layout.fillWidth: true
-                text: pre.identifyEnabled ? qsTr("Azonosítás hang alapján") : qsTr("Kihagyva: a beszélők névtelenek maradnak")
-                muted: true
-                font.pixelSize: 12
-                wrapMode: Text.Wrap
+                spacing: 8
+                TSwitch {
+                    objectName: "identifySwitch"
+                    checked: pre.identifyEnabled
+                    onToggled: pre.identifyEnabled = checked
+                    Accessible.name: qsTr("Résztvevők azonosítása hang alapján")
+                }
+                TLabel {
+                    Layout.fillWidth: true
+                    text: pre.identifyEnabled ? qsTr("Azonosítás hang alapján") : qsTr("Kihagyva: a beszélők névtelenek maradnak")
+                    muted: true
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
+            }
+            TButton {
+                objectName: "reanalyzeButton"
+                visible: root.reanalyzeShown
+                text: qsTr("Újraelemzés")
+                size: "small"
+                iconName: "refresh-cw"
+                iconSize: 14
+                toolTipText: vm.hasTranscript ? qsTr("A hanglenyomat-elemzés újra: a névtelen beszélők a mentett hangmintákhoz")
+                                              : qsTr("A hanglenyomat-elemzés újra a sávokon")
+                onClicked: root.reanalyze()
             }
         }
     }
@@ -553,6 +624,19 @@ Item {
         editor: root.editor
         anonymousText: ""
         onPersonChosen: name => vm.addParticipant(name)
+    }
+    // ---- „Elnevezés…” (névtelen beszélő, átirat után) ----
+    PersonPicker {
+        id: namePicker
+        objectName: "overviewNamePicker"
+        property string speakerKey: ""
+        editor: root.editor
+        anonymousText: ""
+        hintText: qsTr("A beszélő minden sora a választott névre kerül; Ctrl+Z visszavonja.")
+        onPersonChosen: name => {
+            if (vm.nameSpeakerInDemo(namePicker.speakerKey, name)) return
+            if (root.editor) root.editor.reassignSpeaker(namePicker.speakerKey, name, false)
+        }
     }
 
     // ---- a régi Sávok fül teljes nézete ----

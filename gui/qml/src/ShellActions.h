@@ -150,6 +150,9 @@ public:
     // Az Átirat fülre lépéskor (U1): ha a meeting jóváhagyásra vár, és ebben a munkamenetben még
     // nem ajánlottuk fel (nem is nyitották meg), megnyitja. true, ha megnyitotta.
     Q_INVOKABLE bool maybeOfferParticipants(const QString& meetingId);
+    // A4: az Áttekintés résztvevő-jelvényéről a szerkesztő „Miért ő?” panelje egy beszélőre:
+    // a megbeszélés kijelölése, az Átirat fül, majd speakerWhyRequested (Main → TranscriptTab).
+    Q_INVOKABLE void openSpeakerWhy(const QString& meetingId, const QString& speakerKey);
     // A toast „Visszavonás” gombja (és a Ctrl+Z a címkesor fókuszában): undoRequested(undoKey).
     Q_INVOKABLE void undoFromToast(const QString& undoKey);
     // A könyvtár szűrése egy címkére (a fejléc chipje, a Címkék ablaka): tagFilterRequested.
@@ -187,6 +190,8 @@ signals:
     void participantsGuessed(const QString& meetingId, const QString& summary);
     // A „Ki volt ott?” párbeszéd kérése (ParticipantsDialog.openFor).
     void participantsDialogRequested(const QString& meetingId);
+    // A „Miért ő?” panel kérése egy beszélőre (openSpeakerWhy; az Átirat fül már látszik).
+    void speakerWhyRequested(const QString& meetingId, const QString& speakerKey);
 
 private:
     void attachController();

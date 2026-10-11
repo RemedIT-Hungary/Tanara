@@ -4,10 +4,16 @@
 // összecsukott sorok, üres kártyák), az Átirat eszköz-sora (Olvasás / Javítás, Ctrl+E) és a
 // térkép-dokk (csak az Átirat / összefoglaló füleken; kattintás = ugrás). U6: felvétel után,
 // átírás előtt is az Áttekintés jelenik meg, az „Átírás indítása” a FELDOLGOZÁS lépésében.
+// Javító kör (G1): az első átírás szakaszai és „Megszakítás” a lépésben (A1), jegyzet-sablon és
+// észlelt hívás a forrás-kártyán, cím alapú címke-javaslat (A2, A3), kattintható jelvények és a
+// névtelen sor elnevezése (A4, A5), „Újraelemzés” és a menüpont új neve (D4), az üres eszköz-sor (S3).
 #include "AppContext.h"
 #include "QmlApp.h"
 
+#include "tanara/jobs/JobTypes.h"
+
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -29,6 +35,9 @@ public:
         calls << "openSettings:" + page + (field.isEmpty() ? QString() : ":" + field);
     }
     Q_INVOKABLE void toast(const QString&, const QString& = QString()) { calls << "toast"; }
+    Q_INVOKABLE void cancelJob(const QString& id, int kind) { calls << "cancelJob:" + id + ":" + QString::number(kind); }
+    Q_INVOKABLE void openSpeakerWhy(const QString& id, const QString& key) { calls << "openSpeakerWhy:" + id + ":" + key; }
+    Q_INVOKABLE void identifyParticipants(const QString& id) { calls << "identifyParticipants:" + id; }
 };
 
 class TestOverviewTab : public QObject {
@@ -328,6 +337,139 @@ private slots:
         QTRY_VERIFY(anyShown("meetingRenameItem"));
         QTest::keyClick(m_window, Qt::Key_Escape);
         QTest::qWait(150);
+    }
+
+    // A1: az első átírás futása közben az „Átirat” lépésben a szakaszok, a „Közben nyugodtan
+    // dolgozz tovább” sor és a „Megszakítás” (a héj cancelJob(…, Transcribe)-ja); nincs indító.
+    void transcribing_stagesAndCancel()
+    {
+        load(QStringLiteral("overviewTranscribing"));
+        QCOMPARE(tab(), 0);
+        QTRY_VERIFY(shown("transcribeRunning"));
+        QVERIFY(items("transcribeStage").size() >= 3);
+        QVERIFY(shown("cancelTranscriptionButton"));
+        QVERIFY(!shown("startTranscriptionButton"));
+        QVERIFY(!shown("transcribeBlocker"));
+        QVERIFY(shown("peopleEmpty"));
+        QObject* overview = object("overviewTab");
+        QVERIFY(overview);
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        click(item("cancelTranscriptionButton"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("cancelJob::%1").arg(int(tanara::JobKind::Transcribe))}));
+        m_engine.reset();
+
+        // V1 (átírás közben, jelöltekkel) is megszakítható a lépésből.
+        load(QStringLiteral("overviewProcessing"));
+        QTRY_VERIFY(shown("cancelTranscriptionButton"));
+    }
+
+    // A3 + A2: új felvételnél a forrás-kártya alatt a sablonok és az észlelt hívás; a sablon a
+    // szerkesztőbe kerül (a mentés a felhasználóé). A címkesor a cím alapján javasol.
+    void recorded_templatesAndTitleTags()
+    {
+        load(QStringLiteral("overviewRecorded"));
+        QTRY_VERIFY(shown("sourceTemplates"));
+        QVERIFY(items("sourceTemplateChip").size() >= 1);
+        QVERIFY(shown("sourceDetectedCall"));
+        QObject* tags = object("overviewTab")->property("effectiveTags").value<QObject*>();
+        QVERIFY(tags);
+        QTRY_COMPARE(tags->property("suggestionSource").toString(), QStringLiteral("title"));
+        QCOMPARE(tags->property("suggestionLabel").toString(), QStringLiteral("A cím alapján"));
+        click(item("sourceTemplateChip"));
+        QTRY_VERIFY(shown("sourceEditor"));
+        QVERIFY(!item("sourceEditor")->property("text").toString().isEmpty());
+        QVERIFY(shown("sourceTemplates"));                 // szerkesztés közben is választható
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTRY_VERIFY(shown("sourceDescribe"));
+    }
+
+    // A4: átirat után a jelvény a „Miért ő?” panelt kéri arra a beszélőre (a héjtól); átirat
+    // előtt nem kattintható (csak tooltip). A5: a névtelen sor „Elnevezés…” gombja a
+    // személyválasztót nyitja; a választott név a sorra kerül (demóban helyben).
+    void done_badgesAndNaming()
+    {
+        load(QStringLiteral("overviewDone"));
+        QObject* overview = object("overviewTab");
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        click(item("participantBadge"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S1")}));
+
+        QCOMPARE(items("participantNameButton").size(), 5);
+        int visibleName = 0;
+        for (QQuickItem* it : items("participantNameButton")) visibleName += it->isVisible() ? 1 : 0;
+        QCOMPARE(visibleName, 1);                         // csak a névtelen „Távoli 1”
+        click(item("participantNameButton"));
+        QObject* picker = object("overviewNamePicker");
+        QVERIFY(picker);
+        QTRY_VERIFY(picker->property("opened").toBool());
+        QCOMPARE(picker->property("speakerKey").toString(), QStringLiteral("S5"));
+        QMetaObject::invokeMethod(picker, "personChosen", Q_ARG(QString, QStringLiteral("Szabó Bence")));
+        QObject* vm = overview->property("vm").value<QObject*>();
+        bool named = false;
+        for (const QVariant& v : vm->property("participants").toList())
+            named = named || v.toMap().value("name").toString() == QStringLiteral("Szabó Bence");
+        QVERIFY(named);
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTRY_VERIFY(!picker->property("opened").toBool());
+        m_engine.reset();
+
+        load(QStringLiteral("overviewProcessing"));
+        overview = object("overviewTab");
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        spy.calls.clear();
+        click(item("participantBadge"));
+        QVERIFY(spy.calls.isEmpty());                    // átirat előtt csak tooltip
+    }
+
+    // D4: a hanglenyomat-lépés „Újraelemzés”-e (átirat után = a menü „Hanglenyomat-elemzés újra”).
+    void done_reanalyzeAndMenuName()
+    {
+        load(QStringLiteral("overviewDone"));
+        click(item("stepsCollapsed"));
+        QTRY_VERIFY(shown("reanalyzeButton"));
+        QObject* overview = object("overviewTab");
+        StartSpy spy;
+        overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
+        // A jobb oszlop görgetése a lépés aljáig (a kinyitott lépések a lejátszó alá nyúlnak).
+        QObject* right = object("overviewRight");
+        QVERIFY(right);
+        QTRY_VERIFY(right->property("contentHeight").toReal() > right->property("height").toReal());
+        right->setProperty("contentY", right->property("contentHeight").toReal() - right->property("height").toReal());
+        QTest::qWait(100);
+        click(item("reanalyzeButton"));
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("identifyParticipants:")}));
+        click(item("meetingMoreButton"));
+        QTRY_VERIFY(anyShown("identifyItem"));
+        QQuickItem* identify = nullptr;
+        for (QQuickItem* it : items("identifyItem")) if (it->isVisible()) identify = it;
+        QVERIFY(identify);
+        QCOMPARE(identify->property("text").toString(), QStringLiteral("Hanglenyomat-elemzés újra"));
+        QTest::keyClick(m_window, Qt::Key_Escape);
+        QTest::qWait(150);
+    }
+
+    // S3: az eszköz-sor rejtett gyerekkel 0 magas (nem marad üres 46 px), látható gyerekkel 46.
+    void toolsRow_hiddenChildMeansEmpty()
+    {
+        QQmlEngine engine;
+        setupEngine(engine);
+        QQmlComponent c(&engine);
+        c.setData("import QtQuick\nimport Tanara\nMeetingToolsRow { width: 400; Item { objectName: \"kid\"; visible: false } }",
+                  QUrl());
+        std::unique_ptr<QObject> row(c.create());
+        QVERIFY2(row, qPrintable(c.errorString()));
+        auto* item = qobject_cast<QQuickItem*>(row.get());
+        QVERIFY(!item->property("hasContent").toBool());
+        QCOMPARE(item->implicitHeight(), 0.0);
+        QObject* kid = row->findChild<QObject*>(QStringLiteral("kid"));
+        QVERIFY(kid);
+        kid->setProperty("visible", true);
+        QTRY_VERIFY(item->property("hasContent").toBool());
+        QCOMPARE(item->implicitHeight(), 46.0);
+        kid->setProperty("visible", false);
+        QTRY_VERIFY(!item->property("hasContent").toBool());
     }
 };
 

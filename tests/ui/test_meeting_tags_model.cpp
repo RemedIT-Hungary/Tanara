@@ -74,6 +74,36 @@ private slots:
         QVERIFY(!m.canUndo());
     }
 
+    // A2: átírás előtt, rendes javaslat nélkül a cím alapú tartalék (draftTitle) javasol; rendes
+    // javaslat mellett nem; az elutasított / felrakott kiesik, és elfogadható.
+    void draftTitleFallback()
+    {
+        MeetingTagsModel m;
+        m.setDemoState("none");
+        QVERIFY(m.suggestions().isEmpty());
+        QSignalSpy spy(&m, &MeetingTagsModel::suggestionsChanged);
+        m.setDraftTitle(QStringLiteral("Ügyféltámogatás heti"));
+        QVERIFY(spy.count() >= 1);
+        QCOMPARE(suggestionNames(m), QStringList({"Ügyféltámogatás"}));
+        QCOMPARE(m.suggestionSource(), QStringLiteral("title"));
+        QCOMPARE(m.suggestionLabel(), QStringLiteral("A cím alapján"));
+        m.reject(0);
+        QVERIFY(m.suggestions().isEmpty());
+        m.undo();
+        QCOMPARE(suggestionNames(m), QStringList({"Ügyféltámogatás"}));
+        m.accept(0);
+        QVERIFY(tagNames(m).contains(QStringLiteral("Ügyféltámogatás")));
+        QVERIFY(m.suggestions().isEmpty());              // a felrakott nem jön vissza javaslatként
+        m.undo();
+        m.setDraftTitle(QString());
+        QVERIFY(m.suggestions().isEmpty());
+        // Rendes javaslat mellett a tartalék nem szól bele.
+        m.setDemoState("similar");
+        m.setDraftTitle(QStringLiteral("Ügyféltámogatás heti"));
+        QCOMPARE(m.suggestionSource(), QStringLiteral("similar"));
+        QVERIFY(!suggestionNames(m).contains(QStringLiteral("Ügyféltámogatás")));
+    }
+
     void acceptAndUndo()
     {
         MeetingTagsModel m;

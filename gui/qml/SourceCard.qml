@@ -10,13 +10,33 @@ import QtQuick.Layouts
 //   nincs       → szaggatott kártya: „Nincs hozzá naptár-esemény” + „Leírás megadása” /
 //                 „Naptár összekapcsolása”
 //   szerkesztés → szövegmező + Mentés / Mégse (Ctrl+Enter / Esc)
+// Átirat előtt a kártya alatt egy tömör sor (a régi átirat előtti oldal jegyzet-szerkesztőjéből):
+//   „Sablon hasonló megbeszélésből:” + chipek (MeetingNoteModel.suggestions; a tooltip az eleje;
+//   kattintásra a szerkesztőbe kerül: üres mezőbe csere, különben hozzáfűzés — a mentés a
+//   felhasználóé) — csak ha nincs leírás vagy éppen szerkeszt; és az „Észlelt hívás: Teams” sor
+//   (MeetingNoteModel.detectedCallApp, csak tájékoztatás).
 Item {
     id: root
 
     property string note: ""
     property bool editing: false
+    // [{ title, dateText, preview, note }] — MeetingNoteModel.suggestions (üres → nincs sor).
+    property var suggestions: []
+    property string detectedCallApp: ""
+
+    readonly property bool templatesShown: suggestions.length > 0 && (editing || note === "")
+    readonly property real mainHeight: editing ? editBox.implicitHeight : note !== "" ? card.implicitHeight : empty.implicitHeight
 
     signal saveRequested(string note)
+
+    // Sablon a szerkesztőbe: üres mezőbe csere, különben új sorba hozzáfűzés.
+    function useTemplate(text) {
+        if (!root.editing) root.startEdit()
+        const current = editor.text.trim()
+        editor.text = current === "" ? text : current + "\n" + text
+        editor.cursorPosition = editor.text.length
+        editor.forceActiveFocus()
+    }
 
     function startEdit() {
         editor.text = root.note
@@ -28,7 +48,7 @@ Item {
         root.editing = false
     }
 
-    implicitHeight: editing ? editBox.implicitHeight : root.note !== "" ? card.implicitHeight : empty.implicitHeight
+    implicitHeight: mainHeight + (extras.visible ? extras.implicitHeight + 8 : 0)
 
     // ---- leírás ----
     Rectangle {
@@ -172,6 +192,61 @@ Item {
             }
             TButton { text: qsTr("Mégse"); size: "small"; variant: "ghost"; onClicked: root.finish(false) }
             TButton { objectName: "sourceSave"; text: qsTr("Mentés"); size: "small"; variant: "primary"; onClicked: root.finish(true) }
+        }
+    }
+    // ---- sablonok + észlelt hívás (átirat előtt) ----
+    ColumnLayout {
+        id: extras
+        objectName: "sourceExtras"
+        visible: root.templatesShown || root.detectedCallApp !== ""
+        y: root.mainHeight + 8
+        width: parent.width
+        spacing: 6
+        Flow {
+            objectName: "sourceTemplates"
+            visible: root.templatesShown
+            Layout.fillWidth: true
+            spacing: 6
+            TLabel {
+                height: 24
+                verticalAlignment: Text.AlignVCenter
+                text: qsTr("Sablon hasonló megbeszélésből:")
+                muted: true
+                font.pixelSize: Theme.fontCaption
+            }
+            Repeater {
+                model: root.templatesShown ? root.suggestions : []
+                TChip {
+                    id: tpl
+                    required property var modelData
+                    objectName: "sourceTemplateChip"
+                    tone: "neutral"
+                    iconName: "copy"
+                    text: modelData.dateText ? modelData.title + " · " + modelData.dateText : modelData.title
+                    focusPolicy: Qt.TabFocus
+                    Accessible.name: qsTr("Sablon: %1").arg(modelData.title)
+                    onClicked: root.useTemplate(modelData.note)
+                    TToolTip {
+                        visible: tpl.hovered && (tpl.modelData.preview || "") !== ""
+                        delay: 300
+                        text: tpl.modelData.preview || ""
+                    }
+                }
+            }
+        }
+        RowLayout {
+            objectName: "sourceDetectedCall"
+            visible: root.detectedCallApp !== ""
+            Layout.fillWidth: true
+            spacing: 6
+            TIcon { name: "radar"; size: 13; color: Theme.textMuted }
+            TLabel {
+                Layout.fillWidth: true
+                text: qsTr("Észlelt hívás: %1").arg(root.detectedCallApp)
+                muted: true
+                font.pixelSize: Theme.fontCaption
+                elide: Text.ElideRight
+            }
         }
     }
 }

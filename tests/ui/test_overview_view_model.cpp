@@ -138,6 +138,15 @@ private slots:
         const QVariantList sources = row.value("sources").toList();
         QVERIFY(!sources.isEmpty());
         QCOMPARE(sources.first().toMap().value("text").toString(), QStringLiteral("kézi"));
+        // A4: a jelvény tooltipje (bizonyíték-magyarázat); átirat előtt nincs beszélő-kulcs.
+        QVERIFY(!sources.first().toMap().value("detail").toString().isEmpty());
+        QVERIFY(row.value("speakerKey").toString().isEmpty());
+        QVERIFY(!row.value("anonymous").toBool());
+        QCOMPARE(vm.title(), QStringLiteral("Előtte"));
+        // D4: hangmodell nélkül nincs „Újraelemzés”, és a core sem indít.
+        QVERIFY(!vm.canReanalyze());
+        QVERIFY(!vm.reanalyze());
+        QVERIFY(!vm.nameSpeakerInDemo(QStringLiteral("x"), QStringLiteral("Y")));   // valódi adaton nem demó
 
         vm.removeParticipant(id);
         QTRY_COMPARE(vm.peopleState(), QStringLiteral("empty"));
@@ -178,6 +187,12 @@ private slots:
         QVERIFY(vm.hasTranscript());
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
         QCOMPARE(vm.anonymousSpeakers().size(), 2);
+        // A4/A5: a sorok a beszélő kulcsával, névtelenként (elnevezhető).
+        QCOMPARE(vm.participants().size(), 2);
+        for (const QVariant& v : vm.participants()) {
+            QVERIFY(!v.toMap().value("speakerKey").toString().isEmpty());
+            QVERIFY(v.toMap().value("anonymous").toBool());
+        }
         const QVariantMap first = vm.anonymousSpeakers().first().toMap();
         QCOMPARE(first.value("name").toString(), QStringLiteral("Beszélő 1"));
         QVERIFY(first.value("share").toDouble() > 0.6);
@@ -261,6 +276,28 @@ private slots:
         vm.setDemoState(QStringLiteral("overviewEmpty"));
         QCOMPARE(vm.peopleState(), QStringLiteral("empty"));
         QVERIFY(vm.contextNote().isEmpty());
+
+        // A5: a névtelen sor demóban helyben elnevezhető; A4: a kész sorok beszélő-kulccsal.
+        vm.setDemoState(QStringLiteral("overviewDone"));
+        bool found = false;
+        for (const QVariant& v : vm.participants()) {
+            const QVariantMap row = v.toMap();
+            QVERIFY(!row.value("speakerKey").toString().isEmpty());
+            if (!row.value("anonymous").toBool()) continue;
+            found = true;
+            QVERIFY(vm.nameSpeakerInDemo(row.value("speakerKey").toString(), QStringLiteral("Szabó Bence")));
+        }
+        QVERIFY(found);
+        QVERIFY(names(vm).contains(QStringLiteral("Szabó Bence")));
+        QVERIFY(vm.canReanalyze());
+
+        // A1: az első átírás fut — két sáv, még senki, az átirat lépés fut.
+        vm.setDemoState(QStringLiteral("overviewTranscribing"));
+        QVERIFY(vm.transcribing());
+        QVERIFY(!vm.hasTranscript());
+        QCOMPARE(vm.peopleState(), QStringLiteral("empty"));
+        QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("state").toString(), QStringLiteral("running"));
+        QVERIFY(!vm.canReanalyze());
 
         vm.setDemoState(QStringLiteral("overviewNobody"));
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));

@@ -17,7 +17,8 @@
 //
 // Controller nélkül vagy App.demo mellett beépített, KITALÁLT mintaadatot mutat; a
 // demoState választja ki, melyik állapotot ("steps" | "ready" | "cloud" | "running" |
-// "uploading" | "failed" | "note" — lépések sablon-javaslatokkal és észlelt hívással).
+// "uploading" | "failed" | "note" — lépések sablon-javaslatokkal és észlelt hívással |
+// "readyNote" — indítható, sablon-javaslatokkal és észlelt hívással; az Áttekintés U6-demója).
 //
 #include "MeetingNoteModel.h"
 #include "MeetingTagsModel.h"

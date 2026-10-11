@@ -704,6 +704,14 @@ bool ShellActions::maybeOfferParticipants(const QString& meetingId)
     return true;
 }
 
+void ShellActions::openSpeakerWhy(const QString& meetingId, const QString& speakerKey)
+{
+    if (speakerKey.isEmpty()) return;
+    if (!meetingId.isEmpty() && meetingId != m_currentMeetingId) showMeeting(meetingId);
+    showTab(1);   // az Átirat fül: a panel a szerkesztőben él
+    emit speakerWhyRequested(meetingId.isEmpty() ? m_currentMeetingId : meetingId, speakerKey);
+}
+
 QString ShellActions::participantsGuess(const QString& meetingId) const
 {
     return m_participantGuesses.value(meetingId);

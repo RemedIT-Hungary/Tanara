@@ -2,8 +2,9 @@ import QtQuick
 
 // A „Megbeszélés” menü (design/handoff-v3, 5. döntés): a menüsor „Megbeszélés” menüje és a
 // fejléc „…” gombja ugyanezt nyitja. Átnevezés · Ki volt ott? · Újraellenőrzés · Újra-átírás ·
-// Exportálás · Megnyitás mappában · Törlés. A „Résztvevők azonosítása (hang alapján)” a régi
-// azonosítás belépője marad, amíg a „Ki volt ott?” párbeszéd mindent ki nem vált.
+// Exportálás · Megnyitás mappában · Törlés. A „Hanglenyomat-elemzés újra” (D4, a régi „Résztvevők
+// azonosítása (hang alapján)”) a hangelemzés kézi újrafuttatása átírás után; ugyanezt adja az
+// Áttekintés hanglenyomat-lépésének „Újraelemzés” gombja.
 TMenu {
     id: root
 
@@ -33,7 +34,7 @@ TMenu {
     }
     TMenuItem {
         objectName: "identifyItem"
-        text: qsTr("Résztvevők azonosítása (hang alapján)")
+        text: qsTr("Hanglenyomat-elemzés újra")
         iconName: "fingerprint"
         enabled: root.hasMeeting && root.hasTranscript && root.canIdentify
         onTriggered: if (root.shell) root.shell.identifyParticipants(root.meetingId)

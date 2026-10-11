@@ -372,7 +372,7 @@ void PreTranscriptViewModel::loadDemo()
     m_tags->setDemoState(QStringLiteral("draft"));
     const QString note = tr("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
                             "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.");
-    if (st == QLatin1String("note")) {
+    if (st == QLatin1String("note") || st == QLatin1String("readyNote")) {
         // Sablon-javaslatok a korábbi, hasonló című megbeszélésekből + az észlelt hívás.
         m_note->setDemoContent(QString(), QStringLiteral("Microsoft Teams"), MeetingNoteModel::demoSuggestions());
     } else {
@@ -409,7 +409,7 @@ void PreTranscriptViewModel::loadDemo()
         m_errorDetail = QStringLiteral("HTTP 401 · invalid_api_key · ") + tr("szept. 30. 16:42");
         m_fixActionLabel = tr("Kulcs módosítása");
         m_fixActionPage = QStringLiteral("providers");
-    } else if (st == QLatin1String("ready")) {
+    } else if (st == QLatin1String("ready") || st == QLatin1String("readyNote")) {
         m_canStart = true;
     } else if (st == QLatin1String("cloud")) {
         m_canStart = true;

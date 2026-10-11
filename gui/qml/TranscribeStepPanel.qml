@@ -7,7 +7,10 @@ import QtQuick.Layouts
 //   - hiányzó beállítás (warn doboz, a gomb a Beállítások megfelelő lapjára visz);
 //   - Tanara Cloud: Gyors / Pontos szint és nyelv;
 //   - „Átírás indítása” (primary) + szolgáltató, ill. a zárolás oka;
-//   - hiba: danger doboz az üzenettel, „Újra” és a javító művelet.
+//   - hiba: danger doboz az üzenettel, „Újra” és a javító művelet;
+//   - futás közben (A1, a régi M04): a szakaszok tömör listája (állapot-kör, név, haladás), a
+//     „Közben nyugodtan dolgozz tovább” sor és a „Megszakítás” (cancelJob(…, Transcribe)). Az
+//     összesített haladás és a becsült idő a lépés alszövegében és csíkjában van.
 // vm: PreTranscriptViewModel · shell: ShellActions vagy null · meetingId: a megbeszélés.
 ColumnLayout {
     id: root
@@ -17,6 +20,7 @@ ColumnLayout {
     property string meetingId: ""
 
     readonly property bool failed: vm !== null && vm.state === "failed"
+    readonly property bool running: vm !== null && vm.state === "running"
     readonly property var blocker: vm ? vm.blocker : ({})
 
     signal startRequested()
@@ -33,6 +37,89 @@ ColumnLayout {
     }
 
     spacing: 8
+
+    // Egy szakasz tömören (a 272 px-es oszlophoz): 14 px-es kör · név · állapot / százalék.
+    component StageLine: RowLayout {
+        id: sl
+        property var stage: ({})
+        readonly property string st: stage.state || "waiting"
+        spacing: 7
+        Item {
+            implicitWidth: 14; implicitHeight: 14
+            Rectangle {
+                anchors.fill: parent
+                radius: 7
+                visible: sl.st !== "waiting"
+                color: sl.st === "done" ? Theme.successSoft : sl.st === "failed" ? Theme.dangerSoft : "transparent"
+                border.width: sl.st === "running" ? 2 : 0
+                border.color: Theme.accent
+            }
+            TDashedRect { anchors.fill: parent; visible: sl.st === "waiting"; radius: 7; color: Theme.borderStrong }
+            TIcon {
+                anchors.centerIn: parent
+                visible: sl.st === "done" || sl.st === "failed" || sl.st === "skipped"
+                name: sl.st === "done" ? "check" : sl.st === "failed" ? "x" : "minus"
+                size: 9
+                strokeWidth: 2.5
+                color: sl.st === "done" ? Theme.successInk : sl.st === "failed" ? Theme.dangerInk : Theme.textMuted
+            }
+        }
+        TLabel {
+            Layout.fillWidth: true
+            text: sl.stage.label || ""
+            color: sl.st === "running" || sl.st === "done" ? Theme.text : Theme.textMuted
+            font.pixelSize: 12
+            font.weight: sl.st === "running" ? Theme.weightSemiBold : Theme.weightRegular
+            elide: Text.ElideRight
+        }
+        TLabel {
+            text: sl.st === "running" ? (sl.stage.percent >= 0 ? sl.stage.percent + "%" : qsTr("fut"))
+                : sl.st === "done" ? qsTr("kész")
+                : sl.st === "failed" ? qsTr("nem sikerült")
+                : sl.st === "skipped" ? qsTr("kihagyva") : qsTr("vár")
+            mono: sl.st === "running" && sl.stage.percent >= 0
+            muted: true
+            font.pixelSize: Theme.fontMicro
+        }
+    }
+
+    // ---- futás (A1) ----
+    ColumnLayout {
+        objectName: "transcribeRunning"
+        visible: root.running
+        Layout.fillWidth: true
+        spacing: 5
+        Repeater {
+            model: root.running ? root.vm.stages : []
+            StageLine {
+                required property var modelData
+                objectName: "transcribeStage"
+                Layout.fillWidth: true
+                stage: modelData
+            }
+        }
+        TLabel {
+            Layout.fillWidth: true
+            Layout.topMargin: 3
+            text: root.vm && root.vm.cancelling ? qsTr("Megszakítás folyamatban; a felvétel és a sávok érintetlenek maradnak.")
+                                                : qsTr("Közben nyugodtan dolgozz tovább; szólunk, ha kész.")
+            muted: true
+            font.pixelSize: 12
+            cssLineHeight: 1.4
+            wrapMode: Text.Wrap
+        }
+        TButton {
+            objectName: "cancelTranscriptionButton"
+            visible: root.vm !== null && root.vm.cancellable
+            enabled: root.vm !== null && !root.vm.cancelling
+            text: qsTr("Megszakítás")
+            size: "small"
+            iconName: "x"
+            iconSize: 14
+            toolTipText: qsTr("Az átírás leáll; a felvétel és a sávok megmaradnak, később újraindítható")
+            onClicked: if (root.shell) root.shell.cancelJob(root.meetingId, JobKinds.Transcribe)
+        }
+    }
 
     // ---- hiba ----
     Rectangle {
@@ -105,7 +192,7 @@ ColumnLayout {
     // ---- hiányzó beállítás ----
     Rectangle {
         objectName: "transcribeBlocker"
-        visible: !root.failed && root.blocker.title !== undefined
+        visible: !root.failed && !root.running && root.blocker.title !== undefined
         Layout.fillWidth: true
         implicitHeight: blockCol.implicitHeight + 20
         radius: Theme.radiusControl
@@ -148,7 +235,7 @@ ColumnLayout {
 
     // ---- Tanara Cloud: szint és nyelv ----
     Flow {
-        visible: !root.failed && root.vm !== null && root.vm.cloudSelected
+        visible: !root.failed && !root.running && root.vm !== null && root.vm.cloudSelected
         Layout.fillWidth: true
         spacing: 6
         TChip {
@@ -179,7 +266,7 @@ ColumnLayout {
         }
     }
     TLabel {
-        visible: !root.failed && root.vm !== null && root.vm.cloudSelected && root.vm.cloudWarning !== ""
+        visible: !root.failed && !root.running && root.vm !== null && root.vm.cloudSelected && root.vm.cloudWarning !== ""
         Layout.fillWidth: true
         text: root.vm ? root.vm.cloudWarning : ""
         color: Theme.warnInk
@@ -190,7 +277,7 @@ ColumnLayout {
 
     // ---- indítás ----
     ColumnLayout {
-        visible: !root.failed
+        visible: !root.failed && !root.running
         Layout.fillWidth: true
         spacing: 5
         TButton {

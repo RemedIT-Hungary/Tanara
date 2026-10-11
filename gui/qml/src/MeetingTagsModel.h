@@ -10,6 +10,11 @@
 //
 // Kézi hozzáadás után a backendtől együtt járó javaslatot kér („<Címke> mellé gyakran”).
 //
+// Cím alapú tartalék (draftTitle, A2): ha a gazda megadja a megbeszélés címét (az Áttekintés
+// átírás előtt), és a backendnek nincs rendes javaslata (és nem is számol), a cím alapján
+// javasol (TagBackend::draftSuggestions; a felrakottak és az elutasítottak nélkül, legfeljebb 3),
+// suggestionSource = "title", felirat „A cím alapján”. Elfogadás / elutasítás ugyanúgy megy.
+//
 // Controller nélkül a kitalált készlet; `demoState` a T01 C03–C04 sorai:
 // none | few | many | computing | similar | cooccur | llm, és why (a T02 panel adatai).
 //
@@ -31,14 +36,17 @@ class MeetingTagsModel : public QObject {
     Q_PROPERTY(QObject* controller READ controller WRITE setController NOTIFY controllerChanged)
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoState READ demoState WRITE setDemoState NOTIFY demoStateChanged)
+    // A cím alapú tartalék-javaslathoz a megbeszélés címe ("" = nincs tartalék).
+    Q_PROPERTY(QString draftTitle READ draftTitle WRITE setDraftTitle NOTIFY draftTitleChanged)
     // [{ id, name }] a megbeszélés sorrendjében
     Q_PROPERTY(QVariantList tags READ tags NOTIFY tagsChanged)
     Q_PROPERTY(QStringList tagIds READ tagIds NOTIFY tagsChanged)
     // [{ id, name, isNew, source }]
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
-    // "Javasolt" | "<Címke> mellé gyakran" | "Az összefoglaló alapján" ("" ha nincs javaslat)
+    // "Javasolt" | "<Címke> mellé gyakran" | "Az összefoglaló alapján" | "A cím alapján"
+    // ("" ha nincs javaslat)
     Q_PROPERTY(QString suggestionLabel READ suggestionLabel NOTIFY suggestionsChanged)
-    // "similar" | "cooccur" | "llm" | ""
+    // "similar" | "cooccur" | "llm" | "title" (cím alapú tartalék) | ""
     Q_PROPERTY(QString suggestionSource READ suggestionSource NOTIFY suggestionsChanged)
     Q_PROPERTY(bool computing READ computing NOTIFY suggestionsChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
@@ -56,6 +64,8 @@ public:
     void setMeetingId(const QString& id);
     QString demoState() const { return m_demoState; }
     void setDemoState(const QString& state);
+    QString draftTitle() const { return m_draftTitle; }
+    void setDraftTitle(const QString& title);
 
     QVariantList tags() const;
     QStringList tagIds() const { return m_tagIds; }
@@ -87,6 +97,7 @@ signals:
     void controllerChanged();
     void meetingIdChanged();
     void demoStateChanged();
+    void draftTitleChanged();
     void tagsChanged();
     void suggestionsChanged();
     void undoChanged();
@@ -107,6 +118,7 @@ private:
     QList<QMetaObject::Connection> m_conns;
     QString m_meetingId;
     QString m_demoState;
+    QString m_draftTitle;
 
     QStringList m_tagIds;
     QStringList m_tagNames;

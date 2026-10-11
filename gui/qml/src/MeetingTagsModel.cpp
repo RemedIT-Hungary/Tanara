@@ -80,6 +80,14 @@ void MeetingTagsModel::setDemoState(const QString& state)
     applyDemoState();
 }
 
+void MeetingTagsModel::setDraftTitle(const QString& title)
+{
+    if (m_draftTitle == title) return;
+    m_draftTitle = title;
+    emit draftTitleChanged();
+    reloadSuggestions();
+}
+
 void MeetingTagsModel::applyDemoState()
 {
     // Csak a saját (kitalált) backenden: valódi adatot a demó-állapot nem írhat felül.
@@ -127,8 +135,19 @@ void MeetingTagsModel::reloadSuggestions()
         if (m_backend->isRejected(meeting, s.tagId.isEmpty() ? s.name : s.tagId)) continue;
         visible << s;
     }
+    QString source = state.source;
+    // A2: cím alapú tartalék, ha nincs rendes javaslat (és nem is számol).
+    if (visible.isEmpty() && !state.computing && m_backend && !m_draftTitle.trimmed().isEmpty()) {
+        for (const TagSuggestionItem& s : m_backend->draftSuggestions(m_draftTitle)) {
+            if (applied(s)) continue;
+            if (m_backend->isRejected(meeting, s.tagId.isEmpty() ? s.name : s.tagId)) continue;
+            visible << s;
+            if (visible.size() == 3) break;
+        }
+        if (!visible.isEmpty()) source = QStringLiteral("title");
+    }
     m_visible = visible;
-    m_source = state.source;
+    m_source = source;
     m_baseTagId = state.baseTagId;
     m_computing = state.computing;
     emit suggestionsChanged();
@@ -168,6 +187,7 @@ QString MeetingTagsModel::suggestionLabel() const
     if (m_visible.isEmpty()) return {};
     if (m_source == QLatin1String("cooccur")) return tr("%1 mellé gyakran").arg(tagName(m_baseTagId));
     if (m_source == QLatin1String("llm")) return tr("Az összefoglaló alapján");
+    if (m_source == QLatin1String("title")) return tr("A cím alapján");
     return tr("Javasolt");
 }
 

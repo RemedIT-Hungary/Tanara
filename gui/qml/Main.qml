@@ -36,12 +36,13 @@ ApplicationWindow {
     // "overviewProcessing" (V1) | "overviewDone" (V3) | "overviewEmpty" (V5) |
     // "overviewNobody" (V6) | "overviewRecorded" (U6: felvétel után, átírás előtt; az „Átírás
     // indítása” a lépésben) | "overviewRecordedError" (U6: az átírás nem sikerült) |
+    // "overviewTranscribing" (A1: az első átírás fut, a lépésben szakaszok + „Megszakítás”) |
     // "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
     property string demoState: ""
     readonly property bool demoOverview: demoState.startsWith("overview")
     // Demóban átirat nélküli állapotok (a fejléc Átirat füle ilyenkor nem / csak futva elérhető).
     readonly property bool demoNoTranscript: ["overviewProcessing", "overviewEmpty", "overviewRecorded",
-                                              "overviewRecordedError"].indexOf(demoState) >= 0
+                                              "overviewRecordedError", "overviewTranscribing"].indexOf(demoState) >= 0
     // "summarySources" (S1: 2. fül, forrás-chipek) | "memoSections" (S2: 3. fül) — a bekötött
     // eszköz-sor és a dokk Forrás/Szakaszok sorának képernyőképéhez.
     readonly property bool demoSummary: demoState === "summarySources" || demoState === "memoSections"
@@ -213,7 +214,16 @@ ApplicationWindow {
     Binding {
         when: App.demo && window.demoState !== ""
         target: header; property: "transcribePercent"
-        value: window.demoState === "overviewProcessing" ? 62 : window.demoState === "overviewEmpty" ? 18 : -1
+        value: window.demoState === "overviewProcessing" ? 62 : window.demoState === "overviewEmpty" ? 18
+             : window.demoState === "overviewTranscribing" ? 0 : -1
+    }
+    // A4: az Áttekintés jelvényéről a szerkesztő „Miért ő?” panelje (a fül már az Átirat).
+    Connections {
+        target: shellActions
+        ignoreUnknownSignals: true
+        function onSpeakerWhyRequested(meetingId, speakerKey) {
+            Qt.callLater(() => transcriptTab.openSpeakerWhyAt(speakerKey, transcriptTab.width / 2 - 215, 56))
+        }
     }
     // A címkesor lépései (elfogadás, elutasítás, levétel) a héj toastján, „Visszavonás”-sal.
     Connections {

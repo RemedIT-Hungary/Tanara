@@ -429,6 +429,7 @@ public slots:
     // (edit/ParticipantAnalysis.h). A lekeverés után magától indul (amíg nincs döntés), az
     // átírással párhuzamosan. Ha az átirat már megvan, a kötés is lefut. Vége:
     // participantAnalysisFinished (+ participantsChanged). false: nincs modell / fut már / nincs ilyen.
+    // Közben participantAnalysisProgress (sáv k / N, százalék).
     bool analyzeParticipants(const QString& meetingId);
     // A jelöltek kötése a nyers STT-beszélőkhöz (időbeli átfedés; kétoldalú nyers beszélő két
     // résztvevőre bontva). Az átirat érkezésekor magától fut. participantsChanged, ha változott.
@@ -591,6 +592,9 @@ signals:
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve/beszédarány
     void participantAnalysisStarted(QString meetingId);     // a hangelemzés elindult
     void participantAnalysisFinished(QString meetingId);    // a hangelemzés kész (jelöltek a meetingen)
+    // A hangelemzés haladása (A8): a feldolgozott sáv k / N (1-től; N = a beszédet tartalmazó
+    // sávok száma) és a beszéd-ablakok szerinti százalék 0..100. Csak változáskor jön.
+    void participantAnalysisProgress(QString meetingId, int tracksDone, int tracksTotal, int percent);
     void participantsChanged(QString meetingId);            // résztvevők / jóváhagyás / kötés változott
     void trackActivityReady(QString meetingId);             // elkészült a sávok aktivitása (beszéd-csík)
     void mixdownUpdated(QString meetingId, bool ok);        // regenerateMixdown eredménye

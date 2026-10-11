@@ -325,8 +325,8 @@ void ShellMeetingModel::reloadTasks()
                 transcribe = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
             if (job.kind == JobKind::Summarize || job.kind == JobKind::AnalyzeTopics)
                 summarize = qMax(0, describeJob(job).value(QStringLiteral("percent")).toInt());
-            // Az ELSŐ átírást az átirat előtti nézet szakasz-listája mutatja (M04); a sávba
-            // csak az újra-átírás kerül (ott a fülek látszanak, nincs más jelzés).
+            // Az ELSŐ átírást az Áttekintés „Átirat” lépése mutatja (szakaszok + „Megszakítás”,
+            // TranscribeStepPanel); a sávba csak az újra-átírás kerül (ott nincs más jelzés).
             if (job.kind == JobKind::Transcribe && !m_hasTranscript) continue;
             tasks.append(describeJob(job));
         }

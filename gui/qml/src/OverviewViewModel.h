@@ -44,12 +44,16 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(bool allDone READ allDone NOTIFY changed)
     // A megbeszélés kézi leírása (Meeting::contextNote) — a „Miről szól” forrás-kártya.
     Q_PROPERTY(QString contextNote READ contextNote NOTIFY changed)
+    // A megbeszélés címe (átírás előtt a cím alapú címke-javaslathoz: MeetingTagsModel.draftTitle).
+    Q_PROPERTY(QString title READ title NOTIFY changed)
 
     // ---- kik voltak ott ----
     // "list" (sorok) | "empty" (még senki: V5) | "nobody" (átirat van, de mindenki névtelen: V6)
     Q_PROPERTY(QString peopleState READ peopleState NOTIFY changed)
     // Sorok: { id, name, monogram, colorIndex, sub, self, suggested, dimmed, removable,
-    //          talkShare (0..1, -1 = nincs), sources: [{ icon, text, negative, accent }] }
+    //          talkShare (0..1, -1 = nincs), speakerKey (átirat után a beszélő kulcsa, különben ""),
+    //          anonymous (névtelen, elnevezhető), sources: [{ icon, text, negative, accent, detail }] }
+    // A jelvény detail-je a tooltip (a bizonyíték magyarázata).
     Q_PROPERTY(QVariantList participants READ participants NOTIFY changed)
     // A V6 nyers beszélői: [{ name, share (0..1), colorIndex }]
     Q_PROPERTY(QVariantList anonymousSpeakers READ anonymousSpeakers NOTIFY changed)
@@ -59,6 +63,9 @@ class OverviewViewModel : public QObject {
     Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY changed)
     Q_PROPERTY(bool analysisRunning READ analysisRunning NOTIFY changed)
     Q_PROPERTY(int candidateCount READ candidateCount NOTIFY changed)
+    // A hanglenyomat-lépés „Újraelemzés” gombja (D4) látszhat-e: van hang és modell, nem fut,
+    // nem „csak én beszéltem”.
+    Q_PROPERTY(bool canReanalyze READ canReanalyze NOTIFY changed)
     // Sávonként, ki beszél rajta: { mic: "Kovács Lilla", loopback: "4 résztvevő" }
     Q_PROPERTY(QVariantMap sideWho READ sideWho NOTIFY changed)
 
@@ -85,6 +92,8 @@ public:
     bool transcribing() const { return m_transcribing; }
     bool allDone() const { return m_allDone; }
     QString contextNote() const { return m_contextNote; }
+    QString title() const { return m_title; }
+    bool canReanalyze() const { return m_canReanalyze; }
     QString peopleState() const { return m_peopleState; }
     QVariantList participants() const { return m_participants; }
     QVariantList anonymousSpeakers() const { return m_anonymous; }
@@ -105,6 +114,12 @@ public:
     Q_INVOKABLE void removeParticipant(const QString& id);
     // „Csak én beszéltem” (V5): setSoloMeeting. false: nincs saját név beállítva.
     Q_INVOKABLE bool setSolo();
+    // „Újraelemzés” átirat előtt: a hangelemzés újra (AppController::analyzeParticipants). Átirat
+    // után a héj identifyParticipants-a fut (ugyanaz, mint a menü „Hanglenyomat-elemzés újra”-ja).
+    Q_INVOKABLE bool reanalyze();
+    // Demóban a névtelen sor elnevezése helyben (true); valódi adaton false — ott a szerkesztő
+    // reassignSpeaker-e dolgozik (egy visszavonási lépés, változás-sáv).
+    Q_INVOKABLE bool nameSpeakerInDemo(const QString& speakerKey, const QString& name);
     // A kézi leírás mentése (Meeting::contextNote).
     Q_INVOKABLE void setContextNote(const QString& note);
     Q_INVOKABLE void refresh();
@@ -133,10 +148,20 @@ private:
     QString m_meetingId;
     QString m_demoState;
     QString m_demoLoadedFor;
-    QSet<QString> m_hiddenSuggestions;
-    QSet<QString> m_removedIds;          // ×-szel kivett résztvevők (a core nem törli őket)   // munkamenetben elutasított címke-javaslatok (név)
+    QSet<QString> m_hiddenSuggestions;   // munkamenetben elutasított címke-javaslatok (név)
+    QSet<QString> m_removedIds;          // ×-szel kivett résztvevők (a core nem törli őket)
+
+    // A hangelemzés haladása (participantAnalysisProgress): sáv k / N és százalék.
+    struct AnalysisProgress {
+        int done = 0;
+        int total = 0;
+        int percent = -1;
+    };
+    AnalysisProgress m_analysisProgress;
 
     bool m_hasTranscript = false;
+    QString m_title;
+    bool m_canReanalyze = false;
     bool m_transcribing = false;
     bool m_allDone = false;
     QString m_contextNote;

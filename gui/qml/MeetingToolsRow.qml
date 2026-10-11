@@ -5,18 +5,22 @@ import QtQuick
 // Az Átirat fülé a TranscriptToolbar (a szerkesztőben él); az összefoglaló fülekét az U4
 // `toolsRow` komponense tölti ide (Main.qml: summaryTools). Üresen nem látszik.
 //   MeetingToolsRow { SummaryToolsRow { … } }
+// „Üres” az is, ha minden gyereke rejtett (S3: régi, forrás nélküli összefoglalónál a
+// SummaryToolsRow visible: false — ilyenkor nem marad üres 46 px-es sáv). A sor maga ezért nem
+// rejtőzik (a rejtett szülő a gyerekeit is rejtené, és a feltétel sosem lenne igaz újra):
+// 0 magas, levágva.
 Item {
     id: root
 
     default property alias content: holder.data
-    readonly property bool hasContent: holder.children.length > 0
+    readonly property bool hasContent: holder.visibleChildren.length > 0
 
-    visible: hasContent
     implicitHeight: hasContent ? 46 : 0
+    clip: true
 
     Item {
         id: holder
         anchors { fill: parent; leftMargin: Theme.space5; rightMargin: 20; bottomMargin: 1 }
     }
-    TDivider { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } }
+    TDivider { visible: root.hasContent; anchors { left: parent.left; right: parent.right; bottom: parent.bottom } }
 }

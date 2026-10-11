@@ -23,10 +23,13 @@ using namespace tanara;
 
 namespace {
 
-QVariantMap source(const QString& icon, const QString& text, bool negative = false, bool accent = false)
+// detail: a jelvény tooltipje (a bizonyíték hosszabb magyarázata; üres → a felirat).
+QVariantMap source(const QString& icon, const QString& text, bool negative = false, bool accent = false,
+                   const QString& detail = QString())
 {
     return {{QStringLiteral("icon"), icon}, {QStringLiteral("text"), text},
-            {QStringLiteral("negative"), negative}, {QStringLiteral("accent"), accent}};
+            {QStringLiteral("negative"), negative}, {QStringLiteral("accent"), accent},
+            {QStringLiteral("detail"), detail}};
 }
 
 QVariantMap step(const QString& key, const QString& title, const QString& sub, const QString& state,
@@ -48,29 +51,33 @@ QVariantMap stat(const QString& label, const QString& value, const QString& sub)
 QVariantList sourcesOf(const Participant& p, bool self)
 {
     QVariantList out;
-    if (self) out << source(QStringLiteral("user"), OverviewViewModel::tr("te"));
+    if (self) out << source(QStringLiteral("user"), OverviewViewModel::tr("te"), false, false,
+                            OverviewViewModel::tr("A Beállításokban megadott saját neved"));
     for (const Evidence& e : p.evidence) {
         const bool neg = e.polarity == Polarity::Contradict;
         switch (e.kind) {
         case EvidenceKind::Manual:
-            if (!self) out << source(QStringLiteral("user"), OverviewViewModel::tr("kézi"));
+            if (!self) out << source(QStringLiteral("user"), OverviewViewModel::tr("kézi"), false, false,
+                                     e.detail.isEmpty() ? OverviewViewModel::tr("Kézzel adtad hozzá") : e.detail);
             break;
         case EvidenceKind::Voice:
-            out << source(QStringLiteral("fingerprint"), e.text, neg);
+            out << source(QStringLiteral("fingerprint"), e.text, neg, false, e.detail);
             break;
         case EvidenceKind::Side:
             out << source(e.text.contains(QStringLiteral("mikrofon")) ? QStringLiteral("mic")
                                                                        : QStringLiteral("phone"),
-                          e.text, neg);
+                          e.text, neg, false, e.detail);
             break;
         case EvidenceKind::Tag: {
             const QString first = e.detail.section(QStringLiteral(", "), 0, 0);
             out << source(QStringLiteral("tag"),
-                          first.isEmpty() ? e.text : QStringLiteral("#") + first, neg);
+                          first.isEmpty() ? e.text : QStringLiteral("#") + first, neg, false,
+                          e.detail.isEmpty() ? e.text : OverviewViewModel::tr("Közös címke: %1").arg(e.detail));
             break;
         }
         case EvidenceKind::Calendar:
-            out << source(QStringLiteral("calendar"), e.text.isEmpty() ? OverviewViewModel::tr("naptár") : e.text, neg);
+            out << source(QStringLiteral("calendar"), e.text.isEmpty() ? OverviewViewModel::tr("naptár") : e.text,
+                          neg, false, e.detail);
             break;
         default:
             break;
@@ -79,8 +86,11 @@ QVariantList sourcesOf(const Participant& p, bool self)
     // Bizonyíték nélkül (régi adat) legalább az oldal látsszon.
     if (p.evidence.isEmpty()) {
         for (const QString& side : p.sides)
-            out << (side == QLatin1String("mic") ? source(QStringLiteral("mic"), OverviewViewModel::tr("mikrofon"))
-                                                 : source(QStringLiteral("phone"), OverviewViewModel::tr("hívás")));
+            out << (side == QLatin1String("mic")
+                        ? source(QStringLiteral("mic"), OverviewViewModel::tr("mikrofon"), false, false,
+                                 OverviewViewModel::tr("A saját mikrofon sávján beszél"))
+                        : source(QStringLiteral("phone"), OverviewViewModel::tr("hívás"), false, false,
+                                 OverviewViewModel::tr("A hívás hangján (távoli oldal) beszél")));
     }
     return out;
 }
@@ -94,7 +104,16 @@ QVariantMap personRow(const QString& id, const QString& name, int colorIndex, co
             {QStringLiteral("colorIndex"), colorIndex}, {QStringLiteral("sub"), sub},
             {QStringLiteral("sources"), sources}, {QStringLiteral("talkShare"), talkShare},
             {QStringLiteral("self"), self}, {QStringLiteral("suggested"), suggested},
-            {QStringLiteral("dimmed"), dimmed}, {QStringLiteral("removable"), removable}};
+            {QStringLiteral("dimmed"), dimmed}, {QStringLiteral("removable"), removable},
+            {QStringLiteral("speakerKey"), QString()}, {QStringLiteral("anonymous"), false}};
+}
+
+// A sor az átirat egy beszélője (a „Miért ő?” és az „Elnevezés…” ehhez a kulcshoz kötődik).
+QVariantMap withSpeaker(QVariantMap row, const QString& speakerKey, bool anonymous)
+{
+    row.insert(QStringLiteral("speakerKey"), speakerKey);
+    row.insert(QStringLiteral("anonymous"), anonymous);
+    return row;
 }
 
 bool sameName(const QString& a, const QString& b)
@@ -136,6 +155,7 @@ void OverviewViewModel::setMeetingId(const QString& id)
     m_meetingId = id;
     m_hiddenSuggestions.clear();
     m_removedIds.clear();
+    m_analysisProgress = {};
     emit meetingIdChanged();
     reload();
 }
@@ -171,6 +191,12 @@ void OverviewViewModel::connectController()
     m_connections << connect(c, &AppController::participantsChanged, this, mine)
                   << connect(c, &AppController::participantAnalysisStarted, this, mine)
                   << connect(c, &AppController::participantAnalysisFinished, this, mine)
+                  << connect(c, &AppController::participantAnalysisProgress, this,
+                             [this](const QString& id, int done, int total, int percent) {
+                                 if (id != m_meetingId) return;
+                                 m_analysisProgress = {done, total, percent};
+                                 scheduleReload();
+                             })
                   << connect(c, &AppController::tracksChanged, this, mine)
                   << connect(c, &AppController::speakerMapChanged, this, mine)
                   << connect(c, &AppController::mixdownUpdated, this,
@@ -265,6 +291,41 @@ bool OverviewViewModel::setSolo()
     return ok;
 }
 
+bool OverviewViewModel::reanalyze()
+{
+    AppController* c = app();
+    if (jobsupport::demoMode(c))
+        return true;
+    if (m_meetingId.isEmpty())
+        return false;
+    const bool ok = c->analyzeParticipants(m_meetingId);
+    scheduleReload();
+    return ok;
+}
+
+bool OverviewViewModel::nameSpeakerInDemo(const QString& speakerKey, const QString& name)
+{
+    if (!jobsupport::demoMode(app()))
+        return false;
+    const QString n = name.trimmed();
+    if (n.isEmpty())
+        return true;
+    QVariantList rows;
+    for (const QVariant& v : std::as_const(m_participants)) {
+        QVariantMap row = v.toMap();
+        if (row.value(QStringLiteral("speakerKey")).toString() == speakerKey) {
+            row.insert(QStringLiteral("name"), n);
+            row.insert(QStringLiteral("monogram"), monogramOf(n));
+            row.insert(QStringLiteral("sub"), QString());
+            row.insert(QStringLiteral("anonymous"), false);
+        }
+        rows << row;
+    }
+    m_participants = rows;
+    emit changed();
+    return true;
+}
+
 void OverviewViewModel::setContextNote(const QString& note)
 {
     AppController* c = app();
@@ -298,10 +359,16 @@ void OverviewViewModel::reload()
     const JobProgress* summaryJob = job(JobKind::Summarize);
 
     m_hasTranscript = m.hasTranscript;
+    m_title = m.title;
     m_transcribing = transcribeJob != nullptr;
     m_contextNote = m.contextNote;
     m_approvalPending = !m.id.isEmpty() && c->participantApprovalPending(m.id);
     m_analysisRunning = !m.id.isEmpty() && c->participantAnalysisRunning(m.id);
+    if (!m_analysisRunning) m_analysisProgress = {};
+    // „Újraelemzés” (D4): van hang és modell, nem fut, és nem „csak én beszéltem”.
+    m_canReanalyze = !m.id.isEmpty() && !m_analysisRunning && !m.tracks.isEmpty()
+                     && c->voiceIdentificationAvailable() && !(m.approval && m.approval->solo)
+                     && (m.hasTranscript || !transcribeJob);
     m_approved = m.approval.has_value() && !m.approval->skipped;
 
     // ---- résztvevők ----
@@ -336,9 +403,10 @@ void OverviewViewModel::reload()
             QString name = s.displayName;
             if (self) name = tr("%1 (te)").arg(name);
             const QVariantList src = match ? sourcesOf(*match, false) : QVariantList();
-            rows << personRow(match ? match->id : s.key, name, s.colorIndex,
-                              s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
-                              s.talkShare, self, false, false, match != nullptr);
+            rows << withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
+                                          s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
+                                          s.talkShare, self, false, false, match != nullptr),
+                                s.key, s.anonymous);
             names << s.personName;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
                                      {QStringLiteral("share"), s.talkShare},
@@ -353,9 +421,11 @@ void OverviewViewModel::reload()
             const bool self = sameName(p.personName, selfName);
             QString name = p.personName.isEmpty() ? tr("Ismeretlen hang %1").arg(i + 1) : p.personName;
             if (self) name = tr("%1 (te)").arg(name);
-            rows << personRow(p.id, name, i, p.personName.isEmpty() ? tr("névtelen · elnevezhető") : QString(),
-                              sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self, false,
-                              false, true);
+            rows << withSpeaker(personRow(p.id, name, i,
+                                          p.personName.isEmpty() ? tr("névtelen · elnevezhető") : QString(),
+                                          sourcesOf(p, self), p.talkShare > 0 ? p.talkShare : -1.0, self,
+                                          false, false, true),
+                                QString(), p.personName.isEmpty());
             names << p.personName;
             ++i;
         }
@@ -441,8 +511,16 @@ void OverviewViewModel::reload()
                   : mixReady ? QStringLiteral("done") : QStringLiteral("waiting"),
                   false, mixRunning ? qMax(0, proc.mixdownPercent) : -1);
     QString voiceSub, voiceState;
+    int voiceProgress = -1;
     if (m_analysisRunning) {
-        voiceSub = tr("fut");
+        // A8: „k / N sáv” (a core participantAnalysisProgress jele szerint); az első jelig „fut”.
+        if (m_analysisProgress.total > 0) {
+            voiceSub = tr("%1 / %2 sáv").arg(m_analysisProgress.done).arg(m_analysisProgress.total);
+            voiceProgress = m_analysisProgress.percent;
+        } else {
+            voiceSub = tr("fut");
+            voiceProgress = -2;
+        }
         voiceState = QStringLiteral("running");
     } else if (m_approvalPending) {
         voiceSub = tr("%n jelölt · jóváhagyásra vár", nullptr, m_candidateCount);
@@ -460,7 +538,7 @@ void OverviewViewModel::reload()
         voiceState = m.hasTranscript ? QStringLiteral("done") : QStringLiteral("waiting");
     }
     steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), voiceSub, voiceState, true,
-                  m_analysisRunning ? -2 : -1);
+                  voiceProgress);
     if (transcribeJob) {
         const QVariantMap d = ShellMeetingModel::describeJob(*transcribeJob);
         const int pct = d.value(QStringLiteral("percent")).toInt();
@@ -542,8 +620,13 @@ void OverviewViewModel::loadDemo()
     const bool recordedError = st == QLatin1String("overviewRecordedError");
     const bool recorded = recordedError || st == QLatin1String("overviewRecorded");
 
+    // A1: az első átírás fut (két sáv, még senki): a lépésben a szakaszok és a „Megszakítás”.
+    const bool transcribingOnly = st == QLatin1String("overviewTranscribing");
+
     m_hasTranscript = done || nobody;
+    m_title = tr("Negyedéves partnertalálkozó");
     m_transcribing = !m_hasTranscript && !recorded;
+    m_canReanalyze = done || nobody;
     m_allDone = done;
     m_analysisRunning = empty;
     m_approvalPending = st == QLatin1String("overviewProcessing");
@@ -552,20 +635,30 @@ void OverviewViewModel::loadDemo()
     // A leírás a demó-állapot első betöltésekor kap értéket (utána a setContextNote-é).
     if (m_demoLoadedFor != st) {
         m_demoLoadedFor = st;
-        m_contextNote = (empty || nobody || recorded) ? QString()
+        m_contextNote = (empty || nobody || recorded || transcribingOnly) ? QString()
                       : tr("Q4 partner review — napirend: Q3 számok, súgóoldalak, számlázási folyamat, Nordvik-megújítás.");
     }
 
     QVariantList rows;
     if (done) {
-        rows << personRow(QStringLiteral("p1"), tr("Kovács Lilla (te)"), 0, {}, {source(QStringLiteral("mic"), tr("mikrofon"))}, 0.22, true)
-             << personRow(QStringLiteral("p2"), QStringLiteral("Fehér Gábor"), 1, {}, {source(QStringLiteral("phone"), tr("hívás")), source(QStringLiteral("tag"), QStringLiteral("#Nordvik"))}, 0.26)
-             << personRow(QStringLiteral("p3"), QStringLiteral("Varga Árpád"), 2, {}, {source(QStringLiteral("phone"), tr("hívás")), source(QStringLiteral("tag"), QStringLiteral("#Nordvik"))}, 0.19)
-             << personRow(QStringLiteral("p4"), QStringLiteral("Molnár Eszter"), 3, {}, {source(QStringLiteral("phone"), tr("hívás"))}, 0.15)
-             << personRow(QStringLiteral("p5"), QStringLiteral("Távoli 1"), 4, tr("névtelen · elnevezhető"), {source(QStringLiteral("phone"), tr("hívás"))}, 0.07);
+        const QVariantMap callSide = source(QStringLiteral("phone"), tr("hívás"), false, false, tr("A hívás hangján (távoli oldal) beszél"));
+        const QVariantMap nordvik = source(QStringLiteral("tag"), QStringLiteral("#Nordvik"), false, false,
+                                           tr("Közös címke: %1").arg(QStringLiteral("Nordvik")));
+        rows << withSpeaker(personRow(QStringLiteral("p1"), tr("Kovács Lilla (te)"), 0, {},
+                                      {source(QStringLiteral("mic"), tr("mikrofon"), false, false, tr("A saját mikrofon sávján beszél"))},
+                                      0.22, true), QStringLiteral("S1"), false)
+             << withSpeaker(personRow(QStringLiteral("p2"), QStringLiteral("Fehér Gábor"), 1, {}, {callSide, nordvik}, 0.26),
+                            QStringLiteral("S2"), false)
+             << withSpeaker(personRow(QStringLiteral("p3"), QStringLiteral("Varga Árpád"), 2, {}, {callSide, nordvik}, 0.19),
+                            QStringLiteral("S3"), false)
+             << withSpeaker(personRow(QStringLiteral("p4"), QStringLiteral("Molnár Eszter"), 3, {}, {callSide}, 0.15),
+                            QStringLiteral("S4"), false)
+             << withSpeaker(personRow(QStringLiteral("S5"), QStringLiteral("Távoli 1"), 4, tr("névtelen · elnevezhető"),
+                                      {callSide}, 0.07),
+                            QStringLiteral("S5"), true);
         m_peopleState = QStringLiteral("list");
         m_peopleHint = tr("jóváhagyva %1-kor").arg(QStringLiteral("okt. 1. 16:40"));
-    } else if (empty || recorded) {
+    } else if (empty || recorded || transcribingOnly) {
         m_peopleState = QStringLiteral("empty");
         m_peopleHint.clear();
     } else if (nobody) {
@@ -573,7 +666,12 @@ void OverviewViewModel::loadDemo()
         m_peopleHint.clear();
     } else {
         rows << personRow(QStringLiteral("p1"), tr("Kovács Lilla (te)"), 0, {}, {source(QStringLiteral("user"), tr("te")), source(QStringLiteral("mic"), tr("mikrofon"))}, -1.0, true)
-             << personRow(QStringLiteral("p2"), QStringLiteral("Fehér Gábor"), 1, {}, {source(QStringLiteral("fingerprint"), tr("hang 84%")), source(QStringLiteral("tag"), QStringLiteral("#Nordvik"))}, -1.0, false, false, false, true)
+             << personRow(QStringLiteral("p2"), QStringLiteral("Fehér Gábor"), 1, {},
+                          {source(QStringLiteral("fingerprint"), tr("hang 84%"), false, false,
+                                  tr("A hangja 84%-ban hasonlít a mentett mintáihoz (2 modell)")),
+                           source(QStringLiteral("tag"), QStringLiteral("#Nordvik"), false, false,
+                                  tr("Közös címke: %1").arg(QStringLiteral("Nordvik")))},
+                          -1.0, false, false, false, true)
              << personRow(QStringLiteral("p3"), QStringLiteral("Varga Árpád"), 2, {}, {source(QStringLiteral("fingerprint"), tr("hang 79%")), source(QStringLiteral("tag"), QStringLiteral("#Nordvik"))}, -1.0, false, false, false, true)
              << personRow(QStringLiteral("p4"), QStringLiteral("Molnár Eszter"), 3, {}, {source(QStringLiteral("fingerprint"), tr("hang 71%"))}, -1.0, false, false, false, true)
              << personRow(QStringLiteral("p5"), QStringLiteral("Lantos Réka"), 4, {}, {source(QStringLiteral("fingerprint"), tr("nem hallottuk"), true)}, -1.0, false, false, true, true)
@@ -595,16 +693,20 @@ void OverviewViewModel::loadDemo()
             m_anonymous << QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("share"), share},
                                        {QStringLiteral("colorIndex"), i++}};
     }
-    m_sideWho = (empty || nobody || recorded) ? QVariantMap()
+    m_sideWho = (empty || nobody || recorded || transcribingOnly) ? QVariantMap()
               : QVariantMap{{QStringLiteral("mic"), QStringLiteral("Kovács Lilla")},
                             {QStringLiteral("loopback"), tr("%n résztvevő", nullptr, 4)}};
 
     QVariantList steps;
-    if (empty || nobody || recorded) {
+    if (empty || nobody || recorded || transcribingOnly) {
         steps << step(QStringLiteral("recording"), tr("Felvétel"), QStringLiteral("0:42:10 · ") + tr("%n sáv", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("tracks"), tr("Sávok"), tr("%n aktív", nullptr, 2), QStringLiteral("done"))
               << step(QStringLiteral("mixdown"), tr("Lekeverés"), tr("%n sávból", nullptr, 2), QStringLiteral("done"));
-        if (recorded)
+        if (transcribingOnly)
+            steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("az átírással párhuzamosan"), QStringLiteral("waiting"), true)
+                  << step(QStringLiteral("transcript"), tr("Átirat"), QStringLiteral("Soniox · ") + tr("feltöltés"), QStringLiteral("running"), true, -2)
+                  << step(QStringLiteral("summary"), tr("Összefoglaló"), tr("az átirat után"), QStringLiteral("waiting"));
+        else if (recorded)
             steps << step(QStringLiteral("voice"), tr("Hanglenyomat-elemzés"), tr("az átírással párhuzamosan"), QStringLiteral("waiting"), true)
                   << step(QStringLiteral("transcript"), tr("Átirat"), recordedError ? tr("nem sikerült") : tr("még nem indult"),
                           recordedError ? QStringLiteral("attention") : QStringLiteral("waiting"), true)

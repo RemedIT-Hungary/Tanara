@@ -227,7 +227,7 @@ A running step shows as a pill on its tab; a stale summary as a warn pill on the
 The old **Sávok** tab is gone: its full view is the "Sávok részletei" dialog of the Áttekintés
 (`OverviewTab.openTracks()`, `objectName: "tracksDialog"`, it hosts `TracksTab`).
 
-`MeetingMenu` (`Megbeszélés`): Átnevezés (F2) · Ki volt ott? · Résztvevők azonosítása (hang alapján) ·
+`MeetingMenu` (`Megbeszélés`): Átnevezés (F2) · Ki volt ott? · Hanglenyomat-elemzés újra ·
 Újraellenőrzés… · Újra-átírás… · Exportálás archívumba… · Megnyitás mappában · — · Törlés….
 The "identify" entry is the old voice-identification entry point; the Ki volt ott? dialog is the
 new one (see below). `Nézet` lists the four tabs, then **Javítás / Olvasás** (Ctrl+E) and
@@ -320,9 +320,9 @@ Kovács Lilla, Fehér Gábor, Varga Árpád, #Nordvik.
 
 | Screen | Spec (`gui/qml/shoot.sh …`) | `demoState` values |
 |---|---|---|
-| Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `overviewRecorded` (U6: recorded, not transcribed, `Átírás indítása` in the step) · `overviewRecordedError` (U6: transcription failed) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
+| Whole shell | `'Main:1280x820:demoState="overviewDone"'` | `overviewProcessing` (V1) · `overviewDone` (V3) · `overviewEmpty` (V5) · `overviewNobody` (V6) · `overviewRecorded` (U6: recorded, not transcribed, `Átírás indítása` in the step) · `overviewRecordedError` (U6: transcription failed) · `overviewTranscribing` (A1: first transcription running, stages + `Megszakítás` in the step) · `readingMap` (V4, Átirat + dock) · `tabTooltip` (V4 panel) · `summarySources` (S1, tab 2) · `memoSections` (S2, tab 3) |
 | Tracks dialog | `'Main:1280x820:demoOverlay="tracks"'` | (`demoOverlay`, not `demoState`) |
-| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` |
+| Áttekintés alone | `OverviewTab:1100x720:demoState="overviewDone"` | `overviewProcessing` · `overviewDone` · `overviewEmpty` · `overviewNobody` · `overviewRecorded` · `overviewRecordedError` · `overviewTranscribing` |
 | Map dock alone | `MapDock:1100x200` | (invented lanes) |
 | Header alone | `MeetingHeader:1100x420:demoState="tabTooltip"` | `tabTooltip` |
 | Ki volt ott? | `ParticipantsDialog:1000x760:demoState="doubts"` | `allSure` · `doubts` · `invitedNotHeard` · `addPerson` · `running` · `noTranscriptYet` |
