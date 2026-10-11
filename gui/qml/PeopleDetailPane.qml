@@ -20,6 +20,12 @@ Item {
     property string demoRenameText: ""
     property string demoAliasText: ""
 
+    BackfillSkipNote {
+        id: skipNote
+        person: root.vm && !root.emptyState ? root.vm.selectedName : ""
+        demoState: root.vm ? root.vm.demoState : ""
+    }
+
     signal mergeRequested()
     signal deleteRequested()
     signal newPersonRequested()
@@ -232,6 +238,24 @@ Item {
                             muted: true
                             font.pixelSize: Theme.fontCaption
                         }
+                    }
+
+                    // A legutóbbi pótlásból kimaradt minták (Beállítások › Beszélők listája szerint).
+                    Row {
+                        id: skipNoteRow
+                        objectName: "backfillSkipNote"
+                        visible: !root.renaming && skipNote.count > 0 && !(root.vm && root.vm.backfillRunning)
+                        spacing: 6
+                        TIcon { anchors.verticalCenter: parent.verticalCenter; name: "triangle-alert"; size: 12; color: Theme.warnInk }
+                        TLabel {
+                            objectName: "backfillSkipNoteText"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: skipNote.text
+                            color: Theme.warnInk
+                            font.pixelSize: Theme.fontCaption
+                        }
+                        HoverHandler { id: skipNoteHover }
+                        TToolTip { visible: skipNoteHover.hovered; text: skipNote.detail }
                     }
 
                     // Átnevezés helyben (P02).

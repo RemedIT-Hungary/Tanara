@@ -3,16 +3,85 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 // B08 — Beszélők: a saját név és hanglenyomat (az Általános lapról ide költözött), a
-// beszélő-felismerő hangmodellek (letöltés, bekapcsolás) és a lenyomat-pótlás állapota.
-// A modellek bekapcsolása a piszkozat része (Mentés); a letöltés azonnali.
+// beszélő-felismerő hangmodellek (letöltés, ellenőrzés, törlés, bekapcsolás, újraolvasás) és a
+// lenyomat-pótlás állapota (k / N; kész után a kimaradt minták listája személyenként).
+// A modellek bekapcsolása a piszkozat része (Mentés); a letöltés és a törlés azonnali.
+// Demó: B08verify (ellenőrzés + méret-eltérés), B08delete (a törlés megerősítése nyitva),
+// B08partial (a kimaradt minták listája kinyitva).
 //   SettingsSpeakersPage { vm: model }
 Column {
     id: root
 
     property var vm: null
     readonly property var models: vm ? vm.voiceModels : null
+    readonly property string demoState: models ? models.demoState : ""
+    property bool skipsExpanded: false
 
     spacing: 22
+
+    // A lap megnyitásakor: a fájlok újraolvasása és ellenőrzése (méret).
+    onVisibleChanged: if (visible && models) models.refresh()
+
+    function askDelete(id, name) {
+        deleteDialog.modelId = id
+        deleteDialog.modelName = name
+        deleteDialog.errorText = ""
+        deleteDialog.open()
+    }
+
+    // ---- a letöltött modell törlésének megerősítése ----
+    TDialog {
+        id: deleteDialog
+        objectName: "voiceModelDeleteDialog"
+        property string modelId: ""
+        property string modelName: ""
+        property string errorText: ""
+        title: qsTr("Törlöd a(z) %1 modellt?").arg(modelName)
+        TLabel {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            cssLineHeight: 1.45
+            text: qsTr("A letöltött modellfájl törlődik a gépről. A vele készült hanglenyomatok megmaradnak, és ha később újra letöltöd, ismét használhatók.")
+        }
+        TLabel {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            muted: true
+            font.pixelSize: Theme.fontSmall
+            cssLineHeight: 1.45
+            text: qsTr("Amíg nincs meg, a felismerés a többi bekapcsolt modellel megy (ha egy sincs, a CAM++ tartalékkal).")
+        }
+        TLabel {
+            objectName: "voiceModelDeleteError"
+            visible: deleteDialog.errorText !== ""
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.dangerInk
+            font.pixelSize: Theme.fontSmall
+            text: deleteDialog.errorText
+        }
+        actions: [
+            TButton { text: qsTr("Mégse"); onClicked: deleteDialog.reject() },
+            TButton {
+                objectName: "voiceModelDeleteConfirm"
+                text: qsTr("Törlés")
+                variant: "danger"
+                onClicked: {
+                    const error = root.models.deleteModel(deleteDialog.modelId)
+                    if (error !== "") deleteDialog.errorText = error
+                    else deleteDialog.accept()
+                }
+            }
+        ]
+    }
+
+    // Demó-állapotok, amelyekhez nyitott felület kell.
+    function applyDemo() {
+        if (root.demoState === "B08delete") root.askDelete("campplus", "CAM++")
+        else if (root.demoState === "B08partial") root.skipsExpanded = true
+    }
+    onDemoStateChanged: Qt.callLater(applyDemo)
+    Component.onCompleted: Qt.callLater(applyDemo)
 
     // ---- TE ----
     Column {
@@ -251,6 +320,10 @@ Column {
                 enabledModel: model.enabled
                 canEnable: model.canEnable
                 recommended: model.recommended
+                corrupt: model.corrupt
+                hasFile: model.hasFile
+                canDelete: model.canDelete
+                onDeleteRequested: (id, name) => root.askDelete(id, name)
             }
         }
 
@@ -300,7 +373,11 @@ Column {
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Link
                         Accessible.name: qsTr("Személyek")
-                        onClicked: root.vm.openPeople()
+                        onClicked: {
+                            const skips = root.models.backfillSkips
+                            if (skips.length > 0) root.vm.openPerson(skips[0].person)
+                            else root.vm.openPeople()
+                        }
                         Keys.onReturnPressed: click()
                         Keys.onSpacePressed: click()
                         background: Rectangle {
@@ -332,6 +409,117 @@ Column {
                     thickness: 4
                     indeterminate: root.models !== null && root.models.backfillProgress < 0
                     value: root.models ? Math.max(0, root.models.backfillProgress) : 0
+                }
+                // Kész, de maradt kimaradt minta: kinek, melyik, miért (lenyíló lista).
+                T.AbstractButton {
+                    id: skipsToggle
+                    objectName: "voiceBackfillDetails"
+                    visible: root.models !== null && root.models.backfillState === "partial"
+                        && root.models.backfillSkips.length > 0
+                    implicitWidth: skipsToggleRow.implicitWidth + 8
+                    implicitHeight: 24
+                    hoverEnabled: true
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: skipsToggleLabel.text
+                    onClicked: root.skipsExpanded = !root.skipsExpanded
+                    Keys.onReturnPressed: click()
+                    Keys.onSpacePressed: click()
+                    background: Rectangle {
+                        radius: Theme.radiusControl
+                        color: Theme.stateLayer
+                        opacity: skipsToggle.down ? Theme.pressedOpacity : skipsToggle.hovered ? Theme.hoverOpacity : 0
+                        TFocusRing { visible: skipsToggle.visualFocus }
+                    }
+                    contentItem: Item {
+                        Row {
+                            id: skipsToggleRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 4
+                            spacing: 4
+                            TIcon {
+                                name: root.skipsExpanded ? "chevron-down" : "chevron-right"
+                                size: 14
+                                color: Theme.text
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            TLabel {
+                                id: skipsToggleLabel
+                                text: root.skipsExpanded ? qsTr("Melyik minták?") : qsTr("Melyik minták? (%1)").arg(root.models ? root.models.backfillSkips.length : 0)
+                                font.pixelSize: Theme.fontSmall
+                                font.weight: Theme.weightMedium
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+                }
+                Column {
+                    objectName: "voiceBackfillSkips"
+                    visible: skipsToggle.visible && root.skipsExpanded
+                    width: parent.width
+                    spacing: 0
+                    Repeater {
+                        model: root.models ? root.models.backfillSkips : []
+                        Rectangle {
+                            id: skipRow
+                            required property var modelData
+                            required property int index
+                            objectName: "voiceBackfillSkip"
+                            width: parent.width
+                            implicitHeight: skipLayout.implicitHeight + 12
+                            color: "transparent"
+                            Rectangle { visible: skipRow.index > 0; width: parent.width; height: 1; color: Theme.warnLine; opacity: 0.6 }
+                            RowLayout {
+                                id: skipLayout
+                                x: 0; y: 6
+                                width: parent.width
+                                spacing: 10
+                                // A személy neve: link a Személyek ablakra (ő lesz kijelölve).
+                                T.AbstractButton {
+                                    id: personLink
+                                    objectName: "voiceBackfillSkipPerson"
+                                    Layout.preferredWidth: 150
+                                    Layout.alignment: Qt.AlignTop
+                                    implicitHeight: 20
+                                    hoverEnabled: true
+                                    activeFocusOnTab: true
+                                    Accessible.role: Accessible.Link
+                                    Accessible.name: skipRow.modelData.person
+                                    onClicked: root.vm.openPerson(skipRow.modelData.person)
+                                    Keys.onReturnPressed: click()
+                                    Keys.onSpacePressed: click()
+                                    background: Item { TFocusRing { visible: personLink.visualFocus; targetRadius: 4 } }
+                                    contentItem: TLabel {
+                                        text: skipRow.modelData.person
+                                        color: Theme.accent
+                                        font.pixelSize: Theme.fontSmall
+                                        font.weight: Theme.weightMedium
+                                        font.underline: personLink.hovered
+                                        elide: Text.ElideRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                }
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    TLabel {
+                                        width: parent.width
+                                        text: skipRow.modelData.sample
+                                        font.pixelSize: Theme.fontSmall
+                                        elide: Text.ElideRight
+                                    }
+                                    TLabel {
+                                        width: parent.width
+                                        text: skipRow.modelData.reason + " · " + qsTr("hiányzik: %1").arg(skipRow.modelData.models)
+                                        muted: true
+                                        font.pixelSize: Theme.fontCaption
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 TLabel {
                     visible: root.models !== null && root.models.backfillState !== "done"
@@ -366,6 +554,53 @@ Column {
                 font.pixelSize: Theme.fontSmall
                 cssLineHeight: 1.45
                 wrapMode: Text.Wrap
+            }
+        }
+
+        // Kézzel bemásolt modellfájl (pl. másik gépről): újraolvasás.
+        Row {
+            spacing: 6
+            TLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Kézzel másoltál be modellfájlt?")
+                muted: true
+                font.pixelSize: Theme.fontSmall
+            }
+            T.AbstractButton {
+                id: rescanLink
+                objectName: "voiceModelsRescan"
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: rescanRow.implicitWidth + 8
+                implicitHeight: 24
+                hoverEnabled: true
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Link
+                Accessible.name: qsTr("Újraolvasás")
+                onClicked: root.models.rescan()
+                Keys.onReturnPressed: click()
+                Keys.onSpacePressed: click()
+                background: Rectangle {
+                    radius: Theme.radiusControl
+                    color: Theme.stateLayer
+                    opacity: rescanLink.down ? Theme.pressedOpacity : rescanLink.hovered ? Theme.hoverOpacity : 0
+                    TFocusRing { visible: rescanLink.visualFocus }
+                }
+                contentItem: Item {
+                    Row {
+                        id: rescanRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        TIcon { name: "refresh-cw"; size: 13; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                        TLabel {
+                            text: qsTr("Újraolvasás")
+                            color: Theme.accent
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Theme.weightMedium
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
+                TToolTip { visible: rescanLink.hovered; text: qsTr("A modellek mappájának újraolvasása és a fájlok ellenőrzése") }
             }
         }
     }

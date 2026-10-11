@@ -242,7 +242,14 @@ void ParticipantsViewModel::loadDemo()
     m_running = s == QLatin1String("running");
     m_hasTranscript = s != QLatin1String("noTranscriptYet") && !m_running;
     m_pending = !m_running;
-    m_metaText = tr("hanglenyomat-elemzés") + QStringLiteral(" · CAM++ + WeSpeaker · ") + tr("%n perce", "", 3);
+    // A modellnév a valóban használt modelleké (controller nélkül: az ajánlott alapállapot).
+    QStringList models;
+    const AppController* c = app();
+    for (const QString& id : c && !c->activeVoiceModelIds().isEmpty() ? c->activeVoiceModelIds()
+                                                                     : VoiceModelRegistry::defaultEnabledIds())
+        models << shortModelName(id);
+    m_metaText = tr("hanglenyomat-elemzés") + QStringLiteral(" · ") + models.join(QStringLiteral(" + "))
+               + QStringLiteral(" · ") + tr("%n perce", "", 3);
     m_selfName = QStringLiteral("Kovács Lilla");
     m_tagIds = {QStringLiteral("demo-nordvik")};
     m_rawLabels.clear();

@@ -784,6 +784,11 @@ void SettingsViewModel::openPeople()
     if (m_dialogs) m_dialogs->openPeopleAt(m_base.userSpeakerName.trimmed());
 }
 
+void SettingsViewModel::openPerson(const QString& person)
+{
+    if (m_dialogs) m_dialogs->openPeopleAt(person.trimmed());
+}
+
 bool SettingsViewModel::onboardingAvailable() const
 {
     if (m_dialogs) return m_dialogs->canOpenOnboarding();

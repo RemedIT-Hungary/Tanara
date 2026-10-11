@@ -261,6 +261,8 @@ public:
     Q_INVOKABLE void setFolder(const QString& key, const QString& path);
     Q_INVOKABLE void openFolder(const QString& key);
     Q_INVOKABLE void openPeople();
+    // A Személyek ablak a megadott személyen (a kimaradt minták listájából).
+    Q_INVOKABLE void openPerson(const QString& person);
     // Az „Első lépések” ablak (Beállítások › Általános hivatkozás).
     Q_INVOKABLE void openOnboarding();
 

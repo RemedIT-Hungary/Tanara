@@ -6,7 +6,9 @@
 #include "tanara/AppController.h"
 #include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
+#include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
+#include "tanara/voiceid/BackfillReport.h"
 #include "tanara/voiceid/VoiceModelDownloader.h"
 
 #include <QCoreApplication>
@@ -42,6 +44,89 @@ QVector<VoiceModelSpec> ordered(QVector<VoiceModelSpec> specs)
 
 QString mb(qint64 bytes) { return QString::number(qRound64(bytes / 1e6)); }
 
+// A fájl megvan és (a demóban / ellenőrzés közben is) használható.
+bool usable(const QString& state)
+{
+    return state == QLatin1String("downloaded") || state == QLatin1String("bundled")
+        || state == QLatin1String("verifying");
+}
+
+// „12:03” / „1:02:03” (megbeszélés-idő, ms).
+QString clock(qint64 ms)
+{
+    const qint64 sec = qMax<qint64>(0, ms / 1000);
+    const qint64 h = sec / 3600, m = (sec % 3600) / 60, ss = sec % 60;
+    return h > 0 ? QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(ss, 2, 10, QLatin1Char('0'))
+                 : QStringLiteral("%1:%2").arg(m).arg(ss, 2, 10, QLatin1Char('0'));
+}
+
+QString reasonText(VoiceprintBackfillSkip::Reason reason)
+{
+    switch (reason) {
+    case VoiceprintBackfillSkip::Reason::MissingMeeting:
+        return QCoreApplication::translate("VoiceModelListModel", "hiányzó felvétel (a megbeszélés már nincs meg)");
+    case VoiceprintBackfillSkip::Reason::MissingAudio:
+        return QCoreApplication::translate("VoiceModelListModel", "hiányzó felvétel");
+    case VoiceprintBackfillSkip::Reason::Failed:
+        return QCoreApplication::translate("VoiceModelListModel", "nem számolható (túl rövid hang)");
+    }
+    return QString();
+}
+
+QString shortName(const QString& modelId)
+{
+    const auto spec = VoiceModelRegistry::spec(modelId);
+    return spec ? spec->displayName.section(QLatin1Char(' '), 0, 0) : modelId;
+}
+
+QVariantMap skipEntry(const QString& person, const QString& sample, const QString& reason, const QString& models)
+{
+    return {{QStringLiteral("person"), person}, {QStringLiteral("sample"), sample},
+            {QStringLiteral("reason"), reason}, {QStringLiteral("models"), models}};
+}
+
+// A core kimaradt mintái mintánként egy tételben (a hiányzó modellek összevonva), személy szerint
+// rendezve; person nem üres → csak az övéi.
+QVariantList skipEntries(AppController* c, const QString& person = QString())
+{
+    QVariantList out;
+    if (!c) return out;
+    QStringList keys;
+    QVector<VoiceprintBackfillSkip> first;
+    QHash<QString, QStringList> models;
+    for (const VoiceprintBackfillSkip& s : c->backfillSkippedSamples()) {
+        if (!person.isEmpty() && s.person != person) continue;
+        const QString key = s.person + QLatin1Char('|') + s.sourceMeetingId + QLatin1Char('|') + s.sampleRef;
+        if (!models.contains(key)) { keys << key; first << s; }
+        if (!models[key].contains(shortName(s.model))) models[key] << shortName(s.model);
+    }
+    QHash<QString, QString> titles;
+    for (int i = 0; i < keys.size(); ++i) {
+        const VoiceprintBackfillSkip& s = first.at(i);
+        QString title;
+        if (s.reason == VoiceprintBackfillSkip::Reason::MissingMeeting || s.sourceMeetingId.isEmpty()) {
+            title = QCoreApplication::translate("VoiceModelListModel", "törölt megbeszélés");
+        } else {
+            if (!titles.contains(s.sourceMeetingId))
+                titles.insert(s.sourceMeetingId, c->store() ? c->store()->load(s.sourceMeetingId).title : QString());
+            title = titles.value(s.sourceMeetingId);
+        }
+        // "<folder>/track.ogg#startMs-endMs" → „12:03–12:06”
+        QString range;
+        const int hash = s.sampleRef.lastIndexOf(QLatin1Char('#'));
+        if (hash >= 0) {
+            const QStringList se = s.sampleRef.mid(hash + 1).split(QLatin1Char('-'));
+            bool ok1 = false, ok2 = false;
+            const qint64 a = se.value(0).toLongLong(&ok1), b = se.value(1).toLongLong(&ok2);
+            if (ok1 && ok2) range = clock(a) + QStringLiteral("–") + clock(b);
+        }
+        if (title.isEmpty()) title = QFileInfo(s.sampleRef.left(hash >= 0 ? hash : s.sampleRef.size())).fileName();
+        out << skipEntry(s.person, range.isEmpty() ? title : title + QStringLiteral(" · ") + range,
+                         reasonText(s.reason), models.value(keys.at(i)).join(QStringLiteral(", ")));
+    }
+    return out;
+}
+
 } // namespace
 
 VoiceModelListModel::VoiceModelListModel(QObject* parent) : QAbstractListModel(parent)
@@ -49,8 +134,8 @@ VoiceModelListModel::VoiceModelListModel(QObject* parent) : QAbstractListModel(p
     m_downloader = new VoiceModelDownloader(this);
     connect(m_downloader, &VoiceModelDownloader::progress, this, &VoiceModelListModel::onProgress);
     connect(m_downloader, &VoiceModelDownloader::finished, this, &VoiceModelListModel::onFinished);
-    m_bfTimer.setInterval(1000);
-    connect(&m_bfTimer, &QTimer::timeout, this, &VoiceModelListModel::pollBackfill);
+    connect(m_downloader, &VoiceModelDownloader::verified, this,
+            [this](const QString& id, VoiceModelDownloader::VerifyResult r, const QString&) { onVerified(id, int(r)); });
     rebuild();
 
     // Önálló példány (QML-ből, pl. Első lépések): az App.controller a következő körben kötődik,
@@ -80,7 +165,8 @@ QHash<int, QByteArray> VoiceModelListModel::roleNames() const
             {ProgressRole, "progress"},   {ProgressTextRole, "progressText"},
             {ErrorTextRole, "errorText"}, {EnabledRole, "enabled"},
             {CanEnableRole, "canEnable"}, {RecommendedRole, "recommended"},
-            {NotRecommendedRole, "notRecommended"}};
+            {NotRecommendedRole, "notRecommended"}, {CorruptRole, "corrupt"},
+            {HasFileRole, "hasFile"},     {CanDeleteRole, "canDelete"}};
 }
 
 QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
@@ -126,10 +212,13 @@ QVariant VoiceModelListModel::data(const QModelIndex& index, int role) const
                            : QStringLiteral("%1 MB").arg(mb(r.received));
     case ErrorTextRole: return r.errorText;
     case EnabledRole: return enabledIds().contains(s.id);
-    case CanEnableRole:
-        return r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled");
+    case CanEnableRole: return usable(r.state);
     case RecommendedRole: return s.id == kWespeaker;
     case NotRecommendedRole: return s.id == kEres;
+    case CorruptRole: return r.corrupt;
+    case HasFileRole: return r.hasFile;
+    case CanDeleteRole:
+        return r.hasFile && r.state != QLatin1String("downloading") && r.state != QLatin1String("verifying");
     }
     return {};
 }
@@ -164,17 +253,16 @@ void VoiceModelListModel::attach()
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    m_bfTimer.stop();
     AppController* c = m_controller;
     if (!c) {
         loadDemo(m_demoState);
         return;
     }
-    m_connections << connect(c, &AppController::voiceModelsChanged, this, [this] {
-        refreshFiles();
-        // A core a jel UTÁN indítja a pótlást (ha bővült a lista): a következő körben nézzük.
-        QTimer::singleShot(0, this, [this] { checkBackfill(); });
-    });
+    m_connections << connect(c, &AppController::voiceModelsChanged, this, [this] { refreshFiles(); });
+    m_connections << connect(c, &AppController::voiceprintBackfillStarted, this,
+                             &VoiceModelListModel::onBackfillStarted);
+    m_connections << connect(c, &AppController::voiceprintBackfillProgress, this,
+                             &VoiceModelListModel::onBackfillProgress);
     m_connections << connect(c, &AppController::voiceprintBackfillFinished, this,
                              &VoiceModelListModel::onBackfillFinished);
     m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this, [this] {
@@ -182,11 +270,13 @@ void VoiceModelListModel::attach()
     });
     m_bfState.clear();
     m_bfSeenRunning = false;
+    m_bfSkips.clear();
     refresh();
 }
 
 void VoiceModelListModel::loadDemo(const QString& state)
 {
+    const bool changed = m_demoState != state;
     m_demoState = state;
     m_controller.clear();
     beginResetModel();
@@ -232,13 +322,42 @@ void VoiceModelListModel::loadDemo(const QString& state)
         // A WeSpeaker nincs letöltve, a csomagolt CAM++ fut tartalékként.
         if (Row* w = row(kWespeaker)) w->state = QStringLiteral("missing");
         if (Row* c = row(kCamplus)) c->state = QStringLiteral("bundled");
+    } else if (state == QLatin1String("B08verify")) {
+        // A WeSpeaker most töltődött le: ellenőrzés; az ERes2NetV2 fájlja sérült (méret-eltérés).
+        if (Row* w = row(kWespeaker)) w->state = QStringLiteral("verifying");
+        if (Row* e = row(kEres)) {
+            e->state = QStringLiteral("error");
+            e->corrupt = true;
+            e->errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
+                               .arg(SettingsViewModel::formatBytes(e->spec.sizeBytes),
+                                    SettingsViewModel::formatBytes(e->spec.sizeBytes / 3));
+        }
     }
+    for (Row& r : m_rows)
+        r.hasFile = r.state == QLatin1String("downloaded") || r.state == QLatin1String("verifying") || r.corrupt;
     endResetModel();
 
-    if (state == QLatin1String("B08backfill")) setBackfill(QStringLiteral("running"), 23, 14, 0);
-    else if (state == QLatin1String("B08partial")) setBackfill(QStringLiteral("partial"), 23, 20, 3);
-    else setBackfill(QString(), 0, 0, 0);
+    m_bfSkips.clear();
+    if (state == QLatin1String("B08backfill")) {
+        setBackfill(QStringLiteral("running"), 23, 14, 0);
+    } else if (state == QLatin1String("B08partial")) {
+        // Kitalált kimaradt minták (személy, minta, ok).
+        const QString missing = reasonText(VoiceprintBackfillSkip::Reason::MissingAudio);
+        m_bfSkips = {
+            skipEntry(QStringLiteral("Nagy Péter"), tr("Partnerdemó – adatimport") + QStringLiteral(" · 12:40–12:52"), missing,
+                      QStringLiteral("WeSpeaker")),
+            skipEntry(QStringLiteral("Szabó Bence"), tr("Heti egyeztetés") + QStringLiteral(" · 3:05–3:14"), missing,
+                      QStringLiteral("WeSpeaker")),
+            skipEntry(QStringLiteral("Szabó Bence"), tr("törölt megbeszélés") + QStringLiteral(" · 0:42–0:50"),
+                      reasonText(VoiceprintBackfillSkip::Reason::MissingMeeting), QStringLiteral("WeSpeaker")),
+        };
+        m_bfState.clear();   // a lista is változott: mindenképp jelezzünk
+        setBackfill(QStringLiteral("partial"), 23, 20, 3);
+    } else {
+        setBackfill(QString(), 0, 0, 0);
+    }
     emit summaryChanged();
+    if (changed) emit demoStateChanged();
 }
 
 void VoiceModelListModel::setSpecsForTest(const QVector<VoiceModelSpec>& specs)
@@ -301,18 +420,28 @@ void VoiceModelListModel::notifyDraftChanged()
     emit summaryChanged();
 }
 
+QString VoiceModelListModel::userPath(const VoiceModelSpec& spec) const
+{
+    return VoiceModelDownloader::targetPath(spec, metaDir());
+}
+
 void VoiceModelListModel::updateFileState(Row& r) const
 {
-    if (m_downloader->isRunning(r.spec.id)) { r.state = QStringLiteral("downloading"); return; }
     const QString meta = metaDir(), app = appDir();
     const QString user = VoiceModelDownloader::targetPath(r.spec, meta);
+    r.hasFile = !meta.isEmpty() && QFileInfo(user).isFile();
+    if (m_downloader->isRunning(r.spec.id)) { r.state = QStringLiteral("downloading"); return; }
     const QString path = VoiceModelRegistry::resolvePath(r.spec, meta, app);
     const QFileInfo fi(path);
     r.corrupt = false;
     if (fi.exists()) {
+        r.errorText.clear();
+        // Az ellenőrzés (méret) fut: a pirula „ellenőrzés…”, a modell közben is használható.
+        if (m_downloader->isVerifying(r.spec.id)) { r.state = QStringLiteral("verifying"); return; }
         // Windows: az alapmodell az <appDir>/models-ban (a telepítő hozza) — nem letölthető.
         r.state = path != user ? QStringLiteral("bundled") : QStringLiteral("downloaded");
-        if (r.spec.sizeBytes > 0 && fi.size() != r.spec.sizeBytes && r.state == QLatin1String("downloaded")) {
+        if (r.state == QLatin1String("downloaded")
+            && VoiceModelDownloader::verifyFile(r.spec, path) == VoiceModelDownloader::VerifyResult::SizeMismatch) {
             r.corrupt = true;
             r.state = QStringLiteral("error");
             r.errorText = tr("A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.")
@@ -346,7 +475,74 @@ void VoiceModelListModel::refresh()
 {
     if (!m_controller && !m_dirsOverridden) return;   // demó: a kitalált állapot marad
     refreshFiles();
+    verifyAllFiles();
     checkBackfill();
+}
+
+void VoiceModelListModel::verifyAllFiles()
+{
+    for (const Row& r : std::as_const(m_rows))
+        if (r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled") || r.corrupt)
+            verify(r.spec.id);
+}
+
+void VoiceModelListModel::verify(const QString& id)
+{
+    const int i = indexOf(id);
+    if (i < 0) return;
+    if (!m_controller && !m_dirsOverridden) return;   // demó
+    Row& r = m_rows[i];
+    const QString path = VoiceModelRegistry::resolvePath(r.spec, metaDir(), appDir());
+    if (!QFileInfo::exists(path)) return;
+    if (!m_downloader->verify(r.spec, path)) return;   // már ellenőrződik / töltődik
+    updateFileState(r);
+    emitRow(i);
+    if (id == kWespeaker) emit summaryChanged();
+}
+
+void VoiceModelListModel::onVerified(const QString& id, int result)
+{
+    const int i = indexOf(id);
+    if (i < 0) return;
+    updateFileState(m_rows[i]);
+    emitRow(i);
+    emit summaryChanged();
+    const auto r = VoiceModelDownloader::VerifyResult(result);
+    emit verifyFinished(id, r == VoiceModelDownloader::VerifyResult::Ok || r == VoiceModelDownloader::VerifyResult::Unverifiable);
+}
+
+QString VoiceModelListModel::deleteModel(const QString& id)
+{
+    const int i = indexOf(id);
+    if (i < 0) return tr("Ismeretlen hangmodell.");
+    Row& r = m_rows[i];
+    if (r.state == QLatin1String("downloading") || r.state == QLatin1String("verifying"))
+        return tr("Letöltés vagy ellenőrzés közben nem törölhető.");
+    if (!r.hasFile) return tr("Ennek a modellnek nincs letöltött fájlja; a csomagban lévőt nem lehet törölni.");
+    if (!m_controller && !m_dirsOverridden) {
+        // Demó: csak az állapot változik.
+        r.state = QStringLiteral("missing");
+        r.hasFile = false;
+        r.corrupt = false;
+        r.errorText.clear();
+        emitRow(i);
+        emit summaryChanged();
+        return QString();
+    }
+    QString error;
+    const bool ok = m_controller ? m_controller->deleteVoiceModelFile(id, &error)
+                                 : VoiceModelDownloader::deleteModelFile(r.spec, metaDir(), &error);
+    if (!ok) return tr("Nem sikerült törölni: %1").arg(error);
+    r.errorText.clear();
+    r.corrupt = false;
+    refreshFiles();
+    return QString();
+}
+
+void VoiceModelListModel::rescan()
+{
+    if (m_controller) m_controller->rescanVoiceModels();   // voiceModelsChanged → refreshFiles
+    refresh();
 }
 
 void VoiceModelListModel::refreshFiles()
@@ -377,7 +573,7 @@ void VoiceModelListModel::emitRow(int i)
 bool VoiceModelListModel::anyAvailable() const
 {
     for (const Row& r : m_rows)
-        if (r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled")) return true;
+        if (usable(r.state)) return true;
     return false;
 }
 
@@ -386,9 +582,7 @@ int VoiceModelListModel::activeCount() const
     const QStringList on = enabledIds();
     int n = 0;
     for (const Row& r : m_rows)
-        if (on.contains(r.spec.id)
-            && (r.state == QLatin1String("downloaded") || r.state == QLatin1String("bundled")))
-            ++n;
+        if (on.contains(r.spec.id) && usable(r.state)) ++n;
     return n;
 }
 
@@ -397,13 +591,18 @@ bool VoiceModelListModel::fallbackActive() const
     // Ugyanaz a szabály, mint a VoiceModelRegistry::active()-é, a piszkozat szerint.
     if (activeCount() > 0) return false;
     const int i = indexOf(kCamplus);
-    return i >= 0 && (m_rows.at(i).state == QLatin1String("downloaded") || m_rows.at(i).state == QLatin1String("bundled"));
+    return i >= 0 && usable(m_rows.at(i).state);
 }
 
 QString VoiceModelListModel::defaultState() const
 {
     const int i = indexOf(kWespeaker);
-    return i >= 0 ? m_rows.at(i).state : QString();
+    if (i < 0) return QString();
+    // Az ellenőrzés (egy pillanat) itt nem látszik: az Első lépések sora és a CTA-k a fájl
+    // meglétét nézik, a kártya pirulája mutatja az „ellenőrzés…”-t.
+    const Row& r = m_rows.at(i);
+    if (r.state == QLatin1String("verifying")) return r.hasFile ? QStringLiteral("downloaded") : QStringLiteral("bundled");
+    return r.state;
 }
 
 QString VoiceModelListModel::defaultSizeText() const
@@ -445,7 +644,7 @@ void VoiceModelListModel::startDownload(const QString& id, bool overwrite)
     const int i = indexOf(id);
     if (i < 0) return;
     Row& r = m_rows[i];
-    if (r.state == QLatin1String("bundled") || m_downloader->isRunning(id)) return;
+    if (r.state == QLatin1String("bundled") || r.state == QLatin1String("verifying") || m_downloader->isRunning(id)) return;
     if (!m_controller && !m_dirsOverridden) {
         // Demó: csak az állapot változik.
         r.state = QStringLiteral("downloading");
@@ -482,8 +681,7 @@ void VoiceModelListModel::setEnabled(const QString& id, bool on)
 {
     const int i = indexOf(id);
     if (i < 0) return;
-    const QString st = m_rows.at(i).state;
-    if (on && st != QLatin1String("downloaded") && st != QLatin1String("bundled")) return;
+    if (on && !usable(m_rows.at(i).state)) return;
     QStringList ids = enabledIds();
     if (on == ids.contains(id)) return;
     if (on) ids << id;
@@ -520,6 +718,8 @@ void VoiceModelListModel::onFinished(const QString& id, bool ok, const QString& 
     r.errorText.clear();
     if (ok) {
         updateFileState(r);
+        // Letöltés után ellenőrzés (méret): a pirula „ellenőrzés…”, aztán „letöltve” / hiba.
+        verify(id);
         // Letöltötte, hogy használja: a piszkozatban bekapcsoljuk (Mentéssel lép életbe).
         QStringList ids = enabledIds();
         if (!ids.contains(id)) {
@@ -563,20 +763,6 @@ void VoiceModelListModel::onFinished(const QString& id, bool ok, const QString& 
 
 // ---- lenyomat-pótlás -------------------------------------------------------------------
 
-int VoiceModelListModel::countMissingSamples() const
-{
-    if (!m_controller || !m_controller->voiceprints()) return 0;
-    VoiceprintStore* store = m_controller->voiceprints();
-    store->refresh();
-    QSet<QString> missing;   // személy|testvér-kulcs: egy minta egy tétel, akárhány modell hiányzik
-    const QStringList models = m_controller->activeVoiceModelIds();
-    for (const QString& person : store->people())
-        for (const QString& model : models)
-            for (const Voiceprint& vp : store->samplesMissingModel(person, model))
-                missing.insert(person + QLatin1Char('|') + VoiceprintStore::siblingKey(vp));
-    return missing.size();
-}
-
 void VoiceModelListModel::setBackfill(const QString& state, int total, int done, int skipped)
 {
     if (state == m_bfState && total == m_bfTotal && done == m_bfDone && skipped == m_bfSkipped) return;
@@ -587,49 +773,48 @@ void VoiceModelListModel::setBackfill(const QString& state, int total, int done,
     emit backfillChanged();
 }
 
+void VoiceModelListModel::loadSkips()
+{
+    m_bfSkips = skipEntries(m_controller);
+}
+
+// Az induló állapot (új példány, pl. az ablak újranyitása): fut-e, maradt-e kimaradt minta.
 void VoiceModelListModel::checkBackfill()
 {
     if (!m_controller) return;
     if (m_controller->voiceprintBackfillRunning()) {
-        if (m_bfState != QLatin1String("running")) {
-            m_bfSeenRunning = true;
-            m_bfAdded = 0;
-            setBackfill(QStringLiteral("running"), countMissingSamples(), 0, 0);
-        }
-        if (!m_bfTimer.isActive()) m_bfTimer.start();
+        // A k / N a következő haladás-jellel érkezik; addig határozatlan.
+        m_bfSeenRunning = true;
+        if (m_bfState != QLatin1String("running")) setBackfill(QStringLiteral("running"), 0, 0, 0);
         return;
     }
-    if (m_bfState == QLatin1String("running")) return;   // a befejező jel zárja le
-    // Nem fut: ha maradt pótolhatatlan minta, az látszik (hiányzó felvétel).
-    const int left = countMissingSamples();
-    if (left > 0) setBackfill(QStringLiteral("partial"), m_bfTotal, m_bfDone, left);
-    else if (m_bfState == QLatin1String("partial")) setBackfill(QString(), 0, 0, 0);
+    if (m_bfState == QLatin1String("running") || m_bfState == QLatin1String("done")) return;
+    loadSkips();
+    m_bfState.clear();   // a lista is változhatott
+    if (!m_bfSkips.isEmpty()) setBackfill(QStringLiteral("partial"), m_bfTotal, m_bfDone, int(m_bfSkips.size()));
+    else setBackfill(QString(), 0, 0, 0);
 }
 
-void VoiceModelListModel::pollBackfill()
+void VoiceModelListModel::onBackfillStarted(int total)
 {
-    if (!m_controller) { m_bfTimer.stop(); return; }
-    if (!m_controller->voiceprintBackfillRunning()) {
-        // A befejező jel elmaradt (vagy még úton van): a következő körben lezárjuk.
-        m_bfTimer.stop();
-        QMetaObject::invokeMethod(this, [this] {
-            if (m_bfState == QLatin1String("running") && m_controller && !m_controller->voiceprintBackfillRunning())
-                onBackfillFinished(0);
-        }, Qt::QueuedConnection);
-        return;
-    }
-    const int left = countMissingSamples();
-    setBackfill(m_bfState, m_bfTotal, qBound(0, m_bfTotal - left, m_bfTotal), 0);
+    m_bfSeenRunning = true;
+    m_bfSkips.clear();
+    setBackfill(QStringLiteral("running"), total, 0, 0);
 }
 
-void VoiceModelListModel::onBackfillFinished(int added)
+void VoiceModelListModel::onBackfillProgress(int done, int total)
 {
-    m_bfAdded += added;
+    m_bfSeenRunning = true;
+    setBackfill(QStringLiteral("running"), total, qBound(0, done, total), 0);
+}
+
+void VoiceModelListModel::onBackfillFinished(int /*added*/, int /*skipped*/)
+{
     if (!m_controller) return;
-    if (m_controller->voiceprintBackfillRunning()) return;   // újrafut (közben bővült a lista)
-    m_bfTimer.stop();
-    const int left = countMissingSamples();
-    if (left > 0) setBackfill(QStringLiteral("partial"), m_bfTotal, qMax(0, m_bfTotal - left), left);
+    loadSkips();
+    m_bfState.clear();   // a lista is változott: mindenképp jelezzünk
+    const int skipped = int(m_bfSkips.size());
+    if (skipped > 0) setBackfill(QStringLiteral("partial"), m_bfTotal, m_bfTotal, skipped);
     else if (m_bfSeenRunning) setBackfill(QStringLiteral("done"), m_bfTotal, m_bfTotal, 0);
     else setBackfill(QString(), 0, 0, 0);
 }
@@ -650,8 +835,84 @@ QString VoiceModelListModel::backfillText() const
     if (m_bfState == QLatin1String("done"))
         return tr("Kész: a meglévő minták az új modellel is megvannak.");
     if (m_bfState == QLatin1String("partial"))
-        return tr("%n minta nem volt pótolható (hiányzó felvétel).", nullptr, m_bfSkipped);
+        return tr("%n minta nem volt pótolható az új modellel.", nullptr, m_bfSkipped);
     return QString();
+}
+
+// ---- BackfillSkipNote (Személyek › részletek) --------------------------------------------
+
+BackfillSkipNote::BackfillSkipNote(QObject* parent) : QObject(parent)
+{
+    // QML-ből: az App.controller a következő körben kötődik (demóban nincs).
+    QMetaObject::invokeMethod(this, [this] {
+        if (!m_controller)
+            if (AppController* c = AppContext::instance()->controller()) setController(c);
+    }, Qt::QueuedConnection);
+}
+
+void BackfillSkipNote::setController(AppController* c)
+{
+    for (const QMetaObject::Connection& conn : std::as_const(m_connections)) disconnect(conn);
+    m_connections.clear();
+    m_controller = c;
+    if (c) {
+        m_connections << connect(c, &AppController::voiceprintBackfillStarted, this, [this] { reload(); });
+        m_connections << connect(c, &AppController::voiceprintBackfillFinished, this, [this] { reload(); });
+    }
+    reload();
+}
+
+void BackfillSkipNote::setPerson(const QString& p)
+{
+    if (m_person == p) return;
+    m_person = p;
+    emit personChanged();
+    reload();
+}
+
+void BackfillSkipNote::setDemoState(const QString& s)
+{
+    if (m_demoState == s) return;
+    m_demoState = s;
+    reload();
+}
+
+void BackfillSkipNote::reload()
+{
+    if (m_controller) {
+        m_entries = m_person.isEmpty() ? QVariantList() : skipEntries(m_controller, m_person);
+    } else if (m_demoState == QLatin1String("samplesModels") && !m_person.isEmpty()) {
+        m_entries = {skipEntry(m_person, tr("Partnerdemó – adatimport") + QStringLiteral(" · 12:40–12:52"),
+                               reasonText(VoiceprintBackfillSkip::Reason::MissingAudio), QStringLiteral("WeSpeaker"))};
+    } else {
+        m_entries.clear();
+    }
+    emit changed();
+}
+
+QString BackfillSkipNote::text() const
+{
+    if (m_entries.isEmpty()) return QString();
+    // Egyféle ok → az ok a mondatban; vegyes → általános.
+    QString reason = m_entries.first().toMap().value(QStringLiteral("reason")).toString();
+    for (const QVariant& e : m_entries)
+        if (e.toMap().value(QStringLiteral("reason")).toString() != reason) { reason.clear(); break; }
+    const QString missing = reasonText(VoiceprintBackfillSkip::Reason::MissingAudio);
+    if (reason.startsWith(missing)) reason = missing;   // a törölt megbeszélés is hiányzó felvétel
+    return reason.isEmpty() ? tr("%n minta nem pótolható az új modellel", nullptr, int(m_entries.size()))
+                            : tr("%n minta nem pótolható: %1", nullptr, int(m_entries.size())).arg(reason);
+}
+
+QString BackfillSkipNote::detail() const
+{
+    QStringList lines;
+    for (const QVariant& e : m_entries) {
+        const QVariantMap m = e.toMap();
+        lines << QStringLiteral("%1 — %2 (%3)").arg(m.value(QStringLiteral("sample")).toString(),
+                                                   m.value(QStringLiteral("reason")).toString(),
+                                                   m.value(QStringLiteral("models")).toString());
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 } // namespace tanara_qml
