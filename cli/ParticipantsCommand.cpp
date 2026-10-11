@@ -21,6 +21,8 @@
 #include <QSaveFile>
 #include <QTextStream>
 
+#include <algorithm>
+
 namespace tanara::cli {
 
 namespace {
@@ -91,28 +93,74 @@ void printText(const Meeting& m, const QString& analysisNote)
     out().flush();
 }
 
+// --remove: a résztvevő tartós törlése (mint az AppController::removeParticipant, szerkesztő
+// nélkül): a jóváhagyás-bejegyzése is kikerül, a kötött nyers beszélői — ha az ő nevére voltak
+// leképezve — névtelenek lesznek (a transcript.md újragenerálva). A soronkénti kézi javításokat
+// (overlay) nem érinti.
+int removeParticipant(Meeting& m, const QString& id, bool json)
+{
+    const auto it = std::find_if(m.participants.cbegin(), m.participants.cend(),
+                                 [&id](const Participant& p) { return p.id == id; });
+    if (it == m.participants.cend()) { err() << "No participant with id " << id << "\n"; return 1; }
+    const Participant p = *it;
+    bool mapChanged = false;
+    for (const QString& raw : p.rawSpeakerIds) {
+        const QString label = participants::rawLabelOf(raw);
+        if (!p.personName.isEmpty() && m.speakerMap.value(label) == p.personName) {
+            m.speakerMap.remove(label);
+            mapChanged = true;
+        }
+    }
+    m.participants.removeAt(int(it - m.participants.cbegin()));
+    if (m.approval) {
+        auto& c = m.approval->candidates;
+        c.erase(std::remove_if(c.begin(), c.end(), [&id](const ParticipantApprovalEntry& e) { return e.participantId == id; }),
+                c.end());
+    }
+    QSaveFile f(QDir(m.folder).filePath(QStringLiteral("meeting.json")));
+    if (!f.open(QIODevice::WriteOnly)
+        || f.write(QJsonDocument(toJson(m)).toJson(QJsonDocument::Indented)) < 0 || !f.commit()) {
+        err() << "Cannot write meeting.json in " << m.folder << "\n";
+        return 1;
+    }
+    if (mapChanged && m.hasTranscript) speakeredit::regenerateTranscriptMarkdown(m);
+    if (json) {
+        out() << QJsonDocument(QJsonObject{{"removed", id}, {"personName", p.personName},
+                                           {"unmappedSpeakers", mapChanged}}).toJson(QJsonDocument::Indented);
+    } else {
+        out() << "Removed participant " << id << " ("
+              << (p.personName.isEmpty() ? QStringLiteral("unknown voice") : p.personName) << ")"
+              << (mapChanged ? ", its speakers are unnamed now" : "") << "\n";
+    }
+    out().flush();
+    return 0;
+}
+
 } // namespace
 
 int runParticipantsCommand(const QStringList& args)
 {
     QString folder;
     bool json = false, analyze = false, write = false;
+    QString removeId;
     for (int i = 2; i < args.size(); ++i) {
         const QString a = args.at(i);
         if (a == "--json") json = true;
+        else if (a == "--remove" && i + 1 < args.size()) removeId = args.at(++i);
         else if (a == "--analyze") analyze = true;
         else if (a == "--write") write = true;
         else if (folder.isEmpty() && !a.startsWith("--")) folder = a;
         else { err() << "Unknown argument: " << a << "\n"; return 2; }
     }
-    if (folder.isEmpty() || (write && !analyze)) {
-        err() << "Usage: participants <meeting-folder> [--analyze [--write]] [--json]\n";
+    if (folder.isEmpty() || (write && !analyze) || (!removeId.isEmpty() && analyze)) {
+        err() << "Usage: participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]\n";
         return 2;
     }
     folder = QFileInfo(folder).absoluteFilePath();
     Meeting m = MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
+    if (!removeId.isEmpty()) return removeParticipant(m, removeId, json);
 
     QString note;
     ParticipantAnalysisFile file = ParticipantAnalysisFile::load(folder);

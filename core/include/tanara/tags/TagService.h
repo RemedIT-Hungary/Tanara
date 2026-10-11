@@ -9,6 +9,8 @@
 //        "rejected": [ {"meetingId", "tagId"?, "name"?}, … ] }
 //    A "rejected" személy-szintű elemei: {"person", "tagId", "meetingId"?} — meetingId nélkül
 //    tartós (személy, címke) elutasítás, meetingId-vel csak arra a megbeszélésre szól.
+//    {"person", "meetingId"} címke nélkül: a személy javaslata arra a megbeszélésre elutasítva
+//    (a résztvevő-javaslat ×-e, rejectPersonForMeeting).
 //    atomikusan írva, folyamatközi zár alatt (a felvevő-folyamat is írhatja; lásd
 //    store/SharedFile.h). Az "aliases" az összevont címkék régi nevei: begépelve a megtartott
 //    címkét kínálja a mező.
@@ -144,6 +146,19 @@ public:
     void rejectPersonTag(const QString& name, const QString& tagId, const QString& meetingId = QString());
     bool isRejectedForPerson(const QString& name, const QString& tagId, const QString& meetingId = QString()) const;
 
+    // ---- személy-javaslat egy megbeszélésre (Áttekintés › Résztvevők, A6) ----
+    // A megbeszélés címkéin tanult személyek (suggestPeopleForTag a címkék sorrendjében), akik
+    // még nincsenek a résztvevők közt (excludeNames), és erre a megbeszélésre nincsenek
+    // elutasítva (sem rejectPersonForMeeting, sem a (személy, címke, meeting) elutasítás). Egy
+    // személy egyszer (az első címkéjével). A saját személy kimarad. limit ≤ 0: mind.
+    QVector<PersonTagStat> suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames = {},
+                                                   int limit = persontags::kMaxSuggestions) const;
+    // A javasolt személy × gombja: TARTÓS, csak erre a megbeszélésre szóló elutasítás (tags.json
+    // rejected[] {"person", "meetingId"} címke nélkül). Egy visszavonási lépés. A meeting
+    // törlésével az elutasítás is törlődik.
+    void rejectPersonForMeeting(const QString& name, const QString& meetingId);
+    bool isPersonRejectedForMeeting(const QString& name, const QString& meetingId) const;
+
     // Személy-műveletek átvezetése (az AppController globális átnevezése / törlése hívja; a
     // people.json rekordot a PeopleStore viszi): az elutasítások a személlyel mennek
     // (összevonásnál unió), a visszavonási verem személy-pillanatképei követik a nevet.
@@ -158,10 +173,20 @@ public:
 
     // ---- visszavonás ----
     QString beginGroup(const QString& label);
+    // Ugyanez egy megbeszélés közös visszavonási vermének (edit/MeetingUndo.h) jelölésével: a
+    // csoport lépése a meetinghez tartozik akkor is, ha nem a meeting címkéit érinti (pl. egy
+    // résztvevő személy-címkéje az Áttekintésből). A meeting címkéit érintő és a meetingre szóló
+    // elutasító lépések maguktól is a meetinghez tartoznak.
+    QString beginGroup(const QString& label, const QString& meetingId);
     void    endGroup();
     bool    canUndo() const;
     QString undoLabel() const;
     void    undo();
+    // A közös visszavonás (MeetingUndoService) adapteréhez: a verem lépéseinek sorszámai
+    // (alulról felfelé; egy lépés sorszáma a folyamat életére egyedi), és hogy egy lépés mely
+    // megbeszélésekhez tartozik (üres: egyikhez sem / ismeretlen sorszám).
+    QVector<quint64> undoSerials() const;
+    QStringList undoMeetingIds(quint64 serial) const;
 
     // A tags.json újraolvasása (ha a lemezen változott) és a meeting-gyorsítótár eldobása.
     void reload();

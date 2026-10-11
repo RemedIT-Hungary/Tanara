@@ -69,6 +69,7 @@ private slots:
     void editorGetsActiveModels();
     void backfillAfterEnablingModel();
     void siblingRemoveAndMoveWithUndo();
+    void rescanAndDeleteModelFile();   // G4 (B1)
 
 private:
     Meeting makeMeeting(const QString& title);
@@ -253,6 +254,8 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
 
     QSignalSpy done(m_app.get(), &AppController::voiceprintBackfillFinished);
     QSignalSpy changed(m_app.get(), &AppController::voiceprintsChanged);
+    QSignalSpy started(m_app.get(), &AppController::voiceprintBackfillStarted);
+    QSignalSpy progress(m_app.get(), &AppController::voiceprintBackfillProgress);
     const int before = m_embeds->load();
     enable({kCamp, kWe});   // bővült → a pótlás magától indul, háttérszálon
     QVERIFY(m_app->voiceprintBackfillRunning());
@@ -261,6 +264,24 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     QCOMPARE(done.first().first().toInt(), 2);
     QCOMPARE(changed.count(), 1);
     QVERIFY(m_embeds->load() > before);
+    // G4 (B1): k / N haladás és a kimaradt minták személyenként (Dani már a lista
+    // összeállításakor kiesik: nincs meg a megbeszélése; Cili hangja hiányzik).
+    // (Az induláskori, eseményhurokra halasztott pótlás-kérés a futás végén még egy kört kér.)
+    QVERIFY(started.count() >= 1);
+    QCOMPARE(started.first().first().toInt(), 3);
+    QVERIFY(progress.count() >= 3);
+    QCOMPARE(progress.at(2).at(0).toInt(), 3);
+    QCOMPARE(progress.at(2).at(1).toInt(), 3);
+    QCOMPARE(done.first().at(1).toInt(), 2);
+    QTRY_VERIFY(!m_app->voiceprintBackfillRunning());
+    const QVector<VoiceprintBackfillSkip> skipped = m_app->backfillSkippedSamples();
+    QCOMPARE(skipped.size(), 2);
+    QCOMPARE(skipped.at(0).person, QStringLiteral("Cili"));
+    QCOMPARE(skipped.at(0).model, kWe);
+    QCOMPARE(skipped.at(0).reason, VoiceprintBackfillSkip::Reason::MissingAudio);
+    QCOMPARE(skipped.at(1).person, QStringLiteral("Dani"));
+    QCOMPARE(skipped.at(1).reason, VoiceprintBackfillSkip::Reason::MissingMeeting);
+    QCOMPARE(skipped.at(1).sourceMeetingId, QStringLiteral("torolt-megbeszeles"));
 
     for (const QString& who : {QStringLiteral("Anna"), QStringLiteral("Béla")}) {
         const QVector<Voiceprint> ps = m_app->voiceprints()->printsFor(who);
@@ -279,6 +300,41 @@ void VoiceModelsAppTest::backfillAfterEnablingModel()
     m_app->backfillVoiceprints();
     if (done.isEmpty()) QVERIFY(done.wait(30000));
     QCOMPARE(done.first().first().toInt(), 0);
+    QCOMPARE(done.first().at(1).toInt(), 2);   // a kimaradtak megint kimaradnak
+    QCOMPARE(m_app->backfillSkippedSamples().size(), 2);
+}
+
+// G4 (B1): kézzel bemásolt / törölt modellfájl — rescanVoiceModels, deleteVoiceModelFile.
+void VoiceModelsAppTest::rescanAndDeleteModelFile()
+{
+    const QString weFile = QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(kWe)->fileName);
+    QSignalSpy models(m_app.get(), &AppController::voiceModelsChanged);
+    QString error;
+    QVERIFY(m_app->deleteVoiceModelFile(kWe, &error));
+    QVERIFY(!QFileInfo::exists(weFile));
+    QCOMPARE(m_app->activeVoiceModelIds(), QStringList({kCamp}));
+    QCOMPARE(models.count(), 1);
+    QVERIFY(!m_app->deleteVoiceModelFile(kWe, &error));   // nincs mit
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!m_app->deleteVoiceModelFile(QStringLiteral("nincs-ilyen"), &error));
+
+    // Változatlan fájl-állapot mellett is jelez (a felület a fájl-sorokat frissíti).
+    models.clear();
+    m_app->rescanVoiceModels();
+    QCOMPARE(models.count(), 1);
+    QCOMPARE(m_app->activeVoiceModelIds(), QStringList({kCamp}));
+
+    // Kézzel bemásolt fájl: a rescan felveszi (a lista bővült → pótlás is indul).
+    {
+        QFile f(weFile);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+    }
+    models.clear();
+    QSignalSpy done(m_app.get(), &AppController::voiceprintBackfillFinished);
+    m_app->rescanVoiceModels();
+    QCOMPARE(models.count(), 1);
+    QCOMPARE(m_app->activeVoiceModelIds(), QStringList({kCamp, kWe}));
+    if (done.isEmpty()) QVERIFY(done.wait(30000));
 }
 
 void VoiceModelsAppTest::siblingRemoveAndMoveWithUndo()

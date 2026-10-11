@@ -178,6 +178,8 @@ private slots:
     void identifyRunsAsLastStage();
     void retranscribeSuccessClearsNamesAndCorrections();
     void staleSummaryShowsInStateAndPending();
+    // G4 (A7): a kézzel felvett, nem beszélő résztvevő az átírás után is megmarad.
+    void manualParticipantSurvivesTranscription();
 
     // Adatbiztonság.
     void retryAfterFailedRetranscribeClearsNames();
@@ -1309,6 +1311,50 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
     m_app->deleteMeeting(m.id);
     QVERIFY(m_app->speakerEditor(m.id) == nullptr);
     QVERIFY(!QDir(m.folder).exists());
+}
+
+void AppJobsTest::manualParticipantSurvivesTranscription()
+{
+    if (!m_ffmpeg) QSKIP("ffmpeg nem található");
+    m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
+    const Meeting m = recording("Kézi résztvevő", 3);
+    const QString cili = m_app->addParticipant(m.id, QStringLiteral("Cecília"));
+    QVERIFY(!cili.isEmpty());
+    QVERIFY(m_app->unheardParticipants(m.id).isEmpty());   // átirat nélkül nincs „nem hallott”
+
+    QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
+    m_app->transcribeMeeting(m.id);
+    QVERIFY(ready.wait(30000));
+    QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
+
+    auto findCili = [&](const QVector<Participant>& ps) -> const Participant* {
+        for (const Participant& p : ps)
+            if (p.id == cili) return &p;
+        return nullptr;
+    };
+    QVector<Participant> ps = m_app->participants(m.id);
+    const Participant* p = findCili(ps);
+    QVERIFY(p);
+    QCOMPARE(p->personName, QStringLiteral("Cecília"));
+    QVERIFY(p->rawSpeakerIds.isEmpty());
+    QCOMPARE(p->source, ParticipantSource::Manual);
+    QVector<Participant> unheard = m_app->unheardParticipants(m.id);
+    QCOMPARE(unheard.size(), 1);
+    QCOMPARE(unheard.first().id, cili);
+
+    // Ha a nevére kerül egy beszélő, már nem „nem hallott”.
+    m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 1"), QStringLiteral("Cecília"), /*enroll*/ false);
+    QVERIFY(m_app->unheardParticipants(m.id).isEmpty());
+
+    // Újra-átírás után is megmarad (a nevek törlődnek, a résztvevő nem).
+    ready.clear();
+    m_app->retranscribeMeeting(m.id);
+    QVERIFY(ready.wait(30000));
+    QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
+    ps = m_app->participants(m.id);
+    QVERIFY(findCili(ps));
+    QCOMPARE(m_app->unheardParticipants(m.id).size(), 1);
+    QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
 }
 
 void AppJobsTest::staleSummaryShowsInStateAndPending()

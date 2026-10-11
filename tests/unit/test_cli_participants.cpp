@@ -95,6 +95,46 @@ private slots:
         QVERIFY(!QFile::exists(QDir(dir.path()).filePath("participants.analysis.json")));
     }
 
+    // G4 (A6): --remove — tartós törlés a meeting.json-ból (a jóváhagyás-bejegyzéssel és a nevére
+    // leképezett nyers beszélővel együtt).
+    void removeParticipant()
+    {
+        QTemporaryDir dir;
+        const QString meetingJson = QDir(dir.path()).filePath("meeting.json");
+        QFile f(meetingJson);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(QJsonObject{
+            {"id", "p-2"}, {"title", "P"},
+            {"speakerMap", QJsonObject{{"Beszélő 1", "Tester"}, {"Beszélő 2", "Other"}}},
+            {"participants", QJsonArray{
+                QJsonObject{{"id", "v1"}, {"personName", "Tester"}, {"source", "voice"},
+                            {"rawSpeakerIds", QJsonArray{"Beszélő 1@mic"}}, {"approved", true}},
+                QJsonObject{{"id", "m-1"}, {"personName", "Other"}, {"source", "manual"}}}},
+            {"participantApproval", QJsonObject{{"at", "2026-10-11T10:00:00"},
+                {"candidates", QJsonArray{QJsonObject{{"participantId", "v1"}, {"personName", "Tester"}, {"checked", true}},
+                                          QJsonObject{{"participantId", "m-1"}, {"personName", "Other"}}}}}}}).toJson());
+        f.close();
+
+        QCOMPARE(cli({"participants", dir.path(), "--remove", "nincs"}).code, 1);
+        QCOMPARE(cli({"participants", dir.path(), "--remove", "v1", "--analyze"}).code, 2);
+        const Run r = cli({"participants", dir.path(), "--remove", "v1", "--json"});
+        QCOMPARE(r.code, 0);
+        const QJsonObject res = QJsonDocument::fromJson(r.out.toUtf8()).object();
+        QCOMPARE(res.value("removed").toString(), QStringLiteral("v1"));
+        QVERIFY(res.value("unmappedSpeakers").toBool());
+
+        QFile in(meetingJson);
+        QVERIFY(in.open(QIODevice::ReadOnly));
+        const QJsonObject m = QJsonDocument::fromJson(in.readAll()).object();
+        const QJsonArray ps = m.value("participants").toArray();
+        QCOMPARE(ps.size(), 1);
+        QCOMPARE(ps[0].toObject().value("id").toString(), QStringLiteral("m-1"));
+        const QJsonArray cand = m.value("participantApproval").toObject().value("candidates").toArray();
+        QCOMPARE(cand.size(), 1);
+        QVERIFY(!m.value("speakerMap").toObject().contains("Beszélő 1"));
+        QCOMPARE(m.value("speakerMap").toObject().value("Beszélő 2").toString(), QStringLiteral("Other"));
+    }
+
 private:
     Run cli(const QStringList& args)
     {

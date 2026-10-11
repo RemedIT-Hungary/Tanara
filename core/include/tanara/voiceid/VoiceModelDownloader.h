@@ -43,6 +43,16 @@ public:
     };
     Q_ENUM(Failure)
 
+    // A meglévő modellfájl ellenőrzése (Beállítások › Beszélők „ellenőrzés” állapota). Most a
+    // fájlméret egyezése a leíró sizeBytes-ával; később hash is.
+    enum class VerifyResult {
+        Ok,             // a méret egyezik
+        Missing,        // nincs ilyen fájl
+        SizeMismatch,   // a méret eltér (sérült / félbehagyott / más fájl)
+        Unverifiable,   // a leíró nem közöl méretet — nincs mihez mérni (használható)
+    };
+    Q_ENUM(VerifyResult)
+
     explicit VoiceModelDownloader(QObject* parent = nullptr);
     ~VoiceModelDownloader() override;
 
@@ -74,11 +84,29 @@ public:
     // A hálózati hibák közül azok, amelyek „nincs net” jellegűek (névfeloldás, hálózat le).
     static bool isOfflineError(int networkReplyError);
 
+    // ---- ellenőrzés és törlés (G4, B1) ----
+    // Szinkron ellenőrzés (CLI, tesztek). detail: technikai sor (angol), lehet üres.
+    static VerifyResult verifyFile(const VoiceModelSpec& spec, const QString& path, QString* detail = nullptr);
+    // Aszinkron ellenőrzés a felületnek: verifyStarted(id) még a hívásban, verified(id, …) a
+    // következő eseményhurok-körben (addig isVerifying(id) igaz — az „ellenőrzés” állapot).
+    // false: már ellenőrződik vagy épp töltődik (jel nélkül).
+    bool verify(const VoiceModelSpec& spec, const QString& path);
+    bool isVerifying(const QString& id) const;
+    // Az id utolsó befejezett ellenőrzésének eredménye (nullopt: még nem volt).
+    std::optional<VerifyResult> lastVerify(const QString& id) const;
+    // A LETÖLTÖTT modellfájl törlése: csak <metaDir>/models/<fileName> (targetPath); a csomagban
+    // (<appDir>/models) lévőhöz nem nyúl. false (+ *error, angol): nincs letöltött fájl / nem
+    // törölhető. A futó letöltést / ellenőrzést a hívó zárja ki (isRunning / isVerifying).
+    static bool deleteModelFile(const VoiceModelSpec& spec, const QString& metaDir, QString* error = nullptr);
+
 signals:
     void started(const QString& id);
     // total: a szerver által közölt méret, ennek híján a leíró sizeBytes-a (0 = ismeretlen).
     void progress(const QString& id, qint64 received, qint64 total);
     void finished(const QString& id, bool ok, const QString& error);
+    // Ellenőrzés (G4, B1).
+    void verifyStarted(const QString& id);
+    void verified(const QString& id, tanara::VoiceModelDownloader::VerifyResult result, const QString& detail);
 
 private:
     struct Job;
@@ -91,6 +119,8 @@ private:
     QHash<QString, Job*> m_jobs;
     QHash<QString, Failure> m_last;
     std::optional<bool> m_reachableOverride;
+    QHash<QString, VerifyResult> m_verified;   // G4: az utolsó ellenőrzés id szerint
+    QStringList m_verifying;                   // G4: épp ellenőrzött id-k
 };
 
 } // namespace tanara

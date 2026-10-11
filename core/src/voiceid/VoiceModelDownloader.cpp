@@ -1,6 +1,8 @@
 #include "tanara/voiceid/VoiceModelDownloader.h"
 
 #include <QDir>
+#include <QFile>
+#include <QTimer>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkInformation>
@@ -219,6 +221,72 @@ void VoiceModelDownloader::finishJob(const QString& id)
     m_last.insert(id, Failure::None);
     emit progress(id, job->written, job->written);
     emit finished(id, true, QString());
+}
+
+// ---- ellenőrzés és törlés (G4, B1) ---------------------------------------------------------
+
+VoiceModelDownloader::VerifyResult VoiceModelDownloader::verifyFile(const VoiceModelSpec& spec, const QString& path,
+                                                                    QString* detail)
+{
+    const QFileInfo fi(path);
+    if (path.isEmpty() || !fi.exists() || !fi.isFile()) {
+        if (detail) *detail = QStringLiteral("Missing file: %1").arg(QDir::toNativeSeparators(path));
+        return VerifyResult::Missing;
+    }
+    if (spec.sizeBytes <= 0) {
+        if (detail) *detail = QStringLiteral("No expected size for %1; %2 bytes on disk.").arg(spec.id).arg(fi.size());
+        return VerifyResult::Unverifiable;
+    }
+    if (fi.size() != spec.sizeBytes) {
+        if (detail)
+            *detail = QStringLiteral("Size mismatch: %1 bytes on disk, expected %2.").arg(fi.size()).arg(spec.sizeBytes);
+        return VerifyResult::SizeMismatch;
+    }
+    if (detail) detail->clear();
+    return VerifyResult::Ok;
+}
+
+bool VoiceModelDownloader::verify(const VoiceModelSpec& spec, const QString& path)
+{
+    if (spec.id.isEmpty() || m_verifying.contains(spec.id) || isRunning(spec.id)) return false;
+    m_verifying << spec.id;
+    emit verifyStarted(spec.id);
+    QPointer<VoiceModelDownloader> self(this);
+    QTimer::singleShot(0, this, [self, spec, path]() {
+        if (!self) return;
+        QString detail;
+        const VerifyResult r = verifyFile(spec, path, &detail);
+        self->m_verifying.removeAll(spec.id);
+        self->m_verified.insert(spec.id, r);
+        emit self->verified(spec.id, r, detail);
+    });
+    return true;
+}
+
+bool VoiceModelDownloader::isVerifying(const QString& id) const { return m_verifying.contains(id); }
+
+std::optional<VoiceModelDownloader::VerifyResult> VoiceModelDownloader::lastVerify(const QString& id) const
+{
+    const auto it = m_verified.constFind(id);
+    if (it == m_verified.constEnd()) return std::nullopt;
+    return it.value();
+}
+
+bool VoiceModelDownloader::deleteModelFile(const VoiceModelSpec& spec, const QString& metaDir, QString* error)
+{
+    const QString target = targetPath(spec, metaDir);
+    const QFileInfo fi(target);
+    if (metaDir.isEmpty() || spec.fileName.isEmpty() || !fi.exists() || !fi.isFile()) {
+        if (error) *error = QStringLiteral("No downloaded file for %1 (%2).").arg(spec.id, QDir::toNativeSeparators(target));
+        return false;
+    }
+    QFile f(target);
+    if (!f.remove()) {
+        if (error) *error = QStringLiteral("Cannot delete %1: %2").arg(QDir::toNativeSeparators(target), f.errorString());
+        return false;
+    }
+    if (error) error->clear();
+    return true;
 }
 
 } // namespace tanara

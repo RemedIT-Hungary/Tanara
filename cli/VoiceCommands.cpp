@@ -150,6 +150,54 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
     return 0;
 }
 
+// voice-models verify <id>: a modellfájl ellenőrzése (méret-egyezés). exit 0: rendben (vagy nincs
+// mihez mérni), 1: hiányzik / eltér / ismeretlen id.
+int verifyModel(const SettingsManager& sm, const QString& id)
+{
+    const auto spec = VoiceModelRegistry::spec(id);
+    if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
+    const QString path = VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    QString detail;
+    const VoiceModelDownloader::VerifyResult r = VoiceModelDownloader::verifyFile(*spec, path, &detail);
+    out() << "File:   " << QDir::toNativeSeparators(path) << "\n";
+    switch (r) {
+    case VoiceModelDownloader::VerifyResult::Ok:
+        out() << "Result: OK (" << spec->sizeBytes << " bytes)\n";
+        break;
+    case VoiceModelDownloader::VerifyResult::Unverifiable:
+        out() << "Result: present, not verifiable (" << detail << ")\n";
+        break;
+    case VoiceModelDownloader::VerifyResult::Missing:
+        out() << "Result: MISSING\n";
+        break;
+    case VoiceModelDownloader::VerifyResult::SizeMismatch:
+        out() << "Result: SIZE MISMATCH (" << detail << ")\n"
+              << "Fetch it again with: tanara-cli voice-models fetch " << id << " --force\n";
+        break;
+    }
+    out().flush();
+    return (r == VoiceModelDownloader::VerifyResult::Ok || r == VoiceModelDownloader::VerifyResult::Unverifiable) ? 0 : 1;
+}
+
+// voice-models delete <id>: a LETÖLTÖTT fájl törlése (<metaDir>/models); a csomagban lévőt nem.
+int deleteModel(const SettingsManager& sm, const QString& id)
+{
+    const auto spec = VoiceModelRegistry::spec(id);
+    if (!spec) { err() << "Unknown voice model: " << id << "\n"; return 1; }
+    QString error;
+    if (!VoiceModelDownloader::deleteModelFile(*spec, metaDirOf(sm), &error)) {
+        err() << error << "\n";
+        err().flush();
+        return 1;
+    }
+    out() << "Deleted " << QDir::toNativeSeparators(VoiceModelDownloader::targetPath(*spec, metaDirOf(sm))) << "\n";
+    const QString still = VoiceModelRegistry::resolvePath(*spec, metaDirOf(sm), appDir());
+    if (QFileInfo::exists(still))
+        out() << "Note: a bundled copy is still used: " << QDir::toNativeSeparators(still) << "\n";
+    out().flush();
+    return 0;
+}
+
 QString fmt(double v) { return std::isnan(v) ? QStringLiteral("   -  ") : QString::number(v, 'f', 3).rightJustified(6); }
 
 void printReport(const VoiceEvalReport& r)
@@ -203,7 +251,12 @@ int runVoiceModelsCommand(const QStringList& args)
         if (id.isEmpty()) { err() << "Usage: voice-models fetch <id> [--force]\n"; return 2; }
         return fetchModel(sm, id, args.contains(QStringLiteral("--force")));
     }
-    err() << "Usage: voice-models [list | enable <id> | disable <id> | fetch <id> [--force]]\n";
+    if (sub == "verify" || sub == "delete") {
+        const QString id = args.value(3);
+        if (id.isEmpty()) { err() << "Usage: voice-models " << sub << " <id>\n"; return 2; }
+        return sub == "verify" ? verifyModel(sm, id) : deleteModel(sm, id);
+    }
+    err() << "Usage: voice-models [list | enable <id> | disable <id> | fetch <id> [--force] | verify <id> | delete <id>]\n";
     return 2;
 }
 

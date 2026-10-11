@@ -52,6 +52,9 @@
 #include "tanara/embedding/EmbeddingPreparer.h"
 #include "tanara/embedding/EmbeddingProviderRegistry.h"
 #include "tanara/embedding/IEmbeddingProvider.h"
+#include "tanara/edit/MeetingUndo.h"              // G4
+#include "tanara/store/JsonSerialization.h"       // G4
+#include "tanara/voiceid/VoiceModelDownloader.h"  // G4
 
 #include <QCoreApplication>
 #include <QDir>
@@ -538,6 +541,15 @@ struct AppController::Impl {
         return voiceModelIds.isEmpty() ? st->enabledVoiceModels() : voiceModelIds;
     }
     int              backfillAdded = 0;
+    // ---- G4: közös visszavonás + pótlás-jelentés ----
+    QHash<QString, QPointer<MeetingUndoService>> undoServices;   // meetingId → közös verem
+    QHash<QString, int> undoScopeDepth;                           // ParticipantUndoScope egymásba ágyazás
+    QVector<VoiceprintBackfillSkip> backfillSkipped;              // a legutóbbi pótlás kimaradt mintái
+    int              backfillDone = 0;
+    int              backfillTotal = 0;
+    void noteBackfillSkip(const QString& person, const QString& model, const Voiceprint& vp,
+                          VoiceprintBackfillSkip::Reason reason);
+    // ---- /G4 ----
     // Egy pótlandó lenyomat: a testvér-csoport képviselője + a hiányzó modell + a forrás-meeting.
     struct BackfillJob { QString person; QString model; Voiceprint print; Meeting meeting; };
     void finishBackfillJob(const BackfillJob& job, const QVector<float>& vec, bool missingAudio);
@@ -720,6 +732,96 @@ struct AppController::Impl {
     void commitIdentification(const Meeting& m, MergedTranscript merged,
                               const QStringList& identifiedLabels);
 };
+
+// ==== G4: a résztvevő-műveletek közös visszavonási lépése ===================================
+// RAII: a művelet ELŐTT pillanatképet vesz a meeting „résztvevő-állapotáról” (résztvevők,
+// jóváhagyás, leírás, sávok bevonása), UTÁNA — ha változott — egy lépést tesz a meeting közös
+// vermébe (MeetingUndoService), amely ezt az állapotot állítja vissza. A művelet közben
+// keletkezett szerkesztő-lépést (kötések) a lépés elnyeli. Egymásba ágyazva csak a legkülső
+// rögzít (pl. removeParticipant → unbindParticipant).
+namespace {
+QJsonObject participantUndoState(const Meeting& m)
+{
+    QJsonArray ps;
+    for (const Participant& p : m.participants) ps.append(toJson(p));
+    QJsonArray ts;
+    for (const Track& t : m.tracks)
+        ts.append(QJsonObject{{QStringLiteral("id"), t.id}, {QStringLiteral("active"), t.active},
+                              {QStringLiteral("excludedReason"), t.excludedReason}});
+    return QJsonObject{{QStringLiteral("participants"), ps},
+                       {QStringLiteral("approval"), m.approval ? QJsonValue(toJson(*m.approval)) : QJsonValue()},
+                       {QStringLiteral("contextNote"), m.contextNote},
+                       {QStringLiteral("tracks"), ts}};
+}
+
+quint64 editorTop(SpeakerEditor* ed)
+{
+    if (!ed) return 0;
+    const QVector<quint64> s = ed->undoSerials();
+    return s.isEmpty() ? 0 : s.last();
+}
+} // namespace
+
+struct AppController::ParticipantUndoScope {
+    AppController* app = nullptr;
+    QString meetingId;
+    QString text;
+    bool    active = false;
+    Meeting before;
+    quint64 editorTopBefore = 0;
+
+    ParticipantUndoScope(AppController* a, const QString& id, const QString& label)
+        : app(a), meetingId(id), text(label)
+    {
+        if (id.isEmpty() || app->d->undoScopeDepth[id]++ > 0) return;
+        before = app->d->store->load(id);
+        if (before.id.isEmpty()) return;
+        editorTopBefore = editorTop(app->d->speakerEditors.value(id));
+        active = true;
+    }
+    ~ParticipantUndoScope()
+    {
+        if (!meetingId.isEmpty() && --app->d->undoScopeDepth[meetingId] <= 0)
+            app->d->undoScopeDepth.remove(meetingId);
+        if (!active) return;
+        const Meeting after = app->d->store->load(meetingId);
+        if (after.id.isEmpty() || participantUndoState(after) == participantUndoState(before)) return;
+        const quint64 top = editorTop(app->d->speakerEditors.value(meetingId));
+        MeetingUndoService* undo = app->meetingUndo(meetingId);
+        if (!undo) return;
+        QPointer<AppController> self(app);
+        const Meeting snap = before;
+        undo->pushStep(text, [self, snap]() { if (self) restore(self, snap); },
+                       top != editorTopBefore ? top : 0);
+    }
+    // A pillanatkép visszaírása (a meeting többi része — cím, címkék, átirat — érintetlen).
+    static void restore(AppController* app, const Meeting& snap)
+    {
+        Meeting m = app->d->store->load(snap.id);
+        if (m.id.isEmpty()) return;
+        bool tracksChanged = false;
+        for (Track& t : m.tracks)
+            for (const Track& o : snap.tracks)
+                if (o.id == t.id && (o.active != t.active || o.excludedReason != t.excludedReason)) {
+                    t.active = o.active;
+                    t.excludedReason = o.excludedReason;
+                    tracksChanged = true;
+                }
+        m.participants = snap.participants;
+        m.approval = snap.approval;
+        m.contextNote = snap.contextNote;
+        if (tracksChanged) m.mixdownDirty = true;
+        app->d->store->saveMeeting(m);
+        emit app->participantsChanged(m.id);
+        if (tracksChanged) {
+            emit app->tracksChanged(m.id);
+            bool anyIncluded = false;
+            for (const Track& t : m.tracks) anyIncluded = anyIncluded || t.included();
+            if (anyIncluded) app->regenerateMixdown(m.id);
+        }
+    }
+};
+// ==== /G4 ===================================================================================
 
 // Egy cloud feldolgozás-futás állapota. A providerek válasz-hookja (onExchange) tölti.
 struct AppController::CloudRun {
@@ -1238,7 +1340,8 @@ void AppController::backfillVoiceprints()
 {
     if (!d->voiceprints) return;
     if (d->backfillRunning) { d->backfillAgain = true; return; }
-    if (!d->voiceModelUsable()) { emit voiceprintBackfillFinished(0); return; }
+    if (!d->voiceModelUsable()) { emit voiceprintBackfillFinished(0, 0); return; }
+    d->backfillSkipped.clear();   // G4: új futás → új jelentés
 
     // A feladatlista a fő szálon készül (a DB-t csak a fő szál éri el); a háttérszál csak dekódol
     // és beágyaz. A meetingeket egyszer töltjük.
@@ -1255,6 +1358,7 @@ void AppController::backfillVoiceprints()
                     it = meetings.insert(vp.sourceMeetingId,
                                          vp.sourceMeetingId.isEmpty() ? Meeting() : d->store->load(vp.sourceMeetingId));
                 if (it->id.isEmpty()) {
+                    d->noteBackfillSkip(person, model, vp, VoiceprintBackfillSkip::Reason::MissingMeeting);   // G4
                     const QString key = vp.id + QLatin1Char('|') + model;
                     if (!d->backfillLogged.contains(key)) {
                         d->backfillLogged.insert(key);
@@ -1267,10 +1371,13 @@ void AppController::backfillVoiceprints()
             }
         }
     }
-    if (jobs.isEmpty()) { emit voiceprintBackfillFinished(0); return; }
+    if (jobs.isEmpty()) { emit voiceprintBackfillFinished(0, int(d->backfillSkipped.size())); return; }
 
     d->backfillRunning = true;
     d->backfillAdded = 0;
+    d->backfillDone = 0;                       // G4: k / N haladás
+    d->backfillTotal = int(jobs.size());
+    emit voiceprintBackfillStarted(d->backfillTotal);
     qCInfo(lcVoice).noquote() << "Lenyomat-pótlás indul:" << jobs.size() << "lenyomat";
     const VoiceEmbedderSet proto = d->voiceSet.freshCopy();
     const auto cancel = d->backfillCancel;
@@ -1297,7 +1404,12 @@ void AppController::Impl::finishBackfillJob(const BackfillJob& job, const QVecto
                                             bool missingAudio)
 {
     const QString key = job.print.id + QLatin1Char('|') + job.model;
+    ++backfillDone;                            // G4
+    emit q->voiceprintBackfillProgress(backfillDone, backfillTotal);
     if (vec.isEmpty()) {
+        noteBackfillSkip(job.person, job.model, job.print,
+                         missingAudio ? VoiceprintBackfillSkip::Reason::MissingAudio
+                                      : VoiceprintBackfillSkip::Reason::Failed);   // G4
         if (!backfillLogged.contains(key)) {
             backfillLogged.insert(key);
             qCInfo(lcVoice).noquote() << (missingAudio ? "Lenyomat-pótlás: hiányzó hang, kihagyva:"
@@ -1330,7 +1442,7 @@ void AppController::Impl::finishBackfill()
         qCInfo(lcVoice).noquote() << "Lenyomat-pótlás kész:" << added << "új lenyomat";
         emit q->voiceprintsChanged();
     }
-    emit q->voiceprintBackfillFinished(added);
+    emit q->voiceprintBackfillFinished(added, int(backfillSkipped.size()));
     if (backfillAgain) {
         backfillAgain = false;
         q->backfillVoiceprints();
@@ -1681,6 +1793,7 @@ void AppController::renameMeeting(const QString& meetingId, const QString& newTi
 }
 
 void AppController::setMeetingContextNote(const QString& meetingId, const QString& note) {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Leírás módosítva"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QString n = note.trimmed();
@@ -4484,6 +4597,7 @@ SpeakerEditor* AppController::speakerEditor(const QString& meetingId)
     // A személy címkéi a jelölt-rangsorhoz (D-szelet): a beállított varrat, különben a TagService.
     ed->setPersonTagsProvider(d->candidateContext().personTags);
     d->speakerEditors.insert(meetingId, ed);
+    meetingUndo(meetingId);   // G4: a közös visszavonás a szerkesztő első lépésétől követi
 
     // A szerkesztő mellékhatásai a megszokott jeleken mennek ki (régi UI, könyvtár).
     connect(ed, &SpeakerEditor::speakerMapChanged, this, [this](const QString& id) {
@@ -4894,6 +5008,7 @@ void AppController::copyParticipantTracksToOverlay(const QString& meetingId)
 
 void AppController::includeTrack(const QString& meetingId, const QString& trackId)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv beemelve"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
@@ -4919,6 +5034,7 @@ void AppController::includeTrack(const QString& meetingId, const QString& trackI
 
 void AppController::excludeTrack(const QString& meetingId, const QString& trackId)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Sáv kivéve"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return;
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(m.tracks);
@@ -5099,6 +5215,7 @@ bool AppController::applyParticipantsToTranscript(const QString& meetingId)
 
 bool AppController::approveParticipants(const QString& meetingId, const QVector<Participant>& accepted)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevők jóváhagyva"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     const participants::CandidateContext ctx = d->candidateContext();
@@ -5142,6 +5259,7 @@ bool AppController::approveParticipants(const QString& meetingId, const QVector<
 
 bool AppController::skipApproval(const QString& meetingId)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Jóváhagyás kihagyva"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     ParticipantApproval ap;
@@ -5158,6 +5276,7 @@ bool AppController::skipApproval(const QString& meetingId)
 
 bool AppController::unbindParticipant(const QString& meetingId, const QString& participantId)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Nem volt ott"));   // G4
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty()) return false;
     int idx = -1;
@@ -5165,6 +5284,7 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
         if (m.participants.at(i).id == participantId) idx = i;
     if (idx < 0) return false;
     Participant& p = m.participants[idx];
+    undoScope.text = tr("Nem volt ott: %1").arg(p.personName);   // G4
 
     // A sorai névtelenre: a kötött nyers beszélők (kétoldalúnál csak az adott oldal sorai), és
     // minden beszélő, aki a személyhez van kötve (pl. korábbi automatikus azonosításból).
@@ -5200,6 +5320,7 @@ bool AppController::unbindParticipant(const QString& meetingId, const QString& p
 
 QString AppController::addParticipant(const QString& meetingId, const QString& personName)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő felvéve: %1").arg(personName.trimmed()));   // G4
     const QString name = personName.trimmed();
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || name.isEmpty()) return {};
@@ -5219,6 +5340,7 @@ QString AppController::addParticipant(const QString& meetingId, const QString& p
 
 bool AppController::setSoloMeeting(const QString& meetingId)
 {
+    ParticipantUndoScope undoScope(this, meetingId, tr("Csak én beszéltem"));   // G4
     const QString self = d->settings->settings().userSpeakerName.trimmed();
     Meeting m = d->store->load(meetingId);
     if (m.id.isEmpty() || self.isEmpty()) return false;
@@ -5251,5 +5373,119 @@ bool AppController::setSoloMeeting(const QString& meetingId)
     emit participantsChanged(meetingId);
     return true;
 }
+
+// ==== G4: közös visszavonás, tartós résztvevő-törlés, résztvevők átírás után, modell-műveletek ====
+
+MeetingUndoService* AppController::meetingUndo(const QString& meetingId)
+{
+    if (meetingId.isEmpty()) return nullptr;
+    if (MeetingUndoService* u = d->undoServices.value(meetingId)) {
+        if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) u->attachSpeakerEditor(ed);
+        return u;
+    }
+    if (d->store->load(meetingId).id.isEmpty()) return nullptr;
+    auto* u = new MeetingUndoService(meetingId, this);
+    u->attachTagService(d->tags);
+    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) u->attachSpeakerEditor(ed);
+    d->undoServices.insert(meetingId, u);
+    connect(d->store, &MeetingStore::meetingRemoved, u, [this, u](const QString& id) {
+        if (id != u->meetingId()) return;
+        d->undoServices.remove(id);
+        u->deleteLater();
+    });
+    return u;
+}
+
+bool AppController::removeParticipant(const QString& meetingId, const QString& participantId)
+{
+    ParticipantUndoScope undoScope(this, meetingId, tr("Résztvevő eltávolítva"));
+    const Meeting m0 = d->store->load(meetingId);
+    if (m0.id.isEmpty()) return false;
+    const auto has = [&participantId](const Participant& p) { return p.id == participantId; };
+    const auto it0 = std::find_if(m0.participants.cbegin(), m0.participants.cend(), has);
+    if (it0 == m0.participants.cend()) return false;
+    if (!it0->personName.isEmpty()) undoScope.text = tr("Résztvevő eltávolítva: %1").arg(it0->personName);
+
+    // A sorai névtelenre (egy szerkesztő-lépés, amelyet a közös lépés elnyel), majd a törlés.
+    unbindParticipant(meetingId, participantId);
+    Meeting m = d->store->load(meetingId);
+    m.participants.erase(std::remove_if(m.participants.begin(), m.participants.end(), has), m.participants.end());
+    if (m.approval) {
+        auto& c = m.approval->candidates;
+        c.erase(std::remove_if(c.begin(), c.end(),
+                               [&](const ParticipantApprovalEntry& e) { return e.participantId == participantId; }),
+                c.end());
+    }
+    d->store->saveMeeting(m);
+    emit participantsChanged(meetingId);
+    return true;
+}
+
+QVector<Participant> AppController::unheardParticipants(const QString& meetingId) const
+{
+    const Meeting m = d->store->load(meetingId);
+    if (m.id.isEmpty() || !m.hasTranscript) return {};
+    // Az átirat beszélőinek személyei: a nyitott szerkesztőből, különben a lemezről feloldva.
+    QSet<QString> heard;
+    if (SpeakerEditor* ed = d->speakerEditors.value(meetingId)) {
+        for (const EditorSpeaker& s : ed->speakers())
+            if (s.utteranceCount > 0 && !s.personName.isEmpty()) heard.insert(s.personName.toLower());
+    } else {
+        const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(m.folder);
+        const SpeakerOverlay ov = speakeredit::loadOverlayFor(m.folder, lines);
+        QSet<QString> keys;
+        for (const TranscriptLine& l : lines) keys.insert(speakeredit::resolveSpeakerKey(ov, l));
+        for (const QString& k : std::as_const(keys)) {
+            const QString person = speakeredit::speakerPerson(ov, m.speakerMap, k);
+            if (!person.isEmpty()) heard.insert(person.toLower());
+        }
+    }
+    QVector<Participant> out;
+    for (const Participant& p : m.participants)
+        if (!p.personName.isEmpty() && p.rawSpeakerIds.isEmpty() && !heard.contains(p.personName.toLower()))
+            out.append(p);
+    return out;
+}
+
+QVector<VoiceprintBackfillSkip> AppController::backfillSkippedSamples() const
+{
+    QVector<VoiceprintBackfillSkip> out = d->backfillSkipped;
+    std::stable_sort(out.begin(), out.end(), [](const VoiceprintBackfillSkip& a, const VoiceprintBackfillSkip& b) {
+        return a.person.localeAwareCompare(b.person) < 0;
+    });
+    return out;
+}
+
+void AppController::Impl::noteBackfillSkip(const QString& person, const QString& model, const Voiceprint& vp,
+                                           VoiceprintBackfillSkip::Reason reason)
+{
+    for (const VoiceprintBackfillSkip& s : std::as_const(backfillSkipped))
+        if (s.person == person && s.model == model && s.sampleRef == vp.sampleRef
+            && s.sourceMeetingId == vp.sourceMeetingId)
+            return;
+    backfillSkipped.append({person, model, vp.sampleRef, vp.sourceMeetingId, reason});
+}
+
+void AppController::rescanVoiceModels()
+{
+    const QStringList before = d->voiceModelIds;
+    applyVoiceModels();   // változáskor maga jelez (és bővülésnél pótol)
+    if (d->voiceModelIds == before) emit voiceModelsChanged();   // a fájl-állapot így is változhatott
+}
+
+bool AppController::deleteVoiceModelFile(const QString& id, QString* error)
+{
+    const std::optional<VoiceModelSpec> spec = VoiceModelRegistry::spec(id);
+    if (!spec) {
+        if (error) *error = QStringLiteral("Unknown voice model: %1").arg(id);
+        return false;
+    }
+    if (!VoiceModelDownloader::deleteModelFile(*spec, d->metaDir, error)) return false;
+    qCInfo(lcVoice).noquote() << "Hangmodell-fájl törölve:" << id;
+    rescanVoiceModels();
+    return true;
+}
+
+// ==== /G4 ===================================================================================
 
 } // namespace tanara

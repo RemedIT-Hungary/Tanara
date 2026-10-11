@@ -73,6 +73,7 @@ struct RowState {
 
 struct Command {
     QString text;
+    quint64 serial = 0;     // a közös visszavonás adapteréhez (undoSerials)
     SpeakerOverlay before;
     SpeakerOverlay after;
     QVector<MapDelta> map;
@@ -934,8 +935,10 @@ struct SpeakerEditor::Private {
         persist(delta, /*forward*/ true, namesChanged);
         recomputeUncertain();
 
+        static std::atomic<quint64> nextSerial{0};
         Command c;
         c.text = text;
+        c.serial = ++nextSerial;
         c.before = s.before;
         c.after = ov;
         c.map = delta;
@@ -1995,6 +1998,14 @@ void SpeakerEditor::dismissSuggestion() { d->clearSuggestion(); }
 
 bool SpeakerEditor::canUndo() const { return !d->undoStack.isEmpty(); }
 bool SpeakerEditor::canRedo() const { return !d->redoStack.isEmpty(); }
+
+QVector<quint64> SpeakerEditor::undoSerials() const
+{
+    QVector<quint64> out;
+    out.reserve(d->undoStack.size());
+    for (const Command& c : std::as_const(d->undoStack)) out << c.serial;
+    return out;
+}
 QString SpeakerEditor::undoText() const
 {
     return d->undoStack.isEmpty() ? QString() : d->undoStack.last().text;

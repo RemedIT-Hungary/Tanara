@@ -102,6 +102,28 @@ private slots:
         QCOMPARE(cli({"voice-models", "fetch"}).code, 2);
     }
 
+    // G4 (B1): verify / delete a homokozóban (a „touch” fájl 1 bájt → méret-eltérés).
+    void verifyAndDelete()
+    {
+        const QString id = QStringLiteral("eres2netv2");
+        Run r = cli({"voice-models", "verify", id});
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.out.contains("MISSING"), qPrintable(r.out));
+        touch(modelFile(id));
+        r = cli({"voice-models", "verify", id});
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.out.contains("SIZE MISMATCH"), qPrintable(r.out));
+        r = cli({"voice-models", "delete", id});
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains("Deleted"));
+        QVERIFY(!QFileInfo::exists(modelFile(id)));
+        r = cli({"voice-models", "delete", id});
+        QCOMPARE(r.code, 1);
+        QVERIFY(r.err.contains("No downloaded file"));
+        QCOMPARE(cli({"voice-models", "verify", "nincs-ilyen"}).code, 1);
+        QCOMPARE(cli({"voice-models", "delete"}).code, 2);
+    }
+
     void voiceEvalArgumentErrors()
     {
         QCOMPARE(cli({"voice-eval"}).code, 2);

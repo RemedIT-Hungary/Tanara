@@ -16,6 +16,7 @@
 #include "tanara/voiceid/VoiceEmbedderSet.h"
 #include "tanara/edit/ParticipantAnalysis.h"
 #include "tanara/edit/TrackActivity.h"
+#include "tanara/voiceid/BackfillReport.h"
 #include <QObject>
 #include <QVector>
 #include <memory>
@@ -40,6 +41,7 @@ class MeetingProfiles;
 class EmbeddingIndex;
 class EmbeddingPreparer;
 class AudioEngine;
+class MeetingUndoService;   // G4: edit/MeetingUndo.h
 
 class AppController : public QObject {
     Q_OBJECT
@@ -244,6 +246,21 @@ public:
     // Teszt-varrat: a következő felvételek capture-motorjának gyártója (üres → valódi
     // miniaudio-motor). Lásd RecordingSession::setEngineFactory.
     void setRecordingEngineFactory(std::function<std::unique_ptr<tanara::AudioEngine>()> factory);
+
+    // ==== G4: közös visszavonás, résztvevők átírás után, modell-műveletek (core) ============
+    // A meeting közös visszavonási verme (edit/MeetingUndo.h): a szerkesztő, a meetinghez tartozó
+    // címke-lépések és a résztvevő-műveletek időrendben. Meetingenként EGY példány (lustán jön
+    // létre; a szerkesztő megnyitása is létrehozza). Ismeretlen meeting → nullptr. A meeting
+    // törlésével megszűnik.
+    MeetingUndoService* meetingUndo(const QString& meetingId);
+    // A7: az átirat beszélőihez NEM kötött, névvel bíró résztvevők (kézzel felvett, ill. meg nem
+    // szólalt jelöltek): nincs nyers beszélőjük, és a nevük egyik átirat-beszélőé sem. Átirat
+    // nélkül üres (ilyenkor a participants() az egész lista).
+    QVector<tanara::Participant> unheardParticipants(const QString& meetingId) const;
+    // B1: a legutóbbi lenyomat-pótlás kimaradt mintái (hiányzó forrás-megbeszélés / hang, ill. nem
+    // számolható), személy szerint rendezve. Új futás indulásakor ürül.
+    QVector<tanara::VoiceprintBackfillSkip> backfillSkippedSamples() const;
+    // ==== /G4 ================================================================================
 
 public slots:
     // Eszközök újrafelsorolása (→ devicesChanged()).
@@ -540,6 +557,22 @@ public slots:
     void retainLevelMonitoring(QObject* owner);
     void releaseLevelMonitoring(QObject* owner);
 
+    // ==== G4: közös visszavonás, tartós törlés, modell-műveletek ============================
+    // A6: résztvevő TARTÓS törlése a meetingből (meeting.json): a sorai névtelenek lesznek (mint
+    // az unbindParticipant), a résztvevő és a jóváhagyás-bejegyzése kikerül. Egy lépés a közös
+    // visszavonásban (a szerkesztő kötés-lépésével együtt). false: nincs ilyen meeting / résztvevő.
+    // (Egy későbbi, kézzel indított újraelemzés a hang-jelöltet újra felveheti.)
+    bool removeParticipant(const QString& meetingId, const QString& participantId);
+    // B1: a modellfájlok újraellenőrzése (pl. kézzel bemásolt ONNX): a használt modellek
+    // újraszámolása; a voiceModelsChanged MINDIG kimegy (a fájl-állapot is változhatott), és ha a
+    // használt lista bővült, indul a lenyomat-pótlás.
+    void rescanVoiceModels();
+    // B1: egy letöltött modellfájl törlése (csak <metaDir>/models; a csomagban lévőhöz nem nyúl),
+    // utána rescanVoiceModels. false (+ *error): ismeretlen id / nincs letöltött fájl / épp töltődik
+    // vagy nem törölhető.
+    bool deleteVoiceModelFile(const QString& id, QString* error = nullptr);
+    // ==== /G4 ================================================================================
+
 signals:
     void devicesChanged();
     // Élő szint ESZKÖZNÉV szerint, csúccsal (~30 Hz) — felvétel előtt minden figyelt eszközre,
@@ -587,7 +620,12 @@ signals:
     void summaryStatementsChanged(QString meetingId);
     void peopleChanged();                                   // személy-lista változott
     void voiceprintsChanged();                              // voice-ID lenyomat-DB változott
-    void voiceprintBackfillFinished(int added);             // a lusta pótlás lefutott (új lenyomatok)
+    // A lusta pótlás (B1): elindult (total: a számolandó lenyomatok), haladás (done / total), kész
+    // (added: új lenyomatok, skipped: kimaradt minták — lásd backfillSkippedSamples). Ha nincs
+    // mit számolni, csak a Finished jön.
+    void voiceprintBackfillStarted(int total);
+    void voiceprintBackfillProgress(int done, int total);
+    void voiceprintBackfillFinished(int added, int skipped);
     void voiceModelsChanged();                              // a használt modellek listája változott
     void tracksChanged(QString meetingId);                  // sáv aktív/eldobott/törölve/beszédarány
     void participantAnalysisStarted(QString meetingId);     // a hangelemzés elindult
@@ -690,6 +728,9 @@ private:
     void applyVoiceModels();
     // Hiba: strukturált gateway-hiba → cloudError, különben errorOccurred(fallback).
     void failCloudRun(const CloudRunPtr& run, const QString& fallbackMessage);
+
+    // G4: a résztvevő-műveletek közös visszavonási lépése (RAII, lásd AppController.cpp).
+    struct ParticipantUndoScope;
 
     struct Impl;
     std::unique_ptr<Impl> d;

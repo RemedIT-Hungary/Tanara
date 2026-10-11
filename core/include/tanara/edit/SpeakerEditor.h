@@ -198,6 +198,9 @@ public:
     bool canRedo() const;
     QString undoText() const;       // a legfelső lépés rövid leírása
     QString redoText() const;
+    // A közös visszavonás (edit/MeetingUndo.h) adapteréhez: a visszavonható lépések sorszámai
+    // alulról felfelé. Egy lépés sorszáma a folyamat életére egyedi, és redo után ugyanaz.
+    QVector<quint64> undoSerials() const;
 
     // ---- megszólalás-embeddingek (háttérszál) -----------------------------
     bool embeddingsSupported() const;   // van gyár (a modell/hang megléte futáskor derül ki)

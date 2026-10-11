@@ -35,7 +35,8 @@ struct TagRec {
 
 struct Rejected {
     QString meetingId;   // üres → személy-szintű, tartós (person kitöltve)
-    QString person;      // nem üres → (személy, címke) elutasítás
+    QString person;      // nem üres → (személy, címke) elutasítás; tagId nélkül (meetingId-vel):
+                         // a személy javaslata arra a megbeszélésre elutasítva
     QString tagId;     // üres → név szerinti (pl. az LLM új név-ötlete)
     QString name;      // az eredeti név (a kulcs ebből számolódik)
     QString key;
@@ -51,6 +52,8 @@ struct Row {
 
 struct UndoStep {
     QString label;
+    quint64 serial = 0;           // a lépés sorszáma (a közös visszavonás adapteréhez)
+    QStringList meetingIds;       // a lépés mely megbeszélésekhez tartozik (MeetingUndoService)
     bool    hasSet = false;
     QVector<TagRec>   tags;
     QVector<Rejected> rejected;
@@ -85,6 +88,7 @@ struct TagService::Impl {
     UndoStep current;
     int  groupDepth = 0;
     bool undoing = false;
+    quint64 nextSerial = 0;
 
     // ---- tanult kapcsolat (személy ↔ címke) ----
     mutable std::shared_ptr<const PersonTagStats> stats = std::make_shared<PersonTagStats>();
@@ -124,8 +128,8 @@ struct TagService::Impl {
             r.name = o.value(QStringLiteral("name")).toString();
             r.key = tagKey(r.name);
             if (r.meetingId.isEmpty() && r.person.isEmpty()) continue;
-            if (!r.person.isEmpty() && r.tagId.isEmpty()) continue;
-            if (r.tagId.isEmpty() && r.key.isEmpty()) continue;
+            if (!r.person.isEmpty() && r.tagId.isEmpty() && r.meetingId.isEmpty()) continue;
+            if (r.person.isEmpty() && r.tagId.isEmpty() && r.key.isEmpty()) continue;
             rejected.append(r);
         }
     }
@@ -235,8 +239,13 @@ struct TagService::Impl {
     }
     void snapshotMeeting(const QString& meetingId) {
         if (undoing || current.meetings.contains(meetingId)) return;
+        markMeeting(meetingId);
         ensureRows();
         current.meetings.insert(meetingId, rows.value(meetingId).tagIds);
+    }
+    void markMeeting(const QString& meetingId) {
+        if (!undoing && groupDepth > 0 && !meetingId.isEmpty() && !current.meetingIds.contains(meetingId))
+            current.meetingIds << meetingId;
     }
     void openStep(const QString& label) {
         if (groupDepth++ == 0) {
@@ -248,6 +257,7 @@ struct TagService::Impl {
         if (groupDepth == 0) return;
         if (--groupDepth > 0) return;
         if (undoing || current.isEmpty()) { current = UndoStep{}; return; }
+        current.serial = ++nextSerial;
         undo.append(current);
         while (undo.size() > kUndoLimit) undo.removeFirst();
         current = UndoStep{};
@@ -921,6 +931,7 @@ void TagService::reject(const QString& meetingId, const TagSuggestion& suggestio
     if (meetingId.isEmpty()) return;
     if (isRejected(meetingId, suggestion.tagId.isEmpty() ? suggestion.name : suggestion.tagId)) return;
     StepScope step(this, tr("Javaslat elutasítása"));
+    d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
@@ -969,7 +980,29 @@ QString TagService::beginGroup(const QString& label)
     return d->current.label;
 }
 
+QString TagService::beginGroup(const QString& label, const QString& meetingId)
+{
+    d->openStep(label);
+    d->markMeeting(meetingId);
+    return d->current.label;
+}
+
 void TagService::endGroup() { d->closeStep(); }
+
+QVector<quint64> TagService::undoSerials() const
+{
+    QVector<quint64> out;
+    out.reserve(d->undo.size());
+    for (const UndoStep& s : std::as_const(d->undo)) out << s.serial;
+    return out;
+}
+
+QStringList TagService::undoMeetingIds(quint64 serial) const
+{
+    for (const UndoStep& s : std::as_const(d->undo))
+        if (s.serial == serial) return s.meetingIds;
+    return {};
+}
 
 bool TagService::canUndo() const { return !d->undo.isEmpty(); }
 
@@ -1264,6 +1297,7 @@ void TagService::rejectPersonTag(const QString& name, const QString& tagId, cons
     if (name.trimmed().isEmpty() || d->indexOf(tagId) < 0) return;
     if (d->personRejected(name, tagId, meetingId)) return;
     StepScope step(this, tr("Javaslat elutasítása"));
+    d->markMeeting(meetingId);
     SharedFileLock lock(d->path);
     d->syncFromDisk();
     d->snapshotSet();
@@ -1281,6 +1315,53 @@ void TagService::rejectPersonTag(const QString& name, const QString& tagId, cons
 bool TagService::isRejectedForPerson(const QString& name, const QString& tagId, const QString& meetingId) const
 {
     return d->personRejected(name, tagId, meetingId);
+}
+
+// ---- személy-javaslat egy megbeszélésre (A6) -------------------------------------------------
+
+QVector<PersonTagStat> TagService::suggestPeopleForMeeting(const QString& meetingId, const QStringList& excludeNames,
+                                                           int limit) const
+{
+    QVector<PersonTagStat> out;
+    if (meetingId.isEmpty()) return out;
+    QStringList seen = excludeNames;
+    for (const QString& tagId : tagsOf(meetingId)) {
+        for (const PersonTagStat& st : suggestPeopleForTag(tagId, seen, 0)) {
+            if (d->isSelf(st.name) || isPersonRejectedForMeeting(st.name, meetingId)
+                || d->personRejected(st.name, tagId, meetingId))
+                continue;
+            out.append(st);
+            seen << st.name;
+            if (limit > 0 && out.size() >= limit) return out;
+        }
+    }
+    return out;
+}
+
+void TagService::rejectPersonForMeeting(const QString& name, const QString& meetingId)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty() || meetingId.isEmpty() || isPersonRejectedForMeeting(n, meetingId)) return;
+    StepScope step(this, tr("Javaslat elutasítása: %1").arg(n));
+    d->markMeeting(meetingId);
+    SharedFileLock lock(d->path);
+    d->syncFromDisk();
+    d->snapshotSet();
+    Rejected r;
+    r.person = n;
+    r.meetingId = meetingId;
+    d->rejected.append(r);
+    d->save();
+    emit rejectedChanged();
+}
+
+bool TagService::isPersonRejectedForMeeting(const QString& name, const QString& meetingId) const
+{
+    if (name.trimmed().isEmpty() || meetingId.isEmpty()) return false;
+    for (const Rejected& r : std::as_const(d->rejected))
+        if (!r.person.isEmpty() && r.tagId.isEmpty() && r.meetingId == meetingId && samePerson(r.person, name))
+            return true;
+    return false;
 }
 
 void TagService::renamePersonRefs(const QString& oldName, const QString& newName)

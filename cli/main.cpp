@@ -21,10 +21,10 @@
 //   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
 //   tags people <tag> | tags person <name> | tags set-person <name> <tag,...>
 //                                    címkék a személyeken (TagPeopleCommands.cpp)
-//   voice-models [enable|disable|fetch <id> [--force]]   beszélő-modellek (VoiceCommands.cpp)
+//   voice-models [enable|disable|fetch <id> [--force]|verify <id>|delete <id>]   beszélő-modellek (VoiceCommands.cpp)
 //   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
-//   participants <meeting-folder> [--analyze [--write]] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
+//   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
 //   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
 //
 #include "tanara/AppController.h"
@@ -666,9 +666,9 @@ int main(int argc, char** argv) {
            "transcribe <id> [--yes] | summarize <id> [--yes --complex] | rename <id> <rawLabel> <name> | "
            "identify <id> | participants <id> | voiceprints | detect [--watch --interval N --app NAME] | "
            "tags <list|add|remove|suggest|people|person|set-person> … | cloud <status|login|estimate|…> | "
-           "voice-models [enable|disable|fetch <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
+           "voice-models [enable|disable|fetch|verify|delete <id>] | voice-eval <folder> [--models a,b --min-ms N --json] | "
            "track-sides <folder> [--frame-ms N --json --no-cache --write-cache --legacy] | "
-           "participants <folder> [--analyze [--write]] [--json] | review <folder> [--json --models a,b]"
+           "participants <folder> [--analyze [--write] | --remove <id>] [--json] | review <folder> [--json --models a,b]"
         << "\n";
     out.flush();
     return 0;

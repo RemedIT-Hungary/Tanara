@@ -189,6 +189,57 @@ private slots:
         QCOMPARE(readAll(target()), data);
     }
 
+    // G4 (B1): „ellenőrzés” állapot (méret-egyezés) és a letöltött fájl törlése.
+    void verifyStatesAndDelete()
+    {
+        const QByteArray data = payload();
+        VoiceModelSpec s = spec(writeSource(QStringLiteral("m.onnx"), data), data.size());
+        const QString meta = m_dir->filePath(QStringLiteral("meta"));
+        using VR = VoiceModelDownloader::VerifyResult;
+        QCOMPARE(VoiceModelDownloader::verifyFile(s, target()), VR::Missing);
+
+        QDir().mkpath(QFileInfo(target()).absolutePath());
+        {
+            QFile f(target());
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(data.left(1000));   // csonka
+        }
+        QString detail;
+        QCOMPARE(VoiceModelDownloader::verifyFile(s, target(), &detail), VR::SizeMismatch);
+        QVERIFY(detail.contains(QStringLiteral("1000")));
+        VoiceModelSpec noSize = s;
+        noSize.sizeBytes = 0;
+        QCOMPARE(VoiceModelDownloader::verifyFile(noSize, target()), VR::Unverifiable);
+
+        // Aszinkron: a hívásban „ellenőrzés” állapot, a következő körben az eredmény.
+        VoiceModelDownloader dl;
+        QSignalSpy started(&dl, &VoiceModelDownloader::verifyStarted);
+        QSignalSpy verified(&dl, &VoiceModelDownloader::verified);
+        QVERIFY(!dl.lastVerify(s.id).has_value());
+        QVERIFY(dl.verify(s, target()));
+        QCOMPARE(started.count(), 1);
+        QVERIFY(dl.isVerifying(s.id));
+        QVERIFY(!dl.verify(s, target()));   // már ellenőrződik
+        QVERIFY(verified.wait(5000));
+        QVERIFY(!dl.isVerifying(s.id));
+        QCOMPARE(verified.first().at(1).value<VR>(), VR::SizeMismatch);
+        QCOMPARE(*dl.lastVerify(s.id), VR::SizeMismatch);
+
+        // Törlés: csak a <meta>/models alatti fájl; másodszorra nincs mit.
+        QString error;
+        QVERIFY(VoiceModelDownloader::deleteModelFile(s, meta, &error));
+        QVERIFY(!QFileInfo::exists(target()));
+        QVERIFY(!VoiceModelDownloader::deleteModelFile(s, meta, &error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(QFileInfo::exists(writeSource(QStringLiteral("m.onnx"), data)));   // a forrás érintetlen
+
+        // Letöltés után rendben.
+        QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
+        QVERIFY(dl.start(s, target()));
+        QVERIFY(finished.wait(5000));
+        QCOMPARE(VoiceModelDownloader::verifyFile(s, target()), VR::Ok);
+    }
+
     void offlineErrorClassification()
     {
         QVERIFY(VoiceModelDownloader::isOfflineError(3));    // HostNotFoundError
