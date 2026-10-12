@@ -384,6 +384,145 @@ private slots:
         QVERIFY(cs[0].speakerKey.isEmpty());
     }
 
+    // G10: a kézi sáv-beosztás csak a három feltétel együttállásakor zár ki; különben levonás.
+    void sideVeto_onlyWhenAllThreeHold()
+    {
+        auto manualProfile = [](const QString& key, const QString& person, Side side, const QVector<QVector<float>>& v) {
+            SpeakerProfile p = profile(key, person, side, 10, v, true);
+            p.sideBasis = QStringLiteral("manual");
+            p.manualSide = side;
+            return p;
+        };
+        RankContext ctx = context({manualProfile("A", "Anna", Side::Local, {voice(0), voice(0), voice(0)}),
+                                   manualProfile("B", "Béla", Side::Remote, {voice(1), voice(1), voice(1)})});
+        ctx.vetoActive = true;
+        const QVector<float> probe = voice(0, 1, 0.9f);   // Anna hangja, a hívás hangján
+
+        // 1+2+3: Anna kizárva, a lista végén, pontszám nélkül, a kizárás bizonyítékával.
+        QVector<Candidate> cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        QCOMPARE(cs.size(), 2);
+        QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
+        QVERIFY(!cs[0].vetoed);
+        QCOMPARE(cs[1].speakerKey, QStringLiteral("A"));
+        QVERIFY(cs[1].vetoed);
+        QVERIFY(cs[1].otherSide);
+        QCOMPARE(cs[1].score, 0.0);
+        bool vetoEv = false;
+        for (const Evidence& e : cs[1].evidence)
+            vetoEv |= e.kind == EvidenceKind::Manual && e.polarity == Polarity::Contradict
+                   && e.text == QStringLiteral("kizárva: a sávja szerint nem ő") && e.fixTarget == QStringLiteral("tracks");
+        QVERIFY(vetoEv);
+        QVERIFY(!whyNot(cs[1]).isEmpty());
+
+        // Hiányzó beosztás egy elnevezettnél (vetoActive = false) → nincs kizárás, csak levonás.
+        ctx.vetoActive = false;
+        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        const Candidate* a = find(cs, "A");
+        QVERIFY(a && !a->vetoed && a->otherSide);
+        QVERIFY(a->score > 0.0);
+        ctx.vetoActive = true;
+
+        // Vegyes / ismeretlen sor → nincs kizárás.
+        for (Side s : {Side::Mixed, Side::Unknown}) {
+            cs = rankForLine(ctx, probe, s, "", false);
+            for (const Candidate& c : cs) QVERIFY(!c.vetoed);
+            QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
+        }
+
+        // Több sávos személy (mikrofon + hívás) → sosem kizárt.
+        ctx.speakers[0].manualSide = Side::Mixed;
+        ctx.speakers[0].side = Side::Mixed;
+        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        QVERIFY(!find(cs, "A")->vetoed);
+        QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
+
+        // Kézi beosztás nélküli (tanult oldalú) jelölt sosem kizárt, csak levonás.
+        ctx.speakers[0].manualSide = Side::Unknown;
+        ctx.speakers[0].side = Side::Local;
+        ctx.speakers[0].sideBasis = QStringLiteral("learned");
+        cs = rankForLine(ctx, probe, Side::Remote, "", false);
+        QVERIFY(!find(cs, "A")->vetoed);
+        QVERIFY(find(cs, "A")->otherSide);
+    }
+
+    // G10: a vetoActive a meeting elnevezett beszélőiből (a névtelen nem blokkol); a személy kézi
+    // oldala a profilban.
+    void sideVeto_contextFromOverlay()
+    {
+        Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1}, {"B1", 'L', 0}, {"B3", 'R', 2}, {"B2", 'R', 1}});
+        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
+        sc.in.overlay.speakerTracks.insert("B1", {"mic"});
+        ReviewResult r = analyzeReview(sc.in, sc.act);
+        QVERIFY(!r.context.vetoActive);   // Bélának nincs beosztása
+        sc.in.overlay.speakerTracks.insert("B2", {"loop"});
+        r = analyzeReview(sc.in, sc.act);
+        QVERIFY(r.context.vetoActive);    // B3 névtelen: nem számít
+        QCOMPARE(r.context.profile("B1")->manualSide, Side::Local);
+        QCOMPARE(r.context.profile("B2")->manualSide, Side::Remote);
+        QCOMPARE(r.context.profile("B3")->manualSide, Side::Unknown);
+        const QVector<Candidate> cs = rankForLine(r.context, voice(0), Side::Remote, "B2", false);
+        QVERIFY(find(cs, "B1")->vetoed);
+        QCOMPARE(cs.last().speakerKey, QStringLiteral("B1"));
+        // Egysávos meeting: nincs kizárás.
+        MeetingActivity micOnly = sc.act;
+        micOnly.tracks.removeLast();
+        QVERIFY(!analyzeReview(sc.in, micOnly).context.vetoActive);
+    }
+
+    // G10: a SideConflict javaslata a másik oldal legjobb nem-kizárt jelöltje; ha nincs ismert
+    // személy ott → új beszélő azon az oldalon.
+    void sideVeto_sideConflictProposal()
+    {
+        Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
+                             {"B2", 'R', 1, true}, {"B1", 'R', 1}, {"B1", 'L', 0}, {"B2", 'R', 1, true}});
+        sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
+        sc.in.overlay.speakerTracks.insert("B1", {"mic"});
+        sc.in.overlay.speakerTracks.insert("B2", {"loop"});
+        ReviewResult r = analyzeReview(sc.in, sc.act);
+        QVERIFY(r.context.vetoActive);
+        const ReviewGroup* g = group(r.groups, ReviewKind::SideConflict);
+        QVERIFY(g);
+        QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B2"));
+        QVERIFY(!g->proposeNew);
+
+        // Béla nélkül: nincs ismert személy a hívás hangján → „új távoli beszélő".
+        Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'R', 1}, {"B1", 'L', 0}});
+        solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
+        solo.in.overlay.speakerTracks.insert("B1", {"mic"});
+        r = analyzeReview(solo.in, solo.act);
+        g = group(r.groups, ReviewKind::SideConflict);
+        QVERIFY(g);
+        QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
+        QVERIFY(g->proposeNew);
+        QCOMPARE(g->proposedSide, Side::Remote);
+        QVERIFY(g->id.endsWith(QStringLiteral("new:remote")));
+        QVERIFY(g->subtitle.contains(QStringLiteral("új távoli beszélő")));
+        QCOMPARE(g->utteranceIds.size(), 2);
+
+        // Kézi beosztás nélkül (csak a saját név) marad a régi: nincs javaslat.
+        solo.in.overlay.speakerTracks.clear();
+        solo.in.userName = "Ádám";
+        r = analyzeReview(solo.in, solo.act);
+        g = group(r.groups, ReviewKind::SideConflict);
+        QVERIFY(g && !g->proposeNew);
+    }
+
+    // G10: a mag-eltérés sem javasol kizárt személyt.
+    void sideVeto_coreMismatchNeverProposesVetoed()
+    {
+        Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'R', 1, true},
+                             {"B", 'R', 1, true}, {"B", 'R', 1, true}, {"A", 'L', 1}, {"A", 'L', 0}, {"A", 'L', 1}});
+        sc.in.meeting.speakerMap = {{"A", "Anna"}, {"B", "Béla"}};
+        ReviewResult r = analyzeReview(sc.in, sc.act);
+        const ReviewGroup* g = group(r.groups, ReviewKind::CoreMismatch);
+        QVERIFY(g && g->proposedSpeakerKey == QStringLiteral("B"));   // beosztás nélkül: javasolja
+        sc.in.overlay.speakerTracks.insert("A", {"mic"});
+        sc.in.overlay.speakerTracks.insert("B", {"loop"});
+        r = analyzeReview(sc.in, sc.act);
+        QVERIFY(r.context.vetoActive);
+        QVERIFY(!group(r.groups, ReviewKind::CoreMismatch));
+    }
+
     void twoMeansDeterministic()
     {
         QVector<QVector<float>> v{voice(0), voice(1), voice(0, 5, 0.9f), voice(1, 5, 0.9f)};

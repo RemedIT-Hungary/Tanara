@@ -129,6 +129,14 @@
         <source>kézi sáv-beosztás</source>
         <translation>manual track assignment</translation>
     </message>
+    <message>
+        <source>kizárva: a sávja szerint nem ő</source>
+        <translation>excluded: not them, per their track</translation>
+    </message>
+    <message>
+        <source>%1 kézi sáv-beosztása: %2; ez a sor: %3</source>
+        <translation>%1 manual track assignment: %2; this line: %3</translation>
+    </message>
     <message numerus="yes">
         <source>%n sor itt</source>
         <translation>
@@ -3347,6 +3355,14 @@
 </context>
 <context>
     <name>ReviewGroupCard</name>
+    <message>
+        <source>új beszélő (hívás hangja)</source>
+        <translation>new speaker (call audio)</translation>
+    </message>
+    <message>
+        <source>új beszélő (mikrofon)</source>
+        <translation>new speaker (microphone)</translation>
+    </message>
     <message numerus="yes">
         <source>%n sor</source>
         <translation>
@@ -3396,6 +3412,14 @@
     <message>
         <source>új résztvevő</source>
         <translation>new participant</translation>
+    </message>
+    <message>
+        <source>új távoli beszélő</source>
+        <translation>new remote speaker</translation>
+    </message>
+    <message>
+        <source>új helyi beszélő</source>
+        <translation>new local speaker</translation>
     </message>
     <message>
         <source>hang %1</source>
@@ -8924,6 +8948,10 @@
 </context>
 <context>
     <name>tanara_qml::CandidateListModel</name>
+    <message>
+        <source>a sávja szerint nem ő</source>
+        <translation>not them, per their track</translation>
+    </message>
     <message>
         <source>most ő</source>
         <translation>currently them</translation>

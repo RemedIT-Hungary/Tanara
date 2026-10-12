@@ -14,6 +14,11 @@ Rectangle {
     property int lineCount: 0
     property var evidence: []
     property string proposedName: ""
+    // G10: a javaslat ÚJ beszélő ezen az oldalon ("local" | "remote"; üres = a proposedName a cél).
+    property string newSpeakerSide: ""
+    readonly property string targetName: newSpeakerSide === "remote" ? qsTr("új beszélő (hívás hangja)")
+                                       : newSpeakerSide === "local" ? qsTr("új beszélő (mikrofon)")
+                                       : proposedName
     property bool actionable: true
     property bool canApply: false
     property bool expanded: false
@@ -109,8 +114,8 @@ Rectangle {
                 visible: root.canApply
                 size: "small"
                 variant: "primary"
-                text: (root.needsAz ? qsTr("Mind az %1 → %2") : qsTr("Mind a %1 → %2")).arg(root.lineCount).arg(root.proposedName)
-                toolTipText: qsTr("A csoport minden sora ide kerül: %1 — egy lépésben visszavonható (Ctrl+Z)").arg(root.proposedName)
+                text: (root.needsAz ? qsTr("Mind az %1 → %2") : qsTr("Mind a %1 → %2")).arg(root.lineCount).arg(root.targetName)
+                toolTipText: qsTr("A csoport minden sora ide kerül: %1 — egy lépésben visszavonható (Ctrl+Z)").arg(root.targetName)
                 onClicked: root.applyRequested()
             }
             TButton {

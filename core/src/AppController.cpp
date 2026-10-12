@@ -5269,7 +5269,7 @@ bool AppController::applyParticipantsToTranscript(const QString& meetingId)
     const MeetingActivity act =
         MeetingActivity::load(m.folder, trackactivity::activityFingerprint(m, m.folder));
     bindings = participants::approvalBindings(m.participants, accepted, lines, file.clusters,
-                                              act.isEmpty() ? nullptr : &act);
+                                              act.isEmpty() ? nullptr : &act, &m);
     applySpeakerBindings(meetingId, bindings, tr("Résztvevők jóváhagyása"));
     return true;
 }

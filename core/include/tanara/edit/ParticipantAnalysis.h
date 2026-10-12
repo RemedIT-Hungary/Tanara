@@ -161,10 +161,15 @@ QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& cluste
 // A jóváhagyás kötései: a bejelölt (accepted) résztvevők nyers beszélői a nevükre (kétoldalú
 // nyers beszélőnél csak az adott oldal sorai), a csak ki nem jelölt résztvevőhöz kötött nyers
 // beszélők névtelenre.
+// Sáv-kizárás (G10; meeting + activity kell): ha minden bejelölt, elnevezett résztvevőnek van kézi
+// sávja (Participant::tracks), a nyers beszélő sorai OLDAL SZERINT válnak szét (a sor oldala:
+// sides::classifyLineSides): a személy csak a nem kizárt sorokat kapja; a kizártak a másik oldal
+// legjobb (a klaszterei szerint) nem-kizárt résztvevőjéhez kerülnek, ennek híján névtelenek
+// maradnak (az egész nyers beszélő névtelen, a megmaradó sorok utteranceIds-szel a személyé).
 QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                          const QVector<TranscriptLine>& lines,
                                          const QVector<VoiceCluster>& clusters,
-                                         const MeetingActivity* activity);
+                                         const MeetingActivity* activity, const Meeting* meeting = nullptr);
 
 } // namespace participants
 } // namespace tanara

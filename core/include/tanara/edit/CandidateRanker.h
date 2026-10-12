@@ -9,7 +9,9 @@
 //          + címke (PersonTagSnapshot::evidence — kézi VAGY tanult: +kTagSupport, egyszer; a szigorú
 //            ellentmondás-őrök után: −kTagMismatch; UX-terv 4.)
 //          + sorok itt (kLineWeight · min(1, sorok / kLineSaturation)).
-// A tiltott (másik) oldal LEJJEBB sorol, nem tüntet el. A hasonlóság-figyelmeztetés (két mag
+// A tiltott (másik) oldal LEJJEBB sorol, nem tüntet el — kivéve a kézi sáv-beosztás kizárását
+// (G10, sides::vetoes): akkor a jelölt vetoed, pontszám nélkül, a lista végén.
+// A hasonlóság-figyelmeztetés (két mag
 // cosine-ja ≥ kSimilarWarn) csak tájékoztat, a pontszámot nem érinti.
 //
 #include "tanara/edit/Evidence.h"
@@ -54,6 +56,9 @@ struct SpeakerProfile {
     QString displayName;
     Side    side = Side::Unknown;       // a beszélő oldala (SideAnalysis PersonSide)
     QString sideBasis;                  // PersonSide::basis
+    // A SZEMÉLY kézi sáv-beosztásának oldala (azonos nevű beszélők sávjai együtt; névtelennél a
+    // beszélőé): Local / Remote / Mixed; Unknown = nincs kézi beosztás (sosem kizárt).
+    Side    manualSide = Side::Unknown;
     Side    lineSide = Side::Unknown;   // a sorai többsége szerinti oldal (a beszélő mint „próba")
     int     lines = 0;                  // sorai itt
     int     confirmedLines = 0;         // a megerősített mag sorai (0 = nincs mag)
@@ -69,6 +74,9 @@ struct RankContext {
     QStringList meetingTags;
     QHash<QString, int> index;          // beszélő-kulcs → speakers index
     bool sidesActive = false;
+    // A sáv-kizárás 1. feltétele (sides::allNamedSpeakersBound): minden elnevezett beszélőnek
+    // van kézi sáv-beosztása.
+    bool vetoActive = false;
     const SpeakerProfile* profile(const QString& key) const;
 };
 
@@ -87,7 +95,7 @@ QVector<float> normalized(const QVector<double>& sum);
 // "lines" | "prints" (a legjobban illő referencia fajtája).
 double voiceScore(const SpeakerProfile& p, const Probe& probe, QString* basis = nullptr);
 
-// Minden jelölt (a mostani beszélő is) csökkenő pontszám szerint.
+// Minden jelölt (a mostani beszélő is) csökkenő pontszám szerint; a kizártak (vetoed) a végén.
 QVector<Candidate> rank(const RankContext& ctx, const Probe& probe);
 // Egy sor: a sor hangja + oldala.
 QVector<Candidate> rankForLine(const RankContext& ctx, const QVector<float>& embedding, Side lineSide,

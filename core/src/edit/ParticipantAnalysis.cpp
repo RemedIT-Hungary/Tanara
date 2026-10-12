@@ -5,6 +5,7 @@
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/TrackTiming.h"
 #include "tanara/edit/CandidateRanker.h"
+#include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/TrackSpeech.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -15,6 +16,7 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QMap>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -615,8 +617,37 @@ QString lineSide(const TranscriptLine& line, const QVector<VoiceCluster>& cluste
 QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const QStringList& acceptedIds,
                                          const QVector<TranscriptLine>& lines,
                                          const QVector<VoiceCluster>& clusters,
-                                         const MeetingActivity* activity)
+                                         const MeetingActivity* activity, const Meeting* meeting)
 {
+    // Sáv-kizárás (G10): ha minden bejelölt, elnevezett résztvevőnek van kézi sávja, a sor
+    // egyértelmű oldala (v3 besorolás) kizárja azt, akinek egyik sávja sincs azon az oldalon.
+    const bool veto = meeting && activity && sides::allNamedParticipantsBound(*meeting, all, acceptedIds);
+    QVector<Side> sideOfLine;
+    QHash<QString, int> lineIdx;
+    QHash<QString, Side> manualOf;   // résztvevő-id → a kézi sávjai oldala
+    if (veto) {
+        sideOfLine = sides::classifyLineSides(*activity, lines);
+        for (int i = 0; i < lines.size(); ++i) lineIdx.insert(lines[i].id, i);
+        for (const Participant& p : all)
+            if (acceptedIds.contains(p.id) && !p.personName.isEmpty())
+                manualOf.insert(p.id, sides::sideOfTracks(*meeting, p.tracks));
+    }
+    // A kizárt sor legjobb nem-kizárt gazdája: a bejelölt, elnevezett résztvevő, akinek a
+    // klaszterei a legtöbbet fedik a sorból (más nincs → üres: a sor névtelen marad).
+    auto alternativeFor = [&](const Participant& self, const TranscriptLine& l, Side ls) -> QString {
+        QHash<QString, qint64> ov;
+        for (const VoiceCluster& c : clusters) {
+            if (c.participantId == self.id || !manualOf.contains(c.participantId)) continue;
+            if (sides::vetoes(true, manualOf.value(c.participantId), ls)) continue;
+            for (const auto& w : c.windows) ov[c.participantId] += overlapMs(l.startMs, l.endMs, w.first, w.second);
+        }
+        QString best;
+        qint64 bestV = 0;
+        for (const Participant& q : all)
+            if (ov.value(q.id) > bestV) { bestV = ov.value(q.id); best = q.personName; }
+        return best;
+    };
+
     QVector<SpeakerBinding> out;
     QSet<QString> acceptedRaw;   // a bejelöltekhez kötött nyers címkék
     for (const Participant& p : all) {
@@ -624,22 +655,43 @@ QVector<SpeakerBinding> approvalBindings(const QVector<Participant>& all, const 
         for (const QString& id : p.rawSpeakerIds) {
             const QString label = rawLabelOf(id), side = rawSideOf(id);
             acceptedRaw.insert(label);
-            if (side.isEmpty()) { out.append({label, p.personName, {}}); continue; }
-            // Kétoldalú nyers beszélő: csak az adott oldal sorai. Az eldönthetetlen sor ahhoz az
-            // oldalhoz kerül, amelyiken a nyers beszélő többet beszélt (ez a „fő" oldal).
-            qint64 micMs = 0, loopMs = 0;
-            QStringList mine, undecided;
-            for (const TranscriptLine& l : lines) {
-                if (l.rawLabel != label) continue;
-                const QString s = lineSide(l, clusters, activity);
-                if (s == kSideMic) micMs += l.endMs - l.startMs;
-                else if (s == kSideLoopback) loopMs += l.endMs - l.startMs;
-                if (s == side) mine << l.id;
-                else if (s.isEmpty()) undecided << l.id;
+            QStringList mine;
+            if (side.isEmpty()) {
+                if (veto)
+                    for (const TranscriptLine& l : lines)
+                        if (l.rawLabel == label) mine << l.id;
+            } else {
+                // Kétoldalú nyers beszélő: csak az adott oldal sorai. Az eldönthetetlen sor ahhoz az
+                // oldalhoz kerül, amelyiken a nyers beszélő többet beszélt (ez a „fő" oldal).
+                qint64 micMs = 0, loopMs = 0;
+                QStringList undecided;
+                for (const TranscriptLine& l : lines) {
+                    if (l.rawLabel != label) continue;
+                    const QString s = lineSide(l, clusters, activity);
+                    if (s == kSideMic) micMs += l.endMs - l.startMs;
+                    else if (s == kSideLoopback) loopMs += l.endMs - l.startMs;
+                    if (s == side) mine << l.id;
+                    else if (s.isEmpty()) undecided << l.id;
+                }
+                const QString major = micMs >= loopMs ? kSideMic : kSideLoopback;
+                if (side == major) mine << undecided;
             }
-            const QString major = micMs >= loopMs ? kSideMic : kSideLoopback;
-            if (side == major) mine << undecided;
-            if (!mine.isEmpty()) out.append({label, p.personName, mine});
+            // A kizárt sorok kiválnak: a másik oldal legjobb nem-kizárt résztvevőjéhez, vagy névtelenek.
+            QStringList kept;
+            QMap<QString, QStringList> moved;   // személy (üres = névtelen) → sorok
+            for (const QString& uid : std::as_const(mine)) {
+                const int li = lineIdx.value(uid, -1);
+                const Side ls = li >= 0 ? sideOfLine.value(li, Side::Unknown) : Side::Unknown;
+                if (!veto || !sides::vetoes(true, manualOf.value(p.id), ls)) { kept << uid; continue; }
+                moved[alternativeFor(p, lines[li], ls)] << uid;
+            }
+            if (side.isEmpty() && moved.isEmpty()) { out.append({label, p.personName, {}}); continue; }
+            // Az egész nyers beszélő névtelen (a korábbi kötés se vigye a kizárt sorokat), a
+            // megmaradó sorok a személyé.
+            if (side.isEmpty()) out.append({label, QString(), {}});
+            if (!kept.isEmpty()) out.append({label, p.personName, kept});
+            for (auto it = moved.cbegin(); it != moved.cend(); ++it)
+                if (!it.key().isEmpty()) out.append({label, it.key(), it.value()});
         }
     }
     // A csak ki nem jelölt résztvevőkhöz kötött (egész) nyers beszélők névtelenre.

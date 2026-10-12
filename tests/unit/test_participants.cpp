@@ -10,6 +10,7 @@
 
 #include "tanara/audio/MixdownPlan.h"
 #include "tanara/edit/ParticipantAnalysis.h"
+#include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/TrackSpeech.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -89,6 +90,7 @@ private slots:
     void manualParticipantBoostAndEvidence();
     void bindRawSpeakersByOverlap();
     void twoSidedRawSpeakerIsSplit();
+    void approvalSideVetoSplitsBySide();
     void meetingJsonRoundTrip();
 };
 
@@ -321,6 +323,65 @@ void ParticipantsTest::bindRawSpeakersByOverlap()
     QVERIFY(bind[0].utteranceIds.isEmpty());
     QCOMPARE(bind[1].rawLabel, QStringLiteral("Beszélő 2"));
     QVERIFY(bind[1].personName.isEmpty());
+}
+
+// G10: ha minden bejelölt, elnevezett résztvevőnek van kézi sávja, a nyers beszélő sorai oldal
+// szerint válnak szét: a személy csak a saját oldala sorait kapja; a másik oldal sorai a legjobb
+// nem-kizárt résztvevőhöz (a klaszterei szerint), ennek híján névtelenek maradnak.
+void ParticipantsTest::approvalSideVetoSplitsBySide()
+{
+    Meeting m;
+    m.tracks = {track("mic", TrackKind::Mic, "mic.wav"), track("loop", TrackKind::Loopback, "loop.wav")};
+    QVector<Participant> ps(2);
+    ps[0].id = QStringLiteral("v1"); ps[0].personName = QStringLiteral("Ádám");
+    ps[0].rawSpeakerIds = {QStringLiteral("Beszélő 1")};
+    ps[1].id = QStringLiteral("v2"); ps[1].personName = QStringLiteral("Béla");
+    ps[1].rawSpeakerIds = {QStringLiteral("Beszélő 2")};
+    VoiceCluster a; a.participantId = "v1"; a.side = participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
+    VoiceCluster b; b.participantId = "v2"; b.side = participants::kSideLoopback; b.windows = {{9000, 18000}, {40000, 44000}};
+    // A diarizáció Ádám nevén hagyott két hívás-sort: az egyik Béla hangja (a klasztere fedi), a
+    // másikat senki ismert nem fedi.
+    const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 1", 9500, 15500),
+                                           line("Beszélő 1", 21000, 27000), line("Beszélő 1", 30000, 34000),
+                                           line("Beszélő 2", 40000, 44000)};
+    MeetingActivity act;
+    act.tracks = {activity("mic", TrackKind::Mic, 50, {{1, 7}, {21, 27}}),
+                  activity("loop", TrackKind::Loopback, 50, {{9, 16}, {30, 34}, {40, 44}})};
+    const QVector<Side> sidesOf = sides::classifyLineSides(act, lines);
+    QVERIFY(sidesOf == (QVector<Side>{Side::Local, Side::Remote, Side::Local, Side::Remote, Side::Remote}));
+
+    // Béla beosztása hiányzik → nincs kizárás: a régi, egész kötés.
+    ps[0].tracks = {QStringLiteral("mic")};
+    QVector<SpeakerBinding> bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
+    QCOMPARE(bind.size(), 2);
+    QVERIFY(bind[0].utteranceIds.isEmpty());
+    QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
+
+    // Mindkettő beosztva → Beszélő 1 névtelen; Ádám a mikrofon-sorait, Béla az ő hangján szóló
+    // hívás-sort kapja; a 30 mp-es hívás-sor névtelen marad.
+    ps[1].tracks = {QStringLiteral("loop")};
+    bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
+    QCOMPARE(bind.size(), 4);
+    QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
+    QVERIFY(bind[0].personName.isEmpty() && bind[0].utteranceIds.isEmpty());
+    QCOMPARE(bind[1].personName, QStringLiteral("Ádám"));
+    QCOMPARE(bind[1].utteranceIds, QStringList({"u1000", "u21000"}));
+    QCOMPARE(bind[2].personName, QStringLiteral("Béla"));
+    QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
+    QCOMPARE(bind[3].rawLabel, QStringLiteral("Beszélő 2"));
+    QCOMPARE(bind[3].personName, QStringLiteral("Béla"));
+    QVERIFY(bind[3].utteranceIds.isEmpty());
+
+    // Több sávos személy sosem kizárt.
+    ps[0].tracks = {QStringLiteral("mic"), QStringLiteral("loop")};
+    bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
+    QCOMPARE(bind.size(), 2);
+    QVERIFY(bind[0].utteranceIds.isEmpty());
+
+    // Meeting / aktivitás nélkül (régi hívók): változatlan.
+    ps[0].tracks = {QStringLiteral("mic")};
+    QCOMPARE(participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act).size(), 2);
+    QCOMPARE(participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, nullptr, &m).size(), 2);
 }
 
 void ParticipantsTest::twoSidedRawSpeakerIsSplit()

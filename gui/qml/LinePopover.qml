@@ -6,7 +6,8 @@ import QtQuick.Templates as T
 // van írva: „Csak ez a sor" (alap) · „Kijelölt N sor" · „<Utónév> mind a N sora" (a teljes
 // beszélő — itt kifejezett választás, előtte megerősítés, ha összevonás lesz belőle).
 //   JAVASOLT: a jelöltek bizonyítékkal (CandidateListModel), 1–3 billentyűvel; a másik sávon
-//   beszélő és a mostani beszélő halvány, de választható.
+//   beszélő és a mostani beszélő halvány, de választható; a kézi sáv-beosztás szerint kizárt
+//   („a sávja szerint nem ő") a lista legalján, halványan, gyorsbillentyű nélkül — kézzel választható.
 //   MIÉRT NEM X?: a mostani beszélő ellen szóló okok, mindegyik mellett a javítás helye
 //   (Sáv-beosztás → a beszélő „Miért ő?" panelje a sáv-chipekkel; Minták → hanglenyomat).
 //   „Új személy ebből a sorból…": név megadása (üresen: új névtelen résztvevő).
@@ -414,7 +415,7 @@ TPopover {
                         CandidateRow {
                             required property int index
                             required property var model
-                            objectName: model.current ? "currentChoice" : "speakerChoice"
+                            objectName: model.current ? "currentChoice" : model.vetoed ? "vetoedChoice" : "speakerChoice"
                             width: parent.width
                             personName: model.name
                             colorIndex: model.colorIndex
@@ -422,7 +423,7 @@ TPopover {
                             evidence: model.evidence
                             keyHint: model.keyHint
                             dimmed: model.dimmed
-                            strongEvidence: index === 0 && !model.current
+                            strongEvidence: index === 0 && !model.current && !model.vetoed
                             highlighted: control.currentIndex === index
                             readonly property var quick: model.current ? ({}) : control.quickTagFor(model.personName)
                             quickTagLabel: quick.tagId ? quick.label : ""

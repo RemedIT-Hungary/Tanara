@@ -88,7 +88,20 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
     double s = std::isnan(v) ? 0.0 : kVoiceWeight * std::clamp(v, 0.0, 1.0);
 
     Evidence e;
-    if (ctx.sidesActive && sideEvidence(p, probe.side, &e)) {
+    if (ctx.sidesActive && sides::vetoes(ctx.vetoActive, p.manualSide, probe.side)) {
+        // Kézi sáv-beosztás szerint nem ő (G10): pontszám nélkül, a lista végére (sortCandidates).
+        c.vetoed = true;
+        c.otherSide = true;
+        Evidence v;
+        v.kind = EvidenceKind::Manual;
+        v.polarity = Polarity::Contradict;
+        v.value = -1.0;
+        v.text = QCoreApplication::translate("CandidateRanker", "kizárva: a sávja szerint nem ő");
+        v.detail = QCoreApplication::translate("CandidateRanker", "%1 kézi sáv-beosztása: %2; ez a sor: %3")
+                       .arg(p.displayName, sideLabel(p.manualSide), sideLabel(probe.side));
+        v.fixTarget = QStringLiteral("tracks");
+        c.evidence.append(v);
+    } else if (ctx.sidesActive && sideEvidence(p, probe.side, &e)) {
         if (e.polarity == Polarity::Contradict) {
             s -= kSidePenalty;
             c.otherSide = true;
@@ -115,9 +128,15 @@ Candidate score(const RankContext& ctx, const SpeakerProfile& p, const Probe& pr
     return c;
 }
 
+// Csökkenő pontszám; a kizártak a végén (egymás közt a pontszámuk szerint), majd pontszám nélkül.
 void sortCandidates(QVector<Candidate>& v)
 {
-    std::stable_sort(v.begin(), v.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+    std::stable_sort(v.begin(), v.end(), [](const Candidate& a, const Candidate& b) {
+        if (a.vetoed != b.vetoed) return !a.vetoed;
+        return a.score > b.score;
+    });
+    for (Candidate& c : v)
+        if (c.vetoed) c.score = 0.0;
 }
 
 } // namespace

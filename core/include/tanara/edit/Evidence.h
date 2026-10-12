@@ -29,6 +29,9 @@ struct Candidate {
     double score = 0.0;
     QVector<Evidence> evidence;
     bool otherSide = false;     // a jelölt a másik sávon beszél (lejjebb sorolva, nem eltüntetve)
+    // A kézi sáv-beosztás kizárja (G10, SideAnalysis.h sides::vetoes): pontszám nélkül (0), a lista
+    // VÉGÉN; sosem javaslat, de kézzel választható. Mindig otherSide is.
+    bool vetoed = false;
     int linesHere = 0;
 };
 

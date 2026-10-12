@@ -4,7 +4,9 @@
 // Egy sorra (utteranceId) a SpeakerEditor::lineCandidates, egy egész beszélőre (speakerKey, üres
 // utteranceId mellett) a speakerCandidates rangsora. Soronkénti módban a mostani beszélő a lista
 // végén áll („most ő", halványan, az ellene szóló bizonyítékkal); a másik sávon beszélő jelölt
-// halvány, de választható. A háttér-elemzés végén magától frissül.
+// halvány, de választható. A kézi sáv-beosztás szerint kizárt jelölt (G10, Candidate::vetoed) a
+// lista LEGALJÁN, halványan, „a sávja szerint nem ő" chippel — kézzel továbbra is választható,
+// gyorsbillentyűt nem kap. A háttér-elemzés végén magától frissül.
 //
 //   CandidateListModel { editor: editorVm; utteranceId: "u12"; limit: 3; query: search.text }
 //
@@ -40,9 +42,10 @@ public:
         EvidenceRole,                       // [evidence map]
         OtherSideRole,
         CurrentRole,                        // a sor mostani beszélője
-        DimmedRole,                         // halvány (másik sáv / mostani beszélő)
+        DimmedRole,                         // halvány (másik sáv / kizárt / mostani beszélő)
         KeyHintRole,                        // "1".."3" (gyorsbillentyű) vagy ""
         ScoreRole,
+        VetoedRole,                         // a kézi sáv-beosztás kizárja (G10): a lista alján
     };
     Q_ENUM(Role)
 
@@ -84,6 +87,7 @@ private:
         QString subText;
         QVariantList evidence;
         bool otherSide = false;
+        bool vetoed = false;
         bool current = false;
         QString keyHint;
         double score = 0.0;

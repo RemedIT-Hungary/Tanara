@@ -4,6 +4,7 @@
 #include "tanara/edit/SpeakerAnalysis.h"
 
 #include <QHash>
+#include <QSet>
 
 #include <algorithm>
 #include <cmath>
@@ -221,6 +222,57 @@ QHash<QString, Side> learnedDefaults(const SideReport& r)
             && p.basis != QLatin1String("manual"))
             continue;
         out.insert(p.personName, p.side);
+    }
+    return out;
+}
+
+bool allNamedSpeakersBound(const Meeting& m, const SideReport& r, const SpeakerOverlay& ov, const SideHints& hints)
+{
+    if (!r.active) return false;
+    const QHash<QString, QStringList>& manual = hints.speakerTracks.isEmpty() ? ov.speakerTracks : hints.speakerTracks;
+    int named = 0;
+    QSet<QString> seen;
+    for (const PersonSide& p : r.persons) {
+        seen.insert(p.speakerKey);
+        if (p.personName.trimmed().isEmpty()) continue;
+        ++named;
+        if (p.manualSide == Side::Unknown) return false;
+    }
+    for (const OverlayParticipant& op : ov.participants) {
+        if (seen.contains(op.key) || op.person.trimmed().isEmpty()) continue;
+        ++named;
+        if (sideOfTracks(m, manual.value(op.key)) == Side::Unknown) return false;
+    }
+    return named > 0;
+}
+
+bool allNamedParticipantsBound(const Meeting& m, const QVector<Participant>& all, const QStringList& acceptedIds)
+{
+    int named = 0;
+    for (const Participant& p : all) {
+        if (!acceptedIds.contains(p.id) || p.personName.trimmed().isEmpty()) continue;
+        ++named;
+        if (sideOfTracks(m, p.tracks) == Side::Unknown) return false;
+    }
+    return named > 0;
+}
+
+bool vetoes(bool vetoActive, Side personManualSide, Side lineSide)
+{
+    return vetoActive && opposite(personManualSide, lineSide);
+}
+
+QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<TranscriptLine>& lines)
+{
+    QVector<Side> out(lines.size(), Side::Unknown);
+    if (!hasKind(activity, TrackKind::Mic) || !hasKind(activity, TrackKind::Loopback)) return out;
+    QMap<QString, float> speech;
+    for (const TrackActivity& t : activity.tracks) speech.insert(t.trackId, speechLevelDb(t));
+    for (int i = 0; i < lines.size(); ++i) {
+        float micRel = qQNaN(), loopRel = qQNaN();
+        kindRelativeDb(activity, speech, TrackKind::Mic, lines[i].startMs, lines[i].endMs, &micRel);
+        kindRelativeDb(activity, speech, TrackKind::Loopback, lines[i].startMs, lines[i].endMs, &loopRel);
+        out[i] = classifyLevels(micRel, loopRel);
     }
     return out;
 }

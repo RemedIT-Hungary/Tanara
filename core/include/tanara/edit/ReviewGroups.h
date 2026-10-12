@@ -6,7 +6,9 @@
 //
 // Csoportfajták (prioritás szerint; egy sor legfeljebb egy csoportban):
 //   SideConflict       — a sor oldala ellentmond a beszélője oldalának; javaslat: a legjobb azonos
-//                        oldali jelölt. Beszélő- és javaslat-páronként egy csoport.
+//                        oldali, nem kizárt jelölt; ha a kézi sáv-beosztás kizárja a mostani
+//                        beszélőt és nincs ilyen jelölt: új beszélő azon az oldalon (proposeNew).
+//                        Beszélő- és javaslat-páronként egy csoport.
 //   SimilarToNewPerson — új személy létrehozása után a hozzá hasonló (≥ kNewPersonSimilarity)
 //                        sorok ugyanazon az oldalon.
 //   CoreMismatch       — a megerősített magokhoz mérve ≥ kCoreMargin-nal egy másik maghoz közelebb;
@@ -43,6 +45,11 @@ struct ReviewGroup {
     QString currentSpeakerKey;
     QString proposedSpeakerKey; // üres: proposedPersonName, vagy új névtelen résztvevő (ShortLines: nincs javaslat)
     QString proposedPersonName; // a javasolt személy (meetingen kívüli jelöltnél a kulcs üres)
+    // SideConflict (G10): a kézi sáv-beosztás kizárja a mostani beszélőt, és a sor oldalán nincs
+    // ismert jelölt → javaslat: ÚJ névtelen beszélő ezen az oldalon (proposedSide: Local / Remote).
+    // A kulcs és a név ilyenkor üres; az alkalmazás (applyReviewGroup) új résztvevőt hoz létre.
+    bool proposeNew = false;
+    Side proposedSide = Side::Unknown;
     QVector<Evidence> evidence;
     int confirmedBasis = 0;     // ennyi megerősített sor a döntés alapja
 };

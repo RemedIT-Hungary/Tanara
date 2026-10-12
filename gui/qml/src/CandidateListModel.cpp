@@ -34,6 +34,7 @@ QHash<int, QByteArray> CandidateListModel::roleNames() const
         {DimmedRole, "dimmed"},
         {KeyHintRole, "keyHint"},
         {ScoreRole, "score"},
+        {VetoedRole, "vetoed"},
     };
 }
 
@@ -51,9 +52,10 @@ QVariant CandidateListModel::data(const QModelIndex& index, int role) const
     case EvidenceRole: return it.evidence;
     case OtherSideRole: return it.otherSide;
     case CurrentRole: return it.current;
-    case DimmedRole: return it.otherSide || it.current;
+    case DimmedRole: return it.otherSide || it.vetoed || it.current;
     case KeyHintRole: return it.keyHint;
     case ScoreRole: return it.score;
+    case VetoedRole: return it.vetoed;
     default: return {};
     }
 }
@@ -146,6 +148,7 @@ void CandidateListModel::refresh()
 
         Item current;
         bool hasCurrent = false;
+        QVector<Item> vetoed;   // a lista legalján (G10)
         for (const Candidate& c : cands) {
             Item it;
             it.speakerKey = c.speakerKey;
@@ -164,12 +167,20 @@ void CandidateListModel::refresh()
                 if (aliasHit.isEmpty()) continue;
             }
             it.otherSide = c.otherSide;
+            it.vetoed = c.vetoed;
             it.current = lineMode && c.speakerKey == currentKey;
             it.score = c.score;
-            // A „most ő" sornál csak az ellene szóló bizonyíték érdekes (miért nem ő).
+            // A „most ő" sornál csak az ellene szóló bizonyíték érdekes (miért nem ő). A kizárt
+            // jelölt chipje rövid: „a sávja szerint nem ő" (a teljes ok a buborékban).
             QVector<Evidence> ev;
-            for (const Evidence& e : c.evidence)
-                if (!it.current || e.polarity == Polarity::Contradict) ev.append(e);
+            for (Evidence e : c.evidence) {
+                if (it.current && e.polarity != Polarity::Contradict) continue;
+                if (c.vetoed && e.kind == EvidenceKind::Manual && e.polarity == Polarity::Contradict) {
+                    e.detail = e.text + QStringLiteral(" · ") + e.detail;
+                    e.text = tr("a sávja szerint nem ő");
+                }
+                ev.append(e);
+            }
             it.evidence = m_editor->evidenceList(ev, sideCtx, lineMode, /*chipsOnly*/ true);
             if (it.current) it.subText = tr("most ő");
             else if (!c.speakerKey.isEmpty()) it.subText = tr("%n sor itt", nullptr, c.linesHere);
@@ -178,14 +189,18 @@ void CandidateListModel::refresh()
             if (it.current) {
                 current = it;
                 hasCurrent = true;
+            } else if (it.vetoed) {
+                vetoed.append(it);
             } else {
                 items.append(it);
             }
         }
         if (m_limit > 0 && needle.isEmpty() && items.size() > m_limit) items.resize(m_limit);
+        if (m_limit > 0 && needle.isEmpty() && vetoed.size() > m_limit) vetoed.resize(m_limit);
         if (needle.isEmpty())
             for (int i = 0; i < items.size() && i < 3; ++i) items[i].keyHint = QString::number(i + 1);
         if (hasCurrent) items.append(current);
+        items += vetoed;
     }
     beginResetModel();
     const bool countChange = items.size() != m_items.size();
@@ -202,7 +217,8 @@ QVariantMap CandidateListModel::get(int row) const
             {QStringLiteral("name"), it.name},
             {QStringLiteral("personName"), it.personName},
             {QStringLiteral("current"), it.current},
-            {QStringLiteral("otherSide"), it.otherSide}};
+            {QStringLiteral("otherSide"), it.otherSide},
+            {QStringLiteral("vetoed"), it.vetoed}};
 }
 
 int CandidateListModel::rowForKey(int key) const

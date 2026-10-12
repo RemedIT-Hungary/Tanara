@@ -207,6 +207,67 @@ private slots:
             QVERIFY(speaker.get(i).value(QStringLiteral("speakerKey")).toString() != gabor);
     }
 
+    // G10: ha minden elnevezett beszélő kézzel be van osztva, a sor oldalán nem szereplő személy
+    // kizárt: a felugró lista LEGALJÁN, halványan, „a sávja szerint nem ő" chippel, gyorsbillentyű
+    // nélkül — de választható.
+    void lineCandidates_sideVeto()
+    {
+        TranscriptEditorViewModel vm;
+        vm.setDemoVariant(QStringLiteral("v3"));
+        vm.resolveSession();
+        QVERIFY(waitIdle(vm));
+        vm.applyDemoState(QStringLiteral("fixLinePopover"));
+        QVERIFY(settle(vm));
+        const QString line = vm.rowUtteranceId(2);   // Lilla nevén, a hívás hangján
+        const QString gabor = keyOf(vm, QStringLiteral("Fehér Gábor"));
+        int named = 0;
+        for (const QVariant& v : vm.speakers()) {
+            const QVariantMap sp = v.toMap();
+            if (sp.value(QStringLiteral("anonymous")).toBool()) continue;
+            const QString key = sp.value(QStringLiteral("key")).toString();
+            QVERIFY(vm.setSpeakerTracks(key, {key == gabor ? QStringLiteral("loopback") : QStringLiteral("mic")}));
+            ++named;
+        }
+        QVERIFY(named >= 3);
+        QVERIFY(settle(vm));
+
+        CandidateListModel cands;
+        cands.setLimit(3);
+        cands.setEditor(&vm);
+        cands.setUtteranceId(line);
+        QVERIFY(cands.count() >= 3);
+        QCOMPARE(cands.get(0).value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
+        int firstVetoed = -1;
+        for (int i = 0; i < cands.count(); ++i) {
+            const QModelIndex ix = cands.index(i);
+            const bool vetoed = cands.data(ix, CandidateListModel::VetoedRole).toBool();
+            qInfo() << i << cands.get(i).value(QStringLiteral("name")).toString() << "vetoed" << vetoed
+                    << cands.data(ix, CandidateListModel::EvidenceRole);
+            if (!vetoed) {
+                QCOMPARE(firstVetoed, -1);   // a kizártak után nincs nem kizárt
+                continue;
+            }
+            if (firstVetoed < 0) firstVetoed = i;
+            QVERIFY(cands.data(ix, CandidateListModel::DimmedRole).toBool());
+            QVERIFY(cands.data(ix, CandidateListModel::KeyHintRole).toString().isEmpty());
+            bool chip = false;
+            for (const QVariant& e : cands.data(ix, CandidateListModel::EvidenceRole).toList())
+                chip |= e.toMap().value(QStringLiteral("text")).toString() == QStringLiteral("a sávja szerint nem ő")
+                     && e.toMap().value(QStringLiteral("polarity")).toString() == QLatin1String("contradict");
+            QVERIFY(chip);
+            QVERIFY(cands.get(i).value(QStringLiteral("vetoed")).toBool());
+        }
+        QVERIFY(firstVetoed > 0);
+        // A mostani beszélő (Lilla, mikrofon) is kizárt: „most ő", a kizárás chipjével.
+        bool currentVetoChip = false;
+        for (int i = 0; i < cands.count(); ++i) {
+            if (!cands.data(cands.index(i), CandidateListModel::CurrentRole).toBool()) continue;
+            for (const QVariant& e : cands.data(cands.index(i), CandidateListModel::EvidenceRole).toList())
+                currentVetoChip |= e.toMap().value(QStringLiteral("text")).toString() == QStringLiteral("a sávja szerint nem ő");
+        }
+        QVERIFY(currentVetoChip);
+    }
+
     // Gyors „+ #Címke" (T2): a megbeszélés címkéje, ha még nincs a személyen; a saját személy
     // és aki már viseli, nem kap ajánlatot. A rátétel után a jelöltek újraszámolódnak.
     void quickTag_offeredOnlyWhenMissing()

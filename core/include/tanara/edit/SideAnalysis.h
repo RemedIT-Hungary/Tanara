@@ -200,6 +200,29 @@ Side sideOfTracks(const Meeting& m, const QStringList& trackIds);
 // adatból (megerősített sorok) vagy kézi beosztásból jött, és Local / Remote.
 // Kulcs: a személy neve (ahogy a speakerMap-ben áll).
 QHash<QString, Side> learnedDefaults(const SideReport& r);
+
+// ---- sáv-kizárás (G10) ----
+// A kézi sáv-beosztás KIZÁR (a személy nem lehet jelölt a sorra), ha együtt:
+//   1. a meeting minden ELNEVEZETT beszélőjének van kézi sáv-beosztása (a névtelenek nem
+//      számítanak) — ez a vetoActive;
+//   2. a sor oldala egyértelmű (Local / Remote; a Mixed és az Unknown nem zár ki);
+//   3. a személy kézi sávjai közt nincs a sor oldalán lévő (manualSide a sor oldalával ellentétes;
+//      a több oldalon is beosztott — Mixed — sosem kizárt).
+// Minden más oldal-forrás csak pontszám-levonás (CandidateRanker kSidePenalty).
+
+// Az 1. feltétel a meeting beszélőire: a SideReport elnevezett személyei és az overlay sor nélküli,
+// elnevezett résztvevői mind kézi beosztással bírnak (a beosztás sávjai ismert oldalúak), és van
+// legalább egy ilyen. Inaktív sáv-elemzésnél (egysávos meeting) false.
+bool allNamedSpeakersBound(const Meeting& m, const SideReport& r, const SpeakerOverlay& ov,
+                           const SideHints& hints = {});
+// Az 1. feltétel a jóváhagyás résztvevőire: a bejelölt (acceptedIds), elnevezett résztvevők mind
+// kézi sávval (Participant::tracks, ismert oldalú sávok), és van legalább egy ilyen.
+bool allNamedParticipantsBound(const Meeting& m, const QVector<Participant>& all, const QStringList& acceptedIds);
+// A 2. + 3. feltétel (a vetoActive-val együtt): kizárja-e a sor oldala a személyt.
+bool vetoes(bool vetoActive, Side personManualSide, Side lineSide);
+// A sorok oldala (a v3, beszédszint-normalizált besorolás) csak a sáv-aktivitásból — ugyanaz, mint
+// az analyzeSides LineSide::side mezője. Egysávos aktivitásnál minden Unknown.
+QVector<Side> classifyLineSides(const MeetingActivity& activity, const QVector<TranscriptLine>& lines);
 } // namespace sides
 
 } // namespace tanara
