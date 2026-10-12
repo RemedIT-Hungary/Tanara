@@ -9,6 +9,9 @@ import QtQuick
 // „bizonytalan · sáv | hang | címke", „javítva", „új személy", „egymásra beszéltek", és (S2) a
 // döntött sorokon a minta-jel (tömör hullám = minta, áthúzott = nem minta), valamint a
 // „? nem azonosítható" jelölő; a nem azonosítható sor halvány (nem sraffozott).
+// Söprés-módban (S6): a megálló sor (itt állt meg a lejátszás) accent bal-csíkkal, alatta a
+// döntés-sáv (SweepDecisionBar); folyamatos módban az utólagos ablak sora szaggatott accent
+// kerettel (ez a billentyűk célsora, nem a futó sor); jobbra „megálló” / „utólagos ablak” jelölő.
 Item {
     id: row
 
@@ -39,6 +42,7 @@ Item {
     required property bool similar
     required property bool ignored
     required property string sampleState
+    required property bool sweepHandled
     required property bool selected
     required property bool suggested
     required property bool suggestionAnchor
@@ -59,6 +63,11 @@ Item {
     // Előnézet (húzás vagy rámutatás): a cél-oszlop cellája ezen a soron.
     readonly property bool inPreview: inDrag || (!tab.dragActive && tab.hoverRow === index)
     readonly property alias nameItem: nameBox
+    // ---- söprés (S6) ----
+    readonly property bool sweepOn: tab.sweepOn
+    readonly property bool sweepStopped: sweepOn && !gap && vm.sweepStopRow === index
+    readonly property bool sweepAfter: sweepOn && !gap && vm.sweepAfterRow === index
+    readonly property bool sweepUpcoming: sweepOn && uncertain && !ignored && !sweepHandled && !sweepStopped && !sweepAfter
 
     width: ListView.view ? ListView.view.width : 0
     height: gap ? 24 : body.height
@@ -111,10 +120,30 @@ Item {
         // Sor-háttér: lejátszott = accentSoft; kijelölt = raised + 1.5 px accent keret.
         Rectangle {
             anchors.fill: parent
-            visible: row.playing || row.selected
+            visible: row.playing || row.selected || row.sweepStopped
             color: row.selected ? Theme.raised : Theme.accentSoft
             border.width: row.selected ? 1.5 : 0
             border.color: Theme.accent
+        }
+        // Söprés: a megálló sor bal accent-csíkja; az utólagos ablak sora szaggatott keretben.
+        Rectangle {
+            objectName: "sweepStopBar"
+            visible: row.sweepStopped
+            x: row.textX
+            width: 3
+            height: parent.height
+            color: Theme.accent
+        }
+        TDashedRect {
+            objectName: "sweepAfterFrame"
+            visible: row.sweepAfter
+            x: row.textX + 4
+            y: 2
+            width: parent.width - x - 6
+            height: parent.height - 4
+            radius: Theme.radiusControl
+            color: Theme.accent
+            lineWidth: 1.5
         }
 
         // A sín ezen sorra eső szelete.
@@ -329,6 +358,17 @@ Item {
                         onClicked: row.vm.setRowNoisy(row.index, false)
                     }
                 }
+                // Söprés: jobbra a megálló-jelölők.
+                TPill {
+                    objectName: "sweepStopPill"
+                    visible: row.sweepStopped || row.sweepAfter || row.sweepUpcoming
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    tone: row.sweepStopped || row.sweepAfter ? "accent" : "warn"
+                    text: row.sweepStopped ? qsTr("megálló · itt állt meg")
+                        : row.sweepAfter ? qsTr("utólagos ablak · a billentyűk ide")
+                        : qsTr("megálló")
+                }
             }
 
             TLabel {
@@ -337,6 +377,24 @@ Item {
                 textFormat: row.richText !== "" ? Text.RichText : Text.PlainText
                 wrapMode: Text.Wrap
                 cssLineHeight: Theme.transcriptLineHeight
+            }
+            // Söprés, megálló: a döntés-sáv a sor alatt.
+            Loader {
+                objectName: "sweepDecisionLoader"
+                active: row.sweepStopped
+                visible: active
+                width: parent.width
+                sourceComponent: SweepDecisionBar {
+                    objectName: "sweepDecisionBar"
+                    width: textColumn.width
+                    tab: row.tab
+                    vm: row.vm
+                    rowIndex: row.index
+                    speakerKey: row.speakerKey
+                    ownLane: row.lane
+                    likelyKey: row.likelySpeakerKey
+                    likelyName: row.likelySpeakerName
+                }
             }
         }
 

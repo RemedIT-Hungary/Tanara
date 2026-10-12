@@ -22,8 +22,12 @@ import QtQuick.Layouts
 // sessionAdded, durationText, … }); ha nem üres, a sorok végén „23 minta +4” (a „+4” = ebben a
 // munkamenetben lett minta, accent), tooltipben az idő; kattintásra samplesClicked(key) — a
 // Javítás ezekre a sorokra szűr.
+// sweep (S6, söprés-mód): a TranscriptEditorViewModel.sweepDock ({ uncertain: [x…], decided: [x…],
+// frozenStart, frozenEnd, sections: [{ start, end, done, active }], doneCount, total, aheadCount });
+// ha nem üres, a sávok alatt „Kétes” sor (pöttyök: warn = előtted álló kétes, zöld = eldöntve) és
+// „Szakaszok” sor (pipa = kész, accent = a mostani), a sávokon át a fagyasztott ablak sávja.
 // Önállóan (képernyőkép) kitalált mintával rajzol; demoState: "" | "similarMarks" (E4 jelek) |
-// "sampleMeter" (minta-mérő).
+// "sampleMeter" (minta-mérő) | "sweep" (söprés-réteg).
 Rectangle {
     id: root
 
@@ -36,7 +40,9 @@ Rectangle {
     property var sourceMarks: []
     property var sectionBands: []
     property var similarMarks: demoState === "similarMarks" ? demoSimilarMarks : []
-    property var sampleStats: demoState === "sampleMeter" ? demoSampleStats : []
+    property var sampleStats: demoState === "sampleMeter" || demoState === "sweep" ? demoSampleStats : []
+    property var sweep: demoState === "sweep" ? demoSweep : ({})
+    readonly property bool sweepShown: !!sweep && sweep.sections !== undefined
     property string demoState: ""
     property int timelineMs: player ? player.durationMs : 2 * 3600000 + 11 * 60000 + 4000
 
@@ -88,6 +94,19 @@ Rectangle {
         { key: "d2", sampleLines: 18, sessionAdded: 0, durationText: qsTr("58 mp"), sessionAddedIds: [] },
         { key: "d3", sampleLines: 14, sessionAdded: 0, durationText: qsTr("41 mp"), sessionAddedIds: [] }
     ]
+    readonly property var demoSweep: {
+        const unc = [], dec = []
+        for (let k = 0; k < 60; ++k) {
+            const x = (k * 0.0163 + (k * k * 0.0007) % 0.012) % 0.99
+            if (x < 0.27) dec.push(x)
+            else unc.push(x)
+        }
+        const sections = []
+        for (let i = 0; i < 11; ++i)
+            sections.push({ start: i / 11, end: (i + 1) / 11, done: i < 2, active: i === 2 })
+        return { uncertain: unc, decided: dec, frozenStart: 0.305, frozenEnd: 0.345, sections: sections,
+                 doneCount: 2, total: 11, aheadCount: unc.length }
+    }
     readonly property var demoSimilarMarks: [0.06, 0.004, 0.17, 0.003, 0.29, 0.005, 0.41, 0.003, 0.48, 0.004,
                                              0.55, 0.003, 0.63, 0.004, 0.71, 0.003, 0.78, 0.005, 0.86, 0.003,
                                              0.91, 0.004, 0.97, 0.003]
@@ -281,6 +300,110 @@ Rectangle {
                 TapHandler { onTapped: root.collapseRequested() }
             }
         }
+        // Söprés (S6): a kétes sorok pöttyei és a szakaszok.
+        Item {
+            id: sweepDotsRow
+            objectName: "mapSweepDots"
+            visible: root.sweepShown
+            width: lanesColumn.width
+            height: 13
+            TLabel {
+                width: root.nameWidth
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Kétes")
+                color: Theme.warnInk
+                font.pixelSize: 12
+                font.weight: Theme.weightSemiBold
+            }
+            Item {
+                x: root.trackX - Theme.space5
+                width: root.trackWidth
+                height: parent.height
+                Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 1; color: Theme.border }
+                Repeater {
+                    model: root.sweepShown ? root.sweep.decided : []
+                    Rectangle {
+                        required property var modelData
+                        x: Math.round(modelData * parent.width) - 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 4; height: 4; radius: 2
+                        color: Theme.success
+                    }
+                }
+                Repeater {
+                    objectName: "mapSweepDotRepeater"
+                    model: root.sweepShown ? root.sweep.uncertain : []
+                    Rectangle {
+                        required property var modelData
+                        objectName: "mapSweepDot"
+                        x: Math.round(modelData * parent.width) - 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 6; height: 6; radius: 3
+                        color: Theme.warn
+                    }
+                }
+            }
+            TLabel {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.sweepShown ? qsTr("%1 előtted").arg(root.sweep.aheadCount || 0) : ""
+                mono: true
+                muted: true
+                font.pixelSize: Theme.fontMicro
+            }
+        }
+        Item {
+            id: sweepSectionsRow
+            objectName: "mapSweepSections"
+            visible: root.sweepShown
+            width: lanesColumn.width
+            height: 13
+            TLabel {
+                width: root.nameWidth
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Szakaszok")
+                color: Theme.accent
+                font.pixelSize: 12
+                font.weight: Theme.weightSemiBold
+            }
+            Item {
+                x: root.trackX - Theme.space5
+                width: root.trackWidth
+                height: parent.height
+                Repeater {
+                    model: root.sweepShown ? root.sweep.sections : []
+                    Rectangle {
+                        id: sectionBox
+                        required property var modelData
+                        objectName: "mapSweepSection"
+                        x: Math.round(modelData.start * parent.width) + 1
+                        width: Math.max(3, Math.round((modelData.end - modelData.start) * parent.width) - 2)
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 11
+                        radius: 2
+                        color: modelData.done ? Theme.successSoft : modelData.active ? Theme.accentSoft : "transparent"
+                        border.width: 1
+                        border.color: modelData.done ? Theme.successLine : modelData.active ? Theme.accent : Theme.border
+                        TIcon {
+                            visible: sectionBox.modelData.done && sectionBox.width > 16
+                            anchors.centerIn: parent
+                            name: "check"
+                            size: 9
+                            strokeWidth: 2.5
+                            color: Theme.successInk
+                        }
+                    }
+                }
+            }
+            TLabel {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.sweepShown ? qsTr("%1 / %2 kész").arg(root.sweep.doneCount || 0).arg(root.sweep.total || 0) : ""
+                mono: true
+                muted: true
+                font.pixelSize: Theme.fontMicro
+            }
+        }
         // Az összefoglaló fülek extra sorai (U4): „Forrás” jelölők / „Szakaszok” sávok.
         Repeater {
             model: root.extraRows
@@ -363,6 +486,19 @@ Rectangle {
         radius: 2
         color: Theme.alpha(Theme.text, 0.07)
     }
+    // Söprés (S6): a fagyasztott ablak (a látható sorok ± 2) a sávokon át.
+    Rectangle {
+        objectName: "mapFrozenWindow"
+        visible: root.sweepShown && (root.sweep.frozenEnd || 0) > (root.sweep.frozenStart || 0)
+        x: root.trackX + Math.round((root.sweep.frozenStart || 0) * root.trackWidth)
+        y: 5
+        width: Math.max(4, Math.round(((root.sweep.frozenEnd || 0) - (root.sweep.frozenStart || 0)) * root.trackWidth))
+        height: lanesColumn.height + 9
+        radius: 2
+        color: Theme.alpha(Theme.accent, 0.10)
+        border.width: 1
+        border.color: Theme.accentLine
+    }
     Rectangle {
         objectName: "mapPlayhead"
         visible: root.lanes.length > 0
@@ -390,6 +526,7 @@ Rectangle {
         showSlider: false
         lineSteps: true
         onLineStepRequested: delta => root.lineStepRequested(delta)
-        hint: qsTr("a beszélő-térkép a keresősáv: kattintás = ugrás, név = beszélő menü")
+        hint: root.sweepShown ? qsTr("Space lejátszás · ←/→ sor eleje / köv. megálló · Shift+←/→ sor · [ ] tempó")
+                              : qsTr("a beszélő-térkép a keresősáv: kattintás = ugrás, név = beszélő menü")
     }
 }

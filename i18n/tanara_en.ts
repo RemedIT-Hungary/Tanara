@@ -1514,6 +1514,22 @@
         <translation>Collapse speakers who spoke little</translation>
     </message>
     <message>
+        <source>Kétes</source>
+        <translation>Uncertain</translation>
+    </message>
+    <message>
+        <source>%1 előtted</source>
+        <translation>%1 ahead</translation>
+    </message>
+    <message>
+        <source>%1 / %2 kész</source>
+        <translation>%1 / %2 done</translation>
+    </message>
+    <message>
+        <source>Space lejátszás · ←/→ sor eleje / köv. megálló · Shift+←/→ sor · [ ] tempó</source>
+        <translation>Space play · ←/→ line start / next stop · Shift+←/→ line · [ ] speed</translation>
+    </message>
+    <message>
         <source>a beszélő-térkép a keresősáv: kattintás = ugrás, név = beszélő menü</source>
         <translation>the speaker map is the seek bar: click = jump, name = speaker menu</translation>
     </message>
@@ -5864,6 +5880,99 @@
     </message>
 </context>
 <context>
+    <name>SweepDecisionBar</name>
+    <message>
+        <source>%1 mondta</source>
+        <translation>%1 said it</translation>
+    </message>
+    <message>
+        <source>Jó így</source>
+        <translation>Looks right</translation>
+    </message>
+    <message>
+        <source>Az alapértelmezés (Enter). Shift+Enter: ugyanez, de a hangja nem lesz minta</source>
+        <translation>The default (Enter). Shift+Enter: the same, but its voice won't become a sample</translation>
+    </message>
+    <message>
+        <source>Nem azonosítható</source>
+        <translation>Unidentifiable</translation>
+    </message>
+    <message>
+        <source>A név marad, de a sor hangját semmire nem használom</source>
+        <translation>The name stays, but the line's voice is not used for anything</translation>
+    </message>
+    <message>
+        <source>Más…</source>
+        <translation>Other…</translation>
+    </message>
+    <message>
+        <source>Később</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>Most kihagyom; a szakasz végén visszanézhető</source>
+        <translation>Skip for now; you can come back to it at the end of the section</translation>
+    </message>
+    <message>
+        <source>A lejátszás itt megállt · Space: tovább döntés nélkül · ←: a sor eleje · Shift: nem minta</source>
+        <translation>Playback stopped here · Space: continue without deciding · ←: line start · Shift: not a sample</translation>
+    </message>
+</context>
+<context>
+    <name>SweepSectionBar</name>
+    <message>
+        <source>Szakasz kész · %1</source>
+        <translation>Section done · %1</translation>
+    </message>
+    <message>
+        <source>eldöntve</source>
+        <translation>decided</translation>
+    </message>
+    <message>
+        <source>nem azonosítható</source>
+        <translation>unidentifiable</translation>
+    </message>
+    <message>
+        <source>később</source>
+        <translation>later</translation>
+    </message>
+    <message>
+        <source>a háttérből jött</source>
+        <translation>from the background</translation>
+    </message>
+    <message>
+        <source>Bezárás</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>Új minták: %1</source>
+        <translation>New samples: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>A háttér-elemzés %n már elhagyott sort újra kétesnek jelölt; a soraid nem változtak.</source>
+        <translation>
+            <numerusform>The background analysis marked %n passed line uncertain again; your lines did not change.</numerusform>
+            <numerusform>The background analysis marked %n passed lines uncertain again; your lines did not change.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Kész</source>
+        <translation>Done</translation>
+    </message>
+    <message>
+        <source>Következő szakasz (%1)</source>
+        <translation>Next section (%1)</translation>
+    </message>
+    <message>
+        <source>Visszanézem őket (%1)</source>
+        <translation>Review them (%1)</translation>
+    </message>
+    <message>
+        <source>Kihagyottak (%1)</source>
+        <translation>Skipped (%1)</translation>
+    </message>
+</context>
+<context>
     <name>TagChip</name>
     <message>
         <source>Javasolt címke: %1</source>
@@ -6958,6 +7067,18 @@
         <translation>Too short for the voice check: only by ear can it be decided whose it is</translation>
     </message>
     <message>
+        <source>megálló · itt állt meg</source>
+        <translation>stop · stopped here</translation>
+    </message>
+    <message>
+        <source>utólagos ablak · a billentyűk ide</source>
+        <translation>grace window · keys apply here</translation>
+    </message>
+    <message>
+        <source>megálló</source>
+        <translation>stop</translation>
+    </message>
+    <message>
         <source>Hangra inkább %1 sorának tűnik</source>
         <translation>By voice it sounds more like %1</translation>
     </message>
@@ -7049,6 +7170,10 @@
         <translation>To review: only the doubtful lines, grouped by reason</translation>
     </message>
     <message>
+        <source>Söprés: hallgasd végig; a billentyűk a futó (megálló) sorra vonatkoznak · 1–%1 beszélő · J: Jó így · 0: nem azonosítható · Shift: nem minta</source>
+        <translation>Sweep: listen through; keys apply to the playing (stopped) line · 1–%1 speaker · J: looks right · 0: unidentifiable · Shift: not a sample</translation>
+    </message>
+    <message>
         <source>új oszlop: %1 · kék keret: hozzá hasonló sorok</source>
         <translation>new column: %1 · blue frame: similar lines</translation>
     </message>
@@ -7065,8 +7190,20 @@
         <translation> · not a sample</translation>
     </message>
     <message>
+        <source>Nincs több megálló.</source>
+        <translation>No more stops.</translation>
+    </message>
+    <message>
         <source>Nincs átnézendő sor.</source>
         <translation>No lines to review.</translation>
+    </message>
+    <message>
+        <source>Söprés</source>
+        <translation>Sweep</translation>
+    </message>
+    <message>
+        <source>Hallgatás közben javítani: a lejátszás a kétes sorok végén megáll, a billentyűk a futó sorra vonatkoznak</source>
+        <translation>Fix while listening: playback stops at the end of uncertain lines, keys apply to the playing line</translation>
     </message>
     <message>
         <source>Szűrő: %1 most lett mintái</source>
@@ -7095,6 +7232,59 @@
         <translation>“Unidentifiable” lines are left out of the voice analysis; here you only change the list view</translation>
     </message>
     <message>
+        <source>Fagyasztott ablak</source>
+        <translation>Frozen window</translation>
+    </message>
+    <message numerus="yes">
+        <source>mögötted: %n sor újra kétes</source>
+        <translation>
+            <numerusform>behind you: %n line uncertain again</numerusform>
+            <numerusform>behind you: %n lines uncertain again</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A háttér-elemzés ezeket a már elhagyott sorokat jelölte újra kétesnek — kattintásra a lista</source>
+        <translation>The background analysis marked these already passed lines uncertain again — click for the list</translation>
+    </message>
+    <message>
+        <source>Ha a háttér-elemzés egy már elhagyott sort újra kétesnek jelöl, itt gyűlik</source>
+        <translation>If the background analysis marks an already passed line uncertain again, it is collected here</translation>
+    </message>
+    <message numerus="yes">
+        <source>előtted: %n kétes</source>
+        <translation>
+            <numerusform>ahead: %n uncertain</numerusform>
+            <numerusform>ahead: %n uncertain</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1/%2. szakasz · %3 · %n kétes</source>
+        <translation>
+            <numerusform>section %1/%2 · %3 · %n uncertain</numerusform>
+            <numerusform>section %1/%2 · %3 · %n uncertain</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Folyamatos</source>
+        <translation>Continuous</translation>
+    </message>
+    <message>
+        <source>Kikapcsolva (alap): a kétes sor végén megáll. Bekapcsolva: nem áll meg; az imént hallott kétes sor még 3 mp-ig a billentyűk célpontja</source>
+        <translation>Off (default): stops at the end of an uncertain line. On: does not stop; the uncertain line just heard stays the keys' target for 3 s</translation>
+    </message>
+    <message>
+        <source>Lassabban ([)</source>
+        <translation>Slower ([)</translation>
+    </message>
+    <message>
+        <source>tempó %1</source>
+        <translation>speed %1</translation>
+    </message>
+    <message>
+        <source>Gyorsabban (])</source>
+        <translation>Faster (])</translation>
+    </message>
+    <message>
         <source>Névtelen résztvevő</source>
         <translation>Unnamed participant</translation>
     </message>
@@ -7105,6 +7295,10 @@
     <message>
         <source>Névtelen beszélő</source>
         <translation>Unnamed speaker</translation>
+    </message>
+    <message>
+        <source>Újra kétes mögötted (a háttér-elemzés jelölte)</source>
+        <translation>Uncertain again behind you (marked by the background analysis)</translation>
     </message>
     <message>
         <source>Összevonod a két beszélőt?</source>

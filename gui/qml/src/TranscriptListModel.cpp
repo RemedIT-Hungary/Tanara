@@ -54,6 +54,7 @@ QHash<int, QByteArray> TranscriptListModel::roleNames() const
         {SimilarRole, "similar"},
         {IgnoredRole, "ignored"},
         {SampleStateRole, "sampleState"},
+        {SweepHandledRole, "sweepHandled"},
     };
 }
 
@@ -95,6 +96,7 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
         case SideConflictRole:
         case NewPersonRole:
         case IgnoredRole:
+        case SweepHandledRole:
         case SimilarRole: return false;
         case StartMsRole:
         case EndMsRole:
@@ -137,6 +139,7 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
     case SimilarRole: return m_vm->isSimilar(r.utterance);
     case IgnoredRole: return u.ignored;
     case SampleStateRole: return m_vm->sampleState(r.utterance);
+    case SweepHandledRole: return m_vm->isSweepHandled(r.utterance);
     default: return {};
     }
 }

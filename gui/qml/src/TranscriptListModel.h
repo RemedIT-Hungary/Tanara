@@ -59,6 +59,8 @@ public:
         // S2
         IgnoredRole,                    // „nem azonosítható": a név marad, a hang-elemzés kihagyja
         SampleStateRole,                // döntött soron "sample" | "noSample"; különben ""
+        // S6
+        SweepHandledRole,               // söprés: a sor már eldőlt / átugrott / „Később” (nem megálló)
     };
     Q_ENUM(Role)
 

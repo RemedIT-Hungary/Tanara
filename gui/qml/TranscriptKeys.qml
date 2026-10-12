@@ -16,7 +16,10 @@ import QtQuick
 //
 // decode() → { name, digit, shift, ctrl, alt, meta, plain }
 //   name: "digit" | "J" | "M" | "R" | "B" | "Z" | "Y" | "C" | "A" | "Enter" | "Space" | "Escape" |
-//         "Left" | "Right" | "Up" | "Down" | "Comma" | "Period" | "Shift" | "" (egyéb)
+//         "Left" | "Right" | "Up" | "Down" | "Comma" | "Period" | "BracketLeft" | "BracketRight" |
+//         "Shift" | "" (egyéb)
+// A „[” / „]” (söprés: tempó − / +) a P melletti két billentyű a fizikai helyén (magyar
+// kiosztáson „ő” / „ú”).
 //   digit: 0–9 (name === "digit"), különben -1
 //   plain: nincs Ctrl / Alt / Meta (a Shift megengedett — az a „nem minta” módosító)
 QtObject {
@@ -29,6 +32,8 @@ QtObject {
     readonly property var windowsDigits: [2, 3, 4, 5, 6, 7, 8, 9, 10]
     readonly property var linuxPunct: ({ comma: 59, period: 60 })
     readonly property var windowsPunct: ({ comma: 51, period: 52 })
+    readonly property var linuxBrackets: ({ left: 34, right: 35 })
+    readonly property var windowsBrackets: ({ left: 26, right: 27 })
 
     function decode(event) {
         return decodeRaw(event.key, event.modifiers, event.nativeScanCode || 0)
@@ -61,7 +66,11 @@ QtObject {
         const punct = platform === "windows" ? windowsPunct : platform === "linux" ? linuxPunct : ({})
         if (key === Qt.Key_Comma || (scanCode > 0 && scanCode === punct.comma)) { out.name = "Comma"; return out }
         if (key === Qt.Key_Period || (scanCode > 0 && scanCode === punct.period)) { out.name = "Period"; return out }
-        // 3) Betűk és vezérlők a kiosztás szerint.
+        // 3) „[” / „]” (a P melletti két billentyű; magyar kiosztáson „ő” / „ú”).
+        const br = platform === "windows" ? windowsBrackets : platform === "linux" ? linuxBrackets : ({})
+        if (key === Qt.Key_BracketLeft || (scanCode > 0 && scanCode === br.left)) { out.name = "BracketLeft"; return out }
+        if (key === Qt.Key_BracketRight || (scanCode > 0 && scanCode === br.right)) { out.name = "BracketRight"; return out }
+        // 4) Betűk és vezérlők a kiosztás szerint.
         switch (key) {
         case Qt.Key_J: out.name = "J"; break
         case Qt.Key_M: out.name = "M"; break

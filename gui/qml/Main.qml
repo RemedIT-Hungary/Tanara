@@ -833,6 +833,8 @@ ApplicationWindow {
                         sampleStats: shellActions.currentTab === 1 && transcriptTab.viewMode !== "read"
                                      ? transcriptTab.editor.sampleStats : []
                         onSamplesClicked: key => transcriptTab.showSessionSamples(key)
+                        // S6: söprés-mód (kétes-pöttyök, szakaszok, fagyasztott ablak) — csak az Átirat fülön.
+                        sweep: shellActions.currentTab === 1 ? transcriptTab.sweepDock : ({})
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
                             else {

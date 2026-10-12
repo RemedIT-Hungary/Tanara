@@ -27,6 +27,7 @@
 #include <QLocale>
 #include <QMap>
 #include <QSaveFile>
+#include <QScopedValueRollback>
 
 #include <algorithm>
 #include <cmath>
@@ -94,6 +95,9 @@ TranscriptEditorViewModel::TranscriptEditorViewModel(QObject* parent)
     m_reviewTimer.setInterval(0);
     connect(&m_reviewTimer, &QTimer::timeout, this, &TranscriptEditorViewModel::rebuildReview);
     initQueue();    // S3
+    m_sweepDockTimer.setSingleShot(true);   // S6
+    m_sweepDockTimer.setInterval(0);
+    connect(&m_sweepDockTimer, &QTimer::timeout, this, &TranscriptEditorViewModel::sweepRebuildDock);
 }
 
 void TranscriptEditorViewModel::componentComplete()
@@ -315,6 +319,8 @@ void TranscriptEditorViewModel::reloadAll()
     m_sampleDeviation.clear();
     m_sampleStats.clear();
 
+    sweepReset();           // S6
+
     QElapsedTimer perf;
     perf.start();
     rebuildSpeakers(/*recomputeCollapsed*/ true);
@@ -381,6 +387,7 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
         if (i < 0) continue;
         const EditorUtterance before = m_utts[i];
         m_utts[i] = m_editor->utterance(id);
+        sweepFilterIncoming(i, before);     // S6: fagyasztott ablak
         changed.append(i);
         const EditorUtterance& after = m_utts[i];
         if (before.ignored != after.ignored) {
@@ -703,6 +710,7 @@ QString TranscriptEditorViewModel::redoText() const { return m_editor ? m_editor
 
 void TranscriptEditorViewModel::undo()
 {
+    const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // S6: nem háttér-változás
     if (m_editor) m_editor->undo();
 }
 
@@ -710,7 +718,10 @@ void TranscriptEditorViewModel::redo()
 {
     if (!m_editor || !m_editor->canRedo()) return;
     const QString text = m_editor->redoText();
-    m_editor->redo();
+    {
+        const QScopedValueRollback<bool> userEdit(m_sweepUserEdit, true);   // S6
+        m_editor->redo();
+    }
     // A visszahozott lépés az „Imént" sor tetejére (a sorszáma ugyanaz, mint eredetileg).
     Decision d;
     d.text = tr("Újra: %1").arg(text);
@@ -1023,6 +1034,7 @@ void TranscriptEditorViewModel::setPlaybackPosition(int ms, bool active)
     m_playbackMs = ms;
     m_playbackActive = active;
     updatePlayingRow();
+    sweepOnPosition();      // S6: megálló, utólagos ablak, szakasz-vég
 }
 
 void TranscriptEditorViewModel::updatePlayingRow()
@@ -3185,6 +3197,738 @@ void TranscriptEditorViewModel::applyPendingDemoState()
             break;
         }
     }
+}
+
+// =============================================================================================
+// ---- S6: söprés-mód (a Javítás nézetben, hallgatás közben javítani) --------------------------
+// Külön blokk (a többi szelet ettől függetlenül módosíthatja a fenti részeket). A kapcsolódási
+// pontok fent egy-egy sorral: reloadAll → sweepReset, onUtterancesChanged → sweepFilterIncoming,
+// setPlaybackPosition → sweepOnPosition, undo / redo → m_sweepUserEdit.
+
+namespace {
+constexpr int kSweepStopSlackMs = 100;      // a megálló a sor vége után ennyivel
+constexpr int kSweepAfterMs = 3000;         // folyamatos mód: utólagos ablak
+constexpr int kSweepWindowMargin = 2;       // a fagyasztott ablak a látható sorokon túl
+constexpr int kSweepMaxJumpMs = 1500;       // ennél nagyobb ugrás tekerés, nem lejátszás
+} // namespace
+
+void TranscriptEditorViewModel::sweepReset()
+{
+    m_sweepActive = false;
+    m_sweepStopUtt = m_sweepWatchUtt = m_sweepAfterUtt = -1;
+    m_sweepViewFirst = m_sweepViewLast = -1;
+    m_sweepWinFirstUtt = m_sweepWinLastUtt = -1;
+    m_sweepLastMs = -1;
+    m_sweepHeld.clear();
+    m_sweepRebehind.clear();
+    m_sweepHandled.clear();
+    m_sweepDecided.clear();
+    m_sweepIgnored.clear();
+    m_sweepLater.clear();
+    m_sweepBackground.clear();
+    m_sweepSectionList.clear();
+    m_sweepDone.clear();
+    m_sweepSection = -1;
+    m_sweepSummary.clear();
+    m_sweepDockCache.clear();
+    emit sweepChanged();
+    emit sweepWindowChanged();
+    emit sweepMarkersChanged();
+    emit sweepSectionsChanged();
+    emit sweepDockChanged();
+}
+
+void TranscriptEditorViewModel::setSweepActive(bool on)
+{
+    if (m_sweepActive == on || (on && m_utts.isEmpty())) return;
+    if (!on) releasePendingMarkers();
+    const QSet<QString> handled = m_sweepHandled;
+    m_sweepActive = on;
+    m_sweepStopUtt = m_sweepWatchUtt = m_sweepAfterUtt = -1;
+    m_sweepLastMs = -1;
+    m_sweepRebehind.clear();
+    m_sweepHandled.clear();
+    m_sweepDecided.clear();
+    m_sweepIgnored.clear();
+    m_sweepLater.clear();
+    m_sweepBackground.clear();
+    m_sweepDone.clear();
+    m_sweepSummary.clear();
+    if (on) {
+        sweepComputeSections();
+        const int at = m_playingUtt >= 0 ? m_playingUtt : std::max(0, utteranceForTime(m_playbackMs));
+        m_sweepSection = sweepSectionOf(at);
+        m_sweepSamplesAtStart = sweepSampleSnapshot();
+        sweepUpdateWindow();
+    } else {
+        m_sweepSectionList.clear();
+        m_sweepSection = -1;
+        m_sweepWinFirstUtt = m_sweepWinLastUtt = -1;
+    }
+    // A „Később” / átugrott sorok jelölése a lista-modellben.
+    QVector<int> touched;
+    for (const QString& id : handled) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0) touched << i;
+    }
+    if (!touched.isEmpty()) m_rows->notifyUtterances(touched, {TranscriptListModel::SweepHandledRole});
+    emit sweepChanged();
+    emit sweepWindowChanged();
+    emit sweepMarkersChanged();
+    emit sweepSectionsChanged();
+    sweepScheduleDock();
+}
+
+void TranscriptEditorViewModel::setSweepContinuous(bool on)
+{
+    if (m_sweepContinuous == on) return;
+    m_sweepContinuous = on;
+    const bool wasStopped = m_sweepStopUtt >= 0;
+    m_sweepStopUtt = -1;
+    m_sweepAfterUtt = -1;
+    emit sweepChanged();
+    // Megállóban állva folyamatos módra váltás: a lejátszás megy tovább.
+    if (wasStopped && on) emit sweepResumeRequested();
+}
+
+bool TranscriptEditorViewModel::isSweepHandled(int utterance) const
+{
+    return m_sweepActive && utterance >= 0 && utterance < m_utts.size()
+           && m_sweepHandled.contains(m_utts[utterance].id);
+}
+
+int TranscriptEditorViewModel::sweepStopRow() const
+{
+    return m_sweepActive && m_sweepStopUtt >= 0 ? m_rows->rowOfUtterance(m_sweepStopUtt) : -1;
+}
+
+int TranscriptEditorViewModel::sweepAfterRow() const
+{
+    return m_sweepActive && m_sweepAfterUtt >= 0 ? m_rows->rowOfUtterance(m_sweepAfterUtt) : -1;
+}
+
+int TranscriptEditorViewModel::sweepTargetRow() const
+{
+    if (!m_sweepActive) return -1;
+    if (m_sweepStopUtt >= 0) return sweepStopRow();
+    if (m_sweepAfterUtt >= 0) return sweepAfterRow();
+    return m_playingRow;
+}
+
+int TranscriptEditorViewModel::sweepFrozenFirstRow() const
+{
+    return m_sweepActive && m_sweepWinFirstUtt >= 0 ? m_rows->nearestRow(m_sweepWinFirstUtt) : -1;
+}
+
+int TranscriptEditorViewModel::sweepFrozenLastRow() const
+{
+    return m_sweepActive && m_sweepWinLastUtt >= 0 ? m_rows->nearestRow(m_sweepWinLastUtt) : -1;
+}
+
+QString TranscriptEditorViewModel::sweepFrozenFrom() const
+{
+    if (!m_sweepActive || m_sweepWinFirstUtt < 0 || m_sweepWinFirstUtt >= m_utts.size()) return {};
+    return timeLabel(m_utts[m_sweepWinFirstUtt].startMs);
+}
+
+QString TranscriptEditorViewModel::sweepFrozenTo() const
+{
+    if (!m_sweepActive || m_sweepWinLastUtt < 0 || m_sweepWinLastUtt >= m_utts.size()) return {};
+    return timeLabel(m_utts[m_sweepWinLastUtt].endMs);
+}
+
+QStringList TranscriptEditorViewModel::pendingMarkerIds() const
+{
+    QStringList ids = m_sweepHeld.keys();
+    std::sort(ids.begin(), ids.end(), [this](const QString& a, const QString& b) {
+        return m_uttIndex.value(a, -1) < m_uttIndex.value(b, -1);
+    });
+    return ids;
+}
+
+QVariantList TranscriptEditorViewModel::rebehindRows() const
+{
+    QVector<int> idx;
+    for (const QString& id : m_sweepRebehind) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0) idx << i;
+    }
+    std::sort(idx.begin(), idx.end());
+    QVariantList out;
+    for (int i : std::as_const(idx)) {
+        const EditorUtterance& u = m_utts[i];
+        const SpeakerView v = m_views.value(u.speakerKey);
+        out << QVariantMap{{QStringLiteral("utteranceId"), u.id},
+                           {QStringLiteral("row"), m_rows->nearestRow(i)},
+                           {QStringLiteral("startMs"), int(u.startMs)},
+                           {QStringLiteral("time"), timeLabel(u.startMs)},
+                           {QStringLiteral("name"), v.name},
+                           {QStringLiteral("colorIndex"), v.colorIndex}};
+    }
+    return out;
+}
+
+int TranscriptEditorViewModel::sweepAheadCount() const
+{
+    if (!m_sweepActive) return 0;
+    const int from = m_sweepStopUtt >= 0 ? m_sweepStopUtt
+                   : m_playingUtt >= 0 ? m_playingUtt : utteranceForTime(m_playbackMs);
+    int n = 0;
+    for (int i = std::max(0, from + 1); i < m_utts.size(); ++i)
+        if (sweepIsStop(i)) ++n;
+    return n;
+}
+
+bool TranscriptEditorViewModel::sweepIsStop(int utt) const
+{
+    if (utt < 0 || utt >= m_utts.size()) return false;
+    const EditorUtterance& u = m_utts[utt];
+    return u.uncertain && !u.ignored && !m_sweepHandled.contains(u.id) && m_rows->rowOfUtterance(utt) >= 0;
+}
+
+int TranscriptEditorViewModel::sweepNextStopRow(int fromRow) const
+{
+    const auto& rows = m_rows->rows();
+    for (int r = std::max(0, fromRow + 1); r < rows.size(); ++r)
+        if (!rows[r].gap && sweepIsStop(rows[r].utterance)) return r;
+    return -1;
+}
+
+// ---- a fagyasztott ablak --------------------------------------------------------------------
+
+void TranscriptEditorViewModel::setSweepWindow(int firstRow, int lastRow)
+{
+    m_sweepViewFirst = firstRow;
+    m_sweepViewLast = std::max(firstRow, lastRow);
+    if (m_sweepActive) sweepUpdateWindow();
+}
+
+bool TranscriptEditorViewModel::sweepInWindow(int utt) const
+{
+    if (utt < 0) return false;
+    if (utt == m_sweepStopUtt || utt == m_sweepAfterUtt) return true;
+    return m_sweepWinFirstUtt >= 0 && utt >= m_sweepWinFirstUtt && utt <= m_sweepWinLastUtt;
+}
+
+void TranscriptEditorViewModel::sweepUpdateWindow()
+{
+    int a = -1, b = -1;
+    const auto& rows = m_rows->rows();
+    if (m_sweepViewFirst >= 0 && !rows.isEmpty()) {
+        const int n = int(rows.size());
+        const int r0 = std::clamp(m_sweepViewFirst - kSweepWindowMargin, 0, n - 1);
+        const int r1 = std::clamp(m_sweepViewLast + kSweepWindowMargin, 0, n - 1);
+        a = rows[r0].utterance;
+        b = rows[r1].gap ? rows[r1].utterance + rows[r1].hidden - 1 : rows[r1].utterance;
+    } else if (!m_utts.isEmpty()) {
+        // Még nincs mérete a listának: a futó sor ± 3.
+        const int at = std::max(0, m_playingUtt >= 0 ? m_playingUtt : utteranceForTime(m_playbackMs));
+        a = std::max(0, at - 3);
+        b = std::min(int(m_utts.size()) - 1, at + 3);
+    }
+    if (a == m_sweepWinFirstUtt && b == m_sweepWinLastUtt) return;
+    m_sweepWinFirstUtt = a;
+    m_sweepWinLastUtt = b;
+    emit sweepWindowChanged();
+    sweepReleaseOutside();
+    sweepScheduleDock();
+}
+
+void TranscriptEditorViewModel::sweepReleaseOutside()
+{
+    QStringList ids;
+    for (auto it = m_sweepHeld.cbegin(); it != m_sweepHeld.cend(); ++it)
+        if (!sweepInWindow(m_uttIndex.value(it.key(), -1))) ids << it.key();
+    if (ids.isEmpty()) return;
+    for (const QString& id : std::as_const(ids)) m_sweepHeld.remove(id);
+    {
+        const QScopedValueRollback<bool> releasing(m_sweepReleasing, true);
+        onUtterancesChanged(ids);
+    }
+    emit sweepMarkersChanged();
+}
+
+void TranscriptEditorViewModel::releasePendingMarkers()
+{
+    if (m_sweepHeld.isEmpty()) return;
+    const QStringList ids = m_sweepHeld.keys();
+    m_sweepHeld.clear();
+    {
+        const QScopedValueRollback<bool> releasing(m_sweepReleasing, true);
+        onUtterancesChanged(ids);
+    }
+    emit sweepMarkersChanged();
+}
+
+void TranscriptEditorViewModel::sweepFilterIncoming(int i, const EditorUtterance& before)
+{
+    if (!m_sweepActive) return;
+    EditorUtterance& after = m_utts[i];
+    const QString id = after.id;
+    // A felhasználó saját döntése (vagy visszavonása) ezen a soron: azonnal látszik.
+    const bool userTarget = m_sweepUserEdit || (m_tracking && m_trackIds.contains(id));
+    const auto held = m_sweepHeld.constFind(id);
+    const SweepMarker shown = held != m_sweepHeld.cend()
+        ? *held : SweepMarker{before.uncertain, before.uncertainReason, before.likelySpeakerKey};
+    const bool markerChanged = shown.uncertain != after.uncertain || shown.reason != after.uncertainReason
+                               || shown.likely != after.likelySpeakerKey;
+    bool notify = false;
+    if (userTarget || !markerChanged) {
+        notify = m_sweepHeld.remove(id) > 0;
+    } else if (!m_sweepReleasing && sweepInWindow(i)) {
+        // A fagyasztott ablakban: a régi jelölő marad, az új függőben (a sor elhagyásakor jön).
+        m_sweepHeld.insert(id, shown);
+        after.uncertain = shown.uncertain;
+        after.uncertainReason = shown.reason;
+        after.likelySpeakerKey = shown.likely;
+        notify = true;
+    } else if (after.uncertain && !shown.uncertain && !after.ignored) {
+        // A háttér kétesnek jelölte: mögötted → „újra kétes”; előtted → csendben (a háttérből jött).
+        const int at = m_sweepStopUtt >= 0 ? m_sweepStopUtt : utteranceForTime(m_playbackMs);
+        if (i < at) {
+            if (!m_sweepRebehind.contains(id)) m_sweepRebehind << id;
+        } else {
+            m_sweepBackground.insert(id);
+        }
+        notify = true;
+    }
+    if (!after.uncertain && m_sweepRebehind.removeAll(id) > 0) notify = true;
+    if (notify) emit sweepMarkersChanged();
+    sweepScheduleDock();
+}
+
+// ---- lejátszás: megálló, utólagos ablak, szakasz-vég ------------------------------------------
+
+void TranscriptEditorViewModel::sweepOnPosition()
+{
+    if (!m_sweepActive || m_utts.isEmpty()) return;
+    const int ms = m_playbackMs;
+    const int prev = m_sweepLastMs;
+    m_sweepLastMs = ms;
+    const bool jumped = prev < 0 || ms < prev || ms - prev > kSweepMaxJumpMs;
+    bool changed = false;
+    int stopped = -1;
+
+    if (m_playbackActive && m_sweepStopUtt < 0) {
+        if (m_sweepWatchUtt >= 0) {
+            const EditorUtterance& w = m_utts[m_sweepWatchUtt];
+            if (ms < w.startMs || (jumped && ms > w.endMs)) {
+                m_sweepWatchUtt = -1;       // tekerés: a megálló elmarad
+            } else if (ms >= w.endMs + kSweepStopSlackMs) {
+                const int u = m_sweepWatchUtt;
+                m_sweepWatchUtt = -1;
+                if (sweepIsStop(u)) {
+                    if (m_sweepContinuous) m_sweepAfterUtt = u;
+                    else stopped = m_sweepStopUtt = u;
+                    changed = true;
+                }
+            }
+        }
+        if (m_sweepWatchUtt < 0 && m_sweepStopUtt < 0) {
+            const int cur = utteranceForTime(ms);
+            if (cur >= 0 && cur != m_sweepAfterUtt && sweepIsStop(cur) && ms >= m_utts[cur].startMs
+                && ms < m_utts[cur].endMs + kSweepStopSlackMs)
+                m_sweepWatchUtt = cur;
+        }
+    }
+    if (m_sweepAfterUtt >= 0) {
+        const EditorUtterance& a = m_utts[m_sweepAfterUtt];
+        if (ms >= a.endMs + kSweepAfterMs || ms < a.startMs) {
+            m_sweepAfterUtt = -1;
+            changed = true;
+        }
+    }
+
+    // Szakasz: folyamatos lejátszással a végére ért → összesítő; ugrásnál csak a mutató vált.
+    if (m_sweepSection >= 0 && m_sweepSection < m_sweepSectionList.size() && m_sweepStopUtt < 0) {
+        const SweepSection& sec = m_sweepSectionList[m_sweepSection];
+        const bool last = m_sweepSection + 1 >= m_sweepSectionList.size();
+        const qint64 limit = last ? sec.endMs : sec.endMs + kSweepStopSlackMs;
+        if (m_playbackActive && !jumped && prev <= limit && ms > limit - (last ? 1 : 0)
+            && !m_sweepDone.contains(m_sweepSection)) {
+            sweepEndSection(m_sweepSection);
+        } else if (jumped) {
+            // A pozíció szakasza (a szakasz vége után már a következőé).
+            int s = int(m_sweepSectionList.size()) - 1;
+            for (int k = 0; k < m_sweepSectionList.size(); ++k)
+                if (ms <= m_sweepSectionList[k].endMs + kSweepStopSlackMs) { s = k; break; }
+            if (s != m_sweepSection) {
+                m_sweepSection = s;
+                emit sweepSectionsChanged();
+                sweepScheduleDock();
+            }
+        }
+    }
+    if (changed) {
+        emit sweepChanged();
+        emit sweepMarkersChanged();
+        sweepScheduleDock();
+    }
+    if (stopped >= 0) emit sweepStopReached(m_rows->rowOfUtterance(stopped));
+}
+
+bool TranscriptEditorViewModel::sweepDecide(int row, const QString& action, int lane, bool noisy)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    if (u < 0 || !m_editor) return false;
+    const QString id = m_utts[u].id;
+    const QString speaker = m_utts[u].speakerKey;
+    if (action == QLatin1String("replay")) {
+        // ←: a sor újra (a megálló a végén újra megáll); döntés nincs.
+        if (m_sweepStopUtt == u) m_sweepStopUtt = -1;
+        if (m_sweepAfterUtt == u) m_sweepAfterUtt = -1;
+        m_sweepWatchUtt = -1;
+        m_sweepLastMs = -1;
+        emit sweepChanged();
+        return true;
+    }
+    bool ok = false;
+    bool decided = false;
+    if (action == QLatin1String("default")) {
+        const QString likely = m_utts[u].likelySpeakerKey;
+        ok = !likely.isEmpty() && likely != speaker ? moveUtteranceToSpeaker(id, likely, noisy)
+                                                    : confirmUtterance(id, noisy);
+        decided = true;
+    } else if (action == QLatin1String("confirm")) {
+        ok = confirmUtterance(id, noisy);
+        decided = true;
+    } else if (action == QLatin1String("lane")) {
+        const QString key = laneKey(lane);
+        if (key.isEmpty()) return false;
+        ok = key == speaker ? confirmUtterance(id, noisy) : moveUtteranceToSpeaker(id, key, noisy);
+        decided = true;
+    } else if (action == QLatin1String("ignore")) {
+        ok = setUtteranceIgnored(id, !m_utts[u].ignored);
+        if (ok && m_utts[u].ignored) m_sweepIgnored.insert(id);
+        else m_sweepIgnored.remove(id);
+    } else if (action == QLatin1String("later")) {
+        ok = true;
+        m_sweepLater.insert(id);
+    } else if (action == QLatin1String("continue")) {
+        ok = true;
+    }
+    if (!ok) return false;
+    if (decided) {
+        m_sweepDecided.insert(id);
+        m_sweepLater.remove(id);
+    }
+    if (action == QLatin1String("ignore")) m_sweepLater.remove(id);
+    m_sweepHandled.insert(id);
+    m_sweepRebehind.removeAll(id);
+    m_rows->notifyUtterances({u}, {TranscriptListModel::SweepHandledRole});
+    if (m_sweepAfterUtt == u) m_sweepAfterUtt = -1;
+    const bool resume = m_sweepStopUtt == u;
+    if (resume) m_sweepStopUtt = -1;
+    if (m_sweepWatchUtt == u) m_sweepWatchUtt = -1;
+    emit sweepChanged();
+    emit sweepMarkersChanged();
+    sweepScheduleDock();
+    if (resume) emit sweepResumeRequested();
+    return true;
+}
+
+// ---- szakaszok -------------------------------------------------------------------------------
+
+void TranscriptEditorViewModel::setSweepSectionLimits(int maxMs, int maxUncertain)
+{
+    m_sweepSectionMaxMs = std::max(1000, maxMs);
+    m_sweepSectionMaxUncertain = std::max(1, maxUncertain);
+    if (!m_sweepActive) return;
+    sweepComputeSections();
+    m_sweepDone.clear();
+    m_sweepSection = sweepSectionOf(std::max(0, utteranceForTime(m_playbackMs)));
+    emit sweepSectionsChanged();
+    sweepScheduleDock();
+}
+
+void TranscriptEditorViewModel::sweepComputeSections()
+{
+    m_sweepSectionList.clear();
+    if (m_utts.isEmpty()) return;
+    SweepSection cur{0, 0, m_utts[0].startMs, m_utts[0].endMs};
+    int uncertain = 0;
+    for (int i = 0; i < m_utts.size(); ++i) {
+        const EditorUtterance& u = m_utts[i];
+        const bool counts = u.uncertain && !u.ignored;
+        if (i > 0 && (u.startMs - cur.startMs >= m_sweepSectionMaxMs
+                      || (counts && uncertain >= m_sweepSectionMaxUncertain))) {
+            m_sweepSectionList << cur;
+            cur = SweepSection{i, i, u.startMs, u.endMs};
+            uncertain = 0;
+        }
+        cur.lastUtt = i;
+        cur.endMs = std::max(cur.endMs, u.endMs);
+        if (counts) ++uncertain;
+    }
+    m_sweepSectionList << cur;
+}
+
+int TranscriptEditorViewModel::sweepSectionOf(int utt) const
+{
+    for (int s = 0; s < m_sweepSectionList.size(); ++s)
+        if (utt <= m_sweepSectionList[s].lastUtt) return s;
+    return m_sweepSectionList.isEmpty() ? -1 : int(m_sweepSectionList.size()) - 1;
+}
+
+static QString sweepSectionLabel(qint64 fromMs, qint64 toMs)
+{
+    return TranscriptEditorViewModel::timeLabel(fromMs) + QStringLiteral("–")
+           + TranscriptEditorViewModel::timeLabel(toMs);
+}
+
+QVariantList TranscriptEditorViewModel::sweepSections() const
+{
+    QVariantList out;
+    if (!m_sweepActive) return out;
+    const qreal total = qreal(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+    for (int s = 0; s < m_sweepSectionList.size(); ++s) {
+        const SweepSection& sec = m_sweepSectionList[s];
+        int uncertain = 0;
+        for (int i = sec.firstUtt; i <= sec.lastUtt; ++i)
+            if (m_utts[i].uncertain && !m_utts[i].ignored) ++uncertain;
+        out << QVariantMap{{QStringLiteral("index"), s},
+                           {QStringLiteral("startMs"), double(sec.startMs)},
+                           {QStringLiteral("endMs"), double(sec.endMs)},
+                           {QStringLiteral("start"), qreal(sec.startMs) / total},
+                           {QStringLiteral("end"), qreal(sec.endMs) / total},
+                           {QStringLiteral("label"), sweepSectionLabel(sec.startMs, sec.endMs)},
+                           {QStringLiteral("uncertain"), uncertain},
+                           {QStringLiteral("done"), m_sweepDone.contains(s)},
+                           {QStringLiteral("active"), s == m_sweepSection}};
+    }
+    return out;
+}
+
+QHash<QString, int> TranscriptEditorViewModel::sweepSampleSnapshot() const
+{
+    QHash<QString, int> out;
+    for (const QVariant& v : m_sampleStats) {
+        const QVariantMap m = v.toMap();
+        out.insert(m.value(QStringLiteral("key")).toString(), m.value(QStringLiteral("sessionAdded")).toInt());
+    }
+    return out;
+}
+
+void TranscriptEditorViewModel::sweepEndSection(int index)
+{
+    if (index < 0 || index >= m_sweepSectionList.size()) return;
+    m_sweepDone.insert(index);
+    releasePendingMarkers();            // a szakasz végén a függő jelölők megjelennek
+    const SweepSection& sec = m_sweepSectionList[index];
+    auto countIn = [&](const QSet<QString>& ids) {
+        int n = 0;
+        for (const QString& id : ids) {
+            const int i = m_uttIndex.value(id, -1);
+            if (i >= sec.firstUtt && i <= sec.lastUtt) ++n;
+        }
+        return n;
+    };
+    int later = 0;
+    for (const QString& id : std::as_const(m_sweepLater)) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= sec.firstUtt && i <= sec.lastUtt && m_utts[i].uncertain) ++later;
+    }
+    // Új minták beszélőnként (a szakasz eleje óta).
+    const QHash<QString, int> now = sweepSampleSnapshot();
+    QStringList parts;
+    for (const QVariant& v : m_sampleStats) {
+        const QVariantMap m = v.toMap();
+        const QString key = m.value(QStringLiteral("key")).toString();
+        const int added = now.value(key) - m_sweepSamplesAtStart.value(key);
+        if (added > 0) parts << QStringLiteral("%1 +%2").arg(m.value(QStringLiteral("name")).toString()).arg(added);
+    }
+    const bool last = index + 1 >= m_sweepSectionList.size();
+    m_sweepSummary = {
+        {QStringLiteral("index"), index},
+        {QStringLiteral("label"), sweepSectionLabel(sec.startMs, sec.endMs)},
+        {QStringLiteral("decided"), countIn(m_sweepDecided)},
+        {QStringLiteral("ignored"), countIn(m_sweepIgnored)},
+        {QStringLiteral("later"), later},
+        {QStringLiteral("background"), countIn(m_sweepBackground)},
+        {QStringLiteral("samplesText"), parts.join(QStringLiteral(" · "))},
+        {QStringLiteral("rebehind"), int(m_sweepRebehind.size())},
+        {QStringLiteral("last"), last},
+        {QStringLiteral("nextLabel"), last ? QString()
+                                           : sweepSectionLabel(m_sweepSectionList[index + 1].startMs,
+                                                               m_sweepSectionList[index + 1].endMs)},
+    };
+    m_sweepSamplesAtStart = now;
+    if (!last) m_sweepSection = index + 1;
+    emit sweepSectionsChanged();
+    sweepScheduleDock();
+    emit sweepSectionEnded(index);
+}
+
+int TranscriptEditorViewModel::sweepNextSection()
+{
+    const int next = m_sweepSummary.isEmpty() ? m_sweepSection + 1
+                                              : m_sweepSummary.value(QStringLiteral("index")).toInt() + 1;
+    m_sweepSummary.clear();
+    int ms = -1;
+    if (next >= 0 && next < m_sweepSectionList.size()) {
+        m_sweepSection = next;
+        ms = int(m_sweepSectionList[next].startMs);
+    }
+    emit sweepSectionsChanged();
+    sweepScheduleDock();
+    return ms;
+}
+
+int TranscriptEditorViewModel::sweepReviewBehind()
+{
+    m_sweepSummary.clear();
+    int first = -1;
+    for (const QString& id : std::as_const(m_sweepRebehind)) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0 && (first < 0 || i < first)) first = i;
+        m_sweepHandled.remove(id);          // újra megálló
+    }
+    emit sweepSectionsChanged();
+    emit sweepMarkersChanged();
+    sweepScheduleDock();
+    return first >= 0 ? int(m_utts[first].startMs) : -1;
+}
+
+int TranscriptEditorViewModel::sweepReviewLater()
+{
+    m_sweepSummary.clear();
+    int first = -1;
+    QVector<int> touched;
+    for (const QString& id : std::as_const(m_sweepLater)) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i < 0) continue;
+        if (first < 0 || i < first) first = i;
+        m_sweepHandled.remove(id);
+        touched << i;
+    }
+    m_sweepLater.clear();
+    if (!touched.isEmpty()) m_rows->notifyUtterances(touched, {TranscriptListModel::SweepHandledRole});
+    emit sweepSectionsChanged();
+    emit sweepMarkersChanged();
+    sweepScheduleDock();
+    return first >= 0 ? int(m_utts[first].startMs) : -1;
+}
+
+void TranscriptEditorViewModel::dismissSweepSummary()
+{
+    if (m_sweepSummary.isEmpty()) return;
+    m_sweepSummary.clear();
+    emit sweepSectionsChanged();
+}
+
+// ---- a dokk söprés-rétege --------------------------------------------------------------------
+
+void TranscriptEditorViewModel::sweepScheduleDock()
+{
+    if (m_sweepActive || !m_sweepDockCache.isEmpty()) m_sweepDockTimer.start();
+}
+
+void TranscriptEditorViewModel::sweepRebuildDock()
+{
+    QVariantMap dock;
+    if (m_sweepActive && !m_utts.isEmpty()) {
+        const qreal total = qreal(std::max<qint64>({m_durationMs, m_timelineMs, 1}));
+        QVariantList uncertain, decided;
+        for (int i = 0; i < m_utts.size(); ++i) {
+            const EditorUtterance& u = m_utts[i];
+            const qreal x = qreal(u.startMs) / total;
+            if (m_sweepDecided.contains(u.id) || m_sweepIgnored.contains(u.id)) decided << x;
+            else if (u.uncertain && !u.ignored) uncertain << x;
+        }
+        QVariantList sections;
+        for (int s = 0; s < m_sweepSectionList.size(); ++s) {
+            const SweepSection& sec = m_sweepSectionList[s];
+            sections << QVariantMap{{QStringLiteral("start"), qreal(sec.startMs) / total},
+                                    {QStringLiteral("end"), qreal(sec.endMs) / total},
+                                    {QStringLiteral("done"), m_sweepDone.contains(s)},
+                                    {QStringLiteral("active"), s == m_sweepSection}};
+        }
+        qreal fs = 0, fe = 0;
+        if (m_sweepWinFirstUtt >= 0 && m_sweepWinLastUtt < m_utts.size()) {
+            fs = qreal(m_utts[m_sweepWinFirstUtt].startMs) / total;
+            fe = qreal(m_utts[m_sweepWinLastUtt].endMs) / total;
+        }
+        dock = {{QStringLiteral("uncertain"), uncertain},
+                {QStringLiteral("decided"), decided},
+                {QStringLiteral("frozenStart"), fs},
+                {QStringLiteral("frozenEnd"), fe},
+                {QStringLiteral("sections"), sections},
+                {QStringLiteral("doneCount"), int(m_sweepDone.size())},
+                {QStringLiteral("total"), int(m_sweepSectionList.size())},
+                {QStringLiteral("aheadCount"), sweepAheadCount()},
+                {QStringLiteral("rebehind"), int(m_sweepRebehind.size())}};
+    }
+    if (dock == m_sweepDockCache) return;
+    m_sweepDockCache = dock;
+    emit sweepDockChanged();
+}
+
+// ---- demó-állapotok (képernyőkép; a kitalált „v3” meetingen) ---------------------------------
+
+int TranscriptEditorViewModel::stageSweepDemo(const QString& state)
+{
+    if (!m_editor || m_utts.size() < 12) return -1;
+    setRailVisible(true);
+    setSweepActive(true);
+    // A kitalált meeting rövid: négy egyforma időszelet.
+    setSweepSectionLimits(int(std::max<qint64>(60000, m_durationMs / 4 + 1)), 1000);
+    QVector<int> stops;
+    for (int i = 0; i < m_utts.size(); ++i)
+        if (sweepIsStop(i)) stops << i;
+    if (stops.size() < 3) return -1;
+    auto rowOf = [this](int u) { return m_rows->rowOfUtterance(u); };
+    if (state == QLatin1String("sweepStop")) {
+        // Az első kétes sor már eldőlt (Jó így), a második javaslatos kétes sorban áll a lejátszás.
+        sweepDecide(rowOf(stops[0]), QStringLiteral("confirm"));
+        int at = stops[1];
+        for (int k = 1; k < stops.size() && k < 6; ++k)
+            if (!m_utts[stops[k]].likelySpeakerKey.isEmpty()) { at = stops[k]; break; }
+        m_sweepStopUtt = at;
+        emit sweepChanged();
+        return int(m_utts[at].endMs) + 150;
+    }
+    if (state == QLatin1String("sweepContinuous")) {
+        setSweepContinuous(true);
+        sweepDecide(rowOf(stops[0]), QStringLiteral("confirm"));
+        // Olyan kétes sor, amely után a következő sor az utólagos ablakon belül indul: a futó sor
+        // már a következő, a billentyűk célpontja még ez (két külön kiemelés).
+        int at = stops[1];
+        for (int k = 1; k < stops.size(); ++k) {
+            const int u = stops[k];
+            if (u + 1 < m_utts.size() && m_utts[u + 1].startMs < m_utts[u].endMs + kSweepAfterMs - 800) {
+                at = u;
+                break;
+            }
+        }
+        m_sweepAfterUtt = at;
+        emit sweepChanged();
+        const qint64 nextStart = at + 1 < m_utts.size() ? m_utts[at + 1].startMs : m_utts[at].endMs + 800;
+        return int(std::max(m_utts[at].endMs + 200,
+                            std::min(m_utts[at].endMs + kSweepAfterMs - 400, nextStart + 400)));
+    }
+    if (state == QLatin1String("sweepSectionDone")) {
+        // Az első szakasz döntései (kitalált): Jó így, áthelyezés a javaslathoz, nem azonosítható,
+        // Később; a háttér két korábbi sort újra kétesnek jelölt.
+        const SweepSection sec = m_sweepSectionList.value(0);
+        QVector<int> in;
+        for (int u : std::as_const(stops))
+            if (u <= sec.lastUtt) in << u;
+        const int keep = in.size() >= 5 ? 2 : 0;       // az utolsó kettő: „újra kétes” (kitalált)
+        for (int k = 0; k < in.size() - keep; ++k) {
+            const QString action = k % 4 == 2 ? QStringLiteral("ignore") : k % 4 == 3 ? QStringLiteral("later")
+                                                                                  : QStringLiteral("default");
+            sweepDecide(rowOf(in[k]), action);
+        }
+        for (int k = int(in.size()) - keep; k < in.size(); ++k) {
+            m_sweepHandled.insert(m_utts[in[k]].id);
+            m_sweepRebehind << m_utts[in[k]].id;
+        }
+        clearChange();
+        sweepEndSection(0);
+        emit sweepMarkersChanged();
+        return int(sec.endMs) + 200;
+    }
+    return -1;
 }
 
 } // namespace tanara_qml

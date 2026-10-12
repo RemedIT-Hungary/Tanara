@@ -205,6 +205,42 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(tanara_qml::ReviewQueueModel* reviewQueue READ reviewQueue CONSTANT)
     // Fut-e a munkalista (reviewQueue.start() után, stop() / új munkamenet előtt).
     Q_PROPERTY(bool queueActive READ queueActive NOTIFY queueActiveChanged)
+    // ---- S6: söprés-mód (a Javítás nézetben: hallgatás közben javítani) ----
+    // Bekapcsolva a lejátszás a kétes sorok végén megáll (megálló-mód), vagy — folyamatos módban —
+    // tovább megy, és a kétes sor még 3 mp-ig a billentyűk célpontja („utólagos ablak”). A látható
+    // terület sorai (± 2) fagyasztottak: ott a háttér-elemzés jelölő-változása függőben marad.
+    Q_PROPERTY(bool sweepActive READ sweepActive WRITE setSweepActive NOTIFY sweepChanged)
+    Q_PROPERTY(bool sweepContinuous READ sweepContinuous WRITE setSweepContinuous NOTIFY sweepChanged)
+    // A megálló sora (itt állt meg a lejátszás, alatta a döntés-sáv); -1 = nincs megálló.
+    Q_PROPERTY(int sweepStopRow READ sweepStopRow NOTIFY sweepChanged)
+    // Folyamatos mód: az utólagos ablak sora (az imént lejátszott kétes sor); -1 = nincs.
+    Q_PROPERTY(int sweepAfterRow READ sweepAfterRow NOTIFY sweepChanged)
+    // A söprés-billentyűk célsora: megálló > utólagos ablak > a futó sor; -1 = nincs.
+    Q_PROPERTY(int sweepTargetRow READ sweepTargetRow NOTIFY sweepChanged)
+    // A fagyasztott ablak (sorokban; a látható terület ± 2 sor): első / utolsó sor, -1 = nincs.
+    Q_PROPERTY(int sweepFrozenFirstRow READ sweepFrozenFirstRow NOTIFY sweepWindowChanged)
+    Q_PROPERTY(int sweepFrozenLastRow READ sweepFrozenLastRow NOTIFY sweepWindowChanged)
+    // A fagyasztott ablak ideje a sávnak („14:07”, „15:27”).
+    Q_PROPERTY(QString sweepFrozenFrom READ sweepFrozenFrom NOTIFY sweepWindowChanged)
+    Q_PROPERTY(QString sweepFrozenTo READ sweepFrozenTo NOTIFY sweepWindowChanged)
+    // A fagyasztott ablakban függőben tartott jelölő-változások sorai (megszólalás-azonosítók).
+    Q_PROPERTY(QStringList pendingMarkerIds READ pendingMarkerIds NOTIFY sweepMarkersChanged)
+    // „N sor újra kétes”: a már elhagyott sorok, amelyeket a háttér-elemzés kétesnek jelölt.
+    Q_PROPERTY(int rebehindCount READ rebehindCount NOTIFY sweepMarkersChanged)
+    // Ugyanezek a listának: [{ utteranceId, row, time, name, colorIndex }] időrendben.
+    Q_PROPERTY(QVariantList rebehindRows READ rebehindRows NOTIFY sweepMarkersChanged)
+    // Előtted álló (még el nem ért) kétes sorok száma.
+    Q_PROPERTY(int sweepAheadCount READ sweepAheadCount NOTIFY sweepMarkersChanged)
+    // Szakaszok (12 perc vagy 20 kétes sor, ami előbb): [{ index, startMs, endMs, start, end
+    // (0..1), label („12:00–24:00”), uncertain, done, active }].
+    Q_PROPERTY(QVariantList sweepSections READ sweepSections NOTIFY sweepSectionsChanged)
+    Q_PROPERTY(int sweepSectionIndex READ sweepSectionIndex NOTIFY sweepSectionsChanged)
+    // A szakasz végén az összesítő: { index, label, decided, ignored, later, background,
+    // samplesText, rebehind, nextLabel, last } — üres map: nincs összesítő.
+    Q_PROPERTY(QVariantMap sweepSectionSummary READ sweepSectionSummary NOTIFY sweepSectionsChanged)
+    // A dokk söprés-rétege: { uncertain: [x…], decided: [x…], frozenStart, frozenEnd, sections:
+    // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); üres map: nincs söprés.
+    Q_PROPERTY(QVariantMap sweepDock READ sweepDock NOTIFY sweepDockChanged)
 
 public:
     struct SpeakerView {
@@ -607,6 +643,52 @@ public:
     // Vár-e még egy demó-állapot a hang-elemzés végére.
     Q_INVOKABLE bool demoStatePending() const { return !m_pendingDemoState.isEmpty(); }
 
+    // ---- S6: söprés-mód ----
+    bool sweepActive() const { return m_sweepActive; }
+    void setSweepActive(bool on);
+    bool sweepContinuous() const { return m_sweepContinuous; }
+    void setSweepContinuous(bool on);
+    int sweepStopRow() const;
+    int sweepAfterRow() const;
+    int sweepTargetRow() const;
+    int sweepFrozenFirstRow() const;
+    int sweepFrozenLastRow() const;
+    QString sweepFrozenFrom() const;
+    QString sweepFrozenTo() const;
+    QStringList pendingMarkerIds() const;
+    int rebehindCount() const { return int(m_sweepRebehind.size()); }
+    QVariantList rebehindRows() const;
+    int sweepAheadCount() const;
+    QVariantList sweepSections() const;
+    int sweepSectionIndex() const { return m_sweepSection; }
+    QVariantMap sweepSectionSummary() const { return m_sweepSummary; }
+    QVariantMap sweepDock() const { return m_sweepDockCache; }
+    // A sor a söprésben már eldőlt / átugrott / „Később” (nem megálló; a lista-modell szerepe).
+    bool isSweepHandled(int utterance) const;
+    // A látható terület sorai (a QML a görgetéskor adja); a fagyasztott ablak ebből ± 2 sor.
+    Q_INVOKABLE void setSweepWindow(int firstRow, int lastRow);
+    // Döntés a söprés célsorán (a billentyűk és a döntés-sáv): action = "default" (Enter: a
+    // javaslat, különben Jó így) | "confirm" (J) | "ignore" (0) | "lane" (1–9, a sín oszlopa) |
+    // "later" (→, Később) | "continue" (Space: tovább döntés nélkül) | "replay" (←: a sor újra, a
+    // megálló marad). noisy = Shift (nem minta).
+    // Megállónál a döntés után a lejátszás folytatódik (sweepResumeRequested).
+    Q_INVOKABLE bool sweepDecide(int row, const QString& action, int lane = -1, bool noisy = false);
+    // A következő megálló (kétes, még el nem döntött, nem „Később”) sora a `fromRow` után; -1 = nincs.
+    Q_INVOKABLE int sweepNextStopRow(int fromRow) const;
+    // A függő jelölők alkalmazása most (szakasz vége, söprés vége).
+    Q_INVOKABLE void releasePendingMarkers();
+    // Az összesítő gombjai: a következő szakasz / az újra kétes sorok / a kihagyottak eleje (ms;
+    // -1 = nincs hova menni). Mindhárom bezárja az összesítőt.
+    Q_INVOKABLE int sweepNextSection();
+    Q_INVOKABLE int sweepReviewBehind();
+    Q_INVOKABLE int sweepReviewLater();
+    Q_INVOKABLE void dismissSweepSummary();
+    // Szakasz-határok (tesztek, demó): legfeljebb ennyi idő / ennyi kétes sor egy szakaszban.
+    Q_INVOKABLE void setSweepSectionLimits(int maxMs, int maxUncertain);
+    // Demó (képernyőkép): "sweepStop" | "sweepContinuous" | "sweepSectionDone" — a söprés egy
+    // pillanata a kitalált meetingen (a lejátszó-pozíciót a QML adja: sweepDemoPositionMs).
+    Q_INVOKABLE int stageSweepDemo(const QString& state);
+
 signals:
     void meetingIdChanged();
     void demoVariantChanged();
@@ -635,6 +717,15 @@ signals:
     void ignoredCountChanged();
     void listFilterChanged();
     void queueActiveChanged();      // S3
+    // ---- S6: söprés-mód ----
+    void sweepChanged();
+    void sweepWindowChanged();
+    void sweepMarkersChanged();
+    void sweepSectionsChanged();
+    void sweepDockChanged();
+    void sweepStopReached(int row);         // megálló-mód: a QML megállítja a lejátszót
+    void sweepResumeRequested();            // döntés a megállónál: a lejátszás folytatódik
+    void sweepSectionEnded(int index);      // a szakasz végére ért: összesítő, a lejátszó megáll
     // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
     void revealRequested(int row);
     // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
@@ -823,6 +914,61 @@ private:
     // "reviewQueue*" demó-állapotok; igaz, ha kezelte.
     bool applyQueueDemoState(const QString& state);
     void tryQueueDemo();
+    // ---- S6: söprés-mód (TranscriptEditorViewModel.cpp végén, külön blokkban) ----
+    struct SweepMarker {
+        bool uncertain = false;
+        QString reason;
+        QString likely;
+    };
+    struct SweepSection {
+        int firstUtt = 0;
+        int lastUtt = 0;
+        qint64 startMs = 0;
+        qint64 endMs = 0;
+    };
+    // A szerkesztőből most beolvasott sor (m_utts[i]) jelölőjét a fagyasztott ablakban a régin
+    // tartja; mögötte a kétessé váltást az „újra kétes” listába veszi (onUtterancesChanged hívja).
+    void sweepFilterIncoming(int i, const tanara::EditorUtterance& before);
+    void sweepOnPosition();                 // setPlaybackPosition hívja
+    void sweepReset();                      // reloadAll hívja
+    void sweepReleaseOutside();
+    void sweepUpdateWindow();
+    void sweepComputeSections();
+    void sweepEndSection(int index);
+    void sweepScheduleDock();
+    void sweepRebuildDock();
+    bool sweepInWindow(int utt) const;
+    bool sweepIsStop(int utt) const;
+    int sweepSectionOf(int utt) const;
+    QHash<QString, int> sweepSampleSnapshot() const;
+    bool m_sweepActive = false;
+    bool m_sweepContinuous = false;
+    bool m_sweepUserEdit = false;           // visszavonás / újra: a jelölők azonnal változnak
+    bool m_sweepReleasing = false;
+    int m_sweepStopUtt = -1;
+    int m_sweepWatchUtt = -1;
+    int m_sweepAfterUtt = -1;
+    int m_sweepViewFirst = -1;              // a látható terület (sorok)
+    int m_sweepViewLast = -1;
+    int m_sweepWinFirstUtt = -1;            // a fagyasztott ablak (megszólalás-indexek)
+    int m_sweepWinLastUtt = -1;
+    int m_sweepLastMs = -1;
+    QHash<QString, SweepMarker> m_sweepHeld;    // a fagyasztott ablakban kijelzett (régi) jelölő
+    QStringList m_sweepRebehind;
+    QSet<QString> m_sweepHandled;           // eldöntött / átugrott / „Később” (nem áll meg újra)
+    QSet<QString> m_sweepDecided;
+    QSet<QString> m_sweepIgnored;
+    QSet<QString> m_sweepLater;
+    QSet<QString> m_sweepBackground;        // a háttérből lett kétes (előtted)
+    QVector<SweepSection> m_sweepSectionList;
+    QSet<int> m_sweepDone;
+    int m_sweepSection = -1;
+    qint64 m_sweepSectionMaxMs = 12 * 60 * 1000;
+    int m_sweepSectionMaxUncertain = 20;
+    QHash<QString, int> m_sweepSamplesAtStart;
+    QVariantMap m_sweepSummary;
+    QTimer m_sweepDockTimer;
+    QVariantMap m_sweepDockCache;
 };
 
 } // namespace tanara_qml

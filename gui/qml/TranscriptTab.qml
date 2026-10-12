@@ -40,12 +40,20 @@ import QtQuick.Templates as T
 //                S2 (közös alap): "imentWarning" (az „Imént” sor eltérő-minta figyelmeztetéssel és
 //                mini-naplóval; "imentLog": a napló nyitva) | "shiftPreview" (lenyomott Shift: „→ Név · nem minta” előnézet) |
 //                "ignoredRows" (nem azonosítható sorok, minta-jelek) | "sampleFilter" (a minta-mérő
-//                „+N most” szűrője)
+//                „+N most” szűrője) |
+//                S6 (söprés-mód): "sweepStop" (megálló + döntés-sáv) | "sweepContinuous" (folyamatos
+//                mód, utólagos ablak) | "sweepSectionDone" (szakasz-összesítő, „N sor újra kétes”)
 //
 // Billentyűk (fizikai hely szerint, TranscriptKeys): 1–9 a kijelölés a sín n. beszélőjéhez,
 // Shift+1–9 / Shift+sín-kattintás / Shift+húzás = ugyanez „nem minta”; 0 = nem azonosítható
 // (újra 0: újra azonosítható); J = Jó így (Shift+J: nem minta); M = Más… (a sor panelje);
-// B / Shift+B = következő / előző átnézendő; nyilak, Szóköz, Enter, Esc, Ctrl+C / A / Z.
+// B / Shift+B = következő / előző átnézendő; nyilak, Szóköz, Enter, Esc, Ctrl+C / A / Z; [ / ] =
+// tempó − / + (1,0–2,0×).
+// Söprés-módban (a Javítás nézet „Söprés” kapcsolója, S6) a billentyűk a CÉLSORRA vonatkoznak
+// (megálló > utólagos ablak > futó sor; kijelölés nélkül, a kijelölés nem változik): Enter =
+// alapértelmezés (javaslat, különben Jó így), J, 0, 1–9, M = Más…, Shift = nem minta; → = Később
+// (megállóban) / a következő megálló; ← = a sor eleje; Shift+← / → = előző / következő sor; Szóköz
+// a megállóban = tovább döntés nélkül.
 Item {
     id: root
 
@@ -97,7 +105,8 @@ Item {
     // ---- v3 Javítás mód (a térkép-dokk és az eszköz-sor ezeket olvassa) ----
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                          "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
-                                         "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter"]
+                                         "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
+                                         "sweepStop", "sweepContinuous", "sweepSectionDone"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
     // Az Átnézendő csoport-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
@@ -114,6 +123,7 @@ Item {
     }
     // A sín-fejléc mellett: mit csinál itt a kattintás / mi a kiemelés.
     readonly property string railNote: reviewShown ? qsTr("Átnézendő: csak a kétes sorok, okok szerint")
+        : sweepOn ? qsTr("Söprés: hallgasd végig; a billentyűk a futó (megálló) sorra vonatkoznak · 1–%1 beszélő · J: Jó így · 0: nem azonosítható · Shift: nem minta").arg(Math.min(9, laneCount))
         : editorVm.newPersonKey !== "" && editorVm.similarShown && newPersonLane >= 0
           ? qsTr("új oszlop: %1 · kék keret: hozzá hasonló sorok").arg(editorVm.lanes[newPersonLane].name)
         : root.shiftHeld ? qsTr("Shift: nem minta — a sor átkerül, de a hangja nem tanítja a felismerést")
@@ -160,6 +170,106 @@ Item {
         function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) root.shiftHeld = false }
     }
     readonly property string nonSampleSuffix: qsTr(" · nem minta")
+
+    // ---- S6: söprés-mód (a Javítás nézetben; a VM söprés-blokkja: TranscriptEditorViewModel) ----
+    readonly property bool sweepOn: editorVm.sweepActive && root.viewMode === "fix"
+    // A térkép-dokk söprés-rétege (Main.qml → MapDock.sweep); üres map: nincs söprés.
+    readonly property var sweepDock: sweepOn ? editorVm.sweepDock : ({})
+    onViewModeChanged: if (viewMode !== "fix" && editorVm.sweepActive) editorVm.sweepActive = false
+    function setSweep(on) {
+        if (on && root.viewMode !== "fix") return false
+        editorVm.sweepActive = on
+        root.forceActiveFocus()
+        Qt.callLater(root.updateViewport)
+        return editorVm.sweepActive === on
+    }
+    // A söprés-billentyűk célsora: megálló > utólagos ablak > futó sor; különben a kiválasztott sor.
+    function sweepTarget() {
+        const t = editorVm.sweepTargetRow
+        return t >= 0 ? t : editorVm.currentRow
+    }
+    function sweepDecideAt(row, action, lane) {
+        root.forceActiveFocus()
+        if (row < 0) return false
+        return editorVm.sweepDecide(row, action, lane === undefined ? -1 : lane, root.shiftHeld)
+    }
+    function sweepOpenOther(row) {
+        if (row < 0) return false
+        list.positionViewAtIndex(row, ListView.Contain)
+        const item = list.itemAtIndex(row)
+        if (!item) return false
+        root.openLinePopover(row, item.head ? item.nameItem : item)
+        return true
+    }
+    // Ugrás egy időpontra és lejátszás onnan (a söprés útjai: következő megálló, összesítő gombjai).
+    function sweepSeekPlay(ms) {
+        if (ms < 0) return
+        const row = editorVm.rowForTime(ms)
+        if (row >= 0) list.positionViewAtIndex(row, ListView.Contain)
+        if (!root.player) return
+        root.followNext = true
+        root.cursorSync = true
+        root.player.seek(ms)
+        root.cursorSync = false
+        if (root.player.playing !== true) root.player.play()
+    }
+    // ←: a célsor eleje (a megálló a sor végén újra megáll).
+    function sweepReplay() {
+        const row = sweepTarget()
+        if (row < 0) return
+        editorVm.sweepDecide(row, "replay", -1, false)
+        root.sweepSeekPlay(editorVm.rowStartMs(row))
+    }
+    // →: a következő megálló eleje (a lejátszás onnan szól).
+    function sweepJumpNext() {
+        const from = Math.max(sweepTarget(), editorVm.playingRow)
+        const row = editorVm.sweepNextStopRow(from)
+        if (row < 0) {
+            if (root.shell && root.shell.toast) root.shell.toast(qsTr("Nincs több megálló."))
+            return
+        }
+        root.sweepSeekPlay(editorVm.rowStartMs(row))
+    }
+    // [ / ]: tempó 1,0–2,0× negyedekben (a lejátszó-sor és a söprés-sáv mutatja).
+    function changeTempo(direction) {
+        if (!root.player) return
+        const now = root.player.rate || 1.0
+        const next = Math.round((now + 0.25 * direction) * 4) / 4
+        root.player.rate = Math.max(1.0, Math.min(2.0, next))
+    }
+    function tempoLabel(r) {
+        return String(Math.round(r * 100) / 100).replace(".", Qt.locale().decimalPoint) + "×"
+    }
+    // A söprés billentyűi (igaz: elfogyasztva). Söprés-módon kívül semmit nem csinál.
+    function sweepKey(k) {
+        if (!root.sweepOn) return false
+        const stop = editorVm.sweepStopRow
+        const target = sweepTarget()
+        if (k.plain && k.name === "digit") {
+            if (k.digit === 0) { if (!k.shift) root.sweepDecideAt(target, "ignore") }
+            else root.sweepDecideAt(target, "lane", k.digit - 1)
+            return true
+        }
+        if (k.plain && k.name === "J") { root.sweepDecideAt(target, "confirm"); return true }
+        if (k.plain && k.name === "Enter") { root.sweepDecideAt(target, "default"); return true }
+        if (k.plain && !k.shift && k.name === "M") { root.sweepOpenOther(target); return true }
+        if (k.plain && k.name === "Right") {
+            if (k.shift) root.stepLine(1)
+            else if (stop >= 0) root.sweepDecideAt(stop, "later")
+            else root.sweepJumpNext()
+            return true
+        }
+        if (k.plain && k.name === "Left") {
+            if (k.shift) root.stepLine(-1)
+            else root.sweepReplay()
+            return true
+        }
+        if (k.plain && !k.shift && k.name === "Space" && stop >= 0) {
+            root.sweepDecideAt(stop, "continue")
+            return true
+        }
+        return false
+    }
     property int speakerPopoverRow: -1
     readonly property bool canPlay: !!player && player.available !== false
 
@@ -327,6 +437,8 @@ Item {
         const start = editorVm.rowStartFraction(first)
         viewportStart = start
         viewportSize = Math.max(0, editorVm.rowEndFraction(last) - start)
+        // Söprés: a fagyasztott ablak a látható sorokból (± 2 sor, a VM-ben).
+        editorVm.setSweepWindow(first, last)
     }
     // Ugrás az idővonal egy pontjára (a térkép-dokk kattintása): a lista odagörget, a lejátszó teker.
     // A pozíció alatti sor lesz a kijelölt (lejátszás közben és állva is).
@@ -493,6 +605,14 @@ Item {
         timelineMs: (root.player && root.player.durationMs) || 0
 
         onRevealRequested: row => root.revealRow(row)
+        // Söprés (S6): megálló → a lejátszó megáll, a döntés-sáv látsszon; döntés → tovább szól;
+        // a szakasz vége → megáll (összesítő).
+        onSweepStopReached: row => {
+            if (root.player && root.player.playing === true) root.player.pause()
+            Qt.callLater(() => { if (row >= 0 && row < list.count) list.positionViewAtIndex(row, ListView.Contain) })
+        }
+        onSweepResumeRequested: { if (root.player && root.player.playing !== true) root.player.play() }
+        onSweepSectionEnded: { if (root.player && root.player.playing === true) root.player.pause() }
         // Az Átnézendő nézet a Javítás mód része (újraellenőrzés után a VM maga is bekapcsolja).
         // Újraellenőrzés után a VM maga is bekapcsolja; kilépéskor a korábbi mód tér vissza.
         onUncertainOnlyChanged: {
@@ -523,6 +643,7 @@ Item {
             voiceprintPopover.close()
             picker.close()
             mergeDialog.close()
+            rebehindPopover.close()
             toolbar.searchOpen = false
             Qt.callLater(root.updateViewport)
         }
@@ -604,6 +725,16 @@ Item {
         const k = TranscriptKeys.decode(event)
         root.shiftHeld = k.name === "Shift" || k.shift
         if (k.name === "Shift" || !editorVm.hasTranscript) return
+        // Söprés-mód (S6): a célsor billentyűi; [ / ]: tempó (mindig).
+        if (root.sweepKey(k)) {
+            event.accepted = true
+            return
+        }
+        if (k.plain && !k.shift && (k.name === "BracketLeft" || k.name === "BracketRight") && root.player) {
+            root.changeTempo(k.name === "BracketRight" ? 1 : -1)
+            event.accepted = true
+            return
+        }
         const ctrlOnly = k.ctrl && !k.alt && !k.meta && !k.shift
         if (ctrlOnly && k.name === "C") {
             root.copySelectionOrCurrent()
@@ -793,6 +924,21 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: -4
                 spacing: 12
+                // Söprés-mód (S6): csak a Javítás nézetben.
+                TSwitch {
+                    id: sweepToggle
+                    objectName: "sweepToggle"
+                    visible: root.viewMode === "fix"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Söprés")
+                    font.pixelSize: Theme.fontCaption
+                    checked: editorVm.sweepActive
+                    onToggled: root.setSweep(checked)
+                    TToolTip {
+                        visible: sweepToggle.hovered
+                        text: qsTr("Hallgatás közben javítani: a lejátszás a kétes sorok végén megáll, a billentyűk a futó sorra vonatkoznak")
+                    }
+                }
                 Row {
                     objectName: "sampleFilterNote"
                     visible: editorVm.sampleFilterKey !== ""
@@ -1065,6 +1211,18 @@ Item {
             }
         }
 
+        // Söprés (S6): a szakasz végén az összesítő (az „Imént” sor fölött).
+        SweepSectionBar {
+            id: sweepSummaryBar
+            objectName: "sweepSummary"
+            Layout.fillWidth: true
+            summary: root.sweepOn ? editorVm.sweepSectionSummary : ({})
+            onNextRequested: root.sweepSeekPlay(editorVm.sweepNextSection())
+            onBehindRequested: root.sweepSeekPlay(editorVm.sweepReviewBehind())
+            onLaterRequested: root.sweepSeekPlay(editorVm.sweepReviewLater())
+            onDismissRequested: { editorVm.dismissSweepSummary(); root.forceActiveFocus() }
+        }
+
         // Az „Imént” sor: a lista alatt, FIX helyen (Javítás / Átnézendő nézetben mindig; az
         // Olvasásban csak egy átsorolás után). Nem tűnik el magától.
         TranscriptChangeBar {
@@ -1077,6 +1235,125 @@ Item {
             onRestRequested: root.requestMerge({ kind: "rest", fromKey: editorVm.changeSourceKey,
                                                  intoKey: editorVm.changeTargetKey })
             onVoiceprintPanelRequested: key => root.openVoiceprintFor(key)
+        }
+
+        // Söprés (S6): a fagyasztott ablak, „mögötted: N sor újra kétes” (kattintásra a lista), az
+        // előtted álló kétes sorok, a szakasz, a mód (megálló / folyamatos) és a tempó — a lejátszó
+        // (térkép-dokk) közvetlen szomszédjában.
+        Rectangle {
+            id: sweepStrip
+            objectName: "sweepStrip"
+            visible: root.sweepOn
+            Layout.fillWidth: true
+            implicitHeight: visible ? 38 : 0
+            color: Theme.surface
+            readonly property var section: editorVm.sweepSections[editorVm.sweepSectionIndex] || ({})
+            TDivider { anchors { left: parent.left; right: parent.right; top: parent.top } }
+            RowLayout {
+                anchors { fill: parent; leftMargin: Theme.space5; rightMargin: Theme.space5 }
+                spacing: 10
+                TIcon { name: "lock"; size: 13; color: Theme.textMuted }
+                TLabel {
+                    text: qsTr("Fagyasztott ablak")
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Theme.weightSemiBold
+                }
+                TLabel {
+                    objectName: "sweepFrozenRange"
+                    text: editorVm.sweepFrozenFrom !== "" ? editorVm.sweepFrozenFrom + "–" + editorVm.sweepFrozenTo : ""
+                    mono: true
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                }
+                Rectangle { width: 1; height: 16; color: Theme.border }
+                Rectangle {
+                    id: behindChip
+                    objectName: "sweepBehind"
+                    readonly property int count: editorVm.rebehindCount
+                    implicitWidth: behindRow.implicitWidth + 18
+                    implicitHeight: 24
+                    radius: 12
+                    color: count > 0 ? Theme.warnSoft : "transparent"
+                    border.width: 1
+                    border.color: count > 0 ? Theme.warnLine : Theme.border
+                    Row {
+                        id: behindRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        TIcon { anchors.verticalCenter: parent.verticalCenter; name: "rotate-ccw"; size: 12; color: behindChip.count > 0 ? Theme.warnInk : Theme.textMuted }
+                        TLabel {
+                            objectName: "sweepBehindLabel"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("mögötted: %n sor újra kétes", "", behindChip.count)
+                            color: behindChip.count > 0 ? Theme.warnInk : Theme.textMuted
+                            font.pixelSize: Theme.fontCaption
+                            font.weight: behindChip.count > 0 ? Theme.weightSemiBold : Theme.weightRegular
+                        }
+                    }
+                    HoverHandler { id: behindHover; cursorShape: behindChip.count > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                    TapHandler { enabled: behindChip.count > 0; onTapped: root.openRebehindList(behindChip) }
+                    TToolTip {
+                        visible: behindHover.hovered
+                        text: behindChip.count > 0 ? qsTr("A háttér-elemzés ezeket a már elhagyott sorokat jelölte újra kétesnek — kattintásra a lista")
+                                                   : qsTr("Ha a háttér-elemzés egy már elhagyott sort újra kétesnek jelöl, itt gyűlik")
+                    }
+                }
+                TLabel {
+                    objectName: "sweepAhead"
+                    text: qsTr("előtted: %n kétes", "", editorVm.sweepAheadCount)
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                }
+                Item { Layout.fillWidth: true }
+                TLabel {
+                    objectName: "sweepSectionLabel"
+                    visible: sweepStrip.section.index !== undefined
+                    text: sweepStrip.section.index === undefined ? ""
+                          : qsTr("%1/%2. szakasz · %3 · %n kétes", "", sweepStrip.section.uncertain || 0)
+                              .arg(sweepStrip.section.index + 1).arg(editorVm.sweepSections.length)
+                              .arg(sweepStrip.section.label)
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                }
+                Rectangle { width: 1; height: 16; color: Theme.border }
+                TSwitch {
+                    id: continuousToggle
+                    objectName: "sweepContinuousToggle"
+                    text: qsTr("Folyamatos")
+                    font.pixelSize: Theme.fontCaption
+                    checked: editorVm.sweepContinuous
+                    onToggled: { editorVm.sweepContinuous = checked; root.forceActiveFocus() }
+                    TToolTip {
+                        visible: continuousToggle.hovered
+                        text: qsTr("Kikapcsolva (alap): a kétes sor végén megáll. Bekapcsolva: nem áll meg; az imént hallott kétes sor még 3 mp-ig a billentyűk célpontja")
+                    }
+                }
+                Rectangle { width: 1; height: 16; color: Theme.border }
+                TIconButton {
+                    objectName: "sweepTempoDown"
+                    size: "small"
+                    variant: "flat"
+                    iconName: "minus"
+                    enabled: !!root.player && (root.player.rate || 1) > 1.0
+                    toolTipText: qsTr("Lassabban ([)")
+                    onClicked: { root.changeTempo(-1); root.forceActiveFocus() }
+                }
+                TLabel {
+                    objectName: "sweepTempo"
+                    text: qsTr("tempó %1").arg(root.tempoLabel(root.player ? (root.player.rate || 1.0) : 1.0))
+                    mono: true
+                    font.pixelSize: Theme.fontCaption
+                }
+                TIconButton {
+                    objectName: "sweepTempoUp"
+                    size: "small"
+                    variant: "flat"
+                    iconName: "plus"
+                    enabled: !!root.player && (root.player.rate || 1) < 2.0
+                    toolTipText: qsTr("Gyorsabban (])")
+                    onClicked: { root.changeTempo(1); root.forceActiveFocus() }
+                }
+            }
         }
 
         TranscriptSelectionBar {
@@ -1171,6 +1448,78 @@ Item {
         onClosed: {
             if (root.runAfterPopupClose()) return
             if (!mergeDialog.visible) root.forceActiveFocus()
+        }
+    }
+
+    // Söprés (S6): „mögötted: N sor újra kétes” listája — a soridők, kattintásra a sorra ugrás.
+    function openRebehindList(anchorItem) {
+        const p = anchorItem.mapToItem(root, 0, 0)
+        rebehindPopover.x = Math.round(Math.max(8, Math.min(p.x, root.width - rebehindPopover.width - 8)))
+        rebehindPopover.y = Math.round(Math.max(0, p.y - rebehindPopover.implicitHeight - 6))
+        rebehindPopover.open()
+    }
+    function jumpToRebehind(entry) {
+        rebehindPopover.close()
+        if (!entry || entry.row < 0) return
+        root.revealRow(entry.row, ListView.Center)
+        root.cursorSync = true
+        editorVm.selectOnly(entry.row)
+        root.cursorSync = false
+        if (root.player) {
+            root.cursorSync = true
+            root.player.seek(entry.startMs)
+            root.cursorSync = false
+        }
+    }
+    TPopover {
+        id: rebehindPopover
+        objectName: "rebehindPopover"
+        width: 300
+        padding: 0
+        closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
+        onClosed: root.forceActiveFocus()
+        contentItem: Column {
+            topPadding: 10
+            bottomPadding: 8
+            TLabel {
+                x: 14
+                width: rebehindPopover.width - 28
+                wrapMode: Text.Wrap
+                text: qsTr("Újra kétes mögötted (a háttér-elemzés jelölte)")
+                font.pixelSize: Theme.fontCaption
+                font.weight: Theme.weightSemiBold
+                bottomPadding: 6
+            }
+            Repeater {
+                model: rebehindPopover.visible ? editorVm.rebehindRows : []
+                Rectangle {
+                    id: rebehindItem
+                    required property var modelData
+                    objectName: "rebehindRow"
+                    width: rebehindPopover.width
+                    height: 28
+                    color: rebehindHover.hovered ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                    Row {
+                        x: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 10
+                        TLabel {
+                            text: rebehindItem.modelData.time
+                            mono: true
+                            color: Theme.accent
+                            font.pixelSize: Theme.fontCaption
+                        }
+                        TLabel {
+                            text: rebehindItem.modelData.name
+                            color: Theme.speakerInk(rebehindItem.modelData.colorIndex)
+                            font.pixelSize: Theme.fontSmall
+                            font.weight: Theme.weightSemiBold
+                        }
+                    }
+                    HoverHandler { id: rebehindHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.jumpToRebehind(rebehindItem.modelData) }
+                }
+            }
         }
     }
 
@@ -1442,6 +1791,13 @@ Item {
                 dragChip.x = root.railX + 4 + root.hoverLane * Theme.laneWidth + 30
                 dragChip.y = Math.max(2, p.y - 26)
             }
+        } else if (s === "sweepStop" || s === "sweepContinuous" || s === "sweepSectionDone") {
+            // Söprés (S6): a VM állítja be a pillanatot; a lejátszó-pozíciót itt adjuk (nincs lejátszó).
+            const ms = editorVm.stageSweepDemo(s)
+            if (ms >= 0) editorVm.setPlaybackPosition(ms, true)
+            const target = s === "sweepSectionDone" ? editorVm.rowForTime(ms) : editorVm.sweepTargetRow
+            if (target >= 0) list.positionViewAtIndex(target, s === "sweepSectionDone" ? ListView.End : ListView.Center)
+            Qt.callLater(root.updateViewport)
         } else if (s === "contaminatedCore") {
             reviewView.list.positionViewAtBeginning()
             const key = editorVm.contaminated.speakerKey || ""
