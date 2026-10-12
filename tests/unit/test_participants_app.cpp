@@ -16,6 +16,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/MixdownPlan.h"
 #include "tanara/edit/ParticipantAnalysis.h"
+#include "tanara/edit/MeetingUndo.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/TrackSpeech.h"
 #include "tanara/store/MeetingStore.h"
@@ -90,6 +91,7 @@ private slots:
     void analysisApproveUndoUnbindSolo();
     void manualParticipantKeptThroughAnalysis();
     void maybeAnalyzeGates();
+    void removeNamedSpeakerWithoutRecord();
 
 private:
     Meeting makeMeeting(bool withSilent);
@@ -352,6 +354,39 @@ void ParticipantsAppTest::maybeAnalyzeGates()
     QVERIFY(m_app->skipApproval(m.id));
     QVERIFY(m_app->store()->load(m.id).approval.has_value());
     QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
+}
+
+// Résztvevő-rekord nélkül (a meeting az elemzés előtt kapott neveket) a törlés a beszélő
+// kulcsával megy: a sorai névtelenek lesznek, visszavonható; névtelen / ismeretlen kulcsra false.
+void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
+{
+    Meeting m = makeMeeting(/*withSilent*/ false);
+    writeTranscript(m, {{0, 1000, QStringLiteral("Beszélő 1")}, {1000, 2000, QStringLiteral("Beszélő 2")}});
+    m = m_app->store()->load(m.id);
+    m.speakerMap.insert(QStringLiteral("Beszélő 1"), QStringLiteral("Béla"));
+    m_app->store()->saveMeeting(m);
+    QVERIFY(m_app->participants(m.id).isEmpty());
+
+    SpeakerEditor* ed = m_app->speakerEditor(m.id);
+    QVERIFY(ed);
+    QString belaKey, anonKey;
+    for (const EditorSpeaker& s : ed->speakers()) {
+        if (s.personName == QStringLiteral("Béla")) belaKey = s.key;
+        else if (s.anonymous) anonKey = s.key;
+    }
+    QVERIFY(!belaKey.isEmpty());
+    QVERIFY(!anonKey.isEmpty());
+    QVERIFY(!m_app->removeParticipant(m.id, anonKey));                 // névtelen: nincs mit
+    QVERIFY(!m_app->removeParticipant(m.id, QStringLiteral("nincs")));  // ismeretlen
+    QVERIFY(m_app->removeParticipant(m.id, belaKey));
+    bool belaLeft = false;
+    for (const EditorSpeaker& s : ed->speakers()) belaLeft = belaLeft || s.personName == QStringLiteral("Béla");
+    QVERIFY(!belaLeft);
+    QVERIFY(m_app->meetingUndo(m.id)->canUndo());
+    m_app->meetingUndo(m.id)->undo();
+    bool belaBack = false;
+    for (const EditorSpeaker& s : ed->speakers()) belaBack = belaBack || s.personName == QStringLiteral("Béla");
+    QVERIFY(belaBack);
 }
 
 QTEST_GUILESS_MAIN(ParticipantsAppTest)

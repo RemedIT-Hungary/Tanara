@@ -566,7 +566,9 @@ public slots:
     // A6: résztvevő TARTÓS törlése a meetingből (meeting.json): a sorai névtelenek lesznek (mint
     // az unbindParticipant), a résztvevő és a jóváhagyás-bejegyzése kikerül. Egy lépés a közös
     // visszavonásban (a szerkesztő kötés-lépésével együtt). false: nincs ilyen meeting / résztvevő.
-    // (Egy későbbi, kézzel indított újraelemzés a hang-jelöltet újra felveheti.)
+    // (Egy későbbi, kézzel indított újraelemzés a hang-jelöltet újra felveheti.) Ha nincs ilyen
+    // résztvevő-rekord, az azonosító az átirat beszélőjének kulcsa lehet (a meeting a résztvevő-
+    // elemzés előtt kapott neveket): a névvel bíró beszélő sorai névtelenek lesznek.
     bool removeParticipant(const QString& meetingId, const QString& participantId);
     // B1: a modellfájlok újraellenőrzése (pl. kézzel bemásolt ONNX): a használt modellek
     // újraszámolása; a voiceModelsChanged MINDIG kimegy (a fájl-állapot is változhatott), és ha a

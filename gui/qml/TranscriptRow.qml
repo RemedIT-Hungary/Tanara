@@ -52,6 +52,8 @@ Item {
     readonly property real textX: tab.textX
     readonly property bool inDrag: tab.dragActive && index >= Math.min(tab.dragFromRow, tab.dragToRow)
                                    && index <= Math.max(tab.dragFromRow, tab.dragToRow)
+    // Előnézet (húzás vagy rámutatás): a cél-oszlop cellája ezen a soron.
+    readonly property bool inPreview: inDrag || (!tab.dragActive && tab.hoverRow === index)
     readonly property alias nameItem: nameBox
 
     width: ListView.view ? ListView.view.width : 0
@@ -121,10 +123,10 @@ Item {
                 selected: row.selected
                 suggested: row.suggested
                 suggestLane: row.similar ? row.tab.newPersonLane : -1
-                dimmed: row.inDrag && row.tab.dragLane >= 0 && row.tab.dragLane !== row.lane
-                targetLane: row.inDrag ? row.tab.dragLane : -1
-                targetLineColor: Theme.speakerLine(row.tab.dragColorIndex)
-                targetSoftColor: Theme.speakerSoft(row.tab.dragColorIndex)
+                dimmed: row.inPreview && row.tab.previewLane >= 0 && row.tab.previewLane !== row.lane
+                targetLane: row.inPreview && row.tab.previewLane !== row.lane ? row.tab.previewLane : -1
+                targetLineColor: Theme.speakerLine(row.tab.previewColorIndex)
+                targetSoftColor: Theme.speakerSoft(row.tab.previewColorIndex)
                 outlineColor: Theme.text
                 dashColor: Theme.borderStrong
                 accentColor: Theme.accent

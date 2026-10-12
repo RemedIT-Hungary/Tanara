@@ -259,7 +259,11 @@ Rectangle {
                     }
                     TIconButton {
                         objectName: "participantRemove"
-                        visible: row.modelData.removable === true && (row.suggested || rowHover.hovered || activeFocus)
+                        // A hely mindig foglalt (különben a sor ugrálna hoverre); csak a láthatóság vált.
+                        visible: row.modelData.removable === true
+                        readonly property bool shown: row.suggested || rowHover.hovered || activeFocus
+                        opacity: shown ? 1 : 0
+                        enabled: shown
                         variant: "flat"
                         size: "small"
                         iconName: "x"

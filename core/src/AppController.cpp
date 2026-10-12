@@ -5464,7 +5464,20 @@ bool AppController::removeParticipant(const QString& meetingId, const QString& p
     if (m0.id.isEmpty()) return false;
     const auto has = [&participantId](const Participant& p) { return p.id == participantId; };
     const auto it0 = std::find_if(m0.participants.cbegin(), m0.participants.cend(), has);
-    if (it0 == m0.participants.cend()) return false;
+    if (it0 == m0.participants.cend()) {
+        // Nincs résztvevő-rekord (a meeting a résztvevő-elemzés előtt kapott neveket): az
+        // azonosító az átirat beszélőjének kulcsa; a sorai névtelenek lesznek (egy lépés).
+        SpeakerEditor* ed = m0.hasTranscript ? speakerEditor(meetingId) : nullptr;
+        if (!ed) return false;
+        for (const EditorSpeaker& s : ed->speakers()) {
+            if (s.key != participantId || s.anonymous) continue;
+            undoScope.text = tr("Nem volt ott: %1").arg(s.personName);
+            applySpeakerBindings(meetingId, {{s.key, QString(), {}}}, undoScope.text);
+            emit participantsChanged(meetingId);
+            return true;
+        }
+        return false;
+    }
     if (!it0->personName.isEmpty()) undoScope.text = tr("Résztvevő eltávolítva: %1").arg(it0->personName);
 
     // A sorai névtelenre (egy szerkesztő-lépés, amelyet a közös lépés elnyel), majd a törlés.

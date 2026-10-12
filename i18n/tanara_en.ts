@@ -8942,6 +8942,10 @@
             <numerusform>%n meetings</numerusform>
         </translation>
     </message>
+    <message>
+        <source>„%1”</source>
+        <translation>&quot;%1&quot;</translation>
+    </message>
 </context>
 <context>
     <name>tanara_qml::LibraryListModel</name>

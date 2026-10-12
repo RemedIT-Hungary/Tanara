@@ -126,7 +126,12 @@ Item {
     property int dragFromRow: -1
     property int dragToRow: -1
     property int dragLane: -1
-    readonly property int dragColorIndex: dragLane >= 0 && dragLane < laneCount ? editorVm.lanes[dragLane].colorIndex : 0
+    // Rámutatás a sínen (egy sor másik oszlopa): ugyanaz az előnézet, mint húzáskor (cél-cella a
+    // beszélő színével, „→ Név" címke) — az Átnézendő sínjével azonos működés.
+    property int hoverRow: -1
+    property int hoverLane: -1
+    readonly property int previewLane: dragActive ? dragLane : hoverLane
+    readonly property int previewColorIndex: previewLane >= 0 && previewLane < laneCount ? editorVm.lanes[previewLane].colorIndex : 0
     property int speakerPopoverRow: -1
     readonly property bool canPlay: !!player && player.available !== false
 
@@ -772,6 +777,8 @@ Item {
                     height: list.height
                     z: 2
                     preventStealing: true
+                    hoverEnabled: true
+                    cursorShape: root.hoverLane >= 0 || root.dragActive ? Qt.PointingHandCursor : Qt.ArrowCursor
 
                     property int pressRow: -1
                     property int pressLane: -9
@@ -790,13 +797,29 @@ Item {
                         root.dragLane = -1
                         pressRow = -1
                     }
+                    function placeChip(x, y) {
+                        dragChip.x = Math.min(list.width - dragChip.width - 12, railArea.x + x + 14)
+                        dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
+                    }
                     function updateDrag(x, y) {
                         const row = rowAt(y)
                         if (row >= 0) root.dragToRow = row
                         const lane = laneAt(x)
                         root.dragLane = lane >= 0 ? lane : -1
-                        dragChip.x = Math.min(list.width - dragChip.width - 12, railArea.x + x + 14)
-                        dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
+                        placeChip(x, y)
+                    }
+                    // Rámutatás: a sor és a másik oszlop (saját oszlop / szünet-sor felett nincs előnézet).
+                    function updateHover(x, y) {
+                        const row = rowAt(y)
+                        const item = row >= 0 && editorVm.rowStartMs(row) >= 0 ? list.itemAtIndex(row) : null
+                        const lane = item ? laneAt(x) : -9
+                        root.hoverRow = item ? row : -1
+                        root.hoverLane = item && lane >= 0 && lane !== item.lane ? lane : -1
+                        if (root.hoverLane >= 0) placeChip(x, y)
+                    }
+                    function clearHover() {
+                        root.hoverRow = -1
+                        root.hoverLane = -1
                     }
 
                     onPressed: mouse => {
@@ -812,16 +835,18 @@ Item {
                         }
                     }
                     onPositionChanged: mouse => {
-                        if (pressRow < 0) return
+                        if (pressRow < 0) { updateHover(mouse.x, mouse.y); return }
                         lastY = mouse.y
                         if (!root.dragActive) {
                             if (Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) < 7) return
+                            clearHover()
                             root.dragFromRow = pressRow
                             root.dragToRow = pressRow
                             root.dragActive = true
                         }
                         updateDrag(mouse.x, mouse.y)
                     }
+                    onExited: clearHover()
                     onReleased: mouse => {
                         if (pressRow < 0) return
                         if (root.dragActive) {
@@ -845,6 +870,8 @@ Item {
                             if (!editorVm.isRowSelected(row)) editorVm.selectOnly(row)
                             root.openPicker("selection", railHeader.addItem)
                         }
+                        // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
+                        Qt.callLater(() => { if (railArea.containsMouse) updateHover(railArea.mouseX, railArea.mouseY) })
                     }
                     onCanceled: resetDrag()
 
@@ -867,10 +894,10 @@ Item {
                     }
                 }
 
-                // Húzás közbeni lebegő címke: „→ Név".
+                // Lebegő címke húzás és rámutatás közben: „→ Név".
                 Rectangle {
                     id: dragChip
-                    visible: root.dragActive && root.dragLane >= 0
+                    visible: root.previewLane >= 0 && (root.dragActive || root.hoverRow >= 0)
                     z: 3
                     width: dragLabel.implicitWidth + 18
                     height: dragLabel.implicitHeight + 6
@@ -879,8 +906,8 @@ Item {
                     TLabel {
                         id: dragLabel
                         anchors.centerIn: parent
-                        text: root.dragLane >= 0 && root.dragLane < root.laneCount
-                              ? "→ " + editorVm.lanes[root.dragLane].name : ""
+                        text: root.previewLane >= 0 && root.previewLane < root.laneCount
+                              ? "→ " + editorVm.lanes[root.previewLane].name : ""
                         color: Theme.textOnAccent
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemiBold

@@ -412,9 +412,11 @@ void OverviewViewModel::reload()
             QString name = s.displayName;
             if (self) name = tr("%1 (te)").arg(name);
             const QVariantList src = match ? sourcesOf(*match, false) : QVariantList();
+            // Törölhető: résztvevő-rekorddal, vagy rekord nélkül is, ha névvel bír (a sorai
+            // névtelenek lesznek — AppController::removeParticipant a beszélő-kulccsal).
             rows << withSpeaker(personRow(match ? match->id : s.key, name, s.colorIndex,
                                           s.anonymous ? tr("névtelen · elnevezhető") : QString(), src,
-                                          s.talkShare, self, false, false, match != nullptr),
+                                          s.talkShare, self, false, false, match != nullptr || !s.anonymous),
                                 s.key, s.anonymous);
             names << s.personName;
             anonymous << QVariantMap{{QStringLiteral("name"), s.displayName},
