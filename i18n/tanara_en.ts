@@ -3600,6 +3600,198 @@
     </message>
 </context>
 <context>
+    <name>ReviewFocusOffer</name>
+    <message>
+        <source>sáv-ellentmondás</source>
+        <translation>track conflict</translation>
+    </message>
+    <message>
+        <source>eltér a beszélő hangjától</source>
+        <translation>differs from the speaker&apos;s voice</translation>
+    </message>
+    <message>
+        <source>az új személyhez hasonló</source>
+        <translation>similar to the new person</translation>
+    </message>
+    <message>
+        <source>hangra kétes</source>
+        <translation>uncertain by voice</translation>
+    </message>
+    <message>
+        <source>Mind az %1 → %2</source>
+        <translation>All %1 → %2</translation>
+    </message>
+    <message>
+        <source>Mind a %1 → %2</source>
+        <translation>All %1 → %2</translation>
+    </message>
+    <message numerus="yes">
+        <source>A hátralévőből még &lt;b&gt;%n sor ugyanilyen&lt;/b&gt;</source>
+        <translation>
+            <numerusform>&lt;b&gt;%n more line&lt;/b&gt; ahead is the same</numerusform>
+            <numerusform>&lt;b&gt;%n more lines&lt;/b&gt; ahead are the same</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Elrejtem</source>
+        <translation>Hide</translation>
+    </message>
+    <message>
+        <source>Megmutatom</source>
+        <translation>Show</translation>
+    </message>
+    <message numerus="yes">
+        <source>A %n sor listája, egyenként meghallgatható</source>
+        <translation>
+            <numerusform>The %n line, playable one by one</numerusform>
+            <numerusform>The %n lines, playable one by one</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Igen</source>
+        <translation>Yes</translation>
+    </message>
+    <message>
+        <source>Egy visszavonási lépés · Shift+I: egyik sem lesz minta</source>
+        <translation>One undo step · Shift+I: none of them becomes a sample</translation>
+    </message>
+    <message>
+        <source>Nem</source>
+        <translation>No</translation>
+    </message>
+    <message>
+        <source>Ez a minta ebben a körben nem jön vissza</source>
+        <translation>This pattern won&apos;t be offered again in this round</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusOpener</name>
+    <message>
+        <source>új beszélő (hívás hangja)</source>
+        <translation>new speaker (call audio)</translation>
+    </message>
+    <message>
+        <source>új beszélő (mikrofon)</source>
+        <translation>new speaker (microphone)</translation>
+    </message>
+    <message>
+        <source>új beszélő</source>
+        <translation>new speaker</translation>
+    </message>
+    <message>
+        <source>Mind az %1 → %2</source>
+        <translation>All %1 → %2</translation>
+    </message>
+    <message>
+        <source>Mind a %1 → %2</source>
+        <translation>All %1 → %2</translation>
+    </message>
+    <message>
+        <source>Nyitó-javaslat %1 / %2 · a kör elején</source>
+        <translation>Opening suggestion %1 / %2 · start of the round</translation>
+    </message>
+    <message>
+        <source>Nyitó-javaslat · a kör elején</source>
+        <translation>Opening suggestion · start of the round</translation>
+    </message>
+    <message>
+        <source>nagy, erős csoport — egyben, mielőtt a sorok egyenként jönnek</source>
+        <translation>a large, strong group — all at once, before the lines come one by one</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor → %1</source>
+        <translation>
+            <numerusform>%n line → %1</numerusform>
+            <numerusform>%n lines → %1</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>· %n sor</source>
+        <translation>
+            <numerusform>· %n line</numerusform>
+            <numerusform>· %n lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Hatás, ha elfogadod:</source>
+        <translation>Effect if you accept:</translation>
+    </message>
+    <message>
+        <source>%1 +%2 sor (nem minta)</source>
+        <translation>%1 +%2 lines (not samples)</translation>
+    </message>
+    <message>
+        <source>%1 +%2 sor (+%3 minta)</source>
+        <translation>%1 +%2 lines (+%3 samples)</translation>
+    </message>
+    <message>
+        <source>%1 −%2</source>
+        <translation>%1 −%2</translation>
+    </message>
+    <message>
+        <source>kétes marad: %1</source>
+        <translation>still uncertain: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>Szúrópróba · %n időben távoli sor</source>
+        <translation>
+            <numerusform>Spot check · %n line spread in time</numerusform>
+            <numerusform>Spot check · %n lines spread in time</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>1–3: lejátszás · meghallgatás után ✓ / ✗ (Shift+1–3)</source>
+        <translation>1–3: play · after listening ✓ / ✗ (Shift+1–3)</translation>
+    </message>
+    <message>
+        <source>%1/%2 meghallgatva · %3 egyezett — ez nem garancia</source>
+        <translation>%1/%2 listened · %3 matched — this is no guarantee</translation>
+    </message>
+    <message>
+        <source>szól…</source>
+        <translation>playing…</translation>
+    </message>
+    <message>
+        <source>egyezett</source>
+        <translation>matched</translation>
+    </message>
+    <message>
+        <source>nem egyezett</source>
+        <translation>no match</translation>
+    </message>
+    <message>
+        <source>Kattintás (vagy Shift+%1): ✓ / ✗ váltás — a füled ítélete</source>
+        <translation>Click (or Shift+%1): toggle ✓ / ✗ — your ear decides</translation>
+    </message>
+    <message>
+        <source>Egy visszavonási lépés · Shift: egyik sem lesz minta</source>
+        <translation>One undo step · Shift: none of them becomes a sample</translation>
+    </message>
+    <message>
+        <source>Egyenként</source>
+        <translation>One by one</translation>
+    </message>
+    <message numerus="yes">
+        <source>A %n sor a munkalista elejére kerül, és egyenként jön</source>
+        <translation>
+            <numerusform>The %n line moves to the front of the worklist and comes one by one</numerusform>
+            <numerusform>The %n lines move to the front of the worklist and come one by one</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Később</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>A nyitó kimarad; a sorok a helyükön maradnak a munkalistán</source>
+        <translation>The suggestion is skipped; the lines stay in place on the worklist</translation>
+    </message>
+    <message>
+        <source>Shift = nem minta</source>
+        <translation>Shift = not a sample</translation>
+    </message>
+</context>
+<context>
     <name>ReviewFocusSummary</name>
     <message>
         <source>%1. kör kész</source>
@@ -13641,6 +13833,14 @@
             <numerusform>Split: %n line moved to %1</numerusform>
             <numerusform>Split: %n lines moved to %1</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Mind az %1 → %2</source>
+        <translation>All %1 → %2</translation>
+    </message>
+    <message>
+        <source>Mind a %1 → %2</source>
+        <translation>All %1 → %2</translation>
     </message>
 </context>
 <context>

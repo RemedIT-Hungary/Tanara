@@ -2582,9 +2582,13 @@ QVariantMap TranscriptEditorViewModel::requestNewPersonVoiceprint()
     return {{QStringLiteral("ok"), true}, {QStringLiteral("pending"), true}};
 }
 
-bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId)
+bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId, bool noisy)
 {
     if (!m_editor) return false;
+    // S5: a munkalista nyitó-javaslata (TranscriptEditorViewModelQueue.cpp).
+    bool opener = false;
+    const bool openerOk = applyQueueOpener(groupId, noisy, &opener);
+    if (opener) return openerOk;
     const auto it = std::find_if(m_reviewViews.cbegin(), m_reviewViews.cend(),
                                  [&](const ReviewView& v) { return v.id == groupId; });
     if (it == m_reviewViews.cend() || !it->actionable) return false;
@@ -2596,6 +2600,21 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId)
         if (i < 0 || (!v.proposedKey.isEmpty() && m_utts[i].speakerKey == v.proposedKey)) continue;
         ++moved;
         last = std::max(last, i);
+    }
+    if (noisy) {
+        // „Nem minta": a sorok egy lépésben, zajos-jelzéssel (a core csoport-útja ezt nem tudja).
+        QStringList ids;
+        for (const QString& id : v.ids) {
+            const int i = m_uttIndex.value(id, -1);
+            if (i >= 0 && (v.proposedKey.isEmpty() || m_utts[i].speakerKey != v.proposedKey)) ids << id;
+        }
+        const QString key = !v.proposedKey.isEmpty() ? moveLines(ids, MoveTarget::Speaker, v.proposedKey, true)
+                          : !v.proposedName.isEmpty() ? moveLines(ids, MoveTarget::Person, v.proposedName, true)
+                          : moveLines(ids, MoveTarget::NewParticipant, QString(), true);
+        if (key.isEmpty()) return false;
+        relabelGroupDecision(int(ids.size()), key);
+        rebuildReview();
+        return true;
     }
     const QList<QString> keysBefore = m_views.keys();
     ++m_opDepth;

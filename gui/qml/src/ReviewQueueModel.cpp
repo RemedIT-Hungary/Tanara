@@ -1,5 +1,7 @@
 #include "ReviewQueueModel.h"
 
+#include "tanara/edit/SpeakerAnalysis.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -341,7 +343,7 @@ void ReviewQueueModel::computeOpeners(const QVector<TranscriptEditorViewModel::R
             const int r = m_pos.value(id, -1);
             if (r >= 0 && m_items[r].state == Pending) ids << id;
         }
-        if (ids.size() < kOpenerMinLines) continue;
+        if (ids.size() < m_openerMinLines) continue;
         double voice = -1.0;
         bool manual = false;
         for (const QVariant& e : v.evidence) {
@@ -354,7 +356,7 @@ void ReviewQueueModel::computeOpeners(const QVector<TranscriptEditorViewModel::R
                 && m.value(QStringLiteral("manual")).toBool() && v.kind == QLatin1String("sideConflict"))
                 manual = true;
         }
-        if (voice < kOpenerMinVoice && !manual) continue;
+        if (voice < m_openerMinVoice && !manual) continue;
         sortByTime(ids);
         Opener o;
         o.view = Doubt{v.id, v.kind, v.title, v.evidence, v.proposedKey, v.proposedName, v.newSide};
@@ -858,10 +860,14 @@ QVariantList ReviewQueueModel::openers() const
 {
     QVariantList out;
     for (const Opener& o : m_openers) {
-        int pending = 0;
+        int pending = 0, samples = 0;
         for (const QString& id : o.ids) {
             const int r = m_pos.value(id, -1);
-            if (r >= 0 && m_items[r].state == Pending) ++pending;
+            if (r < 0 || m_items[r].state != Pending) continue;
+            ++pending;
+            // Minta-becslés (a core minta-szabálya): elég hosszú, nem zajos sor.
+            const EditorUtterance* u = utt(id);
+            if (u && !u->noisy && u->endMs - u->startMs >= tanara::speakeredit::kMinEmbedMs) ++samples;
         }
         const int n = int(o.ids.size());
         QStringList spot;
@@ -883,6 +889,7 @@ QVariantList ReviewQueueModel::openers() const
             {QStringLiteral("ids"), o.ids},
             {QStringLiteral("count"), n},
             {QStringLiteral("pendingCount"), pending},
+            {QStringLiteral("sampleCount"), samples},
             {QStringLiteral("currentKey"), o.currentKey},
             {QStringLiteral("currentName"), m_vm->speakerView(o.currentKey).name},
             {QStringLiteral("proposedKey"), o.view.proposedKey},

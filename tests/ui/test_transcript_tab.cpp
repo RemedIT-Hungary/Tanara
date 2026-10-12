@@ -166,6 +166,16 @@ class TestTranscriptTab : public QObject {
         return out;
     }
     QQuickItem* visual(const char* name) const { return visuals(name).value(0); }
+    // Az Átnézendő kör eleji nyitó-javaslatai (S5) kihagyva (→ Később): a fókusz-kártya jön.
+    bool skipOpeners()
+    {
+        QQuickItem* rv = m_window->findChild<QQuickItem*>(QStringLiteral("reviewView"));
+        if (!rv || !QTest::qWaitFor([this] { return m_vm->queueActive(); }, 10000)) return false;
+        pump(60);
+        for (int g = 0; g < 20 && rv->property("phase").toString() == QLatin1String("opener"); ++g)
+            QMetaObject::invokeMethod(rv, "openerLater");
+        return rv->property("phase").toString() != QLatin1String("opener");
+    }
     // A panel egy választható sora (a meeting beszélője / ismert személy) név szerint.
     QQuickItem* choice(const char* kind, const QString& personName) const
     {
@@ -1987,6 +1997,7 @@ private slots:
         QVERIFY(QTest::qWaitFor([this] {
             return !m_vm->reviewRunning() && !m_vm->demoStatePending() && !m_vm->contaminated().isEmpty(); }, 10000));
         QTRY_VERIFY(visual("reviewView"));
+        QVERIFY(skipOpeners());
         QTRY_VERIFY_WITH_TIMEOUT(visual("contaminatedBanner"), 10000);
         const QString gabor = keyOfName(QStringLiteral("Fehér Gábor"));
         QQuickItem* card = visual("reviewFocusCard");

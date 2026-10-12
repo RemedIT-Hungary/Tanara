@@ -144,11 +144,18 @@ class TestReviewFocus : public QObject {
         pump(60);
     }
     // Az Átnézendő bekapcsolása, a munkalista bevárása (a háttér-elemzés végén indul).
-    void openReview()
+    QString phase() const { return view() ? view()->property("phase").toString() : QString(); }
+    // skipOpenerPhase: a kör eleji nyitó-javaslatok (S5) → Később; a fókusz-kártya jön.
+    void openReview(bool skipOpenerPhase = true)
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
         QMetaObject::invokeMethod(m_tab, "setViewMode", Q_ARG(QVariant, QStringLiteral("review")));
         QTRY_VERIFY_WITH_TIMEOUT(m_vm->queueActive() && !current().isEmpty(), 10000);
+        if (skipOpenerPhase) {
+            pump(60);
+            m_tab->forceActiveFocus();
+            for (int g = 0; g < 20 && phase() == QLatin1String("opener"); ++g) key(Qt::Key_Right);
+        }
         QTRY_VERIFY(card() && card()->isVisible());
         m_tab->forceActiveFocus();
         pump(60);

@@ -605,8 +605,15 @@ public:
     // „tags" visszavonása veszi vissza); utána a jelöltek / bizonyítékok újraszámolódnak.
     // Siker esetén notice-t nem ad: a hívó a visszavonható toastot mutatja.
     Q_INVOKABLE bool addQuickTag(const QString& personName, const QString& tagId);
-    // A csoport javaslatának végrehajtása (egy undo-lépés; a változás-sáv kiírja).
-    Q_INVOKABLE bool applyReviewGroup(const QString& groupId);
+    // A csoport javaslatának végrehajtása (egy undo-lépés; a változás-sáv kiírja). S5: ha a
+    // csoport a munkalista nyitó-javaslata, pontosan a nyitó még nyitott sorai mozdulnak (amit a
+    // hatás-előnézet mutatott); noisy: „nem minta" (Shift+Enter), ugyanabban a lépésben. Az
+    // „Imént" sor szövege: „Mind az N → Y".
+    Q_INVOKABLE bool applyReviewGroup(const QString& groupId, bool noisy = false);
+    // S5 mintázat-ajánlat „Igen": a sorok egy meglévő beszélőhöz EGY visszavonási lépésben
+    // (noisy: nem minta). Az „Imént" sor szövege: „Mind az N → Y".
+    Q_INVOKABLE bool moveUtterancesToSpeaker(const QStringList& utteranceIds, const QString& speakerKey,
+                                             bool noisy = false);
     // „Kihagyom": a csoport ebben a munkamenetben nem jelenik meg újra.
     Q_INVOKABLE void skipReviewGroup(const QString& groupId);
     // A szennyezett mag szétválasztása (egy undo-lépés).
@@ -925,6 +932,11 @@ private:
     // "reviewQueue*" demó-állapotok; igaz, ha kezelte.
     bool applyQueueDemoState(const QString& state);
     void tryQueueDemo();
+    // S5: a munkalista nyitó-javaslatának végrehajtása (applyReviewGroup hívja); false, ha a
+    // groupId nem nyitó (ilyenkor a csoport-út fut).
+    bool applyQueueOpener(const QString& groupId, bool noisy, bool* handled);
+    // S5: a csoportos döntés „Imént" szövege („Mind az N → Y"), az utolsó döntés felülírásával.
+    void relabelGroupDecision(int count, const QString& targetKey);
     // ---- S6: söprés-mód (TranscriptEditorViewModel.cpp végén, külön blokkban) ----
     struct SweepMarker {
         bool uncertain = false;

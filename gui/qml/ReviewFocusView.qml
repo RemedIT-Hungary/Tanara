@@ -20,8 +20,13 @@ import QtQuick.Templates as T
 //   R újra az elejéről · , / . az előző / következő kontextus-sor · Esc a Javítás nézet ugyanazon
 //   a soron · Ctrl+Z (a Tab Shortcutja) visszavonás: a fókusz a visszavont sorra ugrik.
 //   Kör-zárásnál: Enter következő kör · → később hagyottak · K kész.
-// Az S5 (nyitó-javaslat, mintázat-ajánlat) helyei: `openerComponent` + `openerShown` (a kör eleji
-// „nyitó” állapot-ág, a kártya helyén) és `offerComponent` (az `offerSlot` Loader, a kártya ALATT).
+//   Nyitó-javaslatnál (S5): Enter Mind az N → Y (✗ szúrópróba után: Egyenként) · Shift+Enter nem
+//   minta · E Egyenként · → Később · 1–3 szúrópróba lejátszása · Shift+1–3 ✓ / ✗ váltás · Szóköz
+//   szünet · Esc Javítás. Mintázat-ajánlatnál (a fókusz-kártya billentyűi közben is élnek):
+//   I Igen · Shift+I Igen, nem minta · N Nem · L Megmutatom / Elrejtem.
+// Az S5 helyei: `openerComponent` + `openerShown` (a kör eleji „nyitó” állapot-ág, a kártya
+// helyén; ReviewFocusOpener) és `offerComponent` (az `offerSlot` Loader, a kártya ALATT;
+// ReviewFocusOffer — csak akkor nem null, ha van élő ajánlat).
 Item {
     id: root
 
@@ -38,11 +43,39 @@ Item {
 
     // ---- S5 helyek ----
     // A kör eleji nyitó-javaslat: ha nem null és `openerShown`, a kártya helyén ez látszik.
-    property Component openerComponent: null
+    property Component openerComponent: openerDefault
     property bool openerShown: false
     // Az ajánlat-sáv (mintázat-ajánlat) a kártya ALATT: ha nem null, az `offerSlot` ezt tölti be,
     // és az alsó kontextus-sorok helyét veszi el.
-    property Component offerComponent: null
+    property Component offerComponent: offerActive ? offerDefault : null
+
+    // ---- S5: nyitó-javaslatok (a kör elején, egymás után) ----
+    property var openerIds: []              // a kör nyitóinak groupId-jei (a kör elején)
+    property int openerIndex: -1
+    property var opener: ({})               // a mostani nyitó (queue.openers() friss eleme)
+    property var openerSpots: []            // [{ utteranceId, timeLabel, lineText, startMs, endMs }]
+    property var spotHeard: [false, false, false]
+    property var spotOk: [true, true, true]
+    readonly property bool openerDoubt: spotHeard.some((h, i) => h && !spotOk[i])
+    readonly property int playingSpot: {
+        if (!playerPlaying) return -1
+        for (let i = 0; i < openerSpots.length; ++i) {
+            const sp = openerSpots[i]
+            if (positionMs >= sp.startMs - 200 && positionMs <= sp.endMs + 300) return i
+        }
+        return -1
+    }
+    // ---- S5: mintázat-ajánlat (a kártya alatt) ----
+    property var offerData: ({})
+    property var offerLines: []
+    property bool offerExpanded: false
+    readonly property bool offerActive: phase === "focus" && (offerData.key || "") !== "" && offerLines.length > 0
+    readonly property string playingOfferLine: {
+        if (!playerPlaying || !offerExpanded) return ""
+        for (let i = 0; i < offerLines.length; ++i)
+            if (positionMs >= offerLines[i].startMs && positionMs <= offerLines[i].endMs) return offerLines[i].utteranceId
+        return ""
+    }
 
     // Állapot-ág: "empty" | "summary" | "opener" | "focus"
     readonly property bool emptyState: queue.active && queue.count === 0 && queue.incomingCount === 0
@@ -231,6 +264,148 @@ Item {
         tab.forceActiveFocus()
     }
 
+    // ---- S5: nyitó-javaslatok ----
+    function lineOf(id) {
+        const m = queue.get(queue.indexOf(id))
+        return { utteranceId: id, timeLabel: m.timeLabel || "", lineText: m.lineText || "",
+                 startMs: m.startMs || 0, endMs: m.endMs || 0 }
+    }
+    function openerById(groupId) {
+        const list = queue.openers()
+        for (let i = 0; i < list.length; ++i) if (list[i].groupId === groupId) return list[i]
+        return null
+    }
+    // A kör elején (start / új kör): a nyitók, amelyeknek van még nyitott sora.
+    function startOpeners() {
+        const ids = []
+        for (const o of queue.openers()) if ((o.pendingCount || 0) > 0) ids.push(o.groupId)
+        root.openerIds = ids
+        root.openerIndex = -1
+        showOpener(0)
+    }
+    // Az i. (vagy az utána következő, még nyitott sorú) nyitó; ha nincs több: a fókusz.
+    function showOpener(i) {
+        for (; i < openerIds.length; ++i) {
+            const o = openerById(openerIds[i])
+            if (!o || (o.pendingCount || 0) === 0) continue
+            root.openerIndex = i
+            root.opener = o
+            root.openerSpots = (o.spotIds || []).map(id => lineOf(id))
+            root.spotHeard = [false, false, false]
+            root.spotOk = [true, true, true]
+            root.openerShown = true
+            applyOpenerDemo()
+            return true
+        }
+        root.openerIndex = -1
+        root.opener = ({})
+        root.openerSpots = []
+        root.spotHeard = [false, false, false]
+        root.spotOk = [true, true, true]
+        root.openerShown = false
+        return false
+    }
+    function nextOpener() {
+        showOpener(openerIndex + 1)
+        tab.forceActiveFocus()
+    }
+    function pendingOpenerIds() {
+        const out = []
+        for (const id of (opener.ids || [])) {
+            const i = queue.indexOf(id)
+            if (i >= 0 && (queue.get(i).state || "") === "pending") out.push(id)
+        }
+        return out
+    }
+    // Enter: Mind az N → Y (egy visszavonási lépés); ✗ szúrópróba után az alapértelmezés az Egyenként.
+    function openerDefault_(noisy) {
+        return openerDoubt ? openerSingle() : openerAccept(noisy)
+    }
+    function openerAccept(noisy) {
+        if (phase !== "opener" || !opener.groupId) return false
+        const ok = vm.applyReviewGroup(opener.groupId, noisy === true)
+        nextOpener()
+        return ok
+    }
+    // E: a nyitó sorai a munkalista elejére (a kurzor helyére), és egyenként jönnek.
+    function openerSingle() {
+        if (phase !== "opener") return false
+        queue.bringToFront(pendingOpenerIds())
+        nextOpener()
+        return true
+    }
+    // →: a nyitó kimarad, a sorok a helyükön maradnak.
+    function openerLater() {
+        if (phase !== "opener") return false
+        nextOpener()
+        return true
+    }
+    function playSpot(k) {
+        if (k < 0 || k >= openerSpots.length) return false
+        const sp = openerSpots[k]
+        tab.playLine(sp.startMs, sp.endMs)
+        if (!spotHeard[k]) {
+            const h = spotHeard.slice()
+            h[k] = true
+            root.spotHeard = h
+        }
+        tab.forceActiveFocus()
+        return true
+    }
+    function toggleSpot(k) {
+        if (k < 0 || k >= openerSpots.length || !spotHeard[k]) return false
+        const o = spotOk.slice()
+        o[k] = !o[k]
+        root.spotOk = o
+        tab.forceActiveFocus()
+        return true
+    }
+    // Demó (képernyőkép): a szúrópróba állapota.
+    function applyOpenerDemo() {
+        const s = tab.demoState || ""
+        if (s === "reviewFocusOpener") {
+            root.spotHeard = [true, false, false]
+        } else if (s === "reviewFocusOpenerDoubt") {
+            root.spotHeard = [true, true, false]
+            root.spotOk = [true, false, true]
+        }
+    }
+
+    // ---- S5: mintázat-ajánlat ----
+    function refreshOffer() {
+        const p = queue.active ? queue.recentPattern() : ({})
+        const key = p.key || ""
+        if (key !== (offerData.key || "")) root.offerExpanded = (tab.demoState || "") === "reviewFocusOfferList"
+        root.offerData = p
+        root.offerLines = key === "" ? [] : (p.sameAhead || []).map(id => lineOf(id))
+    }
+    function offerYes(noisy) {
+        if (!offerActive) return false
+        const ids = offerLines.map(l => l.utteranceId)
+        const ok = vm.moveUtterancesToSpeaker(ids, offerData.proposedKey, noisy === true)
+        root.offerExpanded = false
+        refreshOffer()
+        tab.forceActiveFocus()
+        return ok
+    }
+    function offerNo() {
+        if (!offerActive) return false
+        queue.dismissPattern(offerData.key)
+        tab.forceActiveFocus()
+        return true
+    }
+    function toggleOfferList() {
+        if (!offerActive) return false
+        root.offerExpanded = !offerExpanded
+        tab.forceActiveFocus()
+        return true
+    }
+    function playOfferLine(id) {
+        const l = lineOf(id)
+        if (l.endMs > l.startMs) tab.playLine(l.startMs, l.endMs)
+        tab.forceActiveFocus()
+    }
+
     // A TranscriptTab Keys.onPressed-je hívja (k = TranscriptKeys.decode(event)); igaz: kezelve.
     function handleKey(k, event) {
         if (!queue.active) return false
@@ -241,9 +416,29 @@ Item {
             if (k.name === "Escape") return openFix()
             return false
         }
+        if (root.phase === "opener") {
+            if (k.name === "Escape") return openFix()
+            if (!k.plain) return false
+            if (k.name === "Enter") { openerDefault_(k.shift); return true }
+            if (event.key === Qt.Key_E) { if (!k.shift) openerSingle(); return true }
+            if (k.name === "Right") { if (!k.shift) openerLater(); return true }
+            if (k.name === "digit" && k.digit >= 1 && k.digit <= 3) {
+                if (k.shift) toggleSpot(k.digit - 1)
+                else playSpot(k.digit - 1)
+                return true
+            }
+            if (k.name === "Space") { if (player && playerPlaying) player.pause(); return true }
+            return false
+        }
         if (root.phase !== "focus") return k.name === "Escape" ? openFix() : false
         if (k.name === "Escape") return openFix()
         if (!k.plain) return false
+        // A mintázat-ajánlat billentyűi (a kártya többi billentyűje közben is él).
+        if (root.offerActive) {
+            if (event.key === Qt.Key_I) { offerYes(k.shift); return true }
+            if (event.key === Qt.Key_N && !k.shift) { offerNo(); return true }
+            if (event.key === Qt.Key_L && !k.shift) { toggleOfferList(); return true }
+        }
         switch (k.name) {
         case "Enter": acceptDefault(k.shift); return true
         case "J": confirmCurrent(k.shift); return true
@@ -277,6 +472,10 @@ Item {
     }
     Connections {
         target: root.queue
+        // Kör eleje (start / új kör): a nyitó-javaslatok sorra.
+        function onRoundChanged() { root.startOpeners() }
+        function onActiveChanged() { if (!root.queue.active) root.showOpener(root.openerIds.length) }
+        function onPatternChanged() { root.refreshOffer() }
         function onCountsChanged() { root.refreshSummary() }
         function onIncomingChanged() {
             // Üres munkalistánál (pl. újraellenőrzés után) az új kétes sorokkal új kör indul.
@@ -284,7 +483,10 @@ Item {
                 Qt.callLater(() => { if (root.queue.count === 0 && root.queue.incomingCount > 0) root.queue.start() })
             root.refreshSummary()
         }
-        function onCurrentChanged() { root.refreshContext() }
+        function onCurrentChanged() {
+            root.refreshContext()
+            root.refreshOffer()         // a sameAhead a kurzor sorát kihagyja
+        }
     }
     Connections {
         target: root.vm
@@ -428,6 +630,7 @@ Item {
             id: content
             width: flick.width
             height: root.phase === "summary" ? summaryCard.y + summaryCard.height
+                  : root.phase === "opener" ? openerSlot.y + openerSlot.height
                   : lower.y + lower.height
             visible: root.phase === "focus" || root.phase === "opener" || root.phase === "summary"
 
@@ -547,12 +750,48 @@ Item {
     ReviewFocusWorklist {
         id: worklist
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        visible: root.phase === "focus" || root.phase === "summary"
+        visible: root.phase === "focus" || root.phase === "opener" || root.phase === "summary"
         height: visible ? implicitHeight : 0
         queue: root.queue
         onJump: index => {
             root.queue.jumpTo(index)
             root.tab.forceActiveFocus()
+        }
+    }
+
+    // ---- S5: a nyitó-javaslat és az ajánlat-sáv alapértelmezett komponensei ----
+    Component {
+        id: openerDefault
+        ReviewFocusOpener {
+            opener: root.opener
+            spots: root.openerSpots
+            lanes: root.vm.lanes
+            position: root.openerIndex
+            total: root.openerIds.length
+            remainAfter: Math.max(0, root.queue.openCount - (root.opener.pendingCount || 0))
+            heard: root.spotHeard
+            judged: root.spotOk
+            playingSpot: root.playingSpot
+            shiftHeld: root.tab.shiftHeld
+            onAcceptClicked: root.openerAccept(root.tab.shiftHeld)
+            onSingleClicked: root.openerSingle()
+            onLaterClicked: root.openerLater()
+            onSpotClicked: index => root.playSpot(index)
+            onVerdictClicked: index => root.toggleSpot(index)
+        }
+    }
+    Component {
+        id: offerDefault
+        ReviewFocusOffer {
+            offer: root.offerData
+            lines: root.offerLines
+            expanded: root.offerExpanded
+            shiftHeld: root.tab.shiftHeld
+            playingId: root.playingOfferLine
+            onShowClicked: root.toggleOfferList()
+            onYesClicked: root.offerYes(root.tab.shiftHeld)
+            onNoClicked: root.offerNo()
+            onPlayClicked: id => root.playOfferLine(id)
         }
     }
 

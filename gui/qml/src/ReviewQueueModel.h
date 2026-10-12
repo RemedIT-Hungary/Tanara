@@ -158,7 +158,8 @@ public:
     // Nyitó-javaslatok (S5) a kör elejéről: a ≥ 15 soros, erős (hang ≥ 75 % vagy sáv-ellentmondás
     // kézi beosztással), javaslattal bíró csoportok: [{ groupId, kind, title, subtitle, ids,
     //   count, pendingCount, currentKey, currentName, proposedKey, proposedName, newSide,
-    //   voicePct (-1: nincs), manualSide, spotIds (3 időben szórt sor) }].
+    //   voicePct (-1: nincs), manualSide, spotIds (3 időben szórt sor), sampleCount (a még
+    //   nyitott sorokból a becsült minta-szám: elég hosszú, nem zajos) }].
     Q_INVOKABLE QVariantList openers() const;
 
     // ---- a nézetmodell hívja ----
@@ -179,6 +180,13 @@ public:
     void refreshAll();                  // nevek / színek / oszlopok változtak
 
     static QString stateName(State s);
+    // A nyitó-javaslat küszöbei (alap: kOpenerMinLines / kOpenerMinVoice); a demó-állapotok a kis
+    // kitalált meetingen lazítják. A következő start / új kör számol vele.
+    void setOpenerThresholds(int minLines, double minVoice)
+    {
+        m_openerMinLines = minLines;
+        m_openerMinVoice = minVoice;
+    }
 
     static constexpr int kPatternWindow = 6;
     static constexpr int kPatternMinHits = 4;
@@ -266,6 +274,8 @@ private:
     QVector<PatternEntry> m_log;            // a kör döntései (a legfrissebb a végén)
     QSet<QString> m_dismissed;
     QVector<Opener> m_openers;
+    int m_openerMinLines = kOpenerMinLines;
+    double m_openerMinVoice = kOpenerMinVoice;
 };
 
 } // namespace tanara_qml

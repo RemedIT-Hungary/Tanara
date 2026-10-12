@@ -46,6 +46,8 @@ import QtQuick.Templates as T
 //                mód, utólagos ablak) | "sweepSectionDone" (szakasz-összesítő, „N sor újra kétes”)
 //                S4 (fókusz-nézet): "reviewFocus" | "reviewFocusDecided" | "reviewFocusIncoming" |
 //                "reviewFocusSummary" | "reviewFocusAlreadyDecided" (lásd TranscriptEditorViewModelQueue.cpp)
+//                S5: "reviewFocusOpener" | "reviewFocusOpenerDoubt" (nyitó-javaslat) | "reviewFocusOffer" |
+//                "reviewFocusOfferList" (mintázat-ajánlat; a lista kinyitva)
 //
 // Billentyűk (fizikai hely szerint, TranscriptKeys): 1–9 a kijelölés a sín n. beszélőjéhez,
 // Shift+1–9 / Shift+sín-kattintás / Shift+húzás = ugyanez „nem minta”; 0 = nem azonosítható
@@ -111,7 +113,9 @@ Item {
                                          "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
                                          "sweepStop", "sweepContinuous", "sweepSectionDone",
                                          "reviewFocus", "reviewFocusDecided", "reviewFocusIncoming",
-                                         "reviewFocusSummary", "reviewFocusAlreadyDecided"]
+                                         "reviewFocusSummary", "reviewFocusAlreadyDecided",
+                                         "reviewFocusOpener", "reviewFocusOpenerDoubt", "reviewFocusOffer",
+                                         "reviewFocusOfferList"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
     // Az Átnézendő fókusz-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
