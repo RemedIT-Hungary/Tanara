@@ -7941,6 +7941,13 @@
         </translation>
     </message>
     <message numerus="yes">
+        <source>%n sor áthelyezése ide: %1 (nem hangminta)</source>
+        <translation>
+            <numerusform>Move %n line to %1 (not a voice sample)</numerusform>
+            <numerusform>Move %n lines to %1 (not a voice sample)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>%n sor áthelyezése ide: %1</source>
         <translation>
             <numerusform>Move %n line to %1</numerusform>
@@ -7993,6 +8000,20 @@
         <translation>
             <numerusform>%n line: usable as a sample</numerusform>
             <numerusform>%n lines: usable as a sample</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: nem azonosítható</source>
+        <translation>
+            <numerusform>%n line: not identifiable</numerusform>
+            <numerusform>%n lines: not identifiable</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: újra azonosítható</source>
+        <translation>
+            <numerusform>%n line: identifiable again</numerusform>
+            <numerusform>%n lines: identifiable again</numerusform>
         </translation>
     </message>
     <message>
@@ -8134,6 +8155,10 @@
     <message>
         <source>Ez a sor bizonytalan: előbb erősítsd meg („Jó így”) vagy helyezd át, utána lehet minta.</source>
         <translation>This line is uncertain: confirm it (“Fine as is”) or move it first, then it can be a sample.</translation>
+    </message>
+    <message>
+        <source>Ez a sor „nem azonosítható” jelölésű, ezért nem használható hangmintának.</source>
+        <translation>This line is marked “not identifiable”, so it cannot be used as a voice sample.</translation>
     </message>
     <message>
         <source>Ebben a sorban egymásra beszéltek, ezért nem használható hangmintának.</source>
