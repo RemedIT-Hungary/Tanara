@@ -13,8 +13,9 @@ import QtQuick.Templates as T
 //    a sor-panel „Miért ő?" linkje → „Miért ő?" panel (SpeakerWhyPopover, handoff-v3 E3);
 //  - a sor-panel (LinePopover, E1): jelöltek bizonyítékkal, „Miért nem X?" + a javítás helye;
 //  - három nézet az eszköz-sor szegmensén: Olvasás · Javítás · Átnézendő (N) — az utóbbi a
-//    csoport-nézet (ReviewGroupsView, E2): a kétes sorok okok szerint, csoportonként egy döntés
-//    / egy visszavonási lépés; 0 sornál üres állapot + újraellenőrzés;
+//    fókusz-nézet (ReviewFocusView, „A” koncepció): egy kétes sor egy rögzített kártyán, egy
+//    billentyűs ítéletekkel, a fagyasztott munkalistán (reviewQueue); 0 sornál üres állapot +
+//    újraellenőrzés;
 //  - új személy után a hozzá hasonló sorok a sínen (accent keret) és a térképen (E4);
 //  - hanglenyomat CSAK kifejezett műveletre készül: a térkép ujjlenyomat-jele (saját panel), a
 //    „Miért ő?" Minták-linkje, a sor-panel teljes-beszélő hatóköre, és — egy teljes beszélő
@@ -43,6 +44,8 @@ import QtQuick.Templates as T
 //                „+N most” szűrője) |
 //                S6 (söprés-mód): "sweepStop" (megálló + döntés-sáv) | "sweepContinuous" (folyamatos
 //                mód, utólagos ablak) | "sweepSectionDone" (szakasz-összesítő, „N sor újra kétes”)
+//                S4 (fókusz-nézet): "reviewFocus" | "reviewFocusDecided" | "reviewFocusIncoming" |
+//                "reviewFocusSummary" | "reviewFocusAlreadyDecided" (lásd TranscriptEditorViewModelQueue.cpp)
 //
 // Billentyűk (fizikai hely szerint, TranscriptKeys): 1–9 a kijelölés a sín n. beszélőjéhez,
 // Shift+1–9 / Shift+sín-kattintás / Shift+húzás = ugyanez „nem minta”; 0 = nem azonosítható
@@ -106,9 +109,11 @@ Item {
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                          "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
                                          "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
-                                         "sweepStop", "sweepContinuous", "sweepSectionDone"]
+                                         "sweepStop", "sweepContinuous", "sweepSectionDone",
+                                         "reviewFocus", "reviewFocusDecided", "reviewFocusIncoming",
+                                         "reviewFocusSummary", "reviewFocusAlreadyDecided"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
-    // Az Átnézendő csoport-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
+    // Az Átnézendő fókusz-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
     // Az új személyhez hasonló sorok a térképnek: [x, w, …] (0..1); ugyanezek az
     // editorVm.overview `marks` listáiban is (a MapDock accent jelei).
@@ -331,8 +336,7 @@ Item {
     function nextUncertain(direction) {
         root.forceActiveFocus()
         if (!root.reviewShown) {
-            root.setViewMode("review")
-            if (editorVm.reviewCount > 0) Qt.callLater(() => reviewView.step(direction))
+            root.setViewMode("review")      // a fókusz-nézet az első nyitott soron indul
             return
         }
         if (!reviewView.step(direction) && root.shell) root.shell.toast(qsTr("Nincs átnézendő sor."))
@@ -725,6 +729,11 @@ Item {
         const k = TranscriptKeys.decode(event)
         root.shiftHeld = k.name === "Shift" || k.shift
         if (k.name === "Shift" || !editorVm.hasTranscript) return
+        // Átnézendő (fókusz-nézet): a saját billentyű-térképe (ReviewFocusView.handleKey) előbb.
+        if (root.reviewShown && reviewView.handleKey(k, event)) {
+            event.accepted = true
+            return
+        }
         // Söprés-mód (S6): a célsor billentyűi; [ / ]: tempó (mindig).
         if (root.sweepKey(k)) {
             event.accepted = true
@@ -750,17 +759,12 @@ Item {
             // 0: nem azonosítható (Javítás: a kijelölés; Átnézendő: a kiválasztott sor).
             root.toggleIgnored()
             event.accepted = true
-        } else if (k.plain && k.name === "digit" && k.digit === 1 && root.reviewShown && reviewView.currentUtterance !== "") {
-            // Az Átnézendő nézet kiválasztott sora a javasolt beszélőhöz („X mondta”); Shift: nem minta.
-            reviewView.acceptCurrent(k.shift)
-            event.accepted = true
         } else if (k.plain && k.name === "digit" && k.digit >= 1 && editorVm.selectedCount > 0 && !root.reviewShown) {
             editorVm.moveSelectionToLane(k.digit - 1, k.shift)
             event.accepted = true
         } else if (k.plain && k.name === "J") {
             // J: Jó így (Shift: nem minta).
-            if (root.reviewShown) reviewView.confirmCurrent(k.shift)
-            else editorVm.confirmSelection(k.shift)
+            editorVm.confirmSelection(k.shift)
             event.accepted = true
         } else if (k.plain && !k.shift && k.name === "M") {
             root.openFixForCurrent()
@@ -898,7 +902,8 @@ Item {
             // Csak a sín oszlopfejei (a számláló és a hangelemzés az eszköz-soré); rejtett sínnél 0
             // magas (nem `visible: false`: a láthatóság-váltás után az elrendezés késve frissülne).
             Layout.fillWidth: true
-            implicitHeight: root.railShown ? railHeader.implicitHeight : 0
+            // Az Átnézendő fókusz-nézetben sincs (ott a beszélő-számsor a kártyán).
+            implicitHeight: root.railShown && !root.reviewShown ? railHeader.implicitHeight : 0
             clip: true
             color: Theme.surface
 
@@ -1197,17 +1202,14 @@ Item {
                 }
             }
 
-            // Átnézendő (E2): a kétes sorok csoportjai; a lista helyén.
-            ReviewGroupsView {
+            // Átnézendő (S4, „A” koncepció): a fókusz-nézet; a lista helyén.
+            ReviewFocusView {
                 id: reviewView
                 objectName: "reviewView"
                 anchors.fill: parent
                 visible: root.reviewShown
                 vm: editorVm
                 tab: root
-                onSplitRequested: key => editorVm.splitSpeaker(key)
-                onSpeakerWhyRequested: (key, anchor) => root.openSpeakerPopover(key, anchor)
-                onLineFixRequested: (id, anchor) => root.openLinePopoverFor(id, anchor)
             }
         }
 
@@ -1359,7 +1361,8 @@ Item {
         TranscriptSelectionBar {
             id: selectionBar
             objectName: "selectionBar"
-            visible: editorVm.selectedCount > 0
+            // Az Átnézendőben a kijelölés a fókusz-sor (a kártya gombjai döntenek): nincs sáv.
+            visible: editorVm.selectedCount > 0 && !root.reviewShown
             Layout.fillWidth: true
             Layout.leftMargin: 24
             Layout.rightMargin: 24
@@ -1763,13 +1766,8 @@ Item {
                 const item = list.itemAtIndex(2)
                 if (item) root.openLinePopover(2, item.nameItem)
             }
-        } else if (s === "reviewGroups") {
-            reviewView.list.positionViewAtBeginning()
-        } else if (s === "reviewExpanded") {
-            const groupId = editorVm.reviewGroups.groupAt(0)
-            if (groupId !== "") editorVm.reviewGroups.setExpanded(groupId, true)
-            reviewView.step(1)
-            reviewView.list.positionViewAtBeginning()
+        } else if (s === "reviewFocus") {
+            reviewView.demoPlayPos = 0.42      // az auto-lejátszás épp szól (képernyőkép)
         } else if (s === "speakerWhy") {
             list.positionViewAtBeginning()
             const lane = Math.max(0, keyOf("Fehér Gábor"))
@@ -1799,7 +1797,6 @@ Item {
             if (target >= 0) list.positionViewAtIndex(target, s === "sweepSectionDone" ? ListView.End : ListView.Center)
             Qt.callLater(root.updateViewport)
         } else if (s === "contaminatedCore") {
-            reviewView.list.positionViewAtBeginning()
             const key = editorVm.contaminated.speakerKey || ""
             if (key !== "") root.openSpeakerWhyAt(key, root.width - speakerWhy.width - 20, headRow.y + headRow.height + 58)
         }

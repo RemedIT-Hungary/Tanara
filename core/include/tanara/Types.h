@@ -451,6 +451,10 @@ struct AppSettings {
     bool tagSuggestions = true;
     bool llmTagSuggestions = true;
 
+    // Átnézendő (fókusz-nézet): a kártyára lépő sor magától megszólal (sor + 0,3 s). A nézet
+    // fejlécének kapcsolója írja; alapból be.
+    bool reviewAutoPlay = true;
+
     // Bekapcsolt beszélő-embedding modellek (VoiceModelRegistry id-k), ábécérendben. Lenyomatnál
     // és elemzésnél mindegyik számít (fúzió); a hiányzó modellfájl futáskor kimarad, a beállítás
     // megmarad. A settings.json "voiceModels" kulcsa; hiányzik → ["wespeaker-resnet34-lm"].

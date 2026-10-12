@@ -241,6 +241,9 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // A dokk söprés-rétege: { uncertain: [x…], decided: [x…], frozenStart, frozenEnd, sections:
     // [{ start, end, done, active }], doneCount, total, aheadCount } (0..1); üres map: nincs söprés.
     Q_PROPERTY(QVariantMap sweepDock READ sweepDock NOTIFY sweepDockChanged)
+    // S4: az Átnézendő fókusz-nézet auto-lejátszása (AppSettings::reviewAutoPlay; AppController
+    // nélkül — demó, teszt — csak a memóriában). Alapból be.
+    Q_PROPERTY(bool reviewAutoPlay READ reviewAutoPlay WRITE setReviewAutoPlay NOTIFY reviewAutoPlayChanged)
 
 public:
     struct SpeakerView {
@@ -628,6 +631,13 @@ public:
     bool queueActive() const;
     // A csoportok újraszámolása most (a munkalista a friss ReviewView-kból induljon).
     void flushPendingReview();
+    bool reviewAutoPlay() const;
+    void setReviewAutoPlay(bool on);
+    // S4: a fókusz-kártya kontextus-sorai — a sor előtti `before` és utáni `after` megszólalás
+    // az átiratból (szűrő nélkül, a nem kétesek is), időrendben: [{ utteranceId, offset (−2…+2),
+    // speakerKey, speakerName, colorIndex, timeLabel, startMs, endMs, text, uncertain,
+    // decidedKind ("corrected" | "confirmed" | "ignored" | "") }]. Ismeretlen sor: üres lista.
+    Q_INVOKABLE QVariantList contextLines(const QString& utteranceId, int before, int after) const;
 
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
@@ -726,6 +736,7 @@ signals:
     void sweepStopReached(int row);         // megálló-mód: a QML megállítja a lejátszót
     void sweepResumeRequested();            // döntés a megállónál: a lejátszás folytatódik
     void sweepSectionEnded(int index);      // a szakasz végére ért: összesítő, a lejátszó megáll
+    void reviewAutoPlayChanged();   // S4
     // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
     void revealRequested(int row);
     // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
@@ -969,6 +980,9 @@ private:
     QVariantMap m_sweepSummary;
     QTimer m_sweepDockTimer;
     QVariantMap m_sweepDockCache;
+    bool m_reviewAutoPlay = true;           // S4: AppController nélkül (demó, teszt)
+    int m_queueDemoGen = 0;                 // S4: a fókusz-demók csend-várakozása
+    bool m_queueDemoQuiet = false;
 };
 
 } // namespace tanara_qml

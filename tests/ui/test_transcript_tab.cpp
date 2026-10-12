@@ -12,7 +12,7 @@
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
-#include "ReviewGroupsModel.h"
+#include "ReviewQueueModel.h"
 #include "TranscriptListModel.h"
 
 #include <QClipboard>
@@ -177,26 +177,19 @@ class TestTranscriptTab : public QObject {
     QObject* popover() const { return m_window->findChild<QObject*>(QStringLiteral("linePopover")); }
     QObject* why() const { return m_window->findChild<QObject*>(QStringLiteral("speakerWhyPopover")); }
     QObject* changeBar() const { return m_window->findChild<QObject*>(QStringLiteral("changeBar")); }
-    // Az Átnézendő nézet bekapcsolása, a háttér-elemzés bevárása, az első csoport kinyitása.
+    // Az Átnézendő (fókusz-nézet) bekapcsolása, a háttér-elemzés és a munkalista bevárása.
     void openReview()
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
         m_vm->setUncertainOnly(true);
         pump(60);
         QTRY_VERIFY(visual("reviewView"));
-        QQuickItem* more = visual("reviewOneByOne");
-        QVERIFY(more);
-        click(center(more));
-        QTRY_VERIFY(visual("lineFix"));
+        QTRY_VERIFY_WITH_TIMEOUT(m_vm->queueActive() && !focusLine().isEmpty(), 10000);
+        QTRY_VERIFY(visual("reviewFocusCard"));
+        m_tab->forceActiveFocus();
     }
-    // Az Átnézendő nézet egy sorának azonosítója (a sor egy eleméből felfelé keresve).
-    static QString reviewLineOf(QQuickItem* item)
-    {
-        for (QQuickItem* it = item; it; it = it->parentItem())
-            if (it->property("utteranceId").isValid() && !it->property("utteranceId").toString().isEmpty())
-                return it->property("utteranceId").toString();
-        return {};
-    }
+    // A fókusz-kártya sora (a munkalista kurzora).
+    QString focusLine() const { return m_vm->reviewQueue()->currentUtterance(); }
     // Az átsorolás értesítése (és ajánlatai) az „Imént" sorban: a sor látszik, és a változás él.
     // (Az „Imént" sor maga Javítás módban mindig látszik: imentShown.)
     bool barShown() const { return imentShown() && m_vm->changeActive(); }
@@ -1026,22 +1019,21 @@ private slots:
 
     // Az Átnézendő nézet (E2) „Egyenként" sorai: a javított sor a helyén marad („javítva"),
     // így a következő kattintás nem egy másik sorra esik; a csoport összecsukásakor tűnik el.
+    // „Más…” a fókusz-kártyán: ugyanaz a soronkénti panel, mint a névről; a döntött sor a
+    // munkalistán a helyén marad, a kártya a következő nyitott sorra lép.
     void reviewView_decidedLineStays()
     {
         load();
         openReview();
-        QQuickItem* fix = visual("lineFix");
-        QVERIFY(fix);
-        const QString id = reviewLineOf(fix);
+        const QString id = focusLine();
         QVERIFY(!id.isEmpty());
-        const int row = m_vm->reviewGroups()->rowOfLine(id);
-        const int count = m_vm->reviewGroups()->count();
+        ReviewQueueModel* q = m_vm->reviewQueue();
+        const int row = q->indexOf(id);
+        const int count = q->count();
         const QString from = m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString();
         const int fromLines = linesOf(from);
-        const qreal y = fix->mapToScene(QPointF(0, 0)).y();
 
-        // „Más…": ugyanaz a soronkénti panel, mint a névről.
-        click(center(fix));
+        click(center(visual("reviewFocusOther")));
         QTRY_VERIFY(popupOpen("linePopover"));
         QCOMPARE(popover()->property("scope").toString(), QStringLiteral("line"));
         QCOMPARE(popover()->property("utteranceId").toString(), id);
@@ -1052,87 +1044,13 @@ private slots:
         QCOMPARE(linesOf(from), fromLines - 1);             // csak ez az egy sor
         QTRY_VERIFY(barShown());
 
-        // A sor ugyanott van, eldöntve; a gombjai eltűntek.
+        // A sor ugyanott van a munkalistán, eldöntve; a kártya már a következőn.
         QTRY_VERIFY(!m_vm->reviewRunning());
         pump(80);
-        QCOMPARE(m_vm->reviewGroups()->rowOfLine(id), row);
-        QCOMPARE(m_vm->reviewGroups()->count(), count);
-        QVERIFY(m_vm->reviewGroups()->data(m_vm->reviewGroups()->index(row), ReviewGroupsModel::DecidedRole).toBool());
-        for (QQuickItem* b : visuals("lineFix")) QVERIFY(reviewLineOf(b) != id);
-        QVERIFY(qAbs(visuals("reviewLineName").first()->mapToScene(QPointF(0, 0)).y() - y) < 200);
-
-        // Összecsukás után a csoportban már nem szerepel.
-        click(center(visual("reviewOneByOne")));
-        pump(60);
-        QCOMPARE(m_vm->reviewGroups()->rowOfLine(id), -1);
-    }
-
-    // Az Átnézendő nézet sorai mellett is ott a beszélő-sín (G9): a sor saját oszlopa kiválaszt,
-    // másik oszlop áthelyezi a sort (egy visszavonási lépés), a „+N" oszlop ki/be csukja a ritka
-    // beszélőket. A csoport-kártyák és a sorok a sín mellől indulnak.
-    void reviewView_railClickMovesLine()
-    {
-        load(QStringLiteral("many"));
-        m_vm->setRailVisible(true);
-        pump();
-        openReview();
-        QQuickItem* view = visual("reviewView");
-        QVERIFY(view);
-        const qreal textX = m_tab->property("textX").toReal();
-        QVERIFY(textX > 100.0);
-        // A kártya és a sor bal széle a sín mellett van.
-        QQuickItem* card = visual("reviewGroup");
-        QVERIFY(card);
-        QVERIFY(card->mapToItem(m_tab, QPointF(0, 0)).x() >= textX);
-        QVERIFY(visual("reviewRailCells"));
-
-        // Egy döntésre váró sor, aminek látható oszlopa van.
-        QQuickItem* line = nullptr;
-        for (QQuickItem* fix : visuals("lineFix")) {
-            for (QQuickItem* it = fix; it; it = it->parentItem())
-                if (it->property("railCells").isValid()) {
-                    if (it->property("lane").toInt() >= 0 && !line) line = it;
-                    break;
-                }
-        }
-        QVERIFY(line);
-        const QString id = line->property("utteranceId").toString();
-        const int own = line->property("lane").toInt();
-        const QString from = m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString();
-        QCOMPARE(laneKey(own), from);
-        QVERIFY(m_vm->reviewGroups()->data(m_vm->reviewGroups()->index(m_vm->reviewGroups()->rowOfLine(id)),
-                                           ReviewGroupsModel::LaneRole).toInt() == own);
-        auto railAt = [&](qreal laneX) {
-            const QPointF p = line->mapToScene(QPointF(0, line->height() / 2));
-            const qreal x = m_tab->property("railX").toReal() + 4 + laneX;
-            return QPoint(int(m_tab->mapToScene(QPointF(x, 0)).x()), int(p.y()));
-        };
-
-        // Saját oszlop: kiválasztás, áthelyezés nélkül.
-        view->setProperty("currentUtterance", QString());
-        click(railAt(own * 24 + 12));
-        QCOMPARE(view->property("currentUtterance").toString(), id);
-        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), from);
-        QVERIFY(!m_vm->canUndo());
-
-        // Másik oszlop: a sor átkerül, egy lépésben visszavonható.
-        const int other = own == 0 ? 1 : 0;
-        click(railAt(other * 24 + 12));
-        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), laneKey(other));
-        QCOMPARE(view->property("currentUtterance").toString(), id);
-        QVERIFY(m_vm->canUndo());
-        m_vm->undo();
-        QCOMPARE(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString(), from);
-        QVERIFY(!m_vm->canUndo());
-
-        // „+N": a ritka beszélők oszlopai ki- és becsukódnak.
-        QVERIFY(m_vm->collapsedCount() > 0);
-        QVERIFY(!m_vm->lanesExpanded());
-        const int lanes = int(m_vm->lanes().size());
-        click(railAt(lanes * 24 + 10));
-        QVERIFY(m_vm->lanesExpanded());
-        pump();
-        QVERIFY(int(m_vm->lanes().size()) > lanes);
+        QCOMPARE(q->indexOf(id), row);
+        QVERIFY(q->count() >= count);
+        QCOMPARE(q->get(row).value(QStringLiteral("state")).toString(), QStringLiteral("decided"));
+        QVERIFY(focusLine() != id);
     }
 
     void addParticipant_viaPicker()
@@ -1166,27 +1084,24 @@ private slots:
     {
         load();
         openReview();
-        QQuickItem* listen = visual("lineListen");
-        QVERIFY(listen);
-        const QString id = reviewLineOf(listen);
+        const QString id = focusLine();
         const QVariantMap info = m_vm->lineInfo(id);
-        click(center(listen));
+        // A kártya lejátszás-gombja: a sor a határaira (+ 0,3 mp ráhagyás).
+        m_player->setProperty("log", QString());
+        click(center(visual("reviewFocusPlay")));
         QCOMPARE(m_player->property("log").toString(),
                  QStringLiteral("range:%1-%2;").arg(info.value(QStringLiteral("startMs")).toInt())
-                                              .arg(info.value(QStringLiteral("endMs")).toInt()));
+                                              .arg(info.value(QStringLiteral("endMs")).toInt() + 200));
 
-        // „Jó így": a sor megerősítve, a helyén marad.
+        // „Jó így": a sor megerősítve, a kártya továbblép.
         const int before = m_vm->uncertainCount();
-        QQuickItem* ok = nullptr;
-        for (QQuickItem* b : visuals("lineConfirm"))
-            if (reviewLineOf(b) == id) ok = b;
-        QVERIFY(ok);
-        click(center(ok));
+        click(center(visual("reviewFocusConfirm")));
         QCOMPARE(m_vm->uncertainCount(), before - 1);
         QVERIFY(m_vm->editor()->utterance(id).confirmed);
         QVERIFY(m_vm->canUndo());
+        QVERIFY(focusLine() != id);
 
-        // B: a következő átnézendő sor lesz a kiválasztott (a csoportok sorain lépked).
+        // B: a következő nyitott sor; Shift+B: az előző sor.
         QQuickItem* view = visual("reviewView");
         QVERIFY(view);
         const QString current = view->property("currentUtterance").toString();
@@ -1582,14 +1497,13 @@ private slots:
         m_tab->forceActiveFocus();
         QQuickItem* view = visual("reviewView");
         QVERIFY(view);
-        QTest::keyClick(m_window.get(), Qt::Key_Right);
-        pump();
+        QTRY_VERIFY(!view->property("currentUtterance").toString().isEmpty());
         const QString first = view->property("currentUtterance").toString();
-        QVERIFY(!first.isEmpty());
+        // Az Átnézendőben ↓ / ↑ a munkalista következő / előző sora (a → itt „Később”).
         QTest::keyClick(m_window.get(), Qt::Key_Down);
         pump();
         QVERIFY(view->property("currentUtterance").toString() != first);
-        QTest::keyClick(m_window.get(), Qt::Key_Left);
+        QTest::keyClick(m_window.get(), Qt::Key_Up);
         pump();
         QCOMPARE(view->property("currentUtterance").toString(), first);
         QCOMPARE(viewMode(), QStringLiteral("review"));
@@ -2063,36 +1977,28 @@ private slots:
 
     // E2 a „v3" meetingen: „Mind a N → X" egy lépés (és visszavonható); a szennyezett mag sávjának
     // „Szétválasztás" gombja is egy lépés.
-    void reviewView_applyGroupAndSplit()
+    // A szennyezett mag sávja a fókusz-kártya ALATT (az alsó kontextus-sorok helyén): Szétválasztás
+    // = egy visszavonási lépés. (A csoportos „Mind → X” a régi csoport-nézettel megszűnt; a
+    // nagy csoportokat az S5 nyitó-javaslata hozza vissza.)
+    void reviewView_contaminatedSplit()
     {
         load(QStringLiteral("v3"));
         m_vm->applyDemoState(QStringLiteral("reviewGroups"));
         QVERIFY(QTest::qWaitFor([this] {
             return !m_vm->reviewRunning() && !m_vm->demoStatePending() && !m_vm->contaminated().isEmpty(); }, 10000));
         QTRY_VERIFY(visual("reviewView"));
-        QTRY_VERIFY(visual("contaminatedBanner"));
+        QTRY_VERIFY_WITH_TIMEOUT(visual("contaminatedBanner"), 10000);
         const QString gabor = keyOfName(QStringLiteral("Fehér Gábor"));
+        QQuickItem* card = visual("reviewFocusCard");
+        QVERIFY(card);
+        QVERIFY(visual("contaminatedBanner")->mapToScene(QPointF(0, 0)).y() > card->mapToScene(QPointF(0, card->height())).y());
 
-        // Az első csoport: a hívás hangján érkezett, de Lilla nevén van → Mind → Fehér Gábor.
-        QQuickItem* apply = visual("reviewApply");
-        QVERIFY(apply);
-        QVERIFY(apply->property("text").toString().endsWith(QStringLiteral("→ Fehér Gábor")));
-        const int before = linesOf(gabor);
-        const int count = m_vm->reviewViews().first().ids.size();
-        const int steps = m_vm->canUndo() ? 1 : 0;
-        Q_UNUSED(steps);
-        const QString undoBefore = m_vm->undoText();
-        click(center(apply));
-        QCOMPARE(linesOf(gabor), before + count);
-        QTRY_VERIFY(barShown());
-        undoKey();                                          // egyetlen lépés
-        QCOMPARE(linesOf(gabor), before);
-        QCOMPARE(m_vm->undoText(), undoBefore);
-
-        // Szétválasztás.
         QTRY_VERIFY(!m_vm->reviewRunning());
         QTRY_VERIFY(visual("splitSpeaker"));
-        QMetaObject::invokeMethod(visual("reviewList"), "positionViewAtBeginning");     // a sáv a lista fején
+        // A sáv a kártya alatt: alacsony nézetben a fókusz-terület saját görgetésével látszik.
+        QQuickItem* flick = visual("reviewFocusFlick");
+        QVERIFY(flick);
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toReal() - flick->height()));
         pump(60);
         const int gaborLines = linesOf(gabor);
         click(center(visual("splitSpeaker")));
@@ -2193,14 +2099,13 @@ private slots:
     {
         load();
         openReview();
-        QQuickItem* confirm = visual("lineConfirm");
+        QQuickItem* confirm = visual("reviewFocusConfirm");
         QVERIFY(confirm);
-        const QString id = reviewLineOf(confirm);
-        QVERIFY(!confirm->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
+        const QString id = focusLine();
+        QVERIFY(!confirm->property("nonSample").toBool());
         m_tab->setProperty("shiftHeld", true);
-        QVERIFY(confirm->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
-        if (QQuickItem* likely = visual("lineLikely"))
-            QVERIFY(likely->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
+        QVERIFY(confirm->property("nonSample").toBool());
+        QVERIFY(visual("reviewFocusEnter")->property("nonSample").toBool());
         click(center(confirm));
         QVERIFY(noisyOf(id));
         QCOMPARE(m_vm->lastDecision().value(QStringLiteral("chips")).toList().first().toMap()
@@ -2239,26 +2144,22 @@ private slots:
         QVERIFY(!cell(2, Role::IgnoredRole).toBool());
         QCOMPARE(m_vm->ignoredCount(), 0);
 
-        // Átnézendő: a kiválasztott sor 0-ra, majd egy másik a sor-gombbal.
+        // Átnézendő: a fókusz-sor 0-ra (a munkalistán a helyén marad), majd a következő a gombbal.
         openReview();
-        QQuickItem* fix = visual("lineFix");
-        const QString id = reviewLineOf(fix);
-        visual("reviewView")->setProperty("currentUtterance", id);
-        m_tab->forceActiveFocus();
+        ReviewQueueModel* q = m_vm->reviewQueue();
+        const QString id = focusLine();
+        const int row = q->indexOf(id);
         QTest::keyClick(m_window.get(), Qt::Key_0);
         QVERIFY(m_vm->lineInfo(id).value(QStringLiteral("ignored")).toBool());
-        const int row = m_vm->reviewGroups()->rowOfLine(id);
-        QVERIFY(row >= 0);                                  // a döntött sor a helyén marad
-        QCOMPARE(m_vm->reviewGroups()->data(m_vm->reviewGroups()->index(row), ReviewGroupsModel::DecidedKindRole)
-                     .toString(), QStringLiteral("ignored"));
-        QQuickItem* ignore = visual("lineIgnore");
-        QVERIFY(ignore);
-        const QString other = reviewLineOf(ignore);
+        QCOMPARE(q->indexOf(id), row);
+        QCOMPARE(q->get(row).value(QStringLiteral("state")).toString(), QStringLiteral("ignored"));
+        const QString other = focusLine();
         QVERIFY(other != id);
-        click(center(ignore));
+        click(center(visual("reviewFocusIgnore")));
         QVERIFY(m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
         undoKey();
         QVERIFY(!m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
+        QTRY_COMPARE(focusLine(), other);                   // a fókusz a visszavont sorra
     }
 
     // Az „Imént” sor: J után „Jó így” + minta-chip; Shift+J nem minta; mini-napló; Ctrl+Z →
@@ -2393,7 +2294,9 @@ private slots:
                     << QString::fromLatin1(variant) << QString::fromLatin1(state);        // v3 Javítás mód: üres változattal a „v3" kitalált meetingen futnak.
         for (const char* state : {"markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                   "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
-                                  "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter"})
+                                  "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
+                                  "reviewFocus", "reviewFocusDecided", "reviewFocusIncoming", "reviewFocusSummary",
+                                  "reviewFocusAlreadyDecided"})
             QTest::addRow("v3-%s", state) << QString() << QString::fromLatin1(state);
     }
     void statesLoadWithoutWarnings()

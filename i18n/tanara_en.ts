@@ -1232,7 +1232,7 @@
     </message>
     <message>
         <source>A név marad, de a sor hangját semmire nem használom (minta, bizonyíték, átnézendő)</source>
-        <translation>The name stays, but the line's voice is not used for anything (sample, evidence, review)</translation>
+        <translation>The name stays, but the line&apos;s voice is not used for anything (sample, evidence, review)</translation>
     </message>
     <message>
         <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
@@ -3424,6 +3424,318 @@
     <message>
         <source>Tanara felvevő</source>
         <translation>Tanara Recorder</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusCard</name>
+    <message>
+        <source>Megerősítem</source>
+        <translation>Confirm</translation>
+    </message>
+    <message>
+        <source>%1 mondta</source>
+        <translation>%1 said it</translation>
+    </message>
+    <message>
+        <source>Új beszélő (hívás hangja)</source>
+        <translation>New speaker (call audio)</translation>
+    </message>
+    <message>
+        <source>Új beszélő (mikrofon)</source>
+        <translation>New speaker (microphone)</translation>
+    </message>
+    <message>
+        <source>Jó így</source>
+        <translation>Looks right</translation>
+    </message>
+    <message>
+        <source>Lejátszás / szünet (Szóköz) · újra az elejéről: R</source>
+        <translation>Play / pause (Space) · from the start: R</translation>
+    </message>
+    <message>
+        <source>%1 nevén</source>
+        <translation>under %1</translation>
+    </message>
+    <message>
+        <source>Hangra kétes sor</source>
+        <translation>Uncertain by voice</translation>
+    </message>
+    <message>
+        <source>már eldőlt · Enter: megerősítem · →: tovább</source>
+        <translation>already decided · Enter: confirm · →: next</translation>
+    </message>
+    <message>
+        <source>javaslat frissült</source>
+        <translation>suggestion updated</translation>
+    </message>
+    <message>
+        <source>eldöntve: nem azonosítható</source>
+        <translation>decided: unidentifiable</translation>
+    </message>
+    <message>
+        <source>eldöntve: javítva · %1</source>
+        <translation>decided: corrected · %1</translation>
+    </message>
+    <message>
+        <source>nem minta</source>
+        <translation>not a sample</translation>
+    </message>
+    <message>
+        <source>minta</source>
+        <translation>sample</translation>
+    </message>
+    <message>
+        <source>eldöntve: jó így · %1</source>
+        <translation>decided: looks right · %1</translation>
+    </message>
+    <message>
+        <source>◇ később hagyva</source>
+        <translation>◇ left for later</translation>
+    </message>
+    <message>
+        <source>új · a döntéseid miatt</source>
+        <translation>new · because of your decisions</translation>
+    </message>
+    <message>
+        <source>új</source>
+        <translation>new</translation>
+    </message>
+    <message>
+        <source>A sor a háttérben már eldőlt: megerősítem így</source>
+        <translation>This line was already decided in the background: confirm it as is</translation>
+    </message>
+    <message>
+        <source>Az alapértelmezés: a javaslat, vagy ha nincs, „Jó így” · Shift: nem minta</source>
+        <translation>The default: the suggestion, or “Looks right” if there is none · Shift: not a sample</translation>
+    </message>
+    <message>
+        <source>A mostani név marad (%1) · Shift: nem minta</source>
+        <translation>The current name stays (%1) · Shift: not a sample</translation>
+    </message>
+    <message>
+        <source>Újra azonosítható</source>
+        <translation>Identifiable again</translation>
+    </message>
+    <message>
+        <source>Nem azonosítható</source>
+        <translation>Unidentifiable</translation>
+    </message>
+    <message>
+        <source>A név marad, de a hang-elemzés teljesen kihagyja: nem minta, nem bizonyíték</source>
+        <translation>The name stays, but voice analysis ignores the line completely: not a sample, not evidence</translation>
+    </message>
+    <message>
+        <source>Más…</source>
+        <translation>Other…</translation>
+    </message>
+    <message>
+        <source>A sor panelje: személyválasztó, új beszélő</source>
+        <translation>The line panel: person picker, new speaker</translation>
+    </message>
+    <message>
+        <source>Tovább</source>
+        <translation>Next</translation>
+    </message>
+    <message>
+        <source>Később</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>Átugrom; a sor a helyén marad</source>
+        <translation>Skip; the line stays where it is</translation>
+    </message>
+    <message>
+        <source>Nem döntés: a sor a kör végére kerül (◇)</source>
+        <translation>Not a decision: the line moves to the end of the round (◇)</translation>
+    </message>
+    <message>
+        <source>= nem minta</source>
+        <translation>= not a sample</translation>
+    </message>
+    <message>
+        <source>● javasolt</source>
+        <translation>● suggested</translation>
+    </message>
+    <message>
+        <source>most</source>
+        <translation>now</translation>
+    </message>
+    <message>
+        <source>%1: jó így</source>
+        <translation>%1: looks right</translation>
+    </message>
+    <message>
+        <source>→ %1</source>
+        <translation>→ %1</translation>
+    </message>
+    <message>
+        <source> · nem minta</source>
+        <translation> · not a sample</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusContextRow</name>
+    <message>
+        <source>? nem azonosítható</source>
+        <translation>? unidentifiable</translation>
+    </message>
+    <message>
+        <source>javítva</source>
+        <translation>corrected</translation>
+    </message>
+    <message>
+        <source>megerősítve</source>
+        <translation>confirmed</translation>
+    </message>
+    <message>
+        <source>kétes</source>
+        <translation>uncertain</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusKeyButton</name>
+    <message>
+        <source> · nem minta</source>
+        <translation> · not a sample</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusSummary</name>
+    <message>
+        <source>%1. kör kész</source>
+        <translation>Round %1 done</translation>
+    </message>
+    <message>
+        <source>Kész: &lt;b&gt;%1 eldöntve&lt;/b&gt;, %2 nem azonosítható, %3 később.</source>
+        <translation>Done: &lt;b&gt;%1 decided&lt;/b&gt;, %2 unidentifiable, %3 later.</translation>
+    </message>
+    <message>
+        <source>%1 +%2 minta</source>
+        <translation>%1 +%2 samples</translation>
+    </message>
+    <message>
+        <source>A háttér-elemzés nem talált új kétes sort.</source>
+        <translation>The background analysis found no new uncertain lines.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Az elemzés %n új kétes sort talált (ebből %1 a mostani döntéseid miatt). Kör közben egyik sem került eléd.</source>
+        <translation>
+            <numerusform>The analysis found %n new uncertain line (%1 of them because of your decisions). None was put ahead of you during the round.</numerusform>
+            <numerusform>The analysis found %n new uncertain lines (%1 of them because of your decisions). None was put ahead of you during the round.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Az elemzés %n új kétes sort talált. Kör közben egyik sem került eléd.</source>
+        <translation>
+            <numerusform>The analysis found %n new uncertain line. None was put ahead of you during the round.</numerusform>
+            <numerusform>The analysis found %n new uncertain lines. None was put ahead of you during the round.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Következő kör (%1)</source>
+        <translation>Next round (%1)</translation>
+    </message>
+    <message>
+        <source>Az új kétes sorok és a később hagyottak, időrendben</source>
+        <translation>The new uncertain lines and the ones left for later, in time order</translation>
+    </message>
+    <message>
+        <source>Később hagyottak (%1)</source>
+        <translation>Left for later (%1)</translation>
+    </message>
+    <message>
+        <source>Csak a később hagyott sorok (az új kétesek várnak)</source>
+        <translation>Only the lines left for later (the new uncertain lines wait)</translation>
+    </message>
+    <message>
+        <source>Kész</source>
+        <translation>Done</translation>
+    </message>
+    <message>
+        <source>Vissza a Javítás nézetbe</source>
+        <translation>Back to the Fix view</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusView</name>
+    <message>
+        <source>%1. kör</source>
+        <translation>Round %1</translation>
+    </message>
+    <message>
+        <source>elemzés fut…</source>
+        <translation>analysis running…</translation>
+    </message>
+    <message>
+        <source>haladás</source>
+        <translation>progress</translation>
+    </message>
+    <message>
+        <source>%1 / %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>+%1 új vár</source>
+        <translation>+%1 new waiting</translation>
+    </message>
+    <message>
+        <source>nincs új</source>
+        <translation>nothing new</translation>
+    </message>
+    <message>
+        <source>A háttér-elemzés %1 új kétes sort talált. Kattintás: a kör végére kerülnek (előtted semmi nem mozdul).</source>
+        <translation>The background analysis found %1 new uncertain lines. Click: they go to the end of the round (nothing ahead of you moves).</translation>
+    </message>
+    <message>
+        <source>A háttér-elemzés új találatai itt gyűlnek; a munkalista közben nem változik.</source>
+        <translation>New findings of the background analysis collect here; the worklist does not change meanwhile.</translation>
+    </message>
+    <message>
+        <source>Auto-lejátszás</source>
+        <translation>Autoplay</translation>
+    </message>
+    <message>
+        <source>A kártyára lépő sor magától megszólal (a sor + 0,3 mp)</source>
+        <translation>The line on the card plays by itself (the line + 0.3 s)</translation>
+    </message>
+    <message>
+        <source>Az átnézendő sorok keresése…</source>
+        <translation>Looking for lines to review…</translation>
+    </message>
+    <message>
+        <source>Nincs átnézendő sor — minden megszólalás beszélője rendben van.</source>
+        <translation>Nothing to review — every utterance has the right speaker.</translation>
+    </message>
+    <message>
+        <source>Beszélők újraellenőrzése…</source>
+        <translation>Re-check speakers…</translation>
+    </message>
+    <message>
+        <source>A megerősített és javított sorok hangjához mérem a többi sort</source>
+        <translation>Compares the other lines with the voice of the confirmed and corrected lines</translation>
+    </message>
+</context>
+<context>
+    <name>ReviewFocusWorklist</name>
+    <message>
+        <source>Munkalista</source>
+        <translation>Worklist</translation>
+    </message>
+    <message>
+        <source>eldöntve</source>
+        <translation>decided</translation>
+    </message>
+    <message>
+        <source>hátra</source>
+        <translation>to do</translation>
+    </message>
+    <message>
+        <source>később</source>
+        <translation>later</translation>
+    </message>
+    <message>
+        <source>nem azon.</source>
+        <translation>unident.</translation>
     </message>
 </context>
 <context>
@@ -5891,7 +6203,7 @@
     </message>
     <message>
         <source>Az alapértelmezés (Enter). Shift+Enter: ugyanez, de a hangja nem lesz minta</source>
-        <translation>The default (Enter). Shift+Enter: the same, but its voice won't become a sample</translation>
+        <translation>The default (Enter). Shift+Enter: the same, but its voice won&apos;t become a sample</translation>
     </message>
     <message>
         <source>Nem azonosítható</source>
@@ -5899,7 +6211,7 @@
     </message>
     <message>
         <source>A név marad, de a sor hangját semmire nem használom</source>
-        <translation>The name stays, but the line's voice is not used for anything</translation>
+        <translation>The name stays, but the line&apos;s voice is not used for anything</translation>
     </message>
     <message>
         <source>Más…</source>
@@ -7098,7 +7410,7 @@
     </message>
     <message>
         <source>Hangminta: a sor hangja tanítja %1 felismerését</source>
-        <translation>Voice sample: the line's voice teaches the recognition of %1</translation>
+        <translation>Voice sample: the line&apos;s voice teaches the recognition of %1</translation>
     </message>
     <message>
         <source>Nem minta: egymásra beszéltek / zajos, a hangját nem használom</source>
@@ -7270,7 +7582,7 @@
     </message>
     <message>
         <source>Kikapcsolva (alap): a kétes sor végén megáll. Bekapcsolva: nem áll meg; az imént hallott kétes sor még 3 mp-ig a billentyűk célpontja</source>
-        <translation>Off (default): stops at the end of an uncertain line. On: does not stop; the uncertain line just heard stays the keys' target for 3 s</translation>
+        <translation>Off (default): stops at the end of an uncertain line. On: does not stop; the uncertain line just heard stays the keys&apos; target for 3 s</translation>
     </message>
     <message>
         <source>Lassabban ([)</source>

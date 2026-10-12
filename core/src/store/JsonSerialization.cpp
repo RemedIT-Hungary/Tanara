@@ -579,6 +579,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("embeddingProviders")]  = providerConfigsToJson(s.embeddingConfigs);
     o[QStringLiteral("tagSuggestions")]      = s.tagSuggestions;
     o[QStringLiteral("llmTagSuggestions")]   = s.llmTagSuggestions;
+    o[QStringLiteral("reviewAutoPlay")]      = s.reviewAutoPlay;
     o[QStringLiteral("voiceModels")]         = stringListToArray(VoiceModelRegistry::normalizeIds(s.voiceModels));
 
     // Meeting-figyelő (háttér-detektor + tray).
@@ -663,6 +664,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.embeddingConfigs = providerConfigsFromJson(o.value(QStringLiteral("embeddingProviders")).toObject());
     s.tagSuggestions    = o.value(QStringLiteral("tagSuggestions")).toBool(s.tagSuggestions);
     s.llmTagSuggestions = o.value(QStringLiteral("llmTagSuggestions")).toBool(s.llmTagSuggestions);
+    s.reviewAutoPlay    = o.value(QStringLiteral("reviewAutoPlay")).toBool(s.reviewAutoPlay);
     // Beszélő-modellek: hiányzó kulcs → alapérték; az üres lista érvényes (minden modell ki).
     if (o.contains(QStringLiteral("voiceModels")))
         s.voiceModels = VoiceModelRegistry::normalizeIds(
