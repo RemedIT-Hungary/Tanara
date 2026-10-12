@@ -44,6 +44,16 @@ inline constexpr double kSuggestMinSimilarity = 0.35;
 // különböző beszélők 0.15–0.35, ugyanazon beszélő al-klaszterei ~0.85) → nincs javaslat.
 inline constexpr double kSuggestMaxCentroidSimilarity = 0.60;
 
+// ---- „eltérő minta" jelzés ---------------------------------------------------
+// Egy pozitív (mintát adó) döntés után a sor hangja a cél-beszélő magjához (a döntött sorok
+// nélkül) ennél gyengébben illik → „Ez a minta eltér X többi sorától". Az érték a jelölt-rangsor
+// hang-bizonyítékának határa (ranking::kVoiceGood = 0,50: efölött „támogat"), így a figyelmeztetés
+// pontosan akkor szól, amikor a „Miért ő?" hang-chipje sem támogatná a döntést. Az 0,50 a mért
+// értékek közé esik: különböző beszélők 0,15–0,35, ugyanazon beszélő al-klaszterei ~0,85 (lásd
+// kSuggestMaxCentroidSimilarity); a kUncertainMinFit (0,20) itt túl engedékeny volna — az csak
+// az „egyáltalán nem ő" esetet fogja meg, a félrecsúszó mintát nem.
+inline constexpr double kSampleDeviationFit = 0.50;
+
 // ---- kézi hanglenyomat -----------------------------------------------------
 inline constexpr qint64 kPrintMinLineMs = 3000;     // csak az ennél hosszabb sorok
 inline constexpr qint64 kPrintMinTotalMs = 15000;   // legalább ennyi anyag kell összesen
@@ -56,7 +66,12 @@ struct AnalysisLine {
     qint64 durationMs = 0;
     bool   locked = false;                      // megerősített / kézzel javított (sosem bizonytalan)
     bool   noisy = false;                       // „egymásra beszéltek": nem hangminta (lásd lent)
-    bool hasEmbedding() const { return embedding && !embedding->isEmpty(); }
+    // „Nem azonosítható" (OverlayUtterance::ignored): a sor hangja az elemzés MINDEN ágából kimarad
+    // (centroid, mag — a zajos zárolt sorokat is használó kModeLockedAll is —, 2-közép, páros
+    // átnézés, bizonytalanság). Ezért a hasEmbedding() ilyenkor hamis: minden ág ezen keresztül
+    // szűr, így egy új ág sem felejtheti ki.
+    bool   ignored = false;
+    bool hasEmbedding() const { return !ignored && embedding && !embedding->isEmpty(); }
 };
 
 // Egy sor illeszkedése: a saját beszélőjéhez (önmaga nélkül számolt centroid) és a

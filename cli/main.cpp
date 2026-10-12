@@ -26,6 +26,8 @@
 //   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
 //   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
 //   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
+//   lines <meeting-folder> [--json] | lines ignore|unignore <meeting-folder> <id...>
+//                                                      sorok jelölőkkel; „nem azonosítható" jelölés (ReviewCommand.cpp)
 //   reslice <meeting-folder> [--dry-run] [--json]   Soniox-sorok párnázása, id-átvezetéssel (ResliceCommand.cpp)
 //
 #include "tanara/AppController.h"
@@ -130,6 +132,7 @@ int main(int argc, char** argv) {
     if (cmd == "participants" && QFileInfo(args.value(2)).isDir())
         return tanara::cli::runParticipantsCommand(args);
     if (cmd == "review")       return tanara::cli::runReviewCommand(args);
+    if (cmd == "lines")        return tanara::cli::runLinesCommand(args);
     if (cmd == "reslice")      return tanara::cli::runResliceCommand(args);
 
     AppController app;

@@ -120,6 +120,49 @@ private slots:
         QVERIFY(r.out.contains("coreMismatch"));
         QVERIFY(!r.out.contains("titkos"));
         QCOMPARE(snapshot(folder), before);
+
+        // „Nem azonosítható": lines ignore → a review kihagyja, és jelöli.
+        QCOMPARE(cli({"lines", "ignore", folder}).code, 2);
+        QCOMPARE(cli({"lines", "ignore", folder, "u999"}).code, 1);
+        QCOMPARE(snapshot(folder), before);
+        r = cli({"lines", "ignore", folder, lines[6].id});
+        QVERIFY2(r.code == 0, qPrintable(r.err));
+        QVERIFY(r.out.contains("Marked 1 line(s)"));
+        QVERIFY(speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
+
+        r = cli({"review", folder, "--json"});
+        QVERIFY2(r.code == 0, qPrintable(r.err));
+        const QJsonObject j2 = QJsonDocument::fromJson(r.out.toUtf8()).object();
+        QCOMPARE(j2.value("ignoredLines").toArray(), QJsonArray{lines[6].id});
+        for (const QJsonValue& v : j2.value("groups").toArray())
+            QVERIFY(!v.toObject().value("utteranceIds").toArray().contains(lines[6].id));
+        r = cli({"review", folder});
+        QVERIFY(r.out.contains("Not identifiable (ignored by voice analysis): 1"));
+
+        // A sor-listázás: jelölők, szöveg nélkül; csak olvas.
+        const QMap<QString, QString> beforeList = snapshot(folder);
+        r = cli({"lines", folder, "--json"});
+        QVERIFY2(r.code == 0, qPrintable(r.err));
+        QCOMPARE(snapshot(folder), beforeList);
+        QVERIFY(!r.out.contains("titkos"));
+        const QJsonObject lj = QJsonDocument::fromJson(r.out.toUtf8()).object();
+        QCOMPARE(lj.value("ignored").toInt(), 1);
+        const QJsonArray la = lj.value("lines").toArray();
+        QCOMPARE(la.size(), lines.size());
+        QVERIFY(la.at(6).toObject().value("ignored").toBool());
+        QVERIFY(la.at(0).toObject().value("confirmed").toBool());
+        QVERIFY(!la.at(7).toObject().value("ignored").toBool());
+        QCOMPARE(la.at(0).toObject().value("speaker").toString(), QStringLiteral("Anna"));
+        r = cli({"lines", folder});
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains("not identifiable (ignored): 1"));
+        QVERIFY(r.out.contains("ignored"));
+        QVERIFY(!r.out.contains("titkos"));
+
+        r = cli({"lines", "unignore", folder, lines[6].id});
+        QCOMPARE(r.code, 0);
+        QVERIFY(!speakeredit::loadOverlay(folder).utterances.value(lines[6].id).ignored);
+        QVERIFY(speakeredit::loadOverlay(folder).utterances.value(lines[0].id).confirmed);
     }
 
 private:

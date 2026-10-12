@@ -54,12 +54,19 @@ struct OverlayUtterance {
     // nem jön (vagy egy újabb újraellenőrzés fel nem oldja).
     bool    rechecked = false;
     QString recheckHint;        // a hangra jobban illő beszélő kulcsa (javaslat); lehet üres
+    // „Nem azonosítható": a sor neve marad (beszédidő, átirat, összefoglaló), de a hang-alapú
+    // elemzés TELJESEN figyelmen kívül hagyja — nem minta, nem bizonyíték (centroid, mag,
+    // 2-közép, oldal-tanulás, jelölt-profil, hanglenyomat), sosem bizonytalan, és nem kerül
+    // Átnézendő csoportba. Erősebb a noisy-nál (azt a zárolt mag még használhatja).
+    bool    ignored = false;
     bool isDefault() const {
-        return speaker.isEmpty() && !corrected && !confirmed && !noisy.has_value() && !rechecked;
+        return speaker.isEmpty() && !corrected && !confirmed && !noisy.has_value() && !rechecked
+            && !ignored;
     }
     bool operator==(const OverlayUtterance& o) const {
         return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
-            && noisy == o.noisy && rechecked == o.rechecked && recheckHint == o.recheckHint;
+            && noisy == o.noisy && rechecked == o.rechecked && recheckHint == o.recheckHint
+            && ignored == o.ignored;
     }
 };
 

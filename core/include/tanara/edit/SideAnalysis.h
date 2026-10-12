@@ -128,6 +128,9 @@ struct LineSide {
     float   loopRelDb = qQNaN();
     bool    locked = false;         // megerősített / kézzel javított
     bool    noisy = false;          // „egymásra beszéltek” (overlay vagy átfedés-szabály)
+    // „Nem azonosítható” (OverlayUtterance::ignored): a sor oldala besorolódik (tájékoztató), de a
+    // személy oldal-tanulásába (allLines, megerősített számlálók) és az ellentmondások közé nem kerül.
+    bool    ignored = false;
 };
 
 struct SideCounts {
@@ -143,7 +146,7 @@ struct PersonSide {
     Side    side = Side::Unknown;
     // A megerősített/javított, nem zajos sorok oldalai (ebből az ítélet).
     int localLines = 0, remoteLines = 0, mixedLines = 0;
-    SideCounts allLines;        // a beszélő összes sora (tájékoztató)
+    SideCounts allLines;        // a beszélő összes sora (tájékoztató; a „nem azonosítható” sorok nélkül)
     float   confidence = 0.0f;  // 0..1: a többség aránya, ill. kDefaultConfidence alapértelmezésnél
     Side    defaultSide = Side::Unknown;   // tanult alapérték / saját név / sávhoz kötött beszélő alapján
     Side    learnedSide = Side::Unknown;   // a people.json-ban tanult alapérték (SideHints)

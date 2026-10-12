@@ -1,6 +1,7 @@
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/Logging.h"
 
+#include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"
@@ -28,6 +29,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <optional>
 
 namespace tanara {
@@ -37,6 +39,9 @@ using namespace speakeredit;
 namespace {
 
 constexpr int kMaxUndoSteps = 200;
+// Az eltérő-minta küszöb a jelölt-rangsor hang-bizonyítékának határa (lásd SpeakerAnalysis.h).
+static_assert(kSampleDeviationFit == ranking::kVoiceGood,
+              "az eltérő-minta küszöb a „Miért ő?” hang-chipjével együtt mozog");
 // A transcript.md ennyivel az utolsó névváltozás után íródik újra (kötegelve).
 constexpr int kMarkdownDelayMs = 1500;
 
@@ -64,11 +69,13 @@ struct RowState {
     bool confirmed = false;
     bool uncertain = false;
     bool noisy = false;
+    bool ignored = false;
     QString likely;
     QString reason;
     bool operator==(const RowState& o) const {
         return speaker == o.speaker && corrected == o.corrected && confirmed == o.confirmed
-            && uncertain == o.uncertain && noisy == o.noisy && likely == o.likely && reason == o.reason;
+            && uncertain == o.uncertain && noisy == o.noisy && ignored == o.ignored
+            && likely == o.likely && reason == o.reason;
     }
 };
 
@@ -211,6 +218,12 @@ struct SpeakerEditor::Private {
     bool reviewScheduled = false;
     QString newPersonKey;               // az imént létrehozott személy (SimilarToNewPerson)
 
+    // ---- minta-tanítás átláthatósága ----
+    SampleDeviation deviation;          // az utolsó mintát adó döntés eltérés-mérése
+    // A munkamenet kezdetén minta-sornak számító sorok: id → a beszélő-kulcsuk akkor.
+    QHash<QString, QString> sessionBaseline;
+    QVector<SpeakerSampleStats> lastStats;  // a legutóbb jelzett minta-mérő
+
     // A transcript.md késleltetett újragenerálása (lásd persist()).
     QTimer* markdownTimer = nullptr;
     bool markdownPending = false;
@@ -313,6 +326,12 @@ struct SpeakerEditor::Private {
         overlapNoisy = computeOverlapNoisy(tl);
     }
 
+    bool ignoredAt(int i) const
+    {
+        const auto it = ov.utterances.constFind(lines[i].id);
+        return it != ov.utterances.constEnd() && it->ignored;
+    }
+
     bool noisyAt(int i) const
     {
         const auto it = ov.utterances.constFind(lines[i].id);
@@ -351,7 +370,8 @@ struct SpeakerEditor::Private {
     bool recheckedAt(int i) const
     {
         const auto it = ov.utterances.constFind(lines[i].id);
-        if (it == ov.utterances.constEnd() || !it->rechecked || it->corrected || it->confirmed)
+        if (it == ov.utterances.constEnd() || !it->rechecked || it->corrected || it->confirmed
+            || it->ignored)
             return false;
         const QString key = hintKeyAt(i);
         return key.isEmpty() || !hintResolved(i, key);
@@ -443,6 +463,7 @@ struct SpeakerEditor::Private {
             u.confirmed = it->confirmed;
         }
         u.noisy = noisyAt(i);
+        u.ignored = ignoredAt(i);
         u.noisyOverlap = overlapNoisy.value(i);
         u.rechecked = recheckedAt(i);
         if (u.rechecked) u.likelySpeakerKey = likelyAt(i);
@@ -530,6 +551,7 @@ struct SpeakerEditor::Private {
             const auto o = ov.utterances.constFind(l.id);
             al[i].locked = o != ov.utterances.constEnd() && (o->corrected || o->confirmed);
             al[i].noisy = noisyAt(i);
+            al[i].ignored = ignoredAt(i);     // a hasEmbedding() ilyenkor hamis: minden ág kihagyja
         }
         if (keyIndex) *keyIndex = idx;
         return al;
@@ -551,6 +573,9 @@ struct SpeakerEditor::Private {
         // A sáv-ellentmondás is a bizonytalanság egy oka (v3, 14. döntés).
         for (int i = 0; i < lines.size(); ++i)
             if (sideConflictAt(i)) uncertain[i] = true;
+        // A „nem azonosítható" sor sosem bizonytalan (a felhasználó már döntött róla).
+        for (int i = 0; i < lines.size(); ++i)
+            if (ignoredAt(i)) uncertain[i] = voiceUncertain[i] = false;
     }
 
     bool lockedAt(int i) const
@@ -563,7 +588,8 @@ struct SpeakerEditor::Private {
     bool sideConflictAt(int i) const
     {
         const auto it = review.sideConflicts.constFind(lines[i].id);
-        return it != review.sideConflicts.constEnd() && it.value() == assigned.value(i) && !lockedAt(i);
+        return it != review.sideConflicts.constEnd() && it.value() == assigned.value(i) && !lockedAt(i)
+            && !ignoredAt(i);
     }
 
     // A személy címke-bizonyítéka ezen a megbeszélésen (a fő szálon; az elemzésenként ürülő
@@ -702,6 +728,7 @@ struct SpeakerEditor::Private {
             out[i].speaker = assigned[i];
             out[i].uncertain = uncertain.value(i);
             out[i].noisy = noisyAt(i);
+            out[i].ignored = ignoredAt(i);
             out[i].likely = recheckedAt(i) ? likelyAt(i) : QString();
             out[i].reason = reasonAt(i);
             const auto it = ov.utterances.constFind(lines[i].id);
@@ -875,7 +902,7 @@ struct SpeakerEditor::Private {
     {
         int n = 0;
         for (int i = 0; i < lines.size(); ++i) {
-            if (assigned[i] != key || noisyAt(i)) continue;
+            if (assigned[i] != key || noisyAt(i) || ignoredAt(i)) continue;
             if (!fused.contains(lines[i].id)) continue;
             const auto o = ov.utterances.constFind(lines[i].id);
             if (o != ov.utterances.constEnd() && (o->corrected || o->confirmed)) ++n;
@@ -928,6 +955,127 @@ struct SpeakerEditor::Private {
         if (mapChanged) emit q->speakerMapChanged(meetingId);
         if (peopleTouched) emit q->peopleChanged();
         if (printsTouched) emit q->voiceprintsChanged();
+        updateSampleStats();
+    }
+
+    // ---- minta-tanítás átláthatósága -------------------------------------------
+    // Minta-sor: zárolt, nem zajos, nem „nem azonosítható", és beágyazható hosszú.
+    bool sampleAt(int i) const
+    {
+        return lockedAt(i) && !noisyAt(i) && !ignoredAt(i)
+            && lines[i].endMs - lines[i].startMs >= kMinEmbedMs;
+    }
+
+    void snapshotSessionBaseline()
+    {
+        sessionBaseline.clear();
+        for (int i = 0; i < lines.size(); ++i)
+            if (sampleAt(i)) sessionBaseline.insert(lines[i].id, assigned[i]);
+        lastStats = computeSampleStats();
+    }
+
+    QVector<SpeakerSampleStats> computeSampleStats() const
+    {
+        QVector<SpeakerSampleStats> out;
+        QHash<QString, int> at;
+        for (const EditorSpeaker& sp : buildSpeakers()) {
+            SpeakerSampleStats st;
+            st.speakerKey = sp.key;
+            st.personName = sp.personName;
+            st.displayName = sp.displayName;
+            at.insert(sp.key, int(out.size()));
+            out.append(st);
+        }
+        for (int i = 0; i < lines.size(); ++i) {
+            if (!sampleAt(i)) continue;
+            const auto it = at.constFind(assigned[i]);
+            if (it == at.constEnd()) continue;
+            SpeakerSampleStats& st = out[it.value()];
+            ++st.sampleLines;
+            st.sampleMs += lines[i].endMs - lines[i].startMs;
+            const auto b = sessionBaseline.constFind(lines[i].id);
+            if (b == sessionBaseline.constEnd() || b.value() != assigned[i]) {
+                ++st.sessionAdded;
+                st.sessionAddedIds << lines[i].id;
+            }
+        }
+        return out;
+    }
+
+    void updateSampleStats()
+    {
+        QVector<SpeakerSampleStats> now = computeSampleStats();
+        if (now == lastStats) return;
+        lastStats = std::move(now);
+        emit q->sampleStatsChanged();
+    }
+
+    // Minden szerkesztés / visszavonás: a korábbi eltérés-jelzés érvényét veszti.
+    void resetDeviation()
+    {
+        if (!deviation.isValid()) return;
+        deviation = SampleDeviation();
+        emit q->sampleDeviationChanged();
+    }
+
+    // A mintát adó döntés (a lépés UTÁN): a döntött sorok közül a saját beszélőjük magjától
+    // legtávolabbi. A referencia beszélőnként (azonos személy több kulccsal együtt): a zárolt
+    // minta-sorai, ha legalább kMinSpeakerLines van; különben az összes tiszta, beágyazott sora
+    // — mindkettő a most döntött sorok NÉLKÜL (különben önmagához mérnénk).
+    void finishDecision(const QVector<int>& decided)
+    {
+        SampleDeviation worst;
+        if (!fused.isEmpty() && !decided.isEmpty()) {
+            const QSet<int> dec(decided.cbegin(), decided.cend());
+            QHash<QString, QVector<float>> refCache;    // csoport → referencia (üres = nem mérhető)
+            auto groupOf = [&](const QString& key) {
+                const QString person = personOf(key);
+                return person.isEmpty() ? key : QStringLiteral("person:") + person.toCaseFolded();
+            };
+            auto referenceFor = [&](const QString& group) {
+                auto it = refCache.constFind(group);
+                if (it != refCache.constEnd()) return it.value();
+                auto build = [&](bool lockedOnly, QVector<double>& sum) {
+                    int n = 0;
+                    for (int j = 0; j < lines.size(); ++j) {
+                        if (dec.contains(j) || groupOf(assigned[j]) != group) continue;
+                        if (noisyAt(j) || ignoredAt(j) || (lockedOnly && !lockedAt(j))) continue;
+                        const auto f = fused.constFind(lines[j].id);
+                        if (f == fused.constEnd() || f->isEmpty()) continue;
+                        if (sum.size() < f->size()) sum.resize(f->size());
+                        const double w = double(std::clamp<qint64>(lines[j].endMs - lines[j].startMs,
+                                                                   500, kMaxEmbedMs)) / 1000.0;
+                        for (int k = 0; k < f->size(); ++k) sum[k] += w * double((*f)[k]);
+                        ++n;
+                    }
+                    return n;
+                };
+                QVector<double> sum;
+                int n = build(/*lockedOnly*/ true, sum);
+                if (n < kMinSpeakerLines) { sum.clear(); n = build(false, sum); }
+                const QVector<float> ref = n >= kMinSpeakerLines ? ranking::normalized(sum) : QVector<float>();
+                refCache.insert(group, ref);
+                return ref;
+            };
+            for (int i : decided) {
+                if (!sampleAt(i)) continue;
+                const auto f = fused.constFind(lines[i].id);
+                if (f == fused.constEnd() || f->isEmpty()) continue;
+                const QVector<float> ref = referenceFor(groupOf(assigned[i]));
+                if (ref.isEmpty()) continue;
+                const double sim = ranking::cosine(ref, *f);
+                if (std::isnan(sim)) continue;
+                if (!worst.isValid() || sim < worst.similarity) {
+                    worst.utteranceId = lines[i].id;
+                    worst.speakerKey = assigned[i];
+                    worst.similarity = sim;
+                }
+            }
+            worst.deviates = worst.isValid() && worst.similarity < kSampleDeviationFit;
+        }
+        if (worst == deviation) return;
+        deviation = worst;
+        emit q->sampleDeviationChanged();
     }
 
     void commit(Step& s, const QString& text)
@@ -958,6 +1106,7 @@ struct SpeakerEditor::Private {
         if (undoStack.size() > kMaxUndoSteps) undoStack.removeFirst();
         redoStack.clear();
 
+        resetDeviation();
         emitChanges(s, !delta.isEmpty(), !s.peopleAdded.isEmpty(), !s.voiceprints.isEmpty());
         scheduleReview();
     }
@@ -1015,6 +1164,7 @@ struct SpeakerEditor::Private {
         const bool namesChanged = rowNames() != s.names;
         persist(c.map, /*forward*/ !undoing, namesChanged);
         recomputeUncertain();
+        resetDeviation();
         emitChanges(s, !c.map.isEmpty(), !c.peopleAdded.isEmpty(), !c.voiceprints.isEmpty());
         scheduleReview();
     }
@@ -1043,7 +1193,8 @@ struct SpeakerEditor::Private {
         s.peopleAdded << person;
     }
 
-    void moveLines(const QVector<int>& idx, const QString& key, Step& s)
+    // noisy: „→ Y, nem minta" — ugyanabban a lépésben „egymásra beszéltek" jelzés is.
+    void moveLines(const QVector<int>& idx, const QString& key, Step& s, bool noisy = false)
     {
         for (int i : idx) {
             OverlayUtterance& u = ov.utterances[lines[i].id];
@@ -1051,6 +1202,8 @@ struct SpeakerEditor::Private {
             u.corrected = true;     // kézi döntés → többé nem bizonytalan
             u.rechecked = false;
             u.recheckHint.clear();
+            u.ignored = false;      // tudjuk, ki mondta → újra azonosítható
+            if (noisy) u.noisy = true;
         }
         appendUnique(s.affectedSpeakers, key);
     }
@@ -1094,6 +1247,7 @@ struct SpeakerEditor::Private {
     {
         QVector<int> cand;
         for (int i : speakerLines) {
+            if (ignoredAt(i)) continue;         // „nem azonosítható": nem minta
             if (uncertain.value(i)) continue;   // kétes sorból nem tanítunk
             if (noisyAt(i)) continue;           // egymásra beszéltek: nem tiszta minta
             if (lines[i].endMs - lines[i].startMs >= kPrintMinLineMs) cand.append(i);
@@ -1467,6 +1621,7 @@ SpeakerEditor::SpeakerEditor(MeetingStore* store, PeopleStore* people, Voiceprin
     d->voiceprints = voiceprints;
     d->meetingId = meetingId;
     d->load();
+    d->snapshotSessionBaseline();
 }
 
 SpeakerEditor::~SpeakerEditor()
@@ -1580,7 +1735,8 @@ QStringList SpeakerEditor::uncertainUtteranceIds() const
 
 // ---- műveletek --------------------------------------------------------------
 
-bool SpeakerEditor::moveUtterances(const QStringList& utteranceIds, const QString& speakerKey)
+bool SpeakerEditor::moveUtterances(const QStringList& utteranceIds, const QString& speakerKey,
+                                   bool noisy)
 {
     if (!d->visible(speakerKey)) return false;
     QVector<int> idx;
@@ -1589,21 +1745,26 @@ bool SpeakerEditor::moveUtterances(const QStringList& utteranceIds, const QStrin
     if (idx.isEmpty()) return false;
 
     Step s = d->begin();
-    d->moveLines(idx, speakerKey, s);
-    d->commit(s, tr("%n sor áthelyezése ide: %1", nullptr, idx.size())
-                     .arg(d->displayOf(speakerKey)));
+    d->moveLines(idx, speakerKey, s, noisy);
+    d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size())
+                             .arg(d->displayOf(speakerKey))
+                       : tr("%n sor áthelyezése ide: %1", nullptr, idx.size())
+                             .arg(d->displayOf(speakerKey)));
+    // Nem-minta áthelyezésnél a sor hangja nem megbízható: se javaslat, se eltérés-mérés.
+    if (noisy) return true;
+    d->finishDecision(idx);
     d->proposeSuggestion(s, idx, speakerKey);
     return true;
 }
 
 QString SpeakerEditor::moveUtterancesToPerson(const QStringList& utteranceIds,
-                                              const QString& personName)
+                                              const QString& personName, bool noisy)
 {
     const QString person = d->canonicalPerson(personName);
     if (person.isEmpty()) return {};
     const QString existing = d->speakerKeyForPerson(person);
     if (!existing.isEmpty()) {
-        moveUtterances(utteranceIds, existing);
+        moveUtterances(utteranceIds, existing, noisy);
         return existing;
     }
     const QVector<int> idx = d->indicesOf(utteranceIds);
@@ -1611,23 +1772,29 @@ QString SpeakerEditor::moveUtterancesToPerson(const QStringList& utteranceIds,
 
     Step s = d->begin();
     const QString key = d->createParticipant(person, s);
-    d->moveLines(idx, key, s);
+    d->moveLines(idx, key, s, noisy);
     d->newPersonKey = key;
-    d->commit(s, tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(person));
+    d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size()).arg(person)
+                       : tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(person));
+    if (noisy) return key;
+    d->finishDecision(idx);
     d->proposeSuggestion(s, idx, key);
     return key;
 }
 
-QString SpeakerEditor::moveUtterancesToNewParticipant(const QStringList& utteranceIds)
+QString SpeakerEditor::moveUtterancesToNewParticipant(const QStringList& utteranceIds, bool noisy)
 {
     const QVector<int> idx = d->indicesOf(utteranceIds);
     if (idx.isEmpty()) return {};
 
     Step s = d->begin();
     const QString key = d->createParticipant(QString(), s);
-    d->moveLines(idx, key, s);
+    d->moveLines(idx, key, s, noisy);
     d->newPersonKey = key;
-    d->commit(s, tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(d->displayOf(key)));
+    d->commit(s, noisy ? tr("%n sor áthelyezése ide: %1 (nem hangminta)", nullptr, idx.size()).arg(d->displayOf(key))
+                       : tr("%n sor áthelyezése ide: %1", nullptr, idx.size()).arg(d->displayOf(key)));
+    if (noisy) return key;
+    d->finishDecision(idx);
     d->proposeSuggestion(s, idx, key);
     return key;
 }
@@ -1773,7 +1940,7 @@ bool SpeakerEditor::confirmUtterances(const QStringList& utteranceIds, bool asNo
     QVector<int> idx;
     for (int i : d->indicesOf(utteranceIds)) {
         const OverlayUtterance u = d->ov.utterances.value(d->lines[i].id);
-        if (!u.confirmed || (asNoisy && u.noisy != std::optional<bool>(true))) idx.append(i);
+        if (!u.confirmed || u.ignored || (asNoisy && u.noisy != std::optional<bool>(true))) idx.append(i);
     }
     if (idx.isEmpty()) return false;
 
@@ -1783,10 +1950,12 @@ bool SpeakerEditor::confirmUtterances(const QStringList& utteranceIds, bool asNo
         u.confirmed = true;
         u.rechecked = false;
         u.recheckHint.clear();
+        u.ignored = false;      // „Jó így": tudjuk, ki mondta
         if (asNoisy) u.noisy = true;
     }
     d->commit(s, asNoisy ? tr("%n sor megerősítése (nem hangminta)", nullptr, idx.size())
                          : tr("%n sor megerősítése", nullptr, idx.size()));
+    if (!asNoisy) d->finishDecision(idx);
     return true;
 }
 
@@ -1803,6 +1972,35 @@ bool SpeakerEditor::setUtterancesNoisy(const QStringList& utteranceIds, bool noi
                        : tr("%n sor: mintának használható", nullptr, idx.size()));
     return true;
 }
+
+bool SpeakerEditor::setUtterancesIgnored(const QStringList& utteranceIds, bool ignored)
+{
+    QVector<int> idx;
+    for (int i : d->indicesOf(utteranceIds))
+        if (d->ignoredAt(i) != ignored) idx.append(i);
+    if (idx.isEmpty()) return false;
+
+    Step s = d->begin();
+    for (int i : std::as_const(idx)) {
+        auto it = d->ov.utterances.find(d->lines[i].id);
+        if (it == d->ov.utterances.end()) it = d->ov.utterances.insert(d->lines[i].id, OverlayUtterance());
+        it->ignored = ignored;
+        if (ignored) {
+            // A döntés lezárja a sor kétségét: az újraellenőrzés jelzése és javaslata elengedve.
+            it->rechecked = false;
+            it->recheckHint.clear();
+        }
+        if (it->isDefault()) d->ov.utterances.erase(it);
+    }
+    // A név nem változik → nem beszélő-változás (az összefoglaló nem válik elavulttá).
+    d->commit(s, ignored ? tr("%n sor: nem azonosítható", nullptr, idx.size())
+                         : tr("%n sor: újra azonosítható", nullptr, idx.size()));
+    return true;
+}
+
+SampleDeviation SpeakerEditor::lastSampleDeviation() const { return d->deviation; }
+
+QVector<SpeakerSampleStats> SpeakerEditor::sampleStats() const { return d->computeSampleStats(); }
 
 // ---- újraellenőrzés ---------------------------------------------------------
 
@@ -2246,6 +2444,10 @@ VoiceprintResult SpeakerEditor::createVoiceprintFromLines(const QString& speaker
             r.error = tr("Ez a sor bizonytalan: előbb erősítsd meg („Jó így”) vagy helyezd át, utána lehet minta.");
             return r;
         }
+        if (d->ignoredAt(i)) {
+            r.error = tr("Ez a sor „nem azonosítható” jelölésű, ezért nem használható hangmintának.");
+            return r;
+        }
         if (d->noisyAt(i)) {
             r.error = tr("Ebben a sorban egymásra beszéltek, ezért nem használható hangmintának.");
             return r;
@@ -2350,10 +2552,12 @@ void SpeakerEditor::refreshFromDisk()
         d->redoStack.clear();
         d->suggestion = SpeakerSuggestion();
         d->pairOffer = PairRecheckOffer();
+        d->resetDeviation();
         emit reloaded();
         emit speakersChanged();
         emit undoStateChanged();
         emit suggestionChanged();
+        d->updateSampleStats();
         return;
     }
     Step s;
@@ -2385,7 +2589,10 @@ void SpeakerEditor::reloadTranscript()
     d->suggestion = SpeakerSuggestion();
     d->pairOffer = PairRecheckOffer();
     d->embError.clear();
+    d->snapshotSessionBaseline();   // új átirat = új munkamenet a minta-mérőnek
+    d->resetDeviation();
     emit reloaded();
+    emit sampleStatsChanged();
     emit speakersChanged();
     emit uncertainCountChanged(d->uncertainCount());
     emit undoStateChanged();
@@ -2504,7 +2711,9 @@ QVector<Candidate> SpeakerEditor::lineCandidates(const QString& utteranceId) con
     Side side = Side::Unknown;
     if (i < d->review.sides.lines.size() && d->review.sides.lines[i].utteranceId == utteranceId)
         side = d->review.sides.lines[i].side;
-    return ranking::rankForLine(d->review.context, emb, side, d->assigned[i], !emb.isEmpty() && !d->noisyAt(i));
+    // A „nem azonosítható" sor hangja nincs benne a beszélője sor-összegében (ReviewGroups).
+    return ranking::rankForLine(d->review.context, emb, side, d->assigned[i],
+                                !emb.isEmpty() && !d->noisyAt(i) && !d->ignoredAt(i));
 }
 
 QVector<Candidate> SpeakerEditor::speakerCandidates(const QString& speakerKey) const

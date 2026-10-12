@@ -29,6 +29,7 @@ struct Row {
     qint64 durationMs = 0;
     bool locked = false;
     bool noisy = false;
+    bool ignored = false;       // „nem azonosítható”: nincs hangja az elemzésben, nem kerül csoportba
     Side side = Side::Unknown;
     const QVector<float>* emb = nullptr;
     bool clean() const { return emb && !noisy; }
@@ -47,9 +48,10 @@ QVector<Row> rowsOf(const ReviewInput& in, const SideReport& sides)
         r.durationMs = ls.endMs - ls.startMs;
         r.locked = ls.locked;
         r.noisy = ls.noisy;
+        r.ignored = ls.ignored;
         r.side = ls.side;
         const auto it = in.embeddings.constFind(ls.utteranceId);
-        if (it != in.embeddings.constEnd() && !it->isEmpty()) r.emb = &it.value();
+        if (!r.ignored && it != in.embeddings.constEnd() && !it->isEmpty()) r.emb = &it.value();
         rows.append(r);
     }
     return rows;
@@ -284,6 +286,7 @@ RankContext buildRankContext(const ReviewInput& in, const SideReport& sides)
     QHash<QString, QVector<double>> coreSum;
     QHash<QString, int> coreCount;
     for (const Row& r : rowsOf(in, sides)) {
+        if (r.ignored) continue;    // „nem azonosítható”: se sorszám, se hang a profilban
         const auto it = ctx.index.constFind(r.key);
         if (it == ctx.index.constEnd()) continue;
         SpeakerProfile& p = ctx.speakers[it.value()];
@@ -333,6 +336,8 @@ QVector<ReviewGroup> buildReviewGroups(const ReviewInput& in, const SideReport& 
     QHash<QString, int> rowOf;
     for (int i = 0; i < rows.size(); ++i) rowOf.insert(rows[i].id, i);
     QVector<bool> used(rows.size(), false);
+    // A „nem azonosítható” sorok egyik csoportfajtába sem kerülnek.
+    for (int i = 0; i < rows.size(); ++i) used[i] = rows[i].ignored;
 
     QVector<ReviewGroup> out;
     // Csoport-gyűjtő: id → index az out-ban.
@@ -623,7 +628,7 @@ ReviewResult analyzeReview(const ReviewInput& in, const MeetingActivity& activit
     r.groups = buildReviewGroups(in, r.sides, r.context);
     QSet<QString> locked;
     for (const LineSide& ls : r.sides.lines)
-        if (ls.locked) locked.insert(ls.utteranceId);
+        if (ls.locked || ls.ignored) locked.insert(ls.utteranceId);
     for (const SideConflict& c : r.sides.conflicts)
         if (!locked.contains(c.utteranceId)) r.sideConflicts.insert(c.utteranceId, c.speakerKey);
     return r;

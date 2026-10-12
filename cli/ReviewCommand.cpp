@@ -4,6 +4,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/ReviewGroups.h"
+#include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/edit/TrackActivity.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
@@ -166,6 +167,10 @@ int runReviewCommand(const QStringList& args)
                                       {"confirmedBasis", g.confirmedBasis}, {"evidence", ev}});
         }
         root["groups"] = groups;
+        QJsonArray ignored;
+        for (const LineSide& ls : r.sides.lines)
+            if (ls.ignored) ignored.append(ls.utteranceId);
+        root["ignoredLines"] = ignored;
         QJsonArray speakers;
         for (const ranking::SpeakerProfile& p : r.context.speakers) {
             if (p.key.isEmpty()) continue;
@@ -189,6 +194,15 @@ int runReviewCommand(const QStringList& args)
           << " (models: " << models.join(',') << ")\n";
     out() << "Track sides: " << (r.sides.active ? "active" : "inactive (needs mic + loopback activity)")
           << (r.sides.active && fromCache ? " (activity from cache)" : "") << "\n";
+
+    QStringList ignoredIds;
+    for (const LineSide& ls : r.sides.lines)
+        if (ls.ignored) ignoredIds << ls.utteranceId;
+    out() << "Not identifiable (ignored by voice analysis): " << ignoredIds.size();
+    if (!ignoredIds.isEmpty())
+        out() << "  " << ignoredIds.mid(0, kMaxListedIds).join(' ')
+              << (ignoredIds.size() > kMaxListedIds ? QStringLiteral(" … (+%1)").arg(ignoredIds.size() - kMaxListedIds) : QString());
+    out() << "\n";
 
     out() << "\nReview groups: " << r.groups.size() << "\n";
     for (const ReviewGroup& g : r.groups) {
@@ -228,6 +242,135 @@ int runReviewCommand(const QStringList& args)
                   << "  " << ev.join(QStringLiteral(", ")) << "\n";
         }
     }
+    out().flush();
+    return 0;
+}
+
+namespace {
+
+QString clock(qint64 ms)
+{
+    const qint64 s = ms / 1000;
+    return QStringLiteral("%1:%2.%3").arg(s / 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'))
+        .arg((ms % 1000) / 100);
+}
+
+int setIgnored(const QString& folder, const QVector<TranscriptLine>& lines, const QStringList& ids, bool ignored)
+{
+    SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
+    QSet<QString> known;
+    for (const TranscriptLine& l : lines) known.insert(l.id);
+    for (const QString& id : ids)
+        if (!known.contains(id)) { err() << "Unknown utterance id: " << id << "\n"; return 1; }
+    int changed = 0;
+    for (const QString& id : ids) {
+        auto it = ov.utterances.find(id);
+        if (it == ov.utterances.end()) {
+            if (!ignored) continue;
+            it = ov.utterances.insert(id, OverlayUtterance());
+        }
+        if (it->ignored == ignored) continue;
+        it->ignored = ignored;
+        if (ignored) {          // as in SpeakerEditor::setUtterancesIgnored
+            it->rechecked = false;
+            it->recheckHint.clear();
+        }
+        if (it->isDefault()) ov.utterances.erase(it);
+        ++changed;
+    }
+    if (changed > 0 && !speakeredit::saveOverlay(folder, ov)) {
+        err() << "Could not write " << speakeredit::overlayPath(folder) << "\n";
+        return 1;
+    }
+    out() << (ignored ? "Marked " : "Unmarked ") << changed << " line(s) as not identifiable"
+          << (changed < ids.size() ? QStringLiteral(" (%1 unchanged)").arg(ids.size() - changed) : QString()) << ".\n";
+    out().flush();
+    return 0;
+}
+
+} // namespace
+
+int runLinesCommand(const QStringList& args)
+{
+    const QString usage = QStringLiteral(
+        "Usage: lines <meeting-folder> [--json]\n"
+        "       lines ignore <meeting-folder> <utteranceId...>\n"
+        "       lines unignore <meeting-folder> <utteranceId...>\n");
+    const QString sub = args.value(2);
+    const bool edit = sub == QLatin1String("ignore") || sub == QLatin1String("unignore");
+    QString folder;
+    QStringList ids;
+    bool json = false;
+    for (int i = edit ? 3 : 2; i < args.size(); ++i) {
+        const QString a = args.at(i);
+        if (!edit && a == "--json") json = true;
+        else if (a.startsWith("--")) { err() << "Unknown argument: " << a << "\n" << usage; return 2; }
+        else if (folder.isEmpty()) folder = a;
+        else if (edit) ids << a;
+        else { err() << "Unknown argument: " << a << "\n" << usage; return 2; }
+    }
+    if (folder.isEmpty() || (edit && ids.isEmpty())) { err() << usage; return 2; }
+    folder = QFileInfo(folder).absoluteFilePath();
+
+    Meeting m = MeetingStore::readMeetingFolder(folder);
+    if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
+    const QVector<TranscriptLine> lines = speakeredit::loadTranscriptLines(folder);
+    if (lines.isEmpty()) { err() << "No transcript (transcript.segments.json) in " << folder << "\n"; return 1; }
+    if (edit) return setIgnored(folder, lines, ids, sub == QLatin1String("ignore"));
+
+    const SpeakerOverlay ov = speakeredit::loadOverlayFor(folder, lines);
+    // The automatic "talked over" flag (overlap with another resolved speaker), as in the editor.
+    QVector<QString> keys(lines.size());
+    QVector<speakeredit::TimedLine> timed(lines.size());
+    QHash<QString, int> keyIdx;
+    for (int i = 0; i < lines.size(); ++i) {
+        keys[i] = speakeredit::resolveSpeakerKey(ov, lines[i]);
+        auto it = keyIdx.find(keys[i]);
+        if (it == keyIdx.end()) it = keyIdx.insert(keys[i], keyIdx.size());
+        timed[i] = {lines[i].startMs, lines[i].endMs, it.value()};
+    }
+    const QVector<bool> autoNoisy = speakeredit::computeOverlapNoisy(timed);
+
+    QJsonArray arr;
+    int ignoredCount = 0;
+    QStringList rows;
+    for (int i = 0; i < lines.size(); ++i) {
+        const TranscriptLine& l = lines[i];
+        const auto o = ov.utterances.constFind(l.id);
+        const bool has = o != ov.utterances.constEnd();
+        const bool corrected = has && o->corrected;
+        const bool confirmed = has && o->confirmed;
+        const bool noisy = (has && o->noisy.has_value()) ? *o->noisy : autoNoisy.value(i);
+        const bool ignored = has && o->ignored;
+        const bool rechecked = has && o->rechecked && !corrected && !confirmed && !ignored;
+        ignoredCount += ignored ? 1 : 0;
+        const QString name = speakeredit::speakerDisplayName(ov, m.speakerMap, keys[i]);
+        if (json) {
+            arr.append(QJsonObject{{"id", l.id}, {"startMs", double(l.startMs)}, {"endMs", double(l.endMs)},
+                                   {"speakerKey", keys[i]}, {"speaker", name}, {"rawLabel", l.rawLabel},
+                                   {"corrected", corrected}, {"confirmed", confirmed}, {"noisy", noisy},
+                                   {"ignored", ignored}, {"rechecked", rechecked}});
+            continue;
+        }
+        QStringList flags;
+        if (corrected) flags << "corrected";
+        if (confirmed) flags << "confirmed";
+        if (noisy) flags << "not-a-sample";
+        if (ignored) flags << "ignored";
+        if (rechecked) flags << "rechecked";
+        rows << QStringLiteral("  %1  %2  %3  %4  %5").arg(clock(l.startMs), l.id.leftJustified(14),
+                                                         QString::number((l.endMs - l.startMs) / 1000.0, 'f', 1).rightJustified(6),
+                                                         name.leftJustified(20), flags.join(' '));
+    }
+    if (json) {
+        out() << QJsonDocument(QJsonObject{{"meetingFolder", folder}, {"lines", arr},
+                                           {"ignored", ignoredCount}}).toJson(QJsonDocument::Indented);
+        out().flush();
+        return 0;
+    }
+    out() << "Lines: " << lines.size() << ", not identifiable (ignored): " << ignoredCount << "\n";
+    out() << "  start     id              dur(s)  speaker               flags\n";
+    for (const QString& r : std::as_const(rows)) out() << r << "\n";
     out().flush();
     return 0;
 }

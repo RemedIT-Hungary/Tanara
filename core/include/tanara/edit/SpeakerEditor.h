@@ -75,14 +75,19 @@ public:
     QStringList uncertainUtteranceIds() const;
 
     // ---- műveletek (mindegyik egy undo-lépés; false / üres = nem történt semmi) ----
-    // Sorok áthelyezése a meeting egy meglévő beszélőjéhez.
-    bool moveUtterances(const QStringList& utteranceIds, const QString& speakerKey);
+    // Sorok áthelyezése a meeting egy meglévő beszélőjéhez. A már ott lévő sorok kimaradnak.
+    // noisy: „→ Y, nem minta" — a sor egyben „egymásra beszéltek" jelzést kap (nem hangminta),
+    // UGYANABBAN a lépésben; ilyenkor „hasonló sorok" javaslat és eltérő-minta jelzés sincs.
+    // noisy=false: a sor zajos-jelzése érintetlen (a régi viselkedés), és mintának számít →
+    // lastSampleDeviation() frissül. Az áthelyezés a „nem azonosítható" jelzést is törli.
+    bool moveUtterances(const QStringList& utteranceIds, const QString& speakerKey, bool noisy = false);
     // …egy személyhez név szerint: ha már beszélője a meetingnek, hozzá; különben új
     // résztvevő jön létre (ismert VAGY vadonatúj személy — utóbbi a névlistába is bekerül).
-    // Vissza: a cél-beszélő kulcsa.
-    QString moveUtterancesToPerson(const QStringList& utteranceIds, const QString& personName);
-    // …egy új NÉVTELEN résztvevőhöz („Új beszélő N"). Vissza: az új beszélő kulcsa.
-    QString moveUtterancesToNewParticipant(const QStringList& utteranceIds);
+    // Vissza: a cél-beszélő kulcsa. noisy: mint fent.
+    QString moveUtterancesToPerson(const QStringList& utteranceIds, const QString& personName,
+                                   bool noisy = false);
+    // …egy új NÉVTELEN résztvevőhöz („Új beszélő N"). Vissza: az új beszélő kulcsa. noisy: mint fent.
+    QString moveUtterancesToNewParticipant(const QStringList& utteranceIds, bool noisy = false);
 
     // A teljes beszélő másik személyhez kerül (minden sora). Ha a személy már beszélője a
     // meetingnek, a kettő összevonódik. fixVoiceprints: „téves felismerés" — a meeting
@@ -109,10 +114,28 @@ public:
 
     // „Jó így": a sorok megerősítése (többé nem bizonytalanok). asNoisy: „Jó így, de ne
     // használd mintának" — a sor egyben „egymásra beszéltek" jelzést is kap (nem hangminta).
+    // A megerősítés a „nem azonosítható" jelzést is törli. asNoisy=false → lastSampleDeviation() frissül.
     bool confirmUtterances(const QStringList& utteranceIds, bool asNoisy = false);
     // Az „egymásra beszéltek" jelzés kézi beállítása (true: ne legyen hangminta; false:
     // mintának használható, akkor is, ha az átfedés-szabály zajosnak tartaná).
     bool setUtterancesNoisy(const QStringList& utteranceIds, bool noisy);
+    // „Nem azonosítható" (ignored=true) / annak visszavonása (false): EGY undo-lépés. A sor neve
+    // (és a javított / megerősített jelzője) marad; az újraellenőrzés jelzése törlődik. Az ignored
+    // sor a hang-elemzés minden ágából kimarad (bizonytalanság, újraellenőrzés, páros átnézés,
+    // „hasonló sorok", Átnézendő csoportok, sáv-oldal tanulás, jelölt-profilok, hanglenyomat), és
+    // sosem bizonytalan; a beszédidőben és az átiratban a nevén számít. false: nem változott semmi.
+    bool setUtterancesIgnored(const QStringList& utteranceIds, bool ignored);
+
+    // ---- minta-tanítás átláthatósága (Átnézendő közös alap) ----------------
+    // Az utolsó mintát adó döntés (confirmUtterances asNoisy=false, moveUtterances* noisy=false)
+    // eredménye: a döntött sorok közül a cél-beszélő magjától legtávolabbi (lásd SampleDeviation;
+    // küszöb: speakeredit::kSampleDeviationFit). Érvénytelen (isValid()==false), ha nem volt mérhető
+    // (nincs beágyazás, a beszélőnek nincs elég más sora), vagy azóta más szerkesztés / visszavonás
+    // történt. Változáskor sampleDeviationChanged.
+    SampleDeviation lastSampleDeviation() const;
+    // Minta-mérő: a látható beszélők (speakers() sorrendjében) minta-sorai (lásd SpeakerSampleStats).
+    // Változáskor sampleStatsChanged.
+    QVector<SpeakerSampleStats> sampleStats() const;
 
     // ---- újraellenőrzés a megerősített sorok alapján ----------------------
     // A megerősített / javított sorokból épített „megbízható" hang-centroidokhoz méri a többi
@@ -346,6 +369,10 @@ signals:
     // Elkészült egy háttér-elemzés: reviewGroups(), a jelöltek és a sáv-oldal frissült.
     void reviewGroupsChanged();
     void reviewRunningChanged(bool running);
+    // lastSampleDeviation() változott (új jelzés, vagy a régi érvényét vesztette).
+    void sampleDeviationChanged();
+    // sampleStats() változott.
+    void sampleStatsChanged();
 
     // Mellékhatások a többi komponens felé (az AppController a saját jeleire fordítja).
     void speakerMapChanged(QString meetingId);

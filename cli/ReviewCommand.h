@@ -9,4 +9,12 @@ namespace tanara::cli {
 // args[1] == "review".
 int runReviewCommand(const QStringList& args);
 
+// tanara-cli lines — a meeting-mappa átirat-sorai a jelölőikkel (szöveg NÉLKÜL), és a
+// „nem azonosítható" jelölés kézi állítása:
+//   lines <meeting-folder> [--json]
+//   lines ignore <meeting-folder> <utteranceId...>
+//   lines unignore <meeting-folder> <utteranceId...>
+// A listázás csak olvas; az ignore / unignore a transcript.speakers.json-t írja. args[1] == "lines".
+int runLinesCommand(const QStringList& args);
+
 } // namespace tanara::cli

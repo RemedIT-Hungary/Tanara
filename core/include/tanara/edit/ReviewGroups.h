@@ -19,6 +19,9 @@
 //                        résztvevőhöz). Ezek zárolt sorok, így más csoporttal nem fednek át.
 //   ShortLines         — < kMinEmbedMs, nincs beágyazás; csak tájékoztató (nincs javaslat).
 //
+// A „nem azonosítható” sorok (OverlayUtterance::ignored) egyik fajtába sem kerülnek, és a rangsor
+// profiljaiba (sorszám, sor-összeg, megerősített mag) sem számítanak bele.
+//
 #include "tanara/Types.h"
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/Evidence.h"

@@ -109,7 +109,7 @@ QJsonObject toJson(const SideReport& r, const MeetingActivity& act, const QStrin
                       {"speakerKey", l.speakerKey}, {"rawLabel", l.rawLabel}, {"side", sideName(l.side)},
                       {"localShare", jnum(l.localShare)}, {"micDb", jnum(l.micDb)},
                       {"loopDb", jnum(l.loopDb)}, {"micRelDb", jnum(l.micRelDb)}, {"loopRelDb", jnum(l.loopRelDb)},
-                      {"locked", l.locked}, {"noisy", l.noisy}};
+                      {"locked", l.locked}, {"noisy", l.noisy}, {"ignored", l.ignored}};
         if (legacy) o["legacySide"] = sideName(l.legacySide);
         lines.append(o);
     }

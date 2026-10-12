@@ -314,6 +314,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         const bool has = o != ov.utterances.constEnd();
         ls.locked = has && (o->corrected || o->confirmed);
         ls.noisy = (has && o->noisy.has_value()) ? *o->noisy : autoNoisy.value(i);
+        ls.ignored = has && o->ignored;
     }
 
     // Energia + localShare + beszédszinthez mért szint soronként (csak ha mindkét oldal van).
@@ -359,6 +360,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
         r.persons.append(p);
     }
     for (const LineSide& ls : r.lines) {
+        if (ls.ignored) continue;   // „nem azonosítható”: nem bizonyíték a személy oldalára
         PersonSide& p = r.persons[personIdx.value(ls.speakerKey)];
         p.allLines.add(ls.side);
         if (!ls.locked || ls.noisy) continue;
@@ -436,6 +438,7 @@ SideReport analyzeSides(const Meeting& m, const QVector<TranscriptLine>& lines,
 
     // Ellentmondások: a sor egyértelműen a beszélője oldalával ellentétes oldalon szólt.
     for (const LineSide& ls : r.lines) {
+        if (ls.ignored) continue;   // „nem azonosítható”: sosem kerül újra az Átnézendőbe
         const PersonSide& p = r.persons.at(personIdx.value(ls.speakerKey));
         if (!opposite(ls.side, p.side)) continue;
         r.conflicts.append({ls.utteranceId, ls.startMs, ls.speakerKey, ls.side, p.side, ls.localShare});

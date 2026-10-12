@@ -33,12 +33,50 @@ struct EditorUtterance {
     bool    noisy = false;
     bool    noisyOverlap = false;       // az átfedés-szabály szerint zajos (a kézi felülírástól függetlenül)
     bool    rechecked = false;          // az újraellenőrzés jelölte bizonytalannak
+    // „Nem azonosítható" (SpeakerOverlay: OverlayUtterance::ignored): a név marad, de a hang-elemzés
+    // figyelmen kívül hagyja; sosem bizonytalan, nem minta, nem kerül Átnézendő csoportba.
+    bool    ignored = false;
     // A hangra jobban illő beszélő kulcsa (az újraellenőrzés javaslata); üres = nincs.
     QString likelySpeakerKey;
     // Miért bizonytalan (v3, 14. döntés — a pirula felirata): "side" (a sor a beszélője oldalával
     // ellentétes sávon szólt), "tag" (hangra kétes, és a beszélő címkéi nem illenek a
     // megbeszéléshez), "voice" (hangra kétes); üres, ha nem bizonytalan.
     QString uncertainReason;
+};
+
+// „Eltérő minta" jelzés (SpeakerEditor::lastSampleDeviation): egy pozitív, mintát adó döntés
+// (megerősítés, vagy áthelyezés mintaként) után a döntött sorok közül a cél-beszélő magjától
+// legtávolabbi. deviates = a hasonlóság a küszöb (speakeredit::kSampleDeviationFit) alatt van.
+struct SampleDeviation {
+    QString utteranceId;        // üres = nincs mérés (nincs érvényes jelzés)
+    QString speakerKey;         // a cél-beszélő
+    double  similarity = 0.0;   // cosine a beszélő magjához (a döntött sorok nélkül), 0..1 körül
+    bool    deviates = false;
+    bool isValid() const { return !utteranceId.isEmpty(); }
+    bool operator==(const SampleDeviation& o) const {
+        return utteranceId == o.utteranceId && speakerKey == o.speakerKey
+            && similarity == o.similarity && deviates == o.deviates;
+    }
+    bool operator!=(const SampleDeviation& o) const { return !(*this == o); }
+};
+
+// Minta-mérő (SpeakerEditor::sampleStats): beszélőnként a hangmintának számító sorok. Minta-sor =
+// zárolt (megerősített / javított), nem „egymásra beszéltek", nem „nem azonosítható", és legalább
+// speakeredit::kMinEmbedMs hosszú (beágyazható). A „munkamenet" a szerkesztő megnyitása (ill. az
+// utolsó új átirat) óta tart.
+struct SpeakerSampleStats {
+    QString speakerKey;
+    QString personName;         // üres = névtelen
+    QString displayName;
+    int     sampleLines = 0;
+    qint64  sampleMs = 0;       // a minta-sorok teljes hossza
+    int     sessionAdded = 0;   // ebből a munkamenetben lett ennek a beszélőnek a mintája
+    QStringList sessionAddedIds;    // ezek a sorok (időrendben) — a „+N most" szűrőhöz
+    bool operator==(const SpeakerSampleStats& o) const {
+        return speakerKey == o.speakerKey && personName == o.personName && displayName == o.displayName
+            && sampleLines == o.sampleLines && sampleMs == o.sampleMs && sessionAdded == o.sessionAdded
+            && sessionAddedIds == o.sessionAddedIds;
+    }
 };
 
 // Egy kötés a résztvevő-jóváhagyáshoz (SpeakerEditor::applyBindings): a nyers beszélő (vagy
@@ -150,3 +188,5 @@ Q_DECLARE_METATYPE(tanara::VoiceprintMaterial)
 Q_DECLARE_METATYPE(tanara::VoiceprintResult)
 Q_DECLARE_METATYPE(tanara::SummaryStaleInfo)
 Q_DECLARE_METATYPE(tanara::RetranscribeImpact)
+Q_DECLARE_METATYPE(tanara::SampleDeviation)
+Q_DECLARE_METATYPE(tanara::SpeakerSampleStats)

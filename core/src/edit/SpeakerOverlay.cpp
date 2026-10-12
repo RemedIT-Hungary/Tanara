@@ -181,6 +181,7 @@ SpeakerOverlay loadOverlay(const QString& meetingFolder)
         if (o.contains(QStringLiteral("noisy"))) u.noisy = o.value(QStringLiteral("noisy")).toBool();
         u.rechecked = o.value(QStringLiteral("rechecked")).toBool();
         u.recheckHint = o.value(QStringLiteral("recheckHint")).toString();
+        u.ignored = o.value(QStringLiteral("ignored")).toBool();
         if (!u.isDefault()) ov.utterances.insert(it.key(), u);
     }
 
@@ -264,6 +265,7 @@ bool saveOverlay(const QString& meetingFolder, const SpeakerOverlay& ov)
         if (it.value().corrected) o[QStringLiteral("corrected")] = true;
         if (it.value().confirmed) o[QStringLiteral("confirmed")] = true;
         if (it.value().noisy.has_value()) o[QStringLiteral("noisy")] = *it.value().noisy;
+        if (it.value().ignored) o[QStringLiteral("ignored")] = true;
         if (it.value().rechecked) {
             o[QStringLiteral("rechecked")] = true;
             if (!it.value().recheckHint.isEmpty())
