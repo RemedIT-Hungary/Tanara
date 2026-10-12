@@ -55,7 +55,8 @@ public:
         LikelyNameRole,
         DecidedRole,                        // a sor már eldöntve (a helyén marad, művelet nélkül)
         DecidedTextRole,                    // „javítva" | „jó így"
-        LaneRole,                           // a sor beszélőjének oszlopa a sínen (-1 = összecsukva; group/more: -2)
+        LaneRole,
+        NewSpeakerSideRole,                 // G10: "local" | "remote" — a javaslat új beszélő ezen az oldalon                           // a sor beszélőjének oszlopa a sínen (-1 = összecsukva; group/more: -2)
     };
     Q_ENUM(Role)
 

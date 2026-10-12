@@ -2240,6 +2240,7 @@ void TranscriptEditorViewModel::rebuildReview()
             v.currentKey = g.currentSpeakerKey;
             v.proposedKey = g.proposedSpeakerKey;
             v.proposedName = g.proposedPersonName;
+            if (g.proposeNew) v.newSide = sideName(g.proposedSide);
             const QString ctx = sides.value(!g.proposedSpeakerKey.isEmpty() ? g.proposedSpeakerKey : g.currentSpeakerKey);
             v.evidence = evidenceList(g.evidence, ctx, g.kind == ReviewKind::SideConflict, true);
             v.actionable = g.kind != ReviewKind::ShortLines;
@@ -2252,7 +2253,10 @@ void TranscriptEditorViewModel::rebuildReview()
                 v.title = cur == QLatin1String("local") ? tr("A hívás hangján érkezett, de %1 nevén van").arg(curName)
                         : cur == QLatin1String("remote") ? tr("A mikrofonon érkezett, de %1 nevén van").arg(curName)
                                                          : tr("A másik sávon érkezett, de %1 nevén van").arg(curName);
-                v.subtitle = target.isEmpty() ? tr("Nincs azonos sávon beszélő jelölt") : tr("Javasolt: %1").arg(target);
+                const QString newTarget = v.newSide == QLatin1String("remote") ? tr("új beszélő (hívás hangja)")
+                                        : v.newSide == QLatin1String("local") ? tr("új beszélő (mikrofon)") : QString();
+                v.subtitle = !newTarget.isEmpty() ? tr("Javasolt: %1").arg(newTarget)
+                           : target.isEmpty() ? tr("Nincs azonos sávon beszélő jelölt") : tr("Javasolt: %1").arg(target);
             } else if (g.kind == ReviewKind::CoreMismatch) {
                 v.title = tr("Hang alapján valószínűleg %1 mondta").arg(target);
                 v.subtitle = tr("Most %1 nevén.").arg(curName);
@@ -2438,7 +2442,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId)
                                  [&](const ReviewView& v) { return v.id == groupId; });
     if (it == m_reviewViews.cend() || !it->actionable) return false;
     const ReviewView v = *it;
-    if (v.proposedKey.isEmpty() && v.proposedName.isEmpty()) return false;
+    if (v.proposedKey.isEmpty() && v.proposedName.isEmpty() && v.newSide.isEmpty()) return false;
     int moved = 0, last = -1;
     for (const QString& id : v.ids) {
         const int i = m_uttIndex.value(id, -1);

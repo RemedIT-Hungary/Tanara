@@ -339,6 +339,7 @@ Item {
                         lineCount: delegate.model.lineCount
                         evidence: delegate.model.evidence
                         proposedName: delegate.model.proposedName
+                        newSpeakerSide: delegate.model.newSpeakerSide || ""
                         actionable: delegate.model.actionable
                         canApply: delegate.model.canApply
                         expanded: delegate.model.expanded

@@ -315,6 +315,7 @@ public:
         QString currentKey;
         QString proposedKey;
         QString proposedName;
+        QString newSide;        // G10: a javaslat új beszélő ezen az oldalon ("local" | "remote"; üres = nincs)
         QVariantList evidence;
         bool actionable = true; // döntést kér (a rövid sorok csak tájékoztatnak)
     };

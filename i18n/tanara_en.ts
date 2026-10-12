@@ -12752,6 +12752,14 @@
         <translation>It came in on the other track, but it is under %1&apos;s name</translation>
     </message>
     <message>
+        <source>új beszélő (hívás hangja)</source>
+        <translation>new speaker (call audio)</translation>
+    </message>
+    <message>
+        <source>új beszélő (mikrofon)</source>
+        <translation>new speaker (microphone)</translation>
+    </message>
+    <message>
         <source>Nincs azonos sávon beszélő jelölt</source>
         <translation>No candidate speaks on the same track</translation>
     </message>

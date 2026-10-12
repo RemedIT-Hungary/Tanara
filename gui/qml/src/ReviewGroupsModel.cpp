@@ -59,6 +59,7 @@ QHash<int, QByteArray> ReviewGroupsModel::roleNames() const
         {DecidedRole, "decided"},
         {DecidedTextRole, "decidedText"},
         {LaneRole, "lane"},
+        {NewSpeakerSideRole, "newSpeakerSide"},
     };
 }
 
@@ -80,7 +81,7 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
     const auto& views = m_vm->reviewViews();
     if (r.view < 0 || r.view >= views.size()) return {};
     const TranscriptEditorViewModel::ReviewView& v = views[r.view];
-    const bool canApply = v.actionable && (!v.proposedKey.isEmpty() || !v.proposedName.isEmpty());
+    const bool canApply = v.actionable && (!v.proposedKey.isEmpty() || !v.proposedName.isEmpty() || !v.newSide.isEmpty());
 
     switch (role) {
     case RowKindRole: return r.kind == Group ? QStringLiteral("group") : r.kind == Line ? QStringLiteral("line")
@@ -96,6 +97,7 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
         return !v.proposedKey.isEmpty() ? m_vm->speakerView(v.proposedKey).name : v.proposedName;
     case ActionableRole: return v.actionable;
     case CanApplyRole: return canApply;
+    case NewSpeakerSideRole: return v.newSide;
     case ExpandedRole: return m_expanded.contains(v.id);
     case ActiveRole: return v.id == activeId();
     case IconRole: return iconOf(v.kind);
