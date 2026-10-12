@@ -14,6 +14,8 @@ import QtQuick.Templates as T
 //   Alul halkan: „Hanglenyomat-minta ebből a sorból (N mp)" — bizonytalan soron „Jó így +
 //   hanglenyomat-minta…" (a jobb klikkes menüpont is megmarad); a jelölt-sorokon gyors
 //   „+ #Címke", ha a megbeszélés címkéje még nincs a személyen.
+//   S2: „Nem azonosítható" (a sor / a kijelölés; a név marad, a hang-elemzés kihagyja) — a már
+//   nem azonosítható sornál „Újra azonosítható".
 // Minden választás egy visszavonási lépés; a hívó (TranscriptTab) kéri a megerősítést.
 TPopover {
     id: control
@@ -587,6 +589,83 @@ TPopover {
                     muted: true
                     font.pixelSize: Theme.fontCaption
                 }
+            }
+        }
+
+        // ---- „Nem azonosítható" (S2): halk sor; a sor / a kijelölés hang-elemzésből kihagyva ----
+        Item {
+            id: ignoreRow
+            objectName: "lineIgnoreRow"
+            visible: !control.naming && !control.typed && !control.wholeSpeaker
+            readonly property bool ignored: control.scope === "line" && !!control.editor && control.utteranceId !== ""
+                                            && control.whyRevision >= 0
+                                            && control.editor.lineInfo(control.utteranceId).ignored === true
+            width: parent.width
+            height: visible ? 32 : 0
+            activeFocusOnTab: visible
+            Accessible.role: Accessible.Button
+            Accessible.name: ignoreLabel.text
+            function trigger() {
+                const id = control.utteranceId
+                const selection = control.scope === "selection"
+                const value = !ignored
+                control.close()
+                if (selection) control.editor.setSelectionIgnored(true)
+                else control.editor.setUtteranceIgnored(id, value)
+            }
+            Keys.onSpacePressed: trigger()
+            Keys.onReturnPressed: trigger()
+            TDivider { width: parent.width }
+            Rectangle {
+                anchors.fill: parent
+                anchors.topMargin: 1
+                color: ignoreHover.hovered ? Theme.alpha(Theme.stateLayer, Theme.hoverOpacity) : "transparent"
+                TFocusRing { visible: ignoreRow.activeFocus; targetRadius: 0 }
+            }
+            Row {
+                x: 14
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 9
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 13; height: 13; radius: 6.5
+                    color: "transparent"
+                    border.width: 1.25
+                    border.color: Theme.textMuted
+                    TLabel {
+                        anchors.centerIn: parent
+                        anchors.verticalCenterOffset: 0.5
+                        text: "?"
+                        muted: true
+                        font.pixelSize: 9
+                        font.weight: Theme.weightBold
+                    }
+                }
+                TLabel {
+                    id: ignoreLabel
+                    objectName: "lineIgnoreLink"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ignoreRow.ignored ? qsTr("Újra azonosítható")
+                        : control.scope === "selection" ? qsTr("Nem azonosítható (a kijelölt %n sor)", "", control.selectionCount)
+                        : qsTr("Nem azonosítható — nem tudni, ki mondta")
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    font.underline: ignoreHover.hovered
+                }
+                TLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "0"
+                    mono: true
+                    muted: true
+                    font.pixelSize: Theme.fontMicro
+                }
+            }
+            HoverHandler { id: ignoreHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: ignoreRow.trigger() }
+            TToolTip {
+                visible: ignoreHover.hovered
+                text: ignoreRow.ignored ? qsTr("A sor újra részt vesz a hang-elemzésben")
+                                        : qsTr("A név marad, de a sor hangját semmire nem használom (minta, bizonyíték, átnézendő)")
             }
         }
 

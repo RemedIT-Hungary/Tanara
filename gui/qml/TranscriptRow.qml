@@ -6,7 +6,9 @@ import QtQuick
 // réteg, hogy a húzás több soron át is működjön). A NÉVRE kattintva ennek a sornak a beszélője
 // javítható (LinePopover; a teljes beszélő a sín-fejlécről / a térképről: SpeakerWhyPopover).
 // Javítás módban (sín látszik) a névsor jelölői (handoff-v3 E1): pipa (megerősítve), „rövid",
-// „bizonytalan · sáv | hang | címke", „javítva", „új személy", „egymásra beszéltek".
+// „bizonytalan · sáv | hang | címke", „javítva", „új személy", „egymásra beszéltek", és (S2) a
+// döntött sorokon a minta-jel (tömör hullám = minta, áthúzott = nem minta), valamint a
+// „? nem azonosítható" jelölő; a nem azonosítható sor halvány (nem sraffozott).
 Item {
     id: row
 
@@ -35,6 +37,8 @@ Item {
     required property bool sideConflict
     required property bool newPerson
     required property bool similar
+    required property bool ignored
+    required property string sampleState
     required property bool selected
     required property bool suggested
     required property bool suggestionAnchor
@@ -60,6 +64,12 @@ Item {
     height: gap ? 24 : body.height
 
     // ---- elválasztó (szűrő) ----
+    readonly property string gapText: {
+        const f = vm.listFilter
+        if (f === "samples") return qsTr("··· %n sor elrejtve", "", row.hiddenCount)
+        if (f === "hideIgnored") return qsTr("··· %n nem azonosítható sor elrejtve", "", row.hiddenCount)
+        return qsTr("··· %n biztos sor elrejtve", "", row.hiddenCount)
+    }
     Loader {
         active: row.gap
         x: row.textX + 24
@@ -70,7 +80,7 @@ Item {
             TLabel {
                 id: gapLabel
                 anchors.centerIn: parent
-                text: qsTr("··· %n biztos sor elrejtve", "", row.hiddenCount)
+                text: row.gapText
                 mono: true
                 muted: true
                 font.pixelSize: Theme.fontCaption
@@ -94,6 +104,9 @@ Item {
         visible: !row.gap
         width: row.width
         height: row.gap ? 0 : textColumn.y + textColumn.height + 6
+
+        // A „nem azonosítható" sor halvány (a sín-cellája és a szövege is).
+        opacity: row.ignored && !row.selected ? 0.5 : 1
 
         // Sor-háttér: lejátszott = accentSoft; kijelölt = raised + 1.5 px accent keret.
         Rectangle {
@@ -125,6 +138,7 @@ Item {
                 suggestLane: row.similar ? row.tab.newPersonLane : -1
                 dimmed: row.inPreview && row.tab.previewLane >= 0 && row.tab.previewLane !== row.lane
                 targetLane: row.inPreview && row.tab.previewLane !== row.lane ? row.tab.previewLane : -1
+                targetDashed: row.tab.shiftHeld
                 targetLineColor: Theme.speakerLine(row.tab.previewColorIndex)
                 targetSoftColor: Theme.speakerSoft(row.tab.previewColorIndex)
                 outlineColor: Theme.text
@@ -255,6 +269,13 @@ Item {
                                    : qsTr("Hangra kétes, kié a sor")
                     }
                     TranscriptMarker {
+                        objectName: "ignoredMarker"
+                        visible: row.ignored
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: "ignored"
+                        toolTipText: qsTr("Nem azonosítható: a név marad, de a hangját semmire nem használom (minta, bizonyíték, átnézendő). Visszavonás: 0 újra, vagy Ctrl+Z")
+                    }
+                    TranscriptMarker {
                         objectName: "confirmedMarker"
                         visible: row.confirmed && !row.uncertain && row.tab.railShown
                         anchors.verticalCenter: parent.verticalCenter
@@ -269,11 +290,23 @@ Item {
                         toolTipText: qsTr("Túl rövid a hang-ellenőrzéshez: csak fülre dönthető el, kié")
                     }
 
-                    // „Egymásra beszéltek": visszafogott jelzés; a sor nem hangminta.
+                    // Minta-jel a döntött sorokon: tömör hullám = hangminta lett, áthúzott = nem minta.
+                    TranscriptMarker {
+                        objectName: "sampleMarker"
+                        visible: row.sampleState !== "" && row.tab.railShown
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: row.sampleState === "sample" ? "sample" : "noSample"
+                        toolTipText: row.sampleState === "sample"
+                                     ? qsTr("Hangminta: a sor hangja tanítja %1 felismerését").arg(row.speakerName)
+                                     : row.noisy ? qsTr("Nem minta: egymásra beszéltek / zajos, a hangját nem használom")
+                                     : qsTr("Nem minta: túl rövid ahhoz, hogy a hangja minta legyen")
+                    }
+                    // „Egymásra beszéltek": visszafogott jelzés; a sor nem hangminta (a döntött
+                    // soron az áthúzott hullám mondja ki).
                     TranscriptMarker {
                         id: noisyPill
                         objectName: "noisyPill"
-                        visible: row.noisy
+                        visible: row.noisy && (row.sampleState === "" || !row.tab.railShown)
                         anchors.verticalCenter: parent.verticalCenter
                         kind: "noisy"
                         toolTipText: row.noisyOverlap

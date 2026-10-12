@@ -1,7 +1,8 @@
 #pragma once
 //
 // TranscriptListModel — az átirat-szerkesztő ListView-jának sorai. Egy sor vagy egy
-// MEGSZÓLALÁS, vagy (a „Bizonytalan" szűrőben) egy „··· N biztos sor elrejtve" elválasztó.
+// MEGSZÓLALÁS, vagy (szűrőben: „Bizonytalan", minta-mérő „+N most", a „nem azonosítható" sorok
+// elrejtése) egy „··· N sor elrejtve" elválasztó.
 //
 // Az adat a TranscriptEditorViewModel pillanatképében él (megszólalások, beszélők,
 // kijelölés, javaslat, keresés); ez az osztály a LÁTHATÓ sorok leképezését tartja és a
@@ -55,6 +56,9 @@ public:
         SideConflictRole,               // a sor a beszélője oldalával ellentétes sávon szólt
         NewPersonRole,                  // a sor beszélője az imént létrehozott személy („új személy")
         SimilarRole,                    // az új személyhez hasonló sor, kiemelve (sín: keret az oszlopában)
+        // S2
+        IgnoredRole,                    // „nem azonosítható": a név marad, a hang-elemzés kihagyja
+        SampleStateRole,                // döntött soron "sample" | "noSample"; különben ""
     };
     Q_ENUM(Role)
 

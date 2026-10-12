@@ -16,6 +16,7 @@
 #include "TranscriptListModel.h"
 
 #include <QClipboard>
+#include <QJSValue>
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -89,6 +90,8 @@ ApplicationWindow {
         onCollapseRequested: tab.editor.lanesExpanded = false
         similarMarks: tab.similarMarks
         onLineStepRequested: delta => tab.stepLine(delta)
+        sampleStats: tab.viewMode !== "read" ? tab.editor.sampleStats : []
+        onSamplesClicked: key => tab.showSessionSamples(key)
     }
 }
 )";
@@ -194,7 +197,10 @@ class TestTranscriptTab : public QObject {
                 return it->property("utteranceId").toString();
         return {};
     }
-    bool barShown() const { return changeBar() && changeBar()->property("visible").toBool(); }
+    // Az átsorolás értesítése (és ajánlatai) az „Imént" sorban: a sor látszik, és a változás él.
+    // (Az „Imént" sor maga Javítás módban mindig látszik: imentShown.)
+    bool barShown() const { return imentShown() && m_vm->changeActive(); }
+    bool imentShown() const { return changeBar() && changeBar()->property("visible").toBool(); }
     QString barText() const { return m_vm->changeText(); }
     void type(const QString& text)
     {
@@ -260,6 +266,12 @@ class TestTranscriptTab : public QObject {
         QTRY_VERIFY(m_tab->hasActiveFocus());
         QTest::keyClick(m_window.get(), Qt::Key_Z, Qt::ControlModifier);
     }
+    bool noisyOf(const QString& id) const
+    {
+        const int i = m_vm->utteranceIndexOf(id);
+        return i >= 0 && m_vm->utterances()[i].noisy;
+    }
+    QString rowId(int row) const { return cell(row, Role::UtteranceIdRole).toString(); }
     bool popupOpen(const char* name) const
     {
         QObject* popup = m_window->findChild<QObject*>(QLatin1String(name));
@@ -969,38 +981,47 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // A sáv magától eltűnik (~12 mp; itt rövidre állítva), bezárható, és a következő
-    // szerkesztés lecseréli — a visszavonhatóság ettől független.
-    void changeBar_timeoutCloseAndReplace()
+    // Az „Imént" sor (S2) FIX helyen van: nem tűnik el időre; a × csak az ajánlatokat zárja, a
+    // következő szerkesztés lecseréli a szövegét — a visszavonhatóság ettől független.
+    void changeBar_staysCloseAndReplace()
     {
         load();
-        m_vm->setRailVisible(true);
+        QVERIFY(!imentShown());                             // Olvasás: nincs döntés, nincs sor
+        m_tab->setProperty("fixMode", true);
         pump();
-        QCOMPARE(changeBar()->property("timeoutMs").toInt(), 12000);
+        QVERIFY(imentShown());                              // Javítás: mindig ott (üres állapottal)
+        QVERIFY(m_vm->lastDecision().isEmpty());
+        QVERIFY(!changeBar()->property("timeoutMs").isValid());
+        auto barBottom = [this] {
+            auto* bar = static_cast<QQuickItem*>(changeBar());
+            return bar->mapToScene(QPointF(0, bar->height())).y();
+        };
+        const qreal barY = barBottom();
         click(railPoint(3, 1));
         QTRY_VERIFY(barShown());
         QVERIFY(!m_vm->suggestionActive());
+        QCOMPARE(textOf("changeText"), barText());
         const int serial = m_vm->changeSerial();
-        click(railPoint(1, 1));                             // következő szerkesztés: új sáv
+        click(railPoint(1, 1));                             // következő szerkesztés: új szöveg
         QVERIFY(barShown());
         QVERIFY(m_vm->changeSerial() > serial);
+        pump(1500);                                         // nincs időzítő: marad
+        QVERIFY(barShown());
+        QCOMPARE(barBottom(), barY);                        // az alja fix (a figyelmeztetés felfelé nő)
 
         click(center(visual("changeClose")));
-        QVERIFY(!barShown());
+        QVERIFY(!m_vm->changeActive());
+        QVERIFY(imentShown());                              // az „Imént" sor marad, az utolsó döntéssel
+        QVERIFY(m_vm->lastDecision().value(QStringLiteral("text")).toString().contains(QStringLiteral("átkerült")));
+        QCOMPARE(textOf("changeText"), m_vm->lastDecision().value(QStringLiteral("text")).toString());
         QVERIFY(m_vm->canUndo());
 
-        changeBar()->setProperty("timeoutMs", 150);
-        click(railPoint(4, 1));
-        QVERIFY(barShown());
-        QTRY_VERIFY_WITH_TIMEOUT(!barShown(), 3000);
-        QVERIFY(m_vm->canUndo());
-
-        // „Jó így" / résztvevő felvétele (más szerkesztés) is megszünteti a régi értesítést.
-        changeBar()->setProperty("timeoutMs", 12000);
+        // Résztvevő felvétele (más szerkesztés) megszünteti a régi értesítést; a sor marad.
         click(railPoint(3, 2));
         QVERIFY(barShown());
         m_vm->addParticipant(QStringLiteral("Zita"));
         QVERIFY(!barShown());
+        QVERIFY(imentShown());
     }
 
     // Az Átnézendő nézet (E2) „Egyenként" sorai: a javított sor a helyén marad („javítva"),
@@ -1911,7 +1932,7 @@ private slots:
         QTRY_VERIFY(visual("pairOffer"));
         QCOMPARE(textOf("pairOfferText"), m_vm->pairOfferText());
         QVERIFY(m_vm->pairOfferText().contains(QStringLiteral(" hangja hasonló. Nézzem át kettejük sorait")));
-        QVERIFY(changeBar()->property("height").toReal() > 70);
+        QTRY_VERIFY(changeBar()->property("height").toReal() > 70);
         QVERIFY(!visual("changeSimilar"));
 
         // „Most nem": az ajánlat eltűnik, az átsorolás értesítése marad.
@@ -2082,6 +2103,279 @@ private slots:
         QVERIFY(m_warnings.isEmpty());
     }
 
+    // ---- S2: az Átnézendő-újratervezés közös alapja ----------------------------------------
+
+
+    // A közös billentyű-olvasó a FIZIKAI billentyűt adja: a magyar kiosztáson a Shift+6 „/”, a
+    // Shift+1 „'” — a scancode-ból mégis számjegy; a „0” (bal felső) a kiosztás szerinti Key_0.
+    void keys_physicalDecode()
+    {
+        QObject* keys = m_engine->singletonInstance<QObject*>("Tanara", "TranscriptKeys");
+        QVERIFY(keys);
+        const QString platform = keys->property("platform").toString();
+        auto decode = [&](int key, int mods, int scan, const char* os) {
+            keys->setProperty("platform", QString::fromLatin1(os));
+            QVariant r;
+            QMetaObject::invokeMethod(keys, "decodeRaw", Q_RETURN_ARG(QVariant, r), Q_ARG(QVariant, key),
+                                      Q_ARG(QVariant, mods), Q_ARG(QVariant, scan));
+            if (r.metaType() == QMetaType::fromType<QJSValue>()) r = r.value<QJSValue>().toVariant();
+            return r.toMap();
+        };
+        const int shift = int(Qt::ShiftModifier);
+        QVariantMap k = decode(Qt::Key_Slash, shift, 15, "linux");             // HU: Shift+6
+        QCOMPARE(k.value("name").toString(), QStringLiteral("digit"));
+        QCOMPARE(k.value("digit").toInt(), 6);
+        QVERIFY(k.value("shift").toBool());
+        QVERIFY(k.value("plain").toBool());
+        QCOMPARE(decode(Qt::Key_Apostrophe, shift, 10, "linux").value("digit").toInt(), 1);
+        QCOMPARE(decode(Qt::Key_Slash, shift, 7, "windows").value("digit").toInt(), 6);
+        QCOMPARE(decode(Qt::Key_0, 0, 49, "linux").value("digit").toInt(), 0);   // HU „0” (bal felső)
+        QCOMPARE(decode(Qt::Key_6, int(Qt::KeypadModifier), 0, "").value("digit").toInt(), 6);
+        QCOMPARE(decode(Qt::Key_Question, shift, 59, "linux").value("name").toString(), QStringLiteral("Comma"));
+        QCOMPARE(decode(Qt::Key_M, 0, 58, "linux").value("name").toString(), QStringLiteral("M"));
+        k = decode(Qt::Key_J, int(Qt::ControlModifier), 44, "linux");
+        QCOMPARE(k.value("name").toString(), QStringLiteral("J"));
+        QVERIFY(!k.value("plain").toBool());
+        // Natív kód nélkül (macOS) a Shift+6 nem számjegy (nincs találgatás).
+        QCOMPARE(decode(Qt::Key_Slash, shift, 0, "").value("name").toString(), QString());
+        keys->setProperty("platform", platform);
+    }
+
+    // Shift = nem minta: Shift+sín-kattintás és Shift+számjegy — a sor átkerül, „nem minta”,
+    // EGY visszavonási lépésben; lenyomott Shiftnél az előnézeti címke „→ Név · nem minta”.
+    void shift_railClickAndDigit_nonSample_oneUndoStep()
+    {
+        load();
+        m_tab->setProperty("fixMode", true);
+        pump();
+        // Rámutatás + lenyomott Shift: a címke utótagot kap.
+        QTest::mouseMove(m_window.get(), railPoint(3, 2) + QPoint(-30, 0));
+        QTest::mouseMove(m_window.get(), railPoint(3, 2));
+        QTRY_VERIFY(visual("dragChipLabel"));
+        QVERIFY(!textOf("dragChipLabel").endsWith(QStringLiteral(" · nem minta")));
+        QTest::keyPress(m_window.get(), Qt::Key_Shift, Qt::ShiftModifier);
+        QVERIFY(m_tab->property("shiftHeld").toBool());
+        QVERIFY(textOf("dragChipLabel").endsWith(QStringLiteral(" · nem minta")));
+        QTest::keyRelease(m_window.get(), Qt::Key_Shift, Qt::NoModifier);
+        QVERIFY(!m_tab->property("shiftHeld").toBool());
+
+        const QString id = rowId(3);
+        const QString before = speakerOf(3);
+        QVERIFY(before != laneKey(2));
+        QVERIFY(!noisyOf(id));
+        click(railPoint(3, 2), Qt::ShiftModifier);
+        QCOMPARE(speakerOf(3), laneKey(2));
+        QVERIFY(noisyOf(id));
+        QCOMPARE(cell(3, Role::SampleStateRole).toString(), QStringLiteral("noSample"));
+        QTRY_VERIFY(barShown());
+        undoKey();
+        QCOMPARE(speakerOf(3), before);
+        QVERIFY(!noisyOf(id));
+        QVERIFY(!m_vm->canUndo());                          // egy lépés volt
+
+        // Shift+számjegy a kijelölésre (a tesztben Key_2 + Shift; a scancode-utat a decode teszteli).
+        reveal(5);
+        click(textPoint(5));
+        QVERIFY(m_vm->isRowSelected(5));
+        const QString id5 = rowId(5);
+        const QString target = speakerOf(5) == laneKey(0) ? laneKey(1) : laneKey(0);
+        QTest::keyClick(m_window.get(), target == laneKey(0) ? Qt::Key_1 : Qt::Key_2, Qt::ShiftModifier);
+        pump();
+        QCOMPARE(m_vm->lineInfo(id5).value(QStringLiteral("speakerKey")).toString(), target);
+        QVERIFY(noisyOf(id5));
+        undoKey();
+        QVERIFY(!noisyOf(id5));
+        QVERIFY(!m_vm->canUndo());
+    }
+
+    // Az Átnézendő nézetben is: Shift lenyomva „Jó így · nem minta”, és a kattintás nem-mintaként dönt.
+    void shift_reviewButtons_nonSample()
+    {
+        load();
+        openReview();
+        QQuickItem* confirm = visual("lineConfirm");
+        QVERIFY(confirm);
+        const QString id = reviewLineOf(confirm);
+        QVERIFY(!confirm->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
+        m_tab->setProperty("shiftHeld", true);
+        QVERIFY(confirm->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
+        if (QQuickItem* likely = visual("lineLikely"))
+            QVERIFY(likely->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
+        click(center(confirm));
+        QVERIFY(noisyOf(id));
+        QCOMPARE(m_vm->lastDecision().value(QStringLiteral("chips")).toList().first().toMap()
+                     .value(QStringLiteral("kind")).toString(), QStringLiteral("noSample"));
+        m_tab->setProperty("shiftHeld", false);
+    }
+
+    // 0 = nem azonosítható: a Javításban a kijelölésre (újra 0: vissza), jelölő + halvány sor;
+    // a lista elrejtheti; az Átnézendőben a kiválasztott sorra és a sor-gombbal.
+    void zeroKey_ignored_markerFilterAndReview()
+    {
+        load();
+        m_tab->setProperty("fixMode", true);
+        pump();
+        click(textPoint(2));
+        QVERIFY(m_vm->isRowSelected(2));
+        const int idx2 = cell(2, Role::UtteranceIndexRole).toInt();
+        QTest::keyClick(m_window.get(), Qt::Key_0);
+        pump();
+        QVERIFY(cell(2, Role::IgnoredRole).toBool());
+        QCOMPARE(m_vm->ignoredCount(), 1);
+        QTRY_VERIFY(rowItem(2) && rowItem(2)->findChild<QQuickItem*>(QStringLiteral("ignoredMarker"))->isVisible());
+        QCOMPARE(m_vm->lastDecision().value(QStringLiteral("chips")).toList().first().toMap()
+                     .value(QStringLiteral("kind")).toString(), QStringLiteral("ignored"));
+        // A „nem azonosítható” sorok elrejtése a fejlécből.
+        QTRY_VERIFY(visual("ignoredToggle"));
+        click(center(visual("ignoredToggle")));
+        QVERIFY(m_vm->hideIgnored());
+        QCOMPARE(m_vm->rows()->rowOfUtterance(idx2), -1);
+        click(center(visual("ignoredToggle")));
+        QVERIFY(!m_vm->hideIgnored());
+        // Újra 0 a kijelölésen: újra azonosítható.
+        click(textPoint(2));
+        if (!m_vm->isRowSelected(2)) click(textPoint(2));
+        QTest::keyClick(m_window.get(), Qt::Key_0);
+        QVERIFY(!cell(2, Role::IgnoredRole).toBool());
+        QCOMPARE(m_vm->ignoredCount(), 0);
+
+        // Átnézendő: a kiválasztott sor 0-ra, majd egy másik a sor-gombbal.
+        openReview();
+        QQuickItem* fix = visual("lineFix");
+        const QString id = reviewLineOf(fix);
+        visual("reviewView")->setProperty("currentUtterance", id);
+        m_tab->forceActiveFocus();
+        QTest::keyClick(m_window.get(), Qt::Key_0);
+        QVERIFY(m_vm->lineInfo(id).value(QStringLiteral("ignored")).toBool());
+        const int row = m_vm->reviewGroups()->rowOfLine(id);
+        QVERIFY(row >= 0);                                  // a döntött sor a helyén marad
+        QCOMPARE(m_vm->reviewGroups()->data(m_vm->reviewGroups()->index(row), ReviewGroupsModel::DecidedKindRole)
+                     .toString(), QStringLiteral("ignored"));
+        QQuickItem* ignore = visual("lineIgnore");
+        QVERIFY(ignore);
+        const QString other = reviewLineOf(ignore);
+        QVERIFY(other != id);
+        click(center(ignore));
+        QVERIFY(m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
+        undoKey();
+        QVERIFY(!m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
+    }
+
+    // Az „Imént” sor: J után „Jó így” + minta-chip; Shift+J nem minta; mini-napló; Ctrl+Z →
+    // „Visszavonva: …”; nem tűnik el.
+    void imentRow_confirmChipsLogUndo()
+    {
+        load();
+        m_tab->setProperty("fixMode", true);
+        pump();
+        QVERIFY(imentShown());
+        QVERIFY(m_vm->lastDecision().isEmpty());
+        reveal(4);
+        click(textPoint(4));
+        QTest::keyClick(m_window.get(), Qt::Key_J);
+        pump();
+        QVariantMap last = m_vm->lastDecision();
+        QVERIFY2(last.value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Jó így: ")),
+                 qPrintable(QStringLiteral("%1 sel=%2 cur=%3").arg(last.value(QStringLiteral("text")).toString())
+                                .arg(m_vm->selectedCount()).arg(m_vm->currentRow())));
+        QCOMPARE(textOf("changeText"), last.value(QStringLiteral("text")).toString());
+        QVERIFY(!last.value(QStringLiteral("chips")).toList().isEmpty());
+        QTRY_VERIFY(visual("imentChip"));
+        reveal(6);
+        click(textPoint(6));
+        if (!m_vm->isRowSelected(6)) click(textPoint(6));
+        QTest::keyClick(m_window.get(), Qt::Key_J, Qt::ShiftModifier);
+        pump();
+        last = m_vm->lastDecision();
+        QCOMPARE(last.value(QStringLiteral("chips")).toList().first().toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("noSample"));
+        QCOMPARE(m_vm->decisionLog().size(), 1);
+        click(center(visual("decisionLogToggle")));
+        QTRY_VERIFY(popupOpen("decisionLog"));
+        QCOMPARE(visuals("decisionLogEntry").size(), 1);
+        click(center(visual("decisionLogToggle")));
+        QTRY_VERIFY(popupGone("decisionLog"));
+        undoKey();
+        last = m_vm->lastDecision();
+        QVERIFY(last.value(QStringLiteral("undone")).toBool());
+        QVERIFY(last.value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Visszavonva: ")));
+        pump(1200);
+        QVERIFY(imentShown());
+        QCOMPARE(textOf("changeText"), last.value(QStringLiteral("text")).toString());
+    }
+
+    // Eltérő minta (a v3 kitalált meeting hamis embedderével): az „Imént” sor figyelmeztet, és a
+    // „Legyen nem minta” a sort nem-mintává teszi (a figyelmeztetés eltűnik).
+    void sampleWarning_deviatingSample()
+    {
+        load(QStringLiteral("v3"));
+        m_tab->setProperty("fixMode", true);
+        m_vm->applyDemoState(QStringLiteral("imentWarning"));
+        QTRY_VERIFY(!m_vm->sampleDeviation().isEmpty());
+        const QVariantMap dev = m_vm->sampleDeviation();
+        QVERIFY(dev.value(QStringLiteral("pct")).toInt() < 50);
+        QTRY_VERIFY(visual("sampleWarning"));
+        pump(150);                                          // a megnőtt sor elrendezése
+        QVERIFY(textOf("sampleWarningText").contains(dev.value(QStringLiteral("name")).toString()));
+        QVERIFY(m_vm->decisionLog().size() >= 3);
+        const QString id = dev.value(QStringLiteral("utteranceId")).toString();
+        QVERIFY(!noisyOf(id));
+        click(center(visual("sampleWarningNoisy")));
+        QVERIFY(noisyOf(id));
+        QVERIFY(m_vm->sampleDeviation().isEmpty());
+        QTRY_VERIFY(!visual("sampleWarning"));
+    }
+
+    // Minta-mérő a dokkban: „N minta +k” a sampleStats szerint; a „+k” kattintásra a Javítás a
+    // most lett minta-sorokra szűr (Esc: vissza).
+    void sampleMeter_valuesAndFilter()
+    {
+        load();
+        m_tab->setProperty("fixMode", true);
+        pump();
+        // Két hosszabb sor ugyanattól a beszélőtől: „Jó így”.
+        QString key;
+        QStringList confirmed;
+        for (int r = 0; r < m_vm->rows()->rowCount() && confirmed.size() < 2; ++r) {
+            if (cell(r, Role::UncertainRole).toBool() || cell(r, Role::NoisyRole).toBool()) continue;
+            if (cell(r, Role::EndMsRole).toInt() - cell(r, Role::StartMsRole).toInt() < 4000) continue;
+            if (!key.isEmpty() && speakerOf(r) != key) continue;
+            key = speakerOf(r);
+            QVERIFY(m_vm->confirmRow(r));
+            confirmed << rowId(r);
+        }
+        QCOMPARE(confirmed.size(), 2);
+        QVariantMap stat;
+        QTRY_VERIFY([&] {
+            for (const QVariant& v : m_vm->sampleStats())
+                if (v.toMap().value(QStringLiteral("key")).toString() == key) stat = v.toMap();
+            return stat.value(QStringLiteral("sessionAdded")).toInt() >= 2;
+        }());
+        QQuickItem* meter = nullptr;
+        QTRY_VERIFY([&] {
+            for (QQuickItem* m : visuals("sampleMeter"))
+                if (m->property("speakerKey").toString() == key) meter = m;
+            return meter != nullptr;
+        }());
+        QCOMPARE(meter->property("samples").toInt(), stat.value(QStringLiteral("sampleLines")).toInt());
+        QCOMPARE(meter->property("added").toInt(), stat.value(QStringLiteral("sessionAdded")).toInt());
+        QQuickItem* added = meter->findChild<QQuickItem*>(QStringLiteral("sampleMeterAdded"));
+        QVERIFY(added && added->isVisible());
+        pump(150);
+        QCOMPARE(added->property("text").toString(), QStringLiteral("+%1").arg(stat.value(QStringLiteral("sessionAdded")).toInt()));
+        click(center(added));
+        QCOMPARE(m_vm->listFilter(), QStringLiteral("samples"));
+        QCOMPARE(m_vm->sampleFilterKey(), key);
+        const QStringList ids = stat.value(QStringLiteral("sessionAddedIds")).toStringList();
+        for (int r = 0; r < m_vm->rows()->rowCount(); ++r)
+            if (cell(r, Role::KindRole).toString() == QLatin1String("utterance")) QVERIFY(ids.contains(rowId(r)));
+        QTRY_VERIFY(visual("sampleFilterNote"));
+        m_vm->clearSelection();
+        m_tab->forceActiveFocus();
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);    // a szűrő
+        QCOMPARE(m_vm->listFilter(), QString());
+    }
+
     void statesLoadWithoutWarnings_data()
     {
         QTest::addColumn<QString>("variant");
@@ -2098,7 +2392,8 @@ private slots:
                 QTest::addRow("%s-%s", *variant ? variant : "default", *state ? state : "plain")
                     << QString::fromLatin1(variant) << QString::fromLatin1(state);        // v3 Javítás mód: üres változattal a „v3" kitalált meetingen futnak.
         for (const char* state : {"markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
-                                  "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag"})
+                                  "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
+                                  "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter"})
             QTest::addRow("v3-%s", state) << QString() << QString::fromLatin1(state);
     }
     void statesLoadWithoutWarnings()

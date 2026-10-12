@@ -1212,6 +1212,29 @@
         <translation>if it&apos;s nobody</translation>
     </message>
     <message>
+        <source>Újra azonosítható</source>
+        <translation>Identifiable again</translation>
+    </message>
+    <message numerus="yes">
+        <source>Nem azonosítható (a kijelölt %n sor)</source>
+        <translation>
+            <numerusform>Unidentifiable (the selected line)</numerusform>
+            <numerusform>Unidentifiable (the %n selected lines)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Nem azonosítható — nem tudni, ki mondta</source>
+        <translation>Unidentifiable — no way to tell who said it</translation>
+    </message>
+    <message>
+        <source>A sor újra részt vesz a hang-elemzésben</source>
+        <translation>The line takes part in the voice analysis again</translation>
+    </message>
+    <message>
+        <source>A név marad, de a sor hangját semmire nem használom (minta, bizonyíték, átnézendő)</source>
+        <translation>The name stays, but the line's voice is not used for anything (sample, evidence, review)</translation>
+    </message>
+    <message>
         <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
         <translation>Fine as is + voiceprint sample from this line (%1 s)</translation>
     </message>
@@ -1429,6 +1452,22 @@
         <source>Szakaszok</source>
         <translation>Sections</translation>
     </message>
+    <message>
+        <source>2 p 41 mp</source>
+        <translation>2 min 41 s</translation>
+    </message>
+    <message>
+        <source>1 p 12 mp</source>
+        <translation>1 min 12 s</translation>
+    </message>
+    <message>
+        <source>58 mp</source>
+        <translation>58 s</translation>
+    </message>
+    <message>
+        <source>41 mp</source>
+        <translation>41 s</translation>
+    </message>
     <message numerus="yes">
         <source>%n keveset beszélő résztvevő — kattintásra külön sort kapnak</source>
         <translation>
@@ -1451,6 +1490,24 @@
     <message>
         <source>Még nincs hanglenyomata — kattintásra itt készíthető</source>
         <translation>No voiceprint yet — click to create one here</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minta</source>
+        <translation>
+            <numerusform>%n sample</numerusform>
+            <numerusform>%n samples</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 · %n minta-sor</source>
+        <translation>
+            <numerusform>%1 · %n sample line</numerusform>
+            <numerusform>%1 · %n sample lines</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>+%1 most — kattintásra ezek a sorok</source>
+        <translation>+%1 now — click to show these lines</translation>
     </message>
     <message>
         <source>Keveset beszélők összecsukása</source>
@@ -3532,10 +3589,6 @@
 <context>
     <name>ReviewGroupsView</name>
     <message>
-        <source>javítva</source>
-        <translation>corrected</translation>
-    </message>
-    <message>
         <source>Meghallgatom</source>
         <translation>Listen</translation>
     </message>
@@ -3544,16 +3597,8 @@
         <translation>%1 said it</translation>
     </message>
     <message>
-        <source>A sor átkerül hozzá: %1 (1)</source>
-        <translation>The line moves to them: %1 (1)</translation>
-    </message>
-    <message>
         <source>Jó így</source>
         <translation>Looks right</translation>
-    </message>
-    <message>
-        <source>A beszélő rendben van: a sor többé nem kétes</source>
-        <translation>The speaker is right: the line is no longer in doubt</translation>
     </message>
     <message>
         <source>Jó így, de nem minta</source>
@@ -3568,8 +3613,32 @@
         <translation>Other…</translation>
     </message>
     <message>
-        <source>Csak ez a sor kerül át ahhoz, akit választasz</source>
-        <translation>Only this line moves to the person you choose</translation>
+        <source>Hangminta lett</source>
+        <translation>Became a voice sample</translation>
+    </message>
+    <message>
+        <source>Nem minta: a hangját nem használom</source>
+        <translation>Not a sample: its voice is not used</translation>
+    </message>
+    <message>
+        <source>A sor átkerül hozzá: %1 (1; Shift: nem minta)</source>
+        <translation>The line moves to %1 (1; Shift: not a sample)</translation>
+    </message>
+    <message>
+        <source>A beszélő rendben van: a sor többé nem kétes (J; Shift: nem minta)</source>
+        <translation>The speaker is right: the line is no longer doubtful (J; Shift: not a sample)</translation>
+    </message>
+    <message>
+        <source>Nem azonosítható</source>
+        <translation>Unidentifiable</translation>
+    </message>
+    <message>
+        <source>Nem tudni, ki mondta: a név marad, de a hangját semmire nem használom (0)</source>
+        <translation>No way to tell who said it: the name stays, but its voice is not used for anything (0)</translation>
+    </message>
+    <message>
+        <source>Csak ez a sor kerül át ahhoz, akit választasz (M)</source>
+        <translation>Only this line moves to the person you choose (M)</translation>
     </message>
     <message numerus="yes">
         <source>··· %n sor ebben a csoportban</source>
@@ -6663,16 +6732,8 @@
         <translation>Undo</translation>
     </message>
     <message>
-        <source>Visszavonás · Ctrl+Z</source>
-        <translation>Undo · Ctrl+Z</translation>
-    </message>
-    <message>
         <source>A most készült hanglenyomat törlése (az elnevezés marad)</source>
         <translation>Remove the voiceprint just created (the name stays)</translation>
-    </message>
-    <message>
-        <source>Az átsorolás visszavonása (Ctrl+Z)</source>
-        <translation>Undo the reassignment (Ctrl+Z)</translation>
     </message>
     <message>
         <source>Hanglenyomat készítése</source>
@@ -6711,10 +6772,6 @@
     <message>
         <source>A beszélő összes megmaradt sora is átkerül (előbb megerősítést kér): %1</source>
         <translation>Moves all remaining lines of the speaker as well (asks for confirmation first): %1</translation>
-    </message>
-    <message>
-        <source>Bezárás</source>
-        <translation>Close</translation>
     </message>
     <message numerus="yes">
         <source>Még &lt;b&gt;%n sor&lt;/b&gt; hangja hasonlít a most megadott %1 sorhoz</source>
@@ -6764,8 +6821,40 @@
         <translation>Undo the tag decision</translation>
     </message>
     <message>
+        <source>AZ ELŐZŐ DÖNTÉSEK</source>
+        <translation>EARLIER DECISIONS</translation>
+    </message>
+    <message>
         <source>Most nem</source>
         <translation>Not now</translation>
+    </message>
+    <message>
+        <source>IMÉNT</source>
+        <translation>JUST NOW</translation>
+    </message>
+    <message>
+        <source>Még nincs döntés — itt látszik az utolsó, és innen visszavonható (Ctrl+Z).</source>
+        <translation>No decision yet — the latest one shows here and can be undone from here (Ctrl+Z).</translation>
+    </message>
+    <message>
+        <source>Visszavonás: %1</source>
+        <translation>Undo: %1</translation>
+    </message>
+    <message>
+        <source>Az előző döntések (legfeljebb 5)</source>
+        <translation>Earlier decisions (up to 5)</translation>
+    </message>
+    <message>
+        <source>Az ajánlatok bezárása (az „Imént” sor marad)</source>
+        <translation>Close the offers (the “Just now” row stays)</translation>
+    </message>
+    <message>
+        <source>Legyen nem minta</source>
+        <translation>Make it not a sample</translation>
+    </message>
+    <message>
+        <source>A sor marad a beszélőnél, de a hangja nem lesz minta (egy lépés, Ctrl+Z)</source>
+        <translation>The line stays with the speaker, but its voice will not be a sample (one step, Ctrl+Z)</translation>
     </message>
     <message>
         <source>Ebben a munkamenetben erre a két beszélőre nem kérdezek rá újra</source>
@@ -6789,6 +6878,10 @@
     <message>
         <source>egymásra beszéltek</source>
         <translation>cross-talk</translation>
+    </message>
+    <message>
+        <source>nem azonosítható</source>
+        <translation>unidentifiable</translation>
     </message>
     <message>
         <source>sáv</source>
@@ -6853,6 +6946,10 @@
         <translation>Doubtful by voice whose line it is</translation>
     </message>
     <message>
+        <source>Nem azonosítható: a név marad, de a hangját semmire nem használom (minta, bizonyíték, átnézendő). Visszavonás: 0 újra, vagy Ctrl+Z</source>
+        <translation>Unidentifiable: the name stays, but its voice is not used for anything (sample, evidence, review). Undo: 0 again, or Ctrl+Z</translation>
+    </message>
+    <message>
         <source>Megerősítetted: a beszélő rendben van</source>
         <translation>You confirmed it: the speaker is right</translation>
     </message>
@@ -6863,6 +6960,32 @@
     <message>
         <source>Hangra inkább %1 sorának tűnik</source>
         <translation>By voice it sounds more like %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>··· %n sor elrejtve</source>
+        <translation>
+            <numerusform>··· %n line hidden</numerusform>
+            <numerusform>··· %n lines hidden</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>··· %n nem azonosítható sor elrejtve</source>
+        <translation>
+            <numerusform>··· %n unidentifiable line hidden</numerusform>
+            <numerusform>··· %n unidentifiable lines hidden</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Hangminta: a sor hangja tanítja %1 felismerését</source>
+        <translation>Voice sample: the line's voice teaches the recognition of %1</translation>
+    </message>
+    <message>
+        <source>Nem minta: egymásra beszéltek / zajos, a hangját nem használom</source>
+        <translation>Not a sample: overlapping speech / noisy, its voice is not used</translation>
+    </message>
+    <message>
+        <source>Nem minta: túl rövid ahhoz, hogy a hangja minta legyen</source>
+        <translation>Not a sample: too short for its voice to be a sample</translation>
     </message>
     <message>
         <source>Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).</source>
@@ -6930,12 +7053,46 @@
         <translation>new column: %1 · blue frame: similar lines</translation>
     </message>
     <message>
-        <source>másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · húzás</source>
-        <translation>click another column: move · 1–%1: move the selected lines · drag</translation>
+        <source>Shift: nem minta — a sor átkerül, de a hangja nem tanítja a felismerést</source>
+        <translation>Shift: not a sample — the line moves, but its voice does not teach the recognition</translation>
+    </message>
+    <message>
+        <source>másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · Shift: nem minta · 0: nem azonosítható</source>
+        <translation>click another column: move · 1–%1: move the selected lines · Shift: not a sample · 0: unidentifiable</translation>
+    </message>
+    <message>
+        <source> · nem minta</source>
+        <translation> · not a sample</translation>
     </message>
     <message>
         <source>Nincs átnézendő sor.</source>
         <translation>No lines to review.</translation>
+    </message>
+    <message>
+        <source>Szűrő: %1 most lett mintái</source>
+        <translation>Filter: the new samples of %1</translation>
+    </message>
+    <message>
+        <source>Mind (Esc)</source>
+        <translation>All (Esc)</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n nem azonosítható rejtve · mutasd</source>
+        <translation>
+            <numerusform>%n unidentifiable hidden · show</numerusform>
+            <numerusform>%n unidentifiable hidden · show</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n nem azonosítható · elrejtés</source>
+        <translation>
+            <numerusform>%n unidentifiable · hide</numerusform>
+            <numerusform>%n unidentifiable · hide</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A „nem azonosítható” sorok a hang-elemzésből kimaradnak; itt csak a lista nézetét állítod</source>
+        <translation>“Unidentifiable” lines are left out of the voice analysis; here you only change the list view</translation>
     </message>
     <message>
         <source>Névtelen résztvevő</source>
@@ -6986,6 +7143,26 @@
     <message>
         <source>Más mondta… (ez a sor)</source>
         <translation>Someone else said it… (this line)</translation>
+    </message>
+    <message>
+        <source>Jó így (a kijelölt sorok)</source>
+        <translation>Looks right (the selected lines)</translation>
+    </message>
+    <message>
+        <source>Jó így</source>
+        <translation>Looks right</translation>
+    </message>
+    <message>
+        <source>Újra azonosítható</source>
+        <translation>Identifiable again</translation>
+    </message>
+    <message>
+        <source>Nem azonosítható (a kijelölt sorok)</source>
+        <translation>Unidentifiable (the selected lines)</translation>
+    </message>
+    <message>
+        <source>Nem azonosítható</source>
+        <translation>Unidentifiable</translation>
     </message>
     <message>
         <source>Jó így + hanglenyomat-minta ebből a sorból (%1 mp)</source>
@@ -10432,6 +10609,10 @@
 <context>
     <name>tanara_qml::ReviewGroupsModel</name>
     <message>
+        <source>nem azonosítható</source>
+        <translation>unidentifiable</translation>
+    </message>
+    <message>
         <source>javítva</source>
         <translation>corrected</translation>
     </message>
@@ -12509,6 +12690,10 @@
         <source>Egyéb (%1)</source>
         <translation>Other (%1)</translation>
     </message>
+    <message>
+        <source>Újra: %1</source>
+        <translation>Redo: %1</translation>
+    </message>
     <message numerus="yes">
         <source>%n sor átkerült ide: %1</source>
         <translation>
@@ -12548,6 +12733,45 @@
         </translation>
     </message>
     <message numerus="yes">
+        <source>%n sor: nem minta (%1)</source>
+        <translation>
+            <numerusform>%n line: not a sample (%1)</numerusform>
+            <numerusform>%n lines: not a sample (%1)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor marad: %1</source>
+        <translation>
+            <numerusform>%n line stays: %1</numerusform>
+            <numerusform>%n lines stay: %1</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor nem azonosítható</source>
+        <translation>
+            <numerusform>%n line unidentifiable</numerusform>
+            <numerusform>%n lines unidentifiable</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor újra azonosítható</source>
+        <translation>
+            <numerusform>%n line identifiable again</numerusform>
+            <numerusform>%n lines identifiable again</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Jó így: %1</source>
+        <translation>Looks right: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n sor: Jó így (%1)</source>
+        <translation>
+            <numerusform>%n line: looks right (%1)</numerusform>
+            <numerusform>%n lines: look right (%1)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <source>%1 mind az %n sora</source>
         <translation>
             <numerusform>All %n line of %1</numerusform>
@@ -12578,6 +12802,14 @@
     <message>
         <source>A most készült hanglenyomat törölve: %1</source>
         <translation>The voiceprint just created was removed: %1</translation>
+    </message>
+    <message>
+        <source>A sor nem minta</source>
+        <translation>The line is not a sample</translation>
+    </message>
+    <message>
+        <source>A sor mintának használható</source>
+        <translation>The line can be used as a sample</translation>
     </message>
     <message numerus="yes">
         <source>%n megszólalás a vágólapra másolva.</source>
@@ -12657,6 +12889,67 @@
     <message>
         <source>Címke:</source>
         <translation>Tag:</translation>
+    </message>
+    <message>
+        <source>%1 mp</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
+        <source>%1 p %2 mp</source>
+        <translation>%1 min %2 s</translation>
+    </message>
+    <message>
+        <source>nem azonosítható</source>
+        <translation>unidentifiable</translation>
+    </message>
+    <message>
+        <source>újra azonosítható</source>
+        <translation>identifiable again</translation>
+    </message>
+    <message>
+        <source>nem minta</source>
+        <translation>not a sample</translation>
+    </message>
+    <message>
+        <source>minta lett</source>
+        <translation>became a sample</translation>
+    </message>
+    <message>
+        <source>mind minta lett</source>
+        <translation>all became samples</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minta lett</source>
+        <translation>
+            <numerusform>%n became a sample</numerusform>
+            <numerusform>%n became samples</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n másik sor javaslata változott</source>
+        <translation>
+            <numerusform>the suggestion of %n other line changed</numerusform>
+            <numerusform>the suggestions of %n other lines changed</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Visszavonva: %1</source>
+        <translation>Undone: %1</translation>
+    </message>
+    <message>
+        <source>Ez a minta eltér %1 többi sorától (hang %2%). Biztos?</source>
+        <translation>This sample differs from the other lines of %1 (voice %2%). Are you sure?</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minta</source>
+        <translation>
+            <numerusform>%n sample</numerusform>
+            <numerusform>%n samples</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>+%1 most</source>
+        <translation>+%1 now</translation>
     </message>
     <message numerus="yes">
         <source>%n kétséges sor %1 és %2 között — az Átnézendő szűrőben.</source>

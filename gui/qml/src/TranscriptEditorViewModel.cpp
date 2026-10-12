@@ -216,8 +216,11 @@ void TranscriptEditorViewModel::attach(SpeakerEditor* editor)
         // Nem a saját (sávot kiíró) műveletünk: visszavonás, újra, megerősítés, résztvevő… —
         // a legutóbbi átsorolás értesítése már nem érvényes.
         if (m_opDepth == 0) clearChange();
+        pruneDecisions();
         emit undoStateChanged();
     });
+    connect(editor, &SpeakerEditor::sampleDeviationChanged, this, &TranscriptEditorViewModel::updateSampleDeviation);
+    connect(editor, &SpeakerEditor::sampleStatsChanged, this, &TranscriptEditorViewModel::updateSampleStats);
     connect(editor, &SpeakerEditor::suggestionChanged, this, &TranscriptEditorViewModel::onSuggestionChanged);
     connect(editor, &SpeakerEditor::embeddingRunningChanged, this, [this](bool running) {
         if (running) m_embeddingProgress = 0.0;
@@ -300,6 +303,15 @@ void TranscriptEditorViewModel::reloadAll()
     m_voiceprintWhenReady.clear();
     m_sideConflicts.clear();
     m_speakerSides.clear();
+    m_decisions.clear();
+    m_tracking = false;
+    m_hideIgnored = false;
+    m_sampleFilterKey.clear();
+    m_sampleFilter.clear();
+    m_ignoredCount = 0;
+    for (const EditorUtterance& u : std::as_const(m_utts)) m_ignoredCount += u.ignored ? 1 : 0;
+    m_sampleDeviation.clear();
+    m_sampleStats.clear();
 
     QElapsedTimer perf;
     perf.start();
@@ -333,6 +345,11 @@ void TranscriptEditorViewModel::reloadAll()
     emit playingRowChanged();
     emit voiceStateChanged();
     emit peopleChanged();
+    emit decisionsChanged();
+    emit ignoredCountChanged();
+    emit listFilterChanged();
+    updateSampleDeviation();
+    updateSampleStats();
 
     startEmbeddingIfNeeded();
 }
@@ -355,17 +372,29 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
     if (!m_editor) return;
     QVector<int> changed;
     changed.reserve(ids.size());
+    bool ignoredChanged = false;
     for (const QString& id : ids) {
         const int i = m_uttIndex.value(id, -1);
         if (i < 0) continue;
+        const EditorUtterance before = m_utts[i];
         m_utts[i] = m_editor->utterance(id);
         changed.append(i);
+        const EditorUtterance& after = m_utts[i];
+        if (before.ignored != after.ignored) {
+            m_ignoredCount += after.ignored ? 1 : -1;
+            ignoredChanged = true;
+        }
+        // A döntés mellékhatása: egy MÁSIK sor javaslata / kétessége változott.
+        if (m_tracking && !m_trackIds.contains(id)
+            && (before.uncertain != after.uncertain || before.likelySpeakerKey != after.likelySpeakerKey))
+            m_sideChanged.insert(id);
         // A szűrőben épp látható, most kézzel javított sor a helyén marad („javítva").
         if (m_uncertainOnly && m_utts[i].manuallyCorrected && m_rows->rowOfUtterance(i) >= 0)
             m_sticky.insert(i);
     }
+    if (ignoredChanged) emit ignoredCountChanged();
     if (changed.isEmpty()) return;
-    if (m_uncertainOnly) m_rows->syncFilter();
+    if (!listFilter().isEmpty()) m_rows->syncFilter();
     m_rows->notifyUtterances(changed);
     m_review->refreshUtterances(changed);
     updatePlayingRow();
@@ -647,7 +676,12 @@ void TranscriptEditorViewModel::setUncertainOnly(bool on)
 {
     if (m_uncertainOnly == on) return;
     m_uncertainOnly = on;
-    m_sticky.clear();       // a szűrő újbóli alkalmazása: a javított sorok már nem maradnak
+    m_sticky.clear();
+    if (on && !m_sampleFilterKey.isEmpty()) {     // az Átnézendő a minta-szűrőt is lezárja
+        m_sampleFilterKey.clear();
+        m_sampleFilter.clear();
+    }
+    emit listFilterChanged();       // a szűrő újbóli alkalmazása: a javított sorok már nem maradnak
     m_rows->rebuild();
     updatePlayingRow();
     emit uncertainOnlyChanged();
@@ -668,7 +702,16 @@ void TranscriptEditorViewModel::undo()
 
 void TranscriptEditorViewModel::redo()
 {
-    if (m_editor) m_editor->redo();
+    if (!m_editor || !m_editor->canRedo()) return;
+    const QString text = m_editor->redoText();
+    m_editor->redo();
+    // A visszahozott lépés az „Imént" sor tetejére (a sorszáma ugyanaz, mint eredetileg).
+    Decision d;
+    d.text = tr("Újra: %1").arg(text);
+    const QVector<quint64> serials = m_editor->undoSerials();
+    d.serial = serials.isEmpty() ? 0 : serials.last();
+    m_decisions.append(d);
+    emit decisionsChanged();
 }
 
 void TranscriptEditorViewModel::setSuggestionShown(bool shown)
@@ -705,12 +748,17 @@ bool TranscriptEditorViewModel::acceptSuggestion()
         last = std::max(last, i);
     }
     ++m_opDepth;
+    beginDecision(sg.utteranceIds);
     const bool ok = m_editor->acceptSuggestion();
     --m_opDepth;
-    if (!ok) return false;
+    if (!ok) {
+        m_tracking = false;
+        return false;
+    }
     afterMove(sg.targetSpeaker);
     publishChange(tr("%n sor átkerült ide: %1", nullptr, moved).arg(m_views.value(sg.targetSpeaker).name),
                   sg.sourceSpeakerKey, sg.targetSpeaker, last);
+    endDecision(m_change.text, sg.utteranceIds, QStringLiteral("sample"));
     return true;
 }
 
@@ -1024,7 +1072,8 @@ QVariantMap TranscriptEditorViewModel::rowInfo(int row) const
             {QStringLiteral("speakerKey"), utt.speakerKey},
             {QStringLiteral("timeLabel"), timeLabel(utt.startMs)},
             {QStringLiteral("startMs"), int(utt.startMs)},
-            {QStringLiteral("endMs"), int(utt.endMs)}};
+            {QStringLiteral("endMs"), int(utt.endMs)},
+            {QStringLiteral("ignored"), utt.ignored}};
 }
 
 qreal TranscriptEditorViewModel::rowStartFraction(int row) const
@@ -1197,7 +1246,8 @@ void TranscriptEditorViewModel::afterMove(const QString& targetKey)
     }
 }
 
-QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget kind, const QString& value)
+QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget kind, const QString& value,
+                                             bool noisy)
 {
     if (!m_editor || ids.isEmpty()) return {};
     // A művelet előtti beszélők: ebből derül ki, hány sor mozdult ténylegesen, és honnan.
@@ -1211,19 +1261,23 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
     const QList<QString> keysBefore = m_views.keys();
     QString key;
     ++m_opDepth;
+    beginDecision(ids);
     switch (kind) {
     case MoveTarget::Speaker:
-        if (m_editor->moveUtterances(ids, value)) key = value;
+        if (m_editor->moveUtterances(ids, value, noisy)) key = value;
         break;
     case MoveTarget::Person:
-        key = m_editor->moveUtterancesToPerson(ids, value);
+        key = m_editor->moveUtterancesToPerson(ids, value, noisy);
         break;
     case MoveTarget::NewParticipant:
-        key = m_editor->moveUtterancesToNewParticipant(ids);
+        key = m_editor->moveUtterancesToNewParticipant(ids, noisy);
         break;
     }
     --m_opDepth;
-    if (key.isEmpty()) return {};
+    if (key.isEmpty()) {
+        m_tracking = false;
+        return {};
+    }
     afterMove(key);
 
     int moved = 0, last = -1;
@@ -1251,79 +1305,142 @@ QString TranscriptEditorViewModel::moveLines(const QStringList& ids, MoveTarget 
                               : tr("%n sor átkerült ide: %1", nullptr, moved).arg(name),
                       mixed ? QString() : source, key, last, false, created);
         if (created && kind == MoveTarget::Person) askNewPersonTag(value);
+        endDecision(m_change.text, ids, noisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
+    } else {
+        // A sorok már ott voltak (pl. csak a „nem minta" jelzés változott): az is döntés.
+        endDecision(noisy ? tr("%n sor: nem minta (%1)", nullptr, int(ids.size())).arg(m_views.value(key).name)
+                          : tr("%n sor marad: %1", nullptr, int(ids.size())).arg(m_views.value(key).name),
+                    ids, noisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
     }
     if (created) emit reviewChanged();
     return key;
 }
 
-bool TranscriptEditorViewModel::moveRowToLane(int row, int lane)
+bool TranscriptEditorViewModel::moveRowToLane(int row, int lane, bool noisy)
 {
     const int u = m_rows->utteranceOfRow(row);
     const QString key = laneKey(lane);
     if (!m_editor || u < 0 || key.isEmpty()) return false;
     const bool wholeSelection = m_selected.size() > 1 && m_selected.contains(u);
     const QStringList ids = wholeSelection ? selectedIds() : QStringList{m_utts[u].id};
-    if (moveLines(ids, MoveTarget::Speaker, key).isEmpty()) return false;
+    if (moveLines(ids, MoveTarget::Speaker, key, noisy).isEmpty()) return false;
     if (wholeSelection) clearSelection();
     return true;
 }
 
-bool TranscriptEditorViewModel::moveRowsToLane(int fromRow, int toRow, int lane)
+bool TranscriptEditorViewModel::moveRowsToLane(int fromRow, int toRow, int lane, bool noisy)
 {
     const QString key = laneKey(lane);
     if (!m_editor || key.isEmpty()) return false;
-    return !moveLines(idsOfRows(fromRow, toRow), MoveTarget::Speaker, key).isEmpty();
+    return !moveLines(idsOfRows(fromRow, toRow), MoveTarget::Speaker, key, noisy).isEmpty();
 }
 
-bool TranscriptEditorViewModel::moveSelectionToLane(int lane)
+bool TranscriptEditorViewModel::moveSelectionToLane(int lane, bool noisy)
 {
-    return moveSelectionToSpeaker(laneKey(lane));
+    return moveSelectionToSpeaker(laneKey(lane), noisy);
 }
 
-bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey)
+bool TranscriptEditorViewModel::moveSelectionToSpeaker(const QString& speakerKey, bool noisy)
 {
     if (!m_editor || m_selected.isEmpty() || speakerKey.isEmpty()) return false;
-    if (moveLines(selectedIds(), MoveTarget::Speaker, speakerKey).isEmpty()) return false;
+    if (moveLines(selectedIds(), MoveTarget::Speaker, speakerKey, noisy).isEmpty()) return false;
     clearSelection();
     return true;
 }
 
-bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName)
+bool TranscriptEditorViewModel::moveSelectionToPerson(const QString& personName, bool noisy)
 {
     const QString name = personName.trimmed();
     if (!m_editor || m_selected.isEmpty() || name.isEmpty()) return false;
-    if (moveLines(selectedIds(), MoveTarget::Person, name).isEmpty()) return false;
+    if (moveLines(selectedIds(), MoveTarget::Person, name, noisy).isEmpty()) return false;
     clearSelection();
     return true;
 }
 
-bool TranscriptEditorViewModel::moveSelectionToNewParticipant()
+bool TranscriptEditorViewModel::moveSelectionToNewParticipant(bool noisy)
 {
     if (!m_editor || m_selected.isEmpty()) return false;
-    if (moveLines(selectedIds(), MoveTarget::NewParticipant, QString()).isEmpty()) return false;
+    if (moveLines(selectedIds(), MoveTarget::NewParticipant, QString(), noisy).isEmpty()) return false;
     clearSelection();
     return true;
 }
 
-bool TranscriptEditorViewModel::moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey)
+bool TranscriptEditorViewModel::moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey,
+                                                       bool noisy)
 {
     tanara::PerfScope perfScope("TranscriptEditorViewModel::moveUtteranceToSpeaker", 10);
     if (!m_uttIndex.contains(utteranceId) || speakerKey.isEmpty()) return false;
-    return !moveLines({utteranceId}, MoveTarget::Speaker, speakerKey).isEmpty();
+    return !moveLines({utteranceId}, MoveTarget::Speaker, speakerKey, noisy).isEmpty();
 }
 
-bool TranscriptEditorViewModel::moveUtteranceToPerson(const QString& utteranceId, const QString& personName)
+bool TranscriptEditorViewModel::moveUtteranceToPerson(const QString& utteranceId, const QString& personName,
+                                                      bool noisy)
 {
     tanara::PerfScope perfScope("TranscriptEditorViewModel::moveUtteranceToPerson", 10);
     const QString name = personName.trimmed();
     if (!m_uttIndex.contains(utteranceId) || name.isEmpty()) return false;
-    return !moveLines({utteranceId}, MoveTarget::Person, name).isEmpty();
+    return !moveLines({utteranceId}, MoveTarget::Person, name, noisy).isEmpty();
 }
 
-bool TranscriptEditorViewModel::moveUtteranceToNewParticipant(const QString& utteranceId)
+bool TranscriptEditorViewModel::moveUtteranceToNewParticipant(const QString& utteranceId, bool noisy)
 {
     if (!m_uttIndex.contains(utteranceId)) return false;
-    return !moveLines({utteranceId}, MoveTarget::NewParticipant, QString()).isEmpty();
+    return !moveLines({utteranceId}, MoveTarget::NewParticipant, QString(), noisy).isEmpty();
+}
+
+// ---- S2: „nem azonosítható", „Jó így" a kijelölésre ------------------------------------
+
+bool TranscriptEditorViewModel::setUtteranceIgnored(const QString& utteranceId, bool ignored)
+{
+    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    const QStringList ids{utteranceId};
+    beginDecision(ids);
+    const bool ok = m_editor->setUtterancesIgnored(ids, ignored);
+    if (!ok) {
+        m_tracking = false;
+        return false;
+    }
+    endDecision(ignored ? tr("%n sor nem azonosítható", nullptr, 1) : tr("%n sor újra azonosítható", nullptr, 1),
+                ids, ignored ? QStringLiteral("ignored") : QStringLiteral("unignored"));
+    return true;
+}
+
+bool TranscriptEditorViewModel::setSelectionIgnored(bool ignored)
+{
+    if (!m_editor || m_selected.isEmpty()) return false;
+    const QStringList ids = selectedIds();
+    beginDecision(ids);
+    const bool ok = m_editor->setUtterancesIgnored(ids, ignored);
+    if (!ok) {
+        m_tracking = false;
+        return false;
+    }
+    const int n = int(ids.size());
+    endDecision(ignored ? tr("%n sor nem azonosítható", nullptr, n) : tr("%n sor újra azonosítható", nullptr, n),
+                ids, ignored ? QStringLiteral("ignored") : QStringLiteral("unignored"));
+    return true;
+}
+
+bool TranscriptEditorViewModel::setRowIgnored(int row, bool ignored)
+{
+    const int u = m_rows->utteranceOfRow(row);
+    return u >= 0 && setUtteranceIgnored(m_utts[u].id, ignored);
+}
+
+bool TranscriptEditorViewModel::confirmSelection(bool asNoisy)
+{
+    if (!m_editor || m_selected.isEmpty()) return false;
+    const QStringList ids = selectedIds();
+    beginDecision(ids);
+    if (!m_editor->confirmUtterances(ids, asNoisy)) {
+        m_tracking = false;
+        return false;
+    }
+    const QString name = m_views.value(m_utts[m_uttIndex.value(ids.first())].speakerKey).name;
+    endDecision(ids.size() == 1 ? tr("Jó így: %1").arg(name)
+                                : tr("%n sor: Jó így (%1)", nullptr, int(ids.size())).arg(name), ids,
+                asNoisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
+    return true;
 }
 
 bool TranscriptEditorViewModel::moveRestOfSource()
@@ -1384,6 +1501,8 @@ void TranscriptEditorViewModel::publishWholeSpeakerChange(const QString& fromNam
     // Egy teljes beszélő most kapott (vagy váltott) személyt: ha annak még nincs hanglenyomata
     // és itt van hozzá elég anyag, a sáv felajánlja — magától sosem készül.
     publishChange(text, QString(), targetKey, -1, /*offerVoiceprint*/ true);
+    beginDecision({});
+    endDecision(text, {}, QString());
 }
 
 bool TranscriptEditorViewModel::canOfferVoiceprint(const QString& speakerKey) const
@@ -1507,25 +1626,33 @@ bool TranscriptEditorViewModel::mergeSpeakers(const QString& fromKey, const QStr
 bool TranscriptEditorViewModel::confirmRow(int row)
 {
     const int u = m_rows->utteranceOfRow(row);
-    return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id});
+    return u >= 0 && confirmUtterance(m_utts[u].id, false);
 }
 
 bool TranscriptEditorViewModel::confirmRowNoisy(int row)
 {
     const int u = m_rows->utteranceOfRow(row);
-    return m_editor && u >= 0 && m_editor->confirmUtterances({m_utts[u].id}, /*asNoisy*/ true);
+    return u >= 0 && confirmUtterance(m_utts[u].id, /*asNoisy*/ true);
 }
 
 bool TranscriptEditorViewModel::setRowNoisy(int row, bool noisy)
 {
     const int u = m_rows->utteranceOfRow(row);
-    return m_editor && u >= 0 && m_editor->setUtterancesNoisy({m_utts[u].id}, noisy);
+    return u >= 0 && setUtteranceNoisy(m_utts[u].id, noisy);
 }
 
 bool TranscriptEditorViewModel::setUtteranceNoisy(const QString& utteranceId, bool noisy)
 {
-    return m_editor && m_uttIndex.contains(utteranceId)
-        && m_editor->setUtterancesNoisy({utteranceId}, noisy);
+    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    const QStringList ids{utteranceId};
+    beginDecision(ids);
+    if (!m_editor->setUtterancesNoisy(ids, noisy)) {
+        m_tracking = false;
+        return false;
+    }
+    endDecision(noisy ? tr("A sor nem minta") : tr("A sor mintának használható"), ids,
+                noisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
+    return true;
 }
 
 // ---- újraellenőrzés ---------------------------------------------------------
@@ -2083,7 +2210,8 @@ QVariantMap TranscriptEditorViewModel::lineInfo(const QString& utteranceId) cons
             {QStringLiteral("speakerKey"), u.speakerKey},
             {QStringLiteral("timeLabel"), timeLabel(u.startMs)},
             {QStringLiteral("startMs"), int(u.startMs)},
-            {QStringLiteral("endMs"), int(u.endMs)}};
+            {QStringLiteral("endMs"), int(u.endMs)},
+            {QStringLiteral("ignored"), u.ignored}};
 }
 
 QVariantList TranscriptEditorViewModel::trackOptions(const QString& speakerKey) const
@@ -2452,10 +2580,14 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId)
     }
     const QList<QString> keysBefore = m_views.keys();
     ++m_opDepth;
+    beginDecision(v.ids);
     const bool ok = v.kind == QLatin1String("uncertain") ? m_editor->moveUtterances(v.ids, v.proposedKey)
                                                          : m_editor->applyReviewGroup(groupId);
     --m_opDepth;
-    if (!ok) return false;
+    if (!ok) {
+        m_tracking = false;
+        return false;
+    }
     QString target = !v.proposedKey.isEmpty() && m_views.contains(v.proposedKey) ? v.proposedKey
                                                                                    : speakerKeyForPerson(v.proposedName);
     if (target.isEmpty())
@@ -2465,6 +2597,7 @@ bool TranscriptEditorViewModel::applyReviewGroup(const QString& groupId)
     const bool toNew = !m_newPersonKey.isEmpty() && target == m_newPersonKey;
     publishChange(tr("%n sor átkerült ide: %1", nullptr, moved).arg(m_views.value(target).name), QString(),
                   target, last, false, toNew);
+    endDecision(m_change.text, v.ids, QStringLiteral("sample"));
     rebuildReview();
     return true;
 }
@@ -2496,17 +2629,276 @@ bool TranscriptEditorViewModel::splitSpeaker(const QString& speakerKey)
     afterMove(target);
     publishChange(tr("Szétválasztás: %n sor átkerült ide: %1", nullptr, count).arg(m_views.value(target).name),
                   QString(), target, -1);
+    beginDecision({});
+    endDecision(m_change.text, {}, QString());
     return true;
 }
 
 bool TranscriptEditorViewModel::confirmUtterance(const QString& utteranceId, bool asNoisy)
 {
-    return m_editor && m_uttIndex.contains(utteranceId) && m_editor->confirmUtterances({utteranceId}, asNoisy);
+    if (!m_editor || !m_uttIndex.contains(utteranceId)) return false;
+    const QStringList ids{utteranceId};
+    beginDecision(ids);
+    if (!m_editor->confirmUtterances(ids, asNoisy)) {
+        m_tracking = false;
+        return false;
+    }
+    const QString name = m_views.value(m_utts[m_uttIndex.value(utteranceId)].speakerKey).name;
+    endDecision(tr("Jó így: %1").arg(name), ids, asNoisy ? QStringLiteral("noSample") : QStringLiteral("sample"));
+    return true;
 }
 
 bool TranscriptEditorViewModel::acceptNewPersonSimilar()
 {
     return !m_newPersonGroupId.isEmpty() && applyReviewGroup(m_newPersonGroupId);
+}
+
+// ---- S2: döntés-napló, eltérő minta, minta-mérő, „nem azonosítható" szűrő ------------------
+
+namespace {
+constexpr int kDecisionLogSize = 5;
+constexpr int kDecisionKeep = 24;
+
+QVariantMap chip(const QString& kind, const QString& text)
+{
+    return {{QStringLiteral("kind"), kind}, {QStringLiteral("text"), text}};
+}
+
+// „1 p 12 mp" / „48 mp".
+QString durationText(qint64 ms)
+{
+    const qint64 sec = (ms + 500) / 1000;
+    if (sec < 60) return TranscriptEditorViewModel::tr("%1 mp").arg(sec);
+    return TranscriptEditorViewModel::tr("%1 p %2 mp").arg(sec / 60).arg(sec % 60);
+}
+} // namespace
+
+void TranscriptEditorViewModel::beginDecision(const QStringList& ids)
+{
+    m_tracking = true;
+    m_trackIds = QSet<QString>(ids.cbegin(), ids.cend());
+    m_sideChanged.clear();
+}
+
+void TranscriptEditorViewModel::endDecision(const QString& text, const QStringList& ids, const QString& kind)
+{
+    m_tracking = false;
+    if (!m_editor) return;
+    Decision d;
+    d.text = text;
+    const QVector<quint64> serials = m_editor->undoSerials();
+    d.serial = serials.isEmpty() ? 0 : serials.last();
+    int first = -1;
+    for (const QString& id : ids) {
+        const int i = m_uttIndex.value(id, -1);
+        if (i >= 0 && (first < 0 || i < first)) first = i;
+    }
+    if (first >= 0) {
+        d.time = timeLabel(m_utts[first].startMs);
+        d.utteranceId = m_utts[first].id;
+    }
+    // Mellékhatás-chipek: lett-e minta (a core minta-szabálya szerint), nem azonosítható.
+    if (kind == QLatin1String("ignored")) {
+        d.chips << chip(kind, tr("nem azonosítható"));
+    } else if (kind == QLatin1String("unignored")) {
+        d.chips << chip(kind, tr("újra azonosítható"));
+    } else if (!kind.isEmpty() && !ids.isEmpty()) {
+        int samples = 0;
+        for (const QString& id : ids) {
+            const int i = m_uttIndex.value(id, -1);
+            if (i >= 0 && sampleState(i) == QLatin1String("sample")) ++samples;
+        }
+        if (samples == 0) d.chips << chip(QStringLiteral("noSample"), tr("nem minta"));
+        else if (samples == ids.size()) d.chips << chip(QStringLiteral("sample"),
+                                                        ids.size() == 1 ? tr("minta lett") : tr("mind minta lett"));
+        else d.chips << chip(QStringLiteral("sample"), tr("%n minta lett", nullptr, samples));
+    }
+    if (!m_sideChanged.isEmpty())
+        d.chips << chip(QStringLiteral("changed"),
+                        tr("%n másik sor javaslata változott", nullptr, int(m_sideChanged.size())));
+    m_sideChanged.clear();
+    m_decisions.append(d);
+    while (m_decisions.size() > kDecisionKeep) m_decisions.removeFirst();
+    emit decisionsChanged();
+}
+
+void TranscriptEditorViewModel::pruneDecisions()
+{
+    if (!m_editor || m_decisions.isEmpty()) return;
+    const QVector<quint64> serials = m_editor->undoSerials();
+    const QSet<quint64> alive(serials.cbegin(), serials.cend());
+    QStringList undone;
+    for (int i = int(m_decisions.size()) - 1; i >= 0; --i) {
+        const Decision& d = m_decisions[i];
+        if (d.serial == 0 || alive.contains(d.serial)) continue;
+        undone << d.text;
+        m_decisions.remove(i);
+    }
+    if (undone.isEmpty()) return;
+    Decision d;
+    d.undone = true;
+    d.text = tr("Visszavonva: %1").arg(undone.first());
+    m_decisions.append(d);
+    emit decisionsChanged();
+}
+
+static QVariantMap decisionMap(const QString& text, const QString& time, const QString& id,
+                               const QVariantList& chips, bool undone)
+{
+    return {{QStringLiteral("text"), text}, {QStringLiteral("time"), time},
+            {QStringLiteral("utteranceId"), id}, {QStringLiteral("chips"), chips},
+            {QStringLiteral("undone"), undone}};
+}
+
+QVariantMap TranscriptEditorViewModel::lastDecision() const
+{
+    if (m_decisions.isEmpty()) return {};
+    const Decision& d = m_decisions.last();
+    return decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone);
+}
+
+QVariantList TranscriptEditorViewModel::decisionLog() const
+{
+    QVariantList out;
+    for (int i = int(m_decisions.size()) - 2; i >= 0 && out.size() < kDecisionLogSize; --i) {
+        const Decision& d = m_decisions[i];
+        out << decisionMap(d.text, d.time, d.utteranceId, d.chips, d.undone);
+    }
+    return out;
+}
+
+QString TranscriptEditorViewModel::sampleState(int utterance) const
+{
+    if (utterance < 0 || utterance >= m_utts.size()) return {};
+    const EditorUtterance& u = m_utts[utterance];
+    if (u.ignored || !(u.manuallyCorrected || u.confirmed)) return {};
+    return u.noisy || isShort(utterance) ? QStringLiteral("noSample") : QStringLiteral("sample");
+}
+
+void TranscriptEditorViewModel::updateSampleDeviation()
+{
+    QVariantMap next;
+    if (m_editor) {
+        const SampleDeviation dev = m_editor->lastSampleDeviation();
+        if (dev.isValid() && dev.deviates && m_uttIndex.contains(dev.utteranceId)) {
+            const QString name = m_views.value(dev.speakerKey).name;
+            const int pct = int(std::lround(std::clamp(dev.similarity, 0.0, 1.0) * 100.0));
+            next = {{QStringLiteral("utteranceId"), dev.utteranceId},
+                    {QStringLiteral("speakerKey"), dev.speakerKey},
+                    {QStringLiteral("name"), name},
+                    {QStringLiteral("pct"), pct},
+                    {QStringLiteral("similarity"), dev.similarity},
+                    {QStringLiteral("text"), tr("Ez a minta eltér %1 többi sorától (hang %2%). Biztos?")
+                                                 .arg(name).arg(pct)}};
+        }
+    }
+    if (next == m_sampleDeviation) return;
+    m_sampleDeviation = next;
+    emit sampleDeviationChanged();
+}
+
+void TranscriptEditorViewModel::updateSampleStats()
+{
+    QVariantList next;
+    if (m_editor) {
+        for (const SpeakerSampleStats& st : m_editor->sampleStats()) {
+            if (st.sampleLines == 0 && st.sessionAdded == 0) continue;
+            const SpeakerView v = m_views.value(st.speakerKey);
+            QString text = tr("%n minta", nullptr, st.sampleLines);
+            if (st.sessionAdded > 0) text += QStringLiteral(" · ") + tr("+%1 most").arg(st.sessionAdded);
+            next << QVariantMap{{QStringLiteral("key"), st.speakerKey},
+                                {QStringLiteral("name"), v.name.isEmpty() ? st.displayName : v.name},
+                                {QStringLiteral("colorIndex"), v.colorIndex},
+                                {QStringLiteral("sampleLines"), st.sampleLines},
+                                {QStringLiteral("sampleMs"), double(st.sampleMs)},
+                                {QStringLiteral("sessionAdded"), st.sessionAdded},
+                                {QStringLiteral("sessionAddedIds"), st.sessionAddedIds},
+                                {QStringLiteral("durationText"), durationText(st.sampleMs)},
+                                {QStringLiteral("text"), text}};
+        }
+    }
+    if (next == m_sampleStats) return;
+    m_sampleStats = next;
+    emit sampleStatsChanged();
+    // A „+N most" szűrő követi a mérőt (visszavonás után a sor már nem „most lett" minta).
+    if (!m_sampleFilterKey.isEmpty()) {
+        QSet<int> filter;
+        for (const QVariant& v : std::as_const(m_sampleStats)) {
+            const QVariantMap m = v.toMap();
+            if (m.value(QStringLiteral("key")).toString() != m_sampleFilterKey) continue;
+            for (const QString& id : m.value(QStringLiteral("sessionAddedIds")).toStringList()) {
+                const int i = m_uttIndex.value(id, -1);
+                if (i >= 0) filter.insert(i);
+            }
+        }
+        // A már látható sor nem tűnik el a kurzor alól: a szűrő csak bővül, amíg be van kapcsolva.
+        m_sampleFilter.unite(filter);
+        m_rows->syncFilter();
+    }
+}
+
+QString TranscriptEditorViewModel::listFilter() const
+{
+    if (m_uncertainOnly) return QStringLiteral("uncertain");
+    if (!m_sampleFilterKey.isEmpty()) return QStringLiteral("samples");
+    if (m_hideIgnored) return QStringLiteral("hideIgnored");
+    return {};
+}
+
+void TranscriptEditorViewModel::setHideIgnored(bool hide)
+{
+    if (m_hideIgnored == hide) return;
+    m_hideIgnored = hide;
+    m_rows->rebuild();
+    updatePlayingRow();
+    emit listFilterChanged();
+    emit selectionChanged();
+}
+
+bool TranscriptEditorViewModel::showSessionSamples(const QString& speakerKey)
+{
+    if (speakerKey.isEmpty()) {
+        clearSampleFilter();
+        return false;
+    }
+    QSet<int> filter;
+    int first = -1;
+    for (const QVariant& v : std::as_const(m_sampleStats)) {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("key")).toString() != speakerKey) continue;
+        for (const QString& id : m.value(QStringLiteral("sessionAddedIds")).toStringList()) {
+            const int i = m_uttIndex.value(id, -1);
+            if (i < 0) continue;
+            filter.insert(i);
+            first = first < 0 ? i : std::min(first, i);
+        }
+    }
+    if (filter.isEmpty()) return false;
+    if (m_uncertainOnly) setUncertainOnly(false);
+    m_sampleFilterKey = speakerKey;
+    m_sampleFilter = filter;
+    m_rows->rebuild();
+    updatePlayingRow();
+    emit listFilterChanged();
+    emit selectionChanged();
+    const int row = m_rows->rowOfUtterance(first);
+    if (row >= 0) emit revealRequested(row);
+    return true;
+}
+
+void TranscriptEditorViewModel::clearSampleFilter()
+{
+    if (m_sampleFilterKey.isEmpty()) return;
+    const int current = currentRow();
+    const int utt = current >= 0 ? m_rows->utteranceOfRow(current) : -1;
+    m_sampleFilterKey.clear();
+    m_sampleFilter.clear();
+    m_rows->rebuild();
+    updatePlayingRow();
+    emit listFilterChanged();
+    emit selectionChanged();
+    const int row = utt >= 0 ? m_rows->rowOfUtterance(utt) : -1;
+    if (row >= 0) emit revealRequested(row);
 }
 
 // ---- demó-állapotok ---------------------------------------------------------
@@ -2574,6 +2966,57 @@ void TranscriptEditorViewModel::undoChangeTagAnswer()
         m_controller->tags()->undo();
     m_change.tagAnswer.clear();
     emit changeChanged();
+}
+
+// S2 demó-állapotok (a v3 kitalált meetingen, a stageV3 után): „Imént" sor figyelmeztetéssel és
+// naplóval, nem azonosítható sorok + minta-jelek, a minta-mérő szűrője.
+void TranscriptEditorViewModel::stageS2Demo(const QString& state)
+{
+    if (!m_editor || m_utts.size() < 12) return;
+    auto keyOfPerson = [this](const QString& name) { return speakerKeyForPerson(name); };
+    if (state == QLatin1String("ignoredRows")) {
+        // Javítva + minta, Jó így + nem minta, két nem azonosítható sor.
+        const QString eszter = keyOfPerson(QStringLiteral("Molnár Eszter"));
+        if (!eszter.isEmpty()) moveUtteranceToSpeaker(m_utts[3].id, eszter);
+        confirmUtterance(m_utts[5].id, /*asNoisy*/ true);
+        setUtteranceIgnored(m_utts[2].id, true);
+        setUtteranceIgnored(m_utts[6].id, true);
+        clearChange();
+        emit revealRequested(0);
+    } else if (state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")) {
+        // Egy mintaként áthelyezett sor, amelynek a hangja eltér a cél többi sorától: próbálgatással
+        // keressük meg (és vonjuk vissza), majd egy kis döntés-sor után ténylegesen megtesszük.
+        QString hitId, hitKey;
+        for (int i = 9; i < m_utts.size() && hitId.isEmpty(); ++i) {
+            const EditorUtterance u = m_utts[i];
+            if (u.ignored || u.noisy || u.endMs - u.startMs < 2500) continue;
+            for (const QString& key : std::as_const(m_laneKeys)) {
+                if (key == u.speakerKey || m_editor->speaker(key).anonymous) continue;
+                if (!m_editor->moveUtterances({u.id}, key)) continue;
+                const bool deviates = m_editor->lastSampleDeviation().deviates;
+                m_editor->undo();
+                if (deviates) {
+                    hitId = u.id;
+                    hitKey = key;
+                    break;
+                }
+            }
+            if (i > 40) break;
+        }
+        m_decisions.clear();
+        confirmUtterance(m_utts[5].id, false);
+        setUtteranceIgnored(m_utts[6].id, true);
+        confirmUtterance(m_utts[7].id, /*asNoisy*/ true);
+        if (!hitId.isEmpty()) {
+            moveUtteranceToSpeaker(hitId, hitKey);
+            const int row = m_rows->rowOfUtterance(m_uttIndex.value(hitId, -1));
+            if (row >= 0) emit revealRequested(row);
+        }
+        clearChange();
+    } else if (state == QLatin1String("sampleFilter")) {
+        const QString gabor = keyOfPerson(QStringLiteral("Fehér Gábor"));
+        showSessionSamples(gabor.isEmpty() ? m_laneKeys.value(0) : gabor);
+    }
 }
 
 void TranscriptEditorViewModel::applyDemoState(const QString& state)
@@ -2701,7 +3144,10 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     } else if (state == QLatin1String("markers") || state == QLatin1String("fixLinePopover")
                || state == QLatin1String("reviewGroups") || state == QLatin1String("reviewExpanded")
                || state == QLatin1String("contaminatedCore") || state == QLatin1String("speakerWhy")
-               || state == QLatin1String("newPersonSimilar") || state == QLatin1String("newPersonTag")) {
+               || state == QLatin1String("newPersonSimilar") || state == QLatin1String("newPersonTag")
+               || state == QLatin1String("imentWarning") || state == QLatin1String("imentLog")
+               || state == QLatin1String("shiftPreview") || state == QLatin1String("ignoredRows")
+               || state == QLatin1String("sampleFilter")) {
         // v3 Javítás mód (a „v3" kitalált meetingen): megerősített magok, jelölők; a panelt /
         // a csoport kinyitását a TranscriptTab végzi.
         setRailVisible(true);
@@ -2716,6 +3162,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
             if (row >= 0) emit revealRequested(row);
         }
         if (state == QLatin1String("markers")) clearChange();
+        stageS2Demo(state);
     } else if (state == QLatin1String("changeFilter")) {
         // A szűrőben javított sor a helyén marad („javítva"), alatta a sáv.
         setUncertainOnly(true);

@@ -1211,6 +1211,97 @@ private slots:
         QCOMPARE(people.count(), 2);
     }
 
+    // S2: „nem minta" áthelyezés egy lépésben, eltérő-minta jelzés (hamis embedder), „nem
+    // azonosítható" + elrejtés, minta-mérő „+N most" szűrővel, az „Imént" döntés-napló.
+    void s2_decisionsDeviationAndSampleMeter()
+    {
+        Fixture fx;
+        auto ed = fx.editor();
+        TranscriptEditorViewModel vm;
+        vm.setEditor(ed.get());
+        QVERIFY(waitVoice(vm));
+        QVERIFY(vm.lastDecision().isEmpty());
+
+        // „→ Beszélő 1, nem minta": a sor átkerül ÉS zajos — egyetlen visszavonási lépés.
+        QVERIFY(vm.moveUtteranceToSpeaker(uid(17), kB1, /*noisy*/ true));
+        QCOMPARE(ed->utterance(uid(17)).speakerKey, kB1);
+        QVERIFY(ed->utterance(uid(17)).noisy);
+        QCOMPARE(cell(vm, 17, Role::SampleStateRole).toString(), QStringLiteral("noSample"));
+        const QVariantList chips = vm.lastDecision().value(QStringLiteral("chips")).toList();
+        QVERIFY(!chips.isEmpty());
+        QCOMPARE(chips.first().toMap().value(QStringLiteral("kind")).toString(), QStringLiteral("noSample"));
+        vm.undo();
+        QCOMPARE(ed->utterance(uid(17)).speakerKey, kB2);
+        QVERIFY(!ed->utterance(uid(17)).noisy);
+        QVERIFY(!vm.canUndo());
+        QVERIFY(vm.lastDecision().value(QStringLiteral("undone")).toBool());
+        QVERIFY(vm.lastDecision().value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Visszavonva: ")));
+
+        // Eltérő minta: egy B-hangú sor MINTAKÉNT az A/C beszélőhöz → figyelmeztetés.
+        QSignalSpy devSpy(&vm, &TranscriptEditorViewModel::sampleDeviationChanged);
+        QVERIFY(vm.moveUtteranceToSpeaker(uid(1), kB1));
+        QVERIFY(devSpy.count() > 0);
+        const QVariantMap dev = vm.sampleDeviation();
+        QCOMPARE(dev.value(QStringLiteral("utteranceId")).toString(), uid(1));
+        QCOMPARE(dev.value(QStringLiteral("speakerKey")).toString(), kB1);
+        QVERIFY(dev.value(QStringLiteral("pct")).toInt() < 50);
+        QVERIFY(dev.value(QStringLiteral("text")).toString().contains(QStringLiteral("eltér")));
+        // „Legyen nem minta": a figyelmeztetés megszűnik.
+        QVERIFY(vm.setUtteranceNoisy(uid(1), true));
+        QVERIFY(vm.sampleDeviation().isEmpty());
+        QCOMPARE(cell(vm, 1, Role::SampleStateRole).toString(), QStringLiteral("noSample"));
+
+        // „Nem azonosítható" + a lista elrejtheti.
+        QVERIFY(vm.setUtteranceIgnored(uid(5), true));
+        QCOMPARE(vm.ignoredCount(), 1);
+        QVERIFY(cell(vm, 5, Role::IgnoredRole).toBool());
+        QVERIFY(!cell(vm, 5, Role::UncertainRole).toBool());
+        QCOMPARE(vm.lastDecision().value(QStringLiteral("chips")).toList().first().toMap()
+                     .value(QStringLiteral("kind")).toString(), QStringLiteral("ignored"));
+        vm.setHideIgnored(true);
+        QCOMPARE(vm.listFilter(), QStringLiteral("hideIgnored"));
+        QCOMPARE(vm.rows()->rowOfUtterance(5), -1);
+        vm.setHideIgnored(false);
+        QCOMPARE(vm.rows()->rowCount(), int(scenario().size()));
+        QVERIFY(vm.setUtteranceIgnored(uid(5), false));
+        QCOMPARE(vm.ignoredCount(), 0);
+
+        // Minta-mérő: két B-sor „Jó így" → Beszélő 2: +2 most; a szűrő csak ezt a kettőt mutatja.
+        QVERIFY(vm.confirmUtterance(uid(8)));
+        QVERIFY(vm.confirmUtterance(uid(11)));
+        QVariantMap b2;
+        QTRY_VERIFY([&] {
+            for (const QVariant& v : vm.sampleStats())
+                if (v.toMap().value(QStringLiteral("key")).toString() == kB2) b2 = v.toMap();
+            return b2.value(QStringLiteral("sessionAdded")).toInt() == 2;
+        }());
+        const QStringList added = b2.value(QStringLiteral("sessionAddedIds")).toStringList();
+        QCOMPARE(added, (QStringList{uid(8), uid(11)}));
+        QVERIFY(b2.value(QStringLiteral("text")).toString().contains(QStringLiteral("+2 most")));
+        QSignalSpy reveal(&vm, &TranscriptEditorViewModel::revealRequested);
+        QVERIFY(vm.showSessionSamples(kB2));
+        QCOMPARE(reveal.count(), 1);
+        QCOMPARE(reveal.first().first().toInt(), vm.rows()->rowOfUtterance(8));
+        QCOMPARE(vm.listFilter(), QStringLiteral("samples"));
+        int shown = 0;
+        for (int r = 0; r < vm.rows()->rowCount(); ++r) {
+            if (cell(vm, r, Role::KindRole).toString() != QLatin1String("utterance")) continue;
+            ++shown;
+            QVERIFY(added.contains(cell(vm, r, Role::UtteranceIdRole).toString()));
+        }
+        QCOMPARE(shown, 2);
+        vm.clearSampleFilter();
+        QCOMPARE(vm.listFilter(), QString());
+        QCOMPARE(vm.rows()->rowCount(), int(scenario().size()));
+
+        // Az „Imént" napló: a legfrissebb a lastDecision, előtte legfeljebb 5.
+        const QVariantList log = vm.decisionLog();
+        QVERIFY(!log.isEmpty() && log.size() <= 5);
+        QVERIFY(vm.lastDecision().value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Jó így: ")));
+        QCOMPARE(vm.lastDecision().value(QStringLiteral("time")).toString(),
+                 TranscriptEditorViewModel::timeLabel(scenario()[11].startMs));
+    }
+
     void demoSession_isFictionalAndComplete()
     {
         // Controller nélkül a nézetmodell a beépített kitalált meetinget adja.

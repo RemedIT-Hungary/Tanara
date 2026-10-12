@@ -57,6 +57,10 @@ public:
         DecidedTextRole,                    // „javítva" | „jó így"
         LaneRole,
         NewSpeakerSideRole,                 // G10: "local" | "remote" — a javaslat új beszélő ezen az oldalon                           // a sor beszélőjének oszlopa a sínen (-1 = összecsukva; group/more: -2)
+        // S2: a döntés fajtája a jelölőnek: "corrected" | "confirmed" | "ignored" | "" (nem döntött)
+        DecidedKindRole,
+        SampleStateRole,                    // döntött soron "sample" | "noSample"; különben ""
+        IgnoredRole,                        // „nem azonosítható"
     };
     Q_ENUM(Role)
 

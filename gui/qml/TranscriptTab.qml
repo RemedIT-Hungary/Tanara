@@ -36,7 +36,16 @@ import QtQuick.Templates as T
 //                v3 Javítás mód (a „v3" kitalált meetingen, ha demoVariant üres):
 //                "markers" | "fixLinePopover" | "reviewGroups" | "reviewExpanded" |
 //                "contaminatedCore" | "speakerWhy" | "newPersonSimilar" | "newPersonTag" (a sáv
-//                címke-kérdése: „X új személy. Ráteszem a #Nordvik címkét?”)
+//                címke-kérdése: „X új személy. Ráteszem a #Nordvik címkét?”) |
+//                S2 (közös alap): "imentWarning" (az „Imént” sor eltérő-minta figyelmeztetéssel és
+//                mini-naplóval; "imentLog": a napló nyitva) | "shiftPreview" (lenyomott Shift: „→ Név · nem minta” előnézet) |
+//                "ignoredRows" (nem azonosítható sorok, minta-jelek) | "sampleFilter" (a minta-mérő
+//                „+N most” szűrője)
+//
+// Billentyűk (fizikai hely szerint, TranscriptKeys): 1–9 a kijelölés a sín n. beszélőjéhez,
+// Shift+1–9 / Shift+sín-kattintás / Shift+húzás = ugyanez „nem minta”; 0 = nem azonosítható
+// (újra 0: újra azonosítható); J = Jó így (Shift+J: nem minta); M = Más… (a sor panelje);
+// B / Shift+B = következő / előző átnézendő; nyilak, Szóköz, Enter, Esc, Ctrl+C / A / Z.
 Item {
     id: root
 
@@ -73,6 +82,13 @@ Item {
         }
         root.fixMode = fix
     }
+    // A minta-mérő „+N most” kattintása (MapDock.samplesClicked): a Javítás ezekre a sorokra szűr.
+    function showSessionSamples(speakerKey) {
+        if (!editorVm.hasTranscript) return false
+        if (root.viewMode !== "fix") root.setViewMode("fix")
+        root.forceActiveFocus()
+        return editorVm.showSessionSamples(speakerKey)
+    }
     // Ctrl+E: Olvasás ↔ Javítás; az Átnézendőből (ami Javítás-jellegű) az Olvasásba.
     function toggleFixMode() { setViewMode(viewMode === "read" ? "fix" : "read") }
     // „Ki volt ott?” (eszköz-sor) — a héj nyitja a résztvevő-párbeszédet.
@@ -80,7 +96,8 @@ Item {
 
     // ---- v3 Javítás mód (a térkép-dokk és az eszköz-sor ezeket olvassa) ----
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
-                                         "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag"]
+                                         "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
+                                         "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
     // Az Átnézendő csoport-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
@@ -99,7 +116,8 @@ Item {
     readonly property string railNote: reviewShown ? qsTr("Átnézendő: csak a kétes sorok, okok szerint")
         : editorVm.newPersonKey !== "" && editorVm.similarShown && newPersonLane >= 0
           ? qsTr("új oszlop: %1 · kék keret: hozzá hasonló sorok").arg(editorVm.lanes[newPersonLane].name)
-        : qsTr("másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · húzás").arg(Math.min(9, laneCount))
+        : root.shiftHeld ? qsTr("Shift: nem minta — a sor átkerül, de a hangja nem tanítja a felismerést")
+        : qsTr("másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · Shift: nem minta · 0: nem azonosítható").arg(Math.min(9, laneCount))
 
     // ---- a sorok (TranscriptRow) ezt olvassák ----
     readonly property bool railShown: editorVm.railVisible && editorVm.hasTranscript
@@ -132,6 +150,16 @@ Item {
     property int hoverLane: -1
     readonly property int previewLane: dragActive ? dragLane : hoverLane
     readonly property int previewColorIndex: previewLane >= 0 && previewLane < laneCount ? editorVm.lanes[previewLane].colorIndex : 0
+    // A Shift épp le van nyomva („nem minta” módosító): az előnézeti címke „→ Név · nem minta”,
+    // szaggatott keretű cél-cella, a gombfeliratok „· nem minta” utótagot kapnak. A billentyű-
+    // eseményekből és a sín egér-módosítóiból frissül; fókusz-vesztéskor nullázódik.
+    property bool shiftHeld: false
+    onActiveFocusChanged: if (!activeFocus && !reviewView.activeFocus) shiftHeld = false
+    Connections {
+        target: Qt.application
+        function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) root.shiftHeld = false }
+    }
+    readonly property string nonSampleSuffix: qsTr(" · nem minta")
     property int speakerPopoverRow: -1
     readonly property bool canPlay: !!player && player.available !== false
 
@@ -544,42 +572,85 @@ Item {
         enabled: root.visible && editorVm.canRedo && !root.textInputFocused
         onActivated: editorVm.redo()
     }
+    // A kijelölés / az Átnézendő kiválasztott sora: „nem azonosítható” ki-be (0).
+    function toggleIgnored() {
+        if (root.reviewShown) {
+            const id = reviewView.currentUtterance
+            if (id === "") return false
+            return editorVm.setUtteranceIgnored(id, editorVm.lineInfo(id).ignored !== true)
+        }
+        if (editorVm.selectedCount === 0) return false
+        // Ha a kijelölés minden sora már nem azonosítható: újra azonosítható; különben az lesz.
+        let all = true
+        for (let r = 0; r < list.count && all; ++r)
+            if (editorVm.isRowSelected(r) && editorVm.rowInfo(r).ignored !== true) all = false
+        return editorVm.setSelectionIgnored(!all)
+    }
+    // „Más…” (M): a kiválasztott sor panelje.
+    function openFixForCurrent() {
+        if (root.reviewShown) return reviewView.fixCurrent()
+        const row = editorVm.currentRow
+        if (row < 0) return false
+        list.positionViewAtIndex(row, ListView.Contain)
+        const item = list.itemAtIndex(row)
+        if (!item) return false
+        root.openLinePopover(row, item.head ? item.nameItem : item)
+        return true
+    }
+    Keys.onReleased: event => {
+        if (event.key === Qt.Key_Shift) root.shiftHeld = false
+    }
     Keys.onPressed: event => {
-        if (!editorVm.hasTranscript) return
-        const plain = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
-        const ctrlOnly = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier | Qt.ShiftModifier)) === Qt.ControlModifier
-        if (ctrlOnly && event.key === Qt.Key_C) {
+        const k = TranscriptKeys.decode(event)
+        root.shiftHeld = k.name === "Shift" || k.shift
+        if (k.name === "Shift" || !editorVm.hasTranscript) return
+        const ctrlOnly = k.ctrl && !k.alt && !k.meta && !k.shift
+        if (ctrlOnly && k.name === "C") {
             root.copySelectionOrCurrent()
             event.accepted = true
-        } else if (ctrlOnly && event.key === Qt.Key_A) {
+        } else if (ctrlOnly && k.name === "A") {
             editorVm.selectAll()
             event.accepted = true
-        } else if (plain && event.key === Qt.Key_B) {
+        } else if (k.plain && k.name === "B") {
             // B: a következő átnézendő sor — az Átnézendő nézetben (oda vált, ha még nem ott van).
-            root.nextUncertain((event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+            root.nextUncertain(k.shift ? -1 : 1)
             event.accepted = true
-        } else if (plain && event.key === Qt.Key_1 && root.reviewShown && reviewView.currentUtterance !== "") {
-            // Az Átnézendő nézet kiválasztott sora a javasolt beszélőhöz („X mondta").
-            reviewView.acceptCurrent()
+        } else if (k.plain && k.name === "digit" && k.digit === 0 && !k.shift) {
+            // 0: nem azonosítható (Javítás: a kijelölés; Átnézendő: a kiválasztott sor).
+            root.toggleIgnored()
             event.accepted = true
-        } else if (plain && (event.key === Qt.Key_Down || event.key === Qt.Key_Up
-                             || event.key === Qt.Key_Left || event.key === Qt.Key_Right)) {
+        } else if (k.plain && k.name === "digit" && k.digit === 1 && root.reviewShown && reviewView.currentUtterance !== "") {
+            // Az Átnézendő nézet kiválasztott sora a javasolt beszélőhöz („X mondta”); Shift: nem minta.
+            reviewView.acceptCurrent(k.shift)
+            event.accepted = true
+        } else if (k.plain && k.name === "digit" && k.digit >= 1 && editorVm.selectedCount > 0 && !root.reviewShown) {
+            editorVm.moveSelectionToLane(k.digit - 1, k.shift)
+            event.accepted = true
+        } else if (k.plain && k.name === "J") {
+            // J: Jó így (Shift: nem minta).
+            if (root.reviewShown) reviewView.confirmCurrent(k.shift)
+            else editorVm.confirmSelection(k.shift)
+            event.accepted = true
+        } else if (k.plain && !k.shift && k.name === "M") {
+            root.openFixForCurrent()
+            event.accepted = true
+        } else if (k.plain && !k.shift && (k.name === "Down" || k.name === "Up" || k.name === "Left" || k.name === "Right")) {
             // Nyilak: előző / következő sor (Olvasás, Javítás, Átnézendő); a lista nem görget.
-            root.stepLine(event.key === Qt.Key_Down || event.key === Qt.Key_Right ? 1 : -1)
+            root.stepLine(k.name === "Down" || k.name === "Right" ? 1 : -1)
             event.accepted = true
-        } else if (plain && event.key >= Qt.Key_1 && event.key <= Qt.Key_9 && editorVm.selectedCount > 0) {
-            editorVm.moveSelectionToLane(event.key - Qt.Key_1)
-            event.accepted = true
-        } else if (event.key === Qt.Key_Escape && editorVm.selectedCount > 0) {
+        } else if (k.name === "Escape" && editorVm.selectedCount > 0) {
             editorVm.clearSelection()
             event.accepted = true
-        } else if (event.key === Qt.Key_Escape && toolbar.searchOpen) {
+        } else if (k.name === "Escape" && editorVm.sampleFilterKey !== "") {
+            editorVm.clearSampleFilter()
+            event.accepted = true
+        } else if (k.name === "Escape" && toolbar.searchOpen) {
             toolbar.closeSearch()
             event.accepted = true
-        } else if (plain && event.key === Qt.Key_Space && root.player) {
+        } else if (k.plain && k.name === "Space" && root.player) {
             root.player.toggle()
             event.accepted = true
-        } else if (plain && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && editorVm.currentRow >= 0) {
+        } else if (k.plain && k.name === "Enter" && editorVm.currentRow >= 0) {
             root.playFrom(editorVm.rowStartMs(editorVm.currentRow))
             event.accepted = true
         }
@@ -704,13 +775,64 @@ Item {
                 objectName: "railNote"
                 visible: root.railShown
                 x: root.textX + 12
-                width: Math.max(0, parent.width - x - 20)
+                width: Math.max(0, filterRow.x - x - 12)
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: -4
                 text: root.railNote
                 elide: Text.ElideRight
                 muted: true
                 font.pixelSize: Theme.fontCaption
+            }
+            // A lista szűrői a fejléc jobb szélén: a minta-mérő „+N most” szűrője (törölhető) és a
+            // „nem azonosítható” sorok elrejtése / mutatása.
+            Row {
+                id: filterRow
+                visible: root.railShown
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -4
+                spacing: 12
+                Row {
+                    objectName: "sampleFilterNote"
+                    visible: editorVm.sampleFilterKey !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    TIcon { anchors.verticalCenter: parent.verticalCenter; name: "list-filter"; size: 13; color: Theme.accent }
+                    TLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Szűrő: %1 most lett mintái").arg(editorVm.speakerInfo(editorVm.sampleFilterKey).name || "")
+                        color: Theme.accent
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.weightMedium
+                    }
+                    TLabel {
+                        objectName: "sampleFilterClear"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Mind (Esc)")
+                        color: Theme.accent
+                        font.pixelSize: Theme.fontCaption
+                        font.underline: clearHover.hovered
+                        HoverHandler { id: clearHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: editorVm.clearSampleFilter() }
+                    }
+                }
+                TLabel {
+                    objectName: "ignoredToggle"
+                    visible: editorVm.ignoredCount > 0 && editorVm.sampleFilterKey === ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: editorVm.hideIgnored ? qsTr("%n nem azonosítható rejtve · mutasd", "", editorVm.ignoredCount)
+                                               : qsTr("%n nem azonosítható · elrejtés", "", editorVm.ignoredCount)
+                    muted: true
+                    font.pixelSize: Theme.fontCaption
+                    font.underline: ignoredHover.hovered
+                    HoverHandler { id: ignoredHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: editorVm.hideIgnored = !editorVm.hideIgnored }
+                    TToolTip {
+                        visible: ignoredHover.hovered
+                        text: qsTr("A „nem azonosítható” sorok a hang-elemzésből kimaradnak; itt csak a lista nézetét állítod")
+                    }
+                }
             }
             SpeakerRailHeader {
                 id: railHeader
@@ -802,20 +924,20 @@ Item {
                         dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
                     }
                     function updateDrag(x, y) {
-                        const row = rowAt(y)
+                        const row = railArea.rowAt(y)
                         if (row >= 0) root.dragToRow = row
-                        const lane = laneAt(x)
+                        const lane = railArea.laneAt(x)
                         root.dragLane = lane >= 0 ? lane : -1
-                        placeChip(x, y)
+                        railArea.placeChip(x, y)
                     }
                     // Rámutatás: a sor és a másik oszlop (saját oszlop / szünet-sor felett nincs előnézet).
                     function updateHover(x, y) {
-                        const row = rowAt(y)
+                        const row = railArea.rowAt(y)
                         const item = row >= 0 && editorVm.rowStartMs(row) >= 0 ? list.itemAtIndex(row) : null
-                        const lane = item ? laneAt(x) : -9
+                        const lane = item ? railArea.laneAt(x) : -9
                         root.hoverRow = item ? row : -1
                         root.hoverLane = item && lane >= 0 && lane !== item.lane ? lane : -1
-                        if (root.hoverLane >= 0) placeChip(x, y)
+                        if (root.hoverLane >= 0) railArea.placeChip(x, y)
                     }
                     function clearHover() {
                         root.hoverRow = -1
@@ -825,7 +947,7 @@ Item {
                     onPressed: mouse => {
                         root.forceActiveFocus()
                         pressRow = list.indexAt(list.width / 2, list.contentY + mouse.y)
-                        pressLane = laneAt(mouse.x)
+                        pressLane = railArea.laneAt(mouse.x)
                         pressX = mouse.x
                         pressY = mouse.y
                         lastY = mouse.y
@@ -835,35 +957,38 @@ Item {
                         }
                     }
                     onPositionChanged: mouse => {
-                        if (pressRow < 0) { updateHover(mouse.x, mouse.y); return }
+                        root.shiftHeld = (mouse.modifiers & Qt.ShiftModifier) !== 0
+                        if (pressRow < 0) { railArea.updateHover(mouse.x, mouse.y); return }
                         lastY = mouse.y
                         if (!root.dragActive) {
                             if (Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) < 7) return
-                            clearHover()
+                            railArea.clearHover()
                             root.dragFromRow = pressRow
                             root.dragToRow = pressRow
                             root.dragActive = true
                         }
-                        updateDrag(mouse.x, mouse.y)
+                        railArea.updateDrag(mouse.x, mouse.y)
                     }
-                    onExited: clearHover()
+                    onExited: railArea.clearHover()
                     onReleased: mouse => {
                         if (pressRow < 0) return
+                        // Shift = „nem minta”: a sor (a sorok) átkerülnek, de a hangjuk nem minta.
+                        const noisy = (mouse.modifiers & Qt.ShiftModifier) !== 0
                         if (root.dragActive) {
                             if (root.dragLane >= 0)
-                                editorVm.moveRowsToLane(root.dragFromRow, root.dragToRow, root.dragLane)
-                            resetDrag()
+                                editorVm.moveRowsToLane(root.dragFromRow, root.dragToRow, root.dragLane, noisy)
+                            railArea.resetDrag()
                             return
                         }
                         const row = pressRow
                         const lane = pressLane
-                        resetDrag()
+                        railArea.resetDrag()
                         const item = list.itemAtIndex(row)
                         if (!item) return
                         if (lane === item.lane && lane !== -9) {
                             root.rowClicked(row, mouse.modifiers)
                         } else if (lane >= 0) {
-                            editorVm.moveRowToLane(row, lane)
+                            editorVm.moveRowToLane(row, lane, noisy)
                         } else if (lane === -1) {
                             editorVm.lanesExpanded = !editorVm.lanesExpanded
                         } else if (lane === -3) {
@@ -871,9 +996,9 @@ Item {
                             root.openPicker("selection", railHeader.addItem)
                         }
                         // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
-                        Qt.callLater(() => { if (railArea.containsMouse) updateHover(railArea.mouseX, railArea.mouseY) })
+                        Qt.callLater(() => { if (railArea.containsMouse) railArea.updateHover(railArea.mouseX, railArea.mouseY) })
                     }
-                    onCanceled: resetDrag()
+                    onCanceled: railArea.resetDrag()
 
                     // Húzás közben a lista széleinél magától görög.
                     Timer {
@@ -894,21 +1019,32 @@ Item {
                     }
                 }
 
-                // Lebegő címke húzás és rámutatás közben: „→ Név".
+                // Lebegő címke húzás és rámutatás közben: „→ Név" (Shift: „→ Név · nem minta”,
+                // szaggatott keretben).
                 Rectangle {
                     id: dragChip
+                    objectName: "dragChip"
                     visible: root.previewLane >= 0 && (root.dragActive || root.hoverRow >= 0)
+                    readonly property bool nonSample: root.shiftHeld
                     z: 3
                     width: dragLabel.implicitWidth + 18
                     height: dragLabel.implicitHeight + 6
                     radius: 10
-                    color: Theme.accent
+                    color: nonSample ? Theme.raised : Theme.accent
+                    TDashedRect {
+                        anchors.fill: parent
+                        visible: dragChip.nonSample
+                        radius: parent.radius
+                        color: Theme.accent
+                        lineWidth: 1.5
+                    }
                     TLabel {
                         id: dragLabel
+                        objectName: "dragChipLabel"
                         anchors.centerIn: parent
                         text: root.previewLane >= 0 && root.previewLane < root.laneCount
-                              ? "→ " + editorVm.lanes[root.previewLane].name : ""
-                        color: Theme.textOnAccent
+                              ? "→ " + editorVm.lanes[root.previewLane].name + (dragChip.nonSample ? root.nonSampleSuffix : "") : ""
+                        color: dragChip.nonSample ? Theme.accent : Theme.textOnAccent
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.weightSemiBold
                     }
@@ -929,15 +1065,14 @@ Item {
             }
         }
 
-        // A legutóbbi átsorolás értesítése: a lista alatt (nem takarja a javított sort).
+        // Az „Imént” sor: a lista alatt, FIX helyen (Javítás / Átnézendő nézetben mindig; az
+        // Olvasásban csak egy átsorolás után). Nem tűnik el magától.
         TranscriptChangeBar {
             id: changeBar
             objectName: "changeBar"
-            visible: editorVm.changeActive
+            visible: editorVm.hasTranscript && (root.viewMode !== "read" || editorVm.changeActive)
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            Layout.bottomMargin: selectionBar.visible ? 6 : 10
+            Layout.bottomMargin: selectionBar.visible ? 6 : 0
             vm: editorVm
             onRestRequested: root.requestMerge({ kind: "rest", fromKey: editorVm.changeSourceKey,
                                                  intoKey: editorVm.changeTargetKey })
@@ -1127,7 +1262,27 @@ Item {
         TMenuItem {
             text: rowMenu.inSelection ? qsTr("Más mondta… (a kijelölt sorok)") : qsTr("Más mondta… (ez a sor)")
             iconName: "user"
+            shortcutText: "M"
             onTriggered: rowMenu.fixPending = true
+        }
+        TMenuItem {
+            objectName: "rowMenuConfirm"
+            text: rowMenu.inSelection ? qsTr("Jó így (a kijelölt sorok)") : qsTr("Jó így")
+            iconName: "check"
+            shortcutText: "J"
+            onTriggered: rowMenu.inSelection ? editorVm.confirmSelection(false) : editorVm.confirmRow(rowMenu.row)
+        }
+        // „Nem azonosítható” (0): a név marad, a hang-elemzés figyelmen kívül hagyja; újra: vissza.
+        TMenuItem {
+            objectName: "rowMenuIgnore"
+            readonly property bool ignored: rowMenu.visible && rowMenu.row >= 0
+                                            && editorVm.rowInfo(rowMenu.row).ignored === true
+            text: ignored ? qsTr("Újra azonosítható")
+                          : rowMenu.inSelection ? qsTr("Nem azonosítható (a kijelölt sorok)") : qsTr("Nem azonosítható")
+            reserveIconSpace: true
+            shortcutText: "0"
+            onTriggered: rowMenu.inSelection ? editorVm.setSelectionIgnored(!ignored)
+                                             : editorVm.setRowIgnored(rowMenu.row, !ignored)
         }
         // Hanglenyomat-minta ebből a sorból (a sor felugrójában is ott van; itt a jobb-klikk útja).
         // Bizonytalan sornál egyben megerősítés is.
@@ -1271,6 +1426,22 @@ Item {
             const lane = Math.max(0, keyOf("Fehér Gábor"))
             root.openSpeakerPopover(editorVm.lanes[lane].key, railHeader)
             speakerWhy.x = Math.round(root.railX + 4 + lane * Theme.laneWidth - 7)
+        } else if (s === "ignoredRows") {
+            list.positionViewAtBeginning()
+        } else if (s === "imentLog") {
+            changeBar.logOpen = true
+        } else if (s === "shiftPreview") {
+            // Lenyomott Shift + rámutatás a 3. sor egy másik oszlopára: „→ Név · nem minta”.
+            list.positionViewAtBeginning()
+            const item = list.itemAtIndex(2)
+            if (item && root.laneCount > 1) {
+                root.shiftHeld = true
+                root.hoverRow = 2
+                root.hoverLane = (item.lane + 1) % root.laneCount
+                const p = item.mapToItem(list, 0, item.height / 2)
+                dragChip.x = root.railX + 4 + root.hoverLane * Theme.laneWidth + 30
+                dragChip.y = Math.max(2, p.y - 26)
+            }
         } else if (s === "contaminatedCore") {
             reviewView.list.positionViewAtBeginning()
             const key = editorVm.contaminated.speakerKey || ""

@@ -829,6 +829,10 @@ ApplicationWindow {
                                       ? summaryTab.sectionBands : []
                         // T1 / E4: az új személyhez hasonló sorok accent jelei (csak az Átirat fülön).
                         similarMarks: shellActions.currentTab === 1 ? transcriptTab.similarMarks : []
+                        // S2: minta-mérő (az Átirat Javítás / Átnézendő nézetében); „+N most” → szűrés.
+                        sampleStats: shellActions.currentTab === 1 && transcriptTab.viewMode !== "read"
+                                     ? transcriptTab.editor.sampleStats : []
+                        onSamplesClicked: key => transcriptTab.showSessionSamples(key)
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
                             else {

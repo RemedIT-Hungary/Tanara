@@ -52,6 +52,8 @@ QHash<int, QByteArray> TranscriptListModel::roleNames() const
         {SideConflictRole, "sideConflict"},
         {NewPersonRole, "newPerson"},
         {SimilarRole, "similar"},
+        {IgnoredRole, "ignored"},
+        {SampleStateRole, "sampleState"},
     };
 }
 
@@ -64,7 +66,7 @@ bool TranscriptListModel::headAt(int row) const
     const EditorUtterance& u = utts[r.utterance];
     // A jelölt (bizonytalan / javítva / egymásra beszéltek / megerősített) sor mindig kap névsort:
     // a jelölő ott jelenik meg.
-    if (u.uncertain || u.manuallyCorrected || u.noisy || u.confirmed) return true;
+    if (u.uncertain || u.manuallyCorrected || u.noisy || u.confirmed || u.ignored) return true;
     return utts[m_rows[row - 1].utterance].speakerKey != u.speakerKey;
 }
 
@@ -92,6 +94,7 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
         case ShortRole:
         case SideConflictRole:
         case NewPersonRole:
+        case IgnoredRole:
         case SimilarRole: return false;
         case StartMsRole:
         case EndMsRole:
@@ -132,6 +135,8 @@ QVariant TranscriptListModel::data(const QModelIndex& index, int role) const
     case SideConflictRole: return m_vm->isSideConflict(u.id);
     case NewPersonRole: return m_vm->isNewPerson(u.speakerKey);
     case SimilarRole: return m_vm->isSimilar(r.utterance);
+    case IgnoredRole: return u.ignored;
+    case SampleStateRole: return m_vm->sampleState(r.utterance);
     default: return {};
     }
 }
@@ -166,19 +171,25 @@ QVector<TranscriptListModel::Row> TranscriptListModel::computeRows() const
 {
     const auto& utts = m_vm->utterances();
     QVector<Row> out;
-    if (!m_vm->uncertainOnly()) {
+    const QString filter = m_vm->listFilter();
+    if (filter.isEmpty()) {
         out.reserve(utts.size());
         for (int i = 0; i < utts.size(); ++i) out.append(Row{false, i, 0});
         return out;
     }
-    // Szűrő: a bizonytalan sorok, a szűrő bekapcsolása óta kézzel javítottak (ne tűnjenek el a
-    // kurzor alól), a javaslat horgonya, és — amíg a „Megmutatom" él — a javasolt sorok. A
-    // köztük lévő biztos futamok egy-egy elválasztóvá csukódnak.
+    // „Bizonytalan" szűrő: a bizonytalan sorok, a szűrő bekapcsolása óta kézzel javítottak (ne
+    // tűnjenek el a kurzor alól), a javaslat horgonya, és — amíg a „Megmutatom" él — a javasolt
+    // sorok. Minta-szűrő: a beszélő „+N most" sorai. „Nem azonosítható" elrejtése: minden más.
+    // A rejtett futamok egy-egy elválasztóvá csukódnak.
     const int anchor = m_vm->suggestionAnchor();
+    const bool uncertain = filter == QLatin1String("uncertain");
+    const bool samples = filter == QLatin1String("samples");
     int runStart = -1;
     for (int i = 0; i < utts.size(); ++i) {
-        const bool show = utts[i].uncertain || i == anchor || m_vm->isSuggested(i)
-            || (utts[i].manuallyCorrected && m_vm->isSticky(i));
+        const bool show = uncertain ? (utts[i].uncertain || i == anchor || m_vm->isSuggested(i)
+                                       || (utts[i].manuallyCorrected && m_vm->isSticky(i)))
+                        : samples ? m_vm->inSampleFilter(i)
+                                  : !utts[i].ignored;
         if (!show) {
             if (runStart < 0) runStart = i;
             continue;

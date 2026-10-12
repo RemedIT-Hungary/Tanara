@@ -8,6 +8,9 @@ import QtQuick.Templates as T
 // Jó így, de nem minta · Más…; az aktív, összecsukott csoport alatt „··· N sor ebben a
 // csoportban · Kinyitás". Az eldöntött sor a helyén marad, amíg a csoport nyitva van.
 // B / Shift+B a csoportok sorain lépked (TranscriptTab). Lista-modell: editorVm.reviewGroups.
+// S2: Shift = „nem minta” mindenhol (sín-kattintás / -húzás, „X mondta”, „Jó így”, 1, J) —
+// lenyomott Shiftnél a feliratok „· nem minta” utótagot kapnak; „Nem azonosítható” (0) sor-gomb;
+// a döntött sor jelölője: javítva / jó így / nem azonosítható + minta-jel.
 Item {
     id: root
 
@@ -42,14 +45,14 @@ Item {
     // Kattintás a sín egy oszlopára egy sor mellett (a Javítás sín-kattintásának mintájára):
     //  saját oszlop → a sor kiválasztása; másik oszlop → a sor átkerül ahhoz a beszélőhöz;
     //  „+N" → az összecsukott oszlopok ki/be; „+" → a sor személyválasztója.
-    function railClicked(utteranceId, ownLane, lane, anchor) {
+    function railClicked(utteranceId, ownLane, lane, anchor, noisy) {
         if (utteranceId === "") return false
         root.currentUtterance = utteranceId
         if (lane === -9) return false
         if (lane === ownLane) return true
         if (lane >= 0) {
             const key = lane < vm.lanes.length ? vm.lanes[lane].key : ""
-            return key !== "" && vm.moveUtteranceToSpeaker(utteranceId, key)
+            return key !== "" && vm.moveUtteranceToSpeaker(utteranceId, key, noisy === true)
         }
         if (lane === -1) {
             vm.lanesExpanded = !vm.lanesExpanded
@@ -78,18 +81,34 @@ Item {
     }
     // A sor a javasolt beszélőhöz: kulccsal a meeting beszélőjéhez, kulcs nélkül (a csoport csak
     // nevet javasol, pl. a meetingen kívüli személyt) a személyhez.
-    function moveToLikely(utteranceId, likelyKey, likelyName) {
-        if (likelyKey !== "") return vm.moveUtteranceToSpeaker(utteranceId, likelyKey)
-        if (likelyName !== "") return vm.moveUtteranceToPerson(utteranceId, likelyName)
+    function moveToLikely(utteranceId, likelyKey, likelyName, noisy) {
+        if (likelyKey !== "") return vm.moveUtteranceToSpeaker(utteranceId, likelyKey, noisy === true)
+        if (likelyName !== "") return vm.moveUtteranceToPerson(utteranceId, likelyName, noisy === true)
         return false
     }
-    // „1": a kiválasztott sor a javasolt beszélőhöz.
-    function acceptCurrent() {
+    function currentLine() {
         const row = currentUtterance !== "" ? vm.reviewGroups.rowOfLine(currentUtterance) : -1
         const item = row >= 0 ? list.itemAtIndex(row) : null
-        if (item && item.lineItem && item.lineItem.likelyName !== "" && !item.lineItem.decided)
-            return moveToLikely(currentUtterance, item.lineItem.likelyKey, item.lineItem.likelyName)
+        return item && item.lineItem ? item.lineItem : null
+    }
+    // „1" (Shift+1: nem minta): a kiválasztott sor a javasolt beszélőhöz.
+    function acceptCurrent(noisy) {
+        const li = currentLine()
+        if (li && li.likelyName !== "" && !li.decided)
+            return moveToLikely(currentUtterance, li.likelyKey, li.likelyName, noisy)
         return false
+    }
+    // „J" (Shift+J: nem minta): a kiválasztott sor „Jó így".
+    function confirmCurrent(noisy) {
+        const li = currentLine()
+        return !!li && !li.decided && vm.confirmUtterance(currentUtterance, noisy === true)
+    }
+    // „M": a kiválasztott sor panelje („Más…").
+    function fixCurrent() {
+        const li = currentLine()
+        if (!li) return false
+        root.lineFixRequested(currentUtterance, li.fixAnchor)
+        return true
     }
 
     component LineRow: Item {
@@ -104,6 +123,9 @@ Item {
         readonly property bool dragging: root.dragActive && root.dragUtterance === utteranceId
         readonly property bool previewing: dragging || (!root.dragActive && root.hoverUtterance === utteranceId)
         readonly property alias railCells: railLoader
+        readonly property alias fixAnchor: fixButton
+        readonly property bool ignored: model.ignored === true
+        readonly property bool nonSample: root.tab.shiftHeld
         width: list.width
         height: lineColumn.implicitHeight + 16
 
@@ -129,6 +151,7 @@ Item {
                 suggestLane: line.decided ? -1 : root.laneOfKey(line.likelyKey)
                 dimmed: line.previewing && root.previewLane >= 0 && root.previewLane !== line.lane
                 targetLane: line.previewing && root.previewLane !== line.lane ? root.previewLane : -1
+                targetDashed: root.tab.shiftHeld
                 targetLineColor: Theme.speakerLine(root.previewColorIndex)
                 targetSoftColor: Theme.speakerSoft(root.previewColorIndex)
                 outlineColor: Theme.text
@@ -189,14 +212,23 @@ Item {
                     objectName: "reviewDecided"
                     anchors.verticalCenter: parent.verticalCenter
                     visible: line.decided
-                    kind: line.model.decidedText === qsTr("javítva") ? "corrected" : "confirmed"
+                    kind: line.model.decidedKind === "ignored" ? "ignored"
+                        : line.model.decidedKind === "corrected" ? "corrected" : "confirmed"
                 }
                 TLabel {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: line.decided && line.model.decidedText !== qsTr("javítva")
+                    visible: line.decided && line.model.decidedKind === "confirmed"
                     text: line.model.decidedText
                     muted: true
                     font.pixelSize: Theme.fontMicro
+                }
+                TranscriptMarker {
+                    objectName: "reviewSample"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: line.decided && (line.model.sampleState || "") !== ""
+                    kind: line.model.sampleState === "sample" ? "sample" : "noSample"
+                    toolTipText: line.model.sampleState === "sample" ? qsTr("Hangminta lett")
+                                                                     : qsTr("Nem minta: a hangját nem használom")
                 }
             }
             TLabel {
@@ -230,22 +262,22 @@ Item {
                     visible: line.likelyName !== ""
                     size: "small"
                     variant: "primary"
-                    text: qsTr("%1 mondta").arg(line.likelyName)
-                    toolTipText: qsTr("A sor átkerül hozzá: %1 (1)").arg(line.likelyName)
+                    text: qsTr("%1 mondta").arg(line.likelyName) + (line.nonSample ? root.tab.nonSampleSuffix : "")
+                    toolTipText: qsTr("A sor átkerül hozzá: %1 (1; Shift: nem minta)").arg(line.likelyName)
                     onClicked: {
                         root.currentUtterance = line.utteranceId
-                        root.moveToLikely(line.utteranceId, line.likelyKey, line.likelyName)
+                        root.moveToLikely(line.utteranceId, line.likelyKey, line.likelyName, root.tab.shiftHeld)
                     }
                 }
                 TButton {
                     focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
                     objectName: "lineConfirm"
                     size: "small"
-                    text: qsTr("Jó így")
-                    toolTipText: qsTr("A beszélő rendben van: a sor többé nem kétes")
+                    text: qsTr("Jó így") + (line.nonSample ? root.tab.nonSampleSuffix : "")
+                    toolTipText: qsTr("A beszélő rendben van: a sor többé nem kétes (J; Shift: nem minta)")
                     onClicked: {
                         root.currentUtterance = line.utteranceId
-                        root.vm.confirmUtterance(line.utteranceId, false)
+                        root.vm.confirmUtterance(line.utteranceId, root.tab.shiftHeld)
                     }
                 }
                 TButton {
@@ -262,12 +294,24 @@ Item {
                 }
                 TButton {
                     focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    objectName: "lineIgnore"
+                    size: "small"
+                    variant: "ghost"
+                    text: qsTr("Nem azonosítható")
+                    toolTipText: qsTr("Nem tudni, ki mondta: a név marad, de a hangját semmire nem használom (0)")
+                    onClicked: {
+                        root.currentUtterance = line.utteranceId
+                        root.vm.setUtteranceIgnored(line.utteranceId, true)
+                    }
+                }
+                TButton {
+                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
                     id: fixButton
                     objectName: "lineFix"
                     size: "small"
                     variant: "ghost"
                     text: qsTr("Más…")
-                    toolTipText: qsTr("Csak ez a sor kerül át ahhoz, akit választasz")
+                    toolTipText: qsTr("Csak ez a sor kerül át ahhoz, akit választasz (M)")
                     onClicked: {
                         root.currentUtterance = line.utteranceId
                         root.lineFixRequested(line.utteranceId, fixButton)
@@ -426,15 +470,15 @@ Item {
         function updateDrag(x, y) {
             const lane = root.tab.railLaneAt(x)
             root.dragLane = lane >= 0 ? lane : -1
-            placeChip(x, y)
+            railArea.placeChip(x, y)
         }
         // Rámutatás: a sor és a másik oszlop (saját oszlop / kártya felett nincs előnézet).
         function updateHover(x, y) {
-            const li = lineAt(y)
+            const li = railArea.lineAt(y)
             const lane = li ? root.tab.railLaneAt(x) : -9
             root.hoverUtterance = li ? li.utteranceId : ""
             root.hoverLane = li && lane >= 0 && lane !== li.lane ? lane : -1
-            if (root.hoverLane >= 0) placeChip(x, y)
+            if (root.hoverLane >= 0) railArea.placeChip(x, y)
         }
         function clearHover() {
             root.hoverUtterance = ""
@@ -442,38 +486,40 @@ Item {
         }
 
         onPressed: mouse => {
-            pressItem = lineAt(mouse.y)
+            pressItem = railArea.lineAt(mouse.y)
             if (!pressItem) { mouse.accepted = false; return }
             pressX = mouse.x
             pressY = mouse.y
         }
         onPositionChanged: mouse => {
-            if (!pressItem) { updateHover(mouse.x, mouse.y); return }
+            root.tab.shiftHeld = (mouse.modifiers & Qt.ShiftModifier) !== 0
+            if (!pressItem) { railArea.updateHover(mouse.x, mouse.y); return }
             if (!root.dragActive) {
                 if (Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) < 7) return
-                clearHover()
+                railArea.clearHover()
                 root.dragUtterance = pressItem.utteranceId
                 root.dragActive = true
             }
-            updateDrag(mouse.x, mouse.y)
+            railArea.updateDrag(mouse.x, mouse.y)
         }
-        onExited: clearHover()
+        onExited: railArea.clearHover()
         onReleased: mouse => {
             if (!pressItem) return
             const li = pressItem
+            const noisy = (mouse.modifiers & Qt.ShiftModifier) !== 0     // Shift = nem minta
             root.tab.forceActiveFocus()
             if (root.dragActive) {
                 const lane = root.dragLane
-                resetDrag()
-                if (lane >= 0 && lane !== li.lane) root.railClicked(li.utteranceId, li.lane, lane, li.railCells)
+                railArea.resetDrag()
+                if (lane >= 0 && lane !== li.lane) root.railClicked(li.utteranceId, li.lane, lane, li.railCells, noisy)
             } else {
-                resetDrag()
-                root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells)
+                railArea.resetDrag()
+                root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells, noisy)
             }
             // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
-            Qt.callLater(() => { if (railArea.containsMouse) updateHover(railArea.mouseX, railArea.mouseY) })
+            Qt.callLater(() => { if (railArea.containsMouse) railArea.updateHover(railArea.mouseX, railArea.mouseY) })
         }
-        onCanceled: resetDrag()
+        onCanceled: railArea.resetDrag()
     }
 
     // Lebegő címke húzás és rámutatás közben: „→ Név" (a Javítás dragChip-jének mintájára).
@@ -481,17 +527,25 @@ Item {
         id: dragChip
         objectName: "reviewDragChip"
         visible: root.previewLane >= 0 && (root.dragActive || root.hoverUtterance !== "")
+        readonly property bool nonSample: root.tab.shiftHeld
         z: 3
         width: dragLabel.implicitWidth + 18
         height: dragLabel.implicitHeight + 6
         radius: 10
-        color: Theme.accent
+        color: nonSample ? Theme.raised : Theme.accent
+        TDashedRect {
+            anchors.fill: parent
+            visible: dragChip.nonSample
+            radius: parent.radius
+            color: Theme.accent
+            lineWidth: 1.5
+        }
         TLabel {
             id: dragLabel
             anchors.centerIn: parent
             text: root.previewLane >= 0 && root.previewLane < root.tab.laneCount
-                  ? "→ " + root.vm.lanes[root.previewLane].name : ""
-            color: Theme.textOnAccent
+                  ? "→ " + root.vm.lanes[root.previewLane].name + (dragChip.nonSample ? root.tab.nonSampleSuffix : "") : ""
+            color: dragChip.nonSample ? Theme.accent : Theme.textOnAccent
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemiBold
         }

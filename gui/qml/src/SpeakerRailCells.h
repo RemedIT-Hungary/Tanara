@@ -5,7 +5,8 @@
 // az összes oszlop állapotát, így soronként nem kell oszloponkénti QML-elem:
 //   tömör blokk · bizonytalan (lágy kitöltés + 135°-os csíkok) · kijelölt (2 px keret, a
 //   többi oszlopban szaggatott ejtési cél) · javasolt (2 px accent keret) · húzás forrása
-//   (30 %) · húzás célja (lágy kitöltés + 2 px szaggatott keret a cél színében) · javasolt
+//   (30 %) · húzás célja (lágy kitöltés + 2 px szaggatott keret a cél színében; Shift = „nem
+//   minta": kitöltés nélkül, ritkás szaggatott keret) · javasolt
 //   cél-oszlop (2 px accent keret az üres cellában: az új személyhez hasonló sor).
 // Oszlopok: `laneCount` darab 24 px-es beszélő-oszlop, utána (hasGroup) egy 20 px-es
 // „+N" csoport-oszlop. A „+" oszlop a sorokban üres.
@@ -38,6 +39,8 @@ class SpeakerRailCells : public QQuickPaintedItem {
     Q_PROPERTY(int targetLane MEMBER m_targetLane NOTIFY changed)
     Q_PROPERTY(QColor targetLineColor MEMBER m_targetLine NOTIFY changed)
     Q_PROPERTY(QColor targetSoftColor MEMBER m_targetSoft NOTIFY changed)
+    // A cél „nem minta" (Shift): ritkás szaggatott keret, kitöltés nélkül.
+    Q_PROPERTY(bool targetDashed MEMBER m_targetDashed NOTIFY changed)
     Q_PROPERTY(QColor outlineColor MEMBER m_outline NOTIFY changed)     // kijelölés (Theme.text)
     Q_PROPERTY(QColor dashColor MEMBER m_dash NOTIFY changed)           // ejtési cél (borderStrong)
     Q_PROPERTY(QColor accentColor MEMBER m_accent NOTIFY changed)       // javasolt sor
@@ -68,6 +71,7 @@ private:
     int m_suggestLane = -1;
     QColor m_targetLine{Qt::gray};
     QColor m_targetSoft{Qt::lightGray};
+    bool m_targetDashed = false;
     QColor m_outline{Qt::black};
     QColor m_dash{Qt::gray};
     QColor m_accent{Qt::blue};

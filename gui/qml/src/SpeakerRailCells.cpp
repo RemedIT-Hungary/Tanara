@@ -80,11 +80,13 @@ void SpeakerRailCells::paint(QPainter* p)
     // 4) Húzás célja.
     const QRectF target = m_targetLane >= 0 ? cellRect(m_targetLane) : QRectF();
     if (target.isValid() && m_targetLane != m_ownLane) {
-        p->setPen(Qt::NoPen);
-        p->setBrush(m_targetSoft);
-        p->drawRoundedRect(target, kRadius, kRadius);
-        QPen pen(m_targetLine, 2.0, Qt::CustomDashLine);
-        pen.setDashPattern({2.0, 1.5});
+        if (!m_targetDashed) {
+            p->setPen(Qt::NoPen);
+            p->setBrush(m_targetSoft);
+            p->drawRoundedRect(target, kRadius, kRadius);
+        }
+        QPen pen(m_targetLine, m_targetDashed ? 1.5 : 2.0, Qt::CustomDashLine);
+        pen.setDashPattern(m_targetDashed ? QVector<qreal>{2.0, 2.0} : QVector<qreal>{2.0, 1.5});
         pen.setCapStyle(Qt::FlatCap);
         p->setPen(pen);
         p->setBrush(Qt::NoBrush);

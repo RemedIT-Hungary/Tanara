@@ -18,7 +18,12 @@ import QtQuick.Layouts
 // similarMarks: az új személyhez hasonló sorok (E4; TranscriptTab.similarMarks, [x, w, x, w, …]
 // 0..1 az idővonalon): accent jelek a sávok fölött + halvány accent oszlop a sávokon át, hogy a
 // beszélőtől függetlenül látsszon, hol vannak (a sorok a saját sávjukon is accent jelet kapnak).
-// Önállóan (képernyőkép) kitalált mintával rajzol; demoState: "" | "similarMarks" (E4 jelek).
+// sampleStats (S2, minta-mérő): a TranscriptEditorViewModel.sampleStats elemei ({ key, sampleLines,
+// sessionAdded, durationText, … }); ha nem üres, a sorok végén „23 minta +4” (a „+4” = ebben a
+// munkamenetben lett minta, accent), tooltipben az idő; kattintásra samplesClicked(key) — a
+// Javítás ezekre a sorokra szűr.
+// Önállóan (képernyőkép) kitalált mintával rajzol; demoState: "" | "similarMarks" (E4 jelek) |
+// "sampleMeter" (minta-mérő).
 Rectangle {
     id: root
 
@@ -31,6 +36,7 @@ Rectangle {
     property var sourceMarks: []
     property var sectionBands: []
     property var similarMarks: demoState === "similarMarks" ? demoSimilarMarks : []
+    property var sampleStats: demoState === "sampleMeter" ? demoSampleStats : []
     property string demoState: ""
     property int timelineMs: player ? player.durationMs : 2 * 3600000 + 11 * 60000 + 4000
 
@@ -40,10 +46,17 @@ Rectangle {
     signal expandRequested()
     signal collapseRequested()
     signal lineStepRequested(int delta)     // „Előző sor” / „Következő sor” (a vezérlősorban)
+    signal samplesClicked(string speakerKey) // a minta-mérő „+N most” része: szűrés ezekre a sorokra
 
     readonly property real nameWidth: 104
     readonly property real trackX: Theme.space5 + nameWidth + 10
-    readonly property real trackWidth: Math.max(10, width - trackX - 10 - 30 - Theme.space5)
+    readonly property bool meterShown: sampleStats.length > 0
+    readonly property real meterWidth: meterShown ? 92 : 0
+    readonly property real trackWidth: Math.max(10, width - trackX - 10 - 30 - meterWidth - Theme.space5)
+    function sampleOf(key) {
+        for (let i = 0; i < sampleStats.length; ++i) if (sampleStats[i].key === key) return sampleStats[i]
+        return null
+    }
     readonly property real playFraction: !player ? 0.33 : timelineMs > 0 ? Math.min(1, player.positionMs / timelineMs) : 0
     readonly property bool dimLanes: sourceMarks.length > 0
     readonly property var extraRows: {
@@ -69,6 +82,12 @@ Rectangle {
         return out
     }
 
+    readonly property var demoSampleStats: [
+        { key: "d0", sampleLines: 32, sessionAdded: 1, durationText: qsTr("2 p 41 mp"), sessionAddedIds: [] },
+        { key: "d1", sampleLines: 24, sessionAdded: 4, durationText: qsTr("1 p 12 mp"), sessionAddedIds: [] },
+        { key: "d2", sampleLines: 18, sessionAdded: 0, durationText: qsTr("58 mp"), sessionAddedIds: [] },
+        { key: "d3", sampleLines: 14, sessionAdded: 0, durationText: qsTr("41 mp"), sessionAddedIds: [] }
+    ]
     readonly property var demoSimilarMarks: [0.06, 0.004, 0.17, 0.003, 0.29, 0.005, 0.41, 0.003, 0.48, 0.004,
                                              0.55, 0.003, 0.63, 0.004, 0.71, 0.003, 0.78, 0.005, 0.86, 0.003,
                                              0.91, 0.004, 0.97, 0.003]
@@ -182,6 +201,56 @@ Rectangle {
                     trackColor: Theme.sunken
                     color: laneRow.other ? Theme.borderStrong : Theme.speakerLine(laneRow.modelData.colorIndex)
                     markColor: Theme.accent
+                }
+                // Minta-mérő: „23 minta +4” (a +4 ebben a munkamenetben lett minta).
+                Item {
+                    id: meter
+                    objectName: "sampleMeter"
+                    readonly property var stat: root.meterShown && !laneRow.other ? root.sampleOf(laneRow.modelData.key) : null
+                    readonly property string speakerKey: laneRow.modelData.key
+                    readonly property int samples: stat ? stat.sampleLines : 0
+                    readonly property int added: stat ? stat.sessionAdded : 0
+                    visible: root.meterShown
+                    x: parent.width - 30 - root.meterWidth
+                    width: root.meterWidth - 8
+                    height: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        TLabel {
+                            objectName: "sampleMeterCount"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: meter.stat ? qsTr("%n minta", "", meter.samples) : ""
+                            mono: true
+                            muted: true
+                            font.pixelSize: Theme.fontMicro
+                        }
+                        TLabel {
+                            objectName: "sampleMeterAdded"
+                            visible: meter.added > 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "+" + meter.added
+                            mono: true
+                            color: Theme.accent
+                            font.pixelSize: Theme.fontMicro
+                            font.weight: Theme.weightSemiBold
+                            font.underline: meterHover.hovered
+                        }
+                    }
+                    HoverHandler { id: meterHover; cursorShape: meter.added > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                    TapHandler {
+                        enabled: meter.added > 0
+                        onTapped: root.samplesClicked(meter.speakerKey)
+                    }
+                    TToolTip {
+                        visible: meterHover.hovered && !!meter.stat
+                        text: !meter.stat ? ""
+                              : qsTr("%1 · %n minta-sor", "", meter.samples).arg(laneRow.modelData.name)
+                                + " · " + meter.stat.durationText
+                                + (meter.added > 0 ? " · " + qsTr("+%1 most — kattintásra ezek a sorok").arg(meter.added) : "")
+                    }
                 }
                 TLabel {
                     anchors.right: parent.right

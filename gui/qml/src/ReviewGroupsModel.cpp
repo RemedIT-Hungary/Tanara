@@ -58,6 +58,9 @@ QHash<int, QByteArray> ReviewGroupsModel::roleNames() const
         {LikelyNameRole, "likelyName"},
         {DecidedRole, "decided"},
         {DecidedTextRole, "decidedText"},
+        {DecidedKindRole, "decidedKind"},
+        {SampleStateRole, "sampleState"},
+        {IgnoredRole, "ignored"},
         {LaneRole, "lane"},
         {NewSpeakerSideRole, "newSpeakerSide"},
     };
@@ -110,7 +113,8 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
         case EndMsRole:
         case ColorIndexRole: return 0;
         case LaneRole: return -2;
-        case DecidedRole: return false;
+        case DecidedRole:
+        case IgnoredRole: return false;
         default: return QString();
         }
     }
@@ -137,12 +141,21 @@ QVariant ReviewGroupsModel::data(const QModelIndex& index, int role) const
         if (!canApply) return u.likelySpeakerKey.isEmpty() ? QString() : m_vm->speakerView(u.likelySpeakerKey).name;
         return !v.proposedKey.isEmpty() ? m_vm->speakerView(v.proposedKey).name : v.proposedName;
     }
-    case DecidedRole: return !inGroup || u.manuallyCorrected || u.confirmed;
+    case DecidedRole: return !inGroup || u.manuallyCorrected || u.confirmed || u.ignored;
     case DecidedTextRole:
+        if (u.ignored) return tr("nem azonosítható");
         if (u.manuallyCorrected || (!inGroup && u.speakerKey != v.currentKey && !v.currentKey.isEmpty()))
             return tr("javítva");
         if (u.confirmed || !inGroup) return tr("jó így");
         return QString();
+    case DecidedKindRole:
+        if (u.ignored) return QStringLiteral("ignored");
+        if (u.manuallyCorrected || (!inGroup && u.speakerKey != v.currentKey && !v.currentKey.isEmpty()))
+            return QStringLiteral("corrected");
+        if (u.confirmed || !inGroup) return QStringLiteral("confirmed");
+        return QString();
+    case SampleStateRole: return m_vm->sampleState(ui);
+    case IgnoredRole: return u.ignored;
     default: return {};
     }
 }

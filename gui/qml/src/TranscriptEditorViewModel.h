@@ -174,6 +174,29 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     // `overview` sorainak `marks` listájában is benne vannak (a térkép-dokk accent jelei).
     Q_PROPERTY(QVariantList similarMarks READ similarMarks NOTIFY reviewChanged)
 
+    // ---- S2: az Átnézendő-újratervezés közös alapja ----
+    // Az „Imént" sor: az utolsó döntés { text, time ("12:58"; üres, ha nincs sor), utteranceId,
+    // chips: [{ kind: "sample" | "noSample" | "ignored" | "unignored" | "changed", text }], undone
+    // (igaz: ez egy visszavonás visszajelzése) } — üres map: még nem volt döntés.
+    Q_PROPERTY(QVariantMap lastDecision READ lastDecision NOTIFY decisionsChanged)
+    // Az előző döntések (legfeljebb 5, a legfrissebb elöl), a lastDecision elemeivel.
+    Q_PROPERTY(QVariantList decisionLog READ decisionLog NOTIFY decisionsChanged)
+    // Eltérő minta (SpeakerEditor::lastSampleDeviation, csak ha deviates): { utteranceId,
+    // speakerKey, name, pct (0..100), similarity, text: „Ez a minta eltér X többi sorától (hang
+    // 41%). Biztos?" } — üres map: nincs figyelmeztetés.
+    Q_PROPERTY(QVariantMap sampleDeviation READ sampleDeviation NOTIFY sampleDeviationChanged)
+    // Minta-mérő (SpeakerEditor::sampleStats): [{ key, name, colorIndex, sampleLines, sampleMs,
+    // sessionAdded, sessionAddedIds, durationText („1 p 12 mp"), text („23 minta · +4 most") }].
+    Q_PROPERTY(QVariantList sampleStats READ sampleStats NOTIFY sampleStatsChanged)
+    // „Nem azonosítható" sorok száma; a Javítás lista elrejtheti őket (hideIgnored).
+    Q_PROPERTY(int ignoredCount READ ignoredCount NOTIFY ignoredCountChanged)
+    Q_PROPERTY(bool hideIgnored READ hideIgnored WRITE setHideIgnored NOTIFY listFilterChanged)
+    // A minta-mérő „+N most" szűrője: ennek a beszélőnek az ebben a munkamenetben lett mintái
+    // látszanak a listán (üres = nincs szűrő).
+    Q_PROPERTY(QString sampleFilterKey READ sampleFilterKey NOTIFY listFilterChanged)
+    // A lista épp érvényes szűrője: "" | "uncertain" | "samples" | "hideIgnored".
+    Q_PROPERTY(QString listFilter READ listFilter NOTIFY listFilterChanged)
+
 public:
     struct SpeakerView {
         QString name;
@@ -289,6 +312,20 @@ public:
     void setSimilarShown(bool shown);
     QVariantList similarMarks() const { return m_similarMarks; }
 
+    QVariantMap lastDecision() const;
+    QVariantList decisionLog() const;
+    QVariantMap sampleDeviation() const { return m_sampleDeviation; }
+    QVariantList sampleStats() const { return m_sampleStats; }
+    int ignoredCount() const { return m_ignoredCount; }
+    bool hideIgnored() const { return m_hideIgnored; }
+    void setHideIgnored(bool hide);
+    QString sampleFilterKey() const { return m_sampleFilterKey; }
+    QString listFilter() const;
+    // A lista-modell olvassa: a szűrő látható sorai (a minta-szűrő azonosítói).
+    bool inSampleFilter(int utterance) const { return m_sampleFilter.contains(utterance); }
+    // A sor minta-állapota a jelölőnek: "sample" | "noSample" | "" (nem döntött / nem azonosítható).
+    QString sampleState(int utterance) const;
+
     // ---- bizonyíték / jelöltek (a CandidateListModel és a panelek olvassák) ----
     QVector<tanara::Candidate> candidatesForLine(const QString& utteranceId) const;
     QVector<tanara::Candidate> candidatesForSpeaker(const QString& speakerKey) const;
@@ -377,18 +414,33 @@ public:
     // ---- műveletek (mind egy visszavonási lépés) --------------------------
     // Kattintás a sor egy másik oszlopába. Ha a sor egy több soros kijelölés része, az
     // egész kijelölés megy.
-    Q_INVOKABLE bool moveRowToLane(int row, int lane);
+    // noisy (Shift = „nem minta", S2): a sor egyben „egymásra beszéltek" jelzést kap, UGYANABBAN
+    // a visszavonási lépésben (SpeakerEditor::moveUtterances noisy) — minden áthelyezésnél.
+    Q_INVOKABLE bool moveRowToLane(int row, int lane, bool noisy = false);
     // Húzás: a [fromRow, toRow] sorok a `lane` oszlop beszélőjéhez.
-    Q_INVOKABLE bool moveRowsToLane(int fromRow, int toRow, int lane);
-    Q_INVOKABLE bool moveSelectionToLane(int lane);             // 1–9 billentyű, chip
-    Q_INVOKABLE bool moveSelectionToSpeaker(const QString& speakerKey);
-    Q_INVOKABLE bool moveSelectionToPerson(const QString& personName);
-    Q_INVOKABLE bool moveSelectionToNewParticipant();           // névtelen új résztvevő
+    Q_INVOKABLE bool moveRowsToLane(int fromRow, int toRow, int lane, bool noisy = false);
+    Q_INVOKABLE bool moveSelectionToLane(int lane, bool noisy = false);     // 1–9 billentyű, chip
+    Q_INVOKABLE bool moveSelectionToSpeaker(const QString& speakerKey, bool noisy = false);
+    Q_INVOKABLE bool moveSelectionToPerson(const QString& personName, bool noisy = false);
+    Q_INVOKABLE bool moveSelectionToNewParticipant(bool noisy = false);    // névtelen új résztvevő
     // EGY sor (a névre kattintva, „Csak ez a sor"): a megszólalás azonosítójával, hogy a
     // panel nyitva tartása alatt változó sorszám (szűrő) ne vihessen el másik sort.
-    Q_INVOKABLE bool moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey);
-    Q_INVOKABLE bool moveUtteranceToPerson(const QString& utteranceId, const QString& personName);
-    Q_INVOKABLE bool moveUtteranceToNewParticipant(const QString& utteranceId);
+    Q_INVOKABLE bool moveUtteranceToSpeaker(const QString& utteranceId, const QString& speakerKey,
+                                            bool noisy = false);
+    Q_INVOKABLE bool moveUtteranceToPerson(const QString& utteranceId, const QString& personName,
+                                           bool noisy = false);
+    Q_INVOKABLE bool moveUtteranceToNewParticipant(const QString& utteranceId, bool noisy = false);
+    // „Nem azonosítható" (0 billentyű, sor-gomb) / „újra azonosítható" (false) — egy lépés
+    // (SpeakerEditor::setUtterancesIgnored). A sor neve marad.
+    Q_INVOKABLE bool setUtteranceIgnored(const QString& utteranceId, bool ignored);
+    Q_INVOKABLE bool setSelectionIgnored(bool ignored);
+    Q_INVOKABLE bool setRowIgnored(int row, bool ignored);
+    // A kijelölés (vagy egy sor) „Jó így" — Shift: „Jó így, nem minta" (J billentyű a Javításban).
+    Q_INVOKABLE bool confirmSelection(bool asNoisy = false);
+    // Minta-mérő „+N most": a lista ennek a beszélőnek a most lett mintáira szűr (a többi
+    // sor elválasztóvá csukódik), és az elsőre görget. Üres kulcs / clearSampleFilter: vissza.
+    Q_INVOKABLE bool showSessionSamples(const QString& speakerKey);
+    Q_INVOKABLE void clearSampleFilter();
     // „<Forrás> mind a N sora": a legutóbbi soronkénti áthelyezés forrásának MEGMARADT sorai
     // is a célhoz kerülnek (a két beszélő összevonása) — egy további visszavonási lépés.
     Q_INVOKABLE bool moveRestOfSource();
@@ -533,7 +585,8 @@ public:
     // "voiceprintDone" | "voiceprintShort" | "recheck" (újraellenőrzés után a szűrő) |
     // "recheckReady" (minden kétes sor eldöntve: a szűrő-gomb az újraellenőrzést kínálja) |
     // "noisy" (egy „egymásra beszéltek" sor) | "changePairOffer" (átsorolás után a páros
-    // átnézés ajánlata a sávon).
+    // átnézés ajánlata a sávon) | v3 + S2: "imentWarning" / "imentLog" („Imént" sor eltérő-minta
+    // figyelmeztetéssel, döntés-naplóval) | "shiftPreview" | "ignoredRows" | "sampleFilter".
     // Ha a hang-elemzés még fut, a végén alkalmazódik.
     Q_INVOKABLE void applyDemoState(const QString& state);
     // Vár-e még egy demó-állapot a hang-elemzés végére.
@@ -561,6 +614,11 @@ signals:
     void playingRowChanged();
     void peopleChanged();
     void reviewChanged();
+    void decisionsChanged();
+    void sampleDeviationChanged();
+    void sampleStatsChanged();
+    void ignoredCountChanged();
+    void listFilterChanged();
     // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
     void revealRequested(int row);
     // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
@@ -591,7 +649,33 @@ private:
     enum class MoveTarget { Speaker, Person, NewParticipant };
     // A soronkénti áthelyezések közös útja: művelet + oszlop-kibontás + értesítő sáv.
     // Vissza: a cél-beszélő kulcsa (üres = nem történt semmi).
-    QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value);
+    QString moveLines(const QStringList& ids, MoveTarget kind, const QString& value, bool noisy = false);
+    // ---- S2: döntés-napló („Imént" sor) ----
+    struct Decision {
+        QString text;
+        QString time;
+        QString utteranceId;
+        QVariantList chips;
+        quint64 serial = 0;         // a szerkesztő undo-lépése (0: visszajelzés, nem vonható vissza)
+        bool undone = false;
+    };
+    // Egy döntés előtt / után: a mellékhatás (más sorok javaslata) számolásához.
+    void beginDecision(const QStringList& ids);
+    void endDecision(const QString& text, const QStringList& ids, const QString& kind);
+    void pruneDecisions();
+    void updateSampleDeviation();
+    void updateSampleStats();
+    void updateIgnoredCount();
+    QVector<Decision> m_decisions;      // időrendben (a legfrissebb a végén)
+    bool m_tracking = false;
+    QSet<QString> m_trackIds;           // a döntött sorok
+    QSet<QString> m_sideChanged;        // más sorok, amelyeknek a javaslata / kétessége változott
+    QVariantMap m_sampleDeviation;
+    QVariantList m_sampleStats;
+    int m_ignoredCount = 0;
+    bool m_hideIgnored = false;
+    QString m_sampleFilterKey;
+    QSet<int> m_sampleFilter;
     void publishChange(const QString& text, const QString& sourceKey, const QString& targetKey,
                        int lastUtterance, bool offerVoiceprint = false, bool newPerson = false);
     void publishWholeSpeakerChange(const QString& fromName, int lines, const QString& targetKey);
@@ -601,6 +685,7 @@ private:
     bool loadRailState() const;
     void saveRailState() const;
     void applyPendingDemoState();
+    void stageS2Demo(const QString& state);
     void rebuildReview();
     void scheduleReview();
     void updateSimilar();
