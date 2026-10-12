@@ -25,7 +25,12 @@ Item {
     property string dragUtterance: ""
     property bool dragActive: false
     property int dragLane: -1
-    readonly property int dragColorIndex: dragLane >= 0 && dragLane < tab.laneCount ? vm.lanes[dragLane].colorIndex : 0
+    // Rámutatás a sínen (egy sor másik oszlopa): ugyanaz az előnézet, mint húzáskor — a cél-cella
+    // a beszélő színével és a „→ Név" címke —, hogy látszódjon, hova kerülne a sor kattintásra.
+    property string hoverUtterance: ""
+    property int hoverLane: -1
+    readonly property int previewLane: dragActive ? dragLane : hoverLane
+    readonly property int previewColorIndex: previewLane >= 0 && previewLane < tab.laneCount ? vm.lanes[previewLane].colorIndex : 0
 
     // A kulcs oszlopa a sínen (-1 = nincs látható oszlopa).
     function laneOfKey(key) {
@@ -97,6 +102,7 @@ Item {
         readonly property bool current: root.currentUtterance === utteranceId
         readonly property int lane: model.lane === undefined ? -2 : model.lane
         readonly property bool dragging: root.dragActive && root.dragUtterance === utteranceId
+        readonly property bool previewing: dragging || (!root.dragActive && root.hoverUtterance === utteranceId)
         readonly property alias railCells: railLoader
         width: list.width
         height: lineColumn.implicitHeight + 16
@@ -121,10 +127,10 @@ Item {
                 uncertain: !line.decided
                 selected: line.current
                 suggestLane: line.decided ? -1 : root.laneOfKey(line.likelyKey)
-                dimmed: line.dragging && root.dragLane >= 0 && root.dragLane !== line.lane
-                targetLane: line.dragging ? root.dragLane : -1
-                targetLineColor: Theme.speakerLine(root.dragColorIndex)
-                targetSoftColor: Theme.speakerSoft(root.dragColorIndex)
+                dimmed: line.previewing && root.previewLane >= 0 && root.previewLane !== line.lane
+                targetLane: line.previewing && root.previewLane !== line.lane ? root.previewLane : -1
+                targetLineColor: Theme.speakerLine(root.previewColorIndex)
+                targetSoftColor: Theme.speakerSoft(root.previewColorIndex)
                 outlineColor: Theme.text
                 dashColor: Theme.borderStrong
                 accentColor: Theme.accent
@@ -394,6 +400,8 @@ Item {
         height: list.height
         z: 2
         preventStealing: true
+        hoverEnabled: true
+        cursorShape: root.hoverLane >= 0 || root.dragActive ? Qt.PointingHandCursor : Qt.ArrowCursor
 
         property var pressItem: null
         property real pressX: 0
@@ -410,11 +418,26 @@ Item {
             root.dragLane = -1
             pressItem = null
         }
+        function placeChip(x, y) {
+            dragChip.x = Math.min(list.width - dragChip.width - 12, railArea.x + x + 14)
+            dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
+        }
         function updateDrag(x, y) {
             const lane = root.tab.railLaneAt(x)
             root.dragLane = lane >= 0 ? lane : -1
-            dragChip.x = Math.min(list.width - dragChip.width - 12, railArea.x + x + 14)
-            dragChip.y = Math.max(2, Math.min(list.height - dragChip.height - 2, y - 26))
+            placeChip(x, y)
+        }
+        // Rámutatás: a sor és a másik oszlop (saját oszlop / kártya felett nincs előnézet).
+        function updateHover(x, y) {
+            const li = lineAt(y)
+            const lane = li ? root.tab.railLaneAt(x) : -9
+            root.hoverUtterance = li ? li.utteranceId : ""
+            root.hoverLane = li && lane >= 0 && lane !== li.lane ? lane : -1
+            if (root.hoverLane >= 0) placeChip(x, y)
+        }
+        function clearHover() {
+            root.hoverUtterance = ""
+            root.hoverLane = -1
         }
 
         onPressed: mouse => {
@@ -424,14 +447,16 @@ Item {
             pressY = mouse.y
         }
         onPositionChanged: mouse => {
-            if (!pressItem) return
+            if (!pressItem) { updateHover(mouse.x, mouse.y); return }
             if (!root.dragActive) {
                 if (Math.abs(mouse.x - pressX) + Math.abs(mouse.y - pressY) < 7) return
+                clearHover()
                 root.dragUtterance = pressItem.utteranceId
                 root.dragActive = true
             }
             updateDrag(mouse.x, mouse.y)
         }
+        onExited: clearHover()
         onReleased: mouse => {
             if (!pressItem) return
             const li = pressItem
@@ -440,19 +465,21 @@ Item {
                 const lane = root.dragLane
                 resetDrag()
                 if (lane >= 0 && lane !== li.lane) root.railClicked(li.utteranceId, li.lane, lane, li.railCells)
-                return
+            } else {
+                resetDrag()
+                root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells)
             }
-            resetDrag()
-            root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells)
+            // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
+            Qt.callLater(() => { if (railArea.containsMouse) updateHover(railArea.mouseX, railArea.mouseY) })
         }
         onCanceled: resetDrag()
     }
 
-    // Húzás közbeni lebegő címke: „→ Név" (a Javítás dragChip-jének mintájára).
+    // Lebegő címke húzás és rámutatás közben: „→ Név" (a Javítás dragChip-jének mintájára).
     Rectangle {
         id: dragChip
         objectName: "reviewDragChip"
-        visible: root.dragActive && root.dragLane >= 0
+        visible: root.previewLane >= 0 && (root.dragActive || root.hoverUtterance !== "")
         z: 3
         width: dragLabel.implicitWidth + 18
         height: dragLabel.implicitHeight + 6
@@ -461,8 +488,8 @@ Item {
         TLabel {
             id: dragLabel
             anchors.centerIn: parent
-            text: root.dragLane >= 0 && root.dragLane < root.tab.laneCount
-                  ? "→ " + root.vm.lanes[root.dragLane].name : ""
+            text: root.previewLane >= 0 && root.previewLane < root.tab.laneCount
+                  ? "→ " + root.vm.lanes[root.previewLane].name : ""
             color: Theme.textOnAccent
             font.pixelSize: Theme.fontCaption
             font.weight: Theme.weightSemiBold
