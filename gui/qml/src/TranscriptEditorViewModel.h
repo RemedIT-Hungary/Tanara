@@ -42,11 +42,13 @@ class SpeakerEditor;
 namespace tanara_qml {
 
 class TranscriptDemoSession;
+class ReviewQueueModel;     // S3: a ReviewQueueModel.h ezt a fejlécet includolja
 
 class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
     QML_ELEMENT
+    Q_MOC_INCLUDE("ReviewQueueModel.h")
 
     Q_PROPERTY(QString meetingId READ meetingId WRITE setMeetingId NOTIFY meetingIdChanged)
     Q_PROPERTY(QString demoVariant READ demoVariant WRITE setDemoVariant NOTIFY demoVariantChanged)
@@ -196,6 +198,13 @@ class TranscriptEditorViewModel : public QObject, public QQmlParserStatus {
     Q_PROPERTY(QString sampleFilterKey READ sampleFilterKey NOTIFY listFilterChanged)
     // A lista épp érvényes szűrője: "" | "uncertain" | "samples" | "hideIgnored".
     Q_PROPERTY(QString listFilter READ listFilter NOTIFY listFilterChanged)
+
+    // ---- S3: az Átnézendő munkalistája (Fókusz-sor; ReviewQueueModel.h) ----
+    // Fagyasztott, időrendi munkalista kurzorral, beérkező halmazzal, kör-zárással. A
+    // reviewGroups a régi nézeté marad, amíg az S4 le nem cseréli.
+    Q_PROPERTY(tanara_qml::ReviewQueueModel* reviewQueue READ reviewQueue CONSTANT)
+    // Fut-e a munkalista (reviewQueue.start() után, stop() / új munkamenet előtt).
+    Q_PROPERTY(bool queueActive READ queueActive NOTIFY queueActiveChanged)
 
 public:
     struct SpeakerView {
@@ -578,6 +587,12 @@ public:
     // A személy (a „Ki volt ott?" résztvevő) neve a beszélőhöz; üres = névtelen.
     Q_INVOKABLE QString personOf(const QString& speakerKey) const;
 
+    // ---- S3: munkalista (TranscriptEditorViewModelQueue.cpp) ----
+    ReviewQueueModel* reviewQueue() const { return m_queue; }
+    bool queueActive() const;
+    // A csoportok újraszámolása most (a munkalista a friss ReviewView-kból induljon).
+    void flushPendingReview();
+
     // ---- demó-állapotok (képernyőképhez) ---------------------------------
     // "selection" | "suggestion" | "suggestionShown" | "filter" | "search" | "searchEmpty" |
     // "rail" | "changeLine" | "changeSelection" | "changeSpeaker" | "changeFilter" |
@@ -619,6 +634,7 @@ signals:
     void sampleStatsChanged();
     void ignoredCountChanged();
     void listFilterChanged();
+    void queueActiveChanged();      // S3
     // A QML görgessen erre a sorra (keresés, „Megmutatom", javaslat, demó).
     void revealRequested(int row);
     // Rövid, nem modális visszajelzés (a QML a shell.toast-nak adja, ha van).
@@ -799,6 +815,14 @@ private:
     QVariantList m_similarMarks;
     QString m_voiceprintWhenReady;          // „Hanglenyomat, ha elég" kérés erre a beszélőre
     QTimer m_reviewTimer;
+
+    // ---- S3: munkalista (TranscriptEditorViewModelQueue.cpp) ----
+    ReviewQueueModel* m_queue = nullptr;
+    QString m_queueDemo;                    // a hang-elemzés / háttér-elemzés végére váró queue-demó
+    void initQueue();                       // a konstruktorból
+    // "reviewQueue*" demó-állapotok; igaz, ha kezelte.
+    bool applyQueueDemoState(const QString& state);
+    void tryQueueDemo();
 };
 
 } // namespace tanara_qml

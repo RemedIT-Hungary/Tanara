@@ -1,6 +1,7 @@
 #include "TranscriptEditorViewModel.h"
 
 #include "AppContext.h"
+#include "ReviewQueueModel.h"
 #include "TagLearning.h"
 #include "TranscriptDemoSession.h"
 
@@ -92,6 +93,7 @@ TranscriptEditorViewModel::TranscriptEditorViewModel(QObject* parent)
     m_reviewTimer.setSingleShot(true);
     m_reviewTimer.setInterval(0);
     connect(&m_reviewTimer, &QTimer::timeout, this, &TranscriptEditorViewModel::rebuildReview);
+    initQueue();    // S3
 }
 
 void TranscriptEditorViewModel::componentComplete()
@@ -326,6 +328,7 @@ void TranscriptEditorViewModel::reloadAll()
     const qint64 tOverview = perf.elapsed();
     updateVoiceNote();
     updateRecheckState();
+    m_queue->stop();        // S3: új munkamenet → nincs munkalista
     rebuildReview();
     m_review->reset();
     qCDebug(lcPerf).noquote()
@@ -397,6 +400,7 @@ void TranscriptEditorViewModel::onUtterancesChanged(const QStringList& ids)
     if (!listFilter().isEmpty()) m_rows->syncFilter();
     m_rows->notifyUtterances(changed);
     m_review->refreshUtterances(changed);
+    m_queue->refreshUtterances(changed);    // S3: csak az érintett sorok állapota
     updatePlayingRow();
     scheduleOverview();
     updateRecheckState();
@@ -416,10 +420,12 @@ void TranscriptEditorViewModel::onSpeakersChanged()
     }
     // Csak akkor nyúlunk a sorokhoz, ha név / szín / oszlop tényleg változott (egy sima
     // áthelyezésnél csak a számlálók módosulnak).
-    if (viewsChanged)
+    if (viewsChanged) {
         m_rows->notifyAll({TranscriptListModel::SpeakerNameRole, TranscriptListModel::ColorIndexRole,
                            TranscriptListModel::LaneRole, TranscriptListModel::HeadRole,
                            TranscriptListModel::LikelySpeakerNameRole});
+        m_queue->refreshAll();      // S3
+    }
     if (m_suggestionAnchor >= 0) {
         const QString name = m_views.value(m_editor ? m_editor->suggestion().targetSpeaker : QString()).name;
         if (name != m_suggestionTargetName) {
@@ -2458,6 +2464,7 @@ void TranscriptEditorViewModel::rebuildReview()
     }
     if (conflictsChanged) m_rows->notifyAll({TranscriptListModel::SideConflictRole});
     m_review->sync();
+    m_queue->syncFromReview();      // S3: csak a beérkező halmaz + javaslat-frissülés (sorrend nem)
     updateSimilar();
     emit reviewChanged();
 }
@@ -3031,6 +3038,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
     const QString state = m_pendingDemoState;
     m_pendingDemoState.clear();
     if (state.isEmpty() || !m_editor || m_utts.isEmpty()) return;
+    if (applyQueueDemoState(state)) return;     // S3: "reviewQueue*"
 
     if (state == QLatin1String("selection")) {
         setRailVisible(true);
