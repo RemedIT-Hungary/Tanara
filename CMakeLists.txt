@@ -108,6 +108,19 @@ if(TANARA_BUILD_WATCHER)
 endif()
 add_subdirectory(tests)
 
+# Module-boundary guard (tools/check_modules.py, tools/modules.json, tools/module-boundaries.allow).
+# Only needs a Python 3 interpreter; without one the target and the tests are not created.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_custom_target(check_modules
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_modules.py --root ${CMAKE_SOURCE_DIR} --report
+        COMMENT "Checking module boundaries" VERBATIM)
+    add_test(NAME module_boundaries
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_modules.py --root ${CMAKE_SOURCE_DIR})
+    add_test(NAME check_modules_selftest
+        COMMAND ${Python3_EXECUTABLE} -B -m unittest discover -s ${CMAKE_SOURCE_DIR}/tools/tests)
+endif()
+
 # i18n: the SOURCE LANGUAGE IS HUNGARIAN; English is built from the i18n/tanara_en.ts translation.
 #  - update strings in the .ts:  cmake --build build --target update_translations
 #  - the .qm is built at build time (lrelease) and embedded in every executable target

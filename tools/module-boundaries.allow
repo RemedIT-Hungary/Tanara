@@ -1,0 +1,159 @@
+# Tolerated module-boundary violations (today's debt). RATCHET: lines may only be
+# DELETED (each slice removes the lines of the violations it fixes; a stale line is
+# an error). A NEW line may be added ONLY with the orchestrator's permission.
+# Format: <file> -> <include or token>   # <cycle/reason> -> P<slice>
+
+# ---- P0 (2 lines) ----
+watcher/TrayWatcher.cpp -> RecorderTrayIcon.h   # watcher/CMakeLists gui/src include path -> P0
+watcher/main.cpp -> RecorderTrayIcon.h   # watcher/CMakeLists gui/src include path -> P0
+
+# ---- P4 (20 lines) ----
+core/include/tanara/Types.h -> tanara/edit/Evidence.h   # Types.h pulls an editing header -> P4
+core/include/tanara/edit/ParticipantAnalysis.h -> tanara/edit/SpeakerEditTypes.h   # K7 -> P4
+core/include/tanara/edit/ParticipantAnalysis.h -> tanara/edit/SpeakerOverlay.h   # K7 -> P4
+core/include/tanara/edit/SpeakerOverlay.h -> tanara/summary/SummarySources.h   # K6 -> P4
+core/include/tanara/summary/SummarySources.h -> tanara/edit/SpeakerEditTypes.h   # K6 -> P4
+core/src/Logging.cpp -> platform:Q_OS_WIN   # logStartupDiagnostics + Types.h split -> P4
+core/src/Logging.cpp -> tanara/AppController.h   # logStartupDiagnostics + Types.h split -> P4
+core/src/Logging.cpp -> tanara/SettingsManager.h   # logStartupDiagnostics + Types.h split -> P4
+core/src/Logging.cpp -> tanara/Types.h   # logStartupDiagnostics + Types.h split -> P4
+core/src/Logging.cpp -> tanara/audio/DeviceManager.h   # logStartupDiagnostics + Types.h split -> P4
+core/src/Logging.cpp -> tanara/store/MeetingStore.h   # logStartupDiagnostics + Types.h split -> P4
+core/src/Paths.cpp -> tanara/voiceid/VoiceModelRegistry.h   # K1 (Paths -> VoiceModelRegistry) -> P4
+core/src/Version.cpp -> tanara/Types.h   # Types.h split (Version) -> P4
+core/src/edit/ParticipantAnalysis.cpp -> tanara/audio/TrackTiming.h   # TrackTiming -> domain/foundation -> P4
+core/src/edit/ParticipantAnalysis.cpp -> tanara/edit/CandidateRanker.h   # K7 -> P4
+core/src/edit/ParticipantAnalysis.cpp -> tanara/edit/SideAnalysis.h   # K7 -> P4
+core/src/edit/ParticipantAnalysis.cpp -> tanara/edit/TrackSpeech.h   # K7 -> P4
+core/src/edit/TranscriptReslice.cpp -> tanara/summary/SummarySources.h   # K6 -> P4
+core/src/store/JsonSerialization.cpp -> tanara/voiceid/VoiceModelRegistry.h   # K1 -> P4
+core/src/store/VoiceprintStore.cpp -> tanara/voiceid/VoiceModelRegistry.h   # K1 -> P4
+
+# ---- P5 (4 lines) ----
+core/src/embedding/EmbeddingIndex.cpp -> tanara/edit/SpeakerOverlay.h   # K7 -> P5
+core/src/embedding/EmbeddingPreparer.cpp -> tanara/edit/SpeakerOverlay.h   # K7 -> P5
+core/src/people/PeopleStats.cpp -> tanara/edit/SpeakerOverlay.h   # K7 -> P5
+core/src/tags/MeetingProfiles.cpp -> tanara/edit/SpeakerOverlay.h   # K7 -> P5
+
+# ---- P6 (2 lines) ----
+core/src/Localization.cpp -> tanara/SettingsManager.h   # SettingsManager dependency -> P6
+core/src/store/MeetingStore.cpp -> tanara/SettingsManager.h   # MeetingStore -> SettingsManager -> P6
+
+# ---- P8 (3 lines) ----
+core/src/store/JsonSerialization.cpp -> tanara/summary/SummarySources.h   # K3 -> P8
+core/src/summary/SummaryStore.cpp -> tanara/summary/SummaryPipeline.h   # K3 -> P8
+core/src/summary/SummaryStore.cpp -> tanara/summary/SummarySources.h   # K3 -> P8
+
+# ---- P9 (6 lines) ----
+core/src/embedding/OpenAiCompatibleEmbeddingProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
+core/src/jobs/JobErrors.cpp -> tanara/cloud/CloudTypes.h   # K8 -> P9
+core/src/llm/LlmServer.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
+core/src/llm/LlmServer.cpp -> tanara/jobs/JobErrors.h   # K8 -> P9
+core/src/llm/OpenAiCompatibleProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
+core/src/stt/SonioxProvider.cpp -> tanara/cloud/CloudTypes.h   # providers -> cloud (CloudTypes) -> P9
+
+# ---- P12d (7 lines) ----
+core/include/tanara/people/PeopleService.h -> tanara/edit/SpeakerEditTypes.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+core/include/tanara/people/PeopleService.h -> tanara/edit/UtteranceEmbeddings.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+core/src/people/PeopleService.cpp -> tanara/AppController.h   # people -> AppController -> P12d
+core/src/people/PeopleService.cpp -> tanara/SettingsManager.h   # people -> SettingsManager -> P12d
+core/src/people/PeopleService.cpp -> tanara/edit/SideAnalysis.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+core/src/people/PeopleService.cpp -> tanara/edit/SpeakerEditor.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+core/src/people/PeopleService.cpp -> tanara/edit/SpeakerOverlay.h   # library <- editing (VoiceprintMaterialSource) -> P12d
+
+# ---- P12b (1 lines) ----
+gui/qml/src/SettingsViewModel.cpp -> tanara/detect/detail/PwDumpParser.h   # RunningApps/PipeWireGraph -> watcher module -> P12b
+
+# ---- P13 (9 lines) ----
+core/include/tanara/edit/ReviewGroups.h -> tanara/edit/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
+core/include/tanara/edit/SideAnalysis.h -> tanara/edit/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
+core/include/tanara/edit/SpeakerEditor.h -> tanara/edit/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
+core/include/tanara/edit/TrackSpeech.h -> tanara/edit/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings) -> P13
+core/src/edit/SpeakerEditor.cpp -> tanara/edit/TrackActivity.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
+core/src/edit/SpeakerEditor.cpp -> tanara/voiceid/VoiceModelRegistry.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
+core/src/edit/SpeakerOverlay.cpp -> tanara/edit/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
+core/src/edit/TranscriptReslice.cpp -> tanara/edit/UtteranceEmbeddings.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
+core/src/edit/TranscriptReslice.cpp -> tanara/stt/SonioxTiming.h   # editing -> processing (TrackActivity/UtteranceEmbeddings/VoiceModelRegistry) -> P13
+
+# ---- P15 (55 lines) ----
+gui/qml/src/AppContext.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/JobSupport.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/LibraryListModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/LibraryPendingModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/LibrarySelectionModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/MeetingNoteModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
+gui/qml/src/OnboardingViewModel.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
+gui/qml/src/OnboardingViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/OnboardingWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/OverviewViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ParticipantTrackBinder.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ParticipantsViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/PeopleViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/PeopleWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/PersonListModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/PlayerController.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/PreTranscriptViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/RecorderViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/RecorderWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsCloudModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsDeviceModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsProviderModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsViewModel.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
+gui/qml/src/SettingsViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SettingsWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ShellActions.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ShellImportModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ShellMeetingModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/ShellUiState.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/SummaryViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TagBackend.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TagControllerBackend.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TagsWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TopicListModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TrackActivityModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TrackListModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TranscriptEditorViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/TranscriptEditorViewModelQueue.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/qml/src/VoiceModelListModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/AnalyzerSingleton.h -> platform:Q_OS_WIN   # platform (gui) -> P15
+gui/src/QmlShellBridge.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/RecorderSingleton.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
+gui/src/SettingsWidgetsDialogs.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/ShellQaHook.h -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/ShellRecorderHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudEstimateDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudLoginDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudModelPickerDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudTermsDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudTierWidget.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/cloud/CloudUi.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
+gui/src/main.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
+
+# ---- P16 (24 lines) ----
+core/include/tanara/detect/LinuxCaptureDetector.h -> platform:Q_OS_LINUX   # platform -> P16
+core/include/tanara/detect/WindowsCaptureDetector.h -> platform:Q_OS_WIN   # platform -> P16
+core/src/SettingsManager.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/audio/AudioEngine.cpp -> platform:_WIN32   # platform -> P16
+core/src/audio/DeviceManager.cpp -> platform:_WIN32   # platform -> P16
+core/src/audio/PlaybackRouting.cpp -> platform:Q_OS_LINUX   # platform -> P16
+core/src/audio/PlaybackRouting.cpp -> tanara/audio/TrackCatalog.h   # PlaybackRouting <-> TrackCatalog -> P16
+core/src/audio/TrackCatalog.cpp -> platform:Q_OS_MACOS   # platform -> P16
+core/src/audio/TrackCatalog.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/cloud/CloudTypes.cpp -> platform:Q_OS_LINUX   # platform -> P16
+core/src/cloud/CloudTypes.cpp -> platform:Q_OS_MACOS   # platform -> P16
+core/src/cloud/CloudTypes.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/detect/Autostart.cpp -> platform:Q_OS_LINUX   # platform -> P16
+core/src/detect/Autostart.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/detect/BuiltinDetectors.cpp -> platform:Q_OS_LINUX   # platform -> P16
+core/src/detect/BuiltinDetectors.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/detect/LinuxCaptureDetector.cpp -> platform:Q_OS_LINUX   # platform -> P16
+core/src/detect/RecordingLock.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/detect/WindowsCaptureDetector.cpp -> platform:Q_OS_WIN   # platform -> P16
+core/src/store/KeyStore.cpp -> platform:Q_OS_UNIX   # platform -> P16
+core/src/voiceid/VoiceEmbedder.cpp -> platform:_WIN32   # platform -> P16
+watcher/TrayWatcher.cpp -> platform:Q_OS_WIN   # platform (watcher exe) -> P16
+watcher/TrayWatcher.cpp -> tanara/SettingsManager.h   # watcher exe -> SettingsManager/TrackCatalog -> P16
+watcher/TrayWatcher.cpp -> tanara/audio/TrackCatalog.h   # watcher exe -> SettingsManager/TrackCatalog -> P16

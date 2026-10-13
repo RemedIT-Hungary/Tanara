@@ -1,0 +1,417 @@
+{
+ "_comment": "Module map for tools/check_modules.py. 'modules' = target layout (paths are globs from the repo root; first match wins, so ui-common precedes ui). 'legacy' = transitional map of today's folders: patterns are matched on the path relative to core/include/tanara/ or core/src/, in order, first match wins; the P5 slice deletes it once the folders have moved. tests/** and third_party/** are not checked.",
+ "modules": {
+  "foundation": {
+   "paths": [
+    "core/include/tanara/foundation/**",
+    "core/src/foundation/**"
+   ],
+   "deps": [],
+   "namespace": "tanara",
+   "enforceNamespace": false
+  },
+  "domain": {
+   "paths": [
+    "core/include/tanara/domain/**",
+    "core/src/domain/**"
+   ],
+   "deps": [
+    "foundation"
+   ],
+   "namespace": "tanara",
+   "enforceNamespace": false
+  },
+  "media": {
+   "paths": [
+    "core/include/tanara/media/**",
+    "core/src/media/**"
+   ],
+   "deps": [
+    "foundation"
+   ],
+   "namespace": "tanara::media",
+   "enforceNamespace": false
+  },
+  "providers": {
+   "paths": [
+    "core/include/tanara/providers/**",
+    "core/src/providers/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain"
+   ],
+   "namespace": "tanara::providers",
+   "enforceNamespace": false
+  },
+  "watcher": {
+   "paths": [
+    "core/include/tanara/watcher/**",
+    "core/src/watcher/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain"
+   ],
+   "namespace": "tanara::watcher",
+   "enforceNamespace": false
+  },
+  "library": {
+   "paths": [
+    "core/include/tanara/library/**",
+    "core/src/library/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers"
+   ],
+   "namespace": "tanara::library",
+   "enforceNamespace": false
+  },
+  "recording": {
+   "paths": [
+    "core/include/tanara/recording/**",
+    "core/src/recording/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "watcher",
+    "library"
+   ],
+   "namespace": "tanara::recording",
+   "enforceNamespace": false
+  },
+  "processing": {
+   "paths": [
+    "core/include/tanara/processing/**",
+    "core/src/processing/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers",
+    "library"
+   ],
+   "namespace": "tanara::processing",
+   "enforceNamespace": false
+  },
+  "editing": {
+   "paths": [
+    "core/include/tanara/editing/**",
+    "core/src/editing/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "providers",
+    "library"
+   ],
+   "namespace": "tanara::editing",
+   "enforceNamespace": false
+  },
+  "cloud": {
+   "paths": [
+    "core/include/tanara/cloud/**",
+    "core/src/cloud/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers"
+   ],
+   "namespace": "tanara::cloud",
+   "enforceNamespace": false
+  },
+  "app": {
+   "paths": [
+    "core/include/tanara/app/**",
+    "core/src/app/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers",
+    "watcher",
+    "library",
+    "recording",
+    "processing",
+    "editing",
+    "cloud"
+   ],
+   "namespace": "tanara::app",
+   "enforceNamespace": false
+  },
+  "ui-common": {
+   "paths": [
+    "gui/common/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain"
+   ],
+   "namespace": null,
+   "enforceNamespace": false
+  },
+  "ui": {
+   "paths": [
+    "gui/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers",
+    "watcher",
+    "library",
+    "recording",
+    "processing",
+    "editing",
+    "cloud",
+    "app",
+    "ui-common"
+   ],
+   "namespace": null,
+   "enforceNamespace": false
+  },
+  "cli": {
+   "paths": [
+    "cli/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "media",
+    "providers",
+    "watcher",
+    "library",
+    "recording",
+    "processing",
+    "editing",
+    "cloud",
+    "app"
+   ],
+   "namespace": null,
+   "enforceNamespace": false
+  },
+  "watcher-exe": {
+   "paths": [
+    "watcher/**"
+   ],
+   "deps": [
+    "foundation",
+    "domain",
+    "watcher",
+    "ui-common"
+   ],
+   "namespace": null,
+   "enforceNamespace": false
+  }
+ },
+ "legacy": [
+  [
+   "Paths*",
+   "foundation"
+  ],
+  [
+   "Logging*",
+   "foundation"
+  ],
+  [
+   "Localization*",
+   "foundation"
+  ],
+  [
+   "Version*",
+   "foundation"
+  ],
+  [
+   "library/TextFold*",
+   "foundation"
+  ],
+  [
+   "store/SharedFile*",
+   "foundation"
+  ],
+  [
+   "store/KeyStore*",
+   "foundation"
+  ],
+  [
+   "detect/RecordingLock*",
+   "foundation"
+  ],
+  [
+   "Types.h",
+   "domain"
+  ],
+  [
+   "tags/TagTypes.h",
+   "domain"
+  ],
+  [
+   "jobs/JobTypes.h",
+   "domain"
+  ],
+  [
+   "voiceid/EmbeddingSet.h",
+   "domain"
+  ],
+  [
+   "embedding/EmbeddingIndex*",
+   "library"
+  ],
+  [
+   "embedding/EmbeddingPreparer*",
+   "library"
+  ],
+  [
+   "jobs/MeetingJobTracker*",
+   "library"
+  ],
+  [
+   "jobs/JobErrors*",
+   "library"
+  ],
+  [
+   "jobs/JobStats*",
+   "library"
+  ],
+  [
+   "summary/SummaryStore*",
+   "library"
+  ],
+  [
+   "audio/TrackCatalog*",
+   "library"
+  ],
+  [
+   "audio/WaveformService*",
+   "library"
+  ],
+  [
+   "stt/SonioxTiming*",
+   "processing"
+  ],
+  [
+   "tags/LlmTagSuggester*",
+   "processing"
+  ],
+  [
+   "summary/SummaryPipeline*",
+   "processing"
+  ],
+  [
+   "summary/SummarySources*",
+   "processing"
+  ],
+  [
+   "SummaryService*",
+   "processing"
+  ],
+  [
+   "ComplexSummaryService*",
+   "processing"
+  ],
+  [
+   "PromptLibrary*",
+   "processing"
+  ],
+  [
+   "TranscriptMerger*",
+   "processing"
+  ],
+  [
+   "edit/TrackActivity*",
+   "processing"
+  ],
+  [
+   "edit/UtteranceEmbeddings*",
+   "processing"
+  ],
+  [
+   "edit/ParticipantAnalysis*",
+   "processing"
+  ],
+  [
+   "audio/PlaybackRouting*",
+   "watcher"
+  ],
+  [
+   "AppController*",
+   "app"
+  ],
+  [
+   "SettingsManager*",
+   "app"
+  ],
+  [
+   "provider/**",
+   "providers"
+  ],
+  [
+   "stt/**",
+   "providers"
+  ],
+  [
+   "llm/**",
+   "providers"
+  ],
+  [
+   "embedding/**",
+   "providers"
+  ],
+  [
+   "detect/**",
+   "watcher"
+  ],
+  [
+   "store/**",
+   "library"
+  ],
+  [
+   "library/**",
+   "library"
+  ],
+  [
+   "tags/**",
+   "library"
+  ],
+  [
+   "people/**",
+   "library"
+  ],
+  [
+   "import/**",
+   "library"
+  ],
+  [
+   "voiceid/**",
+   "processing"
+  ],
+  [
+   "audio/**",
+   "recording"
+  ],
+  [
+   "edit/**",
+   "editing"
+  ],
+  [
+   "cloud/**",
+   "cloud"
+  ]
+ ],
+ "forbiddenIncludes": {
+  "ui": [
+   "tanara/AppController.h",
+   "tanara/app/AppController.h"
+  ]
+ }
+}
