@@ -10111,33 +10111,6 @@
     </message>
 </context>
 <context>
-    <name>tanara_qml::MeetingNoteModel</name>
-    <message>
-        <source>Nordvik heti meeting</source>
-        <translation>Nordvik weekly meeting</translation>
-    </message>
-    <message>
-        <source>2026. szept. 29.</source>
-        <translation>Sep 29, 2026</translation>
-    </message>
-    <message>
-        <source>Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul. Téma: a bevezetés ütemezése.</source>
-        <translation>Participants: Anna Kovács, Bence Szabó, Réka Lantos. “Nordwig” is really Nordvik. “quark module” is really Qvarko module. Topic: rollout schedule.</translation>
-    </message>
-    <message>
-        <source>Nordvik heti meeting – demó előtt</source>
-        <translation>Nordvik weekly meeting – before the demo</translation>
-    </message>
-    <message>
-        <source>2026. szept. 22.</source>
-        <translation>Sep 22, 2026</translation>
-    </message>
-    <message>
-        <source>A „pixel tár” helyesen: PixelTár. Résztvevők: Kovács Anna, Szabó Bence.</source>
-        <translation>“pixel store” is really PixelTár. Participants: Anna Kovács, Bence Szabó.</translation>
-    </message>
-</context>
-<context>
     <name>tanara_qml::MeetingTagsModel</name>
     <message>
         <source>%1 mellé gyakran</source>
@@ -10593,20 +10566,8 @@
         <translation>none</translation>
     </message>
     <message>
-        <source>Negyedéves partnertalálkozó</source>
-        <translation>Quarterly partner meeting</translation>
-    </message>
-    <message>
-        <source>Q4 partner review — napirend: Q3 számok, súgóoldalak, számlázási folyamat, Nordvik-megújítás.</source>
-        <translation>Q4 partner review — agenda: Q3 numbers, help pages, billing process, Nordvik renewal.</translation>
-    </message>
-    <message>
         <source>Közös címke: %1</source>
         <translation>Tag in common: %1</translation>
-    </message>
-    <message>
-        <source>Kovács Lilla (te)</source>
-        <translation>Lilla Kovács (you)</translation>
     </message>
     <message>
         <source>hang 84%</source>
@@ -11227,10 +11188,6 @@
     <message>
         <source>Átírás folyamatban</source>
         <translation>Transcription in progress</translation>
-    </message>
-    <message>
-        <source>Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.</source>
-        <translation>Support handover to the new team. Systems involved: ticket system, help pages, billing. Participants: Eszter Molnár, Bence Tóth.</translation>
     </message>
     <message>
         <source>%1 · saját kulcs</source>
@@ -12568,30 +12525,6 @@
         <translation>request 6042 tokens · context 4096 tokens</translation>
     </message>
     <message>
-        <source>Kovács Lilla</source>
-        <translation>Lilla Kovács</translation>
-    </message>
-    <message>
-        <source>Tóth Bence</source>
-        <translation>Bence Tóth</translation>
-    </message>
-    <message>
-        <source>Varga Nóra</source>
-        <translation>Nóra Varga</translation>
-    </message>
-    <message>
-        <source>Molnár Eszter</source>
-        <translation>Eszter Molnár</translation>
-    </message>
-    <message>
-        <source>Szabó Áron</source>
-        <translation>Áron Szabó</translation>
-    </message>
-    <message>
-        <source>Távoli 2</source>
-        <translation>Remote 2</translation>
-    </message>
-    <message>
         <source>A partnerek megerősítették, hogy a harmadik negyedévben a támogatási igény harmadával csökkent, főként az új súgóoldalak miatt. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik. A dokumentációs létszámbővítésről a költségvetés dönt.</source>
         <translation>The partners confirmed that support demand dropped by a third in the third quarter, mainly thanks to the new help pages. The help pages will be extended to the other products, but for billing the process is simplified first. The documentation headcount increase is decided in the budget.</translation>
     </message>
@@ -12652,10 +12585,6 @@
         <translation>Oct 4</translation>
     </message>
     <message>
-        <source>okt. 1. 17:05</source>
-        <translation>Oct 1, 17:05</translation>
-    </message>
-    <message>
         <source>Támogatási igény alakulása</source>
         <translation>Support demand trend</translation>
     </message>
@@ -12688,10 +12617,6 @@
         <translation>Opening, agenda</translation>
     </message>
     <message>
-        <source>Kovács Lilla összefoglalta a negyedév fő számait és a mai napirendet.</source>
-        <translation>Lilla Kovács summed up the main figures of the quarter and today’s agenda.</translation>
-    </message>
-    <message>
         <source>A partnerek kérték, hogy a számlázás külön napirendi pont legyen.</source>
         <translation>The partners asked for billing to be a separate agenda item.</translation>
     </message>
@@ -12716,10 +12641,6 @@
         <translation>Effect of the help pages</translation>
     </message>
     <message>
-        <source>Tóth Bence szerint a termékbe épített súgó a beállítási kérdések felét kiváltotta.</source>
-        <translation>According to Bence Tóth, the in-product help replaced half of the setup questions.</translation>
-    </message>
-    <message>
         <source>A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon.</source>
         <translation>The partners see the same at their own support desks.</translation>
     </message>
@@ -12736,20 +12657,12 @@
         <translation>The reporting module gets help pages first, then the integrations.</translation>
     </message>
     <message>
-        <source>Kovács Lilla október 15-ig ütemtervet készít.</source>
-        <translation>Lilla Kovács prepares a schedule by October 15.</translation>
-    </message>
-    <message>
         <source>Számlázási panaszok</source>
         <translation>Billing complaints</translation>
     </message>
     <message>
         <source>A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól.</source>
         <translation>Billing tickets did not decrease; half of the complaints are about changing an invoice.</translation>
-    </message>
-    <message>
-        <source>Varga Nóra szerint a leírás rendben van, a folyamat hosszú.</source>
-        <translation>According to Nóra Varga, the documentation is fine; the process is long.</translation>
     </message>
     <message>
         <source>Folyamat vagy dokumentáció</source>
@@ -12768,10 +12681,6 @@
         <translation>Collecting the sticking points</translation>
     </message>
     <message>
-        <source>Varga Nóra október 10-ig összegyűjti, hol akadnak el a felhasználók.</source>
-        <translation>Nóra Varga collects where users get stuck by October 10.</translation>
-    </message>
-    <message>
         <source>A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.</source>
         <translation>They use the ticket tags and the session recordings for this.</translation>
     </message>
@@ -12782,10 +12691,6 @@
     <message>
         <source>Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak.</source>
         <translation>New customers open three times as many tickets in their first two weeks.</translation>
-    </message>
-    <message>
-        <source>Molnár Eszter bontást kért ügyféltípus szerint.</source>
-        <translation>Eszter Molnár asked for a breakdown by customer type.</translation>
     </message>
     <message>
         <source>Bevezető levelek</source>
@@ -12824,10 +12729,6 @@
         <translation>The documentation team has two people, which is not enough for the rollout.</translation>
     </message>
     <message>
-        <source>Szabó Áron szerint legalább egy fő kellene a következő félévre.</source>
-        <translation>According to Áron Szabó, at least one more person is needed for the next half-year.</translation>
-    </message>
-    <message>
         <source>Költségvetési keret</source>
         <translation>Budget</translation>
     </message>
@@ -12842,10 +12743,6 @@
     <message>
         <source>A dokumentációs létszámról a költségvetési tervezés dönt.</source>
         <translation>Budget planning decides on documentation staffing.</translation>
-    </message>
-    <message>
-        <source>Szabó Áron október 20-ig beadja az igényt.</source>
-        <translation>Áron Szabó submits the request by October 20.</translation>
     </message>
     <message>
         <source>Külső szövegíró</source>
@@ -12906,10 +12803,6 @@
     <message>
         <source>Új-ügyfél bontás</source>
         <translation>New-customer breakdown</translation>
-    </message>
-    <message>
-        <source>Kovács Lilla október 4-ig elküldi a bontást a partnereknek.</source>
-        <translation>Lilla Kovács sends the breakdown to the partners by October 4.</translation>
     </message>
     <message>
         <source>Nyitva maradt ügyek</source>
@@ -12975,18 +12868,6 @@
             <numerusform>from %n utterance</numerusform>
             <numerusform>from %n utterances</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>Fehér Gábor</source>
-        <translation>Gábor Fehér</translation>
-    </message>
-    <message>
-        <source>Varga Árpád</source>
-        <translation>Árpád Varga</translation>
-    </message>
-    <message>
-        <source>Távoli 1</source>
-        <translation>Remote 1</translation>
     </message>
     <message>
         <source>Az első és legfontosabb: a támogatási jegyek száma harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal nőtt.</source>
@@ -13089,10 +12970,6 @@
         <translation>Oct 22</translation>
     </message>
     <message>
-        <source>Fehér Gábor → Varga Árpád?</source>
-        <translation>Gábor Fehér → Árpád Varga?</translation>
-    </message>
-    <message>
         <source>Ki adja a dokumentációs kapacitást, ha a csapat a negyedik negyedévben a súgó kiterjesztésén dolgozik?</source>
         <translation>Who provides the documentation capacity if the team works on extending the help center in the fourth quarter?</translation>
     </message>
@@ -13103,10 +12980,6 @@
     <message>
         <source>Nyitás, Q3 számok</source>
         <translation>Opening, Q3 numbers</translation>
-    </message>
-    <message>
-        <source>Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak.</source>
-        <translation>Lilla Kovács summarized the quarter&apos;s numbers: tickets are down by a third, active users are up 12%.</translation>
     </message>
     <message>
         <source>Súgóoldalak</source>
@@ -13123,14 +12996,6 @@
     <message>
         <source>A partnerportál keresési adatai alapján a „számla letöltése” a leggyakoribb keresés.</source>
         <translation>According to the partner portal search data, &quot;download invoice&quot; is the most common search.</translation>
-    </message>
-    <message>
-        <source>Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.</source>
-        <translation>According to Lilla Kovács, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.</translation>
-    </message>
-    <message>
-        <source>Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.</source>
-        <translation>Gábor Fehér took on the first version, but asks for two weeks of documentation capacity.</translation>
     </message>
     <message>
         <source>A negyedév számai jók, a számlázás külön napirendi pontot kapott.</source>
@@ -13167,14 +13032,6 @@
     <message>
         <source>Lezárás, teendők</source>
         <translation>Wrap-up, action items</translation>
-    </message>
-    <message>
-        <source>Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát.</source>
-        <translation>Gábor Fehér will finish the first version of the billing help by October 15.</translation>
-    </message>
-    <message>
-        <source>Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.</source>
-        <translation>Eszter Molnár will work out the separate handling of proforma invoice questions by October 22.</translation>
     </message>
 </context>
 <context>
@@ -13970,14 +13827,6 @@
     <message>
         <source>A fájl mérete eltér a várttól (%1 helyett %2) — töltsd le újra.</source>
         <translation>The file size differs from expected (%2 instead of %1) — download it again.</translation>
-    </message>
-    <message>
-        <source>Partnerdemó – adatimport</source>
-        <translation>Partner demo – data import</translation>
-    </message>
-    <message>
-        <source>Heti egyeztetés</source>
-        <translation>Weekly sync</translation>
     </message>
     <message>
         <source>törölt megbeszélés</source>

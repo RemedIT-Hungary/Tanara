@@ -1,5 +1,7 @@
 #include "ParticipantsViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "JobSupport.h"
 #include "TagLearning.h"
@@ -250,15 +252,15 @@ void ParticipantsViewModel::loadDemo()
         models << shortModelName(id);
     m_metaText = tr("hanglenyomat-elemzés") + QStringLiteral(" · ") + models.join(QStringLiteral(" + "))
                + QStringLiteral(" · ") + tr("%n perce", "", 3);
-    m_selfName = QStringLiteral("Kovács Lilla");
+    m_selfName = demoName("Kovács Lilla");
     m_tagIds = {QStringLiteral("demo-nordvik")};
     m_rawLabels.clear();
     m_demoInfo.clear();
     m_demoPeople = {
-        {QStringLiteral("Szabó Bence"), true, 2, 11, {}, {}},
-        {QStringLiteral("Szabó Dóra"), false, 0, 2, {}, {}},
-        {QStringLiteral("Nagy Péter"), true, 1, 6, {}, {}},
-        {QStringLiteral("Kiss Anna"), true, 3, 9, {}, {}},
+        {demoName("Szabó Bence"), true, 2, 11, {}, {}},
+        {demoName("Szabó Dóra"), false, 0, 2, {}, {}},
+        {demoName("Nagy Péter"), true, 1, 6, {}, {}},
+        {demoName("Kiss Anna"), true, 3, 9, {}, {}},
     };
 
     const auto S = Polarity::Support, N = Polarity::Neutral, X = Polarity::Contradict;
@@ -279,40 +281,41 @@ void ParticipantsViewModel::loadDemo()
     const QString mic = participants::kSideMic, loop = participants::kSideLoopback;
     if (m_running) {
         // Elemzés közben csak a kézzel (az Áttekintésen) felvett résztvevők látszanak.
-        row("m-lilla", "Kovács Lilla", 1, true, {ev(EvidenceKind::Manual, S, tr("kézzel felvéve"))}, {}, {});
+        row("m-lilla", demoName("Kovács Lilla"), 1, true, {ev(EvidenceKind::Manual, S, tr("kézzel felvéve"))}, {}, {});
         m_rows.last().manual = true;
         reloadTagSuggestions();
         emit changed();
         return;
     }
 
-    row("v-lilla", "Kovács Lilla", 0, true,
-        {ev(EvidenceKind::Side, S, "mikrofon"), ev(EvidenceKind::Voice, S, "hang 96%")},
-        {"Beszélő 1@mic"}, {mic});
-    row("v-gabor", "Fehér Gábor", 0, true,
-        {ev(EvidenceKind::Voice, S, "hang 84%"), ev(EvidenceKind::Calendar, S, "naptár"),
+    row("v-lilla", demoName("Kovács Lilla"), 0, true,
+        {ev(EvidenceKind::Side, S, demoText("mikrofon", "microphone")), ev(EvidenceKind::Voice, S, demoText("hang 96%", "voice 96%"))},
+        {demoRaw(QStringLiteral("Beszélő 1@mic"))}, {mic});
+    row("v-gabor", demoName("Fehér Gábor"), 0, true,
+        {ev(EvidenceKind::Voice, S, demoText("hang 84%", "voice 84%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar")),
          ev(EvidenceKind::Tag, S, "címke: Nordvik")},
-        {"Beszélő 1@loopback"}, {loop});
-    row("v-arpad", "Varga Árpád", 0, true,
-        {ev(EvidenceKind::Voice, S, "hang 81%"), ev(EvidenceKind::Calendar, S, "naptár")},
-        {"Beszélő 3"}, {loop});
+        {demoRaw(QStringLiteral("Beszélő 1@loopback"))}, {loop});
+    row("v-arpad", demoName("Varga Árpád"), 0, true,
+        {ev(EvidenceKind::Voice, S, demoText("hang 81%", "voice 81%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar"))},
+        {demoRaw(QStringLiteral("Beszélő 3"))}, {loop});
     if (s != QLatin1String("allSure")) {
-        row("v-eszter", "Molnár Eszter", 1, true,
-            {ev(EvidenceKind::Voice, S, "hang 61%"), ev(EvidenceKind::Calendar, S, "naptár")},
-            {"Beszélő 2"}, {loop});
-        row("v-bence", "Tóth Bence", 1, false,
-            {ev(EvidenceKind::Voice, S, "hang 58%"), ev(EvidenceKind::Calendar, X, "nincs a meghívottak közt"),
-             ev(EvidenceKind::Tag, X, "más címkéken szokott lenni")},
-            {"Beszélő 2"}, {loop});
+        row("v-eszter", demoName("Molnár Eszter"), 1, true,
+            {ev(EvidenceKind::Voice, S, demoText("hang 61%", "voice 61%")), ev(EvidenceKind::Calendar, S, demoText("naptár", "calendar"))},
+            {demoRaw(QStringLiteral("Beszélő 2"))}, {loop});
+        row("v-bence", demoName("Tóth Bence"), 1, false,
+            {ev(EvidenceKind::Voice, S, demoText("hang 58%", "voice 58%")), ev(EvidenceKind::Calendar, X, demoText("nincs a meghívottak közt", "not on the invite list")),
+             ev(EvidenceKind::Tag, X, demoText("más címkéken szokott lenni", "usually on other tags"))},
+            {demoRaw(QStringLiteral("Beszélő 2"))}, {loop});
     }
     if (s == QLatin1String("invitedNotHeard") || s == QLatin1String("addPerson")
         || s == QLatin1String("noTranscriptYet")) {
-        row("c-reka", "Lantos Réka", 2, false,
-            {ev(EvidenceKind::Calendar, N, "naptár · elfogadta"), ev(EvidenceKind::Voice, X, "nincs hanglenyomata")},
+        row("c-reka", demoName("Lantos Réka"), 2, false,
+            {ev(EvidenceKind::Calendar, N, demoText("naptár · elfogadta", "calendar · accepted")), ev(EvidenceKind::Voice, X, demoText("nincs hanglenyomata", "has no voiceprint"))},
             {}, {});
     }
-    m_rawLabels = {"Beszélő 1", "Beszélő 2", "Beszélő 3", "Beszélő 4"};
-    if (s == QLatin1String("allSure")) m_rawLabels = {"Beszélő 1", "Beszélő 3"};
+    m_rawLabels = QStringList{demoRaw(QStringLiteral("Beszélő 1")), demoRaw(QStringLiteral("Beszélő 2")),
+                              demoRaw(QStringLiteral("Beszélő 3")), demoRaw(QStringLiteral("Beszélő 4"))};
+    if (s == QLatin1String("allSure")) m_rawLabels = {demoRaw(QStringLiteral("Beszélő 1")), demoRaw(QStringLiteral("Beszélő 3"))};
     if (!m_hasTranscript) {
         m_rawLabels.clear();
         for (Row& r : m_rows) r.rawIds.clear();
@@ -320,7 +323,7 @@ void ParticipantsViewModel::loadDemo()
     if (s == QLatin1String("addPerson")) {
         reloadTagSuggestions();
         acceptTagSuggestion(0);       // „+ Szabó Bence" a #Nordvik alapján
-        addPerson(QStringLiteral("Kiss Anna"));
+        addPerson(demoName("Kiss Anna"));
         return;
     }
     reloadTagSuggestions();
@@ -332,13 +335,13 @@ void ParticipantsViewModel::loadDemoLearn()
 {
     if (m_demoState == QLatin1String("learnNewPerson")) {
         setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                    {QStringLiteral("Szabó Bence")}, true}});
+                                    {demoName("Szabó Bence")}, true}});
         return;
     }
     setLearn({PersonTagQuestion{QStringLiteral("demo-nordvik"), QStringLiteral("Nordvik"),
-                                {QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád")}, false},
-              PersonTagQuestion{QStringLiteral("demo-partnerek"), QStringLiteral("Partnerek"),
-                                {QStringLiteral("Fehér Gábor")}, false}});
+                                {demoName("Fehér Gábor"), demoName("Varga Árpád")}, false},
+              PersonTagQuestion{QStringLiteral("demo-partnerek"), demoText("Partnerek", "Partners"),
+                                {demoName("Fehér Gábor")}, false}});
 }
 
 void ParticipantsViewModel::reloadTagSuggestions()
@@ -351,9 +354,9 @@ void ParticipantsViewModel::reloadTagSuggestions()
     if (!m_selfName.isEmpty()) names << m_selfName;
 
     if (demo()) {
-        if (m_running || indexOfName(QStringLiteral("Szabó Bence")) >= 0) return;
+        if (m_running || indexOfName(demoName("Szabó Bence")) >= 0) return;
         m_tagLabel = tr("A #%1 alapján:").arg(QStringLiteral("Nordvik"));
-        m_tagSuggestions.append({QStringLiteral("Szabó Bence"), QStringLiteral("Nordvik"), 11, 14});
+        m_tagSuggestions.append({demoName("Szabó Bence"), QStringLiteral("Nordvik"), 11, 14});
         return;
     }
     AppController* c = app();

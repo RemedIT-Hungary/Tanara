@@ -338,13 +338,13 @@ ApplicationWindow {
         case "retranscribe": dialogs.openRetranscribe(shellActions.currentMeetingId); break
         case "delete": shellActions.requestDelete(shellActions.currentMeetingId); break
         case "close": dialogs.openCloseWhileRecording(); break
-        case "stop": dialogs.openStopPrompt("Úgy tűnik, véget ért: Teams (az app leállt vagy elengedte a mikrofont)."); break
-        case "confirm": dialogs.openConfirm("Törlöd az eldobott sávokat?", "2 eldobott sáv hangfájlja véglegesen törlődik. Ez nem vonható vissza.", "Végleges törlés", true); break
-        case "toast": toast.show("Elkészült az átirat: Negyedéves partnertalálkozó", "", "", false); break
-        case "toastError": toast.show("Nincs rögzíthető hangeszköz.", "danger", "", false); break
-        case "tagToast": toast.show("Javaslat elutasítva: #Nordvik", "", "", false, "tags"); break
-        case "overviewChange": overviewTab.showChange("Résztvevő eltávolítva: Lantos Réka"); break
-        case "cloudToast": toast.show("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "", "req_8f3a2c71d0", true); break
+        case "stop": dialogs.openStopPrompt(DemoText.t("Úgy tűnik, véget ért: Teams (az app leállt vagy elengedte a mikrofont).", "Looks like it has ended: Teams (the app quit or released the microphone).")); break
+        case "confirm": dialogs.openConfirm(DemoText.t("Törlöd az eldobott sávokat?", "Delete the discarded tracks?"), DemoText.t("2 eldobott sáv hangfájlja véglegesen törlődik. Ez nem vonható vissza.", "The audio files of 2 discarded tracks will be deleted permanently. This cannot be undone."), DemoText.t("Végleges törlés", "Delete permanently"), true); break
+        case "toast": toast.show(DemoText.t("Elkészült az átirat: Negyedéves partnertalálkozó", "Transcript ready: Quarterly partner review"), "", "", false); break
+        case "toastError": toast.show(DemoText.t("Nincs rögzíthető hangeszköz.", "No audio device to record from."), "danger", "", false); break
+        case "tagToast": toast.show(DemoText.t("Javaslat elutasítva: #Nordvik", "Suggestion dismissed: #Nordvik"), "", "", false, "tags"); break
+        case "overviewChange": overviewTab.showChange(DemoText.t("Résztvevő eltávolítva: Lantos Réka", "Participant removed: Rachel Lane")); break
+        case "cloudToast": toast.show(DemoText.t("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "Transcription failed because of a provider error. The charge ($0.42) has been refunded."), "", "req_8f3a2c71d0", true); break
         case "filters": sidebar.applyDemo("filters"); break       // T04: címke-szűrők + popover
         case "selection": sidebar.applyDemo("selection"); break   // T05
         case "rename": header.startRename(); break

@@ -74,7 +74,7 @@ Rectangle {
 
     // Önálló képernyőképhez (V4 nevei).
     readonly property var demoLanes: {
-        const names = ["Kovács Lilla", "Fehér Gábor", "Varga Árpád", "Molnár Eszter", "Távoli 1"]
+        const names = [DemoText.name("Kovács Lilla"), DemoText.name("Fehér Gábor"), DemoText.name("Varga Árpád"), DemoText.name("Molnár Eszter"), DemoText.raw("Távoli 1")]
         const pct = [22, 26, 19, 15, 7]
         const out = []
         for (let i = 0; i < names.length; ++i) {

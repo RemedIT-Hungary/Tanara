@@ -1,5 +1,7 @@
 #include "SettingsDeviceModel.h"
 
+#include "DemoText.h"
+
 #include "RecorderViewModel.h"
 #include "SettingsViewModel.h"
 
@@ -204,9 +206,9 @@ void SettingsDeviceModel::tick()
 
 void SettingsDeviceModel::loadDemo()
 {
-    auto mk = [](const char* raw, int group, bool def, int level, int peak) {
+    auto mk = [](const QString& raw, int group, bool def, int level, int peak) {
         Row r;
-        r.info.name = QString::fromUtf8(raw);
+        r.info.name = raw;
         r.info.kind = group == 0 ? TrackKind::Mic : group == 1 ? TrackKind::Loopback : TrackKind::Other;
         r.info.isDefault = def;
         r.group = group;
@@ -217,11 +219,13 @@ void SettingsDeviceModel::loadDemo()
     };
     beginResetModel();
     m_rows = {
-        mk("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback", 0, true, 9, 10),
-        mk("alsa_input.pci-0000_00_1f.3.analog-stereo", 0, false, 0, -1),
-        mk("Monitor of Sennheiser headset - Kommunikáció", 1, false, 6, 7),
-        mk("Monitor of Kanto YU4 - Optikai digitális sztereó", 1, true, 0, -1),
-        mk("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in", 2, false, 0, -1),
+        mk(QStringLiteral("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback"), 0, true, 9, 10),
+        mk(QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), 0, false, 0, -1),
+        mk(demoText("Monitor of Sennheiser headset - Kommunikáció",
+                    "Monitor of Sennheiser headset - Communication"), 1, false, 6, 7),
+        mk(demoText("Monitor of Kanto YU4 - Optikai digitális sztereó",
+                    "Monitor of Kanto YU4 - Digital Stereo (IEC958)"), 1, true, 0, -1),
+        mk(QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in"), 2, false, 0, -1),
     };
     endResetModel();
     emit m_vm->deviceCountChanged();

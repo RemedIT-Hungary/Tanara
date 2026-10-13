@@ -1,5 +1,7 @@
 #include "PeopleViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "PlayerController.h"
 #include "ShellFormat.h"
@@ -225,21 +227,21 @@ void PeopleViewModel::setDemoState(const QString& state)
     if (!m_demo) return;
     loadDemo();
     m_selected.clear();
-    if (state == QStringLiteral("P02")) m_query = QStringLiteral("ger");
-    else if (state == QStringLiteral("noResult")) m_query = QStringLiteral("bár g");
+    if (state == QStringLiteral("P02")) m_query = demoText("ger", "greg");
+    else if (state == QStringLiteral("noResult")) m_query = demoText("bár g", "barn g");
     else m_query.clear();
     emit queryChanged();
     rebuild();
     if (state == QStringLiteral("P03") || state == QStringLiteral("creating"))
-        setSelectedName(QStringLiteral("Tóth Eszter"));
+        setSelectedName(demoName("Tóth Eszter"));
     else if (state == QLatin1String("tagsSection"))
-        setSelectedName(QStringLiteral("Varga Árpád"));
+        setSelectedName(demoName("Varga Árpád"));
     else if (state == QLatin1String("tagsSuggested") || state == QLatin1String("tagsFocus"))
-        setSelectedName(QStringLiteral("Fehér Gábor"));
+        setSelectedName(demoName("Fehér Gábor"));
     else if (state == QLatin1String("tagsSelf"))
-        setSelectedName(QStringLiteral("Kovács Lilla"));
+        setSelectedName(demoName("Kovács Lilla"));
     else if (state != QStringLiteral("P06"))
-        setSelectedName(QStringLiteral("Bárány Gergely"));
+        setSelectedName(demoName("Bárány Gergely"));
     // P01: a második minta épp szól.
     m_playingId = state == QStringLiteral("P01") ? QStringLiteral("demo-1") : QString();
     emit playingChanged();
@@ -1006,7 +1008,7 @@ QVariantList PeopleViewModel::mergeCandidates(const QString& query) const
         if (m_service) {
             const double s = m_service->similarity(m_selected, p.name);
             if (s >= 0) percent = qRound(s * 100);
-        } else if (p.name == QStringLiteral("B. Gergő") && m_selected == QStringLiteral("Bárány Gergely")) {
+        } else if (p.name == demoName("B. Gergő") && m_selected == demoName("Bárány Gergely")) {
             percent = 88;
         }
         list.append(Candidate{&p, percent, aliasHit});
@@ -1095,7 +1097,7 @@ QString PeopleViewModel::deleteText(bool keepSamples) const
     } else {
         p.meetingCount = m_detail.meetingCount;
         p.sampleCount = m_detail.sampleCount;
-        p.exampleLabel = QStringLiteral("Távoli 2");
+        p.exampleLabel = demoRaw(QStringLiteral("Távoli 2"));
     }
     QStringList parts;
     if (p.meetingCount <= 0)
@@ -1242,39 +1244,39 @@ void PeopleViewModel::loadDemo()
         {"Fehér Gábor", 16, 6, false}, {"Varga Árpád", 12, 4, false}, {"Szabó Bence", 8, 3, false},
         {"Molnár Eszter", 0, 0, false},
     };
-    static const DemoSample samplePool[] = {
-        {QStringLiteral("mic"), QStringLiteral("Trust USB mikrofon"),
-         QStringLiteral("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai"),
+    const DemoSample samplePool[] = {
+        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"),
+         demoText("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai", "Product team weekly sync – Q4 roadmap and mobile release risks"),
          QStringLiteral("2026-10-01"), QStringLiteral("0:42")},
-        {QStringLiteral("call"), QStringLiteral("Hívás hangja · Teams"),
-         QStringLiteral("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA"),
+        {QStringLiteral("call"), demoText("Hívás hangja · Teams", "Call audio · Teams"),
+         demoText("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA", "Northwind handover: support processes, escalation levels and SLA"),
          QStringLiteral("2026-09-30"), QStringLiteral("1:15")},
-        {QStringLiteral("call"), QStringLiteral("Hívás hangja · Zoom"), QStringLiteral("Partnerdemó – adatimport"),
+        {QStringLiteral("call"), demoText("Hívás hangja · Zoom", "Call audio · Zoom"), demoText("Partnerdemó – adatimport", "Partner demo – data import"),
          QStringLiteral("2026-09-24"), QStringLiteral("0:38")},
-        {QStringLiteral("unknown"), QStringLiteral("ismeretlen eszköz"),
-         QStringLiteral("Régi felvétel importálva (hangfájl)"), QStringLiteral("2026-08-28"), QStringLiteral("0:51")},
-        {QStringLiteral("mic"), QStringLiteral("Trust USB mikrofon"), QStringLiteral("Belső retró, szeptember"),
+        {QStringLiteral("unknown"), demoText("ismeretlen eszköz", "unknown device"),
+         demoText("Régi felvétel importálva (hangfájl)", "Old recording imported (audio file)"), QStringLiteral("2026-08-28"), QStringLiteral("0:51")},
+        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"), demoText("Belső retró, szeptember", "Internal retro, September"),
          QStringLiteral("2026-08-18"), QStringLiteral("0:27")},
-        {QStringLiteral("call"), QStringLiteral("Hívás hangja · Teams"), QStringLiteral("Roadmap-áttekintés"),
+        {QStringLiteral("call"), demoText("Hívás hangja · Teams", "Call audio · Teams"), demoText("Roadmap-áttekintés", "Roadmap review"),
          QStringLiteral("2026-08-11"), QStringLiteral("0:33")},
-        {QStringLiteral("mix"), QStringLiteral("A megbeszélés lekevert hangja"),
-         QStringLiteral("Kiadási egyeztetés"), QStringLiteral("2026-08-04"), QStringLiteral("0:19")},
-        {QStringLiteral("mic"), QStringLiteral("Trust USB mikrofon"), QStringLiteral("Sprint tervezés"),
+        {QStringLiteral("mix"), demoText("A megbeszélés lekevert hangja", "Meeting mixdown"),
+         demoText("Kiadási egyeztetés", "Release sync"), QStringLiteral("2026-08-04"), QStringLiteral("0:19")},
+        {QStringLiteral("mic"), demoText("Trust USB mikrofon", "Trust USB microphone"), demoText("Sprint tervezés", "Sprint planning"),
          QStringLiteral("2026-07-28"), QStringLiteral("0:46")},
-        {QStringLiteral("call"), QStringLiteral("Hívás hangja · Zoom"), QStringLiteral("Hibajavítási kör"),
+        {QStringLiteral("call"), demoText("Hívás hangja · Zoom", "Call audio · Zoom"), demoText("Hibajavítási kör", "Bug-fix round"),
          QStringLiteral("2026-07-21"), QStringLiteral("0:24")},
     };
-    static const DemoMeeting meetingPool[] = {
-        {QStringLiteral("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai"),
-         QStringLiteral("2026-10-01"), QStringLiteral("18 p")},
-        {QStringLiteral("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA"),
-         QStringLiteral("2026-09-30"), QStringLiteral("31 p")},
-        {QStringLiteral("Partnerdemó – adatimport"), QStringLiteral("2026-09-24"), QStringLiteral("9 p")},
-        {QStringLiteral("Belső retró, szeptember"), QStringLiteral("2026-09-18"), QStringLiteral("12 p")},
-        {QStringLiteral("Roadmap-áttekintés"), QStringLiteral("2026-09-11"), QStringLiteral("22 p")},
-        {QStringLiteral("Kiadási egyeztetés"), QStringLiteral("2026-09-04"), QStringLiteral("7 p")},
-        {QStringLiteral("Sprint tervezés"), QStringLiteral("2026-08-28"), QStringLiteral("15 p")},
-        {QStringLiteral("Hibajavítási kör"), QStringLiteral("2026-08-21"), QStringLiteral("5 p")},
+    const DemoMeeting meetingPool[] = {
+        {demoText("Termékcsapat heti egyeztetés – Q4 ütemterv és a mobilos kiadás kockázatai", "Product team weekly sync – Q4 roadmap and mobile release risks"),
+         QStringLiteral("2026-10-01"), demoText("18 p", "18 min")},
+        {demoText("Northwind átadás: ügyféltámogatási folyamatok, eszkalációs szintek és SLA", "Northwind handover: support processes, escalation levels and SLA"),
+         QStringLiteral("2026-09-30"), demoText("31 p", "31 min")},
+        {demoText("Partnerdemó – adatimport", "Partner demo – data import"), QStringLiteral("2026-09-24"), demoText("9 p", "9 min")},
+        {demoText("Belső retró, szeptember", "Internal retro, September"), QStringLiteral("2026-09-18"), demoText("12 p", "12 min")},
+        {demoText("Roadmap-áttekintés", "Roadmap review"), QStringLiteral("2026-09-11"), demoText("22 p", "22 min")},
+        {demoText("Kiadási egyeztetés", "Release sync"), QStringLiteral("2026-09-04"), demoText("7 p", "7 min")},
+        {demoText("Sprint tervezés", "Sprint planning"), QStringLiteral("2026-08-28"), demoText("15 p", "15 min")},
+        {demoText("Hibajavítási kör", "Bug-fix round"), QStringLiteral("2026-08-21"), demoText("5 p", "5 min")},
     };
     const int samplePoolSize = int(std::size(samplePool));
     const int meetingPoolSize = int(std::size(meetingPool));
@@ -1285,7 +1287,7 @@ void PeopleViewModel::loadDemo()
     for (const Row& row : std::as_const(all)) {
         if (empty && !row.self) continue;
         Person p;
-        p.name = QString::fromUtf8(row.name);
+        p.name = demoName(row.name);
         p.isSelf = row.self;
         p.meetingCount = row.meetings;
         p.sampleCount = row.samples;
@@ -1295,25 +1297,25 @@ void PeopleViewModel::loadDemo()
         for (int i = 0; i < row.samples; ++i) samples.append(samplePool[i % samplePoolSize]);
         QVector<DemoMeeting> meetings;
         for (int i = 0; i < row.meetings; ++i) meetings.append(meetingPool[i % meetingPoolSize]);
-        if (p.name == QStringLiteral("Bárány Gergely")) {
-            p.aliases = {QStringLiteral("Gergely"), QStringLiteral("G. Bárány")};
-            p.note = QStringLiteral("Northwind oldali projektvezető. Gyakran telefonról csatlakozik, ilyenkor halkabb.");
+        if (p.name == demoName("Bárány Gergely")) {
+            p.aliases = {demoText("Gergely", "Gregory"), demoText("G. Bárány", "G. Barnes")};
+            p.note = demoText("Northwind oldali projektvezető. Gyakran telefonról csatlakozik, ilyenkor halkabb.", "Project lead on the Northwind side. Often joins by phone, and sounds quieter then.");
             p.talkMs = (6 * 60 + 12) * 60000;
             p.lastSeen = QDateTime(QDate(2026, 10, 1), QTime(10, 0));
-        } else if (p.name == QStringLiteral("Tóth Eszter")) {
-            p.aliases = {QStringLiteral("Eszti")};
+        } else if (p.name == demoName("Tóth Eszter")) {
+            p.aliases = {demoText("Eszti", "Hannie")};
             p.talkMs = 22 * 60000;
             p.lastSeen = QDateTime(QDate(2026, 9, 26), QTime(10, 0));
-            meetings = {{QStringLiteral("Pénzügyi zárás, szeptember"), QStringLiteral("2026-09-26"), QStringLiteral("8 p")},
-                        {QStringLiteral("Beszállítói egyeztetés – Contoso"), QStringLiteral("2026-09-12"), QStringLiteral("11 p")},
-                        {QStringLiteral("Kickoff: új számlázó"), QStringLiteral("2026-09-03"), QStringLiteral("3 p")}};
-        } else if (p.name == QStringLiteral("Gál Bence")) {
-            p.aliases = {QStringLiteral("Gergő kollégája")};
+            meetings = {{demoText("Pénzügyi zárás, szeptember", "Financial close, September"), QStringLiteral("2026-09-26"), demoText("8 p", "8 min")},
+                        {demoText("Beszállítói egyeztetés – Contoso", "Vendor sync – Contoso"), QStringLiteral("2026-09-12"), demoText("11 p", "11 min")},
+                        {demoText("Kickoff: új számlázó", "Kickoff: new billing system"), QStringLiteral("2026-09-03"), demoText("3 p", "3 min")}};
+        } else if (p.name == demoName("Gál Bence")) {
+            p.aliases = {demoText("Gergő kollégája", "Greg's colleague")};
         }
         // Tanult / kézi sáv-oldal („Jellemzően: …”).
-        if (p.name == QStringLiteral("Bárány Gergely") || p.name == QStringLiteral("Fehér Gábor"))
+        if (p.name == demoName("Bárány Gergely") || p.name == demoName("Fehér Gábor"))
             p.defaultSide = QStringLiteral("remote");
-        else if (p.name == QStringLiteral("Varga Árpád") || p.name == QStringLiteral("Dénes Zsófia")) {
+        else if (p.name == demoName("Varga Árpád") || p.name == demoName("Dénes Zsófia")) {
             p.defaultSide = QStringLiteral("local");
             p.defaultSideManual = true;
         }

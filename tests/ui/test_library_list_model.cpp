@@ -168,9 +168,9 @@ private slots:
         QCOMPARE(LibraryListModel::tagLine({QStringLiteral("Nordvik"), QStringLiteral("Partnerek"),
                                             QStringLiteral("Q4 tervezés")}),
                  (QStringList{QStringLiteral("#Nordvik"), QStringLiteral("#Partnerek"), QStringLiteral("+1")}));
-        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("MuseumPlus"), QStringLiteral("MÉM-MDK"),
+        QCOMPARE(LibraryListModel::tagLine({QStringLiteral("ArchivePlus"), QStringLiteral("MÉM-MDK"),
                                             QStringLiteral("Gyűjteménykezelés")}),
-                 (QStringList{QStringLiteral("#MuseumPlus"), QStringLiteral("#MÉM-MDK"), QStringLiteral("+1")}));
+                 (QStringList{QStringLiteral("#ArchivePlus"), QStringLiteral("#MÉM-MDK"), QStringLiteral("+1")}));
         // Az első címke mindig látszik, akármilyen hosszú.
         QCOMPARE(LibraryListModel::tagLine({QStringLiteral("Gyűjteménykezelési munkacsoport 2026"),
                                             QStringLiteral("Belső")}),
@@ -183,8 +183,8 @@ private slots:
         const int bemutato = rowOf(m, QStringLiteral("Termékbemutató, 2. kör"));
         QVERIFY(bemutato >= 0);
         QCOMPARE(list(m, bemutato, LibraryListModel::TagIdsRole),
-                 (QStringList{QStringLiteral("t-museumplus"), QStringLiteral("t-mem"), QStringLiteral("t-gyujtemeny")}));
-        QCOMPARE(list(m, bemutato, LibraryListModel::TagNamesRole).first(), QStringLiteral("MuseumPlus"));
+                 (QStringList{QStringLiteral("t-muzeo"), QStringLiteral("t-mem"), QStringLiteral("t-gyujtemeny")}));
+        QCOMPARE(list(m, bemutato, LibraryListModel::TagNamesRole).first(), QStringLiteral("Muzeo"));
         QCOMPARE(list(m, bemutato, LibraryListModel::TagLineRole).last(), QStringLiteral("+1"));
         // Címke nélküli sor: üres harmadik sor.
         const int arazas = rowOf(m, QStringLiteral("Árazás egyeztetés"));
@@ -269,7 +269,7 @@ private slots:
         const int heti = rowOf(m, QStringLiteral("Nordvik heti meeting"));
         QCOMPARE(text(m, heti, LibraryListModel::TitleMatchRole), QStringLiteral("Nordvik"));
         // Csak a ténylegesen előforduló helyek kerülnek a számláló-sorba.
-        m.setSearchText(QStringLiteral("museum"));
+        m.setSearchText(QStringLiteral("muzeo"));
         m.refreshNow();
         QCOMPARE(m.resultText(), QStringLiteral("1 találat · címkében"));
     }

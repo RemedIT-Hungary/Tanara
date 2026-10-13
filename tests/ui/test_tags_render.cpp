@@ -139,15 +139,15 @@ private slots:
         QVERIFY(row->property("adding").toBool());
         auto* input = row->property("input").value<QObject*>();
         QVERIFY(input);
-        QVERIFY(QMetaObject::invokeMethod(input, "tagChosen", Q_ARG(QString, QStringLiteral("MuseumPlus")), Q_ARG(bool, false)));
+        QVERIFY(QMetaObject::invokeMethod(input, "tagChosen", Q_ARG(QString, QStringLiteral("Muzeo")), Q_ARG(bool, false)));
         QCOMPARE(added.count(), 1);
         QCOMPARE(row->property("tags").toList().size(), 3);
         // Kézi hozzáadás után együtt járó javaslatok.
-        QCOMPARE(row->property("suggestionLabel").toString(), QStringLiteral("MuseumPlus mellé gyakran"));
+        QCOMPARE(row->property("suggestionLabel").toString(), QStringLiteral("Muzeo mellé gyakran"));
 
         QVERIFY(QMetaObject::invokeMethod(input, "backspaceOnEmpty"));
         QCOMPARE(removed.count(), 1);
-        QCOMPARE(removed.at(0).at(0).toString(), QStringLiteral("t-museumplus"));
+        QCOMPARE(removed.at(0).at(0).toString(), QStringLiteral("t-muzeo"));
         QCOMPARE(row->property("tags").toList().size(), 2);
 
         QVERIFY(QMetaObject::invokeMethod(input, "closed"));

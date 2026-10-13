@@ -1,6 +1,10 @@
 #include "TagDemoBackend.h"
 
+#include "DemoText.h"
+
 #include "TagMatching.h"
+
+#include <QHash>
 
 #include <algorithm>
 #include <tuple>
@@ -16,6 +20,26 @@ QDateTime at(int y, int mo, int d, int h = 10, int mi = 0)
 
 // A demó „most”-ja: ettől determinisztikus a kép (a hozzáadás ide teszi az utolsó használatot).
 const QDateTime kNow = at(2026, 10, 5, 10, 0);
+
+// A kitalált címkenevek angol demo-nyelven (az azonosítók változatlanok; ugyanaz a készlet,
+// mint a LibraryDemoData-ban). A magyar névvel hívható, angolul a párját adja.
+QString tagText(const char* hu)
+{
+    static const QHash<QString, QString> en{
+        {QStringLiteral("Q4 tervezés"), QStringLiteral("Q4 planning")},
+        {QStringLiteral("Termék"), QStringLiteral("Product")},
+        {QStringLiteral("Partnerek"), QStringLiteral("Partners")},
+        {QStringLiteral("Belső"), QStringLiteral("Internal")},
+        {QStringLiteral("MÉM-MDK"), QStringLiteral("Heritage Lab")},
+        {QStringLiteral("Gyűjteménykezelés"), QStringLiteral("Collections")},
+        {QStringLiteral("Ügyféltámogatás"), QStringLiteral("Customer support")},
+        {QStringLiteral("Múzeumi pályázat"), QStringLiteral("Museum grant")},
+        {QStringLiteral("Kutatás"), QStringLiteral("Research")},
+        {QStringLiteral("Ügyfélsiker"), QStringLiteral("Customer success")},
+    };
+    const QString s = QString::fromUtf8(hu);
+    return demotext::english() ? en.value(s, s) : s;
+}
 
 TagMeetingItem meeting(const QString& id, const QString& title, const QDateTime& when, int minutes)
 {
@@ -35,25 +59,25 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
     // Név, megbeszélés-szám, első / utolsó használat (a T10 listája).
     m_state.tags = {
         {QStringLiteral("t-nordvik"), QStringLiteral("Nordvik"), 14, at(2026, 3, 3), at(2026, 10, 2, 16)},
-        {QStringLiteral("t-q4"), QStringLiteral("Q4 tervezés"), 9, at(2026, 6, 10), at(2026, 10, 2, 15)},
-        {QStringLiteral("t-termek"), QStringLiteral("Termék"), 8, at(2026, 2, 12), at(2026, 10, 2, 9)},
-        {QStringLiteral("t-partnerek"), QStringLiteral("Partnerek"), 5, at(2026, 4, 20), at(2026, 10, 1)},
-        {QStringLiteral("t-belso"), QStringLiteral("Belső"), 11, at(2026, 1, 15), at(2026, 9, 25)},
-        {QStringLiteral("t-museumplus"), QStringLiteral("MuseumPlus"), 6, at(2026, 5, 6), at(2026, 9, 30, 15)},
-        {QStringLiteral("t-mem"), QStringLiteral("MÉM-MDK"), 7, at(2026, 5, 6), at(2026, 9, 30, 14)},
-        {QStringLiteral("t-gyujtemeny"), QStringLiteral("Gyűjteménykezelés"), 4, at(2026, 6, 2), at(2026, 9, 30, 13)},
-        {QStringLiteral("t-ugyfel"), QStringLiteral("Ügyféltámogatás"), 6, at(2026, 3, 18), at(2026, 9, 18)},
-        {QStringLiteral("t-palyazat"), QStringLiteral("Múzeumi pályázat"), 3, at(2026, 4, 2), at(2026, 7, 8)},
+        {QStringLiteral("t-q4"), tagText("Q4 tervezés"), 9, at(2026, 6, 10), at(2026, 10, 2, 15)},
+        {QStringLiteral("t-termek"), tagText("Termék"), 8, at(2026, 2, 12), at(2026, 10, 2, 9)},
+        {QStringLiteral("t-partnerek"), tagText("Partnerek"), 5, at(2026, 4, 20), at(2026, 10, 1)},
+        {QStringLiteral("t-belso"), tagText("Belső"), 11, at(2026, 1, 15), at(2026, 9, 25)},
+        {QStringLiteral("t-muzeo"), QStringLiteral("Muzeo"), 6, at(2026, 5, 6), at(2026, 9, 30, 15)},
+        {QStringLiteral("t-mem"), tagText("MÉM-MDK"), 7, at(2026, 5, 6), at(2026, 9, 30, 14)},
+        {QStringLiteral("t-gyujtemeny"), tagText("Gyűjteménykezelés"), 4, at(2026, 6, 2), at(2026, 9, 30, 13)},
+        {QStringLiteral("t-ugyfel"), tagText("Ügyféltámogatás"), 6, at(2026, 3, 18), at(2026, 9, 18)},
+        {QStringLiteral("t-palyazat"), tagText("Múzeumi pályázat"), 3, at(2026, 4, 2), at(2026, 7, 8)},
         {QStringLiteral("t-nordvikas"), QStringLiteral("Nordvik AS"), 3, at(2026, 2, 10), at(2026, 5, 20)},
-        {QStringLiteral("t-kutatas"), QStringLiteral("Kutatás"), 2, at(2026, 1, 20), at(2026, 4, 14)},
+        {QStringLiteral("t-kutatas"), tagText("Kutatás"), 2, at(2026, 1, 20), at(2026, 4, 14)},
     };
     // A beviteli mező „LEGUTÓBB HASZNÁLT” listája (a felhasználó utolsó hozzáadásai, T01).
-    m_state.recentIds = {QStringLiteral("t-nordvik"), QStringLiteral("t-q4"), QStringLiteral("t-museumplus"),
+    m_state.recentIds = {QStringLiteral("t-nordvik"), QStringLiteral("t-q4"), QStringLiteral("t-muzeo"),
                          QStringLiteral("t-partnerek")};
     const QList<std::tuple<const char*, const char*, int>> pairs{
         {"t-nordvik", "t-partnerek", 6}, {"t-nordvik", "t-q4", 5}, {"t-nordvik", "t-ugyfel", 4},
-        {"t-nordvik", "t-nordvikas", 1}, {"t-museumplus", "t-mem", 5}, {"t-museumplus", "t-gyujtemeny", 4},
-        {"t-museumplus", "t-palyazat", 2}, {"t-termek", "t-q4", 4}, {"t-belso", "t-q4", 3},
+        {"t-nordvik", "t-nordvikas", 1}, {"t-muzeo", "t-mem", 5}, {"t-muzeo", "t-gyujtemeny", 4},
+        {"t-muzeo", "t-palyazat", 2}, {"t-termek", "t-q4", 4}, {"t-belso", "t-q4", 3},
         {"t-partnerek", "t-q4", 3}, {"t-ugyfel", "t-termek", 2}, {"t-belso", "t-kutatas", 1},
     };
     for (const auto& [a, b, n] : pairs)
@@ -63,7 +87,7 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
     const QList<std::pair<const char*, int>> totals{
         {"Kovács Lilla", 41}, {"Fehér Gábor", 16}, {"Varga Árpád", 12}, {"Szabó Bence", 8},
         {"Bárány Gergely", 23}, {"Molnár Eszter", 0}, {"Gál Bence", 12}, {"Dénes Zsófia", 17}, {"Tóth Eszter", 3}};
-    for (const auto& [name, n] : totals) m_state.personTotal.insert(QString::fromUtf8(name), n);
+    for (const auto& [name, n] : totals) m_state.personTotal.insert(demoName(name), n);
     const QList<std::tuple<const char*, const char*, int>> shared{
         {"t-nordvik", "Kovács Lilla", 14}, {"t-nordvik", "Fehér Gábor", 11}, {"t-nordvik", "Varga Árpád", 9},
         {"t-nordvik", "Szabó Bence", 6}, {"t-nordvik", "Bárány Gergely", 5}, {"t-nordvik", "Gál Bence", 1},
@@ -72,13 +96,13 @@ TagDemoBackend::TagDemoBackend(Content content, QObject* parent) : TagBackend(pa
         {"t-belso", "Fehér Gábor", 4}, {"t-belso", "Dénes Zsófia", 7}, {"t-termek", "Fehér Gábor", 2},
         {"t-ugyfel", "Bárány Gergely", 4}};
     for (const auto& [tag, name, n] : shared)
-        m_state.shared[QString::fromLatin1(tag)].insert(QString::fromUtf8(name), n);
+        m_state.shared[QString::fromLatin1(tag)].insert(demoName(name), n);
     m_state.personTags = {
-        {QStringLiteral("Varga Árpád"), {QStringLiteral("t-nordvik"), QStringLiteral("t-partnerek")}},
-        {QStringLiteral("Szabó Bence"), {QStringLiteral("t-nordvik")}},
-        {QStringLiteral("Molnár Eszter"), {QStringLiteral("t-nordvik")}},
-        {QStringLiteral("Dénes Zsófia"), {QStringLiteral("t-q4")}},
-        {QStringLiteral("Bárány Gergely"), {QStringLiteral("t-ugyfel")}},
+        {demoName("Varga Árpád"), {QStringLiteral("t-nordvik"), QStringLiteral("t-partnerek")}},
+        {demoName("Szabó Bence"), {QStringLiteral("t-nordvik")}},
+        {demoName("Molnár Eszter"), {QStringLiteral("t-nordvik")}},
+        {demoName("Dénes Zsófia"), {QStringLiteral("t-q4")}},
+        {demoName("Bárány Gergely"), {QStringLiteral("t-ugyfel")}},
     };
     loadMeetingDemo(demoMeetingId(), QStringLiteral("few"));
 }
@@ -226,12 +250,12 @@ QVector<TagSuggestionItem> TagDemoBackend::draftSuggestions(const QString& /*tit
 {
     // T07: „Javasolt: + Ügyféltámogatás · hasonló cím: „Ügyféltámogatás heti””.
     TagSuggestionItem s;
-    s.name = QStringLiteral("Ügyféltámogatás");
+    s.name = tagText("Ügyféltámogatás");
     s.tagId = idOf(s.name);
     s.isNew = s.tagId.isEmpty();
     s.source = QStringLiteral("similar");
-    s.reasons = {reason("title", {QStringLiteral("Ügyféltámogatás heti")})};
-    s.similarMeetings = {meeting(QStringLiteral("m-support-0918"), QStringLiteral("Ügyféltámogatás heti"), at(2026, 9, 18), 40)};
+    s.reasons = {reason("title", {demoText("Ügyféltámogatás heti", "Customer support weekly")})};
+    s.similarMeetings = {meeting(QStringLiteral("m-support-0918"), demoText("Ügyféltámogatás heti", "Customer support weekly"), at(2026, 9, 18), 40)};
     return {s};
 }
 
@@ -240,7 +264,7 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
     auto ids = [this](std::initializer_list<const char*> names) {
         QStringList out;
         for (const char* n : names) {
-            const QString id = idOf(QString::fromUtf8(n));
+            const QString id = idOf(tagText(n));
             if (!id.isEmpty()) out << id;
         }
         return out;
@@ -248,7 +272,7 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
     auto sug = [this](const char* name, const char* source, QVector<TagReasonItem> reasons = {},
                       QVector<TagMeetingItem> similar = {}, bool isNew = false) {
         TagSuggestionItem s;
-        s.name = QString::fromUtf8(name);
+        s.name = tagText(name);
         s.tagId = isNew ? QString() : idOf(s.name);
         s.isNew = isNew || s.tagId.isEmpty();
         s.source = QString::fromLatin1(source);
@@ -256,16 +280,16 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
         s.similarMeetings = std::move(similar);
         return s;
     };
-    const auto nordvikWeekly = meeting(QStringLiteral("m-nordvik-0929"), QStringLiteral("Nordvik heti meeting"), at(2026, 9, 29), 55);
-    const auto handover = meeting(QStringLiteral("m-handover-1002"), QStringLiteral("Ügyféltámogatás átadás"), at(2026, 10, 2), 52);
-    const auto quarterly = meeting(QStringLiteral("m-quarterly-0702"), QStringLiteral("Negyedéves partnertalálkozó"), at(2026, 7, 2), 71);
+    const auto nordvikWeekly = meeting(QStringLiteral("m-nordvik-0929"), demoText("Nordvik heti meeting", "Nordvik weekly meeting"), at(2026, 9, 29), 55);
+    const auto handover = meeting(QStringLiteral("m-handover-1002"), demoText("Ügyféltámogatás átadás", "Customer support handover"), at(2026, 10, 2), 52);
+    const auto quarterly = meeting(QStringLiteral("m-quarterly-0702"), demoText("Negyedéves partnertalálkozó", "Quarterly partner review"), at(2026, 7, 2), 71);
 
     TagSuggestionState s;
     QStringList tags;
     if (state == QLatin1String("few")) {
         tags = ids({"Nordvik", "Partnerek"});
     } else if (state == QLatin1String("many")) {
-        tags = ids({"Nordvik", "Partnerek", "Q4 tervezés", "Termék", "Ügyféltámogatás", "Belső", "MuseumPlus",
+        tags = ids({"Nordvik", "Partnerek", "Q4 tervezés", "Termék", "Ügyféltámogatás", "Belső", "Muzeo",
                     "MÉM-MDK", "Kutatás", "Múzeumi pályázat"});
     } else if (state == QLatin1String("draft")) {
         // T07: átirat előtt — egy felrakott címke, a javaslat a cím alapján jön (draftSuggestions).
@@ -277,24 +301,24 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
         tags = ids({"Nordvik"});
         s.source = QStringLiteral("similar");
         s.items = {sug("Partnerek", "similar",
-                       {reason("participant", {QStringLiteral("Varga Nóra"), QStringLiteral("Fehér Ádám")}),
-                        reason("terms", {QStringLiteral("partnerportál"), QStringLiteral("ütemterv"), QStringLiteral("megújítás")})},
+                       {reason("participant", {demoName("Varga Nóra"), demoName("Fehér Ádám")}),
+                        reason("terms", {demoText("partnerportál", "partner portal"), demoText("ütemterv", "roadmap"), demoText("megújítás", "renewal")})},
                        {nordvikWeekly, handover}),
                    sug("Q4 tervezés", "similar",
-                       {reason("title", {QStringLiteral("Negyedéves partnertalálkozó (júl. 2.)")}),
-                        reason("terms", {QStringLiteral("ütemterv"), QStringLiteral("költségkeret")})},
+                       {reason("title", {demoText("Negyedéves partnertalálkozó (júl. 2.)", "Quarterly partner review (Jul 2)")}),
+                        reason("terms", {demoText("ütemterv", "roadmap"), demoText("költségkeret", "budget")})},
                        {quarterly})};
     } else if (state == QLatin1String("why")) {
         // T02: a „Miért?” panel tartalma.
         tags = ids({"Partnerek", "Q4 tervezés"});
         s.source = QStringLiteral("similar");
         s.items = {sug("Nordvik", "similar",
-                       {reason("participant", {QStringLiteral("Varga Nóra"), QStringLiteral("Fehér Ádám")}),
-                        reason("terms", {QStringLiteral("Nordvik"), QStringLiteral("partnerportál"), QStringLiteral("ütemterv")})},
+                       {reason("participant", {demoName("Varga Nóra"), demoName("Fehér Ádám")}),
+                        reason("terms", {QStringLiteral("Nordvik"), demoText("partnerportál", "partner portal"), demoText("ütemterv", "roadmap")})},
                        {nordvikWeekly, handover}),
                    sug("Ügyféltámogatás", "similar",
-                       {reason("title", {QStringLiteral("Negyedéves partnertalálkozó (júl. 2.)")}),
-                        reason("terms", {QStringLiteral("támogatási igény"), QStringLiteral("súgóoldalak")})},
+                       {reason("title", {demoText("Negyedéves partnertalálkozó (júl. 2.)", "Quarterly partner review (Jul 2)")}),
+                        reason("terms", {demoText("támogatási igény", "support demand"), demoText("súgóoldalak", "help pages")})},
                        {quarterly})};
     } else if (state == QLatin1String("people") || state == QLatin1String("peopleWhy")) {
         // UX-terv 3.3: a résztvevők kézi címkéiből („A résztvevők alapján”), átírás előtt is; a
@@ -303,23 +327,23 @@ void TagDemoBackend::loadMeetingDemo(const QString& meetingId, const QString& st
         tags = ids({"Q4 tervezés"});
         s.source = QStringLiteral("people");
         s.items = {sug("Nordvik", "people",
-                       {reason("peopleTags", {QStringLiteral("Fehér Gábor"), QStringLiteral("Varga Árpád")})}),
-                   sug("Partnerek", "people", {reason("peopleTags", {QStringLiteral("Fehér Gábor")})})};
+                       {reason("peopleTags", {demoName("Fehér Gábor"), demoName("Varga Árpád")})}),
+                   sug("Partnerek", "people", {reason("peopleTags", {demoName("Fehér Gábor")})})};
         if (state == QLatin1String("peopleWhy"))
             s.items << sug("Ügyféltámogatás", "similar",
-                           {reason("participant", {QStringLiteral("Fehér Gábor")}),
-                            reason("terms", {QStringLiteral("támogatási igény"), QStringLiteral("súgóoldalak")})},
+                           {reason("participant", {demoName("Fehér Gábor")}),
+                            reason("terms", {demoText("támogatási igény", "support demand"), demoText("súgóoldalak", "help pages")})},
                            {handover});
     } else if (state == QLatin1String("cooccur")) {
-        tags = ids({"MuseumPlus"});
+        tags = ids({"Muzeo"});
         s.source = QStringLiteral("cooccur");
-        s.baseTagId = idOf(QStringLiteral("MuseumPlus"));
+        s.baseTagId = idOf(QStringLiteral("Muzeo"));
         s.items = {sug("MÉM-MDK", "cooccur"), sug("Gyűjteménykezelés", "cooccur")};
     } else if (state == QLatin1String("llm")) {
         tags = ids({"Nordvik"});
         s.source = QStringLiteral("llm");
-        s.items = {sug("Termék", "llm", {reason("terms", {QStringLiteral("termékút"), QStringLiteral("kiadás")})}),
-                   sug("Ügyfélsiker", "llm", {reason("terms", {QStringLiteral("támogatási jegyek"), QStringLiteral("elégedettség")})},
+        s.items = {sug("Termék", "llm", {reason("terms", {demoText("termékút", "product path"), demoText("kiadás", "release")})}),
+                   sug("Ügyfélsiker", "llm", {reason("terms", {demoText("támogatási jegyek", "support tickets"), demoText("elégedettség", "satisfaction")})},
                        {}, true)};
     }
     m_state.meetingTags.insert(meetingId, tags);
@@ -486,32 +510,32 @@ TagProfileItem TagDemoBackend::profile(const QString& tagId) const
     p.meetingCount = t.meetingCount;
     p.cooccurring = cooccurring(tagId);
     if (tagId == QLatin1String("t-nordvik")) {
-        p.participants = {{QStringLiteral("Kovács Anna"), 12}, {QStringLiteral("Szabó Bence"), 11},
-                          {QStringLiteral("Lantos Réka"), 6}, {QStringLiteral("Varga Nóra"), 5}};
-        p.terms = {QStringLiteral("Nordvik"), QStringLiteral("partnerportál"), QStringLiteral("ütemterv"),
-                   QStringLiteral("SLA"), QStringLiteral("eszkaláció"), QStringLiteral("Qvarko-modul"),
-                   QStringLiteral("PixelTár"), QStringLiteral("megújítás")};
-        p.meetings = {meeting(QStringLiteral("m-handover-1002"), QStringLiteral("Ügyféltámogatás átadás"), at(2026, 10, 2), 52),
-                      meeting(QStringLiteral("m-quarterly-1001"), QStringLiteral("Negyedéves partnertalálkozó"), at(2026, 10, 1), 76),
-                      meeting(QStringLiteral("m-nordvik-0929"), QStringLiteral("Nordvik heti meeting"), at(2026, 9, 29), 55),
-                      meeting(QStringLiteral("m-nordvik-0922"), QStringLiteral("Nordvik heti meeting – demó előtt"), at(2026, 9, 22), 48)};
+        p.participants = {{demoName("Kovács Anna"), 12}, {demoName("Szabó Bence"), 11},
+                          {demoName("Lantos Réka"), 6}, {demoName("Varga Nóra"), 5}};
+        p.terms = {QStringLiteral("Nordvik"), demoText("partnerportál", "partner portal"), demoText("ütemterv", "roadmap"),
+                   QStringLiteral("SLA"), demoText("eszkaláció", "escalation"), demoText("Qvarko-modul", "Qvarko module"),
+                   demoText("PixelTár", "PixelVault"), demoText("megújítás", "renewal")};
+        p.meetings = {meeting(QStringLiteral("m-handover-1002"), demoText("Ügyféltámogatás átadás", "Customer support handover"), at(2026, 10, 2), 52),
+                      meeting(QStringLiteral("m-quarterly-1001"), demoText("Negyedéves partnertalálkozó", "Quarterly partner review"), at(2026, 10, 1), 76),
+                      meeting(QStringLiteral("m-nordvik-0929"), demoText("Nordvik heti meeting", "Nordvik weekly meeting"), at(2026, 9, 29), 55),
+                      meeting(QStringLiteral("m-nordvik-0922"), demoText("Nordvik heti meeting – demó előtt", "Nordvik weekly meeting – before the demo"), at(2026, 9, 22), 48)};
         return p;
     }
     // A többi címke profilja sablonból: a résztvevők és a kifejezések arányosan.
-    const QStringList people{QStringLiteral("Kovács Anna"), QStringLiteral("Szabó Bence"),
-                             QStringLiteral("Lantos Réka"), QStringLiteral("Varga Nóra")};
+    const QStringList people{demoName("Kovács Anna"), demoName("Szabó Bence"),
+                             demoName("Lantos Réka"), demoName("Varga Nóra")};
     const double share[] = {0.85, 0.6, 0.4, 0.25};
     for (int k = 0; k < people.size(); ++k) {
         const int n = int(t.meetingCount * share[(k + i) % 4] + 0.5);
         if (n >= 1) p.participants.push_back({people[k], n});
     }
     std::sort(p.participants.begin(), p.participants.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-    p.terms = {t.name, QStringLiteral("ütemterv"), QStringLiteral("egyeztetés"), QStringLiteral("határidő")};
-    const QVector<QPair<QString, int>> pool{{QStringLiteral("Termékcsapat heti egyeztetés"), 30},
-                                            {QStringLiteral("Heti tervezés"), 33},
-                                            {QStringLiteral("Termékbemutató, 2. kör"), 44},
-                                            {QStringLiteral("Infrastruktúra áttekintés"), 41},
-                                            {QStringLiteral("Árazás egyeztetés"), 27}};
+    p.terms = {t.name, demoText("ütemterv", "roadmap"), demoText("egyeztetés", "sync"), demoText("határidő", "deadline")};
+    const QVector<QPair<QString, int>> pool{{demoText("Termékcsapat heti egyeztetés", "Product team weekly sync"), 30},
+                                            {demoText("Heti tervezés", "Weekly planning"), 33},
+                                            {demoText("Termékbemutató, 2. kör", "Product demo, round 2"), 44},
+                                            {demoText("Infrastruktúra áttekintés", "Infrastructure review"), 41},
+                                            {demoText("Árazás egyeztetés", "Pricing discussion"), 27}};
     const int shown = std::min(t.meetingCount, 3);
     for (int k = 0; k < shown; ++k) {
         const auto& [title, minutes] = pool[(i + k) % pool.size()];

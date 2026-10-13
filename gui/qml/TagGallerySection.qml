@@ -94,17 +94,17 @@ Column {
     Column {
         width: root.width
         spacing: 14
-        SectionTitle { text: "C01 · Címke-chip" }
+        SectionTitle { text: DemoText.t("C01 · Címke-chip", "C01 · Tag chip") }
         Row {
             spacing: 20
             Repeater {
                 model: [
-                    { kind: "applied", text: "Nordvik", hover: false, cap: "Felrakott címke. Kattintás: szűrés a könyvtárban erre a címkére." },
-                    { kind: "applied", text: "Nordvik", hover: true, cap: "Rámutatva vagy fókuszban: × eltávolít (Delete)." },
-                    { kind: "suggested", text: "Partnerek", hover: false, cap: "Javasolt meglévő címke. Kattintás: hozzáadás, ×: elutasítás." },
-                    { kind: "llmNew", text: "Ügyfélsiker", hover: false, cap: "A nyelvi modell ötlete, új névvel: elfogadáskor a készlet bővül." },
-                    { kind: "applied", text: "Gyűjteménykezelési munkacsoport 2026", hover: false, cap: "Hosszú név: legfeljebb 180 px, a teljes név tooltipben." },
-                    { kind: "overflow", text: "+3", hover: false, cap: "Ami nem fér egy sorba. Kattintásra lista." }
+                    { kind: "applied", text: "Nordvik", hover: false, cap: DemoText.t("Felrakott címke. Kattintás: szűrés a könyvtárban erre a címkére.", "Applied tag. Click: filter the library by this tag.") },
+                    { kind: "applied", text: "Nordvik", hover: true, cap: DemoText.t("Rámutatva vagy fókuszban: × eltávolít (Delete).", "On hover or focus: × removes (Delete).") },
+                    { kind: "suggested", text: DemoText.t("Partnerek", "Partners"), hover: false, cap: DemoText.t("Javasolt meglévő címke. Kattintás: hozzáadás, ×: elutasítás.", "Suggested existing tag. Click: add, ×: dismiss.") },
+                    { kind: "llmNew", text: DemoText.t("Ügyfélsiker", "Customer success"), hover: false, cap: DemoText.t("A nyelvi modell ötlete, új névvel: elfogadáskor a készlet bővül.", "The language model's idea, with a new name: accepting it extends the tag set.") },
+                    { kind: "applied", text: DemoText.t("Gyűjteménykezelési munkacsoport 2026", "Collections management working group 2026"), hover: false, cap: DemoText.t("Hosszú név: legfeljebb 180 px, a teljes név tooltipben.", "Long name: at most 180 px, the full name in a tooltip.") },
+                    { kind: "overflow", text: "+3", hover: false, cap: DemoText.t("Ami nem fér egy sorba. Kattintásra lista.", "Whatever doesn't fit in one row. Click for a list.") }
                 ]
                 Column {
                     required property var modelData
@@ -136,15 +136,15 @@ Column {
                 x: 14
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 14
-                Note { anchors.verticalCenter: parent.verticalCenter; text: "Nem téveszthető össze:"; font.pixelSize: Theme.fontSmall }
-                TChip { anchors.verticalCenter: parent.verticalCenter; text: "Kovács Lilla"; speakerIndex: 0 }
-                Note { anchors.verticalCenter: parent.verticalCenter; text: "személy: kerek, színes" }
+                Note { anchors.verticalCenter: parent.verticalCenter; text: DemoText.t("Nem téveszthető össze:", "Not to be confused with:"); font.pixelSize: Theme.fontSmall }
+                TChip { anchors.verticalCenter: parent.verticalCenter; text: DemoText.name("Kovács Lilla"); speakerIndex: 0 }
+                Note { anchors.verticalCenter: parent.verticalCenter; text: DemoText.t("személy: kerek, színes", "person: round, coloured") }
                 VRule { anchors.verticalCenter: parent.verticalCenter }
-                TPill { anchors.verticalCenter: parent.verticalCenter; text: "elavult"; tone: "warn" }
-                Note { anchors.verticalCenter: parent.verticalCenter; text: "állapot: kis, kerek" }
+                TPill { anchors.verticalCenter: parent.verticalCenter; text: DemoText.t("elavult", "outdated"); tone: "warn" }
+                Note { anchors.verticalCenter: parent.verticalCenter; text: DemoText.t("állapot: kis, kerek", "status: small, round") }
                 VRule { anchors.verticalCenter: parent.verticalCenter }
                 TagChip { anchors.verticalCenter: parent.verticalCenter; text: "Nordvik" }
-                Note { anchors.verticalCenter: parent.verticalCenter; text: "címke: szögletes, semleges, „#”" }
+                Note { anchors.verticalCenter: parent.verticalCenter; text: DemoText.t("címke: szögletes, semleges, „#”", "tag: square, neutral, “#”") }
             }
         }
     }
@@ -158,16 +158,16 @@ Column {
             Rectangle { width: root.width; height: 1; color: Theme.border }
             Row {
                 spacing: 10
-                SectionTitle { text: "C02 · Címke-beviteli mező" }
-                Note { text: "Enter hozzáad · Backspace üres mezőben az utolsót törli · ↑↓ a listában · Esc bezár" }
+                SectionTitle { text: DemoText.t("C02 · Címke-beviteli mező", "C02 · Tag input field") }
+                Note { text: DemoText.t("Enter hozzáad · Backspace üres mezőben az utolsót törli · ↑↓ a listában · Esc bezár", "Enter adds · Backspace in an empty field removes the last one · ↑↓ in the list · Esc closes") }
             }
         }
         Row {
             spacing: 20
-            InputDemo { typed: ""; caption: "Üres mező: a legutóbb használt címkék." }
-            InputDemo { typed: "mu"; caption: "Gépelés közben: ékezet és kis-nagybetű nem számít, az egyezés kiemelve." }
-            InputDemo { typed: "Pilot 2027"; caption: "Nincs találat: Enter új címkét hoz létre." }
-            InputDemo { typed: "Museum Plus"; caption: "Nagyon hasonló név: a meglévő van kijelölve, az új létrehozása is lehetséges." }
+            InputDemo { typed: ""; caption: DemoText.t("Üres mező: a legutóbb használt címkék.", "Empty field: the recently used tags.") }
+            InputDemo { typed: "mu"; caption: DemoText.t("Gépelés közben: ékezet és kis-nagybetű nem számít, az egyezés kiemelve.", "While typing: accents and case don't matter, the match is highlighted.") }
+            InputDemo { typed: "Pilot 2027"; caption: DemoText.t("Nincs találat: Enter új címkét hoz létre.", "No match: Enter creates a new tag.") }
+            InputDemo { typed: "Muzeeo"; caption: DemoText.t("Nagyon hasonló név: a meglévő van kijelölve, az új létrehozása is lehetséges.", "Very similar name: the existing one is selected, creating a new one is still possible.") }
         }
     }
 
@@ -180,16 +180,16 @@ Column {
             Rectangle { width: root.width; height: 1; color: Theme.border }
             Row {
                 spacing: 10
-                SectionTitle { text: "C03–C04 · A megbeszélés címkesora" }
-                Note { text: "a fejlécben, az adatsor alatt; mindig 26 px magas, ezért a késve érkező javaslat nem tolja el a felületet" }
+                SectionTitle { text: DemoText.t("C03–C04 · A megbeszélés címkesora", "C03–C04 · The meeting's tag row") }
+                Note { text: DemoText.t("a fejlécben, az adatsor alatt; mindig 26 px magas, ezért a késve érkező javaslat nem tolja el a felületet", "in the header, below the data row; always 26 px tall, so a late suggestion doesn't shift the layout") }
             }
         }
-        RowDemo { caption: "Nincs címke"; demo: "none" }
-        RowDemo { caption: "1–3 címke"; demo: "few" }
-        RowDemo { caption: "Sok címke: egy sor, a többi „+N”"; demo: "many" }
-        RowDemo { caption: "Javaslat készül: a hely fenn van tartva"; demo: "computing" }
-        RowDemo { caption: "Javaslat a hasonló megbeszélések alapján, indoklással"; demo: "similar" }
-        RowDemo { caption: "Együtt járó címkék, egy címke hozzáadása után"; demo: "cooccur"; focusedTag: 0 }
-        RowDemo { caption: "A nyelvi modell javaslata, az összefoglalás után"; demo: "llm" }
+        RowDemo { caption: DemoText.t("Nincs címke", "No tags"); demo: "none" }
+        RowDemo { caption: DemoText.t("1–3 címke", "1–3 tags"); demo: "few" }
+        RowDemo { caption: DemoText.t("Sok címke: egy sor, a többi „+N”", "Many tags: one row, the rest “+N”"); demo: "many" }
+        RowDemo { caption: DemoText.t("Javaslat készül: a hely fenn van tartva", "Suggestion in progress: the space is reserved"); demo: "computing" }
+        RowDemo { caption: DemoText.t("Javaslat a hasonló megbeszélések alapján, indoklással", "Suggestion based on similar meetings, with reasons"); demo: "similar" }
+        RowDemo { caption: DemoText.t("Együtt járó címkék, egy címke hozzáadása után", "Co-occurring tags, after adding a tag"); demo: "cooccur"; focusedTag: 0 }
+        RowDemo { caption: DemoText.t("A nyelvi modell javaslata, az összefoglalás után", "The language model's suggestion, after the summary"); demo: "llm" }
     }
 }

@@ -25,7 +25,7 @@ namespace tanara_qml::tagmatch {
 QString normalizeName(const QString& name);
 // Kereséshez: NFC + ékezet nélkül + kisbetűs; a hossz megegyezik az NFC alakéval (kiemeléshez).
 QString foldName(const QString& name);
-// Egyezés-kulcs: foldName, szóközök és írásjelek nélkül („Museum Plus” → „museumplus”).
+// Egyezés-kulcs: foldName, szóközök és írásjelek nélkül („Archive Plus” → „archiveplus”).
 QString key(const QString& name);
 // Optimal string alignment (Damerau-Levenshtein, szomszédos csere = 1 lépés).
 int editDistance(const QString& a, const QString& b);

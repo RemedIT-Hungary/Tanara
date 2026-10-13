@@ -1,5 +1,7 @@
 #include "PreTranscriptViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "JobSupport.h"
 #include "TagMatching.h"
@@ -370,8 +372,8 @@ void PreTranscriptViewModel::loadDemo()
     const QString st = m_demoState.isEmpty() ? QStringLiteral("steps") : m_demoState;
     // T07: egy felrakott címke, a javaslat a cím alapján (kitalált készlet).
     m_tags->setDemoState(QStringLiteral("draft"));
-    const QString note = tr("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
-                            "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.");
+    const QString note = demoText("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, "
+                            "súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.", "Support handover to the new team. Systems involved: ticket system, help pages, billing. Participants: Sophie Bennett, Ryan Mitchell.");
     if (st == QLatin1String("note") || st == QLatin1String("readyNote")) {
         // Sablon-javaslatok a korábbi, hasonló című megbeszélésekből + az észlelt hívás.
         m_note->setDemoContent(QString(), QStringLiteral("Microsoft Teams"), MeetingNoteModel::demoSuggestions());

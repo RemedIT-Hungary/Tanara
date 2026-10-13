@@ -39,10 +39,10 @@ private slots:
 
     void keysAndNearDuplicates()
     {
-        QCOMPARE(tagmatch::key(QStringLiteral("Museum Plus")), QStringLiteral("museumplus"));
+        QCOMPARE(tagmatch::key(QStringLiteral("Archive Plus")), QStringLiteral("archiveplus"));
         QCOMPARE(tagmatch::key(QStringLiteral("MÉM-MDK")), QStringLiteral("memmdk"));
         QCOMPARE(tagmatch::normalizeName(QStringLiteral("  Q4   tervezés ")), QStringLiteral("Q4 tervezés"));
-        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Museum Plus"), QStringLiteral("MuseumPlus")));
+        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Archive Plus"), QStringLiteral("ArchivePlus")));
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Termek"), QStringLiteral("Termék")));      // ugyanaz a kulcs
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordvk"), QStringLiteral("Nordvik")));     // 1 hiányzó betű
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordivk"), QStringLiteral("Nordvik")));    // szomszédos csere
@@ -59,7 +59,7 @@ private slots:
     {
         TagInputModel m;
         QCOMPARE(m.mode(), QStringLiteral("recent"));
-        QCOMPARE(names(m), QStringList({"Nordvik", "Q4 tervezés", "MuseumPlus", "Partnerek"}));
+        QCOMPARE(names(m), QStringList({"Nordvik", "Q4 tervezés", "Muzeo", "Partnerek"}));
         QCOMPARE(kinds(m), QStringList(4, QStringLiteral("recent")));
         QCOMPARE(m.rowData().first().count, 14);
         QCOMPARE(m.selectedRow(), 0);
@@ -71,7 +71,7 @@ private slots:
         TagInputModel m;
         m.setText(QStringLiteral("mu"));
         QCOMPARE(m.mode(), QStringLiteral("typing"));
-        QCOMPARE(names(m), QStringList({"MuseumPlus", "Múzeumi pályázat", "mu"}));
+        QCOMPARE(names(m), QStringList({"Muzeo", "Múzeumi pályázat", "mu"}));
         QCOMPARE(kinds(m), QStringList({"match", "match", "new"}));
         // A kiemelés az eredeti (ékezetes) névben: „Mú”.
         const QVariantMap second = m.rows().at(1).toMap();
@@ -119,19 +119,19 @@ private slots:
     void nearDuplicateOffersExistingFirst()
     {
         TagInputModel m;
-        m.setText(QStringLiteral("Museum Plus"));
+        m.setText(QStringLiteral("Muzeeo"));
         QCOMPARE(m.mode(), QStringLiteral("similar"));
         QCOMPARE(kinds(m), QStringList({"nearDuplicate", "forceNew"}));
-        QCOMPARE(names(m), QStringList({"MuseumPlus", "Museum Plus"}));
+        QCOMPARE(names(m), QStringList({"Muzeo", "Muzeeo"}));
         QCOMPARE(m.selectedRow(), 0);
 
         QSignalSpy chosen(&m, &TagInputModel::chosen);
         QVERIFY(m.chooseSelected());
-        QCOMPARE(chosen.at(0).at(0).toString(), QStringLiteral("MuseumPlus"));
+        QCOMPARE(chosen.at(0).at(0).toString(), QStringLiteral("Muzeo"));
         QCOMPARE(chosen.at(0).at(1).toBool(), false);
         m.move(1);
         QVERIFY(m.chooseSelected());
-        QCOMPARE(chosen.at(1).at(0).toString(), QStringLiteral("Museum Plus"));
+        QCOMPARE(chosen.at(1).at(0).toString(), QStringLiteral("Muzeeo"));
         QCOMPARE(chosen.at(1).at(1).toBool(), true);
 
         // Elírás is „hasonló”.
@@ -166,7 +166,7 @@ private slots:
     {
         TagInputModel m;
         m.setExcludeIds({QStringLiteral("t-nordvik"), QStringLiteral("t-q4")});
-        QCOMPARE(names(m), QStringList({"MuseumPlus", "Partnerek"}));
+        QCOMPARE(names(m), QStringList({"Muzeo", "Partnerek"}));
         m.setText(QStringLiteral("nord"));
         QCOMPARE(names(m), QStringList({"Nordvik AS", "nord"}));
         m.setExcludeIds({});

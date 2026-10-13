@@ -14,7 +14,7 @@ Rectangle {
     property var task: null
 
     readonly property var shown: task ? task : ({
-        kind: 5, title: "Résztvevők azonosítása…", detail: "3 / 5 beszélő", eta: "",
+        kind: 5, title: DemoText.t("Résztvevők azonosítása…", "Identifying participants…"), detail: DemoText.t("3 / 5 beszélő", "3 / 5 speakers"), eta: "",
         iconName: "fingerprint", percent: 60, cancellable: true, cancelling: false })
 
     implicitHeight: 44

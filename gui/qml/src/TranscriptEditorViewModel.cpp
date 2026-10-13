@@ -1,5 +1,7 @@
 #include "TranscriptEditorViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "ReviewQueueModel.h"
 #include "TagLearning.h"
@@ -3031,7 +3033,7 @@ void TranscriptEditorViewModel::stageS2Demo(const QString& state)
     auto keyOfPerson = [this](const QString& name) { return speakerKeyForPerson(name); };
     if (state == QLatin1String("ignoredRows")) {
         // Javítva + minta, Jó így + nem minta, két nem azonosítható sor.
-        const QString eszter = keyOfPerson(QStringLiteral("Molnár Eszter"));
+        const QString eszter = keyOfPerson(demoName("Molnár Eszter"));
         if (!eszter.isEmpty()) moveUtteranceToSpeaker(m_utts[3].id, eszter);
         confirmUtterance(m_utts[5].id, /*asNoisy*/ true);
         setUtteranceIgnored(m_utts[2].id, true);
@@ -3069,7 +3071,7 @@ void TranscriptEditorViewModel::stageS2Demo(const QString& state)
         }
         clearChange();
     } else if (state == QLatin1String("sampleFilter")) {
-        const QString gabor = keyOfPerson(QStringLiteral("Fehér Gábor"));
+        const QString gabor = keyOfPerson(demoName("Fehér Gábor"));
         showSessionSamples(gabor.isEmpty() ? m_laneKeys.value(0) : gabor);
     }
 }
@@ -3106,9 +3108,9 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         setRailVisible(true);
         setUncertainOnly(true);
     } else if (state == QLatin1String("search")) {
-        setSearchQuery(QStringLiteral("sugo"));
+        setSearchQuery(demoText("sugo", "help"));
     } else if (state == QLatin1String("searchEmpty")) {
-        setSearchQuery(QStringLiteral("zsiráf"));
+        setSearchQuery(demoText("zsiráf", "giraffe"));
     } else if (state == QLatin1String("rail")) {
         setRailVisible(true);
     } else if (state == QLatin1String("changeLine")) {
@@ -3125,13 +3127,13 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         moveSelectionToSpeaker(m_laneKeys.value(std::min<int>(2, int(m_laneKeys.size()) - 1)));
     } else if (state == QLatin1String("changeSpeaker")) {
         setRailVisible(true);
-        reassignSpeaker(m_laneKeys.value(0), QStringLiteral("Molnár Eszter"), false);
+        reassignSpeaker(m_laneKeys.value(0), demoName("Molnár Eszter"), false);
     } else if (state == QLatin1String("changeVoiceprint") || state == QLatin1String("changeVoiceprintDone")) {
         // Egy névtelen beszélő nevet kap (a személynek nincs lenyomata): a sáv felajánlja.
         setRailVisible(true);
         for (const EditorSpeaker& s : std::as_const(m_speakers)) {
             if (!s.anonymous || m_views.value(s.key).lane < 0) continue;
-            reassignSpeaker(s.key, QStringLiteral("Bálint Péter"), false);
+            reassignSpeaker(s.key, demoName("Bálint Péter"), false);
             break;
         }
         if (state == QLatin1String("changeVoiceprintDone")) createVoiceprintFromChange();
@@ -3141,13 +3143,13 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         for (const EditorSpeaker& s : std::as_const(m_speakers)) exists = exists || (!s.anonymous && !s.hasVoiceprint);
         for (const EditorSpeaker& s : std::as_const(m_speakers)) {
             if (exists || !s.anonymous) continue;
-            reassignSpeaker(s.key, QStringLiteral("Bálint Péter"), false);
+            reassignSpeaker(s.key, demoName("Bálint Péter"), false);
             break;
         }
         dismissChange();
     } else if (state == QLatin1String("voiceprintShort")) {
         // Egyetlen rövid sor egy új személynél: ebből nem készíthető lenyomat.
-        if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, QStringLiteral("Bálint Péter"));
+        if (m_utts.size() > 3) moveUtteranceToPerson(m_utts[3].id, demoName("Bálint Péter"));
         dismissChange();
     } else if (state == QLatin1String("recheck") || state == QLatin1String("recheckReady")) {
         // Beszélőnként 3 biztos sor megerősítve. recheckReady: a mostani bizonytalanok is
@@ -3213,7 +3215,7 @@ void TranscriptEditorViewModel::applyPendingDemoState()
         m_demoTagQuestion = state == QLatin1String("newPersonTag");
         if ((state == QLatin1String("newPersonSimilar") || m_demoTagQuestion) && m_utts.size() > 8) {
             setSelection({6, 7, 8}, 6);
-            moveSelectionToPerson(QStringLiteral("Nagy Péter"));
+            moveSelectionToPerson(demoName("Nagy Péter"));
             const int row = m_rows->nearestRow(6);
             if (row >= 0) emit revealRequested(row);
         }

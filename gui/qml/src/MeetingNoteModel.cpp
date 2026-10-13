@@ -1,5 +1,7 @@
 #include "MeetingNoteModel.h"
 
+#include "DemoText.h"
+
 #include "JobSupport.h"
 #include "ShellFormat.h"
 
@@ -194,11 +196,11 @@ QVariantList MeetingNoteModel::demoSuggestions()
                            {QStringLiteral("tags"), QStringList{QStringLiteral("Nordvik")}}};
     };
     return {
-        item(tr("Nordvik heti meeting"), tr("2026. szept. 29."),
-             tr("Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. "
-                "A „kvarc modul” helyesen: Qvarko-modul. Téma: a bevezetés ütemezése.")),
-        item(tr("Nordvik heti meeting – demó előtt"), tr("2026. szept. 22."),
-             tr("A „pixel tár” helyesen: PixelTár. Résztvevők: Kovács Anna, Szabó Bence.")),
+        item(demoText("Nordvik heti meeting", "Nordvik weekly meeting"), demoText("2026. szept. 29.", "Sep 29, 2026"),
+             demoText("Résztvevők: Kovács Anna, Szabó Bence, Lantos Réka. A „Nordwig” helyesen: Nordvik. "
+                "A „kvarc modul” helyesen: Qvarko-modul. Téma: a bevezetés ütemezése.", "Participants: Anna Carter, Noah Turner, Rachel Lane. “Nordwig” is really Nordvik. “quark module” is really Qvarko module. Topic: rollout schedule.")),
+        item(demoText("Nordvik heti meeting – demó előtt", "Nordvik weekly meeting – before the demo"), demoText("2026. szept. 22.", "Sep 22, 2026"),
+             demoText("A „pixel tár” helyesen: PixelTár. Résztvevők: Kovács Anna, Szabó Bence.", "“pixel vault” is really PixelVault. Participants: Anna Carter, Noah Turner.")),
     };
 }
 

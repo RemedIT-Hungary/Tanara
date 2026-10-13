@@ -1,4 +1,6 @@
 #include "SummaryViewModel.h"
+
+#include "DemoText.h"
 #include "tanara/Logging.h"
 
 #include "AppContext.h"
@@ -772,9 +774,9 @@ void SummaryViewModel::loadDemo()
     // --- kész összefoglaló ---
     m_hasSummary = true;
     m_speakers = {
-        {tr("Kovács Lilla"), tr("Kovács Lilla"), 0, 0.34}, {tr("Tóth Bence"), tr("Tóth Bence"), 1, 0.22},
-        {tr("Varga Nóra"), tr("Varga Nóra"), 2, 0.17},     {tr("Molnár Eszter"), tr("Molnár Eszter"), 3, 0.14},
-        {tr("Szabó Áron"), tr("Szabó Áron"), 4, 0.08},     {tr("Távoli 2"), QString(), 5, 0.05},
+        {demoName("Kovács Lilla"), demoName("Kovács Lilla"), 0, 0.34}, {demoName("Tóth Bence"), demoName("Tóth Bence"), 1, 0.22},
+        {demoName("Varga Nóra"), demoName("Varga Nóra"), 2, 0.17},     {demoName("Molnár Eszter"), demoName("Molnár Eszter"), 3, 0.14},
+        {demoName("Szabó Áron"), demoName("Szabó Áron"), 4, 0.08},     {demoRaw(QStringLiteral("Távoli 2")), QString(), 5, 0.05},
     };
     for (const SpeakerRef& s : std::as_const(m_speakers))
         m_participants << participantMap(s.name, s.colorIndex, int(s.share * 100.0 + 0.5));
@@ -797,10 +799,10 @@ void SummaryViewModel::loadDemo()
             tr("Mikorra frissül a partnerportál?"),
         };
     m_summary.actionItems = {
-        {tr("A súgóoldalak kiterjesztése a további termékekre: ütemterv"), tr("Kovács Lilla"), tr("okt. 15.")},
-        {tr("Számlázási elakadási pontok összegyűjtése"), tr("Varga Nóra"), tr("okt. 10.")},
-        {tr("Dokumentációs létszámigény a költségvetési tervbe"), tr("Szabó Áron"), tr("okt. 20.")},
-        {tr("Új-ügyfél bontás elküldése a partnereknek"), tr("Kovács Lilla"), tr("okt. 4.")},
+        {tr("A súgóoldalak kiterjesztése a további termékekre: ütemterv"), demoName("Kovács Lilla"), tr("okt. 15.")},
+        {tr("Számlázási elakadási pontok összegyűjtése"), demoName("Varga Nóra"), tr("okt. 10.")},
+        {tr("Dokumentációs létszámigény a költségvetési tervbe"), demoName("Szabó Áron"), tr("okt. 20.")},
+        {tr("Új-ügyfél bontás elküldése a partnereknek"), demoName("Kovács Lilla"), tr("okt. 4.")},
     };
     for (const SpeakerRef& s : std::as_const(m_speakers))
         m_summary.participants << s.name;
@@ -816,7 +818,7 @@ void SummaryViewModel::loadDemo()
                                  {QStringLiteral("due"), a.due}};
     m_execSummary = m_summary.execSummary;
     m_mode = old ? QStringLiteral("unknown") : QStringLiteral("quick");
-    m_metaLine = tr("okt. 1. 17:05") + QStringLiteral(" · ") + m_providerLabel;
+    m_metaLine = demoText("okt. 1. 17:05", "Oct 1, 5:05 PM") + QStringLiteral(" · ") + m_providerLabel;
     m_modelLine = old ? QString() : QStringLiteral("gemma-4-12b");
     m_stale = st == QLatin1String("stale");
     m_staleCount = m_stale ? 3 : 0;
@@ -840,7 +842,7 @@ void SummaryViewModel::loadDemo()
                         {QStringLiteral("openQuestions"), QStringList{tr("Legyen-e nyomtatható változata a súgóoldalaknak?")}},
                         {QStringLiteral("actions"), QVariantList{QVariantMap{
                              {QStringLiteral("text"), tr("Ütemterv a kiterjesztéshez")},
-                             {QStringLiteral("owner"), tr("Kovács Lilla")}, {QStringLiteral("due"), tr("okt. 15.")}}}}},
+                             {QStringLiteral("owner"), demoName("Kovács Lilla")}, {QStringLiteral("due"), tr("okt. 15.")}}}}},
             QVariantMap{{QStringLiteral("title"), tr("Számlázási folyamat")},
                         {QStringLiteral("detail"), tr("A partnerek szerint a gond nem a leírás, hanem maga a "
                                                       "folyamat: túl sok lépés, kevés visszajelzés.")},
@@ -858,31 +860,31 @@ void SummaryViewModel::loadDemoMemo(bool longForm)
     auto t = [](int m, int s) { return qint64(m * 60 + s) * 1000; };
     const QVector<Row> rows{
         {t(0, 0), t(2, 40), tr("Nyitás, napirend"),
-         {tr("Kovács Lilla összefoglalta a negyedév fő számait és a mai napirendet."),
+         {demoText("Kovács Lilla összefoglalta a negyedév fő számait és a mai napirendet.", "Emma Carter summed up the main figures of the quarter and today’s agenda."),
           tr("A partnerek kérték, hogy a számlázás külön napirendi pont legyen.")}},
         {t(2, 40), t(7, 15), tr("Támogatási jegyek alakulása"),
          {tr("A jegyek száma harmadával csökkent az előző negyedévhez képest."),
           tr("Az aktív felhasználók száma közben 12%-kal nőtt."),
           tr("A csökkenés nagyobb része a beállítási kérdéseknél jelentkezett.")}},
         {t(7, 15), t(12, 52), tr("A súgóoldalak hatása"),
-         {tr("Tóth Bence szerint a termékbe épített súgó a beállítási kérdések felét kiváltotta."),
+         {demoText("Tóth Bence szerint a termékbe épített súgó a beállítási kérdések felét kiváltotta.", "According to Ryan Mitchell, the in-product help replaced half of the setup questions."),
           tr("A partnerek ugyanezt tapasztalják a saját ügyfélszolgálatukon."),
           tr("A súgót a többi termékre is kiterjesztik.")}},
         {t(12, 52), t(17, 30), tr("A kiterjesztés sorrendje"),
          {tr("Elsőként a riportmodul kap súgóoldalakat, utána az integrációk."),
-          tr("Kovács Lilla október 15-ig ütemtervet készít.")}},
+          demoText("Kovács Lilla október 15-ig ütemtervet készít.", "Emma Carter prepares a schedule by October 15.")}},
         {t(17, 30), t(22, 5), tr("Számlázási panaszok"),
          {tr("A számlázási jegyek száma nem csökkent; a panaszok fele a számla módosításáról szól."),
-          tr("Varga Nóra szerint a leírás rendben van, a folyamat hosszú.")}},
+          demoText("Varga Nóra szerint a leírás rendben van, a folyamat hosszú.", "According to Olivia Grant, the documentation is fine; the process is long.")}},
         {t(22, 5), t(26, 40), tr("Folyamat vagy dokumentáció"),
          {tr("Két partner a lépések számát tartja a fő gondnak."),
           tr("Abban maradtak, hogy előbb a folyamatot egyszerűsítik, utána a leírást.")}},
         {t(26, 40), t(31, 10), tr("Elakadási pontok gyűjtése"),
-         {tr("Varga Nóra október 10-ig összegyűjti, hol akadnak el a felhasználók."),
+         {demoText("Varga Nóra október 10-ig összegyűjti, hol akadnak el a felhasználók.", "Olivia Grant collects where users get stuck by October 10."),
           tr("A gyűjtéshez a jegyek címkéit és a munkamenet-felvételeket használják.")}},
         {t(31, 10), t(35, 20), tr("Új ügyfelek bevezetése"),
          {tr("Az új ügyfelek az első két hétben háromszor annyi jegyet nyitnak."),
-          tr("Molnár Eszter bontást kért ügyféltípus szerint.")}},
+          demoText("Molnár Eszter bontást kért ügyféltípus szerint.", "Sophie Bennett asked for a breakdown by customer type.")}},
         {t(35, 20), t(39, 45), tr("Bevezető levelek"),
          {tr("A bevezető levelek megnyitási aránya 40% alatt van."),
           tr("Javaslat: a levelek a súgóoldalakra mutassanak, ne a dokumentációra.")}},
@@ -892,12 +894,12 @@ void SummaryViewModel::loadDemoMemo(bool longForm)
          {tr("Nem döntöttek; a nyomtatható változat igényét előbb felmérik.")}},
         {t(46, 50), t(51, 40), tr("Dokumentációs kapacitás"),
          {tr("A dokumentációs csapat két fővel dolgozik, ez a kiterjesztéshez kevés."),
-          tr("Szabó Áron szerint legalább egy fő kellene a következő félévre.")}},
+          demoText("Szabó Áron szerint legalább egy fő kellene a következő félévre.", "According to Lucas Reed, at least one more person is needed for the next half-year.")}},
         {t(51, 40), t(55, 15), tr("Költségvetési keret"),
          {tr("A létszámbővítés legkorábban a jövő évi tervben szerepelhet.")}},
         {t(55, 15), t(58, 40), tr("Döntés a létszámról"),
          {tr("A dokumentációs létszámról a költségvetési tervezés dönt."),
-          tr("Szabó Áron október 20-ig beadja az igényt.")}},
+          demoText("Szabó Áron október 20-ig beadja az igényt.", "Lucas Reed submits the request by October 20.")}},
         {t(58, 40), t(61, 30), tr("Külső szövegíró"),
          {tr("Átmeneti megoldásként felmerült egy külső szövegíró; nem döntöttek.")}},
         {t(61, 30), t(64, 10), tr("Mérőszámok"),
@@ -913,7 +915,7 @@ void SummaryViewModel::loadDemoMemo(bool longForm)
         {t(72, 30), t(73, 40), tr("Kapcsolattartók"),
          {tr("Minden partnernél egy állandó kapcsolattartó lesz.")}},
         {t(73, 40), t(74, 40), tr("Új-ügyfél bontás"),
-         {tr("Kovács Lilla október 4-ig elküldi a bontást a partnereknek.")}},
+         {demoText("Kovács Lilla október 4-ig elküldi a bontást a partnereknek.", "Emma Carter sends the breakdown to the partners by October 4.")}},
         {t(74, 40), t(75, 30), tr("Nyitva maradt ügyek"),
          {tr("Nyitva maradt a nyomtatható súgó és a külső szövegíró kérdése.")}},
         {t(75, 30), t(76, 4), tr("Zárás"),
@@ -1320,16 +1322,16 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     m_mode = QStringLiteral("quick");
     m_durationMs = t(131, 4);
     m_providerLabel = QStringLiteral("LM Studio");
-    m_metaDate = tr("okt. 1. 17:05");
+    m_metaDate = demoText("okt. 1. 17:05", "Oct 1, 5:05 PM");
     m_metaProvider = QStringLiteral("LM Studio");
     m_metaLine = m_metaDate + QStringLiteral(" · ") + m_metaProvider;
     m_modelLine = QStringLiteral("gemma-4-12b");
     m_sourceUtterances = 1298;
     m_transcriptLine = tr("Az átirat kész, %1 beszélő, %2 megszólalás.").arg(5).arg(1298);
     m_speakers = {
-        {tr("Kovács Lilla"), tr("Kovács Lilla"), 0, 0.22}, {tr("Fehér Gábor"), tr("Fehér Gábor"), 1, 0.26},
-        {tr("Varga Árpád"), tr("Varga Árpád"), 2, 0.19},   {tr("Molnár Eszter"), tr("Molnár Eszter"), 3, 0.15},
-        {tr("Távoli 1"), QString(), 5, 0.07},
+        {demoName("Kovács Lilla"), demoName("Kovács Lilla"), 0, 0.22}, {demoName("Fehér Gábor"), demoName("Fehér Gábor"), 1, 0.26},
+        {demoName("Varga Árpád"), demoName("Varga Árpád"), 2, 0.19},   {demoName("Molnár Eszter"), demoName("Molnár Eszter"), 3, 0.15},
+        {demoRaw(QStringLiteral("Távoli 1")), QString(), 5, 0.07},
     };
     m_participants.clear();
     for (const SpeakerRef& s : std::as_const(m_speakers))   // a design sorrendjében
@@ -1388,8 +1390,8 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         tr("A dokumentációs létszámról a költségvetési tervezés dönt."),
     };
     m_summary.actionItems = {
-        {tr("Számlázási súgó első változata a dokumentációs csapattal"), tr("Fehér Gábor"), tr("okt. 15.")},
-        {tr("Díjbekérő-kérdések külön kezelése a súgóban"), tr("Molnár Eszter"), tr("okt. 22.")},
+        {tr("Számlázási súgó első változata a dokumentációs csapattal"), demoName("Fehér Gábor"), tr("okt. 15.")},
+        {tr("Díjbekérő-kérdések külön kezelése a súgóban"), demoName("Molnár Eszter"), tr("okt. 22.")},
     };
     for (const SpeakerRef& s : std::as_const(m_speakers))
         m_summary.participants << s.name;
@@ -1402,8 +1404,8 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         statement(QStringLiteral("d1"), StatementKind::Decision, m_summary.decisions.at(0), {span({t(22, 52)})}),
         statement(QStringLiteral("d2"), StatementKind::Decision, m_summary.decisions.at(1), {span({t(31, 10)}), span({t(33, 40)})}),
         statement(QStringLiteral("d3"), StatementKind::Decision, m_summary.decisions.at(2), {span({t(58, 40)})}),
-        statement(QStringLiteral("t1"), StatementKind::Todo, m_summary.actionItems.at(0).text, {span({t(13, 1)})}, tr("Fehér Gábor")),
-        statement(QStringLiteral("t2"), StatementKind::Todo, m_summary.actionItems.at(1).text, {span({t(47, 2)})}, tr("Molnár Eszter")),
+        statement(QStringLiteral("t1"), StatementKind::Todo, m_summary.actionItems.at(0).text, {span({t(13, 1)})}, demoName("Fehér Gábor")),
+        statement(QStringLiteral("t2"), StatementKind::Todo, m_summary.actionItems.at(1).text, {span({t(47, 2)})}, demoName("Molnár Eszter")),
     };
 
     if (state == QLatin1String("staleTargeted")) {
@@ -1411,9 +1413,9 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         m_stale = true;
         m_staleCount = 3;
         m_staleTargeted = true;
-        sts[2].staleBecause = QStringList{tr("Fehér Gábor → Varga Árpád?")};
-        sts[7].staleBecause = QStringList{tr("Fehér Gábor → Varga Árpád?")};
-        sts[7].ownerStaleBecause = tr("Fehér Gábor → Varga Árpád?");
+        sts[2].staleBecause = QStringList{demoText("Fehér Gábor → Varga Árpád?", "Daniel Hughes → James Walker?")};
+        sts[7].staleBecause = QStringList{demoText("Fehér Gábor → Varga Árpád?", "Daniel Hughes → James Walker?")};
+        sts[7].ownerStaleBecause = demoText("Fehér Gábor → Varga Árpád?", "Daniel Hughes → James Walker?");
         m_affectedStatements = 1;
         m_affectedTodos = 1;
         m_ownerChanges = 1;
@@ -1430,11 +1432,11 @@ void SummaryViewModel::loadDemoSources(const QString& state)
 
     // Memó: hét szakasz (a 3. a kiemelt), bevezetővel és alszakaszokkal (S2).
     struct Sec { qint64 from; qint64 to; QString title; QStringList speakers; QStringList points; };
-    const QString lilla = tr("Kovács Lilla"), gabor = tr("Fehér Gábor"), arpad = tr("Varga Árpád"),
-                  eszter = tr("Molnár Eszter"), tavoli = tr("Távoli 1");
+    const QString lilla = demoName("Kovács Lilla"), gabor = demoName("Fehér Gábor"), arpad = demoName("Varga Árpád"),
+                  eszter = demoName("Molnár Eszter"), tavoli = demoRaw(QStringLiteral("Távoli 1"));
     const QVector<Sec> secs{
         {t(0, 0), t(12, 30), tr("Nyitás, Q3 számok"), {lilla, gabor},
-         {tr("Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak."),
+         {demoText("Kovács Lilla összefoglalta a negyedév számait: a jegyek harmadával kevesebbek, az aktív felhasználók 12%-kal többen vannak.", "Emma Carter summarized the quarter's numbers: tickets are down by a third, active users are up 12%."),
           tr("A partnerek kérték, hogy a számlázás külön napirendi pont legyen.")}},
         {t(12, 30), t(31, 10), tr("Súgóoldalak"), {gabor, arpad, lilla},
          {tr("A júliusban élesített súgóoldalak az első hat hétben a keresések kétharmadát lezárták."),
@@ -1453,16 +1455,16 @@ void SummaryViewModel::loadDemoSources(const QString& state)
         {t(92, 10), t(115, 50), tr("Költségvetés"), {lilla, arpad, gabor},
          {tr("A dokumentációs létszámról a költségvetési tervezés dönt.")}},
         {t(115, 50), t(131, 4), tr("Lezárás, teendők"), {lilla, gabor, eszter},
-         {tr("Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát."),
-          tr("Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.")}},
+         {demoText("Fehér Gábor október 15-ig elkészíti a számlázási súgó első változatát.", "Daniel Hughes will finish the first version of the billing help by October 15."),
+          demoText("Molnár Eszter október 22-ig kidolgozza a díjbekérő-kérdések külön kezelését.", "Sophie Bennett will work out the separate handling of proforma invoice questions by October 22.")}},
     };
     for (const Sec& s : secs)
         m_summary.memo.append({s.title, s.from, s.to, s.points, s.speakers});
     // A 3. szakasz: kétmondatos bevezető, „Elhangzott érvek” és „Nyitott kérdés” alszakasz.
     MemoSection& third = m_summary.memo[2];
-    third.intro = tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.")
+    third.intro = demoText("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.", "According to Emma Carter, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic.")
                 + QLatin1Char(' ')
-                + tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.");
+                + demoText("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.", "Daniel Hughes took on the first version, but asks for two weeks of documentation capacity.");
     third.pointGroups = QStringList{QStringLiteral("arguments"), QStringLiteral("arguments"),
                                     QStringLiteral("arguments"), QStringLiteral("open")};
     m_summary.memo[0].intro = tr("A negyedév számai jók, a számlázás külön napirendi pontot kapott.");
@@ -1475,10 +1477,10 @@ void SummaryViewModel::loadDemoSources(const QString& state)
     memoSt(QStringLiteral("m2.1"), StatementKind::MemoPoint, m_summary.memo[1].points.at(0), {span({t(4, 18)})});
     memoSt(QStringLiteral("m2.2"), StatementKind::MemoPoint, m_summary.memo[1].points.at(1), {span({t(22, 52)})});
     memoSt(QStringLiteral("i3.1"), StatementKind::MemoIntro,
-           tr("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja."),
+           demoText("Kovács Lilla szerint a számlázási kérdések a jegyek felét teszik ki a Nordvik-ügyfeleknél, ezért a következő súgó-témának ezt javasolja.", "According to Emma Carter, billing questions make up half the tickets for Nordvik customers, so she suggests it as the next help topic."),
            {span({t(31, 10)})});
     memoSt(QStringLiteral("i3.2"), StatementKind::MemoIntro,
-           tr("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá."),
+           demoText("Fehér Gábor vállalta az első változatot, de két hét dokumentációs kapacitást kér hozzá.", "Daniel Hughes took on the first version, but asks for two weeks of documentation capacity."),
            {span({t(33, 40)})});
     memoSt(QStringLiteral("m3.1"), StatementKind::MemoPoint, third.points.at(0), {span({t(36, 2)})});
     memoSt(QStringLiteral("m3.2"), StatementKind::MemoPoint, third.points.at(1), {span({t(39, 20)}), span({t(41, 5)})});

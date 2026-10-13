@@ -1,5 +1,7 @@
 #include "ShellImportModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "JobSupport.h"
 #include "ShellFormat.h"
@@ -596,28 +598,28 @@ void ShellImportModel::loadDemo()
     m_running = m_cancelling = false;
     m_titleEdited = m_dateEdited = false;
 
-    const QString dir = QStringLiteral("/home/minta/Felvételek/");
+    const QString dir = demoText("/home/minta/Felvételek/", "/home/sample/Recordings/");
     if (m_demoState == QLatin1String("split")) {
-        m_rows << file(dir + QStringLiteral("Interjú – Varga Nóra.wav"), 2538000, 2, 447000000);
+        m_rows << file(dir + demoText("Interjú – Varga Nóra.wav", "Interview – Olivia Grant.wav"), 2538000, 2, 447000000);
         m_rows.last().split = true;
         m_ownTrack = 0;
     } else if (m_demoState == QLatin1String("probing")) {
-        m_rows << file(dir + QStringLiteral("Fókuszcsoport 3 – terem.wav"), 4561000, 2, 803000000);
+        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000);
         Row r;
-        r.path = dir + QStringLiteral("Fókuszcsoport 3 – moderátor.m4a");
+        r.path = dir + demoText("Fókuszcsoport 3 – moderátor.m4a", "Focus group 3 – moderator.m4a");
         m_rows << r;
     } else if (m_demoState == QLatin1String("error")) {
-        m_rows << file(dir + QStringLiteral("Fókuszcsoport 3 – terem.wav"), 4561000, 2, 803000000);
+        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000);
         Row r;
-        r.path = dir + QStringLiteral("jegyzetek.pdf");
+        r.path = dir + demoText("jegyzetek.pdf", "notes.pdf");
         r.probed = true;
         r.info.path = r.path;
-        r.info.error = tr("Nem hang- vagy videófájl (nem olvasható be): %1").arg(QStringLiteral("jegyzetek.pdf"));
+        r.info.error = tr("Nem hang- vagy videófájl (nem olvasható be): %1").arg(demoText("jegyzetek.pdf", "notes.pdf"));
         m_rows << r;
     } else if (!m_demoState.isEmpty()) {   // "files", "progress"
-        m_rows << file(dir + QStringLiteral("Fókuszcsoport 3 – terem.wav"), 4561000, 2, 803000000)
-               << file(dir + QStringLiteral("Fókuszcsoport 3 – moderátor.m4a"), 4558000, 1, 36400000)
-               << file(dir + QStringLiteral("Fókuszcsoport 3 – kamera.mp4"), 4570000, 2, 1932000000, true);
+        m_rows << file(dir + demoText("Fókuszcsoport 3 – terem.wav", "Focus group 3 – room.wav"), 4561000, 2, 803000000)
+               << file(dir + demoText("Fókuszcsoport 3 – moderátor.m4a", "Focus group 3 – moderator.m4a"), 4558000, 1, 36400000)
+               << file(dir + demoText("Fókuszcsoport 3 – kamera.mp4", "Focus group 3 – camera.mp4"), 4570000, 2, 1932000000, true);
     }
     refreshDefaults();
     // Kitalált címke és javaslat (T09).
@@ -625,18 +627,18 @@ void ShellImportModel::loadDemo()
     m_suggestions.clear();
     m_dismissed.clear();
     if (m_demoState == QLatin1String("files") || m_demoState == QLatin1String("progress")) {
-        m_tags.append({QStringLiteral("t-kutatas"), QStringLiteral("Kutatás")});
+        m_tags.append({QStringLiteral("t-kutatas"), demoText("Kutatás", "Research")});
         Suggestion sug;
-        sug.name = QStringLiteral("Fókuszcsoportok 2026");
+        sug.name = demoText("Fókuszcsoportok 2026", "Focus groups 2026");
         sug.id = QStringLiteral("t-fokusz2026");
         sug.source = QStringLiteral("similar");
-        sug.reason = tr("hasonló cím: „%1”").arg(QStringLiteral("Fókuszcsoport 2"));
+        sug.reason = tr("hasonló cím: „%1”").arg(demoText("Fókuszcsoport 2", "Focus group 2"));
         m_suggestions.append(sug);
     }
     emit tagsChanged();
     emit suggestionsChanged();
     if (m_demoState == QLatin1String("failed"))
-        m_error = tr("Nem sikerült beolvasni: %1").arg(QStringLiteral("Fókuszcsoport 3 – kamera.mp4"));
+        m_error = tr("Nem sikerült beolvasni: %1").arg(demoText("Fókuszcsoport 3 – kamera.mp4", "Focus group 3 – camera.mp4"));
     if (m_demoState == QLatin1String("progress")) {
         m_running = true;
         m_percent = 42;

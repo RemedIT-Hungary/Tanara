@@ -70,11 +70,11 @@ private slots:
         QCOMPARE(d.value("meetingsMeta").toString(), QStringLiteral("14 · legújabb elöl"));
 
         QSignalSpy detail(&vm, &TagsViewModel::detailChanged);
-        vm.setSelectedId("t-museumplus");
+        vm.setSelectedId("t-muzeo");
         QCOMPARE(detail.count(), 1);
-        QCOMPARE(vm.detail().value("name").toString(), QStringLiteral("MuseumPlus"));
+        QCOMPARE(vm.detail().value("name").toString(), QStringLiteral("Muzeo"));
         vm.setSelectedId("nincs-ilyen");
-        QCOMPARE(vm.selectedId(), QStringLiteral("t-museumplus"));
+        QCOMPARE(vm.selectedId(), QStringLiteral("t-muzeo"));
     }
 
     void sortAndSearch()

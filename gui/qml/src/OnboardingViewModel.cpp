@@ -1,5 +1,7 @@
 #include "OnboardingViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "SettingsDialogs.h"
 
@@ -469,8 +471,8 @@ QString OnboardingViewModel::defaultFolder(const QString& key) const
 {
     if (!m_controller) {
         // Demó: a kitalált felhasználó alapértelmezett mappái.
-        return key == QLatin1String("audio") ? QStringLiteral("/home/lilla/Tanara/felvetelek")
-                                             : QStringLiteral("/home/lilla/Tanara/jegyzetek");
+        return key == QLatin1String("audio") ? demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings")
+                                             : demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
     }
     return key == QLatin1String("audio") ? paths::defaultAudioDir() : paths::defaultNotesDir();
 }
@@ -609,10 +611,10 @@ QString OnboardingViewModel::autostartNote() const
 void OnboardingViewModel::loadDemo()
 {
     AppSettings s;
-    s.userSpeakerName = QStringLiteral("Kovács Lilla");
-    s.audioDir = QStringLiteral("/home/lilla/Tanara/felvetelek");
-    s.notesDir = QStringLiteral("/home/lilla/Obsidian/Megbeszélések");
-    s.metadataDir = QStringLiteral("/home/lilla/.tanara");
+    s.userSpeakerName = demoName("Kovács Lilla");
+    s.audioDir = demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings");
+    s.notesDir = demoText("/home/lilla/Obsidian/Megbeszélések", "/home/emma/Obsidian/Meetings");
+    s.metadataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
     s.uiLanguage = QStringLiteral("auto");
     s.watcherAutostart = true;
     m_base = m_draft = s;

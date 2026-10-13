@@ -1,5 +1,7 @@
 #include "PersonListModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "TranscriptEditorViewModel.h"
 
@@ -113,7 +115,7 @@ QVector<PersonInfo> demoPeople()
     QVector<PersonInfo> out;
     for (const auto& [name, n] : rows) {
         PersonInfo p;
-        p.name = QString::fromUtf8(name);
+        p.name = demoName(name);
         p.meetingCount = n;
         p.hasVoiceprint = n > 2;
         out.append(p);

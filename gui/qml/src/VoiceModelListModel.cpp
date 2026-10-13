@@ -1,5 +1,7 @@
 #include "VoiceModelListModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "SettingsViewModel.h"
 
@@ -344,11 +346,11 @@ void VoiceModelListModel::loadDemo(const QString& state)
         // Kitalált kimaradt minták (személy, minta, ok).
         const QString missing = reasonText(VoiceprintBackfillSkip::Reason::MissingAudio);
         m_bfSkips = {
-            skipEntry(QStringLiteral("Nagy Péter"), tr("Partnerdemó – adatimport") + QStringLiteral(" · 12:40–12:52"), missing,
+            skipEntry(demoName("Nagy Péter"), demoText("Partnerdemó – adatimport", "Partner demo – data import") + QStringLiteral(" · 12:40–12:52"), missing,
                       QStringLiteral("WeSpeaker")),
-            skipEntry(QStringLiteral("Szabó Bence"), tr("Heti egyeztetés") + QStringLiteral(" · 3:05–3:14"), missing,
+            skipEntry(demoName("Szabó Bence"), demoText("Heti egyeztetés", "Weekly sync") + QStringLiteral(" · 3:05–3:14"), missing,
                       QStringLiteral("WeSpeaker")),
-            skipEntry(QStringLiteral("Szabó Bence"), tr("törölt megbeszélés") + QStringLiteral(" · 0:42–0:50"),
+            skipEntry(demoName("Szabó Bence"), tr("törölt megbeszélés") + QStringLiteral(" · 0:42–0:50"),
                       reasonText(VoiceprintBackfillSkip::Reason::MissingMeeting), QStringLiteral("WeSpeaker")),
         };
         m_bfState.clear();   // a lista is változott: mindenképp jelezzünk

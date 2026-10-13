@@ -11,7 +11,7 @@ Rectangle {
     signal clicked()
 
     readonly property int percent: model ? model.percent : 42
-    readonly property string title: model ? model.runningTitle : "Fókuszcsoport 3"
+    readonly property string title: model ? model.runningTitle : DemoText.t("Fókuszcsoport 3", "Focus group 3")
     readonly property bool cancelling: model ? model.cancelling : false
 
     implicitHeight: 52

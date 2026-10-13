@@ -9,6 +9,7 @@
 // megbeszéléseinek ≥ 50 %-a) számolódik, és minden csoport egy visszavonható lépés
 // (pillanatkép-alapú verem, legfeljebb 50).
 //
+#include "DemoText.h"
 #include "TagBackend.h"
 
 #include <QHash>
@@ -54,7 +55,7 @@ public:
     void undo() override;
 
     // Személyek (a design-csomagok kitalált nevei; a saját személy: Kovács Lilla).
-    QString selfName() const override { return QStringLiteral("Kovács Lilla"); }
+    QString selfName() const override { return demoName("Kovács Lilla"); }
     QStringList tagsOfPerson(const QString& name) const override;
     QString addPersonTag(const QString& name, const QString& nameOrId) override;
     void removePersonTag(const QString& name, const QString& tagId) override;

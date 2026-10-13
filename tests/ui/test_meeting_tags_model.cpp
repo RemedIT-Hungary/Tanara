@@ -2,7 +2,7 @@
 //  - controller nélkül a T01 sorai (none … llm, why), a feliratok a forrás szerint;
 //  - elfogadás / elutasítás / „Mind” / eltávolítás: egy-egy visszavonható lépés a
 //    lépés nevével (toast), a visszavonás után a javaslat visszajön;
-//  - kézi hozzáadás után együtt járó javaslat („MuseumPlus mellé gyakran”);
+//  - kézi hozzáadás után együtt járó javaslat („Muzeo mellé gyakran”);
 //  - a varrat: ál-backenddel a hívások (forrás: kézi / javaslat / nyelvi modell), az elutasítottak
 //    és a már felrakottak kiszűrése.
 #include "AppContext.h"
@@ -63,9 +63,9 @@ private slots:
         QCOMPARE(m.suggestionSource(), QStringLiteral("similar"));
 
         m.setDemoState("cooccur");
-        QCOMPARE(tagNames(m), QStringList({"MuseumPlus"}));
+        QCOMPARE(tagNames(m), QStringList({"Muzeo"}));
         QCOMPARE(suggestionNames(m), QStringList({"MÉM-MDK", "Gyűjteménykezelés"}));
-        QCOMPARE(m.suggestionLabel(), QStringLiteral("MuseumPlus mellé gyakran"));
+        QCOMPARE(m.suggestionLabel(), QStringLiteral("Muzeo mellé gyakran"));
 
         m.setDemoState("llm");
         QCOMPARE(m.suggestionLabel(), QStringLiteral("Az összefoglaló alapján"));
@@ -162,12 +162,12 @@ private slots:
     {
         MeetingTagsModel m;
         m.setDemoState("few");
-        const QString id = m.add(QStringLiteral("museumplus"));      // név szerint, kisbetűvel is
-        QCOMPARE(id, QStringLiteral("t-museumplus"));
-        QCOMPARE(tagNames(m), QStringList({"Nordvik", "Partnerek", "MuseumPlus"}));
-        QCOMPARE(m.suggestionLabel(), QStringLiteral("MuseumPlus mellé gyakran"));
+        const QString id = m.add(QStringLiteral("muzeo"));      // név szerint, kisbetűvel is
+        QCOMPARE(id, QStringLiteral("t-muzeo"));
+        QCOMPARE(tagNames(m), QStringList({"Nordvik", "Partnerek", "Muzeo"}));
+        QCOMPARE(m.suggestionLabel(), QStringLiteral("Muzeo mellé gyakran"));
         QCOMPARE(suggestionNames(m), QStringList({"MÉM-MDK", "Gyűjteménykezelés"}));
-        QCOMPARE(m.undoLabel(), QStringLiteral("Címke hozzáadva: #MuseumPlus"));
+        QCOMPARE(m.undoLabel(), QStringLiteral("Címke hozzáadva: #Muzeo"));
 
         // Ami már rajta van, nem kerül fel újra; új név létrejön.
         QCOMPARE(m.add(QStringLiteral("Nordvik")), QStringLiteral("t-nordvik"));
@@ -177,7 +177,7 @@ private slots:
         QVERIFY(m.add(QStringLiteral("   ")).isEmpty());
 
         m.remove(QStringLiteral("t-nordvik"));
-        QCOMPARE(tagNames(m), QStringList({"Partnerek", "MuseumPlus", "Pilot 2027"}));
+        QCOMPARE(tagNames(m), QStringList({"Partnerek", "Muzeo", "Pilot 2027"}));
         QCOMPARE(m.undoLabel(), QStringLiteral("Címke eltávolítva: #Nordvik"));
         m.undo();
         QCOMPARE(tagNames(m).first(), QStringLiteral("Nordvik"));

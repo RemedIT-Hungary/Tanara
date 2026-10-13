@@ -1,5 +1,7 @@
 #include "LibraryDemoData.h"
 
+#include "DemoText.h"
+
 #include "tanara/library/TextFold.h"
 #include "tanara/tags/TagNames.h"
 
@@ -28,14 +30,19 @@ struct Row {
     const char* people;     // vesszővel elválasztva
     const char* text;
     const char* tags;       // címke-azonosítók vesszővel (a kitalált készletből, lásd kTags)
+    const char* titleEn;    // angol demo-nyelvnél (a nevek a DemoText névpárjaiból jönnek)
+    const char* textEn;
 };
 
 // A kitalált címkekészlet (ugyanazok az azonosítók és nevek, mint a TagDemoBackend-ben).
-const char* const kTags[][2] = {
-    {"t-nordvik", "Nordvik"}, {"t-q4", "Q4 tervezés"}, {"t-termek", "Termék"},
-    {"t-partnerek", "Partnerek"}, {"t-belso", "Belső"}, {"t-museumplus", "MuseumPlus"},
-    {"t-mem", "MÉM-MDK"}, {"t-gyujtemeny", "Gyűjteménykezelés"}, {"t-ugyfel", "Ügyféltámogatás"},
-    {"t-palyazat", "Múzeumi pályázat"}, {"t-nordvikas", "Nordvik AS"}, {"t-kutatas", "Kutatás"},
+// A harmadik oszlop az angol demo-nyelv neve.
+const char* const kTags[][3] = {
+    {"t-nordvik", "Nordvik", "Nordvik"}, {"t-q4", "Q4 tervezés", "Q4 planning"},
+    {"t-termek", "Termék", "Product"}, {"t-partnerek", "Partnerek", "Partners"},
+    {"t-belso", "Belső", "Internal"}, {"t-muzeo", "Muzeo", "Muzeo"},
+    {"t-mem", "MÉM-MDK", "Heritage Lab"}, {"t-gyujtemeny", "Gyűjteménykezelés", "Collections"},
+    {"t-ugyfel", "Ügyféltámogatás", "Customer support"}, {"t-palyazat", "Múzeumi pályázat", "Museum grant"},
+    {"t-nordvikas", "Nordvik AS", "Nordvik AS"}, {"t-kutatas", "Kutatás", "Research"},
 };
 
 // A design-renderek (M02 / M05) könyvtára + néhány régebbi elem a görgetéshez.
@@ -44,57 +51,81 @@ const Row kRows[] = {
      StepState::Done, StepState::Done, StepState::None, false, 4, 3,
      "Kovács Lilla,Tóth Bence,Varga Nóra",
      "A bevezetés csúszik egy hetet, ezért jeleznünk kell, hogy csúszik a demó? Szerintem igen, még ma.",
-     "t-termek,t-q4"},
+     "t-termek,t-q4",
+     "Product team weekly sync",
+     "The launch is slipping a week, so should we tell them the demo is slipping too? I'd say yes, today."},
     {"demo-tamogatas", "Ügyféltámogatás átadás", "2026-10-02T11:00:00", 52, 10,
      StepState::None, StepState::None, StepState::None, false, 0, 3,
      "Kovács Lilla", "",
-     "t-nordvik"},
+     "t-nordvik",
+     "Customer support handover",
+     ""},
     {"demo-partner", "Negyedéves partnertalálkozó", "2026-10-01T09:30:00", 76, 4,
      StepState::Done, StepState::Done, StepState::Done, true, 6, 4,
      "Kovács Lilla,Tóth Bence,Varga Nóra,Molnár Eszter,Szabó Áron",
      "Az összesítőt a pénteki demó után küldjük ki a partnereknek, addigra a számok is véglegesek.",
-     "t-nordvik,t-partnerek,t-q4"},
+     "t-nordvik,t-partnerek,t-q4",
+     "Quarterly partner review",
+     "We'll send the summary to the partners after Friday's demo, by then the numbers will be final too."},
     {"demo-bemutato", "Termékbemutató, 2. kör", "2026-09-30T15:00:00", 44, 2,
      StepState::Failed, StepState::None, StepState::None, false, 0, 2,
      "Varga Nóra",
      "Azt javaslom, hogy a demó előtt még egyszer végigmegyünk a teljes forgatókönyvön.",
-     "t-museumplus,t-mem,t-gyujtemeny"},
+     "t-muzeo,t-mem,t-gyujtemeny",
+     "Product demo, round 2",
+     "I suggest we go through the whole script once more before the demo."},
     {"demo-arazas", "Árazás egyeztetés", "2026-09-29T15:00:00", 27, 41,
      StepState::Done, StepState::Done, StepState::Done, false, 3, 2,
      "Kovács Lilla,Szabó Áron",
      "Az éves csomag árát a Nordvik-szerződés megújítása előtt még egyeztetjük.",
-     ""},
+     "",
+     "Pricing discussion",
+     "We'll agree on the annual plan price before the Nordvik contract renewal."},
     {"demo-belepo", "Nordvik heti meeting", "2026-09-29T10:30:00", 55, 12,
      StepState::Done, StepState::None, StepState::None, false, 2, 2,
      "Tóth Bence", "Az ütemtervet a jövő héten véglegesítjük a skandináv csapattal.",
-     "t-nordvik"},
+     "t-nordvik",
+     "Nordvik weekly meeting",
+     "We'll finalize the roadmap with the Scandinavian team next week."},
     {"demo-infra", "Infrastruktúra áttekintés", "2026-09-25T10:00:00", 41, 27,
      StepState::Done, StepState::Done, StepState::None, false, 5, 3,
      "Molnár Eszter", "A mentések visszaállítását negyedévente ki kell próbálni.",
-     "t-belso"},
+     "t-belso",
+     "Infrastructure review",
+     "Restoring from backups has to be tested every quarter."},
     {"demo-tervezes", "Heti tervezés", "2026-09-24T09:00:00", 33, 5,
      StepState::Done, StepState::Done, StepState::Done, false, 4, 2,
      "Kovács Lilla,Tóth Bence", "A sprint célja a keresés gyorsítása és a hibalista kiürítése.",
-     "t-belso,t-q4"},
+     "t-belso,t-q4",
+     "Weekly planning",
+     "The sprint goal is faster search and an empty bug list."},
     {"demo-ugyfel", "Ügyfélinterjú: kisvállalati csomag", "2026-09-22T13:00:00", 38, 49,
      StepState::Done, StepState::Done, StepState::None, false, 2, 2,
      "Varga Nóra", "A számlázás exportja a legfontosabb kérés, minden más ráér.",
-     "t-ugyfel"},
+     "t-ugyfel",
+     "Customer interview: small business plan",
+     "Billing export is the most important request, everything else can wait."},
     {"demo-retro", "Retrospektív", "2026-09-18T15:00:00", 47, 20,
      StepState::Done, StepState::None, StepState::Done, false, 5, 3,
      "Kovács Lilla,Tóth Bence,Szabó Áron", "A kiadás előtti tesztelésre több időt kell hagyni.",
-     "t-belso"},
+     "t-belso",
+     "Retrospective",
+     "We need to leave more time for testing before the release."},
     {"demo-vezetoi", "Vezetői egyeztetés", "2026-09-15T08:30:00", 62, 0,
      StepState::Done, StepState::Done, StepState::Done, false, 3, 2,
      "Molnár Eszter,Szabó Áron", "A létszámterv a költségvetéssel együtt kerül a testület elé.",
-     ""},
+     "",
+     "Leadership sync",
+     "The headcount plan goes to the board together with the budget."},
     {"demo-ux", "UX-áttekintés: beállítások", "2026-09-11T10:00:00", 25, 30,
      StepState::Done, StepState::Done, StepState::None, false, 3, 2,
      "Varga Nóra,Tóth Bence", "A beállításokat három csoportba rendezzük, a ritkák lejjebb kerülnek.",
-     "t-termek"},
+     "t-termek",
+     "UX review: settings",
+     "We'll sort the settings into three groups and move the rarely used ones further down."},
 };
 
-QVector<DemoMeeting> build()
+QVector<DemoMeeting> build(bool en)
 {
     QVector<DemoMeeting> out;
     const QDate today = now().date();
@@ -102,13 +133,13 @@ QVector<DemoMeeting> build()
         DemoMeeting d;
         tanara::LibraryEntry& e = d.entry;
         e.id = QString::fromLatin1(r.id);
-        e.title = QString::fromUtf8(r.title);
+        e.title = QString::fromUtf8(en ? r.titleEn : r.title);
         e.startedAt = QDateTime::fromString(QString::fromLatin1(r.date), Qt::ISODate);
         e.durationMs = (qint64(r.minutes) * 60 + r.seconds) * 1000;
         e.hasTranscript = r.transcript == StepState::Done;
         e.hasSummary = r.summary == StepState::Done;
         e.section = tanara::MeetingLibrary::sectionFor(e.startedAt, today);
-        e.participants = QString::fromUtf8(r.people).split(QLatin1Char(','), Qt::SkipEmptyParts);
+        e.participants = demotext::names(QString::fromUtf8(r.people).split(QLatin1Char(','), Qt::SkipEmptyParts));
         e.state.meetingId = e.id;
         e.state.transcriptState = r.transcript;
         e.state.summaryState = r.summary;
@@ -117,13 +148,14 @@ QVector<DemoMeeting> build()
         e.state.staleCorrectedSpeakers = r.stale ? 3 : 0;
         if (r.transcript == StepState::Failed) {
             e.state.transcriptError.kind = tanara::JobKind::Transcribe;
-            e.state.transcriptError.message = QStringLiteral(
-                "A szolgáltató elutasította a kérést: az API-kulcs érvénytelen vagy lejárt.");
+            e.state.transcriptError.message = demoText(
+                "A szolgáltató elutasította a kérést: az API-kulcs érvénytelen vagy lejárt.",
+                "The provider rejected the request: the API key is invalid or has expired.");
             e.state.transcriptError.detail = QStringLiteral("HTTP 401 · invalid_api_key");
             e.state.transcriptError.fixActionHint = QStringLiteral("settings:stt");
             e.state.transcriptError.when = e.startedAt.addSecs(102 * 60);
         }
-        d.text = QString::fromUtf8(r.text);
+        d.text = QString::fromUtf8(en ? r.textEn : r.text);
         d.speakers = r.speakers;
         d.tracks = r.tracks;
         out.append(d);
@@ -139,13 +171,15 @@ struct TagState {
     QVector<DemoTag> catalog;
     QHash<QString, QStringList> assigned;
     int created = 0;
+    QString language;   // a demo-nyelv, amelyen a nevek készültek
 };
 
 TagState initialTags()
 {
     TagState st;
+    st.language = demotext::language();
     for (const auto& t : kTags)
-        st.catalog.append({QString::fromLatin1(t[0]), QString::fromUtf8(t[1])});
+        st.catalog.append({QString::fromLatin1(t[0]), QString::fromUtf8(demotext::english() ? t[2] : t[1])});
     for (const Row& r : kRows)
         st.assigned.insert(QString::fromLatin1(r.id),
                            QString::fromLatin1(r.tags).split(QLatin1Char(','), Qt::SkipEmptyParts));
@@ -155,6 +189,7 @@ TagState initialTags()
 TagState& tagState()
 {
     static TagState st = initialTags();
+    if (st.language != demotext::language()) st = initialTags();   // tesztek nyelvváltása
     return st;
 }
 
@@ -179,8 +214,11 @@ QDateTime now()
 
 const QVector<DemoMeeting>& meetings()
 {
-    static const QVector<DemoMeeting> all = build();
-    return all;
+    // Nyelvenként (a tesztek a demo-nyelvet futás közben is átállíthatják).
+    static const QVector<DemoMeeting> hu = build(false);
+    if (!demotext::english()) return hu;
+    static const QVector<DemoMeeting> en = build(true);
+    return en;
 }
 
 const DemoMeeting* find(const QString& meetingId)

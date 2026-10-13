@@ -1,5 +1,7 @@
 #include "TranscriptDemoSession.h"
 
+#include "DemoText.h"
+
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
@@ -83,6 +85,167 @@ private:
 
 qint64 ts(int min, int sec) { return (qint64(min) * 60 + sec) * 1000; }
 
+// A forgatókönyv-sorok angol párjai (angol UI-nál a szegmensekbe ez kerül). A sorok IDŐZÍTÉSE
+// mindig a magyar szövegből számolódik, így a két nyelv demo-állapotai sorra azonosak.
+const char* const kLineEn[][2] = {
+    // töltelék
+    {"A következő kiadásba ez még belefér, ha a tesztelés időben végez.",
+     "This still fits into the next release if testing finishes on time."},
+    {"Szerintem előbb nézzük meg a számokat, utána döntsünk.",
+     "I'd look at the numbers first and decide after that."},
+    {"Rendben, ezt felírom a teendők közé.", "Okay, I'll add that to the action items."},
+    {"A súgóoldalak látogatottsága a múlt héten is nőtt, főleg a beállításoknál.",
+     "Traffic to the help pages grew again last week, mostly around settings."},
+    {"Ezt az ügyfelek oldaláról is megerősítették, két külön megkeresésben is szóba került.",
+     "Customers confirmed it too; it came up in two separate requests."},
+    {"Akkor a határidő marad péntek, és csütörtökön még egyszer ránézünk.",
+     "So the deadline stays Friday, and we'll take another look on Thursday."},
+    {"Nálunk a legtöbb kérdés a számlázás körül jön, nem a belépésnél.",
+     "On our side most questions are about billing, not about signing in."},
+    {"Ha kell, szívesen megmutatom a bontást a megbeszélés végén.",
+     "If it helps, I'm happy to show the breakdown at the end of the meeting."},
+    {"Egyetértek, de a dokumentációt is frissíteni kell hozzá, különben megint ugyanott akadnak el.",
+     "Agreed, but the documentation needs an update too, otherwise people get stuck in the same place again."},
+    {"Ezt a pontot hagyjuk a jövő heti tervezésre, ott több időnk lesz rá.",
+     "Let's leave this one for next week's planning, we'll have more time for it there."},
+    {"A tesztkörnyezet tegnap óta stabil, a két nyitott hibajegy közül az egyik csak kozmetikai.",
+     "The test environment has been stable since yesterday, and one of the two open bugs is only cosmetic."},
+    {"Jó, akkor én viszem a javítást, és szólok, ha kész.",
+     "Good, then I'll take the fix and let you know when it's done."},
+    {"A partnereknek érdemes előre jelezni, hogy változik a felület.",
+     "We should tell the partners in advance that the interface is changing."},
+    {"Még egy kérdés: ez a régi ügyfeleket is érinti, vagy csak az újakat?",
+     "One more question: does this affect existing customers too, or only new ones?"},
+    {"Csak az újakat, a régieknél marad a mostani folyamat a negyedév végéig.",
+     "Only new ones; existing customers keep the current process until the end of the quarter."},
+    {"Értem, köszönöm.", "Got it, thanks."},
+    {"A keresés javítása hozta a legnagyobb változást: a találatok kétharmada már az első oldalon megvan, "
+     "és a visszajelzések szerint a kollégák is ritkábban kérdeznek rá ugyanarra.",
+     "The search improvements made the biggest difference: two thirds of the results now show up on the first "
+     "page, and according to the feedback, colleagues ask about the same thing far less often."},
+    {"Ezt döntésként rögzítsük: a bevezetés két lépésben megy, először a belső csapatnak.",
+     "Let's record this as a decision: the rollout happens in two steps, starting with the internal team."},
+    {"Igen, így jó lesz.", "Yes, that works."},
+    {"A költségvetésnél még visszatérünk rá, addig nem ígérnék pontos dátumot.",
+     "We'll come back to it with the budget; until then I wouldn't promise an exact date."},
+    // hosszú monológ
+    {"Köszönöm, hogy ilyen sokan eljöttetek. Mielőtt belevágunk, szeretném egyben végigmondani, "
+     "hol tartunk, mert az elmúlt hetekben sok minden változott, és nem mindenki volt ott minden "
+     "egyeztetésen.",
+     "Thanks for coming, it's great to see so many of you. Before we dive in, I'd like to walk through where "
+     "we are in one go, because a lot has changed in the past few weeks and not everyone was at every meeting."},
+    {"Ennyit szerettem volna előrebocsátani; most pedig menjünk végig a részleteken, és a végén "
+     "marad idő a kérdésekre is.",
+     "That's what I wanted to say up front; now let's go through the details, and there will be time for "
+     "questions at the end."},
+    // négy beszélő
+    {"Köszönöm, hogy ilyen sokan eljöttetek. Röviden végigmegyek a harmadik negyedéven, utána "
+     "szívesen válaszolok a kérdésekre. Az első és legfontosabb: a támogatási jegyek száma "
+     "harmadával csökkent, miközben az aktív felhasználók száma nagyjából tizenkét százalékkal "
+     "nőtt. Ez azt jelenti, hogy egy felhasználóra most lényegesen kevesebb megkeresés jut, mint "
+     "egy évvel ezelőtt, és ezt nem a csapat leépítése okozta, hanem az, hogy a leggyakoribb "
+     "kérdéseket végre a termékben válaszoljuk meg.",
+     "Thanks for coming, it's great to see so many of you. I'll walk through the third quarter briefly, and "
+     "then I'm happy to take questions. First and most important: support tickets dropped by a third, while "
+     "active users grew by roughly twelve percent. That means each user now sends far fewer requests than a "
+     "year ago, and it isn't because we cut the team, it's because we finally answer the most common "
+     "questions inside the product."},
+    {"A második pont az új súgóoldalak. Júliusban élesítettük őket, és az első hat hétben a "
+     "keresések kétharmada már ott ért véget, nem a jegykezelőben. Ami külön érdekes: a legtöbb "
+     "látogatás a beállítási oldalakról érkezik, tehát pont ott, ahol korábban a legtöbben "
+     "elakadtak. A következő negyedévben ezt a mintát szeretnénk a számlázásra is átvinni.",
+     "The second point is the new help pages. We launched them in July, and in the first six weeks two thirds "
+     "of searches already ended there instead of in the ticketing system. What's especially interesting: most "
+     "visits come from the settings pages, exactly where most people used to get stuck. Next quarter we'd like "
+     "to bring the same pattern to billing."},
+    {"Bocs, hogy közbeszólok, ez a szám az összes ügyfélre vonatkozik, vagy csak az újakra?",
+     "Sorry to jump in, is that number for all customers, or only the new ones?"},
+    {"Az összesre.", "All of them."},
+    {"Az újaknál egyébként még jobb az arány, de ott kicsi a minta, ezért nem tettem fel a diára. "
+     "Ha érdekel, a végén megmutatom a bontást.",
+     "For new customers the ratio is even better, but the sample is small, so I left it off the slide. "
+     "If you're interested, I'll show the breakdown at the end."},
+    {"Mhm.", "Mhm."},
+    {"Ez egyezik azzal, amit a támogatás oldaláról látunk.", "That matches what we see on the support side."},
+    {"Egy kérdés a számlázáshoz: ott nem az a gond, hogy a súgó nem elég, hanem hogy maga a "
+     "folyamat bonyolult? Szerintem ott a terméket kellene egyszerűsíteni, nem a leírást bővíteni.",
+     "A question about billing: isn't the problem there that the process itself is complicated, not that the "
+     "help isn't enough? I think we should simplify the product there, not expand the docs."},
+    {"Jó kérdés, erre a végén visszatérek, mert van róla egy külön diám.",
+     "Good question, I'll come back to it at the end, I have a separate slide on it."},
+    {"Elnézést, megismételnéd az utolsó mondatot? Itt akadozott a hang.",
+     "Sorry, could you repeat the last sentence? The audio cut out on my end."},
+    {"Persze. Azt mondtam, hogy a számlázásra is átvinnénk a súgót, de Nórának igaza van abban, "
+     "hogy ott a folyamat maga is túl hosszú. A terv ezért két lépésből áll: először "
+     "összegyűjtjük, hol akadnak el a legtöbben, aztán eldöntjük, mit javítunk a termékben és "
+     "mit a leírásban.",
+     "Sure. I said we'd bring the help pages to billing as well, but Olivia is right that the process itself "
+     "is too long there. So the plan has two steps: first we collect where most people get stuck, then we "
+     "decide what to fix in the product and what in the docs."},
+    // két beszélő
+    {"Akkor kezdjük az elején: mióta használjátok a jelenlegi jegykezelőt?",
+     "Let's start at the beginning: how long have you been using your current ticketing system?"},
+    {"Nagyjából három éve. Előtte e-mailből dolgoztunk, ami tíz ember fölött már követhetetlen volt.",
+     "About three years. Before that we worked from email, which became impossible to follow above ten people."},
+    {"Az első évben főleg a címkézéssel küzdöttünk, mindenki máshogy használta.",
+     "In the first year we mostly struggled with labels, everyone used them differently."},
+    {"Aztán bevezettünk egy közös listát, és onnantól sokkal jobb lett.",
+     "Then we introduced a shared list, and it got much better from there."},
+    {"Ma már az új kollégák is egy hét alatt beletanulnak.", "Today new colleagues pick it up within a week."},
+    {"És mi az, ami most a legjobban hiányzik belőle?", "And what do you miss most in it right now?"},
+    {"Hm, talán a jobb keresés.", "Hm, better search, maybe."},
+    {"Meg az, hogy a hívásokból ne nekünk kelljen kézzel jegyet írni. Ezért is néztük a Tanarát.",
+     "And not having to write tickets by hand from our calls. That's partly why we looked at Tanara."},
+    // sok beszélő
+    {"A második negyedévben a támogatási jegyek száma harmadával csökkent.",
+     "In the second quarter, support tickets dropped by a third."},
+    {"Ez az új súgóoldalaknak köszönhető, vagy annak, hogy kevesebb az ügyfél?",
+     "Is that thanks to the new help pages, or because there are fewer customers?"},
+    {"Mindkettőnek, de inkább a súgónak.", "Both, but mostly the help pages."},
+    {"Nálunk is ezt látjuk.", "We're seeing the same."},
+    {"Akkor a súgót a többi termékre is kiterjesztjük.", "Then we'll extend the help pages to the other products too."},
+    {"Ehhez kellene még egy fő a dokumentációra.", "For that we'd need one more person on documentation."},
+    {"Ezt a költségvetésnél nézzük meg.", "Let's look at that with the budget."},
+    {"Rendben, felírom.", "Okay, noting it down."},
+    {"Én a kiadás felől nézném: mi fér bele a mostani körbe?",
+     "I'd look at it from the release side: what fits into the current round?"},
+    {"A tesztkörnyezet felől nincs akadálya.", "Nothing blocking it on the test environment side."},
+    {"Halljátok? Most csatlakoztam.", "Can you hear me? I just joined."},
+    {"Igen, jól hallunk, köszi.", "Yes, we can hear you fine, thanks."},
+    // v3 (handoff-v3)
+    {"Igen, és ide tartozik még, hogy a számlázási rész lesz a következő; ott a legtöbb a visszakérdezés.",
+     "Yes, and on top of that, billing comes next; that's where we get the most follow-up questions."},
+    {"Pontosan.", "Exactly."},
+    {"Igen, ezt mi is láttuk a partnerportálon, főleg a Nordvik-ügyfeleknél, ott a jegyek fele számlázási volt.",
+     "Yes, we saw that on the partner portal too, especially with Nordvik customers, half of their tickets were about billing."},
+    {"A mi oldalunkon ez a negyedik negyedév elejére kellene, különben a megújításnál újra elő fog jönni.",
+     "On our side we'd need this by early Q4, otherwise it will come up again at renewal."},
+    {"Ezt a részt én vállalom, de kellene hozzá két hét a dokumentációs csapattól.",
+     "I'll take this part, but I'd need two weeks from the documentation team."},
+    {"Értem.", "I see."},
+    {"És mikorra várható a számlázási súgó? Az ügyfeleink már kérdezik.",
+     "And when can we expect the billing help? Our customers are already asking."},
+    {"Én a pénzügy felől jövök: nálunk a számlázási kérdések fele a díjbekérőkről szól, nem magáról a számláról.",
+     "I'm coming from finance: half of our billing questions are about pro forma invoices, not the invoice itself."},
+    {"Ha a súgó ezt külön kezelné, szerintem a maradék is eltűnne.",
+     "If the help covered that separately, I think the rest would go away too."},
+    {"Igen.", "Yes."},
+    {"Jó.", "Good."},
+    {"Aha.", "Uh-huh."},
+};
+
+// A sor szövege a demo-nyelven (ismeretlen sor változatlan).
+QString lineText(const QString& hu)
+{
+    if (!tanara_qml::demotext::english()) return hu;
+    static const QHash<QString, QString> map = [] {
+        QHash<QString, QString> m;
+        for (const auto& p : kLineEn) m.insert(QString::fromUtf8(p[0]), QString::fromUtf8(p[1]));
+        return m;
+    }();
+    return map.value(hu, hu);
+}
+
 // Töltelék-mondatok (kitalált, általános termékcsapat-megbeszélés).
 const QStringList& fillerPool()
 {
@@ -123,6 +286,7 @@ QString longMonologue()
     for (int i = 0; i < 22; ++i) parts << pool[(i * 7 + 3) % pool.size()];
     parts << QStringLiteral("Ennyit szerettem volna előrebocsátani; most pedig menjünk végig a részleteken, és a végén "
                             "marad idő a kérdésekre is.");
+    for (QString& p : parts) p = lineText(p);
     return parts.join(QLatin1Char(' '));
 }
 
@@ -435,24 +599,30 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     else if (variant == QLatin1String("v3")) sc = v3Scenario();
     else sc = fourSpeakers(variant == QLatin1String("long"));
     if (variant == QLatin1String("none")) sc.transcript = false;
+    // Angol demo-nyelvnél a nevek és a nyers címkék angol párjai (a sorrend, a súlyok és a
+    // hang-indexek változatlanok; a sor-szövegek a szegmensek írásakor fordulnak).
+    for (Cast& c : sc.cast) {
+        c.raw = demoRaw(c.raw);
+        c.person = demoName(c.person);
+    }
 
     m_store = std::make_unique<MeetingStore>(m_dir.filePath(QStringLiteral("rec")),
                                              m_dir.filePath(QStringLiteral("meta")));
     m_people = std::make_unique<PeopleStore>(m_dir.filePath(QStringLiteral("meta/people.json")));
     m_prints = std::make_unique<VoiceprintStore>(m_dir.filePath(QStringLiteral("meta/voiceprints.json")));
 
-    Meeting m = m_store->createMeeting(sc.v3 ? QStringLiteral("Negyedéves partnertalálkozó")
-                                             : QStringLiteral("Termékcsapat heti egyeztetés"));
+    Meeting m = m_store->createMeeting(sc.v3 ? demoText("Negyedéves partnertalálkozó", "Quarterly partner review")
+                                             : demoText("Termékcsapat heti egyeztetés", "Product team weekly sync"));
     m.durationMs = sc.durationMs;
     if (sc.v3) {
         Track mic;
         mic.id = QStringLiteral("mic");
-        mic.deviceName = QStringLiteral("Mikrofon");
+        mic.deviceName = demoText("Mikrofon", "Microphone");
         mic.file = QStringLiteral("track_mic.ogg");
         mic.kind = TrackKind::Mic;
         Track loop;
         loop.id = QStringLiteral("loopback");
-        loop.deviceName = QStringLiteral("Rendszerhang");
+        loop.deviceName = demoText("Rendszerhang", "System audio");
         loop.file = QStringLiteral("track_loopback.ogg");
         loop.kind = TrackKind::Loopback;
         m.tracks = {mic, loop};
@@ -468,7 +638,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
             o[QStringLiteral("startMs")] = double(l.startMs);
             o[QStringLiteral("endMs")] = double(l.startMs + l.durMs);
             o[QStringLiteral("speaker")] = sc.cast[l.speaker].raw;
-            o[QStringLiteral("text")] = l.text;
+            o[QStringLiteral("text")] = lineText(l.text);
             segs.append(o);
         }
         writeJson(speakeredit::segmentsPath(m.folder), QJsonDocument(segs));
@@ -494,17 +664,17 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
     if (sc.transcript && !sc.cast.isEmpty() && !sc.cast[0].person.isEmpty())
         speakeredit::recordIdentification(m.folder, sc.cast[0].raw, sc.cast[0].person, 0.82);
 
-    if (sc.v3) m_people->setDefaultSide(QStringLiteral("Fehér Gábor"), QStringLiteral("remote"));
+    if (sc.v3) m_people->setDefaultSide(demoName("Fehér Gábor"), QStringLiteral("remote"));
 
     m_editor = std::make_unique<SpeakerEditor>(m_store.get(), m_people.get(), m_prints.get(), m.id);
     if (sc.v3) {
-        m_selfName = QStringLiteral("Kovács Lilla");
+        m_selfName = demoName("Kovács Lilla");
         m_editor->setUserSpeakerName(m_selfName);
         const auto activity = std::make_shared<const MeetingActivity>(demoActivity(sc));
         m_editor->setActivityProvider([activity](const Meeting&) { return *activity; });
-        m_personTags->insert(QStringLiteral("Fehér Gábor"), {QStringLiteral("nordvik")});
-        m_personTags->insert(QStringLiteral("Varga Árpád"), {QStringLiteral("nordvik")});
-        m_personTags->insert(QStringLiteral("Molnár Eszter"), {QStringLiteral("piac")});
+        m_personTags->insert(demoName("Fehér Gábor"), {QStringLiteral("nordvik")});
+        m_personTags->insert(demoName("Varga Árpád"), {QStringLiteral("nordvik")});
+        m_personTags->insert(demoName("Molnár Eszter"), {QStringLiteral("piac")});
         const auto tags = m_personTags;
         m_editor->setPersonTagsProvider([tags](const QString& person) { return tags->value(person); });
         // Címke-bizonyíték (UX-terv 4.) kitalált előzményekből: a #Nordvik 14 megbeszéléséből
@@ -514,17 +684,17 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
         QVector<PersonTagRow> rows;
         for (int i = 0; i < 14; ++i) {
             QStringList who;
-            if (i < 11) who << QStringLiteral("Fehér Gábor");
-            if (i < 6) who << QStringLiteral("Varga Árpád");
+            if (i < 11) who << demoName("Fehér Gábor");
+            if (i < 6) who << demoName("Varga Árpád");
             rows << PersonTagRow{QStringLiteral("demo-n%1").arg(i), QDateTime(), {QStringLiteral("nordvik")}, who};
         }
         for (int i = 0; i < 3; ++i)
             rows << PersonTagRow{QStringLiteral("demo-p%1").arg(i), QDateTime(), {QStringLiteral("piac")},
-                                 {QStringLiteral("Molnár Eszter")}};
-        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, QStringLiteral("Kovács Lilla")));
+                                 {demoName("Molnár Eszter")}};
+        snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(rows, demoName("Kovács Lilla")));
         snap.tagNames = {{QStringLiteral("nordvik"), QStringLiteral("Nordvik")},
-                         {QStringLiteral("piac"), QStringLiteral("Piackutatás")}};
-        snap.selfKey = persontags::personKey(QStringLiteral("Kovács Lilla"));
+                         {QStringLiteral("piac"), demoText("Piackutatás", "Market research")}};
+        snap.selfKey = persontags::personKey(demoName("Kovács Lilla"));
         // A kézi címkék a demó élő térképéből jönnek (a gyors „+ #Címke" ide ír), a tanult
         // statisztika a fenti kitalált előzményekből.
         m_editor->setTagEvidenceProvider([snap, tags](const QString& person, const QStringList& meetingTags,
@@ -535,7 +705,7 @@ TranscriptDemoSession::TranscriptDemoSession(const QString& variant)
                 live.manual.insert(persontags::personKey(it.key()), it.value());
             return live.evidence(person, meetingTags, mid);
         });
-        m_tagNames.insert(QStringLiteral("piac"), QStringLiteral("Piackutatás"));
+        m_tagNames.insert(QStringLiteral("piac"), demoText("Piackutatás", "Market research"));
     }
     if (variant != QLatin1String("novoice")) {
         const auto lines = std::make_shared<const QVector<Line>>(sc.lines);
@@ -594,14 +764,14 @@ bool TranscriptDemoSession::stageV3(const QString& state)
     m_editor->confirmUtterances(confirm);
     m_editor->setUtterancesNoisy({id(4)}, true);
     // „javítva": Árpád nevén Eszter hangja → kézzel Eszterhez.
-    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, QStringLiteral("Beszélő 4"));
+    if (state == QLatin1String("markers")) m_editor->moveUtterances({id(3)}, demoRaw(QStringLiteral("Beszélő 4")));
     if (state == QLatin1String("speakerWhy")) {
         // E3: Gábor két sávon is beszél (kézi beosztás, több sáv), Árpádon még nincs #Nordvik
         // (a „NEM Ő?" jelöltjén a gyors „+ #Nordvik" látszik).
         for (const EditorSpeaker& sp : m_editor->speakers())
-            if (sp.personName == QStringLiteral("Fehér Gábor"))
+            if (sp.personName == demoName("Fehér Gábor"))
                 m_editor->setTrackAssignment(sp.key, {QStringLiteral("mic"), QStringLiteral("loopback")});
-        m_personTags->remove(QStringLiteral("Varga Árpád"));
+        m_personTags->remove(demoName("Varga Árpád"));
         m_editor->notifyPersonTagsChanged();
     }
     return true;
@@ -621,7 +791,7 @@ QVector<PersonInfo> TranscriptDemoSession::people() const
     QStringList seen;
     for (const P& p : extra) {
         PersonInfo i;
-        i.name = QString::fromUtf8(p.name);
+        i.name = demoName(p.name);
         i.voiceprintCount = m_prints->printCount(i.name);
         i.hasVoiceprint = p.vp || i.voiceprintCount > 0;
         if (i.hasVoiceprint && i.voiceprintCount == 0) i.voiceprintCount = 1;

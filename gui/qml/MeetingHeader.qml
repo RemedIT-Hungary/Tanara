@@ -22,13 +22,13 @@ Item {
     property string demoState: ""
 
     // Az adatok a ShellMeetingModel-ből; demóban / képernyőképhez felülírhatók.
-    property string title: meeting ? meeting.title : "Negyedéves partnertalálkozó"
+    property string title: meeting ? meeting.title : DemoText.t("Negyedéves partnertalálkozó", "Quarterly partner review")
     property bool hasTranscript: meeting ? meeting.hasTranscript : true
     property bool hasSummary: meeting ? meeting.hasSummary : false
     property bool summaryStale: meeting ? meeting.summaryStale : false
     property int transcribePercent: meeting ? meeting.transcribePercent : -1
     property int summarizePercent: meeting ? meeting.summarizePercent : -1
-    property string providerLabel: meeting ? meeting.summaryProviderLabel : "LM Studio · saját kulcs"
+    property string providerLabel: meeting ? meeting.summaryProviderLabel : DemoText.t("LM Studio · saját kulcs", "LM Studio · own key")
     property bool canIdentify: meeting ? meeting.canIdentify && !meeting.identifyRunning : true
     readonly property alias tabRow: tabRow
     readonly property alias tabTip: tabTip

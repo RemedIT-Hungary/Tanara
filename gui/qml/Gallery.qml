@@ -31,8 +31,8 @@ Item {
         "circle-dot", "ellipsis-vertical", "hash", "tag"
     ]
     readonly property var speakerNames: [
-        "Kovács Lilla", "Fehér Ádám", "Szabó Áron", "Varga Nóra", "Tóth Bence", "Molnár Eszter",
-        "Németh Dóra", "Balogh Kata", "Horváth Gábor", "Távoli 1", "Távoli 2"
+        DemoText.name("Kovács Lilla"), DemoText.name("Fehér Ádám"), DemoText.name("Szabó Áron"), DemoText.name("Varga Nóra"), DemoText.name("Tóth Bence"), DemoText.name("Molnár Eszter"),
+        DemoText.name("Németh Dóra"), DemoText.name("Balogh Kata"), DemoText.name("Horváth Gábor"), DemoText.raw("Távoli 1"), DemoText.raw("Távoli 2")
     ]
 
     component Section: ColumnLayout {
@@ -120,14 +120,14 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 TLabel {
-                    text: "Tanara · Nyomat / Print — vezérlő-galéria"
+                    text: DemoText.t("Tanara · Nyomat / Print — vezérlő-galéria", "Tanara · Print — control gallery")
                     font.pixelSize: Theme.fontTitle
                     font.weight: Theme.weightSemiBold
                 }
                 Item { Layout.fillWidth: true }
                 Caption { text: (Theme.dark ? "dark" : "light") + " · themeMode: " + App.themeMode }
                 TButton {
-                    text: Theme.dark ? "Világos" : "Sötét"
+                    text: Theme.dark ? DemoText.t("Világos", "Light") : DemoText.t("Sötét", "Dark")
                     size: "small"
                     iconName: Theme.dark ? "sun" : "moon"
                     onClicked: App.themeMode = Theme.dark ? "light" : "dark"
@@ -136,7 +136,7 @@ Item {
 
             // ---------------------------------------------------------------- színek
             Section {
-                title: "Felület és szöveg"
+                title: DemoText.t("Felület és szöveg", "Surfaces and text")
                 Swatch { name: "bg"; swatchColor: Theme.bg }
                 Swatch { name: "surface"; swatchColor: Theme.surface }
                 Swatch { name: "raised"; swatchColor: Theme.raised }
@@ -158,7 +158,7 @@ Item {
             }
 
             Section {
-                title: "Beszélők (11) — avatar soft / solid, chip, név"
+                title: DemoText.t("Beszélők (11) — avatar soft / solid, chip, név", "Speakers (11) — avatar soft / solid, chip, name")
                 flowSpacing: 16
                 Repeater {
                     model: root.speakerNames
@@ -181,21 +181,21 @@ Item {
 
             // ------------------------------------------------------------ tipográfia
             Section {
-                title: "Tipográfia"
+                title: DemoText.t("Tipográfia", "Typography")
                 ColumnLayout {
                     spacing: 8
                     width: parent.width
                     RowLayout { spacing: 16
                         Caption { text: "title 20/600"; Layout.preferredWidth: 110 }
-                        TLabel { text: "Projekt heti egyeztetés"; font.pixelSize: Theme.fontTitle; font.weight: Theme.weightSemiBold }
+                        TLabel { text: DemoText.t("Projekt heti egyeztetés", "Weekly project sync"); font.pixelSize: Theme.fontTitle; font.weight: Theme.weightSemiBold }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "heading 16/600"; Layout.preferredWidth: 110 }
-                        TLabel { text: "Döntések és teendők"; font.pixelSize: Theme.fontHeading; font.weight: Theme.weightSemiBold }
+                        TLabel { text: DemoText.t("Döntések és teendők", "Decisions and action items"); font.pixelSize: Theme.fontHeading; font.weight: Theme.weightSemiBold }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "body 14/400"; Layout.preferredWidth: 110 }
-                        TLabel { text: "Az átirat elkészült, 4 beszélő, 30 perc 34 mp. Árvíztűrő tükörfúrógép." }
+                        TLabel { text: DemoText.t("Az átirat elkészült, 4 beszélő, 30 perc 34 mp. Árvíztűrő tükörfúrógép.", "The transcript is ready, 4 speakers, 30 min 34 s. The quick brown fox jumps over the lazy dog.") }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "transcript 14/1.55"; Layout.preferredWidth: 110; Layout.alignment: Qt.AlignTop }
@@ -203,20 +203,20 @@ Item {
                             Layout.preferredWidth: 520
                             wrapMode: Text.Wrap
                             cssLineHeight: Theme.transcriptLineHeight
-                            text: "Rendben, akkor a szerződést péntekig átnézem, és küldök róla egy rövid összefoglalót. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik."
+                            text: DemoText.t("Rendben, akkor a szerződést péntekig átnézem, és küldök róla egy rövid összefoglalót. A súgót a többi termékre is kiterjesztik, de a számlázásnál előbb a folyamatot egyszerűsítik.", "Okay, then I'll review the contract by Friday and send a short summary. The help pages will be extended to the other products, but for billing the process gets simplified first.")
                         }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "small 13"; Layout.preferredWidth: 110 }
-                        TLabel { text: "2026. okt. 1. · 1:16:04 · 6 beszélő"; muted: true; font.pixelSize: Theme.fontSmall }
+                        TLabel { text: DemoText.t("2026. okt. 1. · 1:16:04 · 6 beszélő", "Oct 1, 2026 · 1:16:04 · 6 speakers"); muted: true; font.pixelSize: Theme.fontSmall }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "caption 12"; Layout.preferredWidth: 110 }
-                        TLabel { text: "okt. 2. · 30 p"; muted: true; font.pixelSize: Theme.fontCaption }
+                        TLabel { text: DemoText.t("okt. 2. · 30 p", "Oct 2 · 30 min"); muted: true; font.pixelSize: Theme.fontCaption }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "label 12/600"; Layout.preferredWidth: 110 }
-                        TSectionLabel { text: "Átirat · 2026. okt. 2." }
+                        TSectionLabel { text: DemoText.t("Átirat · 2026. okt. 2.", "Transcript · Oct 2, 2026") }
                     }
                     RowLayout { spacing: 16
                         Caption { text: "mono 12 / 11"; Layout.preferredWidth: 110 }
@@ -228,7 +228,7 @@ Item {
 
             // ---------------------------------------------------------------- ikonok
             Section {
-                title: "Ikonok (Lucide, stroke 1.75) — 16 px, lent 20 px és színezve"
+                title: DemoText.t("Ikonok (Lucide, stroke 1.75) — 16 px, lent 20 px és színezve", "Icons (Lucide, stroke 1.75) — 16 px, below 20 px and tinted")
                 flowSpacing: 14
                 Repeater {
                     model: root.iconNames
@@ -251,21 +251,21 @@ Item {
 
             // ---------------------------------------------------------------- gombok
             Section {
-                title: "Gombok — 34 px (és 28 px)"
+                title: DemoText.t("Gombok — 34 px (és 28 px)", "Buttons — 34 px (and 28 px)")
                 ColumnLayout {
                     spacing: 12
-                    ButtonStates { variant: "primary"; label: "Átírás indítása"; iconName: "audio-lines" }
-                    ButtonStates { variant: "secondary"; label: "Azonosítás"; iconName: "fingerprint" }
-                    ButtonStates { variant: "ghost"; label: "Mégse" }
-                    ButtonStates { variant: "danger"; label: "Újra-átírás" }
-                    ButtonStates { variant: "dangerSoft"; label: "Végleges törlés"; iconName: "trash-2" }
-                    ButtonStates { variant: "dangerGhost"; label: "Eldobott sávok törlése"; iconName: "trash-2" }
-                    ButtonStates { variant: "record"; label: "Új felvétel" }
+                    ButtonStates { variant: "primary"; label: DemoText.t("Átírás indítása", "Start transcription"); iconName: "audio-lines" }
+                    ButtonStates { variant: "secondary"; label: DemoText.t("Azonosítás", "Identify"); iconName: "fingerprint" }
+                    ButtonStates { variant: "ghost"; label: DemoText.t("Mégse", "Cancel") }
+                    ButtonStates { variant: "danger"; label: DemoText.t("Újra-átírás", "Re-transcribe") }
+                    ButtonStates { variant: "dangerSoft"; label: DemoText.t("Végleges törlés", "Delete permanently"); iconName: "trash-2" }
+                    ButtonStates { variant: "dangerGhost"; label: DemoText.t("Eldobott sávok törlése", "Delete discarded tracks"); iconName: "trash-2" }
+                    ButtonStates { variant: "record"; label: DemoText.t("Új felvétel", "New recording") }
                 }
             }
             Section {
-                title: "Ikongombok"
-                Shown { caption: "outline"; TIconButton { iconName: "ellipsis"; toolTipText: "További műveletek" } }
+                title: DemoText.t("Ikongombok", "Icon buttons")
+                Shown { caption: "outline"; TIconButton { iconName: "ellipsis"; toolTipText: DemoText.t("További műveletek", "More actions") } }
                 Shown { caption: "hover"; TIconButton { iconName: "ellipsis"; stateHovered: true } }
                 Shown { caption: "pressed"; TIconButton { iconName: "ellipsis"; down: true } }
                 Shown { caption: "focus"; TIconButton { iconName: "ellipsis"; stateFocused: true } }
@@ -280,74 +280,74 @@ Item {
                     caption: "tooltip"
                     TIconButton {
                         iconName: "volume-2"; variant: "flat"
-                        TToolTip { visible: root.section === ""; delay: 0; text: "Hangerő" }
+                        TToolTip { visible: root.section === ""; delay: 0; text: DemoText.t("Hangerő", "Volume") }
                     }
                 }
             }
 
             // ---------------------------------------------------------------- mezők
             Section {
-                title: "Mezők"
-                Shown { caption: "placeholder"; TTextField { placeholderText: "Megbeszélés címe" } }
-                Shown { caption: "value"; TTextField { text: "Heti projekt-egyeztetés" } }
-                Shown { caption: "focus"; TTextField { text: "Heti projekt-egyeztetés"; stateFocused: true } }
+                title: DemoText.t("Mezők", "Fields")
+                Shown { caption: "placeholder"; TTextField { placeholderText: DemoText.t("Megbeszélés címe", "Meeting title") } }
+                Shown { caption: "value"; TTextField { text: DemoText.t("Heti projekt-egyeztetés", "Weekly project sync") } }
+                Shown { caption: "focus"; TTextField { text: DemoText.t("Heti projekt-egyeztetés", "Weekly project sync"); stateFocused: true } }
                 Shown {
                     caption: "error + mono"
                     Column {
                         spacing: 4
                         TTextField { text: "sk-••••••••••••"; mono: true; hasError: true }
-                        TLabel { text: "Hiányzik az API-kulcs."; color: Theme.dangerInk; font.pixelSize: Theme.fontCaption }
+                        TLabel { text: DemoText.t("Hiányzik az API-kulcs.", "The API key is missing."); color: Theme.dangerInk; font.pixelSize: Theme.fontCaption }
                     }
                 }
-                Shown { caption: "disabled"; TTextField { text: "Nem szerkeszthető"; enabled: false } }
-                Shown { caption: "search"; TSearchField { width: 252; placeholderText: "Keresés"; hint: "Ctrl+F" } }
-                Shown { caption: "search focus"; TSearchField { width: 252; text: "demó"; stateFocused: true } }
+                Shown { caption: "disabled"; TTextField { text: DemoText.t("Nem szerkeszthető", "Read-only"); enabled: false } }
+                Shown { caption: "search"; TSearchField { width: 252; placeholderText: DemoText.t("Keresés", "Search"); hint: "Ctrl+F" } }
+                Shown { caption: "search focus"; TSearchField { width: 252; text: DemoText.t("demó", "demo"); stateFocused: true } }
                 Shown {
                     caption: "textarea"
                     TTextArea {
                         width: 420
-                        text: "Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence."
+                        text: DemoText.t("Ügyféltámogatás átadása az új csapatnak. Érintett rendszerek: jegykezelő, súgóoldalak, számlázás. Résztvevők: Molnár Eszter, Tóth Bence.", "Support handover to the new team. Systems involved: ticket system, help pages, billing. Participants: Sophie Bennett, Ryan Mitchell.")
                     }
                 }
-                Shown { caption: "textarea placeholder"; TTextArea { width: 300; placeholderText: "Nevek, szakszavak, témák…" } }
+                Shown { caption: "textarea placeholder"; TTextArea { width: 300; placeholderText: DemoText.t("Nevek, szakszavak, témák…", "Names, terms, topics…") } }
             }
 
             // ------------------------------------------------- kapcsoló, jelölőnégyzet
             Section {
-                title: "Kapcsoló · jelölőnégyzet"
+                title: DemoText.t("Kapcsoló · jelölőnégyzet", "Switch · checkbox")
                 flowSpacing: 20
-                Shown { caption: "off"; TSwitch { text: "Lekeverés készítése" } }
-                Shown { caption: "on"; TSwitch { text: "Résztvevők azonosítása hang alapján"; checked: true } }
+                Shown { caption: "off"; TSwitch { text: DemoText.t("Lekeverés készítése", "Create mixdown") } }
+                Shown { caption: "on"; TSwitch { text: DemoText.t("Résztvevők azonosítása hang alapján", "Identify participants by voice"); checked: true } }
                 Shown { caption: "on hover"; TSwitch { checked: true; stateHovered: true } }
                 Shown { caption: "focus"; TSwitch { stateFocused: true } }
-                Shown { caption: "disabled"; TSwitch { text: "Letiltva"; checked: true; enabled: false } }
-                Shown { caption: "off"; TCheckBox { text: "A súgóoldalak kiterjesztése" } }
-                Shown { caption: "on"; TCheckBox { text: "A mostani átirat maradjon meg másolatként"; checked: true } }
+                Shown { caption: "disabled"; TSwitch { text: DemoText.t("Letiltva", "Disabled"); checked: true; enabled: false } }
+                Shown { caption: "off"; TCheckBox { text: DemoText.t("A súgóoldalak kiterjesztése", "Extending the help pages") } }
+                Shown { caption: "on"; TCheckBox { text: DemoText.t("A mostani átirat maradjon meg másolatként", "Keep the current transcript as a copy"); checked: true } }
                 Shown { caption: "hover"; TCheckBox { stateHovered: true } }
                 Shown { caption: "focus"; TCheckBox { checked: true; stateFocused: true } }
-                Shown { caption: "disabled"; TCheckBox { text: "Letiltva"; checked: true; enabled: false } }
+                Shown { caption: "disabled"; TCheckBox { text: DemoText.t("Letiltva", "Disabled"); checked: true; enabled: false } }
             }
 
             // ------------------------------------------------- pirula, chip, állapot
             Section {
-                title: "Pirulák · chipek · állapotikonok"
+                title: DemoText.t("Pirulák · chipek · állapotikonok", "Pills · chips · status icons")
                 flowSpacing: 16
-                Shown { caption: "warn"; TPill { text: "elavult"; tone: "warn" } }
-                Shown { caption: "warn"; TPill { text: "bizonytalan"; tone: "warn" } }
-                Shown { caption: "success"; TPill { text: "javítva"; tone: "success" } }
-                Shown { caption: "danger"; TPill { text: "hiányzik a fájl"; tone: "danger" } }
-                Shown { caption: "neutral"; TPill { text: "eldobott · csendes" } }
-                Shown { caption: "accent"; TPill { text: "fut"; tone: "accent" } }
-                Shown { caption: "removable"; TChip { text: "Nincs összefoglaló"; removable: true } }
-                Shown { caption: "person"; TChip { text: "Varga Nóra"; speakerIndex: 3; removable: true } }
-                Shown { caption: "person"; TChip { text: "Kovács Lilla"; speakerIndex: 0 } }
-                Shown { caption: "dashed add"; TChip { text: "Szűrő"; dashed: true } }
-                Shown { caption: "filter off"; TChip { text: "Bizonytalan 12"; checkable: true } }
-                Shown { caption: "filter on"; TChip { text: "Bizonytalan 12"; checkable: true; checked: true } }
-                Shown { caption: "hover"; TChip { text: "Nincs összefoglaló"; removable: true; stateHovered: true } }
-                Shown { caption: "focus"; TChip { text: "Szűrő"; dashed: true; stateFocused: true } }
+                Shown { caption: "warn"; TPill { text: DemoText.t("elavult", "outdated"); tone: "warn" } }
+                Shown { caption: "warn"; TPill { text: DemoText.t("bizonytalan", "uncertain"); tone: "warn" } }
+                Shown { caption: "success"; TPill { text: DemoText.t("javítva", "corrected"); tone: "success" } }
+                Shown { caption: "danger"; TPill { text: DemoText.t("hiányzik a fájl", "file missing"); tone: "danger" } }
+                Shown { caption: "neutral"; TPill { text: DemoText.t("eldobott · csendes", "discarded · silent") } }
+                Shown { caption: "accent"; TPill { text: DemoText.t("fut", "running"); tone: "accent" } }
+                Shown { caption: "removable"; TChip { text: DemoText.t("Nincs összefoglaló", "No summary"); removable: true } }
+                Shown { caption: "person"; TChip { text: DemoText.name("Varga Nóra"); speakerIndex: 3; removable: true } }
+                Shown { caption: "person"; TChip { text: DemoText.name("Kovács Lilla"); speakerIndex: 0 } }
+                Shown { caption: "dashed add"; TChip { text: DemoText.t("Szűrő", "Filter"); dashed: true } }
+                Shown { caption: "filter off"; TChip { text: DemoText.t("Bizonytalan 12", "Uncertain 12"); checkable: true } }
+                Shown { caption: "filter on"; TChip { text: DemoText.t("Bizonytalan 12", "Uncertain 12"); checkable: true; checked: true } }
+                Shown { caption: "hover"; TChip { text: DemoText.t("Nincs összefoglaló", "No summary"); removable: true; stateHovered: true } }
+                Shown { caption: "focus"; TChip { text: DemoText.t("Szűrő", "Filter"); dashed: true; stateFocused: true } }
                 Shown { caption: "done"; Row { spacing: 5
-                    TStatusIcon { kind: "transcript"; state: "done"; toolTipText: "Átirat: kész" }
+                    TStatusIcon { kind: "transcript"; state: "done"; toolTipText: DemoText.t("Átirat: kész", "Transcript: done") }
                     TStatusIcon { kind: "summary"; state: "done" }
                     TStatusIcon { kind: "identified"; state: "done" } } }
                 Shown { caption: "running"; Row { spacing: 5
@@ -370,27 +370,27 @@ Item {
 
             // ------------------------------------------------- fülek, folyamat
             Section {
-                title: "Fülek · folyamatjelző"
+                title: DemoText.t("Fülek · folyamatjelző", "Tabs · progress indicator")
                 flowSpacing: 32
                 TTabBar {
                     width: 360
                     currentIndex: 1
-                    TTabButton { text: "Átirat" }
-                    TTabButton { text: "Összefoglaló"; pillText: "elavult" }
-                    TTabButton { text: "Sávok" }
+                    TTabButton { text: DemoText.t("Átirat", "Transcript") }
+                    TTabButton { text: DemoText.t("Összefoglaló", "Summary"); pillText: DemoText.t("elavult", "outdated") }
+                    TTabButton { text: DemoText.t("Sávok", "Tracks") }
                 }
                 TTabBar {
                     width: 260
-                    TTabButton { text: "Aktív" }
+                    TTabButton { text: DemoText.t("Aktív", "Active") }
                     TTabButton { text: "Hover"; stateHovered: true }
-                    TTabButton { text: "Fókusz"; stateFocused: true }
+                    TTabButton { text: DemoText.t("Fókusz", "Focus"); stateFocused: true }
                 }
                 Column {
                     spacing: 6
                     width: 240
                     Row {
                         width: parent.width
-                        TLabel { text: "Átírás folyamatban…"; font.pixelSize: Theme.fontSmall; width: parent.width - pct.width }
+                        TLabel { text: DemoText.t("Átírás folyamatban…", "Transcription in progress…"); font.pixelSize: Theme.fontSmall; width: parent.width - pct.width }
                         TLabel { id: pct; text: "42%"; mono: true; muted: true; font.pixelSize: Theme.fontSmall }
                     }
                     TProgressBar { width: parent.width; thickness: 6; value: 0.42 }
@@ -408,48 +408,48 @@ Item {
 
             // ------------------------------------------------- bannerek, kártyák
             Section {
-                title: "Bannerek"
+                title: DemoText.t("Bannerek", "Banners")
                 TBanner {
                     width: parent.width
                     tone: "warn"
-                    text: "Az összefoglaló óta 3 beszélőt javítottál, ezért a felelősök és a résztvevők elavultak lehetnek."
-                    TButton { text: "Frissítés"; size: "small"; font.weight: Theme.weightSemiBold }
-                    TButton { text: "Rendben így"; size: "small"; variant: "ghost" }
+                    text: DemoText.t("Az összefoglaló óta 3 beszélőt javítottál, ezért a felelősök és a résztvevők elavultak lehetnek.", "You corrected 3 speakers since the summary, so owners and participants may be out of date.")
+                    TButton { text: DemoText.t("Frissítés", "Update"); size: "small"; font.weight: Theme.weightSemiBold }
+                    TButton { text: DemoText.t("Rendben így", "Keep as is"); size: "small"; variant: "ghost" }
                 }
                 TBanner {
                     width: parent.width
                     tone: "warn"
-                    title: "Nincs beállítva átíró szolgáltató"
-                    text: "Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba."
-                    TButton { text: "Szolgáltató beállítása"; size: "small"; trailingIconName: "arrow-right" }
+                    title: DemoText.t("Nincs beállítva átíró szolgáltató", "No transcription provider is set up")
+                    text: DemoText.t("Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba.", "Enter your own key, or sign in to Tanara Cloud.")
+                    TButton { text: DemoText.t("Szolgáltató beállítása", "Set up provider"); size: "small"; trailingIconName: "arrow-right" }
                 }
                 TBanner {
                     width: parent.width
                     tone: "accent"
                     iconName: "wand-sparkles"
-                    text: "Még 14 sor hasonlít erre a hangra. Átrakjam őket Fehér Ádámhoz?"
-                    TButton { text: "Átrakom"; size: "small"; variant: "primary" }
-                    TButton { text: "Megmutatom"; size: "small"; variant: "ghost" }
-                    TButton { text: "Nem"; size: "small"; variant: "ghost" }
+                    text: DemoText.t("Még 14 sor hasonlít erre a hangra. Átrakjam őket Fehér Ádámhoz?", "14 more lines sound like this voice. Move them to Ethan Hughes?")
+                    TButton { text: DemoText.t("Átrakom", "Move them"); size: "small"; variant: "primary" }
+                    TButton { text: DemoText.t("Megmutatom", "Show me"); size: "small"; variant: "ghost" }
+                    TButton { text: DemoText.t("Nem", "No"); size: "small"; variant: "ghost" }
                 }
                 TBanner {
                     width: parent.width
                     tone: "danger"
-                    title: "Az átírás nem sikerült"
-                    text: "A szolgáltató elutasította a kérést: az API-kulcs érvénytelen vagy lejárt. A felvétel és a sávok érintetlenek."
-                    TButton { text: "Újrapróbálás"; size: "small"; variant: "primary" }
+                    title: DemoText.t("Az átírás nem sikerült", "Transcription failed")
+                    text: DemoText.t("A szolgáltató elutasította a kérést: az API-kulcs érvénytelen vagy lejárt. A felvétel és a sávok érintetlenek.", "The provider rejected the request: the API key is invalid or has expired. The recording and the tracks are untouched.")
+                    TButton { text: DemoText.t("Újrapróbálás", "Try again"); size: "small"; variant: "primary" }
                 }
             }
             Section {
-                title: "Kártyák"
+                title: DemoText.t("Kártyák", "Cards")
                 TCard {
                     width: 300
                     ColumnLayout {
                         anchors.fill: parent
                         spacing: 6
-                        TLabel { text: "Témánkénti elemzés"; font.pixelSize: 15; font.weight: Theme.weightSemiBold }
-                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; muted: true; font.pixelSize: Theme.fontSmall; text: "2 lépés, témánként 1–2 perc." }
-                        TButton { text: "Témák javaslása" }
+                        TLabel { text: DemoText.t("Témánkénti elemzés", "Topic-by-topic analysis"); font.pixelSize: 15; font.weight: Theme.weightSemiBold }
+                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; muted: true; font.pixelSize: Theme.fontSmall; text: DemoText.t("2 lépés, témánként 1–2 perc.", "2 steps, 1–2 minutes per topic.") }
+                        TButton { text: DemoText.t("Témák javaslása", "Suggesting topics") }
                     }
                 }
                 TCard {
@@ -459,11 +459,11 @@ Item {
                         anchors.fill: parent
                         spacing: 6
                         RowLayout {
-                            TLabel { text: "Gyors összefoglaló"; font.pixelSize: 15; font.weight: Theme.weightSemiBold }
-                            TPill { text: "ajánlott"; tone: "accent" }
+                            TLabel { text: DemoText.t("Gyors összefoglaló", "Quick summary"); font.pixelSize: 15; font.weight: Theme.weightSemiBold }
+                            TPill { text: DemoText.t("ajánlott", "recommended"); tone: "accent" }
                         }
-                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; muted: true; font.pixelSize: Theme.fontSmall; text: "Vezetői összefoglaló, döntések, teendők — kb. 1 perc." }
-                        TButton { text: "Összefoglaló készítése"; variant: "primary" }
+                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; muted: true; font.pixelSize: Theme.fontSmall; text: DemoText.t("Vezetői összefoglaló, döntések, teendők — kb. 1 perc.", "Executive summary, decisions, action items — about 1 minute.") }
+                        TButton { text: DemoText.t("Összefoglaló készítése", "Creating summary"); variant: "primary" }
                     }
                 }
                 TCard {
@@ -474,9 +474,9 @@ Item {
                         spacing: 6
                         RowLayout {
                             TIcon { name: "circle-alert"; size: 18; color: Theme.dangerInk }
-                            TLabel { text: "Az átírás nem sikerült"; font.pixelSize: Theme.fontHeading; font.weight: Theme.weightSemiBold }
+                            TLabel { text: DemoText.t("Az átírás nem sikerült", "Transcription failed"); font.pixelSize: Theme.fontHeading; font.weight: Theme.weightSemiBold }
                         }
-                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "A felvétel és a sávok érintetlenek." }
+                        TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; text: DemoText.t("A felvétel és a sávok érintetlenek.", "The recording and the tracks are untouched.") }
                         TLabel { text: "HTTP 401 · invalid_api_key"; mono: true; muted: true; font.pixelSize: Theme.fontCaption }
                     }
                 }
@@ -485,49 +485,49 @@ Item {
             // ------------------------------------------------- a Beállítások vezérlői
             Section {
                 id: settingsSection
-                title: "Beállítások (Settings*): szegmentált választó, rádió, kapcsoló-sor, léptető, lenyíló, állapot-pirula, navigáció"
+                title: DemoText.t("Beállítások (Settings*): szegmentált választó, rádió, kapcsoló-sor, léptető, lenyíló, állapot-pirula, navigáció", "Settings (Settings*): segmented picker, radio, switch row, stepper, dropdown, status pill, navigation")
                 flowSpacing: 24
                 property string seg: "light"
                 property bool radio: true
                 property bool sw: true
                 property int minutes: 3
-                property string combo: "hu"
+                property string combo: DemoText.en ? "en" : "hu"
 
                 Column {
                     spacing: 8
                     SettingsSegmented {
-                        options: [{ value: "system", label: "Rendszer", iconName: "monitor" },
-                                  { value: "light", label: "Világos", iconName: "sun" },
-                                  { value: "dark", label: "Sötét", iconName: "moon" }]
+                        options: [{ value: "system", label: DemoText.t("Rendszer", "System"), iconName: "monitor" },
+                                  { value: "light", label: DemoText.t("Világos", "Light"), iconName: "sun" },
+                                  { value: "dark", label: DemoText.t("Sötét", "Dark"), iconName: "moon" }]
                         value: settingsSection.seg
                         onPicked: (v) => settingsSection.seg = v
                     }
                     SettingsSegmented {
                         width: 220
                         stretch: true
-                        options: [{ value: "fast", label: "Gyors" }, { value: "accurate", label: "Pontos" }]
+                        options: [{ value: "fast", label: DemoText.t("Gyors", "Quick") }, { value: "accurate", label: DemoText.t("Pontos", "Accurate") }]
                         value: "accurate"
                     }
                 }
                 Column {
                     spacing: 8
-                    SettingsRadio { text: "Automatikusan, a felvétel után"; checked: !settingsSection.radio; onClicked: settingsSection.radio = false }
-                    SettingsRadio { text: "Kézzel, a Sávok fülön"; checked: settingsSection.radio; onClicked: settingsSection.radio = true }
+                    SettingsRadio { text: DemoText.t("Automatikusan, a felvétel után", "Automatically, after the recording"); checked: !settingsSection.radio; onClicked: settingsSection.radio = false }
+                    SettingsRadio { text: DemoText.t("Kézzel, a Sávok fülön", "Manually, on the Tracks tab"); checked: settingsSection.radio; onClicked: settingsSection.radio = true }
                 }
                 Column {
                     width: 330
                     spacing: 12
                     SettingsSwitchRow {
                         width: parent.width
-                        text: "Induljon el a bejelentkezéskor"
-                        helper: "Magyarázat a kapcsoló alatt, 13 px, halvány."
+                        text: DemoText.t("Induljon el a bejelentkezéskor", "Start when I log in")
+                        helper: DemoText.t("Magyarázat a kapcsoló alatt, 13 px, halvány.", "Explanation under the switch, 13 px, muted.")
                         checked: settingsSection.sw
                         onToggled: (on) => settingsSection.sw = on
                     }
                     SettingsSwitchRow {
                         width: parent.width
                         large: true
-                        text: "Hívásfigyelés"
+                        text: DemoText.t("Hívásfigyelés", "Call watching")
                         checked: settingsSection.sw
                         onToggled: (on) => settingsSection.sw = on
                     }
@@ -538,12 +538,12 @@ Item {
                         width: 132
                         from: 0; to: 60
                         value: settingsSection.minutes
-                        textFor: function(v) { return v === 0 ? "kikapcsolva" : v + " perc" }
+                        textFor: function(v) { return v === 0 ? DemoText.t("kikapcsolva", "off") : v + DemoText.t(" perc", " min") }
                         onMoved: (v) => settingsSection.minutes = v
                     }
                     SettingsCombo {
                         width: 220
-                        options: [{ value: "auto", label: "Rendszer nyelve" }, { value: "hu", label: "Magyar", tag: "ajánlott" },
+                        options: [{ value: "auto", label: DemoText.t("Rendszer nyelve", "System language") }, { value: "hu", label: "Magyar", tag: DemoText.t("ajánlott", "recommended") },
                                   { value: "en", label: "English" }]
                         value: settingsSection.combo
                         onPicked: (v) => settingsSection.combo = v
@@ -553,27 +553,27 @@ Item {
                         editable: true
                         mono: true
                         fieldHeight: 32
-                        options: ["modell-a", "modell-b"]
-                        value: "modell-a"
+                        options: DemoText.en ? ["model-a", "model-b"] : ["modell-a", "modell-b"]
+                        value: DemoText.t("modell-a", "model-a")
                     }
                 }
                 Column {
                     spacing: 8
-                    SettingsStatusPill { status: "ok"; text: "Kapcsolódva · 210 ms" }
-                    SettingsStatusPill { status: "failed"; text: "Nem érhető el" }
-                    SettingsStatusPill { status: "testing"; text: "Tesztelés…" }
+                    SettingsStatusPill { status: "ok"; text: DemoText.t("Kapcsolódva · 210 ms", "Connected · 210 ms") }
+                    SettingsStatusPill { status: "failed"; text: DemoText.t("Nem érhető el", "Unreachable") }
+                    SettingsStatusPill { status: "testing"; text: DemoText.t("Tesztelés…", "Testing…") }
                 }
                 Column {
                     width: 188
                     spacing: 2
-                    SettingsNavItem { width: parent.width; text: "Általános"; iconName: "settings"; current: true }
-                    SettingsNavItem { width: parent.width; text: "Szolgáltatások"; iconName: "plug"; warn: true }
+                    SettingsNavItem { width: parent.width; text: DemoText.t("Általános", "General"); iconName: "settings"; current: true }
+                    SettingsNavItem { width: parent.width; text: DemoText.t("Szolgáltatások", "Services"); iconName: "plug"; warn: true }
                 }
             }
 
             // ------------------------------------------------- menü, popover, dialog
             Section {
-                title: "Menü · popover · párbeszédablak (helyben kirajzolva; valódi felugró: overlay property)"
+                title: DemoText.t("Menü · popover · párbeszédablak (helyben kirajzolva; valódi felugró: overlay property)", "Menu · popover · dialog (drawn inline; real popup: overlay property)")
                 flowSpacing: 40
 
                 TSurface {
@@ -583,13 +583,13 @@ Item {
                         id: menuCol
                         x: 4; y: 4
                         width: parent.width - 8
-                        TMenuItem { width: parent.width; text: "Átnevezés"; iconName: "pencil"; shortcutText: "F2" }
-                        TMenuItem { width: parent.width; text: "Megnyitás mappában"; iconName: "folder-open"; stateHovered: true }
-                        TMenuItem { width: parent.width; text: "Újra-átírás…"; iconName: "rotate-ccw" }
-                        TMenuItem { width: parent.width; text: "Letiltott elem"; iconName: "lock"; enabled: false }
-                        TMenuItem { width: parent.width; text: "Sötét téma"; iconName: "moon"; checked: true }
+                        TMenuItem { width: parent.width; text: DemoText.t("Átnevezés", "Rename"); iconName: "pencil"; shortcutText: "F2" }
+                        TMenuItem { width: parent.width; text: DemoText.t("Megnyitás mappában", "Show in folder"); iconName: "folder-open"; stateHovered: true }
+                        TMenuItem { width: parent.width; text: DemoText.t("Újra-átírás…", "Re-transcribe…"); iconName: "rotate-ccw" }
+                        TMenuItem { width: parent.width; text: DemoText.t("Letiltott elem", "Disabled item"); iconName: "lock"; enabled: false }
+                        TMenuItem { width: parent.width; text: DemoText.t("Sötét téma", "Dark theme"); iconName: "moon"; checked: true }
                         TMenuSeparator { width: parent.width }
-                        TMenuItem { width: parent.width; text: "Törlés…"; iconName: "trash-2"; danger: true }
+                        TMenuItem { width: parent.width; text: DemoText.t("Törlés…", "Delete…"); iconName: "trash-2"; danger: true }
                     }
                 }
 
@@ -601,8 +601,8 @@ Item {
                         x: 12; y: 12
                         width: parent.width - 24
                         spacing: 8
-                        TSearchField { Layout.fillWidth: true; placeholderText: "Név keresése vagy új személy" }
-                        TSectionLabel { text: "Másik személy"; font.pixelSize: Theme.fontMicro }
+                        TSearchField { Layout.fillWidth: true; placeholderText: DemoText.t("Név keresése vagy új személy", "Search name or new person") }
+                        TSectionLabel { text: DemoText.t("Másik személy", "Another person"); font.pixelSize: Theme.fontMicro }
                         Repeater {
                             model: 3
                             RowLayout {
@@ -610,7 +610,7 @@ Item {
                                 spacing: 10
                                 TAvatar { name: root.speakerNames[parent.index + 1]; speakerIndex: parent.index + 1 }
                                 TLabel { text: root.speakerNames[parent.index + 1]; Layout.fillWidth: true }
-                                TLabel { text: (12 - parent.index * 4) + " megbeszélés"; muted: true; font.pixelSize: Theme.fontCaption }
+                                TLabel { text: (12 - parent.index * 4) + DemoText.t(" megbeszélés", " meetings"); muted: true; font.pixelSize: Theme.fontCaption }
                             }
                         }
                         TDivider { Layout.fillWidth: true }
@@ -619,7 +619,7 @@ Item {
                             wrapMode: Text.Wrap
                             muted: true
                             font.pixelSize: Theme.fontCaption
-                            text: "A beszélő névtelenül is maradhat; később is elnevezheted."
+                            text: DemoText.t("A beszélő névtelenül is maradhat; később is elnevezheted.", "Speakers can stay unnamed; you can name them later.")
                         }
                     }
                 }
@@ -633,46 +633,46 @@ Item {
                         x: 22; y: 22
                         width: parent.width - 44
                         spacing: 14
-                        TLabel { text: "Újra-átírod a megbeszélést?"; font.pixelSize: 18; font.weight: Theme.weightSemiBold }
+                        TLabel { text: DemoText.t("Újra-átírod a megbeszélést?", "Re-transcribe the meeting?"); font.pixelSize: 18; font.weight: Theme.weightSemiBold }
                         TLabel {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
                             cssLineHeight: 1.55
-                            text: "A mostani átirat és a benne lévő 23 kézi javítás elvész, az összefoglaló elavulttá válik. A hanglenyomatokba tanított javítások megmaradnak."
+                            text: DemoText.t("A mostani átirat és a benne lévő 23 kézi javítás elvész, az összefoglaló elavulttá válik. A hanglenyomatokba tanított javítások megmaradnak.", "The current transcript and its 23 manual corrections will be lost, and the summary becomes outdated. Corrections taught to the voiceprints are kept.")
                         }
-                        TCheckBox { Layout.fillWidth: true; checked: true; text: "A mostani átirat maradjon meg másolatként" }
+                        TCheckBox { Layout.fillWidth: true; checked: true; text: DemoText.t("A mostani átirat maradjon meg másolatként", "Keep the current transcript as a copy") }
                         RowLayout {
                             Layout.topMargin: 6
                             spacing: 8
                             Item { Layout.fillWidth: true }
-                            TButton { text: "Mégse" }
-                            TButton { text: "Újra-átírás"; variant: "danger" }
+                            TButton { text: DemoText.t("Mégse", "Cancel") }
+                            TButton { text: DemoText.t("Újra-átírás", "Re-transcribe"); variant: "danger" }
                         }
                     }
                 }
             }
 
             Section {
-                title: "Valódi felugrók (kattintásra)"
+                title: DemoText.t("Valódi felugrók (kattintásra)", "Real popups (on click)")
                 TButton {
                     id: dialogButton
-                    text: "Párbeszédablak…"
+                    text: DemoText.t("Párbeszédablak…", "Dialog…")
                     onClicked: demoDialog.open()
                 }
                 TButton {
                     id: menuButton
-                    text: "Menü"
+                    text: DemoText.t("Menü", "Menu")
                     trailingIconName: "chevron-down"
                     onClicked: demoMenu.open()
                     TMenu {
                         id: demoMenu
                         y: menuButton.height + 4
                         width: 250
-                        TMenuItem { text: "Átnevezés"; iconName: "pencil" }
-                        TMenuItem { text: "Megnyitás mappában"; iconName: "folder-open" }
-                        TMenuItem { text: "Újra-átírás…"; iconName: "rotate-ccw" }
+                        TMenuItem { text: DemoText.t("Átnevezés", "Rename"); iconName: "pencil" }
+                        TMenuItem { text: DemoText.t("Megnyitás mappában", "Show in folder"); iconName: "folder-open" }
+                        TMenuItem { text: DemoText.t("Újra-átírás…", "Re-transcribe…"); iconName: "rotate-ccw" }
                         TMenuSeparator {}
-                        TMenuItem { text: "Törlés…"; iconName: "trash-2"; danger: true }
+                        TMenuItem { text: DemoText.t("Törlés…", "Delete…"); iconName: "trash-2"; danger: true }
                     }
                 }
                 TButton {
@@ -687,48 +687,48 @@ Item {
                         ColumnLayout {
                             anchors.fill: parent
                             spacing: 8
-                            TSearchField { Layout.fillWidth: true; placeholderText: "Név keresése vagy új személy" }
+                            TSearchField { Layout.fillWidth: true; placeholderText: DemoText.t("Név keresése vagy új személy", "Search name or new person") }
                             TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; muted: true; font.pixelSize: Theme.fontCaption
-                                     text: "A beszélő névtelenül is maradhat; később is elnevezheted." }
+                                     text: DemoText.t("A beszélő névtelenül is maradhat; később is elnevezheted.", "Speakers can stay unnamed; you can name them later.") }
                         }
                     }
                 }
             }
 
             Section {
-                title: "Címkék (T01: chip, beviteli mező, a fejléc címkesora)"
+                title: DemoText.t("Címkék (T01: chip, beviteli mező, a fejléc címkesora)", "Tags (T01: chip, input field, the header tag row)")
                 TagGallerySection { width: page.width }
             }
 
             // ------------------------------------------------- v3 héj: bizonyíték, idő, jelölő
             Section {
-                title: "Bizonyíték-chip (EvidenceChip): 3 polaritás × fajták"
+                title: DemoText.t("Bizonyíték-chip (EvidenceChip): 3 polaritás × fajták", "Evidence chip (EvidenceChip): 3 polarities × kinds")
                 flowSpacing: 10
                 // support
-                Shown { caption: "support · voice"; EvidenceChip { kind: "voice"; polarity: "support"; text: "hang 84%" } }
-                Shown { caption: "support · side mic"; EvidenceChip { kind: "side"; side: "mic"; polarity: "support"; text: "mikrofon-sáv" } }
-                Shown { caption: "support · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "support"; text: "hívás-sáv" } }
-                Shown { caption: "support · calendar"; EvidenceChip { kind: "calendar"; polarity: "support"; text: "meghívott" } }
+                Shown { caption: "support · voice"; EvidenceChip { kind: "voice"; polarity: "support"; text: DemoText.t("hang 84%", "voice 84%") } }
+                Shown { caption: "support · side mic"; EvidenceChip { kind: "side"; side: "mic"; polarity: "support"; text: DemoText.t("mikrofon-sáv", "mic track") } }
+                Shown { caption: "support · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "support"; text: DemoText.t("hívás-sáv", "call track") } }
+                Shown { caption: "support · calendar"; EvidenceChip { kind: "calendar"; polarity: "support"; text: DemoText.t("meghívott", "invited") } }
                 Shown { caption: "support · tag"; EvidenceChip { kind: "tag"; polarity: "support"; text: "#Nordvik" } }
-                Shown { caption: "support · lines"; EvidenceChip { kind: "lines"; polarity: "support"; text: "86 sor" } }
-                Shown { caption: "support · similarity"; EvidenceChip { kind: "similarity"; polarity: "support"; text: "hasonló hang" } }
-                Shown { caption: "support · manual"; EvidenceChip { kind: "manual"; polarity: "support"; text: "kézi beosztás" } }
-                Shown { caption: "support · quiet (V2 sorok)"; EvidenceChip { kind: "voice"; polarity: "support"; quiet: true; text: "hang 91%" } }
+                Shown { caption: "support · lines"; EvidenceChip { kind: "lines"; polarity: "support"; text: DemoText.t("86 sor", "86 lines") } }
+                Shown { caption: "support · similarity"; EvidenceChip { kind: "similarity"; polarity: "support"; text: DemoText.t("hasonló hang", "similar voice") } }
+                Shown { caption: "support · manual"; EvidenceChip { kind: "manual"; polarity: "support"; text: DemoText.t("kézi beosztás", "manual assignment") } }
+                Shown { caption: DemoText.t("support · quiet (V2 sorok)", "support · quiet (V2 lines)"); EvidenceChip { kind: "voice"; polarity: "support"; quiet: true; text: DemoText.t("hang 91%", "voice 91%") } }
                 // neutral
-                Shown { caption: "neutral · voice"; EvidenceChip { kind: "voice"; polarity: "neutral"; text: "hang 52%" } }
-                Shown { caption: "neutral · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: "hívás-sáv" } }
-                Shown { caption: "neutral · side"; EvidenceChip { kind: "side"; polarity: "neutral"; text: "egyik sáv" } }
-                Shown { caption: "neutral · lines"; EvidenceChip { kind: "lines"; polarity: "neutral"; text: "7 sor" } }
+                Shown { caption: "neutral · voice"; EvidenceChip { kind: "voice"; polarity: "neutral"; text: DemoText.t("hang 52%", "voice 52%") } }
+                Shown { caption: "neutral · side loopback"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: DemoText.t("hívás-sáv", "call track") } }
+                Shown { caption: "neutral · side"; EvidenceChip { kind: "side"; polarity: "neutral"; text: DemoText.t("egyik sáv", "one track") } }
+                Shown { caption: "neutral · lines"; EvidenceChip { kind: "lines"; polarity: "neutral"; text: DemoText.t("7 sor", "7 lines") } }
                 // contradict
-                Shown { caption: "contradict · voice"; EvidenceChip { kind: "voice"; polarity: "contradict"; text: "hang 31%" } }
-                Shown { caption: "contradict · side"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "contradict"; text: "másik sávon" } }
-                Shown { caption: "contradict · tag (⚠)"; EvidenceChip { kind: "tag"; polarity: "contradict"; text: "#Nordvik nélkül" } }
+                Shown { caption: "contradict · voice"; EvidenceChip { kind: "voice"; polarity: "contradict"; text: DemoText.t("hang 31%", "voice 31%") } }
+                Shown { caption: "contradict · side"; EvidenceChip { kind: "side"; side: "loopback"; polarity: "contradict"; text: DemoText.t("másik sávon", "on the other track") } }
+                Shown { caption: "contradict · tag (⚠)"; EvidenceChip { kind: "tag"; polarity: "contradict"; text: DemoText.t("#Nordvik nélkül", "without #Nordvik") } }
             }
 
             Section {
-                title: "Idő-chip (TimeChip): alap · hover · fókusz · aktív · figyelmeztető · szakasz (play)"
+                title: DemoText.t("Idő-chip (TimeChip): alap · hover · fókusz · aktív · figyelmeztető · szakasz (play)", "Time chip (TimeChip): default · hover · focus · active · warning · section (play)")
                 flowSpacing: 14
-                Shown { caption: "alap"; TimeChip { text: "12:41" } }
+                Shown { caption: DemoText.t("alap", "default"); TimeChip { text: "12:41" } }
                 Shown { caption: "stateHovered"; TimeChip { text: "12:41"; stateHovered: true } }
                 Shown { caption: "stateFocused"; TimeChip { text: "12:41"; stateFocused: true } }
                 Shown { caption: "active"; TimeChip { text: "12:41"; active: true } }
@@ -739,7 +739,7 @@ Item {
             }
 
             Section {
-                title: "Átirat-jelölő (TranscriptMarker): Javítás mód, soronként"
+                title: DemoText.t("Átirat-jelölő (TranscriptMarker): Javítás mód, soronként", "Transcript marker (TranscriptMarker): Fix mode, per line")
                 flowSpacing: 14
                 Shown { caption: "confirmed"; TranscriptMarker { kind: "confirmed" } }
                 Shown { caption: "short"; TranscriptMarker { kind: "short" } }
@@ -752,77 +752,77 @@ Item {
             }
 
             Section {
-                title: "Jelölt-sor (CandidateRow) és ok-sor (EvidenceReason)"
+                title: DemoText.t("Jelölt-sor (CandidateRow) és ok-sor (EvidenceReason)", "Candidate row (CandidateRow) and reason row (EvidenceReason)")
                 flowSpacing: 18
                 Shown {
-                    caption: "CandidateRow · javasolt (erős bizonyíték, 1)"
+                    caption: DemoText.t("CandidateRow · javasolt (erős bizonyíték, 1)", "CandidateRow · suggested (strong evidence, 1)")
                     CandidateRow {
                         width: 380
-                        personName: "Fehér Gábor"; colorIndex: 1; subText: "86 sor itt"; keyHint: "1"
+                        personName: DemoText.name("Fehér Gábor"); colorIndex: 1; subText: DemoText.t("86 sor itt", "86 lines here"); keyHint: "1"
                         strongEvidence: true; highlighted: true
-                        evidence: [{ kind: "voice", polarity: "support", text: "hang 84%" },
-                                   { kind: "side", side: "loopback", polarity: "support", text: "hívás-sáv" }]
+                        evidence: [{ kind: "voice", polarity: "support", text: DemoText.t("hang 84%", "voice 84%") },
+                                   { kind: "side", side: "loopback", polarity: "support", text: DemoText.t("hívás-sáv", "call track") }]
                     }
                 }
                 Shown {
-                    caption: "CandidateRow · most ő (halvány) / meetingen kívüli"
+                    caption: DemoText.t("CandidateRow · most ő (halvány) / meetingen kívüli", "CandidateRow · currently them (dimmed) / not in the meeting")
                     Column {
                         spacing: 6
                         CandidateRow {
                             width: 380
-                            personName: "Kovács Lilla"; colorIndex: 0; subText: "most ő"; keyHint: "2"; dimmed: true
-                            evidence: [{ kind: "voice", polarity: "contradict", text: "hang 31%" }]
+                            personName: DemoText.name("Kovács Lilla"); colorIndex: 0; subText: DemoText.t("most ő", "currently them"); keyHint: "2"; dimmed: true
+                            evidence: [{ kind: "voice", polarity: "contradict", text: DemoText.t("hang 31%", "voice 31%") }]
                         }
                         CandidateRow {
                             width: 380
-                            personName: "Varga Árpád"; colorIndex: -1; subText: "12 megbeszélés"; keyHint: "3"
+                            personName: DemoText.name("Varga Árpád"); colorIndex: -1; subText: DemoText.t("12 megbeszélés", "12 meetings"); keyHint: "3"
                             evidence: [{ kind: "tag", polarity: "support", text: "#Nordvik" },
-                                       { kind: "voice", polarity: "neutral", text: "hang 52%" }]
+                                       { kind: "voice", polarity: "neutral", text: DemoText.t("hang 52%", "voice 52%") }]
                         }
                     }
                 }
                 Shown {
-                    caption: "EvidenceReason · mellette szól / ellene szól (javítás-link)"
+                    caption: DemoText.t("EvidenceReason · mellette szól / ellene szól (javítás-link)", "EvidenceReason · for / against (fix link)")
                     Column {
                         spacing: 4
                         EvidenceReason {
                             width: 420
-                            evidence: ({ kind: "voice", polarity: "support", label: "Hang:",
-                                         sentence: "a mintáihoz 84%-ban hasonlít", fixLabel: "Minták" })
+                            evidence: ({ kind: "voice", polarity: "support", label: DemoText.t("Hang:", "Voice:"),
+                                         sentence: DemoText.t("a mintáihoz 84%-ban hasonlít", "84% similar to their samples"), fixLabel: DemoText.t("Minták", "Samples") })
                         }
                         EvidenceReason {
                             width: 420
-                            evidence: ({ kind: "side", side: "loopback", polarity: "contradict", label: "Sáv:",
-                                         sentence: "a hívás-sávon szól, ő a mikrofonon szokott", fixLabel: "Sáv-beosztás" })
+                            evidence: ({ kind: "side", side: "loopback", polarity: "contradict", label: DemoText.t("Sáv:", "Track:"),
+                                         sentence: DemoText.t("a hívás-sávon szól, ő a mikrofonon szokott", "speaks on the call track, they usually use the mic"), fixLabel: DemoText.t("Sáv-beosztás", "Track assignment") })
                         }
                         EvidenceReason {
                             width: 420
-                            evidence: ({ kind: "similarity", polarity: "neutral", label: "Hasonló hang:",
-                                         sentence: "Fehér Gáboré is közel van", fixLabel: "Kettejük átnézése" })
+                            evidence: ({ kind: "similarity", polarity: "neutral", label: DemoText.t("Hasonló hang:", "Similar voice:"),
+                                         sentence: DemoText.t("Fehér Gáboré is közel van", "Daniel Hughes is close too"), fixLabel: DemoText.t("Kettejük átnézése", "Review the two") })
                         }
                     }
                 }
             }
 
             Section {
-                title: "Áttekintés: címkemező javaslattal (TagRowOverview) · ADATOK csempék (StatTiles) · FELDOLGOZÁS lépései (PipelineSteps)"
+                title: DemoText.t("Áttekintés: címkemező javaslattal (TagRowOverview) · ADATOK csempék (StatTiles) · FELDOLGOZÁS lépései (PipelineSteps)", "Overview: tag field with suggestions (TagRowOverview) · DATA tiles (StatTiles) · PROCESSING steps (PipelineSteps)")
                 flowSpacing: 24
                 Shown {
-                    caption: "TagRowOverview · felrakott címkék + javaslatok (MeetingTagsModel demoState=\"similar\")"
+                    caption: DemoText.t("TagRowOverview · felrakott címkék + javaslatok (MeetingTagsModel demoState=\"similar\")", "TagRowOverview · applied tags + suggestions (MeetingTagsModel demoState=\"similar\")")
                     TagRowOverview {
                         width: 520
                         model: MeetingTagsModel { demoState: "similar" }
                     }
                 }
                 Shown {
-                    caption: "TagRowOverview · a résztvevők címkéiből (demoState=\"people\", átírás előtt is)"
+                    caption: DemoText.t("TagRowOverview · a résztvevők címkéiből (demoState=\"people\", átírás előtt is)", "TagRowOverview · from the participants' tags (demoState=\"people\", even before transcription)")
                     TagRowOverview {
                         width: 520
                         model: MeetingTagsModel { demoState: "people" }
                     }
                 }
                 Shown {
-                    caption: "TagRowOverview · üres (demoState=\"none\")"
+                    caption: DemoText.t("TagRowOverview · üres (demoState=\"none\")", "TagRowOverview · empty (demoState=\"none\")")
                     TagRowOverview {
                         width: 340
                         model: MeetingTagsModel { demoState: "none" }
@@ -832,48 +832,48 @@ Item {
                     caption: "StatTiles · 2 × 3"
                     StatTiles {
                         width: 340
-                        stats: [{ label: "HOSSZ", value: "2:11:04", sub: "felvétel" },
-                                { label: "MEGSZÓLALÁS", value: "1298", sub: "átirat" },
-                                { label: "BESZÉLŐ", value: "5", sub: "4 azonosítva" },
-                                { label: "SÁV", value: "3", sub: "1 eldobott" },
-                                { label: "FÁJLOK", value: "412 MB", sub: "hang" },
-                                { label: "ÁTLAG", value: "84%", sub: "hang-biztonság" }]
+                        stats: [{ label: DemoText.t("HOSSZ", "LENGTH"), value: "2:11:04", sub: DemoText.t("felvétel", "recording") },
+                                { label: DemoText.t("MEGSZÓLALÁS", "UTTERANCES"), value: "1298", sub: DemoText.t("átirat", "transcript") },
+                                { label: DemoText.t("BESZÉLŐ", "SPEAKERS"), value: "5", sub: DemoText.t("4 azonosítva", "4 identified") },
+                                { label: DemoText.t("SÁV", "TRACKS"), value: "3", sub: DemoText.t("1 eldobott", "1 discarded") },
+                                { label: DemoText.t("FÁJLOK", "FILES"), value: "412 MB", sub: DemoText.t("hang", "audio") },
+                                { label: DemoText.t("ÁTLAG", "AVERAGE"), value: "84%", sub: DemoText.t("hang-biztonság", "voice confidence") }]
                     }
                 }
                 Shown {
-                    caption: "PipelineSteps · done · running (haladás) · attention · waiting · párhuzamos"
+                    caption: DemoText.t("PipelineSteps · done · running (haladás) · attention · waiting · párhuzamos", "PipelineSteps · done · running (progress) · attention · waiting · parallel")
                     PipelineSteps {
                         width: 340
-                        steps: [{ key: "recording", title: "Felvétel", sub: "2:11:04 · 3 sáv", state: "done", parallel: false, progress: -1 },
-                                { key: "mixdown", title: "Lekeverés", sub: "elavult — újra kell készíteni", state: "attention", parallel: false, progress: -1 },
-                                { key: "voice", title: "Hanglenyomat-elemzés", sub: "42%", state: "running", parallel: true, progress: 42 },
-                                { key: "transcript", title: "Átirat", sub: "fut", state: "running", parallel: true, progress: -2 },
-                                { key: "summary", title: "Összefoglaló", sub: "az átirat után", state: "waiting", parallel: false, progress: -1 }]
+                        steps: [{ key: "recording", title: DemoText.t("Felvétel", "Recording"), sub: DemoText.t("2:11:04 · 3 sáv", "2:11:04 · 3 tracks"), state: "done", parallel: false, progress: -1 },
+                                { key: "mixdown", title: DemoText.t("Lekeverés", "Mixdown"), sub: DemoText.t("elavult — újra kell készíteni", "outdated — needs to be redone"), state: "attention", parallel: false, progress: -1 },
+                                { key: "voice", title: DemoText.t("Hanglenyomat-elemzés", "Voiceprint analysis"), sub: "42%", state: "running", parallel: true, progress: 42 },
+                                { key: "transcript", title: DemoText.t("Átirat", "Transcript"), sub: DemoText.t("fut", "running"), state: "running", parallel: true, progress: -2 },
+                                { key: "summary", title: DemoText.t("Összefoglaló", "Summary"), sub: DemoText.t("az átirat után", "after the transcript"), state: "waiting", parallel: false, progress: -1 }]
                     }
                 }
             }
 
             Section {
-                title: "Személyek-címkék és hangmodellek: TagPeopleList · SettingsVoiceModelCard (állapotonként)"
+                title: DemoText.t("Személyek-címkék és hangmodellek: TagPeopleList · SettingsVoiceModelCard (állapotonként)", "People tags and voice models: TagPeopleList · SettingsVoiceModelCard (per state)")
                 flowSpacing: 24
                 Shown {
-                    caption: "TagPeopleList · felrakott / csak tanult / előre felvett"
+                    caption: DemoText.t("TagPeopleList · felrakott / csak tanult / előre felvett", "TagPeopleList · applied / learned only / added in advance")
                     TagPeopleList {
                         width: 420
-                        people: [{ name: "Kovács Lilla", monogram: "KL", countText: "11 / 14", manual: true },
-                                 { name: "Fehér Gábor", monogram: "FG", countText: "9 / 14", manual: false },
-                                 { name: "Varga Árpád", monogram: "VÁ", countText: "0 / 14", manual: true }]
+                        people: [{ name: DemoText.name("Kovács Lilla"), monogram: DemoText.t("KL", "EC"), countText: "11 / 14", manual: true },
+                                 { name: DemoText.name("Fehér Gábor"), monogram: DemoText.t("FG", "DH"), countText: "9 / 14", manual: false },
+                                 { name: DemoText.name("Varga Árpád"), monogram: DemoText.t("VÁ", "JW"), countText: "0 / 14", manual: true }]
                     }
                 }
                 Shown {
-                    caption: "TagPeopleList · üres"
-                    TagPeopleList { width: 420; people: []; emptyText: "Még nincs személy ezen a címkén." }
+                    caption: DemoText.t("TagPeopleList · üres", "TagPeopleList · empty")
+                    TagPeopleList { width: 420; people: []; emptyText: DemoText.t("Még nincs személy ezen a címkén.", "No one has this tag yet.") }
                 }
                 Shown {
-                    caption: "SettingsVoiceModelCard · missing (ajánlott)"
+                    caption: DemoText.t("SettingsVoiceModelCard · missing (ajánlott)", "SettingsVoiceModelCard · missing (recommended)")
                     SettingsVoiceModelCard {
                         width: 420
-                        name: "CAM++"; recommended: true; blurb: "Gyors, magyar beszédre is jó beszélő-felismerő."
+                        name: "CAM++"; recommended: true; blurb: DemoText.t("Gyors, magyar beszédre is jó beszélő-felismerő.", "Fast speaker recognizer, good for Hungarian speech too.")
                         license: "Apache-2.0"; sourceText: "modelscope"; sizeText: "28 MB"; dimText: "192 dim"
                         state_: "missing"
                     }
@@ -882,16 +882,16 @@ Item {
                     caption: "downloading"
                     SettingsVoiceModelCard {
                         width: 420
-                        name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."
+                        name: "WeSpeaker"; blurb: DemoText.t("Pontosabb, de lassabb.", "More accurate, but slower.")
                         license: "CC-BY-4.0"; sizeText: "26 MB"; dimText: "256 dim"
                         state_: "downloading"; progress: 0.42; progressText: "11 / 26 MB"
                     }
                 }
                 Shown {
-                    caption: "downloaded · bekapcsolva"
+                    caption: DemoText.t("downloaded · bekapcsolva", "downloaded · enabled")
                     SettingsVoiceModelCard {
                         width: 420
-                        name: "CAM++"; recommended: true; blurb: "Gyors, magyar beszédre is jó beszélő-felismerő."
+                        name: "CAM++"; recommended: true; blurb: DemoText.t("Gyors, magyar beszédre is jó beszélő-felismerő.", "Fast speaker recognizer, good for Hungarian speech too.")
                         license: "Apache-2.0"; sizeText: "28 MB"; dimText: "192 dim"
                         state_: "downloaded"; enabledModel: true; canEnable: true
                     }
@@ -901,11 +901,11 @@ Item {
                     Column {
                         spacing: 8
                         SettingsVoiceModelCard {
-                            width: 420; name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."; license: "CC-BY-4.0"
-                            sizeText: "26 MB"; state_: "error"; errorText: "A letöltés megszakadt (hálózati hiba)."
+                            width: 420; name: "WeSpeaker"; blurb: DemoText.t("Pontosabb, de lassabb.", "More accurate, but slower."); license: "CC-BY-4.0"
+                            sizeText: "26 MB"; state_: "error"; errorText: DemoText.t("A letöltés megszakadt (hálózati hiba).", "The download was interrupted (network error).")
                         }
                         SettingsVoiceModelCard {
-                            width: 420; name: "WeSpeaker"; blurb: "Pontosabb, de lassabb."; license: "CC-BY-4.0"
+                            width: 420; name: "WeSpeaker"; blurb: DemoText.t("Pontosabb, de lassabb.", "More accurate, but slower."); license: "CC-BY-4.0"
                             sizeText: "26 MB"; state_: "offline"
                         }
                     }
@@ -913,13 +913,13 @@ Item {
             }
 
             Section {
-                title: "Sávok és tanulás (javító kör): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote"
+                title: DemoText.t("Sávok és tanulás (javító kör): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote", "Tracks and learning (fix round): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote")
                 flowSpacing: 24
                 // Kitalált, determinisztikus beszéd-keretek (TrackActivityModel demó-adata: mic, call, system, mic2).
                 TrackActivityModel { id: galleryActivity }
                 TrackActivityModel { id: galleryActivityLoading; demoState: "loading" }
                 Shown {
-                    caption: "TrackActivityStrip · compact (18 px) · lejátszás-fejjel"
+                    caption: DemoText.t("TrackActivityStrip · compact (18 px) · lejátszás-fejjel", "TrackActivityStrip · compact (18 px) · with playhead")
                     TrackActivityStrip {
                         width: 320
                         compact: true
@@ -927,14 +927,14 @@ Item {
                     }
                 }
                 Shown {
-                    caption: "TrackActivityStrip · nagy (40 px), hívás-sáv a sáv színével"
+                    caption: DemoText.t("TrackActivityStrip · nagy (40 px), hívás-sáv a sáv színével", "TrackActivityStrip · large (40 px), call track in the track colour")
                     TrackActivityStrip {
                         width: 420
                         activity: galleryActivity; trackId: "call"; color: Theme.speakerLine(1); positionMs: 1200000
                     }
                 }
                 Shown {
-                    caption: "TrackActivityStrip · néma sáv · dimmed (kimaradt) · számol (lüktet)"
+                    caption: DemoText.t("TrackActivityStrip · néma sáv · dimmed (kimaradt) · számol (lüktet)", "TrackActivityStrip · silent track · dimmed (skipped) · computing (pulses)")
                     Column {
                         spacing: 8
                         TrackActivityStrip { width: 420; compact: true; activity: galleryActivity; trackId: "system" }
@@ -944,7 +944,7 @@ Item {
                 }
                 ParticipantTrackBinder { id: galleryBinder }
                 Shown {
-                    caption: "ParticipantTrackChips · tanult mikrofon (p1) · tanult hívás (p2) · kézzel mindkettő (p3)"
+                    caption: DemoText.t("ParticipantTrackChips · tanult mikrofon (p1) · tanult hívás (p2) · kézzel mindkettő (p3)", "ParticipantTrackChips · learned mic (p1) · learned call (p2) · both by hand (p3)")
                     Column {
                         spacing: 8
                         ParticipantTrackChips { binder: galleryBinder; participantId: "p1" }
@@ -953,57 +953,57 @@ Item {
                     }
                 }
                 Shown {
-                    caption: "CandidateRow · gyors „+ #Címke” (quickTagLabel) · EvidenceReason · quickLabel"
+                    caption: DemoText.t("CandidateRow · gyors „+ #Címke” (quickTagLabel) · EvidenceReason · quickLabel", "CandidateRow · quick “+ #Tag” (quickTagLabel) · EvidenceReason · quickLabel")
                     Column {
                         spacing: 8
                         CandidateRow {
                             width: 380
-                            personName: "Fehér Gábor"; colorIndex: 1; subText: "86 sor itt"; keyHint: "1"
+                            personName: DemoText.name("Fehér Gábor"); colorIndex: 1; subText: DemoText.t("86 sor itt", "86 lines here"); keyHint: "1"
                             quickTagLabel: "+ #Nordvik"
-                            evidence: [{ kind: "voice", polarity: "support", text: "hang 84%" }]
+                            evidence: [{ kind: "voice", polarity: "support", text: DemoText.t("hang 84%", "voice 84%") }]
                         }
                         EvidenceReason {
                             width: 420
-                            quickLabel: "+ #Nordvik ráteszem"
-                            evidence: ({ kind: "tag", polarity: "neutral", label: "Címke:",
-                                         sentence: "a #Nordvik még nincs rajta", fixLabel: "Címkéi" })
+                            quickLabel: DemoText.t("+ #Nordvik ráteszem", "+ apply #Nordvik")
+                            evidence: ({ kind: "tag", polarity: "neutral", label: DemoText.t("Címke:", "Tag:"),
+                                         sentence: DemoText.t("a #Nordvik még nincs rajta", "doesn't have #Nordvik yet"), fixLabel: DemoText.t("Címkéi", "Tags") })
                         }
                     }
                 }
                 Shown {
-                    caption: "TagLearnBar · kérdés két párral (Igen · Nem · Egyenként…)"
+                    caption: DemoText.t("TagLearnBar · kérdés két párral (Igen · Nem · Egyenként…)", "TagLearnBar · question with two pairs (Yes · No · One by one…)")
                     TagLearnBar {
                         width: 640
-                        question: ({ text: "Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?",
-                                     pairs: [{ index: 0, name: "Fehér Gábor", tagName: "Nordvik", text: "másodszor" },
-                                             { index: 1, name: "Varga Árpád", tagName: "Nordvik", text: "másodszor" }] })
+                        question: ({ text: DemoText.t("Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?", "Daniel Hughes and James Walker are in a #Nordvik meeting for the second time. Add the tag to them?"),
+                                     pairs: [{ index: 0, name: DemoText.name("Fehér Gábor"), tagName: "Nordvik", text: DemoText.t("másodszor", "for the second time") },
+                                             { index: 1, name: DemoText.name("Varga Árpád"), tagName: "Nordvik", text: DemoText.t("másodszor", "for the second time") }] })
                     }
                 }
                 Shown {
-                    caption: "TagLearnBar · az „Egyenként…” lista nyitva (expanded)"
+                    caption: DemoText.t("TagLearnBar · az „Egyenként…” lista nyitva (expanded)", "TagLearnBar · the “One by one…” list open (expanded)")
                     TagLearnBar {
                         width: 640
                         expanded: true
-                        question: ({ text: "Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?",
-                                     pairs: [{ index: 0, name: "Fehér Gábor", tagName: "Nordvik", text: "másodszor" },
-                                             { index: 1, name: "Varga Árpád", tagName: "Nordvik", text: "másodszor" }] })
+                        question: ({ text: DemoText.t("Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?", "Daniel Hughes and James Walker are in a #Nordvik meeting for the second time. Add the tag to them?"),
+                                     pairs: [{ index: 0, name: DemoText.name("Fehér Gábor"), tagName: "Nordvik", text: DemoText.t("másodszor", "for the second time") },
+                                             { index: 1, name: DemoText.name("Varga Árpád"), tagName: "Nordvik", text: DemoText.t("másodszor", "for the second time") }] })
                     }
                 }
                 Shown {
-                    caption: "TagLearnBar · embedded (a változás-sáv sorában, saját háttér nélkül)"
+                    caption: DemoText.t("TagLearnBar · embedded (a változás-sáv sorában, saját háttér nélkül)", "TagLearnBar · embedded (in the change bar row, without its own background)")
                     Rectangle {
                         width: 640; height: 52; radius: Theme.radiusPopup; color: Theme.text
                         TagLearnBar {
                             anchors.fill: parent
                             embedded: true
-                            question: ({ text: "Szabó Bence új személy. Ráteszem a #Nordvik címkét?", pairs: [] })
+                            question: ({ text: DemoText.t("Szabó Bence új személy. Ráteszem a #Nordvik címkét?", "Noah Turner is a new person. Add the #Nordvik tag?"), pairs: [] })
                         }
                     }
                 }
                 // C++ segéd (nem vizuális): a Személyek részletek-panel „N minta nem pótolható” sora.
-                BackfillSkipNote { id: gallerySkipNote; person: "Fehér Gábor"; demoState: "samplesModels" }
+                BackfillSkipNote { id: gallerySkipNote; person: DemoText.name("Fehér Gábor"); demoState: "samplesModels" }
                 Shown {
-                    caption: "BackfillSkipNote · text + detail (tooltip) — a Személyek ablak jelzése"
+                    caption: DemoText.t("BackfillSkipNote · text + detail (tooltip) — a Személyek ablak jelzése", "BackfillSkipNote · text + detail (tooltip) — the People window notice")
                     Column {
                         spacing: 4
                         Row {
@@ -1017,28 +1017,28 @@ Item {
             }
 
             Section {
-                title: "Egyéb: elválasztó, szaggatott keret, helykitöltő"
+                title: DemoText.t("Egyéb: elválasztó, szaggatott keret, helykitöltő", "Other: divider, dashed frame, placeholder")
                 TDivider { width: 200 }
                 TDashedRect { width: 120; height: 34 }
                 TDashedRect { width: 24; height: 24; radius: 12; color: Theme.accent }
-                TPlaceholder { width: 260; height: 70; label: "Valami.qml"; note: "Helykitöltő a héj-vázban" }
+                TPlaceholder { width: 260; height: 70; label: "Valami.qml"; note: DemoText.t("Helykitöltő a héj-vázban", "Placeholder in the shell frame") }
             }
         }
     }
 
     TDialog {
         id: demoDialog
-        title: "Újra-átírod a megbeszélést?"
+        title: DemoText.t("Újra-átírod a megbeszélést?", "Re-transcribe the meeting?")
         TLabel {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             cssLineHeight: 1.55
-            text: "A mostani átirat és a benne lévő 23 kézi javítás elvész, az összefoglaló elavulttá válik. A hanglenyomatokba tanított javítások megmaradnak."
+            text: DemoText.t("A mostani átirat és a benne lévő 23 kézi javítás elvész, az összefoglaló elavulttá válik. A hanglenyomatokba tanított javítások megmaradnak.", "The current transcript and its 23 manual corrections will be lost, and the summary becomes outdated. Corrections taught to the voiceprints are kept.")
         }
-        TCheckBox { Layout.fillWidth: true; checked: true; text: "A mostani átirat maradjon meg másolatként" }
+        TCheckBox { Layout.fillWidth: true; checked: true; text: DemoText.t("A mostani átirat maradjon meg másolatként", "Keep the current transcript as a copy") }
         actions: [
-            TButton { text: "Mégse"; onClicked: demoDialog.reject() },
-            TButton { text: "Újra-átírás"; variant: "danger"; onClicked: demoDialog.accept() }
+            TButton { text: DemoText.t("Mégse", "Cancel"); onClicked: demoDialog.reject() },
+            TButton { text: DemoText.t("Újra-átírás", "Re-transcribe"); variant: "danger"; onClicked: demoDialog.accept() }
         ]
     }
 

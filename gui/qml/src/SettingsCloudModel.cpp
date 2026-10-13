@@ -1,5 +1,7 @@
 #include "SettingsCloudModel.h"
 
+#include "DemoText.h"
+
 #include "SettingsDialogs.h"
 #include "SettingsViewModel.h"
 
@@ -93,7 +95,7 @@ bool SettingsCloudModel::loggedIn() const
 
 QString SettingsCloudModel::email() const
 {
-    if (m_demo) return m_demoLoggedIn ? QStringLiteral("lilla.kovacs@example.com") : QString();
+    if (m_demo) return m_demoLoggedIn ? demoText("lilla.kovacs@example.com", "emma.carter@example.com") : QString();
     AppController* c = m_vm->controller();
     if (!c || !c->cloud()) return {};
     const AccountInfo a = c->cloud()->account();

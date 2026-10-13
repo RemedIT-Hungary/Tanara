@@ -1,5 +1,7 @@
 #include "SettingsViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
@@ -1379,10 +1381,10 @@ void SettingsViewModel::loadDemo()
     m_loading = true;
 
     AppSettings s;
-    s.userSpeakerName = QStringLiteral("Kovács Lilla");
-    s.audioDir = QStringLiteral("/home/lilla/Tanara/felvetelek");
-    s.notesDir = QStringLiteral("/home/lilla/Tanara/jegyzetek");
-    s.metadataDir = QStringLiteral("/home/lilla/.tanara");
+    s.userSpeakerName = demoName("Kovács Lilla");
+    s.audioDir = demoText("/home/lilla/Tanara/felvetelek", "/home/emma/Tanara/recordings");
+    s.notesDir = demoText("/home/lilla/Tanara/jegyzetek", "/home/emma/Tanara/notes");
+    s.metadataDir = demoText("/home/lilla/.tanara", "/home/emma/.tanara");
     s.uiLanguage = QStringLiteral("auto");
     s.autoRecordAllDevices = false;
     s.audioQuality = QStringLiteral("medium");
@@ -1405,13 +1407,15 @@ void SettingsViewModel::loadDemo()
         s.llmConfigs.insert(s.llmProviderId, llm);
     }
     const QString trust = QStringLiteral("alsa_input.usb-Trust_USB_Microphone-00.mono-fallback");
-    const QString headsetMon = QStringLiteral("Monitor of Sennheiser headset - Kommunikáció");
-    const QString kantoMon = QStringLiteral("Monitor of Kanto YU4 - Optikai digitális sztereó");
+    const QString headsetMon = demoText("Monitor of Sennheiser headset - Kommunikáció",
+                                        "Monitor of Sennheiser headset - Communication");
+    const QString kantoMon = demoText("Monitor of Kanto YU4 - Optikai digitális sztereó",
+                                      "Monitor of Kanto YU4 - Digital Stereo (IEC958)");
     s.deviceNames = {
-        {trust, QStringLiteral("Trust USB mikrofon")},
-        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), QStringLiteral("Sennheiser fejhallgató (analóg)")},
+        {trust, demoText("Trust USB mikrofon", "Trust USB microphone")},
+        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo"), demoText("Sennheiser fejhallgató (analóg)", "Sennheiser headphones (analog)")},
         {headsetMon, QStringLiteral("Sennheiser headset")},
-        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in"), QStringLiteral("Alaplapi vonalbemenet")},
+        {QStringLiteral("alsa_input.pci-0000_00_1f.3.analog-stereo.line-in"), demoText("Alaplapi vonalbemenet", "Motherboard line-in")},
     };
     normalize(s);
     m_base = s;
@@ -1470,7 +1474,7 @@ void SettingsViewModel::loadDemo()
 
     if (st == QLatin1String("B02") || st == QLatin1String("rename")) {
         m_page = QStringLiteral("recording");
-        m_draft.deviceNames.insert(kantoMon, QStringLiteral("Kanto hangfal"));   // 1 mentetlen változás
+        m_draft.deviceNames.insert(kantoMon, demoText("Kanto hangfal", "Kanto speakers"));   // 1 mentetlen változás
     } else if (st == QLatin1String("B03")) {
         m_page = QStringLiteral("watcher");
         m_liveActive = true;
@@ -1526,7 +1530,7 @@ void SettingsViewModel::loadDemo()
         // A piszkozat bekapcsolt listája a demó modell-állapotához igazodik.
         m_base.voiceModels = m_draft.voiceModels = QStringList{QStringLiteral("wespeaker-resnet34-lm")};
     } else if (st == QLatin1String("dirty") || st == QLatin1String("unsaved")) {
-        m_draft.userSpeakerName = QStringLiteral("Kovács Lilla Anna");
+        m_draft.userSpeakerName = demoText("Kovács Lilla Anna", "Emma Anne Carter");
     }
 
     m_devices->refreshFromDraft();

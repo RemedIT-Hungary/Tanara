@@ -1795,7 +1795,7 @@ Item {
             reviewView.demoPlayPos = 0.42      // az auto-lejátszás épp szól (képernyőkép)
         } else if (s === "speakerWhy") {
             list.positionViewAtBeginning()
-            const lane = Math.max(0, keyOf("Fehér Gábor"))
+            const lane = Math.max(0, keyOf(DemoText.name("Fehér Gábor")))
             root.openSpeakerPopover(editorVm.lanes[lane].key, railHeader)
             speakerWhy.x = Math.round(root.railX + 4 + lane * Theme.laneWidth - 7)
         } else if (s === "ignoredRows") {

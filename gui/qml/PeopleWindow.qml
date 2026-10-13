@@ -63,18 +63,18 @@ ApplicationWindow {
         switch (demoState) {
         case "P01": detail.openSampleMenu(2); break
         case "P02":
-            detail.demoRenameText = "Bárány Gergő"
-            detail.demoAliasText = "Gergő"
+            detail.demoRenameText = DemoText.name("Bárány Gergő")
+            detail.demoAliasText = DemoText.t("Gergő", "Greg")
             detail.startAlias()
             detail.startRename()
             break
-        case "P03": toast.show(qsTr("Minta törölve: %1").arg("Partnerdemó – adatimport"), true); break
+        case "P03": toast.show(qsTr("Minta törölve: %1").arg(DemoText.t("Partnerdemó – adatimport", "Partner demo – data import")), true); break
         case "toastPlain": toast.show(qsTr("A minta visszakerült."), false); break
-        case "P04": mergeDialog.openFor("gerg", "B. Gergő"); break
+        case "P04": mergeDialog.openFor(DemoText.t("gerg", "greg"), DemoText.name("B. Gergő")); break
         case "P05": openDelete(); break
         case "deleteKeep": openDelete(); keepSamples.checked = true; break
-        case "newPerson": openNewPerson("Varga Tímea"); break
-        case "sampleNew": sampleTargetDialog.openFor("demo-2", "new", "Gál"); break
+        case "newPerson": openNewPerson(DemoText.name("Varga Tímea")); break
+        case "sampleNew": sampleTargetDialog.openFor("demo-2", "new", DemoText.t("Gál", "Gale")); break
         case "sampleMove": sampleTargetDialog.openFor("demo-2", "move", ""); break
         case "sort": listPane.demoSortOpen = true; break
         case "allSamples": detail.showAllSamples = true; break

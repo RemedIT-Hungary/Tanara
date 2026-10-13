@@ -1,5 +1,7 @@
 #include "RecorderViewModel.h"
 
+#include "DemoText.h"
+
 #include "AppContext.h"
 #include "TagDemoBackend.h"
 
@@ -889,13 +891,30 @@ void RecorderViewModel::loadDemo()
     const bool quiet = st == QLatin1String("R06");
     const QDateTime when(QDate(2026, 10, 3), QTime(14, 2));
 
+    // A kitalált eszköznevek angol demo-nyelven (a magyar rendszer-leírások angol párjai).
+    static const QHash<QString, QString> deviceEn{
+        {QStringLiteral("Trust USB mikrofon"), QStringLiteral("Trust USB microphone")},
+        {QStringLiteral("Sennheiser fejhallgató (analóg)"), QStringLiteral("Sennheiser headphones (analog)")},
+        {QStringLiteral("Monitor of Sennheiser headset - Kommunikáció"),
+         QStringLiteral("Monitor of Sennheiser headset - Communication")},
+        {QStringLiteral("Kanto YU4 hangfal"), QStringLiteral("Kanto YU4 speakers")},
+        {QStringLiteral("Monitor of Kanto YU4 - Optikai digitális sztereó"),
+         QStringLiteral("Monitor of Kanto YU4 - Digital Stereo (IEC958)")},
+        {QStringLiteral("Monitor of Sennheiser fejhallgató (analóg sztereó)"),
+         QStringLiteral("Monitor of Sennheiser headphones (analog stereo)")},
+        {QStringLiteral("Alaplapi vonalbemenet"), QStringLiteral("Motherboard line-in")},
+    };
+    auto dev = [](const char* hu) {
+        const QString s = QString::fromUtf8(hu);
+        return demotext::english() ? deviceEn.value(s, s) : s;
+    };
     auto mk = [&](const char* friendly, const char* raw, int group, bool sel, bool def,
                   const char* app, int level, int peak, const char* status, const QString& text) {
         Row r;
-        r.info.name = QString::fromUtf8(raw);
+        r.info.name = dev(raw);
         r.info.kind = group == 0 ? TrackKind::Mic : group == 1 ? TrackKind::Loopback : TrackKind::Other;
         r.info.isDefault = def;
-        r.friendly = QString::fromUtf8(friendly);
+        r.friendly = dev(friendly);
         r.group = group;
         r.selected = sel;
         r.recorded = rec && sel;
@@ -929,7 +948,7 @@ void RecorderViewModel::loadDemo()
     m_model.endResetModel();
 
     const bool namedTitle = st != QLatin1String("R01") && st != QLatin1String("R10");
-    m_title = namedTitle ? QStringLiteral("Ügyféltámogatás átadás-átvétel")
+    m_title = namedTitle ? demoText("Ügyféltámogatás átadás-átvétel", "Customer support handover")
                          : automaticTitle(st == QLatin1String("R10") ? QString() : QStringLiteral("Teams"), when);
     m_titleAuto = !namedTitle;
     emit titleChanged();
@@ -938,7 +957,7 @@ void RecorderViewModel::loadDemo()
     m_tags.clear();
     if (st != QLatin1String("R09") && st != QLatin1String("R10")) {
         m_tags.append({QStringLiteral("t-nordvik"), QStringLiteral("Nordvik")});
-        if (rec) m_tags.append({QStringLiteral("t-q4"), QStringLiteral("Q4 tervezés")});
+        if (rec) m_tags.append({QStringLiteral("t-q4"), demoText("Q4 tervezés", "Q4 planning")});
     }
     emit tagsChanged();
 

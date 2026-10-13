@@ -230,7 +230,7 @@ function multipartFile(buf, ctype) {
 
 // ---- kannázott átirat (magyar, diarizált, ~20 s) ------------------------------------------
 function cannedTokens(diarization) {
-  const words = [['Sziasztok,', 1], ['kezdjük', 1], ['a', 1], ['megbeszélést.', 1], ['Rendben,', 2], ['nálam', 2], ['a', 2], ['MuseumPlus', 2],
+  const words = [['Sziasztok,', 1], ['kezdjük', 1], ['a', 1], ['megbeszélést.', 1], ['Rendben,', 2], ['nálam', 2], ['a', 2], ['Muzeo', 2],
     ['migráció', 2], ['a', 2], ['téma.', 2], ['Döntés:', 1], ['jövő', 1], ['héten', 1], ['szállítunk.', 1], ['Teendő:', 2], ['Dompa', 2], ['megírja', 2], ['a', 2], ['tesztet.', 2]];
   let t = 400; return words.map(([w, sp]) => { const d = 300 + w.length * 45; const tok = { text: (t > 400 ? ' ' : '') + w, start_ms: t, end_ms: t + d, confidence: 0.95 };
     if (diarization) tok.speaker = sp; t += d + 120; return tok; });
@@ -241,16 +241,16 @@ function cannedCompletion(b, summaryMode) {
   // Gyors összefoglaló, hosszú megbeszélés: részenkénti jegyzet ("PART k of n" a rész elején).
   const part = /^PART (\d+) of (\d+)/m.exec(user);
   if (part)
-    return `TOPICS\n### MuseumPlus migráció (${part[1]}. rész)\n- A migráció állapotát egyeztették.\n\nDECISIONS\n- Jövő héten szállítunk.\n\nOPEN\n- none\n\nACTIONS\n- Teszt megírása — Dompa`;
+    return `TOPICS\n### MuseumPlus migráció (${part[1]}. rész)\n- A migráció állapotát egyeztették.\n\nDECISIONS\n- Jövő héten szállítunk.\n\nOPEN\n- none\n\nACTIONS\n- Teszt megírása — Bence`;
   const topic = /(?:ELEMZENDŐ TÉMA|TOPIC TO ANALYSE): (.*)/.exec(user);
   if (topic) {
     const t = topic[1] || 'Téma';
-    return `A(z) „${t}” témát a csapat röviden egyeztette.\n\n## Döntések\n- Jövő héten szállítunk.\n\n## Teendők\n- Teszt megírása — Dompa`;
+    return `A(z) „${t}” témát a csapat röviden egyeztette.\n\n## Döntések\n- Jövő héten szállítunk.\n\n## Teendők\n- Teszt megírása — Bence`;
   }
   if (user.includes('Témánkénti elemzések:') || user.includes('Analyses per topic:'))
-    return 'A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került.\n\n## Teendők\n- Teszt megírása — Dompa';
+    return 'A csapat a Muzeo migrációt egyeztette; a szállítás jövő hétre került.\n\n## Teendők\n- Teszt megírása — Bence';
   if (summaryMode === 'complex')
-    return '## MuseumPlus migráció\nA migráció állapota és a szállítás időpontja.\n\n## Tesztelés\nKi írja meg a teszteket.';
+    return '## Muzeo migráció\nA migráció állapota és a szállítás időpontja.\n\n## Tesztelés\nKi írja meg a teszteket.';
   return JSON.stringify({ execSummary: 'A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került.', decisions: ['Jövő héten szállítunk.'],
     actionItems: [{ text: 'Teszt megírása', owner: 'Dompa', due: '' }], participants: ['Ádám', 'Tamás'] });
 }
