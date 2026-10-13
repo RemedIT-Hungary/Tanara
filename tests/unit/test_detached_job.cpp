@@ -1,9 +1,7 @@
-//
-// Tanara — DetachedJob: a hangeszköz-lebontás biztonsági hálója. Egy soha véget nem érő
-// lebontás (mint egy kihúzott eszköz beragadt miniaudio-szála) sem blokkolhatja a hívót a
-// határidőn túl; a gyors lebontást a hívó megvárja; a munka erőforrásai a munka végén, a
-// háttérszálon szabadulnak fel.
-//
+// Tanara: DetachedJob: the audio device teardown's safety net. A teardown that never ends
+// (like a stuck miniaudio thread of an unplugged device) cannot block the caller beyond the
+// deadline; the caller waits for a fast teardown; the job's resources are freed at the end of
+// the job, on the background thread.
 #include <QtTest>
 #include <QElapsedTimer>
 
@@ -20,8 +18,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-// Egy „eszköz”, amelynek a leállítása figyelmen kívül hagyja a kérést: addig blokkol, amíg
-// a teszt el nem engedi (a valódi esetben: soha).
+// A "device" whose stop ignores the request: it blocks until the test releases it (in the real case: never).
 struct StuckDevice {
     std::atomic<bool> release{false};
     void stopAndUninit() {
@@ -58,7 +55,7 @@ void DetachedJobTest::quickJobIsAwaited()
     QVERIFY(job.waitFor(2000ms));
     QVERIFY(job.finished());
     QVERIFY(ran.load());
-    // A munka által birtokolt erőforrás a munka végén felszabadul (a háttérszálon).
+    // The resource owned by the job is freed at the end of the job (on the background thread).
     QVERIFY(waitUntilTrue([&token] { return token.use_count() == 1; }, 2000));
 }
 
@@ -69,20 +66,20 @@ void DetachedJobTest::stuckJobReturnsWithinTimeout()
     t.start();
     {
         DetachedJob job([dev] { dev->stopAndUninit(); });
-        QVERIFY(!job.waitFor(200ms));            // nem várunk a végtelenségig
+        QVERIFY(!job.waitFor(200ms));            // we do not wait forever
         QVERIFY(!job.finished());
-    }                                            // a job megszűnése sem blokkol
+    }                                            // the job's destruction does not block either
     QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
-    QVERIFY(dev.use_count() == 2);               // a beragadt szál még birtokolja
+    QVERIFY(dev.use_count() == 2);               // the stuck thread still owns it
 
-    // Ha a beragadt szál egyszer mégis végez, maga takarít el maga után.
+    // If the stuck thread finishes after all, it cleans up after itself.
     dev->release = true;
     QVERIFY(waitUntilTrue([&dev] { return dev.use_count() == 1; }, 2000));
 }
 
 void DetachedJobTest::stuckJobsShareOneDeadline()
 {
-    // Több beragadt eszköz együtt is csak egyszer fizeti ki a határidőt (párhuzamos lebontás).
+    // Several stuck devices together also pay the deadline only once (parallel teardown).
     std::vector<std::shared_ptr<StuckDevice>> devs;
     std::vector<DetachedJob> jobs;
     for (int i = 0; i < 4; ++i) {

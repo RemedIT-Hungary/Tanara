@@ -1,5 +1,5 @@
-// PreTranscriptViewModel — az átirat előtti nézet (M03 lépések, M04 futás, M05 hiba) állapotai
-// izolált TANARA_HOME-on, ál-HTTP-szerverrel (valódi szolgáltató-hívás nincs).
+// PreTranscriptViewModel: the states of the pre-transcript view (steps, running, error) on an
+// isolated TANARA_HOME with a fake HTTP server (no real provider call).
 #include "JobTestSupport.h"
 #include "PreTranscriptViewModel.h"
 
@@ -47,12 +47,12 @@ private slots:
 
         PreTranscriptViewModel vm;
         vm.setController(sb.app.get());
-        QCOMPARE(vm.state(), QStringLiteral("none"));          // nincs kijelölt meeting
+        QCOMPARE(vm.state(), QStringLiteral("none"));          // no meeting selected
         vm.setMeetingId(m.id);
         QVERIFY(!vm.demo());
         QCOMPARE(vm.state(), QStringLiteral("steps"));
 
-        // Nincs kulcs → a sáv megnevezi a hiányt, a gomb a szolgáltatók oldalára visz.
+        // No key: the bar names what is missing, the button leads to the providers page.
         QVERIFY(!vm.canStart());
         const QVariantMap b = vm.blocker();
         QVERIFY(!b.value("title").toString().isEmpty());
@@ -60,22 +60,22 @@ private slots:
         QCOMPARE(b.value("actionPage").toString(), QStringLiteral("providers"));
         QVERIFY(!b.value("reason").toString().isEmpty());
 
-        // Kulcs megadása után (a Beállítások bezárásakor a nézet refresh()-t hív) indítható.
+        // After a key is entered (when Settings closes the view calls refresh()), it can be started.
         sb.configureStt();
         vm.refresh();
         QVERIFY(vm.canStart());
         QVERIFY(vm.blocker().isEmpty());
         QVERIFY(vm.providerLabel().contains("Soniox"));
 
-        // A kontextus a meetinghez mentődik.
+        // The context is saved to the meeting.
         QSignalSpy noteSpy(&vm, &PreTranscriptViewModel::contextNoteChanged);
         vm.setContextNote(QStringLiteral("Negyedéves egyeztetés"));
         QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Negyedéves egyeztetés"));
         QVERIFY(noteSpy.count() >= 1);
         QVERIFY(vm.footerLine().contains("Negyedéves"));
 
-        // A gépelés közbeni piszkozat a SAJÁT megbeszélésébe mentődik akkor is, ha a kijelölés
-        // a késleltetett mentés előtt másik megbeszélésre vált (pl. véget ér egy felvétel).
+        // A draft typed meanwhile is saved into its OWN meeting even if the selection switches to
+        // another meeting before the delayed save (e.g. a recording ends).
         const Meeting other = sb.recording("Közben kijelölt", 1);
         const QString otherNote = sb.app->store()->load(other.id).contextNote;
         vm.draftContextNote(QStringLiteral("Félbehagyott megjegyzés"));
@@ -84,7 +84,7 @@ private slots:
         QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Félbehagyott megjegyzés"));
         QCOMPARE(sb.app->store()->load(other.id).contextNote, otherNote);
         QCOMPARE(vm.contextNote(), otherNote);
-        vm.commitContextDraft();                           // nincs függő piszkozat → nem ír semmit
+        vm.commitContextDraft();                           // no pending draft: writes nothing
         QCOMPARE(sb.app->store()->load(other.id).contextNote, otherNote);
         vm.setMeetingId(m.id);
         QCOMPARE(vm.contextNote(), QStringLiteral("Félbehagyott megjegyzés"));
@@ -92,11 +92,11 @@ private slots:
         vm.commitContextDraft();
         QCOMPARE(sb.app->store()->load(m.id).contextNote, QStringLiteral("Negyedéves egyeztetés"));
 
-        // Hang-modell nélkül az azonosítás kapcsoló nem elérhető (és nem állítható).
+        // Without a voice model the identification switch is unavailable (and cannot be set).
         QVERIFY(!vm.identifyAvailable());
         QVERIFY(!vm.identifyEnabled());
 
-        // Lekeverés: még nincs.
+        // Mixdown: not yet.
         QCOMPARE(vm.mixdownState(), QStringLiteral("missing"));
     }
 
@@ -116,7 +116,7 @@ private slots:
         jobtest::Sandbox sb;
         if (!sb.ffmpeg) QSKIP("ffmpeg nem található");
         sb.configureStt();
-        // A szolgáltató „feldolgozás alatt” állapotban tartja az átírást.
+        // The provider keeps the transcription in the "processing" state.
         sb.http->handler = [](const jobtest::FakeRequest& r) { return jobtest::sonioxOk(r, "processing"); };
         const Meeting m = sb.recording("Futó átírás", 2);
 
@@ -134,22 +134,22 @@ private slots:
                 if (v.toMap().value("id").toString() == id) return v.toMap();
             return QVariantMap();
         };
-        // Lekeverés → feltöltés → átírás: a szakaszok valós állapotot mutatnak.
+        // Mixdown, upload, transcription: the stages show the real state.
         QTRY_COMPARE_WITH_TIMEOUT(stage("transcribe").value("state").toString(), QStringLiteral("running"), 30000);
         QCOMPARE(stage("mixdown").value("state").toString(), QStringLiteral("done"));
         QCOMPARE(stage("upload").value("state").toString(), QStringLiteral("done"));
-        // Az átírás alatt a szolgáltató nem ad százalékot → határozatlan (-1).
+        // During transcription the provider gives no percentage, so indeterminate (-1).
         QCOMPARE(stage("transcribe").value("percent").toInt(), -1);
-        // Korábbi mért futás nélkül nincs becslés.
+        // Without an earlier measured run there is no estimate.
         QVERIFY(vm.etaText().isEmpty());
         QVERIFY(vm.cancellable());
 
-        // Megszakítás: nincs hiba, vissza a lépésekhez; a felvétel megvan.
+        // Cancel: no error, back to the steps; the recording is intact.
         QVERIFY(sb.app->cancelJob(m.id, JobKind::Transcribe));
         QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("steps"), 15000);
         QVERIFY(vm.errorMessage().isEmpty());
         QVERIFY(QFile::exists(QDir(m.folder).filePath("track_mic.wav")));
-        QCOMPARE(vm.mixdownState(), QStringLiteral("ready"));      // a lekeverés közben elkészült
+        QCOMPARE(vm.mixdownState(), QStringLiteral("ready"));      // finished during the mixdown
     }
 
     void failureCardWithFixActionThenRetrySucceeds()
@@ -174,13 +174,13 @@ private slots:
         QCOMPARE(vm.fixActionLabel(), QStringLiteral("Kulcs módosítása"));
         QCOMPARE(vm.fixActionPage(), QStringLiteral("providers"));
 
-        // Másik nézetmodell (újraindítás / visszaváltás után) ugyanazt a hibát látja.
+        // Another view model (after a restart / switching back) sees the same error.
         PreTranscriptViewModel again;
         again.setController(sb.app.get());
         again.setMeetingId(m.id);
         QCOMPARE(again.state(), QStringLiteral("failed"));
 
-        // Újrapróbálás működő szolgáltatóval → az átirat elkészül, a hiba eltűnik.
+        // Retry with a working provider: the transcript is made, the error disappears.
         sb.http->handler = [](const jobtest::FakeRequest& r) { return jobtest::sonioxOk(r); };
         QSignalSpy ready(sb.app.get(), &AppController::transcriptReady);
         sb.app->transcribeMeeting(m.id);
@@ -196,13 +196,13 @@ private slots:
         PreTranscriptViewModel vm;
         vm.setDemoState(QStringLiteral("note"));
         QVERIFY(vm.demo());
-        // T07: egy felrakott címke, a cím alapú javaslat az indokkal.
+        // One applied tag, the title-based suggestion with the reason.
         QCOMPARE(vm.tags()->tags().size(), 1);
         QCOMPARE(vm.tags()->tags().first().toMap().value("name").toString(), QStringLiteral("Nordvik"));
         QCOMPARE(vm.tagSuggestions().size(), 1);
         QCOMPARE(vm.tagSuggestions().first().toMap().value("name").toString(), QStringLiteral("Ügyféltámogatás"));
         QCOMPARE(vm.tagSuggestionReason(), QStringLiteral("hasonló cím: „Ügyféltámogatás heti”"));
-        // A megjegyzés-kártyák a forrás-megbeszélés címkéit is hozzák.
+        // The note cards also bring the source meeting's tags.
         QCOMPARE(vm.note()->suggestions().first().toMap().value("tags").toStringList(), QStringList{"Nordvik"});
         QSignalSpy toasts(&vm, &PreTranscriptViewModel::toast);
         vm.acceptTagSuggestion(0);
@@ -226,19 +226,19 @@ private slots:
         vm.setMeetingId(m.id);
         QCOMPARE(vm.state(), QStringLiteral("steps"));
         QVERIFY(vm.tags()->tags().isEmpty());
-        // Átirat nélkül a cím alapján (draftTagSuggestions), indokkal.
+        // Without a transcript, by the title (draftTagSuggestions), with a reason.
         QCOMPARE(vm.tagSuggestions().size(), 1);
         QCOMPARE(vm.tagSuggestions().first().toMap().value("id").toString(), nordvik.id);
         QVERIFY2(vm.tagSuggestionReason().startsWith(QStringLiteral("hasonló cím: „Nordvik")),
                  qPrintable(vm.tagSuggestionReason()));
-        // A hasonló című megbeszélés megjegyzés-kártyáján a címkéje.
+        // The tag on the note card of the meeting with a similar title.
         bool cardHasTag = false;
         for (const QVariant& v : vm.note()->suggestions())
             if (v.toMap().value("meetingId").toString() == lib.nordvik1)
                 cardHasTag = v.toMap().value("tags").toStringList() == QStringList{QStringLiteral("Nordvik")};
         QVERIFY(cardHasTag);
 
-        // Elfogadás → felkerül, a javaslat eltűnik; visszavonható lépés (toast).
+        // Accept: it is applied, the suggestion disappears; an undoable step (toast).
         QSignalSpy toasts(&vm, &PreTranscriptViewModel::toast);
         vm.acceptTagSuggestion(0);
         QCOMPARE(tags->tagsOf(m.id), QStringList{nordvik.id});
@@ -251,14 +251,14 @@ private slots:
         QVERIFY(tags->tagsOf(m.id).isEmpty());
         QCOMPARE(vm.tagSuggestions().size(), 1);
 
-        // Elutasítás → nem jön újra; visszavonás után igen.
+        // Reject: does not come back; after undo it does.
         vm.rejectTagSuggestion(0);
         QVERIFY(tags->isRejected(m.id, nordvik.id));
         QVERIFY(vm.tagSuggestions().isEmpty());
         vm.tags()->undo();
         QCOMPARE(vm.tagSuggestions().size(), 1);
 
-        // Kézzel a mezőből: név szerint (új címke is).
+        // By hand from the field: by name (a new tag too).
         vm.tags()->add(QStringLiteral("Logisztika"));
         QCOMPARE(vm.tags()->tags().size(), 1);
         QCOMPARE(tags->tag(tags->tagsOf(m.id).value(0)).name, QStringLiteral("Logisztika"));

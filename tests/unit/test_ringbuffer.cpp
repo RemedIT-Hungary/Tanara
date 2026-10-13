@@ -10,7 +10,7 @@ using tanara::RingBuffer;
 class TestRingBuffer : public QObject {
     Q_OBJECT
 private slots:
-    // Alap FIFO: beírunk N mintát, visszaolvassuk, sorrend és érték egyezik.
+    // Basic FIFO: we write N samples, read them back, order and value match.
     void fifoOrder() {
         RingBuffer rb(1024);
         std::vector<int16_t> in(500);
@@ -28,7 +28,7 @@ private slots:
         }
     }
 
-    // available() pontossága részleges olvasás után.
+    // available()'s accuracy after a partial read.
     void partialReadAvailable() {
         RingBuffer rb(256);
         std::vector<int16_t> in(200);
@@ -40,28 +40,28 @@ private slots:
         QCOMPARE(rb.available(), size_t(120));
         for (int i = 0; i < 80; ++i) QCOMPARE(out[static_cast<size_t>(i)], int16_t(i));
 
-        // A maradék 120 a 80-tól indul.
+        // The remaining 120 start at 80.
         std::vector<int16_t> rest(120, 0);
-        QCOMPARE(rb.read(rest.data(), 200), size_t(120));  // csak 120 van
+        QCOMPARE(rb.read(rest.data(), 200), size_t(120));  // only 120 exist
         QCOMPARE(rb.available(), size_t(0));
         for (int i = 0; i < 120; ++i) QCOMPARE(rest[static_cast<size_t>(i)], int16_t(80 + i));
     }
 
-    // Wrap-around: úgy töltünk/ürítünk, hogy a fizikai index átforduljon.
+    // Wrap-around: we fill / drain so that the physical index wraps.
     void wrapAround() {
-        RingBuffer rb(8);                 // capacity 8 → max 7 minta egyszerre
+        RingBuffer rb(8);                 // capacity 8: at most 7 samples at once
         QCOMPARE(rb.capacity(), size_t(8));
 
         std::vector<int16_t> a{1, 2, 3, 4, 5};
         QCOMPARE(rb.write(a.data(), a.size()), size_t(5));
 
         std::vector<int16_t> tmp(3, 0);
-        QCOMPARE(rb.read(tmp.data(), 3), size_t(3));   // kiveszünk 3-at (1,2,3)
+        QCOMPARE(rb.read(tmp.data(), 3), size_t(3));   // take out 3 (1,2,3)
         QCOMPARE(tmp[0], int16_t(1));
         QCOMPARE(tmp[2], int16_t(3));
-        QCOMPARE(rb.available(), size_t(2));           // 4,5 maradt
+        QCOMPARE(rb.available(), size_t(2));           // 4,5 remain
 
-        // Most írunk 5-öt → a fizikai írás-index átfordul a végén.
+        // Now we write 5: the physical write index wraps at the end.
         std::vector<int16_t> b{6, 7, 8, 9, 10};
         QCOMPARE(rb.write(b.data(), b.size()), size_t(5));
         QCOMPARE(rb.available(), size_t(7));           // 4,5,6,7,8,9,10
@@ -72,20 +72,20 @@ private slots:
         for (int i = 0; i < 7; ++i) QCOMPARE(out[static_cast<size_t>(i)], expected[i]);
     }
 
-    // Túlcsordulás: a kapacitás-1 fölötti írás eldobja a maradékot.
+    // Overflow: a write beyond capacity-1 drops the rest.
     void overflowDrops() {
-        RingBuffer rb(16);                              // max 15 fér be
+        RingBuffer rb(16);                              // at most 15 fit
         std::vector<int16_t> in(20);
         for (int i = 0; i < 20; ++i) in[i] = static_cast<int16_t>(i);
         QCOMPARE(rb.write(in.data(), in.size()), size_t(15));
         QCOMPARE(rb.available(), size_t(15));
 
-        // További írás már 0-t ad (tele).
+        // A further write already gives 0 (full).
         int16_t one = 99;
         QCOMPARE(rb.write(&one, 1), size_t(0));
     }
 
-    // Üres olvasás 0-t ad, nem hibázik.
+    // An empty read gives 0, does not fail.
     void readEmpty() {
         RingBuffer rb(32);
         std::vector<int16_t> out(10, 0);
@@ -93,7 +93,7 @@ private slots:
         QCOMPARE(rb.available(), size_t(0));
     }
 
-    // Nem-kettőhatvány kérés felfelé kerekül.
+    // A non-power-of-two request rounds up.
     void capacityRoundsUp() {
         RingBuffer rb(1000);
         QCOMPARE(rb.capacity(), size_t(1024));

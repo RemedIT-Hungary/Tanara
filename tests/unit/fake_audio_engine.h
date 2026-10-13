@@ -1,9 +1,7 @@
 #pragma once
-//
-// Hamis capture-motor a tesztekhez (valódi hangeszköz nélkül): a RecordingSession /
-// AppController ezzel hajtható meg (RecordingSession::setEngineFactory,
+// Fake capture engine for the tests (without a real audio device): RecordingSession /
+// AppController can be driven with it (RecordingSession::setEngineFactory,
 // AppController::setRecordingEngineFactory).
-//
 #include "tanara/audio/AudioEngine.h"
 
 #include <QElapsedTimer>
@@ -17,11 +15,11 @@
 
 namespace tanara {
 
-// Hamis motor: eszközönként egy körpuffer. A „feed()” a fali óra szerint esedékes mintákat
-// írja a NYITOTT, nem néma eszközök pufferébe (440 Hz-es szinusz) — mintha valódi capture
-// futna. A `silentNames`-beli eszközök sosem adnak adatot (mint a WASAPI loopback csendben).
-// A `vanish()`-olt eszköz „kihúzott”: többé nem ad adatot (a valódi capture-szál ilyenkor
-// csendben elhal), amíg a felvevő le nem zárja a sávját.
+// Fake engine: one ring buffer per device. feed() writes the samples due by the wall clock into
+// the buffers of the OPEN, non-silent devices (a 440 Hz sine), as if a real capture were
+// running. Devices in `silentNames` never deliver data (like WASAPI loopback in silence).
+// A device that was `vanish()`ed is "unplugged": it delivers no more data (the real capture
+// thread silently dies then) until the recorder closes its track.
 class FakeEngine : public AudioEngine {
 public:
     struct Slot {
@@ -30,14 +28,14 @@ public:
         bool open = true;
         QElapsedTimer since;
         qint64 framesFed = 0;
-        std::atomic<bool> vanished{false};   // a drain-szál is olvassa (rms)
+        std::atomic<bool> vanished{false};   // the drain thread reads it too (rms)
     };
     QStringList silentNames;
     std::array<std::unique_ptr<Slot>, kMaxDevices> devs;
     int n = 0;
-    // A motort a RecordingSession birtokolja és a lezáráskor törli; a teszt feeder-időzítője
-    // ezen a jelzőn át látja, hogy a nyers `engine` mutató még él-e (különben felszabadított
-    // memóriába írna — terhelés alatt ez SIGABRT-tal bukott).
+    // The engine is owned by RecordingSession and deleted on close; the test's feeder timer sees
+    // through this flag whether the raw `engine` pointer is still alive (otherwise it would write
+    // into freed memory; under load this failed with SIGABRT).
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
     ~FakeEngine() override { *alive = false; }
 
@@ -56,7 +54,7 @@ public:
     }
     void closeDevice(int i) override { if (i >= 0 && i < n) { devs[i]->open = false; ++closeCalls; } }
     int closeCalls = 0;
-    // Visszadugás: az eszköz újra ad adatot (az új addDevice-nak új slot jár, ez csak a régit éleszti).
+    // Plug back in: the device delivers data again (the new addDevice gets a new slot, this only revives the old one).
     void revive(const QString& name) {
         for (int i = 0; i < n; ++i)
             if (devs[i]->info.name == name) devs[i]->vanished = false;

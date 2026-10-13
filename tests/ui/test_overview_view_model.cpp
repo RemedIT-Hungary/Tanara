@@ -1,8 +1,8 @@
-// Az Áttekintés fül nézetmodellje (OverviewViewModel) valódi AppControllerrel, IZOLÁLT
-// TANARA_HOME-ban (QTemporaryDir; hang nincs, modell nincs, hálózat nincs): résztvevők kézi
-// felvétele és törlése, „csak én beszéltem”, a kézi leírás, a feldolgozási lépések átirat előtt
-// és után, az ADATOK csempék, a „nobody” állapot (csak névtelen beszélők), a sávok beszédaránya
-// és a lekeverésbe vonás (TrackListModel). Demó-adat: a négy képernyő-állapot.
+// The Overview tab's view model (OverviewViewModel) with a real AppController in an ISOLATED
+// TANARA_HOME (QTemporaryDir; no audio, no model, no network): adding and removing participants
+// by hand, "only I spoke", the manual description, the processing steps before and after the
+// transcript, the DATA tiles, the "nobody" state (only anonymous speakers), the tracks' speech
+// share and including them in the mixdown (TrackListModel). Demo data: the four screen states.
 #include "AppContext.h"
 #include "OverviewViewModel.h"
 #include "ShellMeetingModel.h"
@@ -109,8 +109,8 @@ private slots:
         QCOMPARE(OverviewViewModel::monogramOf(QString()), QStringLiteral("?"));
     }
 
-    // Átirat előtt: lépések (felvétel kész, az átirat még nem indult), üres résztvevő-lista,
-    // kézi résztvevő → lista + forrás „kézi”, × → eltűnik; a kézi leírás mentődik.
+    // Before the transcript: steps (recording done, transcript not started), an empty participant
+    // list, a manual participant gives the list + source "manual", x removes it; the manual description is saved.
     void beforeTranscript_participantsAndSteps()
     {
         const tanara::Meeting m = recording(QStringLiteral("Előtte"));
@@ -140,17 +140,17 @@ private slots:
         const QVariantList sources = row.value("sources").toList();
         QVERIFY(!sources.isEmpty());
         QCOMPARE(sources.first().toMap().value("text").toString(), QStringLiteral("kézi"));
-        // A4: a jelvény tooltipje (bizonyíték-magyarázat); átirat előtt nincs beszélő-kulcs.
+        // The badge's tooltip (evidence explanation); before the transcript there is no speaker key.
         QVERIFY(!sources.first().toMap().value("detail").toString().isEmpty());
         QVERIFY(row.value("speakerKey").toString().isEmpty());
         QVERIFY(!row.value("anonymous").toBool());
         QCOMPARE(vm.title(), QStringLiteral("Előtte"));
-        // D4: hangmodell nélkül nincs „Újraelemzés”, és a core sem indít.
+        // Without a voice model there is no "Re-analyze", and core does not start one either.
         QVERIFY(!vm.canReanalyze());
         QVERIFY(!vm.reanalyze());
-        QVERIFY(!vm.nameSpeakerInDemo(QStringLiteral("x"), QStringLiteral("Y")));   // valódi adaton nem demó
+        QVERIFY(!vm.nameSpeakerInDemo(QStringLiteral("x"), QStringLiteral("Y")));   // not a demo on real data
 
-        // A6: a × tartós (meeting.json), és a közös veremből visszavonható.
+        // The x is persistent (meeting.json) and can be undone from the shared stack.
         vm.removeParticipant(id);
         QTRY_COMPARE(vm.peopleState(), QStringLiteral("empty"));
         QVERIFY(m_app->participants(m.id).isEmpty());
@@ -173,7 +173,7 @@ private slots:
         QCOMPARE(m_app->store()->load(m.id).contextNote, QStringLiteral("Q4 partner review"));
     }
 
-    // „Csak én beszéltem”: saját név nélkül nem megy; beállított névvel a döntés mentődik.
+    // "Only I spoke": does not work without an own name; with a configured name the decision is saved.
     void soloMeeting()
     {
         const tanara::Meeting m = recording(QStringLiteral("Egyedül"));
@@ -194,7 +194,7 @@ private slots:
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("sub").toString(), QStringLiteral("csak én beszéltem"));
     }
 
-    // Átirat után, csak névtelen beszélőkkel: „nobody” + a nyers beszélők aránnyal; ADATOK csempék.
+    // After the transcript, with only anonymous speakers: "nobody" + the raw speakers with their share; DATA tiles.
     void afterTranscript_nobodyAndStats()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Utána"));
@@ -204,7 +204,7 @@ private slots:
         QVERIFY(vm.hasTranscript());
         QCOMPARE(vm.peopleState(), QStringLiteral("nobody"));
         QCOMPARE(vm.anonymousSpeakers().size(), 2);
-        // A4/A5: a sorok a beszélő kulcsával, névtelenként (elnevezhető).
+        // The rows by speaker key, as anonymous (nameable).
         QCOMPARE(vm.participants().size(), 2);
         for (const QVariant& v : vm.participants()) {
             QVERIFY(!v.toMap().value("speakerKey").toString().isEmpty());
@@ -224,8 +224,9 @@ private slots:
         QCOMPARE(vm.stats().at(5).toMap().value("value").toString(), QStringLiteral("nincs"));
     }
 
-    // A7: átirat után a beszélőhöz nem kötött (kézzel felvett, meg nem szólalt) résztvevő a
-    // beszélők után halványan, „nem hallottuk” jelvénnyel; tartósan törölhető, visszavonható.
+    // After the transcript, a participant not bound to a speaker (added by hand, never spoke)
+    // shows dimmed after the speakers, with a "not heard" badge; it can be deleted permanently
+    // and undone.
     void afterTranscript_unheardParticipant()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Nem hallott"));
@@ -247,7 +248,7 @@ private slots:
         const QVariantMap badge = row.value("sources").toList().first().toMap();
         QCOMPARE(badge.value("text").toString(), QStringLiteral("nem hallottuk"));
         QVERIFY(badge.value("negative").toBool());
-        // A beszélők sorai elöl, nem halványan.
+        // The speakers' rows come first, not dimmed.
         QVERIFY(!vm.participants().first().toMap().value("unheard").toBool());
 
         vm.removeParticipant(id);
@@ -258,8 +259,8 @@ private slots:
         QTRY_COMPARE(vm.participants().size(), 3);
     }
 
-    // A6: címke alapú személy-javaslat — legfeljebb 3; a × tartós, erre a megbeszélésre szóló
-    // elutasítás (TagService::rejectPersonForMeeting), a közös veremből visszavonható.
+    // Tag-based person suggestion: at most 3; the x is a persistent rejection for this meeting
+    // (TagService::rejectPersonForMeeting), undoable from the shared stack.
     void tagSuggestions_limitAndDurableReject()
     {
         tanara::TagService* tags = m_app->tags();
@@ -293,7 +294,7 @@ private slots:
         const QString rejected = suggested().first();
         vm.removeParticipant(QStringLiteral("suggest:") + rejected);
         QTRY_VERIFY(!suggested().contains(rejected));
-        QCOMPARE(suggested().size(), 3);   // a negyedik jön a helyére
+        QCOMPARE(suggested().size(), 3);   // the fourth takes its place
         QVERIFY(tags->isPersonRejectedForMeeting(rejected, m.id));
         {
             OverviewViewModel fresh;
@@ -307,13 +308,13 @@ private slots:
         vm.refresh();
         QVERIFY(suggested().contains(rejected));
 
-        // „Hozzáadás”: résztvevő lesz, és kikerül a javaslatok közül.
+        // "Add": becomes a participant and drops out of the suggestions.
         QVERIFY(!vm.addParticipant(rejected).isEmpty());
         QTRY_VERIFY(!suggested().contains(rejected));
         QVERIFY(names(vm).contains(rejected));
     }
 
-    // A sávok beszédaránya, a kimaradás oka és a „Beemelem” (TrackListModel → AppController).
+    // The tracks' speech share, the reason for exclusion and "Include" (TrackListModel -> AppController).
     void tracks_speechAndInclude()
     {
         const tanara::Meeting m = recording(QStringLiteral("Sávok"));
@@ -343,7 +344,7 @@ private slots:
         QCOMPARE(m_app->store()->load(m.id).tracks.at(0).excludedReason, QStringLiteral("manual"));
     }
 
-    // A fül-állapot a héjnak: van-e összefoglaló, fut-e átírás.
+    // The tab state for the shell: whether there is a summary, whether a transcription is running.
     void shellMeetingTabState()
     {
         const tanara::Meeting m = transcribed(QStringLiteral("Fülek"));
@@ -356,7 +357,7 @@ private slots:
         QCOMPARE(model.summarizePercent(), -1);
     }
 
-    // Demó (képernyőkép): a négy állapot kitalált adata.
+    // Demo (screenshot): the made-up data of the four states.
     void demoStates()
     {
         m_app.reset();
@@ -370,7 +371,7 @@ private slots:
         QVERIFY(vm.participants().last().toMap().value("suggested").toBool());
         QCOMPARE(stepOf(vm, QStringLiteral("voice")).value("state").toString(), QStringLiteral("attention"));
         QCOMPARE(stepOf(vm, QStringLiteral("transcript")).value("progress").toInt(), 62);
-        // „Hozzáadás” / × a javaslaton.
+        // "Add" / x on the suggestion.
         vm.removeParticipant(QStringLiteral("suggest:Szabó Bence"));
         QCOMPARE(vm.participants().size(), 5);
 
@@ -383,13 +384,13 @@ private slots:
         QCOMPARE(vm.peopleState(), QStringLiteral("empty"));
         QVERIFY(vm.contextNote().isEmpty());
 
-        // A5: a névtelen sor demóban helyben elnevezhető; A4: a kész sorok beszélő-kulccsal.
+        // An anonymous line can be named in place in demo mode; the finished rows have a speaker key.
         vm.setDemoState(QStringLiteral("overviewDone"));
         bool found = false;
         int unheard = 0;
         for (const QVariant& v : vm.participants()) {
             const QVariantMap row = v.toMap();
-            // A7: a nem hallott meghívott halványan, beszélő-kulcs nélkül.
+            // The invited participant who was not heard is dimmed, with no speaker key.
             if (row.value("unheard").toBool()) {
                 ++unheard;
                 QVERIFY(row.value("dimmed").toBool());
@@ -406,7 +407,7 @@ private slots:
         QVERIFY(names(vm).contains(QStringLiteral("Szabó Bence")));
         QVERIFY(vm.canReanalyze());
 
-        // A1: az első átírás fut — két sáv, még senki, az átirat lépés fut.
+        // The first transcription is running: two tracks, nobody yet, the transcript step is running.
         vm.setDemoState(QStringLiteral("overviewTranscribing"));
         QVERIFY(vm.transcribing());
         QVERIFY(!vm.hasTranscript());

@@ -1,11 +1,9 @@
-//
-// Címkék a személyeken: tanult kapcsolat (statisztika szintetikus sorokból: a saját név
-// kimarad, nincs 8-ra vágva), kézi címke oda-vissza + visszavonás + people.json, a címke
-// törlésének / összevonásának átvezetése a személyekre, a személy-összevonás uniója, a
-// javaslat-küszöbök mindkét irányban, a résztvevők alapján javasolt megbeszélés-címke,
-// (személy, címke) elutasítás, és a tagEvidence támogat / ellentmond / semleges esetei.
-// Kitalált nevek; minden ideiglenes mappában (illetve TANARA_HOME homokozóban).
-//
+// Tags on people: learned association (statistics from synthetic lines: the own name is left
+// out, not cut to 8), manual tag both ways + undo + people.json, carrying a tag delete /
+// merge over to the people, the union on a person merge, the suggestion thresholds in both
+// directions, the meeting tag suggested from the participants, (person, tag) rejection, and
+// tagEvidence's supports / contradicts / neutral cases.
+// Made-up names; everything in a temporary folder (or a TANARA_HOME sandbox).
 #include <QtTest>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -53,7 +51,7 @@ private slots:
     void init();
     void cleanup();
 
-    // tiszta modul
+    // pure module
     void statsExcludeSelfAndDoNotTruncate();
     void thresholds();
     void evidenceSupportContradictNeutral();
@@ -130,7 +128,7 @@ QString PersonTagsTest::addMeeting(const QString& title, int day, const QStringL
     return m.id;
 }
 
-// ---- tiszta modul ------------------------------------------------------------------------------
+// ---- pure module ----
 
 void PersonTagsTest::statsExcludeSelfAndDoNotTruncate()
 {
@@ -147,32 +145,32 @@ void PersonTagsTest::statsExcludeSelfAndDoNotTruncate()
     QCOMPARE(st.meetingCount(), 5);
     QCOMPARE(st.tagTotal("nord"), 3);
     QCOMPARE(st.tagTotal("part"), 2);
-    // A saját név sehol.
+    // The own name is nowhere.
     QCOMPARE(st.shared(kSelf, "nord"), 0);
     QCOMPARE(st.personTotal(kSelf), 0);
     QVERIFY(!st.peopleOf("nord").contains(kSelf));
-    // Nincs 8-ra vágva: mind a 12 + Gábor + Árpád.
+    // Not cut to 8: all 12 + Gábor + Árpád.
     QCOMPARE(st.peopleOf("nord").size(), 14);
     QCOMPARE(st.shared(QStringLiteral("Résztvevő 12"), "nord"), 1);
-    // Kisbetű-független; |M(p)| a címke nélküli megbeszélést is számolja.
+    // Case-insensitive; |M(p)| counts the untagged meeting too.
     QCOMPARE(st.shared(kGabor, "nord"), 2);
     QCOMPARE(st.personTotal(kGabor), 3);
     QCOMPARE(st.lastShared(kGabor, "nord").date(), QDate(2026, 9, 2));
-    QCOMPARE(st.displayName(kGabor.toLower()), kGabor);    // a legutóbbi (m4) írásmód
+    QCOMPARE(st.displayName(kGabor.toLower()), kGabor);    // the latest (m4) spelling
     QCOMPARE(st.tagsOf(kArpad).size(), 2);
 }
 
 void PersonTagsTest::thresholds()
 {
     using namespace persontags;
-    QVERIFY(!learnedLink(1, 1));          // < 2 közös
+    QVERIFY(!learnedLink(1, 1));          // < 2 in common
     QVERIFY(learnedLink(2, 6));           // 33 %
     QVERIFY(!learnedLink(2, 7));          // 28 %
-    QVERIFY(learnedLink(3, 10));          // pont 30 %
+    QVERIFY(learnedLink(3, 10));          // exactly 30%
     QVERIFY(!suggestableForPerson(1, 1, 1));
-    QVERIFY(suggestableForPerson(2, 20, 4));    // 10 % a címkéé, de 50 % a személyé
+    QVERIFY(suggestableForPerson(2, 20, 4));    // 10% of the tag, but 50% of the person
     QVERIFY(!suggestableForPerson(2, 20, 5));   // 10 % / 40 %
-    QVERIFY(suggestableForPerson(3, 9, 30));    // 33 % a címkéé
+    QVERIFY(suggestableForPerson(3, 9, 30));    // 33% of the tag
 }
 
 void PersonTagsTest::evidenceSupportContradictNeutral()
@@ -188,7 +186,7 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
     snap.manual.insert(persontags::personKey(kEszter), {"part"});
     snap.manual.insert(persontags::personKey(kBence), {"nord"});
 
-    // Tanult támogatás kézi címke nélkül.
+    // Learned support without a manual tag.
     TagEvidence ev = snap.evidence(kGabor, {"nord"});
     QVERIFY(ev.isSupport());
     QCOMPARE(ev.supportTagIds, QStringList{"nord"});
@@ -196,21 +194,21 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
     QCOMPARE(ev.detail, QStringLiteral("11 / 14"));
     QVERIFY(!ev.items.first().manual);
 
-    // Kézi támogatás 0 közös megbeszéléssel (előre felvett ember).
+    // Manual support with 0 shared meetings (a person added in advance).
     ev = snap.evidence(kBence, {"nord", "part"});
     QCOMPARE(ev.supportTagIds, QStringList{"nord"});
     QVERIFY(ev.items.first().manual);
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
     QCOMPARE(ev.detail, QStringLiteral("0 / 14"));
 
-    // Több támogató címke: „+1”.
+    // Several supporting tags: "+1".
     snap.manual.insert(persontags::personKey(kGabor), {"part"});
     ev = snap.evidence(kGabor, {"nord", "part"});
-    QCOMPARE(ev.supportTagIds, (QStringList{"part", "nord"}));   // kézi előbb
+    QCOMPARE(ev.supportTagIds, (QStringList{"part", "nord"}));   // manual first
     QCOMPARE(ev.text, QStringLiteral("#Partnerek +1"));
     snap.manual.remove(persontags::personKey(kGabor));
 
-    // Ellentmondás: kézi címkéje van, egyik sem a megbeszélésé, tanult kapcsolat sincs.
+    // Contradiction: it has a manual tag, none is the meeting's, and there is no learned association either.
     ev = snap.evidence(kEszter, {"nord"});
     QVERIFY(ev.isContradiction());
     QVERIFY(!ev.isSupport());
@@ -220,9 +218,9 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
     QCOMPARE(ev.detail, QStringLiteral("0 / 14"));
 
-    // Semleges: címke nélküli személy (Árpád: 3/14 a küszöb alatt) sosem büntetett.
+    // Neutral: a person without tags (Árpád: 3/14 is below the threshold) is never penalized.
     QVERIFY(snap.evidence(kArpad, {"nord"}).isEmpty());
-    // Semleges: címke nélküli megbeszélés; ismeretlen címke; saját személy.
+    // Neutral: an untagged meeting; an unknown tag; the own person.
     QVERIFY(snap.evidence(kEszter, {}).isEmpty());
     QVERIFY(snap.evidence(kEszter, {"ismeretlen"}).isEmpty());
     snap.manual.insert(persontags::personKey(kSelf), {"part"});
@@ -231,8 +229,8 @@ void PersonTagsTest::evidenceSupportContradictNeutral()
 
 void PersonTagsTest::evidenceContradictionGuards()
 {
-    // #Nordvik: 6 megbeszélés (beért), #Új: 2 (fiatal). Eszter kézi címkéje #Partnerek; Bence
-    // címke nélkül, de 5 címkézett (#Partnerek) megbeszélésen volt; Nóra címke nélkül, 2-n.
+    // #Nordvik: 6 meetings (mature), #New: 2 (young). Eszter's manual tag is #Partners; Bence has
+    // no tag, but was at 5 tagged (#Partners) meetings; Nóra has no tag, at 2.
     const QString nora = QStringLiteral("Kiss Nóra");
     QVector<PersonTagRow> rows;
     for (int i = 1; i <= 6; ++i) rows << row(QStringLiteral("n%1").arg(i), i, {"nord"}, {kGabor});
@@ -247,29 +245,29 @@ void PersonTagsTest::evidenceContradictionGuards()
     snap.manual.insert(persontags::personKey(kEszter), {"part"});
     snap.manual.insert(persontags::personKey(kArpad), {"part"});
 
-    // Mind a négy teljesül: kézi címke, beért címke, c = 0 → ellentmond.
+    // All four hold: manual tag, mature tag, c = 0, so it contradicts.
     TagEvidence ev = snap.evidence(kEszter, {"nord"});
     QVERIFY(ev.isContradiction());
     QCOMPARE(ev.detail, QStringLiteral("0 / 7"));
-    // (2) kézi címke nélkül ≥ 5 címkézett megbeszélés is elég; a „más címkék” a tanultakból.
+    // (2) without a manual tag >= 5 tagged meetings are enough too; the "other tags" come from the learned ones.
     ev = snap.evidence(kBence, {"nord"});
     QVERIFY(ev.isContradiction());
     QCOMPARE(ev.personTagNames, QStringList{"Partnerek"});
-    // (2) nem teljesül: címke nélküli személy kevés címkézett megbeszéléssel — sosem büntet.
+    // (2) does not hold: an untagged person with few tagged meetings never penalizes.
     QVERIFY(snap.evidence(nora, {"nord"}).isEmpty());
-    // (1) nem teljesül: a megbeszélésnek nincs (ismert) címkéje.
+    // (1) does not hold: the meeting has no (known) tag.
     QVERIFY(snap.evidence(kEszter, {}).isEmpty());
-    // (3) nem teljesül: Árpád egyszer már volt #Nordvik megbeszélésen (c = 1, a küszöb alatt).
+    // (3) does not hold: Árpád has already been at a #Nordvik meeting once (c = 1, below the threshold).
     QVERIFY(snap.evidence(kArpad, {"nord"}).isEmpty());
-    // (4) nem teljesül: a fiatal címke (|M(t)| = 2 < 5) nem büntet; vegyes címkéknél sem.
+    // (4) does not hold: a young tag (|M(t)| = 2 < 5) does not penalize; not with mixed tags either.
     QVERIFY(snap.evidence(kEszter, {"new"}).isEmpty());
     QVERIFY(snap.evidence(kEszter, {"nord", "new"}).isEmpty());
 }
 
 void PersonTagsTest::evidenceExcludesOwnMeeting()
 {
-    // Gábor 2 / 6 #Nordvik megbeszélésen: a küszöbön. A vizsgált megbeszélés saját sora (ahol már
-    // Gábor nevén van) nem számít: 1 / 5 → nincs tanult támogatás.
+    // Gábor at 2 / 6 #Nordvik meetings: at the threshold. The examined meeting's own line (where
+    // it is already under Gábor's name) does not count: 1 / 5, so no learned support.
     QVector<PersonTagRow> rows;
     for (int i = 1; i <= 6; ++i)
         rows << row(QStringLiteral("n%1").arg(i), i, {"nord"}, i <= 2 ? QStringList{kGabor} : QStringList{kArpad});
@@ -283,8 +281,8 @@ void PersonTagsTest::evidenceExcludesOwnMeeting()
 
 void PersonTagsTest::learningQuestionsRules()
 {
-    // A vizsgált megbeszélés: "cur" (#Nordvik, #Partnerek). Más megbeszéléseken: Gábor és Árpád
-    // 1-1 #Nordvik-on, Bence 2-n, Eszter sehol (új személy), Nóra egy címke nélkülin.
+    // The examined meeting: "cur" (#Nordvik, #Partners). On other meetings: Gábor and Árpád 1-1
+    // on #Nordvik, Bence 2, Eszter none (new person), Nóra one untagged.
     const QString nora = QStringLiteral("Kiss Nóra");
     QVector<PersonTagRow> rows;
     rows << row("a", 1, {"nord"}, {kGabor, kArpad}) << row("b", 2, {"nord"}, {kBence})
@@ -297,8 +295,8 @@ void PersonTagsTest::learningQuestionsRules()
 
     const QStringList names{kGabor, kArpad, kBence, kEszter, nora, kSelf, QString()};
     QVector<PersonTagQuestion> q = snap.learningQuestions("cur", {"nord", "part"}, names);
-    // Gábor és Árpád: most lesz c = 2 → egy csoportos kérdés; Bence már 3-nál tart → nincs;
-    // Eszter új személy → mindkét címke; Nóra először #Nordvik-on → nincs; saját és üres kimarad.
+    // Gábor and Árpád: c becomes 2 now, so one group question; Bence is already at 3, so none;
+    // Eszter is a new person, so both tags; Nóra for the first time on #Nordvik, so none; own and empty are left out.
     QCOMPARE(q.size(), 3);
     QCOMPARE(q.at(0).tagId, QStringLiteral("nord"));
     QCOMPARE(q.at(0).people, (QStringList{kGabor, kArpad}));
@@ -309,7 +307,7 @@ void PersonTagsTest::learningQuestionsRules()
     QCOMPARE(q.at(2).tagId, QStringLiteral("part"));
     QCOMPARE(q.at(2).people, QStringList{kEszter});
 
-    // Kézi címke és elutasítás kizár; címke nélküli megbeszélésen nincs kérdés.
+    // A manual tag and a rejection exclude; no question on an untagged meeting.
     snap.manual.insert(persontags::personKey(kGabor), {"nord"});
     q = snap.learningQuestions("cur", {"nord"}, {kGabor, kArpad, kEszter},
                                [](const QString& n, const QString& t) { return n == kEszter && t == "nord"; });
@@ -324,7 +322,7 @@ void PersonTagsTest::manualTagsRoundTripAndUndo()
 {
     m_people->add(kGabor);
     QSignalSpy changed(m_tags.get(), &TagService::personTagsChanged);
-    const Tag nord = m_tags->addPersonTag(kGabor, QStringLiteral("Nordvik"));   // új címke
+    const Tag nord = m_tags->addPersonTag(kGabor, QStringLiteral("Nordvik"));   // new tag
     QVERIFY(nord.isValid());
     const Tag part = m_tags->addPersonTag(kGabor, QStringLiteral("Partnerek"));
     QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
@@ -332,14 +330,14 @@ void PersonTagsTest::manualTagsRoundTripAndUndo()
     QVERIFY(changed.count() >= 2);
     QCOMPARE(m_tags->peopleWith(nord.id), QStringList{kGabor});
 
-    // people.json: a rekord "tags" tömbje; egy új PeopleStore is látja.
+    // people.json: the record's "tags" array; a new PeopleStore sees it too.
     const QJsonArray people = readJson(m_dir->filePath("meta/people.json")).value("people").toArray();
     QCOMPARE(people.size(), 1);
     QCOMPARE(people.at(0).toObject().value("tags").toArray().size(), 2);
     PeopleStore other(m_dir->filePath("meta/people.json"));
     QCOMPARE(other.tags(kGabor), (QStringList{nord.id, part.id}));
 
-    // Ismétlés nem duplikál; levétel; visszavonás lépésenként.
+    // A repeat does not duplicate; removal; undo step by step.
     m_tags->addPersonTag(kGabor, nord.id);
     QCOMPARE(m_tags->tagsOfPerson(kGabor).size(), 2);
     m_tags->removePersonTag(kGabor, nord.id);
@@ -347,11 +345,11 @@ void PersonTagsTest::manualTagsRoundTripAndUndo()
     QVERIFY(m_tags->canUndo());
     m_tags->undo();
     QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
-    m_tags->undo();   // a Partnerek felrakása (a címke létrehozásával együtt egy lépés)
+    m_tags->undo();   // applying Partners (with creating the tag, one step)
     QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
     QVERIFY(!m_tags->tag(part.id).isValid());
 
-    // setPersonTags: ismeretlen azonosító kimarad; a lista csere.
+    // setPersonTags: an unknown id is left out; the list is replaced.
     QVERIFY(m_tags->setPersonTags(kGabor, {QStringLiteral("nincs-ilyen"), nord.id}));
     QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
     QVERIFY(m_tags->setPersonTags(kGabor, {}));
@@ -359,7 +357,7 @@ void PersonTagsTest::manualTagsRoundTripAndUndo()
     m_tags->undo();
     QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
 
-    // Listán nem szereplő (pl. csak hanglenyomatos) személy is címkézhető.
+    // A person not on the list (e.g. one that only has a voiceprint) can be tagged too.
     m_tags->addPersonTag(kBence, nord.id);
     QCOMPARE(m_tags->tagsOfPerson(kBence), QStringList{nord.id});
     QVERIFY(!m_people->names().contains(kBence));
@@ -375,18 +373,18 @@ void PersonTagsTest::removeAndMergePropagateToPeople()
     m_tags->setPersonTags(kArpad, {nordOld.id, nord.id});
     m_tags->rejectPersonTag(kEszter, nordOld.id);
 
-    // Összevonás: a személyeken csere, duplikátum nélkül; az elutasítás is átszáll.
+    // Merge: replacement on the people, without duplicates; the rejection carries over too.
     m_tags->merge(nordOld.id, nord.id);
     QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nord.id, part.id}));
     QCOMPARE(m_tags->tagsOfPerson(kArpad), QStringList{nord.id});
     QCOMPARE(m_tags->tagsOf(m1), QStringList{nord.id});
     QVERIFY(m_tags->isRejectedForPerson(kEszter, nord.id));
-    m_tags->undo();   // egy lépés: meeting + személyek + készlet
+    m_tags->undo();   // one step: meeting + people + set
     QCOMPARE(m_tags->tagsOfPerson(kGabor), (QStringList{nordOld.id, part.id}));
     QCOMPARE(m_tags->tagsOfPerson(kArpad), (QStringList{nordOld.id, nord.id}));
     QCOMPARE(m_tags->tagsOf(m1), QStringList{nordOld.id});
 
-    // Törlés: minden személyről lekerül; visszavonható.
+    // Delete: removed from every person; undoable.
     m_tags->remove(part.id);
     QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nordOld.id});
     QVERIFY(!m_people->tags(kGabor).contains(part.id));
@@ -400,10 +398,10 @@ void PersonTagsTest::peopleStoreRenameUnionsTags()
     m_people->add(kArpad);
     m_people->setTags(kGabor, {"a", "b"});
     m_people->setTags(kArpad, {"b", "c"});
-    m_people->rename(kGabor, kArpad, true);   // összevonás: a két rekord egy lesz
+    m_people->rename(kGabor, kArpad, true);   // merge: the two records become one
     QCOMPARE(m_people->tags(kArpad), (QStringList{"b", "c", "a"}));
     QVERIFY(m_people->tags(kGabor).isEmpty());
-    m_people->rename(kArpad, kEszter);        // sima átnevezés: a címkék mennek
+    m_people->rename(kArpad, kEszter);        // plain rename: the tags go along
     QCOMPARE(m_people->tags(kEszter), (QStringList{"b", "c", "a"}));
     m_people->remove(kEszter);
     QVERIFY(m_people->allTags().isEmpty());
@@ -412,7 +410,7 @@ void PersonTagsTest::peopleStoreRenameUnionsTags()
 void PersonTagsTest::peopleStatsAndSuggestPeopleForTag()
 {
     const Tag nord = m_tags->create("Nordvik");
-    // 6 Nordvik-megbeszélés: Gábor mindegyiken, Árpád 2-n (33 %), Eszter 1-en.
+    // 6 Nordvik meetings: Gábor on all, Árpád on 2 (33%), Eszter on 1.
     for (int i = 1; i <= 6; ++i) {
         QStringList who{kGabor};
         if (i <= 2) who << kArpad;
@@ -420,11 +418,11 @@ void PersonTagsTest::peopleStatsAndSuggestPeopleForTag()
         addMeeting(QStringLiteral("Nordvik %1").arg(i), i, who, {nord.id});
     }
     addMeeting("Más", 10, {kArpad});
-    m_tags->setPersonTags(kBence, {nord.id});   // előre felvett ember, 0 megbeszélés
+    m_tags->setPersonTags(kBence, {nord.id});   // a person added in advance, 0 meetings
 
     const QVector<PersonTagStat> list = m_tags->peopleStats(nord.id);
-    QCOMPARE(list.size(), 3);                     // Eszter (1/6) nem éri el a küszöböt
-    QCOMPARE(list.at(0).name, kBence);            // kézi előbb
+    QCOMPARE(list.size(), 3);                     // Eszter (1/6) does not reach the threshold
+    QCOMPARE(list.at(0).name, kBence);            // manual first
     QVERIFY(list.at(0).manual);
     QCOMPARE(list.at(0).shared, 0);
     QCOMPARE(list.at(1).name, kGabor);
@@ -434,7 +432,7 @@ void PersonTagsTest::peopleStatsAndSuggestPeopleForTag()
     QCOMPARE(list.at(2).personTotal, 3);
 
     QVector<PersonTagStat> sugg = m_tags->suggestPeopleForTag(nord.id);
-    QCOMPARE(sugg.size(), 2);                     // Bence kézi → nem javaslat
+    QCOMPARE(sugg.size(), 2);                     // Bence is manual, so not a suggestion
     QCOMPARE(sugg.at(0).name, kGabor);
     sugg = m_tags->suggestPeopleForTag(nord.id, {kGabor.toUpper()});
     QCOMPARE(sugg.size(), 1);
@@ -448,8 +446,8 @@ void PersonTagsTest::suggestTagsForPerson()
     const Tag part = m_tags->create("Partnerek");
     const Tag big = m_tags->create("Nagy");
     const Tag one = m_tags->create("Egyszeri");
-    // Nordvik: 3 megbeszélés, Gábor 2-n (67 %). Nagy: 20 megbeszélés, Gábor 2-n (10 %), de Gábor
-    // összesen 4 megbeszélésen volt → 50 % a személyé. Partnerek: Gábor 1-en. Egyszeri: 1/1.
+    // Nordvik: 3 meetings, Gábor on 2 (67%). Big: 20 meetings, Gábor on 2 (10%), but Gábor was
+    // at 4 meetings in total, so 50% of the person. Partners: Gábor on 1. One-off: 1/1.
     addMeeting("N1", 1, {kGabor}, {nord.id, big.id});
     addMeeting("N2", 2, {kGabor}, {nord.id, big.id});
     addMeeting("N3", 3, {kArpad}, {nord.id});
@@ -463,7 +461,7 @@ void PersonTagsTest::suggestTagsForPerson()
     QCOMPARE(sugg.at(1).tagId, big.id);
     QCOMPARE(sugg.at(1).personTotal, 4);
 
-    // A már felrakott címke nem javaslat; a személy címke-listája mindent mutat.
+    // An already applied tag is not a suggestion; the person's tag list shows everything.
     m_tags->setPersonTags(kGabor, {nord.id});
     sugg = m_tags->suggestTagsForPerson(kGabor);
     QCOMPARE(sugg.size(), 1);
@@ -473,7 +471,7 @@ void PersonTagsTest::suggestTagsForPerson()
     QVERIFY(all.at(0).manual);
     QCOMPARE(all.at(0).tagId, nord.id);
 
-    // < 2 megbeszéléses személynek nincs javaslat.
+    // A person with < 2 meetings gets no suggestion.
     QVERIFY(m_tags->suggestTagsForPerson(kEszter).isEmpty());
 }
 
@@ -490,13 +488,13 @@ void PersonTagsTest::personRejection()
     QVERIFY(m_tags->suggestTagsForPerson(kGabor).isEmpty());
     QVERIFY(m_tags->suggestPeopleForTag(nord.id).isEmpty());
     QCOMPARE(m_tags->rejectedCount(), before + 1);
-    // A bizonyíték marad (a statisztika igaz); a lista jelzi az elutasítást.
+    // The evidence stays (the statistics are true); the list shows the rejection.
     QVERIFY(m_tags->tagEvidence(kGabor, {nord.id}).isSupport());
     QVERIFY(m_tags->peopleStats(nord.id).at(0).rejected);
-    // A meeting-szintű elutasítás-kérdést nem zavarja.
+    // It does not disturb the meeting-level rejection question.
     QVERIFY(!m_tags->isRejected(QStringLiteral("x"), nord.id));
 
-    // Tartós: a tags.json-ban "person" mezővel, meetingId nélkül; új példány is látja.
+    // Persistent: in tags.json with a "person" field, without meetingId; a new instance sees it too.
     const QJsonArray rej = readJson(m_dir->filePath("meta/tags.json")).value("rejected").toArray();
     QCOMPARE(rej.size(), 1);
     QCOMPARE(rej.at(0).toObject().value("person").toString(), kGabor);
@@ -504,15 +502,15 @@ void PersonTagsTest::personRejection()
     makeService();
     QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
 
-    // Visszavonható; a clearRejected ezt is törli.
-    m_tags->undo();   // új példány: üres verem → hatástalan
+    // Undoable; clearRejected clears this too.
+    m_tags->undo();   // new instance: empty stack, so no effect
     QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
     m_tags->clearRejected();
     QVERIFY(!m_tags->isRejectedForPerson(kGabor, nord.id));
     m_tags->undo();
     QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
 
-    // Megbeszélés-szintű személy-elutasítás csak arra a megbeszélésre.
+    // A meeting-level person rejection applies to that meeting only.
     m_tags->rejectPersonTag(kArpad, nord.id, QStringLiteral("m-1"));
     QVERIFY(m_tags->isRejectedForPerson(kArpad, nord.id, QStringLiteral("m-1")));
     QVERIFY(!m_tags->isRejectedForPerson(kArpad, nord.id, QStringLiteral("m-2")));
@@ -525,10 +523,10 @@ void PersonTagsTest::meetingTagsFromParticipants()
     const Tag part = m_tags->create("Partnerek");
     m_tags->setPersonTags(kGabor, {nord.id, part.id});
     m_tags->setPersonTags(kArpad, {nord.id});
-    m_tags->setPersonTags(kSelf, {part.id});   // a saját személy nem címkézhető
+    m_tags->setPersonTags(kSelf, {part.id});   // the own person cannot be tagged
     QVERIFY(m_tags->tagsOfPerson(kSelf).isEmpty());
 
-    // Két résztvevő: csak a mindkettőjükön lévő.
+    // Two participants: only the tags on both of them.
     const QString m1 = addMeeting("Új egyeztetés", 1, {kGabor, kArpad});
     QVector<TagSuggestion> s = m_tags->suggestMeetingTagsFromParticipants(m1);
     QCOMPARE(s.size(), 1);
@@ -538,25 +536,25 @@ void PersonTagsTest::meetingTagsFromParticipants()
     QCOMPARE(s.at(0).reasons.at(0).kind, ReasonKind::PeopleTags);
     QCOMPARE(s.at(0).reasons.at(0).values, (QStringList{kGabor, kArpad}));
 
-    // A meetingen lévő és az ott elutasított címke kimarad.
+    // A tag that is on the meeting and one rejected there are left out.
     m_tags->reject(m1, s.at(0));
     QVERIFY(m_tags->suggestMeetingTagsFromParticipants(m1).isEmpty());
 
-    // Egyetlen nem-saját résztvevő (+ a saját mikrofon): az ő címkéi.
+    // A single non-own participant (+ the own microphone): their tags.
     const QString m2 = addMeeting("Kettesben", 2, {kGabor}, {part.id});
     s = m_tags->suggestMeetingTagsFromParticipants(m2);
     QCOMPARE(s.size(), 1);
     QCOMPARE(s.at(0).tagId, nord.id);
 
-    // Explicit névlista (pl. kézi résztvevők, még átírás előtt).
+    // An explicit name list (e.g. manual participants, before the transcript).
     QCOMPARE(m_tags->suggestTagsForPeople({kGabor, kEszter}, QString()).size(), 0);
     QCOMPARE(m_tags->suggestTagsForPeople({kSelf, kArpad}, QString()).size(), 1);
 }
 
 void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
 {
-    // Átírás előtt nincs beszélő-térkép: a kézi és a jóváhagyott résztvevők számítanak, a
-    // jóvá nem hagyott hang-jelölt nem.
+    // Before the transcript there is no speaker map: manual and approved participants count; an
+    // unapproved audio candidate does not.
     const Tag nord = m_tags->create("Nordvik");
     m_tags->setPersonTags(kGabor, {nord.id});
     m_tags->setPersonTags(kArpad, {nord.id});
@@ -567,7 +565,7 @@ void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
     manual.id = "m-1"; manual.personName = kGabor; manual.source = ParticipantSource::Manual;
     m.participants = {manual};
     m_store->saveMeeting(m);
-    // Egyetlen nem-saját résztvevő, rajta a címke → javaslat.
+    // A single non-own participant with the tag on them: a suggestion.
     QVector<TagSuggestion> s = m_tags->suggestMeetingTagsFromParticipants(mid);
     QCOMPARE(s.size(), 1);
     QCOMPARE(s.at(0).reasons.at(0).values, QStringList{kGabor});
@@ -582,7 +580,7 @@ void PersonTagsTest::meetingTagsFromManualParticipantsBeforeTranscript()
     m_store->saveMeeting(m);
     s = m_tags->suggestMeetingTagsFromParticipants(mid);
     QCOMPARE(s.size(), 1);
-    QCOMPARE(s.at(0).reasons.at(0).values, (QStringList{kGabor, kArpad}));   // Eszter (jelölt) nem
+    QCOMPARE(s.at(0).reasons.at(0).values, (QStringList{kGabor, kArpad}));   // Eszter (candidate) not
 }
 
 void PersonTagsTest::learningQuestionsServiceAskOnceAndAnswer()
@@ -595,11 +593,11 @@ void PersonTagsTest::learningQuestionsServiceAskOnceAndAnswer()
     QCOMPARE(q.at(0).tagName, QStringLiteral("Nordvik"));
     QCOMPARE(q.at(0).people, (QStringList{kGabor, kArpad}));
 
-    // Egyszer kérdez.
+    // Asks once.
     m_tags->markLearningAsked(mid, q);
     QVERIFY(m_tags->learningQuestions(mid, {kGabor, kArpad}).isEmpty());
 
-    // „Igen”: mindkettőjükre, EGY visszavonási lépés.
+    // "Yes": for both of them, ONE undo step.
     m_tags->answerLearning(q.at(0), true);
     QCOMPARE(m_tags->tagsOfPerson(kGabor), QStringList{nord.id});
     QCOMPARE(m_tags->tagsOfPerson(kArpad), QStringList{nord.id});
@@ -607,7 +605,7 @@ void PersonTagsTest::learningQuestionsServiceAskOnceAndAnswer()
     QVERIFY(m_tags->tagsOfPerson(kGabor).isEmpty());
     QVERIFY(m_tags->tagsOfPerson(kArpad).isEmpty());
 
-    // „Nem”: tartós (személy, címke) elutasítás, egy lépés; utána nem kérdez újra.
+    // "No": a persistent (person, tag) rejection, one step; afterwards it does not ask again.
     m_tags->answerLearning(q.at(0), false);
     QVERIFY(m_tags->isRejectedForPerson(kGabor, nord.id));
     QVERIFY(m_tags->isRejectedForPerson(kArpad, nord.id));
@@ -629,7 +627,7 @@ void PersonTagsTest::serviceEvidence()
     QCOMPARE(ev.supportTagIds, QStringList{nord.id});
     QCOMPARE(ev.text, QStringLiteral("#Nordvik"));
     QCOMPARE(ev.detail, QStringLiteral("4 / 4"));
-    // Eszter kézi címkés, de a #Nordvik még nem érett be (4 < 5 megbeszélés): nincs büntetés.
+    // Eszter has a manual tag, but #Nordvik is not yet mature (4 < 5 meetings): no penalty.
     QVERIFY(m_tags->tagEvidence(kEszter, {nord.id}).isEmpty());
     addMeeting(QStringLiteral("N5"), 5, {kArpad}, {nord.id});
     ev = m_tags->tagEvidence(kEszter, {nord.id});
@@ -637,7 +635,7 @@ void PersonTagsTest::serviceEvidence()
     QVERIFY(m_tags->tagEvidence(kArpad, {nord.id}).isEmpty());
     QVERIFY(m_tags->tagEvidence(kSelf, {nord.id}).isEmpty());
 
-    // A pillanatkép szálak közt átadható: ugyanazt adja.
+    // The snapshot can be passed between threads: it gives the same.
     const PersonTagSnapshot snap = m_tags->personTagSnapshot();
     QCOMPARE(snap.evidence(kGabor, {nord.id}).detail, QStringLiteral("4 / 5"));
 }
@@ -652,7 +650,7 @@ void PersonTagsTest::selfIsExcluded()
     QVERIFY(m_tags->personTagStats(kSelf).isEmpty());
     QVERIFY(m_tags->suggestTagsForPerson(kSelf).isEmpty());
     QCOMPARE(m_tags->personStats()->personTotal(kSelf), 0);
-    // A régi profil (TagProfile) továbbra is tartalmazza — ez a csapda, amit elkerülünk.
+    // The old profile (TagProfile) still contains it: this is the trap we avoid.
     bool selfInProfile = false;
     for (const auto& p : m_tags->profile(nord.id).topParticipants) selfInProfile |= p.first == kSelf;
     QVERIFY(selfInProfile);
@@ -667,7 +665,7 @@ void PersonTagsTest::backgroundStats()
     QTRY_VERIFY(!m_tags->personStatsBusy());
     QCOMPARE(m_tags->personStats()->shared(kGabor, nord.id), 3);
 
-    // Új megbeszélés: a régi pillanatkép él, amíg az új el nem készül.
+    // New meeting: the old snapshot lives until the new one is ready.
     spy.clear();
     addMeeting("N4", 4, {kGabor}, {nord.id});
     QTRY_VERIFY(spy.count() > 0 && !m_tags->personStatsBusy());
@@ -701,8 +699,8 @@ void PersonTagsTest::appMergeUnionsTagsAndRejections()
     QVERIFY(tags->tagsOfPerson(kGabor).isEmpty());
     QVERIFY(tags->isRejectedForPerson(kArpad, third.id));
     QVERIFY(!tags->isRejectedForPerson(kGabor, third.id));
-    QCOMPARE(tags->rejectedCount(), 1);   // unió, ismétlés nélkül
-    // A megszűnő név címke-lépésének visszavonása nem írja felül az uniót.
+    QCOMPARE(tags->rejectedCount(), 1);   // union, without repeats
+    // Undoing the disappearing name's tag step does not overwrite the union.
     while (tags->canUndo()) tags->undo();
     QVERIFY(tags->tagsOfPerson(kGabor).isEmpty());
     qunsetenv("TANARA_HOME");
@@ -720,22 +718,22 @@ void PersonTagsTest::appRemoveAndRenamePerson()
     QVERIFY(ps->addPerson(kEszter).ok);
     const Tag nord = tags->create("Nordvik");
     tags->setPersonTags(kGabor, {nord.id});
-    tags->rejectPersonTag(kGabor, QStringLiteral("x"));   // ismeretlen címke → nincs rögzítve
+    tags->rejectPersonTag(kGabor, QStringLiteral("x"));   // unknown tag: not recorded
     QCOMPARE(tags->rejectedCount(), 0);
     const Tag part = tags->create("Partnerek");
     tags->rejectPersonTag(kGabor, part.id);
 
-    // Átnevezés: a címke és az elutasítás követi; a visszavonás az új néven működik.
+    // Rename: the tag and the rejection follow; undo works under the new name.
     QVERIFY(ps->renamePerson(kGabor, kBence).ok);
     QCOMPARE(tags->tagsOfPerson(kBence), QStringList{nord.id});
     QVERIFY(tags->isRejectedForPerson(kBence, part.id));
-    tags->undo();   // a Partnerek elutasítása
-    tags->undo();   // a Partnerek létrehozása
-    tags->undo();   // a Nordvik felrakása (most már Bencén)
+    tags->undo();   // the Partners rejection
+    tags->undo();   // creating Partners
+    tags->undo();   // applying Nordvik (now on Bence)
     QVERIFY(tags->tagsOfPerson(kBence).isEmpty());
     tags->setPersonTags(kBence, {nord.id});
 
-    // Törlés: a címkék a rekorddal mennek, az elutasítások is; a mintatartó nem örököl.
+    // Delete: the tags go with the record, and the rejections too; the sample holder does not inherit.
     tags->rejectPersonTag(kBence, nord.id);
     tags->rejectPersonTag(kEszter, nord.id);
     QVERIFY(ps->removePerson(kBence, false).ok);
@@ -770,15 +768,15 @@ void PersonTagsTest::appPublishesParticipantTagSuggestions()
         };
         QVERIFY(!hasPeople());
 
-        // Kézi résztvevők átírás előtt → a lista magától frissül (participantsChanged).
+        // Manual participants before the transcript: the list refreshes by itself (participantsChanged).
         app.addParticipant(mid, kGabor);
         app.addParticipant(mid, kArpad);
         QVERIFY(hasPeople());
         const QVector<TagSuggestion> list = app.pendingTagSuggestions(mid);
-        QCOMPARE(list.first().source, SuggestionSource::People);   // elöl
+        QCOMPARE(list.first().source, SuggestionSource::People);   // first
         QCOMPARE(list.first().reasons.first().kind, ReasonKind::PeopleTags);
 
-        // A személy-címke levétele is frissít; a felrakott címke kimarad.
+        // Removing the person tag refreshes too; the applied tag is left out.
         tags->removePersonTag(kArpad, nord.id);
         QVERIFY(!hasPeople());
         tags->setPersonTags(kArpad, {nord.id});

@@ -97,7 +97,7 @@ QString shortErrorText(const CloudError& e)
 
 namespace {
 
-// Egy közös hiba-dialógus váz: ikon + cím + szöveg (+ „Nem terheltünk semmit.”) + hibaazonosító.
+// A shared error dialog skeleton: icon + title + text (+ "We did not charge anything.") + error id.
 struct Dlg {
     QDialog d;
     QVBoxLayout* lay = nullptr;
@@ -173,7 +173,7 @@ ErrorAction showCloudError(QWidget* parent, AppController* app, const CloudError
 {
     const bool partial = chargedSoFar.isValid() && chargedSoFar.micros > 0;
     const AccountInfo acc = app ? app->cloud()->account() : AccountInfo{};
-    // „Nem terheltünk semmit.” csak ha valóban semmi nem terhelődött (kiegészítés-2 1.12).
+    // "We did not charge anything." only if truly nothing was charged.
     const QString noCharge = QCoreApplication::translate("CloudUi", "Nem terheltünk semmit.");
     const QString partialText = QCoreApplication::translate("CloudUi", "Az eddig elkészült részek díja: %1. Folytathatod, ekkor csak a "
                                   "hátralévő részekért fizetsz.").arg(money(chargedSoFar, MoneyStyle::Charge));
@@ -284,7 +284,7 @@ ErrorAction showCloudError(QWidget* parent, AppController* app, const CloudError
         else d.link(QCoreApplication::translate("CloudUi", "Support"), !e.supportUrl.isEmpty() ? e.supportUrl : acc.contactUrl, true);
         return d.exec(e.requestId);
     }
-    case CloudErrorKind::Network: {   // K-12, azonosító nélkül
+    case CloudErrorKind::Network: {   // generic error, without an id
         Dlg d(parent, QCoreApplication::translate("CloudUi", "Nincs kapcsolat"), QStyle::SP_MessageBoxWarning, QCoreApplication::translate("CloudUi", "Nem értük el a szervert"),
               QCoreApplication::translate("CloudUi", "Ellenőrizd az internetkapcsolatot, és próbáld újra."));
         if (partial) d.addLine(partialText);
@@ -295,7 +295,7 @@ ErrorAction showCloudError(QWidget* parent, AppController* app, const CloudError
     default: break;
     }
 
-    // K-12 — általános hiba hibaazonosítóval (500 internal_error, 400, egyéb).
+    // General error with an error id (500 internal_error, 400, other).
     QString title = kind == QLatin1String("transcribe") ? QCoreApplication::translate("CloudUi", "Az átírás nem készült el")
                   : kind == QLatin1String("estimate")   ? QCoreApplication::translate("CloudUi", "A becslés nem készült el")
                   : partial                             ? QCoreApplication::translate("CloudUi", "Az összefoglaló nem készült el teljesen")
@@ -313,7 +313,7 @@ void startTopup(QWidget* parent, AppController* app)
     if (!app) return;
     CloudAccount* acc = app->cloud();
     const AccountInfo a = acc->account();
-    if (a.valid && !a.topupAvailable) {   // P0: nincs online feltöltés → „Írj nekünk”
+    if (a.valid && !a.topupAvailable) {   // P0: no online top-up, so "Write to us"
         openUrl(a.contactUrl);
         return;
     }

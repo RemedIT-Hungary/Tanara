@@ -1,8 +1,8 @@
-// Az átirat-szerkesztő nézetmodelljei (TranscriptEditorViewModel + TranscriptListModel +
-// PersonListModel) egy VALÓDI tanara::SpeakerEditor-on, ideiglenes mappában, hamis
-// embedderrel: áthelyezés, több sor, összevonás, undo / redo, javaslat elfogadása, szűrő,
-// keresés, sávok összecsukása, hanglenyomat. A lényeg: egy sor áthelyezése SOSEM reseteli
-// a lista-modellt. Kijelző nélkül fut; a felhasználó adataihoz nem nyúl.
+// The transcript editor's view models (TranscriptEditorViewModel + TranscriptListModel +
+// PersonListModel) on a REAL tanara::SpeakerEditor, in a temporary folder, with a fake
+// embedder: move, multiple lines, merge, undo / redo, accepting a suggestion, filter, search,
+// collapsing tracks, voiceprint. The point: moving one line NEVER resets the list model. Runs
+// without a display; it touches no user data.
 #include "PersonListModel.h"
 #include "TranscriptEditorViewModel.h"
 #include "TranscriptListModel.h"
@@ -29,13 +29,13 @@ QString speakerOf(const TranscriptEditorViewModel& vm, int row)
     return cell(vm, row, Role::SpeakerKeyRole).toString();
 }
 
-// A hang-elemzés (háttérszál) bevárása.
+// Waiting for the audio analysis (background thread).
 bool waitVoice(const TranscriptEditorViewModel& vm)
 {
     return QTest::qWaitFor([&] { return !vm.embeddingRunning() && vm.editor()->embeddingsComplete(); }, 10000);
 }
 
-// A beszélő hanglenyomat-jelzője az áttekintőn ("has" | "none" | "anonymous").
+// The speaker's voiceprint indicator on the overview ("has" | "none" | "anonymous").
 QString overviewVoiceprint(const TranscriptEditorViewModel& vm, const QString& key)
 {
     for (const QVariant& row : vm.overview())
@@ -52,10 +52,10 @@ int laneOf(const TranscriptEditorViewModel& vm, const QString& key)
     return -1;
 }
 
-// ---- két HASONLÓ hang (páronkénti átnézés) ----------------------------------
-// Anna („Beszélő 1") 4 saját sora mellett 3 Béla-hangú sor; Béla („Beszélő 2") 5 sora.
-// similar: cos(Anna, Béla) = 0.85 (a „hasonló sorok" őre ezt egy embernek veszi); különben
-// a két hang merőleges.
+// ---- two SIMILAR voices (pairwise review) ----
+// Anna ("Speaker 1") has 4 own lines plus 3 lines in Béla's voice; Béla ("Speaker 2") has 5 lines.
+// similar: cos(Anna, Béla) = 0.85 (the "similar lines" guard takes this for one person);
+// otherwise the two voices are orthogonal.
 struct PairScene {
     QTemporaryDir dir;
     std::unique_ptr<MeetingStore> store;
@@ -67,8 +67,8 @@ struct PairScene {
 
     explicit PairScene(bool similar)
     {
-        // 0 A a · 1 B b · 2 A a · 3 A b* · 4 B b · 5 A a · 6 A b* · 7 B b · 8 A a · 9 B b ·
-        // 10 A b* · 11 B b
+        // 0 A a . 1 B b . 2 A a . 3 A b* . 4 B b . 5 A a . 6 A b* . 7 B b . 8 A a . 9 B b .
+        // 10 A b* . 11 B b
         const QVector<QPair<QString, char>> rows{
             {kB1, 'a'}, {kB2, 'b'}, {kB1, 'a'}, {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'},
             {kB1, 'b'}, {kB2, 'b'}, {kB1, 'a'}, {kB2, 'b'}, {kB1, 'b'}, {kB2, 'b'}};
@@ -101,7 +101,7 @@ struct PairScene {
     std::unique_ptr<SpeakerEditor> editor()
     {
         auto ed = std::make_unique<SpeakerEditor>(store.get(), people.get(), prints.get(), meeting.id);
-        // A cache teljes: a gyár csak a „van hangmodell" állapotért kell (nem fut le semmi).
+        // The cache is complete: the factory is needed only for the "voice model exists" state (nothing runs).
         ed->setEmbedderFactory([] { return std::make_unique<FakeEmbedder>(); });
         return ed;
     }
@@ -128,7 +128,7 @@ private slots:
         QCOMPARE(vm.speakerCount(), 2);
         QCOMPARE(vm.lanes().size(), 2);
         QCOMPARE(vm.collapsedCount(), 0);
-        QVERIFY(!vm.railVisible());                         // alapból rejtve
+        QVERIFY(!vm.railVisible());                         // hidden by default
 
         QCOMPARE(cell(vm, 0, Role::KindRole).toString(), QStringLiteral("utterance"));
         QCOMPARE(cell(vm, 0, Role::SpeakerNameRole).toString(), kB1);
@@ -137,13 +137,13 @@ private slots:
         QCOMPARE(cell(vm, 0, Role::LaneRole).toInt(), 0);
         QCOMPARE(cell(vm, 1, Role::LaneRole).toInt(), 1);
         QCOMPARE(cell(vm, 1, Role::ColorIndexRole).toInt(), 1);
-        // Névsor csak beszélőváltáskor: a 6–7. sor ugyanazé (Beszélő 1).
+        // The name appears only at a speaker change: lines 6-7 are the same speaker (Speaker 1).
         QVERIFY(cell(vm, 0, Role::HeadRole).toBool());
         QVERIFY(cell(vm, 6, Role::HeadRole).toBool());
         QVERIFY(!cell(vm, 7, Role::HeadRole).toBool());
         QVERIFY(cell(vm, 0, Role::FirstRole).toBool());
 
-        // Áttekintő: beszélőnként egy sor, a szegmensek [x, w] párok 0..1 között.
+        // Overview: one row per speaker, the segments are [x, w] pairs within 0..1.
         const QVariantList ov = vm.overview();
         QCOMPARE(ov.size(), 2);
         const QList<qreal> segs = ov[0].toMap().value(QStringLiteral("segments")).value<QList<qreal>>();
@@ -158,17 +158,17 @@ private slots:
         QCOMPARE(vm.rowForTime(107000), 17);
         QCOMPARE(vm.timeAtFraction(0.5), 54000);
 
-        // Lejátszási szomszéd-határok: az előző sor vége, a következő sor kezdete.
+        // Playback neighbor boundaries: the previous line's end, the next line's start.
         for (int r : {1, 5, 10}) {
             const int s = vm.rowStartMs(r), e = vm.rowEndMs(r);
-            QVERIFY(vm.rowEndMs(r - 1) <= s && vm.rowStartMs(r + 1) >= e);   // nem fednek át
+            QVERIFY(vm.rowEndMs(r - 1) <= s && vm.rowStartMs(r + 1) >= e);   // they do not overlap
             const QVariantMap b = vm.playBounds(s, e);
             QCOMPARE(b.value(QStringLiteral("minStartMs")).toInt(), vm.rowEndMs(r - 1));
             QCOMPARE(b.value(QStringLiteral("maxEndMs")).toInt(), vm.rowStartMs(r + 1));
         }
         QCOMPARE(vm.playBounds(vm.rowStartMs(0), vm.rowEndMs(0)).value(QStringLiteral("minStartMs")).toInt(), -1);
         QCOMPARE(vm.playBounds(vm.rowStartMs(17), vm.rowEndMs(17)).value(QStringLiteral("maxEndMs")).toInt(), -1);
-        // Átfedő szomszéd: a határ a soron belülre esne → a sor szélei (nincs elő-/utó-futás).
+        // Overlapping neighbor: the boundary would fall inside the line, so the line's edges (no lead-in / tail).
         {
             const int s = vm.rowStartMs(2) - 1, e = vm.rowStartMs(3) + 1;
             const QVariantMap b = vm.playBounds(s, e);
@@ -176,8 +176,8 @@ private slots:
         }
     }
 
-    // Két nyers beszélő ugyanarra a névre azonosítva: a felület a nyers címkével különbözteti
-    // meg őket (nameDuplicate), a sorválasztó listája és a speakerInfo ugyanazt a térképet adja.
+    // Two raw speakers identified as the same name: the UI tells them apart by the raw label
+    // (nameDuplicate); the line picker's list and speakerInfo give the same map.
     void sameNameSpeakers_areMarkedDuplicate()
     {
         Fixture fx;
@@ -197,7 +197,7 @@ private slots:
         QCOMPARE(others[0].toMap().value(QStringLiteral("rawLabel")).toString(), kB2);
         QVERIFY(others[0].toMap().value(QStringLiteral("nameDuplicate")).toBool());
 
-        // Eltérő nevek: nincs jelölés.
+        // Different names: no marking.
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Antal"), false));
         for (const QVariant& v : vm.speakers())
             QVERIFY(!v.toMap().value(QStringLiteral("nameDuplicate")).toBool());
@@ -216,24 +216,24 @@ private slots:
         QSignalSpy changed(vm.rows(), &QAbstractItemModel::dataChanged);
         QSignalSpy session(&vm, &TranscriptEditorViewModel::sessionChanged);
 
-        // Kattintás a 4. sor másik oszlopába.
+        // A click in the other column of line 4.
         QVERIFY(vm.moveRowToLane(4, 1));
         QCOMPARE(speakerOf(vm, 4), kB2);
         QVERIFY(cell(vm, 4, Role::CorrectedRole).toBool());
-        QVERIFY(cell(vm, 4, Role::HeadRole).toBool());      // a „javítva" pirula a névsorban van
+        QVERIFY(cell(vm, 4, Role::HeadRole).toBool());      // the "fixed" pill is in the name row
         QVERIFY(!changed.isEmpty());
         QCOMPARE(resets.count(), 0);
         QCOMPARE(inserted.count(), 0);
         QCOMPARE(removed.count(), 0);
         QCOMPARE(session.count(), 0);
-        // Csak az érintett sor (és a szomszédja névsora) kap értesítést, nem az egész lista.
+        // Only the affected line (and its neighbor's name row) is notified, not the whole list.
         for (const auto& args : std::as_const(changed)) {
             const int first = args.at(0).toModelIndex().row();
             const int last = args.at(1).toModelIndex().row();
             QVERIFY2(first >= 4 && last <= 5, qPrintable(QStringLiteral("%1..%2").arg(first).arg(last)));
         }
 
-        // Ugyanoda még egyszer: nem történik semmi.
+        // To the same place again: nothing happens.
         QVERIFY(!vm.moveRowToLane(4, 1));
 
         QVERIFY(vm.canUndo());
@@ -246,7 +246,7 @@ private slots:
         QCOMPARE(speakerOf(vm, 4), kB2);
         QCOMPARE(resets.count(), 0);
 
-        // A javítás a lemezre került (az overlay-be), a nyers átirat érintetlen.
+        // The fix went to disk (into the overlay), the raw transcript is untouched.
         QVERIFY(QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));
     }
 
@@ -259,34 +259,34 @@ private slots:
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy selection(&vm, &TranscriptEditorViewModel::selectionChanged);
 
-        vm.selectRow(4);                                    // sima kattintás
+        vm.selectRow(4);                                    // plain click
         QCOMPARE(vm.selectedCount(), 1);
         QCOMPARE(vm.currentRow(), 4);
-        vm.selectRow(7, /*toggle*/ true);                   // Ctrl+kattintás
-        vm.selectRow(9, /*toggle*/ false, /*range*/ true);  // Shift+kattintás a 7-től
-        QCOMPARE(vm.selectedCount(), 3);                    // 7, 8, 9 (a Shift új tartományt jelöl)
+        vm.selectRow(7, /* Ctrl+click */ true);                   // Ctrl+click
+        vm.selectRow(9, /* Shift+click from 7 */ false, /* Shift+click from 7 */ true);  // Shift+click from 7
+        QCOMPARE(vm.selectedCount(), 3);                    // 7, 8, 9 (Shift marks a new range)
         vm.selectRow(4, true);
-        vm.selectRow(8, true);                              // a 8. (Beszélő 2) ki
+        vm.selectRow(8, true);                              // line 8 (Speaker 2) out
         QCOMPARE(vm.selectedCount(), 3);                    // 4, 7, 9
         QVERIFY(cell(vm, 4, Role::SelectedRole).toBool());
         QVERIFY(!cell(vm, 8, Role::SelectedRole).toBool());
         QVERIFY(selection.count() >= 4);
 
-        // Az 1–9 billentyű: a kijelölés a 2. oszlopba.
+        // Keys 1-9: the selection to column 2.
         QVERIFY(vm.moveSelectionToLane(1));
         QCOMPARE(vm.selectedCount(), 0);
         for (int r : {4, 7, 9}) QCOMPARE(speakerOf(vm, r), kB2);
-        vm.undo();                                          // EGY lépés
+        vm.undo();                                          // ONE step
         for (int r : {4, 7, 9}) QCOMPARE(speakerOf(vm, r), kB1);
         QVERIFY(!vm.canUndo());
 
-        // Húzás: a [13, 14] sorok a 2. oszlopba.
+        // Drag: lines [13, 14] to column 2.
         QVERIFY(vm.moveRowsToLane(14, 13, 1));
         QCOMPARE(speakerOf(vm, 13), kB2);
         QCOMPARE(speakerOf(vm, 14), kB2);
         vm.undo();
 
-        // Új személyhez: új oszlop jön létre, reset nélkül.
+        // To a new person: a new column is created, without a reset.
         vm.selectRow(4);
         vm.selectRow(7, true);
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
@@ -295,18 +295,18 @@ private slots:
         QCOMPARE(cell(vm, 4, Role::SpeakerNameRole).toString(), QStringLiteral("Cili"));
         QCOMPARE(cell(vm, 4, Role::LaneRole).toInt(), 2);
         QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
-        QCOMPARE(fx.prints->totalPrintCount(), 0);          // az átsorolás nem tanít lenyomatot
+        QCOMPARE(fx.prints->totalPrintCount(), 0);          // reassigning does not teach a voiceprint
         vm.undo();
         QCOMPARE(vm.speakerCount(), 2);
 
-        // Névtelen új résztvevőhöz.
+        // To an anonymous new participant.
         vm.selectRow(4);
         QVERIFY(vm.moveSelectionToNewParticipant());
         QCOMPARE(vm.speakerCount(), 3);
         QVERIFY(vm.speakers().last().toMap().value(QStringLiteral("anonymous")).toBool());
         QCOMPARE(resets.count(), 0);
 
-        // Fel / le léptetés.
+        // Step up / down.
         vm.clearSelection();
         vm.selectRow(2);
         QCOMPARE(vm.stepSelection(1), 3);
@@ -314,8 +314,8 @@ private slots:
         QCOMPARE(vm.currentRow(), 2);
     }
 
-    // A megbeszélésen szereplő személyt a BECENEVE is megtalálja a „Kinek a sora ez?" panelben
-    // (a név szerinti találat változatlan; névtelen beszélőnek nincs beceneve).
+    // A person in the meeting is also found by NICKNAME in the "Whose line is this?" panel
+    // (a match by name is unchanged; an anonymous speaker has no nickname).
     void meetingSpeakers_foundByAlias()
     {
         Fixture fx;
@@ -347,30 +347,30 @@ private slots:
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy speakers(&vm, &TranscriptEditorViewModel::speakersChanged);
 
-        // Teljes beszélő elnevezése: minden sora megkapja a nevet.
+        // Naming a whole speaker: all its lines get the name.
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
         QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), QStringLiteral("Béla"));
         QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("personName")).toString(), QStringLiteral("Béla"));
         QVERIFY(speakers.count() >= 1);
 
-        // Vissza névtelenre.
+        // Back to anonymous.
         QVERIFY(vm.revertSpeakerToAnonymous(kB2, false));
         QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), kB2);
         vm.undo();
         QCOMPARE(cell(vm, 1, Role::SpeakerNameRole).toString(), QStringLiteral("Béla"));
 
-        // Összevonás: a 2-es minden sora az 1-eshez kerül; egy lépésben visszavonható.
+        // Merge: all lines of speaker 2 go to speaker 1; undoable in one step.
         QVERIFY(vm.mergeSpeakers(kB2, kB1));
         QCOMPARE(vm.speakerCount(), 1);
         QCOMPARE(vm.lanes().size(), 1);
         for (int r = 0; r < 18; ++r) QCOMPARE(speakerOf(vm, r), kB1);
-        QVERIFY(!cell(vm, 1, Role::HeadRole).toBool());     // nincs több beszélőváltás
+        QVERIFY(!cell(vm, 1, Role::HeadRole).toBool());     // no more speaker changes
         vm.undo();
         QCOMPARE(vm.speakerCount(), 2);
         QCOMPARE(speakerOf(vm, 1), kB2);
         QVERIFY(cell(vm, 1, Role::HeadRole).toBool());
 
-        // Üres résztvevő felvétele és eltávolítása.
+        // Adding and removing an empty participant.
         const QString added = vm.addParticipant(QStringLiteral("Dóra"));
         QVERIFY(!added.isEmpty());
         QCOMPARE(vm.lanes().size(), 3);
@@ -385,7 +385,7 @@ private slots:
         fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}});
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
-        vm.setEditor(ed.get());                             // elindítja a hang-elemzést
+        vm.setEditor(ed.get());                             // starts the audio analysis
         QVERIFY(vm.voiceAvailable());
         QVERIFY(waitVoice(vm));
         QCOMPARE(vm.embeddingProgress(), 1.0);
@@ -395,17 +395,17 @@ private slots:
         QSignalSpy sugg(&vm, &TranscriptEditorViewModel::suggestionChanged);
         QSignalSpy reveal(&vm, &TranscriptEditorViewModel::revealRequested);
 
-        // A 4. sor (C hangja) kézzel új személyhez → a rendszer felajánlja a hasonlókat.
+        // Line 4 (C's voice) by hand to a new person: the system offers the similar ones.
         vm.selectRow(4);
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
         QVERIFY(vm.suggestionActive());
-        QCOMPARE(vm.suggestionCount(), 3);                  // 7, 9, 14 (a rövid 12. kimarad)
+        QCOMPARE(vm.suggestionCount(), 3);                  // 7, 9, 14 (the short 12 is left out)
         QCOMPARE(vm.suggestionTargetName(), QStringLiteral("Cili"));
         QVERIFY(sugg.count() >= 1);
         QVERIFY(cell(vm, 4, Role::SuggestionAnchorRole).toBool());
-        QVERIFY(!cell(vm, 7, Role::SuggestedRole).toBool()); // még nem mutatjuk
+        QVERIFY(!cell(vm, 7, Role::SuggestedRole).toBool()); // not shown yet
 
-        // „Megmutatom": kiemelés a sínen + az áttekintőn, a sín bekapcsol, az elsőre ugrunk.
+        // "Show me": highlight on the rail + the overview, the rail turns on, we jump to the first.
         vm.setSuggestionShown(true);
         for (int r : {7, 9, 14}) QVERIFY(cell(vm, r, Role::SuggestedRole).toBool());
         QVERIFY(!cell(vm, 12, Role::SuggestedRole).toBool());
@@ -414,7 +414,7 @@ private slots:
         const QList<qreal> marks = vm.overview().at(0).toMap().value(QStringLiteral("marks")).value<QList<qreal>>();
         QCOMPARE(marks.size(), 6);
 
-        // „Átrakom": tömeges áthelyezés, EGY visszavonási lépés.
+        // "Move them": bulk move, ONE undo step.
         QVERIFY(vm.acceptSuggestion());
         QVERIFY(!vm.suggestionActive());
         QVERIFY(!vm.suggestionShown());
@@ -425,7 +425,7 @@ private slots:
         QCOMPARE(speakerOf(vm, 7), kB1);
         QCOMPARE(speakerOf(vm, 4), cili);
 
-        // „Nem": a javaslat eltűnik, lépés nélkül.
+        // "No": the suggestion disappears, without a step.
         QVERIFY(vm.moveRowToLane(7, laneOf(vm, cili)));
         QVERIFY(vm.suggestionActive());
         vm.dismissSuggestion();
@@ -441,25 +441,25 @@ private slots:
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
         QVERIFY(waitVoice(vm));
-        QCOMPARE(vm.uncertainCount(), 1);                   // a 17. sor (A hangja a 2-es címkén)
+        QCOMPARE(vm.uncertainCount(), 1);                   // line 17 (A's voice on label 2)
         QVERIFY(cell(vm, 17, Role::UncertainRole).toBool());
         QVERIFY(cell(vm, 17, Role::HeadRole).toBool());
 
-        // Szűrő be: „··· 17 biztos sor elrejtve" + a bizonytalan sor.
+        // Filter on: "... 17 certain lines hidden" + the uncertain line.
         vm.setUncertainOnly(true);
         QCOMPARE(vm.rows()->rowCount(), 2);
         QCOMPARE(cell(vm, 0, Role::KindRole).toString(), QStringLiteral("gap"));
         QCOMPARE(cell(vm, 0, Role::HiddenCountRole).toInt(), 17);
         QCOMPARE(cell(vm, 1, Role::UtteranceIndexRole).toInt(), 17);
-        QCOMPARE(vm.rowForTime(30000), 1);                  // a legközelebbi látható sor
-        QVERIFY(vm.rowStartMs(0) < 0);                      // az elválasztónak nincs ideje
+        QCOMPARE(vm.rowForTime(30000), 1);                  // the nearest visible line
+        QVERIFY(vm.rowStartMs(0) < 0);                      // the divider has no time
         QCOMPARE(vm.rowStartMs(1), 104000);
 
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
         QSignalSpy removed(vm.rows(), &QAbstractItemModel::rowsRemoved);
         QSignalSpy inserted(vm.rows(), &QAbstractItemModel::rowsInserted);
 
-        // „Jó így": a sor eltűnik a szűrőből (törléssel, nem resettel), az elválasztó nő.
+        // "Good as is": the line disappears from the filter (by removal, not a reset), the divider grows.
         QVERIFY(vm.confirmRow(1));
         QCOMPARE(vm.uncertainCount(), 0);
         QCOMPARE(vm.rows()->rowCount(), 1);
@@ -467,7 +467,7 @@ private slots:
         QCOMPARE(removed.count(), 1);
         QCOMPARE(resets.count(), 0);
 
-        // Visszavonás: visszakerül (beszúrással).
+        // Undo: it comes back (by insertion).
         vm.undo();
         QCOMPARE(vm.uncertainCount(), 1);
         QCOMPARE(vm.rows()->rowCount(), 2);
@@ -475,8 +475,8 @@ private slots:
         QCOMPARE(inserted.count(), 1);
         QCOMPARE(resets.count(), 0);
 
-        // Kézzel a helyére téve sem bizonytalan többé — de a szűrőben a helyén marad
-        // („javítva"), hogy ne tűnjön el a kurzor alól; a szűrő újbóli alkalmazásáig.
+        // Even placed by hand it is no longer uncertain, but in the filter it stays in place
+        // ("fixed") so the cursor does not lose it; until the filter is applied again.
         QVERIFY(vm.moveRowToLane(1, 0));
         QCOMPARE(vm.uncertainCount(), 0);
         QCOMPARE(vm.rows()->rowCount(), 2);
@@ -488,14 +488,14 @@ private slots:
         vm.setUncertainOnly(true);
         QCOMPARE(vm.rows()->rowCount(), 1);
 
-        // Szűrő ki: minden sor látszik (ez módváltás, itt megengedett a reset).
+        // Filter off: every line is visible (a mode change, a reset is allowed here).
         vm.setUncertainOnly(false);
         QCOMPARE(vm.rows()->rowCount(), 18);
         QCOMPARE(speakerOf(vm, 17), kB1);
     }
 
-    // Újraellenőrzés a nézetmodellen át: a megerősített A-sorok magja kiemeli a „Beszélő 1"
-    // C-sorait és a 2-es címkén ragadt A-sort; a szűrő bekapcsol, a javaslat a sorig ér.
+    // Recheck through the view model: the core of the confirmed A lines highlights Speaker 1's
+    // C lines and the A line stuck on label 2; the filter turns on, the suggestion reaches the line.
     void recheck_fromConfirmedLines()
     {
         Fixture fx;
@@ -523,10 +523,10 @@ private slots:
         QCOMPARE(r.value(QStringLiteral("confirmedLines")).toInt(), 3);
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.last().at(0).toInt(), 5);
-        QVERIFY(vm.uncertainOnly());                        // a szűrő magától bekapcsolt
+        QVERIFY(vm.uncertainOnly());                        // the filter turned on by itself
         QCOMPARE(vm.uncertainCount(), 5);
 
-        // A javaslat a sorig ér: a 17. sor hangja A-é → „Beszélő 1"; C sorainál nincs javaslat.
+        // The suggestion reaches the line: line 17's voice is A's, so "Speaker 1"; no suggestion for C's lines.
         const int row17 = vm.rows()->rowOfUtterance(17);
         const int row4 = vm.rows()->rowOfUtterance(4);
         QVERIFY(row17 >= 0 && row4 >= 0);
@@ -535,24 +535,24 @@ private slots:
         QCOMPARE(cell(vm, row4, Role::LikelySpeakerKeyRole).toString(), QString());
         QVERIFY(cell(vm, row4, Role::UncertainRole).toBool());
 
-        // B-léptetés: végigmegy a megjelölt sorokon.
+        // Stepping with B: goes through the marked lines.
         QCOMPARE(vm.stepUncertain(-1, 1), row4);
 
-        // A sor gombja („Beszélő 1 mondta"): áthelyezés → javítva, kikerül a bizonytalanok közül.
+        // The line's button ("Speaker 1 said it"): move, so fixed, it leaves the uncertain ones.
         QVERIFY(vm.moveUtteranceToSpeaker(uid(17), kB1));
         QCOMPARE(vm.uncertainCount(), 4);
         vm.undo();
         QCOMPARE(vm.uncertainCount(), 5);
 
-        // A héjból (ugyanazon a szerkesztőn) futó újraellenőrzés is bekapcsolja a szűrőt.
+        // A recheck running from the shell (on the same editor) turns the filter on too.
         vm.setUncertainOnly(false);
         ed->recheckFromConfirmed();
         QVERIFY(vm.uncertainOnly());
         QCOMPARE(finished.count(), 2);
     }
 
-    // Két hasonló hang: a „hasonló sorok" javaslat hallgat → a sáv a kettejük átnézését ajánlja,
-    // de csak ha mindkét elnevezett beszélőnek van legalább 3 megerősített sora.
+    // Two similar voices: the "similar lines" suggestion is silent, so the bar offers reviewing
+    // the two, but only if both named speakers have at least 3 confirmed lines.
     void pairOffer_onlyWhenGuardBlocked_andBothHaveConfirmedLines()
     {
         PairScene sc(/*similar*/ true);
@@ -562,7 +562,7 @@ private slots:
         QVERIFY(waitVoice(vm));
         QSignalSpy notices(&vm, &TranscriptEditorViewModel::notice);
 
-        // Megerősített sorok nélkül: se javaslat, se ajánlat.
+        // Without confirmed lines: neither suggestion nor offer.
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(3), kB2));
         QVERIFY(vm.changeActive());
         QVERIFY(!vm.suggestionActive());
@@ -580,7 +580,7 @@ private slots:
         QCOMPARE(vm.pairOfferText(),
                  QStringLiteral("Anna és Béla hangja hasonló. Nézzem át kettejük sorait a megerősítettek alapján?"));
 
-        // „Átnézés": a két beszélő sorai, a szűrő bekapcsol, a sáv helyén értesítés.
+        // "Review": the two speakers' lines, the filter turns on, a notice in place of the bar.
         const QVariantMap r = vm.acceptPairOffer();
         QVERIFY(r.value(QStringLiteral("ran")).toBool());
         QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 2);
@@ -599,32 +599,32 @@ private slots:
             QCOMPARE(cell(vm, r6, Role::LikelySpeakerKeyRole).toString(), kB2);
         }
 
-        // Javítás után nincs több kétes sor: a 0-s üzenet.
+        // After the fix there are no more doubtful lines: the 0 message.
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(6), kB2));
-        QVERIFY(vm.pairOfferActive());                  // újra ajánlja (nem utasította el)
+        QVERIFY(vm.pairOfferActive());                  // offers it again (it was not rejected)
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
         vm.recheckPair(kB1, kB2);
         QVERIFY(notices.last().at(0).toString().startsWith(
             QStringLiteral("A megerősített sorok alapján nem találtam kétséges sort Anna és Béla között.")));
 
-        // „Most nem": erre a párra ebben a munkamenetben nem kérdez újra.
+        // "Not now": for this pair it does not ask again in this session.
         vm.undo();
         vm.undo();
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
         QVERIFY(vm.pairOfferActive());
         vm.declinePairOffer();
         QVERIFY(!vm.pairOfferActive());
-        QVERIFY(vm.changeActive());                     // az átsorolás értesítése marad
+        QVERIFY(vm.changeActive());                     // the reassignment notice stays
         vm.undo();
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(10), kB2));
         QVERIFY(!vm.pairOfferActive());
 
-        // Akadály: értesítésként elhangzik, nem fut.
+        // Blocker: said as a notice, does not run.
         const int before = notices.count();
         QVERIFY(!vm.recheckPair(kB1, kB1).value(QStringLiteral("ran")).toBool());
         QCOMPARE(notices.count(), before + 1);
 
-        // A panel pár-választója: a többi elnevezett beszélő.
+        // The panel's pair picker: the other named speakers.
         const QVariantList cands = vm.pairCandidates(kB1);
         QCOMPARE(cands.size(), 1);
         QCOMPARE(cands.first().toMap().value(QStringLiteral("key")).toString(), kB2);
@@ -641,23 +641,23 @@ private slots:
         QVERIFY(ed->confirmUtterances({PairScene::id(0), PairScene::id(2), PairScene::id(5),
                                        PairScene::id(1), PairScene::id(4), PairScene::id(7)}));
         QVERIFY(vm.moveUtteranceToSpeaker(PairScene::id(3), kB2));
-        QVERIFY(vm.suggestionActive());                 // a rendes javaslat szól („Hasonló 2 sor is")
+        QVERIFY(vm.suggestionActive());                 // the regular suggestion speaks ("2 similar lines too")
         QCOMPARE(vm.suggestionCount(), 2);
         QVERIFY(!vm.pairOfferActive());
-        // A páros átnézés kézzel így is futtatható.
+        // The pairwise review can still be run by hand.
         const QVariantMap r = vm.recheckPair(kB1, kB2);
         QCOMPARE(r.value(QStringLiteral("flagged")).toInt(), 2);
         QVERIFY(r.value(QStringLiteral("centroidSimilarity")).toDouble() < 0.1);
     }
 
-    // A tárolt lenyomatok is a referencia részei: az eredmény-üzenet megmondja, miből állt össze.
+    // The stored voiceprints are part of the reference too: the result message says what it was built from.
     void recheck_referenceSummaryWithVoiceprints()
     {
         PairScene sc(/*similar*/ false);
         tanara::Voiceprint here;
         here.embedding = {1.0f, 0.0f, 0.0f};
         here.sourceMeetingId = sc.meeting.id;
-        here.sampleRef = QStringLiteral("audio.ogg#0-4000");     // Anna 0. sora
+        here.sampleRef = QStringLiteral("audio.ogg#0-4000");     // Anna's line 0
         sc.prints->addPrint(QStringLiteral("Anna"), here);
         tanara::Voiceprint earlier;
         earlier.embedding = {0.0f, 1.0f, 0.0f};
@@ -685,7 +685,7 @@ private slots:
                  QStringLiteral("Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat."));
     }
 
-    // „Jó így, de ne használd mintának" és „Mintának használható" a soron.
+    // "Good as is, but do not use as a sample" and "Usable as a sample" on the line.
     void noisy_manualConfirmAndClear()
     {
         Fixture fx;
@@ -693,7 +693,7 @@ private slots:
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
         QVERIFY(waitVoice(vm));
-        QVERIFY(!cell(vm, 17, Role::NoisyRole).toBool());   // a forgatókönyvben nincs átfedés
+        QVERIFY(!cell(vm, 17, Role::NoisyRole).toBool());   // there is no overlap in the scenario
 
         vm.setUncertainOnly(true);
         const int row = vm.rows()->rowOfUtterance(17);
@@ -702,7 +702,7 @@ private slots:
         vm.setUncertainOnly(false);
         QVERIFY(cell(vm, 17, Role::NoisyRole).toBool());
         QVERIFY(!cell(vm, 17, Role::NoisyOverlapRole).toBool());
-        QVERIFY(cell(vm, 17, Role::HeadRole).toBool());     // a pirula névsort kap
+        QVERIFY(cell(vm, 17, Role::HeadRole).toBool());     // the pill gets a name row
         QVERIFY(ed->utterance(uid(17)).confirmed);
         QCOMPARE(vm.undoText(), QStringLiteral("1 sor megerősítése (nem hangminta)"));
 
@@ -711,7 +711,7 @@ private slots:
         vm.undo();
         QVERIFY(cell(vm, 17, Role::NoisyRole).toBool());
         QVERIFY(vm.setUtteranceNoisy(uid(17), false));
-        QVERIFY(!vm.setUtteranceNoisy(uid(17), false));     // már az
+        QVERIFY(!vm.setUtteranceNoisy(uid(17), false));     // already that
     }
 
     void filter_keepsSuggestionAnchorVisible()
@@ -724,8 +724,8 @@ private slots:
         vm.setUncertainOnly(true);
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
 
-        // A szűrőn kívüli sor javítása javaslatot hoz: a horgony sora megjelenik a szűrőben,
-        // hogy a javított sor (amelyre a sáv javaslata vonatkozik) ne tűnjön el.
+        // Fixing a line outside the filter brings a suggestion: the anchor line appears in the filter,
+        // so the fixed line (which the bar's suggestion refers to) does not disappear.
         QVERIFY(ed->moveUtterancesToPerson({uid(4)}, QStringLiteral("Cili")).size() > 0);
         QVERIFY(vm.suggestionActive());
         const int anchorRow = vm.rows()->rowOfUtterance(4);
@@ -744,8 +744,8 @@ private slots:
         QCOMPARE(resets.count(), 0);
     }
 
-    // Az értesítő sáv adatai: mi történt, a „mind a N sora" folytatás (egy további lépés), és
-    // hogy a visszavonás / más szerkesztés megszünteti.
+    // The notice bar's data: what happened, the "all N lines" continuation (one more step), and
+    // that undo / another edit ends it.
     void changeNotice_lineMove_restOfSource_undo()
     {
         Fixture fx;
@@ -755,7 +755,7 @@ private slots:
         QVERIFY(!vm.changeActive());
         QSignalSpy changes(&vm, &TranscriptEditorViewModel::changeChanged);
 
-        // EGY sor (azonosítóval): csak az megy; a forrásnak (11-ből) 10 sora marad.
+        // ONE line (with an id): only that goes; the source (out of 11) keeps 10 lines.
         QVERIFY(vm.moveUtteranceToSpeaker(uid(4), kB2));
         QCOMPARE(speakerOf(vm, 4), kB2);
         QCOMPARE(vm.speakerInfo(kB1).value(QStringLiteral("utteranceCount")).toInt(), 10);
@@ -767,21 +767,21 @@ private slots:
         QCOMPARE(vm.changeRestText(), QStringLiteral("Beszélő 1 mind a 10 sora"));
         QCOMPARE(vm.changeSourceKey(), kB1);
         QCOMPARE(vm.changeTargetKey(), kB2);
-        QVERIFY(!vm.moveUtteranceToSpeaker(uid(4), kB2));  // már ott van: nincs lépés, a sáv marad
+        QVERIFY(!vm.moveUtteranceToSpeaker(uid(4), kB2));  // already there: no step, the bar stays
         QCOMPARE(changes.count(), 1);
         QVERIFY(!vm.moveUtteranceToSpeaker(QStringLiteral("nincs-ilyen"), kB2));
 
-        // „Beszélő 1 mind a 10 sora": a megmaradt sorok is mennek — egy további lépés.
+        // "All 10 lines of Speaker 1": the remaining lines go too, one more step.
         const int serial = vm.changeSerial();
         QVERIFY(vm.moveRestOfSource());
         QCOMPARE(vm.speakerCount(), 1);
         QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("utteranceCount")).toInt(), 18);
         QVERIFY(vm.changeSerial() > serial);
         QCOMPARE(vm.changeText(), QStringLiteral("Beszélő 1 mind a 10 sora átkerült ide: Beszélő 2"));
-        QCOMPARE(vm.changeRestCount(), 0);                  // teljes beszélő után nincs folytatás
+        QCOMPARE(vm.changeRestCount(), 0);                  // no continuation after a whole speaker
         QVERIFY(!vm.moveRestOfSource());
 
-        vm.undoChange();                                    // csak a tömeges lépés
+        vm.undoChange();                                    // only the bulk step
         QVERIFY(!vm.changeActive());
         QCOMPARE(vm.speakerCount(), 2);
         QCOMPARE(vm.speakerInfo(kB1).value(QStringLiteral("utteranceCount")).toInt(), 10);
@@ -790,16 +790,16 @@ private slots:
         QCOMPARE(speakerOf(vm, 4), kB1);
         QVERIFY(!vm.canUndo());
 
-        // Több sor vegyes forrásból: darabszám van, tömeges folytatás nincs.
+        // Several lines from mixed sources: there is a count, no bulk continuation.
         vm.selectRows(0, 1);                                // B1 + B2
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
-        // Új személy jött létre (v3 E4): a sáv így mondja, és a hasonló sorokat ajánlja.
+        // A new person was created: the bar says so, and offers the similar lines.
         QCOMPARE(vm.changeText(), QStringLiteral("Új személy: Cili. 2 sor átkerült hozzá."));
         QVERIFY(vm.changeNewPerson());
         QCOMPARE(vm.newPersonKey(), vm.speakerKeyForPerson(QStringLiteral("Cili")));
         QCOMPARE(vm.changeRestCount(), 0);
         QCOMPARE(vm.changeSourceKey(), QString());
-        // Más szerkesztés (megerősítés) megszünteti az értesítést; bezárni is lehet.
+        // Another edit (confirmation) ends the notice; it can also be closed.
         QVERIFY(vm.confirmRow(5));
         QVERIFY(!vm.changeActive());
         QVERIFY(vm.moveUtteranceToNewParticipant(uid(2)));
@@ -809,7 +809,7 @@ private slots:
         QVERIFY(!vm.changeActive());
         QVERIFY(vm.canUndo());
 
-        // Teljes beszélő: a név nem kap ragot, a darabszám névelője a számhoz igazodik.
+        // Whole speaker: the name gets no suffix, the count's article follows the number.
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
         QCOMPARE(vm.changeText(), QStringLiteral("Beszélő 2 mind a 6 sora átkerült ide: Béla"));
         QCOMPARE(vm.speakerKeyForPerson(QStringLiteral("béla")), kB2);
@@ -827,8 +827,8 @@ private slots:
         QVERIFY(!TranscriptEditorViewModel::needsAz(100));
     }
 
-    // A javaslat a sávból fogadható el (egy lépés, új értesítéssel); a szűrőben a „Megmutatom"
-    // a javasolt (nem bizonytalan) sorokat is láthatóvá teszi.
+    // The suggestion can be accepted from the bar (one step, with a new notice); in the filter
+    // "Show me" also makes the suggested (not uncertain) lines visible.
     void changeNotice_suggestion_inFilter()
     {
         Fixture fx;
@@ -839,17 +839,17 @@ private slots:
         vm.setUncertainOnly(true);
         const int filtered = vm.rows()->rowCount();
 
-        // A 4. sor (C hangja a „Beszélő 1" címkén) új résztvevőhöz: javaslat a többi C-sorra.
+        // Line 4 (C's voice on the "Speaker 1" label) to a new participant: a suggestion for the other C lines.
         QVERIFY(vm.moveUtteranceToPerson(uid(4), QStringLiteral("Cili")));
         QVERIFY(vm.changeActive());
         QVERIFY(vm.suggestionActive());
         const int similar = vm.suggestionCount();
         QVERIFY(similar >= 3);
-        QVERIFY(vm.rows()->rowOfUtterance(4) >= 0);         // a javított sor a szűrőben is látszik
+        QVERIFY(vm.rows()->rowOfUtterance(4) >= 0);         // the fixed line shows in the filter too
         const int withAnchor = vm.rows()->rowCount();
         QVERIFY(withAnchor > filtered);
 
-        vm.setSuggestionShown(true);                        // a javasolt sorok megjelennek
+        vm.setSuggestionShown(true);                        // the suggested lines appear
         QVERIFY(vm.rows()->rowOfUtterance(7) >= 0);
         QVERIFY(cell(vm, vm.rows()->rowOfUtterance(7), Role::SuggestedRole).toBool());
         vm.setSuggestionShown(false);
@@ -860,7 +860,7 @@ private slots:
         QVERIFY(!vm.suggestionActive());
         QCOMPARE(vm.changeText(), QStringLiteral("%1 sor átkerült ide: Cili").arg(similar));
         QCOMPARE(vm.speakerInfo(target).value(QStringLiteral("utteranceCount")).toInt(), similar + 1);
-        vm.undo();                                          // egy lépés: csak a javasoltak
+        vm.undo();                                          // one step: only the suggested ones
         QCOMPARE(vm.speakerInfo(target).value(QStringLiteral("utteranceCount")).toInt(), 1);
         QVERIFY(!vm.changeActive());
     }
@@ -874,7 +874,7 @@ private slots:
         QSignalSpy reveal(&vm, &TranscriptEditorViewModel::revealRequested);
         QSignalSpy resets(vm.rows(), &QAbstractItemModel::modelReset);
 
-        vm.setSearchQuery(QStringLiteral("odon"));          // „Ödön"
+        vm.setSearchQuery(QStringLiteral("odon"));          // "Ödön"
         QCOMPARE(vm.searchMatchCount(), 1);
         QCOMPARE(vm.searchCurrent(), 0);
         QCOMPARE(reveal.last().at(0).toInt(), 7);
@@ -882,14 +882,14 @@ private slots:
         QVERIFY2(rich.contains(QStringLiteral(">Ödön</span>")), qPrintable(rich));
         QVERIFY(cell(vm, 6, Role::RichTextRole).toString().isEmpty());
 
-        vm.setSearchQuery(QStringLiteral("l1"));            // L1, L10 … L17 (a 7. szövege más)
+        vm.setSearchQuery(QStringLiteral("l1"));            // L1, L10 ... L17 (line 7's text differs)
         QCOMPARE(vm.searchMatchCount(), 9);
         QCOMPARE(vm.searchStep(1), 10);
         QCOMPARE(vm.searchCurrent(), 1);
         QCOMPARE(vm.searchStep(-1), 1);
-        QCOMPARE(vm.searchStep(-1), 17);                    // körbefordul
+        QCOMPARE(vm.searchStep(-1), 17);                    // wraps around
 
-        vm.setSearchQuery(QStringLiteral("nincs ilyen"));   // üres találat
+        vm.setSearchQuery(QStringLiteral("nincs ilyen"));   // no hit
         QCOMPARE(vm.searchMatchCount(), 0);
         QCOMPARE(vm.searchCurrent(), -1);
         QCOMPARE(vm.searchStep(1), -1);
@@ -912,14 +912,14 @@ private slots:
         QCOMPARE(vm.playingRow(), -1);
         vm.setPlaybackPosition(29000, true);
         QCOMPARE(vm.playingRow(), 5);
-        vm.setPlaybackPosition(29500, true);                // ugyanaz a sor: nincs jel
+        vm.setPlaybackPosition(29500, true);                // the same line: no signal
         QCOMPARE(playing.count(), 1);
         vm.setPlaybackPosition(36500, true);
         QCOMPARE(vm.playingRow(), 6);
         vm.setPlaybackPosition(36500, false);
         QCOMPARE(vm.playingRow(), -1);
 
-        // A szűrőben a rejtett sor nem „játszik".
+        // In the filter a hidden line does not "play".
         vm.setPlaybackPosition(36500, true);
         vm.setUncertainOnly(true);
         QCOMPARE(vm.playingRow(), -1);
@@ -936,12 +936,12 @@ private slots:
         QVERIFY(waitVoice(vm));
         QSignalSpy notice(&vm, &TranscriptEditorViewModel::notice);
 
-        // Névtelen beszélőhöz nem készül.
+        // None is made for an anonymous speaker.
         QVariantMap r = vm.createVoiceprint(kB2);
         QVERIFY(!r.value(QStringLiteral("ok")).toBool());
         QVERIFY(!r.value(QStringLiteral("message")).toString().isEmpty());
 
-        // Kevés anyag: megmondja, mennyi hiányzik.
+        // Too little material: it says how much is missing.
         vm.selectRow(4);
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Cili")));
         const QString cili = speakerOf(vm, 4);
@@ -955,9 +955,9 @@ private slots:
         QVERIFY(r.value(QStringLiteral("message")).toString().contains(QStringLiteral("11")));
         QCOMPARE(fx.prints->totalPrintCount(), 0);
 
-        // Elég anyaggal, kifejezett kérésre elkészül; a sáv-fejléc pöttye megjelenik.
-        QVERIFY(vm.acceptSuggestion());                     // 7, 9, 14 is Cilihez
-        QCOMPARE(fx.prints->totalPrintCount(), 0);          // az átsorolás magától nem tanít
+        // With enough material, on explicit request it is made; the track header's dot appears.
+        QVERIFY(vm.acceptSuggestion());                     // 7, 9, 14 go to Cili too
+        QCOMPARE(fx.prints->totalPrintCount(), 0);          // reassigning does not teach by itself
         mat = vm.voiceprintMaterial(cili);
         QVERIFY(mat.value(QStringLiteral("sufficient")).toBool());
         r = vm.createVoiceprint(cili);
@@ -967,14 +967,14 @@ private slots:
         QCOMPARE(notice.count(), 1);
     }
 
-    // A jelző állapota beszélőnként (áttekintő + sáv-fejléc), készítés után, és a most készült
-    // lenyomat visszavonása: pontosan az az egy lenyomat törlődik.
+    // The indicator's state per speaker (overview + track header), after creation, and undoing
+    // the just-created voiceprint: exactly that one voiceprint is deleted.
     void voiceprint_indicatorState_createAndUndo()
     {
         Fixture fx;
         Voiceprint old;
         old.embedding = {0.0f, 1.0f, 0.0f};
-        fx.prints->addPrint(QStringLiteral("Anna"), old);    // Annának már van egy régebbi mintája
+        fx.prints->addPrint(QStringLiteral("Anna"), old);    // Anna already has an older sample
         auto ed = fx.editor();
         TranscriptEditorViewModel vm;
         vm.setEditor(ed.get());
@@ -989,7 +989,7 @@ private slots:
                  QStringLiteral("none"));
         QCOMPARE(overviewVoiceprint(vm, kB1), QStringLiteral("anonymous"));
 
-        // Elég anyag: hány sor, hány másodperc — és nincs „hiányzik".
+        // Enough material: how many lines, how many seconds, and no "missing".
         const QVariantMap mat = vm.voiceprintMaterial(kB2);
         QVERIFY(mat.value(QStringLiteral("supported")).toBool());
         QVERIFY(mat.value(QStringLiteral("sufficient")).toBool());
@@ -998,7 +998,7 @@ private slots:
         QCOMPARE(mat.value(QStringLiteral("missingSec")).toInt(), 0);
         QCOMPARE(mat.value(QStringLiteral("reason")).toString(), QString());
 
-        // Készítés: a jelző azonnal „van"; az eredmény megmondja, miből készült.
+        // Create: the indicator is "has" at once; the result says what it was made from.
         const QVariantMap r = vm.createVoiceprint(kB2);
         QVERIFY(r.value(QStringLiteral("ok")).toBool());
         const QString printId = r.value(QStringLiteral("printId")).toString();
@@ -1010,20 +1010,20 @@ private slots:
         QCOMPARE(vm.lanes().at(laneOf(vm, kB2)).toMap().value(QStringLiteral("voiceprint")).toString(),
                  QStringLiteral("has"));
 
-        // Visszavonás: pontosan ez a lenyomat törlődik (más személyé érintetlen), kétszer nem megy.
+        // Undo: exactly this voiceprint is deleted (another person's is untouched), it does not work twice.
         QVERIFY(vm.removeVoiceprint(printId));
         QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
         QCOMPARE(fx.prints->printCount(QStringLiteral("Anna")), 1);
         QTRY_COMPARE(overviewVoiceprint(vm, kB2), QStringLiteral("none"));
         QVERIFY(!vm.removeVoiceprint(printId));
         QVERIFY(!vm.removeVoiceprint(QString()));
-        // A lenyomat nem része az undo-veremnek: az elnevezés megmaradt, és visszavonható.
+        // The voiceprint is not part of the undo stack: the naming stayed, and is undoable.
         QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("personName")).toString(), QStringLiteral("Béla"));
         QVERIFY(vm.canUndo());
     }
 
-    // Az értesítő sáv hanglenyomat-ajánlata: csak egy TELJES beszélő elnevezése / elnevezett
-    // személybe olvasztása után, ha a személynek nincs lenyomata és itt van elég anyag.
+    // The notice bar's voiceprint offer: only after naming a WHOLE speaker / merging into a named
+    // person, if the person has no voiceprint and there is enough material here.
     void changeBar_voiceprintOffer_onlyAfterNamingWholeSpeaker()
     {
         Fixture fx;
@@ -1033,28 +1033,28 @@ private slots:
         QVERIFY(waitVoice(vm));
         QSignalSpy notice(&vm, &TranscriptEditorViewModel::notice);
 
-        // Egy sor, több sor, hasonló sorok: sosem ajánl.
+        // One line, several lines, similar lines: never offers.
         QVERIFY(vm.moveUtteranceToPerson(uid(4), QStringLiteral("Cili")));
         QVERIFY(vm.changeActive());
         QVERIFY(!vm.changeVoiceprintOffer());
         const QString cili = speakerOf(vm, 4);
-        QVERIFY(vm.acceptSuggestion());                     // 7, 9, 14 is Cilihez: ez is soronkénti
+        QVERIFY(vm.acceptSuggestion());                     // 7, 9, 14 go to Cili too: this is per line as well
         QVERIFY(vm.voiceprintMaterial(cili).value(QStringLiteral("sufficient")).toBool());
         QVERIFY(!vm.changeVoiceprintOffer());
         vm.selectRows(0, 2);
         QVERIFY(vm.moveSelectionToPerson(QStringLiteral("Dóra")));
         QVERIFY(!vm.changeVoiceprintOffer());
-        QVERIFY(!vm.createVoiceprintFromChange());          // ajánlat nélkül nem készül semmi
+        QVERIFY(!vm.createVoiceprintFromChange());          // nothing is made without an offer
         QCOMPARE(fx.prints->totalPrintCount(), 0);
 
-        // Teljes beszélő elnevezése, elég anyaggal: ajánlat.
+        // Naming a whole speaker, with enough material: an offer.
         QVERIFY(vm.reassignSpeaker(kB2, QStringLiteral("Béla"), false));
         QVERIFY(vm.changeVoiceprintOffer());
         QVERIFY(vm.changeUndoable());
         QVERIFY(!vm.changeVoiceprintCreated());
-        QCOMPARE(fx.prints->totalPrintCount(), 0);          // az ajánlat magától nem készít
+        QCOMPARE(fx.prints->totalPrintCount(), 0);          // the offer does not create by itself
 
-        // Elfogadva: a sáv kimondja, mi készült; a „Visszavonás" ekkor a lenyomatot törli.
+        // Accepted: the bar says what was made; "Undo" then deletes the voiceprint.
         const int serial = vm.changeSerial();
         QVERIFY(vm.createVoiceprintFromChange());
         QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
@@ -1063,7 +1063,7 @@ private slots:
         QVERIFY(!vm.changeVoiceprintOffer());
         QVERIFY(vm.changeSerial() > serial);
         QVERIFY2(vm.changeText().startsWith(QStringLiteral("Hanglenyomat készült: Béla (")), qPrintable(vm.changeText()));
-        QCOMPARE(notice.count(), 0);                        // a sáv maga a visszajelzés
+        QCOMPARE(notice.count(), 0);                        // the bar itself is the feedback
         const QString undoBefore = vm.undoText();
         vm.undoChange();
         QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 0);
@@ -1073,9 +1073,9 @@ private slots:
         QVERIFY(!vm.changeVoiceprintOffer());
         QCOMPARE(vm.changeText(), QStringLiteral("A most készült hanglenyomat törölve: Béla"));
         QCOMPARE(vm.speakerInfo(kB2).value(QStringLiteral("personName")).toString(), QStringLiteral("Béla"));
-        QCOMPARE(vm.undoText(), undoBefore);                // az undo-verem érintetlen
+        QCOMPARE(vm.undoText(), undoBefore);                // the undo stack is untouched
 
-        // Elnevezett, lenyomat nélküli személybe olvasztás (összevonás; „mind a N sora"): ajánlat.
+        // Merging into a named person without a voiceprint ("all N lines"): an offer.
         QVERIFY(vm.moveUtteranceToSpeaker(uid(6), kB2));
         QVERIFY(!vm.changeVoiceprintOffer());
         QVERIFY(vm.changeRestCount() > 0);
@@ -1084,7 +1084,7 @@ private slots:
         vm.undo();
         QVERIFY(!vm.changeActive());
 
-        // Kevés anyag: nincs ajánlat (nem nyaggatunk).
+        // Too little material: no offer (we do not nag).
         const QString fresh = ed->moveUtterancesToNewParticipant({uid(16)});
         QVERIFY(!fresh.isEmpty());
         QVERIFY(vm.reassignSpeaker(fresh, QStringLiteral("Emma"), false));
@@ -1092,16 +1092,16 @@ private slots:
         QVERIFY(!vm.voiceprintMaterial(fresh).value(QStringLiteral("sufficient")).toBool());
         QVERIFY(!vm.changeVoiceprintOffer());
 
-        // Akinek már van lenyomata: nincs ajánlat. Névtelenre állítás: nincs ajánlat.
+        // One who already has a voiceprint: no offer. Setting to anonymous: no offer.
         QVERIFY(vm.createVoiceprint(kB2).value(QStringLiteral("ok")).toBool());
-        QVERIFY(vm.reassignSpeaker(cili, QStringLiteral("Béla"), false));    // Cili sorai Bélához olvadnak
+        QVERIFY(vm.reassignSpeaker(cili, QStringLiteral("Béla"), false));    // Cili's lines merge into Béla
         QVERIFY(vm.changeActive());
         QVERIFY(!vm.changeVoiceprintOffer());
         QVERIFY(vm.revertSpeakerToAnonymous(kB2, false));
         QVERIFY(!vm.changeVoiceprintOffer());
     }
 
-    // Hangmodell nélkül nincs ajánlat és nincs készítés: az ok egyszer, érthetően elhangzik.
+    // Without a voice model there is no offer and no creation: the reason is said once, clearly.
     void withoutVoiceModel_noVoiceprintOffer()
     {
         Fixture fx;
@@ -1128,10 +1128,10 @@ private slots:
         vm.setEditor(ed.get());
         QVERIFY(!vm.voiceAvailable());
         QVERIFY(!vm.embeddingRunning());
-        QVERIFY(!vm.voiceNote().isEmpty());                 // egyszer, érthetően megmondjuk
+        QVERIFY(!vm.voiceNote().isEmpty());                 // we say it once, clearly
         QCOMPARE(vm.uncertainCount(), 0);
         QVERIFY(!vm.voiceprintMaterial(kB1).value(QStringLiteral("supported")).toBool());
-        QVERIFY(vm.moveRowToLane(4, 1));                    // a szerkesztés megy
+        QVERIFY(vm.moveRowToLane(4, 1));                    // the edit goes through
         QVERIFY(!vm.suggestionActive());
         vm.undo();
         QCOMPARE(speakerOf(vm, 4), kB1);
@@ -1185,20 +1185,20 @@ private slots:
 
         PersonListModel people;
         people.setEditor(&vm);
-        // Üres keresőnél a meeting résztvevője (Béla) kimarad; a gyakori elöl.
+        // With an empty search the meeting's participant (Béla) is left out; the frequent ones first.
         QCOMPARE(people.count(), 3);
         QCOMPARE(people.nameAt(0), QStringLiteral("Anna"));
         QVERIFY(!people.canCreate());
 
-        people.setQuery(QStringLiteral("odo"));             // ékezet nélkül, névrészletre is
+        people.setQuery(QStringLiteral("odo"));             // without accents, by a name fragment too
         QCOMPARE(people.count(), 1);
         QCOMPARE(people.nameAt(0), QStringLiteral("Ödön"));
-        QVERIFY(people.canCreate());                        // „odo" nevű személy még nincs
+        QVERIFY(people.canCreate());                        // nobody named "odo" yet
 
         people.setQuery(QStringLiteral("odon"));
-        QVERIFY(!people.canCreate());                       // (ékezet-függetlenül) egyezik: nincs „Új személy"
+        QVERIFY(!people.canCreate());                       // matches (accent-insensitively): no "New person"
 
-        people.setQuery(QStringLiteral("bel"));             // keresve a résztvevő is megjelenik
+        people.setQuery(QStringLiteral("bel"));             // when searched the participant shows up too
         QCOMPARE(people.count(), 1);
         QVERIFY(people.data(people.index(0), PersonListModel::InMeetingRole).toBool());
 
@@ -1211,8 +1211,8 @@ private slots:
         QCOMPARE(people.count(), 2);
     }
 
-    // S2: „nem minta" áthelyezés egy lépésben, eltérő-minta jelzés (hamis embedder), „nem
-    // azonosítható" + elrejtés, minta-mérő „+N most" szűrővel, az „Imént" döntés-napló.
+    // Move as "not a sample" in one step, mismatched-sample warning (fake embedder), "cannot be
+    // identified" + hiding, the sample meter "+N now" with the filter, the "Just now" decision log.
     void s2_decisionsDeviationAndSampleMeter()
     {
         Fixture fx;
@@ -1222,7 +1222,7 @@ private slots:
         QVERIFY(waitVoice(vm));
         QVERIFY(vm.lastDecision().isEmpty());
 
-        // „→ Beszélő 1, nem minta": a sor átkerül ÉS zajos — egyetlen visszavonási lépés.
+        // "-> Speaker 1, not a sample": the line moves AND becomes noisy, a single undo step.
         QVERIFY(vm.moveUtteranceToSpeaker(uid(17), kB1, /*noisy*/ true));
         QCOMPARE(ed->utterance(uid(17)).speakerKey, kB1);
         QVERIFY(ed->utterance(uid(17)).noisy);
@@ -1237,7 +1237,7 @@ private slots:
         QVERIFY(vm.lastDecision().value(QStringLiteral("undone")).toBool());
         QVERIFY(vm.lastDecision().value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Visszavonva: ")));
 
-        // Eltérő minta: egy B-hangú sor MINTAKÉNT az A/C beszélőhöz → figyelmeztetés.
+        // Mismatched sample: a B-voiced line as a SAMPLE to speaker A/C gives a warning.
         QSignalSpy devSpy(&vm, &TranscriptEditorViewModel::sampleDeviationChanged);
         QVERIFY(vm.moveUtteranceToSpeaker(uid(1), kB1));
         QVERIFY(devSpy.count() > 0);
@@ -1246,12 +1246,12 @@ private slots:
         QCOMPARE(dev.value(QStringLiteral("speakerKey")).toString(), kB1);
         QVERIFY(dev.value(QStringLiteral("pct")).toInt() < 50);
         QVERIFY(dev.value(QStringLiteral("text")).toString().contains(QStringLiteral("eltér")));
-        // „Legyen nem minta": a figyelmeztetés megszűnik.
+        // "Make it not a sample": the warning goes away.
         QVERIFY(vm.setUtteranceNoisy(uid(1), true));
         QVERIFY(vm.sampleDeviation().isEmpty());
         QCOMPARE(cell(vm, 1, Role::SampleStateRole).toString(), QStringLiteral("noSample"));
 
-        // „Nem azonosítható" + a lista elrejtheti.
+        // "Cannot be identified" + the list can hide it.
         QVERIFY(vm.setUtteranceIgnored(uid(5), true));
         QCOMPARE(vm.ignoredCount(), 1);
         QVERIFY(cell(vm, 5, Role::IgnoredRole).toBool());
@@ -1266,7 +1266,7 @@ private slots:
         QVERIFY(vm.setUtteranceIgnored(uid(5), false));
         QCOMPARE(vm.ignoredCount(), 0);
 
-        // Minta-mérő: két B-sor „Jó így" → Beszélő 2: +2 most; a szűrő csak ezt a kettőt mutatja.
+        // Sample meter: two B lines "Good as is" to Speaker 2: +2 now; the filter shows only those two.
         QVERIFY(vm.confirmUtterance(uid(8)));
         QVERIFY(vm.confirmUtterance(uid(11)));
         QVariantMap b2;
@@ -1294,7 +1294,7 @@ private slots:
         QCOMPARE(vm.listFilter(), QString());
         QCOMPARE(vm.rows()->rowCount(), int(scenario().size()));
 
-        // Az „Imént" napló: a legfrissebb a lastDecision, előtte legfeljebb 5.
+        // The "Just now" log: the latest is lastDecision, before it at most 5.
         const QVariantList log = vm.decisionLog();
         QVERIFY(!log.isEmpty() && log.size() <= 5);
         QVERIFY(vm.lastDecision().value(QStringLiteral("text")).toString().startsWith(QStringLiteral("Jó így: ")));
@@ -1304,7 +1304,7 @@ private slots:
 
     void demoSession_isFictionalAndComplete()
     {
-        // Controller nélkül a nézetmodell a beépített kitalált meetinget adja.
+        // Without a controller the view model gives the built-in made-up meeting.
         TranscriptEditorViewModel vm;
         vm.resolveSession();
         QVERIFY(vm.demo());
@@ -1315,18 +1315,18 @@ private slots:
         QVERIFY(waitVoice(vm));
         QVERIFY(vm.uncertainCount() > 0);
 
-        // Ékezet-független keresés a demó szövegében.
+        // Accent-insensitive search in the demo text.
         vm.setSearchQuery(QStringLiteral("sugo"));
         QVERIFY(vm.searchMatchCount() > 0);
         vm.setSearchQuery(QString());
 
-        // A javaslat-állapot: egy kézi javítás után a rendszer hasonló sorokat ajánl.
+        // The suggestion state: after a manual fix the system suggests similar lines.
         vm.applyDemoState(QStringLiteral("suggestion"));
         QVERIFY(vm.suggestionActive());
         QVERIFY(vm.suggestionCount() >= 2);
         QVERIFY(vm.railVisible());
 
-        // Sok beszélő: a 6 legtöbbet beszélő látszik, a többi „+N" / „Egyéb (N)".
+        // Many speakers: the 6 who talk most are shown, the rest "+N" / "Other (N)".
         vm.setDemoVariant(QStringLiteral("many"));
         QCOMPARE(vm.speakerCount(), 11);
         QCOMPARE(vm.lanes().size(), 6);
@@ -1343,7 +1343,7 @@ private slots:
         QVERIFY(cell(vm, collapsedRow, Role::LaneRole).toInt() >= 0);
         vm.setLanesExpanded(false);
 
-        // Összecsukott beszélőhöz áthelyezve a cél saját oszlopot kap.
+        // Moved to a collapsed speaker: the target gets its own column.
         const QString hidden = speakerOf(vm, collapsedRow);
         vm.selectRow(0);
         QVERIFY(vm.moveSelectionToSpeaker(hidden));

@@ -1,35 +1,34 @@
-// tanara-cli — headless vezérlő a core fölött (NINCS Widgets).
-// A CLI kimenete ANGOL, fordítás nélkül (sima literálok, nincs tr / translate) — lásd cli/README.md.
-//   devices                          eszközök listája
-//   record --title T [--seconds N] [--device IDX]...   felvétel (alapból minden eszköz)
-//   list                             meetingek
-//   adopt <folder>                   felvétel-mappa behúzása (másik gépről, pendrive-ról)
-//   reindex                          az index újraépítése a lemezen lévő mappákból
-//   export <id> [<archive.zip>]      megbeszélés becsomagolása *.tanara.zip archívumba
-//   import-archive <archive.zip>     archívum behúzása (mintha itt vették volna fel)
-//   import <file>… [--title T] [--date ISO] [--split-channels] [--own-track N]
-//                                    hangfájl(ok) importálása új meetingbe (fájlonként egy sáv)
-//   transcribe <meetingId>           átírás (Soniox kulcs kell)
-//   summarize <meetingId>            összefoglaló (LM Studio)
+// tanara-cli: headless driver on top of core (NO Widgets).
+// CLI output is ENGLISH and untranslated (plain literals, no tr / translate); see cli/README.md.
+//   devices                          list devices
+//   record --title T [--seconds N] [--device IDX]...   record (all devices by default)
+//   list                             meetings
+//   adopt <folder>                   adopt a recording folder (from another machine, a USB stick)
+//   reindex                          rebuild the index from the folders on disk
+//   export <id> [<archive.zip>]      pack a meeting into a *.tanara.zip archive
+//   import-archive <archive.zip>     adopt an archive (as if recorded here)
+//   import <file>... [--title T] [--date ISO] [--split-channels] [--own-track N]
+//                                    import audio file(s) into a new meeting (one track per file)
+//   transcribe <meetingId>           transcribe (needs a Soniox key)
+//   summarize <meetingId>            summarize (LM Studio)
 //   detect [--watch] [--interval N] [--app NAME]...
-//                                    aktív-hívás detektálás (smoke: a figyelő motorja);
-//                                    --app: további figyelt app erre a futásra (pl. ffmpeg)
-//   cloud <subcommand>               Tanara Cloud (status, login, estimate …) — CloudCommands.cpp
-//   transcribe|summarize <id> [--yes] [--complex]   cloud-módban előtte becslés + megerősítés
-//   tags list [<meetingId>]          címkekészlet (darabszámmal) / egy meeting címkéi
-//   tags add|remove <meetingId> <name>  címke fel / le
-//   tags suggest <meetingId> [--llm] címkejavaslatok (hasonló megbeszélések; --llm: nyelvi modell)
+//                                    active-call detection (smoke: the watcher's engine);
+//                                    --app: extra watched app for this run (e.g. ffmpeg)
+//   cloud <subcommand>               Tanara Cloud (status, login, estimate ...); CloudCommands.cpp
+//   transcribe|summarize <id> [--yes] [--complex]   in cloud mode: estimate + confirmation first
+//   tags list [<meetingId>]          tag set (with counts) / one meeting's tags
+//   tags add|remove <meetingId> <name>  add / remove a tag
+//   tags suggest <meetingId> [--llm] tag suggestions (similar meetings; --llm: language model)
 //   tags people <tag> | tags person <name> | tags set-person <name> <tag,...>
-//                                    címkék a személyeken (TagPeopleCommands.cpp)
-//   voice-models [enable|disable|fetch <id> [--force]|verify <id>|delete <id>]   beszélő-modellek (VoiceCommands.cpp)
-//   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   modellek összevetése (csak olvas)
-//   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   sáv-oldal mérés (TrackSidesCommand.cpp)
-//   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   résztvevők / jelöltek (ParticipantsCommand.cpp)
-//   review <meeting-folder> [--json] [--models a,b]   Átnézendő csoportok + jelöltek bizonyítékkal (ReviewCommand.cpp)
+//                                    tags on people (TagPeopleCommands.cpp)
+//   voice-models [enable|disable|fetch <id> [--force]|verify <id>|delete <id>]   speaker models (VoiceCommands.cpp)
+//   voice-eval <meeting-folder> [--models a,b] [--min-ms N] [--json]   compare models (read-only)
+//   track-sides <meeting-folder> [--frame-ms 50] [--json] [--no-cache] [--write-cache] [--legacy]   track side check (TrackSidesCommand.cpp)
+//   participants <meeting-folder> [--analyze [--write] | --remove <id>] [--json]   participants / candidates (ParticipantsCommand.cpp)
+//   review <meeting-folder> [--json] [--models a,b]   review queue groups + candidates with evidence (ReviewCommand.cpp)
 //   lines <meeting-folder> [--json] | lines ignore|unignore <meeting-folder> <id...>
-//                                                      sorok jelölőkkel; „nem azonosítható" jelölés (ReviewCommand.cpp)
-//   reslice <meeting-folder> [--dry-run] [--json]   Soniox-sorok párnázása, id-átvezetéssel (ResliceCommand.cpp)
-//
+//                                                      lines with markers; "ignored" marking (ReviewCommand.cpp)
+//   reslice <meeting-folder> [--dry-run] [--json]   re-pad Soniox lines, carrying ids over (ResliceCommand.cpp)
 #include "tanara/AppController.h"
 #include "CloudCommands.h"
 #include "ParticipantsCommand.h"
@@ -69,7 +68,7 @@ using namespace tanara;
 static QTextStream out(stdout);
 static QTextStream err(stderr);
 
-// %n-es mondat (a CLI angol, nem fordít): egyes / többes szám.
+// %n sentence (the CLI is English and does not translate): singular / plural.
 static QString plural(qint64 n, const char* one, const char* many) {
     return QString::fromUtf8(n == 1 ? one : many).replace(QStringLiteral("%n"), QString::number(n));
 }
@@ -104,8 +103,8 @@ static int cmdList(AppController& app) {
 }
 
 int main(int argc, char** argv) {
-    // Logolás MIELŐTT a QCoreApplication. A log-kapcsolókat (--debug, --log-level …)
-    // kiszedjük az argv-ből, hogy a parancs-parser tiszta listát kapjon.
+    // Set up logging BEFORE QCoreApplication. The log switches (--debug, --log-level ...) are
+    // removed from argv so the command parser gets a clean list.
     QStringList rawArgs;
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
@@ -113,9 +112,9 @@ int main(int argc, char** argv) {
     tanara::initLogging(tanara::parseLogOptions(rawArgs));
 
     QCoreApplication qapp(argc, argv);
-    // A CLI kimenete MINDIG angol (a beállított UI-nyelvtől függetlenül). A saját szövegei
-    // sima angol literálok; a core-ból jövő (magyar forrású) hibaüzenetekhez az angol
-    // fordítás töltődik be.
+    // CLI output is ALWAYS English, regardless of the configured UI language. Its own strings
+    // are plain English literals; the English translation is loaded for error messages that
+    // come from core (Hungarian source strings).
     {
         auto* translator = new QTranslator(&qapp);
         if (translator->load(QStringLiteral(":/i18n/tanara_en")))
@@ -124,11 +123,11 @@ int main(int argc, char** argv) {
     const QStringList args = tanara::stripLogArgs(rawArgs);
     const QString cmd = args.value(1);
 
-    // AppController nélküli parancsok (nem indítják el az alkalmazás háttérmunkáit).
+    // Commands that run without AppController (they do not start the app's background work).
     if (cmd == "voice-models") return tanara::cli::runVoiceModelsCommand(args);
     if (cmd == "voice-eval")   return tanara::cli::runVoiceEvalCommand(args);
     if (cmd == "track-sides")  return tanara::cli::runTrackSidesCommand(args);
-    // participants <meeting-folder> (új, mappára); a régi „participants <meetingId>" lent marad.
+    // participants <meeting-folder> (new, folder-based); the old "participants <meetingId>" stays below.
     if (cmd == "participants" && QFileInfo(args.value(2)).isDir())
         return tanara::cli::runParticipantsCommand(args);
     if (cmd == "review")       return tanara::cli::runReviewCommand(args);
@@ -137,7 +136,7 @@ int main(int argc, char** argv) {
 
     AppController app;
 
-    // Részletes induló-diagnosztika csak debugban (a normál parancs-kimenet maradjon tiszta).
+    // Detailed startup diagnostics only in debug builds (keeps normal command output clean).
     if (tanara::currentLogLevel() == tanara::LogLevel::Debug) {
         app.refreshDevices();
         tanara::logStartupDiagnostics(app);
@@ -224,8 +223,8 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "adopt") {
-        // Egy felvétel-mappa behúzása (másik gépről, pendrive-ról): bemásolja a felvételek közé,
-        // és CSAK ezt veszi fel az indexbe. Lásd MeetingStore::adoptMeetingFolder.
+        // Adopts a recording folder (from another machine, a USB stick): copies it into the recordings
+        // and adds ONLY that one to the index. See MeetingStore::adoptMeetingFolder.
         if (args.size() < 3) { err << "Usage: adopt <folder>\n"; return 2; }
         QString error;
         const Meeting m = app.store()->adoptMeetingFolder(args.at(2), &error);
@@ -237,8 +236,8 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "export") {
-        // Egy megbeszélés becsomagolása *.tanara.zip archívumba (lásd store/MeetingArchive.h).
-        // Cél nélkül a munkakönyvtárba, mappa-célnál abba, a javasolt fájlnévvel.
+        // Packs a meeting into a *.tanara.zip archive (see store/MeetingArchive.h). With no target it
+        // goes to the working directory; for a folder target, into it, using the suggested file name.
         const QString id = args.value(2);
         if (id.isEmpty()) { err << "Usage: export <id> [<archive.zip>]\n"; return 2; }
         const Meeting m = app.store()->load(id);
@@ -262,8 +261,8 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "import-archive") {
-        // Egy *.tanara.zip archívum behúzása, mintha itt vették volna fel: kicsomagolás, a
-        // felvételek közé helyezés, címkék feloldása. Ugyanilyen nevű mappa / azonosító: hiba.
+        // Adopts a *.tanara.zip archive as if recorded here: unpacks it, places it among the
+        // recordings, resolves the tags. A folder or id with the same name is an error.
         const QString zip = args.value(2);
         if (zip.isEmpty()) { err << "Usage: import-archive <archive.zip>\n"; return 2; }
         QString error;
@@ -278,8 +277,8 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "reindex") {
-        // Az index (SQLite cache) teljes újraépítése a lemezen lévő meeting-mappákból.
-        // Hasznos, ha kézzel másoltunk be felvétel-mappát (pl. másik gépről).
+        // Rebuilds the whole index (SQLite cache) from the meeting folders on disk.
+        // Useful after copying a recording folder in by hand (e.g. from another machine).
         app.store()->rebuildIndexFromDisk();
         const auto ms = app.store()->loadAll();
         out << QStringLiteral("Index rebuilt from disk — %1 meetings.").arg(ms.size()) << "\n";
@@ -288,8 +287,8 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "detect") {
-        // Smoke: a figyelő MOTORJA külön folyamat/tray nélkül. Egyszeri poll, vagy
-        // --watch esetén időzített (a settings intervallumával / --interval N mp).
+        // Smoke test: the watcher ENGINE without a separate process or tray. A single poll, or a
+        // timed one with --watch (using the settings interval or --interval N seconds).
         registerBuiltinDetectors();
         const AppSettings s = app.settings()->settings();
         std::unique_ptr<IMeetingDetector> det(
@@ -307,7 +306,7 @@ int main(int argc, char** argv) {
         for (int i = 2; i < args.size(); ++i) {
             if (args[i] == "--watch") watch = true;
             else if (args[i] == "--interval" && i + 1 < args.size()) interval = args[++i].toInt();
-            // Csak erre a futásra: a beállítások listája nem változik.
+            // For this run only: the settings list does not change.
             else if (args[i] == "--app" && i + 1 < args.size()) apps << args[++i].trimmed().toLower();
         }
         if (interval < 1) interval = 1;
@@ -352,8 +351,8 @@ int main(int argc, char** argv) {
         app.refreshDevices();
         const auto all = app.devices()->captureDevices();
         QVector<AudioDeviceInfo> sel;
-        // --device nélkül: az auto-halmaz (line-in/AUX kihagyva). A --device IDX a teljes
-        // 'devices' listára (captureDevices) indexel, így azzal a line-in is felvehető.
+        // Without --device: the auto set (line-in/AUX skipped). --device IDX indexes the full
+        // 'devices' list (captureDevices), so a line-in can be recorded that way.
         if (deviceIdx.isEmpty()) sel = app.devices()->autoRecordDevices();
         else for (int idx : deviceIdx) if (idx >= 0 && idx < all.size()) sel << all[idx];
 
@@ -395,11 +394,11 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "import") {
-        // Hangfájl(ok) → új meeting, fájlonként egy sáv (--split-channels: csatornánként egy).
-        // A végén a meeting azonosítóját írja ki; átírás nem indul.
+        // Audio file(s) -> new meeting, one track per file (--split-channels: one per channel).
+        // Prints the meeting id at the end; transcription does not start.
         ImportRequest req;
         bool split = false;
-        int ownTrack = 0;   // 1-től számozva; 0 = nincs
+        int ownTrack = 0;   // 1-based; 0 = none
         for (int i = 2; i < args.size(); ++i) {
             if (args[i] == "--title" && i + 1 < args.size()) req.title = args[++i];
             else if (args[i] == "--date" && i + 1 < args.size()) {
@@ -421,7 +420,7 @@ int main(int argc, char** argv) {
             err << QStringLiteral("Usage: import <file>… [--title T] [--date ISO] [--split-channels] [--own-track N]") << "\n";
             return 1;
         }
-        // Előzetes ellenőrzés: minden fájlban legyen hang (érthető hibaüzenettel).
+        // Pre-check: every file must contain audio (with a clear error message).
         QVector<ImportFileInfo> infos;
         for (ImportSource& s : req.sources) {
             const ImportFileInfo info = audioimport::probe(s.path);
@@ -446,8 +445,8 @@ int main(int argc, char** argv) {
                 << (i == req.ownTrack ? QStringLiteral("  (my microphone)") : QString()) << "\n";
         out.flush();
 
-        // Ez a folyamat az importálás után kilép: a lekeverést nem indítjuk el (félbemaradna);
-        // az elemző készíti el, amikor kell (az átírás a hiányzó keveréket előbb legyártja).
+        // This process exits after the import: the mixdown is not started (it would be cut off);
+        // the analyzer builds it when needed (transcription generates a missing mix first).
         app.setAutoMixdownAfterRecording(false);
         QObject::connect(app.importer(), &AudioImporter::progress, &qapp, [&](QString, int pct, int, int) {
             if (pct >= 0) { out << "\r  " << pct << "%"; out.flush(); }
@@ -476,7 +475,7 @@ int main(int argc, char** argv) {
         if (id.isEmpty()) { err << QStringLiteral("Missing meetingId.") << "\n"; return 1; }
         const bool complex = cmd == "summarize" && args.contains(QStringLiteral("--complex"));
         const WorkflowStep step = cmd == "transcribe" ? WorkflowStep::Transcribe : WorkflowStep::Summarize;
-        // Tanara Cloud: becslés (K-06) + megerősítés; --yes nélkül rákérdez.
+        // Tanara Cloud: estimate + confirmation; without --yes it asks first.
         if (app.usesCloud(step)) {
             const ReadinessResult r = app.canRun(step, id);
             if (!r.runnable) { err << QStringLiteral("Cannot start: %1").arg(r.detail) << "\n"; return 1; }
@@ -518,7 +517,7 @@ int main(int argc, char** argv) {
             out << QStringLiteral("Transcript done: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
         QObject::connect(&app, &AppController::summaryReady, &qapp, [&](QString, QString p) {
             out << QStringLiteral("Summary done: %1").arg(p) << "\n"; out.flush(); qapp.quit(); });
-        // Komplex: 1. kör (témák) → minden téma elemzése + reduce, szerkesztés nélkül.
+        // Complex: pass 1 (topics) -> analysis of every topic + reduce, no editing.
         QObject::connect(&app, &AppController::topicsReady, &qapp, [&](QString mid, QVector<SummaryTopic> topics) {
             out << plural(int(topics.size()), "%n topic — starting the analysis…", "%n topics — starting the analysis…") << "\n"; out.flush();
             app.generateComplexSummary(mid, topics); });
@@ -599,7 +598,7 @@ int main(int argc, char** argv) {
         QObject::connect(&app, &AppController::errorOccurred, &qapp, [&](QString e) {
             err << QStringLiteral("ERROR: %1").arg(e) << "\n"; err.flush();
         });
-        app.renameSpeaker(id, raw, name);   // szinkron
+        app.renameSpeaker(id, raw, name);   // synchronous
         out << QStringLiteral("Renamed: \"%1\" → \"%2\"").arg(raw, name) << "\n"; out.flush();
         return 0;
     }
@@ -607,7 +606,7 @@ int main(int argc, char** argv) {
     if (cmd == "identify") {
         const QString id = args.value(2);
         if (id.isEmpty()) { err << QStringLiteral("Usage: identify <meetingId>") << "\n"; return 1; }
-        app.autoIdentifyMeeting(id);   // szinkron (ffmpeg + onnx)
+        app.autoIdentifyMeeting(id);   // synchronous (ffmpeg + onnx)
         const Meeting m = app.store()->load(id);
         out << QStringLiteral("Auto-identification done. Mapping (speakerMap):") << "\n";
         if (m.speakerMap.isEmpty())
@@ -638,7 +637,7 @@ int main(int argc, char** argv) {
 
     if (cmd == "voiceprints") {
         auto* vp = app.voiceprints();
-        // Két számláló — a %n frázisonként csak egyszer szerepelhet, ezért két plural-frázis.
+        // Two counters: a %n phrase may appear only once, hence two plural phrases.
         out << QStringLiteral("Voiceprints (%1, %2):")
                    .arg(plural(vp->people().size(), "%n person", "%n people"),
                         plural(vp->totalPrintCount(), "%n voiceprint", "%n voiceprints"))
@@ -652,7 +651,7 @@ int main(int argc, char** argv) {
     }
 
     if (cmd == "embed-probe") {
-        // Diagnosztika: egy hangszegmens embeddingjének kiírása (voiceprint-hibakereséshez).
+        // Diagnostics: prints the embedding of one audio segment (for voiceprint debugging).
         //   embed-probe <modelPath> <audioPath> <startMs> <endMs> [scale] [cmn:0/1] [snip:0/1]
         const QString model = args.value(2), path = args.value(3);
         const qint64 s = args.value(4).toLongLong();

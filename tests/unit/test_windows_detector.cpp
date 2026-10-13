@@ -1,10 +1,8 @@
+// Tanara: unit tests of the Windows meeting detector (WindowsCaptureDetector).
 //
-// Tanara — Windows-os meeting-detektor (WindowsCaptureDetector) unit-tesztek.
-//
-// A tiszta szabályok (detail/WinCaptureRules.h: képnév, ön-kizárás, app-illesztés, a
-// ConsentStore kulcsnév + FILETIME logika) minden platformon futnak — nincs bennük COM.
-// A detektor-példány (COM / WASAPI) és a registry-szerződés csak Windowson; máshol QSKIP.
-//
+// The pure rules (detail/WinCaptureRules.h: image name, self-exclusion, app matching, the
+// ConsentStore key name + FILETIME logic) run on every platform: there is no COM in them.
+// The detector instance (COM / WASAPI) and the registry contract are Windows-only; elsewhere QSKIP.
 #include <QtTest>
 #include <QObject>
 
@@ -38,7 +36,7 @@ private slots:
         QCOMPARE(win::imageBaseName(QString()), QString());
     }
 
-    // Ön-kizárás: a tanara, tanara-cli, tanara-watcher kiesik; idegen, hasonló nevű app nem.
+    // Self-exclusion: tanara, tanara-cli, tanara-watcher drop out; a foreign app with a similar name does not.
     void selfExclusion()
     {
         const QString self = QStringLiteral("tanara");
@@ -65,12 +63,12 @@ private slots:
         QTest::newRow("discord")   << "discord"         << true  << "discord" << "Discord";
         QTest::newRow("slack")     << "slack"           << true  << "slack"   << "Slack";
         QTest::newRow("skype")     << "skype"           << true  << "skype"   << "Skype";
-        // Böngészők: a "meet" lista-elemen keresztül (Google Meet böngészőben).
+        // Browsers: through the "meet" list item (Google Meet in a browser).
         QTest::newRow("chrome")    << "chrome"          << true  << "chrome"  << "Chrome";
         QTest::newRow("edge")      << "msedge"          << true  << "msedge"  << "Microsoft Edge";
         QTest::newRow("firefox")   << "firefox"         << true  << "firefox" << "Firefox";
         QTest::newRow("brave")     << "brave"           << true  << "brave"   << "Brave";
-        // Nem hívás-app (a default listával).
+        // Not a call app (with the default list).
         QTest::newRow("ffmpeg")    << "ffmpeg"          << false << ""        << "";
         QTest::newRow("audacity")  << "audacity"        << false << ""        << "";
         QTest::newRow("telegram")  << "telegram"        << false << ""        << "";
@@ -87,14 +85,14 @@ private slots:
         QCOMPARE(m.appName, appName);
     }
 
-    // A felhasználó (vagy a teszt) felvehet új appot; az ismeretlen app a képnevét kapja.
+    // The user (or the test) can add a new app; an unknown app gets its image name.
     void userAddedApps()
     {
         QStringList apps = kDefaults;
         apps << QStringLiteral("ffmpeg") << QStringLiteral("Telegram");
         QCOMPARE(win::matchCallApp(QStringLiteral("ffmpeg"), apps).appId, QStringLiteral("ffmpeg"));
         QCOMPARE(win::matchCallApp(QStringLiteral("telegram"), apps).appName, QStringLiteral("Telegram"));
-        // "meet" nélkül a böngésző nem számít hívásnak.
+        // Without "meet" a browser does not count as a call.
         QVERIFY(!win::matchCallApp(QStringLiteral("chrome"), {QStringLiteral("zoom")}).matched);
         QVERIFY(!win::matchCallApp(QString(), apps).matched);
     }
@@ -109,7 +107,7 @@ private slots:
                  QStringLiteral("zoom"));
         QCOMPARE(win::consentKeyToName(QStringLiteral("C:#Users#a#AppData#Local#Tanara#tanara-cli.exe"), true),
                  QStringLiteral("tanara-cli"));
-        // A csomagolt Teams a "teams" elemre illeszkedik.
+        // The bundled Teams matches the "teams" item.
         const win::CallAppMatch m = win::matchCallApp(QStringLiteral("msteams"), kDefaults);
         QVERIFY(m.matched);
         QCOMPARE(m.appId, QStringLiteral("teams"));
@@ -118,12 +116,12 @@ private slots:
 
     void consentFiletimeLogic()
     {
-        const quint64 t0 = 134030000000000000ULL;   // ~2025, 100 ns-os FILETIME
-        QVERIFY(!win::consentInUse(0, 0));                 // sosem használta
-        QVERIFY(win::consentInUse(t0, 0));                  // most kezdte, még nincs vége
-        QVERIFY(win::consentInUse(t0 + 10, t0));            // újra kezdte az előző vég után
-        QVERIFY(!win::consentInUse(t0, t0 + 10));           // befejezte
-        QVERIFY(!win::consentInUse(t0, t0));                // azonos → nem aktív
+        const quint64 t0 = 134030000000000000ULL;   // about 2025, 100 ns FILETIME
+        QVERIFY(!win::consentInUse(0, 0));                 // never used
+        QVERIFY(win::consentInUse(t0, 0));                  // just started, not ended yet
+        QVERIFY(win::consentInUse(t0 + 10, t0));            // started again after the previous end
+        QVERIFY(!win::consentInUse(t0, t0 + 10));           // ended
+        QVERIFY(!win::consentInUse(t0, t0));                // equal: not active
     }
 
     void detectorRegisteredAndPolls()
@@ -140,14 +138,14 @@ private slots:
         QVERIFY(d != nullptr);
         QCOMPARE(d->id(), QStringLiteral("windows-wasapi"));
         QVERIFY(d->isAvailable());
-        // Csak a saját magunkat ismerő lista: a saját processz SOHA nem lehet meeting.
+        // A list that knows only ourselves: our own process can NEVER be a meeting.
         d->configure({QStringLiteral("test_windows_detector")}, QStringLiteral("tanara"));
         QElapsedTimer t;
         t.start();
         const MeetingSignal sig = d->poll();
         qInfo() << "poll:" << t.elapsed() << "ms, active =" << sig.active << sig.sourceRef;
         QVERIFY(!sig.active || !sig.sourceRef.contains(QStringLiteral("test_windows_detector")));
-        d->poll();   // a gyorsítótárazott enumerátorral is működik
+        d->poll();   // works with the cached enumerator too
 #else
         QSKIP("Csak Windowson (WASAPI).");
 #endif

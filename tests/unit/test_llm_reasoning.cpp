@@ -1,7 +1,5 @@
-//
-// OpenAI-kompatibilis provider — a „gondolkodás” kapcsolása modellcsaládonként (a kérés
-// törzse egy helyi ál-HTTP-szerveren), és hogy a gondolkodás sosem kerül a válaszba.
-//
+// OpenAI-compatible provider: switching "thinking" per model family (the request body on a
+// local fake HTTP server), and that thinking never gets into the reply.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -17,7 +15,7 @@ using namespace tanara;
 #ifndef Q_MOC_RUN
 namespace {
 
-// Egyetlen válaszra beállítható ál-szerver; a beérkezett kérés-törzseket gyűjti.
+// A fake server settable for a single reply; it collects the incoming request bodies.
 class FakeServer : public QObject {
 public:
     QByteArray reply = "{}";
@@ -87,7 +85,7 @@ private slots:
 
 private:
 #ifndef Q_MOC_RUN
-    // Egy kérés a valódi providerrel; visszaadja a törzset és a választ (vagy a hibát).
+    // A request with the real provider; returns the body and the reply (or the error).
     QJsonObject roundTrip(const QString& model, const QString& reasoning, const QByteArray& reply,
                           QString* text, QString* error);
 #endif
@@ -144,7 +142,7 @@ void LlmReasoningTest::switchByModelFamily()
 
 void LlmReasoningTest::requestBodies()
 {
-    // Gemma (auto): reasoning_effort "none", nincs előtöltés.
+    // Gemma (auto): reasoning_effort "none", no prefill.
     QString text;
     QJsonObject b = roundTrip(QStringLiteral("google/gemma-4-12b-qat"), QStringLiteral("auto"),
                               completion(QStringLiteral("ok")), &text, nullptr);
@@ -155,7 +153,7 @@ void LlmReasoningTest::requestBodies()
     QCOMPARE(b.value("stream").toBool(true), false);
     QCOMPARE(b.value("messages").toArray().size(), 2);
 
-    // Qwen 3 (auto): üres <think> blokkal előtöltött asszisztens-üzenet, reasoning_effort nélkül.
+    // Qwen 3 (auto): an assistant message prefilled with an empty <think> block, without reasoning_effort.
     b = roundTrip(QStringLiteral("qwen3.8-27b"), QStringLiteral("auto"), completion(QStringLiteral("ok")),
                   nullptr, nullptr);
     QVERIFY(!b.contains("reasoning_effort"));
@@ -165,19 +163,19 @@ void LlmReasoningTest::requestBodies()
     QCOMPARE(msgs[2].toObject().value("role").toString(), QStringLiteral("assistant"));
     QCOMPARE(msgs[2].toObject().value("content").toString(), QStringLiteral("<think>\n\n</think>\n\n"));
 
-    // Ismeretlen modell: reasoning_effort "none" (a nem ismerő szerver figyelmen kívül hagyja).
+    // Unknown model: reasoning_effort "none" (a server that does not know it ignores it).
     b = roundTrip(QStringLiteral("valami-modell"), QStringLiteral("off"), completion(QStringLiteral("ok")),
                   nullptr, nullptr);
     QCOMPARE(b.value("reasoning_effort").toString(), QStringLiteral("none"));
     QCOMPARE(b.value("messages").toArray().size(), 2);
 
-    // "on": semmilyen kapcsoló.
+    // "on": no switch.
     b = roundTrip(QStringLiteral("qwen3.8-27b"), QStringLiteral("on"), completion(QStringLiteral("ok")),
                   nullptr, nullptr);
     QVERIFY(!b.contains("reasoning_effort"));
     QCOMPARE(b.value("messages").toArray().size(), 2);
 
-    // A ProviderConfig alapértéke "auto".
+    // ProviderConfig's default is "auto".
     QCOMPARE(ProviderConfig{}.reasoning, QStringLiteral("auto"));
 }
 
@@ -188,7 +186,7 @@ void LlmReasoningTest::reasoningNeverReachesContent()
               completion(QStringLiteral("{\"execSummary\":\"X\"}"), QStringLiteral("Hosszú gondolatmenet…")),
               &text, nullptr);
     QCOMPARE(text, QStringLiteral("{\"execSummary\":\"X\"}"));
-    // A tartalom elejére szivárgott gondolkodás-blokk lekerül.
+    // A thinking block leaked to the start of the content is removed.
     roundTrip(QStringLiteral("gemma"), QStringLiteral("auto"),
               completion(QStringLiteral("<think>\nelőbb gondolkodom\n</think>\n\nTOPICS\n- a")), &text, nullptr);
     QCOMPARE(text, QStringLiteral("TOPICS\n- a"));
@@ -201,8 +199,8 @@ void LlmReasoningTest::onlyThinkingFails()
               completion(QString(), QStringLiteral("csak gondolkodtam")), &text, &error);
     QVERIFY(text.isEmpty());
     QVERIFY2(error.contains(QStringLiteral("gondolkod")), qPrintable(error));
-    QVERIFY(!error.contains(QStringLiteral("csak gondolkodtam")));   // a gondolkodás szövege sem szivárog
-    // Lezáratlan <think> a tartalomban = nincs válasz.
+    QVERIFY(!error.contains(QStringLiteral("csak gondolkodtam")));   // the thinking text does not leak either
+    // An unterminated <think> in the content = no reply.
     error.clear();
     roundTrip(QStringLiteral("gemma"), QStringLiteral("auto"),
               completion(QStringLiteral("<think>végtelen gondolkodás…")), &text, &error);
@@ -216,7 +214,7 @@ void LlmReasoningTest::stripThinkingVariants()
     QCOMPARE(stripThinking(QStringLiteral("<THINK>x</THINK>válasz")), QStringLiteral("válasz"));
     QCOMPARE(stripThinking(QStringLiteral("</think>\n\nválasz")), QStringLiteral("válasz"));
     QCOMPARE(stripThinking(QStringLiteral("<think>nincs vége")), QString());
-    // Csak a VEZETŐ blokk számít; a szövegközi címke a válasz része.
+    // Only the LEADING block counts; an in-text tag is part of the reply.
     QCOMPARE(stripThinking(QStringLiteral("A <think> címke")), QStringLiteral("A <think> címke"));
 }
 

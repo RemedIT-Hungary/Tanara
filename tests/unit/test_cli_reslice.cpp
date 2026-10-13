@@ -1,11 +1,9 @@
-//
-// tanara-cli reslice: a valódi CLI (QProcess), IZOLÁLT TANARA_HOME-mal, kitalált megbeszélésen
-// (szintetikus Soniox-féle tokens.json + segments.json + overlay + summary.json). Ellenőrzi:
-// --dry-run nem ír; a sorok száma nem változik (a rövid sor a hosszú után külön marad); az
-// írás után az id-k átmentek (overlay-javítások, megerősítések, noisy, summary-források), az
-// ujjlenyomat stimmel, a tokenek érintetlenek, a .bak egyszer készül; a második futás és a
-// valódi szó-időzítés „nothing to do". Átirat-szöveg nem kerül a kimenetre.
-//
+// tanara-cli reslice: the real CLI (QProcess), with an ISOLATED TANARA_HOME, on a made-up
+// meeting (a synthetic Soniox-style tokens.json + segments.json + overlay + summary.json).
+// Checks: --dry-run does not write; the line count does not change (a short line after a long
+// one stays separate); after the write the ids carried over (overlay fixes, confirmations,
+// noisy, summary sources), the fingerprint matches, the tokens are untouched, the .bak is made
+// once; the second run and real word timing give "nothing to do". No transcript text goes to the output.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -53,11 +51,11 @@ QJsonObject readObject(const QString& path)
     return QJsonDocument::fromJson(f.readAll()).object();
 }
 
-// (szöveg, beszélő, sáv, kezdet, vég)
+// (text, speaker, track, start, end)
 struct Tok { const char* text; const char* speaker; const char* track; qint64 s; qint64 e; };
 
-// Egy meeting-mappa a megadott tokenekből: tokens.json + segments.json (a mergerrel, ahogy az
-// átírás írja) + meeting.json + transcript.md.
+// A meeting folder from the given tokens: tokens.json + segments.json (with the merger, as
+// transcription writes it) + meeting.json + transcript.md.
 void writeMeeting(const QString& folder, const QVector<Tok>& toks)
 {
     writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
@@ -134,7 +132,7 @@ private slots:
         const QString folder = dir.path();
         writeMeeting(folder, kSoniox);
 
-        // Régi id-k: u1000, u3000, u6000, u9000, u12000 (A), u12000-2 (B).
+        // Old ids: u1000, u3000, u6000, u9000, u12000 (A), u12000-2 (B).
         const QVector<TranscriptLine> old = speakeredit::loadTranscriptLines(folder);
         QCOMPARE(old.size(), 6);
         QCOMPARE(old.at(4).id, QStringLiteral("u12000"));
@@ -164,7 +162,7 @@ private slots:
                                                {"u12000-2", QJsonObject{{"key", "B"}, {"name", "Béla"}}}}}}}});
         writeBytes(UtteranceEmbeddingCache::filePath(folder), "stale-cache");
 
-        // 1) --dry-run: semmi nem változik, a számok a JSON-ban.
+        // 1) --dry-run: nothing changes, the numbers are in the JSON.
         const auto before = snapshot(folder);
         Run r = cli({"reslice", folder, "--dry-run", "--json"});
         QCOMPARE(r.code, 0);
@@ -182,14 +180,14 @@ private slots:
         QCOMPARE(dj.value("summary").toObject().value("renamed").toInt(), 4);
         QVERIFY(!r.out.contains("Titkos") && !r.out.contains("Egyszerre"));
 
-        // Szöveges dry-run is olvasható és nem ír.
+        // The text dry-run is readable and does not write either.
         r = cli({"reslice", folder, "--dry-run"});
         QCOMPARE(r.code, 0);
         QVERIFY(r.out.contains("Dry run: nothing written."));
         QVERIFY(!r.out.contains("Titkos"));
         QCOMPARE(snapshot(folder), before);
 
-        // 2) írás.
+        // 2) write.
         r = cli({"reslice", folder});
         QVERIFY2(r.code == 0, qPrintable(r.err + r.out));
         QVERIFY(!r.out.contains("Titkos"));
@@ -207,7 +205,7 @@ private slots:
         QCOMPARE(now.at(3).endMs, 9160);
         QCOMPARE(now.at(0).text, old.at(0).text);
 
-        // Az overlay az új átirathoz validálva is megtartja a javításokat.
+        // The overlay, validated against the new transcript, keeps the fixes too.
         const SpeakerOverlay nov = speakeredit::loadOverlayFor(folder, now);
         QCOMPARE(nov.utterances.size(), 4);
         QVERIFY(nov.utterances.value("u700").confirmed);
@@ -234,10 +232,10 @@ private slots:
         QCOMPARE(tokRoot.value("timing").toString(), QStringLiteral("emission"));
         QCOMPARE(tokRoot.value("language").toString(), QStringLiteral("hu"));
         QCOMPARE(tokRoot.value("tokens").toArray().size(), kSoniox.size());
-        // A tokenek a Soniox szerinti időkkel maradnak.
+        // The tokens stay with the times per Soniox.
         QCOMPARE(tokRoot.value("tokens").toArray().at(0).toObject().value("startMs").toInt(), 1000);
         QCOMPARE(tokRoot.value("tokens").toArray().at(0).toObject().value("endMs").toInt(), 1060);
-        // Az app a tokenekből ugyanazokat a sorokat szeleteli, mint a segments.json.
+        // From the tokens the app slices the same lines as segments.json.
         {
             MergedTranscript mt;
             mt.emissionTiming = true;
@@ -259,7 +257,7 @@ private slots:
         QVERIFY(md.open(QIODevice::ReadOnly));
         QVERIFY(md.readAll().startsWith("`[00:00]` **Anna**"));
 
-        // 3) második futás: már korrigált; a .bak nem íródik felül.
+        // 3) second run: already corrected; the .bak is not overwritten.
         const auto after = snapshot(folder);
         r = cli({"reslice", folder});
         QCOMPARE(r.code, 0);
@@ -267,15 +265,15 @@ private slots:
         QCOMPARE(snapshot(folder), after);
     }
 
-    // A valódi meetingen mért eset: egy hosszú sor után 1560 ms szünettel ugyanannak a
-    // beszélőnek egy rövid sora („Mi az?"). Külön sor marad; a sorok száma nem változik.
+    // The case measured on a real meeting: after a long line, with a 1560 ms gap, a short line of
+    // the same speaker ("What is it?"). It stays a separate line; the line count does not change.
     void shortLineAfterLongLineStaysSeparate()
     {
         QTemporaryDir dir;
         const QString folder = dir.path();
         QVector<Tok> toks;
         for (qint64 t = 0; t <= 13000; t += 1000) toks.append({" hosszú", "A", "t1", t, t + 60});
-        toks.append({" Mi", "A", "t1", 14620, 14680});        // 14620 − 13060 = 1560 ms szünet
+        toks.append({" Mi", "A", "t1", 14620, 14680});        // 14620 - 13060 = a 1560 ms gap
         toks.append({" az?", "A", "t1", 14740, 14800});
         toks.append({" Igen.", "B", "t2", 16000, 16060});
         writeMeeting(folder, toks);
@@ -290,15 +288,15 @@ private slots:
         QCOMPARE(j.value("lines").toObject().value("mergedLines").toInt(), 0);
         const QVector<TranscriptLine> now = speakeredit::loadTranscriptLines(folder);
         QCOMPARE(now.size(), 3);
-        QCOMPARE(now.at(0).startMs, 0);                  // 0 alá nem megy
+        QCOMPARE(now.at(0).startMs, 0);                  // does not go below 0
         QCOMPARE(now.at(0).endMs, 13160);                // +100
-        QCOMPARE(now.at(1).startMs, 14320);              // −300 (az előző sor vége messze van)
+        QCOMPARE(now.at(1).startMs, 14320);              // -300 (the previous line's end is far away)
         QCOMPARE(now.at(1).endMs, 14900);
         QCOMPARE(now.at(1).text, old.at(1).text);
         QCOMPARE(now.at(2).startMs, 15700);
     }
 
-    // Egy .bak már létezik (korábbi kézi mentés): nem írjuk felül.
+    // A .bak already exists (an earlier manual backup): we do not overwrite it.
     void existingBackupIsKept()
     {
         QTemporaryDir dir;

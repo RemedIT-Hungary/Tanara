@@ -20,7 +20,7 @@
 
 namespace tanara_gui {
 
-// Egy modális hívás idejére: a megjelenő párbeszédablakok a Beállítások-ablak fölé kerülnek.
+// For the duration of a modal call: the dialogs that appear go above the Settings window.
 struct SettingsWidgetsDialogs::Scope {
     explicit Scope(SettingsWidgetsDialogs* d) : self(d) { ++self->m_active; }
     ~Scope() { --self->m_active; }
@@ -85,7 +85,7 @@ void SettingsWidgetsDialogs::openPeopleAt(const QString& person)
         m_peopleOpener(person);
         return;
     }
-    // Főablak nélküli folyamat: saját (nem modális) QML Személyek-ablak, egy példány.
+    // Process without a main window: its own (non-modal) QML People window, one instance.
     if (!m_people) m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
     m_people->open(person);
 }
@@ -132,7 +132,7 @@ bool SettingsWidgetsDialogs::cloudTerms()
     }
     if (t.needsEarlyAcceptance())
         return CloudTermsDialog::offerEarly(m_controller, nullptr);
-    cloudui::openUrl(t.currentUrl);   // nincs elfogadnivaló: csak megmutatjuk
+    cloudui::openUrl(t.currentUrl);   // nothing to accept: just show it
     return false;
 }
 

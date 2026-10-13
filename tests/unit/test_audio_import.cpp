@@ -1,10 +1,8 @@
-//
-// AudioImporter — hangfájlok importálása új meetingbe: fájl-adatok (ffprobe), sáv-terv,
-// alapértelmezett cím / dátum, kódolás a felvett sávok formájára, csatorna-bontás, több
-// fájl, videó hangja, nem-hang fájl elutasítása, megszakítás (semmi nem marad utána), és az
-// AppController-réteg (JobKind::Import a trackerben, lekeverés a mixdownMode szerint).
-// A teszt-hangokat az ffmpeg gyártja ideiglenes mappába; ffmpeg nélkül a tesztek kimaradnak.
-//
+// AudioImporter: importing audio files into a new meeting: file info (ffprobe), track plan,
+// default title / date, encoding to the recorded tracks' form, channel splitting, several
+// files, the audio of a video, rejecting a non-audio file, cancel (nothing remains), and the
+// AppController layer (JobKind::Import in the tracker, mixdown per mixdownMode).
+// The test audio is made by ffmpeg into a temporary folder; without ffmpeg the tests are skipped.
 #include <QtTest>
 #include <QProcess>
 #include <QSignalSpy>
@@ -38,7 +36,7 @@ bool ffmpeg(const QStringList& args)
                QStringList{"-hide_banner", "-loglevel", "error", "-y"} + args);
 }
 
-// A hangfájl csúcsa (0..1) mono 16 bitre dekódolva.
+// An audio file's peak (0..1) decoded to mono 16-bit.
 double peakOf(const QString& path)
 {
     QByteArray pcm;
@@ -52,7 +50,7 @@ double peakOf(const QString& path)
     return peak / 32768.0;
 }
 
-// Minden bejegyzés a mappában (a rejtetteket is) — „nem maradt semmi” ellenőrzéséhez.
+// Every entry in the folder (hidden ones too), to check that "nothing remained".
 QStringList everythingIn(const QString& dir)
 {
     return QDir(dir).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
@@ -85,7 +83,7 @@ private:
     QString src(const QString& name) const { return m_dir->filePath("src/" + name); }
     QString mono(const QString& name, int seconds, int freq = 440);
     QString stereoLeftOnly(const QString& name, int seconds);
-    // Importálás a végéig; visszaadja a kész meetinget (üres id = nem sikerült).
+    // Imports to the end; returns the finished meeting (empty id = failed).
     Meeting importAndWait(AudioImporter& imp, const ImportRequest& req);
 
     std::unique_ptr<QTemporaryDir> m_dir;
@@ -123,7 +121,7 @@ QString AudioImportTest::mono(const QString& name, int seconds, int freq)
     return path;
 }
 
-// Sztereó: a bal csatornán szinusz, a jobb néma — a bontás ellenőrzéséhez.
+// Stereo: a sine on the left channel, the right one silent, to check the splitting.
 QString AudioImportTest::stereoLeftOnly(const QString& name, int seconds)
 {
     const QString path = src(name);
@@ -145,7 +143,7 @@ Meeting AudioImportTest::importAndWait(AudioImporter& imp, const ImportRequest& 
     return finished.first().at(1).value<Meeting>();
 }
 
-// ---- fájl-adatok, terv, alapértelmezések ---------------------------------------------
+// ---- file info, plan, defaults ----
 
 void AudioImportTest::probeReadsAudioFiles()
 {
@@ -170,9 +168,9 @@ void AudioImportTest::probeReadsAudioFiles()
     QVERIFY(si.ok);
     QCOMPARE(si.channels, 2);
     QCOMPARE(si.codec, QStringLiteral("flac"));
-    QVERIFY(!audioimport::splitByDefault(si));   // sima sztereó: a felhasználó dönt
+    QVERIFY(!audioimport::splitByDefault(si));   // plain stereo: the user decides
 
-    // Ugyanez a háttérben (a UI útja).
+    // The same in the background (the UI's path).
     AudioImporter imp(m_store.get());
     QSignalSpy probed(&imp, &AudioImporter::probed);
     imp.probeAsync(s);
@@ -198,7 +196,7 @@ void AudioImportTest::probeRejectsNonAudio()
     QVERIFY(!ti.ok);
     QVERIFY(ti.error.contains("jegyzet.txt"));
 
-    // Videó hang nélkül: felismerhető fájl, de nincs benne hang.
+    // A video without audio: a recognizable file, but there is no audio in it.
     const QString silentVideo = src("nema.mkv");
     QVERIFY(ffmpeg({"-f", "lavfi", "-i", "testsrc=duration=1:size=64x64:rate=5", "-c:v", "mjpeg", silentVideo}));
     const ImportFileInfo vi = audioimport::probe(silentVideo);
@@ -216,14 +214,14 @@ void AudioImportTest::planAndDefaults()
     ImportFileInfo stereoInfo; stereoInfo.ok = true; stereoInfo.channels = 2;
     ImportFileInfo quadInfo;   quadInfo.ok = true;   quadInfo.channels = 4;
 
-    // Egy sztereó fájl bontás nélkül: egy sztereó sáv a fájl nevével.
+    // One stereo file without splitting: one stereo track named after the file.
     auto plan = audioimport::planTracks({{"/x/Interjú Kovács.wav", false}}, {stereoInfo});
     QCOMPARE(plan.size(), 1);
     QCOMPARE(plan[0].name, QStringLiteral("Interjú Kovács"));
     QCOMPARE(plan[0].channels, 2);
     QCOMPARE(plan[0].channel, -1);
 
-    // Bontva: bal / jobb, mono sávok.
+    // Split: left / right, mono tracks.
     plan = audioimport::planTracks({{"/x/Interjú Kovács.wav", true}}, {stereoInfo});
     QCOMPARE(plan.size(), 2);
     QCOMPARE(plan[0].name, QStringLiteral("Bal csatorna"));
@@ -231,7 +229,7 @@ void AudioImportTest::planAndDefaults()
     QCOMPARE(plan[1].channel, 1);
     QCOMPARE(plan[1].channels, 1);
 
-    // Mono fájlon a bontás nem hat; négy csatorna sorszámot kap, több fájlnál a fájlnévvel.
+    // On a mono file the split has no effect; four channels get a number, with several files the file name.
     plan = audioimport::planTracks({{"/x/a.wav", true}, {"/x/zoom h6.wav", true}}, {monoInfo, quadInfo});
     QCOMPARE(plan.size(), 5);
     QCOMPARE(plan[0].name, QStringLiteral("a"));
@@ -239,13 +237,13 @@ void AudioImportTest::planAndDefaults()
     QCOMPARE(plan[4].name, QStringLiteral("zoom h6 – 4. csatorna"));
     QVERIFY(audioimport::splitByDefault(quadInfo));
     quadInfo.hasVideo = true;
-    QVERIFY(!audioimport::splitByDefault(quadInfo));   // film 5.1 hangja: nem bontjuk magától
+    QVERIFY(!audioimport::splitByDefault(quadInfo));   // a film's 5.1 audio: not split by itself
 
-    // Négy csatorna bontás nélkül sztereóba keverve kerül be.
+    // Four channels without splitting are mixed down to stereo.
     plan = audioimport::planTracks({{"/x/zoom h6.wav", false}}, {quadInfo});
     QCOMPARE(plan[0].channels, 2);
 
-    // A sávnév a TrackCatalog rövidítése után is a teljes fájlnév marad.
+    // The track name stays the full file name even after TrackCatalog's abbreviation.
     for (const QString& file : {QStringLiteral("/x/Kovács - 2. rész.mp3"), QStringLiteral("/x/felvétel (1).wav"),
                                 QStringLiteral("/x/Monitor of valami.wav")}) {
         const QString name = audioimport::planTracks({{file, false}}, {monoInfo}).first().name;
@@ -253,14 +251,14 @@ void AudioImportTest::planAndDefaults()
         QVERIFY(name.size() >= QFileInfo(file).completeBaseName().size());
     }
 
-    // Cím: egy fájl → a neve; több → a közös eleje (ha értelmes), különben az első.
+    // Title: one file gives its name; several give the common beginning (if meaningful), otherwise the first.
     QCOMPARE(audioimport::defaultTitle({"/x/Interjú Kovács.wav"}), QStringLiteral("Interjú Kovács"));
     QCOMPARE(audioimport::defaultTitle({"/x/Kutatás 12 - mikrofon.wav", "/y/Kutatás 12 - vonal.wav"}),
              QStringLiteral("Kutatás 12"));
     QCOMPARE(audioimport::defaultTitle({"/x/alfa.wav", "/x/beta.wav"}), QStringLiteral("alfa"));
     QVERIFY(!audioimport::defaultTitle({}).isEmpty());
 
-    // Dátum: a beágyazott idő erősebb a módosítási időnél; több fájlnál a legkorábbi.
+    // Date: the embedded time beats the modification time; with several files the earliest.
     ImportFileInfo a, b;
     a.modifiedAt = QDateTime(QDate(2025, 3, 2), QTime(10, 0));
     b.modifiedAt = QDateTime(QDate(2025, 5, 1), QTime(9, 0));
@@ -269,7 +267,7 @@ void AudioImportTest::planAndDefaults()
     QCOMPARE(audioimport::defaultStart({a}), a.modifiedAt);
 }
 
-// ---- importálás ----------------------------------------------------------------------
+// ---- importing ----
 
 void AudioImportTest::importsMonoFile()
 {
@@ -298,7 +296,7 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(started.first().at(0).toString(), m.id);
     QCOMPARE(updated.size(), 1);
 
-    // A meeting olyan, mint egy felvett: tárban van, cím a fájlnévből, dátum a fájl idejéből.
+    // The meeting is like a recorded one: in the store, the title from the file name, the date from the file's time.
     const Meeting stored = m_store->load(m.id);
     QCOMPARE(stored.id, m.id);
     QCOMPARE(stored.title, QStringLiteral("Interjú Kovács"));
@@ -319,9 +317,9 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(t.file, QStringLiteral("track_interju-kovacs.ogg"));
     QCOMPARE(t.channels, 1);
     QCOMPARE(t.sampleRate, 48000);
-    QCOMPARE(t.startOffsetMs, qint64(0));   // importált fájl: a megbeszélés elejétől
+    QCOMPARE(t.startOffsetMs, qint64(0));   // imported file: from the start of the meeting
 
-    // A sáv Opus/ogg, 48 kHz — ugyanaz a forma, mint a felvett sávoké.
+    // The track is Opus/ogg, 48 kHz: the same form as the recorded tracks.
     const ImportFileInfo out = audioimport::probe(QDir(stored.folder).filePath(t.file));
     QVERIFY(out.ok);
     QCOMPARE(out.codec, QStringLiteral("opus"));
@@ -329,13 +327,13 @@ void AudioImportTest::importsMonoFile()
     QCOMPARE(out.channels, 1);
     QVERIFY(peakOf(QDir(stored.folder).filePath(t.file)) > 0.05);
 
-    // A Sávok fül nézete: a fájl neve a sáv neve, a fájl megvan.
+    // The Tracks tab's view: the file name is the track name, the file exists.
     const QVector<TrackView> views = TrackCatalog::tracks(stored);
     QCOMPARE(views.first().displayName, QStringLiteral("Interjú Kovács"));
     QCOMPARE(views.first().role, TrackRole::Other);
     QVERIFY(!views.first().fileMissing);
 
-    // Valós haladás: nem csökken, a vége 100.
+    // Real progress: does not decrease, ends at 100.
     QVERIFY(!progress.isEmpty());
     int last = -1;
     for (const auto& args : progress) {
@@ -344,12 +342,12 @@ void AudioImportTest::importsMonoFile()
     }
     QCOMPARE(last, 100);
 
-    // Az eredeti érintetlen, és nem maradt rejtett munkamappa.
+    // The original is untouched, and no hidden work folder remained.
     QCOMPARE(QFileInfo(file).size(), sizeBefore);
     QCOMPARE(QFileInfo(file).lastModified(), stamp);
     QCOMPARE(everythingIn(m_store->audioDir()), QStringList{QFileInfo(stored.folder).fileName()});
 
-    // Index-újraépítés (árva-helyreállítással) után is pontosan egy meeting van.
+    // After an index rebuild (with orphan recovery) there is exactly one meeting too.
     m_store->rebuildIndexFromDisk();
     QCOMPARE(m_store->loadAll().size(), 1);
     QCOMPARE(m_store->loadAll().first().id, m.id);
@@ -362,7 +360,7 @@ void AudioImportTest::stereoKeptOrSplit()
     QVERIFY(!file.isEmpty());
     AudioImporter imp(m_store.get());
 
-    // Bontás nélkül: egy sztereó sáv; megadott cím és dátum.
+    // Without splitting: one stereo track; given title and date.
     ImportRequest whole;
     whole.sources = {{file, false}};
     whole.title = QStringLiteral("  Páros interjú ");
@@ -375,12 +373,12 @@ void AudioImportTest::stereoKeptOrSplit()
     QCOMPARE(a.tracks[0].channels, 2);
     QCOMPARE(audioimport::probe(QDir(a.folder).filePath(a.tracks[0].file)).channels, 2);
 
-    // Bontva: két mono sáv; a bal szól, a jobb néma (a csatornák nem keverednek).
+    // Split: two mono tracks; the left plays, the right is silent (the channels do not mix).
     ImportRequest split = whole;
     split.sources = {{file, true}};
     const Meeting b = importAndWait(imp, split);
     QVERIFY(!b.id.isEmpty());
-    QVERIFY(b.folder != a.folder);   // azonos cím + időpont: a mappa mégis egyedi
+    QVERIFY(b.folder != a.folder);   // same title + time: the folder is still unique
     QCOMPARE(b.tracks.size(), 2);
     QCOMPARE(b.tracks[0].deviceName, QStringLiteral("Bal csatorna"));
     QCOMPARE(b.tracks[1].deviceName, QStringLiteral("Jobb csatorna"));
@@ -413,9 +411,9 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     QVERIFY(!m.id.isEmpty());
     QCOMPARE(m.title, QStringLiteral("Kutatás 7"));
     QCOMPARE(m.tracks.size(), 3);
-    QVERIFY2(qAbs(m.durationMs - 3000) < 250, qPrintable(QString::number(m.durationMs)));   // a leghosszabb sáv
+    QVERIFY2(qAbs(m.durationMs - 3000) < 250, qPrintable(QString::number(m.durationMs)));   // the longest track
 
-    // A megjelölt sáv úgy viselkedik, mint egy felvett saját mikrofon.
+    // The marked track behaves like a recorded own microphone.
     QCOMPARE(m.tracks[0].kind, TrackKind::Mic);
     QVERIFY(m.tracks[0].fixedSpeaker);
     QCOMPARE(m.tracks[0].speakerLabel, QStringLiteral("Minta Márta"));
@@ -424,7 +422,7 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     QCOMPARE(tracknames::friendlyNames(m.tracks),
              QStringList({"Saját mikrofon", "Kutatás 7 – terem – Bal csatorna",
                           "Kutatás 7 – terem – Jobb csatorna"}));
-    // Egyedi sáv-azonosítók és fájlok.
+    // Unique track ids and files.
     QSet<QString> ids, files;
     for (const Track& t : m.tracks) {
         ids << t.id; files << t.file;
@@ -432,7 +430,7 @@ void AudioImportTest::multipleFilesWithOwnTrack()
     }
     QCOMPARE(ids.size(), 3);
     QCOMPARE(files.size(), 3);
-    // A haladás mindkét fájlt jelzi.
+    // The progress reports both files.
     QCOMPARE(progress.last().at(3).toInt(), 2);
     QCOMPARE(progress.last().at(1).toInt(), 100);
 }
@@ -456,9 +454,9 @@ void AudioImportTest::videoContainerUsesEmbeddedDate()
     req.sources = {{video, false}};
     const Meeting m = importAndWait(imp, req);
     QVERIFY(!m.id.isEmpty());
-    QCOMPARE(m.startedAt.toUTC(), info.createdAt.toUTC());   // a beágyazott idő, nem a fájlé
+    QCOMPARE(m.startedAt.toUTC(), info.createdAt.toUTC());   // the embedded time, not the file's
     QCOMPARE(m.tracks.size(), 1);
-    // Csak a hang került be.
+    // Only the audio went in.
     const ImportFileInfo out = audioimport::probe(QDir(m.folder).filePath(m.tracks[0].file));
     QVERIFY(out.ok);
     QVERIFY(!out.hasVideo);
@@ -482,7 +480,7 @@ void AudioImportTest::nonAudioFileFailsCleanly()
     const QString id = imp.start(req);
     QVERIFY(!id.isEmpty());
     QVERIFY(imp.busy());
-    QVERIFY(imp.start(req).isEmpty());   // egyszerre egy importálás
+    QVERIFY(imp.start(req).isEmpty());   // one import at a time
     QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 15000);
     QCOMPARE(failed.first().at(0).toString(), id);
     QVERIFY(failed.first().at(1).toString().contains("jegyzet.txt"));
@@ -491,7 +489,7 @@ void AudioImportTest::nonAudioFileFailsCleanly()
     QVERIFY(everythingIn(m_store->audioDir()).isEmpty());
     QVERIFY(m_store->loadAll().isEmpty());
 
-    // Üres kérés: szintén jelben érkező hiba.
+    // An empty request: an error that also arrives in a signal.
     QVERIFY(!imp.start(ImportRequest{}).isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 2, 5000);
     QVERIFY(!imp.busy());
@@ -500,7 +498,7 @@ void AudioImportTest::nonAudioFileFailsCleanly()
 void AudioImportTest::cancelLeavesNothing()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg / ffprobe nincs telepítve");
-    // 40 perc hang: a kódolás elég hosszú ahhoz, hogy közben megszakítsuk.
+    // 40 minutes of audio: the encoding is long enough to cancel in the middle.
     const QString big = mono("hosszu.wav", 2400);
     QVERIFY(!big.isEmpty());
 
@@ -512,7 +510,7 @@ void AudioImportTest::cancelLeavesNothing()
     ImportRequest req;
     req.sources = {{big, false}};
     const QString id = imp.start(req);
-    // Megvárjuk, amíg tényleg kódol (valós százalék érkezik), és ott szakítjuk meg.
+    // We wait until it really encodes (a real percentage arrives), and cancel there.
     QTRY_VERIFY_WITH_TIMEOUT(!progress.isEmpty() && progress.last().at(1).toInt() > 0, 20000);
     QVERIFY(finished.isEmpty());
     QVERIFY(QDir(m_store->audioDir()).exists(".import-" + id));
@@ -526,7 +524,7 @@ void AudioImportTest::cancelLeavesNothing()
              qPrintable(everythingIn(m_store->audioDir()).join(", ")));
     QVERIFY(m_store->loadAll().isEmpty());
 
-    // Megszakítás után azonnal indítható új.
+    // After the cancel a new one can start at once.
     const QString small = mono("rovid.wav", 1);
     ImportRequest again;
     again.sources = {{small, false}};
@@ -534,7 +532,7 @@ void AudioImportTest::cancelLeavesNothing()
     QCOMPARE(m_store->loadAll().size(), 1);
 }
 
-// ---- AppController-réteg --------------------------------------------------------------
+// ---- AppController layer ----
 
 void AudioImportTest::controllerRunsImportAsJob()
 {
@@ -552,12 +550,12 @@ void AudioImportTest::controllerRunsImportAsJob()
     req.sources = {{file, true}};
     const QString id = app.importAudio(req);
     QVERIFY(!id.isEmpty());
-    // A feladat a leendő meeting azonosítóján fut, megszakítható; a meeting még nincs meg.
+    // The job runs on the future meeting's id and is cancellable; the meeting does not exist yet.
     QVERIFY(app.jobs()->isRunning(id, JobKind::Import));
     QVERIFY(app.jobs()->job(id, JobKind::Import).cancellable);
     QCOMPARE(app.jobs()->activeJobs().size(), 1);
     QVERIFY(app.store()->load(id).id.isEmpty());
-    QVERIFY(app.importAudio(req).isEmpty());   // közben nem indul második
+    QVERIFY(app.importAudio(req).isEmpty());   // a second one does not start meanwhile
 
     QTRY_COMPARE_WITH_TIMEOUT(imported.size(), 1, 20000);
     const Meeting m = imported.first().at(0).value<Meeting>();
@@ -568,13 +566,13 @@ void AudioImportTest::controllerRunsImportAsJob()
     QCOMPARE(app.store()->load(id).tracks.size(), 2);
     QVERIFY(!added.isEmpty());
 
-    // mixdownMode "auto" (alapértelmezés): a lekeverés magától indul, mint felvétel után.
+    // mixdownMode "auto" (default): the mixdown starts by itself, as after a recording.
     QTRY_COMPARE_WITH_TIMEOUT(mixed.size(), 1, 30000);
     QVERIFY(mixed.first().at(1).toBool());
     const Meeting after = app.store()->load(id);
     QCOMPARE(after.mixdownFile, QStringLiteral("mixdown.mp3"));
     QVERIFY(QFileInfo(QDir(after.folder).filePath(after.mixdownFile)).size() > 0);
-    QVERIFY(!after.hasTranscript);   // átírás nem indul magától
+    QVERIFY(!after.hasTranscript);   // transcription does not start by itself
     QCOMPARE(app.processingState(id).transcriptState, StepState::None);
     qunsetenv("TANARA_HOME");
 }
@@ -590,7 +588,7 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     app.settings()->setSettings(s);
     const QString audioDir = app.store()->audioDir();
 
-    // Megszakítás a feladat-rétegen át.
+    // Cancel through the job layer.
     const QString big = mono("hosszu.wav", 2400);
     QSignalSpy jobFinished(app.jobs(), &MeetingJobTracker::jobFinished);
     QSignalSpy cancelled(&app, &AppController::importCancelled);
@@ -606,7 +604,7 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     QVERIFY(app.store()->loadAll().isEmpty());
     QVERIFY(everythingIn(audioDir).isEmpty());
 
-    // Hibás fájl: importFailed, a feladat Failed-del zárul, nem marad meeting.
+    // A broken file: importFailed, the job ends Failed, no meeting remains.
     QSignalSpy failed(&app, &AppController::importFailed);
     ImportRequest bad;
     bad.sources = {{src("nincs-ilyen.wav"), false}};
@@ -616,7 +614,7 @@ void AudioImportTest::controllerCancelAndManualMixdown()
     QCOMPARE(jobFinished.last().at(2).value<JobOutcome>(), JobOutcome::Failed);
     QVERIFY(app.store()->loadAll().isEmpty());
 
-    // Kézi lekeverés-mód: importálás után nem indul keverés; a sáv a beállított minőségű.
+    // Manual mixdown mode: no mixing starts after import; the track has the configured quality.
     QSignalSpy imported(&app, &AppController::importFinished);
     QSignalSpy mixed(&app, &AppController::mixdownUpdated);
     ImportRequest ok;

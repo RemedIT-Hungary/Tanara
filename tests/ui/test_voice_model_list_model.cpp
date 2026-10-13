@@ -1,9 +1,9 @@
-// VoiceModelListModel (Beállítások › Beszélők, Első lépések) — hangmodellek listája, letöltés,
-// bekapcsolás a piszkozatba, lenyomat-pótlás állapota.
+// VoiceModelListModel (Settings > Speakers, Getting started): list of voice models, download,
+// switching on in the draft, voiceprint-backfill state.
 //
-//  - demó-módban (controller nélkül): a B08-állapotok kitalált adatai;
-//  - valódi AppControllerrel IZOLÁLT TANARA_HOME-ban: a letöltés file:// URL-ről megy (HÁLÓZAT
-//    NINCS), a modellek „betöltése” hamis (setVoiceEmbedderLoader), az elérhetőség felülírva.
+//  - in demo mode (without a controller): the made-up data of the model states;
+//  - with a real AppController in an ISOLATED TANARA_HOME: the download goes from a file://
+//    URL (NO NETWORK), the models' "loading" is fake (setVoiceEmbedderLoader), availability overridden.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "SettingsViewModel.h"
@@ -59,7 +59,7 @@ int rowOf(const VoiceModelListModel& m, const QString& id)
     return -1;
 }
 
-// A Repeater delegate-jei nem QObject-gyerekek: a vizuális fán keresünk.
+// Repeater delegates are not QObject children: we search the visual tree.
 QQuickItem* findItem(QQuickItem* root, const QString& name)
 {
     if (!root) return nullptr;
@@ -103,7 +103,7 @@ class TestVoiceModelListModel : public QObject {
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(QByteArray(size < 0 ? VoiceModelRegistry::spec(id)->sizeBytes : size, 'm'));
     }
-    // A beépített leírók, de a letöltés helyi file:// forrásból (kicsi fájl, a méret ehhez igazítva).
+    // The built-in descriptors, but the download from a local file:// source (a small file, the size adjusted to it).
     QVector<VoiceModelSpec> localSpecs()
     {
         QVector<VoiceModelSpec> out;
@@ -131,14 +131,14 @@ private slots:
         qunsetenv("TANARA_CLOUD");
     }
 
-    // ---- demó ----------------------------------------------------------------------------
+    // ---- demo ----
 
     void demoStates()
     {
         VoiceModelListModel m;
         m.setDemoState(QStringLiteral("B08"));
         QCOMPARE(m.rowCount(), 3);
-        // WeSpeaker, CAM++, ERes2NetV2; ajánlott csak a WeSpeaker.
+        // WeSpeaker, CAM++, ERes2NetV2; only WeSpeaker is recommended.
         QCOMPARE(role(m, 0, "modelId").toString(), kWe);
         QCOMPARE(role(m, 1, "modelId").toString(), kCamp);
         QCOMPARE(role(m, 2, "modelId").toString(), kEres);
@@ -146,7 +146,7 @@ private slots:
         QVERIFY(!role(m, 1, "recommended").toBool());
         QVERIFY(role(m, 2, "notRecommended").toBool());
         QCOMPARE(role(m, 0, "license").toString(), QStringLiteral("CC-BY-4.0"));
-        QVERIFY(!role(m, 0, "licenseNote").toString().isEmpty());          // CC BY: attribúció
+        QVERIFY(!role(m, 0, "licenseNote").toString().isEmpty());          // CC BY: attribution
         QVERIFY(role(m, 1, "licenseNote").toString().isEmpty());
         QCOMPARE(role(m, 0, "sourceText").toString(), QStringLiteral("huggingface.co/Wespeaker/…"));
         QCOMPARE(role(m, 1, "sizeText").toString(), QStringLiteral("28 MB"));
@@ -169,7 +169,7 @@ private slots:
         QCOMPARE(m.activeCount(), 0);
         QCOMPARE(m.defaultState(), QStringLiteral("missing"));
         QCOMPARE(m.defaultSizeText(), QStringLiteral("27 MB"));
-        QVERIFY(!m.fallbackActive());   // nincs CAM++ sem: nincs tartalék, a hangelemzés ki van kapcsolva
+        QVERIFY(!m.fallbackActive());   // no CAM++ either: no fallback, voice analysis is off
 
         m.setDemoState(QStringLiteral("B08error"));
         QCOMPARE(stateOf(m, kWe), QStringLiteral("error"));
@@ -198,8 +198,8 @@ private slots:
 
         m.setDemoState(QStringLiteral("B08verify"));
         QCOMPARE(stateOf(m, kWe), QStringLiteral("verifying"));
-        QVERIFY(role(m, rowOf(m, kWe), "canEnable").toBool());      // ellenőrzés közben is használható
-        QVERIFY(!role(m, rowOf(m, kWe), "canDelete").toBool());     // de nem törölhető
+        QVERIFY(role(m, rowOf(m, kWe), "canEnable").toBool());      // usable while verifying
+        QVERIFY(!role(m, rowOf(m, kWe), "canDelete").toBool());     // but not deletable
         QCOMPARE(m.activeCount(), 1);
         QCOMPARE(stateOf(m, kEres), QStringLiteral("error"));
         QVERIFY(role(m, rowOf(m, kEres), "corrupt").toBool());
@@ -216,7 +216,7 @@ private slots:
         QVERIFY(role(m, 1, "blurb").toString().contains(QStringLiteral("csomagban")));
         QVERIFY(!m.fallbackActive());
 
-        // A WeSpeaker hiányzik, a csomagolt CAM++ tartalékként fut.
+        // WeSpeaker is missing, the bundled CAM++ runs as a fallback.
         m.setDemoState(QStringLiteral("B08fallback"));
         QCOMPARE(stateOf(m, kWe), QStringLiteral("missing"));
         QCOMPARE(stateOf(m, kCamp), QStringLiteral("bundled"));
@@ -235,7 +235,7 @@ private slots:
         QCOMPARE(vm.page(), QStringLiteral("speakers"));
     }
 
-    // ---- valódi controller, letöltés file:// forrásról ----------------------------------
+    // ---- real controller, download from a file:// source ----
 
     void downloadsTheDefaultModelAndTheCoreUsesIt()
     {
@@ -249,7 +249,7 @@ private slots:
         QCOMPARE(m.defaultState(), QStringLiteral("missing"));
         QVERIFY(m_app->activeVoiceModelIds().isEmpty());
 
-        // Letöltés előtt nem kapcsolható be.
+        // Cannot be switched on before download.
         m.setEnabled(kCamp, true);
         QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kCamp));
 
@@ -258,13 +258,13 @@ private slots:
         QCOMPARE(m.defaultState(), QStringLiteral("downloading"));
         QVERIFY(done.wait(5000));
         QVERIFY(done.first().at(1).toBool());
-        // Letöltés után ellenőrzés (méret) — a kártyán látszik; a defaultState (Első lépések)
-        // a fájl meglétét mutatja —, utána „letöltve”.
+        // After download a check (size), visible on the card; defaultState (Getting started) shows
+        // the file's existence, then "downloaded".
         QCOMPARE(stateOf(m, kWe), QStringLiteral("verifying"));
         QCOMPARE(m.defaultState(), QStringLiteral("downloaded"));
         QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kWe) == QLatin1String("downloaded"); }, 3000));
         QVERIFY(QFileInfo::exists(modelPath(kWe)));
-        // Az alapmodell eleve be volt kapcsolva: a core most már használja.
+        // The default model was switched on already: core uses it now.
         QVERIFY(QTest::qWaitFor([&] { return m_app->activeVoiceModelIds() == QStringList{kWe}; }, 3000));
         QVERIFY(m.anyAvailable());
         QCOMPARE(m.activeCount(), 1);
@@ -279,12 +279,12 @@ private slots:
         vm.setController(m_app.get());
         VoiceModelListModel* m = vm.voiceModels();
         m->downloader()->setReachableOverride(true);
-        // A helyőrző mérete eltér a leíróétól → „sérült” → hiba.
+        // The placeholder's size differs from the descriptor's, so "corrupt", so an error.
         m->refresh();
         QVERIFY(QTest::qWaitFor([&] { return stateOf(*m, kWe) == QLatin1String("error"); }, 3000));
         QVERIFY(role(*m, rowOf(*m, kWe), "corrupt").toBool());
         QVERIFY(role(*m, rowOf(*m, kWe), "errorText").toString().contains(QStringLiteral("mérete")));
-        // Újra: a sérült fájlt lecseréli.
+        // Again: it replaces the corrupt file.
         QSignalSpy done(m, &VoiceModelListModel::downloadFinished);
         m->retry(kWe);
         QVERIFY(done.wait(5000));
@@ -295,7 +295,7 @@ private slots:
         m->download(kCamp);
         QVERIFY(done.wait(5000));
         QVERIFY(QTest::qWaitFor([&] { return stateOf(*m, kCamp) == QLatin1String("downloaded"); }, 3000));
-        // A letöltés azonnali, a bekapcsolás piszkozat: Mentésig a core nem használja.
+        // The download is immediate, switching on is a draft: core does not use it until Save.
         QVERIFY(role(*m, rowOf(*m, kCamp), "enabled").toBool());
         QVERIFY(vm.dirty());
         QVERIFY(!m_app->settings()->enabledVoiceModels().contains(kCamp));
@@ -304,7 +304,7 @@ private slots:
         QCOMPARE(m_app->settings()->enabledVoiceModels(), QStringList({kCamp, kWe}));
         QVERIFY(QTest::qWaitFor([&] { return m_app->activeVoiceModelIds() == QStringList({kCamp, kWe}); }, 3000));
 
-        // Kikapcsolás + Mégse: semmi nem íródik.
+        // Switching off + Cancel: nothing is written.
         m->setEnabled(kCamp, false);
         QVERIFY(vm.dirty());
         vm.discard();
@@ -327,7 +327,7 @@ private slots:
         QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kWe) == QLatin1String("missing"); }, 3000));
         QVERIFY(!QFileInfo::exists(modelPath(kWe)));
 
-        // Offline: a valódi (https) leírónál a letöltés el sem indul.
+        // Offline: for the real (https) descriptor the download does not even start.
         m.setSpecsForTest(VoiceModelRegistry::builtin());
         m.downloader()->setReachableOverride(false);
         m.refresh();
@@ -338,7 +338,7 @@ private slots:
         QVERIFY(!m.downloader()->isRunning(kEres));
         QVERIFY(!QFileInfo::exists(modelPath(kEres)));
 
-        // Windows-csomag: az alapmodell az <appDir>/models-ban — „a csomagban”, nem tölthető le.
+        // Windows package: the default model is in <appDir>/models, "in the package", not downloadable.
         QTemporaryDir app;
         const QString bundled = QDir(app.path()).filePath(QStringLiteral("models/") + VoiceModelRegistry::spec(kCamp)->fileName);
         QDir().mkpath(QFileInfo(bundled).absolutePath());
@@ -348,7 +348,7 @@ private slots:
         m.setDirsForTest(m_home->path(), app.path());
         QVERIFY(QTest::qWaitFor([&] { return stateOf(m, kCamp) == QLatin1String("bundled"); }, 3000));
         QVERIFY(role(m, rowOf(m, kCamp), "canEnable").toBool());
-        // A csomagban lévő nem törölhető.
+        // One in the package cannot be deleted.
         QVERIFY(!role(m, rowOf(m, kCamp), "hasFile").toBool());
         QVERIFY(!role(m, rowOf(m, kCamp), "canDelete").toBool());
         QVERIFY(!m.deleteModel(kCamp).isEmpty());
@@ -363,11 +363,11 @@ private slots:
         placeModel(kCamp, 10);
         placeModel(kWe, 10);
         m_app->settings()->setEnabledVoiceModels({kCamp});
-        m_app->setVoiceEmbedderLoader(fakeLoader());   // a fájlok most kerültek a helyükre: újraszámol
+        m_app->setVoiceEmbedderLoader(fakeLoader());   // the files just got into place: recomputes
         QCOMPARE(m_app->activeVoiceModelIds(), QStringList{kCamp});
 
-        // Két minta, amelyekhez nincs hang: egy létező megbeszélésből (fut a háttérben, de
-        // hiányzik a felvétel) és egy törölt megbeszélésből (el sem indul).
+        // Two samples with no audio: one from an existing meeting (runs in the background, but the
+        // recording is missing) and one from a deleted meeting (does not even start).
         tanara::Meeting meeting = m_app->store()->createMeeting(QStringLiteral("Hang nélkül"));
         m_app->store()->saveMeeting(meeting);
         tanara::Voiceprint vp;
@@ -384,17 +384,17 @@ private slots:
 
         VoiceModelListModel m;
         m.setController(m_app.get());
-        QCOMPARE(m.backfillState(), QString());   // a használt modellekből nem hiányzik semmi
+        QCOMPARE(m.backfillState(), QString());   // nothing is missing from the models in use
 
         QStringList seen;
         connect(&m, &VoiceModelListModel::backfillChanged, this, [&] { seen << m.backfillState(); });
-        m_app->settings()->setEnabledVoiceModels({kCamp, kWe});   // bővült → pótlás
+        m_app->settings()->setEnabledVoiceModels({kCamp, kWe});   // expanded: backfill
         QVERIFY(m_app->voiceprintBackfillRunning());
         QVERIFY(QTest::qWaitFor([&] { return m.backfillState() == QLatin1String("partial"); }, 10000));
         QVERIFY2(seen.contains(QStringLiteral("running")), qPrintable(seen.join(',')));
         QCOMPARE(m.backfillSkipped(), 2);
         QVERIFY(m.backfillText().contains(QStringLiteral("2 minta")));
-        // Kinek, melyik, miért: személy szerint rendezve, a megbeszélés címével.
+        // For whom, which, why: sorted by person, with the meeting's title.
         const QVariantList skips = m.backfillSkips();
         QCOMPARE(skips.size(), 2);
         QCOMPARE(skips.at(0).toMap().value(QStringLiteral("person")).toString(), QStringLiteral("Fehér Gábor"));
@@ -405,7 +405,7 @@ private slots:
         QCOMPARE(skips.at(1).toMap().value(QStringLiteral("reason")).toString(), QStringLiteral("hiányzó felvétel"));
         QCOMPARE(skips.at(1).toMap().value(QStringLiteral("models")).toString(), QStringLiteral("WeSpeaker"));
 
-        // A Személyek ablak részletei: a személy saját jelzése.
+        // The People window's details: the person's own indicator.
         BackfillSkipNote note;
         note.setController(m_app.get());
         note.setPerson(QStringLiteral("Kovács Lilla"));
@@ -416,8 +416,8 @@ private slots:
         note.setPerson(QStringLiteral("Senki"));
         QCOMPARE(note.count(), 0);
 
-        // Egy új példány (pl. az ablak újranyitása) is látja a pótolhatatlan mintákat (az
-        // induláskori pótlás közben újra lefuthat — azt megvárjuk).
+        // A new instance (e.g. reopening the window) also sees the unrecoverable samples (the
+        // startup backfill may rerun meanwhile; we wait for that).
         QVERIFY(QTest::qWaitFor([&] { return !m_app->voiceprintBackfillRunning(); }, 10000));
         QTest::qWait(50);
         QCOMPARE(m.backfillState(), QStringLiteral("partial"));
@@ -427,7 +427,7 @@ private slots:
         QCOMPARE(again.backfillSkipped(), 2);
     }
 
-    // A k / N a core jeleiből (hamis jelek: a pótlás gyors, a valódi futás nem mutatná a közepét).
+    // The k / N from core's signals (fake signals: the backfill is fast, the real run would not show the middle).
     void backfillProgressFollowsTheSignals()
     {
         startApp();
@@ -445,13 +445,13 @@ private slots:
         emit m_app->voiceprintBackfillFinished(5, 0);
         QCOMPARE(m.backfillState(), QStringLiteral("done"));
         QVERIFY(m.backfillSkips().isEmpty());
-        // Új futás: újra „running”, a régi lista nem látszik.
+        // New run: "running" again, the old list is not shown.
         emit m_app->voiceprintBackfillStarted(2);
         QCOMPARE(m.backfillState(), QStringLiteral("running"));
         QCOMPARE(m.backfillTotal(), 2);
     }
 
-    // Ellenőrzés a lap megnyitásakor (refresh) és törlés: csak a letöltött fájl.
+    // Check when the page opens (refresh) and delete: only the downloaded file.
     void verifyAndDeleteTheDownloadedFile()
     {
         startApp();
@@ -463,7 +463,7 @@ private slots:
         QSignalSpy done(&m, &VoiceModelListModel::downloadFinished);
         QSignalSpy verified(&m, &VoiceModelListModel::verifyFinished);
         m.download(kCamp);
-        // Letöltés közben nem törölhető.
+        // Cannot be deleted during download.
         QVERIFY(!m.deleteModel(kCamp).isEmpty());
         QVERIFY(done.wait(5000));
         QVERIFY(verified.wait(3000));
@@ -473,7 +473,7 @@ private slots:
         QVERIFY(role(m, rowOf(m, kCamp), "hasFile").toBool());
         QVERIFY(role(m, rowOf(m, kCamp), "canDelete").toBool());
 
-        // A fájl közben megsérül (pl. félbehagyott másolás): a lap megnyitásakor ellenőrzés → hiba.
+        // The file gets corrupted meanwhile (e.g. an interrupted copy): on opening the page a check gives an error.
         const QString file = modelPath(kCamp);
         {
             QFile f(file);
@@ -484,23 +484,23 @@ private slots:
         m.refresh();
         QCOMPARE(stateOf(m, kCamp), QStringLiteral("verifying"));
         QVERIFY(!role(m, rowOf(m, kCamp), "canDelete").toBool());
-        QVERIFY(!m.deleteModel(kCamp).isEmpty());   // ellenőrzés közben sem
+        QVERIFY(!m.deleteModel(kCamp).isEmpty());   // not during the check either
         QVERIFY(verified.wait(3000));
         QVERIFY(!verified.last().at(1).toBool());
         QCOMPARE(stateOf(m, kCamp), QStringLiteral("error"));
         QVERIFY(role(m, rowOf(m, kCamp), "corrupt").toBool());
-        QVERIFY(role(m, rowOf(m, kCamp), "canDelete").toBool());   // a sérült fájl törölhető
+        QVERIFY(role(m, rowOf(m, kCamp), "canDelete").toBool());   // the corrupt file can be deleted
 
-        // Törlés: a fájl eltűnik, a sor „nincs letöltve”.
+        // Delete: the file disappears, the row is "not downloaded".
         QCOMPARE(m.deleteModel(kCamp), QString());
         QVERIFY(!QFileInfo::exists(file));
         QCOMPARE(stateOf(m, kCamp), QStringLiteral("missing"));
         QVERIFY(!role(m, rowOf(m, kCamp), "hasFile").toBool());
         QVERIFY(!role(m, rowOf(m, kCamp), "corrupt").toBool());
-        QVERIFY(!m.deleteModel(kCamp).isEmpty());   // nincs mit törölni
+        QVERIFY(!m.deleteModel(kCamp).isEmpty());   // nothing to delete
     }
 
-    // Kézzel bemásolt modellfájl: az Újraolvasás után a lista és a core is látja.
+    // A hand-copied model file: after "Rescan" the list and core both see it.
     void rescanPicksUpAManuallyCopiedFile()
     {
         startApp();
@@ -541,7 +541,7 @@ private slots:
         QVERIFY(!allOff || !allOff->isVisible());
     }
 
-    // ---- a lap a Beállítások-ablakban ----------------------------------------------------
+    // ---- the page in the Settings window ----
 
     void speakersPageRendersTheCards()
     {
@@ -570,13 +570,13 @@ private slots:
             QVERIFY2(findItem(win->contentItem(), QStringLiteral("voiceModelCard-") + id), qPrintable(id));
         auto* vm = qobject_cast<SettingsViewModel*>(win->property("vm").value<QObject*>());
         QVERIFY(vm);
-        // A CTA az alapmodellt tölti (demóban csak az állapot vált).
+        // The CTA downloads the default model (in demo mode only the state changes).
         QMetaObject::invokeMethod(findItem(win->contentItem(), QStringLiteral("voiceModelsNoneDownload")), "clicked");
         QCOMPARE(vm->voiceModels()->defaultState(), QStringLiteral("downloading"));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
-    // B08verify / B08delete / B08partial a lapon: pirula, megerősítés, a kimaradt minták listája.
+    // B08verify / B08delete / B08partial on the page: pill, confirmation, the list of skipped samples.
     void speakersPageDemoStates()
     {
         QQmlEngine engine;
@@ -634,7 +634,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
 
-    // A Személyek ablak részletei: „1 minta nem pótolható: hiányzó felvétel” (demó).
+    // The People window's details: "1 sample cannot be backfilled: missing recording" (demo).
     void peopleDetailShowsTheSkippedSample()
     {
         QQmlEngine engine;
@@ -652,7 +652,7 @@ private slots:
         QVERIFY(note->isVisible());
         QCOMPARE(findItem(win->contentItem(), QStringLiteral("backfillSkipNoteText"))->property("text").toString(),
                  QStringLiteral("1 minta nem pótolható: hiányzó felvétel"));
-        // Más demó-állapotban nincs.
+        // Not in another demo state.
         std::unique_ptr<QObject> other(comp.createWithInitialProperties({{QStringLiteral("demoState"), QStringLiteral("P01")}}));
         auto* win2 = qobject_cast<QQuickWindow*>(other.get());
         QVERIFY(win2);

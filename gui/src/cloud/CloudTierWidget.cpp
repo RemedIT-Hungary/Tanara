@@ -56,7 +56,7 @@ CloudTierWidget::CloudTierWidget(AppController* app, WorkflowStep step, bool sho
     expert->setFlat(true);
     row->addStretch(1);
     v->addLayout(row);
-    // Második sor: nyelv (ha kell) + Expert — így keskeny panelen sem lóg ki.
+    // Second row: language (if needed) + Expert, so it fits even in a narrow panel.
     auto* row2 = new QHBoxLayout();
     if (showLanguage) {
         row2->addWidget(new QLabel(tr("A meeting nyelve:"), this));
@@ -124,7 +124,7 @@ void CloudTierWidget::refresh()
     const QString lang = s.languageHints.value(0);
     if (m_lang) fillLanguages(m_lang, lang);
 
-    // Tájékoztató ár (a katalógusból; a kliens nem számol — a becslés a gateway dolga).
+    // Informational price (from the catalog; the client does not compute; the estimate is the gateway's job).
     m_price->clear();
     if (model && stt && model->perHour.isValid())
         m_price->setText(tr("%1 / óra").arg(cloudui::money(model->perHour, MoneyStyle::Charge)));

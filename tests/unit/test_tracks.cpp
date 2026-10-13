@@ -1,8 +1,6 @@
-//
-// TrackCatalog + WaveformService — „Sávok” fül (M09): barátságos nevek az eszköz szerepe
-// alapján, átnevezés, hiányzó fájl megkeresése, eldobott sávok törlése, hullámforma-csúcsok
-// (aszinkron ffmpeg + gyorsítótár a meeting mappájában).
-//
+// TrackCatalog + WaveformService: the "Tracks" tab: friendly names from the device's role,
+// renaming, locating a missing file, deleting dropped tracks, waveform peaks (asynchronous
+// ffmpeg + a cache in the meeting's folder).
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -31,7 +29,7 @@ Track mk(const QString& id, const QString& device, TrackKind kind, bool active =
     return t;
 }
 
-// 16 bites mono WAV: az első fele csend, a második fele szinusz (amplitúdó: amp).
+// 16-bit mono WAV: the first half is silence, the second half a sine (amplitude: amp).
 void writeWav(const QString& path, int seconds, double amp = 0.5, int rate = 8000)
 {
     const int n = seconds * rate;
@@ -114,11 +112,11 @@ Meeting TracksTest::makeMeeting(const QVector<Track>& tracks, bool createFiles)
     return m;
 }
 
-// ---- barátságos nevek -------------------------------------------------------------------
+// ---- friendly names ----
 
 void TracksTest::friendlyNamesByRole()
 {
-    // A valós felállás: headset „Communication” monitorja + egy másik kimenet + USB mikrofon.
+    // The real setup: the headset's "Communication" monitor + another output + a USB microphone.
     const QVector<Track> tracks{
         mk("comm", "Monitor of Sennheiser - Communication", TrackKind::Loopback, true, 0.5f),
         mk("mic", "Trust USB mikrofon", TrackKind::Mic, true, 0.7f),
@@ -135,21 +133,21 @@ void TracksTest::friendlyNamesByRole()
 
 void TracksTest::callDeviceByLoudnessWhenNameSilent()
 {
-    // Egyik név sem utal hívás-eszközre: az egyetlen aktív monitor a hívás hangja …
+    // No name suggests a call device: the single active monitor is the call audio ...
     QVector<Track> one{
         mk("a", "Monitor of Beépített hang - Analóg sztereó", TrackKind::Loopback, true, 0.3f),
         mk("b", "Monitor of HDMI kimenet", TrackKind::Loopback, false, 0.0f),
     };
     QCOMPARE(tracknames::classify(one[0], one), TrackRole::CallAudio);
     QCOMPARE(tracknames::classify(one[1], one), TrackRole::SystemAudio);
-    // … több aktív közül a leghangosabb.
+    // ... among several active ones the loudest.
     QVector<Track> two{
         mk("a", "Monitor of Beépített hang", TrackKind::Loopback, true, 0.1f),
         mk("b", "Monitor of USB DAC", TrackKind::Loopback, true, 0.6f),
     };
     QCOMPARE(tracknames::classify(two[0], two), TrackRole::SystemAudio);
     QCOMPARE(tracknames::classify(two[1], two), TrackRole::CallAudio);
-    // Vonalbemenet / ismeretlen: az eszköz neve marad.
+    // Line input / unknown: the device name stays.
     QVector<Track> other{mk("aux", "Line In (Scarlett 2i2)", TrackKind::Other)};
     QCOMPARE(tracknames::classify(other[0], other), TrackRole::Other);
     QCOMPARE(tracknames::friendlyNames(other), QStringList({"Scarlett 2i2"}));
@@ -170,8 +168,8 @@ void TracksTest::duplicateRolesDisambiguated()
     QCOMPARE(names.at(2), QStringLiteral("Hívás hangja"));
     QCOMPARE(names.at(3), QStringLiteral("Rendszerhang (Kanto YU4)"));
     QCOMPARE(names.at(4), QStringLiteral("Rendszerhang (HDMI)"));
-    QCOMPARE(QSet<QString>(names.begin(), names.end()).size(), 5);   // mind különböző
-    // Azonos eszköznév kétszer: sorszám különböztet.
+    QCOMPARE(QSet<QString>(names.begin(), names.end()).size(), 5);   // all different
+    // The same device name twice: an ordinal tells them apart.
     const QVector<Track> same{mk("a", "USB Mic", TrackKind::Mic), mk("b", "USB Mic", TrackKind::Mic)};
     const QStringList n2 = tracknames::friendlyNames(same);
     QVERIFY(n2.at(0) != n2.at(1));
@@ -186,17 +184,17 @@ void TracksTest::shortDeviceNames()
     QCOMPARE(tracknames::shortDeviceName("Trust USB mikrofon"), QStringLiteral("Trust USB mikrofon"));
 }
 
-// ---- katalógus-műveletek ----------------------------------------------------------------
+// ---- catalog operations ----
 
-// ---- egy eszköz szakaszai ---------------------------------------------------------------
+// ---- one device's segments ----
 
 void TracksTest::segmentsOfOneDevice()
 {
-    // A rendszerhang 57,2 s-nál bekapcsolva, később ki, 300 s-nál újra be: két fájl. Közben egy
-    // másik loopback (HDMI) is szól, halkabban. A második szakasz a meeting.json VÉGÉN áll.
+    // The system audio on at 57.2 s, off later, on again at 300 s: two files. Meanwhile another
+    // loopback (HDMI) plays too, more quietly. The second segment is at the END of meeting.json.
     Track sys1 = mk("sys", "Monitor of Speakers", TrackKind::Loopback, true, 0.3f);
     sys1.startOffsetMs = 57200;
-    Track sys2 = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback, false, 0.0f);   // csendes, eldobott
+    Track sys2 = mk("sys-2", "Monitor of Speakers", TrackKind::Loopback, false, 0.0f);   // quiet, dropped
     sys2.startOffsetMs = 300000;
     Track sys3 = mk("sys-3", "Monitor of Speakers", TrackKind::Loopback, true, 0.6f);
     sys3.startOffsetMs = 400000;
@@ -210,7 +208,7 @@ void TracksTest::segmentsOfOneDevice()
     const QVector<tracknames::SegmentInfo> seg = tracknames::segments(tracks);
     QCOMPARE(seg.at(0).segment, 0);
     QCOMPARE(seg.at(0).count, 1);
-    QCOMPARE(seg.at(2).leader, 2);                     // a legkorábbi szakasz vezet
+    QCOMPARE(seg.at(2).leader, 2);                     // the earliest segment leads
     QCOMPARE(seg.at(2).segment, 1);
     QCOMPARE(seg.at(4).leader, 2);
     QCOMPARE(seg.at(4).segment, 2);
@@ -219,8 +217,8 @@ void TracksTest::segmentsOfOneDevice()
     QCOMPARE(seg.at(1).count, 3);
     QCOMPARE(seg.at(3).segment, 0);
 
-    // Közös szerep és név: a szakaszok együtt a leghangosabb loopback → hívás hangja; az
-    // eldobott szakasz is (nem „Rendszerhang” egy hívás közepén).
+    // Shared role and name: the segments together are the loudest loopback, so the call audio;
+    // the dropped segment too (not "System audio" in the middle of a call).
     for (int i : {1, 2, 4})
         QCOMPARE(tracknames::classify(tracks[i], tracks), TrackRole::CallAudio);
     QCOMPARE(tracknames::classify(tracks[3], tracks), TrackRole::SystemAudio);
@@ -230,7 +228,7 @@ void TracksTest::segmentsOfOneDevice()
     QCOMPARE(names.at(4), QStringLiteral("Hívás hangja"));
     QCOMPARE(names.at(3), QStringLiteral("Rendszerhang"));
 
-    // Sorrend a Sávok fülön: logikai sávonként, azon belül eltolás szerint.
+    // Order on the Tracks tab: per logical track, within that by offset.
     Meeting m;
     m.folder = m_dir->path();
     m.tracks = tracks;
@@ -243,11 +241,11 @@ void TracksTest::segmentsOfOneDevice()
     QCOMPARE(views.at(3).segmentCount, 3);
     QCOMPARE(views.at(0).segment, 0);
 
-    // Azonos nevű eszközök azonos időben (két egyforma mikrofon): külön sávok, nem szakaszok.
+    // Same-named devices at the same time (two identical microphones): separate tracks, not segments.
     QVector<Track> twins{mk("a", "USB Mic", TrackKind::Mic), mk("b", "USB Mic", TrackKind::Mic)};
     QCOMPARE(tracknames::segments(twins).at(1).leader, 1);
     QCOMPARE(tracknames::segments(twins).at(1).segment, 0);
-    // … de ha az egyik később indult, egy eszköz két szakasza.
+    // ... but if one started later, two segments of one device.
     twins[1].startOffsetMs = 5000;
     QCOMPARE(tracknames::segments(twins).at(1).leader, 0);
     const QStringList tn = tracknames::friendlyNames(twins);
@@ -266,7 +264,7 @@ void TracksTest::segmentsRenameTogether()
     QCOMPARE(back.tracks.at(1).customName, QStringLiteral("Teams"));
     QCOMPARE(back.tracks.at(2).customName, QStringLiteral("Teams"));
     QCOMPARE(back.tracks.at(0).customName, QString());
-    // Vissza a barátságos névre: mindkét szakaszon.
+    // Back to the friendly name: on both segments.
     QVERIFY(cat.renameTrack(m.id, "sys", QString()));
     for (const TrackView& v : cat.tracks(m.id)) QVERIFY(!v.renamed);
 }
@@ -284,9 +282,9 @@ void TracksTest::viewsAndMissingFile()
     QCOMPARE(v[0].role, TrackRole::CallAudio);
     QVERIFY(!v[0].fileMissing);
     QVERIFY(v[0].fileSize > 0);
-    QCOMPARE(v[0].durationMs, qint64(-1));              // még nincs hullámforma-cache
+    QCOMPARE(v[0].durationMs, qint64(-1));              // no waveform cache yet
     QVERIFY(v[0].absolutePath.startsWith(m.folder));
-    QVERIFY(v[1].fileMissing);                          // „hiányzik a fájl”
+    QVERIFY(v[1].fileMissing);                          // "file missing"
     QCOMPARE(v[1].displayName, QStringLiteral("Saját mikrofon"));
     QVERIFY(cat.tracks(QStringLiteral("nincs-ilyen")).isEmpty());
 }
@@ -298,25 +296,25 @@ void TracksTest::renamePersists()
     QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
     QVERIFY(cat.renameTrack(m.id, "mic", "  Tárgyaló   asztali mikrofon "));
     QCOMPARE(changed.count(), 1);
-    QVERIFY(!cat.renameTrack(m.id, "mic", "Tárgyaló asztali mikrofon"));   // nincs változás
+    QVERIFY(!cat.renameTrack(m.id, "mic", "Tárgyaló asztali mikrofon"));   // no change
     QVERIFY(!cat.renameTrack(m.id, "nincs", "x"));
 
-    // Új store + katalógus (újraindítás): a név a meeting.json-ból jön.
+    // A new store + catalog (a restart): the name comes from meeting.json.
     MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
     TrackCatalog cat2(&store2);
     TrackView v = cat2.tracks(m.id).first();
     QCOMPARE(v.displayName, QStringLiteral("Tárgyaló asztali mikrofon"));
     QCOMPARE(v.friendlyName, QStringLiteral("Saját mikrofon"));
-    QCOMPARE(v.rawDeviceName, QStringLiteral("Trust USB mikrofon"));     // a nyers név megmarad
+    QCOMPARE(v.rawDeviceName, QStringLiteral("Trust USB mikrofon"));     // the raw name stays
     QVERIFY(v.renamed);
     QCOMPARE(store2.load(m.id).tracks.first().customName, QStringLiteral("Tárgyaló asztali mikrofon"));
 
-    // Üres név (vagy maga a barátságos név) → vissza az alapértelmezettre.
+    // An empty name (or the friendly name itself) goes back to the default.
     QVERIFY(cat2.renameTrack(m.id, "mic", "Saját mikrofon"));
     v = cat2.tracks(m.id).first();
     QVERIFY(!v.renamed);
     QCOMPARE(v.displayName, QStringLiteral("Saját mikrofon"));
-    // Régi (customName nélküli) JSON olvasása: üres marad, és üresen nem is íródik ki.
+    // Reading an old JSON (without customName): stays empty, and is not written out when empty.
     QVERIFY(!toJson(store2.load(m.id).tracks.first()).contains("customName"));
 }
 
@@ -326,7 +324,7 @@ void TracksTest::relocateCopiesIntoFolder()
     m.mixdownDirty = false;
     m_store->saveMeeting(m);
     const QString orig = QDir(m.folder).filePath("track_mic.wav");
-    // A felvétel „elkóborolt”: a fájl egy külső mappában van más néven.
+    // The recording "wandered off": the file is in an outside folder under another name.
     const QString outside = m_dir->filePath("valahol/felvetel-masolat.wav");
     QDir().mkpath(m_dir->filePath("valahol"));
     QVERIFY(QFile::rename(orig, outside));
@@ -340,12 +338,12 @@ void TracksTest::relocateCopiesIntoFolder()
 
     const TrackView v = cat.tracks(m.id).first();
     QVERIFY(!v.fileMissing);
-    QCOMPARE(v.track.file, QStringLiteral("track_mic.wav"));     // az eredeti név, a mappában
+    QCOMPARE(v.track.file, QStringLiteral("track_mic.wav"));     // the original name, in the folder
     QVERIFY(QFile::exists(orig));
-    QVERIFY(QFile::exists(outside));                             // az eredeti érintetlen
-    QVERIFY(m_store->load(m.id).mixdownDirty);                   // aktív sáv → a keverék elavult
+    QVERIFY(QFile::exists(outside));                             // the original is untouched
+    QVERIFY(m_store->load(m.id).mixdownDirty);                   // an active track, so the mix is stale
 
-    // A mappában lévő (más nevű) fájl: másolás nélkül hivatkozunk rá.
+    // A file in the folder (with another name): we reference it without copying.
     const QString inFolder = QDir(m.folder).filePath("track_mic_v2.wav");
     QVERIFY(QFile::copy(outside, inFolder));
     QVERIFY(cat.relocateTrack(m.id, "mic", inFolder, &err));
@@ -364,11 +362,11 @@ void TracksTest::relocateRejectsBadFiles()
     QVERIFY(empty.open(QIODevice::WriteOnly));
     empty.close();
     QVERIFY(!cat.relocateTrack(m.id, "mic", empty.fileName(), &err));
-    // Másik sáv fájlját nem lehet „megtalálni” ehhez a sávhoz.
+    // Another track's file cannot be "found" for this track.
     QVERIFY(!cat.relocateTrack(m.id, "mic", QDir(m.folder).filePath("track_sys.wav"), &err));
     QVERIFY(!cat.relocateTrack(m.id, "nincs-sav", QDir(m.folder).filePath("track_mic.wav"), &err));
     QCOMPARE(changed.count(), 0);
-    QCOMPARE(m_store->load(m.id).tracks.first().file, QStringLiteral("track_mic.wav"));   // nincs változás
+    QCOMPARE(m_store->load(m.id).tracks.first().file, QStringLiteral("track_mic.wav"));   // no change
 }
 
 void TracksTest::deleteDroppedTracksAtOnce()
@@ -380,7 +378,7 @@ void TracksTest::deleteDroppedTracksAtOnce()
     m.mixdownDirty = false;
     m_store->saveMeeting(m);
     const QDir folder(m.folder);
-    // Hullámforma-cache az egyik eldobott sávhoz (annak is el kell tűnnie).
+    // The waveform cache for one dropped track (it must disappear too).
     QFile cache(WaveformService::cachePath(folder.filePath("track_d1.wav")));
     QVERIFY(cache.open(QIODevice::WriteOnly));
     cache.write("{}");
@@ -390,7 +388,7 @@ void TracksTest::deleteDroppedTracksAtOnce()
     QCOMPARE(cat.droppedTrackCount(m.id), 2);
     QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
     QCOMPARE(cat.deleteDroppedTracks(m.id), 2);
-    QCOMPARE(changed.count(), 1);                              // egy művelet → egy jel
+    QCOMPARE(changed.count(), 1);                              // one operation, one signal
 
     const Meeting after = m_store->load(m.id);
     QCOMPARE(after.tracks.size(), 2);
@@ -399,14 +397,14 @@ void TracksTest::deleteDroppedTracksAtOnce()
     QVERIFY(!folder.exists("track_d1.wav"));
     QVERIFY(!folder.exists("track_d2.wav"));
     QVERIFY(!QFile::exists(cache.fileName()));
-    QVERIFY(folder.exists("track_comm.wav"));                  // az aktív felvételek megmaradnak
+    QVERIFY(folder.exists("track_comm.wav"));                  // the active recordings stay
     QVERIFY(folder.exists("track_mic.wav"));
-    QVERIFY(!after.mixdownDirty);                              // eldobott sáv nem volt a keverékben
+    QVERIFY(!after.mixdownDirty);                              // the dropped track was not in the mix
     QCOMPARE(cat.deleteDroppedTracks(m.id), 0);
     QCOMPARE(changed.count(), 1);
 }
 
-// ---- hullámforma ------------------------------------------------------------------------
+// ---- waveform ----
 
 void TracksTest::peaksComputedCachedAndReused()
 {
@@ -422,9 +420,9 @@ void TracksTest::peaksComputedCachedAndReused()
     QElapsedTimer clock;
     clock.start();
     svc.request(m.id, "mic", path);
-    QVERIFY2(clock.elapsed() < 100, "a request() blokkolt");   // aszinkron
+    QVERIFY2(clock.elapsed() < 100, "a request() blokkolt");   // asynchronous
     QVERIFY(svc.isPending(path));
-    svc.request(m.id, "mic", path);                            // dupla kérés → egy számítás
+    svc.request(m.id, "mic", path);                            // double request: one computation
     QVERIFY(ready.wait(20000));
     QCOMPARE(ready.count(), 1);
     QCOMPARE(failed.count(), 0);
@@ -433,15 +431,15 @@ void TracksTest::peaksComputedCachedAndReused()
     QCOMPARE(ready.at(0).at(1).toString(), QStringLiteral("mic"));
     const TrackPeaks p = ready.at(0).at(2).value<TrackPeaks>();
     QCOMPARE(p.trackId, QStringLiteral("mic"));
-    QCOMPARE(p.peaks.size(), WaveformService::kBuckets);       // „pár száz vödör”
-    QVERIFY(qAbs(p.durationMs - 30000) < 100);                 // a dekódolt, pontos hossz
-    // Az első fele csend, a második fele ~0.5 amplitúdójú szinusz.
+    QCOMPARE(p.peaks.size(), WaveformService::kBuckets);       // "a few hundred buckets"
+    QVERIFY(qAbs(p.durationMs - 30000) < 100);                 // the decoded, exact length
+    // The first half is silence, the second half a sine of ~0.5 amplitude.
     QVERIFY(p.peaks.at(50) < 0.02f);
     QVERIFY(p.peaks.at(150) < 0.02f);
     QVERIFY(qAbs(p.peaks.at(250) - 0.5f) < 0.05f);
     QVERIFY(qAbs(p.peaks.at(390) - 0.5f) < 0.05f);
 
-    // Gyorsítótár a meeting mappájában; a következő kérés számítás nélkül, ugyanazt adja.
+    // Cache in the meeting's folder; the next request gives the same without computing.
     QVERIFY(QFile::exists(WaveformService::cachePath(path)));
     QVERIFY(WaveformService::cachePath(path).startsWith(m.folder));
     const TrackPeaks cached = WaveformService::loadCached(path);
@@ -450,12 +448,12 @@ void TracksTest::peaksComputedCachedAndReused()
     QCOMPARE(cached.durationMs, p.durationMs);
 
     svc.request(m.id, "mic", path);
-    QVERIFY(!svc.isPending(path));                             // nem indult ffmpeg
+    QVERIFY(!svc.isPending(path));                             // no ffmpeg started
     QVERIFY(ready.wait(2000));
     QCOMPARE(ready.count(), 2);
     QCOMPARE(ready.at(1).at(2).value<TrackPeaks>().peaks, p.peaks);
 
-    // A katalógus a cache-ből tudja a sáv hosszát.
+    // The catalog knows the track's length from the cache.
     TrackCatalog cat(m_store.get());
     QCOMPARE(cat.tracks(m.id).first().durationMs, p.durationMs);
 }
@@ -472,8 +470,8 @@ void TracksTest::peaksInvalidatedWhenFileChanges()
     QVERIFY(ready.wait(20000));
     QVERIFY(WaveformService::loadCached(path).isValid());
 
-    writeWav(path, 6, 0.8);                                    // a fájl lecserélődött
-    QVERIFY(!WaveformService::loadCached(path).isValid());     // a cache elavult
+    writeWav(path, 6, 0.8);                                    // the file was replaced
+    QVERIFY(!WaveformService::loadCached(path).isValid());     // the cache is stale
     svc.request(m.id, "mic", path);
     QVERIFY(ready.wait(20000));
     const TrackPeaks p = ready.at(1).at(2).value<TrackPeaks>();
@@ -490,10 +488,10 @@ void TracksTest::peaksFailForBrokenFile()
     WaveformService svc;
     QSignalSpy ready(&svc, &WaveformService::peaksReady);
     QSignalSpy failed(&svc, &WaveformService::peaksFailed);
-    // Hiányzó fájl.
+    // Missing file.
     svc.request("m1", "t1", m_dir->filePath("nincs.ogg"));
     QVERIFY(failed.wait(2000));
-    // Nem hangfájl.
+    // Not an audio file.
     const QString junk = m_dir->filePath("szemet.ogg");
     QFile f(junk);
     QVERIFY(f.open(QIODevice::WriteOnly));
@@ -505,7 +503,7 @@ void TracksTest::peaksFailForBrokenFile()
     QCOMPARE(ready.count(), 0);
     QVERIFY(!QFile::exists(WaveformService::cachePath(junk)));
 
-    // Megszakítás: nincs jel, nincs cache.
+    // Cancel: no signal, no cache.
     const QString big = m_dir->filePath("nagy.wav");
     writeWav(big, 600);
     svc.request("m2", "t", big);
@@ -519,7 +517,7 @@ void TracksTest::peaksFailForBrokenFile()
 void TracksTest::resample()
 {
     const QVector<float> src{0.1f, 0.9f, 0.2f, 0.3f, 0.0f, 0.5f};
-    QCOMPARE(WaveformService::resample(src, 3), QVector<float>({0.9f, 0.3f, 0.5f}));   // max-tartó
+    QCOMPARE(WaveformService::resample(src, 3), QVector<float>({0.9f, 0.3f, 0.5f}));   // max-hold
     QCOMPARE(WaveformService::resample(src, 6), src);
     QCOMPARE(WaveformService::resample(src, 12).size(), 12);
     QCOMPARE(WaveformService::resample(src, 12).at(2), 0.9f);

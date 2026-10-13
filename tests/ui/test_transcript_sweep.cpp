@@ -1,10 +1,10 @@
-// A Javítás nézet söprés-módja (S6) a beépített KITALÁLT meetingen (valódi SpeakerEditor, hamis
-// hang): megálló a kétes sor végén (+0,1 s), döntés a célsorra és utána folytatás; folyamatos mód
-// 3 mp-es utólagos ablaka; a fagyasztott ablak (sorokban) — ott a háttér jelölő-változása
-// függőben marad, kívül azonnal látszik; „N sor újra kétes” a már elhagyott sorokra; szakasz-vég
-// összesítő; és a QML-ben: Söprés kapcsoló, a billentyűk a célsorra (a kijelölés nem változik),
-// a döntés-sáv, a lejátszó megállítása / folytatása, tempó [ / ], a dokk söprés-rétege.
-// Kijelző nélkül fut; a felhasználó adataihoz nem nyúl.
+// The Edit view's sweep mode on the built-in MADE-UP meeting (real SpeakerEditor, fake audio):
+// a stop at the end of a doubtful line (+0.1 s), a decision on the target line and then
+// continuing; continuous mode's 3 s trailing window; the frozen window (in lines): there the
+// background marker change stays pending, outside it shows at once; "N lines doubtful again"
+// for the lines already left behind; section-end summary; and in QML: the Sweep switch, keys
+// to the target line (the selection does not change), the decision bar, stopping / resuming the
+// player, tempo [ / ], the dock's sweep layer. Runs without a display; it touches no user data.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
@@ -44,7 +44,7 @@ bool isStopRow(const TranscriptEditorViewModel& vm, int row)
            && cell(vm, row, Role::UncertainRole).toBool() && !cell(vm, row, Role::IgnoredRole).toBool();
 }
 
-// Az n. (0-tól) kétes, nem „nem azonosítható” sor a listában; -1, ha nincs.
+// The n-th (from 0) doubtful, not "cannot be identified" line in the list; -1 if none.
 int stopRow(const TranscriptEditorViewModel& vm, int nth = 0, int from = 0)
 {
     for (int r = from; r < vm.rows()->rowCount(); ++r)
@@ -52,7 +52,7 @@ int stopRow(const TranscriptEditorViewModel& vm, int nth = 0, int from = 0)
     return -1;
 }
 
-// Lejátszás-szimuláció: a pozíció kis lépésekben (mint a valódi lejátszó jelei).
+// Playback simulation: the position in small steps (like the real player's signals).
 void playTo(TranscriptEditorViewModel& vm, int fromMs, int toMs, int step = 200)
 {
     for (int ms = fromMs; ms < toMs; ms += step) vm.setPlaybackPosition(ms, true);
@@ -181,7 +181,7 @@ private slots:
         QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(QLatin1Char('\n'))));
     }
 
-    // ---- nézetmodell ----------------------------------------------------------------------
+    // ---- view model ----
 
     void stopMode_stopsAtUncertainRowEnd_decisionResumes()
     {
@@ -196,36 +196,36 @@ private slots:
         QSignalSpy stops(&vm, &TranscriptEditorViewModel::sweepStopReached);
         QSignalSpy resumes(&vm, &TranscriptEditorViewModel::sweepResumeRequested);
 
-        // Söprés nélkül nincs megálló.
+        // Without sweep there is no stop.
         playTo(vm, start, end + 300);
         QCOMPARE(stops.count(), 0);
 
         vm.setSweepActive(true);
         QVERIFY(vm.sweepActive());
-        QVERIFY(!vm.sweepContinuous());                     // alapból megálló-mód
+        QVERIFY(!vm.sweepContinuous());                     // stop mode by default
         vm.setPlaybackPosition(start - 500, true);
         playTo(vm, start, end + 50, 100);
-        QCOMPARE(stops.count(), 0);                         // a 0,1 s ráhagyás előtt még szól
+        QCOMPARE(stops.count(), 0);                         // still plays before the 0.1 s lead
         vm.setPlaybackPosition(end + 120, true);
         QCOMPARE(stops.count(), 1);
         QCOMPARE(stops.first().first().toInt(), row);
         QCOMPARE(vm.sweepStopRow(), row);
         QCOMPARE(vm.sweepTargetRow(), row);
 
-        // Enter (alapértelmezés): a javaslat, különben Jó így — utána a lejátszás folytatódik.
+        // Enter (default): the suggestion, otherwise Good as is; then playback continues.
         QVERIFY(vm.sweepDecide(row, QStringLiteral("default")));
         QCOMPARE(resumes.count(), 1);
         QCOMPARE(vm.sweepStopRow(), -1);
         QVERIFY(!cell(vm, row, Role::UncertainRole).toBool());
         QVERIFY(cell(vm, row, Role::SweepHandledRole).toBool());
-        QVERIFY(!vm.lastDecision().isEmpty());              // az „Imént” sor kiírja
+        QVERIFY(!vm.lastDecision().isEmpty());              // the "Just now" row says it
 
-        // Újrajátszva már nem áll meg (eldőlt).
+        // Replayed it no longer stops (decided).
         vm.setPlaybackPosition(start - 500, true);
         playTo(vm, start, end + 300, 100);
         QCOMPARE(stops.count(), 1);
 
-        // A következő kétes sor: Space = tovább döntés nélkül (a sor kétes marad, de nem áll meg újra).
+        // The next doubtful line: Space = on without deciding (the line stays doubtful, but does not stop again).
         const int next = stopRow(vm, 0, row + 1);
         QVERIFY(next > row);
         vm.setPlaybackPosition(vm.rowStartMs(next) - 300, true);
@@ -236,7 +236,7 @@ private slots:
         QVERIFY(cell(vm, next, Role::UncertainRole).toBool());
         QVERIFY(vm.sweepNextStopRow(row) != next);
 
-        // Kikapcsolva minden alaphelyzetbe.
+        // Off: everything back to the initial state.
         vm.setSweepActive(false);
         QCOMPARE(vm.sweepStopRow(), -1);
         QVERIFY(vm.sweepSections().isEmpty());
@@ -257,16 +257,16 @@ private slots:
         vm.setSweepContinuous(true);
         vm.setPlaybackPosition(start - 500, true);
         playTo(vm, start, end + 150, 100);
-        QCOMPARE(stops.count(), 0);                         // nem áll meg
-        QCOMPARE(vm.sweepAfterRow(), row);                  // utólagos ablak: még ez a célpont
+        QCOMPARE(stops.count(), 0);                         // does not stop
+        QCOMPARE(vm.sweepAfterRow(), row);                  // trailing window: still this target
         QCOMPARE(vm.sweepTargetRow(), row);
         playTo(vm, end + 150, end + 2500, 200);
         QCOMPARE(vm.sweepTargetRow(), row);
         playTo(vm, end + 2500, end + 3100, 200);
-        QCOMPARE(vm.sweepAfterRow(), -1);                   // 3 mp után a futó sor
+        QCOMPARE(vm.sweepAfterRow(), -1);                   // after 3 s the running line
         QCOMPARE(vm.sweepTargetRow(), vm.playingRow());
 
-        // Az ablakon belül a döntés a célsorra (J): az a sor kapja, az „Imént” sor mutatja.
+        // Within the window a decision goes to the target line (J): that line gets it, the "Just now" row shows it.
         vm.setPlaybackPosition(start - 500, true);
         playTo(vm, start, end + 400, 100);
         QCOMPARE(vm.sweepTargetRow(), row);
@@ -288,30 +288,30 @@ private slots:
         QVERIFY(inside >= 0 && outside > inside + 8);
         vm.setSweepActive(true);
         vm.setPlaybackPosition(vm.rowStartMs(inside), true);
-        // A látható terület: inside-1 … inside+2 → az ablak ± 2 sorral.
+        // The visible area: inside-1 ... inside+2, so the window +- 2 lines.
         vm.setSweepWindow(std::max(0, inside - 1), inside + 2);
         QVERIFY(vm.sweepFrozenFirstRow() <= inside && vm.sweepFrozenLastRow() >= inside + 4);
         QVERIFY(vm.sweepFrozenLastRow() < outside);
 
-        // „Háttér-változás” (nem a VM döntése): a szerkesztő közvetlenül megerősíti a két sort.
+        // "Background change" (not the VM's decision): the editor confirms the two lines directly.
         const QString insideId = cell(vm, inside, Role::UtteranceIdRole).toString();
         const QString outsideId = cell(vm, outside, Role::UtteranceIdRole).toString();
         QSignalSpy markers(&vm, &TranscriptEditorViewModel::sweepMarkersChanged);
         QVERIFY(vm.editor()->confirmUtterances({insideId, outsideId}));
-        // Az ablakban a jelölő nem változik (függőben), kívül azonnal.
+        // Within the window the marker does not change (pending), outside it does at once.
         QVERIFY(cell(vm, inside, Role::UncertainRole).toBool());
         QVERIFY(!cell(vm, outside, Role::UncertainRole).toBool());
         QCOMPARE(vm.pendingMarkerIds(), QStringList{insideId});
         QVERIFY(markers.count() > 0);
 
-        // A VM saját döntése az ablakban azonnal látszik.
+        // The VM's own decision shows at once within the window.
         const int other = stopRow(vm, 0, inside + 1);
         if (other >= 0 && other <= vm.sweepFrozenLastRow()) {
             QVERIFY(vm.sweepDecide(other, QStringLiteral("confirm")));
             QVERIFY(!cell(vm, other, Role::UncertainRole).toBool());
         }
 
-        // Az ablak továbblép (görgetés): a sor kikerül → a függő jelölő megjelenik.
+        // The window moves on (scrolling): the line leaves it, so the pending marker appears.
         vm.setSweepWindow(outside, outside + 3);
         QVERIFY(!cell(vm, inside, Role::UncertainRole).toBool());
         QVERIFY(vm.pendingMarkerIds().isEmpty());
@@ -327,21 +327,21 @@ private slots:
         QVERIFY(behind >= 0);
         const int last = vm.rows()->rowCount() - 1;
         const QString id = cell(vm, behind, Role::UtteranceIdRole).toString();
-        // A sort a „háttér” előbb rendben-nek, majd újra kétesnek jelöli — a lejátszás már túl van rajta.
+        // The line is marked OK by the "background", then doubtful again, after playback has passed it.
         QVERIFY(vm.editor()->confirmUtterances({id}));
         QVERIFY(!cell(vm, behind, Role::UncertainRole).toBool());
         vm.setSweepActive(true);
         vm.setPlaybackPosition(vm.rowStartMs(last), true);
         vm.setSweepWindow(last - 3, last);
         QCOMPARE(vm.rebehindCount(), 0);
-        vm.editor()->undo();                                // nem a VM útja: háttér-változásnak látszik
+        vm.editor()->undo();                                // not the VM's path: looks like a background change
         QVERIFY(cell(vm, behind, Role::UncertainRole).toBool());
         QCOMPARE(vm.rebehindCount(), 1);
         const QVariantList list = vm.rebehindRows();
         QCOMPARE(list.size(), 1);
         QCOMPARE(list.first().toMap().value(QStringLiteral("utteranceId")).toString(), id);
         QCOMPARE(list.first().toMap().value(QStringLiteral("row")).toInt(), behind);
-        // Döntés a soron → kikerül a listából; a „Visszanézem” a sor elejére visz.
+        // A decision on the line removes it from the list; "Look back" goes to the line's start.
         QVERIFY(vm.sweepReviewBehind() == vm.rowStartMs(behind));
         QVERIFY(vm.sweepDecide(behind, QStringLiteral("confirm")));
         QCOMPARE(vm.rebehindCount(), 0);
@@ -354,8 +354,8 @@ private slots:
         vm.resolveSession();
         QVERIFY(waitIdle(vm));
         vm.setSweepActive(true);
-        vm.setSweepContinuous(true);                        // a megállók ne szóljanak közbe
-        vm.setSweepSectionLimits(12 * 60 * 1000, 3);         // 3 kétes soronként új szakasz
+        vm.setSweepContinuous(true);                        // the stops must not interrupt
+        vm.setSweepSectionLimits(12 * 60 * 1000, 3);         // a new section every 3 doubtful lines
         const QVariantList sections = vm.sweepSections();
         QVERIFY(sections.size() >= 2);
         const QVariantMap first = sections.first().toMap();
@@ -363,7 +363,7 @@ private slots:
         QVERIFY(first.value(QStringLiteral("uncertain")).toInt() <= 3);
         QVERIFY(!first.value(QStringLiteral("label")).toString().isEmpty());
 
-        // Egy kétes sor eldöntése a szakaszban, majd a lejátszás végigér a szakaszon.
+        // Deciding one doubtful line in the section, then playback runs to the end of the section.
         const int row = stopRow(vm);
         QVERIFY(vm.sweepDecide(row, QStringLiteral("confirm")));
         QSignalSpy ended(&vm, &TranscriptEditorViewModel::sweepSectionEnded);
@@ -379,13 +379,13 @@ private slots:
         QVERIFY(vm.sweepSections().first().toMap().value(QStringLiteral("done")).toBool());
         QVERIFY(vm.sweepDock().value(QStringLiteral("doneCount")).toInt() == 1
                 || QTest::qWaitFor([&] { return vm.sweepDock().value(QStringLiteral("doneCount")).toInt() == 1; }, 1000));
-        // „Következő szakasz”: a második szakasz eleje, az összesítő bezárul.
+        // "Next section": the start of the second section, the summary closes.
         const int next = vm.sweepNextSection();
         QCOMPARE(next, int(sections.at(1).toMap().value(QStringLiteral("startMs")).toDouble()));
         QVERIFY(vm.sweepSectionSummary().isEmpty());
     }
 
-    // ---- QML: kapcsoló, billentyűk, döntés-sáv, lejátszó, tempó, dokk ------------------------
+    // ---- QML: switch, keys, decision bar, player, tempo, dock ----
 
     void qml_toggleKeysDecisionBarTempo()
     {
@@ -400,10 +400,10 @@ private slots:
         QVERIFY(m_vm->sweepActive());
         QVERIFY(visual("sweepStrip"));
         QTRY_VERIFY(!m_vm->sweepDock().isEmpty());
-        QTRY_VERIFY(!visuals("mapSweepDot").isEmpty());     // a dokk kétes-pöttyei
+        QTRY_VERIFY(!visuals("mapSweepDot").isEmpty());     // the dock's doubtful dots
         QVERIFY(!visuals("mapSweepSection").isEmpty());
 
-        // Tempó: ] / [ (1,0–2,0×).
+        // Tempo: ] / [ (1.0-2.0x).
         QTest::keyClick(m_window.get(), Qt::Key_BracketRight);
         QCOMPARE(m_player->property("rate").toReal(), 1.25);
         QTest::keyClick(m_window.get(), Qt::Key_BracketRight);
@@ -414,7 +414,7 @@ private slots:
         for (int i = 0; i < 6; ++i) QTest::keyClick(m_window.get(), Qt::Key_BracketLeft);
         QCOMPARE(m_player->property("rate").toReal(), 1.0);
 
-        // A billentyű a futó sorra (kijelölés nélkül), a kijelölés nem változik.
+        // The key goes to the running line (without a selection), the selection does not change.
         const int row = stopRow(*m_vm);
         QVERIFY(row >= 1);
         const int selected = row == 1 ? 0 : 1;
@@ -429,7 +429,7 @@ private slots:
         QCOMPARE(m_vm->currentRow(), selected);
         QCOMPARE(m_vm->selectedCount(), 1);
 
-        // Megálló: lejátszás közben a kétes sor végén a lejátszó megáll, alatta a döntés-sáv.
+        // Stop: during playback the player stops at the end of the doubtful line, the decision bar under it.
         const int next = stopRow(*m_vm, 0, row + 1);
         QVERIFY(next > row);
         m_player->setProperty("log", QString());
@@ -445,14 +445,14 @@ private slots:
         QVERIFY(visual("sweepIgnore"));
         QVERIFY(!visuals("sweepLane").isEmpty());
 
-        // Shift: a feliratok „· nem minta”.
+        // Shift: the labels get "- not a sample".
         QTest::keyPress(m_window.get(), Qt::Key_Shift, Qt::ShiftModifier);
         pump();
         QVERIFY(visual("sweepDefault")->property("text").toString().endsWith(QStringLiteral(" · nem minta")));
         QTest::keyRelease(m_window.get(), Qt::Key_Shift);
         pump();
 
-        // 0 = nem azonosítható a megálló soron; utána a lejátszás folytatódik, a sáv eltűnik.
+        // 0 = cannot be identified on the stop line; then playback continues, the bar disappears.
         QTest::keyClick(m_window.get(), Qt::Key_0);
         pump();
         QVERIFY(cell(*m_vm, next, Role::IgnoredRole).toBool());
@@ -460,7 +460,7 @@ private slots:
         QVERIFY(m_player->property("playing").toBool());
         QTRY_VERIFY(!visual("sweepDecisionBar"));
 
-        // Megálló → Enter (kattintással a sáv gombja is ugyanaz).
+        // Stop, then Enter (the bar's button on click is the same).
         const int third = stopRow(*m_vm, 0, next + 1);
         if (third > next) {
             setPos(m_vm->rowStartMs(third) - 300);
@@ -475,7 +475,7 @@ private slots:
             QVERIFY(m_player->property("playing").toBool());
         }
 
-        // A söprés csak a Javításban él: Olvasásra váltva kikapcsol.
+        // Sweep lives only in Edit: switching to Read turns it off.
         QMetaObject::invokeMethod(m_tab, "setViewMode", Q_ARG(QVariant, QStringLiteral("read")));
         pump(60);
         QVERIFY(!m_vm->sweepActive());

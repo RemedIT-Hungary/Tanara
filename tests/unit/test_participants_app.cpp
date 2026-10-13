@@ -1,10 +1,8 @@
-//
-// Résztvevők az AppController-ben: sáv-beszédarány szintetikus sávokkal (ffmpeg lavfi) és kizárás
-// a lekeverésből, „Beemelem" / kézi kivétel; átirat előtti hangelemzés háttérszálon hamis
-// embedderrel (a hang frekvenciája a „hang"), párosítás a lenyomatokkal; kötés a nyers
-// beszélőkhöz; jóváhagyás → átnevezés egy visszavonási lépésben; „Ő nem volt ott"; „Csak én".
-// IZOLÁLT TANARA_HOME, Soniox / LLM nélkül. ffmpeg nélkül QSKIP.
-//
+// Participants in AppController: track speech ratio with synthetic tracks (ffmpeg lavfi) and
+// exclusion from the mixdown, "Include" / manual exclusion; pre-transcript audio analysis on
+// a background thread with a fake embedder (the audio's frequency is the "voice"), matching
+// with the voiceprints; binding to the raw speakers; approval and renaming in one undo step;
+// "Was not there"; "Only me". ISOLATED TANARA_HOME, without Soniox / LLM. Without ffmpeg QSKIP.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -31,7 +29,7 @@ namespace {
 
 const QString kCamp = QStringLiteral("campplus");
 
-// Hamis „modell": a nullátmenetekből becsült frekvencia dönt (220 Hz → 0. dim, 440 Hz → 1. dim).
+// Fake "model": the frequency estimated from zero crossings decides (220 Hz is dim 0, 440 Hz is dim 1).
 PcmEmbedderLoader fakeLoader()
 {
     return [](const VoiceModelSpec& spec, const QString&, QString*) -> PcmEmbedder {
@@ -49,7 +47,7 @@ PcmEmbedderLoader fakeLoader()
     };
 }
 
-// 24 mp-es sáv: freq Hz-es szinusz, ahol `on` igaz (ffmpeg volume-kifejezés), máshol digitális csend.
+// A 24 s track: a sine of freq Hz where `on` is true (an ffmpeg volume expression), digital silence elsewhere.
 bool makeTrack(const QString& path, int freq, const QString& onExpr)
 {
     QProcess p;
@@ -117,7 +115,7 @@ void ParticipantsAppTest::init()
     const QString f = QDir(m_home->path()).filePath("models/" + VoiceModelRegistry::spec(kCamp)->fileName);
     QDir().mkpath(QFileInfo(f).absolutePath());
     QFile file(f);
-    QVERIFY(file.open(QIODevice::WriteOnly));   // helyőrző: a hamis betöltő nem olvassa
+    QVERIFY(file.open(QIODevice::WriteOnly));   // placeholder: the fake loader does not read it
     file.close();
     m_app = std::make_unique<AppController>();
     QVERIFY(m_app->store()->metadataDir().startsWith(m_home->path()));
@@ -133,7 +131,7 @@ void ParticipantsAppTest::cleanup()
     m_home.reset();
 }
 
-// Mikrofon: 220 Hz 0–8 és 16–24 mp; loopback: 440 Hz 8–16 mp; (opcionálisan) néma harmadik sáv.
+// Microphone: 220 Hz at 0-8 and 16-24 s; loopback: 440 Hz at 8-16 s; (optionally) a silent third track.
 Meeting ParticipantsAppTest::makeMeeting(bool withSilent)
 {
     Meeting m = m_app->store()->createMeeting(QStringLiteral("Résztvevők"));
@@ -197,9 +195,9 @@ void ParticipantsAppTest::speechCheckExcludesSilentTrack()
     QVERIFY(!m.tracks[2].active);
     QCOMPARE(m.tracks[2].speechRatio, 0.0);
     QCOMPARE(MixdownPlan::fromMeeting(m).inputs.size(), 2);
-    QVERIFY(!m_app->checkTrackSpeech(m0.id));   // már mérve
+    QVERIFY(!m_app->checkTrackSpeech(m0.id));   // already measured
 
-    // „Beemelem" → vissza a lekeverésbe (újrakeverés indul).
+    // "Include" puts it back into the mixdown (a remix starts).
     QSignalSpy mixed(m_app.get(), &AppController::mixdownUpdated);
     m_app->includeTrack(m0.id, "quiet");
     m = m_app->store()->load(m0.id);
@@ -208,7 +206,7 @@ void ParticipantsAppTest::speechCheckExcludesSilentTrack()
     QVERIFY(mixed.wait(30000));
     QVERIFY(mixed.last().at(1).toBool());
 
-    // Kézi kivétel.
+    // Manual exclusion.
     m_app->excludeTrack(m0.id, "loop");
     m = m_app->store()->load(m0.id);
     QCOMPARE(m.tracks[1].excludedReason, trackspeech::kManual);
@@ -225,7 +223,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QSignalSpy done(m_app.get(), &AppController::participantAnalysisFinished);
     QVERIFY(m_app->analyzeParticipants(m.id));
     QVERIFY(m_app->participantAnalysisRunning(m.id));
-    QVERIFY(!m_app->analyzeParticipants(m.id));   // már fut
+    QVERIFY(!m_app->analyzeParticipants(m.id));   // already running
     QVERIFY(done.wait(60000));
     QVERIFY(!m_app->participantAnalysisRunning(m.id));
 
@@ -236,13 +234,13 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QVERIFY(adam && bela);
     QCOMPARE(adam->sides, QStringList({participants::kSideMic}));
     QCOMPARE(bela->sides, QStringList({participants::kSideLoopback}));
-    QCOMPARE(participants::participantGroup(*adam), ParticipantGroup::Sure);    // hang + saját mikrofon
-    QCOMPARE(participants::participantGroup(*bela), ParticipantGroup::Doubt);   // csak hang
+    QCOMPARE(participants::participantGroup(*adam), ParticipantGroup::Sure);    // audio + own microphone
+    QCOMPARE(participants::participantGroup(*bela), ParticipantGroup::Doubt);   // audio only
     QVERIFY(QFile::exists(ParticipantAnalysisFile::filePath(m.folder)));
     QVERIFY(m_app->participantApprovalPending(m.id));
     const QString adamId = adam->id, belaId = bela->id;
 
-    // Az átirat később jön: a kötés időátfedéssel.
+    // The transcript comes later: binding by time overlap.
     writeTranscript(m, {{1000, 7000, "Beszélő 1"}, {9000, 15000, "Beszélő 2"}, {17000, 23000, "Beszélő 1"}});
     QSignalSpy changed(m_app.get(), &AppController::participantsChanged);
     QVERIFY(m_app->bindRawSpeakers(m.id));
@@ -251,7 +249,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QCOMPARE(byName(ps, "Ádám")->rawSpeakerIds, QStringList({"Beszélő 1"}));
     QCOMPARE(byName(ps, "Béla")->rawSpeakerIds, QStringList({"Beszélő 2"}));
 
-    // Jóváhagyás → a nyers beszélők a nevekre, egy visszavonási lépésben.
+    // Approval: the raw speakers to the names, in one undo step.
     QVERIFY(m_app->approveParticipants(m.id, ps));
     m = m_app->store()->load(m.id);
     QCOMPARE(m.speakerMap.value("Beszélő 1"), QStringLiteral("Ádám"));
@@ -264,11 +262,11 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     ed->undo();
     m = m_app->store()->load(m.id);
     QVERIFY(m.speakerMap.isEmpty());
-    QVERIFY(!ed->canUndo());   // egyetlen lépés volt
+    QVERIFY(!ed->canUndo());   // it was a single step
     ed->redo();
     QCOMPARE(m_app->store()->load(m.id).speakerMap.size(), 2);
 
-    // „Ő nem volt ott": Béla sorai névtelenek, a jelölése törlődik.
+    // "Was not there": Béla's lines become anonymous, its marking is deleted.
     QVERIFY(m_app->unbindParticipant(m.id, belaId));
     m = m_app->store()->load(m.id);
     QVERIFY(!m.speakerMap.contains("Beszélő 2"));
@@ -276,7 +274,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
     QVERIFY(!byName(m.participants, "Béla")->approved);
     QVERIFY(byName(m.participants, "Ádám")->approved);
 
-    // „Csak én beszéltem": minden nyers beszélő a saját névre (egy beszélővé vonva).
+    // "Only I spoke": every raw speaker to the own name (merged into one speaker).
     QVERIFY(m_app->setSoloMeeting(m.id));
     m = m_app->store()->load(m.id);
     QVERIFY(m.approval && m.approval->solo);
@@ -287,7 +285,7 @@ void ParticipantsAppTest::analysisApproveUndoUnbindSolo()
             ++named;
         }
     QCOMPARE(named, 1);
-    QVERIFY(!m_app->analyzeParticipants(m.id));   // „csak én" után nincs azonosítás
+    QVERIFY(!m_app->analyzeParticipants(m.id));   // no analysis after "only me"
     Q_UNUSED(adamId);
 }
 
@@ -297,12 +295,12 @@ void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
     m_app->voiceprints()->addPrint(QStringLiteral("Béla"), print(1));
     const QString id = m_app->addParticipant(m.id, QStringLiteral("Cecília"));
     QVERIFY(id.startsWith("m-"));
-    QCOMPARE(m_app->addParticipant(m.id, QStringLiteral("cecília")), id);   // már megvan
+    QCOMPARE(m_app->addParticipant(m.id, QStringLiteral("cecília")), id);   // already there
     QSignalSpy done(m_app.get(), &AppController::participantAnalysisFinished);
     QVERIFY(m_app->analyzeParticipants(m.id));
     QVERIFY(done.wait(60000));
     const QVector<Participant> ps = m_app->participants(m.id);
-    QCOMPARE(ps.size(), 3);   // Béla, Cecília (kézi), az ismeretlen mikrofon-hang
+    QCOMPARE(ps.size(), 3);   // Béla, Cecília (manual), the unknown microphone voice
     const Participant* cili = byName(ps, QStringLiteral("Cecília"));
     QVERIFY(cili);
     QCOMPARE(cili->id, id);
@@ -311,19 +309,20 @@ void ParticipantsAppTest::manualParticipantKeptThroughAnalysis()
     for (const Evidence& e : cili->evidence)
         if (e.kind == EvidenceKind::Voice && e.text == QStringLiteral("nincs lenyomata")) noPrint = true;
     QVERIFY(noPrint);
-    QVERIFY(byName(ps, QString()));   // ismeretlen hang (az Ádám-lenyomat itt nincs meg)
+    QVERIFY(byName(ps, QString()));   // unknown voice (Ádám's voiceprint is not here)
 
-    // „Kihagyás": döntés kötés nélkül.
+    // "Skip": a decision without a binding.
     QVERIFY(m_app->skipApproval(m.id));
     QVERIFY(!m_app->participantApprovalPending(m.id));
     QVERIFY(m_app->store()->load(m.id).approval->skipped);
 }
 
-// A közös indító (maybeAnalyzeParticipants): a nyers sávokból, lekeverés nélkül; nem indul újra
-// ugyanazokon a sávokon, döntés (approval) után, és a beszéd-mérés előtt (azt a mérés vége indítja).
+// The shared starter (maybeAnalyzeParticipants): from the raw tracks, without a mixdown; it
+// does not restart on the same tracks, after a decision (approval), nor before the speech
+// measurement (the end of the measurement starts it).
 void ParticipantsAppTest::maybeAnalyzeGates()
 {
-    // Beszéd nélküli sáv: előbb a mérés; a mérés vége magától indítja az elemzést.
+    // A track without speech: the measurement first; the end of the measurement starts the analysis by itself.
     const Meeting s0 = makeMeeting(/*withSilent*/ true);
     QVERIFY(!m_app->maybeAnalyzeParticipants(s0.id));
     QVERIFY(!m_app->participantAnalysisRunning(s0.id));
@@ -334,13 +333,13 @@ void ParticipantsAppTest::maybeAnalyzeGates()
     QCOMPARE(started.last().at(0).toString(), s0.id);
     QVERIFY(finished.count() > 0 || finished.wait(60000));
     QVERIFY(!m_app->participantAnalysisRunning(s0.id));
-    QVERIFY(!m_app->maybeAnalyzeParticipants(s0.id));   // ugyanezeken a sávokon már lefutott
+    QVERIFY(!m_app->maybeAnalyzeParticipants(s0.id));   // it already ran on these same tracks
 
-    // Beszédes sávok, lekeverés nélkül: rögtön indul; futás közben és utána nem indul újra.
+    // Tracks with speech, no mixdown: it starts at once; during and after the run it does not restart.
     Meeting m = makeMeeting(/*withSilent*/ false);
     QVERIFY(m.mixdownFile.isEmpty());
-    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));   // a sávok még mérés előtt: a mérés vége hív
-    for (Track& t : m.tracks) t.speechRatio = 0.5;     // „mérve" (a mérés megkerülve)
+    QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));   // the tracks are still before measurement: the end of the measurement calls
+    for (Track& t : m.tracks) t.speechRatio = 0.5;     // "measured" (the measurement bypassed)
     m_app->store()->saveMeeting(m);
     finished.clear();
     QVERIFY(m_app->maybeAnalyzeParticipants(m.id));
@@ -350,14 +349,14 @@ void ParticipantsAppTest::maybeAnalyzeGates()
     QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
     QVERIFY(!m_app->participants(m.id).isEmpty());
 
-    // Döntés után sem.
+    // After a decision it does not either.
     QVERIFY(m_app->skipApproval(m.id));
     QVERIFY(m_app->store()->load(m.id).approval.has_value());
     QVERIFY(!m_app->maybeAnalyzeParticipants(m.id));
 }
 
-// Résztvevő-rekord nélkül (a meeting az elemzés előtt kapott neveket) a törlés a beszélő
-// kulcsával megy: a sorai névtelenek lesznek, visszavonható; névtelen / ismeretlen kulcsra false.
+// Without a participant record (the meeting got names before the analysis) the deletion goes
+// by the speaker's key: its lines become anonymous, undoable; false for an anonymous / unknown key.
 void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
 {
     Meeting m = makeMeeting(/*withSilent*/ false);
@@ -376,8 +375,8 @@ void ParticipantsAppTest::removeNamedSpeakerWithoutRecord()
     }
     QVERIFY(!belaKey.isEmpty());
     QVERIFY(!anonKey.isEmpty());
-    QVERIFY(!m_app->removeParticipant(m.id, anonKey));                 // névtelen: nincs mit
-    QVERIFY(!m_app->removeParticipant(m.id, QStringLiteral("nincs")));  // ismeretlen
+    QVERIFY(!m_app->removeParticipant(m.id, anonKey));                 // anonymous: nothing to do
+    QVERIFY(!m_app->removeParticipant(m.id, QStringLiteral("nincs")));  // unknown
     QVERIFY(m_app->removeParticipant(m.id, belaKey));
     bool belaLeft = false;
     for (const EditorSpeaker& s : ed->speakers()) belaLeft = belaLeft || s.personName == QStringLiteral("Béla");

@@ -10,8 +10,8 @@ namespace tanara_gui {
 
 MediaPlayerBackend::MediaPlayerBackend(QObject* parent) : tanara_qml::PlayerBackend(parent)
 {
-    // A PlayerController lustán hoz létre minket (az első lejátszáskor), így az app indulása
-    // nem triggereli a Qt Multimedia eszköz- és hwaccel-próbáit.
+    // PlayerController creates us lazily (on first playback), so app startup does not trigger
+    // Qt Multimedia's device and hwaccel probes.
     m_player = new QMediaPlayer(this);
     m_output = makeFollowDefaultAudioOutput(this);
     m_player->setAudioOutput(m_output);
@@ -23,7 +23,7 @@ MediaPlayerBackend::MediaPlayerBackend(QObject* parent) : tanara_qml::PlayerBack
     connect(m_player, &QMediaPlayer::durationChanged, this,
             [this](qint64 d) { emit durationChanged(d); });
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, &MediaPlayerBackend::onMediaStatus);
-    // Diagnosztika: ha a hang-kimenet / dekódolás hibázik, látszódjon a logban és a UI-ban.
+    // Diagnostics: if audio output / decoding fails, it shows in the log and the UI.
     connect(m_player, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error e, const QString& s) {
                 qCWarning(tanara::lcAudio) << "QMediaPlayer error:" << e << s;
@@ -44,7 +44,7 @@ void MediaPlayerBackend::setSource(const QString& path, qint64)
     m_player->stop();
     m_loaded = false;
     m_pendingPosition = -1;
-    m_player->setSource(path.isEmpty() ? QUrl() : QUrl::fromLocalFile(path));   // betölt, NEM játszik
+    m_player->setSource(path.isEmpty() ? QUrl() : QUrl::fromLocalFile(path));   // loads, does NOT play
 }
 
 void MediaPlayerBackend::play()
@@ -61,7 +61,7 @@ void MediaPlayerBackend::pause()
 void MediaPlayerBackend::setPosition(qint64 ms)
 {
     if (!m_loaded)
-        m_pendingPosition = ms;      // a betöltés végén alkalmazzuk (onMediaStatus)
+        m_pendingPosition = ms;      // applied when loading finishes (onMediaStatus)
     m_player->setPosition(ms);
 }
 
@@ -89,7 +89,7 @@ void MediaPlayerBackend::setRate(qreal rate)
 
 void MediaPlayerBackend::setVolume(qreal volume)
 {
-    m_output->setVolume(float(volume));   // QAudioOutput: lineáris 0…1
+    m_output->setVolume(float(volume));   // QAudioOutput: linear 0..1
 }
 
 void MediaPlayerBackend::onMediaStatus(QMediaPlayer::MediaStatus status)

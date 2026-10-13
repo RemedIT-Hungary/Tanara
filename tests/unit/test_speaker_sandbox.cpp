@@ -1,14 +1,12 @@
+// Validation harness for the speaker editor's audio analysis on REAL (disposable) data:
+// embedding speed, the share of lines marked uncertain, and the "similar lines" suggestion's
+// accuracy. SKIPPED by default; it runs only with the TANARA_SANDBOX environment variable:
 //
-// Validációs harness a beszélő-szerkesztő hang-elemzéséhez VALÓDI (eldobható) adatokon:
-// embedding-sebesség, a bizonytalannak jelölt sorok aránya, és a „hasonló sorok" javaslat
-// pontossága. Alapból KIHAGYVA — csak a TANARA_SANDBOX környezeti változóval fut:
+//   TANARA_SANDBOX=<folder> ./build/tests/test_speaker_sandbox
 //
-//   TANARA_SANDBOX=<mappa> ./build/tests/test_speaker_sandbox
-//
-// ahol <mappa>/home a metaadat-mappa (benne models/campplus_sv_zh_en_16k.onnx) és
-// <mappa>/recordings a meetingek mappája. SOHA ne mutasson a valódi ~/.tanara-ra: a futás
-// ír a meeting-mappákba (transcript.embeddings.bin). Átirat-szöveget nem ír ki.
-//
+// where <folder>/home is the metadata folder (with models/campplus_sv_zh_en_16k.onnx inside)
+// and <folder>/recordings is the meetings' folder. NEVER point it at the real ~/.tanara: the
+// run writes into the meeting folders (transcript.embeddings.bin). It prints no transcript text.
 #include <QtTest>
 #include <QElapsedTimer>
 #include <QSignalSpy>
@@ -98,7 +96,7 @@ void SpeakerSandboxTest::measure()
             .arg(100.0 * unc / lines.size(), 0, 'f', 1)
             .arg(embeddable ? 100.0 * unc / embeddable : 0.0, 0, 'f', 1);
 
-        // ---- egy valódi művelet ideje (overlay + meeting.json + transcript.md írás), majd undo ----
+        // ---- the time of one real operation (overlay + meeting.json + transcript.md write), then undo ----
         {
             QString firstLong;
             for (const EditorUtterance& u : ed.utterances())
@@ -113,14 +111,14 @@ void SpeakerSandboxTest::measure()
                 const qint64 undoMs = op.elapsed();
                 QVERIFY(!key.isEmpty());
                 QVERIFY(!ed.canUndo());
-                QVERIFY(!loadOverlay(m.folder).hasEdits());    // a sandbox visszaállt
+                QVERIFY(!loadOverlay(m.folder).hasEdits());    // the sandbox is back
                 qInfo().noquote() << QStringLiteral(
                     "   művelet: 1 sor áthelyezése %1 ms (javaslat: %2 sor), visszavonás %3 ms")
                     .arg(moveMs).arg(suggested).arg(undoMs);
             }
         }
 
-        // ---- illeszkedés-eloszlások a nyers diarizáción ----
+        // ---- fit distributions on the raw diarization ----
         const UtteranceEmbeddingCache cache =
             UtteranceEmbeddingCache::load(m.folder, transcriptFingerprint(lines));
         const QHash<QString, QVector<float>> vectors = cache.vectors(QStringLiteral("campplus"));
@@ -146,8 +144,8 @@ void SpeakerSandboxTest::measure()
         qInfo().noquote() << "   saját-illeszkedés  >=3s:" << dist(ownLong) << "| 1.5-3s:" << dist(ownShort);
         qInfo().noquote() << "   saját−másik       >=3s:" << dist(gapLong) << "| 1.5-3s:" << dist(gapShort);
 
-        // ---- diagnosztika (TANARA_SANDBOX_DIAG): a megbízható sorok k-közép klaszterei a
-        //      nyers címkékkel szemben — megmutatja, ha egy címke valójában több hang. ----
+        // ---- diagnostics (TANARA_SANDBOX_DIAG): k-means clusters of the reliable lines against the
+        //      raw labels: shows if one label is really several voices. ----
         if (qEnvironmentVariableIsSet("TANARA_SANDBOX_DIAG")) {
             QVector<int> rel;
             for (int i = 0; i < al.size(); ++i)
@@ -157,7 +155,7 @@ void SpeakerSandboxTest::measure()
             };
             for (int k = 2; k <= 4 && rel.size() > 8; ++k) {
                 QVector<QVector<float>> cent{*al[rel.first()].embedding};
-                while (cent.size() < k) {   // legtávolabbi pont
+                while (cent.size() < k) {   // the farthest point
                     int best = -1; double bestD = 2;
                     for (int i : rel) {
                         double mx = -2;
@@ -202,7 +200,7 @@ void SpeakerSandboxTest::measure()
             }
         }
 
-        // ---- javaslat-szimuláció: Y beszélőt X-be mossuk, majd k sorát „kézzel" kiemeljük ----
+        // ---- suggestion simulation: we wash speaker Y into X, then pick out k of its lines "by hand" ----
         for (int x = 0; x < raws.size(); ++x) for (int y = 0; y < raws.size(); ++y) {
             if (x == y) continue;
             QVector<int> yLines;
@@ -215,7 +213,7 @@ void SpeakerSandboxTest::measure()
             if (yLines.size() < 10 || xCount < 10) continue;
             for (int k : {1, 3}) {
                 QVector<AnalysisLine> sim = al;
-                const int target = raws.size();     // az új (kézzel létrehozott) beszélő
+                const int target = raws.size();     // the new (manually created) speaker
                 int seeded = 0;
                 for (int i : yLines) {
                     sim[i].speaker = x;

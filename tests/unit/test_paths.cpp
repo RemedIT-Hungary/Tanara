@@ -1,12 +1,9 @@
+// TANARA_HOME: overriding the metadata folder (tanara/Paths.h).
 //
-// TANARA_HOME — a metaadat-mappa felülírása (tanara/Paths.h).
-//
-// A lényeg: beállított TANARA_HOME mellett SEMMI nem mutathat a valódi ~/.tanara-ba — sem az
-// alapértelmezett fájl-utak (kulcsok, személyek, lenyomatok, promptok), sem a beállításokból
-// (settings.json metadataDir) visszaszivárgó érték. A teszt a HOME-ot is egy temp mappára
-// állítja, így a „valódi” ~/.tanara itt is csak egy eldobható hely — és ellenőrizzük, hogy
-// az érintetlen marad.
-//
+// The point: with TANARA_HOME set NOTHING may point into the real ~/.tanara: neither the
+// default file paths (keys, people, voiceprints, prompts) nor a value leaking back from the
+// settings (settings.json metadataDir). The test sets HOME to a temp folder too, so the
+// "real" ~/.tanara is only a disposable place here, and we check that it stays untouched.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonDocument>
@@ -37,11 +34,11 @@ private slots:
     void voiceModelResolutionOrder();
 
 private:
-    QTemporaryDir m_fakeHome;    // a „valódi” HOME szerepében
+    QTemporaryDir m_fakeHome;    // playing the role of the "real" HOME
     QTemporaryDir m_sandbox;     // TANARA_HOME
-    bool m_homeFaked = false;    // a QDir::homePath() a m_fakeHome-ra mutat-e
+    bool m_homeFaked = false;    // whether QDir::homePath() points to m_fakeHome
     QString realMeta() const { return QDir(m_fakeHome.path()).filePath(QStringLiteral(".tanara")); }
-    // Minden fájl a mappa alatt (rekurzívan) — „érintetlen maradt-e” ellenőrzéshez.
+    // Every file under the folder (recursively), to check that "nothing changed".
     static QStringList listAll(const QString& dir) {
         QStringList out;
         QDirIterator it(dir, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden,
@@ -64,9 +61,9 @@ void PathsTest::initTestCase()
 
 void PathsTest::init()
 {
-    // Windowson a QDir::homePath() a felhasználói profilt adja, a HOME nem téríti el. A
-    // HOME-ra épülő esetek ott a VALÓDI profilba írnának → kihagyjuk őket (a TANARA_HOME-
-    // független eseteket nem).
+    // On Windows QDir::homePath() gives the user profile, and HOME does not redirect it. Cases
+    // built on HOME would write into the REAL profile there, so we skip them (not the
+    // TANARA_HOME-independent ones).
     if (!m_homeFaked && qstrcmp(QTest::currentTestFunction(), "voiceModelResolutionOrder") != 0)
         QSKIP("A HOME ezen a platformon nem téríti el a QDir::homePath()-t.");
     qunsetenv("TANARA_HOME");
@@ -89,14 +86,14 @@ void PathsTest::overrideWinsEverywhere()
     qputenv("TANARA_HOME", sb.toUtf8());
     QCOMPARE(paths::homeOverride(), sb);
     QCOMPARE(paths::defaultMetadataDir(), sb);
-    // A beállításból jövő érték sem térítheti el — akkor sem, ha a valódi mappára mutat.
+    // A value from the settings cannot redirect it either, even if it points at the real folder.
     QCOMPARE(paths::resolveMetadataDir(realMeta()), sb);
     QCOMPARE(paths::resolveMetadataDir(QStringLiteral("~/.tanara")), sb);
     QCOMPARE(paths::metadataFile(QStringLiteral("logs")), sb + QStringLiteral("/logs"));
-    // A felvételek / jegyzetek ALAPÉRTELMEZÉSE is a sandboxba kerül (nem ~/Tanara).
+    // The DEFAULTS of recordings / notes go into the sandbox too (not ~/Tanara).
     QCOMPARE(paths::defaultAudioDir(), sb + QStringLiteral("/recordings"));
     QCOMPARE(paths::defaultNotesDir(), sb + QStringLiteral("/notes"));
-    // A prompt-override fájlok is.
+    // The prompt override files too.
     QVERIFY(promptFilePath(QStringLiteral("simple")).startsWith(sb + QLatin1Char('/')));
     QVERIFY(promptFilePath(QStringLiteral("simple"), realMeta()).startsWith(sb + QLatin1Char('/')));
 }
@@ -131,7 +128,7 @@ void PathsTest::storesDefaultIntoOverride()
     prints.addPrint(QStringLiteral("Teszt Elek"), vp);
     QVERIFY(QFile::exists(sb + QStringLiteral("/voiceprints.json")));
 
-    SettingsManager sm;   // üres → alapértelmezett metaadat-mappa
+    SettingsManager sm;   // empty: the default metadata folder
     QCOMPARE(sm.settingsFilePath(), sb + QStringLiteral("/settings.json"));
     QCOMPARE(sm.settings().metadataDir, sb);
     QCOMPARE(sm.settings().audioDir, sb + QStringLiteral("/recordings"));
@@ -140,14 +137,14 @@ void PathsTest::storesDefaultIntoOverride()
     QCOMPARE(store.metadataDir(), sb);
     QVERIFY(QFile::exists(sb + QStringLiteral("/index.db")));
 
-    // A „valódi” ~/.tanara és ~/Tanara nem jött létre.
+    // The "real" ~/.tanara and ~/Tanara were not created.
     QVERIFY2(!QDir(realMeta()).exists(), "a ~/.tanara létrejött TANARA_HOME mellett");
     QVERIFY(!QDir(QDir(m_fakeHome.path()).filePath("Tanara")).exists());
 }
 
 void PathsTest::settingsFileCannotRedirectOut()
 {
-    // Átmásolt (valódi) settings.json: a metadataDir a valódi ~/.tanara-ra mutat.
+    // A copied (real) settings.json: metadataDir points to the real ~/.tanara.
     QTemporaryDir sb;
     QVERIFY(sb.isValid());
     qputenv("TANARA_HOME", sb.path().toUtf8());
@@ -161,8 +158,8 @@ void PathsTest::settingsFileCannotRedirectOut()
     f.close();
 
     SettingsManager sm;
-    QCOMPARE(sm.settings().metadataDir, sb.path());       // a felülírás győz
-    QCOMPARE(sm.settings().audioDir, sb.filePath("rec"));  // az explicit audioDir marad
+    QCOMPARE(sm.settings().metadataDir, sb.path());       // the override wins
+    QCOMPARE(sm.settings().audioDir, sb.filePath("rec"));  // the explicit audioDir stays
     QVERIFY(!QDir(realMeta()).exists());
 }
 
@@ -183,17 +180,17 @@ void PathsTest::appControllerStaysInside()
     }
     for (const char* name : {"settings.json", "state.json", "secrets.json", "index.db"})
         QVERIFY2(QFile::exists(sb.filePath(QString::fromLatin1(name))), name);
-    // A hamis HOME alatt semmi új nem keletkezett (se .tanara, se Tanara).
+    // Nothing new was created under the fake HOME (neither .tanara nor Tanara).
     QStringList created;
     for (const QString& p : listAll(m_fakeHome.path()))
-        // (A hangrendszer kliens-könyvtára a ~/.config/pulse alá tehet sütit — az nem Tanara-adat.)
+        // (The audio system's client library may put a cookie under ~/.config/pulse; that is not Tanara data.)
         if (!before.contains(p) && !p.contains(QStringLiteral("/.config"))) created << p;
     QVERIFY2(created.isEmpty(), qPrintable(created.join(QStringLiteral(", "))));
     QVERIFY(!QDir(realMeta()).exists());
 }
 
-// A CAM++ modell: előbb a felhasználó metaadat-mappája, aztán az app mellé csomagolt
-// models/, és ha egyik sincs, a metaadat-mappabeli „várt hely”.
+// The CAM++ model: first the user's metadata folder, then the models/ bundled next to the
+// app, and if neither exists, the "expected place" in the metadata folder.
 void PathsTest::voiceModelResolutionOrder()
 {
     QTemporaryDir meta, app;
@@ -208,16 +205,16 @@ void PathsTest::voiceModelResolutionOrder()
         file.write("x");
     };
 
-    // 1) egyik sincs → a várt hely (metaadat-mappa), az appDir-től függetlenül
+    // 1) neither exists: the expected place (metadata folder), independent of appDir
     QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
     QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
 
-    // 2) csak az app mellett van → a csomagolt modell
+    // 2) only next to the app: the bundled model
     touch(appModel);
     QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), appModel);
     QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
 
-    // 3) a felhasználói modell elsőbbséget élvez
+    // 3) the user's model takes precedence
     touch(userModel);
     QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
 }

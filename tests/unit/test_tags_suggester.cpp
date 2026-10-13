@@ -1,8 +1,6 @@
-//
-// TagSuggester — szavazás a hasonló megbeszélések címkéivel (a mindenhol ott lévő címke
-// csillapítva), a felrakott / elutasított címkék szűrése, együtt járó címkék, és a beágyazás-
-// alapú szomszédok kölcsönös rang-fúziója (RRF) egy kézzel írt (ál-)indexszel.
-//
+// TagSuggester: voting with the similar meetings' tags (a tag present everywhere is damped),
+// filtering applied / rejected tags, co-occurring tags, and the mutual rank fusion (RRF) of
+// the embedding-based neighbors with a hand-written (fake) index.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -90,7 +88,7 @@ void TagsSuggesterTest::votingFromNeighbours()
     QCOMPARE(top.source, SuggestionSource::Similar);
     QCOMPARE(top.score, 1.0);
     QVERIFY(!top.isNew);
-    // Indoklás + a szavazó megbeszélés linkje (cím, dátum).
+    // Reasoning + the voting meeting's link (title, date).
     QVERIFY(!top.reasons.isEmpty());
     QCOMPARE(top.similarMeetings.size(), 1);
     QCOMPARE(top.similarMeetings.first().meetingId, m_lib.nordvik1);
@@ -102,7 +100,7 @@ void TagsSuggesterTest::votingFromNeighbours()
 
 void TagsSuggesterTest::globalTagDamped()
 {
-    // „Heti” mindenhol ott van (5/6), „Nordvik” csak a hasonló megbeszélésen.
+    // "Weekly" is everywhere (5/6), "Nordvik" only on the similar meeting.
     const Tag heti = m_tags->create(QStringLiteral("Heti"));
     for (const QString& id : { m_lib.nordvik1, m_lib.budget1, m_lib.budget2, m_lib.museum1, m_lib.museum2 })
         m_tags->addTag(id, heti.id);
@@ -116,12 +114,12 @@ void TagsSuggesterTest::appliedAndRejectedFiltered()
 {
     const Tag nordvik = m_tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
     const Tag log = m_tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
-    m_tags->addTag(m_lib.nordvik2, nordvik.id);              // már rajta
+    m_tags->addTag(m_lib.nordvik2, nordvik.id);              // already on it
     m_tags->reject(m_lib.nordvik2, TagSuggestion{log.id, log.name});
     const TagSuggester sg(m_tags.get(), m_profiles.get());
     QVERIFY(sg.suggest(m_lib.nordvik2).isEmpty());
-    // Más meetingre az elutasítás nem hat.
-    QVERIFY(names(sg.suggest(m_lib.nordvik1)).isEmpty());   // a szomszéd (nordvik2) címkéje rajta van
+    // The rejection has no effect on another meeting.
+    QVERIFY(names(sg.suggest(m_lib.nordvik1)).isEmpty());   // the neighbor's (nordvik2) tag is on it
 }
 
 void TagsSuggesterTest::cooccurrence()
@@ -134,18 +132,18 @@ void TagsSuggesterTest::cooccurrence()
     m_tags->addTag(m_lib.budget1, b.id);
     m_tags->addTag(m_lib.nordvik1, c.id);
 
-    m_tags->addTag(m_lib.museum2, a.id);   // most került fel
+    m_tags->addTag(m_lib.museum2, a.id);   // was just applied
     const TagSuggester sg(m_tags.get(), m_profiles.get());
     QVector<TagSuggestion> co = sg.cooccur(m_lib.museum2, a.id);
-    QCOMPARE(names(co), QStringList{"Szerződés"});           // 2/3 ≥ 50 %; az „Egyszeri” 1/3
+    QCOMPARE(names(co), QStringList{"Szerződés"});           // 2/3 >= 50%; the "One-off" 1/3
     QCOMPARE(co.first().source, SuggestionSource::Cooccur);
     QCOMPARE(co.first().baseTagId, a.id);
     QVERIFY(co.first().similarMeetings.first().durationMs > 0);
     QCOMPARE(co.first().similarMeetings.size(), 2);
-    // Már rajta / elutasítva → nincs.
+    // Already on / rejected: none.
     m_tags->reject(m_lib.museum2, co.first());
     QVERIFY(sg.cooccur(m_lib.museum2, a.id).isEmpty());
-    // Kevés minta (< 2 megbeszélés) → nincs javaslat.
+    // Few samples (< 2 meetings): no suggestion.
     QVERIFY(sg.cooccur(m_lib.museum2, c.id).isEmpty());
 }
 
@@ -160,7 +158,7 @@ void TagsSuggesterTest::rrfPureFunction()
     QCOMPARE(f.at(1).meetingId, QStringLiteral("y"));
     QCOMPARE(f.at(2).meetingId, QStringLiteral("x"));
     QVERIFY(qAbs(f.at(1).score - 2.0 / 62.0) < 1e-12);
-    QCOMPARE(f.at(0).reasons.size(), 1);   // az indoklás a beágyazási forrásból is átjön
+    QCOMPARE(f.at(0).reasons.size(), 1);   // the reasoning comes through from the embedding source too
 }
 
 void TagsSuggesterTest::rrfWithFakeIndex()
@@ -170,7 +168,7 @@ void TagsSuggesterTest::rrfWithFakeIndex()
     const TagSuggester classic(m_tags.get(), m_profiles.get());
     QVERIFY(!names(classic.suggest(m_lib.nordvik2)).contains("MuseumPlus"));
 
-    // Ál-index: a beágyazás szerint a nordvik2 a museum1-hez áll a legközelebb.
+    // Fake index: by the embedding nordvik2 is closest to museum1.
     EmbeddingIndex index(m_store.get());
     index.setModel(QStringLiteral("fake-embed"));
     auto put = [&](const QString& id, QVector<float> v) {
@@ -188,7 +186,7 @@ void TagsSuggesterTest::rrfWithFakeIndex()
     const TagSuggester fused(m_tags.get(), m_profiles.get(), &index);
     const QStringList n = names(fused.suggest(m_lib.nordvik2));
     QVERIFY2(n.contains("MuseumPlus") && n.contains("Nordvik"), qPrintable(n.join(", ")));
-    // Másik modell indexe nem számít (nincs fúzió).
+    // Another model's index does not count (no fusion).
     index.setModel(QStringLiteral("masik-modell"));
     QVERIFY(!index.has(m_lib.nordvik2));
     QVERIFY(!names(fused.suggest(m_lib.nordvik2)).contains("MuseumPlus"));
@@ -205,8 +203,8 @@ void TagsSuggesterTest::draftSuggestions()
 
 void TagsSuggesterTest::snapshotOnWorkerThread()
 {
-    // A pillanatkép a fő szálon készül, a számolás (profilok + ál-index) háttérszálon fut, és
-    // ugyanazt adja, mint a szinkron suggest().
+    // The snapshot is made on the main thread, the computation (profiles + fake index) runs on a
+    // background thread, and gives the same as the synchronous suggest().
     m_tags->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"));
     m_tags->addTag(m_lib.museum1, QStringLiteral("MuseumPlus"));
     const Tag log = m_tags->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"));
@@ -225,11 +223,11 @@ void TagsSuggesterTest::snapshotOnWorkerThread()
     const TagSuggester sg(m_tags.get(), m_profiles.get(), &index);
     const QStringList expected = names(sg.suggest(m_lib.nordvik2));
     QVERIFY2(expected.contains("MuseumPlus") && expected.contains("Nordvik"), qPrintable(expected.join(", ")));
-    QVERIFY(!expected.contains("Logisztika"));   // elutasítva (a pillanatképben is)
+    QVERIFY(!expected.contains("Logisztika"));   // rejected (in the snapshot too)
 
     const TagSnapshot snap = TagSuggester::snapshot(*m_tags, m_lib.nordvik2);
     QVERIFY(snap.rejected.contains(log.id));
-    // A pillanatkép érték: a későbbi változás nem hat rá.
+    // The snapshot is a value: a later change does not affect it.
     m_tags->addTag(m_lib.nordvik2, QStringLiteral("Nordvik"));
     QStringList onWorker;
     std::atomic<bool> otherThread{false};

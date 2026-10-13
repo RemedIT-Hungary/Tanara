@@ -1,10 +1,10 @@
-// Az Átnézendő S5 elemei (ReviewFocusView a TranscriptTab-ban) kijelző nélkül (offscreen), a
-// beépített KITALÁLT „v3" meetingen, hamis lejátszóval: a kör eleji NYITÓ-JAVASLAT (Enter = Mind az
-// N → Y egy visszavonási lépésben, Shift = nem minta, E = Egyenként a kurzor elé, → = Később, a
-// szúrópróba 1–3 / Shift+1–3, ✗ után az Egyenként az alapértelmezés) és a kör közbeni
-// MINTÁZAT-AJÁNLAT (4 / 6 azonos döntés után a kártya ALATT; I = Igen egy lépésben, N = Nem és nem
-// jön vissza, L / Megmutatom = a sorok listája); a fókusz-kártya y-ja nem változik; a demó-állapotok.
-// A felhasználó adataihoz nem nyúl.
+// The review queue's opener and pattern items (ReviewFocusView in TranscriptTab) without a
+// display (offscreen), on the built-in MADE-UP "v3" meeting, with a fake player: the round-start
+// OPENER SUGGESTION (Enter = All N to Y in one undo step, Shift = not a sample, E = One by one
+// before the cursor, Right = Later, the spot check 1-3 / Shift+1-3, after a rejection One by one
+// is the default) and the mid-round PATTERN OFFER (after 4 / 6 identical decisions, UNDER the
+// card; I = Yes in one step, N = No and it does not come back, L / Show me = the list of
+// lines); the focus card's y does not change; the demo states. It touches no user data.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "ReviewQueueModel.h"
@@ -146,7 +146,7 @@ class TestReviewOpeners : public QObject {
     }
     QString phase() const { return view() ? view()->property("phase").toString() : QString(); }
     QVariantMap opener() const { return view() ? view()->property("opener").toMap() : QVariantMap(); }
-    // Az Átnézendő bekapcsolása; a kör eleji nyitó-javaslat bevárása.
+    // Switching on To review; waiting for the round-start opener suggestion.
     void openOpener()
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
@@ -156,12 +156,12 @@ class TestReviewOpeners : public QObject {
         m_tab->forceActiveFocus();
         pump(60);
     }
-    // A hátralévő nyitók kihagyása (→).
+    // Skipping the remaining openers (Right).
     void skipRest()
     {
         for (int g = 0; g < 20 && phase() == QLatin1String("opener"); ++g) key(Qt::Key_Right);
     }
-    // A leggyakoribb nyitott (ok, jelenlegi, javasolt) hármas sorai, listasorrendben.
+    // The lines of the most frequent open (reason, current, suggested) triple, in list order.
     QStringList pendingTriple() const
     {
         QHash<QString, QStringList> by;
@@ -180,8 +180,8 @@ class TestReviewOpeners : public QObject {
         return by.value(best);
     }
 
-    // Az Átnézendő bekapcsolása, a munkalista bevárása (a háttér-elemzés végén indul).
-    // skipOpenerPhase: a kör eleji nyitó-javaslatok (S5) → Később; a fókusz-kártya jön.
+    // Switching on To review, waiting for the work list (it starts at the end of the background analysis).
+    // skipOpenerPhase: the round-start opener suggestions go to Later; the focus card comes.
     void openReview(bool skipOpenerPhase = true)
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
@@ -196,17 +196,17 @@ class TestReviewOpeners : public QObject {
         m_tab->forceActiveFocus();
         pump(60);
     }
-    // A v3 demó-állapot bevárása (a munkalista a háttér-elemzés csendes szakaszában készül).
+    // Waiting for the v3 demo state (the work list is made in the background analysis's quiet phase).
     void loadDemo(const char* state)
     {
         load(QString(), QString::fromLatin1(state));
         QTRY_VERIFY_WITH_TIMEOUT(m_vm->queueActive() && !m_vm->demoStatePending() && !m_vm->reviewRunning(), 15000);
-        pump(1500);         // a demó a csend után fut (700 ms), utána még egy elemzés-kör lehet
+        pump(1500);         // the demo runs after the silence (700 ms), and one more analysis round may follow
         QTRY_VERIFY_WITH_TIMEOUT(!m_vm->reviewRunning(), 10000);
         pump(100);
         m_tab->forceActiveFocus();
     }
-    // A kurzor egy nyitott, javaslattal bíró sorra (a javasolt beszélő más, mint a mostani).
+    // The cursor on an open line that has a suggestion (the suggested speaker differs from the current one).
     bool jumpToSuggestion()
     {
         for (int i = 0; i < m_queue->count(); ++i) {
@@ -228,7 +228,7 @@ class TestReviewOpeners : public QObject {
             if (lanes[i].toMap().value(QStringLiteral("key")).toString() == key) return i;
         return -1;
     }
-    // A kurzor sorától eltérő beszélő oszlopa (az 1–9 billentyűhöz).
+    // The column of a speaker other than the cursor line's (for the 1-9 keys).
     int otherLane() const
     {
         const QString key = cur().value(QStringLiteral("speakerKey")).toString();
@@ -259,8 +259,8 @@ private slots:
         QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(QLatin1Char('\n'))));
     }
 
-    // Enter: a nyitó minden (nyitott) sora a javasolt beszélőhöz, EGY visszavonási lépésben; az
-    // „Imént" sor „Mind a N → Y"; utána a következő nyitó jön. Ctrl+Z: mind vissza.
+    // Enter: all the opener's (open) lines go to the suggested speaker in ONE undo step; the
+    // "Just now" line says "All N to Y"; then the next opener comes. Ctrl+Z: all back.
     void opener_enterAppliesAllInOneStep()
     {
         load(QStringLiteral("v3"));
@@ -288,9 +288,9 @@ private slots:
         const QString article = (n == 1 || QString::number(n).startsWith(QLatin1Char('5'))) ? QStringLiteral("az") : QStringLiteral("a");
         QCOMPARE(m_vm->lastDecision().value(QStringLiteral("text")).toString(),
                  QStringLiteral("Mind %1 %2 → %3").arg(article).arg(n).arg(name));
-        // A következő nyitó (ha van), különben a fókusz.
+        // The next opener (if any), otherwise the focus.
         QVERIFY(phase() == QLatin1String("focus") || opener().value(QStringLiteral("groupId")) != op.value(QStringLiteral("groupId")));
-        // Ctrl+Z: egy lépés, minden sor vissza.
+        // Ctrl+Z: one step, every line back.
         key(Qt::Key_Z, Qt::ControlModifier);
         for (const QString& id : ids) {
             QCOMPARE(utt(id).speakerKey, from);
@@ -301,7 +301,7 @@ private slots:
         QVERIFY(card()->isVisible());
     }
 
-    // Shift+Enter: ugyanez, nem mintaként (a sorok „zajos" jelzéssel, ugyanabban a lépésben).
+    // Shift+Enter: the same, as not a sample (the lines get the "noisy" marker, in the same step).
     void opener_shiftEnterNonSample()
     {
         load(QStringLiteral("v3"));
@@ -321,7 +321,7 @@ private slots:
         for (const QString& id : ids) QVERIFY(!utt(id).noisy);
     }
 
-    // E (Egyenként): a nyitó sorai a kurzor helyére (időrendben), semmi nem mozdul.
+    // E (One by one): the opener's lines go to the cursor's place (chronologically), nothing moves.
     void opener_singleBringsToFront()
     {
         load(QStringLiteral("v3"));
@@ -338,13 +338,13 @@ private slots:
             QCOMPARE(stateOf(first[i]), QStringLiteral("pending"));
         }
         QCOMPARE(current(), first.first());
-        // A többi nyitó kihagyva: a kurzor marad, a fókusz-kártya az első soron.
+        // The other openers skipped: the cursor stays, the focus card on the first line.
         skipRest();
         QCOMPARE(current(), first.first());
         QVERIFY(card()->isVisible());
     }
 
-    // → / Később: a nyitó kimarad, a lista sorrendje változatlan, a sorai nyitottak maradnak.
+    // Right / Later: the opener is dropped, the list order is unchanged, its lines stay open.
     void opener_laterKeepsRows()
     {
         load(QStringLiteral("v3"));
@@ -363,8 +363,8 @@ private slots:
         QCOMPARE(current(), cursor);
     }
 
-    // Szúrópróba: 1–3 lejátssza (playLine), a sor „meghallgatva"; Shift+n ✓ / ✗; ✗ után az Enter
-    // az Egyenként (a gomb-kiemelés is átvált), és semmi nem mozdul.
+    // Spot check: 1-3 plays (playLine), the line is "listened"; Shift+n marks OK / not OK; after
+    // "not OK" Enter is One by one (the button highlight switches too), and nothing moves.
     void opener_spotCheckDoubtDefaultsToSingle()
     {
         load(QStringLiteral("v3"));
@@ -380,12 +380,12 @@ private slots:
         QVERIFY(visual("reviewOpenerSpotStatus")->property("text").toString().contains(QStringLiteral("nem garancia")));
         QCOMPARE(visuals("reviewOpenerVerdict").size(), 1);
         QVERIFY(!view()->property("openerDoubt").toBool());
-        // Kattintás a ✓-re: ✗.
+        // Clicking the check mark: not OK.
         click(visual("reviewOpenerVerdict"));
         QVERIFY(view()->property("openerDoubt").toBool());
         QCOMPARE(visual("reviewOpenerSingle")->property("variant").toString(), QStringLiteral("primary"));
         QCOMPARE(visual("reviewOpenerAccept")->property("variant").toString(), QStringLiteral("secondary"));
-        // Shift+1: vissza ✓; Shift+1 újra: ✗.
+        // Shift+1: back to OK; Shift+1 again: not OK.
         key(Qt::Key_1, Qt::ShiftModifier);
         QVERIFY(!view()->property("openerDoubt").toBool());
         key(Qt::Key_1, Qt::ShiftModifier);
@@ -396,13 +396,13 @@ private slots:
         for (const QString& id : ids) QCOMPARE(utt(id).speakerKey, from);
         QCOMPARE(current(), ids.first());
         QVERIFY(phase() == QLatin1String("focus") || opener().value(QStringLiteral("groupId")) != op.value(QStringLiteral("groupId")));
-        // A következő nyitónál a szúrópróba tiszta lappal indul.
+        // At the next opener the spot check starts with a clean slate.
         QVERIFY(!view()->property("openerDoubt").toBool());
     }
 
-    // Mintázat-ajánlat: 4 azonos döntés (ok, jelenlegi, javasolt) után a kártya ALATT jelenik meg
-    // (3 után még nem); a kártya y-ja nem mozdul; Megmutatom = a sorok listája; Igen = a hátralévő
-    // azonos sorok EGY lépésben; Ctrl+Z vissza.
+    // Pattern offer: after 4 identical decisions (reason, current, suggested) it appears UNDER the
+    // card (not yet after 3); the card's y does not move; Show me = the list of lines; Yes = the
+    // remaining identical lines in ONE step; Ctrl+Z undoes.
     void offer_afterFourOfSix_yesOneStep()
     {
         load(QStringLiteral("v3"));
@@ -420,14 +420,14 @@ private slots:
         }
         QTRY_VERIFY(visual("reviewFocusOffer"));
         QCOMPARE(cardY(), y);
-        // A kártya alatt (az alsó kontextus-sorok helyén).
+        // Under the card (in place of the lower context lines).
         QVERIFY(visual("reviewFocusOffer")->mapToScene(QPointF(0, 0)).y() > y + card()->height());
         const QStringList ahead = view()->property("offerData").toMap().value(QStringLiteral("sameAhead")).toStringList();
         QVERIFY(!ahead.isEmpty());
         QVERIFY(!ahead.contains(current()));
         QVERIFY(visual("reviewOfferText")->property("text").toString().contains(QStringLiteral("%1 sor ugyanilyen").arg(ahead.size())));
 
-        // Megmutatom (L): a lista a sáv alatt; a kártya nem mozdul; kattintás = lejátszás.
+        // Show me (L): the list under the strip; the card does not move; a click = playback.
         key(Qt::Key_L);
         QTRY_VERIFY(visual("reviewOfferList"));
         QVERIFY(!visuals("reviewOfferLine").isEmpty());
@@ -437,7 +437,7 @@ private slots:
         QVERIFY2(playerLog().contains(QStringLiteral("range:")), qPrintable(playerLog()));
         m_tab->forceActiveFocus();
 
-        // Igen: egy lépés.
+        // Yes: one step.
         const int undoBefore = int(m_vm->editor()->undoSerials().size());
         key(Qt::Key_I);
         for (const QString& id : ahead) {
@@ -452,7 +452,7 @@ private slots:
         for (const QString& id : ahead) QVERIFY(utt(id).speakerKey != to);
     }
 
-    // Shift+I: Igen, nem mintaként. N: eltűnik, és ugyanerre a mintára nem jön vissza.
+    // Shift+I: Yes, not as a sample. N: disappears, and does not come back for the same pattern.
     void offer_shiftYesNonSample_noDismisses()
     {
         loadDemo("reviewFocusOffer");
@@ -468,7 +468,7 @@ private slots:
         key(Qt::Key_Z, Qt::ControlModifier);
         QTRY_VERIFY(visual("reviewFocusOffer"));
 
-        // Nem: eltűnik; egy újabb azonos döntés után sem jön vissza.
+        // No: disappears; it does not come back even after another identical decision.
         click(visual("reviewOfferNo"));
         QVERIFY(!visual("reviewFocusOffer"));
         const QString key_ = view()->property("offerData").toMap().value(QStringLiteral("key")).toString();
@@ -485,7 +485,7 @@ private slots:
         QVERIFY(!visual("reviewFocusOffer"));
     }
 
-    // A fókusz-kártya y-ja az ajánlat-sávval (és kinyitott listával) ugyanaz, mint nélküle.
+    // The focus card's y with the offer bar (and an expanded list) is the same as without it.
     void cardY_sameWithOffer()
     {
         loadDemo("reviewFocus");
@@ -500,7 +500,7 @@ private slots:
         QVERIFY(visual("reviewOfferList"));
     }
 
-    // A demó-állapotok: nyitó (1 meghallgatva), nyitó ✗-szel (Egyenként kiemelve).
+    // The demo states: opener (1 listened), opener with a not-OK (One by one highlighted).
     void demoStates_opener()
     {
         loadDemo("reviewFocusOpener");
@@ -512,7 +512,7 @@ private slots:
         QTRY_COMPARE(phase(), QStringLiteral("opener"));
         QVERIFY(view()->property("openerDoubt").toBool());
         QCOMPARE(visual("reviewOpenerSingle")->property("variant").toString(), QStringLiteral("primary"));
-        // A fókusz-demókban nincs nyitó (a kártya látszik).
+        // The focus demos have no opener (the card is visible).
         loadDemo("reviewFocus");
         QTRY_VERIFY(card() && card()->isVisible());
         QCOMPARE(phase(), QStringLiteral("focus"));

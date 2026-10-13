@@ -1,9 +1,7 @@
-//
-// AppController — a címkék bekötése: javaslat-kérés (Computing → Ready, gyorsítótár, szűrés
-// felrakás / elutasítás után), együtt járó címkék, LLM-javaslat (kézi és az összefoglaló utáni
-// automatikus) ál-HTTP-szerver ellen, beágyazó provider beállítása + modellváltás, és a
-// beállítások perzisztenciája. Izolált TANARA_HOME; valódi hálózat / LM Studio nincs.
-//
+// AppController: wiring the tags: suggestion request (Computing to Ready, cache, filtering
+// after apply / reject), co-occurring tags, LLM suggestion (manual and the automatic one after
+// the summary) against a fake HTTP server, configuring the embedding provider + model change,
+// and the settings' persistence. Isolated TANARA_HOME; no real network / LM Studio.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -131,25 +129,25 @@ void TagsControllerTest::suggestionsComputingThenReady()
     QCOMPARE(list.size(), 2);
     QCOMPARE(m_app->pendingTagSuggestions(m_lib.nordvik2).size(), 2);
 
-    // Gyorsítótárból: azonnal (ugyanabban a körben) jön.
+    // From the cache: it comes at once (in the same loop round).
     ready.clear();
     m_app->requestTagSuggestions(m_lib.nordvik2);
     QCOMPARE(ready.count(), 1);
 
-    // Felrakás → a kiadott lista szűrve újra kimegy.
+    // Apply: the emitted list goes out again, filtered.
     ready.clear();
     tags->addTag(m_lib.nordvik2, nordvik.id, TagSource::Suggestion);
     QVERIFY(ready.count() >= 1);
     list = ready.last().at(1).value<QVector<TagSuggestion>>();
     QCOMPARE(list.size(), 1);
     QCOMPARE(list.first().tagId, log.id);
-    // Elutasítás → kiesik.
+    // Reject: it drops out.
     ready.clear();
     tags->reject(m_lib.nordvik2, list.first());
     QVERIFY(ready.count() >= 1);
     QVERIFY(m_app->pendingTagSuggestions(m_lib.nordvik2).isEmpty());
 
-    // Kikapcsolt javaslatok: üres lista.
+    // Suggestions switched off: an empty list.
     AppSettings s = m_app->settings()->settings();
     s.tagSuggestions = false;
     m_app->settings()->setSettings(s);
@@ -158,7 +156,7 @@ void TagsControllerTest::suggestionsComputingThenReady()
     QCOMPARE(ready.count(), 1);
     QVERIFY(ready.first().at(1).value<QVector<TagSuggestion>>().isEmpty());
 
-    // Import / felvétel előtt: cím alapján.
+    // Before import / recording: by title.
     s.tagSuggestions = true;
     m_app->settings()->setSettings(s);
     const QVector<TagSuggestion> draft = m_app->draftTagSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
@@ -182,7 +180,7 @@ void TagsControllerTest::asyncCoalesceStaleDropAndCache()
         return out;
     };
 
-    // Háttérszálon: a hívásban nem jön eredmény; az ismételt kérések egy számolásba olvadnak.
+    // On a background thread: no result in the call; repeated requests merge into one computation.
     m_app->requestTagSuggestions(m_lib.nordvik2);
     m_app->requestTagSuggestions(m_lib.nordvik2);
     m_app->requestTagSuggestions(m_lib.nordvik2);
@@ -192,7 +190,7 @@ void TagsControllerTest::asyncCoalesceStaleDropAndCache()
     QTest::qWait(150);
     QCOMPARE(readyFor(m_lib.nordvik2), 1);
 
-    // Gyorsítótárból azonnal; a címkekészlet változása után újra háttérszálon számol.
+    // From the cache at once; after the tag set changes it computes again on the background thread.
     ready.clear();
     m_app->requestTagSuggestions(m_lib.nordvik2);
     QCOMPARE(ready.count(), 1);
@@ -202,11 +200,12 @@ void TagsControllerTest::asyncCoalesceStaleDropAndCache()
     QCOMPARE(ready.count(), 0);
     QCOMPARE(names(waitReady(ready, m_lib.nordvik2)), QStringList{ QStringLiteral("Nordvik") });
 
-    // Elavult eredmény: a számolás már elindult (a pillanatkép kész), amikor a szomszéd új címkét
-    // kap → a régi állapotból számolt lista nem megy ki, az új állapotból újraszámolódik.
-    tags->addTag(m_lib.budget1, QStringLiteral("Belső"));   // gyorsítótár-ürítés
+    // Stale result: the computation has already started (the snapshot is ready) when the
+    // neighbor gets a new tag, so the list computed from the old state does not go out, and it is
+    // recomputed from the new state.
+    tags->addTag(m_lib.budget1, QStringLiteral("Belső"));   // cache clear
     bool changed = false;
-    // Az AppController idle-slotja (a számolás indítása) előbb fut, mint ez.
+    // AppController's idle slot (starting the computation) runs before this.
     const auto conn = connect(m_app->profiles(), &MeetingProfiles::idle, this, [&] {
         if (changed) return;
         changed = true;
@@ -239,7 +238,7 @@ void TagsControllerTest::cooccurAfterAdd()
     QCOMPARE(list.size(), 1);
     QCOMPARE(list.first().tagId, b.id);
     QCOMPARE(list.first().source, SuggestionSource::Cooccur);
-    // Nincs együtt járó: nincs jel.
+    // No co-occurring tag: no signal.
     ready.clear();
     m_app->requestCooccurSuggestions(m_lib.museum1, b.id);
     QCOMPARE(ready.count(), 0);
@@ -248,7 +247,7 @@ void TagsControllerTest::cooccurAfterAdd()
 void TagsControllerTest::llmSuggestionsManualAndAutomatic()
 {
     TagService* tags = m_app->tags();
-    // Összefoglaló nélkül nincs mit kérni.
+    // Without a summary there is nothing to request.
     QSignalSpy ready(m_app.get(), &AppController::tagSuggestionsReady);
     m_app->requestLlmTagSuggestions(m_lib.museum2);
     QCOMPARE(ready.count(), 0);
@@ -260,7 +259,7 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
     md.write("## Összefoglaló\nA MuseumPlus oktatásáról és a raktár költözéséről volt szó.\n");
     md.close();
 
-    // Üres készletnél az összefoglaló utáni automatikus lépés nem fut.
+    // With an empty set the automatic step after the summary does not run.
     emit m_app->summaryReady(m_lib.museum2, md.fileName());
     QTest::qWait(50);
     QCOMPARE(m_http->count("POST", "/chat/completions"), 0);
@@ -279,19 +278,19 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
     QCOMPARE(body.value("reasoning_effort").toString(), QStringLiteral("none"));
     QVERIFY(body.value("messages").toArray().at(1).toObject().value("content").toString().contains("raktár költözéséről"));
 
-    // Az új név elfogadása: létrejön a címke, a javaslat kiesik.
+    // Accepting the new name: the tag is created, the suggestion drops out.
     ready.clear();
     tags->addTag(m_lib.museum2, list.at(1).name, TagSource::Llm);
     QVERIFY(tags->byName(QStringLiteral("Raktárköltözés")).isValid());
     for (const TagSuggestion& s : m_app->pendingTagSuggestions(m_lib.museum2)) QVERIFY(!s.isNew);
 
-    // Automatikus: az összefoglaló elkészülte után (van már címkekészlet).
+    // Automatic: after the summary is finished (there is already a tag set).
     ready.clear();
     emit m_app->summaryReady(m_lib.museum2, md.fileName());
     QTRY_COMPARE(m_http->count("POST", "/chat/completions"), 2);
     QVERIFY(!waitReady(ready, m_lib.museum2).isEmpty() || ready.count() >= 1);
 
-    // Kikapcsolva nem fut.
+    // Switched off it does not run.
     AppSettings s = m_app->settings()->settings();
     s.llmTagSuggestions = false;
     m_app->settings()->setSettings(s);
@@ -299,7 +298,7 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
     QTest::qWait(50);
     QCOMPARE(m_http->count("POST", "/chat/completions"), 2);
 
-    // Hibás modell-válasz: nincs felugró hiba, a korábbi lista marad.
+    // A bad model reply: no pop-up error, the earlier list stays.
     QSignalSpy errors(m_app.get(), &AppController::errorOccurred);
     m_http->handler = [](const fakehttp::Request&) -> fakehttp::Reply { return { 500, R"({"error":"x"})" }; };
     const int before = int(m_app->pendingTagSuggestions(m_lib.museum2).size());
@@ -312,7 +311,7 @@ void TagsControllerTest::llmSuggestionsManualAndAutomatic()
 void TagsControllerTest::embeddingProviderAndModelChange()
 {
     EmbeddingPreparer* prep = m_app->embeddingPreparer();
-    QCOMPARE(prep->state().provider, QString());       // alap: nincs beágyazás
+    QCOMPARE(prep->state().provider, QString());       // default: no embedding
     ProviderConfig cfg;
     cfg.baseUrl = m_http->base();
     cfg.model = QStringLiteral("embed-a");
@@ -325,13 +324,13 @@ void TagsControllerTest::embeddingProviderAndModelChange()
     QVERIFY(m_app->embeddings()->has(m_lib.budget1));
     const int calls = m_http->count("POST", "/embeddings");
 
-    // Más beállítás változása nem indítja újra.
+    // A change of another setting does not restart it.
     AppSettings s = m_app->settings()->settings();
     s.summaryLanguage = QStringLiteral("angol");
     m_app->settings()->setSettings(s);
     QCOMPARE(m_http->count("POST", "/embeddings"), calls);
 
-    // Modellváltás: az index eldobva, az előkészítés elölről.
+    // Model change: the index dropped, the preparation from the start.
     QSignalSpy reset(m_app->embeddings(), &EmbeddingIndex::indexReset);
     cfg.model = QStringLiteral("embed-b");
     m_app->setEmbeddingProvider(embeddingproviders::LocalId, cfg);
@@ -341,14 +340,14 @@ void TagsControllerTest::embeddingProviderAndModelChange()
     QCOMPARE(m_http->count("POST", "/embeddings"), calls + 6);
     QCOMPARE(m_http->lastBody("/embeddings").value("model").toString(), QStringLiteral("embed-b"));
 
-    // Új átirat → háttérben beágyazódik.
+    // New transcript: it is embedded in the background.
     QTest::qWait(20);
     tagsfixture::writeSegments(m_app->store()->load(m_lib.budget1).folder, { "Új átirat a költségvetésről." });
     emit m_app->transcriptReady(m_lib.budget1, QString());
     QTRY_COMPARE_WITH_TIMEOUT(m_http->count("POST", "/embeddings"), calls + 7, 5000);
     QTRY_VERIFY(m_app->embeddings()->has(m_lib.budget1));
 
-    // Kikapcsolás: nincs beágyazás.
+    // Switch off: no embedding.
     m_app->setEmbeddingProvider(QString(), {});
     QVERIFY(!m_app->embeddings()->has(m_lib.budget1));
     QCOMPARE(prep->state().status, EmbeddingState::Idle);
@@ -360,7 +359,7 @@ void TagsControllerTest::settingsRoundTrip()
     QVERIFY(s.tagSuggestions);
     QVERIFY(s.llmTagSuggestions);
     QVERIFY(s.embeddingProviderId.isEmpty());
-    QVERIFY(s.embeddingConfigs.contains(embeddingproviders::LocalId));   // előre kitöltve
+    QVERIFY(s.embeddingConfigs.contains(embeddingproviders::LocalId));   // prefilled
     s.tagSuggestions = false;
     s.llmTagSuggestions = false;
     s.embeddingProviderId = embeddingproviders::CloudId;

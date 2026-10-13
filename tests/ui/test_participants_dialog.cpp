@@ -1,9 +1,9 @@
-// „Ki volt ott?" (handoff-v3 V2): a ParticipantsViewModel valódi AppController-rel, IZOLÁLT
-// TANARA_HOME-ban (a jelöltek a meeting.json-ba írva, hangelemzés nélkül): csoportok,
-// alapjelölés (az ellentmondó jelölt kikapcsolva), a munkapéldány (jelölés, hozzáadás, elnevezés)
-// csak a „Tovább"-ra kerül a meetingre, „Kihagyás", „Ő nem volt ott"; a ShellActions
-// openParticipants / maybeOfferParticipants jele; és a ParticipantsDialog.qml kijelző nélkül
-// (offscreen) a beépített KITALÁLT mintaadaton: jelölés, címke-javaslat, Tovább / Kihagyás.
+// "Who was there?": the ParticipantsViewModel with a real AppController in an ISOLATED
+// TANARA_HOME (candidates written into meeting.json, no audio analysis): groups, default
+// checks (a contradicted candidate is unchecked), the working copy (checks, adds, naming)
+// reaches the meeting only on "Next", "Skip", "Was not there"; the ShellActions
+// openParticipants / maybeOfferParticipants signal; and ParticipantsDialog.qml without a display
+// (offscreen) on the built-in MADE-UP sample data: checking, tag suggestion, Next / Skip.
 #include "AppContext.h"
 #include "ParticipantsViewModel.h"
 #include "QmlApp.h"
@@ -89,7 +89,7 @@ ApplicationWindow {
 }
 )";
 
-// A jóváhagyás utáni tanulási kérdés (demó): a párbeszéd nélkül, a sáv magától nyílik.
+// The learning question after approval (demo): without the dialog, the bar opens by itself.
 const char* kLearnHost = R"(
 import QtQuick
 import QtQuick.Controls
@@ -122,9 +122,9 @@ class TestParticipantsDialog : public QObject {
     std::unique_ptr<AppController> m_app;
     QString m_meetingId;
 
-    // Lilla (mikrofon + hang): biztos; Gábor (csak hang): kétséges, bejelölve; Bence (hang +
-    // ellentmondó címke): kétséges, kikapcsolva; Réka (naptár, nem hallottuk): meghívott;
-    // névtelen hang: kétséges, nem jelölhető, amíg nincs neve.
+    // Lilla (mic + call audio): certain; Gábor (call audio only): doubtful, checked; Bence (call
+    // audio + contradicting tag): doubtful, unchecked; Réka (calendar, not heard): invited;
+    // anonymous voice: doubtful, cannot be checked until it has a name.
     void seedMeeting(bool transcript)
     {
         Meeting m = m_app->store()->createMeeting(QStringLiteral("Negyedéves partnertalálkozó"));
@@ -168,7 +168,7 @@ class TestParticipantsDialog : public QObject {
     {
         QList<QQuickItem*> out;
         collect(m_window->contentItem(), name, out);
-        collect(m_window->contentItem()->parentItem(), name, out);   // az Overlay is
+        collect(m_window->contentItem()->parentItem(), name, out);   // the Overlay too
         return out.value(0);
     }
     void click(QQuickItem* item)
@@ -216,18 +216,18 @@ private slots:
         QCOMPARE(groupOf(vm, "c1"), QStringLiteral("invited"));
         QVERIFY(rowOf(vm, "v1").value("checked").toBool());
         QVERIFY(rowOf(vm, "v2").value("checked").toBool());
-        QVERIFY(!rowOf(vm, "v3").value("checked").toBool());          // ellentmondó → kikapcsolva
-        QVERIFY(!rowOf(vm, "v4").value("checkable").toBool());        // névtelen
+        QVERIFY(!rowOf(vm, "v3").value("checked").toBool());          // contradicted: unchecked
+        QVERIFY(!rowOf(vm, "v4").value("checkable").toBool());        // anonymous
         QCOMPARE(rowOf(vm, "v1").value("displayName").toString(), QStringLiteral("Kovács Lilla (te)"));
         QCOMPARE(rowOf(vm, "v1").value("mapping").toString(), QStringLiteral("Beszélő 1 · mikrofon"));
         QCOMPARE(rowOf(vm, "v2").value("mapping").toString(), QStringLiteral("Beszélő 1 · hívás"));
         QCOMPARE(rowOf(vm, "c1").value("mapping").toString(), QString());
-        // A side bizonyíték rövid formája.
+        // The short form of the side evidence.
         const QVariantList evs = rowOf(vm, "v1").value("evidence").toList();
         QCOMPARE(evs.first().toMap().value("text").toString(), QStringLiteral("mikrofon-sáv"));
         QCOMPARE(evs.first().toMap().value("side").toString(), QStringLiteral("mic"));
         QCOMPARE(vm.checkedCount(), 2);
-        // Nincs átirat-fájl a homokozóban → nincs nyers beszélő-lista, nincs info.
+        // No transcript file in the sandbox: no raw speaker list, no info.
         QCOMPARE(vm.infoText(), QString());
     }
 
@@ -239,7 +239,7 @@ private slots:
         vm.setMeetingId(m_meetingId);
         QCOMPARE(rowOf(vm, "v1").value("mapping").toString(), QStringLiteral("átirat után"));
         QVERIFY(rowOf(vm, "v1").value("mappingPending").toBool());
-        QCOMPARE(rowOf(vm, "c1").value("mapping").toString(), QString());   // nem hallottuk
+        QCOMPARE(rowOf(vm, "c1").value("mapping").toString(), QString());   // not heard
         QVERIFY(vm.infoText().contains(QStringLiteral("átirat")));
     }
 
@@ -252,22 +252,22 @@ private slots:
 
         vm.setChecked("v2", false);
         vm.setChecked("v3", true);
-        vm.setChecked("v4", true);                       // névtelen: nem jelölhető
+        vm.setChecked("v4", true);                       // anonymous: cannot be checked
         QVERIFY(!rowOf(vm, "v4").value("checked").toBool());
         vm.nameRow("v4", "Varga Árpád");
         QVERIFY(rowOf(vm, "v4").value("checked").toBool());
         const QString added = vm.addPerson("Szabó Bence");
         QCOMPARE(groupOf(vm, added), QStringLiteral("manual"));
-        QCOMPARE(vm.addPerson("szabó bence"), added);    // ugyanaz a név → ugyanaz a sor
+        QCOMPARE(vm.addPerson("szabó bence"), added);    // same name, same row
         QCOMPARE(vm.checkedCount(), 4);                  // Lilla, Bence (T), Árpád, Szabó Bence
 
-        // Semmi sem került még a meetingre.
+        // Nothing has reached the meeting yet.
         for (const Participant& p : m_app->participants(m_meetingId)) {
             QVERIFY(!p.approved);
             QVERIFY(p.personName != QLatin1String("Szabó Bence"));
         }
 
-        // Külső változás (participantsChanged): a munkapéldány megmarad.
+        // External change (participantsChanged): the working copy stays.
         emit m_app->participantsChanged(m_meetingId);
         QVERIFY(!rowOf(vm, "v2").value("checked").toBool());
         QVERIFY(!rowOf(vm, added).isEmpty());
@@ -283,7 +283,7 @@ private slots:
         QCOMPARE(approved, (QStringList{"Kovács Lilla", "Szabó Bence", "Tóth Bence", "Varga Árpád"}));
         QVERIFY(!m_app->participantApprovalPending(m_meetingId));
 
-        // Újranyitás („Módosítás"): az akkori döntés az alapjelölés.
+        // Reopen ("Edit"): the decision made then is the default check.
         vm.reload();
         QVERIFY(!rowOf(vm, "v2").value("checked").toBool());
         QVERIFY(rowOf(vm, "v3").value("checked").toBool());
@@ -301,7 +301,7 @@ private slots:
         QVERIFY(m.approval && m.approval->skipped);
         vm.reload();
         QVERIFY(!vm.approvalPending());
-        // Kihagyás után az alapjelölés marad (nem a „mind ki").
+        // After Skip the default check stays (not "all off").
         QVERIFY(rowOf(vm, "v1").value("checked").toBool());
 
         QVERIFY(vm.approve());
@@ -318,7 +318,7 @@ private slots:
         ParticipantsViewModel vm;
         vm.setController(m_app.get());
         vm.setMeetingId(m_meetingId);
-        // Címke nélkül nincs javaslat (a TagService-számítást a core tesztjei fedik).
+        // Without a tag there is no suggestion (the TagService computation is covered by core's tests).
         QVERIFY(vm.tagSuggestions().isEmpty());
         QCOMPARE(vm.tagSuggestionLabel(), QString());
     }
@@ -332,11 +332,11 @@ private slots:
         QVERIFY(shell.maybeOfferParticipants(m_meetingId));
         QCOMPARE(spy.count(), 1);
         QCOMPARE(spy.first().first().toString(), m_meetingId);
-        QVERIFY(!shell.maybeOfferParticipants(m_meetingId));   // munkamenetenként egyszer
-        shell.openParticipants(m_meetingId);                   // a kézi megnyitás mindig megy
+        QVERIFY(!shell.maybeOfferParticipants(m_meetingId));   // once per session
+        shell.openParticipants(m_meetingId);                   // a manual open always works
         QCOMPARE(spy.count(), 2);
 
-        // Döntés után nem ajánljuk fel.
+        // After a decision it is not offered.
         seedMeeting(true);
         QVERIFY(m_app->skipApproval(m_meetingId));
         QVERIFY(!shell.maybeOfferParticipants(m_meetingId));
@@ -344,8 +344,8 @@ private slots:
         QCOMPARE(spy.count(), 2);
     }
 
-    // C2: a „Tovább” után egyszer kérdez — Gábor másodszor van #Nordvik megbeszélésen, Szabó
-    // Bence új személy; „Igen” egy visszavonható lépés; újbóli jóváhagyásnál nincs kérdés.
+    // After "Next" it asks once: Gábor is at a #Nordvik meeting for the second time, Szabó Bence
+    // is a new person; "Yes" is one undoable step; no question on a repeated approval.
     void learnQuestionAfterApproval()
     {
         TagService* tags = m_app->tags();
@@ -356,7 +356,7 @@ private slots:
         m_app->store()->saveMeeting(before);
         seedMeeting(false);
         tags->addTag(m_meetingId, nord);
-        tags->refreshPersonStatsNow();   // az alkalmazásban háttérszálon számolódik; itt most
+        tags->refreshPersonStatsNow();   // computed on a background thread in the app; here, right now
 
         ParticipantsViewModel vm;
         vm.setController(m_app.get());
@@ -370,21 +370,21 @@ private slots:
         QCOMPARE(q.value("text").toString(),
                  QStringLiteral("Fehér Gábor másodszor van #Nordvik megbeszélésen. Ráteszem a címkét?"));
         const QVariantList pairs = q.value("pairs").toList();
-        QCOMPARE(pairs.size(), 2);                                    // + Szabó Bence (új személy)
+        QCOMPARE(pairs.size(), 2);                                    // + Szabó Bence (new person)
         QCOMPARE(pairs.at(1).toMap().value("name").toString(), QStringLiteral("Szabó Bence"));
 
-        // Egy pár az „Egyenként…”-ből: Bence „Nem” (tartós elutasítás); a kérdés marad Gáborra.
+        // One pair from "One by one...": Bence "No" (persistent rejection); the question stays for Gábor.
         QVERIFY(vm.answerLearnPair(1, false).contains(QStringLiteral("#Nordvik")));
         QVERIFY(tags->isRejectedForPerson(QStringLiteral("Szabó Bence"), nord));
         QVERIFY(vm.learnQuestion().value("pairs").toList().isEmpty());
-        // „Igen”: a címke Gáboron, egy lépés.
+        // "Yes": the tag on Gábor, one step.
         QVERIFY(vm.answerLearn(true).contains(QStringLiteral("Fehér Gábor")));
         QCOMPARE(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")), QStringList{nord});
         QVERIFY(vm.learnQuestion().isEmpty());
         tags->undo();
         QVERIFY(tags->tagsOfPerson(QStringLiteral("Fehér Gábor")).isEmpty());
 
-        // Egyszer kérdez: az újbóli jóváhagyás nem hoz kérdést.
+        // Asks once: a repeated approval brings no question.
         vm.reload();
         QVERIFY(vm.approve());
         QVERIFY(vm.learnQuestion().isEmpty());
@@ -410,18 +410,18 @@ private slots:
         QObject* shell = m_window->findChild<QObject*>(QStringLiteral("shell"));
         QObject* host = m_window->findChild<QObject*>(QStringLiteral("host"));
         QVERIFY(shell && host);
-        QVERIFY(!host->property("opened").toBool());                 // a párbeszéd már bezárult
+        QVERIFY(!host->property("opened").toBool());                 // the dialog has already closed
         QTRY_VERIFY(visual("learnText"));
         QCOMPARE(visual("learnText")->property("text").toString(),
                  QStringLiteral("Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. "
                                 "Rájuk teszem a címkét?"));
-        // „Egyenként…” → három pár; egy pár „Igen” → toast „Visszavonás”-sal (címke-verem).
+        // "One by one..." gives three pairs; one pair "Yes" gives a toast with "Undo" (tag stack).
         click(visual("learnEach"));
         QTRY_VERIFY(visual("learnPairs"));
         QVERIFY(visual("learnPair_2"));
         click(visual("learnPairYes_2"));
         QVERIFY(shell->property("toasts").toString().contains(QStringLiteral("#Partnerek · Fehér Gábor|tags")));
-        QVERIFY(visual("learnText"));                                // a többi pár még vár
+        QVERIFY(visual("learnText"));                                // the other pairs are still waiting
         click(visual("learnYes"));
         QTRY_VERIFY(!visual("learnText"));
         QVERIFY(shell->property("toasts").toString().contains(QStringLiteral("#Nordvik · Fehér Gábor és Varga Árpád|tags")));
@@ -453,7 +453,7 @@ private slots:
         QVERIFY(vm);
         QVERIFY(!host->property("opened").toBool());
 
-        // A shell jele nyitja (az U1 / a menü ezen át).
+        // The shell's signal opens it (the menu goes through it).
         QMetaObject::invokeMethod(shell, "participantsDialogRequested", Q_ARG(QString, QStringLiteral("demo")));
         QTRY_VERIFY(host->property("opened").toBool());
         pump(150);
@@ -463,24 +463,24 @@ private slots:
         QVERIFY(approve);
         QCOMPARE(approve->property("text").toString(), QStringLiteral("Tovább · 4 résztvevő"));
         QVERIFY(visual("participantGroup_sure") && visual("participantGroup_doubt"));
-        QVERIFY(!visual("participantGroup_invited"));     // üres csoport rejtve
-        // K1: a lábléc szabály-mondata (a címke csak sorrendet ad).
+        QVERIFY(!visual("participantGroup_invited"));     // empty group hidden
+        // The footer's rule sentence (the tag only gives the order).
         QQuickItem* rule = visual("participantsRule");
         QVERIFY(rule);
         QCOMPARE(rule->property("text").toString(), QStringLiteral("A címkék csak sorrendet adnak; a hang dönt."));
 
-        // Jelölés kattintással: Tóth Bence (ellentmondó, alapból ki) be.
+        // Checking by click: Tóth Bence (contradicted, unchecked by default) becomes checked.
         click(visual("participantCheck_v-bence"));
         QCOMPARE(vm->checkedCount(), 5);
         QTRY_COMPARE(approve->property("text").toString(), QStringLiteral("Tovább · 5 résztvevő"));
 
-        // Címke-alapú javaslat → „Kézzel felvéve" csoport.
+        // A tag-based suggestion goes into the "Added by hand" group.
         click(visual("participantsTagSuggestion_0"));
         QTRY_VERIFY(visual("participantGroup_manual"));
         QCOMPARE(vm->checkedCount(), 6);
         QVERIFY(vm->tagSuggestions().isEmpty());
 
-        // A hozzáadás-mező a személyválasztót nyitja.
+        // The add field opens the person picker.
         click(visual("participantsAdd"));
         QObject* picker = m_window->findChild<QObject*>(QStringLiteral("participantsAddPicker"));
         QVERIFY(picker);
@@ -488,12 +488,12 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(!picker->property("opened").toBool());
 
-        // Tovább → zárás + toast.
+        // Next: closes + a toast.
         click(visual("participantsApprove"));
         QTRY_VERIFY(!host->property("opened").toBool());
         QVERIFY(shell->property("toasts").toString().contains(QStringLiteral("6")));
 
-        // Újranyitás → friss munkapéldány; Kihagyás zár.
+        // Reopen: a fresh working copy; Skip closes.
         QMetaObject::invokeMethod(host, "openFor", Q_ARG(QVariant, QStringLiteral("demo")));
         QTRY_VERIFY(host->property("opened").toBool());
         QCOMPARE(vm->checkedCount(), 4);

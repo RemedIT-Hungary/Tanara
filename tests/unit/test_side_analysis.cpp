@@ -1,9 +1,7 @@
-//
-// SideAnalysis — sáv-oldal következtetés szintetikus aktivitáson (nincs hang, nincs I/O):
-// localShare, az adaptív (2-közép) küszöb, a személy-oldal (saját név / sávhoz kötött beszélő
-// alapértelmezése és annak felülírása a megerősített sorokkal), az ellentmondások, a nyers
-// címkénkénti bontás, és az egysávos meeting (minden Unknown).
-//
+// SideAnalysis: track-side inference on synthetic activity (no audio, no I/O): localShare,
+// the adaptive (2-means) threshold, the person's side (default from own name / track-bound
+// speaker and its override by confirmed lines), the contradictions, the per-raw-label
+// breakdown, and the single-track meeting (everything Unknown).
 #include <QtTest>
 
 #include <cmath>
@@ -17,7 +15,7 @@ namespace {
 
 struct Span { qint64 s, e; float db; };
 
-// Egy sáv aktivitása: 0..totalMs, a megadott szakaszokon az adott dB a padló felett, máshol 0.
+// One track's activity: 0..totalMs, the given dB above the floor on the given segments, 0 elsewhere.
 TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs, const QVector<Span>& spans,
                        qint64 originMs = 0)
 {
@@ -40,8 +38,8 @@ TranscriptLine line(const QString& id, qint64 s, qint64 e, const QString& raw)
     return TranscriptLine{id, s, e, raw, QStringLiteral("x")};
 }
 
-// Szintetikus megbeszélés: 2 mp-es sorok 2.5 mp-enként. kinds[i] == 'L' → a sor alatt csak
-// a mikrofon szól (localDb), 'R' → csak a loopback (remoteDb; a mic-en bleedDb áthallás).
+// Synthetic meeting: 2 s lines every 2.5 s. kinds[i] == 'L': under the line only the
+// microphone plays (localDb), 'R': only the loopback (remoteDb; bleedDb crosstalk on the mic).
 struct Synth {
     QVector<TranscriptLine> lines;
     MeetingActivity act;
@@ -86,7 +84,7 @@ private slots:
         QCOMPARE(sides::localShareFromDb(20.0f, 0.0f), 1.0f);
         QCOMPARE(sides::localShareFromDb(0.0f, 20.0f), 0.0f);
         QVERIFY(std::abs(sides::localShareFromDb(20.0f, 20.0f) - 0.5f) < 1e-6f);
-        // A padló feletti TÖBBLET-teljesítmény aránya: 20 dB (99) vs 10 dB (9) → 0.917.
+        // The share of EXCESS power above the floor: 20 dB (99) vs 10 dB (9) -> 0.917.
         QVERIFY(std::abs(sides::localShareFromDb(20.0f, 10.0f) - 99.0f / 108.0f) < 1e-4f);
         QVERIFY(std::isnan(sides::localShareFromDb(0.0f, 0.0f)));
     }
@@ -104,7 +102,7 @@ private slots:
 
     void adaptiveThresholdBimodal()
     {
-        // Tiszta kétcsúcsú eloszlás 0.05 és 0.95 körül → a Mixed-sáv a két közép közti középső fele.
+        // A clean bimodal distribution around 0.05 and 0.95: the Mixed band is the middle half between the two centers.
         QVector<float> v;
         for (int i = 0; i < 10; ++i) v << 0.04f + 0.002f * i << 0.94f + 0.002f * i;
         const sides::Thresholds th = sides::adaptiveThresholds(v);
@@ -117,8 +115,8 @@ private slots:
 
     void adaptiveThresholdFollowsBleed()
     {
-        // Mic-áthallás: a távoli sorok 0.35 körül, a helyiek 0.97 körül. Az alap 0.3-as küszöb a
-        // távoli sorokat Mixed-nek látná; az adaptív a két csúcs közé teszi a határt.
+        // Mic crosstalk: the remote lines around 0.35, the local ones around 0.97. The default 0.3
+        // threshold would see the remote lines as Mixed; the adaptive one puts the boundary between the two peaks.
         QVector<float> v;
         for (int i = 0; i < 12; ++i) v << 0.33f + 0.004f * i;
         for (int i = 0; i < 8; ++i) v << 0.96f + 0.003f * i;
@@ -134,25 +132,25 @@ private slots:
 
     void adaptiveThresholdFallsBack()
     {
-        // Kevés sor.
+        // Few lines.
         QVERIFY(!sides::adaptiveThresholds({0.0f, 0.0f, 1.0f, 1.0f, 1.0f}).adaptive);
-        // Egycsúcsú (mindenki távoli).
+        // Unimodal (everyone remote).
         QVector<float> uni;
         for (int i = 0; i < 30; ++i) uni << 0.01f * (i % 7);
         const sides::Thresholds u = sides::adaptiveThresholds(uni);
         QVERIFY(!u.adaptive);
         QCOMPARE(u.loRemote, sides::kDefaultLoRemote);
         QCOMPARE(u.hiLocal, sides::kDefaultHiLocal);
-        // Egy csoport túl kicsi (2 kiugró 40 közül).
+        // One group is too small (2 outliers out of 40).
         QVector<float> small;
         for (int i = 0; i < 38; ++i) small << 0.02f;
         small << 0.98f << 0.99f;
         QVERIFY(!sides::adaptiveThresholds(small).adaptive);
-        // Két csúcs, de mindkettő a helyi oldalon (0.75 / 0.99) — a 0.5 nincs köztük.
+        // Two peaks, but both on the local side (0.75 / 0.99): 0.5 is not between them.
         QVector<float> local;
         for (int i = 0; i < 10; ++i) local << 0.75f << 0.99f;
         QVERIFY(!sides::adaptiveThresholds(local).adaptive);
-        // NaN-ok nem számítanak.
+        // NaNs do not count.
         QVERIFY(!sides::adaptiveThresholds(QVector<float>(20, qQNaN())).adaptive);
     }
 
@@ -175,7 +173,7 @@ private slots:
             QCOMPARE(r.persons[0].side, Side::Unknown);
             for (int h : r.histogram) QCOMPARE(h, 0);
         }
-        // Üres aktivitás (nincs sáv) ugyanígy.
+        // Empty activity (no track) likewise.
         const SideReport r = analyzeSides(m, s.lines, ov, MeetingActivity{}, "Ádám");
         QVERIFY(!r.active);
         QCOMPARE(r.totals.unknown, 6);
@@ -183,8 +181,8 @@ private slots:
 
     void mixedRawLabelAgainstUserDefault()
     {
-        // A „Beszélő 1” a felhasználó (speakerMap → Ádám), de alatta távoli sorok is vannak — a
-        // hosszú tesztmeeting esete. Nincs megerősített sor: az alapértelmezés (Local) dönt.
+        // "Speaker 1" is the user (speakerMap to the own person), but there are remote lines under it
+        // too: the case of the long test meeting. No confirmed line: the default (Local) decides.
         Synth s = synth("LLRLRRLL", {"Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 1",
                                       "Beszélő 1", "Beszélő 1", "Beszélő 1", "Beszélő 2"});
         Meeting m;
@@ -209,8 +207,8 @@ private slots:
             QCOMPARE(c.personSide, Side::Local);
             QVERIFY(c.localShare < 0.01f);
         }
-        QCOMPARE(r.conflicts[0].utteranceId, QStringLiteral("u5000"));   // időrendben
-        // A névtelen „Beszélő 2”-nek nincs se alapértelmezése, se megerősített sora.
+        QCOMPARE(r.conflicts[0].utteranceId, QStringLiteral("u5000"));   // in chronological order
+        // The anonymous "Speaker 2" has neither a default nor a confirmed line.
         QCOMPARE(person(r, "Beszélő 2")->side, Side::Unknown);
         QCOMPARE(r.histogram[0], 3);
         QCOMPARE(r.histogram[9], 5);
@@ -218,8 +216,8 @@ private slots:
 
     void confirmedLinesDecidePersonSide()
     {
-        // „Beszélő 2” névtelen: 3 megerősített távoli sor → Remote ("lines"); a 4. (nem megerősített)
-        // helyi sora ellentmondás.
+        // "Speaker 2" is anonymous: 3 confirmed remote lines give Remote ("lines"); its 4th
+        // (unconfirmed) local line is a contradiction.
         Synth s = synth("RRRLL", {"Beszélő 2", "Beszélő 2", "Beszélő 2", "Beszélő 2", "Beszélő 1"});
         SpeakerOverlay ov;
         confirm(ov, "u0");
@@ -237,8 +235,8 @@ private slots:
 
     void confirmedLinesOverrideUserNameDefault()
     {
-        // A „Beszélő 2”-t (tévesen) a felhasználóhoz kötötték, de 4 megerősített sora a loopbackon
-        // szólt → az adat felülírja a saját-név alapértelmezést (Remote), a helyi sora ellentmondás.
+        // "Speaker 2" was (wrongly) bound to the user, but its 4 confirmed lines played on the
+        // loopback, so the data overrides the own-name default (Remote), its local line is a contradiction.
         Synth s = synth("RRRRL", {"Beszélő 2"});
         Meeting m;
         m.speakerMap["Beszélő 2"] = "Ádám";
@@ -253,7 +251,7 @@ private slots:
         QCOMPARE(r.conflicts.size(), 1);
         QCOMPARE(r.conflicts[0].lineSide, Side::Local);
 
-        // Csak 2 ellentmondó megerősített sor: kevés a felülíráshoz → marad az alapértelmezés.
+        // Only 2 contradicting confirmed lines: too few to override, so the default stays.
         SpeakerOverlay weak;
         confirm(weak, "u0");
         confirm(weak, "u2500");
@@ -263,7 +261,7 @@ private slots:
         QCOMPARE(p->basis, QStringLiteral("user-name"));
         QCOMPARE(r.conflicts.size(), 4);
 
-        // Zajos (egymásra beszélős) megerősített sor nem számít bizonyítéknak.
+        // A noisy (overlapping speech) confirmed line does not count as evidence.
         SpeakerOverlay noisy = ov;
         noisy.utterances["u0"].noisy = true;
         noisy.utterances["u2500"].noisy = true;
@@ -273,7 +271,7 @@ private slots:
 
     void fixedTrackSpeakerDefault()
     {
-        // A loopback-sávhoz kötött beszélő („Béla”) alapból távoli; a felhasználó neve más.
+        // A speaker bound to the loopback track ("Béla") is remote by default; the user's name is another.
         Synth s = synth("RRL", {"Távoli 1"});
         Meeting m;
         Track loop;
@@ -292,11 +290,12 @@ private slots:
 
     void micBleedStillSeparates()
     {
-        // A távoli sorok alatt a mikrofonon is van jel (hangszóró-áthallás): 26 dB a loopback 28 dB-je
-        // mellett → localShare ≈ 0.39. A RÉGI besorolás: az alap küszöbbel Mixed lenne; az adaptív
-        // Remote-nak látja. Az ÚJ (beszédszint-normalizált): a mic 26 dB-je csak 4 dB-lel van a mic
-        // beszédszintje (30) alatt → a mic „beszél" → soha nem Remote; a loopback is beszédszinten
-        // van → Mixed (ennyire erős áthallás egymásra beszélésnek látszik).
+        // Under the remote lines there is a signal on the microphone too (speaker crosstalk): 26 dB
+        // next to the loopback's 28 dB, so localShare is about 0.39. The OLD classification: with the
+        // default threshold it would be Mixed; the adaptive one sees Remote. The NEW (speech-level
+        // normalized): the mic's 26 dB is only 4 dB below the mic's speech level (30), so the mic
+        // "speaks" and it is never Remote; the loopback is at speech level too, so Mixed (crosstalk
+        // this strong looks like overlapping speech).
         Synth s = synth("LRLRRLRRLRLR", {"Beszélő 1"}, 30.0f, 28.0f, 26.0f);
         const SideReport r = analyzeSides(Meeting{}, s.lines, SpeakerOverlay{}, s.act, "Ádám");
         QVERIFY(r.thresholds.adaptive);
@@ -319,21 +318,21 @@ private slots:
     void classifyLevelsRules()
     {
         const float inf = std::numeric_limits<float>::infinity();
-        QCOMPARE(sides::classifyLevels(0.0f, -inf), Side::Local);          // tiszta helyi
-        QCOMPARE(sides::classifyLevels(-inf, 0.0f), Side::Remote);         // tiszta távoli
-        QCOMPARE(sides::classifyLevels(-25.0f, 0.0f), Side::Remote);       // halk mic-zaj
-        QCOMPARE(sides::classifyLevels(0.0f, -8.0f), Side::Local);         // visszhang
-        QCOMPARE(sides::classifyLevels(0.0f, -2.0f), Side::Mixed);         // egymásra beszélés
-        QCOMPARE(sides::classifyLevels(-9.0f, 0.0f), Side::Mixed);         // a mic beszél → soha Remote
-        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Remote);       // köztes mic (áthallás) + loopback beszél: távoli
-        QCOMPARE(sides::classifyLevels(-inf, -inf), Side::Unknown);        // csend
-        QCOMPARE(sides::classifyLevels(qQNaN(), 0.0f), Side::Unknown);     // nincs lefedés
-        QCOMPARE(sides::classifyLevels(0.0f, -15.0f), Side::Local);        // a loopback halk
+        QCOMPARE(sides::classifyLevels(0.0f, -inf), Side::Local);          // purely local
+        QCOMPARE(sides::classifyLevels(-inf, 0.0f), Side::Remote);         // clean remote
+        QCOMPARE(sides::classifyLevels(-25.0f, 0.0f), Side::Remote);       // quiet mic noise
+        QCOMPARE(sides::classifyLevels(0.0f, -8.0f), Side::Local);         // echo
+        QCOMPARE(sides::classifyLevels(0.0f, -2.0f), Side::Mixed);         // overlapping speech
+        QCOMPARE(sides::classifyLevels(-9.0f, 0.0f), Side::Mixed);         // the mic speaks: never Remote
+        QCOMPARE(sides::classifyLevels(-15.0f, 0.0f), Side::Remote);       // an intermediate mic (crosstalk) + the loopback speaks: remote
+        QCOMPARE(sides::classifyLevels(-inf, -inf), Side::Unknown);        // silence
+        QCOMPARE(sides::classifyLevels(qQNaN(), 0.0f), Side::Unknown);     // no coverage
+        QCOMPARE(sides::classifyLevels(0.0f, -15.0f), Side::Local);        // the loopback is quiet
     }
 
     void speechLevelIsActivePercentile()
     {
-        // 100 aktív keret 1..100 dB, plusz csend és lyuk: a 90. percentilis ~90.
+        // 100 active frames 1..100 dB, plus silence and a hole: the 90th percentile is about 90.
         TrackActivity t;
         t.trackId = "mic";
         t.kind = TrackKind::Mic;
@@ -348,9 +347,9 @@ private slots:
 
     void echoOnLoopbackIsLocal()
     {
-        // A mic halk (15 dB), a felhasználó hangja a loopbackon visszhangként visszajön (22 dB),
-        // a valódi távoli beszéd 30 dB. A régi arány a helyi sorokat Remote-nak látta (0.16);
-        // az új a mic beszédszintjén (0 dB) lévő sort Local-nak, a visszhangot (−8 dB) annak.
+        // The mic is quiet (15 dB), the user's voice comes back on the loopback as an echo (22 dB),
+        // the real remote speech is 30 dB. The old ratio saw the local lines as Remote (0.16); the
+        // new one sees the line at the mic's speech level (0 dB) as Local, and the echo (-8 dB) as that too.
         QVector<TranscriptLine> lines;
         QVector<Span> mic, loop;
         const QString kinds = "LLRLRRLRLL";
@@ -366,14 +365,14 @@ private slots:
         QVERIFY(r.active);
         QCOMPARE(r.totals.local, 6);
         QCOMPARE(r.totals.remote, 4);
-        QCOMPARE(r.legacyTotals.local, 0);   // a régi metrika hibája
+        QCOMPARE(r.legacyTotals.local, 0);   // the old metric's fault
         for (const LineSide& l : r.lines)
             if (l.side == Side::Local) QVERIFY(std::abs(l.loopRelDb - (-8.0f)) < 0.1f);
     }
 
     void overlapIsMixed()
     {
-        // Mindkét oldal beszédszinten (a loopback a saját szintjén) → egymásra beszélés.
+        // Both sides at speech level (the loopback at its own level): overlapping speech.
         QVector<TranscriptLine> lines{line("a", 0, 2000, "B1"), line("b", 2500, 4500, "B1"),
                                       line("c", 5000, 7000, "B1")};
         MeetingActivity act;
@@ -387,8 +386,9 @@ private slots:
 
     void manualTracksDecidePersonSide()
     {
-        // A felhasználó (alapból Local) kézzel a loopback-sávra osztva → Remote ("manual"); a
-        // helyi sorai ellentmondások. A kézi beosztás az overlay-ből és a hints-ből is jöhet.
+        // The user (Local by default) manually assigned to the loopback track gives Remote
+        // ("manual"); their local lines are contradictions. The manual assignment can come from the
+        // overlay and from the hints too.
         Synth s = synth("LLLR", {"Beszélő 1"});
         Meeting m;
         Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic;
@@ -415,7 +415,7 @@ private slots:
 
     void learnedSideBeatsUserName()
     {
-        // A tanult alapérték (Remote) megelőzi a saját-név alapértelmezést; gyenge adat nem írja felül.
+        // The learned default (Remote) takes precedence over the own-name default; weak data does not override it.
         Synth s = synth("RRL", {"Beszélő 1"});
         Meeting m;
         m.speakerMap["Beszélő 1"] = "Béla";
@@ -427,13 +427,13 @@ private slots:
         QCOMPARE(p->basis, QStringLiteral("learned"));
         QCOMPARE(p->learnedSide, Side::Remote);
         QCOMPARE(r.conflicts.size(), 1);
-        // A tanult alapérték maga nem tanul tovább (csak adatból / kézből).
+        // The learned default itself does not learn further (only from data / by hand).
         QVERIFY(sides::learnedDefaults(r).isEmpty());
     }
 
     void silenceAndGapsAreUnknown()
     {
-        // 1. sor: mindkét oldal csendes; 2. sor: a mic-sáv lyukas (NaN) → Unknown; 3.: helyi.
+        // Line 1: both sides quiet; line 2: the mic track has a hole (NaN), so Unknown; line 3: local.
         QVector<TranscriptLine> lines{line("a", 0, 2000, "B1"), line("b", 2500, 4500, "B1"),
                                       line("c", 5000, 7000, "B1")};
         TrackActivity mic = activity("mic", TrackKind::Mic, 8000, {{5000, 7000, 30.0f}});
@@ -450,7 +450,7 @@ private slots:
 
     void severalTracksPerKindAreSummed()
     {
-        // Két loopback-sáv (hívás + rendszerhang): együtt 3 dB-lel több a többlet-teljesítmény.
+        // Two loopback tracks (call + system audio): together 3 dB more excess power.
         QVector<TranscriptLine> lines{line("a", 0, 2000, "B1")};
         MeetingActivity act;
         act.tracks = {activity("mic", TrackKind::Mic, 3000, {{0, 2000, 20.0f}}),
@@ -463,7 +463,7 @@ private slots:
 
     void correctedSpeakerIsUsed()
     {
-        // A felülírt (kézzel átsorolt) sor a cél-beszélőhöz számít, a nyers címkéje marad.
+        // An overridden (manually reassigned) line counts for the target speaker, its raw label stays.
         Synth s = synth("LLLR", {"Beszélő 1"});
         SpeakerOverlay ov;
         confirm(ov, "u7500", "Beszélő 9");

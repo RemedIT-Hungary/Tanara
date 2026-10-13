@@ -1,9 +1,9 @@
-// Az Összefoglaló fül forrás-hivatkozásai (v3, S1–S3) kijelző nélkül (offscreen), a beépített
-// KITALÁLT mintaadaton, hamis lejátszóval és shell-lel: idő-chip → „Honnan jön ez?” felugró
-// (Meghallgatom → a megszólalás lejátszása, Ugrás az átiratba → shell.seekTo, Jelzem →
-// flagStatement + toast), rámutatás → a mondat kijelölése (és a térkép „Forrás” sora), a
-// Források kapcsoló, a célzott elavulás jelölései + „Rendben így”, a memó tartalomjegyzéke és
-// a szakasz-chip (lejátszás onnan), és a forrás nélküli (régi) összefoglaló régi nézete.
+// The Summary tab's source references without a display (offscreen), on the built-in MADE-UP
+// sample data, with a fake player and shell: time chip opens the "Where does this come from?"
+// popup (Listen plays the utterance, Jump to the transcript calls shell.seekTo, Flag calls
+// flagStatement + a toast), hovering selects the sentence (and the map's "Source" row), the
+// Sources switch, the targeted staleness markers + "Fine as is", the memo's table of
+// contents and the section chip (play from there), and the old view of a summary without sources.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "SummaryViewModel.h"
@@ -126,7 +126,7 @@ class TestSummaryTab : public QObject {
     bool popoverOpen() const { return popover() && popover()->property("opened").toBool(); }
     QString playerLog() const { return m_player->property("log").toString(); }
     QString shellLog() const { return m_shell->property("log").toString(); }
-    // A bekezdés első szava, amely az adott mondathoz tartozik.
+    // The first word of the paragraph that belongs to the given sentence.
     QQuickItem* wordOf(const QString& sid) const
     {
         QQuickItem* flow = visual("execParagraph");
@@ -164,17 +164,17 @@ private slots:
     void chipOpensSourcesPopover()
     {
         load(QStringLiteral("sourcesOn"));
-        QVERIFY(visual("summaryToolsRow"));                  // ideiglenesen a fül tetején
+        QVERIFY(visual("summaryToolsRow"));                  // temporarily at the top of the tab
         QVERIFY(visual("execParagraph"));
         const QList<QQuickItem*> chips = visuals("timeChip");
         QVERIFY2(chips.size() >= 9, qPrintable(QString::number(chips.size())));
         QVERIFY(visual("sourceMarks"));
 
-        click(chips.first());                                 // az s1 chipje (00:04)
+        click(chips.first());                                 // the chip of s1 (00:04)
         QTRY_VERIFY(popoverOpen());
         QCOMPARE(popover()->property("statementId").toString(), QStringLiteral("s1"));
         QCOMPARE(m_vm->activeStatementId(), QStringLiteral("s1"));
-        QCOMPARE(visuals("sourceListen").size(), 2);          // két idézet
+        QCOMPARE(visuals("sourceListen").size(), 2);          // two quotes
 
         click(visuals("sourceListen").first());
         QVERIFY2(playerLog().contains(QStringLiteral("range:4000-13000")), qPrintable(playerLog()));
@@ -182,13 +182,13 @@ private slots:
         click(visual("sourceFlag"));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Jelezted")));
         QVERIFY(m_vm->sentences()->get(0).value(QStringLiteral("flagged")).toBool());
-        QVERIFY(!visual("sourceFlag")->isEnabled());           // „Jelezve”
+        QVERIFY(!visual("sourceFlag")->isEnabled());           // "Flagged"
 
         click(visual("sourceJump"));
         QVERIFY2(shellLog().contains(QStringLiteral("seekTo:4000")), qPrintable(shellLog()));
         QTRY_VERIFY(!popoverOpen());
 
-        // Billentyűzet: a chip fókuszálható, Enter nyitja.
+        // Keyboard: the chip is focusable, Enter opens it.
         QQuickItem* chip = visuals("timeChip").at(2);
         chip->forceActiveFocus(Qt::TabFocusReason);
         QTest::keyClick(m_window.get(), Qt::Key_Return);
@@ -204,11 +204,11 @@ private slots:
         QVERIFY(word);
         QTest::mouseMove(m_window.get(), center(word));
         QTRY_COMPARE(m_vm->activeStatementId(), QStringLiteral("s2"));
-        // A térkép „Forrás” sorában az s2 forrása (egy tartomány) a kiemelt.
+        // In the map's "Source" row s2's source (one range) is highlighted.
         int active = 0;
         for (const QVariant& m : m_vm->sourceMarks()) active += m.toMap().value(QStringLiteral("active")).toBool();
         QCOMPARE(active, 1);
-        QTest::mouseMove(m_window.get(), QPoint(900, 670));    // a jobb oszlop alja (nem állítás)
+        QTest::mouseMove(m_window.get(), QPoint(900, 670));    // the bottom of the right column (not a claim)
         QTRY_COMPARE(m_vm->activeStatementId(), QString());
 
         click(visual("sourcesToggle"));
@@ -231,7 +231,7 @@ private slots:
         QVERIFY(!visuals("staleUnderline").isEmpty());
         int warnChips = 0;
         for (QQuickItem* c : visuals("timeChip")) warnChips += c->property("warn").toBool();
-        QCOMPARE(warnChips, 2);                                // 12:41 és 13:01
+        QCOMPARE(warnChips, 2);                                // 12:41 and 13:01
 
         click(visual("staleRefresh"));
         QVERIFY(shellLog().contains(QStringLiteral("summary;")));
@@ -257,8 +257,8 @@ private slots:
         QVERIFY2(playerLog().contains(QStringLiteral("seek:5530000;play;")), qPrintable(playerLog()));
     }
 
-    // S2: a memó-pontok és a bevezető mondatai chipet kapnak, az alszakaszok címet; a chip a
-    // „Honnan jön ez?” felugrót nyitja az adott állításra; a Források kapcsoló itt is rejt.
+    // The memo points and the intro sentences get chips, the subsections a title; the chip opens
+    // the "Where does this come from?" popup for that claim; the Sources switch hides them here too.
     void memoPointsHaveSourceChips()
     {
         load(QStringLiteral("memoSections"));
@@ -268,7 +268,7 @@ private slots:
         QVERIFY2(titles.contains(QStringLiteral("Elhangzott érvek")), qPrintable(titles.join(u'|')));
         QVERIFY(titles.contains(QStringLiteral("Nyitott kérdés")));
         QVERIFY(visuals("memoIntro").size() >= 2);
-        // A 3. szakasz „39:20” chipje (m3.2) → felugró az m3.2 két idézetével.
+        // The "39:20" chip of section 3 (m3.2) opens the popup with m3.2's two quotes.
         QQuickItem* chip = nullptr;
         for (QQuickItem* c : visuals("memoTimeChip"))
             if (c->property("text").toString() == QStringLiteral("39:20")) chip = c;

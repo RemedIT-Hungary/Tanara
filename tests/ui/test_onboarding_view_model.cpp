@@ -1,14 +1,14 @@
-// OnboardingViewModel + OnboardingWindowHost — az „Első lépések” ablak (K14).
+// OnboardingViewModel + OnboardingWindowHost: the "Getting started" window.
 //
-//  - valódi AppControllerrel, IZOLÁLT TANARA_HOME-ban (QTemporaryDir): a kitöltés a
-//    beállításokból (az OS-fiókból vett név), a kihagyás csak az `onboardingDone`-t írja, a
-//    „Tovább” lépésenként menti a nevet / nyelvet / témát / mappákat / indítást, az állapot-sor
-//    szövege a readiness szerint, külső mentés követése;
-//  - a gazda: első indításkor egyszer nyílik meg magától, `onboardingDone` után nem, kézzel
-//    mindig; bezáráskor a jelző igazra áll; „Beállítás most” → Beállítások › Szolgáltatások;
-//  - demó (controller nélkül): a demoState a lépést állítja.
-// A Tanara Cloud ki van kapcsolva (TANARA_CLOUD=off); autostart-bejegyzés TANARA_HOME mellett
-// sosem íródik (tanara::autostart védelme).
+//  - with a real AppController in an ISOLATED TANARA_HOME (QTemporaryDir): prefilling from the
+//    settings (the name taken from the OS account), skipping writes only `onboardingDone`,
+//    "Next" saves the name / language / theme / folders / startup per step, the status row
+//    text follows readiness, external saves are followed;
+//  - the host: opens by itself once on first launch, not after `onboardingDone`, always by
+//    hand; on close the flag becomes true; "Set up now" opens Settings > Providers;
+//  - demo (without a controller): demoState sets the step.
+// Tanara Cloud is off (TANARA_CLOUD=off); an autostart entry is never written with TANARA_HOME
+// (the tanara::autostart guard).
 #include "AppContext.h"
 #include "OnboardingViewModel.h"
 #include "OnboardingWindowHost.h"
@@ -82,7 +82,7 @@ private slots:
         QVERIFY(!vm.demo());
         QCOMPARE(vm.step(), QStringLiteral("welcome"));
         QCOMPARE(vm.stepCount(), 6);
-        // A név az OS-fiókból jön (SettingsManager::defaults) — nem üres, és nem a régi beégetett.
+        // The name comes from the OS account (SettingsManager::defaults): not empty, and not the old hard-coded one.
         QVERIFY(!vm.userName().trimmed().isEmpty());
         QCOMPARE(vm.userName(), live().userSpeakerName);
         QCOMPARE(vm.uiLanguage(), live().uiLanguage);
@@ -104,15 +104,15 @@ private slots:
         QSignalSpy close(&vm, &OnboardingViewModel::closeRequested);
         QSignalSpy theme(&vm, &OnboardingViewModel::themeModeSaved);
 
-        QVERIFY(vm.next());                                   // Üdvözlés → Te (nincs mit menteni)
+        QVERIFY(vm.next());                                   // Welcome to You (nothing to save)
         QCOMPARE(vm.step(), QStringLiteral("you"));
         vm.setUserName(QStringLiteral("Valaki Más"));
         vm.setUiLanguage(QStringLiteral("en"));
         vm.setThemeMode(QStringLiteral("dark"));
-        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));   // előnézet
+        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));   // preview
         QVERIFY(vm.stepDirty());
         vm.skip();
-        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("light"));  // visszaállt
+        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("light"));  // restored
         QCOMPARE(vm.userName(), live().userSpeakerName);
         QCOMPARE(vm.stepStatus().value("you").toString(), QStringLiteral("skipped"));
 
@@ -125,7 +125,7 @@ private slots:
         vm.setWatcherAutostart(true);
         vm.skip();
         QCOMPARE(vm.step(), QStringLiteral("done"));
-        vm.skip();                                            // az utolsón = Kész
+        vm.skip();                                            // on the last one = Done
         QCOMPARE(close.count(), 1);
         QCOMPARE(theme.count(), 0);
         QVERIFY(vm.isDone());
@@ -147,7 +147,7 @@ private slots:
         QSignalSpy saved(&vm, &OnboardingViewModel::saved);
         vm.setStep(QStringLiteral("you"));
 
-        // Üres név: nem lép tovább, semmi nem íródik.
+        // Empty name: does not advance, nothing is written.
         vm.setUserName(QStringLiteral("   "));
         QVERIFY(!vm.userNameError().isEmpty());
         QVERIFY(!vm.next());
@@ -173,7 +173,7 @@ private slots:
         QVERIFY(vm.next());
         QCOMPARE(live().audioDir, audio);
         QCOMPARE(live().notesDir, notes);
-        // Vissza az alapértelmezettre (a badge-hez): a piszkozat az alap útra áll.
+        // Back to the default (for the badge): the draft goes back to the default path.
         vm.back();
         vm.resetFolder(QStringLiteral("audio"));
         QVERIFY(folder(vm, "audio").value("isDefault").toBool());
@@ -188,7 +188,7 @@ private slots:
         QVERIFY(vm.next());
         QCOMPARE(live().watcherAutostart, true);
         QCOMPARE(vm.step(), QStringLiteral("done"));
-        QVERIFY(!live().onboardingDone);                      // a jelző csak a végén / bezáráskor
+        QVERIFY(!live().onboardingDone);                      // the flag only at the end / on close
         vm.next();
         QVERIFY(live().onboardingDone);
     }
@@ -198,7 +198,7 @@ private slots:
         startApp();
         OnboardingViewModel vm;
         vm.setController(m_app.get());
-        // Friss telepítés: Soniox-kulcs nincs, a helyi LM Studio a gemma-modellel be van írva.
+        // Fresh install: no Soniox key, the local LM Studio with the gemma model is filled in.
         QCOMPARE(vm.sttStatus(), QStringLiteral("Átírás: nincs kulcs"));
         QVERIFY(!vm.sttReady());
         QCOMPARE(vm.llmStatus(), QStringLiteral("Összefoglaló: LM Studio · gemma-4-12b"));
@@ -211,7 +211,7 @@ private slots:
         QCOMPARE(vm.sttStatus(), QStringLiteral("Átírás: Soniox"));
         QVERIFY(vm.sttReady());
 
-        // Külső mentés (Beállítások): a sor magától frissül.
+        // External save (Settings): the row refreshes by itself.
         AppSettings s = live();
         s.llmConfigs[s.llmProviderId].baseUrl.clear();
         m_app->settings()->setSettings(s);
@@ -235,11 +235,11 @@ private slots:
         s.audioDir = m_home->filePath(QStringLiteral("kivulrol"));
         s.notesDir = m_home->filePath(QStringLiteral("kivulrol-jegyzet"));
         m_app->settings()->setSettings(s);
-        QCOMPARE(folder(vm, "audio").value("path").toString(), s.audioDir);   // nem nyúlt hozzá → követi
-        QCOMPARE(folder(vm, "notes").value("path").toString(), typed);        // a begépelt marad
+        QCOMPARE(folder(vm, "audio").value("path").toString(), s.audioDir);   // untouched, so it follows
+        QCOMPARE(folder(vm, "notes").value("path").toString(), typed);        // what was typed stays
     }
 
-    // ---- a gazda: automatikus / kézi megnyitás --------------------------------------------
+    // ---- the host: automatic / manual opening ----
 
     void hostOpensOnceOnFirstRun()
     {
@@ -250,16 +250,16 @@ private slots:
         QVERIFY(host.isVisible());
         QVERIFY(host.viewModel());
         QCOMPARE(host.viewModel()->step(), QStringLiteral("welcome"));
-        // Ugyanebben a folyamatban másodszor nem nyílik meg magától.
+        // In the same process it does not open by itself a second time.
         QVERIFY(!host.openIfNeeded());
 
-        // „Beállítás most” → Beállítások › Szolgáltatások.
+        // "Set up now" opens Settings > Providers.
         QSignalSpy settings(&host, &OnboardingWindowHost::openSettingsRequested);
         host.viewModel()->openServices();
         QCOMPARE(settings.count(), 1);
         QCOMPARE(settings.first().at(0).toString(), QStringLiteral("providers"));
 
-        // Bezárás (×): az el nem fogadott lépés elvész, a jelző igaz.
+        // Close (x): a step not accepted is lost, the flag is true.
         host.viewModel()->setStep(QStringLiteral("you"));
         host.viewModel()->setUserName(QStringLiteral("Nem mentett"));
         QSignalSpy closed(&host, &OnboardingWindowHost::closed);
@@ -268,7 +268,7 @@ private slots:
         QVERIFY(live().onboardingDone);
         QVERIFY(live().userSpeakerName != QStringLiteral("Nem mentett"));
 
-        // Új folyamat (új gazda) ugyanazon az adaton: magától nem, kézzel igen — elölről.
+        // New process (new host) on the same data: not by itself, by hand yes, starting from the beginning.
         OnboardingWindowHost again(m_app.get(), nullptr);
         QVERIFY(!again.shouldAutoOpen());
         QVERIFY(!again.openIfNeeded());
@@ -294,7 +294,7 @@ private slots:
         QVERIFY(!none.shouldAutoOpen());
     }
 
-    // ---- demó ---------------------------------------------------------------------------
+    // ---- demo ----
 
     void demoStatesSelectTheStep()
     {
@@ -310,7 +310,7 @@ private slots:
         vm.setDemoState(QStringLiteral("done"));
         QCOMPARE(vm.stepStatus().value("folders").toString(), QStringLiteral("skipped"));
         QCOMPARE(vm.stepStatus().value("you").toString(), QStringLiteral("done"));
-        // Demóban a mentés a memóriában marad.
+        // In demo mode saves stay in memory.
         vm.setStep(QStringLiteral("you"));
         vm.setUserName(QStringLiteral("Nagy Bence"));
         QVERIFY(vm.next());

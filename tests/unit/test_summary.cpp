@@ -1,8 +1,6 @@
-//
-// Gyors összefoglaló — a darabolás, a jegyzet- és JSON-értelmezés, a memó-összerakás és a
-// SummaryService vezénylése (forgatókönyvezett ál-LLM-mel: egy rész, sok rész, bukó rész,
-// megszakítás, hibás JSON-változatok, a részjegyzet-gyorsítótárból folytatás).
-//
+// Quick summary: chunking, note and JSON parsing, memo assembly and SummaryService's
+// orchestration (with a scripted fake LLM: one part, many parts, a failing part, cancel,
+// broken JSON variants, resuming from the part-note cache).
 #include <QtTest>
 #include <QTimer>
 #include <QSignalSpy>
@@ -19,9 +17,9 @@
 using namespace tanara;
 using namespace tanara::summarypipe;
 
-// ---- forgatókönyvezett ál-LLM ------------------------------------------------------------
-// Minden chat()-et naplóz, és a `script` függvénytől kér választ (a kérés sorszáma + maga a
-// kérés alapján). A válasz lehet szöveg, hiba vagy „tartás” (sosem válaszol — megszakításhoz).
+// ---- scripted fake LLM ----
+// It logs every chat() and asks the `script` function for a reply (by the request's sequence
+// number + the request itself). The reply can be text, an error or a "hold" (never replies, for cancel).
 struct Answer {
     enum Kind { Text, Fail, Hold } kind = Text;
     QString text;
@@ -33,7 +31,7 @@ public:
     explicit ScriptedJob(QObject* parent) : LlmJob(parent) {}
     void cancel() override {
         cancelled = true;
-        // Mint a valódi provider: a megszakított kérés failed-del zárul.
+        // Like the real provider: a canceled request ends with failed.
         QTimer::singleShot(0, this, [this]() { emit failed(QStringLiteral("cancelled")); });
     }
     bool cancelled = false;
@@ -67,8 +65,8 @@ public:
 
 namespace {
 
-// Átirat: beszéd-blokkok a megadott időpontokban (perc), két beszélő váltakozva. A tokenek
-// közti szünet > 1,5 s, így minden elem külön bekezdés.
+// Transcript: speech blocks at the given times (minutes), two speakers alternating. The
+// gap between tokens is > 1.5 s, so every item is a separate paragraph.
 MergedTranscript transcriptAt(const QVector<double>& minutes, int wordsEach = 40)
 {
     MergedTranscript t;
@@ -86,7 +84,7 @@ MergedTranscript transcriptAt(const QVector<double>& minutes, int wordsEach = 40
     return t;
 }
 
-// Bekezdés félpercenként, `total` percig.
+// A paragraph every half minute, for `total` minutes.
 MergedTranscript transcriptMinutes(double total)
 {
     QVector<double> m;
@@ -142,18 +140,18 @@ SummaryRequest request(const MergedTranscript& t, const QString& cache = QString
 class SummaryTest : public QObject {
     Q_OBJECT
 private slots:
-    // darabolás
+    // chunking
     void splitShortMeetingIsOnePart();
     void splitAtExactBoundary();
     void splitLongMeeting();
     void splitMergesTinyTail();
     void splitEmpty();
-    // jegyzet
+    // note
     void parseNotesStandard();
     void parseNotesTolerant();
     void parseNotesWithoutHeadings();
     void parseNotesFillsTimes();
-    // memó
+    // memo
     void memoJoinsContinuingSubject();
     // JSON
     void mergeJsonVariants_data();
@@ -161,9 +159,9 @@ private slots:
     void mergeJsonUnusable();
     void mergeJsonCapsOpenQuestions();
     void singleSplitsNotesAndJson();
-    // nyelv
+    // language
     void languageNamesAndReminder();
-    // vezénylés
+    // orchestration
     void onePartIsOneCall();
     void manyPartsNotesThenMerge();
     void failingPartFailsCleanlyAndResumes();
@@ -176,7 +174,7 @@ private slots:
     void emptySectionsSkipped();
 };
 
-// ---- darabolás --------------------------------------------------------------------------
+// ---- chunking ----
 
 void SummaryTest::splitShortMeetingIsOnePart()
 {
@@ -189,7 +187,7 @@ void SummaryTest::splitShortMeetingIsOnePart()
 
 void SummaryTest::splitAtExactBoundary()
 {
-    // A 15:00-kor induló bekezdés már a 2. rész eleje (a rész ≥ 15 perc után zárul).
+    // The paragraph starting at 15:00 is already the start of part 2 (a part closes after >= 15 minutes).
     const QVector<TranscriptPart> parts = splitTranscript(transcriptMinutes(40).segments());
     QCOMPARE(parts.size(), 3);
     QCOMPARE(parts[1].startMs, 15 * 60000);
@@ -202,11 +200,11 @@ void SummaryTest::splitAtExactBoundary()
 
 void SummaryTest::splitLongMeeting()
 {
-    // 100 perc: 6 teljes rész + egy 10 perces (≥ 7,5) záró rész.
+    // 100 minutes: 6 full parts + a 10-minute (>= 7.5) final part.
     const QVector<TranscriptPart> parts = splitTranscript(transcriptMinutes(100).segments());
     QCOMPARE(parts.size(), 7);
     QCOMPARE(parts.last().startMs, 90 * 60000);
-    // Minden bekezdés pontosan egy részbe került.
+    // Every paragraph went into exactly one part.
     int paragraphs = 0;
     for (const TranscriptPart& p : parts) paragraphs += int(p.markdown.count(QStringLiteral("`[")));
     QCOMPARE(paragraphs, 200);
@@ -214,11 +212,11 @@ void SummaryTest::splitLongMeeting()
 
 void SummaryTest::splitMergesTinyTail()
 {
-    // 22 perc: a 7 perces záró rész (< 7,5) az elsőhöz olvad → egy rész.
+    // 22 minutes: the 7-minute final part (< 7.5) merges into the first, so one part.
     QCOMPARE(splitTranscript(transcriptMinutes(22).segments()).size(), 1);
-    // 24 perc: a 9 perces záró rész megmarad.
+    // 24 minutes: the 9-minute final part stays.
     QCOMPARE(splitTranscript(transcriptMinutes(24).segments()).size(), 2);
-    // Hosszú, de szinte üres záró rész (egyetlen rövid mondat 10 perc után) → összeolvad.
+    // A long but almost empty final part (a single short sentence after 10 minutes) merges.
     MergedTranscript t = transcriptMinutes(15);
     TranscriptToken late;
     late.text = QStringLiteral(" Köszönöm, sziasztok.");
@@ -236,7 +234,7 @@ void SummaryTest::splitEmpty()
     QVERIFY(splitTranscript({}).isEmpty());
 }
 
-// ---- jegyzet ----------------------------------------------------------------------------
+// ---- note ----
 
 void SummaryTest::parseNotesStandard()
 {
@@ -250,7 +248,7 @@ void SummaryTest::parseNotesStandard()
     QCOMPARE(n.topics[0].endMs, 15 * 60000 + 30000);
     QCOMPARE(n.topics[0].points.size(), 2);
     QCOMPARE(n.decisions, QStringList({QStringLiteral("[15:10] Döntés a(z) 2. részben.")}));
-    QVERIFY(n.open.isEmpty());                                  // „- none” kimarad
+    QVERIFY(n.open.isEmpty());                                  // "- none" is dropped
     QCOMPARE(n.actions.size(), 1);
 }
 
@@ -258,8 +256,8 @@ void SummaryTest::parseNotesTolerant()
 {
     TranscriptPart part;
     part.endMs = 15 * 60000;
-    // Próza előtte, kódkerítés, félkövér / magyar / kettőspontos fejlécek, számozott cím,
-    // cím a végén lévő időkerettel, tördelt pont, „Nincs.” jelölés.
+    // Prose before it, a code fence, bold / Hungarian / colon headers, a numbered title, a title
+    // with a trailing time frame, a wrapped point, the "None." marker.
     const QString raw = QStringLiteral(
         "Itt vannak a jegyzetek:\n"
         "```\n"
@@ -283,8 +281,8 @@ void SummaryTest::parseNotesTolerant()
     QCOMPARE(n.topics[0].endMs, 6 * 60000 + 30000);
     QCOMPARE(n.topics[0].points, QStringList({QStringLiteral("A keret 12 millió forint, ebből 3 millió tartalék.")}));
     QCOMPARE(n.topics[1].title, QStringLiteral("Pilot helyszínek"));
-    QCOMPARE(n.topics[1].startMs, 6 * 60000 + 30000);        // az előző végétől
-    QCOMPARE(n.topics[1].endMs, 15 * 60000);                  // a rész végéig
+    QCOMPARE(n.topics[1].startMs, 6 * 60000 + 30000);        // from the previous one's end
+    QCOMPARE(n.topics[1].endMs, 15 * 60000);                  // to the end of the part
     QVERIFY(n.decisions.isEmpty());
     QCOMPARE(n.open.size(), 1);
     QCOMPARE(n.actions.size(), 1);
@@ -306,7 +304,7 @@ void SummaryTest::parseNotesFillsTimes()
     TranscriptPart part;
     part.startMs = 60000;
     part.endMs = 600000;
-    // Kilógó idő a rész keretére szorul; a hiányzó a szomszédokból.
+    // An overhanging time is clamped to the part's frame; a missing one comes from the neighbors.
     const PartNotes n = parseNotes(QStringLiteral(
         "TOPICS\n### [00:10-03:00] A\n- a\n### B\n- b\n### [07:00-99:00] C\n- c\n"), part);
     QCOMPARE(n.topics.size(), 3);
@@ -316,7 +314,7 @@ void SummaryTest::parseNotesFillsTimes()
     QCOMPARE(n.topics[2].endMs, 600000);
 }
 
-// ---- memó -------------------------------------------------------------------------------
+// ---- memo ----
 
 void SummaryTest::memoJoinsContinuingSubject()
 {
@@ -329,7 +327,7 @@ void SummaryTest::memoJoinsContinuingSubject()
         "TOPICS\n### [15:00-20:00] Raktárrendszer migráció\n- az adatok exportja\n- tesztelés jövő héten\n"
         "### [20:00-30:00] Költségek\n- 2 millió\n"), p1);
     const QVector<MemoSection> memo = assembleMemo({a, b});
-    QCOMPARE(memo.size(), 3);                                   // nincs duplikált szakasz
+    QCOMPARE(memo.size(), 3);                                   // no duplicate section
     QCOMPARE(memo[1].title, QStringLiteral("Raktárrendszer migráció"));
     QCOMPARE(memo[1].startMs, 5 * 60000);
     QCOMPARE(memo[1].endMs, 20 * 60000);
@@ -338,8 +336,8 @@ void SummaryTest::memoJoinsContinuingSubject()
                                           QStringLiteral("tesztelés jövő héten")}));
     QCOMPARE(memo[2].title, QStringLiteral("Költségek"));
 
-    // Hasonló (de nem azonos) cím a határon is egy szakasz; a cím nélküli jegyzet az előzőhöz
-    // csatlakozik; a teljesen más tárgy külön marad.
+    // A similar (but not identical) title at the boundary is one section too; a note without a
+    // title joins the previous one; a completely different subject stays separate.
     const PartNotes c = parseNotes(QStringLiteral("TOPICS\n### Költségek és keretek\n- 3 millió\n"), p1);
     const PartNotes d = parseNotes(QStringLiteral("- árva pont\n"), p1);
     const QVector<MemoSection> memo2 = assembleMemo({a, b, c, d});
@@ -347,8 +345,8 @@ void SummaryTest::memoJoinsContinuingSubject()
     QCOMPARE(memo2[2].points, QStringList({QStringLiteral("2 millió"), QStringLiteral("3 millió"),
                                            QStringLiteral("árva pont")}));
 
-    // Ha a modell egész részeket tesz ugyanazon cím alá, a szakasz nem nő 20 perc fölé:
-    // azonos címmel, külön időkerettel folytatódik.
+    // If the model puts whole parts under the same title, the section does not grow above 20
+    // minutes: it continues with the same title and a separate time frame.
     TranscriptPart p2; p2.index = 2; p2.startMs = 30 * 60000; p2.endMs = 45 * 60000;
     const QString whole = QStringLiteral("TOPICS\n### Eszköz bevezetése\n- pont %1\n");
     const QVector<MemoSection> memo3 = assembleMemo({parseNotes(whole.arg(1), p0), parseNotes(whole.arg(2), p1),
@@ -448,11 +446,11 @@ void SummaryTest::singleSplitsNotesAndJson()
     QCOMPARE(r.notes.topics[0].title, QStringLiteral("Árazás"));
     QCOMPARE(r.merge.execSummary, QStringLiteral("Összegzés."));
 
-    // Régi, csak-JSON prompt (saját felülírás): nincs jegyzet, de az összefoglaló megvan.
+    // An old JSON-only prompt (own override): no note, but the summary exists.
     r = parseSingle(QString::fromUtf8(kMergeJson), part);
     QVERIFY(r.merge.ok);
     QVERIFY(r.notes.isEmpty());
-    // Fejléc nélküli próza a JSON előtt nem lesz memó.
+    // Prose without a header before the JSON does not become a memo.
     r = parseSingle(QStringLiteral("Íme:\n") + QString::fromUtf8(kMergeJson), part);
     QVERIFY(r.merge.ok);
     QVERIFY(r.notes.isEmpty());
@@ -466,7 +464,7 @@ void SummaryTest::languageNamesAndReminder()
     QCOMPARE(summaryLanguageName(QStringLiteral("eszperantó")), QStringLiteral("eszperantó"));
     QVERIFY(languageReminder(QStringLiteral("magyar")).contains(QStringLiteral("Hungarian (magyar)")));
     QVERIFY(languageReminder(QStringLiteral("English")).contains(QStringLiteral("in English,")));
-    // A beépített promptok angol nyelvnevet kapnak, a régi {{NYELV}} a beállítás szövegét.
+    // The built-in prompts get an English language name, the old {{NYELV}} gets the setting's text.
     const QString p = applySummaryLanguage(promptBuiltin(QStringLiteral("notes")), QStringLiteral("magyar"));
     QVERIFY(p.contains(QStringLiteral("Write all notes in Hungarian.")));
     QVERIFY(!p.contains(QStringLiteral("{{")));
@@ -474,7 +472,7 @@ void SummaryTest::languageNamesAndReminder()
              QStringLiteral("Írj német nyelven."));
 }
 
-// ---- vezénylés --------------------------------------------------------------------------
+// ---- orchestration ----
 
 void SummaryTest::onePartIsOneCall()
 {
@@ -520,7 +518,7 @@ void SummaryTest::manyPartsNotesThenMerge()
     llm.script = [](int, const LlmRequest& r) {
         if (isNotes(r)) {
             const int k = partOf(r) - 1;
-            // A 2. rész az 1. rész tárgyával folytatódik (a prompt megkapja a címet).
+            // Part 2 continues with part 1's subject (the prompt gets the title).
             return Answer{Answer::Text, notesFor(k, k == 1 ? QStringLiteral("Téma 0") : QString())};
         }
         return Answer{Answer::Text, QString::fromUtf8(kMergeJson)};
@@ -550,7 +548,7 @@ void SummaryTest::manyPartsNotesThenMerge()
     QVERIFY(llm.user(3).contains(QStringLiteral("=== PART 3 of 3 [30:00-")));
     QVERIFY(llm.user(3).contains(QStringLiteral("- [30:10] Döntés a(z) 3. részben.")));
 
-    // Haladás: notes 0/3, 1/3, 2/3, 3/3, merge.
+    // Progress: notes 0/3, 1/3, 2/3, 3/3, merge.
     QStringList seen;
     for (const QList<QVariant>& p : progress)
         seen << QStringLiteral("%1 %2/%3").arg(p[0].toString()).arg(p[1].toInt()).arg(p[2].toInt());
@@ -558,11 +556,11 @@ void SummaryTest::manyPartsNotesThenMerge()
 
     const Summary s = qvariant_cast<Summary>(ready[0][0]);
     QCOMPARE(s.decisions, QStringList({QStringLiteral("Döntés A")}));
-    QCOMPARE(s.memo.size(), 2);                                  // Téma 0 (két részen át) + Téma 2
+    QCOMPARE(s.memo.size(), 2);                                  // topic 0 (across two parts) + topic 2
     QCOMPARE(s.memo[0].title, QStringLiteral("Téma 0"));
     QCOMPARE(s.memo[0].points.size(), 4);
     QCOMPARE(s.memo[1].title, QStringLiteral("Téma 2"));
-    QVERIFY(!QFile::exists(cache));                              // siker után a gyorsítótár törlődik
+    QVERIFY(!QFile::exists(cache));                              // after success the cache is deleted
 }
 
 void SummaryTest::failingPartFailsCleanlyAndResumes()
@@ -587,17 +585,17 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
         svc.summarize(req);
         QVERIFY(failed.wait(2000));
         QTest::qWait(50);
-        QCOMPARE(ready.count(), 0);                              // nincs félkész összefoglaló
+        QCOMPARE(ready.count(), 0);                              // no half-finished summary
         QCOMPARE(failed.count(), 1);
         QVERIFY(failed[0][0].toString().contains(QStringLiteral("model crashed")));
-        QCOMPARE(llm.requests.size(), 2);                         // a 3. rész már nem indult
+        QCOMPARE(llm.requests.size(), 2);                         // the 3rd part did not start
     }
-    QVERIFY(QFile::exists(cache));                               // az 1. rész jegyzete megmaradt
+    QVERIFY(QFile::exists(cache));                               // part 1's note stayed
     const SummaryPlan plan = SummaryService::plan(req);
     QCOMPARE(plan.cachedParts, 1);
     QCOMPARE(plan.llmCalls, 3);
 
-    // Újrapróbálás: az 1. rész nem fut újra.
+    // Retry: part 1 does not run again.
     breakPart2 = false;
     llm.requests.clear();
     SummaryService svc(&llm);
@@ -608,11 +606,11 @@ void SummaryTest::failingPartFailsCleanlyAndResumes()
     QCOMPARE(partOf(llm.requests[0]), 2);
     QCOMPARE(partOf(llm.requests[1]), 3);
     QVERIFY(isMerge(llm.requests[2]));
-    QVERIFY(llm.user(2).contains(QStringLiteral("=== PART 1 of 3")));   // a gyorsítótárból
+    QVERIFY(llm.user(2).contains(QStringLiteral("=== PART 1 of 3")));   // from the cache
     QCOMPARE(qvariant_cast<Summary>(ready[0][0]).memo.size(), 3);
     QVERIFY(!QFile::exists(cache));
 
-    // Más modell → más kulcs: a gyorsítótár nem érvényes.
+    // Another model means another key: the cache is not valid.
     SummaryRequest other = req;
     other.model = QStringLiteral("masik");
     QCOMPARE(SummaryService::plan(other).cachedParts, 0);
@@ -684,7 +682,7 @@ void SummaryTest::badSingleJsonKeepsNotes()
     const SummaryPlan plan = SummaryService::plan(req);
     QVERIFY(!plan.singleCall);
     QCOMPARE(plan.llmCalls, 1);
-    // Újrapróbálás: csak az összegzés, a megmaradt jegyzetből — a memó is megvan.
+    // Retry: only the summary, from the remaining note; the memo exists too.
     llm.requests.clear();
     SummaryService svc(&llm);
     QSignalSpy ready(&svc, &SummaryService::summaryReady);
@@ -696,7 +694,7 @@ void SummaryTest::badSingleJsonKeepsNotes()
     QCOMPARE(s.memo.size(), 1);
     QCOMPARE(s.memo[0].title, QStringLiteral("Árazás"));
 
-    // Egy csonka, de javítható JSON egyetlen rossz mezővel nem viszi el az egészet.
+    // A truncated but repairable JSON with a single bad field does not take everything.
     llm.script = [](int, const LlmRequest&) {
         return Answer{Answer::Text, QStringLiteral("TOPICS\n### Árazás\n- 100 euró.\nSUMMARY\n"
                                                    "{\"execSummary\": \"Rövid.\", \"decisions\": [\"A\", ")};
@@ -726,9 +724,9 @@ void SummaryTest::cancelMidRun()
     QVERIFY(llm.jobs[1] && llm.jobs[1]->cancelled);
     QTest::qWait(100);
     QCOMPARE(ready.count(), 0);
-    QCOMPARE(failed.count(), 0);                                 // megszakításnál nincs hibajel
-    QCOMPARE(llm.requests.size(), 2);                            // a 3. rész nem indult
-    QVERIFY(QFile::exists(cache));                               // az 1. rész megmaradt
+    QCOMPARE(failed.count(), 0);                                 // on cancel there is no error signal
+    QCOMPARE(llm.requests.size(), 2);                            // the 3rd part did not start
+    QVERIFY(QFile::exists(cache));                               // part 1 stayed
 }
 
 // ---- markdown ---------------------------------------------------------------------------

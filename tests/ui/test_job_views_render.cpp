@@ -1,10 +1,10 @@
-// A „nézetek” szelet QML-komponensei (PreTranscriptView, SummaryTab, TracksTab):
-//  1. minden demó-állapot mindkét témában QML-figyelmeztetés nélkül betöltődik;
-//  2. a gombok a szerződés (gui/qml/CONTRACT.md) szerinti ShellActions / PlayerController
-//     hívásokat teszik — egy ál-héjjal és ál-lejátszóval ellenőrizve, valódi ablak nélkül;
-//  3. (csak kérésre) képek egy ELDOBHATÓ mintaadat-készletről: ha a TANARA_VIEWS_SHOTS
-//     környezeti változó egy mappára mutat ÉS a TANARA_HOME be van állítva, a készlet minden
-//     meetingjének nézetei PNG-be kerülnek (a fájlnévben csak sorszám van). Különben kimarad.
+// The QML components of the job views (PreTranscriptView, SummaryTab, TracksTab):
+//  1. every demo state loads in both themes without a QML warning;
+//  2. the buttons make the ShellActions / PlayerController calls of the contract
+//     (gui/qml/CONTRACT.md), checked with a fake shell and fake player, without a real window;
+//  3. (on request only) images from a DISPOSABLE sample data set: if the TANARA_VIEWS_SHOTS
+//     environment variable points to a folder AND TANARA_HOME is set, the views of every meeting
+//     in the set go to PNG (the file name has only a sequence number). Otherwise skipped.
 #include "AppContext.h"
 #include "QmlApp.h"
 
@@ -24,7 +24,7 @@
 
 using namespace tanara_qml;
 
-// A szerződés ShellActions-felülete — minden hívást naplóz.
+// The contract's ShellActions surface; logs every call.
 class FakeShell : public QObject {
     Q_OBJECT
 public:
@@ -55,7 +55,7 @@ public:
     Q_INVOKABLE void toast(const QString&) { calls << "toast"; }
 };
 
-// A szerződés PlayerController-felületéből az előnézethez kellő rész.
+// The part of the contract's PlayerController surface needed for the preview.
 class FakePlayer : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString previewPath READ previewPath NOTIFY previewPathChanged)
@@ -75,7 +75,7 @@ private:
 class TestJobViewsRender : public QObject {
     Q_OBJECT
 
-    // Betölt egy komponenst ablakba, opcionálisan PNG-t ment; visszaadja a QML-figyelmeztetéseket.
+    // Loads a component into a window, optionally saves a PNG; returns the QML warnings.
     static QStringList render(const QString& page, const QVariantMap& props, const QString& png = QString(),
                               int waitMs = 150, const QSize& size = QSize(1004, 640))
     {
@@ -93,7 +93,7 @@ class TestJobViewsRender : public QObject {
         if (!png.isEmpty()) {
             auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));
             if (!window) {
-                // A loadPage a gyökeret a motor gyerekeként hozza létre.
+                // loadPage creates the root as a child of the engine.
                 window = engine.findChild<QQuickWindow*>();
             }
             if (!window || !window->grabWindow().save(png))
@@ -102,7 +102,7 @@ class TestJobViewsRender : public QObject {
         return warnings;
     }
 
-    // Egy komponens példánya ablak nélkül (függvény-hívásokhoz).
+    // An instance of a component without a window (for function calls).
     static std::unique_ptr<QObject> create(QQmlEngine& engine, const QString& page, const QVariantMap& props)
     {
         setupEngine(engine);
@@ -147,7 +147,7 @@ private slots:
 
     void narrowWidthLoadsWithoutWarnings()
     {
-        // A minimális ablakszélességnél (960 − 276 oldalsáv) sem törik szét egyik nézet sem.
+        // No view breaks apart at the minimum window width (960 minus the 276 sidebar).
         for (const char* page : {"PreTranscriptView", "SummaryTab", "TracksTab"}) {
             const QStringList warnings = render(QString::fromLatin1(page), {}, QString(), 100, QSize(684, 520));
             QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
@@ -156,7 +156,7 @@ private slots:
 
     void nullShellAndPlayerAreTolerated()
     {
-        // Önállóan (shell / player nélkül) a műveletek csendben nem csinálnak semmit.
+        // Standalone (without shell / player) the actions silently do nothing.
         QQmlEngine engine;
         QStringList warnings;
         connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& l) {
@@ -185,16 +185,16 @@ private slots:
         const QVariant shellVar = QVariant::fromValue<QObject*>(&shell);
         const QVariant playerVar = QVariant::fromValue<QObject*>(&player);
 
-        // Átirat előtt: az indítás és a „Szolgáltató beállítása” a héjon megy át.
+        // Pre-transcript: start and "Set up the provider" go through the shell.
         auto pre = create(engine, "PreTranscriptView", {{"demoState", "ready"}, {"shell", shellVar}, {"meetingId", "m1"}});
         QVERIFY(pre);
         QVERIFY(QMetaObject::invokeMethod(pre.get(), "start"));
         QVERIFY(QMetaObject::invokeMethod(pre.get(), "openSettings", Q_ARG(QVariant, QStringLiteral("providers"))));
         QCOMPARE(shell.calls, QStringList({"startTranscription:m1", "openSettings:providers"}));
-        QCOMPARE(shell.lastFocusField, QStringLiteral("stt"));   // B04: az átíró kártyájához visz
+        QCOMPARE(shell.lastFocusField, QStringLiteral("stt"));   // leads to the transcriber's card
         shell.calls.clear();
 
-        // Sávok: előnézet a lejátszón át (ugyanarra a sávra újra → leáll).
+        // Tracks: preview through the player (the same track again stops it).
         auto tracks = create(engine, "TracksTab", {{"shell", shellVar}, {"player", playerVar}, {"meetingId", "m1"}});
         QVERIFY(tracks);
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "togglePreview", Q_ARG(QVariant, QStringLiteral("/demo/track-01.ogg"))));
@@ -202,12 +202,12 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "togglePreview", Q_ARG(QVariant, QStringLiteral("/demo/track-01.ogg"))));
         QCOMPARE(player.previewPath(), QString());
 
-        // Eldobottak törlése: megerősítés nélkül nem történik semmi; megerősítve törlés + értesítés.
+        // Delete dropped tracks: nothing happens without confirmation; confirmed: delete + notice.
         shell.confirmAnswer = false;
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "deleteDropped"));
         QCOMPARE(shell.calls.size(), 1);
         QVERIFY(shell.calls[0].startsWith("confirm:"));
-        QVERIFY(shell.calls[0].endsWith(":1"));                 // veszélyes művelet
+        QVERIFY(shell.calls[0].endsWith(":1"));                 // dangerous action
         shell.calls.clear();
         shell.confirmAnswer = true;
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "deleteDropped"));
@@ -215,13 +215,13 @@ private slots:
         QCOMPARE(shell.calls[1], QStringLiteral("toast"));
         shell.calls.clear();
 
-        // Megkeresés: a fájlválasztó a héjé; megszakítva (üres út) nincs további hívás.
+        // Locate: the file picker belongs to the shell; if canceled (empty path) there is no further call.
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "locate", Q_ARG(QVariant, 0)));
         QCOMPARE(shell.calls, QStringList({"pickAudioFile"}));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
-    // ---- képek eldobható mintaadatról (csak kérésre) ----
+    // ---- images from disposable sample data (on request only) ----
     void sandboxShots()
     {
         const QString outDir = qEnvironmentVariable("TANARA_VIEWS_SHOTS");
@@ -237,7 +237,7 @@ private slots:
         ctx->setDemo(false);
         ctx->setController(&app);
         QVector<tanara::Meeting> meetings = app.store()->loadAll();
-        if (meetings.isEmpty()) {            // friss másolat: az index még nem épült fel
+        if (meetings.isEmpty()) {            // fresh copy: the index has not been built yet
             app.store()->rebuildIndexFromDisk();
             meetings = app.store()->loadAll();
         }
@@ -259,7 +259,7 @@ private slots:
                         warnings += render("SummaryTab", {{"meetingId", m.id}, {"topicsOpen", true}},
                                            name("topics"), 250, QSize(1004, 900));
                 }
-                // A hullámformák számolása ffmpeg-gel megy: bőven hagyunk rá időt.
+                // Waveform computation runs through ffmpeg: allow plenty of time for it.
                 warnings += render("TracksTab", {{"meetingId", m.id}}, name("tracks"),
                                    theme == QByteArray("light") ? 6000 : 400);
                 QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));

@@ -1,11 +1,9 @@
 #pragma once
-//
-// A tálca-ikon három állapota (design/handoff-recorder R11), kódból rajzolva — nincs külső
-// asset. Header-only (QtGui), a figyelő (watcher/) és az önálló felvevő is ezt használja.
-//   Figyel          halvány gyűrű + pötty
-//   Hívás észlelve  accent gyűrű + pötty
-//   Felvétel fut    teli piros korong + fehér pötty
-//
+// The tray icon's three states, drawn in code (no external asset). Header-only (QtGui); the
+// watcher (watcher/) and the standalone recorder both use it.
+//   Watching       faint ring + dot
+//   Call detected  accent ring + dot
+//   Recording      solid red disc + white dot
 #include <QColor>
 #include <QGuiApplication>
 #include <QIcon>
@@ -17,18 +15,18 @@ namespace tanara_gui {
 
 enum class TrayState { Watching, CallDetected, Recording };
 
-// Sötét-e a panel (ahol a tálca-ikon megjelenik)? A rendszer-paletta ablakszínéből becsüljük;
-// a legtöbb asztalon a panel a színsémát követi.
+// Is the panel dark (where the tray icon appears)? Estimated from the system palette's
+// window color; on most desktops the panel follows the color scheme.
 inline bool trayPanelIsDark()
 {
     return QGuiApplication::palette().color(QPalette::Window).lightness() < 128;
 }
 
-// Egy méret kirajzolása (px × px). A design 22 px-es rajzát arányosan nagyítjuk:
-// 2 px gyűrű, 8 px pötty.
+// Draws one size (px x px). The design's 22 px drawing is scaled proportionally:
+// 2 px ring, 8 px dot.
 inline QPixmap drawTrayPixmap(TrayState state, int px, bool darkPanel)
 {
-    // A Theme.qml megfelelő tokenjei (textMuted / accent / rec), sötét és világos panelre.
+    // The matching Theme.qml tokens (textMuted / accent / rec), for dark and light panels.
     const QColor muted  = darkPanel ? QColor(0xac, 0xab, 0xa7) : QColor(0x58, 0x5b, 0x5f);
     const QColor accent = darkPanel ? QColor(0x7e, 0xb1, 0xf3) : QColor(0x2f, 0x62, 0xac);
     const QColor rec    = darkPanel ? QColor(0xe9, 0x50, 0x4d) : QColor(0xd4, 0x2f, 0x34);
@@ -37,7 +35,7 @@ inline QPixmap drawTrayPixmap(TrayState state, int px, bool darkPanel)
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    const qreal u = px / 22.0;                       // a design egysége
+    const qreal u = px / 22.0;                       // the design unit
     const qreal ring = 2.0 * u;
     const QRectF outer(ring / 2, ring / 2, px - ring, px - ring);
     const QRectF dot(px / 2.0 - 4 * u, px / 2.0 - 4 * u, 8 * u, 8 * u);

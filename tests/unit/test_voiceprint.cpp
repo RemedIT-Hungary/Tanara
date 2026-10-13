@@ -43,8 +43,8 @@ void VoiceprintTest::cosine_basic() {
     const QVector<float> b{1, 0, 0};
     const QVector<float> c{0, 1, 0};
     QVERIFY(qFuzzyCompare(VoiceprintStore::cosineSimilarity(a, b) + 1.0, 2.0)); // ~1.0
-    QVERIFY(qAbs(VoiceprintStore::cosineSimilarity(a, c)) < 1e-6);             // ortogonális
-    // eltérő dimenzió → 0
+    QVERIFY(qAbs(VoiceprintStore::cosineSimilarity(a, c)) < 1e-6);             // orthogonal
+    // different dimension gives 0
     QCOMPARE(VoiceprintStore::cosineSimilarity(a, QVector<float>{1, 0}), 0.0);
 }
 
@@ -67,19 +67,19 @@ void VoiceprintTest::addAndMatch() {
     QCOMPARE(store.people().size(), 2);
     QCOMPARE(store.totalPrintCount(), 2);
 
-    // üres DB / üres embedding → nincs találat
+    // an empty DB / an empty embedding: no hit
     QVERIFY(store.bestMatch(QVector<float>{}).score < 0.0);
 }
 
 void VoiceprintTest::multiplePrintsTakesMax() {
     QTemporaryDir dir;
     VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
-    // Béla két mikrofonnal: egy "rossz" és egy "jó" lenyomat.
+    // Béla with two microphones: a "bad" and a "good" voiceprint.
     store.addPrint(QStringLiteral("Béla"), vp({0, 0, 1}));
     store.addPrint(QStringLiteral("Béla"), vp({1, 0, 0}));
     QCOMPARE(store.printCount(QStringLiteral("Béla")), 2);
 
-    // A lekérdezés az {1,0,0}-hoz közeli → a MAX (jó lenyomat) dönt.
+    // The query is close to {1,0,0}, so the MAX (the good voiceprint) decides.
     const VoiceMatch m = store.bestMatch({1, 0, 0});
     QCOMPARE(m.name, QStringLiteral("Béla"));
     QVERIFY(m.score > 0.99);
@@ -96,15 +96,15 @@ void VoiceprintTest::roundTripPersist() {
         p.device = QStringLiteral("Sennheiser");
         store.addPrint(QStringLiteral("Béla"), p);
     }
-    // Új store ugyanarról a fájlról.
+    // A new store on the same file.
     VoiceprintStore reloaded(path);
     QCOMPARE(reloaded.people(), QStringList{QStringLiteral("Béla")});
     const QVector<Voiceprint> prints = reloaded.printsFor(QStringLiteral("Béla"));
     QCOMPARE(prints.size(), 1);
-    QVERIFY(!prints[0].id.isEmpty());                      // id generálódott
+    QVERIFY(!prints[0].id.isEmpty());                      // an id was generated
     QCOMPARE(prints[0].dim, 3);
     QCOMPARE(prints[0].device, QStringLiteral("Sennheiser"));
-    // L2-normalizálva tárolt → hossz 1.
+    // Stored L2-normalized: length 1.
     double len = 0; for (float x : prints[0].embedding) len += double(x) * x;
     QVERIFY(qAbs(std::sqrt(len) - 1.0) < 1e-5);
 }
@@ -115,12 +115,12 @@ void VoiceprintTest::renameMergeRemove() {
     store.addPrint(QStringLiteral("Távoli 1"), vp({1, 0, 0}));
     store.addPrint(QStringLiteral("Béla"), vp({0, 1, 0}));
 
-    // rename → "Béla" már létezik → egyesítés (2 lenyomat).
+    // rename: "Béla" already exists, so a merge (2 voiceprints).
     store.renamePerson(QStringLiteral("Távoli 1"), QStringLiteral("Béla"));
     QCOMPARE(store.people(), QStringList{QStringLiteral("Béla")});
     QCOMPARE(store.printCount(QStringLiteral("Béla")), 2);
 
-    // merge: hozzunk létre egy másikat, majd olvasszuk Bélába.
+    // merge: we create another one, then merge it into Béla.
     store.addPrint(QStringLiteral("Dompa"), vp({0, 0, 1}));
     store.merge(QStringLiteral("Dompa"), QStringLiteral("Béla"));
     QCOMPARE(store.people(), QStringList{QStringLiteral("Béla")});
@@ -136,7 +136,7 @@ void VoiceprintTest::modelField_defaultAndPersist() {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("vp.json"));
     {
-        // Régi (modell-mező nélküli) fájl → "campplus".
+        // An old file (without a model field) gives "campplus".
         QFile f(path);
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(R"({"people":[{"name":"Béla","prints":[{"id":"p1","embedding":[1,0,0],"dim":3}]}]})");
@@ -146,7 +146,7 @@ void VoiceprintTest::modelField_defaultAndPersist() {
     Voiceprint p = mp(QStringLiteral("other"), {0, 1, 0, 0});
     store.addPrint(QStringLiteral("Béla"), p);
     Voiceprint empty = mp(QString(), {0, 0, 1});
-    store.addPrint(QStringLiteral("Béla"), empty);   // üres modell → alapmodell
+    store.addPrint(QStringLiteral("Béla"), empty);   // an empty model gives the default model
 
     VoiceprintStore reloaded(path);
     const QVector<Voiceprint> prints = reloaded.printsFor(QStringLiteral("Béla"));
@@ -162,11 +162,11 @@ void VoiceprintTest::modelField_defaultAndPersist() {
 void VoiceprintTest::multiModel_maxPerModelThenMean() {
     QTemporaryDir dir;
     VoiceprintStore store(dir.filePath(QStringLiteral("vp.json")));
-    // Anna: m1-ben két lenyomat (a jobbik számít), m2-ben egy.
+    // Anna: two voiceprints in m1 (the better counts), one in m2.
     store.addPrint(QStringLiteral("Anna"), mp("m1", {0, 1}));
     store.addPrint(QStringLiteral("Anna"), mp("m1", {1, 0}));
     store.addPrint(QStringLiteral("Anna"), mp("m2", {0.6f, 0.8f}));
-    // Béla: csak m2-ben van lenyomata.
+    // Béla: has a voiceprint only in m2.
     store.addPrint(QStringLiteral("Béla"), mp("m2", {1, 0}));
 
     EmbeddingSet q;
@@ -174,20 +174,20 @@ void VoiceprintTest::multiModel_maxPerModelThenMean() {
     q["m2"] = {1, 0};
     const QVector<VoiceMatch> ranked = store.rankedMatches(q, {"m2", "m1"});
     QCOMPARE(ranked.size(), 2);
-    // Béla: csak m2 közös → 1.0; Anna: (max(0,1) + 0.6) / 2 = 0.8.
+    // Béla: only m2 is common, so 1.0; Anna: (max(0,1) + 0.6) / 2 = 0.8.
     QCOMPARE(ranked[0].name, QStringLiteral("Béla"));
     QVERIFY(qAbs(ranked[0].score - 1.0) < 1e-6);
     QCOMPARE(ranked[1].name, QStringLiteral("Anna"));
     QVERIFY(qAbs(ranked[1].score - 0.8) < 1e-6);
     QCOMPARE(store.bestMatch(q, {"m1", "m2"}).name, QStringLiteral("Béla"));
 
-    // Csak m1-gyel kérdezve Béla nem vesz részt (-1), Anna 1.0.
+    // Asked with m1 only, Béla does not take part (-1), Anna 1.0.
     const QVector<VoiceMatch> onlyM1 = store.rankedMatches(q, {"m1"});
     QCOMPARE(onlyM1[0].name, QStringLiteral("Anna"));
     QVERIFY(qAbs(onlyM1[0].score - 1.0) < 1e-6);
     QCOMPARE(onlyM1[1].score, -1.0);
 
-    // A régi egyvektoros forma = {"campplus" → v}: itt senkinek nincs campplus-lenyomata.
+    // The old single-vector form = {"campplus" to v}: here nobody has a campplus voiceprint.
     QCOMPARE(store.bestMatch(QVector<float>{1, 0}).score, -1.0);
     store.addPrint(QStringLiteral("Cili"), vp({1, 0}));
     QCOMPARE(store.bestMatch(QVector<float>{1, 0}).name, QStringLiteral("Cili"));
@@ -212,7 +212,7 @@ void VoiceprintTest::printsMissingModel_listsSampleRefs() {
     store.addPrint(QStringLiteral("Anna"), mp("campplus", {1, 0}, QStringLiteral("m/b.ogg#10-20")));
     store.addPrint(QStringLiteral("Anna"), mp("other", {1, 0}, QStringLiteral("m/b.ogg#10-20")));
     store.addPrint(QStringLiteral("Anna"), mp("campplus", {0, 1}, QStringLiteral("m/a.ogg#0-5")));
-    store.addPrint(QStringLiteral("Anna"), mp("campplus", {0, 1}));   // sampleRef nélkül: nem pótolható
+    store.addPrint(QStringLiteral("Anna"), mp("campplus", {0, 1}));   // without a sampleRef: cannot be backfilled
     QCOMPARE(store.printsMissingModel(QStringLiteral("anna"), QStringLiteral("other")),
              QStringList{QStringLiteral("m/a.ogg#0-5")});
     QVERIFY(store.printsMissingModel(QStringLiteral("Anna"), QStringLiteral("campplus")).isEmpty());
@@ -230,13 +230,13 @@ void VoiceprintTest::siblingGroups_andSamplesMissingModel() {
         return p;
     };
     const QString ref = QStringLiteral("mixdown.mp3#10-20");
-    // Ugyanaz a minta két modellel (testvérek), és ugyanaz a fájlnév+szakasz MÁS meetingből.
+    // The same sample with two models (siblings), and the same file name + segment from ANOTHER meeting.
     store.addPrint("Anna", withMeta(mp("campplus", {1, 0}, ref), "m1", "t1"));
     store.addPrint("Anna", withMeta(mp("wespeaker", {1, 0, 0}, ref), "m1", "t1"));
     store.addPrint("Anna", withMeta(mp("campplus", {0, 1}, ref), "m2", "t1"));
-    // Azonos kulcs, azonos modell: két külön minta (nem testvérek).
+    // The same key, the same model: two separate samples (not siblings).
     store.addPrint("Anna", withMeta(mp("campplus", {0.6f, 0.8f}, ref), "m1", "t1"));
-    store.addPrint("Anna", mp("campplus", {0, 1}));   // sampleRef nélkül: saját csoport
+    store.addPrint("Anna", mp("campplus", {0, 1}));   // without a sampleRef: its own group
 
     const auto groups = VoiceprintStore::siblingGroups(store.printsFor("Anna"));
     QCOMPARE(groups.size(), 4);
@@ -245,10 +245,10 @@ void VoiceprintTest::siblingGroups_andSamplesMissingModel() {
     QCOMPARE(groups[0][1].model, QStringLiteral("wespeaker"));
     QCOMPARE(store.sampleCount("Anna"), 4);
 
-    // A sampleRef-szintű lista összemosná a két meetinget; a testvér-pontos nem.
+    // A sampleRef-level list would mix the two meetings; the sibling-exact one does not.
     QVERIFY(store.printsMissingModel("Anna", "wespeaker").isEmpty());
     const QVector<Voiceprint> missing = store.samplesMissingModel("Anna", "wespeaker");
-    QCOMPARE(missing.size(), 2);                   // m2 és az azonos kulcsú második campplus
+    QCOMPARE(missing.size(), 2);                   // m2 and the second campplus with the same key
     for (const Voiceprint& p : missing) QCOMPARE(p.model, QStringLiteral("campplus"));
     QCOMPARE(store.samplesMissingModel("Anna", "campplus").size(), 0);
 
@@ -277,7 +277,7 @@ void VoiceprintTest::sourceRefs_persist() {
     QFile f(path);
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QByteArray raw = f.readAll();
-    QCOMPARE(raw.count("sourceRefs"), 1);           // üresen nem íródik ki
+    QCOMPARE(raw.count("sourceRefs"), 1);           // not written out when empty
 }
 
 QTEST_GUILESS_MAIN(VoiceprintTest)

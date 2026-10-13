@@ -1,14 +1,12 @@
 #pragma once
+// SettingsWidgetsDialogs: the Widgets-side helper of the QML Settings window
+// (implementation of tanara_qml::SettingsDialogs): native folder picker, opening a folder /
+// link, the People window, and the EXISTING modal Tanara Cloud flows (CloudLoginDialog,
+// upload, CloudModelPickerDialog, CloudTermsDialog). These were not rewritten in QML; they
+// open here, above the Settings window.
 //
-// SettingsWidgetsDialogs — a QML Beállítások-ablak Widgets-oldali segítője
-// (tanara_qml::SettingsDialogs megvalósítása): natív mappaválasztó, mappa / hivatkozás
-// megnyitása, a Személyek ablak, és a Tanara Cloud MEGLÉVŐ modális folyamatai
-// (CloudLoginDialog, feltöltés, CloudModelPickerDialog, CloudTermsDialog) — ezeket nem
-// írtuk újra QML-ben, itt nyílnak a Beállítások-ablak fölött.
-//
-// Mindhárom folyamat ezt használja, amelyben a Beállítások megnyílhat: a főablak
-// (QmlShellBridge), az önálló felvevő és a `tanara --settings` mód.
-//
+// All three processes in which Settings can open use it: the main window (QmlShellBridge),
+// the standalone recorder and the `tanara --settings` mode.
 #include "SettingsDialogs.h"
 
 #include <QPointer>
@@ -29,15 +27,15 @@ public:
     explicit SettingsWidgetsDialogs(tanara::AppController* controller, QObject* parent = nullptr);
     ~SettingsWidgetsDialogs() override;
 
-    // A Személyek ablakot más nyitja (a főablak hídja, hogy egy példány legyen).
-    // Nélküle (önálló felvevő, `tanara --settings`) saját QML Személyek-ablakot nyit.
+    // Someone else opens the People window (the main window's bridge, to keep one instance).
+    // Without it (standalone recorder, `tanara --settings`) it opens its own QML People window.
     void setPeopleOpener(std::function<void(const QString&)> opener) { m_peopleOpener = std::move(opener); }
-    // Ugyanez a Címkék ablakra (a főablak hídja nyitja, hogy a könyvtár-szűrés oda menjen).
+    // The same for the Tags window (opened by the main window's bridge, so library filtering goes there).
     void setTagsOpener(std::function<void(const QString&)> opener) { m_tagsOpener = std::move(opener); }
-    // Az „Első lépések” ablakot a főablak hídja nyitja; nélküle (önálló felvevő, `tanara
-    // --settings`) a Beállítások hivatkozása nem látszik.
+    // The main window's bridge opens the "Getting started" window; without it (standalone
+    // recorder, `tanara --settings`) the Settings link is not shown.
     void setOnboardingOpener(std::function<void()> opener) { m_onboardingOpener = std::move(opener); }
-    // A modális Widgets-ablakok ehhez az ablakhoz (a Beállításokhoz) tartozzanak.
+    // The modal Widgets windows belong to this window (Settings).
     void setOwnerWindow(QWindow* window);
 
     QString pickFolder(const QString& title, const QString& startDir) override;
@@ -45,8 +43,8 @@ public:
     void openUrl(const QString& url) override;
     void openPeople() override;
     void openPeopleAt(const QString& person) override;
-    // A Címkék ablaka (a Beállítások „Címkék kezelése” hivatkozásához; a SettingsDialogs
-    // felületre a Beállítások-szelet veszi fel). Főablak nélkül saját ablak, könyvtár-szűrés nélkül.
+    // The Tags window (for the Settings "Manage tags" link; the Settings slice adds it to the
+    // SettingsDialogs interface). Without a main window it is its own window, without library filtering.
     void openTags(const QString& tagId = QString());
     bool canOpenOnboarding() const override { return bool(m_onboardingOpener); }
     void openOnboarding() override { if (m_onboardingOpener) m_onboardingOpener(); }
@@ -56,8 +54,8 @@ public:
     bool cloudTerms() override;
 
 protected:
-    // Amíg egy itteni hívás fut, a megjelenő (szülő nélküli) Widgets-párbeszédablak a
-    // Beállítások-ablakhoz tartozik (fölötte marad), nem a főablakhoz.
+    // While a call here is running, the (parentless) Widgets dialog that appears belongs to the
+    // Settings window (stays above it), not to the main window.
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
@@ -65,7 +63,7 @@ private:
 
     tanara::AppController* m_controller = nullptr;
     QPointer<QWindow> m_owner;
-    int m_active = 0;                 // futó modális hívások (egymásba ágyazhatók)
+    int m_active = 0;                 // running modal calls (can nest)
     tanara_qml::PeopleWindowHost* m_people = nullptr;
     std::function<void(const QString&)> m_peopleOpener;
     tanara_qml::TagsWindowHost* m_tags = nullptr;

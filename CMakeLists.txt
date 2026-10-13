@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.21)
 project(tanara VERSION 0.5.11 LANGUAGES CXX)
 
-# A megjelenített verzió EGY helyről jön: a numerikus rész a project(VERSION)-ből, az utótag
-# (pl. "a" = alfa; üres = kiadás) innen. A core/src/Version.cpp ezt kapja TANARA_VERSION-ként.
+# The displayed version comes from ONE place: the numeric part from project(VERSION), the
+# suffix (e.g. "a" = alpha; empty = release) from here. core/src/Version.cpp receives it as
+# TANARA_VERSION.
 set(TANARA_VERSION_SUFFIX "")
 set(TANARA_VERSION "${PROJECT_VERSION}${TANARA_VERSION_SUFFIX}")
 
@@ -28,31 +29,31 @@ enable_testing()
 
 option(TANARA_BUILD_GUI "Build the Qt Widgets GUI" ON)
 option(TANARA_BUILD_WATCHER "Build the tray meeting-watcher" ON)
-# A beszélő-ujjlenyomat (voice-ID) ONNX Runtime-ot + KISS FFT-t igényel. Kikapcsolva
-# (OFF) a core/cli/gui ezek nélkül fordul (gyors Windows bring-up); a VoiceEmbedder
-# ilyenkor stub (isValid()==false → az app automatikusan kihagyja a beszélő-címkézést).
+# Voice-ID needs ONNX Runtime + KISS FFT. When OFF, core/cli/gui build without them (fast
+# Windows bring-up); VoiceEmbedder is then a stub (isValid() == false, so the app skips
+# speaker labeling automatically).
 option(TANARA_BUILD_VOICEID "Build with ONNX-based voice fingerprinting" ON)
-# Tanara Cloud (zárt, fizetős szolgáltatás) — a nyílt kliensben tisztán lekapcsolható:
-#  TANARA_BUILD_CLOUD  — a bejelentkezős cloud-kliens (tanara-cloud STT/LLM provider,
-#                        device flow, becslés, egyenleg). OFF → a kód nem regisztrál semmit
-#                        (kill-kritérium). Futásidőben: settings.cloudEnabled / TANARA_CLOUD.
-#  TANARA_CLOUD_TEASER — a „Hamarosan” (várólista) panel + a readiness-sor az indulás előtt.
+# Tanara Cloud (closed, paid service): can be switched off cleanly in the open client:
+#  TANARA_BUILD_CLOUD  - the sign-in cloud client (tanara-cloud STT/LLM provider, device
+#                        flow, estimate, balance). OFF: the code registers nothing.
+#                        At runtime: settings.cloudEnabled / TANARA_CLOUD.
+#  TANARA_CLOUD_TEASER - the "Coming soon" (waitlist) panel + the readiness row before startup.
 option(TANARA_BUILD_CLOUD "Build the Tanara Cloud client (login, cloud providers)" ON)
 option(TANARA_CLOUD_TEASER "Build the Tanara Cloud 'coming soon' waitlist panel" ON)
 
-# Az új (Qt Quick / QML) felülethez — gui/qml, URI „Tanara”. A Svg a Lucide ikonok
-# futásidejű színezéséhez/rasztereléséhez kell (kép-provider).
+# For the Qt Quick / QML UI: gui/qml, URI "Tanara". Svg is needed for runtime tinting and
+# rasterizing of the Lucide icons (image provider).
 if(TANARA_BUILD_GUI)
     find_package(Qt6 REQUIRED COMPONENTS Qml Quick QuickControls2 Svg)
 endif()
 
 if(TANARA_BUILD_VOICEID)
-    # kaldi-native-fbank (vendorelt, Apache-2.0) — kaldi-pontos fbank a beszélő-embeddinghez.
-    # Az FFT-t a kissfft-float adja (a knf rfft.cc a kiss_fftr-t float-tal hívja).
+    # kaldi-native-fbank (vendored, Apache-2.0): Kaldi-accurate fbank for the speaker embedding.
+    # The FFT comes from kissfft-float (knf's rfft.cc calls kiss_fftr with float).
     if(WIN32)
-        # Windowson nincs pkg-config; a kissfft-float-ot forrásból fordítjuk
-        # (vendorelt, third_party/kissfft). A projekt alapból csak CXX — a .c
-        # fájlokhoz engedélyezni kell a C nyelvet (különben CMake némán kihagyja).
+        # Windows has no pkg-config; kissfft-float is built from source (vendored,
+        # third_party/kissfft). The project is CXX-only by default, so C must be enabled for the
+        # .c files (otherwise CMake silently skips them).
         enable_language(C)
         set(KISSFFT_DIR ${CMAKE_SOURCE_DIR}/third_party/kissfft)
         add_library(kissfft_float STATIC
@@ -62,7 +63,7 @@ if(TANARA_BUILD_VOICEID)
         target_compile_definitions(kissfft_float PUBLIC kiss_fft_scalar=float)
         set_target_properties(kissfft_float PROPERTIES
             POSITION_INDEPENDENT_CODE ON
-            AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # tiszta C-lib, nincs MOC
+            AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # plain C lib, no MOC
         add_library(tanara::kissfft ALIAS kissfft_float)
     else()
         find_package(PkgConfig REQUIRED)
@@ -77,12 +78,12 @@ if(TANARA_BUILD_VOICEID)
     target_link_libraries(kaldi_native_fbank PRIVATE tanara::kissfft)
     set_target_properties(kaldi_native_fbank PROPERTIES
         POSITION_INDEPENDENT_CODE ON
-        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # nem Qt-cél, ne fusson rajta MOC
+        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)   # not a Qt target, no MOC
 
-    # onnxruntime — beszélő-embedding modellhez.
-    #  - Linux (Fedora): onnxruntime-devel cmake-config → find_package.
-    #  - Windows: a hivatalos win-x64 release-t a -DONNXRUNTIME_ROOT_DIR=... -rel
-    #    adjuk meg; abból import-target épül (cmake/OnnxRuntimeWin.cmake).
+    # onnxruntime: for the speaker embedding model.
+    #  - Linux (Fedora): onnxruntime-devel cmake config, via find_package.
+    #  - Windows: pass the official win-x64 release with -DONNXRUNTIME_ROOT_DIR=...; an imported
+    #    target is built from it (cmake/OnnxRuntimeWin.cmake).
     if(WIN32 AND ONNXRUNTIME_ROOT_DIR)
         include(${CMAKE_SOURCE_DIR}/cmake/OnnxRuntimeWin.cmake)
     else()
@@ -90,11 +91,11 @@ if(TANARA_BUILD_VOICEID)
     endif()
 endif()
 
-# Windows + voice-ID: a helyes onnxruntime.dll-t az exe mellé másoljuk (POST_BUILD).
-# A Windows a System32-ben SAJÁT, régebbi onnxruntime.dll-t szállít (Windows ML, ~1.17);
-# ha az exe mellett nincs DLL, azt tölti be → "API version [20] is not available", és a
-# voice-ID némán elhal. Az add_custom_command(TARGET …) csak a target saját könyvtárában
-# hívható, ezért segédfüggvény, amit a cli/gui/watcher/tests CMakeLists hív.
+# Windows + voice-ID: copy the right onnxruntime.dll next to the exe (POST_BUILD).
+# Windows ships its OWN, older onnxruntime.dll in System32 (Windows ML, ~1.17); if there is
+# no DLL next to the exe, that one is loaded ("API version [20] is not available") and
+# voice-ID dies silently. add_custom_command(TARGET ...) works only in the target's own
+# directory, hence a helper function called from the cli/gui/watcher/tests CMakeLists.
 function(tanara_copy_onnxruntime_dll target)
     if(WIN32 AND TANARA_BUILD_VOICEID AND ONNXRUNTIME_DLL)
         add_custom_command(TARGET ${target} POST_BUILD
@@ -114,15 +115,15 @@ if(TANARA_BUILD_WATCHER)
 endif()
 add_subdirectory(tests)
 
-# i18n — a FORRÁSNYELV MAGYAR, az angol az i18n/tanara_en.ts fordításból épül.
-#  - stringek frissítése a .ts-be:  cmake --build build --target update_translations
-#  - a .qm build-időben készül (lrelease) és minden futtatható targetbe beágyazódik
-#    (:/i18n/tanara_en.qm) — betöltés: tanara::installAppTranslator().
+# i18n: the SOURCE LANGUAGE IS HUNGARIAN; English is built from the i18n/tanara_en.ts translation.
+#  - update strings in the .ts:  cmake --build build --target update_translations
+#  - the .qm is built at build time (lrelease) and embedded in every executable target
+#    (:/i18n/tanara_en.qm); loaded with tanara::installAppTranslator().
 set(TANARA_I18N_TARGETS tanara-cli)
 set(TANARA_I18N_SOURCE_TARGETS tanara_core)
 if(TANARA_BUILD_GUI)
     list(APPEND TANARA_I18N_TARGETS tanara)
-    # A QML-modul (gui/qml) qsTr() szövegei is a közös .ts-be kerülnek; a .qm a tanara exe-be.
+    # The qsTr() strings of the QML module (gui/qml) go into the shared .ts too; the .qm goes into the tanara exe.
     list(APPEND TANARA_I18N_SOURCE_TARGETS tanara_qml)
 endif()
 if(TANARA_BUILD_WATCHER)
@@ -134,7 +135,7 @@ qt_add_translations(TARGETS ${TANARA_I18N_TARGETS}
     RESOURCE_PREFIX "/i18n"
     LUPDATE_OPTIONS -no-obsolete -locations none)
 
-# Windows-telepítő (Inno Setup, packaging/windows/tanara.iss): a verzió innen jön.
+# Windows installer (Inno Setup, packaging/windows/tanara.iss): the version comes from here.
 if(WIN32)
     configure_file(${CMAKE_SOURCE_DIR}/packaging/windows/tanara-version.iss.in
                    ${CMAKE_BINARY_DIR}/tanara-version.iss @ONLY)

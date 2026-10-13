@@ -1,17 +1,17 @@
-// Az átirat-szerkesztő mérése VALÓDI (eldobható) minta-meetingeken, a teljes úton:
-// AppController → speakerEditor(meetingId) → TranscriptEditorViewModel → TranscriptTab.qml.
-// Alapból KIHAGYVA — csak a TANARA_SANDBOX környezeti változóval fut:
+// Measures the transcript editor on REAL (disposable) sample meetings, over the full path:
+// AppController -> speakerEditor(meetingId) -> TranscriptEditorViewModel -> TranscriptTab.qml.
+// SKIPPED by default; it runs only with the TANARA_SANDBOX environment variable:
 //
-//   TANARA_SANDBOX=<mappa> QT_QPA_PLATFORM=offscreen ./build/tests/test_transcript_sandbox
+//   TANARA_SANDBOX=<folder> QT_QPA_PLATFORM=offscreen ./build/tests/test_transcript_sandbox
 //
-// ahol <mappa>/home a metaadat-mappa (settings.json a sandbox mappáira mutat, benne
-// models/campplus_sv_zh_en_16k.onnx) és <mappa>/recordings a meetingek. A teszt a
-// TANARA_HOME-ot erre állítja, így SEMMI nem megy a valódi ~/.tanara-ba; a futás ír a
-// sandboxba (embedding-cache, overlay). Átirat-szöveget és nevet NEM ír ki — csak számokat.
+// where <folder>/home is the metadata folder (settings.json points at the sandbox folders,
+// with models/campplus_sv_zh_en_16k.onnx inside) and <folder>/recordings holds the meetings.
+// The test sets TANARA_HOME to it, so NOTHING goes into the real ~/.tanara; the run writes
+// into the sandbox (embedding cache, overlay). It prints no transcript text or names, only numbers.
 //
-// Mit mér (offscreen + szoftveres renderer, 1004×640 — a GPU-s élő ablaknál ez lassabb,
-// tehát felső becslés): megnyitás, első képkocka, görgetés képkockánként, ugrás a végére,
-// egy sor áthelyezése + visszavonás, sín / szűrő / keresés, és a hang-elemzés ideje.
+// What it measures (offscreen + software renderer, 1004x640; slower than a live GPU window,
+// so an upper estimate): opening, first frame, scrolling frame by frame, jump to the end,
+// moving one line + undo, rail / filter / search, and the audio analysis time.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
@@ -84,7 +84,7 @@ void TestTranscriptSandbox::measure()
     AppController controller;
     QVERIFY2(QDir(controller.store()->audioDir()).absolutePath().startsWith(QDir(root).absolutePath()),
              "az audio-mappa nem a sandboxban van");
-    controller.store()->rebuildIndexFromDisk();     // a friss sandboxban még nincs index
+    controller.store()->rebuildIndexFromDisk();     // a fresh sandbox has no index yet
     AppContext::instance()->setController(&controller);
     AppContext::instance()->setThemeMode(QStringLiteral("light"));
 
@@ -103,7 +103,7 @@ void TestTranscriptSandbox::measure()
     auto* vm = window->findChild<TranscriptEditorViewModel*>();
     auto* list = window->findChild<QQuickItem*>(QStringLiteral("transcriptList"));
     QVERIFY(vm && list);
-    QVERIFY(!vm->demo());                   // van controller: nincs demó-adat
+    QVERIFY(!vm->demo());                   // there is a controller: no demo data
     QVERIFY(!vm->hasTranscript());
 
     auto frame = [&window] {
@@ -121,7 +121,7 @@ void TestTranscriptSandbox::measure()
         const QString tag = QStringLiteral("meeting #%1").arg(n);
         QElapsedTimer t;
         t.start();
-        window->setProperty("meeting", entry.id);       // → speakerEditor() + modell-építés
+        window->setProperty("meeting", entry.id);       // speakerEditor() + model construction
         const double openMs = ms(t.nsecsElapsed());
         const double firstFrameMs = frame();
         QCOMPARE(vm->meetingId(), entry.id);
@@ -137,7 +137,7 @@ void TestTranscriptSandbox::measure()
         qInfo().noquote() << tag << QStringLiteral("  megnyitás (modell) %1 ms · első képkocka %2 ms")
                                         .arg(openMs, 0, 'f', 1).arg(firstFrameMs, 0, 'f', 1);
 
-        // Szerkesztés a hang-elemzés KÖZBEN is megy: egy áthelyezés + visszavonás most.
+        // Editing works DURING the audio analysis too: one move + undo now.
         const bool embeddingAtOpen = vm->embeddingRunning();
         QSignalSpy resets(vm->rows(), &QAbstractItemModel::modelReset);
         const int mid = rows / 2;
@@ -165,7 +165,7 @@ void TestTranscriptSandbox::measure()
                                             .arg(embeddingAtOpen ? QStringLiteral(" (hang-elemzés közben)") : QString());
         }
 
-        // Görgetés: 120 lépés, lépésenként 240 px, mindegyik után teljes képkocka.
+        // Scrolling: 120 steps of 240 px, a full frame after each.
         QMetaObject::invokeMethod(list, "positionViewAtBeginning");
         frame();
         QVector<double> scroll;
@@ -184,7 +184,7 @@ void TestTranscriptSandbox::measure()
         qInfo().noquote() << tag << QStringLiteral("  ugrás a végére %1 ms · vissza az elejére %2 ms")
                                         .arg(endMs, 0, 'f', 1).arg(beginMs, 0, 'f', 1);
 
-        // Keresés (gyakori betűre): találatok száma + idő.
+        // Search (for a common letter): the number of hits + time.
         t.restart();
         vm->setSearchQuery(QStringLiteral("a"));
         const double searchMs = ms(t.nsecsElapsed());
@@ -195,7 +195,7 @@ void TestTranscriptSandbox::measure()
         qInfo().noquote() << tag << QStringLiteral("  keresés: %1 találat, %2 ms + képkocka %3 ms")
                                         .arg(matches).arg(searchMs, 0, 'f', 1).arg(searchFrameMs, 0, 'f', 1);
 
-        // Hang-elemzés: megvárjuk (cache-ből azonnal kész), közben a UI él.
+        // Audio analysis: we wait for it (immediately done from the cache), the UI stays alive meanwhile.
         if (vm->voiceAvailable()) {
             QElapsedTimer voice;
             voice.start();
@@ -204,7 +204,7 @@ void TestTranscriptSandbox::measure()
                                             .arg(voice.elapsed() / 1000.0, 0, 'f', 1).arg(vm->uncertainCount())
                                             .arg(100.0 * vm->uncertainCount() / rows, 0, 'f', 1)
                                             .arg(vm->voiceNote().isEmpty() ? QString() : QStringLiteral(" — NEM érhető el"));
-            // „Bizonytalan" szűrő be / ki.
+            // "Uncertain" filter on / off.
             t.restart();
             vm->setUncertainOnly(true);
             const double filterMs = ms(t.nsecsElapsed());
@@ -219,7 +219,7 @@ void TestTranscriptSandbox::measure()
             qInfo().noquote() << tag << "  hang-elemzés nem érhető el (nincs modell)";
         }
         vm->setRailVisible(false);
-        QCOMPARE(resets.count(), 2 * (vm->voiceAvailable() ? 1 : 0));   // csak a szűrő be/ki resetel
+        QCOMPARE(resets.count(), 2 * (vm->voiceAvailable() ? 1 : 0));   // only the filter on/off resets
     }
     QVERIFY(n > 0);
     window->setProperty("meeting", QString());

@@ -1,12 +1,10 @@
+// AppController: integration test of the structured job layer.
 //
-// AppController — strukturált feladat-réteg integrációs tesztje.
-//
-// Izolált TANARA_HOME (temp), valódi ffmpeg a lekeveréshez, és egy helyi ál-HTTP-szerver a
-// Soniox-szerű STT- és az OpenAI-kompatibilis LLM-végpontok helyén (valódi, fizetős hívás
-// NINCS). Ellenőrzi: szakasz-haladás, megmaradó (újraindítást túlélő) hibák, megszakítás
-// minden fázisban (a felvételek és a korábbi eredmények érintetlenek), summary.json +
-// metaadat, téma-lista átrendezése és a témánkénti állapot lekérdezése.
-//
+// Isolated TANARA_HOME (temp), real ffmpeg for the mixdown, and a local fake HTTP server in
+// place of the Soniox-like STT and OpenAI-compatible LLM endpoints (NO real, paid call).
+// Checks: stage progress, persistent (restart-surviving) errors, cancellation in every phase
+// (recordings and earlier results untouched), summary.json + metadata, reordering the topic
+// list and querying per-topic state.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -33,17 +31,17 @@
 
 using namespace tanara;
 
-// A moc a nyers (R"(...)") string-literálokon elcsúszik → a segédeket és a teszt-törzseket
-// nem látja (csak az osztály-deklarációt).
+// moc gets lost on raw (R"(...)") string literals, so it does not see the helpers and the
+// test bodies (only the class declaration).
 #ifndef Q_MOC_RUN
 namespace {
 
-// ---- minimális ál-HTTP-szerver ----------------------------------------------------------
+// ---- minimal fake HTTP server ----
 struct FakeRequest { QByteArray method; QString path; QByteArray body; };
 struct FakeReply {
     int status = 200;
     QByteArray body = "{}";
-    bool hold = false;   // ne válaszoljon (függő kérés — megszakítás teszteléséhez)
+    bool hold = false;   // do not respond (a hanging request, to test cancellation)
 };
 
 class FakeHttp : public QObject {
@@ -80,7 +78,7 @@ private:
             const QByteArray l = line.trimmed().toLower();
             if (l.startsWith("content-length:")) len = l.mid(15).trimmed().toLongLong();
         }
-        if (buf.size() < headEnd + 4 + len) return;   // a törzs még nem jött meg teljesen
+        if (buf.size() < headEnd + 4 + len) return;   // the body has not fully arrived yet
         FakeRequest req;
         const QList<QByteArray> first = head.left(head.indexOf('\r')).split(' ');
         req.method = first.value(0);
@@ -100,7 +98,7 @@ private:
     QTcpServer m_srv;
 };
 
-// 16 bites mono WAV (szinusz) — a lekeverés valódi bemenete.
+// 16-bit mono WAV (sine): the real input of the mixdown.
 void writeWav(const QString& path, int seconds, int rate = 8000)
 {
     const int n = seconds * rate;
@@ -133,7 +131,7 @@ const char* kTokensJson =
     R"({"text":" kezdjük.","start_ms":400,"end_ms":900,"confidence":0.9,"speaker":"1"},)"
     R"({"text":" Rendben.","start_ms":2000,"end_ms":2500,"confidence":0.9,"speaker":"2"}]})";
 
-// A Soniox-folyamat alapértelmezett (sikeres) válaszai.
+// The Soniox flow's default (successful) replies.
 FakeReply sonioxOk(const FakeRequest& r, const QByteArray& status = "completed")
 {
     if (r.method == "POST" && r.path.endsWith("/files")) return {200, R"({"id":"f1"})"};
@@ -166,7 +164,7 @@ private slots:
     void summarizeLongMeetingInParts();
     void summarizePartFailureResumes();
     void summarizeCancelBetweenParts();
-    // LLM-kontextus (lásd llm/LlmContext.h, llm/LlmServer.h).
+    // LLM context (see llm/LlmContext.h, llm/LlmServer.h).
     void summarizeAdaptsToSmallContext();
     void summarizeContextTooSmall();
     void summarizeLoadsModelOnLmStudio();
@@ -178,10 +176,10 @@ private slots:
     void identifyRunsAsLastStage();
     void retranscribeSuccessClearsNamesAndCorrections();
     void staleSummaryShowsInStateAndPending();
-    // G4 (A7): a kézzel felvett, nem beszélő résztvevő az átírás után is megmarad.
+    // A manually added, non-speaking participant survives the transcription too.
     void manualParticipantSurvivesTranscription();
 
-    // Adatbiztonság.
+    // Data safety.
     void retryAfterFailedRetranscribeClearsNames();
     void emptySttResultKeepsOldTranscript();
     void missingTrackKeepsExistingMixdown();
@@ -192,14 +190,14 @@ private:
     Meeting recording(const QString& title, int seconds);
     Meeting transcribed(const QString& title);
     Meeting transcribedLong(const QString& title, int minutes);
-    // Mint a transcribedLong, de hosszú (~600 karakteres) bekezdésekkel — egy 15 perces rész
-    // így ~17 ezer karakter.
+    // Like transcribedLong, but with long (~600-character) paragraphs, so a 15-minute part is
+    // ~17 thousand characters.
     Meeting transcribedDense(const QString& title, int minutes);
 
     std::unique_ptr<QTemporaryDir> m_home;
     std::unique_ptr<FakeHttp> m_http;
     std::unique_ptr<AppController> m_app;
-    QStringList m_errors;   // a régi errorOccurred csatorna
+    QStringList m_errors;   // the old errorOccurred channel
     bool m_ffmpeg = false;
 };
 
@@ -217,7 +215,7 @@ void AppJobsTest::init()
     QVERIFY(m_home->isValid());
     qputenv("TANARA_HOME", m_home->path().toUtf8());
     m_http = std::make_unique<FakeHttp>();
-    LlmServerProbe::invalidateCache();   // a port újrahasznosulhat: a régi szerver-adat ne maradjon
+    LlmServerProbe::invalidateCache();   // the port may be reused: old server data must not linger
     newApp();
 }
 
@@ -235,7 +233,7 @@ void AppJobsTest::newApp()
     m_app = std::make_unique<AppController>();
     connect(m_app.get(), &AppController::errorOccurred, this, [this](const QString& e) { m_errors << e; });
     AppSettings s = m_app->settings()->settings();
-    QVERIFY(s.audioDir.startsWith(m_home->path()));   // TANARA_HOME: a felvételek is a sandboxban
+    QVERIFY(s.audioDir.startsWith(m_home->path()));   // TANARA_HOME: the recordings are in the sandbox too
     s.sttProviderId = QStringLiteral("soniox");
     s.sttConfigs[s.sttProviderId].baseUrl = m_http->base();
     s.llmProviderId = QStringLiteral("openai-compat");
@@ -258,7 +256,7 @@ Meeting AppJobsTest::recording(const QString& title, int seconds)
     return m;
 }
 
-// Kész átirattal rendelkező meeting (az összefoglaló-tesztekhez), szolgáltató-hívás nélkül.
+// A meeting with a finished transcript (for the summary tests), no provider call.
 Meeting AppJobsTest::transcribed(const QString& title)
 {
     Meeting m = recording(title, 2);
@@ -289,7 +287,7 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
     const Meeting m = recording("Heti egyeztetés", 3);
     MeetingJobTracker* jobs = m_app->jobs();
 
-    // Minden haladás-pillanatkép rögzítése: szakasz → az elért állapotok sorrendje.
+    // Records every progress snapshot: stage to the sequence of states reached.
     QHash<QString, QVector<StageState>> seen;
     int uploadPercentMax = -1;
     connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
@@ -300,7 +298,7 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
             if (st.id == "upload" && st.state == StageState::Running)
                 uploadPercentMax = qMax(uploadPercentMax, st.percent);
             if (st.id == "transcribe")
-                QCOMPARE(st.percent, -1);   // a szolgáltató nem ad százalékot → nem találunk ki
+                QCOMPARE(st.percent, -1);   // the provider gives no percentage, so we do not invent one
         }
     });
     QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
@@ -308,35 +306,35 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
     QSignalSpy legacy(m_app.get(), &AppController::jobProgress);
 
     m_app->transcribeMeeting(m.id);
-    // Azonnal látszik: fut, megszakítható, szakasz-listával (a keverés kell → az az első).
+    // Visible at once: running, cancellable, with a stage list (the mix is needed, so it is first).
     JobProgress jp = jobs->job(m.id, JobKind::Transcribe);
     QVERIFY(jp.isValid());
     QVERIFY(jp.cancellable);
     QStringList ids;
     for (const JobStage& st : jp.stages) ids << st.id;
-    QCOMPARE(ids, QStringList({"mixdown", "upload", "transcribe", "diarize"}));   // (hang-modell nincs → nincs „identify”)
+    QCOMPARE(ids, QStringList({"mixdown", "upload", "transcribe", "diarize"}));   // (no voice model, so no "identify")
     QCOMPARE(jp.stage("mixdown")->state, StageState::Running);
     QVERIFY(jp.stage("upload")->detail.contains("1 sáv"));
-    QCOMPARE(jp.estimatedTotalSec, -1);                       // korábbi futás nélkül nincs becslés
+    QCOMPARE(jp.estimatedTotalSec, -1);                       // no estimate without an earlier run
     MeetingProcessingState st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Running);
     QVERIFY(st.mixdownRunning);
     QCOMPARE(m_app->library()->entry(m.id).state.transcriptState, StepState::Running);
-    m_app->transcribeMeeting(m.id);                           // dupla indítás: no-op
+    m_app->transcribeMeeting(m.id);                           // double start: no-op
 
     QVERIFY(ready.wait(30000));
     QTRY_COMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(1).value<JobKind>(), JobKind::Transcribe);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Done);
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
-    QVERIFY(legacy.count() > 0);                              // a régi szabad szöveges jel is él
+    QVERIFY(legacy.count() > 0);                              // the old free-text signal works too
 
-    // A szakaszok sorrendben végigmentek.
+    // The stages went through in order.
     QCOMPARE(seen["mixdown"], QVector<StageState>({StageState::Waiting, StageState::Running, StageState::Done}));
     QCOMPARE(seen["upload"], QVector<StageState>({StageState::Waiting, StageState::Running, StageState::Done}));
     QCOMPARE(seen["transcribe"], QVector<StageState>({StageState::Waiting, StageState::Running, StageState::Done}));
     QCOMPARE(seen["diarize"], QVector<StageState>({StageState::Waiting, StageState::Running, StageState::Done}));
-    QVERIFY(uploadPercentMax >= 0);                           // valós feltöltés-százalék érkezett
+    QVERIFY(uploadPercentMax >= 0);                           // a real upload percentage arrived
 
     st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Done);
@@ -349,8 +347,8 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
                           "mixdown.mp3", "track_mic.wav"})
         QVERIFY2(QDir(m.folder).exists(f), f);
     QVERIFY(!QDir(m.folder).exists("mixdown.part.mp3"));
-    // Soniox-időzítés: a tokenek érintetlenek, a tokens.json "timing": "emission" jelzőt kap,
-    // a sorok (segments.json) párnázottak (−300 / +100 ms, a szomszéd sorig).
+    // Soniox timing: the tokens are untouched, tokens.json gets a "timing": "emission" marker,
+    // the lines (segments.json) are padded (-300 / +100 ms, up to the neighboring line).
     {
         QFile tf(QDir(m.folder).filePath("transcript.tokens.json"));
         QVERIFY(tf.open(QIODevice::ReadOnly));
@@ -367,10 +365,10 @@ void AppJobsTest::transcribeReportsStagesAndFinishes()
         QCOMPARE(segs.at(1).toObject().value("startMs").toInt(), 1700);
         QCOMPARE(segs.at(1).toObject().value("endMs").toInt(), 2600);
     }
-    QCOMPARE(m_http->count("POST", "/files"), 1);             // a dupla indítás nem küldött még egyet
-    QTRY_COMPARE(m_http->count("DELETE", "/"), 2);            // szolgáltató-oldali takarítás
+    QCOMPARE(m_http->count("POST", "/files"), 1);             // the double start has not sent another one
+    QTRY_COMPARE(m_http->count("DELETE", "/"), 2);            // provider-side cleanup
 
-    // A könyvtár-keresés az új átiratot is látja.
+    // Library search sees the new transcript too.
     LibraryQuery q;
     q.text = "kezdjuk";
     QCOMPARE(m_app->library()->query(q).count(), 1);
@@ -393,21 +391,21 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
     QCOMPARE(errChanged.count(), 1);
-    QCOMPARE(m_errors.size(), 1);                             // a régi globális hiba-jel is megjött
+    QCOMPARE(m_errors.size(), 1);                             // the old global error signal arrived too
 
     MeetingProcessingState st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Failed);
     QCOMPARE(st.transcriptError.detail, QStringLiteral("HTTP 401 · invalid_api_key · Invalid API key."));
     QVERIFY(st.transcriptError.message.contains("API-kulcs"));
     QCOMPARE(st.transcriptError.fixActionHint, QStringLiteral("settings:stt"));
-    // Másik meeting kiválasztása után is lekérdezhető; a másik meeting érintetlen.
+    // Queryable after selecting another meeting too; the other meeting is untouched.
     QCOMPARE(m_app->processingState(other.id).transcriptState, StepState::None);
     QCOMPARE(m_app->processingState(m.id).transcriptState, StepState::Failed);
-    // A felvétel és a (már elkészült) keverék megmaradt.
+    // The recording and the (already finished) mix stayed.
     QVERIFY(QDir(m.folder).exists("track_mic.wav"));
     QVERIFY(!m_app->store()->load(m.id).hasTranscript);
 
-    // „Ezek várnak rád”: a bukott és a még át nem írt meeting.
+    // "These are waiting for you": the failed and the not yet transcribed meeting.
     QVector<PendingItem> pending = m_app->library()->pendingItems();
     QCOMPARE(pending.size(), 2);
     int failedCount = 0;
@@ -415,17 +413,17 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
         if (p.kind == PendingKind::TranscriptionFailed) { ++failedCount; QCOMPARE(p.meetingId, m.id); }
     QCOMPARE(failedCount, 1);
 
-    // Újraindítás után is látszik.
+    // Visible after a restart too.
     newApp();
     st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Failed);
     QCOMPARE(st.transcriptError.detail, QStringLiteral("HTTP 401 · invalid_api_key · Invalid API key."));
 
-    // Újrapróbálás jó kulccsal: siker → a hiba eltűnik.
+    // Retry with a good key: success, so the error disappears.
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
-    QCOMPARE(m_app->jobs()->job(m.id, JobKind::Transcribe).stages.first().id, QStringLiteral("upload"));   // keverés már van
+    QCOMPARE(m_app->jobs()->job(m.id, JobKind::Transcribe).stages.first().id, QStringLiteral("upload"));   // the mix already exists
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
     st = m_app->processingState(m.id);
@@ -437,15 +435,15 @@ void AppJobsTest::transcribeFailureKeptAfterRestart()
 void AppJobsTest::cancelTranscriptionAtProvider()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
-    // A szolgáltató „örökké” feldolgoz.
+    // The provider processes "forever".
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r, "processing"); };
-    // Újra-átírás: van korábbi átirat és nevesített beszélő — megszakítás után mind megmarad.
+    // Re-transcription: an earlier transcript and a named speaker exist; after cancel all stay.
     Meeting m = transcribed("Megszakított újra-átírás");
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m_app->store()->saveMeeting(m);
     const QByteArray tokensBefore = [&] { QFile f(QDir(m.folder).filePath("transcript.tokens.json")); return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray(); }();
 
-    // Kézi soronkénti javítás is van (overlay) — ennek is túl kell élnie a megszakítást.
+    // There is a manual per-line fix (overlay) too, which must survive the cancel as well.
     {
         SpeakerEditor* ed = m_app->speakerEditor(m.id);
         QVERIFY(ed);
@@ -459,25 +457,25 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     MeetingJobTracker* jobs = m_app->jobs();
     QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
     m_app->retranscribeMeeting(m.id);
-    // Megvárjuk, amíg a szolgáltatónál fut (a lekeverés és a feltöltés kész).
+    // We wait until it runs at the provider (the mixdown and the upload are done).
     QTRY_VERIFY_WITH_TIMEOUT(jobs->job(m.id, JobKind::Transcribe).isValid()
         && jobs->job(m.id, JobKind::Transcribe).stage("transcribe")->state == StageState::Running, 30000);
-    // A „transcribe” szakasz már a POST /transcriptions VÁLASZA előtt (Queued) fut; az átírás-id
-    // csak a válasszal jön. Az első állapot-lekérdezés jelzi, hogy az id megvan (különben a
-    // megszakítás a még úton lévő POST-ot szakítja meg, és nincs mit törölni — Windowson a
-    // lassabb helyi kapcsolódás miatt ez rendszeresen így volt).
+    // The "transcribe" stage already runs BEFORE the REPLY to POST /transcriptions (Queued); the
+    // transcription id arrives only with the reply. The first status poll signals that the id
+    // exists (otherwise the cancel aborts the still in-flight POST and there is nothing to delete;
+    // on Windows, because of the slower local connect, this was routinely the case).
     QTRY_VERIFY_WITH_TIMEOUT(m_http->count("GET", "/transcriptions/t1") >= 1, 30000);
-    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));   // nem törlődött előre
+    QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));   // not deleted in advance
 
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
     QCOMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
-    QVERIFY(!m_app->cancelJob(m.id, JobKind::Transcribe));    // már nincs mit megszakítani
+    QVERIFY(!m_app->cancelJob(m.id, JobKind::Transcribe));    // nothing left to cancel
 
-    // Megszakítás ≠ hiba: nincs errorOccurred, nincs megmaradó hiba; az állapot konzisztens.
+    // Cancel is not an error: no errorOccurred, no persistent error; the state is consistent.
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
     const MeetingProcessingState st = m_app->processingState(m.id);
-    QCOMPARE(st.transcriptState, StepState::Done);            // a KORÁBBI átirat él
+    QCOMPARE(st.transcriptState, StepState::Done);            // the EARLIER transcript lives
     QVERIFY(!st.transcriptError.isValid());
     QVERIFY(!st.busy());
     const Meeting after = m_app->store()->load(m.id);
@@ -486,14 +484,14 @@ void AppJobsTest::cancelTranscriptionAtProvider()
     QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     QCOMPARE(f.readAll(), tokensBefore);
-    // A kézi sor-javítás is megvan (az overlay csak az ÚJ átirat megérkezésekor törlődne).
+    // The manual line fix is there too (the overlay would be deleted only when the NEW transcript arrives).
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
     QCOMPARE(m_app->retranscribeImpact(m.id).namedSpeakers, 2);
-    QVERIFY(QDir(m.folder).exists("track_mic.wav"));          // a felvétel megvan
-    // A szolgáltatónál a feltöltött hang és az átírás törlődik (Soniox cleanup).
+    QVERIFY(QDir(m.folder).exists("track_mic.wav"));          // the recording is there
+    // At the provider the uploaded audio and the transcription are deleted (Soniox cleanup).
     QTRY_COMPARE(m_http->count("DELETE", "/transcriptions/t1"), 1);
     QTRY_COMPARE(m_http->count("DELETE", "/files/f1"), 1);
-    // Nem érkezik késői eredmény.
+    // No late result arrives.
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     QTest::qWait(300);
     QCOMPARE(ready.count(), 0);
@@ -503,8 +501,8 @@ void AppJobsTest::cancelDuringMixdownKeepsOldMixdown()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
-    Meeting m = recording("Hosszú felvétel", 900);            // 15 perc → a keverés eltart egy ideig
-    // Van egy régi (elavult) keverék — megszakítás után is ennek kell megmaradnia.
+    Meeting m = recording("Hosszú felvétel", 900);            // 15 minutes: the mix takes a while
+    // There is an old (stale) mix: it must remain after the cancel too.
     const QByteArray oldMix = "REGI-KEVEREK";
     { QFile f(QDir(m.folder).filePath("mixdown.mp3")); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(oldMix); }
     m.mixdownFile = "mixdown.mp3";
@@ -518,21 +516,21 @@ void AppJobsTest::cancelDuringMixdownKeepsOldMixdown()
     QVERIFY(m_app->cancelJob(m.id, JobKind::Transcribe));
     QCOMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
-    QVERIFY(mixDone.wait(10000));                             // az ffmpeg leállt
+    QVERIFY(mixDone.wait(10000));                             // ffmpeg stopped
     QCOMPARE(mixDone.at(0).at(1).toBool(), false);
 
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
     QFile f(QDir(m.folder).filePath("mixdown.mp3"));
     QVERIFY(f.open(QIODevice::ReadOnly));
-    QCOMPARE(f.readAll(), oldMix);                            // a régi keverék érintetlen
-    QVERIFY(!QDir(m.folder).exists("mixdown.part.mp3"));      // félkész fájl nem maradt
+    QCOMPARE(f.readAll(), oldMix);                            // the old mix is untouched
+    QVERIFY(!QDir(m.folder).exists("mixdown.part.mp3"));      // no half-finished file remained
     QVERIFY(QDir(m.folder).exists("track_mic.wav"));
     const MeetingProcessingState st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::None);
     QVERIFY(!st.mixdownRunning);
     QVERIFY(!st.busy());
     QTest::qWait(200);
-    QVERIFY(m_http->log.isEmpty());                           // a szolgáltatóhoz semmi nem ment
+    QVERIFY(m_http->log.isEmpty());                           // nothing went to the provider
 }
 
 void AppJobsTest::standaloneMixdownCancel()
@@ -544,10 +542,10 @@ void AppJobsTest::standaloneMixdownCancel()
     QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
     m_app->regenerateMixdown(m.id);
     QVERIFY(jobs->isRunning(m.id, JobKind::Mixdown));
-    m_app->regenerateMixdown(m.id);                           // fut már → no-op
+    m_app->regenerateMixdown(m.id);                           // already running: no-op
     QVERIFY(m_app->processingState(m.id).mixdownRunning);
     QCOMPARE(m_app->processingState(m.id).transcriptState, StepState::None);
-    // Valós százalék érkezik az ffmpeg-től.
+    // A real percentage arrives from ffmpeg.
     QTRY_VERIFY_WITH_TIMEOUT(jobs->job(m.id, JobKind::Mixdown).percent > 0
                              || !jobs->isRunning(m.id, JobKind::Mixdown), 10000);
     if (!jobs->isRunning(m.id, JobKind::Mixdown)) QSKIP("a keverés túl gyorsan lefutott a megszakításhoz");
@@ -586,7 +584,7 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
 
-    // A struktúra perzisztálva (summary.json) + a markdown is megvan.
+    // The structure is persisted (summary.json) + the markdown exists too.
     QVERIFY(QDir(m.folder).exists("summary.json"));
     QVERIFY(QDir(m.folder).exists("summary.md"));
     const SummaryDocument doc = m_app->summaryDocument(m.id);
@@ -596,28 +594,28 @@ void AppJobsTest::summarizePersistsStructureAndMeta()
     QCOMPARE(doc.summary.decisions, QStringList({"Az árajánlat pénteken megy ki."}));
     QCOMPARE(doc.summary.actionItems.size(), 1);
     QCOMPARE(doc.summary.actionItems[0].owner, QStringLiteral("Ödön"));
-    // A résztvevők az átirat beszélői (determinisztikusan, nem a modell válaszából).
+    // The participants are the transcript's speakers (deterministically, not from the model's reply).
     QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1"}));
-    QVERIFY(doc.summary.memo.isEmpty());                      // csak-JSON válasz: nincs memó-jegyzet
-    // Rövid megbeszélés: egy hívás, egy szakasz.
+    QVERIFY(doc.summary.memo.isEmpty());                      // JSON-only reply: no memo note
+    // Short meeting: one call, one stage.
     QCOMPARE(m_http->count("POST", "/chat/completions"), 1);
     QVERIFY(!QDir(m.folder).exists("summary.notes.json"));
-    // Metaadat: mikor, melyik szolgáltató/modell, milyen módban.
+    // Metadata: when, which provider/model, in what mode.
     QCOMPARE(doc.meta.mode, SummaryMode::Quick);
     QCOMPARE(doc.meta.providerId, QStringLiteral("openai-compat"));
     QCOMPARE(doc.meta.model, QStringLiteral("teszt-modell"));
     QVERIFY(qAbs(doc.meta.createdAt.secsTo(QDateTime::currentDateTime())) < 30);
     QVERIFY(doc.markdown.contains("## Vezetői összefoglaló"));
-    // A jegyzet-másolat is a sandboxba került.
+    // The note copy went into the sandbox too.
     QVERIFY(!QDir(m_home->filePath("notes")).entryList({"*.md"}).isEmpty());
 }
 
 void AppJobsTest::summarizeCancelAndFailure()
 {
     const Meeting m = transcribed("Megszakított összefoglaló");
-    // 1) Függő LLM-hívás megszakítása.
+    // 1) Cancelling a pending LLM call.
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
-        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // nincs natív API
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // no native API
         FakeReply h; h.hold = true; return h;
     };
     QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
@@ -637,7 +635,7 @@ void AppJobsTest::summarizeCancelAndFailure()
     QVERIFY(!m_app->store()->load(m.id).hasSummary);
     QVERIFY(!m_app->cancelJob(m.id, JobKind::Summarize));
 
-    // 2) Szolgáltató-hiba: megmaradó hiba emberi + technikai sorral.
+    // 2) Provider error: a persistent error with a human and a technical line.
     m_http->handler = [](const FakeRequest&) -> FakeReply {
         return {500, R"({"error":{"message":"model crashed","type":"server_error"}})"};
     };
@@ -648,13 +646,13 @@ void AppJobsTest::summarizeCancelAndFailure()
     st = m_app->processingState(m.id);
     QCOMPARE(st.summaryState, StepState::Failed);
     QCOMPARE(st.summaryError.detail, QStringLiteral("HTTP 500 · server_error · model crashed"));
-    QCOMPARE(st.transcriptState, StepState::Done);            // az átirat-lépést nem érinti
-    // A hiba elvethető.
+    QCOMPARE(st.transcriptState, StepState::Done);            // does not affect the transcript step
+    // The error can be dismissed.
     m_app->jobs()->clearError(m.id, JobKind::Summarize);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::None);
 }
 
-// Hosszú (több részes) átirat: félpercenként egy bekezdés, két beszélő váltakozva.
+// Long (multi-part) transcript: one paragraph every half minute, two speakers alternating.
 Meeting AppJobsTest::transcribedLong(const QString& title, int minutes)
 {
     Meeting m = recording(title, 1);
@@ -676,7 +674,7 @@ Meeting AppJobsTest::transcribedLong(const QString& title, int minutes)
 }
 
 namespace {
-// A kérés-törzsből: jegyzet-hívás-e, és hányadik részé.
+// From the request body: whether it is a note call, and which part.
 int notesPart(const FakeRequest& r)
 {
     const QJsonArray msgs = QJsonDocument::fromJson(r.body).object().value("messages").toArray();
@@ -702,9 +700,9 @@ void AppJobsTest::summarizeLongMeetingInParts()
         const int k = notesPart(r);
         return {200, chat(k > 0 ? partNotes(k) : QString::fromUtf8(kMergeOk))};
     };
-    const Meeting m = transcribedLong("Hosszú megbeszélés", 40);   // 3 rész → 3 jegyzet + 1 összegzés
+    const Meeting m = transcribedLong("Hosszú megbeszélés", 40);   // 3 parts: 3 notes + 1 summary
     MeetingJobTracker* jobs = m_app->jobs();
-    QStringList trail;   // szakasz-állapotok + darab-haladás, ahogy a UI látja
+    QStringList trail;   // stage states + chunk progress, as the UI sees it
     connect(jobs, &MeetingJobTracker::jobProgressChanged, this, [&](const QString&, const JobProgress& p) {
         if (p.kind != JobKind::Summarize) return;
         QString line;
@@ -723,7 +721,7 @@ void AppJobsTest::summarizeLongMeetingInParts()
     QVERIFY(ready.wait(10000));
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
     QCOMPARE(m_http->count("POST", "/chat/completions"), 4);
-    // A jegyzetelés részenként haladt (0/3 → 3/3), utána az összegzés futott.
+    // Note taking went part by part (0/3 to 3/3), then the summary ran.
     QVERIFY2(trail.contains("notes:1 merge:0 0/3"), qPrintable(trail.join(" | ")));
     QVERIFY2(trail.contains("notes:1 merge:0 2/3"), qPrintable(trail.join(" | ")));
     QVERIFY2(trail.contains("notes:2 merge:1 3/3"), qPrintable(trail.join(" | ")));
@@ -737,8 +735,8 @@ void AppJobsTest::summarizeLongMeetingInParts()
     QCOMPARE(doc.summary.participants, QStringList({"Beszélő 1", "Beszélő 2"}));
     QVERIFY(doc.markdown.contains("## Nyitott kérdések"));
     QVERIFY(doc.markdown.contains("## Memó\n\n### Tárgy 1 (00:00–00:40)"));
-    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));      // siker → nincs maradék jegyzet
-    // A jegyzet-másolat a memót is tartalmazza.
+    QVERIFY(!QDir(m.folder).exists("summary.notes.json"));      // success: no leftover notes
+    // The note copy contains the memo too.
     const QStringList notes = QDir(m_home->filePath("notes")).entryList({"*.md"});
     QCOMPARE(notes.size(), 1);
     QFile nf(QDir(m_home->filePath("notes")).filePath(notes.first()));
@@ -761,17 +759,17 @@ void AppJobsTest::summarizePartFailureResumes()
     QTRY_COMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
     QCOMPARE(ready.count(), 0);
-    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // a 3. rész már nem indult
-    // Tiszta hiba: nincs félkész összefoglaló, a megmaradó hiba technikai sorral.
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // the 3rd part did not start
+    // A clean error: no half-finished summary, the persistent error has a technical line.
     QVERIFY(!QDir(m.folder).exists("summary.md"));
     QVERIFY(!QDir(m.folder).exists("summary.json"));
     QVERIFY(!m_app->store()->load(m.id).hasSummary);
     MeetingProcessingState st = m_app->processingState(m.id);
     QCOMPARE(st.summaryState, StepState::Failed);
     QCOMPARE(st.summaryError.detail, QStringLiteral("HTTP 500 · server_error · model crashed"));
-    QVERIFY(QDir(m.folder).exists("summary.notes.json"));     // az 1. rész jegyzete megmaradt
+    QVERIFY(QDir(m.folder).exists("summary.notes.json"));     // part 1's note stayed
 
-    // Újrapróbálás: az 1. rész nem fut újra; a szakasz jelzi a korábbi futásból átvett részt.
+    // Retry: part 1 does not run again; the stage shows the part taken over from the earlier run.
     broken = false;
     m_errors.clear();
     const int before = m_http->count("POST", "/chat/completions");
@@ -779,7 +777,7 @@ void AppJobsTest::summarizePartFailureResumes()
     const JobProgress jp = m_app->jobs()->job(m.id, JobKind::Summarize);
     QCOMPARE(jp.done, 1);
     QVERIFY(ready.wait(10000));
-    QCOMPARE(m_http->count("POST", "/chat/completions") - before, 3);   // 2. + 3. rész + összegzés
+    QCOMPARE(m_http->count("POST", "/chat/completions") - before, 3);   // parts 2 + 3 + summary
     QCOMPARE(m_app->summaryDocument(m.id).summary.memo.size(), 3);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
 }
@@ -805,9 +803,9 @@ Meeting AppJobsTest::transcribedDense(const QString& title, int minutes)
 }
 
 namespace {
-// Natív API nélküli szerver (pl. llama.cpp), ami a túl hosszú jegyzet-kérést a llama.cpp
-// hibájával utasítja el. A szerver „tokenje” itt 2,5 karakter; a jegyzet-kérésbe a rendszer-
-// prompt mellett legfeljebb allowUser karakter fér (+ a 3000 tokenes kimeneti keret).
+// A server without a native API (e.g. llama.cpp) that rejects a too-long note request with
+// llama.cpp's error. The server's "token" here is 2.5 characters; the note request fits at
+// most allowUser characters next to the system prompt (+ the 3000-token output budget).
 struct SmallContextServer {
     int allowUser = 8000;
     int overflows = 0;
@@ -837,15 +835,15 @@ struct SmallContextServer {
     }
 };
 
-// LM Studio natív API-ja (GET /api/v1/models, POST load / unload) + chat, állapottal.
+// LM Studio's native API (GET /api/v1/models, POST load / unload) + chat, with state.
 struct FakeLmStudio {
     QString model = QStringLiteral("teszt-modell");
-    int ctx = 4096;            // 0 = nincs betöltve
+    int ctx = 4096;            // 0 = not loaded
     int parallel = 4;
     bool refuseLoad = false;
     bool holdLoad = false;
     QVector<QJsonObject> loads;
-    QStringList order;         // a kérések sorrendje (models | unload | load | chat)
+    QStringList order;         // the order of requests (models | unload | load | chat)
     QString chatReply;
     FakeReply operator()(const FakeRequest& r) {
         if (r.path == "/api/v1/models") {
@@ -876,11 +874,11 @@ struct FakeLmStudio {
 };
 } // namespace
 
-// Natív API nélküli szerver, kicsi kontextus: a „nem fér bele” hibából a hátralévő részek
-// kisebbekre bontva folytatódnak (egyszer); a következő futás már eleve így bont.
+// A server without a native API, small context: after the "does not fit" error the remaining
+// parts continue split into smaller ones (once); the next run splits that way from the start.
 void AppJobsTest::summarizeAdaptsToSmallContext()
 {
-    const Meeting m = transcribedDense("Kis kontextus", 40);   // 3 rész, ~17 ezer karakter
+    const Meeting m = transcribedDense("Kis kontextus", 40);   // 3 parts, ~17 thousand characters
     auto srv = std::make_shared<SmallContextServer>();
     m_http->handler = [srv](const FakeRequest& r) { return (*srv)(r); };
     QSignalSpy ready(m_app.get(), &AppController::summaryReady);
@@ -888,17 +886,17 @@ void AppJobsTest::summarizeAdaptsToSmallContext()
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(20000));
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
-    QCOMPARE(srv->overflows, 1);                    // csak az első kérés bukott
+    QCOMPARE(srv->overflows, 1);                    // only the first request failed
     QVERIFY2(srv->notesCalls > 4, qPrintable(QString::number(srv->notesCalls)));
     QVERIFY(srv->maxNotesUser <= srv->allowUser);
-    // A szakaszok a több részre váltottak (a darab-haladás az új részszámot mutatja).
+    // The stages switched to more parts (the chunk progress shows the new part count).
     int maxTotal = 0;
     for (const auto& args : progress)
         maxTotal = qMax(maxTotal, args.at(1).value<JobProgress>().total);
     QVERIFY2(maxTotal > 3, qPrintable(QString::number(maxTotal)));
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
 
-    // Újra: a megtanult kontextussal már nincs túllépés.
+    // Again: with the learned context there is no overflow.
     const int calls = srv->notesCalls;
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(20000));
@@ -906,8 +904,8 @@ void AppJobsTest::summarizeAdaptsToSmallContext()
     QVERIFY(srv->notesCalls > calls);
 }
 
-// Ha a kontextus a legkisebb részhez sem elég: érthető hiba a szükséges minimummal; nincs
-// ismétlés, nincs nyers JSON.
+// If the context is not enough even for the smallest part: an understandable error with the
+// required minimum; no repeat, no raw JSON.
 void AppJobsTest::summarizeContextTooSmall()
 {
     const Meeting m = transcribedDense("Túl kicsi kontextus", 40);
@@ -930,9 +928,9 @@ void AppJobsTest::summarizeContextTooSmall()
     QVERIFY(!m_errors.first().contains(QLatin1Char('{')));
 }
 
-// LM Studio: 4096-os kontextus, parallel 4 (az incidens) → a feladat első szakaszában a modell
-// kivétele és újratöltése egy szálon, elég kontextussal; utána a hívás. A „Betöltés nagyobb
-// kontextussal” kérés a következő futásnál nagyobbra tölt; ha minden jó, nincs betöltés.
+// LM Studio: 4096 context, parallel 4 (the incident): in the job's first stage the model is
+// unloaded and reloaded on one thread, with enough context; then the call. The "Load with a
+// larger context" request loads larger on the next run; if all is well, there is no load.
 void AppJobsTest::summarizeLoadsModelOnLmStudio()
 {
     auto lm = std::make_shared<FakeLmStudio>();
@@ -957,14 +955,14 @@ void AppJobsTest::summarizeLoadsModelOnLmStudio()
     }
     QVERIFY(sawModelStage);
 
-    // „Betöltés nagyobb kontextussal”: a következő futás előtt 65 536-tal tölt újra.
+    // "Load with a larger context": before the next run it reloads with 65,536.
     m_app->requestLlmContext(65536);
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
     QCOMPARE(lm->loads.size(), 2);
     QCOMPARE(lm->loads[1].value("context_length").toInt(), 65536);
 
-    // A betöltött példány megfelel: nincs újratöltés (a kérés egyszer volt érvényes).
+    // The loaded instance is adequate: no reload (the request was valid once).
     lm->order.clear();
     m_app->summarizeMeeting(m.id);
     QVERIFY(ready.wait(10000));
@@ -973,8 +971,8 @@ void AppJobsTest::summarizeLoadsModelOnLmStudio()
     QVERIFY(!lm->order.contains(QStringLiteral("unload")));
 }
 
-// A betöltés elutasítva (nem fér a videókártyára): egyetlen kísérlet, érthető hiba, nincs
-// chat-kérés. Betöltés közbeni megszakítás: nincs hiba, nincs chat.
+// The load is rejected (does not fit the GPU): a single attempt, an understandable error, no
+// chat request. Cancel during loading: no error, no chat.
 void AppJobsTest::summarizeLoadRefusedAndCancelDuringLoad()
 {
     auto lm = std::make_shared<FakeLmStudio>();
@@ -994,7 +992,7 @@ void AppJobsTest::summarizeLoadRefusedAndCancelDuringLoad()
     QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-context"));
     QCOMPARE(m_errors.size(), 1);
 
-    // Megszakítás betöltés közben.
+    // Cancel during loading.
     m_app->jobs()->clearError(m.id, JobKind::Summarize);
     m_errors.clear();
     lm->refuseLoad = false;
@@ -1028,7 +1026,7 @@ void AppJobsTest::summarizeCancelBetweenParts()
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
     QTest::qWait(300);
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
-    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // nem indult újabb hívás
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);   // no further call started
     QVERIFY(!QDir(m.folder).exists("summary.md"));
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::None);
     QVERIFY(QDir(m.folder).exists("summary.notes.json"));
@@ -1036,20 +1034,20 @@ void AppJobsTest::summarizeCancelBetweenParts()
 
 void AppJobsTest::estimateDescribesQuickSummaryCalls()
 {
-    // Rövid megbeszélés: egy hívás.
+    // Short meeting: one call.
     const Meeting shortM = transcribed("Rövid");
     EstimateRequest r = m_app->makeEstimateRequest(shortM.id, "summarize", "quick");
     QCOMPARE(r.llmCalls.size(), 1);
     QCOMPARE(r.llmCalls[0].count, 1);
     QVERIFY(r.llmCalls[0].inputChars > r.transcriptChars);
 
-    // 40 perc: 3 jegyzet-hívás + 1 összegzés.
+    // 40 minutes: 3 note calls + 1 summary.
     const Meeting longM = transcribedLong("Hosszú becslés", 40);
     r = m_app->makeEstimateRequest(longM.id, "summarize", "quick");
     QCOMPARE(r.llmCalls.size(), 2);
     QCOMPARE(r.llmCalls[0].count, 3);
     QCOMPARE(r.llmCalls[0].maxTokens, 3000);
-    QVERIFY(r.llmCalls[0].inputChars < r.transcriptChars);   // egy rész + prompt < az egész átirat
+    QVERIFY(r.llmCalls[0].inputChars < r.transcriptChars);   // one part + prompt < the whole transcript
     QCOMPARE(r.llmCalls[1].count, 1);
     QCOMPARE(r.summaryMode, QStringLiteral("quick"));
 }
@@ -1059,7 +1057,7 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     const Meeting m = transcribed("Témák");
     QSignalSpy topicsChanged(m_app.get(), &AppController::topicsChanged);
 
-    // Hozzáadás: az új témák azonosítót kapnak, az üres című kimarad.
+    // Add: the new topics get ids, the one with an empty title is left out.
     QVector<SummaryTopic> saved = m_app->setMeetingTopics(m.id, {
         {QString(), QStringLiteral("Árazás"), QStringLiteral("Csomagok és árak")},
         {QString(), QStringLiteral("  "), QString()},
@@ -1070,7 +1068,7 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     for (const SummaryTopic& t : saved) QVERIFY(!t.id.isEmpty());
     const QString idPrice = saved[0].id, idPilot = saved[1].id, idDue = saved[2].id;
 
-    // Átrendezés + szerkesztés: a sorrend és a tartalom perzisztál (azonosítók maradnak).
+    // Reorder + edit: the order and content persist (ids stay).
     saved[0].title = QStringLiteral("Árazás és csomagok");
     saved = m_app->setMeetingTopics(m.id, {saved[2], saved[0], saved[1]});
     QVector<SummaryTopic> onDisk = m_app->meetingTopics(m.id);
@@ -1080,12 +1078,12 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QCOMPARE(onDisk[1].title, QStringLiteral("Árazás és csomagok"));
     QCOMPARE(onDisk[2].id, idPilot);
 
-    // Állapot bármikor lekérdezhető: még semmi nem futott → mind „vár”.
+    // State is queryable any time: nothing has run yet, so all "waiting".
     QVector<TopicStatus> sts = m_app->topicStatuses(m.id);
     QCOMPARE(sts.size(), 3);
     for (const TopicStatus& s : sts) QCOMPARE(s.state, TopicState::Waiting);
 
-    // Elemzés: az 1. téma sikerül, a 2. elbukik (HTTP 500), a 3. sikerül.
+    // Analysis: topic 1 succeeds, 2 fails (HTTP 500), 3 succeeds.
     int call = 0;
     m_http->handler = [&call](const FakeRequest& r) -> FakeReply {
         if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
@@ -1097,7 +1095,7 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QSignalSpy statusChanged(m_app.get(), &AppController::topicStatusChanged);
     QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
     m_app->generateComplexSummary(m.id, onDisk);
-    // Közvetlenül indítás után: az első fut, a többi sorban áll; darab-haladás a feladaton.
+    // Right after starting: the first runs, the others queue; chunk progress on the job.
     sts = m_app->topicStatuses(m.id);
     QCOMPARE(sts[0].state, TopicState::Running);
     QCOMPARE(sts[1].state, TopicState::Queued);
@@ -1119,12 +1117,12 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QCOMPARE(sts[1].errorDetail, QStringLiteral("HTTP 500 · overloaded · overloaded"));
     QVERIFY(!sts[1].error.isEmpty());
     QCOMPARE(sts[2].state, TopicState::Done);
-    // Bukott téma → nincs automatikus összegzés; a lépés hibás, a kész elemzések megvannak.
+    // A failed topic: no automatic summary; the step is failed, the finished analyses exist.
     QVERIFY(!m_app->store()->load(m.id).hasSummary);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Failed);
     QCOMPARE(m_app->topicAnalyses(m.id).size(), 2);
 
-    // Újraindítás után is: a téma-állapotok (a hibaüzenettel együtt) a lemezről jönnek.
+    // After a restart too: the topic states (with the error message) come from disk.
     newApp();
     sts = m_app->topicStatuses(m.id);
     QCOMPARE(sts[0].state, TopicState::Done);
@@ -1132,7 +1130,7 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QCOMPARE(sts[1].errorDetail, QStringLiteral("HTTP 500 · overloaded · overloaded"));
     QCOMPARE(sts[2].state, TopicState::Done);
 
-    // A bukott téma újrafuttatása → kész; utána a záró összegzés.
+    // Re-running the failed topic: done; then the closing summary.
     call = 10;
     QSignalSpy oneReady(m_app.get(), &AppController::topicAnalysisReady);
     m_app->analyzeTopic(m.id, onDisk[1]);
@@ -1154,14 +1152,14 @@ void AppJobsTest::topicsEditReorderAndStatuses()
     QCOMPARE(doc.meta.model, QStringLiteral("teszt-modell"));
     QCOMPARE(doc.summary.execSummary, QStringLiteral("A megbeszélés röviden: minden rendben."));
     QCOMPARE(doc.topics.size(), 3);
-    QCOMPARE(doc.topics[0].topicId, idDue);                   // a szerkesztett SORRENDBEN
+    QCOMPARE(doc.topics[0].topicId, idDue);                   // in the edited ORDER
     QCOMPARE(doc.topics[1].topicId, idPrice);
     QCOMPARE(doc.topics[2].topicId, idPilot);
     QCOMPARE(doc.summary.actionItems.size(), 3);
     QCOMPARE(doc.summary.decisions.size(), 3);
     QCOMPARE(m_app->processingState(m.id).summaryState, StepState::Done);
 
-    // Törlés: a téma eltűnik a listából és az állapotok közül.
+    // Delete: the topic disappears from the list and from the states.
     m_app->setMeetingTopics(m.id, {onDisk[0], onDisk[2]});
     QCOMPARE(m_app->meetingTopics(m.id).size(), 2);
     QCOMPARE(m_app->topicStatuses(m.id).size(), 2);
@@ -1174,10 +1172,10 @@ void AppJobsTest::cancelTopicQueue()
         {QString(), QStringLiteral("A"), QString()},
         {QString(), QStringLiteral("B"), QString()},
         {QString(), QStringLiteral("C"), QString()}});
-    // Az első elemzés sikerül, a második „beragad”.
+    // The first analysis succeeds, the second "hangs".
     int call = 0;
     m_http->handler = [&call](const FakeRequest& r) -> FakeReply {
-        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // nincs natív API
+        if (!r.path.endsWith("/chat/completions")) return {404, "{}"};   // no native API
         if (++call == 1) return {200, chat(QStringLiteral("Elemzés.\n\n## Döntések\n- d\n"))};
         FakeReply h; h.hold = true; return h;
     };
@@ -1197,7 +1195,7 @@ void AppJobsTest::cancelTopicQueue()
     QCOMPARE(finished.count(), 1);
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
     QTest::qWait(300);
-    // A kész elemzés megmarad, a többi „vár” (nem hibás); nincs összegzés, nincs hiba.
+    // The finished analysis stays, the rest "waiting" (not failed); no summary, no error.
     sts = m_app->topicStatuses(m.id);
     QCOMPARE(sts[0].state, TopicState::Done);
     QCOMPARE(sts[1].state, TopicState::Waiting);
@@ -1207,14 +1205,14 @@ void AppJobsTest::cancelTopicQueue()
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
     QVERIFY(!m_app->jobs()->isBusy(m.id));
     QVERIFY(!m_app->processingState(m.id).summaryError.isValid());
-    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);  // a 3. téma el sem indult
+    QCOMPARE(m_http->count("POST", "/chat/completions"), 2);  // the 3rd topic did not even start
 
-    // Folytatás: csak a hiányzó kettő megy (a kész nem fut újra).
+    // Resume: only the missing two run (the finished one does not run again).
     call = 0;
     m_http->handler = [](const FakeRequest&) -> FakeReply { return {200, chat(QStringLiteral("Elemzés.\n\n## Döntések\n- d\n"))}; };
     m_app->generateComplexSummary(m.id, topics);
     QCOMPARE(m_app->jobs()->job(m.id, JobKind::AnalyzeTopics).total, 2);
-    QVERIFY(summaryReady.wait(15000));                        // elemzések + automatikus összegzés
+    QVERIFY(summaryReady.wait(15000));                        // analyses + automatic summary
     QCOMPARE(m_app->topicAnalyses(m.id).size(), 3);
     QCOMPARE(m_app->summaryDocument(m.id).meta.mode, SummaryMode::Topics);
 }
@@ -1226,18 +1224,18 @@ void AppJobsTest::renamedDuringTranscriptionSurvives()
     const Meeting m = recording("Eredeti cím", 2);
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
-    // Az app közben használható: a felhasználó átnevezi a meetinget, amíg az átírás fut.
+    // The app stays usable meanwhile: the user renames the meeting while the transcription runs.
     QTRY_VERIFY_WITH_TIMEOUT(m_http->count("POST", "/files") == 1, 30000);
     m_app->renameMeeting(m.id, "Átnevezve közben");
     QVERIFY(ready.wait(30000));
     const Meeting after = m_app->store()->load(m.id);
-    QCOMPARE(after.title, QStringLiteral("Átnevezve közben"));   // az átírás vége nem írta felül
+    QCOMPARE(after.title, QStringLiteral("Átnevezve közben"));   // the end of the transcription did not overwrite it
     QVERIFY(after.hasTranscript);
 }
 
 void AppJobsTest::identifyRunsAsLastStage()
 {
-    // Csak valódi hang-modellel fut: TANARA_TEST_VOICE_MODEL=<…/campplus_sv_zh_en_16k.onnx>.
+    // Runs only with a real voice model: TANARA_TEST_VOICE_MODEL=<.../campplus_sv_zh_en_16k.onnx>.
     const QString model = qEnvironmentVariable("TANARA_TEST_VOICE_MODEL");
     if (model.isEmpty() || !QFile::exists(model))
         QSKIP("TANARA_TEST_VOICE_MODEL nincs beállítva — az azonosítás-szakasz tesztje kimarad");
@@ -1262,7 +1260,7 @@ void AppJobsTest::identifyRunsAsLastStage()
     if (!jobs->job(m.id, JobKind::Transcribe).stage("identify"))
         QSKIP("a build nem tartalmaz voice-ID-t");
     QVERIFY(ready.wait(30000));
-    // Az átirat kész, de a feladat még fut: az utolsó szakasz az azonosítás (háttérszálon).
+    // The transcript is done, but the job is still running: the last stage is identification (on a background thread).
     QCOMPARE(finished.count(), 0);
     MeetingProcessingState st = m_app->processingState(m.id);
     QCOMPARE(st.identifyState, StepState::Running);
@@ -1271,16 +1269,16 @@ void AppJobsTest::identifyRunsAsLastStage()
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Done);
     QCOMPARE(identify, QVector<StageState>({StageState::Waiting, StageState::Running, StageState::Done}));
     QVERIFY(details.contains(QStringLiteral("0 / 2 beszélő")));
-    QVERIFY(details.contains(QStringLiteral("2 / 2 beszélő")));   // valós darab-haladás
+    QVERIFY(details.contains(QStringLiteral("2 / 2 beszélő")));   // real chunk progress
     st = m_app->processingState(m.id);
     QCOMPARE(st.transcriptState, StepState::Done);
     QCOMPARE(st.identifyState, StepState::Done);
     QVERIFY(m_app->jobs()->identifiedAt(m.id).isValid());
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
 
-    // Önálló (újra)azonosítás megszakítása: nincs hiba, a feladat „megszakítva” zárul.
+    // Cancelling a standalone (re)identification: no error, the job ends "canceled".
     QVERIFY(m_app->identifyMeetingAsync(m.id));
-    QVERIFY(!m_app->identifyMeetingAsync(m.id));              // már fut
+    QVERIFY(!m_app->identifyMeetingAsync(m.id));              // already running
     QCOMPARE(jobs->job(m.id, JobKind::Identify).total, 2);
     QVERIFY(m_app->cancelJob(m.id, JobKind::Identify));
     QVERIFY(jobs->job(m.id, JobKind::Identify).cancelling);
@@ -1304,28 +1302,28 @@ void AppJobsTest::retranscribeSuccessClearsNamesAndCorrections()
 
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     m_app->retranscribeMeeting(m.id, /*keepBackup*/ true);
-    // Amíg fut, a régi nevek és javítások élnek (nem törlődtek előre).
+    // While it runs, the old names and fixes live (they were not deleted in advance).
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
     QVERIFY(ready.wait(30000));
     QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
 
-    // Siker: az új átirattal a nevek ÉS a soronkénti javítások is törlődtek.
+    // Success: with the new transcript the names AND the per-line fixes were deleted too.
     QVERIFY(m_app->store()->load(m.id).speakerMap.isEmpty());
     const RetranscribeImpact impact = m_app->retranscribeImpact(m.id);
     QCOMPARE(impact.correctedUtterances, 0);
     QCOMPARE(impact.namedSpeakers, 0);
     QCOMPARE(impact.addedParticipants, 0);
-    // A nyitott szerkesztő az ÚJ átiratot mutatja (a mock két megszólalást ad, két beszélővel).
+    // The open editor shows the NEW transcript (the mock gives two utterances, with two speakers).
     QCOMPARE(ed->utteranceCount(), 2);
     QVERIFY(!ed->utteranceAt(0).manuallyCorrected && !ed->utteranceAt(1).manuallyCorrected);
-    // A kért másolat megvan, benne a régi átirat a javításokkal.
+    // The requested copy exists, with the old transcript and the fixes in it.
     const QStringList backups = QDir(m.folder).entryList({"transcript-backup-*"}, QDir::Dirs);
     QCOMPARE(backups.size(), 1);
     QVERIFY(QDir(QDir(m.folder).filePath(backups.first())).exists("transcript.tokens.json"));
     QVERIFY2(m_errors.isEmpty(), qPrintable(m_errors.join("; ")));
 
-    // Törlés nyitott szerkesztővel: a szerkesztő is záródik (új kérésre nincs meeting → null).
+    // Deleting with an open editor: the editor closes too (a new request finds no meeting, so null).
     m_app->deleteMeeting(m.id);
     QVERIFY(m_app->speakerEditor(m.id) == nullptr);
     QVERIFY(!QDir(m.folder).exists());
@@ -1338,7 +1336,7 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     const Meeting m = recording("Kézi résztvevő", 3);
     const QString cili = m_app->addParticipant(m.id, QStringLiteral("Cecília"));
     QVERIFY(!cili.isEmpty());
-    QVERIFY(m_app->unheardParticipants(m.id).isEmpty());   // átirat nélkül nincs „nem hallott”
+    QVERIFY(m_app->unheardParticipants(m.id).isEmpty());   // no "not heard" without a transcript
 
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
@@ -1360,11 +1358,11 @@ void AppJobsTest::manualParticipantSurvivesTranscription()
     QCOMPARE(unheard.size(), 1);
     QCOMPARE(unheard.first().id, cili);
 
-    // Ha a nevére kerül egy beszélő, már nem „nem hallott”.
+    // Once a speaker is assigned its name, it is no longer "not heard".
     m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 1"), QStringLiteral("Cecília"), /*enroll*/ false);
     QVERIFY(m_app->unheardParticipants(m.id).isEmpty());
 
-    // Újra-átírás után is megmarad (a nevek törlődnek, a résztvevő nem).
+    // It survives a re-transcription too (the names are deleted, the participant is not).
     ready.clear();
     m_app->retranscribeMeeting(m.id);
     QVERIFY(ready.wait(30000));
@@ -1388,7 +1386,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(!st.summaryStale);
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 
-    // Beszélő-változás az összefoglaló után → elavult: állapot, könyvtár-bejegyzés, „várnak rád”.
+    // A speaker change after the summary makes it stale: state, library entry, "waiting for you".
     QSignalSpy stateChanged(m_app->jobs(), &MeetingJobTracker::stateChanged);
     QSignalSpy pendingChanged(m_app->library(), &MeetingLibrary::pendingItemsChanged);
     QSignalSpy entryChanged(m_app->library(), &MeetingLibrary::meetingChanged);
@@ -1397,7 +1395,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(pendingChanged.count() >= 1);
     QVERIFY(entryChanged.count() >= 1);
     st = m_app->processingState(m.id);
-    QCOMPARE(st.summaryState, StepState::Done);              // megvan, csak elavult
+    QCOMPARE(st.summaryState, StepState::Done);              // exists, just stale
     QVERIFY(st.summaryStale);
     QCOMPARE(st.staleCorrectedSpeakers, 1);
     QVERIFY(m_app->library()->entry(m.id).state.summaryStale);
@@ -1407,14 +1405,14 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QCOMPARE(pending[0].meetingId, m.id);
     QCOMPARE(pending[0].correctedSpeakers, 1);
 
-    // „Rendben így” → eltűnik.
+    // "Fine as is": it disappears.
     const int before = pendingChanged.count();
     m_app->dismissSummaryStale(m.id);
     QVERIFY(pendingChanged.count() > before);
     QVERIFY(!m_app->processingState(m.id).summaryStale);
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 
-    // Újra elavul, majd az összefoglaló újragenerálása törli.
+    // Stale again, then regenerating the summary clears it.
     m_app->renameSpeaker(m.id, "Beszélő 1", "Lilla", false);
     QVERIFY(m_app->processingState(m.id).summaryStale);
     m_app->summarizeMeeting(m.id);
@@ -1423,7 +1421,7 @@ void AppJobsTest::staleSummaryShowsInStateAndPending()
     QVERIFY(m_app->library()->pendingItems().isEmpty());
 }
 
-// ---- adatbiztonság ----------------------------------------------------------------------
+// ---- data safety ----
 
 namespace {
 QByteArray fileBytes(const QString& path)
@@ -1441,7 +1439,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     m_app->store()->saveMeeting(m);
     MeetingJobTracker* jobs = m_app->jobs();
 
-    // 1) Az újra-átírás elbukik a szolgáltatónál: a régi átirat a nevével együtt megmarad.
+    // 1) The re-transcription fails at the provider: the old transcript stays with its names.
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
         if (r.method == "POST" && r.path.endsWith("/files")) return {500, R"({"message":"hiba"})"};
         return {200, "{}"};
@@ -1452,8 +1450,8 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
 
-    // 2) Újrapróbálás a SIMA átírással (a hibakártya „Újra” gombja): az új diarizáció
-    //    „Beszélő 1”-e más ember lehet → a régi név NEM maradhat rajta.
+    // 2) Retry with a PLAIN transcription (the error card's "Retry" button): the new diarization's
+    //    "Speaker 1" may be a different person, so the old name must NOT stay on it.
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r); };
     QSignalSpy ready(m_app.get(), &AppController::transcriptReady);
     m_app->transcribeMeeting(m.id);
@@ -1469,7 +1467,7 @@ void AppJobsTest::retryAfterFailedRetranscribeClearsNames()
 void AppJobsTest::emptySttResultKeepsOldTranscript()
 {
     if (!m_ffmpeg) QSKIP("ffmpeg nem található");
-    // A szolgáltató „sikeresen” végez, de egyetlen szót sem ad vissza.
+    // The provider finishes "successfully" but returns not a single word.
     m_http->handler = [](const FakeRequest& r) -> FakeReply {
         if (r.method == "GET" && r.path.endsWith("/transcript")) return {200, R"({"tokens":[]})"};
         return sonioxOk(r);
@@ -1498,7 +1496,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     QCOMPARE(finished.at(0).at(2).value<JobOutcome>(), JobOutcome::Failed);
     QCOMPARE(ready.count(), 0);
 
-    // Megmaradó, érthető hiba; a régi átirat, a nevek és a kézi javítások érintetlenek.
+    // A persistent, understandable error; the old transcript, names and manual fixes are untouched.
     const MeetingProcessingState st = m_app->processingState(m.id);
     QVERIFY(st.transcriptError.isValid());
     QVERIFY2(st.transcriptError.message.contains("üres eredményt"), qPrintable(st.transcriptError.message));
@@ -1511,7 +1509,7 @@ void AppJobsTest::emptySttResultKeepsOldTranscript()
     QCOMPARE(after.speakerMap.value("Beszélő 1"), QStringLiteral("Ödön"));
     QCOMPARE(m_app->retranscribeImpact(m.id).correctedUtterances, 1);
 
-    // Első átírásnál is hiba (nem „kész, üres átirat”): nem keletkezik átirat-fájl.
+    // On a first transcription too it is an error (not "done, empty transcript"): no transcript file is created.
     const Meeting fresh = recording("Csendes felvétel", 2);
     m_app->transcribeMeeting(fresh.id);
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 30000);
@@ -1529,9 +1527,9 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
     Meeting m = recording("Hiányzó sáv", 2);
     Track sys;
     sys.id = "sys"; sys.kind = TrackKind::Loopback; sys.deviceName = "Monitor of Kanto YU4";
-    sys.file = "track_sys.wav"; sys.active = true;            // a fájl NINCS a lemezen
+    sys.file = "track_sys.wav"; sys.active = true;            // the file is NOT on disk
     m.tracks.append(sys);
-    // Van egy teljes (mindkét sávból készült) keverék, amely elavultnak van jelölve.
+    // There is a complete mix (made from both tracks) that is marked stale.
     const QByteArray oldMix = "TELJES-KEVEREK";
     const QString mixPath = QDir(m.folder).filePath("mixdown.mp3");
     { QFile f(mixPath); QVERIFY(f.open(QIODevice::WriteOnly)); f.write(oldMix); }
@@ -1541,7 +1539,7 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
     const QString sysName = m_app->tracks()->tracks(m.id).at(1).displayName;
     QVERIFY(!sysName.isEmpty());
 
-    // Kézi újrakeverés: nem indul el, a hiba megnevezi a sávot, a régi keverék marad.
+    // Manual remix: it does not start, the error names the track, the old mix stays.
     QSignalSpy mixDone(m_app.get(), &AppController::mixdownUpdated);
     m_app->regenerateMixdown(m.id);
     QCOMPARE(mixDone.count(), 1);
@@ -1551,8 +1549,8 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
     QCOMPARE(fileBytes(mixPath), oldMix);
     QVERIFY(!m_app->jobs()->isBusy(m.id));
 
-    // Átírás előtti automatikus újrakeverés: ugyanígy — az átírás nem indul, semmi nem megy
-    // a szolgáltatóhoz, a megmaradó hiba megnevezi a sávot.
+    // Automatic remix before transcription: the same, the transcription does not start, nothing
+    // goes to the provider, the persistent error names the track.
     QSignalSpy finished(m_app->jobs(), &MeetingJobTracker::jobFinished);
     m_app->transcribeMeeting(m.id);
     QCOMPARE(finished.count(), 1);
@@ -1562,8 +1560,8 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
     QTest::qWait(200);
     QVERIFY(m_http->log.isEmpty());
 
-    // A sáv eldobása után a keverés lefut, és a régi fájlt a helyén cseréli (nem marad félkész
-    // vagy félretett fájl).
+    // After dropping the track the mixdown runs and replaces the old file in place (no
+    // half-finished or set-aside file remains).
     Meeting dropped = m_app->store()->load(m.id);
     dropped.tracks[1].active = false;
     m_app->store()->saveMeeting(dropped);
@@ -1580,8 +1578,8 @@ void AppJobsTest::missingTrackKeepsExistingMixdown()
 
 void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
 {
-    // Ál-modellfájl: az azonosítás elindul (háttérszál), de embeddinget nem ad — a teszt a
-    // vezénylést nézi (leállítás / eldobás), nem a felismerést. Valódi modell nem kell hozzá.
+    // Fake model file: identification starts (background thread) but gives no embedding; the test
+    // looks at the orchestration (stopping / discarding), not the recognition. No real model needed.
     QDir().mkpath(m_home->filePath("models"));
     { QFile f(m_home->filePath("models/campplus_sv_zh_en_16k.onnx")); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("nem-onnx"); }
     if (!m_app->voiceIdentificationAvailable()) QSKIP("a build nem tartalmaz voice-ID-t");
@@ -1594,7 +1592,7 @@ void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
     MeetingJobTracker* jobs = m_app->jobs();
     QSignalSpy finished(jobs, &MeetingJobTracker::jobFinished);
 
-    // Kontroll: változatlan átirat mellett az önálló azonosítás rendben lezárul.
+    // Control: with an unchanged transcript the standalone identification ends cleanly.
     QVERIFY(m_app->identifyMeetingAsync(m.id));
     QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
     QCOMPARE(finished.at(0).at(1).value<JobKind>(), JobKind::Identify);
@@ -1602,8 +1600,8 @@ void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
     QVERIFY(jobs->identifiedAt(m.id).isValid());
     jobs->markIdentified(m.id, false);
 
-    // 1) Az azonosítás alatt megváltozik az átirat a lemezen → az eredmény a RÉGI átirat
-    //    címkéire vonatkozik: eldobjuk, a meeting nem lesz „azonosítva”.
+    // 1) During identification the transcript changes on disk, so the result belongs to the OLD
+    //    transcript's labels: we discard it, the meeting does not become "identified".
     QVERIFY(m_app->identifyMeetingAsync(m.id));
     {
         QFile f(QDir(m.folder).filePath("transcript.tokens.json"));
@@ -1615,7 +1613,7 @@ void AppJobsTest::identifyResultsDroppedWhenTranscriptChanges()
     QCOMPARE(finished.at(1).at(2).value<JobOutcome>(), JobOutcome::Cancelled);
     QVERIFY(!jobs->identifiedAt(m.id).isValid());
 
-    // 2) Az átírás indítása leállítja a futó önálló azonosítást.
+    // 2) Starting transcription stops a running standalone identification.
     m_http->handler = [](const FakeRequest& r) { return sonioxOk(r, "processing"); };
     QVERIFY(m_app->identifyMeetingAsync(m.id));
     m_app->transcribeMeeting(m.id);

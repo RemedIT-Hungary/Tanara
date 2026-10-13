@@ -1,14 +1,12 @@
+// Tanara: unit tests of the provider registry.
 //
-// Tanara — Provider-registry unit-tesztek.
+// The registry resolves and creates an STT/LLM provider by id; there is no hard-coded
+// `new SonioxProvider`. Here we check the registration of the built-in providers (Soniox STT +
+// OpenAI-compatible LLM) and the create/descriptor/has contract.
 //
-// A registry id alapján old fel és hoz létre STT/LLM providert; nincs hardkódolt
-// `new SonioxProvider`. Itt a beépített providerek regisztrációját (Soniox STT +
-// OpenAI-kompatibilis LLM) és a create/descriptor/has szerződést ellenőrizzük.
-//
-// FONTOS: a tests/unit/*.cpp fájlok KÜLÖN teszt-exe-be fordulnak (lásd
-// tests/CMakeLists.txt GLOB), mindegyik hozza a SAJÁT main-jét. A core (tanara_core)
-// NEM linkel Qt Widgetset, ezért itt QTEST_GUILESS_MAIN (nincs QApplication).
-//
+// IMPORTANT: the tests/unit/*.cpp files compile into SEPARATE test exes (see tests/CMakeLists.txt
+// GLOB), each bringing its OWN main. Core (tanara_core) does NOT link Qt Widgets, hence
+// QTEST_GUILESS_MAIN here (no QApplication).
 #include <QtTest>
 #include <QObject>
 
@@ -24,8 +22,8 @@ class ProviderRegistryTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // registerBuiltinProviders() bejegyzi a Soniox STT providert, és a create()
-    // egy működő, helyesen elnevezett példányt ad, parentelve a megadott QObject-hez.
+    // registerBuiltinProviders() registers the Soniox STT provider, and create() gives a working,
+    // correctly named instance, parented to the given QObject.
     void builtins_registerSonioxStt()
     {
         registerBuiltinProviders();
@@ -42,7 +40,7 @@ private slots:
         QCOMPARE(p->name(), QStringLiteral("soniox"));
     }
 
-    // A Soniox descriptora deklarál egy titkos mezőt a "soniox.apiKey" KeyStore-kulccsal.
+    // Soniox's descriptor declares a secret field with the "soniox.apiKey" KeyStore key.
     void builtins_sonioxDescriptorHasApiKeySecret()
     {
         registerBuiltinProviders();
@@ -60,7 +58,7 @@ private slots:
         QVERIFY(foundSecret);
     }
 
-    // Ismeretlen id-ra a create() nullptr-t ad (nem dob, nem crashel).
+    // For an unknown id create() returns nullptr (does not throw or crash).
     void create_unknownIdReturnsNull()
     {
         registerBuiltinProviders();
@@ -73,8 +71,8 @@ private slots:
         QVERIFY(p == nullptr);
     }
 
-    // registerBuiltinProviders() bejegyzi az OpenAI-kompatibilis LLM providert,
-    // és a create() egy nem-null példányt ad, parentelve a megadott QObject-hez.
+    // registerBuiltinProviders() registers the OpenAI-compatible LLM provider, and create() gives
+    // a non-null instance, parented to the given QObject.
     void builtins_registerOpenAiCompatLlm()
     {
         registerBuiltinProviders();
@@ -90,9 +88,9 @@ private slots:
         QVERIFY(p != nullptr);
     }
 
-    // Back-compat KRITIKUS: az OpenAI-kompatibilis descriptor titkos mezője a
-    // "llm.apiKey" KeyStore-kulcsot használja (egyezik a keys::LlmApiKey-vel, így a
-    // meglévő secrets.json változatlanul működik). Lásd a Soniox-szimmetriát fent.
+    // Back-compat CRITICAL: the OpenAI-compatible descriptor's secret field uses the "llm.apiKey"
+    // KeyStore key (it matches keys::LlmApiKey, so an existing secrets.json keeps working
+    // unchanged). See the Soniox symmetry above.
     void builtins_openAiCompatDescriptorHasApiKeySecret()
     {
         registerBuiltinProviders();

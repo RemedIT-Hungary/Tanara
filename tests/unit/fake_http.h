@@ -1,8 +1,6 @@
 #pragma once
-//
-// Minimális, folyamaton belüli ál-HTTP-szerver a tesztekhez (valódi hálózati / LM Studio hívás
-// NINCS): minden kérést naplóz, a választ a handler adja. A test_llm_context.cpp mintája.
-//
+// Minimal in-process fake HTTP server for the tests (NO real network / LM Studio call): logs
+// every request, the handler gives the reply. The pattern of test_llm_context.cpp.
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QObject>

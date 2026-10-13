@@ -1,8 +1,8 @@
-// ShellActions + ShellMeetingModel + ShellUiState — a héj művelet- és állapot-rétege.
-// Valódi AppController, IZOLÁLT TANARA_HOME (QTemporaryDir), ál-híddal (a Widgets-ablakok
-// helyén): a kapuzás útja — futtathatóság → cloud-akadály →
-// Beállítások a megfelelő lapon → indítás. Valódi szolgáltató-hívás NINCS (a feladatot az
-// indulás után rögtön megszakítjuk; a szolgáltató címe egy zárt helyi port).
+// ShellActions + ShellMeetingModel + ShellUiState: the shell's action and state layer.
+// Real AppController, ISOLATED TANARA_HOME (QTemporaryDir), with a fake bridge (in place of the
+// Widgets windows): the gating path of runnability, then the cloud blocker, then Settings on
+// the right page, then the start. NO real provider call (the task is canceled right after
+// starting; the provider address is a closed local port).
 #include "AppContext.h"
 #include "PlayerController.h"
 #include "ShellActions.h"
@@ -40,7 +40,7 @@ public:
     using ShellBridge::ShellBridge;
 
     QStringList calls;
-    bool handleBlockers = false;      // true: a cloud-akadályt „kezeli”
+    bool handleBlockers = false;      // true: the cloud blocker is "handled"
     bool estimateAnswer = true;
     QString previewSummary = QStringLiteral("Kovács Lilla és 1 ismeretlen partner");
     bool previewCancelled = false;
@@ -52,7 +52,7 @@ public:
     QVariantList cloudBanners() const override { return {}; }
 
     void openSettings(const QString& page) override { calls << QStringLiteral("settings:") + page; }
-    // A mély hivatkozás (B04) mezője; a lap ugyanúgy naplózódik.
+    // The deep link's field; the page is logged the same way.
     void openSettingsAt(const QString& page, const QString& focusField) override
     {
         lastFocusField = focusField;
@@ -139,7 +139,7 @@ class TestShellActions : public QObject {
                 QJsonObject{{"startMs", 0}, {"endMs", 900}, {"speaker", "Beszélő 1"}, {"text", "Sziasztok."}},
                 QJsonObject{{"startMs", 1000}, {"endMs", 1900}, {"speaker", "Beszélő 2"}, {"text", "Szia."}},
                 QJsonObject{{"startMs", 2000}, {"endMs", 2900}, {"speaker", "Beszélő 1"}, {"text", "Kezdjük."}}}).toJson());
-        // A feldolgozás a tokenekből dolgozik (az összefoglaló üres token-listára nem indul).
+        // Processing works from the tokens (the summary does not start on an empty token list).
         QJsonArray toks;
         const QStringList words{QStringLiteral("Sziasztok."), QStringLiteral(" Szia."), QStringLiteral(" Kezdjük.")};
         for (int i = 0; i < words.size(); ++i)
@@ -153,11 +153,11 @@ class TestShellActions : public QObject {
         m_app->store()->saveMeeting(m);
         return m;
     }
-    // Átírt, MINDEN beszélőjében elnevezett megbeszélés kitalált hang-embeddingekkel (a cache
-    // közvetlenül íródik — nincs modell, nincs hang): Anna címkéje alá 3 Béla-hangú sor került.
+    // A transcribed meeting with EVERY speaker named, with made-up voice embeddings (the cache is
+    // written directly: no model, no audio): under Anna's label there are 3 lines in Béla's voice.
     tanara::Meeting namedWithVoices(const QString& title)
     {
-        // A kitalált cache a „campplus” kulcs alatt van → ezt a modellt kapcsoljuk be.
+        // The made-up cache is under the "campplus" key, so we switch that model on.
         m_app->settings()->setEnabledVoiceModels({QStringLiteral("campplus")});
         tanara::Meeting m = recording(title);
         struct L { int start; const char* raw; char voice; };
@@ -190,7 +190,7 @@ class TestShellActions : public QObject {
     {
         tanara::AppSettings s = m_app->settings()->settings();
         s.sttProviderId = QStringLiteral("soniox");
-        s.sttConfigs[s.sttProviderId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");   // zárt port
+        s.sttConfigs[s.sttProviderId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");   // closed port
         s.llmProviderId = QStringLiteral("openai-compat");
         s.llmConfigs[s.llmProviderId].baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
         s.llmConfigs[s.llmProviderId].model = QStringLiteral("teszt-modell");
@@ -240,9 +240,9 @@ private slots:
         m_shell->showTab(3);
         QCOMPARE(m_shell->currentTab(), 3);
         m_shell->showTab(9);
-        QCOMPARE(m_shell->currentTab(), 3);      // határon belül marad (0 Áttekintés … 3 Memó)
+        QCOMPARE(m_shell->currentTab(), 3);      // stays within bounds (0 Overview ... 3 Memo)
 
-        // seekTo: kijelöl, az Átirat fülre (1) vált, a lejátszót tekeri, az Editornak jelez.
+        // seekTo: selects, switches to the Transcript tab (1), moves the player, signals the editor.
         m_shell->seekTo(a.id, 1500);
         QCOMPARE(m_shell->currentMeetingId(), a.id);
         QCOMPARE(current.count(), 1);
@@ -257,9 +257,9 @@ private slots:
         m_shell->setPlayer(nullptr);
     }
 
-    // G7b: a kijelölt megbeszélés közös visszavonási verme — új lépés → meetingChangePosted
-    // (egy eseménykörön belül egyszer), visszavonás (Ctrl+Z / sáv / toast "meeting" kulcs) →
-    // meetingChangeUndone, és a visszavonás nem „új lépés”.
+    // The selected meeting's shared undo stack: a new step posts meetingChangePosted (once per
+    // event loop pass), undo (Ctrl+Z / bar / toast "meeting" key) posts meetingChangeUndone, and
+    // an undo is not a "new step".
     void sharedMeetingUndo()
     {
         const tanara::Meeting a = recording(QStringLiteral("Közös verem"));
@@ -280,7 +280,7 @@ private slots:
         QCOMPARE(m_shell->meetingUndoText(), QStringLiteral("Résztvevő felvéve: Fehér Gábor"));
         m_app->setMeetingContextNote(a.id, QStringLiteral("Q4"));
         QTRY_COMPARE(posted.count(), 2);
-        // Más megbeszélés lépése nem kerül ide.
+        // Another meeting's step does not come here.
         m_app->setMeetingContextNote(b.id, QStringLiteral("más"));
         QTest::qWait(20);
         QCOMPARE(posted.count(), 2);
@@ -297,7 +297,7 @@ private slots:
         QVERIFY(!m_shell->canUndoMeeting());
         QVERIFY(!m_shell->undoMeeting());
 
-        // Váltás: a másik megbeszélés verme; a rajta lévő lépés nem „új”.
+        // Switch: the other meeting's stack; a step on it is not "new".
         m_shell->setCurrentMeetingId(b.id);
         QVERIFY(m_shell->canUndoMeeting());
         QTest::qWait(20);
@@ -309,22 +309,22 @@ private slots:
     void importOpensPickerThenDialog()
     {
         QSignalSpy requested(m_shell.get(), &ShellActions::importDialogRequested);
-        // Visszalépés a fájlválasztóból: nem nyílik ablak.
+        // Backing out of the file picker: no window opens.
         m_shell->openImport();
         QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("pickMany")});
         QCOMPARE(requested.size(), 0);
-        // Kiválasztott fájlokkal az ablak azokkal nyílik.
+        // With files selected the window opens with them.
         m_bridge->pickedFiles = {QStringLiteral("/tmp/a.wav"), QStringLiteral("/tmp/b.mp3")};
         m_shell->openImport();
         QCOMPARE(requested.size(), 1);
         QCOMPARE(requested.last().at(0).toList().size(), 2);
-        // Megadott (ejtett) fájlokkal nincs választó.
+        // With given (dropped) files there is no picker.
         m_bridge->calls.clear();
         m_shell->openImport({QStringLiteral("/tmp/c.flac")});
         QVERIFY(m_bridge->calls.isEmpty());
         QCOMPARE(requested.size(), 2);
         QCOMPARE(requested.last().at(0).toList(), QVariantList{QStringLiteral("/tmp/c.flac")});
-        // Híd nélkül (demó) az üres ablak nyílik.
+        // Without a bridge (demo) the empty window opens.
         m_shell->setBridge(nullptr);
         m_shell->openImport();
         QCOMPARE(requested.size(), 3);
@@ -340,12 +340,12 @@ private slots:
         QCOMPARE(m_shell->pickAudioFile(), QStringLiteral("/tmp/x.ogg"));
         QCOMPARE(m_bridge->calls, (QStringList{QStringLiteral("settings:watcher"), QStringLiteral("people"),
                                                QStringLiteral("recorder"), QStringLiteral("pick")}));
-        // Személyek egy személy kijelölésével (mély hivatkozás); üres névvel a sima megnyitás.
+        // People with one person selected (deep link); with an empty name a plain open.
         m_shell->openPeople(QStringLiteral(" Bárány Gergely "));
         QCOMPARE(m_bridge->calls.last(), QStringLiteral("people:Bárány Gergely"));
         m_shell->openPeople(QStringLiteral("  "));
         QCOMPARE(m_bridge->calls.last(), QStringLiteral("people"));
-        // Híd nélkül (demó) nem omlik össze, értesít.
+        // Without a bridge (demo) it does not crash, it notifies.
         m_shell->setBridge(nullptr);
         m_shell->openSettings(QString());
         m_shell->openRecorder();
@@ -359,14 +359,14 @@ private slots:
         QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
         QSignalSpy finished(m_app.get(), &tanara::AppController::archiveFinished);
 
-        // Visszalépés a mentés-ablakból: nem indul semmi. A javasolt név „<mappanév>.tanara.zip”.
+        // Backing out of the save window: nothing starts. The suggested name is "<folder name>.tanara.zip".
         m_shell->exportArchive(a.id);
         QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("save")});
         QVERIFY(m_bridge->lastProposed.endsWith(tanara::MeetingArchive::suggestedFileName(a)));
         QVERIFY(m_bridge->lastFilter.contains(QStringLiteral("*.tanara.zip")));
         QVERIFY(!m_app->archiveBusy());
 
-        // Kiterjesztés nélküli név → .tanara.zip; háttérben fut, a feladat-sávban látszik.
+        // A name without an extension gets .tanara.zip; runs in the background, shows in the job bar.
         QVERIFY(QDir().mkpath(m_home->filePath(QStringLiteral("ki"))));
         m_bridge->savePath = m_home->filePath(QStringLiteral("ki/archiv"));
         m_shell->exportArchive(a.id);
@@ -375,13 +375,13 @@ private slots:
         const QString zip = m_home->filePath(QStringLiteral("ki/archiv.tanara.zip"));
         QVERIFY(QFile::exists(zip));
         QCOMPARE(toasts.last().at(1).toString(), QString());
-        QCOMPARE(toasts.last().at(5).toString(), zip);   // „Megnyitás mappában”
-        // A következő export a legutóbbi mappát javasolja.
+        QCOMPARE(toasts.last().at(5).toString(), zip);   // "Show in folder"
+        // The next export suggests the latest folder.
         m_bridge->savePath.clear();
         m_shell->exportArchive(a.id);
         QCOMPARE(QFileInfo(m_bridge->lastProposed).absolutePath(), m_home->filePath(QStringLiteral("ki")));
 
-        // Import: előbb a választó (visszalépés: semmi), majd a kiválasztott archívum.
+        // Import: first the picker (backing out: nothing), then the selected archive.
         QVERIFY(m_app->store()->deleteMeeting(a.id));
         m_bridge->calls.clear();
         m_shell->importArchive(QString());
@@ -396,8 +396,8 @@ private slots:
         QCOMPARE(m_shell->currentTab(), 0);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Archív próba")));
 
-        // Mappa-import (zip nélkül): a meglévő megbeszélés mappáját kimásoljuk egy külső helyre,
-        // töröljük a könyvtárból, majd a választóból behúzzuk — ugyanaz a vég, mint az archívumnál.
+        // Folder import (no zip): the existing meeting's folder is copied to an outside place,
+        // deleted from the library, then adopted through the picker; the same end as with the archive.
         const QString outside = m_home->filePath(QStringLiteral("kulso"));
         QVERIFY(QDir().mkpath(outside));
         const QString srcFolder = m_app->store()->load(a.id).folder;
@@ -415,12 +415,12 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 3, 20000);
         QVERIFY(finished.last().at(1).toBool());
         QCOMPARE(m_shell->currentMeetingId(), a.id);
-        QVERIFY(QFileInfo(copied).isDir());                                   // a forrás megmarad
+        QVERIFY(QFileInfo(copied).isDir());                                   // the source stays
         QVERIFY(QDir(m_app->store()->audioDir()).entryList({QStringLiteral(".import-*")}, QDir::Dirs | QDir::Hidden).isEmpty());
         QVERIFY(m_shell->isDirectory(copied));
         QVERIFY(!m_shell->isDirectory(QDir(copied).filePath(QStringLiteral("meeting.json"))));
 
-        // Ejtett fájl-URL, ami nem archívum: hiba-toast, a kijelölés marad.
+        // A dropped file URL that is not an archive: an error toast, the selection stays.
         const QString bad = m_home->filePath(QStringLiteral("hibas.zip"));
         QFile f(bad);
         QVERIFY(f.open(QIODevice::WriteOnly));
@@ -437,26 +437,26 @@ private slots:
 
     void tagsActions()
     {
-        // A Címkék ablaka a hídon át, opcionális kijelöléssel.
+        // The Tags window through the bridge, with an optional selection.
         m_shell->openTags();
         QCOMPARE(m_bridge->calls.last(), QStringLiteral("tags"));
         m_shell->openTags(QStringLiteral(" t-1 "));
         QCOMPARE(m_bridge->calls.last(), QStringLiteral("tags:t-1"));
 
-        // Szűrés címkére: a Main.qml a könyvtár-modellre teszi.
+        // Filter by tag: Main.qml puts it on the library model.
         QSignalSpy filter(m_shell.get(), &ShellActions::tagFilterRequested);
         m_shell->filterByTag(QStringLiteral("t-1"));
-        m_shell->filterByTag(QString());           // üres: semmi
+        m_shell->filterByTag(QString());           // empty: nothing
         QCOMPARE(filter.count(), 1);
         QCOMPARE(filter.first().at(0).toString(), QStringLiteral("t-1"));
-        // A Címkék ablakából (híd): szűrés + a főablak előre.
+        // From the Tags window (bridge): filter + raise the main window.
         QSignalSpy activate(m_shell.get(), &ShellActions::windowActivationRequested);
         emit m_bridge->tagFilterRequested(QStringLiteral("t-2"));
         QCOMPARE(filter.count(), 2);
         QCOMPARE(filter.last().at(0).toString(), QStringLiteral("t-2"));
         QCOMPARE(activate.count(), 1);
 
-        // Toast „Visszavonás”-sal: a kulcs a jelben; a gomb undoRequested(kulcs)-ot ad.
+        // Toast with "Undo": the key is in the signal; the button emits undoRequested(key).
         QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
         QSignalSpy undo(m_shell.get(), &ShellActions::undoRequested);
         m_shell->toast(QStringLiteral("Javaslat elutasítva: #Nordvik"), QStringLiteral("tags"));
@@ -469,7 +469,7 @@ private slots:
         QCOMPARE(undo.count(), 1);
         QCOMPARE(undo.first().at(0).toString(), QStringLiteral("tags"));
 
-        // Híd nélkül (demó) a Címkék nem nyílik, értesít.
+        // Without a bridge (demo) Tags does not open, it notifies.
         m_shell->setBridge(nullptr);
         m_toasts.clear();
         m_shell->openTags();
@@ -478,10 +478,10 @@ private slots:
 
     void onboardingAction()
     {
-        // Fájl › „Első lépések…”: a hídon át (az onboardingDone-tól függetlenül).
+        // File > "Getting started...": through the bridge (regardless of onboardingDone).
         m_shell->openOnboarding();
         QCOMPARE(m_bridge->calls.last(), QStringLiteral("onboarding"));
-        // Híd nélkül (demó) nem nyílik, értesít.
+        // Without a bridge (demo) it does not open, it notifies.
         m_shell->setBridge(nullptr);
         m_toasts.clear();
         m_shell->openOnboarding();
@@ -501,33 +501,33 @@ private slots:
         QVERIFY(model.tags());
         QSignalSpy computing(m_app.get(), &tanara::AppController::tagSuggestionsComputing);
 
-        // Átírt megbeszélés megjelenítése → a címkesor a megbeszéléshez kötve + javaslat-kérés.
+        // Showing a transcribed meeting: the tag row is bound to the meeting + a suggestion request.
         model.setMeetingId(a.id);
         QCOMPARE(model.tags()->meetingId(), a.id);
         QCOMPARE(model.tags()->tags().size(), 1);
         QCOMPARE(computing.count(), 1);
         QCOMPARE(computing.last().at(0).toString(), a.id);
-        // Ugyanaz a kijelölés frissülése (pl. feladat-haladás) nem kér újra.
+        // The same selection refreshing (e.g. job progress) does not ask again.
         m_app->renameMeeting(a.id, QStringLiteral("Nordvik egyeztetés (átnevezve)"));
         QTRY_COMPARE(model.title(), QStringLiteral("Nordvik egyeztetés (átnevezve)"));
         QCOMPARE(computing.count(), 1);
 
-        // Átirat nélkül nem kér (az 1. lépés a cím alapján javasol).
+        // Without a transcript it does not ask (step 1 suggests by the title).
         model.setMeetingId(plain.id);
         QCOMPARE(model.tags()->meetingId(), plain.id);
         QCOMPARE(computing.count(), 1);
 
-        // Új átirat a kijelölt megbeszélésen → újra kér.
+        // A new transcript on the selected meeting: asks again.
         model.setMeetingId(b.id);
         QCOMPARE(computing.count(), 2);
         emit m_app->transcriptReady(b.id, QString());
         QCOMPARE(computing.count(), 3);
         QCOMPARE(computing.last().at(0).toString(), b.id);
-        // Másik megbeszélés átirata: nem.
+        // Another meeting's transcript: no.
         emit m_app->transcriptReady(a.id, QString());
         QCOMPARE(computing.count(), 3);
 
-        // A javaslat-lista megérkezik a modellbe (a „Nordvik” címke a hasonló megbeszélésről).
+        // The suggestion list arrives in the model (the "Nordvik" tag from the similar meeting).
         QTRY_VERIFY_WITH_TIMEOUT(!model.tags()->computing(), 10000);
     }
 
@@ -538,25 +538,25 @@ private slots:
         QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
         QSignalSpy revisions(m_shell.get(), &ShellActions::readinessRevisionChanged);
 
-        // Hiányzó API-kulcs → nem cloud-akadály → Beállítások a „Külső szolgáltatások” lapon.
+        // A missing API key is not a cloud blocker: Settings on the "External services" page.
         m_shell->startTranscription(m.id);
         QCOMPARE(started.count(), 0);
         QCOMPARE(m_bridge->calls.size(), 2);
         QVERIFY(m_bridge->calls.at(0).startsWith(QStringLiteral("blocker:")));
         QCOMPARE(m_bridge->calls.at(1), QStringLiteral("settings:providers"));
-        QCOMPARE(m_bridge->lastFocusField, QStringLiteral("stt"));   // az átíró kártyája kiemelve nyílik
+        QCOMPARE(m_bridge->lastFocusField, QStringLiteral("stt"));   // the transcriber's card opens highlighted
         QVERIFY(revisions.count() >= 1);
 
-        // Hangsáv nélküli megbeszélés → nincs mit beállítani, csak értesítés.
+        // A meeting with no audio track: nothing to configure, only a notice.
         m_bridge->calls.clear();
         const tanara::Meeting empty = m_app->store()->createMeeting(QStringLiteral("Üres"));
         m_shell->startTranscription(empty.id);
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_bridge->calls.size(), 1);          // csak a cloud-akadály kérdés
+        QCOMPARE(m_bridge->calls.size(), 1);          // only the cloud-blocker question
         QCOMPARE(m_toasts.size(), 1);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Nem indítható")));
 
-        // Beállított szolgáltatóval indul (saját kulcs → nincs becslés-ablak).
+        // Starts with a configured provider (own key: no estimate window).
         m_bridge->calls.clear();
         m_app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
         m_shell->startTranscription(m.id);
@@ -579,9 +579,9 @@ private slots:
         m_shell->startTopicAnalysis(noTranscript.id);
         m_shell->analyzeTopic(noTranscript.id, QStringLiteral("t1"));
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_toasts.size(), 4);                 // „Nem indítható: nincs átirat…”
+        QCOMPARE(m_toasts.size(), 4);                 // "Cannot start: no transcript..."
 
-        // Átirattal: a témánkénti elemzés téma-lista nélkül nem indul.
+        // With a transcript: the per-topic analysis does not start without a topic list.
         const tanara::Meeting m = transcribed(QStringLiteral("Átirattal"));
         m_toasts.clear();
         m_shell->startTopicAnalysis(m.id);
@@ -590,7 +590,7 @@ private slots:
         m_shell->analyzeTopic(m.id, QStringLiteral("nincs-ilyen-téma"));
         QCOMPARE(m_toasts.size(), 2);
 
-        // Gyors összefoglaló indul (és rögtön megszakítjuk — a cím egy zárt port).
+        // Quick summary starts (and we cancel at once; the address is a closed port).
         m_toasts.clear();
         m_shell->startQuickSummary(m.id);
         QVERIFY2(started.count() == 1, qPrintable(m_toasts.join(QLatin1Char('|'))));
@@ -601,8 +601,8 @@ private slots:
 
     void cloudBlockerIsHandledByTheBridge()
     {
-        // Élő cloud-mód, Tanara Cloud szolgáltató, bejelentkezés nélkül → Auth-akadály: a híd
-        // kezeli (bejelentkezés), a héj NEM nyit Beállításokat és NEM indít semmit.
+        // Live cloud mode, Tanara Cloud provider, not signed in: an Auth blocker; the bridge handles
+        // it (sign-in), the shell does NOT open Settings and does NOT start anything.
         m_shell.reset();
         m_app.reset();
         qputenv("TANARA_CLOUD", "live");
@@ -630,7 +630,7 @@ private slots:
         QVERIFY(m_bridge->calls.at(0).startsWith(QStringLiteral("blocker:")));
         QVERIFY(m_bridge->calls.at(0).endsWith(tanara::cloud::ProviderId));
 
-        // Az újra-átírás megerősítése ugyanazon a kapun megy át.
+        // The re-transcription confirmation goes through the same gate.
         m_bridge->calls.clear();
         m_shell->confirmRetranscribe(m.id, true);
         QCOMPARE(started.count(), 0);
@@ -646,7 +646,7 @@ private slots:
 
         m_shell->retranscribe(m.id);
         QCOMPARE(asked.count(), 1);
-        QCOMPARE(started.count(), 0);                 // megerősítés nélkül semmi nem indul
+        QCOMPARE(started.count(), 0);                 // nothing starts without confirmation
 
         const QVariantMap impact = m_shell->retranscribeImpact(m.id);
         QCOMPARE(impact.value("corrections").toInt(), 0);
@@ -658,8 +658,8 @@ private slots:
         QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
     }
 
-    // „Újra" egy cloud-hiba után: csak a hibához tartozó, MÉG KIJELÖLT megbeszélésre indul,
-    // és ugyanúgy a kapun + költségbecslésen megy át, mint az első indítás.
+    // "Retry" after a cloud error: starts only for the meeting belonging to the error that is
+    // STILL selected, and goes through the gate + cost estimate the same way as the first start.
     void retryTargetsTheFailedMeetingAndGoesThroughTheGate()
     {
         configureProviders(true);
@@ -668,20 +668,20 @@ private slots:
         QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
         QSignalSpy asked(m_shell.get(), &ShellActions::retranscribeDialogRequested);
 
-        // Közben másik megbeszélés lett kijelölve → nem indul semmi, értesítés jön.
+        // Meanwhile another meeting was selected: nothing starts, a notice appears.
         m_shell->showMeeting(b.id);
         emit m_bridge->retryRequested(a.id, QStringLiteral("transcribe"));
         QCOMPARE(started.count(), 0);
         QVERIFY(!m_toasts.isEmpty() && m_toasts.last().contains(QStringLiteral("Hibázott")));
 
-        // Átirattal rendelkező megbeszélésnél a „transcribe" ismétlés újra-átírás: megerősítő
-        // ablak jön, nem indul csendben sima átírás.
+        // For a meeting with a transcript, repeating "transcribe" is a re-transcription: a
+        // confirmation window appears, a plain transcription does not start silently.
         emit m_bridge->retryRequested(b.id, QStringLiteral("transcribe"));
         QCOMPARE(asked.count(), 1);
         QCOMPARE(asked.last().at(0).toString(), b.id);
         QCOMPARE(started.count(), 0);
 
-        // A kijelölt, átirat nélküli megbeszélésre az átírás elindul (a kapun át).
+        // For the selected meeting with no transcript, transcription starts (through the gate).
         m_shell->showMeeting(a.id);
         emit m_bridge->retryRequested(a.id, QStringLiteral("transcribe"));
         QCOMPARE(started.count(), 1);
@@ -689,13 +689,13 @@ private slots:
         m_app->cancelAllJobs(a.id);
         QTRY_VERIFY(!m_app->jobs()->isBusy(a.id));
 
-        // Ismeretlen / üres azonosítóra semmi.
+        // Nothing for an unknown / empty id.
         emit m_bridge->retryRequested(QString(), QStringLiteral("transcribe"));
         emit m_bridge->retryRequested(QStringLiteral("nincs-ilyen"), QStringLiteral("summary"));
         QCOMPARE(started.count(), 1);
     }
 
-    // Átirat után az azonosítás gombja mindig ad látható választ: ha nem indítható, megmondja, miért.
+    // After the transcript the identify button always gives a visible answer: if it cannot start, it says why.
     void identifyAfterTranscriptExplainsWhyItDidNotStart()
     {
         tanara::Meeting m = transcribed(QStringLiteral("Azonosítandó"));
@@ -705,10 +705,10 @@ private slots:
             QVERIFY(m_toasts.last().contains(QStringLiteral("hangmodell")));
         m_toasts.clear();
         m_shell->identifyParticipants(m.id);
-        QCOMPARE(m_toasts.size(), 1);                  // minden kattintásra van válasz
+        QCOMPARE(m_toasts.size(), 1);                  // every click gets an answer
     }
 
-    // Mindenki elnevezve: az azonosítás gombja az újraellenőrzést kínálja (megerősítéssel).
+    // Everyone named: the identify button offers the recheck (with confirmation).
     void identifyWithEveryoneNamedOffersRecheck()
     {
         const tanara::Meeting m = namedWithVoices(QStringLiteral("Mindenki megvan"));
@@ -723,34 +723,34 @@ private slots:
             QTimer::singleShot(10, m_shell.get(), [&] { m_shell->resolveConfirm(answer); });
         });
 
-        // Még nincs megerősített sor: nincs párbeszéd, a toast megmondja, mi kell.
+        // No confirmed line yet: no dialog, the toast says what is needed.
         m_shell->identifyParticipants(m.id);
         QVERIFY(shown.isEmpty());
         QCOMPARE(m_toasts.size(), 1);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Előbb erősíts meg vagy javíts legalább 3 sort egy beszélőnél")));
 
-        // Anna három valódi sora megerősítve → párbeszéd → 3 kétes sor.
+        // Three real lines of Anna confirmed: dialog, 3 doubtful lines.
         QVERIFY(ed->confirmUtterances({QStringLiteral("u0"), QStringLiteral("u10000"), QStringLiteral("u25000")}));
         m_shell->setCurrentMeetingId(m.id);
         m_shell->showTab(2);
         m_shell->identifyParticipants(m.id);
         QCOMPARE(shown, QStringList{QStringLiteral("Mindenki azonosítva|Újraellenőrzés")});
-        // T5: a toast megmondja, mire támaszkodott (megerősített sorok, tárolt minták, modell).
+        // The toast says what it relied on (confirmed lines, stored samples, model).
         QVERIFY2(m_toasts.last().startsWith(QStringLiteral("3 kétséges sort jelöltem meg — az Átnézendő szűrőben találod. "
                                                            "Alapja: 3 megerősített sor · tárolt minta nélkül")),
                  qPrintable(m_toasts.last()));
         QCOMPARE(ed->uncertainUtteranceIds(),
                  (QStringList{QStringLiteral("u15000"), QStringLiteral("u30000"), QStringLiteral("u45000")}));
-        QCOMPARE(m_shell->currentTab(), 1);              // az Átirat fülre vált
+        QCOMPARE(m_shell->currentTab(), 1);              // switches to the Transcript tab
 
-        // Elutasítva: semmi sem történik (nincs újabb toast).
+        // Rejected: nothing happens (no new toast).
         answer = false;
         const int toasts = m_toasts.size();
         m_shell->recheckSpeakers(m.id);
         QCOMPARE(shown.last(), QStringLiteral("Beszélők újraellenőrzése|Újraellenőrzés"));
         QCOMPARE(m_toasts.size(), toasts);
 
-        // A kétes sorok eldöntve → az újabb újraellenőrzés nem talál semmit.
+        // The doubtful lines are decided: another recheck finds nothing.
         answer = true;
         QVERIFY(ed->confirmUtterances(ed->uncertainUtteranceIds()));
         m_shell->recheckSpeakers(m.id);
@@ -768,7 +768,7 @@ private slots:
         QCOMPARE(m_shell->participantsGuess(m.id), m_bridge->previewSummary);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Kovács Lilla")));
 
-        // Megszakítva: nem marad eredmény, értesítés jön.
+        // Canceled: no result remains, a notice appears.
         const tanara::Meeting other = recording(QStringLiteral("Megszakított"));
         m_bridge->previewCancelled = true;
         m_shell->identifyParticipants(other.id);
@@ -778,7 +778,7 @@ private slots:
 
     void confirmWaitsForTheDialog()
     {
-        // Nincs, aki megjelenítse → azonnal hamis (nem akad be).
+        // Nobody to show it: false at once (it does not hang).
         QVERIFY(!m_shell->confirm(QStringLiteral("Cím"), QStringLiteral("Szöveg"), QStringLiteral("Igen"), true));
 
         QStringList shown;
@@ -786,7 +786,7 @@ private slots:
         connect(m_shell.get(), &ShellActions::confirmRequested, this,
                 [&](const QString& title, const QString&, const QString& label, bool danger) {
             shown << title + QLatin1Char('|') + label + (danger ? QStringLiteral("|danger") : QString());
-            // A QML-ablak később válaszol (a felhasználó kattint).
+            // The QML window answers later (the user clicks).
             QTimer::singleShot(20, m_shell.get(), [&] { m_shell->resolveConfirm(answer); });
         });
         QVERIFY(m_shell->confirm(QStringLiteral("Törlöd?"), QStringLiteral("…"), QStringLiteral("Törlés"), true));
@@ -803,10 +803,10 @@ private slots:
 
         m_shell->renameMeeting(a.id, QStringLiteral("  Új cím  "));
         QCOMPARE(m_app->store()->load(a.id).title, QStringLiteral("Új cím"));
-        m_shell->renameMeeting(a.id, QStringLiteral("   "));        // üres → marad
+        m_shell->renameMeeting(a.id, QStringLiteral("   "));        // empty: stays
         QCOMPARE(m_app->store()->load(a.id).title, QStringLiteral("Új cím"));
 
-        // Törlés: előbb megerősítést kér (a címmel), a megerősítés után töröl és a kijelölés megszűnik.
+        // Delete: first asks for confirmation (with the title), after confirmation it deletes and the selection ends.
         QSignalSpy asked(m_shell.get(), &ShellActions::deleteDialogRequested);
         m_shell->requestDelete(a.id);
         QCOMPARE(asked.count(), 1);
@@ -819,14 +819,14 @@ private slots:
         QCOMPARE(m_shell->currentMeetingId(), QString());
         QVERIFY(m_shell->meetingExists(b.id));
 
-        // Új felvétel elkészült → kijelölődik és értesítés jön.
+        // A new recording finished: it is selected and a notice appears.
         m_toasts.clear();
         emit m_app->recordingFinished(m_app->store()->load(b.id));
         QCOMPARE(m_shell->currentMeetingId(), b.id);
         QCOMPARE(m_toasts.size(), 1);
 
-        // A felvevő „Megnyitás az elemzőben” gombja / `tanara --meeting <id>` (a híd jele):
-        // kijelölés + a főablak előre; ismeretlen azonosítónál a kijelölés marad.
+        // The recorder's "Open in the analyzer" button / `tanara --meeting <id>` (the bridge's signal):
+        // selects + raises the main window; for an unknown id the selection stays.
         m_shell->setCurrentMeetingId(QString());
         QSignalSpy activated(m_shell.get(), &ShellActions::windowActivationRequested);
         emit m_bridge->showMeetingRequested(b.id);
@@ -836,15 +836,15 @@ private slots:
         QCOMPARE(m_shell->currentMeetingId(), b.id);
         QCOMPARE(activated.count(), 2);
 
-        // A hibák nem modális ablakban, hanem értesítésként jelennek meg.
+        // Errors appear as notices, not in a modal window.
         QSignalSpy toasts(m_shell.get(), &ShellActions::toastRequested);
         emit m_app->errorOccurred(QStringLiteral("Nincs rögzíthető hangeszköz."));
         QCOMPARE(toasts.count(), 1);
         QCOMPARE(toasts.at(0).at(1).toString(), QStringLiteral("danger"));
         QVERIFY(!m_shell->recording());
 
-        // A megnyitott megbeszélés feladat-hibája a hibasávban látszik: ugyanaz a szöveg nem
-        // jön még egyszer toastban (más megbeszélésé igen).
+        // The open meeting's job error shows in the error bar: the same text does not come again in a
+        // toast (another meeting's does).
         m_shell->setCurrentMeetingId(b.id);
         tanara::JobError je;
         je.message = QStringLiteral("A modell 4096 tokenes kontextussal van betöltve, a kérés 6042 token volt — nem fér bele.");
@@ -882,13 +882,13 @@ private slots:
         QVERIFY(!model.summaryStale());
         QVERIFY(model.tasks().isEmpty());
 
-        // Átnevezés → a fejléc követi.
+        // Rename: the header follows.
         QSignalSpy changed(&model, &ShellMeetingModel::changed);
         m_app->renameMeeting(done.id, QStringLiteral("Új név"));
         QTRY_COMPARE(model.title(), QStringLiteral("Új név"));
         QVERIFY(changed.count() >= 1);
 
-        // Futó feladat → megjelenik a sávban; az ELSŐ átírás nem (azt az átirat előtti nézet mutatja).
+        // A running job appears in the bar; the FIRST transcription does not (the pre-transcript view shows it).
         m_app->jobs()->begin(done.id, tanara::JobKind::Mixdown, QStringLiteral("Lekeverés"));
         m_app->jobs()->setPercent(done.id, tanara::JobKind::Mixdown, 64);
         QCOMPARE(model.tasks().size(), 1);
@@ -904,7 +904,7 @@ private slots:
         QVERIFY(model.tasks().isEmpty());
         m_app->jobs()->cancelled(plain.id, tanara::JobKind::Transcribe);
 
-        // Törölt megbeszélés → nem létezik.
+        // A deleted meeting does not exist.
         m_app->deleteMeeting(plain.id);
         QTRY_VERIFY(!model.exists());
     }
@@ -923,7 +923,7 @@ private slots:
         QCOMPARE(t.value("iconName").toString(), QStringLiteral("fingerprint"));
         QVERIFY(t.value("cancellable").toBool());
 
-        // Százalék nélküli szakasz → határozatlan sáv (percent −1), a futó szakasz nevével.
+        // A stage without a percentage: an indeterminate bar (percent -1), with the running stage's name.
         tanara::JobProgress transcribe;
         transcribe.meetingId = QStringLiteral("m");
         transcribe.kind = tanara::JobKind::Transcribe;
@@ -936,7 +936,7 @@ private slots:
         QCOMPARE(t.value("detail").toString(), QStringLiteral("Átírás"));
         QCOMPARE(t.value("title").toString(), QStringLiteral("Átírás…"));
         QVERIFY(t.value("cancelling").toBool());
-        QCOMPARE(t.value("eta").toString(), QString());   // becslés nélkül nincs kitalált idő
+        QCOMPARE(t.value("eta").toString(), QString());   // without an estimate there is no made-up time
     }
 
     void uiStatePersistsOnlyToItsFile()
@@ -950,7 +950,7 @@ private slots:
             state.setValue(QStringLiteral("selectedMeetingId"), QStringLiteral("abc"));
             state.setValue(QStringLiteral("window"),
                            QVariantMap{{QStringLiteral("w"), 1400}, {QStringLiteral("maximized"), true}});
-            QVERIFY(!QFile::exists(path));      // késleltetve ír
+            QVERIFY(!QFile::exists(path));      // writes delayed
             state.flush();
             QVERIFY(QFile::exists(path));
         }
@@ -959,7 +959,7 @@ private slots:
         QCOMPARE(again.value(QStringLiteral("selectedMeetingId")).toString(), QStringLiteral("abc"));
         QCOMPARE(again.value(QStringLiteral("window")).toMap().value(QStringLiteral("w")).toInt(), 1400);
 
-        // Útvonal nélkül (demó) csak memóriában él.
+        // Without a path (demo) it lives only in memory.
         ShellUiState memory;
         memory.setValue(QStringLiteral("k"), 1);
         memory.flush();

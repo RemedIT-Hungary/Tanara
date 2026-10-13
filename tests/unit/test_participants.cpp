@@ -1,10 +1,8 @@
-//
-// Résztvevők („Ki volt ott?") — a tiszta logika: sáv-beszédarány és kizárás a lekeverésből,
-// hang-ablakok, klaszterezés hamis embedderrel és hamis hanggal (két klaszter → két jelölt, egyik
-// lenyomattal párosítva), bizonyítékok és csoportok, kötés a nyers beszélőkhöz időátfedéssel
-// (kétoldalú nyers beszélő kettéosztva), a jóváhagyás kötései, és a meeting.json oda-vissza.
-// I/O és ffmpeg nélkül.
-//
+// Participants ("Who was there?"): the pure logic: track speech ratio and exclusion from the
+// mixdown, voice windows, clustering with a fake embedder and fake audio (two clusters, two
+// candidates, one matched to a voiceprint), evidence and groups, binding to the raw speakers
+// by time overlap (a two-sided raw speaker split in two), the approval's bindings, and
+// meeting.json both ways. Without I/O and ffmpeg.
 #include <QtTest>
 #include <QTemporaryDir>
 
@@ -23,7 +21,7 @@ using namespace tanara;
 
 namespace {
 
-// Keretenként: beszéd (40 dB a padló felett, padló -80 dBFS) a megadott [s,e) mp-szakaszokban.
+// Per frame: speech (40 dB above the floor, floor -80 dBFS) in the given [s,e) second ranges.
 TrackActivity activity(const QString& id, TrackKind kind, int seconds, const QVector<QPair<int, int>>& speech)
 {
     TrackActivity t;
@@ -47,7 +45,7 @@ Track track(const QString& id, TrackKind kind, const QString& file)
     return t;
 }
 
-// Hamis „modell": a PCM első mintája választja ki a forró dimenziót (a hamis hang ezt kódolja).
+// Fake "model": the PCM's first sample selects the hot dimension (the fake audio encodes it).
 PcmEmbedderLoader fakeLoader()
 {
     return [](const VoiceModelSpec& spec, const QString&, QString*) -> PcmEmbedder {
@@ -96,7 +94,7 @@ private slots:
 
 void ParticipantsTest::speechRatioAndExclusion()
 {
-    // 20 mp: a mikrofonon 10 mp beszéd, a loopbackon semmi, a harmadikon 0,2 mp (1%) kattanás.
+    // 20 s: 10 s of speech on the microphone, nothing on the loopback, a 0.2 s (1%) click on the third.
     const TrackActivity mic = activity("mic", TrackKind::Mic, 20, {{0, 10}});
     const TrackActivity loop = activity("loop", TrackKind::Loopback, 20, {});
     TrackActivity other = activity("other", TrackKind::Loopback, 20, {});
@@ -104,8 +102,8 @@ void ParticipantsTest::speechRatioAndExclusion()
     QCOMPARE(trackspeech::speechRatio(mic), 0.5);
     QCOMPARE(trackspeech::speechRatio(loop), 0.0);
     QCOMPARE(trackspeech::speechRatio(other), 0.01);
-    // Az abszolút szint-kapu: a digitális csend (-90) feletti 40 dB is csak -50 dBFS → beszéd;
-    // de -100 dBFS-es padló felett 40 dB = -60 dBFS → nem.
+    // The absolute level gate: 40 dB above digital silence (-90) is only -50 dBFS, so speech;
+    // but 40 dB above a -100 dBFS floor is -60 dBFS, so not.
     TrackActivity quiet = mic;
     quiet.floorDb = -100.0f;
     QCOMPARE(trackspeech::speechRatio(quiet), 0.0);
@@ -126,12 +124,12 @@ void ParticipantsTest::speechRatioAndExclusion()
     QVERIFY(!m.tracks[1].active);
     QVERIFY(!trackspeech::needsSpeechCheck(m));
 
-    // A lekeverés-terv a kimaradt sávot nem veszi fel (a fájlok nem léteznek → mind „hiányzik",
-    // de csak a bevont sáv neve kerül a listára).
+    // The mixdown plan does not take the excluded track (the files do not exist, so all are
+    // "missing", but only the included track's name goes on the list).
     const MixdownPlan plan = MixdownPlan::fromMeeting(m);
     QCOMPARE(plan.missing.size(), 1);
 
-    // A kézzel visszavett (mért) sávot egy újabb mérés nem bántja.
+    // A track taken back by hand (measured) is not touched by a newer measurement.
     m.tracks[1].active = true;
     m.tracks[1].excludedReason.clear();
     const trackspeech::SpeechCheckResult again = trackspeech::applySpeechRatios(m, act);
@@ -153,8 +151,8 @@ void ParticipantsTest::allSilentKeepsEverything()
 
 void ParticipantsTest::speechWindowsSplitAndMerge()
 {
-    // 0–2 mp (rövid, kimarad); 5–9,1 mp 0,3 mp-es szünettel (egy szakasz, egy ablak);
-    // 12–35 mp (23 mp → 10 + 10 + 3 mp-es ablakok).
+    // 0-2 s (short, left out); 5-9.1 s with a 0.3 s pause (one segment, one window);
+    // 12-35 s (23 s gives windows of 10 + 10 + 3 s).
     TrackActivity t = activity("mic", TrackKind::Mic, 40, {{0, 2}, {5, 7}, {12, 35}});
     for (int f = 146; f < 182; ++f) t.dbAboveFloor[f] = 40.0f;   // 7,3–9,1 mp
     const QVector<SpeechWindow> w = participants::speechWindows(t, participants::kSideMic);
@@ -175,7 +173,7 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     MeetingActivity act;
     act.tracks = {activity("mic", TrackKind::Mic, 30, {{0, 8}, {20, 28}}),
                   activity("loop", TrackKind::Loopback, 30, {{9, 18}})};
-    // Hamis hang: a mikrofon „0-s", a loopback „1-es" hang.
+    // Fake audio: the microphone is voice "0", the loopback voice "1".
     int reads = 0;
     const participants::PcmReader pcm = [&reads](const QString& id, qint64 s, qint64 e) {
         ++reads;
@@ -193,7 +191,7 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     QVERIFY(cs.clusters[0].sampleRef.startsWith("track_mic.ogg#"));
     QCOMPARE(cs.clusters[1].side, participants::kSideLoopback);
 
-    // Lenyomat csak a loopback hangjára („Béla"); a saját név „Ádám" (nincs lenyomata).
+    // A voiceprint only for the loopback's voice ("Béla"); the own name is "Ádám" (no voiceprint).
     const int dim = spec.dim;
     participants::CandidateContext ctx;
     ctx.selfName = QStringLiteral("Ádám");
@@ -215,16 +213,16 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     QCOMPARE(cs.clusters[1].participantId, bela->id);
     QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
     QVERIFY(qAbs(bela->talkShare + unknown->talkShare - 1.0) < 1e-9);
-    // Béla: csak hang → Kétséges, de bejelölt; az ismeretlen hang nincs bejelölve.
+    // Béla: audio only gives Doubtful, but checked; the unknown voice is not checked.
     QCOMPARE(participants::participantGroup(*bela), ParticipantGroup::Doubt);
     QVERIFY(participants::defaultChecked(*bela));
     QVERIFY(!participants::defaultChecked(*unknown));
     QCOMPARE(bela->evidence.first().text, QStringLiteral("hang 100%"));
 
-    // Közös címke → Biztos.
+    // A shared tag gives Sure.
     Meeting tagged = m;
     tagged.tagIds = {QStringLiteral("t1")};
-    // A varrat a PersonTagSnapshot szabályával: Béla kézi címkéje a megbeszélés címkéje.
+    // The seam with PersonTagSnapshot's rule: Béla's manual tag is the meeting's tag.
     PersonTagSnapshot snap;
     snap.stats = std::make_shared<PersonTagStats>();
     snap.tagNames.insert(QStringLiteral("t1"), QStringLiteral("Projekt"));
@@ -234,7 +232,7 @@ void ParticipantsTest::analysisTwoClustersOneMatched()
     };
     ClusterSet cs2 = cs;
     const QVector<Participant> ps2 = participants::buildParticipants(cs2, tagged, ctx);
-    QCOMPARE(ps2.first().personName, QStringLiteral("Béla"));   // a Biztos csoport elöl
+    QCOMPARE(ps2.first().personName, QStringLiteral("Béla"));   // the Sure group first
     QCOMPARE(participants::participantGroup(ps2.first()), ParticipantGroup::Sure);
     bool tagEv = false;
     for (const Evidence& e : ps2.first().evidence)
@@ -264,7 +262,7 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     cs.clusters = {c};
     participants::CandidateContext ctx;
     ctx.selfName = QStringLiteral("Ádám");
-    // 0,45: magában küszöb alatt, de a kézi előnnyel (+0,1) elfogadva.
+    // 0.45: below the threshold alone, but accepted with the manual bonus (+0.1).
     ctx.rank = [](const EmbeddingSet&) {
         return QVector<VoiceMatch>{{QStringLiteral("Ádám"), 0.45}, {QStringLiteral("Cecília"), 0.2}};
     };
@@ -275,15 +273,15 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
     QCOMPARE(adam.id, QStringLiteral("m-1"));
     QCOMPARE(adam.source, ParticipantSource::Manual);
     QCOMPARE(adam.sides, QStringList({participants::kSideMic}));
-    // Kézi + hang + saját hang a mikrofonon → Biztos.
+    // Manual + audio + own voice on the microphone gives Sure.
     QCOMPARE(participants::participantGroup(adam), ParticipantGroup::Sure);
-    // Cecília: kézzel felvéve, van lenyomata, de nem hallottuk → ellentmondás → Kétséges, nincs bejelölve.
+    // Cecília: added by hand, has a voiceprint, but was not heard, so contradiction gives Doubtful, not checked.
     const Participant& cili = ps[1];
     QCOMPARE(cili.id, QStringLiteral("m-2"));
     QCOMPARE(participants::participantGroup(cili), ParticipantGroup::Doubt);
     QVERIFY(!participants::defaultChecked(cili));
 
-    // Lenyomat nélküli kézi résztvevő: „nincs lenyomata" (semleges) → bejelölhető.
+    // A manual participant without a voiceprint: "no voiceprint" (neutral), so checkable.
     ctx.hasVoiceprint = [](const QString&) { return false; };
     const QVector<Evidence> ev = participants::participantEvidence(ghost, false, -1.0, m, ctx);
     bool noPrint = false;
@@ -293,7 +291,7 @@ void ParticipantsTest::manualParticipantBoostAndEvidence()
             noPrint = true;
     QVERIFY(noPrint);
 
-    // Naptár-forrás hang nélkül → „Meghívott, de nem hallottuk".
+    // Calendar source without audio: "Invited, but not heard".
     Participant invited;
     invited.personName = QStringLiteral("Dóra");
     invited.source = ParticipantSource::Calendar;
@@ -311,11 +309,11 @@ void ParticipantsTest::bindRawSpeakersByOverlap()
                                            line("Beszélő 1", 21000, 27000), line("Beszélő 3", 40000, 41000)};
     QVERIFY(participants::bindRawSpeakers(ps, {a, b}, lines));
     QCOMPARE(ps[0].rawSpeakerIds, QStringList({"Beszélő 1"}));
-    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"Beszélő 2"}));   // a 3. beszélőt nem fedi semmi
+    QCOMPARE(ps[1].rawSpeakerIds, QStringList({"Beszélő 2"}));   // nothing covers the 3rd speaker
     QVERIFY(qAbs(ps[0].talkShare - 12.0 / 19.0) < 1e-9);
-    QVERIFY(!participants::bindRawSpeakers(ps, {a, b}, lines));   // változatlan
+    QVERIFY(!participants::bindRawSpeakers(ps, {a, b}, lines));   // unchanged
 
-    // Jóváhagyás: csak Ádám bejelölve → Beszélő 1 Ádám; Béla nyers beszélője névtelen marad.
+    // Approval: only Ádám checked, so Speaker 1 is Ádám; Béla's raw speaker stays anonymous.
     const QVector<SpeakerBinding> bind = participants::approvalBindings(ps, {"v1"}, lines, {a, b}, nullptr);
     QCOMPARE(bind.size(), 2);
     QCOMPARE(bind[0].rawLabel, QStringLiteral("Beszélő 1"));
@@ -325,9 +323,9 @@ void ParticipantsTest::bindRawSpeakersByOverlap()
     QVERIFY(bind[1].personName.isEmpty());
 }
 
-// G10: ha minden bejelölt, elnevezett résztvevőnek van kézi sávja, a nyers beszélő sorai oldal
-// szerint válnak szét: a személy csak a saját oldala sorait kapja; a másik oldal sorai a legjobb
-// nem-kizárt résztvevőhöz (a klaszterei szerint), ennek híján névtelenek maradnak.
+// G10: if every checked, named participant has a manual track, the raw speaker's lines split
+// by side: the person gets only the lines of their own side; the other side's lines go to the
+// best non-excluded participant (by its clusters), failing that they stay anonymous.
 void ParticipantsTest::approvalSideVetoSplitsBySide()
 {
     Meeting m;
@@ -339,8 +337,8 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     ps[1].rawSpeakerIds = {QStringLiteral("Beszélő 2")};
     VoiceCluster a; a.participantId = "v1"; a.side = participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = participants::kSideLoopback; b.windows = {{9000, 18000}, {40000, 44000}};
-    // A diarizáció Ádám nevén hagyott két hívás-sort: az egyik Béla hangja (a klasztere fedi), a
-    // másikat senki ismert nem fedi.
+    // The diarization left two call lines under Ádám's name: one is Béla's voice (its cluster
+    // covers it), the other is covered by no known person.
     const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 1", 9500, 15500),
                                            line("Beszélő 1", 21000, 27000), line("Beszélő 1", 30000, 34000),
                                            line("Beszélő 2", 40000, 44000)};
@@ -350,15 +348,15 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     const QVector<Side> sidesOf = sides::classifyLineSides(act, lines);
     QVERIFY(sidesOf == (QVector<Side>{Side::Local, Side::Remote, Side::Local, Side::Remote, Side::Remote}));
 
-    // Béla beosztása hiányzik → nincs kizárás: a régi, egész kötés.
+    // Béla's assignment is missing, so no exclusion: the old, whole binding.
     ps[0].tracks = {QStringLiteral("mic")};
     QVector<SpeakerBinding> bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 2);
     QVERIFY(bind[0].utteranceIds.isEmpty());
     QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
 
-    // Mindkettő beosztva → Beszélő 1 névtelen; Ádám a mikrofon-sorait, Béla az ő hangján szóló
-    // hívás-sort kapja; a 30 mp-es hívás-sor névtelen marad.
+    // Both assigned: Speaker 1 is anonymous; Ádám gets the microphone lines, Béla the call line in
+    // his voice; the 30 s call line stays anonymous.
     ps[1].tracks = {QStringLiteral("loop")};
     bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 4);
@@ -372,13 +370,13 @@ void ParticipantsTest::approvalSideVetoSplitsBySide()
     QCOMPARE(bind[3].personName, QStringLiteral("Béla"));
     QVERIFY(bind[3].utteranceIds.isEmpty());
 
-    // Több sávos személy sosem kizárt.
+    // A multi-track person is never excluded.
     ps[0].tracks = {QStringLiteral("mic"), QStringLiteral("loop")};
     bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act, &m);
     QCOMPARE(bind.size(), 2);
     QVERIFY(bind[0].utteranceIds.isEmpty());
 
-    // Meeting / aktivitás nélkül (régi hívók): változatlan.
+    // Without meeting / activity (old callers): unchanged.
     ps[0].tracks = {QStringLiteral("mic")};
     QCOMPARE(participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, &act).size(), 2);
     QCOMPARE(participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, nullptr, &m).size(), 2);
@@ -391,7 +389,7 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     ps[1].id = QStringLiteral("v2"); ps[1].personName = QStringLiteral("Béla");
     VoiceCluster a; a.participantId = "v1"; a.side = participants::kSideMic; a.windows = {{0, 8000}, {20000, 28000}};
     VoiceCluster b; b.participantId = "v2"; b.side = participants::kSideLoopback; b.windows = {{9000, 18000}};
-    // A diarizáció Ádámot és Bélát egy beszélőnek vette („Beszélő 1"), a 2. beszélő Ádám.
+    // The diarization took Ádám and Béla as one speaker ("Speaker 1"), the 2nd speaker is Ádám.
     const QVector<TranscriptLine> lines = {line("Beszélő 1", 1000, 7000), line("Beszélő 1", 9500, 15500),
                                            line("Beszélő 2", 21000, 27000), line("Beszélő 1", 30000, 31000)};
     QVERIFY(participants::bindRawSpeakers(ps, {a, b}, lines));
@@ -401,8 +399,8 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     QCOMPARE(participants::rawDisplay(ps[0].rawSpeakerIds.first()), QStringLiteral("Beszélő 1 · mikrofon"));
     QCOMPARE(participants::rawDisplay(QStringLiteral("Beszélő 2")), QStringLiteral("Beszélő 2"));
 
-    // Jóváhagyás mindkettőre: Beszélő 1 sorai oldal szerint; az eldönthetetlen sor (30 mp) a
-    // nagyobbik (itt: egyenlő → mikrofon) oldalhoz.
+    // Approval for both: Speaker 1's lines by side; the undecidable line (30 s) goes to the
+    // bigger side (here equal, so the microphone).
     const QVector<SpeakerBinding> bind = participants::approvalBindings(ps, {"v1", "v2"}, lines, {a, b}, nullptr);
     QCOMPARE(bind.size(), 3);
     QCOMPARE(bind[0].personName, QStringLiteral("Ádám"));
@@ -412,7 +410,7 @@ void ParticipantsTest::twoSidedRawSpeakerIsSplit()
     QCOMPARE(bind[2].personName, QStringLiteral("Béla"));
     QCOMPARE(bind[2].utteranceIds, QStringList({"u9500"}));
 
-    // Oldal sáv-energiából, ha a klaszterek nem fedik a sort.
+    // Side from track energy if the clusters do not cover the line.
     MeetingActivity act;
     act.tracks = {activity("mic", TrackKind::Mic, 40, {}), activity("loop", TrackKind::Loopback, 40, {{30, 31}})};
     QCOMPARE(participants::lineSide(lines[3], {a, b}, &act), participants::kSideLoopback);
@@ -466,14 +464,14 @@ void ParticipantsTest::meetingJsonRoundTrip()
     QVERIFY(r.approval->candidates[0].checked);
     QVERIFY(!r.approval->solo);
 
-    // Régi meeting: eldobott sáv ok nélkül → „nincs beszéd"; a mért arány hiányzik → -1.
+    // Old meeting: a dropped track with no reason gives "no speech"; the measured ratio is missing: -1.
     QJsonObject legacy = toJson(off);
     legacy.remove(QStringLiteral("excludedReason"));
     const Track lt = trackFromJson(legacy);
     QCOMPARE(lt.excludedReason, trackspeech::kNoSpeech);
     QCOMPARE(lt.speechRatio, -1.0);
 
-    // A perzisztált elemzés oda-vissza.
+    // The persisted analysis both ways.
     QTemporaryDir dir;
     ParticipantAnalysisFile f;
     f.at = ap.at;

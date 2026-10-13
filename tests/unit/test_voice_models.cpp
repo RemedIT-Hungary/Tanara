@@ -1,7 +1,5 @@
-//
-// Beszélő-modellek: a VoiceModelRegistry (leírók, fájl-feloldás, id-normalizálás) és a
-// settings.json "voiceModels" kulcsa (SettingsManager). Minden ideiglenes mappában fut.
-//
+// Speaker models: VoiceModelRegistry (descriptors, file resolution, id normalization) and
+// settings.json's "voiceModels" key (SettingsManager). Everything runs in temporary folders.
 #include <QtTest>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -49,7 +47,7 @@ private slots:
     {
         const QVector<VoiceModelSpec> all = VoiceModelRegistry::builtin();
         QCOMPARE(all.size(), 3);
-        // Id szerint ábécérendben.
+        // By id alphabetically.
         QCOMPARE(all[0].id, QStringLiteral("campplus"));
         QCOMPARE(all[1].id, QStringLiteral("eres2netv2"));
         QCOMPARE(all[2].id, QStringLiteral("wespeaker-resnet34-lm"));
@@ -60,7 +58,7 @@ private slots:
         QCOMPARE(s->dim, 192);
         QVERIFY(!s->license.isEmpty());
         QVERIFY(s->sourceUrl.startsWith(QStringLiteral("https://")));
-        // Az fbank-paraméterek a VoiceEmbedder alapértelmezései.
+        // The fbank parameters are VoiceEmbedder's defaults.
         const EmbedderConfig def;
         QCOMPARE(s->features.numMelBins, def.numMelBins);
         QCOMPARE(s->features.sampleRate, def.sampleRate);
@@ -85,7 +83,7 @@ private slots:
 
         touch(userModel);
         QCOMPARE(VoiceModelRegistry::resolvePath(s, meta.path(), app.path()), userModel);
-        // A régi paths-függvény ugyanezt a szabályt használja.
+        // The old paths function uses the same rule.
         QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()),
                  VoiceModelRegistry::resolvePath(s, meta.path(), app.path()));
         QCOMPARE(paths::voiceModelFileName(), s.fileName);
@@ -103,7 +101,7 @@ private slots:
         QTemporaryDir meta;
         SettingsManager sm(meta.path());
         QCOMPARE(sm.enabledVoiceModels(), QStringList{"wespeaker-resnet34-lm"});
-        // Első indításkor kiírt fájlban is ott az alapérték.
+        // The default is in the file written at first launch too.
         QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"wespeaker-resnet34-lm"}));
 
         QSignalSpy changed(&sm, &SettingsManager::settingsChanged);
@@ -112,11 +110,11 @@ private slots:
         QCOMPARE(sm.enabledVoiceModels(), QStringList({"campplus", "zeta"}));
         QCOMPARE(readJson(sm.settingsFilePath()).value("voiceModels").toArray(), QJsonArray({"campplus", "zeta"}));
 
-        // Ugyanaz (más sorrendben) → nincs változás, nincs jel.
+        // The same (in another order): no change, no signal.
         sm.setEnabledVoiceModels({"zeta", "campplus"});
         QCOMPARE(changed.count(), 1);
 
-        // Visszaolvasás; az üres lista is érvényes (minden modell ki).
+        // Read back; the empty list is valid too (every model off).
         QCOMPARE(SettingsManager(meta.path()).enabledVoiceModels(), QStringList({"campplus", "zeta"}));
         sm.setEnabledVoiceModels({});
         QCOMPARE(changed.count(), 2);

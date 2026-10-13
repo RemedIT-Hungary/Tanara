@@ -1,16 +1,14 @@
 #pragma once
-//
-// Ál-backend a címke-nézetmodellek tesztjeihez: a wave 2 controller-backendjének helyén áll
-// (TagBackend varrat), minden hívást naplóz, az állapotot a teszt állítja be közvetlenül.
-// Kitalált adatok; fájlhoz, hálózathoz nem nyúl.
-//
+// Fake backend for the tag view-model tests: stands in for the wave 2 controller backend
+// (TagBackend seam), logs every call, and the test sets the state directly.
+// Made-up data; touches no file or network.
 #include "TagBackend.h"
 
 #include <QHash>
 #include <QSet>
 #include <QStringList>
 
-// Saját jele nincs, ezért Q_OBJECT nélkül (a fejléc nem kerül az automoc elé).
+// It has no signals of its own, hence no Q_OBJECT (the header does not go before automoc).
 class FakeTagBackend : public tanara_qml::TagBackend {
 public:
     using TagBackend::TagBackend;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Bírálati csomag: egy kör kimenetei megbeszélésenként, VAK azonosítókkal (a bíráló nem látja,
-// melyik modell / prompt írta). Használat: node bundle.mjs <tag> [modell-szűrő regex]
+// Review bundle: the outputs of one round per meeting, with BLIND ids (the reviewer cannot see
+// which model / prompt wrote them). Usage: node bundle.mjs <tag> [model filter regex]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,14 +16,14 @@ const rows = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.startsW
 const meetings = [...new Set(rows.map((r) => r.meeting))];
 for (const m of meetings) {
   const mine = rows.filter((r) => r.meeting === m && (r.text || '').trim().length > 0);
-  // determinisztikus, de nem sorrendtartó keverés
+  // deterministic, but not order-preserving shuffle
   mine.sort((a, b) => (hash(a.model + a.prompt) - hash(b.model + b.prompt)));
   const outputs = [], map = {};
   mine.forEach((r, i) => {
     const id = m + String(i + 1).padStart(2, '0');
     map[id] = { model: r.model, prompt: r.prompt, secs: r.secs, completionTokens: r.completionTokens, valid: r.valid, finish: r.finish };
-    // A bíráló azt kapja, amit a felhasználó látna: az értelmezett szerkezetet (a munkavázlat
-    // "topics" kulcs nélkül), vagy ha nem értelmezhető, a nyers szöveget.
+    // The reviewer gets what the user would see: the parsed structure (the working draft without
+    // the "topics" key), or the raw text if it cannot be parsed.
     let shown;
     if (r.valid && r.parsed) { const { topics, ...rest } = r.parsed; shown = rest; }
     else shown = { unparseable: true, raw: r.text.slice(0, 6000) };

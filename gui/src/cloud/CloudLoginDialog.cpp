@@ -62,7 +62,7 @@ CloudLoginDialog::CloudLoginDialog(AppController* app, QWidget* parent)
     row->addStretch(1);
     lay->addLayout(row);
 
-    // A böngésző nem nyílt meg → kézi út (mindig látszik, halványan).
+    // The browser did not open: manual path (always shown, dimmed).
     m_fallback = new QWidget(this);
     auto* fl = new QVBoxLayout(m_fallback);
     fl->setContentsMargins(0, 8, 0, 0);

@@ -1,14 +1,12 @@
 #pragma once
+// TrayWatcher: the meeting watcher docked in the system tray. At intervals (settings:
+// detectorIntervalSec) it asks the detector core whether a call is in progress and offers
+// to record via a pop-up notification. It only watches: to record it launches the
+// `tanara --record` process (it contains no AppController / audio capture).
 //
-// TrayWatcher — a rendszertálcára dokkolt meeting-figyelő. Időnként (settings:
-// detectorIntervalSec) megnézi a detektor-maggal, folyik-e hívás, és felugró
-// értesítéssel felajánlja a rögzítést. Csak figyel — a rögzítéshez a `tanara --record`
-// folyamatot indítja (nem tartalmaz AppControllert / audio-capture-t).
-//
-// A tálca-ikon három állapota (design/handoff-recorder R11): Figyel · Hívás észlelve ·
-// Felvétel fut. A buborék az appot, ill. az eltelt időt mutatja; a menü felvétel közben
-// fejlécet („Felvétel · 00:12:47”) és leállítást is ad. A „Kilépés…” felvétel közben rákérdez.
-//
+// The tray icon has three states: Watching, Call detected, Recording. The balloon shows the
+// app, or the elapsed time; during a recording the menu also gets a header ("Recording ·
+// 00:12:47") and a stop item. "Quit..." asks for confirmation during a recording.
 #include <QDateTime>
 #include <QObject>
 #include <QString>
@@ -31,66 +29,66 @@ public:
     explicit TrayWatcher(QObject* parent = nullptr);
     ~TrayWatcher() override;
 
-    // Detektor + tray felállítása. false, ha nincs elérhető detektor vagy nincs tálca.
+    // Sets up the detector + tray. false if no detector is available or there is no tray.
     bool start();
 
-    // „HH:MM:SS” az eltelt másodpercekből (a buborékhoz és a menü-fejléchez).
+    // "HH:MM:SS" from elapsed seconds (for the balloon and the menu header).
     static QString formatElapsed(qint64 seconds);
-    // A hívás-értesítés szövege; outputName: a kimenet, amelyre az app épp szól ("" = nem tudjuk).
+    // The call notification text; outputName: the output the app is playing to ("" = unknown).
     static QString callNotificationBody(const QString& appName, const QString& outputName);
 
 private slots:
-    void poll();                 // időzített detektor-lekérdezés
-    void refreshState();         // ikon + buborék + menü a lock és az utolsó jel alapján (1 mp)
-    void startRecordingNow();    // menü/értesítés → tanara --record (azonnal rögzít)
-    void openRecorder();         // menü/értesítés → tanara --record --no-start (megnyit / előhoz)
-    void stopRecording();        // menü → tanara --record --stop (a futó felvevőnek továbbítva)
-    void openAnalyzer();         // menü → a sima tanara (elemző) megnyitása
-    void openSettings();         // menü → tanara --settings watcher (a Beállítások „Hívásfigyelő” lapja)
-    void quitRequested();        // „Kilépés…” — felvétel közben rákérdez
-    // A D-Bus notification akció-gombjai / test-kattintása (csak TANARA_HAVE_DBUS mellett él).
+    void poll();                 // timed detector poll
+    void refreshState();         // icon + balloon + menu from the lock and the last signal (1 s)
+    void startRecordingNow();    // menu/notification: tanara --record (records immediately)
+    void openRecorder();         // menu/notification: tanara --record --no-start (opens / raises)
+    void stopRecording();        // menu: tanara --record --stop (forwarded to the running recorder)
+    void openAnalyzer();         // menu: opens plain tanara (the analyzer)
+    void openSettings();         // menu: tanara --settings watcher (the "Call watcher" page of Settings)
+    void quitRequested();        // "Quit..." asks for confirmation during a recording
+    // D-Bus notification action buttons / body click (only active with TANARA_HAVE_DBUS).
     void onNotifyActionInvoked(uint id, const QString& actionKey);
     void onNotifyClosed(uint id, uint reason);
 
 private:
-    // Hívás-notification: Linuxon freedesktop D-Bus akció-gombokkal („Felvétel indítása” /
-    // „Felvevő megnyitása” / „Nem most”), különben QSystemTrayIcon::showMessage-fallback.
+    // Call notification: on Linux via freedesktop D-Bus with action buttons ("Start recording" /
+    // "Open recorder" / "Not now"), otherwise the QSystemTrayIcon::showMessage fallback.
     void showCallNotification(const QString& appName);
-    QStringList recordArgs(bool immediate) const;  // --record [+ --no-start] + az észlelt app/kontextus
-    QString tanaraBinary() const;             // a sibling `tanara` binary feloldása
-    QString lockPath() const;                 // <metaadat-mappa>/recording.lock
+    QStringList recordArgs(bool immediate) const;  // --record [+ --no-start] + the detected app/context
+    QString tanaraBinary() const;             // resolves the sibling `tanara` binary
+    QString lockPath() const;                 // <metadata folder>/recording.lock
     void launch(const QStringList& args) const;
     void applyAutostart(bool on) const;       // Linux: autostart .desktop; Windows: HKCU Run
-    // A settings.json megváltozott (a Beállítások mentett): újratöltés + a figyelő
-    // átállítása újraindítás nélkül (be/ki, gyakoriság, figyelt appok, autostart).
+    // settings.json changed (Settings saved): reload and reconfigure the watcher without a
+    // restart (on/off, interval, watched apps, autostart).
     void reloadSettingsIfChanged();
     void applySettings();
 
     tanara::SettingsManager*  m_settings = nullptr;
-    tanara::IMeetingDetector* m_detector = nullptr;   // owned (delete a dtorban)
+    tanara::IMeetingDetector* m_detector = nullptr;   // owned (deleted in the dtor)
     QSystemTrayIcon* m_tray = nullptr;
     QTimer*          m_timer = nullptr;
-    QTimer*          m_stateTimer = nullptr;   // 1 mp: eltelt idő + a lock figyelése
-    QDateTime        m_settingsStamp;          // a settings.json utolsó látott módosítási ideje
-    bool             m_autostartApplied = false;   // az utoljára alkalmazott autostart-állapot
+    QTimer*          m_stateTimer = nullptr;   // 1 s: elapsed time + watches the lock
+    QDateTime        m_settingsStamp;          // last seen modification time of settings.json
+    bool             m_autostartApplied = false;   // the last applied autostart state
 
-    QAction* m_headerAction = nullptr;    // „Felvétel · 00:12:47” (csak felvétel közben)
-    QAction* m_showAction = nullptr;      // Felvevő megjelenítése
-    QAction* m_startAction = nullptr;     // Felvétel indítása (ha nem fut)
-    QAction* m_stopAction = nullptr;      // Felvétel leállítása (ha fut)
-    int      m_iconState = -1;            // az utoljára beállított ikon-állapot
+    QAction* m_headerAction = nullptr;    // "Recording · 00:12:47" (only while recording)
+    QAction* m_showAction = nullptr;      // Show recorder
+    QAction* m_startAction = nullptr;     // Start recording (if not running)
+    QAction* m_stopAction = nullptr;      // Stop recording (if running)
+    int      m_iconState = -1;            // the last icon state set
 
-    // Debounce: meetingenként egyszer ajánlunk. Rising edge-en (inaktív→aktív) vagy új
-    // session (más sourceRef) ajánl; inaktívvá válva reset.
+    // Debounce: one offer per meeting. Offers on a rising edge (inactive to active) or a new
+    // session (different sourceRef); resets when it goes inactive.
     bool    m_wasActive = false;
     QString m_lastOfferedRef;
 
-    // A legutóbb detektált hívás (a „Felvétel indítása" innen veszi az appot/kontextust).
+    // The most recently detected call ("Start recording" takes the app/context from here).
     QString m_detAppName, m_detWindowTitle;
     bool    m_callActive = false;
 
-    // Az utolsó saját D-Bus notification id-ja (0 = nincs) — az ActionInvoked ez alapján
-    // szűr, és az új értesítés ezt cseréli le (replaces_id).
+    // Id of our last own D-Bus notification (0 = none); ActionInvoked filters on it, and a new
+    // notification replaces it (replaces_id).
     quint32 m_notifyId = 0;
 };
 

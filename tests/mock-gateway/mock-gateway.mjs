@@ -1,38 +1,39 @@
 #!/usr/bin/env node
-// Tanara mock-gateway — a Tanara Cloud gateway-szerződés (docs/cloud-gateway-api.yaml, 1.2.0)
-// futtatható referenciája. Nincs függősége (Node 20+). A kliens ezzel fejleszthető és
-// tesztelhető a valódi gateway nélkül.
+// Tanara mock-gateway: a runnable reference of the Tanara Cloud gateway contract
+// (docs/cloud-gateway-api.yaml, 1.2.0). No dependencies (Node 20+). The client can be
+// developed and tested with it without the real gateway.
 //
 //   node tests/mock-gateway/mock-gateway.mjs [--port 8300] [--auto-approve]
 //
-// Állapot-kapcsolók (indításkor; futás közben: POST /__mock/config {kulcs: érték}):
-//   --balance 10.00            nettó egyenleg USD-ben (a ledger nettó; a kliens a vat_mode szerint látja)
-//   --vat-mode gross|reverse_charge   (alap: gross = nettó × 1,27)
-//   --low-threshold 2.00       alacsony-egyenleg küszöb (nettó USD)
-//   --min-client 0.1.0         ennél régebbi X-Tanara-Client → 426
-//   --terms-pending            új ÁSZF bejelentve (14 napon belül hatályos) — előzetes dialógus
-//   --terms-required           új ÁSZF hatályos, nincs elfogadva → 403 a feldolgozó hívásokon
-//   --maintenance              503 maintenance (window-val) a feldolgozó hívásokon
-//   --upstream-down            503 upstream_unavailable a feldolgozó hívásokon
+// State switches (at startup; at run time: POST /__mock/config {key: value}):
+//   --balance 10.00            net balance in USD (the ledger is net; the client sees it per vat_mode)
+//   --vat-mode gross|reverse_charge   (default: gross = net x 1.27)
+//   --low-threshold 2.00       low-balance threshold (net USD)
+//   --min-client 0.1.0         an older X-Tanara-Client gets 426
+//   --terms-pending            new terms announced (effective within 14 days): preliminary dialog
+//   --terms-required           new terms in effect, not accepted: 403 on the processing calls
+//   --maintenance              503 maintenance (with a window) on the processing calls
+//   --upstream-down            503 upstream_unavailable on the processing calls
 //   --suspended admin|payment_dispute   403 account_suspended
-//   --rate-limited             429 rate_limited (Retry-After: 30) a feldolgozó hívásokon
-//   --spend-limit              429 spend_limit_reached a feldolgozó hívásokon
-//   --internal-error           500 internal_error a feldolgozó hívásokon
-//   --refund                   az átírás upstream-hibával zárul → automatikus visszaírás
-//   --fail-chat-after N        N sikeres chat-hívás után 503 upstream_unavailable (részleges hiba)
-//   --deny                     a device flow-t a „user” elutasítja (access_denied)
-//   --topup-available          van online feltöltés (alap: nincs → 409 / „Írj nekünk”)
-//   --notice "szöveg" [--notice-level info|warning|critical]
+//   --rate-limited             429 rate_limited (Retry-After: 30) on the processing calls
+//   --spend-limit              429 spend_limit_reached on the processing calls
+//   --internal-error           500 internal_error on the processing calls
+//   --refund                   the transcription ends with an upstream error: automatic write-back
+//   --fail-chat-after N        503 upstream_unavailable after N successful chat calls (partial failure)
+//   --deny                     the "user" denies the device flow (access_denied)
+//   --topup-available          online top-up exists (default: none: 409 / "Write to us")
+//   --notice "text" [--notice-level info|warning|critical]
 //   --trial awaiting_email|awaiting_card|granted|denied_card_used|unavailable
-//   --soniox-key KEY           STT passthrough a valódi Sonioxra (enélkül KANNÁZOTT átirat)
-//   --llm http://localhost:1234/v1 | off   LLM passthrough (nem elérhető / off → kannázott)
+//   --soniox-key KEY           STT passthrough to the real Soniox (without it: CANNED transcript)
+//   --llm http://localhost:1234/v1 | off   LLM passthrough (unreachable / off: canned)
 //
-// Várólista (POST /v1/waitlist): 202; eldobható domain (pl. @mailinator.com) → 400 disposable_email;
-// a --rate-limited / --maintenance / --upstream-down / --internal-error kapcsolók itt is hatnak.
+// Waitlist (POST /v1/waitlist): 202; a disposable domain (e.g. @mailinator.com) gets 400
+// disposable_email; the --rate-limited / --maintenance / --upstream-down / --internal-error
+// switches apply here too.
 //
-// Device-flow jóváhagyás: a verification_uri_complete (http://127.0.0.1:PORT/device?code=XXXX-XXXX)
-// böngészőben „Jóváhagyás” / „Elutasítás” gombot mutat; --auto-approve mellett azonnal jóváhagyott.
-// Teszt-kulcs: tk_test_123 (X-Tanara-Client nélkül is megy).
+// Device-flow approval: verification_uri_complete (http://127.0.0.1:PORT/device?code=XXXX-XXXX)
+// shows "Approve" / "Deny" buttons in a browser; with --auto-approve it is approved at once.
+// Test key: tk_test_123 (works without X-Tanara-Client too).
 import http from 'node:http';
 import https from 'node:https';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -49,7 +50,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const USD = 1_000_000;                       // 1 USD = 1 000 000 micros
 const VAT_RATE = 0.27;
 
-// ---- kapcsolók (futás közben is állíthatók: POST /__mock/config) ------------------------
+// ---- switches (can also be set at run time: POST /__mock/config) ----
 const cfg = {
   vat_mode: opt('--vat-mode', 'gross'),
   low_threshold: Math.round(+opt('--low-threshold', 2) * USD),
@@ -74,10 +75,10 @@ const cfg = {
 const SONIOX_KEY = opt('--soniox-key', process.env.MOCK_SONIOX_KEY || '');
 const LLM_UPSTREAM = opt('--llm', process.env.MOCK_LLM_UPSTREAM || 'http://localhost:1234/v1');
 
-// ---- állapot (memória) --------------------------------------------------------------
+// ---- state (memory) ----
 const TERMS = { accepted: '2026-06-01', current: '2026-06-01', upcoming: '2026-11-01' };
 const state = {
-  balance: Math.round(+opt('--balance', 10) * USD),   // NETTÓ micros
+  balance: Math.round(+opt('--balance', 10) * USD),   // NET micros
   low_since: null,
   terms_accepted: TERMS.accepted,
   devices: new Map(),        // device_code -> {user_code, approved, denied, cancelled, api_key, created, info}
@@ -85,13 +86,13 @@ const state = {
   files: new Map(),          // id -> {size, duration_ms, upstream_id?}
   transcriptions: new Map(), // id -> {status, file_id, model, diarization, created, charge, refunded, content_deleted, job_id, upstream_id?}
   usage: [],                 // {at, kind, model, amount, job_id, summary_mode, request_id, refunded}
-  chat_ok: 0,                // sikeres chat-hívások száma (--fail-chat-after)
-  waitlist: [],              // POST /v1/waitlist feliratkozások (MKT-02)
+  chat_ok: 0,                // number of successful chat calls (--fail-chat-after)
+  waitlist: [],              // POST /v1/waitlist sign-ups
 };
 state.keys.set('tk_test_123', { email: 'test@example.com', key_id: 'key_test' });
 
-// ---- katalógus (NETTÓ árak; kimenetkor a vat_mode szerint) --------------------------------
-// STT: óradíj. LLM: 1M tokenre (a gateway-szorzó már benne).
+// ---- catalog (NET prices; converted on output per vat_mode) ----
+// STT: hourly rate. LLM: per 1M tokens (the gateway multiplier is already included).
 const MODELS = [
   model('tanara/stt-accurate', 'stt', 'accurate', true, false, 'Pontos átírás', { per_hour: 0.315 }, { diarization: true }),
   model('tanara/stt-fast', 'stt', 'fast', true, false, 'Gyors átírás', { per_hour: 0.063 }, { diarization: false, hidden_for_languages: ['hu'] }),
@@ -112,8 +113,8 @@ const findModel = id => MODELS.find(m => m.id === id);
 const sttModel = id => { const m = findModel(id); return m && m.kind === 'stt' ? m : findModel('tanara/stt-accurate'); };
 const llmModel = id => { const m = findModel(id); return m && m.kind === 'llm' ? m : findModel('tanara/summary-accurate'); };
 
-// ---- pénz ------------------------------------------------------------------------------
-const disp = net => cfg.vat_mode === 'reverse_charge' ? net : Math.round(net * (1 + VAT_RATE));  // nettó → megjelenített
+// ---- money ----
+const disp = net => cfg.vat_mode === 'reverse_charge' ? net : Math.round(net * (1 + VAT_RATE));  // net to displayed
 const money = net => ({ amount_micros: disp(net), currency: 'USD' });
 const usdNet = x => Math.round(x * USD);
 function modelJson(m) {
@@ -130,7 +131,7 @@ function bookBalanceChange() {
   if (lowBalance()) { if (!state.low_since) state.low_since = new Date().toISOString(); } else state.low_since = null;
 }
 
-// ---- szövegek (Accept-Language) -----------------------------------------------------------
+// ---- texts (Accept-Language) ----
 const MSG = {
   unauthorized: ['Hiányzó, érvénytelen vagy visszavont API-kulcs.', 'Missing, invalid or revoked API key.'],
   account_suspended: ['A fiók fel van függesztve.', 'The account is suspended.'],
@@ -156,7 +157,7 @@ const MSG = {
 const lang = req => ((req.headers['accept-language'] || 'en').toLowerCase().startsWith('hu') ? 0 : 1);
 const text = (req, code) => (MSG[code] || [code, code])[lang(req)];
 
-// ---- segédek -------------------------------------------------------------------------------
+// ---- helpers ----
 const semverLt = (a, b) => { const p = s => String(s).split('.').map(n => parseInt(n, 10) || 0); const [x, y] = [p(a), p(b)];
   for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const newRequestId = () => 'req_' + randomBytes(5).toString('hex').toUpperCase();
@@ -184,7 +185,7 @@ const auth = req => { const h = req.headers.authorization || ''; const k = h.sta
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const fmt = net => `$${(disp(net) / USD).toFixed(4)}`;
 
-// A feldolgozó hívásokat (terhelés, becslés, feltöltés-link) blokkoló hibák egy helyen.
+// Errors that block the processing calls (charge, estimate, top-up link) in one place.
 function processingBlock(req, res, { topup = false } = {}) {
   if (cfg.suspended && !(topup && cfg.suspended === 'payment_dispute'))
     return err(req, res, 403, 'account_suspended', { suspension_reason: cfg.suspended }), true;
@@ -210,16 +211,16 @@ function insufficient(req, res, neededNet, basis) {
     topup_url: cfg.topup_available ? `${BASE}/dashboard/topup` : null, contact_url: `${BASE}/contact` });
 }
 
-// Felvételi hossz: ffprobe, ha van; különben méret alapú becslés (~128 kbps).
+// Recording length: ffprobe if available; otherwise a size-based estimate (~128 kbps).
 function measureDurationMs(buf) {
   const p = join(tmpdir(), `tanara-mock-${randomUUID()}.bin`);
   try { writeFileSync(p, buf);
     const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', p], { timeout: 5000 }).toString().trim();
     const s = parseFloat(out); if (s > 0) return Math.round(s * 1000);
-  } catch { /* nincs ffprobe / nem audio */ } finally { try { unlinkSync(p); } catch {} }
+  } catch { /* no ffprobe / not audio */ } finally { try { unlinkSync(p); } catch {} }
   return Math.max(1000, Math.round(buf.length / 16));
 }
-// A multipart törzsből a fájlrész kiemelése (egyszerű, egy fájlrészes feltöltésre).
+// Extracts the file part from the multipart body (simple, for a single-file upload).
 function multipartFile(buf, ctype) {
   const m = /boundary=(?:"([^"]+)"|([^;]+))/.exec(ctype || ''); if (!m) return buf;
   const b = Buffer.from('--' + (m[1] || m[2]));
@@ -228,17 +229,17 @@ function multipartFile(buf, ctype) {
   const end = buf.indexOf(b, hdrEnd); return buf.subarray(hdrEnd + 4, end > 0 ? end - 2 : buf.length);
 }
 
-// ---- kannázott átirat (magyar, diarizált, ~20 s) ------------------------------------------
+// ---- canned transcript (Hungarian, diarized, ~20 s) ----
 function cannedTokens(diarization) {
   const words = [['Sziasztok,', 1], ['kezdjük', 1], ['a', 1], ['megbeszélést.', 1], ['Rendben,', 2], ['nálam', 2], ['a', 2], ['Muzeo', 2],
     ['migráció', 2], ['a', 2], ['téma.', 2], ['Döntés:', 1], ['jövő', 1], ['héten', 1], ['szállítunk.', 1], ['Teendő:', 2], ['Dompa', 2], ['megírja', 2], ['a', 2], ['tesztet.', 2]];
   let t = 400; return words.map(([w, sp]) => { const d = 300 + w.length * 45; const tok = { text: (t > 400 ? ' ' : '') + w, start_ms: t, end_ms: t + d, confidence: 0.95 };
     if (diarization) tok.speaker = sp; t += d + 120; return tok; });
 }
-// Kannázott LLM-válasz a kérés alakja szerint (a kliens parserei: JSON / téma-markdown / elemzés / reduce).
+// Canned LLM reply by the request's shape (the client's parsers: JSON / topic markdown / analysis / reduce).
 function cannedCompletion(b, summaryMode) {
   const user = (b.messages || []).filter(m => m.role === 'user').map(m => m.content).join('\n');
-  // Gyors összefoglaló, hosszú megbeszélés: részenkénti jegyzet ("PART k of n" a rész elején).
+  // Quick summary, long meeting: a note per part ("PART k of n" at the start of the part).
   const part = /^PART (\d+) of (\d+)/m.exec(user);
   if (part)
     return `TOPICS\n### MuseumPlus migráció (${part[1]}. rész)\n- A migráció állapotát egyeztették.\n\nDECISIONS\n- Jövő héten szállítunk.\n\nOPEN\n- none\n\nACTIONS\n- Teszt megírása — Bence`;
@@ -255,7 +256,7 @@ function cannedCompletion(b, summaryMode) {
     actionItems: [{ text: 'Teszt megírása', owner: 'Dompa', due: '' }], participants: ['Ádám', 'Tamás'] });
 }
 
-// ---- upstream (Soniox / LLM) segéd --------------------------------------------------------
+// ---- upstream (Soniox / LLM) helper ----
 function upstream(method, url, headers, body, timeout = 120000) {
   return new Promise((resolve, reject) => {
     const u = new URL(url); const lib = u.protocol === 'https:' ? https : http;
@@ -276,7 +277,7 @@ async function llmUpstreamAvailable() {
 }
 function resolveLlm(id) { const r = RESOLVE[id] || id; return r.startsWith('google/gemma') ? r : 'google/gemma-4-12b'; }
 
-// ---- becslés -----------------------------------------------------------------------------
+// ---- estimate ----
 function estimate(b) {
   const breakdown = []; let exact = 0, llmEst = 0, required = 0, spent = 0;
   const dur = Math.max(0, +b.duration_ms || 0);
@@ -288,13 +289,13 @@ function estimate(b) {
   if (b.task === 'summarize' || b.task === 'both') {
     const m = llmModel(b.llm_model); const mode = b.summary_mode || 'quick';
     let groups = Array.isArray(b.llm_calls) ? b.llm_calls : null;
-    if (!groups) {  // statisztika: átirat-karakterek (vagy ~900 karakter/perc) és a mód
+    if (!groups) {  // statistics: transcript characters (or ~900 characters/minute) and the mode
       const chars = +b.transcript_chars || Math.round(dur / 60000 * 900) || 2000;
       groups = mode === 'complex' ? [{ count: 1, input_chars: chars, max_tokens: 4000 }, { count: null, input_chars: chars, max_tokens: 4000 }, { count: 1, input_chars: 4000, max_tokens: 2000 }]
                                   : [{ count: 1, input_chars: chars, max_tokens: 8000 }];
     }
     for (const g of groups) {
-      const n = g.count === null || g.count === undefined ? 5 : Math.max(0, +g.count);   // „statisztika”: 5 téma
+      const n = g.count === null || g.count === undefined ? 5 : Math.max(0, +g.count);   // "statistics": 5 topics
       const inTok = Math.ceil((+g.input_chars || 0) / 4), maxT = Math.max(1, +g.max_tokens || 1);
       const perCall = llmCost(m, inTok, Math.round(Math.min(maxT, 900))), hold = llmCost(m, inTok, maxT);
       for (let i = 0; i < n; i++) { required = Math.max(required, spent + hold); spent += perCall; llmEst += perCall; }
@@ -336,7 +337,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function route(req, res, url, path) {
-  // --- mock-vezérlés (nem része a szerződésnek) ---
+  // --- mock control (not part of the contract) ---
   if (path === '/__mock/config' && req.method === 'POST') {
     const b = parseJson(await readBody(req)) || {};
     for (const [k, v] of Object.entries(b)) {
@@ -354,19 +355,19 @@ async function route(req, res, url, path) {
       transcriptions: [...state.transcriptions.entries()].map(([id, t]) => ({ id, ...t })), usage: state.usage, waitlist: state.waitlist,
       devices: [...state.devices.values()].map(d => ({ user_code: d.user_code, approved: d.approved, denied: d.denied, cancelled: d.cancelled, info: d.info })) });
 
-  // --- böngészős oldalak (a mock „webje”) ---
+  // --- browser pages (the mock's "web") ---
   if (path === '/device') return devicePage(req, res, url);
   if (path.startsWith('/dashboard') || path === '/contact' || path === '/support' || path.startsWith('/terms/') || path === '/status' || path === '/download')
     return webPage(req, res, url, path);
   if (req.method === 'POST' && path === '/topup') { state.balance += usdNet(10 / (cfg.vat_mode === 'gross' ? 1 + VAT_RATE : 1)); bookBalanceChange();
     res.writeHead(302, { location: '/dashboard' }); return res.end(); }
 
-  // --- min-client kapu (csak ha a kliens küld verziót) ---
+  // --- min-client gate (only if the client sends a version) ---
   const cv = (req.headers['x-tanara-client'] || '').split('/')[0];
   if (cv && semverLt(cv, cfg.min_client))
     return err(req, res, 426, 'client_too_old', { min_client: cfg.min_client, download_url: `${BASE}/download` });
 
-  // --- várólista („Hamarosan” panel) — auth nélkül ---
+  // --- waitlist ("Coming soon" panel), no auth ---
   if (req.method === 'POST' && path === '/v1/waitlist') return waitlist(req, res);
 
   // --- device flow ---
@@ -385,7 +386,7 @@ async function route(req, res, url, path) {
     if (d.denied || d.cancelled) return err(req, res, 400, 'access_denied');
     if (Date.now() - d.created > 600_000) return err(req, res, 400, 'expired_token');
     if (!d.approved) return err(req, res, 400, 'authorization_pending');
-    if (d.api_key) return err(req, res, 400, 'invalid_device_code');   // a kulcs csak egyszer látszik
+    if (d.api_key) return err(req, res, 400, 'invalid_device_code');   // the key is shown only once
     d.api_key = 'tk_' + randomBytes(12).toString('hex');
     const key_id = 'key_' + randomBytes(4).toString('hex');
     state.keys.set(d.api_key, { email: 'anna@example.com', key_id });
@@ -397,13 +398,13 @@ async function route(req, res, url, path) {
     return noContent(req, res);
   }
 
-  // --- innentől auth kell ---
+  // --- from here on auth is required ---
   const key = auth(req);
   if (!key) return err(req, res, 401, 'unauthorized');
 
   if (req.method === 'POST' && path === '/v1/auth/logout') { if (key !== 'tk_test_123') state.keys.delete(key); return noContent(req, res); }
 
-  // Követő hívások (futó feladat) — felfüggesztve és ÁSZF nélkül is mennek.
+  // Follow-up calls (a running job) also work when suspended and without terms.
   let mm;
   if (req.method === 'DELETE' && (mm = path.match(/^\/v1\/files\/([^/]+)$/))) return deleteFile(req, res, mm[1]);
   if (req.method === 'GET' && (mm = path.match(/^\/v1\/transcriptions\/([^/]+)$/))) return getTranscription(req, res, mm[1]);
@@ -421,7 +422,7 @@ async function route(req, res, url, path) {
     return json(req, res, 200, { terms: account(key).terms });
   }
 
-  // Fiók-szintű felfüggesztés (a követő hívások és a logout fent már kiszolgálva).
+  // Account-level suspension (the follow-up calls and logout above are already served).
   if (cfg.suspended && !(path === '/v1/account/topup-link' && cfg.suspended === 'payment_dispute'))
     return err(req, res, 403, 'account_suspended', { suspension_reason: cfg.suspended });
 
@@ -454,7 +455,7 @@ async function route(req, res, url, path) {
   return err(req, res, 404, 'not_found');
 }
 
-// ---- várólista -----------------------------------------------------------------------------
+// ---- waitlist ----
 const DISPOSABLE = ['mailinator.com', 'guerrillamail.com', '10minutemail.com', 'yopmail.com', 'tempmail.com'];
 async function waitlist(req, res) {
   if (cfg.rate_limited) return err(req, res, 429, 'rate_limited', { retry_after: 30 }, { 'retry-after': '30' });
@@ -536,7 +537,7 @@ async function getTranscription(req, res, id) {
       const age = Date.now() - t.created;
       t.status = age < 1200 ? 'queued' : age < 2500 ? 'processing' : t.refund_fail ? 'error' : 'completed';
     }
-    if (t.status === 'error' && !t.refunded) {   // automatikus visszaírás — ugyanebben a válaszban látszik
+    if (t.status === 'error' && !t.refunded) {   // automatic write-back, visible in the same reply
       t.error_code = 'upstream_error'; t.refunded = true; state.balance += t.charge; bookBalanceChange();
       const u = state.usage.find(x => x.charge_id === t.charge_id); if (u) u.refunded = true;
       log(`  ↳ visszaírás ${fmt(t.charge)} (${id}) → egyenleg ${fmt(state.balance)}`);
@@ -586,7 +587,7 @@ async function chat(req, res) {
       const up = await upstream('POST', LLM_UPSTREAM + '/chat/completions', { 'content-type': 'application/json', 'content-length': buf.length, authorization: 'Bearer lm-studio' }, buf, 600000);
       const u = JSON.parse(up.body.toString());
       if (up.status < 300) { content = u.choices?.[0]?.message?.content ?? ''; usage = u.usage; }
-    } catch { /* kannázottra esik vissza */ }
+    } catch { /* falls back to canned */ }
   }
   if (content === undefined) { content = cannedCompletion(b, summaryMode); usage = { prompt_tokens: promptTok, completion_tokens: Math.ceil(content.length / 4) }; }
   usage = { prompt_tokens: usage?.prompt_tokens ?? promptTok, completion_tokens: usage?.completion_tokens ?? 100 };
@@ -601,7 +602,7 @@ async function chat(req, res) {
     usage: { ...usage, tanara_charge: chargeInfo(charge_id, c, jobId) } }, chargeHeaders(c));
 }
 
-// ---- böngészős oldalak -------------------------------------------------------------------
+// ---- browser pages ----
 const page = (res, code, title, body) => { res.writeHead(code, { 'content-type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><meta charset=utf-8><title>${title}</title><body style="font-family:sans-serif;max-width:720px;margin:2em auto">${body}</body>`); };
 async function devicePage(req, res, url) {

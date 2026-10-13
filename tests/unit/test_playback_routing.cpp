@@ -1,7 +1,5 @@
-//
-// Tanara — PlaybackRouting unit-tesztek: a `pw-dump` JSON-jából „melyik app melyik
-// kimenetre szól”, és az eszköz-halmaz kulcsai (hot-plug jel). Tiszta parser, I/O nélkül.
-//
+// Tanara: PlaybackRouting unit tests: "which app plays to which output" from `pw-dump`'s
+// JSON, and the device set's keys (hot-plug signal). A pure parser, without I/O.
 #include <QtTest>
 
 #include "tanara/audio/PlaybackRouting.h"
@@ -10,8 +8,8 @@ using namespace tanara;
 
 namespace {
 
-// Két kimenet, egy mikrofon; a Teams a headsetre, a Firefox a hangfalra szól (a Firefox
-// streamje szüneteltetve). Egy stream csatornánként külön linket kap.
+// Two outputs, one microphone; Teams plays to the headset, Firefox to the speakers (Firefox's
+// stream is paused). A stream gets a separate link per channel.
 const char* kDump = R"JSON([
  {"id": 40, "type": "PipeWire:Interface:Node", "info": {"state": "running", "props": {
     "media.class": "Audio/Sink", "node.name": "alsa_output.usb-headset",
@@ -46,7 +44,7 @@ private slots:
     void parsesRoutesOncePerAppAndSink()
     {
         const AudioGraphSnapshot snap = detail::parsePwDumpGraph(kDump);
-        QCOMPARE(snap.routes.size(), 2);   // a két csatorna-link egy útvonal
+        QCOMPARE(snap.routes.size(), 2);   // the two channel links are one route
         bool teams = false, firefox = false;
         for (const PlaybackRoute& r : snap.routes) {
             if (r.appName == QStringLiteral("Microsoft Teams")) {
@@ -62,7 +60,7 @@ private slots:
         QVERIFY(teams && firefox);
     }
 
-    // A miniaudio a kimenet monitorját „Monitor of <leírás>” néven adja.
+    // miniaudio gives the output's monitor the name "Monitor of <description>".
     void appForOutputMatchesMonitorName()
     {
         const AudioGraphSnapshot snap = detail::parsePwDumpGraph(kDump);
@@ -84,7 +82,7 @@ private slots:
         QVERIFY(snap.outputForApp(QStringLiteral("Zoom")).isEmpty());
     }
 
-    // Az eszköz-kulcsok a kimenetek és bemenetek; a streamek nem számítanak eszköznek.
+    // The device keys are the outputs and inputs; streams do not count as devices.
     void deviceKeysChangeOnHotplug()
     {
         const AudioGraphSnapshot a = detail::parsePwDumpGraph(kDump);

@@ -1,13 +1,11 @@
 #pragma once
+// RecorderSingleton: ONE recorder instance per machine.
 //
-// RecorderSingleton — EGYETLEN felvevő-példány gépenként.
-//
-// Aki felvevőt mutat (az elemző a felvevő-ablakával, vagy a `tanara --record`
-// folyamat), az figyel egy lokális socketen. Minden újabb `tanara --record …` hívás
-// (figyelő, tálca-katt, notification-gomb) ELŐBB megpróbálja átadni az argumentumait
-// a futó példánynak — ha sikerül, kilép. Így nem nyílik több felvevő, és a tálcáról
-// mindig az jön elő, ami épp felvesz.
-//
+// Whoever shows a recorder (the analyzer with its recorder window, or the `tanara --record`
+// process) listens on a local socket. Every newer `tanara --record ...` call (watcher, tray
+// click, notification button) FIRST tries to pass its arguments to the running instance; if
+// that works, it exits. So no more than one recorder opens, and the tray always brings up the
+// one that is recording.
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -19,34 +17,34 @@ namespace tanara_gui {
 class RecorderSingleton : public QObject {
     Q_OBJECT
 public:
-    // "tanara-recorder-<uid>"; TANARA_HOME mellett "-<mappa-hash>" utótaggal (elszigetelés).
+    // "tanara-recorder-<uid>"; with TANARA_HOME a "-<folder hash>" suffix (isolation).
     static QString serverName();
 
-    // Átadja az args-ot egy futó példánynak. true = átadva (a hívó kiléphet).
+    // Passes args to a running instance. true = delivered (the caller may exit).
     static bool forwardToExisting(const QStringList& args, int timeoutMs = 1500);
 
     explicit RecorderSingleton(QObject* parent = nullptr);
     ~RecorderSingleton() override;
 
-    // false, ha a nevet másik ÉLŐ példány fogja (stale socket-fájlt magától eltakarít).
+    // false if another LIVE instance holds the name (a stale socket file is cleaned up automatically).
     bool listen();
     bool isListening() const;
     void close();
 
 signals:
-    void requestReceived(QStringList args);   // a továbbított `--record …` argumentumok
+    void requestReceived(QStringList args);   // the forwarded `--record ...` arguments
 
 private:
     QLocalServer* m_server = nullptr;
 };
 
-// A `--record` argumentumok közös értelmezése (main.cpp felvevő-mód + továbbított kérés).
+// Shared parsing of the `--record` arguments (main.cpp recorder mode + forwarded request).
 struct RecorderArgs {
     QString title, context;
-    QString app;           // --app: az észlelt hívás-app (az automatikus névhez)
+    QString app;           // --app: the detected call app (for the automatic name)
     QList<int> deviceIdx;
     bool noStart = false;
-    bool stop = false;     // --stop: a futó felvétel leállítása (a tálca-menü küldi)
+    bool stop = false;     // --stop: stop the running recording (sent by the tray menu)
 };
 RecorderArgs parseRecorderArgs(const QStringList& args);
 

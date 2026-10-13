@@ -1,16 +1,13 @@
+// Tanara: ReadinessModel (gating logic) unit tests.
 //
-// Tanara — ReadinessModel (kapuzás-logika) unit-tesztek.
+// ReadinessModel is the ONE source of truth for "can a workflow step run, and if not,
+// EXACTLY what is missing?". The GUI's button enabling AND AppController's guards both use it.
+// Here we check the Transcribe/Summarize gates: whether a missing meeting state (no active
+// track / no transcript) or provider config (a missing required field / secret) blocks correctly.
 //
-// A ReadinessModel az EGY igazságforrás arra, hogy „futtatható-e egy
-// munkafolyamat-lépés, és ha nem, PONTOSAN mi hiányzik?". A GUI gomb-engedélyezés
-// ÉS az AppController guardjai is ezt használják. Itt a Transcribe/Summarize
-// kapukat ellenőrizzük: meeting-állapot (nincs aktív sáv / nincs átirat) vagy
-// provider-konfig (hiányzó kötelező mező / titok) hiánya blokkol-e helyesen.
-//
-// FONTOS: a tests/unit/*.cpp fájlok KÜLÖN teszt-exe-be fordulnak (lásd
-// tests/CMakeLists.txt GLOB), mindegyik hozza a SAJÁT main-jét. A core (tanara_core)
-// NEM linkel Qt Widgetset, ezért itt QTEST_GUILESS_MAIN (nincs QApplication).
-//
+// IMPORTANT: the tests/unit/*.cpp files compile into SEPARATE test exes (see
+// tests/CMakeLists.txt GLOB), each bringing its OWN main. Core (tanara_core) does NOT link Qt
+// Widgets, hence QTEST_GUILESS_MAIN here (no QApplication).
 #include <QtTest>
 #include <QObject>
 #include <QDir>
@@ -26,9 +23,8 @@ using namespace tanara;
 
 namespace {
 
-// Egy AppSettings a beépített default providerekkel (soniox / openai-compat),
-// úgy feltöltve, hogy a kötelező NEM-titkos mezők (pl. az LLM baseUrl) megvannak.
-// Az egyes tesztek ebből csak azt rontják el, amit vizsgálnak.
+// An AppSettings with the built-in default providers (soniox / openai-compat), filled so that
+// the required NON-secret fields (e.g. the LLM baseUrl) are present. Each test breaks only what it examines.
 AppSettings makeSettings()
 {
     AppSettings s;
@@ -50,7 +46,7 @@ AppSettings makeSettings()
     return s;
 }
 
-// Egy meeting EGY aktív hangsávval (a felvétel megtörtént).
+// A meeting with ONE active audio track (the recording happened).
 Meeting meetingWithActiveTrack()
 {
     Meeting m;
@@ -65,21 +61,21 @@ Meeting meetingWithActiveTrack()
     return m;
 }
 
-// SecretProbe, ami MINDEN titokra false-t ad (nincs egyetlen kulcs sem beállítva).
+// A SecretProbe that returns false for EVERY secret (no key is set at all).
 ReadinessModel::SecretProbe noSecrets()
 {
     return [](const QString&) { return false; };
 }
 
-// SecretProbe, ami CSAK a felsorolt kulcsokra ad true-t.
+// A SecretProbe that returns true ONLY for the listed keys.
 ReadinessModel::SecretProbe secretsPresent(QStringList keys)
 {
     return [keys](const QString& k) { return keys.contains(k); };
 }
 
-// Egy érvényes (nem-üres) transcript.tokens.json kiírása a meeting mappájába,
-// az AppController writeTokensJson formátumában (root.tokens nem-üres tömb).
-// A folder paramétert a hívó egy QTemporaryDir-ből adja.
+// Writes a valid (non-empty) transcript.tokens.json into the meeting's folder, in
+// AppController's writeTokensJson format (root.tokens is a non-empty array).
+// The caller provides the folder parameter from a QTemporaryDir.
 void writeTranscriptFile(const QString& folder)
 {
     QFile f(QDir(folder).filePath(QStringLiteral("transcript.tokens.json")));
@@ -97,19 +93,18 @@ class ReadinessTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // A descriptorok (Soniox / OpenAI-compat) kötelező mezőihez kellenek a
-    // beépített providerek — minden teszt előtt biztosítjuk a regisztrációt
-    // (idempotens, lásd registerBuiltinProviders()).
+    // The descriptors' (Soniox / OpenAI-compat) required fields need the built-in providers: we
+    // ensure registration before every test (idempotent, see registerBuiltinProviders()).
     void initTestCase()
     {
         registerBuiltinProviders();
     }
 
-    // Transcribe blokkol, ha NINCS (aktív) hangsáv: a felvétel még nem történt meg.
-    // → meeting-állapot a blokkoló, a CTA a felvételre visz ("record").
+    // Transcribe blocks if there is NO (active) audio track: the recording has not happened yet.
+    // The meeting state is the blocker, the CTA leads to recording ("record").
     void transcribe_blocksWhenNoActiveTrack()
     {
-        // (a) teljesen üres tracks
+        // (a) completely empty tracks
         {
             ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m;
@@ -121,7 +116,7 @@ private slots:
             QCOMPARE(r.fixActionHint, QStringLiteral("record"));
         }
 
-        // (b) van sáv, de mind inaktív (felvétel után csendesnek ítélve)
+        // (b) there is a track, but all inactive (judged silent after the recording)
         {
             ReadinessModel model(makeSettings(), secretsPresent({ QStringLiteral("soniox.apiKey") }));
             Meeting m = meetingWithActiveTrack();
@@ -134,12 +129,12 @@ private slots:
         }
     }
 
-    // Transcribe blokkol, ha van aktív sáv, DE a kiválasztott STT (Soniox) kötelező
-    // titka (apiKey) hiányzik. → provider-konfig a blokkoló, a hiányzó mező az "apiKey".
+    // Transcribe blocks if there is an active track, BUT the chosen STT's (Soniox) required
+    // secret (apiKey) is missing. The provider config is the blocker, the missing field is "apiKey".
     void transcribe_blocksWhenSonioxKeyMissing()
     {
-        ReadinessModel model(makeSettings(), noSecrets());   // hasSecret mindig false
-        const Meeting m = meetingWithActiveTrack();          // van aktív sáv
+        ReadinessModel model(makeSettings(), noSecrets());   // hasSecret is always false
+        const Meeting m = meetingWithActiveTrack();          // there is an active track
 
         const ReadinessResult r = model.check(WorkflowStep::Transcribe, m);
         QVERIFY(!r.runnable);
@@ -148,7 +143,7 @@ private slots:
         QCOMPARE(r.missingFieldKey, QStringLiteral("apiKey"));
     }
 
-    // Transcribe FUTTATHATÓ, ha van aktív sáv ÉS a Soniox-kulcs be van állítva.
+    // Transcribe is RUNNABLE if there is an active track AND the Soniox key is set.
     void transcribe_runnableWithTrackAndKey()
     {
         ReadinessModel model(makeSettings(),
@@ -159,9 +154,9 @@ private slots:
         QVERIFY(r.runnable);
     }
 
-    // Summarize blokkol, ha NINCS átirat (a Transcribe még nem futott). A blokkoló
-    // meeting-állapot, a detail az átiratra utal. A meeting mappája üres (nincs
-    // transcript.tokens.json) ÉS hasTranscript == false.
+    // Summarize blocks if there is NO transcript (Transcribe has not run yet). The meeting state
+    // is the blocker, the detail refers to the transcript. The meeting's folder is empty (no
+    // transcript.tokens.json) AND hasTranscript == false.
     void summarize_blocksWhenNoTranscript()
     {
         QTemporaryDir dir;
@@ -171,7 +166,7 @@ private slots:
                              secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
-        m.folder        = dir.path();   // üres mappa → nincs átirat-fájl
+        m.folder        = dir.path();   // empty folder: no transcript file
         m.hasTranscript = false;
 
         const ReadinessResult r = model.check(WorkflowStep::Summarize, m);
@@ -180,9 +175,9 @@ private slots:
         QVERIFY(!r.detail.isEmpty());
     }
 
-    // Summarize blokkol, ha VAN átirat, DE a kiválasztott LLM (openai-compat)
-    // kötelező mezője (baseUrl, required) hiányzik. Ez a régen NEM-validált eset.
-    // → provider-konfig a blokkoló, providerId "openai-compat", a hiányzó mező a "baseUrl".
+    // Summarize blocks if there IS a transcript, BUT the chosen LLM's (openai-compat) required
+    // field (baseUrl) is missing. This is the case that used to be NOT validated.
+    // The provider config is the blocker, providerId "openai-compat", the missing field is "baseUrl".
     void summarize_blocksWhenLlmRequiredFieldMissing()
     {
         QTemporaryDir dir;
@@ -190,12 +185,12 @@ private slots:
         writeTranscriptFile(dir.path());
 
         AppSettings s = makeSettings();
-        s.llmConfigs[QStringLiteral("openai-compat")].baseUrl = QString();   // required mező üres
+        s.llmConfigs[QStringLiteral("openai-compat")].baseUrl = QString();   // the required field is empty
 
         ReadinessModel model(s, secretsPresent({ QStringLiteral("llm.apiKey") }));
 
         Meeting m = meetingWithActiveTrack();
-        m.folder        = dir.path();   // van transcript.tokens.json
+        m.folder        = dir.path();   // there is a transcript.tokens.json
         m.hasTranscript = true;
 
         const ReadinessResult r = model.check(WorkflowStep::Summarize, m);
@@ -205,9 +200,9 @@ private slots:
         QCOMPARE(r.missingFieldKey, QStringLiteral("baseUrl"));
     }
 
-    // Tanara Cloud (AuthMode::Login): a kulcs-mező nélküli provider bejelentkezés nélkül
-    // „Jelentkezz be a Tanara Cloudba” auth-blokkot ad (CTA: login:tanara-cloud); a login
-    // a descriptor loginSecretKey-e (tanara.cloud.apiKey) szerint dől el.
+    // Tanara Cloud (AuthMode::Login): a provider without a key field, when not signed in, gives
+    // a "Sign in to Tanara Cloud" auth block (CTA: login:tanara-cloud); the sign-in is decided by
+    // the descriptor's loginSecretKey (tanara.cloud.apiKey).
     void cloud_blocksUntilLoggedIn()
     {
         registerCloudProviders();
@@ -225,7 +220,7 @@ private slots:
 
         ReadinessModel in(s, secretsPresent({ QStringLiteral("tanara.cloud.apiKey") }));
         QVERIFY(in.check(WorkflowStep::Transcribe, m).runnable);
-        // A régi "<id>.token" konvenció a cloudnál nem számít bejelentkezésnek.
+        // The old "<id>.token" convention does not count as a sign-in for the cloud.
         ReadinessModel legacy(s, secretsPresent({ QStringLiteral("tanara-cloud.token") }));
         QVERIFY(!legacy.check(WorkflowStep::Transcribe, m).runnable);
     }

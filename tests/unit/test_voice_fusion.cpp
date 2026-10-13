@@ -1,9 +1,7 @@
-//
-// Több modelles beágyazás: EmbeddingSet + fusion (fuse / averageCosine), a modellenkénti
-// megszólalás-cache (transcript.embeddings.bin v2; a v1 eldobódik), és — ha a CAM++ modellfájl
-// megvan — a valódi több modelles embedder egyetlen dekódolással. Valódi adatot nem olvas;
-// a modellfájlt csak olvassa (TANARA_TEST_VOICE_MODEL, különben ~/.tanara/models/...).
-//
+// Multi-model embedding: EmbeddingSet + fusion (fuse / averageCosine), the per-model
+// utterance cache (transcript.embeddings.bin v2; v1 is dropped), and, if the CAM++ model file
+// exists, the real multi-model embedder with a single decode. It reads no real data; it only
+// reads the model file (TANARA_TEST_VOICE_MODEL, otherwise ~/.tanara/models/...).
 #include <QtTest>
 #include <QDataStream>
 #include <QRandomGenerator>
@@ -32,7 +30,7 @@ double cosine(const QVector<float>& a, const QVector<float>& b)
     return VoiceprintStore::cosineSimilarity(a, b);
 }
 
-// 16 kHz mono s16 WAV (zajos, változó hangmagasságú jel — a modellnek „beszédszerű”).
+// 16 kHz mono s16 WAV (a noisy, varying-pitch signal: "speech-like" to the model).
 bool writeWav(const QString& path, int seconds)
 {
     const int rate = 16000, n = rate * seconds;
@@ -63,7 +61,7 @@ QString campplusModel()
 {
     const QString env = qEnvironmentVariable("TANARA_TEST_VOICE_MODEL");
     if (!env.isEmpty()) return env;
-    // A felhasználó modellfájlja (csak olvasva) — a TANARA_HOME-tól függetlenül a valódi home.
+    // The user's model file (read-only): the real home, independent of TANARA_HOME.
     return QDir::home().filePath(QStringLiteral(".tanara/models/campplus_sv_zh_en_16k.onnx"));
 }
 
@@ -75,13 +73,13 @@ private slots:
     void fuse_cosineIsMeanOfPerModelCosines()
     {
         QRandomGenerator rng(42);
-        const QStringList ids{"b", "a", "c"};   // a sorrend nem számít (ábécérend)
+        const QStringList ids{"b", "a", "c"};   // the order does not matter (alphabetical)
         for (int round = 0; round < 50; ++round) {
             EmbeddingSet x, y;
             x["a"] = randomVec(rng, 192); y["a"] = randomVec(rng, 192);
             x["b"] = randomVec(rng, 256); y["b"] = randomVec(rng, 256);
             x["c"] = randomVec(rng, 512); y["c"] = randomVec(rng, 512);
-            // Közelebbi párok is (ne csak ~0 cosine-ok).
+            // Closer pairs too (not only ~0 cosines).
             if (round % 2) for (float& v : y["b"]) v = v * 0.2f + 1.0f;
             if (round % 2) for (float& v : x["b"]) v = v * 0.2f + 1.0f;
             const QVector<float> fx = fusion::fuse(x, ids), fy = fusion::fuse(y, ids);
@@ -89,7 +87,7 @@ private slots:
             const double expected = (cosine(x["a"], y["a"]) + cosine(x["b"], y["b"]) + cosine(x["c"], y["c"])) / 3.0;
             QVERIFY2(std::abs(cosine(fx, fy) - expected) < 1e-5,
                      qPrintable(QStringLiteral("%1 vs %2").arg(cosine(fx, fy)).arg(expected)));
-            // A fúziós vektor egységnyi hosszú; a nem kért modell nem számít.
+            // The fusion vector has unit length; a model that was not requested does not count.
             double norm = 0;
             for (float v : fx) norm += double(v) * v;
             QVERIFY(std::abs(norm - 1.0) < 1e-5);
@@ -113,10 +111,10 @@ private slots:
         EmbeddingSet s;
         s["a"] = {1, 0};
         s["b"] = {};
-        QVERIFY(fusion::fuse(s, {"a", "b"}).isEmpty());     // üres vektor = nincs
-        QVERIFY(fusion::fuse(s, {"a", "c"}).isEmpty());     // hiányzó kulcs
-        QVERIFY(fusion::fuse(s, {}).isEmpty());             // nincs kért modell
-        QVERIFY(!fusion::fuse(s, {"a"}).isEmpty());         // a többlet modell nem zavar
+        QVERIFY(fusion::fuse(s, {"a", "b"}).isEmpty());     // an empty vector = none
+        QVERIFY(fusion::fuse(s, {"a", "c"}).isEmpty());     // a missing key
+        QVERIFY(fusion::fuse(s, {}).isEmpty());             // no requested model
+        QVERIFY(!fusion::fuse(s, {"a"}).isEmpty());         // an extra model does not interfere
     }
 
     void averageCosine_partialAndNoOverlap()
@@ -125,12 +123,12 @@ private slots:
         a["m1"] = {1, 0}; a["m2"] = {0, 1};
         b["m1"] = {1, 0}; b["m3"] = {1, 0};
         int used = -1;
-        QCOMPARE(fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 1.0);   // csak m1 közös
+        QCOMPARE(fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 1.0);   // only m1 is common
         QCOMPARE(used, 1);
         b["m2"] = {1, 0};   // m2: cosine 0
         QCOMPARE(fusion::averageCosine(a, b, {"m1", "m2", "m3"}, &used), 0.5);
         QCOMPARE(used, 2);
-        // Nincs közös modell → -1.
+        // No common model: -1.
         EmbeddingSet c;
         c["m9"] = {1, 0};
         QCOMPARE(fusion::averageCosine(a, c, {"m1", "m2", "m9"}, &used), -1.0);
@@ -145,7 +143,7 @@ private slots:
         c.fingerprint = QStringLiteral("fp1");
         QVERIFY(c.isEmpty());
         c.set("campplus", "u1", {1, 0, 0});
-        c.set("campplus", "u2", {});            // megpróbáltuk, nem sikerült
+        c.set("campplus", "u2", {});            // tried, did not succeed
         c.set("other", "u1", {0, 1, 0, 0});
         QVERIFY(!c.isEmpty());
         QVERIFY(c.has("campplus", "u2"));
@@ -153,7 +151,7 @@ private slots:
         QCOMPARE(c.missingFor("other", {"u1", "u2", "u3"}), QStringList({"u2", "u3"}));
         QCOMPARE(c.missingFor("nincs", {"u1"}), QStringList{"u1"});
         QCOMPARE(c.setFor("u1", {"campplus", "other", "nincs"}).keys(), QStringList({"campplus", "other"}));
-        QVERIFY(c.setFor("u2", {"campplus"}).isEmpty());   // az üres vektor nem kerül a halmazba
+        QVERIFY(c.setFor("u2", {"campplus"}).isEmpty());   // the empty vector does not go into the set
         QVERIFY(c.save(dir.path()));
 
         const UtteranceEmbeddingCache back = UtteranceEmbeddingCache::load(dir.path(), "fp1");
@@ -163,7 +161,7 @@ private slots:
         QCOMPARE(back.vectors("other").value("u1"), (QVector<float>{0, 1, 0, 0}));
         QVERIFY(back.vectors("nincs").isEmpty());
 
-        // Más átirat → üres cache.
+        // Another transcript: an empty cache.
         QVERIFY(UtteranceEmbeddingCache::load(dir.path(), "fp2").isEmpty());
         UtteranceEmbeddingCache::remove(dir.path());
         QVERIFY(!QFile::exists(UtteranceEmbeddingCache::filePath(dir.path())));
@@ -188,7 +186,7 @@ private slots:
         QCOMPARE(c.missingFor("campplus", {"u1"}), QStringList{"u1"});
     }
 
-    // Az alap embedAll: az egymodelles (hamis) embedder az alapmodell kulcsa alatt ad.
+    // The base embedAll: the single-model (fake) embedder gives under the default model's key.
     void defaultEmbedAll_mapsToDefaultModel()
     {
         struct One : IUtteranceEmbedder {
@@ -201,8 +199,8 @@ private slots:
         QVERIFY(one.embedAll(0, 1000, {"other"}).isEmpty());
     }
 
-    // Valódi ONNX: két modell-bejegyzés ugyanarra a fájlra → egy dekódolásból mindkettő, és a
-    // két vektor azonos. A hiányzó fájlú modell kulcsa nincs az eredményben.
+    // Real ONNX: two model entries for the same file give both from one decode, and the two
+    // vectors are identical. A model with a missing file has no key in the result.
     void realModel_multiModelOneDecode()
     {
         const QString model = campplusModel();
@@ -220,12 +218,12 @@ private slots:
         QCOMPARE(s.keys(), QStringList({"a", "b"}));
         QCOMPARE(s.value("a").size(), 192);
         QVERIFY(cosine(s.value("a"), s.value("b")) > 0.9999);
-        // Csak a kért modellek; fél mp alatti szelet → üres vektor, de a kulcs ott van.
+        // Only the requested models; a slice under half a second gives an empty vector, but the key is there.
         QCOMPARE(emb->embedAll(500, 3500, {"b"}).keys(), QStringList{"b"});
         const EmbeddingSet tiny = emb->embedAll(0, 200, {"a"});
         QVERIFY(tiny.contains("a") && tiny.value("a").isEmpty());
 
-        // Az egymodelles gyár az alapmodell kulcsa alatt ugyanazt adja.
+        // The single-model factory gives the same under the default model's key.
         auto single = voiceUtteranceEmbedderFactory(model)();
         QVERIFY(single->open(wav));
         QVERIFY(cosine(single->embed(500, 3500), s.value("a")) > 0.9999);

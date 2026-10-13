@@ -1,12 +1,10 @@
+// Tanara Cloud: integration test against mock-gateway 1.2.0 (tests/mock-gateway/mock-gateway.mjs).
 //
-// Tanara Cloud — integrációs teszt a mock-gateway 1.2.0 ellen (tests/mock-gateway/mock-gateway.mjs).
-//
-// A teszt elindítja a mockot (node, függőség nélkül) egy szabad porton, kannázott STT/LLM-mel,
-// és végigmegy a kliens gateway-útjain: várólista, device flow, fiók, katalógus, becslés,
-// ÁSZF-elfogadás, feltöltés-link, hibaállapotok (402/403/426/429/503), valamint a meglévő
-// SonioxProvider / OpenAiCompatibleProvider a gateway-configgal (fejlécek, terhelés, visszaírás).
-// Node nélkül a teszt kihagyva (QSKIP).
-//
+// The test starts the mock (node, no dependencies) on a free port, with canned STT/LLM, and
+// walks through the client's gateway paths: waitlist, device flow, account, catalog, estimate,
+// terms acceptance, top-up link, error states (402/403/426/429/503), and the existing
+// SonioxProvider / OpenAiCompatibleProvider with the gateway config (headers, charge, write-back).
+// Without node the test is skipped (QSKIP).
 #include <QtTest>
 #include <QFile>
 #include <QJsonArray>
@@ -91,7 +89,7 @@ void TestCloudGateway::initTestCase()
 
     m_keys = std::make_unique<KeyStore>(m_dir.filePath("secrets.json"));
     m_acc = std::make_unique<CloudAccount>(m_keys.get(), m_dir.path());
-    m_acc->setBaseUrl(m_base + "/v1/");      // a /v1 és a záró / levágódik
+    m_acc->setBaseUrl(m_base + "/v1/");      // the /v1 and the trailing / are trimmed
     QCOMPARE(m_acc->apiBase(), m_base + "/v1");
     m_acc->setLanguage("hu");
 }
@@ -123,7 +121,7 @@ QJsonObject TestCloudGateway::mockState()
     return QJsonDocument::fromJson(rep->readAll()).object();
 }
 
-// Ugyanaz a gateway-config, amit az AppController a „tanara-cloud” providerhez épít.
+// The same gateway config that AppController builds for the "tanara-cloud" provider.
 ProviderConfig TestCloudGateway::gatewayConfig(const QString& model, QVector<HttpExchange>* log)
 {
     ProviderConfig cfg;
@@ -160,7 +158,7 @@ void TestCloudGateway::waitlist_acceptedAndErrors()
     QCOMPARE(e.kind, CloudErrorKind::DisposableEmail);
     QVERIFY(!e.requestId.isEmpty());
 
-    s.email = "anna@example.com"; s.consent = false;   // a szerver is elutasítja (a UI eleve nem küldi)
+    s.email = "anna@example.com"; s.consent = false;   // the server rejects it too (the UI never sends it anyway)
     m_acc->joinWaitlist(s);
     QVERIFY(bad.wait(5000));
     e = bad.takeFirst().first().value<CloudError>();
@@ -194,7 +192,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QCOMPARE(success.first().first().toString(), QStringLiteral("anna@example.com"));
     QVERIFY(m_acc->isLoggedIn());
     QVERIFY(m_keys->get(cloud::ApiKeySecret).startsWith("tk_"));
-    // A mock megkapta az eszköz adatait (a web-jóváhagyó ezt mutatja).
+    // The mock received the device's data (the web approver shows it).
     const QJsonObject info = mockState().value("devices").toArray().last().toObject().value("info").toObject();
     QCOMPARE(info.value("platform").toString(), QStringLiteral("linux"));
     QCOMPARE(info.value("client_version").toString(), libraryVersion());
@@ -202,7 +200,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QVERIFY(account.count() > 0 || account.wait(5000));
     const AccountInfo a = m_acc->account();
     QCOMPARE(a.email, QStringLiteral("anna@example.com"));
-    QCOMPARE(a.balance.micros, 12700000);          // $10 nettó → $12,70 bruttó (gross)
+    QCOMPARE(a.balance.micros, 12700000);          // $10 net becomes $12.70 gross
     QCOMPARE(a.vatMode, QStringLiteral("gross"));
     QVERIFY(a.hoursAccurate > 31 && a.hoursAccurate < 32);
     QVERIFY(!a.topupAvailable);
@@ -214,7 +212,7 @@ void TestCloudGateway::deviceFlow_login_account_models()
     QVERIFY(fast->notRecommendedFor("hu"));
     QVERIFY(findTierModel(m_acc->models(), "llm", "accurate").has_value());
 
-    // A fiók- és katalógus-cache a cloud-state.json-ban túléli az újraindítást (offline kijelzés).
+    // The account and catalog cache in cloud-state.json survives a restart (offline display).
     CloudAccount again(m_keys.get(), m_dir.path());
     QCOMPARE(again.account().balance.micros, 12700000);
     QCOMPARE(again.email(), QStringLiteral("anna@example.com"));
@@ -237,7 +235,7 @@ void TestCloudGateway::deviceFlow_denied_and_cancel()
     QCOMPARE(failed.takeFirst().first().value<CloudError>().code, QStringLiteral("access_denied"));
     mockConfig({ { "deny", false } });
 
-    // Mégse: a kód nem hagyható jóvá, a mock „cancelled”-nek látja; nincs árva kulcs.
+    // Cancel: the code cannot be approved, the mock sees it as "cancelled"; no orphan key.
     acc.startDeviceFlow();
     QVERIFY(code.wait(5000));
     acc.cancelDeviceFlow();
@@ -266,11 +264,11 @@ void TestCloudGateway::estimate_levels()
     QCOMPARE(estimateLevel(got), EstimateLevel::Enough);
     QCOMPARE(got.breakdown.size(), 2);
     QVERIFY(got.breakdown[0].exact && !got.breakdown[1].exact);
-    QCOMPARE(got.breakdown[0].model, QStringLiteral("tanara/stt-accurate"));   // a kért (virtuális) név marad
+    QCOMPARE(got.breakdown[0].model, QStringLiteral("tanara/stt-accurate"));   // the requested (virtual) name stays
     QVERIFY(got.required.micros >= got.estimate.micros);
     QCOMPARE(got.balanceAfter.micros, got.balance.micros - got.estimate.micros);
 
-    // estimate ≤ balance < required → „Valószínűleg elég, de kevés tartalék marad.”
+    // estimate <= balance < required: "Probably enough, but little reserve remains."
     const double between = (got.estimate.micros + got.required.micros) / 2.0 / 1.27 / 1e6;
     mockConfig({ { "balance", between } });
     run();
@@ -299,7 +297,7 @@ void TestCloudGateway::terms_earlyAcceptance()
     QCOMPARE(t.acceptedVersion, QStringLiteral("2026-11-01"));
     QVERIFY(!t.needsEarlyAcceptance());
 
-    // Ismeretlen verzió → 400 validation_error (fields.version).
+    // Unknown version: 400 validation_error (fields.version).
     QSignalSpy failed(m_acc.get(), &CloudAccount::termsFailed);
     m_acc->acceptTerms("1999-01-01");
     QVERIFY(failed.wait(5000));
@@ -350,7 +348,7 @@ void TestCloudGateway::errors_blockingStates()
         const CloudError e = estimateError();
         QCOMPARE(e.kind, c.kind);
         QCOMPARE(e.httpStatus, c.status);
-        QVERIFY2(e.requestId.startsWith("req_"), qPrintable(e.code));   // a hibaazonosító mindig megvan
+        QVERIFY2(e.requestId.startsWith("req_"), qPrintable(e.code));   // the error id is always there
         QVERIFY(!e.message.isEmpty());
         if (c.kind == CloudErrorKind::Maintenance) QVERIFY(e.windowStart.isValid() && e.windowEnd.isValid());
         if (c.kind == CloudErrorKind::SpendLimit) { QCOMPARE(e.limitPeriod, QStringLiteral("daily")); QVERIFY(!e.settingsUrl.isEmpty()); }
@@ -360,7 +358,7 @@ void TestCloudGateway::errors_blockingStates()
         for (auto it = off.begin(); it != off.end(); ++it) it.value() = it.value().isString() ? QJsonValue() : QJsonValue(false);
         mockConfig(off);
     }
-    // Felfüggesztve a fiók is 403, de payment_dispute-nál a feltöltés-link engedett (409-ig jut).
+    // A suspended account is 403 too, but for payment_dispute the top-up link is allowed (it reaches 409).
     mockConfig({ { "suspended", "payment_dispute" } });
     QSignalSpy topup(m_acc.get(), &CloudAccount::topupFailed);
     m_acc->createTopupLink();
@@ -385,18 +383,18 @@ void TestCloudGateway::minClient_detected()
     QSignalSpy ok(m_acc.get(), &CloudAccount::accountUpdated);
     m_acc->refreshAccount();
     QVERIFY(ok.wait(5000));
-    QVERIFY(!m_acc->clientTooOld());   // a gateway lejjebb vette a minimumot
+    QVERIFY(!m_acc->clientTooOld());   // the gateway lowered the minimum
 }
 
 void TestCloudGateway::stt_throughGateway_chargeAndRefund()
 {
-    // Egy kis „hangfájl” futásidőben generálva (bináris fixture nincs a repóban). A mock
-    // ffprobe nélkül / nem-audio bájtokra a méretből becsül hosszt.
+    // A small "audio file" generated at run time (no binary fixture in the repo). Without ffprobe
+    // or on non-audio bytes the mock estimates the length from the size.
     const QString audio = m_dir.filePath("mixdown.mp3");
     {
         QFile f(audio);
         QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(QByteArray(160000, '\x55'));   // ≈ 10 s a méret-alapú becsléssel
+        f.write(QByteArray(160000, '\x55'));   // about 10 s by the size-based estimate
     }
     for (const bool refund : { false, true }) {
         mockConfig({ { "refund", refund } });
@@ -410,9 +408,9 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
         QSignalSpy fin(job, &SttJob::finished);
         QSignalSpy fail(job, &SttJob::failed);
         QTRY_VERIFY_WITH_TIMEOUT(fin.count() + fail.count() > 0, 15000);
-        QTest::qWait(300);   // a takarító DELETE-ek visszajelzése
+        QTest::qWait(300);   // feedback of the cleanup DELETEs
 
-        // Minden kérés a közös fejlécekkel ment, és minden válaszon van request id.
+        // Every request went with the shared headers, and every response has a request id.
         QVERIFY(!log.isEmpty());
         for (const HttpExchange& ex : log)
             QVERIFY2(ex.headers.contains("x-tanara-request-id"), qPrintable(ex.path));
@@ -431,11 +429,11 @@ void TestCloudGateway::stt_throughGateway_chargeAndRefund()
             QCOMPARE(fin.count(), 1);
             const TrackTranscript tt = fin.first().first().value<TrackTranscript>();
             QVERIFY(tt.tokens.size() > 5);
-            QVERIFY(!tt.tokens.first().speaker.isEmpty());   // diarizált
+            QVERIFY(!tt.tokens.first().speaker.isEmpty());   // diarized
         } else {
             QCOMPARE(fail.count(), 1);
-            // A visszaírás abban a státusz-válaszban látszik, amelyik először ad error-t — a
-            // DELETE előtt (a kliens előbb kiolvassa a tanara-mezőt).
+            // The write-back shows in the status reply that first gives an error, before the DELETE (the
+            // client reads the tanara field first).
             int statusIdx = -1, deleteIdx = -1;
             for (int i = 0; i < log.size(); ++i) {
                 const TranscriptionJobInfo j = transcriptionJobInfoFromJson(QJsonDocument::fromJson(log[i].body).object());
@@ -468,12 +466,12 @@ void TestCloudGateway::llm_throughGateway_charge_and402()
     const ChargeInfo c = chargeInfoFromJson(usage.value("tanara_charge").toObject());
     QVERIFY(c.valid && c.charge.micros > 0);
     QCOMPARE(c.jobId, QStringLiteral("job-test-1"));
-    // A mock naplója: a summary mode és a job id a usage-rekordban (W-10 csoportosítás).
+    // The mock's log: the summary mode and the job id in the usage record (grouping).
     const QJsonObject last = mockState().value("usage").toArray().last().toObject();
     QCOMPARE(last.value("summary_mode").toString(), QStringLiteral("quick"));
     QCOMPARE(last.value("job_id").toString(), QStringLiteral("job-test-1"));
 
-    // Kevés egyenleg → 402 hold (prompt + max_tokens fedezet), semmi nem terhelődik.
+    // Low balance: 402 hold (prompt + max_tokens cover), nothing is charged.
     mockConfig({ { "balance", 0.00001 } });
     log.clear();
     LlmJob* job2 = p.chat(req);
@@ -483,13 +481,13 @@ void TestCloudGateway::llm_throughGateway_charge_and402()
     QCOMPARE(e.kind, CloudErrorKind::InsufficientBalance);
     QCOMPARE(e.neededBasis, QStringLiteral("hold"));
     QVERIFY(e.needed.micros > e.balance.micros);
-    QVERIFY(e.topupUrl.isEmpty());   // P0: nincs online feltöltés → „Írj nekünk”
+    QVERIFY(e.topupUrl.isEmpty());   // P0: no online top-up, so "Write to us"
     mockConfig({ { "balance", 10 } });
 }
 
 void TestCloudGateway::pending_refundAtStartup()
 {
-    // Egy „félbemaradt” átírás: a kliens elmentette az azonosítót, majd kilépett.
+    // A "half-finished" transcription: the client saved the id, then quit.
     mockConfig({ { "refund", true } });
     QVector<HttpExchange> log;
     const QString audio = m_dir.filePath("mixdown.mp3");
@@ -501,12 +499,12 @@ void TestCloudGateway::pending_refundAtStartup()
     const auto create = std::find_if(log.cbegin(), log.cend(), [](const HttpExchange& ex) {
         return ex.method == "POST" && ex.path.endsWith("/transcriptions"); });
     const QString trId = QJsonDocument::fromJson(create->body).object().value("id").toString();
-    delete job;   // „kilépés” — a státuszt már nem kérdezte le
+    delete job;   // "quit": it no longer polled the status
 
     m_acc->addPendingTranscription(trId, QString());
-    QTest::qWait(3000);   // a mock-feladat közben hibával zárul
+    QTest::qWait(3000);   // the mock job ends with an error meanwhile
     QSignalSpy refunded(m_acc.get(), &CloudAccount::previousTranscriptionRefunded);
-    CloudAccount restarted(m_keys.get(), m_dir.path());   // új indítás: a függő id a cloud-state.json-ból
+    CloudAccount restarted(m_keys.get(), m_dir.path());   // new start: the pending id from cloud-state.json
     restarted.setBaseUrl(m_base);
     QCOMPARE(restarted.pendingTranscriptions(), QStringList{ trId });
     QSignalSpy refunded2(&restarted, &CloudAccount::previousTranscriptionRefunded);
@@ -527,7 +525,7 @@ void TestCloudGateway::logout_removesKey()
     QVERIFY(!m_acc->isLoggedIn());
     QVERIFY(m_keys->get(cloud::ApiKeySecret).isEmpty());
     QVERIFY(m_acc->email().isEmpty());
-    // A visszavont kulccsal a gateway 401-et ad.
+    // With the revoked key the gateway gives 401.
     m_keys->set(cloud::ApiKeySecret, key);
     QSignalSpy failed(m_acc.get(), &CloudAccount::accountFailed);
     m_acc->refreshAccount();

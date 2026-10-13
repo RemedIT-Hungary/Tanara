@@ -1,10 +1,11 @@
-// Az Átnézendő fókusz-nézete (S4, ReviewFocusView a TranscriptTab-ban) kijelző nélkül (offscreen),
-// a beépített KITALÁLT meetingeken, hamis lejátszóval: egybillentyűs ítéletek a kurzor sorára
-// (Enter / J / 0 / 1–9 / Shift = nem minta) és a kurzor lépése; → Később (a lista végére); a
-// fókusz-kártya y-ja nem változik (beemelés, a kártya alá kerülő elem, kisebb nézet); „+K új vár”
-// kattintás → a sorok a lista végére; kör-zárás gombjai; Esc → Javítás ugyanazon a soron;
-// visszavonás → a fókusz a visszavont sorra; auto-lejátszás (sor + ráhagyás) és kapcsolója;
-// a kontextus-sor lejátszása (`,`). A felhasználó adataihoz nem nyúl.
+// The review queue's focus view (ReviewFocusView in TranscriptTab) without a display
+// (offscreen), on the built-in MADE-UP meetings, with a fake player: single-key verdicts on
+// the cursor's line (Enter / J / 0 / 1-9 / Shift = not a sample) and the cursor's step;
+// Later (to the end of the list); the focus card's y does not change (promotion, an item
+// placed under the card, a smaller view); clicking "+K new waiting" moves the lines to the end
+// of the list; the round-end buttons; Esc goes to Edit on the same line; undo puts the focus
+// on the undone line; auto-play (line + lead-out) and its switch; playing the context line
+// (`,`). It touches no user data.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "ReviewQueueModel.h"
@@ -143,9 +144,9 @@ class TestReviewFocus : public QObject {
             QVERIFY(QTest::qWaitFor([this] { return !m_vm->embeddingRunning() && m_vm->uncertainCount() > 0; }, 10000));
         pump(60);
     }
-    // Az Átnézendő bekapcsolása, a munkalista bevárása (a háttér-elemzés végén indul).
+    // Switching on To review, waiting for the work list (it starts at the end of the background analysis).
     QString phase() const { return view() ? view()->property("phase").toString() : QString(); }
-    // skipOpenerPhase: a kör eleji nyitó-javaslatok (S5) → Később; a fókusz-kártya jön.
+    // skipOpenerPhase: the round's opening suggestions go to Later; the focus card comes.
     void openReview(bool skipOpenerPhase = true)
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
@@ -160,17 +161,17 @@ class TestReviewFocus : public QObject {
         m_tab->forceActiveFocus();
         pump(60);
     }
-    // A v3 demó-állapot bevárása (a munkalista a háttér-elemzés csendes szakaszában készül).
+    // Waiting for the demo state (the work list is made in the background analysis's quiet phase).
     void loadDemo(const char* state)
     {
         load(QString(), QString::fromLatin1(state));
         QTRY_VERIFY_WITH_TIMEOUT(m_vm->queueActive() && !m_vm->demoStatePending() && !m_vm->reviewRunning(), 15000);
-        pump(1500);         // a demó a csend után fut (700 ms), utána még egy elemzés-kör lehet
+        pump(1500);         // the demo runs after the silence (700 ms), and one more analysis round may follow
         QTRY_VERIFY_WITH_TIMEOUT(!m_vm->reviewRunning(), 10000);
         pump(100);
         m_tab->forceActiveFocus();
     }
-    // A kurzor egy nyitott, javaslattal bíró sorra (a javasolt beszélő más, mint a mostani).
+    // The cursor on an open line that has a suggestion (the suggested speaker differs from the current one).
     bool jumpToSuggestion()
     {
         for (int i = 0; i < m_queue->count(); ++i) {
@@ -192,7 +193,7 @@ class TestReviewFocus : public QObject {
             if (lanes[i].toMap().value(QStringLiteral("key")).toString() == key) return i;
         return -1;
     }
-    // A kurzor sorától eltérő beszélő oszlopa (az 1–9 billentyűhöz).
+    // The column of a speaker other than the cursor line's (for the 1-9 keys).
     int otherLane() const
     {
         const QString key = cur().value(QStringLiteral("speakerKey")).toString();
@@ -223,15 +224,15 @@ private slots:
         QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(QLatin1Char('\n'))));
     }
 
-    // Enter / J / Shift+J / 0 / 1–9 / Shift+1–9: az ítélet a kurzor sorára, a kurzor továbblép,
-    // a sor a helyén marad (a lista nem rendeződik át).
+    // Enter / J / Shift+J / 0 / 1-9 / Shift+1-9: the verdict goes on the cursor's line, the
+    // cursor moves on, the line stays in place (the list does not reorder).
     void verdicts_keysDecideCursorLine()
     {
         load(QStringLiteral("v3"));
         openReview();
         const int count = m_queue->count();
 
-        // Enter: a javaslat (a gombon a javasolt NÉV).
+        // Enter: the suggestion (the suggested NAME on the button).
         QVERIFY(jumpToSuggestion());
         QString id = current();
         const int at = m_queue->indexOf(id);
@@ -242,11 +243,11 @@ private slots:
         QVERIFY(utt(id).manuallyCorrected);
         QVERIFY(!utt(id).noisy);
         QCOMPARE(stateOf(id), QStringLiteral("decided"));
-        QCOMPARE(m_queue->indexOf(id), at);                  // a helyén marad
+        QCOMPARE(m_queue->indexOf(id), at);                  // stays in place
         QVERIFY(current() != id);
         QCOMPARE(m_queue->count(), count);
 
-        // J: Jó így (minta); Shift+J: Jó így, nem minta.
+        // J: Good as is (sample); Shift+J: Good as is, not a sample.
         id = current();
         key(Qt::Key_J);
         QVERIFY(utt(id).confirmed);
@@ -258,14 +259,14 @@ private slots:
         QVERIFY(utt(id).noisy);
         QVERIFY(current() != id);
 
-        // 0: nem azonosítható.
+        // 0: cannot be identified.
         id = current();
         key(Qt::Key_0);
         QVERIFY(utt(id).ignored);
         QCOMPARE(stateOf(id), QStringLiteral("ignored"));
         QVERIFY(current() != id);
 
-        // 1–9: a sín n. beszélője; Shift: nem minta.
+        // 1-9: the rail's n-th speaker; Shift: not a sample.
         id = current();
         int lane = otherLane();
         QVERIFY(lane >= 0);
@@ -284,14 +285,14 @@ private slots:
         QCOMPARE(visual("reviewFocusProgress")->property("text").toString(),
                  QStringLiteral("6 / %1").arg(m_queue->count()));
 
-        // ←: vissza az előző (döntött) sorra; ott újra dönthető.
+        // Left: back to the previous (decided) line; it can be decided again there.
         key(Qt::Key_Left);
         QCOMPARE(current(), id);
         QCOMPARE(stateOf(id), QStringLiteral("decided"));
         QVERIFY(visual("reviewFocusDecided"));
     }
 
-    // A kártya gombjai és a beszélő-számsor ugyanígy döntenek; lenyomott Shiftnél „· nem minta”.
+    // The card's buttons and the speaker number row decide the same way; with Shift held, "- not a sample".
     void verdicts_buttonsAndNumberRow()
     {
         load();
@@ -307,7 +308,7 @@ private slots:
         QVERIFY(utt(id).noisy);
         m_tab->setProperty("shiftHeld", false);
 
-        // Számsor: kattintás egy másik beszélőre = áthelyezés oda (minta).
+        // Number row: clicking another speaker = moving there (sample).
         id = current();
         const int lane = otherLane();
         QList<QQuickItem*> chips = visuals("reviewFocusLane");
@@ -317,12 +318,12 @@ private slots:
         QCOMPARE(utt(id).speakerKey, target);
         QVERIFY(!utt(id).noisy);
 
-        // „Nem azonosítható” gomb.
+        // "Cannot be identified" button.
         id = current();
         click(visual("reviewFocusIgnore"));
         QVERIFY(utt(id).ignored);
 
-        // „Más…” (és az M billentyű): a sor panelje erre a sorra.
+        // "Other..." (and the M key): the line's panel for this line.
         id = current();
         key(Qt::Key_M);
         QObject* popover = m_window->findChild<QObject*>(QStringLiteral("linePopover"));
@@ -332,7 +333,7 @@ private slots:
         QTRY_VERIFY(!popover->property("visible").toBool());
     }
 
-    // → Később: a sor a lista végére (◇), a kurzor a következő nyitott sorra; B = következő nyitott.
+    // Later: the line goes to the end of the list, the cursor to the next open line; B = next open one.
     void later_movesToEnd()
     {
         load();
@@ -350,9 +351,9 @@ private slots:
         QCOMPARE(viewMode(), QStringLiteral("review"));
     }
 
-    // A fókusz-kártya y-ja nem változik: „+K új vár” beemeléskor (a sorok a lista VÉGÉRE), a
-    // kártya alá kerülő elemnél (S5 ajánlat-hely) és ha a nézet alacsonyabb lesz (pl. az „Imént”
-    // sor figyelmeztetése alatta).
+    // The focus card's y does not change: on "+K new waiting" promotion (the lines go to the END
+    // of the list), with an item placed under the card (the openers' offer place), and when the
+    // view becomes lower (e.g. under the "Just now" line's warning).
     void cardY_fixed_andIncomingToEnd()
     {
         loadDemo("reviewFocusIncoming");
@@ -369,10 +370,10 @@ private slots:
         QCOMPARE(m_queue->incomingCount(), 0);
         QCOMPARE(m_queue->count(), before + int(incoming.size()));
         for (const QString& in : incoming) QVERIFY(m_queue->indexOf(in) >= before);
-        QCOMPARE(current(), id);                            // a kurzor nem mozdult
+        QCOMPARE(current(), id);                            // the cursor did not move
         QCOMPARE(cardY(), y);
 
-        // Egy elem a kártya ALATT (az S5 ajánlat-helye): a kártya marad, az alsó kontextus-sorok mennek.
+        // An item UNDER the card (the offer place of the openers): the card stays, the lower context lines go.
         QQuickItem* v = view();
         QQmlComponent tall(m_engine.get());
         tall.setData("import QtQuick\nRectangle { height: 220; color: \"red\" }", QUrl());
@@ -387,17 +388,17 @@ private slots:
         v->setProperty("offerComponent", QVariant::fromValue<QObject*>(nullptr));
         pump(60);
 
-        // Alacsonyabb nézet (a figyelmeztetés / mini-napló a kártya alatt nyúlik): a kártya marad.
+        // A lower view (the warning / mini log extends under the card): the card stays.
         m_window->resize(1100, 600);
         pump(80);
         QCOMPARE(cardY(), y);
-        // Döntés után a következő kártya ugyanott.
+        // After a decision the next card is in the same place.
         key(Qt::Key_J);
         QCOMPARE(cardY(), y);
     }
 
-    // A kártya y-ja minden fókusz-állapotban ugyanaz (a fejléc, az „Imént” sor és a kártya alá
-    // kerülő elemek sem tolják el).
+    // The card's y is the same in every focus state (the header, the "Just now" line and the items
+    // under the card do not shift it either).
     void cardY_sameInEveryFocusState()
     {
         qreal first = -1;
@@ -412,8 +413,9 @@ private slots:
         }
     }
 
-    // Magától eldőlt sor, ha a kurzor visszalép rá: a kártya normálisan mutatja (✓ jel), az Enter
-    // a mostani nevet írja („marad”), a J halvány; Enter = megerősítés, a kurzor a következő NYITOTTRA.
+    // A line that decided itself, when the cursor steps back onto it: the card shows it normally
+    // (check mark), Enter writes the current name ("keep"), J is dimmed; Enter = confirmation, the
+    // cursor goes to the next OPEN one.
     void alreadyDecided_enterKeeps()
     {
         loadDemo("reviewFocusAlreadyDecided");
@@ -429,8 +431,8 @@ private slots:
         QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("pending"));
     }
 
-    // S7: a magától eldőlt sorokat a kurzor átugorja; ↑ visszalép rájuk; „Mind megerősítem”
-    // (Ctrl+Enter / a fejléc gombja) EGY visszavonási lépésben megerősíti a ≥ 1,5 s hosszúakat.
+    // Auto-decided lines are skipped by the cursor; Up steps back onto them; "Confirm all"
+    // (Ctrl+Enter / the header button) confirms those >= 1.5 s long in ONE undo step.
     void settled_skippedAndConfirmAll_oneUndoStep()
     {
         loadDemo("reviewFocusSkipped");
@@ -449,10 +451,10 @@ private slots:
         QVERIFY(visual("reviewFocusSettledBar"));
         QVERIFY(visual("reviewFocusSettledCount")->property("text").toString().startsWith(QString::number(settled.size())));
 
-        // (A demó a háttér-elemzés eredményét állítja be; egy döntés után a valódi elemzés
-        // visszaállítaná — ezért előbb a léptetés, a döntés utoljára. A döntés utáni átugrást a
-        // test_review_queue méri.)
-        // B a következő nyitottra lép (a magától eldőlteken át).
+        // (The demo sets the background analysis's result; after a decision the real analysis would
+        // reset it, so stepping comes first and the decision last. The skipping after a decision is
+        // measured by test_review_queue.)
+        // B steps to the next open one (across the auto-decided ones).
         QVERIFY(firstSettled > 0);
         m_queue->jumpTo(firstSettled - 1);
         pump();
@@ -460,10 +462,10 @@ private slots:
         key(Qt::Key_B);
         QVERIFY(m_queue->currentIndex() > lastSettled || m_queue->currentIndex() < firstSettled);
         QCOMPARE(cur().value(QStringLiteral("state")).toString(), QStringLiteral("pending"));
-        // Shift+B vissza az előző nyitottra (ismét átugorva őket).
+        // Shift+B goes back to the previous open one (skipping them again).
         key(Qt::Key_B, Qt::ShiftModifier);
         QCOMPARE(m_queue->currentIndex(), firstSettled - 1);
-        // ↑ / ↓: a csík tételei, bármilyen állapotúak (a magától eldőltre is).
+        // Up / Down: the strip's items, in any state (the auto-decided too).
         m_queue->jumpTo(firstSettled - 1);
         pump();
         key(Qt::Key_Down);
@@ -474,7 +476,7 @@ private slots:
         key(Qt::Key_Down);
         QCOMPARE(m_queue->currentIndex(), firstSettled);
 
-        // Mind megerősítem (Ctrl+Enter): a hosszúak megerősítve, a rövidek nem; egy lépés.
+        // Confirm all (Ctrl+Enter): the long ones confirmed, the short ones not; one step.
         QStringList longOnes, shortOnes;
         for (const QString& id : std::as_const(settled))
             (utt(id).endMs - utt(id).startMs >= 1500 ? longOnes : shortOnes) << id;
@@ -490,10 +492,10 @@ private slots:
         QCOMPARE(m_vm->lastDecision().value(QStringLiteral("text")).toString(),
                  QStringLiteral("%1 sor megerősítve").arg(longOnes.size()));
         QCOMPARE(m_vm->lastDecision().value(QStringLiteral("verb")).toString(), QStringLiteral("keep"));
-        // (A megerősítés után a háttér-elemzés újabb sorokat dönthet el magától; a mostaniak már nincsenek köztük.)
+        // (After the confirmation the background analysis may auto-decide more lines; the current ones are not among them.)
         for (const QString& id : std::as_const(longOnes)) QVERIFY(!m_queue->confirmableIds().contains(id));
 
-        // Egy Ctrl+Z mindet visszaveszi.
+        // One Ctrl+Z undoes them all.
         key(Qt::Key_Z, Qt::ControlModifier);
         for (const QString& id : std::as_const(longOnes)) {
             QVERIFY(!utt(id).confirmed);
@@ -501,7 +503,7 @@ private slots:
         }
         QVERIFY(!m_vm->canUndo() || m_vm->lastDecision().value(QStringLiteral("undone")).toBool());
 
-        // A fejléc gombja ugyanezt teszi.
+        // The header button does the same.
         loadDemo("reviewFocusSkipped");
         QTRY_VERIFY(visual("reviewFocusConfirmSettled"));
         const QStringList ids = m_queue->confirmableIds();
@@ -510,8 +512,8 @@ private slots:
         for (const QString& id : ids) QVERIFY(utt(id).confirmed);
     }
 
-    // S7: a gomb-feliratok a három állapotban (van javaslat / nincs javaslat / új beszélő): a
-    // nevek a gombokon, a művelet ikonja; a J halvány, ha nincs javaslat; a gombok helye fix.
+    // The button labels in the three states (suggestion / no suggestion / new speaker): names on
+    // the buttons, the action's icon; J is dimmed when there is no suggestion; the buttons' places are fixed.
     void buttons_namesInThreeStates()
     {
         loadDemo("reviewFocus");
@@ -527,7 +529,7 @@ private slots:
             }
             return out;
         };
-        // A) van javaslat (a demó a kurzort egy javaslattal bíró sorra teszi).
+        // A) there is a suggestion (the demo puts the cursor on a line with a suggestion).
         QVERIFY(card()->property("hasSuggestion").toBool());
         QCOMPARE(enter->property("text").toString(), cur().value(QStringLiteral("likelyName")).toString());
         QCOMPARE(enter->property("iconName").toString(), QStringLiteral("arrow-right"));
@@ -541,7 +543,7 @@ private slots:
         QCOMPARE(visual("reviewFocusLater")->property("text").toString(), QStringLiteral("Később"));
         const QList<QRectF> geo = geometry();
 
-        // B) nincs javaslat: az Enter a mostani nevet írja („marad”), a J halvány.
+        // B) no suggestion: Enter writes the current name ("keep"), J is dimmed.
         QVariantMap item = cur();
         item.insert(QStringLiteral("likelyKey"), QString());
         item.insert(QStringLiteral("likelyName"), QString());
@@ -554,7 +556,7 @@ private slots:
         QVERIFY(keep->property("dimmed").toBool());
         QCOMPARE(geometry(), geo);
 
-        // C) új beszélő a javaslat: „Új beszélő” + a felhasználó-plusz ikon; a „+” chip javasolt.
+        // C) the suggestion is a new speaker: "New speaker" + the user-plus icon; the "+" chip is suggested.
         item.insert(QStringLiteral("likelyNewSide"), QStringLiteral("remote"));
         card()->setProperty("item", item);
         pump();
@@ -562,7 +564,7 @@ private slots:
         QCOMPARE(enter->property("iconName").toString(), QStringLiteral("user-plus"));
         QVERIFY(!keep->property("dimmed").toBool());
         QVERIFY(visual("reviewFocusLaneNew")->property("suggested").toBool());
-        // Hosszú név: elide-olódik, a gombok nem mozdulnak.
+        // A long name: elided, the buttons do not move.
         item.insert(QStringLiteral("likelyNewSide"), QString());
         item.insert(QStringLiteral("likelyName"), QStringLiteral("Nagyon Hosszú Nevű Személy Akinek A Neve Nem Fér Ki"));
         item.insert(QStringLiteral("likelyKey"), QStringLiteral("x-external"));
@@ -571,8 +573,8 @@ private slots:
         QCOMPARE(geometry(), geo);
     }
 
-    // S7: a számsor teljes nevekkel; a „most” és a „javasolt” jel; a chipek helye nem változik
-    // soronként (a sor nem rendeződik át).
+    // The number row with full names; the "current" and "suggested" marks; the chips' places do
+    // not change per line (the line does not reorder).
     void numberRow_nowAndSuggested()
     {
         loadDemo("reviewFocus");
@@ -605,14 +607,14 @@ private slots:
         }
         QCOMPARE(nows, 1);
         QCOMPARE(sugs, laneOf(sugKey) >= 0 && laneOf(sugKey) < 9 ? 1 : 0);
-        // A következő sorra lépve a chipek helye ugyanaz.
+        // Stepping to the next line, the chips' places are the same.
         key(Qt::Key_Down);
         QCOMPARE(positions(), pos);
         key(Qt::Key_Down);
         QCOMPARE(positions(), pos);
     }
 
-    // S7: 3 + 3 kontextus-sor (az átirat szomszédai), címke nélkül, soronként az időugrással.
+    // 3 + 3 context lines (the transcript's neighbors), without a label, per line with the time jump.
     void context_threeAndThreeWithGaps()
     {
         loadDemo("reviewFocus");
@@ -631,7 +633,7 @@ private slots:
         QCOMPARE(above, 3);
         QCOMPARE(below, 3);
         QCOMPARE(gaps, int(ctx.size()));
-        // Az előző sor időugrása = a csend a kártya soráig.
+        // The previous line's time jump = the silence up to the card's line.
         for (const QVariant& v : ctx) {
             const QVariantMap m = v.toMap();
             if (m.value(QStringLiteral("offset")).toInt() != -1) continue;
@@ -640,11 +642,11 @@ private slots:
             QVERIFY(QMetaObject::invokeMethod(view(), "gapFor", Q_RETURN_ARG(QVariant, gap), Q_ARG(QVariant, -1)));
             QCOMPARE(gap.toInt(), expect);
         }
-        // Nincs „Előtte / Utána” címke.
+        // No "Before / After" label.
         QVERIFY(visuals("reviewFocusContextLabel").isEmpty());
     }
 
-    // S7: a csík fölött a kurzor helye és a következő kétes sor ideje.
+    // Above the strip: the cursor's position and the time of the next doubtful line.
     void worklist_positionCaption()
     {
         loadDemo("reviewFocus");
@@ -657,7 +659,7 @@ private slots:
                      qPrintable(text));
     }
 
-    // Kör-zárás: összesítő; Következő kör (beérkezők + később) · Később hagyottak · Kész (Javítás).
+    // Round end: summary; Next round (arrivals + later) / Left for later / Done (Edit).
     void roundClose_buttons()
     {
         loadDemo("reviewFocusSummary");
@@ -673,7 +675,7 @@ private slots:
         QVERIFY(m_queue->count() >= incoming + later);
         QTRY_VERIFY(card()->isVisible());
 
-        // Csak a később hagyottak (→ billentyű).
+        // Only those left for later (Right key).
         loadDemo("reviewFocusSummary");
         QTRY_VERIFY(visual("reviewFocusSummary"));
         const int later2 = m_queue->laterCount();
@@ -681,14 +683,14 @@ private slots:
         QCOMPARE(m_queue->round(), 2);
         QCOMPARE(m_queue->count(), later2);
 
-        // Kész: vissza a Javítás nézetbe.
+        // Done: back to the Edit view.
         loadDemo("reviewFocusSummary");
         QTRY_VERIFY(visual("reviewFocusSummary"));
         click(visual("reviewDone"));
         QTRY_COMPARE(viewMode(), QStringLiteral("fix"));
     }
 
-    // Esc: a Javítás nézet, kijelölve ugyanaz a sor.
+    // Esc: the Edit view, the same line selected.
     void escape_opensFixOnSameLine()
     {
         load();
@@ -698,13 +700,13 @@ private slots:
         key(Qt::Key_Escape);
         QTRY_COMPARE(viewMode(), QStringLiteral("fix"));
         QTRY_COMPARE(m_vm->rowUtteranceId(m_vm->currentRow()), id);
-        // Vissza: a munkalista megmaradt (nincs új pillanatkép), a kurzor ugyanott.
+        // Back: the work list stayed (no new snapshot), the cursor in the same place.
         QMetaObject::invokeMethod(m_tab, "setViewMode", Q_ARG(QVariant, QStringLiteral("review")));
         pump(60);
         QCOMPARE(current(), id);
     }
 
-    // Ctrl+Z: a döntés visszavonva, a fókusz a visszavont sorra ugrik.
+    // Ctrl+Z: the decision is undone, the focus jumps to the undone line.
     void undo_focusReturnsToLine()
     {
         load();
@@ -720,8 +722,8 @@ private slots:
         QCOMPARE(stateOf(id), QStringLiteral("pending"));
     }
 
-    // Auto-lejátszás: a kártyára lépő sor szól (sor + ráhagyás); a kapcsoló kikapcsolja; R újra;
-    // `,` az előző kontextus-sor.
+    // Auto-play: the line that steps onto the card plays (line + lead-out); the switch turns it
+    // off; R replays; `,` the previous context line.
     void autoPlay_andContextKeys()
     {
         load();
@@ -733,18 +735,18 @@ private slots:
                                      .arg(c.value(QStringLiteral("endMs")).toInt() + 200);
         QTRY_VERIFY2(playerLog().contains(expected), qPrintable(playerLog()));
 
-        // Kapcsoló ki: a következő kártya nem szól magától.
+        // Switch off: the next card does not play by itself.
         click(visual("reviewAutoPlay"));
         QVERIFY(!m_vm->reviewAutoPlay());
         clearLog();
         key(Qt::Key_J);
         pump(60);
         QVERIFY2(!playerLog().contains(QStringLiteral("range:")), qPrintable(playerLog()));
-        // R: a kártya sora újra.
+        // R: the card's line again.
         key(Qt::Key_R);
         QVERIFY(playerLog().startsWith(QStringLiteral("range:%1-").arg(cur().value(QStringLiteral("startMs")).toInt())));
 
-        // `,`: az előző kontextus-sor (az átirat előző sora, akár nem kétes).
+        // `,`: the previous context line (the transcript's previous line, even if not doubtful).
         const QVariantList ctx = m_vm->contextLines(current(), 2, 2);
         int prevStart = -1;
         for (const QVariant& v : ctx)
@@ -754,14 +756,14 @@ private slots:
             key(Qt::Key_Comma);
             QVERIFY2(playerLog().startsWith(QStringLiteral("range:%1-").arg(prevStart)), qPrintable(playerLog()));
         }
-        // Szóköz: szünet / indítás.
+        // Space: pause / start.
         m_player->setProperty("playing", true);
         clearLog();
         key(Qt::Key_Space);
         QCOMPARE(playerLog(), QStringLiteral("pause;"));
     }
 
-    // A munkalista-csík: cella-kattintás = ugrás arra a sorra.
+    // The work-list strip: clicking a cell = jump to that line.
     void worklist_cellJumps()
     {
         load();
@@ -773,7 +775,7 @@ private slots:
         QCOMPARE(m_queue->currentIndex(), 3);
     }
 
-    // A beállítás-kulcs (settings.json "reviewAutoPlay"): alapból be, oda-vissza megmarad.
+    // The settings key (settings.json "reviewAutoPlay"): on by default, persists both ways.
     void settings_reviewAutoPlayRoundTrip()
     {
         tanara::AppSettings s;

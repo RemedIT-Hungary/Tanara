@@ -1,9 +1,8 @@
-// ShellImportModel — a „Hangfájl importálása” ablak modellje: demó-állapotok controller
-// nélkül, dátum-értelmezés, majd izolált TANARA_HOME-on valódi ffmpeg-gel: fájlok
-// hozzáadása (útvonal / file:// URL, ismétlődés és nem-hang fájl), bontás, saját sáv,
-// indítás → kész megbeszélés, és megszakítás (az űrlap megmarad, meeting nem keletkezik).
-// C07: címkék az ablakban (a készletbe kerülnek), cím alapú javaslatok, és a kész
-// megbeszélésre felrakva.
+// ShellImportModel: the model of the "Import audio file" window: demo states without a
+// controller, date parsing, then on an isolated TANARA_HOME with a real ffmpeg: adding files
+// (path / file:// URL, duplicates and a non-audio file), splitting, own track, start (a
+// finished meeting), and cancel (the form stays, no meeting is created). Tags in the window
+// (they go into the set), title-based suggestions, and applied to the finished meeting.
 #include "ShellActions.h"
 #include "ShellImportModel.h"
 
@@ -91,7 +90,7 @@ private slots:
         QVERIFY(model.dateValid());
         QVERIFY(model.files().at(2).toMap().value("video").toBool());
 
-        // T09: kitalált címke + javaslat; demóban a készlet nélkül is kezelhető.
+        // A made-up tag + suggestion; in demo mode usable even without the set.
         QCOMPARE(model.tags().size(), 1);
         QCOMPARE(model.suggestions().size(), 1);
         QVERIFY(model.suggestionReason().startsWith(QStringLiteral("hasonló cím")));
@@ -119,7 +118,7 @@ private slots:
         model.setDemoState(QStringLiteral("progress"));
         QVERIFY(model.running());
         QCOMPARE(model.percent(), 42);
-        QVERIFY(!model.start());   // controller nélkül nem indul semmi
+        QVERIFY(!model.start());   // nothing starts without a controller
     }
 
     void importsThroughTheModel()
@@ -140,7 +139,7 @@ private slots:
         shell.setController(m_app.get());
         QSignalSpy imported(&model, &ShellImportModel::imported);
 
-        // Útvonal, file:// URL (ugyanaz a fájl: egyszer kerül fel), nem-hang fájl, mappa (kimarad).
+        // Path, file:// URL (the same file is added once), a non-audio file, a folder (skipped).
         QCOMPARE(model.addFiles({stereo, QUrl::fromLocalFile(stereo), text.fileName(), m_home->path()}), 2);
         QVERIFY(model.probing());
         QVERIFY(!model.canStart());
@@ -149,12 +148,12 @@ private slots:
         const QVariantMap first = model.files().at(0).toMap();
         QCOMPARE(first.value("state").toString(), QStringLiteral("ok"));
         QVERIFY(first.value("canSplit").toBool());
-        QVERIFY(!first.value("split").toBool());                 // sima sztereó: alapból nem bontjuk
+        QVERIFY(!first.value("split").toBool());                 // plain stereo: not split by default
         QVERIFY(first.value("meta").toString().contains(QStringLiteral("sztereó")));
         const QVariantMap second = model.files().at(1).toMap();
         QCOMPARE(second.value("state").toString(), QStringLiteral("error"));
         QVERIFY(!second.value("error").toString().isEmpty());
-        QVERIFY(!second.value("error").toString().contains("jegyzet.txt"));   // a sorban a név már ott van
+        QVERIFY(!second.value("error").toString().contains("jegyzet.txt"));   // the name is already in the row
 
         QCOMPARE(model.title(), QStringLiteral("Páros interjú"));
         QVERIFY(model.dateValid());
@@ -165,7 +164,7 @@ private slots:
         model.setSplit(0, true);
         QCOMPARE(model.trackNames(), QStringList({"Bal csatorna", "Jobb csatorna"}));
         model.setOwnTrack(1);
-        model.setOwnTrack(7);                                    // nincs ilyen sáv → nincs saját
+        model.setOwnTrack(7);                                    // no such track, so no own track
         QCOMPARE(model.ownTrack(), -1);
         model.setOwnTrack(1);
         model.setTitle(QStringLiteral("Interjú a kutatáshoz"));
@@ -176,7 +175,7 @@ private slots:
 
         QVERIFY(model.addTag(QStringLiteral("Kutatás")));
         const QString kutatas = model.tagIds().first();
-        QVERIFY(m_app->tags()->tag(kutatas).isValid());          // a készletbe már bekerült
+        QVERIFY(m_app->tags()->tag(kutatas).isValid());          // already added to the set
 
         QVERIFY(model.start());
         QVERIFY(model.running());
@@ -184,7 +183,7 @@ private slots:
         QCOMPARE(model.runningTitle(), QStringLiteral("Interjú a kutatáshoz"));
         QTRY_COMPARE_WITH_TIMEOUT(imported.size(), 1, 20000);
         QVERIFY(!model.running());
-        QCOMPARE(model.fileCount(), 0);                          // az űrlap kiürült
+        QCOMPARE(model.fileCount(), 0);                          // the form was cleared
 
         const QString id = imported.first().at(0).toString();
         const tanara::Meeting m = m_app->store()->load(id);
@@ -194,16 +193,16 @@ private slots:
         QCOMPARE(m.tracks[0].kind, tanara::TrackKind::Other);
         QCOMPARE(m.tracks[1].kind, tanara::TrackKind::Mic);
         QVERIFY(!m.hasTranscript);
-        // Az ablakban választott címke a kész megbeszélésen; az űrlap címkéi kiürültek.
+        // The tag chosen in the window is on the finished meeting; the form's tags were cleared.
         QCOMPARE(m_app->tags()->tagsOf(id), QStringList{kutatas});
         QCOMPARE(m.tagIds, QStringList{kutatas});
         QVERIFY(model.tags().isEmpty());
-        // A héj kijelölte az új megbeszélést (az átirat előtti nézettel).
+        // The shell selected the new meeting (with the pre-transcript view).
         QCOMPARE(shell.currentMeetingId(), id);
         QCOMPARE(shell.currentTab(), 0);
     }
 
-    // Cím alapú javaslatok (késleltetve újraszámolva), elfogadás, elvetés.
+    // Title-based suggestions (recomputed with a delay), accept, dismiss.
     void draftSuggestionsFollowTheTitle()
     {
         m_app = std::make_unique<tanara::AppController>();
@@ -216,8 +215,8 @@ private slots:
         model.setController(m_app.get());
         QSignalSpy changed(&model, &ShellImportModel::suggestionsChanged);
         model.setTitle(QStringLiteral("Nordvik heti egyeztetés"));
-        QVERIFY(model.suggestions().isEmpty());                   // késleltetve számol
-        // A profilok háttérszálon készülnek: addig újrakérjük.
+        QVERIFY(model.suggestions().isEmpty());                   // computes with a delay
+        // The profiles are built on a background thread: we ask again until then.
         QTRY_VERIFY_WITH_TIMEOUT((model.refreshSuggestions(), !model.suggestions().isEmpty()), 10000);
         QVERIFY(changed.count() >= 1);
         const QVariantMap first = model.suggestions().first().toMap();
@@ -225,14 +224,14 @@ private slots:
         QCOMPARE(first.value("name").toString(), QStringLiteral("Nordvik"));
         QVERIFY(!model.suggestionReason().isEmpty());
 
-        // Elfogadás → a címkék közé kerül, a javaslatból kiesik (újraszámolva sem jön vissza).
+        // Accept: it goes among the tags and drops out of the suggestions (it does not come back after a recompute either).
         model.acceptSuggestion(0);
         QCOMPARE(model.tagIds(), QStringList{nordvik.id});
         model.refreshSuggestions();
         for (const QVariant& v : model.suggestions())
             QVERIFY(v.toMap().value("id").toString() != nordvik.id);
 
-        // Elvetés: ebben az ablakban nem jön vissza.
+        // Dismiss: it does not come back in this window.
         model.removeTag(nordvik.id);
         model.refreshSuggestions();
         QVERIFY(!model.suggestions().isEmpty());
@@ -241,7 +240,7 @@ private slots:
         for (const QVariant& v : model.suggestions())
             QVERIFY(v.toMap().value("id").toString() != nordvik.id);
 
-        // A cím változása (késleltetve) újraszámol; üres címre nincs javaslat.
+        // A title change (delayed) recomputes; an empty title gives no suggestion.
         model.reset();
         QVERIFY(model.suggestions().isEmpty());
         model.setTitle(QStringLiteral("Teams-hívás"));
@@ -271,11 +270,11 @@ private slots:
         QVERIFY(imported.isEmpty());
         QVERIFY(failed.isEmpty());
         QVERIFY(model.error().isEmpty());
-        QCOMPARE(model.fileCount(), 1);                          // javítható, újraindítható
+        QCOMPARE(model.fileCount(), 1);                          // fixable, restartable
         QVERIFY(model.canStart());
         QVERIFY(m_app->store()->loadAll().isEmpty());
 
-        // Hiányzó fájl menet közben: a hiba az ablakban marad.
+        // A missing file midway: the error stays in the window.
         QVERIFY(QFile::remove(big));
         QVERIFY(model.start());
         QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 10000);

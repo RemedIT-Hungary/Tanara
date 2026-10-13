@@ -1,6 +1,7 @@
-// VoiceModelDownloader — a CLI és a GUI közös modell-letöltője. HÁLÓZAT NÉLKÜL: a leíró
-// letöltési címe egy ideiglenes mappában lévő file:// URL (a QNetworkAccessManager helyi fájlt
-// olvas), az elérhetőség felülírva. A célmappa is ideiglenes (valódi ~/.tanara-t nem érint).
+// VoiceModelDownloader: the model downloader shared by the CLI and the GUI. WITHOUT NETWORK:
+// the descriptor's download address is a file:// URL in a temporary folder (QNetworkAccessManager
+// reads a local file), availability overridden. The target folder is temporary too (it does
+// not touch the real ~/.tanara).
 #include "tanara/voiceid/VoiceModelDownloader.h"
 
 #include <QFile>
@@ -63,7 +64,7 @@ private slots:
         const QByteArray data = payload();
         const VoiceModelSpec s = spec(writeSource(QStringLiteral("m.onnx"), data), data.size());
         VoiceModelDownloader dl;
-        dl.setReachableOverride(false);   // file:// URL-nél a hálózat nem számít
+        dl.setReachableOverride(false);   // for a file:// URL the network does not matter
         QSignalSpy started(&dl, &VoiceModelDownloader::started);
         QSignalSpy progress(&dl, &VoiceModelDownloader::progress);
         QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
@@ -97,12 +98,12 @@ private slots:
         VoiceModelDownloader dl;
         QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
         QVERIFY(!dl.start(s, target()));
-        QCOMPARE(finished.count(), 1);           // szinkron válasz
+        QCOMPARE(finished.count(), 1);           // synchronous reply
         QVERIFY(!finished.at(0).at(1).toBool());
         QCOMPARE(dl.lastFailure(s.id), VoiceModelDownloader::Failure::Exists);
         QCOMPARE(readAll(target()), QByteArray("old"));
 
-        // Kifejezett felülírással (CLI --force, sérült fájl újratöltése) lecseréli.
+        // With an explicit override (CLI --force, reloading a corrupt file) it replaces.
         QVERIFY(dl.start(s, target(), true));
         QVERIFY(finished.wait(5000));
         QVERIFY(finished.last().at(1).toBool());
@@ -148,7 +149,7 @@ private slots:
         QCOMPARE(dl.lastFailure(s.id), VoiceModelDownloader::Failure::Cancelled);
         QVERIFY(!dl.isRunning(s.id));
         QVERIFY(!QFileInfo::exists(target()));
-        dl.cancel(s.id);                          // már nem fut: nincs újabb jel
+        dl.cancel(s.id);                          // not running anymore: no further signal
         QCOMPARE(finished.count(), 1);
     }
 
@@ -157,7 +158,7 @@ private slots:
         VoiceModelSpec s;
         s.id = QStringLiteral("net-model");
         s.fileName = QStringLiteral("net.onnx");
-        s.downloadUrl = QStringLiteral("https://example.invalid/net.onnx");   // sosem kérjük le
+        s.downloadUrl = QStringLiteral("https://example.invalid/net.onnx");   // never requested
         VoiceModelDownloader dl;
         dl.setReachableOverride(false);
         QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
@@ -181,15 +182,15 @@ private slots:
         const VoiceModelSpec ok = spec(writeSource(QStringLiteral("m.onnx"), data), data.size());
         QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
         QVERIFY(dl.start(ok, target()));
-        QVERIFY(!dl.start(ok, target()));          // ugyanaz még fut: jel nélkül elutasítja
+        QVERIFY(!dl.start(ok, target()));          // the same one is still running: it rejects without a signal
         QCOMPARE(finished.count(), 0);
-        QVERIFY(dl.isRunning(ok.id));              // az eredeti letöltés megy tovább
+        QVERIFY(dl.isRunning(ok.id));              // the original download goes on
         QVERIFY(finished.wait(5000));
         QVERIFY(finished.last().at(1).toBool());
         QCOMPARE(readAll(target()), data);
     }
 
-    // G4 (B1): „ellenőrzés” állapot (méret-egyezés) és a letöltött fájl törlése.
+    // "Verifying" state (size match) and deleting the downloaded file.
     void verifyStatesAndDelete()
     {
         const QByteArray data = payload();
@@ -202,7 +203,7 @@ private slots:
         {
             QFile f(target());
             QVERIFY(f.open(QIODevice::WriteOnly));
-            f.write(data.left(1000));   // csonka
+            f.write(data.left(1000));   // truncated
         }
         QString detail;
         QCOMPARE(VoiceModelDownloader::verifyFile(s, target(), &detail), VR::SizeMismatch);
@@ -211,7 +212,7 @@ private slots:
         noSize.sizeBytes = 0;
         QCOMPARE(VoiceModelDownloader::verifyFile(noSize, target()), VR::Unverifiable);
 
-        // Aszinkron: a hívásban „ellenőrzés” állapot, a következő körben az eredmény.
+        // Asynchronous: in the call the "verifying" state, in the next round the result.
         VoiceModelDownloader dl;
         QSignalSpy started(&dl, &VoiceModelDownloader::verifyStarted);
         QSignalSpy verified(&dl, &VoiceModelDownloader::verified);
@@ -219,21 +220,21 @@ private slots:
         QVERIFY(dl.verify(s, target()));
         QCOMPARE(started.count(), 1);
         QVERIFY(dl.isVerifying(s.id));
-        QVERIFY(!dl.verify(s, target()));   // már ellenőrződik
+        QVERIFY(!dl.verify(s, target()));   // already being verified
         QVERIFY(verified.wait(5000));
         QVERIFY(!dl.isVerifying(s.id));
         QCOMPARE(verified.first().at(1).value<VR>(), VR::SizeMismatch);
         QCOMPARE(*dl.lastVerify(s.id), VR::SizeMismatch);
 
-        // Törlés: csak a <meta>/models alatti fájl; másodszorra nincs mit.
+        // Delete: only the file under <meta>/models; a second time there is nothing.
         QString error;
         QVERIFY(VoiceModelDownloader::deleteModelFile(s, meta, &error));
         QVERIFY(!QFileInfo::exists(target()));
         QVERIFY(!VoiceModelDownloader::deleteModelFile(s, meta, &error));
         QVERIFY(!error.isEmpty());
-        QVERIFY(QFileInfo::exists(writeSource(QStringLiteral("m.onnx"), data)));   // a forrás érintetlen
+        QVERIFY(QFileInfo::exists(writeSource(QStringLiteral("m.onnx"), data)));   // the source is untouched
 
-        // Letöltés után rendben.
+        // OK after download.
         QSignalSpy finished(&dl, &VoiceModelDownloader::finished);
         QVERIFY(dl.start(s, target()));
         QVERIFY(finished.wait(5000));

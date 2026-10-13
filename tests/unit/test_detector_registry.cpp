@@ -1,12 +1,10 @@
+// Tanara: unit tests of the meeting detector registry.
 //
-// Tanara — Meeting-detektor registry unit-tesztek.
+// The registry resolves and creates a platform detector by id; there is no hard-coded
+// `new LinuxCaptureDetector`. registerBuiltinDetectors() is idempotent, and we check the
+// create/has/all contract. Platform-specific asserts are under #if.
 //
-// A registry id alapján old fel és hoz létre platform-detektort; nincs hardkódolt
-// `new LinuxCaptureDetector`. A registerBuiltinDetectors() idempotens, és a create/
-// has/all szerződést ellenőrizzük. A platform-specifikus assertek #if alatt.
-//
-// Külön teszt-exe (tests/CMakeLists.txt GLOB), saját main. Core → QTEST_GUILESS_MAIN.
-//
+// A separate test exe (tests/CMakeLists.txt GLOB), its own main. Core: QTEST_GUILESS_MAIN.
 #include <QtTest>
 #include <QObject>
 
@@ -21,7 +19,7 @@ class DetectorRegistryTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // registerBuiltinDetectors() idempotens: a többszöri hívás nem duplikál, nem crashel.
+    // registerBuiltinDetectors() is idempotent: repeated calls do not duplicate or crash.
     void registerIsIdempotent()
     {
         registerBuiltinDetectors();
@@ -31,7 +29,7 @@ private slots:
         QCOMPARE(n1, n2);
     }
 
-    // Ismeretlen id-ra a create() nullptr-t ad (nem dob, nem crashel).
+    // For an unknown id create() returns nullptr (does not throw or crash).
     void createUnknownReturnsNull()
     {
         registerBuiltinDetectors();
@@ -41,8 +39,8 @@ private slots:
     }
 
 #if defined(Q_OS_LINUX)
-    // Linuxon regisztrálódik a PipeWire capture-detektor, és a create() működő,
-    // helyesen elnevezett példányt ad, a megadott QObject-hez parentelve.
+    // On Linux the PipeWire capture detector is registered, and create() gives a working,
+    // correctly named instance, parented to the given QObject.
     void linuxCaptureRegistered()
     {
         registerBuiltinDetectors();

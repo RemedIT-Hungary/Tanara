@@ -1,21 +1,21 @@
-// Tanara GUI — belépési pont.
-//   tanara                 az elemző/könyvtár a Qt Quick / QML felülettel (gui/qml, Main.qml)
-//   tanara --meeting ID    ugyanez, a megadott megbeszélést kijelölve; ha már fut elemző, a
-//                          kérést annak adja át és kilép (AnalyzerSingleton.h)
-//   tanara --record …      csak a lebegő felvevő (QML), azonnali rögzítéssel (a figyelő indítja)
-//                          opciók: --title T | --app A  --context C  --device IDX (ismételhető)
-//                                  --no-start  --stop
-//   tanara --gallery | --demo | --qml-shot ki.png [--qml-page T] [--theme …] [--size SZxM]
-//                          QML-fejlesztői módok AppController NÉLKÜL (lásd gui/qml/README.md)
-//   tanara --settings [LAP]  csak a Beállítások ablaka (a tálca-figyelő „Beállítások…” menüpontja
-//                          indítja); LAP: general | recording | watcher | providers | cloud | summary.
-//                          Ha fut főablak, a kérést annak adja át és kilép.
-//   tanara --shell-script f.qml   fejlesztői QA: a főablak végigvezetése szkriptből (ShellQaHook.h)
-// A folyamat mindig QApplication: a Tanara Cloud ablakai (bejelentkezés, becslés, hibák,
-// ÁSZF, modellválasztó), a natív fájl- / mappaválasztók és a tálca-ikon Qt Widgets, és a
-// QML-ablakok mellett nyílnak (App.bridge / SettingsWidgetsDialogs). A főablak, a Beállítások
-// (SettingsWindowHost), a Személyek (PeopleWindowHost) és a felvevő (RecorderWindowHost; a
-// főablakban a ShellRecorderHost-on át) QML.
+// Tanara GUI entry point.
+//   tanara                 the analyzer/library with the Qt Quick / QML UI (gui/qml, Main.qml)
+//   tanara --meeting ID    the same, with the given meeting selected; if an analyzer is already
+//                          running, it hands the request over and exits (AnalyzerSingleton.h)
+//   tanara --record ...    only the floating recorder (QML), recording immediately (started by the watcher)
+//                          options: --title T | --app A  --context C  --device IDX (repeatable)
+//                                   --no-start  --stop
+//   tanara --gallery | --demo | --qml-shot out.png [--qml-page T] [--theme ...] [--size WxH]
+//                          QML developer modes WITHOUT AppController (see gui/qml/README.md)
+//   tanara --settings [PAGE]  only the Settings window (started by the tray watcher's "Settings..."
+//                          menu item); PAGE: general | recording | watcher | providers | cloud | summary.
+//                          If a main window is running, it hands the request over and exits.
+//   tanara --shell-script f.qml   developer QA: drives the main window from a script (ShellQaHook.h)
+// The process is always a QApplication: the Tanara Cloud windows (sign-in, estimate, errors,
+// terms, model picker), the native file / folder pickers and the tray icon are Qt Widgets,
+// opened alongside the QML windows (App.bridge / SettingsWidgetsDialogs). The main window,
+// Settings (SettingsWindowHost), People (PeopleWindowHost) and the recorder (RecorderWindowHost;
+// in the main window through ShellRecorderHost) are QML.
 #include <QElapsedTimer>
 #include "AnalyzerSingleton.h"
 #include "AppIcon.h"
@@ -60,16 +60,16 @@
 using namespace tanara;
 using namespace tanara_gui;
 
-// --record mód: csak a lebegő felvevő (nincs főablak) — az új QML-felvevő
-// (gui/qml: RecorderWindow.qml + tanara_qml::RecorderWindowHost). A figyelő / tálca indítja.
-//   --title T      kifejezett cím          --app A      észlelt hívás-app (automatikus név)
-//   --context C    kontextus-megjegyzés    --device N   forrás a capture-lista sorszámával (ismételhető)
-//   --no-start     csak megnyit, nem indít --stop       a FUTÓ felvétel leállítása (nem nyit ablakot)
-// A recording.lock (a metaadat-mappában) jelzi a figyelőnek, hogy megy a felvétel. A folyamat
-// akkor lép ki, amikor a felhasználó bezárja az ablakot (felvétel közben a bezárás nem állít
-// le: a „háttérben fusson” / „leállítás és bezárás” lapot nyitja), vagy ha a felvétel rejtett
-// ablak mellett ért véget.
-// Fut-e a figyelő (tanara-watcher)? A watcher.lock-ot tartja; ha mi meg tudjuk fogni, nem fut.
+// --record mode: only the floating recorder (no main window): the new QML recorder
+// (gui/qml: RecorderWindow.qml + tanara_qml::RecorderWindowHost). Started by the watcher / tray.
+//   --title T      explicit title          --app A      detected call app (automatic name)
+//   --context C    context note            --device N   source by capture-list index (repeatable)
+//   --no-start     only opens, no start    --stop       stop the RUNNING recording (opens no window)
+// recording.lock (in the metadata folder) tells the watcher a recording is running. The
+// process exits when the user closes the window (closing during a recording does not stop it:
+// it opens the "keep running in the background" / "stop and close" page), or when the
+// recording ended with a hidden window.
+// Is the watcher (tanara-watcher) running? It holds watcher.lock; if we can take it, it is not running.
 static bool watcherRunning()
 {
     QLockFile probe(tanara::watcherLockPath());
@@ -81,7 +81,7 @@ static bool watcherRunning()
     return true;
 }
 
-// A `--settings [LAP]` értéke: a lap neve ("" ha nincs megadva / a következő elem kapcsoló).
+// The value of `--settings [PAGE]`: the page name ("" if absent / the next item is a switch).
 static QString settingsPageArg(const QStringList& args)
 {
     const int i = args.indexOf(QStringLiteral("--settings"));
@@ -90,8 +90,8 @@ static QString settingsPageArg(const QStringList& args)
     return args.at(i + 1);
 }
 
-// Főablak nélküli folyamatban (önálló felvevő, --settings) a megjegyzett téma betöltése a
-// közös ui-state.json-ból — a --theme / TANARA_THEME erősebb nála.
+// In a process without a main window (standalone recorder, --settings): loads the remembered
+// theme from the shared ui-state.json; --theme / TANARA_THEME override it.
 static void applySavedTheme(AppController& controller, const tanara_qml::QmlOptions& opts)
 {
     if (!opts.theme.isEmpty() || qEnvironmentVariableIsSet("TANARA_THEME"))
@@ -106,8 +106,9 @@ static void applySavedTheme(AppController& controller, const tanara_qml::QmlOpti
         tanara_qml::AppContext::instance()->setThemeMode(mode);
 }
 
-// --settings mód: csak a Beállítások ablaka (a tálca-figyelő „Beállítások…” menüpontja). Akkor
-// fut így, ha nincs főablak, amelynek a kérést át lehetett adni; az ablak bezárásakor kilép.
+// --settings mode: only the Settings window (the tray watcher's "Settings..." menu item). It
+// runs this way when there is no main window the request could be handed to; exits when the
+// window closes.
 static int runSettingsMode(QApplication& app, AppController& controller,
                            const tanara_qml::QmlOptions& opts, const QString& page)
 {
@@ -132,29 +133,29 @@ static int runSettingsMode(QApplication& app, AppController& controller,
 static int runRecorderMode(QApplication& app, AppController& controller, const QStringList& args)
 {
     const RecorderArgs ra = parseRecorderArgs(args);
-    // SINGLETON: ha már fut felvevő (önálló vagy az elemzőé), a kérést átadjuk neki és
-    // kilépünk — nem nyílik második felvevő-ablak.
+    // SINGLETON: if a recorder is already running (standalone or the analyzer's), we hand the
+    // request over and exit; no second recorder window opens.
     if (RecorderSingleton::forwardToExisting(args))
         return 0;
     if (ra.stop)
-        return 0;   // nincs futó felvevő → nincs mit leállítani (ablakot sem nyitunk)
+        return 0;   // no running recorder, so nothing to stop (and no window opens)
     auto* singleton = new RecorderSingleton(&app);
     singleton->listen();
 
-    QApplication::setQuitOnLastWindowClosed(false);   // rejtett ablakkal is fut a felvétel
+    QApplication::setQuitOnLastWindowClosed(false);   // the recording runs even with a hidden window
     const tanara_qml::QmlOptions recorderOpts = tanara_qml::parseQmlOptions(args);
     tanara_qml::applyOptions(recorderOpts);                         // --theme / TANARA_THEME
-    tanara_qml::AppContext::instance()->setDemo(false);             // valódi controller van
-    applySavedTheme(controller, recorderOpts);                      // különben a megjegyzett téma
-    // Ez a folyamat a felvétel után kilép: az automatikus lekeverést NEM indítja el (a
-    // félbehagyott ffmpeg csak csonka mixdown.part.mp3-at hagyna). A lekeverést az elemző
-    // készíti el, amikor kell.
+    tanara_qml::AppContext::instance()->setDemo(false);             // a real controller exists
+    applySavedTheme(controller, recorderOpts);                      // otherwise the remembered theme
+    // This process exits after the recording: it does NOT start the automatic mixdown (an
+    // interrupted ffmpeg would leave only a truncated mixdown.part.mp3). The analyzer builds the
+    // mixdown when needed.
     controller.setAutoMixdownAfterRecording(false);
 
     auto* host = new tanara_qml::RecorderWindowHost(&controller, nullptr, &app);
 
-    // Saját tálca-ikon: csak akkor látszik, ha az ablak rejtve van ÉS a figyelő nem fut
-    // (különben az ő ikonja hozza vissza a felvevőt), illetve értesítés idejére.
+    // Own tray icon: shown only when the window is hidden AND the watcher is not running
+    // (otherwise the watcher's icon brings the recorder back), and for the duration of a notification.
     QSystemTrayIcon* tray = nullptr;
     auto ensureTray = [&app, &tray, host, &controller]() -> QSystemTrayIcon* {
         if (tray || !QSystemTrayIcon::isSystemTrayAvailable())
@@ -185,9 +186,9 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
 
     host->setHideToTrayEnabled(QSystemTrayIcon::isSystemTrayAvailable() || watcherRunning());
     QObject::connect(host, &tanara_qml::RecorderWindowHost::hiddenToTray, &app, [&] {
-        if (watcherRunning()) return;            // a figyelő tálca-ikonja visszahozza
+        if (watcherRunning()) return;            // the watcher's tray icon brings it back
         if (QSystemTrayIcon* t = ensureTray()) { updateTray(); t->show(); }
-        else host->show();                       // nincs tálca: ne tűnjön el végleg
+        else host->show();                       // no tray: do not vanish for good
     });
     QObject::connect(host, &tanara_qml::RecorderWindowHost::shown, &app, [&] {
         if (tray) tray->hide();
@@ -197,7 +198,7 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     });
     QObject::connect(host, &tanara_qml::RecorderWindowHost::notificationRequested, &app,
                      [&](const QString& title, const QString& text) {
-        // „Vége a megbeszélésnek?” rejtett / pirula ablaknál: rendszerértesítés is megy.
+        // "End of the meeting?" with a hidden / pill window: a system notification goes out too.
         if (QSystemTrayIcon* t = ensureTray()) {
             updateTray();
             const bool wasVisible = t->isVisible();
@@ -209,18 +210,18 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     });
     QObject::connect(host, &tanara_qml::RecorderWindowHost::closed, &app, [] { qApp->quit(); });
     QObject::connect(host, &tanara_qml::RecorderWindowHost::recordingFinished, &app, [host](const QString&) {
-        // Rejtett ablak mellett (tálcáról leállítva) nincs kinek „Elmentve”-t mutatni → kilépés.
+        // With a hidden window (stopped from the tray) nobody can be shown "Saved", so quit.
         if (!host->isVisible()) qApp->quit();
     });
     QObject::connect(host, &tanara_qml::RecorderWindowHost::openMeetingRequested, &app,
                      [](const QString& meetingId) {
-        // Az elemző külön folyamat: elindítjuk (a --meeting a megnyitandó meeting azonosítója).
+        // The analyzer is a separate process: we start it (--meeting is the id of the meeting to open).
         QProcess::startDetached(QCoreApplication::applicationFilePath(),
                                 {QStringLiteral("--meeting"), meetingId});
         qApp->quit();
     });
-    // „Rögzítés beállításai” (R10): az új QML Beállítások-ablak a „Rögzítés” lapon, ebben a
-    // folyamatban (nem modális — a felvevő mellette használható, a felvételt nem érinti).
+    // "Recording settings": the new QML Settings window on the "Recording" page, in this process
+    // (non-modal; the recorder stays usable next to it, and the recording is unaffected).
     auto* settingsDialogs = new SettingsWidgetsDialogs(&controller, &app);
     auto* settings = new tanara_qml::SettingsWindowHost(&controller, settingsDialogs, &app);
     QObject::connect(host, &tanara_qml::RecorderWindowHost::settingsRequested, &app,
@@ -230,11 +231,11 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
     });
     QObject::connect(settings, &tanara_qml::SettingsWindowHost::saved, &app,
                      [&controller] { controller.refreshDevices(); });
-    // A felvevő bezárásakor a folyamat kilép: a Beállítások ablaka se tartsa életben.
+    // When the recorder closes, the process exits: the Settings window must not keep it alive.
     QObject::connect(host, &tanara_qml::RecorderWindowHost::closed, settings,
                      [settings] { settings->closeNow(); });
 
-    // Továbbított kérések (tálca / figyelő újabb hívásai) → ugyanez az ablak.
+    // Forwarded requests (newer tray / watcher calls) go to the same window.
     QObject::connect(singleton, &RecorderSingleton::requestReceived, host,
                      [host](const QStringList& fwd) { host->request(toRecorderRequest(parseRecorderArgs(fwd))); });
 
@@ -248,16 +249,16 @@ static int runRecorderMode(QApplication& app, AppController& controller, const Q
 }
 
 int main(int argc, char** argv) {
-    // Logolás MIELŐTT bármi más (hogy a korai üzenetek is beessenek). Szint a
-    // parancssorból/env-ből: --debug | --log-level <…> | TANARA_LOG_LEVEL.
+    // Set up logging BEFORE anything else (so early messages are captured too). Level from the
+    // command line / env: --debug | --log-level <...> | TANARA_LOG_LEVEL.
     QStringList rawArgs;
     rawArgs.reserve(argc);
     for (int i = 0; i < argc; ++i)
         rawArgs << QString::fromLocal8Bit(argv[i]);
     const QStringList cleanArgs = tanara::stripLogArgs(rawArgs);
 
-    // Melyik felület indul? --record: lebegő felvevő; különben a QML-főablak, illetve annak
-    // fejlesztői módjai.
+    // Which UI starts? --record: the floating recorder; otherwise the QML main window and its
+    // developer modes.
     const bool recordMode = cleanArgs.contains(QStringLiteral("--record"));
     const bool qmlMode = !recordMode;
 
@@ -272,19 +273,19 @@ int main(int argc, char** argv) {
         }
     }
 
-    // A galéria / demó / képernyőkép-mód nem ír a user ~/.tanara mappájába: logfájl sincs.
+    // Gallery / demo / screenshot modes do not write to the user's ~/.tanara folder: no log file either.
     tanara::LogOptions logOpts = tanara::parseLogOptions(rawArgs);
     if (qmlMode && qmlOpts.withoutController())
         logOpts.toFile = false;
     tanara::initLogging(logOpts);
 
-    // Konzol-zaj csendesítése (külső libek). Audio-only lejátszás → ne próbáljon
-    // videó-hardvergyorsítást (VDPAU/VAAPI/D3D) inicializálni az ffmpeg-backend.
+    // Quiet the console noise (external libs). Audio-only playback must not try to initialize
+    // video hardware acceleration (VDPAU/VAAPI/D3D) in the ffmpeg backend.
     qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", QByteArray());
 
 #if defined(Q_OS_LINUX)
-    // PipeWire/libspa enumerációs log szintje le (pl. az optikai/iec958 eszköz
-    // formátum-egyeztetési „spaVisitChoice" üzenete) — csak Linuxon releváns.
+    // Lower the PipeWire/libspa enumeration log level (e.g. the format negotiation
+    // "spaVisitChoice" message of the optical/iec958 device); relevant on Linux only.
     if (!qEnvironmentVariableIsSet("PIPEWIRE_DEBUG")) qputenv("PIPEWIRE_DEBUG", "0");
     qCInfo(tanara::lcApp).noquote()
         << "Megjegyzés: a konzolon esetenként ártalmatlan külső-library üzenetek "
@@ -292,18 +293,17 @@ int main(int argc, char** argv) {
            "optikai eszköz formátum-egyeztetés). Ezek NEM hibák.";
 #endif
 
-    // Qt Quick-beállítások (stílus, szövegrajzolás; képernyőkép-módban offscreen platform) —
-    // a QApplication ELŐTT.
+    // Qt Quick settings (style, text rendering; offscreen platform in screenshot mode), BEFORE QApplication.
     if (qmlMode)
         tanara_qml::prepareProcess(qmlOpts);
     else
-        tanara_qml::RecorderWindowHost::prepareProcess();   // a QML-felvevő
+        tanara_qml::RecorderWindowHost::prepareProcess();   // the QML recorder
 
     QApplication app(argc, argv);
-    // Fő-szál megakadás-figyelő (csak ha a tanara.perf debug-naplózás be van kapcsolva:
-    // --log-rules "tanara.perf.debug=true"): 16 ms-os időzítő; ha két tüzelés között 80 ms-nál
-    // több telik el, a fő szál ennyi ideig nem jutott az eseményhurokhoz — a napló időbélyege
-    // mellé tehető a többi (betöltési) bejegyzés, így kiderül, mi akasztotta meg a felületet.
+    // Main-thread stall watcher (only when tanara.perf debug logging is on:
+    // --log-rules "tanara.perf.debug=true"): a 16 ms timer; if more than 80 ms pass between two
+    // firings, the main thread did not reach the event loop for that long. The log timestamps
+    // can be matched with the other (loading) entries to see what blocked the UI.
     if (tanara::lcPerf().isDebugEnabled()) {
         auto* stall = new QTimer(&app);
         auto* last = new QElapsedTimer();
@@ -318,13 +318,13 @@ int main(int argc, char** argv) {
     }
     QApplication::setApplicationName(QStringLiteral("Tanara"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
-    QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // minden ablakra + tálcára
+    QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // every window + the tray
 
-    // UI-nyelv (settings.json uiLanguage) — minden widget megkonstruálása ELŐTT.
+    // UI language (settings.json uiLanguage), BEFORE any widget is constructed.
     tanara::installAppTranslator();
 
-    // QML-fejlesztői módok (képernyőkép / galéria / demó): AppController NÉLKÜL — a user
-    // valódi adataihoz (~/.tanara, ~/Tanara) nem nyúlunk, a nézetmodellek mintaadatot adnak.
+    // QML developer modes (screenshot / gallery / demo): WITHOUT AppController; the user's real
+    // data (~/.tanara, ~/Tanara) is not touched, and the view models supply sample data.
     if (qmlMode && qmlOpts.withoutController()) {
         tanara_qml::applyOptions(qmlOpts);
         if (qmlOpts.shotMode())
@@ -335,22 +335,22 @@ int main(int argc, char** argv) {
         return app.exec();
     }
 
-    // Fejlesztői QA (--shell-script): a lokális socketeken (felvevő / elemző) csak akkor
-    // veszünk részt, ha TANARA_HOME homokozó van beállítva — ott a nevek a mappa hash-ével
-    // elkülönülnek, így a futó valódi példányt nem zavarjuk.
+    // Developer QA (--shell-script): we take part in the local sockets (recorder / analyzer)
+    // only if a TANARA_HOME sandbox is set; there the names are separated by the folder hash, so a
+    // running real instance is not disturbed.
     const bool qaScript = cleanArgs.contains(QStringLiteral("--shell-script"));
     const bool useSockets = !qaScript || !tanara::instanceScopeSuffix().isEmpty();
 
-    // `tanara --meeting <id>` (az önálló felvevő „Megnyitás az elemzőben” gombja): ha már fut
-    // az új főablak, a kérést annak adjuk át és kilépünk — nem nyílik második elemző
-    // ugyanazon az adaton.
+    // `tanara --meeting <id>` (the standalone recorder's "Open in the analyzer" button): if the
+    // new main window is already running, we hand the request over and exit; no second analyzer
+    // opens on the same data.
     const QString startMeetingId = analyzer_singleton::meetingArg(cleanArgs);
     if (qmlMode && !qaScript && !startMeetingId.isEmpty()
         && analyzer_singleton::forwardToExisting({QStringLiteral("--meeting"), startMeetingId}))
         return 0;
 
-    // `tanara --settings [lap]` (a tálca-figyelő menüpontja): ha fut az új főablak, az nyitja meg
-    // a Beállításokat a kért lapon, és ez a folyamat kilép.
+    // `tanara --settings [page]` (the tray watcher's menu item): if the new main window is
+    // running, it opens Settings on the requested page, and this process exits.
     if (settingsMode && !qaScript
         && analyzer_singleton::forwardToExisting({QStringLiteral("--settings"), settingsPageArg(cleanArgs)}))
         return 0;
@@ -360,52 +360,52 @@ int main(int argc, char** argv) {
     if (settingsMode)
         return runSettingsMode(app, controller, qmlOpts, settingsPageArg(cleanArgs));
 
-    // --record mód: csak a lebegő felvevő (a figyelő indítja); nincs főablak.
+    // --record mode: only the floating recorder (started by the watcher); no main window.
     if (recordMode)
         return runRecorderMode(app, controller, cleanArgs);
 
-    // A QML-főablak. A nézetmodellek (gui/qml/src) az App-singletonon át érik el a
-    // controllert: tanara_qml::AppContext::instance()->controller().
+    // The QML main window. The view models (gui/qml/src) reach the controller through the App
+    // singleton: tanara_qml::AppContext::instance()->controller().
     tanara_qml::applyOptions(qmlOpts);
     tanara_qml::AppContext::instance()->setController(&controller);
-    // A lejátszó valódi hang-motorja (a QML-modul nem linkel Qt Multimediát).
+    // The player's real audio engine (the QML module does not link Qt Multimedia).
     tanara_qml::PlayerController::setBackendFactory(
         [](QObject* parent) -> tanara_qml::PlayerBackend* {
             return new tanara_gui::MediaPlayerBackend(parent);
         });
-    // A híd (App.bridge): Beállítások / Személyek / felvevő ablakok, natív fájlválasztók és a
-    // Tanara Cloud Widgets-ablakai.
+    // The bridge (App.bridge): Settings / People / recorder windows, native file pickers and the
+    // Tanara Cloud Widgets windows.
     tanara_gui::QmlShellBridge bridge(&controller);
     tanara_qml::AppContext::instance()->setBridge(&bridge);
-    // QA-szkript módban az „Első lépések” nem nyílik meg magától (a szkript a főablakot vezeti).
+    // In QA script mode "Getting started" does not open by itself (the script drives the main window).
     bridge.setAutoOnboarding(!qaScript);
 
-    // QA-szkript mód: friss homokozóban az index üres → a lemezről újraépítjük.
+    // QA script mode: in a fresh sandbox the index is empty, so we rebuild it from disk.
     if (qaScript)
         controller.store()->rebuildIndexFromDisk();
 
-    QQmlApplicationEngine engine;   // a controller és a híd UTÁN deklarálva → előbb szűnik meg
+    QQmlApplicationEngine engine;   // declared AFTER the controller and the bridge, so it is destroyed first
     if (!tanara_qml::loadPage(engine, QStringLiteral("Main")))
         return 1;
     auto* mainWindow = engine.findChild<QQuickWindow*>();
     bridge.setMainWindow(mainWindow);
     if (useSockets) {
-        // A `tanara --record …` továbbított kérései → a főablak felvevője.
+        // Forwarded `tanara --record ...` requests go to the main window's recorder.
         bridge.startRecorderListening();
-        // A `tanara --meeting <id>` átadott kérései → kijelölés + a főablak előre.
+        // Passed-over `tanara --meeting <id>` requests: select + raise the main window.
         analyzer_singleton::listen(&bridge, [&bridge](const QStringList& fwd) {
-            // `tanara --settings [lap]`: a Beállítások a kért lapon; különben megbeszélés-kijelölés.
+            // `tanara --settings [page]`: Settings on the requested page; otherwise a meeting selection.
             if (const int i = fwd.indexOf(QStringLiteral("--settings")); i >= 0)
                 bridge.openSettings(fwd.value(i + 1));
             else
                 bridge.showMeeting(analyzer_singleton::meetingArg(fwd));
         });
     }
-    // Induláskor kért megbeszélés (a megjegyzett kijelölés helyett).
+    // The meeting requested at startup (instead of the remembered selection).
     if (!startMeetingId.isEmpty())
         bridge.showMeeting(startMeetingId);
 
-    // Fejlesztői QA: a főablak végigvezetése egy QML-szkripttel (lásd ShellQaHook.h).
+    // Developer QA: drives the main window with a QML script (see ShellQaHook.h).
     if (const int i = cleanArgs.indexOf(QStringLiteral("--shell-script"));
         i >= 0 && i + 1 < cleanArgs.size()) {
         auto* hook = new tanara_gui::ShellQaHook(mainWindow, &engine);

@@ -1,8 +1,7 @@
-//
-// Tanara — MixdownPlan: a lekeverés bemenetei és szűrőgráfja. A később kezdődő sáv / egy eszköz
-// második szakasza adelay-jel kerül a helyére; az eldobott sáv kimarad; a hiányzó fájlú aktív
-// sáv neve a `missing`-be kerül. A végén valódi ffmpeg-keverés szintetikus (lavfi sine) sávokkal.
-//
+// Tanara: MixdownPlan: the mixdown's inputs and filter graph. A track that starts later / a
+// device's second segment is placed with adelay; a dropped track is left out; the name of an
+// active track with a missing file goes into `missing`. At the end a real ffmpeg mix with
+// synthetic (lavfi sine) tracks.
 #include <QtTest>
 #include <QProcess>
 #include <QStandardPaths>
@@ -93,11 +92,11 @@ void MixdownPlanTest::filterOffsetsGetAdelay()
 
 void MixdownPlanTest::filterSingleInput()
 {
-    // Egy eltolás nélküli bemenet: csak normalizálás.
+    // An input without an offset: normalization only.
     QStringList f = MixdownPlan::filterArgs({0});
     QCOMPARE(f.at(0), QStringLiteral("-af"));
     QVERIFY(f.at(1).startsWith(QStringLiteral("loudnorm")));
-    // Egy eltolt bemenet: adelay, amix nélkül.
+    // An offset input: adelay, without amix.
     f = MixdownPlan::filterArgs({2000});
     QCOMPARE(f.at(0), QStringLiteral("-filter_complex"));
     QVERIFY2(f.at(1).startsWith(QStringLiteral("[0]adelay=2000:all=1[d0];[d0]loudnorm")), qPrintable(f.at(1)));
@@ -111,8 +110,8 @@ void MixdownPlanTest::planSkipsDroppedAndReportsMissing()
     m.id = QStringLiteral("m1");
     m.folder = dir.path();
     m.tracks = {mk("mic", "USB Mic", TrackKind::Mic),
-                mk("old", "Webcam", TrackKind::Mic, 0, false),                 // eldobott
-                mk("sys", "Monitor of Kanto YU4", TrackKind::Loopback, 3000)};  // nincs fájl
+                mk("old", "Webcam", TrackKind::Mic, 0, false),                 // dropped
+                mk("sys", "Monitor of Kanto YU4", TrackKind::Loopback, 3000)};  // no file
     touch(QDir(m.folder).filePath(QStringLiteral("track_mic.ogg")));
     touch(QDir(m.folder).filePath(QStringLiteral("track_old.ogg")));
     const MixdownPlan plan = MixdownPlan::fromMeeting(m);
@@ -120,7 +119,7 @@ void MixdownPlanTest::planSkipsDroppedAndReportsMissing()
     QCOMPARE(plan.inputs.at(0).trackId, QStringLiteral("mic"));
     QCOMPARE(plan.missing.size(), 1);
     QVERIFY(!plan.missing.at(0).isEmpty());
-    QVERIFY(plan.missing.at(0) != QStringLiteral("sys"));   // a megjelenített név, nem az azonosító
+    QVERIFY(plan.missing.at(0) != QStringLiteral("sys"));   // the displayed name, not the id
 
     const QStringList args = plan.ffmpegArgs(QStringLiteral("/x/out.mp3"));
     QCOMPARE(args.count(QStringLiteral("-i")), 1);
@@ -135,8 +134,8 @@ void MixdownPlanTest::planSegmentsOfOneDevice()
     Meeting m;
     m.id = QStringLiteral("m2");
     m.folder = dir.path();
-    // A mikrofon végig szól; a rendszerhang 57,2 s-nál bekapcsolva, kikapcsolva, majd 300 s-nál
-    // újra: két szakasz, két fájl.
+    // The microphone plays throughout; the system audio is on at 57.2 s, off, then on again at
+    // 300 s: two segments, two files.
     m.tracks = {mk("mic", "USB Mic", TrackKind::Mic),
                 mk("sys", "Monitor of Speakers", TrackKind::Loopback, 57200),
                 mk("sys-2", "Monitor of Speakers", TrackKind::Loopback, 300000)};
@@ -169,7 +168,7 @@ void MixdownPlanTest::ffmpegMixPlacesLateTrack()
     p.start(QStringLiteral("ffmpeg"), MixdownPlan::fromMeeting(m).ffmpegArgs(out));
     QVERIFY(p.waitForFinished(60000));
     QCOMPARE(p.exitCode(), 0);
-    // A 2,5 s-mal később kezdődő 1 s-os sáv a keverék végét 3,5 s-ra tolja.
+    // A 1 s track starting 2.5 s later pushes the mix's end to 3.5 s.
     const qint64 d = probeMs(out);
     QVERIFY2(qAbs(d - 3500) < 150, qPrintable(QString::number(d)));
 }

@@ -1,9 +1,7 @@
-//
-// Az átirat-szerkesztő bekötése az AppController-be: munkamenet-kezelés, a régi
-// (speakerMap-alapú) útvonalakkal való együttélés, az összefoglaló elavult-jelzője és az
-// új átirat horga. IZOLÁLT HOME-mal fut (a ~/.tanara és a ~/Tanara a temp alá kerül) —
-// valódi adathoz, átíráshoz, összefoglaláshoz nem nyúl.
-//
+// Wiring the transcript editor into AppController: session management, coexistence with the
+// old (speakerMap-based) paths, the summary's stale flag and the new-transcript hook. Runs with
+// an ISOLATED HOME (~/.tanara and ~/Tanara go under temp); it touches no real data,
+// transcription or summary.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -58,15 +56,15 @@ private:
 void SpeakerControllerTest::initTestCase()
 {
     QVERIFY(m_home.isValid());
-    // Izolált HOME: a beállítások, a személy-/lenyomat-DB és a felvételek mind a temp alatt.
-    // A HOME Windowson nem téríti el a QDir::homePath()-t → a TANARA_HOME is a temp alá mutat
-    // (minden platformon; egy külső TANARA_HOME-ot is felülír, így a védőkorlát teljesül).
+    // Isolated HOME: settings, the people / voiceprint DB and the recordings are all under temp.
+    // On Windows HOME does not redirect QDir::homePath(), so TANARA_HOME points under temp too
+    // (on every platform; it overrides an external TANARA_HOME as well, so the guard rail holds).
     qputenv("HOME", m_home.path().toUtf8());
     qputenv("TANARA_HOME", m_home.filePath(QStringLiteral(".tanara")).toUtf8());
     qputenv("TANARA_CLOUD", "off");
     QDir().mkpath(m_home.filePath(QStringLiteral(".tanara")));
     m_app = std::make_unique<AppController>();
-    // Védőkorlát: ha az izoláció bármiért nem érvényesül, a teszt nem megy tovább.
+    // Guard rail: if the isolation does not hold for any reason, the test does not go on.
     QVERIFY2(m_app->store()->audioDir().startsWith(m_home.path()),
              qPrintable(m_app->store()->audioDir()));
     QVERIFY2(m_app->store()->metadataDir().startsWith(m_home.path()),
@@ -75,7 +73,7 @@ void SpeakerControllerTest::initTestCase()
 
 void SpeakerControllerTest::cleanupTestCase() { m_app.reset(); }
 
-// Négy sor: 0 és 2 az 1-es címkén, 1 és 3 a 2-esen.
+// Four lines: 0 and 2 on label 1, 1 and 3 on label 2.
 Meeting SpeakerControllerTest::makeMeeting(const QString& title, bool hasSummary)
 {
     Meeting m = m_app->store()->createMeeting(title);
@@ -113,13 +111,13 @@ void SpeakerControllerTest::sessionLifecycle()
 
     SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
-    QCOMPARE(m_app->speakerEditor(m.id), ed);       // meetingenként egy munkamenet
+    QCOMPARE(m_app->speakerEditor(m.id), ed);       // one session per meeting
     QCOMPARE(ed->utteranceCount(), 4);
-    QVERIFY(!ed->embeddingsSupported());            // az izolált HOME-ban nincs modell → leépül
+    QVERIFY(!ed->embeddingsSupported());            // the isolated HOME has no model, so it degrades
 
     QVERIFY(ed->moveUtterances({QStringLiteral("u0")}, kB2));
     QVERIFY(ed->canUndo());
-    // Lezárás: az undo-verem eldobva, a javítás a lemezen marad.
+    // Closing: the undo stack is dropped, the fix stays on disk.
     m_app->closeSpeakerEditor(m.id);
     SpeakerEditor* again = m_app->speakerEditor(m.id);
     QVERIFY(again != nullptr);
@@ -137,7 +135,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QSignalSpy staleSig(m_app.get(), &AppController::summaryStaleChanged);
     QSignalSpy peopleSig(m_app.get(), &AppController::peopleChanged);
 
-    // A szerkesztő műveletei a megszokott jeleken is kimennek.
+    // The editor's operations go out on the usual signals too.
     const QString cili = ed->moveUtterancesToPerson({QStringLiteral("u12000")}, QStringLiteral("Cili"));
     QVERIFY(!cili.isEmpty());
     QCOMPARE(peopleSig.count(), 1);
@@ -149,15 +147,15 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QCOMPARE(mapSig.count(), 1);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value(kB1), QStringLiteral("Anna"));
 
-    // A RÉGI útvonal (CLI): nyers címke átnevezése. A szerkesztő átveszi, a
-    // soronkénti javítás megmarad, és a transcript.md mindkettőt tükrözi.
+    // The OLD path (CLI): renaming a raw label. The editor takes it over, the per-line fix
+    // stays, and transcript.md reflects both.
     QSignalSpy speakers(ed, &SpeakerEditor::speakersChanged);
     m_app->renameSpeaker(m.id, kB2, QStringLiteral("Béla"), /*enroll*/ false);
     QVERIFY(speakers.count() >= 1);
     QCOMPARE(ed->speaker(kB2).personName, QStringLiteral("Béla"));
     QCOMPARE(ed->utterance(QStringLiteral("u12000")).speakerKey, cili);
     QVERIFY(ed->canUndo());
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     const QString md = markdown(m);
     QVERIFY2(md.contains(QStringLiteral("**Anna** S0")), qPrintable(md));
     QVERIFY(md.contains(QStringLiteral("**Béla** S1")));
@@ -165,7 +163,7 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
     QVERIFY(md.contains(QStringLiteral("**Béla** S3")));
     QCOMPARE(m_app->summaryStale(m.id).correctedSpeakers, 3);   // Cili, Anna, Béla
 
-    // „Rendben így".
+    // "Fine as is".
     m_app->dismissSummaryStale(m.id);
     QVERIFY(!m_app->summaryStale(m.id).stale);
     m_app->closeSpeakerEditor(m.id);
@@ -174,16 +172,16 @@ void SpeakerControllerTest::editorAndLegacyRenameCoexist()
 void SpeakerControllerTest::summaryReady_clearsStale()
 {
     const Meeting m = makeMeeting(QStringLiteral("Elavult"), true);
-    // Megnyitott szerkesztő NÉLKÜL: a régi átnevezés is elavulttá teszi az összefoglalót.
+    // WITHOUT an open editor: the old rename makes the summary stale too.
     QSignalSpy staleSig(m_app.get(), &AppController::summaryStaleChanged);
     m_app->renameSpeaker(m.id, kB1, QStringLiteral("Anna"), false);
     QCOMPARE(staleSig.count(), 1);
     QVERIFY(m_app->summaryStale(m.id).stale);
-    // Új összefoglaló készült (a jelet az AppController adja ki a generálás végén).
+    // A new summary was made (the signal is emitted by AppController at the end of generation).
     emit m_app->summaryReady(m.id, QDir(m.folder).filePath(QStringLiteral("summary.md")));
     QVERIFY(!m_app->summaryStale(m.id).stale);
 
-    // Megnyitott szerkesztővel ugyanez.
+    // The same with an open editor.
     SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed->moveUtterances({QStringLiteral("u0")}, kB2));
     QVERIFY(ed->summaryStale().stale);
@@ -202,8 +200,8 @@ void SpeakerControllerTest::transcriptReady_discardsOverlay()
     QCOMPARE(m_app->retranscribeImpact(m.id).manualCorrections(), 2);
     QCOMPARE(ed->speakers().size(), 3);
 
-    // Új átirat készült (az átírás végén adja ki az AppController): a kézi javítások
-    // eldobva, a munkamenet újratöltve, az undo-verem üres.
+    // A new transcript was made (emitted by AppController at the end of transcription): the
+    // manual fixes dropped, the session reloaded, the undo stack empty.
     QSignalSpy reloaded(ed, &SpeakerEditor::reloaded);
     emit m_app->transcriptReady(m.id, QDir(m.folder).filePath(QStringLiteral("transcript.md")));
     QCOMPARE(reloaded.count(), 1);
@@ -244,7 +242,7 @@ void SpeakerControllerTest::peopleAndImpact()
         if (p.name == QStringLiteral("Gizi")) {
             found = true;
             QCOMPARE(p.meetingCount, 1);
-            QVERIFY(!p.hasVoiceprint);      // a kézi elnevezés (enroll=false) nem tanít
+            QVERIFY(!p.hasVoiceprint);      // a manual naming (enroll=false) does not teach
         }
     QVERIFY(found);
     const RetranscribeImpact imp = m_app->retranscribeImpact(m.id);

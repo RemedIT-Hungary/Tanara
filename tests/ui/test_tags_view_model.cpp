@@ -1,12 +1,11 @@
-// TagsViewModel / TagListModel — a Címkék ablak (C08, T10–T13) nézetmodellje.
-//  - controller nélkül a kitalált 12 címke: rendezés, keresés kiemeléssel, a kijelölt címke
-//    profilja (résztvevők „12 / 14”, kifejezések, gyakran együtt ≥ 2, megbeszélések);
-//  - átnevezés (ütközés, üres név), összevonás (jelöltek, eredmény-szöveg valódi számokkal),
-//    törlés (cím névelővel, szöveg) — mind visszavonható, toast-tal;
-//  - T13: üres készlet; a varrat: ál-backenddel a hívások és a frissülés;
-//  - Személyek-lista (kézi + tanult, a számláló szerint): Ráteszem / levétel / elutasítás
-//    visszavonással; a törlés / összevonás szövege a személyekkel; a személyválasztó
-//    címke-módja (PersonListModel.tagId).
+// TagsViewModel / TagListModel: the view model of the Tags window.
+//  - without a controller the made-up 12 tags: sorting, search with highlight, the selected tag's
+//    profile (participants "12 / 14", phrases, often together >= 2, meetings);
+//  - rename (conflict, empty name), merge (candidates, result text with real numbers),
+//    delete (title with an article, text), all undoable, with a toast;
+//  - T13: empty set; the seam: calls and refresh with a fake backend;
+//  - People list (manual + learned, by the counter): Apply / remove / reject with undo; the
+//    delete / merge text with the people; the person picker's tag mode (PersonListModel.tagId).
 #include "AppContext.h"
 #include "PersonListModel.h"
 #include "TagListModel.h"
@@ -58,7 +57,7 @@ private slots:
         QCOMPARE(people.at(0).toMap().value("monogram").toString(), QStringLiteral("KA"));
         QCOMPARE(people.at(0).toMap().value("countText").toString(), QStringLiteral("12 / 14"));
         QCOMPARE(d.value("terms").toStringList().size(), 8);
-        // A „Nordvik AS” csak egyszer szerepelt vele: nem „gyakran együtt”.
+        // "Nordvik AS" appeared with it only once: not "often together".
         const QVariantList co = d.value("cooccurring").toList();
         QCOMPARE(co.size(), 3);
         QCOMPARE(co.at(0).toMap().value("name").toString(), QStringLiteral("Partnerek"));
@@ -111,9 +110,9 @@ private slots:
         QCOMPARE(toast.count(), 1);
         QCOMPARE(vm.toastText(), QStringLiteral("Átnevezve: #Nordvik → #Nordvik partner"));
         QVERIFY(vm.canUndo());
-        QVERIFY(!vm.rename("t-nordvik", "termek").isEmpty());          // a kulcs másé
+        QVERIFY(!vm.rename("t-nordvik", "termek").isEmpty());          // the key belongs to another
         QVERIFY(!vm.rename("t-nordvik", "   ").isEmpty());
-        QCOMPARE(vm.rename("t-nordvik", "Nordvik partner"), QString()); // változatlan: nincs lépés
+        QCOMPARE(vm.rename("t-nordvik", "Nordvik partner"), QString()); // unchanged: no step
         QCOMPARE(toast.count(), 1);
         vm.undo();
         QCOMPARE(vm.detail().value("name").toString(), QStringLiteral("Nordvik"));
@@ -159,7 +158,7 @@ private slots:
         QVERIFY(vm.deleteText("t-termek").startsWith(QStringLiteral("8 megbeszélésről lekerül. Maguk")));
         vm.remove("t-nordvik");
         QCOMPARE(vm.totalCount(), 11);
-        QCOMPARE(vm.selectedId(), QStringLiteral("t-q4"));              // a lista első sora
+        QCOMPARE(vm.selectedId(), QStringLiteral("t-q4"));              // the list's first row
         QCOMPARE(vm.toastText(), QStringLiteral("Címke törölve: #Nordvik"));
         vm.undo();
         QCOMPARE(vm.totalCount(), 12);
@@ -190,7 +189,7 @@ private slots:
         TagsViewModel vm;
         vm.setBackend(&backend);
         QCOMPARE(listNames(vm), QStringList({"Béta", "Alfa"}));
-        QCOMPARE(vm.selectedId(), QStringLiteral("b"));                // az első automatikusan
+        QCOMPARE(vm.selectedId(), QStringLiteral("b"));                // the first automatically
         QVERIFY(backend.calls.contains("profile:b"));
         QCOMPARE(vm.detail().value("participants").toList().at(0).toMap().value("countText").toString(),
                  QStringLiteral("3 / 7"));
@@ -222,7 +221,7 @@ private slots:
                 if (v.toMap().value("name").toString() == name) return v.toMap();
             return QVariantMap();
         };
-        // A számláló szerint, felrakott és tanult együtt; a saját személy (14 / 14) kimarad.
+        // By the counter, applied and learned together; the own person (14 / 14) is left out.
         QStringList names;
         for (const QVariant& v : people()) names << v.toMap().value("name").toString();
         QCOMPARE(names, QStringList({"Fehér Gábor", "Varga Árpád", "Szabó Bence", "Bárány Gergely", "Molnár Eszter"}));
@@ -232,7 +231,7 @@ private slots:
         QCOMPARE(row("Molnár Eszter").value("countText").toString(), QStringLiteral("0 / 14"));
         QCOMPARE(row("Fehér Gábor").value("monogram").toString(), QStringLiteral("FG"));
 
-        // Ráteszem → kézi lesz, egy visszavonható lépés.
+        // Apply: becomes manual, one undoable step.
         QSignalSpy toast(&vm, &TagsViewModel::toast);
         vm.addPerson("Fehér Gábor");
         QVERIFY(row("Fehér Gábor").value("manual").toBool());
@@ -242,18 +241,18 @@ private slots:
         vm.undo();
         QVERIFY(!row("Fehér Gábor").value("manual").toBool());
 
-        // ×: a tanult sor eltűnik (elutasítás), a felrakott levehető.
+        // x: the learned row disappears (rejection), the applied one can be removed.
         vm.rejectPerson("Bárány Gergely");
         QVERIFY(row("Bárány Gergely").isEmpty());
         vm.removePerson("Molnár Eszter");
-        QVERIFY(row("Molnár Eszter").isEmpty());           // 0 közös: már tanultként sem marad
+        QVERIFY(row("Molnár Eszter").isEmpty());           // 0 in common: not kept even as learned
         QCOMPARE(people().size(), 3);
         QVERIFY(vm.detail().value("meta").toString().contains("3 személy"));
         vm.undo();
         vm.undo();
         QCOMPARE(people().size(), 5);
 
-        // Üres: magyarázó szöveg a címke nevével (névelővel).
+        // Empty: an explanatory text with the tag's name (with an article).
         vm.setDemoState("peopleEmpty");
         QCOMPARE(vm.selectedId(), QStringLiteral("t-kutatas"));
         QVERIFY(people().isEmpty());
@@ -264,8 +263,8 @@ private slots:
 
     void personPickerTagMode()
     {
-        // Controller nélkül: a demó-névsor; akin kézzel rajta van, és a saját személy kimarad,
-        // a tanult kapcsolatúak elöl a „#Nordvik · 11 / 14 · 16 megbeszélés” sorral.
+        // Without a controller: the demo name list; people who have it by hand and the own person are
+        // left out, those with a learned link come first with the "#Nordvik, 11 / 14, 16 meetings" row.
         PersonListModel model;
         model.setTagId("t-nordvik");
         QStringList names, hints, groups;
@@ -280,9 +279,9 @@ private slots:
         QCOMPARE(hints.at(1), QStringLiteral("#Nordvik · 5 / 14 · 23 megbeszélés"));
         QCOMPARE(hints.at(2), QString());
         QCOMPARE(groups, QStringList({"tag", "tag", "other", "other", "other"}));
-        // 5 sor: nincs szakaszcím (≥ 6 kell).
+        // 5 rows: no section title (needs >= 6).
         QCOMPARE(model.tagSectionTitle(), QString());
-        // Címke-módban új személy nem jön létre.
+        // In tag mode a new person is not created.
         model.setQuery("Új Ember");
         QVERIFY(!model.canCreate());
         model.setQuery("");

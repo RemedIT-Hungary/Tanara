@@ -1,5 +1,5 @@
-// Az App-singleton (tanara_qml::AppContext) téma- és állapot-logikája, kijelző és QML nélkül.
-// Minta a nézetmodell-tesztekhez: tests/ui/<név>.cpp → külön exe, a tanara_qml libet linkeli.
+// Theme and state logic of the App singleton (tanara_qml::AppContext), without a display or QML.
+// Pattern for the view-model tests: tests/ui/<name>.cpp is a separate exe linking the tanara_qml lib.
 #include "AppContext.h"
 
 #include <QSignalSpy>
@@ -34,14 +34,14 @@ private slots:
         QCOMPARE(modeSpy.count(), 2);
         QVERIFY(darkSpy.count() >= 1);
 
-        // Ugyanaz az érték nem jelez újra.
+        // The same value does not signal again.
         ctx->setThemeMode(QStringLiteral("light"));
         QCOMPARE(modeSpy.count(), 2);
     }
 
     void controllerIsOptional()
     {
-        // Képernyőkép- / galéria- / demó-módban és a tesztekben nincs AppController.
+        // In screenshot / gallery / demo mode and in the tests there is no AppController.
         AppContext* ctx = AppContext::instance();
         QVERIFY(ctx->controller() == nullptr);
         QVERIFY(ctx->controllerObject() == nullptr);
@@ -63,7 +63,7 @@ private slots:
             QCOMPARE(ctx->bridge(), &bridge);
             QCOMPARE(spy.count(), 1);
         }
-        QVERIFY(ctx->bridge() == nullptr);   // QPointer: a megszűnt híd nem lóg be
+        QVERIFY(ctx->bridge() == nullptr);   // QPointer: a destroyed bridge does not dangle
     }
 };
 

@@ -1,7 +1,5 @@
-//
-// SummaryStore — az összefoglaló strukturált elérése: summary.json (új összefoglalók,
-// metaadattal) és a régi, csak-markdown összefoglalók visszaolvasása.
-//
+// SummaryStore: structured access to the summary: summary.json (new summaries, with
+// metadata) and reading back the old markdown-only summaries.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonDocument>
@@ -49,7 +47,7 @@ private:
 
 void SummaryStoreTest::quickMarkdownRoundTrip()
 {
-    // A Summary::renderMarkdown kimenete veszteség nélkül visszaolvasható.
+    // The output of Summary::renderMarkdown can be read back without loss.
     const Summary s = sample();
     const SummaryDocument doc = summarystore::parseMarkdown(s.renderMarkdown());
     QVERIFY(doc.exists);
@@ -65,13 +63,13 @@ void SummaryStoreTest::quickMarkdownRoundTrip()
         QCOMPARE(doc.summary.actionItems[i].due, s.actionItems[i].due);
     }
     QVERIFY(doc.topics.isEmpty());
-    // És vissza: a visszanyert struktúra ugyanazt a markdownt adja.
+    // And back: the recovered structure gives the same markdown.
     QCOMPARE(doc.summary.renderMarkdown(), s.renderMarkdown());
 }
 
 void SummaryStoreTest::topicsMarkdownParsed()
 {
-    // A komplex (témánkénti) összefoglaló formátuma, ahogy az AppController írja.
+    // The complex (per-topic) summary's format, as AppController writes it.
     TopicAnalysis a1;
     a1.title = QStringLiteral("Pilot állapota");
     a1.detail = QStringLiteral("A pilot három helyszínen fut.");
@@ -95,7 +93,7 @@ void SummaryStoreTest::topicsMarkdownParsed()
     QCOMPARE(doc.summary.actionItems[0].owner, QStringLiteral("Lilla"));
     QCOMPARE(doc.summary.actionItems[0].due, QStringLiteral("okt. 20."));
     QCOMPARE(doc.topics.size(), 2);
-    QCOMPARE(doc.topics[0].title, a1.title);                 // a sorszám lekerül
+    QCOMPARE(doc.topics[0].title, a1.title);                 // the ordinal is dropped
     QCOMPARE(doc.topics[0].detail, a1.detail);
     QCOMPARE(doc.topics[0].decisions, a1.decisions);
     QCOMPARE(doc.topics[0].actionItems.size(), 1);
@@ -104,15 +102,15 @@ void SummaryStoreTest::topicsMarkdownParsed()
     QCOMPARE(doc.topics[1].detail, a2.detail);
     QCOMPARE(doc.topics[1].decisions, a2.decisions);
     QVERIFY(doc.topics[1].actionItems.isEmpty());
-    // A felső szintű döntés-lista a témák döntéseinek uniója (ismétlés nélkül).
+    // The top-level decision list is the union of the topics' decisions (without repeats).
     QCOMPARE(doc.summary.decisions,
              QStringList({"Negyedik helyszín novemberben.", "Az alapcsomag ára nem változik."}));
 }
 
 void SummaryStoreTest::tolerantParsing()
 {
-    // Kézzel szerkesztett / eltérő formájú markdown: más címsor-szint, ékezet nélküli és
-    // nagybetűs címek, * bullet, kipipált teendő, ismeretlen szakasz, bevezető szöveg.
+    // Hand-edited / differently shaped markdown: another heading level, unaccented and
+    // upper-case titles, a * bullet, a ticked action item, an unknown section, intro text.
     const QString md = QStringLiteral(
         "Bevezető megjegyzés a fájl elején.\r\n"
         "\r\n"
@@ -138,7 +136,7 @@ void SummaryStoreTest::tolerantParsing()
     QVERIFY(doc.exists);
     QVERIFY(doc.summary.execSummary.startsWith(QStringLiteral("Bevezető megjegyzés a fájl elején.")));
     QVERIFY(doc.summary.execSummary.contains(QStringLiteral("Első bekezdés,\nkét sorban.")));
-    // Az ismeretlen szakasz szövege nem vész el.
+    // The unknown section's text is not lost.
     QVERIFY(doc.summary.execSummary.contains(QStringLiteral("Megjegyzések")));
     QVERIFY(doc.summary.execSummary.contains(QStringLiteral("Ez egy ismeretlen szakasz.")));
     QCOMPARE(doc.summary.decisions,
@@ -168,7 +166,7 @@ void SummaryStoreTest::loadNothing()
 
 void SummaryStoreTest::loadLegacyMarkdownOnly()
 {
-    // Régi meeting: csak summary.md van.
+    // Old meeting: only summary.md exists.
     QTemporaryDir dir;
     const Summary s = sample();
     write(summarystore::markdownPath(dir.path()), s.renderMarkdown());
@@ -178,7 +176,7 @@ void SummaryStoreTest::loadLegacyMarkdownOnly()
     QCOMPARE(doc.summary.decisions, s.decisions);
     QCOMPARE(doc.summary.actionItems.size(), 4);
     QCOMPARE(doc.markdown, s.renderMarkdown());
-    // Metaadat: amit őszintén tudni lehet — az idő a fájlé, a szolgáltató/modell ismeretlen.
+    // Metadata: what can honestly be known: the time is the file's, the provider/model unknown.
     QCOMPARE(doc.meta.mode, SummaryMode::Quick);
     QVERIFY(doc.meta.createdAt.isValid());
     QVERIFY(qAbs(doc.meta.createdAt.secsTo(QDateTime::currentDateTime())) < 60);
@@ -192,7 +190,7 @@ void SummaryStoreTest::saveAndLoadJsonWithMeta()
     SummaryDocument doc;
     doc.exists = true;
     doc.summary = sample();
-    // Olyan teendő, amit a markdown-értelmező félreolvasna (zárójel a végén) — a json őrzi.
+    // An action item that the markdown parser would misread (a parenthesis at the end): the json keeps it.
     doc.summary.actionItems.append({QStringLiteral("Riport (heti)"), QString(), QString()});
     TopicAnalysis a;
     a.topicId = QStringLiteral("t-1");
@@ -245,7 +243,7 @@ void SummaryStoreTest::editedMarkdownWins()
     write(summarystore::markdownPath(dir.path()), doc.summary.renderMarkdown());
     QVERIFY(summarystore::save(dir.path(), doc));
 
-    // A felhasználó később kézzel átírja a summary.md-t (érdemben újabb a json-nál).
+    // The user later rewrites summary.md by hand (materially newer than the json).
     Summary edited = sample();
     edited.decisions = {QStringLiteral("Kézzel átírt döntés.")};
     write(summarystore::markdownPath(dir.path()), edited.renderMarkdown());
@@ -257,7 +255,7 @@ void SummaryStoreTest::editedMarkdownWins()
     const SummaryDocument back = summarystore::load(dir.path());
     QVERIFY(back.fromMarkdown);
     QCOMPARE(back.summary.decisions, QStringList({"Kézzel átírt döntés."}));
-    QCOMPARE(back.meta.model, QStringLiteral("m"));            // a keletkezés adatai megmaradnak
+    QCOMPARE(back.meta.model, QStringLiteral("m"));            // the creation data stays
     QCOMPARE(back.meta.createdAt, doc.meta.createdAt);
 }
 
@@ -270,7 +268,7 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
               MemoSection{QStringLiteral("Éles indulás (ütemezés)"), 95 * 60000, 101 * 60000 + 30000,
                           {QStringLiteral("Október 15.")}}};
 
-    // Markdown → struktúra → markdown: veszteség nélkül.
+    // Markdown to structure to markdown: without loss.
     const QString md = s.renderMarkdown();
     const SummaryDocument doc = summarystore::parseMarkdown(md);
     QCOMPARE(doc.summary.openQuestions, s.openQuestions);
@@ -279,12 +277,12 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
     QCOMPARE(doc.summary.memo[0].startMs, 0);
     QCOMPARE(doc.summary.memo[0].endMs, 9 * 60000 + 5000);
     QCOMPARE(doc.summary.memo[0].points, s.memo[0].points);
-    QCOMPARE(doc.summary.memo[1].title, QStringLiteral("Éles indulás (ütemezés)"));   // zárójel a címben marad
+    QCOMPARE(doc.summary.memo[1].title, QStringLiteral("Éles indulás (ütemezés)"));   // the parenthesis in the title stays
     QCOMPARE(doc.summary.memo[1].startMs, 95 * 60000);
-    QCOMPARE(doc.summary.participants, s.participants);   // a memó nem keveredik a résztvevőkbe
+    QCOMPARE(doc.summary.participants, s.participants);   // the memo does not mix into the participants
     QCOMPARE(doc.summary.renderMarkdown(), md);
 
-    // summary.json: ugyanez, a pontos időkkel.
+    // summary.json: the same, with the exact times.
     QTemporaryDir dir;
     SummaryDocument out;
     out.exists = true;
@@ -306,7 +304,7 @@ void SummaryStoreTest::memoAndOpenQuestionsRoundTrip()
 
 void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()
 {
-    // Egy korábbi build summary.json-ja (version 1, openQuestions és memo nélkül).
+    // An earlier build's summary.json (version 1, without openQuestions and memo).
     QTemporaryDir dir;
     write(summarystore::jsonPath(dir.path()), QStringLiteral(
         R"({"version":1,"mode":"quick","createdAt":"2026-09-01T10:00:00","providerId":"openai-compat",)"
@@ -319,7 +317,7 @@ void SummaryStoreTest::oldJsonWithoutNewFieldsLoads()
     QCOMPARE(doc.summary.actionItems.size(), 1);
     QVERIFY(doc.summary.openQuestions.isEmpty());
     QVERIFY(doc.summary.memo.isEmpty());
-    // A régi, nyitott kérdés és memó nélküli markdown is betölt (a sample ilyen).
+    // The old markdown without open questions and memo loads too (the sample is like that).
     QCOMPARE(summarystore::parseMarkdown(sample().renderMarkdown()).summary.memo.size(), 0);
 }
 
@@ -338,7 +336,7 @@ void SummaryStoreTest::topicOpenQuestionsParsed()
     QCOMPARE(doc.topics[0].decisions, a.decisions);
     QCOMPARE(doc.topics[0].openQuestions, a.openQuestions);
     QCOMPARE(doc.topics[0].actionItems.size(), 1);
-    QCOMPARE(doc.summary.openQuestions, a.openQuestions);   // témánkénti módban a témák uniója
+    QCOMPARE(doc.summary.openQuestions, a.openQuestions);   // in per-topic mode the union of the topics
 }
 
 QTEST_GUILESS_MAIN(SummaryStoreTest)

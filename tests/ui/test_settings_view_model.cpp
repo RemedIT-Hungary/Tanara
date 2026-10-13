@@ -1,13 +1,13 @@
 // SettingsViewModel (+ SettingsProviderModel / SettingsDeviceModel / SettingsCloudModel,
-// SettingsPromptHighlighter, SettingsWindowHost) — a Beállítások-ablak nézetmodelljei.
+// SettingsPromptHighlighter, SettingsWindowHost): the Settings window's view models.
 //
-//  - demó-módban (controller nélkül): a design-állapotok adatai;
-//  - valódi AppControllerrel, IZOLÁLT TANARA_HOME-ban (QTemporaryDir): piszkozat és mentés
-//    (csak a különbség megy a core-ba), eldobás, mező-ellenőrzés, szolgáltató-váltás a másik
-//    szolgáltató megtartásával, kulcsok a KeyStore-ban, eszköz-átnevezés oda-vissza, promptok,
-//    mély hivatkozás (B04), figyelt alkalmazások, cloud-módok;
-//  - kapcsolat-teszt egy helyi ál-HTTP-szerverrel (valódi szolgáltató-hívás NINCS).
-// A Tanara Cloud gateway címe egy zárt helyi port (TANARA_CLOUD_URL), bejelentkezés nincs.
+//  - in demo mode (without a controller): the design states' data;
+//  - with a real AppController in an ISOLATED TANARA_HOME (QTemporaryDir): draft and save
+//    (only the difference goes to core), discard, field validation, provider switch keeping
+//    the other provider, keys in the KeyStore, device renaming both ways, prompts, deep link,
+//    watched apps, cloud modes;
+//  - connection test against a local fake HTTP server (NO real provider call).
+// The Tanara Cloud gateway address is a closed local port (TANARA_CLOUD_URL), no sign-in.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "SettingsCloudModel.h"
@@ -50,7 +50,7 @@ using tanara::AppSettings;
 
 namespace {
 
-// ---- minimális ál-HTTP-szerver (mint a tests/unit/test_app_jobs.cpp-ben) -----------------
+// ---- minimal fake HTTP server (as in tests/unit/test_app_jobs.cpp) ----
 struct FakeReply { int status = 200; QByteArray body = "{}"; };
 
 class FakeHttp : public QObject {
@@ -100,7 +100,7 @@ private:
     QTcpServer m_srv;
 };
 
-// ---- ál-párbeszédablakok (a Widgets-világ helyén) ----------------------------------------
+// ---- fake dialogs (in place of the Widgets world) ----
 class FakeDialogs : public SettingsDialogs {
 public:
     using SettingsDialogs::SettingsDialogs;
@@ -122,7 +122,7 @@ public:
     bool cloudTerms() override { calls << QStringLiteral("terms"); return false; }
 };
 
-// ---- ál-detektor: a megadott jelet adja vissza ------------------------------------------
+// ---- fake detector: returns the given signal ----
 class FakeDetector : public tanara::IMeetingDetector {
 public:
     tanara::MeetingSignal signal;
@@ -156,7 +156,7 @@ class TestSettingsViewModel : public QObject {
     std::unique_ptr<AppController> m_app;
     QString m_closedPortBase;
 
-    // Friss, izolált Tanara egy ideiglenes mappában. cloud: off | live | teaser.
+    // A fresh, isolated Tanara in a temporary folder. cloud: off | live | teaser.
     void startApp(const char* cloud = "off")
     {
         m_app.reset();
@@ -164,7 +164,7 @@ class TestSettingsViewModel : public QObject {
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         qputenv("TANARA_CLOUD", cloud);
-        qputenv("TANARA_CLOUD_URL", "http://127.0.0.1:9");   // zárt port: a gateway sosem érhető el
+        qputenv("TANARA_CLOUD_URL", "http://127.0.0.1:9");   // closed port: the gateway is never reachable
         m_app = std::make_unique<AppController>();
         AppContext::instance()->setThemeMode(QStringLiteral("light"));
     }
@@ -182,7 +182,7 @@ class TestSettingsViewModel : public QObject {
 private slots:
     void initTestCase()
     {
-        // Egy biztosan zárt helyi port (megnyitjuk, megjegyezzük, bezárjuk).
+        // A certainly closed local port (we open it, remember it, close it).
         FakeHttp probe;
         m_closedPortBase = probe.base();
         probe.close();
@@ -200,19 +200,19 @@ private slots:
         qunsetenv("TANARA_CLOUD_URL");
     }
 
-    // ---- a különbség-számítás magja ------------------------------------------------------
+    // ---- the core of the difference computation ----
 
     void mergeAppliesOnlyWhatTheUserChanged()
     {
         const QJsonObject base{{"a", 1}, {"b", "x"}, {"names", QJsonObject{{"mic", "A"}, {"spk", "B"}}},
                                {"sttProviders", QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}}}}};
         QJsonObject draft = base;
-        draft["a"] = 2;                                                   // a felhasználó módosította
-        draft["names"] = QJsonObject{{"mic", "A2"}};                      // átnevezés + egy név törlése
+        draft["a"] = 2;                                                   // the user changed it
+        draft["names"] = QJsonObject{{"mic", "A2"}};                      // rename + deleting one name
         draft["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m2"}, {"baseUrl", "u"}}}};
         QJsonObject onto = base;
-        onto["b"] = "közben-más-mentette";                                // külső változás
-        onto["c"] = true;                                                 // az ablak nem ismeri
+        onto["b"] = "közben-más-mentette";                                // external change
+        onto["c"] = true;                                                 // the window does not know it
         onto["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "külső"}}},
                                            {"whisper", QJsonObject{{"model", "w"}}}};
 
@@ -227,8 +227,8 @@ private slots:
         QVERIFY(stt.contains("whisper"));
 
         QCOMPARE(SettingsViewModel::countChanges(base, base), 0);
-        QCOMPARE(SettingsViewModel::countChanges(base, draft), 4);   // a, mic, spk (törölve), model
-        // Egy most először kiválasztott szolgáltató alapértelmezett mezői nem külön változások.
+        QCOMPARE(SettingsViewModel::countChanges(base, draft), 4);   // a, mic, spk (deleted), model
+        // The default fields of a provider selected for the first time are not separate changes.
         QJsonObject withNew = base;
         withNew["sttProviders"] = QJsonObject{{"soniox", QJsonObject{{"model", "m1"}, {"baseUrl", "u"}}},
                                               {"whisper", QJsonObject{{"model", "w"}, {"baseUrl", "v"}}}};
@@ -252,11 +252,11 @@ private slots:
         QCOMPARE(spans.at(0).start, 10);
         QCOMPARE(spans.at(0).length, 9);
         QVERIFY(spans.at(0).known);
-        QVERIFY(!spans.at(1).known);                       // ékezetes, de a kód nem cseréli
+        QVERIFY(!spans.at(1).known);                       // accented, but the code does not replace it
         QVERIFY(SettingsPromptHighlighter::spans(QStringLiteral("nincs benne"), known).isEmpty());
     }
 
-    // ---- demó: a design állapotai -------------------------------------------------------
+    // ---- demo: the design states ----
 
     void demoStatesCarryFictionalData()
     {
@@ -274,7 +274,7 @@ private slots:
         vm.setDemoState(QStringLiteral("B02"));
         QCOMPARE(vm.page(), QStringLiteral("recording"));
         QCOMPARE(vm.deviceCount(), 5);
-        QCOMPARE(vm.changeCount(), 1);                     // az épp átnevezett eszköz
+        QCOMPARE(vm.changeCount(), 1);                     // the device just renamed
         QCOMPARE(row(vm, 3, "name").toString(), QStringLiteral("Kanto hangfal"));
         QCOMPARE(row(vm, 3, "renamed").toBool(), true);
         QCOMPARE(row(vm, 0, "group").toInt(), 0);
@@ -295,7 +295,7 @@ private slots:
         QCOMPARE(vm.focusField(), QStringLiteral("stt"));
         QVERIFY(vm.stt()->highlighted());
         QVERIFY(!vm.llm()->highlighted());
-        QVERIFY(vm.servicesWarn());                        // hiányzik az átíró kulcsa
+        QVERIFY(vm.servicesWarn());                        // the transcriber's key is missing
         QVERIFY(!vm.focusBannerText().isEmpty());
         QCOMPARE(vm.llm()->testState(), QStringLiteral("ok"));
 
@@ -303,7 +303,7 @@ private slots:
         QCOMPARE(vm.llm()->testState(), QStringLiteral("failed"));
         QCOMPARE(vm.llm()->errorCode(), QStringLiteral("ECONNREFUSED"));
         QVERIFY(vm.llm()->advancedOpen());
-        QVERIFY(vm.servicesWarn());                        // a legutóbbi teszt elbukott
+        QVERIFY(vm.servicesWarn());                        // the latest test failed
         QCOMPARE(vm.stt()->testState(), QStringLiteral("ok"));
         QVERIFY(vm.stt()->statusText().contains(QStringLiteral("210")));
 
@@ -313,11 +313,11 @@ private slots:
         QVERIFY(vm.dirty());
         QVERIFY(vm.footerText().contains(QStringLiteral("Tanara Cloud")));
         QVERIFY(vm.cloud()->loggedIn());
-        QVERIFY(vm.cloud()->email().endsWith(QStringLiteral("@example.com")));   // kitalált fiók
+        QVERIFY(vm.cloud()->email().endsWith(QStringLiteral("@example.com")));   // made-up account
 
         vm.setDemoState(QStringLiteral("teaser"));
         QCOMPARE(vm.cloudAvailability(), QStringLiteral("teaser"));
-        QVERIFY(!vm.dirty());                              // a teaser-kártya nem módosít semmit
+        QVERIFY(!vm.dirty());                              // the teaser card changes nothing
 
         vm.setDemoState(QStringLiteral("B07"));
         QCOMPARE(vm.page(), QStringLiteral("summary"));
@@ -328,9 +328,9 @@ private slots:
         QCOMPARE(vm.promptGroup(), QStringLiteral("quick"));
         QCOMPARE(vm.schemaKind(), QStringLiteral("json"));
         QVERIFY(vm.schemaBody().contains(QStringLiteral("actionItems")));
-        QCOMPARE(vm.promptVariables().size(), 2);          // csak amit a kód tényleg cserél ({{LANGUAGE}}, {{NYELV}})
+        QCOMPARE(vm.promptVariables().size(), 2);          // only what the code really replaces ({{LANGUAGE}}, {{NYELV}})
 
-        // Demóban a mentés csak a memóriában történik.
+        // In demo mode saving happens only in memory.
         vm.setDemoState(QStringLiteral("dirty"));
         QCOMPARE(vm.changeCount(), 1);
         QSignalSpy saved(&vm, &SettingsViewModel::saved);
@@ -339,7 +339,7 @@ private slots:
         QVERIFY(!vm.dirty());
     }
 
-    // ---- piszkozat, mentés, eldobás -----------------------------------------------------
+    // ---- draft, save, discard ----
 
     void cleanLoadAndDirtyTracking()
     {
@@ -362,10 +362,10 @@ private slots:
         vm.setSilenceAskMinutes(7);
         QCOMPARE(vm.changeCount(), 3);
         QVERIFY(vm.footerText().contains(QStringLiteral("3")));
-        // Visszaállítva az eredetire: nem számít változásnak.
+        // Restored to the original: does not count as a change.
         vm.setAudioQuality(original);
         QCOMPARE(vm.changeCount(), 2);
-        // A core-ban még semmi nem változott.
+        // Nothing has changed in core yet.
         QCOMPARE(live().mixdownMode, QStringLiteral("auto"));
         QCOMPARE(live().silenceAskMinutes, 3);
     }
@@ -373,7 +373,7 @@ private slots:
     void saveWritesOnlyTheDifference()
     {
         startApp();
-        // Beállítások, amelyeket az ablak nem mutat — nem veszhetnek el.
+        // Settings the window does not show must not be lost.
         AppSettings s = live();
         s.detectorId = QStringLiteral("linux-capture");
         s.cloudBaseUrl = QStringLiteral("http://127.0.0.1:9");
@@ -385,15 +385,15 @@ private slots:
         vm.setAudioQuality(QStringLiteral("medium"));
         vm.setDetectorIntervalSec(12);
 
-        // Közben más is ment (pl. a felvevő / egy másik ablak): a nem érintett mező megmarad,
-        // a saját mentetlen változás is.
+        // Meanwhile someone else saves too (e.g. the recorder / another window): the untouched field
+        // stays, and so does our own unsaved change.
         AppSettings other = live();
         other.askStopOnCallEnd = false;
         other.silenceAskMinutes = 9;
         m_app->settings()->setSettings(other);
         QCOMPARE(vm.changeCount(), 2);
         QCOMPARE(vm.audioQuality(), QStringLiteral("medium"));
-        QCOMPARE(vm.silenceAskMinutes(), 9);               // a külső változás megjelent
+        QCOMPARE(vm.silenceAskMinutes(), 9);               // the external change appeared
         QCOMPARE(vm.askStopOnCallEnd(), false);
 
         QSignalSpy saved(&vm, &SettingsViewModel::saved);
@@ -408,10 +408,10 @@ private slots:
         QCOMPARE(after.detectorId, QStringLiteral("linux-capture"));
         QCOMPARE(after.cloudBaseUrl, QStringLiteral("http://127.0.0.1:9"));
         QCOMPARE(after.languageHints, QStringList{QStringLiteral("de")});
-        // A lemezen is.
+        // On disk too.
         QCOMPARE(settingsFile().value("audioQuality").toString(), QStringLiteral("medium"));
         QCOMPARE(settingsFile().value("detectorId").toString(), QStringLiteral("linux-capture"));
-        // Változás nélkül a mentés nem ír semmit.
+        // Without a change, saving writes nothing.
         QSignalSpy changed(m_app->settings(), &tanara::SettingsManager::settingsChanged);
         QVERIFY(vm.save());
         QCOMPARE(changed.size(), 0);
@@ -424,7 +424,7 @@ private slots:
         vm.setController(m_app.get());
         QCOMPARE(vm.themeMode(), QStringLiteral("light"));
         vm.setThemeMode(QStringLiteral("dark"));
-        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));   // élő előnézet
+        QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));   // live preview
         QVERIFY(AppContext::instance()->dark());
         vm.setUserName(QStringLiteral("Valaki Más"));
         vm.setAutoRecordAll(!vm.autoRecordAll());
@@ -451,7 +451,7 @@ private slots:
         QCOMPARE(theme.first().at(0).toString(), QStringLiteral("dark"));
         QVERIFY(!vm.dirty());
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));
-        vm.discard();                                       // mentés után az eldobás nem állítja vissza
+        vm.discard();                                       // after saving, discard does not restore
         QCOMPARE(AppContext::instance()->themeMode(), QStringLiteral("dark"));
     }
 
@@ -463,7 +463,7 @@ private slots:
         const QString before = live().userSpeakerName;
         vm.setUserName(QStringLiteral("   "));
         QVERIFY(vm.errors().contains(QStringLiteral("userName")));
-        // A lapok között szabadon lehet járni.
+        // The pages can be visited freely.
         vm.setPage(QStringLiteral("summary"));
         QCOMPARE(vm.page(), QStringLiteral("summary"));
         vm.setAudioQuality(QStringLiteral("low"));
@@ -471,18 +471,18 @@ private slots:
         QSignalSpy saved(&vm, &SettingsViewModel::saved);
         QVERIFY(!vm.save());
         QCOMPARE(saved.size(), 0);
-        QCOMPARE(vm.page(), QStringLiteral("speakers"));   // a hibás mező lapjára visz (a név a Beszélők lapon)
-        QCOMPARE(live().userSpeakerName, before);          // semmi nem íródott
+        QCOMPARE(vm.page(), QStringLiteral("speakers"));   // leads to the invalid field's page (the name is on the Speakers page)
+        QCOMPARE(live().userSpeakerName, before);          // nothing was written
         QCOMPARE(live().audioQuality, QStringLiteral("best"));
 
         vm.setUserName(QStringLiteral("Teszt Elek"));
         QVERIFY(vm.errors().isEmpty());
         QVERIFY(vm.save());
         QCOMPARE(live().userSpeakerName, QStringLiteral("Teszt Elek"));
-        QVERIFY(m_app->knownPeople().contains(QStringLiteral("Teszt Elek")));   // a setUserSpeakerName útja
+        QVERIFY(m_app->knownPeople().contains(QStringLiteral("Teszt Elek")));   // the path of setUserSpeakerName
         QCOMPARE(live().audioQuality, QStringLiteral("low"));
 
-        // Mappák: üres / relatív út hiba.
+        // Folders: empty / relative path is an error.
         vm.setFolder(QStringLiteral("notes"), QStringLiteral("relativ/mappa"));
         QVERIFY(vm.errors().contains(QStringLiteral("folder.notes")));
         QVERIFY(!vm.save());
@@ -490,7 +490,7 @@ private slots:
         QVERIFY(vm.errors().isEmpty());
         QVERIFY(vm.save());
         QCOMPARE(live().notesDir, m_home->filePath(QStringLiteral("jegyzetek")));
-        // TANARA_HOME mellett a belső adatok mappája rögzített.
+        // With TANARA_HOME the internal data folder is fixed.
         QCOMPARE(vm.folders().at(2).toMap().value("locked").toBool(), true);
         vm.setFolder(QStringLiteral("meta"), QStringLiteral("/máshova"));
         QVERIFY(!vm.dirty());
@@ -499,7 +499,7 @@ private slots:
     void foldersBrowseAndUsage()
     {
         startApp();
-        // Két megbeszélés-mappa a felvételek alatt.
+        // Two meeting folders under the recordings.
         const QString audio = tanara::paths::expandHome(live().audioDir);
         for (const char* name : {"egyik", "masik"}) {
             QVERIFY(QDir(audio).mkpath(QString::fromLatin1(name)));
@@ -515,7 +515,7 @@ private slots:
         const QString usage = vm.folders().at(0).toMap().value("usage").toString();
         QVERIFY2(usage.contains(QStringLiteral("5 kB")) && usage.contains(QStringLiteral("2")), qPrintable(usage));
 
-        // Tallózás: a visszalépés nem változtat; a választott mappa a piszkozatba kerül.
+        // Browse: canceling changes nothing; the chosen folder goes into the draft.
         vm.browseFolder(QStringLiteral("audio"));
         QVERIFY(!vm.dirty());
         dialogs.folderAnswer = m_home->filePath(QStringLiteral("uj-felvetelek"));
@@ -530,14 +530,14 @@ private slots:
         vm.discard();
     }
 
-    // ---- szolgáltatók --------------------------------------------------------------------
+    // ---- providers ----
 
     void providersComeFromTheRegistry()
     {
         startApp();
         SettingsViewModel vm;
         vm.setController(m_app.get());
-        // A lista a registry tartalma (a makett szolgáltatói helyett a ténylegesek).
+        // The list is the registry's content (the real providers instead of the mock-up's).
         QStringList sttIds, llmIds;
         for (const QVariant& p : vm.stt()->providers()) sttIds << p.toMap().value("value").toString();
         for (const QVariant& p : vm.llm()->providers()) llmIds << p.toMap().value("value").toString();
@@ -546,7 +546,7 @@ private slots:
         QVERIFY(!sttIds.contains(tanara::cloud::ProviderId));
         QCOMPARE(llmIds, QStringList{QStringLiteral("openai-compat")});
 
-        // A mezők a leíróból: a Sonioxnál cím + modell + kötelező kulcs, haladó nélkül.
+        // The fields come from the descriptor: for Soniox address + model + required key, no advanced ones.
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("soniox"));
         const QVariantList fields = vm.stt()->fields();
         QCOMPARE(fields.size(), 3);
@@ -555,11 +555,11 @@ private slots:
         QCOMPARE(fieldProp(fields, "apiKey", "required").toBool(), true);
         QVERIFY(vm.stt()->advancedFields().isEmpty());
         QVERIFY(vm.stt()->testable());
-        // LLM: a hőmérséklet és a max. tokenek a „Haladó” alatt; a modell lekérhető lista.
+        // LLM: temperature and max tokens under "Advanced"; the model is a fetchable list.
         QCOMPARE(vm.llm()->advancedFields().size(), 2);
         QCOMPARE(fieldProp(vm.llm()->fields(), "model", "dynamic").toBool(), true);
         QCOMPARE(fieldProp(vm.llm()->advancedFields(), "temperature", "decimals").toInt(), 2);
-        // Helyi végpontnál a kulcs helykitöltője: nem kell.
+        // For a local endpoint the key placeholder: not needed.
         QVERIFY(vm.llm()->placeholder(QStringLiteral("apiKey")).contains(QStringLiteral("helyi végpont")));
         vm.llm()->setValue(QStringLiteral("baseUrl"), QStringLiteral("https://api.example.com/v1"));
         QVERIFY(!vm.llm()->placeholder(QStringLiteral("apiKey")).contains(QStringLiteral("helyi végpont")));
@@ -579,14 +579,14 @@ private slots:
         stt->setProviderId(QStringLiteral("whisper-compat"));
         QVERIFY(fields.size() >= 1);
         QCOMPARE(stt->providerId(), QStringLiteral("whisper-compat"));
-        // Az új szolgáltató a leíró alapértelmezéseivel indul.
+        // The new provider starts with the descriptor's defaults.
         QCOMPARE(stt->value(QStringLiteral("baseUrl")).toString(), QStringLiteral("http://localhost:8000/v1"));
         QCOMPARE(stt->value(QStringLiteral("model")).toString(), QStringLiteral("whisper-1"));
-        QCOMPARE(stt->fields().size(), 4);                 // cím, modell, nyelv, kulcs
+        QCOMPARE(stt->fields().size(), 4);                 // address, model, language, key
         stt->setValue(QStringLiteral("language"), QStringLiteral("en"));
-        QCOMPARE(vm.changeCount(), 3);                     // modell, kulcs, szolgáltató (az új config nem külön)
+        QCOMPARE(vm.changeCount(), 3);                     // model, key, provider (the new config is not separate)
 
-        // Vissza: a Soniox beállítása megvan.
+        // Back: the Soniox setup is still there.
         stt->setProviderId(QStringLiteral("soniox"));
         QCOMPARE(stt->value(QStringLiteral("model")).toString(), QStringLiteral("stt-sajat-modell"));
         QCOMPARE(stt->value(QStringLiteral("apiKey")).toString(), QStringLiteral("soniox-kulcs"));
@@ -600,13 +600,13 @@ private slots:
         QCOMPARE(s.sttConfigs.value(QStringLiteral("whisper-compat")).baseUrl, QStringLiteral("http://localhost:8000/v1"));
         QCOMPARE(s.sttConfigs.value(QStringLiteral("whisper-compat")).extra.value(QStringLiteral("language")).toString(),
                  QStringLiteral("en"));
-        // A kulcs a KeyStore-ban van, a beállítás-fájlban nem.
+        // The key is in the KeyStore, not in the settings file.
         QCOMPARE(m_app->secret(tanara::keys::SonioxApiKey), QStringLiteral("soniox-kulcs"));
         QFile f(m_app->settings()->settingsFilePath());
         QVERIFY(f.open(QIODevice::ReadOnly));
         QVERIFY(!f.readAll().contains("soniox-kulcs"));
 
-        // Újranyitva ugyanaz látszik.
+        // Reopened, the same shows.
         SettingsViewModel again;
         again.setController(m_app.get());
         QVERIFY(!again.dirty());
@@ -626,7 +626,7 @@ private slots:
         QVERIFY(!vm.save());
         QCOMPARE(vm.page(), QStringLiteral("services"));
         vm.llm()->setValue(QStringLiteral("baseUrl"), QString());
-        QVERIFY(!vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());   // kötelező
+        QVERIFY(!vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());   // required
         vm.llm()->setValue(QStringLiteral("baseUrl"), QStringLiteral("http://localhost:1234/v1"));
         QVERIFY(vm.llm()->fieldError(QStringLiteral("baseUrl")).isEmpty());
         vm.llm()->setValue(QStringLiteral("maxTokens"), 3);
@@ -637,20 +637,20 @@ private slots:
         QCOMPARE(live().llmSelected().maxTokens, 30000);
         QCOMPARE(live().llmSelected().temperature, 0.35);
 
-        // A 0 hőmérséklet érvényes érték: mentés után is 0 látszik (nem az alapértelmezés).
+        // A temperature of 0 is a valid value: after saving 0 shows (not the default).
         vm.llm()->setValue(QStringLiteral("temperature"), 0.0);
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().temperature, 0.0);
         QCOMPARE(vm.llm()->value(QStringLiteral("temperature")).toDouble(), 0.0);
         QVERIFY(!vm.dirty());
 
-        // Gépelés közben a szóköz megmarad a mezőben; a mentés vágja le.
+        // While typing the space stays in the field; saving trims it.
         vm.llm()->setValue(QStringLiteral("model"), QStringLiteral("sajat modell "));
         QCOMPARE(vm.llm()->value(QStringLiteral("model")).toString(), QStringLiteral("sajat modell "));
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().model, QStringLiteral("sajat modell"));
 
-        // Egy korábbról tárolt, tartományon kívüli érték nem akadályozza a többi beállítás mentését.
+        // A previously stored out-of-range value does not block saving the other settings.
         AppSettings s = live();
         s.llmConfigs[s.llmProviderId].maxTokens = 100;
         m_app->settings()->setSettings(s);
@@ -665,11 +665,11 @@ private slots:
         startApp();
         SettingsViewModel vm;
         vm.setController(m_app.get());
-        // Friss telepítés: nincs Soniox-kulcs → a „Szolgáltatások” mellett pötty.
+        // Fresh install: no Soniox key, so a dot next to "Services".
         QVERIFY(vm.servicesWarn());
         QSignalSpy warn(&vm, &SettingsViewModel::servicesWarnChanged);
         vm.stt()->setValue(QStringLiteral("apiKey"), QStringLiteral("k"));
-        QVERIFY(!vm.servicesWarn());                       // már a piszkozatra is reagál
+        QVERIFY(!vm.servicesWarn());                       // already reacts to the draft too
         QCOMPARE(warn.size(), 1);
         vm.stt()->setValue(QStringLiteral("apiKey"), QString());
         QVERIFY(vm.servicesWarn());
@@ -685,14 +685,14 @@ private slots:
         };
         SettingsViewModel vm;
         vm.setController(m_app.get());
-        vm.stt()->setValue(QStringLiteral("apiKey"), QStringLiteral("x"));   // az STT ne zavarja a pöttyöt
+        vm.stt()->setValue(QStringLiteral("apiKey"), QStringLiteral("x"));   // STT must not disturb the dot
         SettingsProviderModel* llm = vm.llm();
         llm->setValue(QStringLiteral("baseUrl"), http.base());
         llm->setValue(QStringLiteral("model"), QStringLiteral("modell-a"));
         llm->setValue(QStringLiteral("apiKey"), QStringLiteral("rossz"));
         QCOMPARE(llm->testState(), QString());
 
-        // 1) elutasított kulcs → hiba emberi mondattal és technikai kóddal, pötty.
+        // 1) rejected key: an error with a human sentence and a technical code, the dot.
         QSignalSpy test(llm, &SettingsProviderModel::testChanged);
         llm->test();
         QCOMPARE(llm->testState(), QStringLiteral("testing"));
@@ -703,14 +703,14 @@ private slots:
         QVERIFY(!llm->statusText().isEmpty());
         QVERIFY(vm.servicesWarn());
         QCOMPARE(http.paths.last(), QStringLiteral("/v1/models"));
-        QCOMPARE(http.auths.last(), QByteArray("Bearer rossz"));   // a PISZKOZAT kulcsa megy, mentés előtt
+        QCOMPARE(http.auths.last(), QByteArray("Bearer rossz"));   // the DRAFT's key goes, before saving
 
-        // 2) bármelyik mező módosítása elavulttá teszi az eredményt.
+        // 2) changing any field makes the result stale.
         llm->setValue(QStringLiteral("apiKey"), QStringLiteral("jo-kulcs"));
         QCOMPARE(llm->testState(), QString());
         QVERIFY(!vm.servicesWarn());
 
-        // 3) siker: állapot + válaszidő; a modell-lista a „Lekérés” listáját is feltölti.
+        // 3) success: state + response time; the model list also fills the "Fetch" list.
         llm->test();
         QVERIFY(waitFor([&] { return llm->testState() == QLatin1String("ok"); }));
         QVERIFY(llm->statusText().contains(QStringLiteral("ms")));
@@ -719,13 +719,13 @@ private slots:
         QCOMPARE(llm->options(QStringLiteral("model")),
                  (QStringList{QStringLiteral("modell-a"), QStringLiteral("modell-b")}));
 
-        // 4) siker, de a beállított modell nincs a listán → figyelmeztetés.
+        // 4) success, but the configured model is not in the list: a warning.
         llm->setValue(QStringLiteral("model"), QStringLiteral("ismeretlen"));
         llm->test();
         QVERIFY(waitFor([&] { return llm->testState() == QLatin1String("ok"); }));
         QVERIFY(llm->warningText().contains(QStringLiteral("ismeretlen")));
 
-        // 5) „Lekérés”: külön művelet, a teszt állapotát nem írja át.
+        // 5) "Fetch": a separate action, does not overwrite the test's state.
         http.handler = [](const QString&, const QByteArray&) {
             return FakeReply{200, "{\"data\":[{\"id\":\"friss-modell\"}]}"};
         };
@@ -736,7 +736,7 @@ private slots:
         QVERIFY(llm->fetchError().isEmpty());
         QCOMPARE(llm->testState(), QStringLiteral("ok"));
 
-        // 6) a szerver leáll → „nem érhető el”, ECONNREFUSED; a lekérés hibája külön szöveg.
+        // 6) the server stops: "unreachable", ECONNREFUSED; the fetch error has its own text.
         http.close();
         llm->setValue(QStringLiteral("baseUrl"), m_closedPortBase);
         llm->test();
@@ -747,14 +747,14 @@ private slots:
         QVERIFY(waitFor([&] { return !llm->fetching(); }));
         QVERIFY(!llm->fetchError().isEmpty());
 
-        // A teszt semmit nem mentett.
+        // The test saved nothing.
         QVERIFY(vm.dirty());
         QVERIFY(m_app->secret(tanara::keys::LlmApiKey).isEmpty());
         vm.discard();
         QCOMPARE(llm->testState(), QString());
     }
 
-    // ---- eszközök ------------------------------------------------------------------------
+    // ---- devices ----
 
     void deviceRenameRoundTrip()
     {
@@ -774,38 +774,38 @@ private slots:
         QCOMPARE(row(vm, 0, "name").toString(), QStringLiteral("Saját mikrofonom"));
         QCOMPARE(row(vm, 0, "renamed").toBool(), true);
         QCOMPARE(vm.changeCount(), 1);
-        // Mentésig a core nem tud róla.
+        // Until saving, core does not know about it.
         QCOMPARE(tanara::devicenames::displayName(raw), factory);
 
         QVERIFY(vm.save());
         QCOMPARE(live().deviceNames.value(raw), QStringLiteral("Saját mikrofonom"));
         QCOMPARE(tanara::devicenames::displayName(raw), QStringLiteral("Saját mikrofonom"));
-        // A sávok neve is követi (Sávok fül).
+        // The tracks' name follows too (Tracks tab).
         tanara::Track t;
         t.id = QStringLiteral("t");
         t.deviceName = raw;
         t.kind = tanara::TrackKind::Other;
         QCOMPARE(tanara::tracknames::friendlyNames({t}).first(), QStringLiteral("Saját mikrofonom"));
 
-        // Új ablak: a mentett név látszik.
+        // New window: the saved name shows.
         SettingsViewModel again;
         again.setController(m_app.get());
         QCOMPARE(row(again, 0, "name").toString(), QStringLiteral("Saját mikrofonom"));
 
-        // Üres név → vissza a gyári névre; a kulcs kikerül a beállításból.
+        // Empty name goes back to the factory name; the key leaves the settings.
         again.renameDevice(0, QString());
         QCOMPARE(row(again, 0, "name").toString(), factory);
         QCOMPARE(again.changeCount(), 1);
         QVERIFY(again.save());
         QVERIFY(!live().deviceNames.contains(raw));
         QCOMPARE(tanara::devicenames::displayName(raw), factory);
-        // A másik (nyitva maradt) nézetmodell is átvette.
+        // The other (still open) view model took it over too.
         QCOMPARE(row(vm, 0, "name").toString(), factory);
     }
 
     void tracksTabFollowsADeviceRename()
     {
-        // A „Sávok” fül modellje a mentett eszköznévre azonnal átvált (újraindítás nélkül).
+        // The "Tracks" tab's model switches to the saved device name at once (without a restart).
         startApp();
         const QString raw = QStringLiteral("Vonalbemenet - Analóg sztereó");
         tanara::Meeting m = m_app->store()->createMeeting(QStringLiteral("Próba"));
@@ -831,7 +831,7 @@ private slots:
 
         AppSettings s = live();
         s.deviceNames.insert(raw, QStringLiteral("Gitár"));
-        m_app->settings()->setSettings(s);                 // ezt teszi a Beállítások mentése
+        m_app->settings()->setSettings(s);                 // that is what saving Settings does
         QCOMPARE(tracks.data(tracks.index(0, 0), nameRole).toString(), QStringLiteral("Gitár"));
 
         s.deviceNames.remove(raw);
@@ -849,7 +849,7 @@ private slots:
         vm.renameDevice(3, QStringLiteral("Nappali hangfal"));
         QCOMPARE(row(vm, 3, "name").toString(), QStringLiteral("Nappali hangfal"));
         QCOMPARE(vm.changeCount(), 1);
-        vm.renameDevice(3, factory);                       // a gyári névre átnevezés = nincs saját név
+        vm.renameDevice(3, factory);                       // renaming to the factory name = no own name
         QCOMPARE(row(vm, 3, "renamed").toBool(), false);
         QCOMPARE(vm.changeCount(), 0);
 
@@ -877,7 +877,7 @@ private slots:
         QCOMPARE(m_app->lastUsedDeviceNames().contains(raw), !was);
     }
 
-    // ---- hívásfigyelő --------------------------------------------------------------------
+    // ---- call watcher ----
 
     void watchedApps()
     {
@@ -886,17 +886,17 @@ private slots:
         vm.setController(m_app.get());
         const int before = vm.watchedApps().size();
         QVERIFY(before > 0);
-        QVERIFY(!vm.addWatchedApp(QStringLiteral("  ")).isEmpty());        // üres
-        QVERIFY(!vm.addWatchedApp(QStringLiteral("ZOOM")).isEmpty());      // már szerepel
+        QVERIFY(!vm.addWatchedApp(QStringLiteral("  ")).isEmpty());        // empty
+        QVERIFY(!vm.addWatchedApp(QStringLiteral("ZOOM")).isEmpty());      // already listed
         QCOMPARE(vm.addWatchedApp(QStringLiteral(" Signal ")), QString());
         QCOMPARE(vm.watchedApps().size(), before + 1);
         QCOMPARE(vm.watchedApps().last().toMap().value("match").toString(), QStringLiteral("signal"));
         QCOMPARE(vm.changeCount(), 1);
-        // A most futó folyamatok listája nem tartalmazza a már figyelteket.
+        // The list of currently running processes does not include the ones already watched.
         for (const QVariant& a : vm.runningApps())
             QVERIFY(!a.toMap().value("match").toString().contains(QStringLiteral("signal")));
 
-        // Üres listával nem menthető (a figyelő semmire nem jelezne).
+        // Cannot be saved with an empty list (the watcher would signal nothing).
         while (!vm.watchedApps().isEmpty()) vm.removeWatchedApp(0);
         QVERIFY(vm.errors().contains(QStringLiteral("watchedApps")));
         QVERIFY(!vm.save());
@@ -912,7 +912,7 @@ private slots:
         SettingsViewModel vm;
         vm.setController(m_app.get());
         auto* detector = new FakeDetector;
-        vm.setDetectorForTest(detector);                   // a nézetmodell birtokolja
+        vm.setDetectorForTest(detector);                   // the view model owns it
         QVERIFY(!vm.liveCallActive());
 
         detector->signal.active = true;
@@ -922,13 +922,13 @@ private slots:
         QVERIFY(waitFor([&] { return vm.liveCallActive(); }));
         QVERIFY(vm.detectorAvailable());
         QCOMPARE(vm.liveCallApp(), QStringLiteral("Microsoft Teams"));
-        QCOMPARE(detector->configured, live().knownCallApps);   // a piszkozat listájával kérdez
+        QCOMPARE(detector->configured, live().knownCallApps);   // asks with the draft's list
         bool highlighted = false;
         for (const QVariant& a : vm.watchedApps())
             if (a.toMap().value("match").toString() == QLatin1String("teams"))
                 highlighted = a.toMap().value("active").toBool();
         QVERIFY(highlighted);
-        // A lap eltűnik → nincs több lekérdezés.
+        // The page disappears: no more polling.
         vm.setWatching(false);
         QVERIFY(!vm.watching());
     }
@@ -943,14 +943,14 @@ private slots:
         vm.setController(m_app.get());
         vm.setWatcherAutostart(!vm.watcherAutostart());
         QVERIFY(vm.save());
-        QCOMPARE(live().watcherAutostart, vm.watcherAutostart());   // a beállítás mentődik…
-        if (!real.isEmpty()) {                                      // …de a valódi fájl érintetlen
+        QCOMPARE(live().watcherAutostart, vm.watcherAutostart());   // the setting is saved...
+        if (!real.isEmpty()) {                                      // ...but the real file is untouched
             QCOMPARE(QFile::exists(real), existed);
             if (existed) QCOMPARE(QFileInfo(real).lastModified(), stamp);
         }
     }
 
-    // ---- promptok ------------------------------------------------------------------------
+    // ---- prompts ----
 
     void promptsModifiedAndReset()
     {
@@ -963,7 +963,7 @@ private slots:
         QVERIFY(!vm.promptModified());
         QVERIFY(live().summaryPrompt.isEmpty());
 
-        // Csak szóközben eltérő szöveg nem „módosítás”.
+        // Text that differs only in whitespace is not a "modification".
         vm.setPromptText(def + QStringLiteral("\n"));
         QVERIFY(!vm.promptModified());
         QVERIFY(!vm.dirty());
@@ -974,10 +974,10 @@ private slots:
         QCOMPARE(vm.promptTabs().at(0).toMap().value("modified").toBool(), true);
         QCOMPARE(vm.promptTabs().at(1).toMap().value("modified").toBool(), false);
         QCOMPARE(vm.changeCount(), 1);
-        QCOMPARE(textChanged.size(), 0);                   // a szerkesztő saját írása nem jön vissza
+        QCOMPARE(textChanged.size(), 0);                   // the editor's own write does not come back
 
-        // Másik fül: a szöveg megmarad, a séma a fülhöz tartozik.
-        vm.setPromptIndex(4);                              // témánkénti elemzés
+        // Another tab: the text stays, the schema belongs to the tab.
+        vm.setPromptIndex(4);                              // per-topic analysis
         QCOMPARE(textChanged.size(), 1);
         QVERIFY(!vm.promptModified());
         QCOMPARE(vm.schemaKind(), QStringLiteral("markdown"));
@@ -988,12 +988,12 @@ private slots:
 
         QVERIFY(vm.save());
         QVERIFY(live().summaryPrompt.endsWith(QStringLiteral("9. Légy tömör.")));
-        QVERIFY(live().topicExtractionPrompt.isEmpty());   // érintetlen → üres (a kód-default él)
+        QVERIFY(live().topicExtractionPrompt.isEmpty());   // untouched: empty (the code default applies)
         QVERIFY(live().topicAnalysisPrompt.endsWith(QStringLiteral("Még egy szabály.")));
-        QVERIFY(vm.promptModified());                      // mentés után is „módosítva”
+        QVERIFY(vm.promptModified());                      // still "modified" after saving
         QVERIFY(!vm.dirty());
 
-        // Visszaállítás: a beépített szöveg, és a beállításban újra üres.
+        // Reset: the built-in text, and empty again in the settings.
         vm.resetPrompt();
         QCOMPARE(vm.promptText(), def);
         QVERIFY(!vm.promptModified());
@@ -1004,12 +1004,12 @@ private slots:
         vm.setSummaryLanguage(QStringLiteral("angol"));
         QVERIFY(vm.save());
         QCOMPARE(live().summaryLanguage, QStringLiteral("angol"));
-        vm.setSummaryLanguage(QStringLiteral("   "));        // üres célnyelv nincs
+        vm.setSummaryLanguage(QStringLiteral("   "));        // no empty target language
         QCOMPARE(vm.summaryLanguage(), QStringLiteral("angol"));
     }
 
-    // A gyors összefoglaló három promptja (egylépéses / részjegyzet / összefésülés) és a
-    // csoportok: minden prompt saját beállítás-kulcsba mentődik, és onnan töltődik vissza.
+    // The quick summary's three prompts (single-pass / part note / merge) and the groups: each
+    // prompt is saved to its own settings key and loaded back from there.
     void promptGroupsAndNewOverrides()
     {
         startApp();
@@ -1028,14 +1028,14 @@ private slots:
         QCOMPARE(grp.at(1).toMap().value("tabs").toList(), QVariantList({3, 4}));
         QVERIFY(!grp.at(0).toMap().value("note").toString().isEmpty());
 
-        // Csoport-váltás: a csoport első promptja; vissza: a gyors csoport első promptja.
+        // Group switch: the group's first prompt; back: the quick group's first prompt.
         vm.setPromptGroup(QStringLiteral("topics"));
         QCOMPARE(vm.promptIndex(), 3);
         QCOMPARE(vm.promptGroup(), QStringLiteral("topics"));
         vm.setPromptGroup(QStringLiteral("quick"));
         QCOMPARE(vm.promptIndex(), 0);
 
-        // Részjegyzet: saját kimeneti séma (jegyzet-fejlécek), a beépített szöveg a {{LANGUAGE}}-t használja.
+        // Part note: its own output schema (note headers), the built-in text uses {{LANGUAGE}}.
         vm.setPromptIndex(1);
         QCOMPARE(vm.promptGroup(), QStringLiteral("quick"));
         QVERIFY(vm.promptText().contains(QStringLiteral("{{LANGUAGE}}")));
@@ -1051,9 +1051,9 @@ private slots:
         QVERIFY(vm.save());
         QVERIFY(live().notesPrompt.endsWith(QStringLiteral("Keep every point short.")));
         QVERIFY(live().mergePrompt.endsWith(QStringLiteral("At most five decisions.")));
-        QVERIFY(live().summaryPrompt.isEmpty());           // az egylépéses érintetlen
+        QVERIFY(live().summaryPrompt.isEmpty());           // the single-pass one is untouched
 
-        // Új nézetmodell: a felülírások visszatöltődnek, „módosítva” jelzéssel.
+        // New view model: the overrides load back, with a "modified" indicator.
         SettingsViewModel again;
         again.setController(m_app.get());
         QCOMPARE(again.promptTabs().at(1).toMap().value("modified").toBool(), true);
@@ -1062,13 +1062,13 @@ private slots:
         again.setPromptIndex(1);
         QVERIFY(again.promptText().endsWith(QStringLiteral("Keep every point short.")));
 
-        // Visszaállítás → a beállítás újra üres (a beépített él).
+        // Reset: the setting is empty again (the built-in applies).
         again.resetPrompt();
         QVERIFY(again.save());
         QVERIFY(live().notesPrompt.isEmpty());
         QVERIFY(!live().mergePrompt.isEmpty());
 
-        // Eldobás: a nem mentett szerkesztés eltűnik.
+        // Discard: the unsaved edit disappears.
         again.setPromptIndex(2);
         again.setPromptText(QStringLiteral("eldobandó"));
         QVERIFY(again.dirty());
@@ -1076,14 +1076,14 @@ private slots:
         QVERIFY(again.promptText().endsWith(QStringLiteral("At most five decisions.")));
     }
 
-    // A modell „gondolkodása” (ProviderConfig::reasoning) az LLM-kártya Haladó részében.
+    // The model's "thinking" (ProviderConfig::reasoning) in the LLM card's Advanced part.
     void reasoningRoundTrip()
     {
         startApp();
         SettingsViewModel vm;
         vm.setController(m_app.get());
         QVERIFY(vm.llm()->reasoningAvailable());
-        QVERIFY(!vm.stt()->reasoningAvailable());           // az átírásnál nincs ilyen
+        QVERIFY(!vm.stt()->reasoningAvailable());           // the transcriber has none
         QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
         QSignalSpy values(vm.llm(), &SettingsProviderModel::valuesChanged);
         vm.llm()->setReasoning(QStringLiteral("on"));
@@ -1095,13 +1095,13 @@ private slots:
         vm.llm()->setReasoning(QStringLiteral("off"));
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().reasoning, QStringLiteral("off"));
-        // Ismeretlen érték → automatikus.
+        // Unknown value: automatic.
         vm.llm()->setReasoning(QStringLiteral("valami"));
         QCOMPARE(vm.llm()->reasoning(), QStringLiteral("auto"));
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().reasoning, QStringLiteral("auto"));
 
-        // Új nézetmodell a mentett értékkel; eldobás visszaállít.
+        // New view model with the saved value; discard restores.
         AppSettings s = live();
         s.llmConfigs[s.llmProviderId].reasoning = QStringLiteral("on");
         m_app->settings()->setSettings(s);
@@ -1114,7 +1114,7 @@ private slots:
         QCOMPARE(again.llm()->reasoning(), QStringLiteral("on"));
     }
 
-    // A modell kontextusa (ProviderConfig::contextLength): automatikus vagy rögzített token.
+    // The model's context (ProviderConfig::contextLength): automatic or fixed tokens.
     void contextLengthRoundTrip()
     {
         startApp();
@@ -1122,7 +1122,7 @@ private slots:
         vm.setController(m_app.get());
         QVERIFY(vm.llm()->contextAvailable());
         QVERIFY(!vm.stt()->contextAvailable());
-        QCOMPARE(vm.llm()->contextLength(), 0);                // automatikus
+        QCOMPARE(vm.llm()->contextLength(), 0);                // automatic
         const QVariantList opts = vm.llm()->contextOptions();
         QCOMPARE(opts.first().toMap().value("value").toString(), QStringLiteral("0"));
         bool has16k = false;
@@ -1134,12 +1134,12 @@ private slots:
         QCOMPARE(vm.changeCount(), 1);
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().contextLength, 16384);
-        vm.llm()->setContextLength(-5);                        // érvénytelen → automatikus
+        vm.llm()->setContextLength(-5);                        // invalid: automatic
         QCOMPARE(vm.llm()->contextLength(), 0);
         QVERIFY(vm.save());
         QCOMPARE(live().llmSelected().contextLength, 0);
 
-        // A fájlból jövő egyedi érték megmarad, és a választható értékek közé kerül.
+        // A custom value from the file stays, and is added to the selectable values.
         AppSettings s = live();
         s.llmConfigs[s.llmProviderId].contextLength = 12345;
         m_app->settings()->setSettings(s);
@@ -1154,28 +1154,28 @@ private slots:
         QVERIFY(again.dirty());
         again.discard();
         QCOMPARE(again.llm()->contextLength(), 12345);
-        // A szerver-adat üres, amíg nem kérdeztük (nincs natív API a teszt-címen).
+        // The server data is empty until asked (no native API at the test address).
         QVERIFY(again.llm()->serverInfo().isEmpty());
         QCOMPARE(again.llm()->serverLoadedContext(), -1);
     }
 
-    // ---- mély hivatkozás (B04) -----------------------------------------------------------
+    // ---- deep link ----
 
     void deepLinkHighlightsAndReturnsAfterSave()
     {
         startApp();
         SettingsViewModel vm;
         vm.setController(m_app.get());
-        // A ShellActions lapnevei.
+        // The ShellActions page names.
         vm.openPage(QStringLiteral("watcher"));
         QCOMPARE(vm.page(), QStringLiteral("watcher"));
         vm.openPage(QStringLiteral("recording"));
         QCOMPARE(vm.page(), QStringLiteral("recording"));
         vm.openPage(QStringLiteral("summary"));
         QCOMPARE(vm.page(), QStringLiteral("summary"));
-        vm.openPage(QString());                            // üres: marad, ahol volt
+        vm.openPage(QString());                            // empty: stays where it was
         QCOMPARE(vm.page(), QStringLiteral("summary"));
-        vm.openPage(QStringLiteral("cloud"));              // cloud nélkül is a Szolgáltatások lap
+        vm.openPage(QStringLiteral("cloud"));              // even without cloud it is the Services page
         QCOMPARE(vm.page(), QStringLiteral("services"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
         QVERIFY(vm.focusField().isEmpty());
@@ -1187,13 +1187,13 @@ private slots:
         QVERIFY(vm.stt()->highlighted());
         QVERIFY(vm.focusBannerText().contains(QStringLiteral("átírás"), Qt::CaseInsensitive));
 
-        // Más mentése, amíg a kulcs hiányzik: marad a kiemelés, nincs visszatérés.
+        // Saving something else while the key is missing: the highlight stays, no return.
         vm.setAudioQuality(QStringLiteral("high"));
         QVERIFY(vm.save());
         QCOMPARE(back.size(), 0);
         QCOMPARE(vm.focusField(), QStringLiteral("stt"));
 
-        // A hiány megszűnik → mentés után vissza a megbeszéléshez.
+        // The gap is gone: after saving, back to the meeting.
         vm.stt()->setValue(QStringLiteral("apiKey"), QStringLiteral("soniox-kulcs"));
         QVERIFY(vm.save());
         QCOMPARE(back.size(), 1);
@@ -1216,7 +1216,7 @@ private slots:
         vm.setController(m_app.get());
         QCOMPARE(vm.cloudAvailability(), QStringLiteral("live"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
-        // A saját kulcsos kártyán a Cloud nem szerepel a szolgáltatók között.
+        // On the own-key card Cloud is not among the providers.
         for (const QVariant& p : vm.stt()->providers())
             QVERIFY(p.toMap().value("value").toString() != tanara::cloud::ProviderId);
 
@@ -1224,14 +1224,14 @@ private slots:
         vm.setServiceMode(QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(vm.dirty());
-        QVERIFY(vm.servicesWarn());                        // nincs bejelentkezve
+        QVERIFY(vm.servicesWarn());                        // not signed in
         QVERIFY(!vm.cloud()->loggedIn());
-        // Semmi kitalált szám: bejelentkezés nélkül nincs egyenleg, se óra.
+        // Nothing made up: without signing in there is no balance or hours.
         QVERIFY(vm.cloud()->balanceText().isEmpty());
         QVERIFY(vm.cloud()->hoursText().isEmpty());
-        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));   // mentésig semmi nem vált
+        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));   // nothing switches until saving
 
-        // Vissza: a korábbi saját választás (a még nem mentett is) megmarad.
+        // Back: the earlier own choice (even an unsaved one) stays.
         vm.setServiceMode(QStringLiteral("own"));
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));
         QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai-compat"));
@@ -1247,10 +1247,10 @@ private slots:
         QCOMPARE(s.cloudSttTier, QStringLiteral("fast"));
         QCOMPARE(s.cloudEstimateBeforeRun, false);
         QCOMPARE(s.languageHints, QStringList{QStringLiteral("en")});
-        QVERIFY(s.sttConfigs.contains(QStringLiteral("soniox")));          // a saját kulcsos beállítás megmarad
+        QVERIFY(s.sttConfigs.contains(QStringLiteral("soniox")));          // the own-key setting stays
         QVERIFY(m_app->usesCloud(tanara::WorkflowStep::Transcribe));
 
-        // Újranyitva Cloud módban indul; a visszaváltás a saját szolgáltatókra visz.
+        // Reopened it starts in Cloud mode; switching back goes to the own providers.
         SettingsViewModel again;
         again.setController(m_app.get());
         QCOMPARE(again.serviceMode(), QStringLiteral("cloud"));
@@ -1258,7 +1258,7 @@ private slots:
         QVERIFY(again.stt()->providerId() != tanara::cloud::ProviderId);
         QVERIFY(again.llm()->providerId() != tanara::cloud::ProviderId);
 
-        // A modális folyamatok a Widgets-ablakokat kérik (itt: az ál-párbeszédablakokat).
+        // The modal flows ask for the Widgets windows (here: the fake dialogs).
         vm.cloud()->login();
         vm.cloud()->topup();
         vm.cloud()->pickExpert(QStringLiteral("stt"));
@@ -1268,8 +1268,8 @@ private slots:
 
     void mixedCloudSetupSurvivesADeepLink()
     {
-        // Átírás a Cloudban, összefoglaló saját kulccsal: a hiányzó LLM-hez vezető mély
-        // hivatkozás nem válthatja le csendben az átírást a Cloudról.
+        // Transcription in Cloud, summary with an own key: the deep link to the missing LLM must not
+        // silently switch transcription away from Cloud.
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
@@ -1300,11 +1300,11 @@ private slots:
         vm.setController(m_app.get());
         QCOMPARE(vm.cloudAvailability(), QStringLiteral("teaser"));
         vm.setServiceMode(QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));   // a várólista-ajánlat látszik…
-        QVERIFY(!vm.dirty());                                   // …de nincs mit menteni
+        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));   // the waitlist offer is visible...
+        QVERIFY(!vm.dirty());                                   // ...but there is nothing to save
         QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));
 
-        // A feliratkozás gombja csak érvényes címmel és hozzájárulással él (küldés nincs a tesztben).
+        // The sign-up button works only with a valid address and consent (nothing is sent in the test).
         SettingsCloudModel* cloud = vm.cloud();
         QVERIFY(!cloud->waitCanSubmit());
         cloud->setWaitEmail(QStringLiteral("valaki@example.com"));
@@ -1318,7 +1318,7 @@ private slots:
         QVERIFY(cloud->joinedEmail().isEmpty());
     }
 
-    // ---- az ablak és a gazdája -----------------------------------------------------------
+    // ---- the window and its host ----
 
     void windowLoadsEveryDemoStateWithoutWarnings_data()
     {
@@ -1375,10 +1375,10 @@ private slots:
         QCOMPARE(vm->dialogs(), &dialogs);
         QCOMPARE(vm->page(), QStringLiteral("watcher"));
         QTest::qWait(100);
-        QVERIFY(vm->watching());                           // a lapja látszik → élő észlelés
+        QVERIFY(vm->watching());                           // its page is visible: live detection
         QVERIFY(!vm->monitoring());
 
-        // Újabb kérés nyitott ablaknál: csak a lap vált, a piszkozat marad.
+        // A new request with the window open: only the page switches, the draft stays.
         vm->setSilenceAskMinutes(11);
         QVERIFY(host.open(QStringLiteral("providers"), QStringLiteral("llm")));
         QCOMPARE(vm->page(), QStringLiteral("services"));
@@ -1387,13 +1387,13 @@ private slots:
         QTest::qWait(50);
         QVERIFY(!vm->watching());
 
-        // Bezárás mentetlen változással: az ablak nyitva marad (a kérdés a QML-ben él).
+        // Closing with an unsaved change: the window stays open (the question lives in QML).
         host.window()->close();
         QTest::qWait(100);
         QVERIFY(host.isVisible());
         QCOMPARE(closed.size(), 0);
 
-        // Mentés a nézetmodellen át → a gazda jelzi; utána a bezárás sima.
+        // Save through the view model: the host signals; after that closing is plain.
         QVERIFY(vm->save());
         QCOMPARE(saved.size(), 1);
         QCOMPARE(live().silenceAskMinutes, 11);
@@ -1401,7 +1401,7 @@ private slots:
         QVERIFY(waitFor([&] { return !host.isVisible(); }));
         QCOMPARE(closed.size(), 1);
 
-        // Újranyitva friss állapot a lemezről, a kért lapon.
+        // Reopened: a fresh state from disk, on the requested page.
         AppSettings s = live();
         s.silenceAskMinutes = 4;
         m_app->settings()->setSettings(s);

@@ -28,7 +28,7 @@ Tag resolveTag(const TagService& tags, const QString& nameOrId)
     return t.isValid() ? t : tags.byName(nameOrId);
 }
 
-// A tárolt írásmód, ha a személy ismert (különben a bemenet).
+// The stored spelling if the person is known (otherwise the input).
 QString canonicalPerson(AppController& app, const QString& name)
 {
     if (PeopleService* ps = app.peopleService()) {
@@ -115,7 +115,7 @@ int runTagPeopleCommand(AppController& app, const QStringList& args)
         return 0;
     }
 
-    // set-person <name> <tag,...> — a lista a teljes új készlet; üres ("") = minden címke le.
+    // set-person <name> <tag,...>: the list is the complete new set; empty ("") clears all tags.
     if (args.size() < 5) return usage();
     QStringList ids;
     for (const QString& raw : args.value(4).split(QLatin1Char(','), Qt::SkipEmptyParts)) {

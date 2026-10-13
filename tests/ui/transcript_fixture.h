@@ -1,13 +1,11 @@
 #pragma once
+// Shared test environment for the transcript editor's UI tests: a SYNTHETIC meeting built in
+// a temporary folder with a REAL tanara::SpeakerEditor and a FAKE embedder (the "audio" is
+// derived from the utterance's start time). It uses no real data, model or ffmpeg.
 //
-// Közös teszt-környezet az átirat-szerkesztő UI-tesztjeihez: ideiglenes mappában felépített,
-// SZINTETIKUS meeting egy VALÓDI tanara::SpeakerEditor-ral és HAMIS embedderrel (a „hang" a
-// megszólalás kezdőidejéből tudható). Valódi adatot, modellt vagy ffmpeg-et NEM használ.
-//
-// A forgatókönyv ugyanaz, mint a core tests/unit/test_speaker_editor.cpp-jében: a
-// diarizáció két címkét adott („Beszélő 1", „Beszélő 2"), de a „Beszélő 1" valójában KÉT
-// ember (A, C); „Beszélő 2" = B, egy sora (17.) tévesen került hozzá (A hangja).
-//
+// The scenario is the same as in core's tests/unit/test_speaker_editor.cpp: diarization gave
+// two labels ("Speaker 1", "Speaker 2"), but "Speaker 1" is really TWO people (A, C);
+// "Speaker 2" = B, one of whose lines (17th) was wrongly attached (A's voice).
 #include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/edit/SpeakerOverlay.h"
@@ -38,7 +36,7 @@ inline const QVector<Row>& scenario()
         {0,      4000, kB1, 'A'},   // 0
         {6000,   5000, kB2, 'B'},   // 1
         {13000,  4000, kB1, 'A'},   // 2
-        {19000,   800, kB2, 'B'},   // 3  rövid
+        {19000,   800, kB2, 'B'},   // 3  short
         {22000,  4000, kB1, 'C'},   // 4
         {28000,  6000, kB2, 'B'},   // 5
         {36000,  4000, kB1, 'A'},   // 6
@@ -47,12 +45,12 @@ inline const QVector<Row>& scenario()
         {55000,  3500, kB1, 'C'},   // 9
         {60500,  4500, kB1, 'A'},   // 10
         {67000,  5000, kB2, 'B'},   // 11
-        {74000,  1000, kB1, 'C'},   // 12 rövid
+        {74000,  1000, kB1, 'C'},   // 12 short
         {77000,  4000, kB1, 'A'},   // 13
         {83000,  6000, kB1, 'C'},   // 14
         {91000,  5000, kB2, 'B'},   // 15
         {98000,  4000, kB1, 'A'},   // 16
-        {104000, 4000, kB2, 'A'},   // 17 tévesen a 2-es címkén
+        {104000, 4000, kB2, 'A'},   // 17 wrongly on label 2
     };
     return rows;
 }
@@ -99,7 +97,7 @@ struct Fixture {
             o[QStringLiteral("startMs")] = double(r.startMs);
             o[QStringLiteral("endMs")] = double(r.startMs + r.durMs);
             o[QStringLiteral("speaker")] = r.raw;
-            // A 7. sor szövege ékezetes, a kereső-teszthez.
+            // Line 7's text is accented, for the search test.
             o[QStringLiteral("text")] = i == 7 ? QStringLiteral("Ödön szerint ez így jó lesz")
                                                : QStringLiteral("L%1a L%1b").arg(i);
             segs.append(o);

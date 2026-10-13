@@ -1,9 +1,9 @@
-// TagInputModel + TagMatching — a címke-beviteli mező (C02) listája.
-//  - controller nélkül a kitalált 12 címke: üres mező → legutóbbiak; gépelés → ékezet- és
-//    kisbetű-független találatok (név eleje, szókezdet, bárhol) + „Új címke”; pontos egyezésnél
-//    nincs „Új”; nagyon hasonló név → „HASONLÓ MÁR VAN” + „Mégis új”;
-//  - kijelölés, léptetés, választás (chosen jel), kizárt id-k, limit;
-//  - a varrat: ál-backenddel (setBackend) ugyanígy működik, és a készlet változását követi.
+// TagInputModel + TagMatching: the list of the tag input field.
+//  - without a controller the made-up 12 tags: empty field gives the most recent; typing gives
+//    accent- and case-insensitive matches (name start, word start, anywhere) + "New tag"; on
+//    an exact match no "New"; a very similar name gives "SIMILAR EXISTS" + "Create anyway";
+//  - selection, stepping, choosing (chosen signal), excluded ids, limit;
+//  - the seam: it works the same with a fake backend (setBackend), and follows the set's changes.
 #include "AppContext.h"
 #include "TagInputModel.h"
 #include "TagMatching.h"
@@ -43,12 +43,12 @@ private slots:
         QCOMPARE(tagmatch::key(QStringLiteral("MÉM-MDK")), QStringLiteral("memmdk"));
         QCOMPARE(tagmatch::normalizeName(QStringLiteral("  Q4   tervezés ")), QStringLiteral("Q4 tervezés"));
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Archive Plus"), QStringLiteral("ArchivePlus")));
-        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Termek"), QStringLiteral("Termék")));      // ugyanaz a kulcs
-        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordvk"), QStringLiteral("Nordvik")));     // 1 hiányzó betű
-        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordivk"), QStringLiteral("Nordvik")));    // szomszédos csere
+        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Termek"), QStringLiteral("Termék")));      // the same key
+        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordvk"), QStringLiteral("Nordvik")));     // 1 missing letter
+        QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Nordivk"), QStringLiteral("Nordvik")));    // adjacent swap
         QVERIFY(!tagmatch::nearDuplicate(QStringLiteral("Belsö"), QStringLiteral("Belga")));
-        QVERIFY(!tagmatch::nearDuplicate(QStringLiteral("SLA"), QStringLiteral("SLB")));           // rövid kulcs: csak egyezés
-        // ≥ 10 hosszú kulcson 2 eltérés is belefér, rövidebben nem.
+        QVERIFY(!tagmatch::nearDuplicate(QStringLiteral("SLA"), QStringLiteral("SLB")));           // short key: match only
+        // On a key of length >= 10 even 2 differences fit, on a shorter one not.
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Gyujtemenykezeles"), QStringLiteral("Gyüjteménykezelésx")));
         QVERIFY(tagmatch::nearDuplicate(QStringLiteral("Ügyféltámogatás"), QStringLiteral("Ügyféltamogatas")));
         QVERIFY(!tagmatch::nearDuplicate(QStringLiteral("Partner"), QStringLiteral("Partnerek")));
@@ -73,7 +73,7 @@ private slots:
         QCOMPARE(m.mode(), QStringLiteral("typing"));
         QCOMPARE(names(m), QStringList({"Muzeo", "Múzeumi pályázat", "mu"}));
         QCOMPARE(kinds(m), QStringList({"match", "match", "new"}));
-        // A kiemelés az eredeti (ékezetes) névben: „Mú”.
+        // The highlight is in the original (accented) name.
         const QVariantMap second = m.rows().at(1).toMap();
         QCOMPARE(second.value("match").toString(), QStringLiteral("Mú"));
         QCOMPARE(second.value("after").toString(), QStringLiteral("zeumi pályázat"));
@@ -87,7 +87,7 @@ private slots:
     void prefixThenWordStartThenSubstring()
     {
         TagInputModel m;
-        // „as”: szókezdet a „Nordvik AS”-ben, szó belsejében az „Ügyféltámogatás” / „Kutatás” végén.
+        // "as": word start in "Nordvik AS", inside a word at the end of "Ügyféltámogatás" / "Kutatás".
         m.setText(QStringLiteral("as"));
         QCOMPARE(names(m), QStringList({"Nordvik AS", "Ügyféltámogatás", "Kutatás", "as"}));
         m.setText(QStringLiteral("tervez"));
@@ -134,7 +134,7 @@ private slots:
         QCOMPARE(chosen.at(1).at(0).toString(), QStringLiteral("Muzeeo"));
         QCOMPARE(chosen.at(1).at(1).toBool(), true);
 
-        // Elírás is „hasonló”.
+        // A typo counts as "similar" too.
         m.setText(QStringLiteral("Nordvk"));
         QCOMPARE(kinds(m).first(), QStringLiteral("nearDuplicate"));
         QCOMPARE(names(m).first(), QStringLiteral("Nordvik"));
@@ -156,7 +156,7 @@ private slots:
         QVERIFY(m.choose(1));
         QCOMPARE(chosen.at(0).at(0).toString(), QStringLiteral("Múzeumi pályázat"));
         QVERIFY(!m.choose(9));
-        // Új szöveg: a kijelölés visszaáll az első sorra.
+        // New text: the selection goes back to the first row.
         m.move(2);
         m.setText(QStringLiteral("q"));
         QCOMPARE(m.selectedRow(), 0);
@@ -172,7 +172,7 @@ private slots:
         m.setExcludeIds({});
         m.setLimit(3);
         m.setText(QStringLiteral("e"));
-        QCOMPARE(m.rowData().size(), 4);            // 3 találat + „Új címke”
+        QCOMPARE(m.rowData().size(), 4);            // 3 matches + "New tag"
         QCOMPARE(kinds(m).last(), QStringLiteral("new"));
         m.setText(QString());
         QCOMPARE(m.rowData().size(), 3);
@@ -194,7 +194,7 @@ private slots:
         emit backend.tagsChanged();
         QCOMPARE(rows.count(), 1);
         QCOMPARE(names(m), QStringList({"Projektzárás", "Alfa projekt", "proj"}));
-        // Vissza a saját (demó) backendre.
+        // Back to its own (demo) backend.
         m.setBackend(nullptr);
         m.setText(QString());
         QCOMPARE(names(m).first(), QStringLiteral("Nordvik"));

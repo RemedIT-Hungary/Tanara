@@ -1,24 +1,22 @@
 #pragma once
+// QmlShellBridge: the bridge between the (Qt Quick) main window and the Qt Widgets world (App.bridge).
 //
-// QmlShellBridge — a (Qt Quick) főablak hídja a Qt Widgets világhoz (App.bridge).
-//
-// Ami Widgets-hez vagy külön ablakhoz kötött viselkedés, az itt él:
-//  - a Beállítások (QML: tanara_qml::SettingsWindowHost — nem modális külön ablak; a
-//    natív mappaválasztót és a cloud Widgets-ablakait a SettingsWidgetsDialogs adja) és a
-//    Személyek ablak (QML: tanara_qml::PeopleWindowHost), a Címkék ablak (QML:
-//    tanara_qml::TagsWindowHost — a szűrő- és megbeszélés-kérései a héjhoz mennek), és az
-//    „Első lépések” ablak (QML: tanara_qml::OnboardingWindowHost — első indításkor egyszer
-//    magától, a főablak megjelenése után; a Fájl menüből és a Beállításokból kézzel);
-//  - a felvevő megnyitása és a `tanara --record` továbbított kérései — a ShellRecorderHost-on
-//    át (az burkolja a QML-felvevőt), a felvevő kérései (megnyitás az elemzőben, rögzítés
-//    beállításai), valamint a felvétel végének ablak-kezelése (a rejtett főablak
-//    visszahozása, „Leállítom és kilépek”);
-//  - a Tanara Cloud folyamatai a gui/src/cloud ablakaival: indulási ellenőrzések (K-01
-//    módválasztás, fiók / modellek frissítése, félbemaradt átírás), K-06 becslés-megerősítés,
-//    bejelentkezés, akadályok (feltöltés / frissítés), hibaablakok (részleges terheléssel),
-//    terhelés / visszaírás értesítés, ÁSZF, túl régi kliens, egyenleg-chip és sávok.
-// A QML-oldal a tanara_qml::ShellBridge felületen át éri el (gui/qml/src/ShellBridge.h).
-//
+// Behavior tied to Widgets or a separate window lives here:
+//  - Settings (QML: tanara_qml::SettingsWindowHost, a non-modal separate window; the native
+//    folder picker and the cloud Widgets windows come from SettingsWidgetsDialogs), the
+//    People window (QML: tanara_qml::PeopleWindowHost), the Tags window (QML:
+//    tanara_qml::TagsWindowHost; its filter and meeting requests go to the shell), and the
+//    "Getting started" window (QML: tanara_qml::OnboardingWindowHost; opens once by itself on
+//    first launch, after the main window appears; by hand from the File menu and Settings);
+//  - opening the recorder and the forwarded `tanara --record` requests, through
+//    ShellRecorderHost (which wraps the QML recorder), the recorder's requests (open in the
+//    analyzer, recording settings), and the window handling at the end of a recording
+//    (bringing the hidden main window back, "Stop and quit");
+//  - the Tanara Cloud flows with the windows in gui/src/cloud: startup checks (mode picker,
+//    account / model refresh, pending transcription), estimate confirmation, sign-in,
+//    blockers (upload / update), error windows (with partial charge), charge / write-back
+//    notice, terms, too-old client, balance chip and bars.
+// The QML side reaches it through the tanara_qml::ShellBridge interface (gui/qml/src/ShellBridge.h).
 #include "ShellBridge.h"
 
 #include <QDateTime>
@@ -52,31 +50,31 @@ public:
     explicit QmlShellBridge(tanara::AppController* controller, QObject* parent = nullptr);
     ~QmlShellBridge() override;
 
-    // A QML-főablak: a Widgets-ablakok ennek lesznek az (ablakkezelő szerinti) gyerekei, és
-    // ebből tudjuk, látszik-e épp a főablak.
+    // The QML main window: the Widgets windows become its children (as the window manager sees
+    // it), and from it we know whether the main window is currently visible.
     void setMainWindow(QWindow* window);
-    // A `tanara --record` továbbított kéréseinek fogadása (a main.cpp hívja; QA-módban nem).
+    // Receives the forwarded `tanara --record` requests (called by main.cpp; not in QA mode).
     void startRecorderListening();
-    // Egy megbeszélés kijelölése + a főablak előtérbe hozása: a felvevő „Megnyitás az
-    // elemzőben” gombja és a `tanara --meeting <id>` (induláskor / másik folyamatból átadva).
-    // Üres azonosítóval csak a főablak jön előre.
+    // Selects a meeting + raises the main window: the recorder's "Open in the analyzer" button
+    // and `tanara --meeting <id>` (passed at startup / from another process). With an empty id
+    // only the main window comes forward.
     void showMeeting(const QString& meetingId);
-    // A felvevő ablaka (RecorderWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
-    // A QA-szkripteknek (--shell-script): App.bridge.recorderWindow().
+    // The recorder window (RecorderWindow.qml: .visible, .vm ...); nullptr until it has opened.
+    // For QA scripts (--shell-script): App.bridge.recorderWindow().
     Q_INVOKABLE QObject* recorderWindow() const;
-    // A Beállítások ablaka (SettingsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
-    // A QA-szkripteknek: App.bridge.settingsWindow().
+    // The Settings window (SettingsWindow.qml: .visible, .vm ...); nullptr until it has opened.
+    // For QA scripts: App.bridge.settingsWindow().
     Q_INVOKABLE QObject* settingsWindow() const;
-    // A Személyek ablaka (PeopleWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
-    // A QA-szkripteknek: App.bridge.peopleWindow().
+    // The People window (PeopleWindow.qml: .visible, .vm ...); nullptr until it has opened.
+    // For QA scripts: App.bridge.peopleWindow().
     Q_INVOKABLE QObject* peopleWindow() const;
-    // A Címkék ablaka (TagsWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt meg.
-    // A QA-szkripteknek: App.bridge.tagsWindow().
+    // The Tags window (TagsWindow.qml: .visible, .vm ...); nullptr until it has opened.
+    // For QA scripts: App.bridge.tagsWindow().
     Q_INVOKABLE QObject* tagsWindow() const;
-    // Az „Első lépések” ablaka (OnboardingWindow.qml: .visible, .vm …) — nullptr, amíg nem nyílt
-    // meg. A QA-szkripteknek: App.bridge.onboardingWindow().
+    // The "Getting started" window (OnboardingWindow.qml: .visible, .vm ...); nullptr until it
+    // has opened. For QA scripts: App.bridge.onboardingWindow().
     Q_INVOKABLE QObject* onboardingWindow() const;
-    // Hamis: az első indítás nem nyitja meg magától (QA-szkript mód). Alapból igaz.
+    // False: first launch does not open it by itself (QA script mode). True by default.
     void setAutoOnboarding(bool on) { m_autoOnboarding = on; }
 
     // ---- ShellBridge ----
@@ -114,7 +112,7 @@ public:
     void openUsageLog() override;
 
 protected:
-    // A szülő nélküli Widgets-párbeszédablakokat a QML-főablak fölé rendeli (transient parent).
+    // Parents the parentless Widgets dialogs to the QML main window (transient parent).
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
@@ -138,12 +136,12 @@ private:
     tanara::AppController* m_controller = nullptr;
     QPointer<QWindow> m_window;
 
-    ShellRecorderHost* m_recorder = nullptr;   // a felvevő-kötés
+    ShellRecorderHost* m_recorder = nullptr;   // the recorder binding
     SettingsWidgetsDialogs* m_settingsDialogs = nullptr;
-    tanara_qml::SettingsWindowHost* m_settings = nullptr;   // a QML Beállítások-ablak gazdája
-    tanara_qml::PeopleWindowHost* m_people = nullptr;       // a QML Személyek-ablak gazdája
-    tanara_qml::TagsWindowHost* m_tags = nullptr;           // a QML Címkék-ablak gazdája
-    tanara_qml::OnboardingWindowHost* m_onboarding = nullptr;   // az „Első lépések” gazdája
+    tanara_qml::SettingsWindowHost* m_settings = nullptr;   // host of the QML Settings window
+    tanara_qml::PeopleWindowHost* m_people = nullptr;       // host of the QML People window
+    tanara_qml::TagsWindowHost* m_tags = nullptr;           // host of the QML Tags window
+    tanara_qml::OnboardingWindowHost* m_onboarding = nullptr;   // host of "Getting started"
     bool m_autoOnboarding = true;
     bool m_quitAfterStop = false;
     bool m_shutDown = false;

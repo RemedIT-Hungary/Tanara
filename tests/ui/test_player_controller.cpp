@@ -1,10 +1,10 @@
-// PlayerController — a lejátszó szerződése (gui/qml/CONTRACT.md) hang nélkül:
-//  - a beépített néma (órával léptetett) motorral: lejátszás, szünet, ugrás, sebesség,
-//    playRange (egy megszólalás, majd szünet), a vége kezelése;
-//  - egy ál-motorral (gyárból): a forrás lusta betöltése, előnézet (playFile / stopPreview)
-//    a lekeverés pozíciójának megőrzésével;
-//  - valódi AppControllerrel, izolált TANARA_HOME-ban: a megbeszélés hangjának feloldása
-//    (lekeverés, annak híján a legnagyobb aktív sáv).
+// PlayerController: the player's contract (gui/qml/CONTRACT.md) without audio:
+//  - with the built-in silent engine (stepped by a clock): play, pause, seek, speed,
+//    playRange (one utterance, then pause), end handling;
+//  - with a fake engine (from a factory): lazy source loading, preview (playFile / stopPreview)
+//    preserving the mixdown's position;
+//  - with a real AppController in an isolated TANARA_HOME: resolving the meeting's audio
+//    (the mixdown, failing that the largest active track).
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 #include "PlayerController.h"
@@ -20,7 +20,7 @@ using namespace tanara_qml;
 
 namespace {
 
-// Ál-motor: rögzíti a hívásokat, a pozíciót a teszt lépteti.
+// Fake engine: records the calls; the test steps the position.
 class FakeBackend : public PlayerBackend {
 public:
     using PlayerBackend::PlayerBackend;
@@ -90,7 +90,7 @@ private slots:
         QCOMPARE(p.durationMs(), int(demo::find(demo::defaultMeetingId())->entry.durationMs));
         QCOMPARE(p.positionMs(), 0);
 
-        // seek nem változtat a lejátszás állapotán.
+        // seek does not change the playback state.
         p.seek(10000);
         QVERIFY(!p.playing());
         QCOMPARE(p.positionMs(), 10000);
@@ -99,12 +99,12 @@ private slots:
         QVERIFY(p.playing());
         positions.clear();
         QTest::qWait(350);
-        // Lejátszás közben legalább 10×/mp frissül a pozíció.
+        // During playback the position updates at least 10 times per second.
         QVERIFY2(positions.count() >= 4, qPrintable(QString::number(positions.count())));
         QVERIFY(p.positionMs() > 10200 && p.positionMs() < 11500);
 
         p.seek(20000);
-        QVERIFY(p.playing());            // ugrás közben megy tovább
+        QVERIFY(p.playing());            // keeps playing during a seek
         QTRY_VERIFY(p.positionMs() >= 20000);
 
         p.toggle();
@@ -113,7 +113,7 @@ private slots:
         QTest::qWait(120);
         QCOMPARE(p.positionMs(), paused);
 
-        // Másik megbeszélés: megáll és az elejére áll.
+        // Another meeting: stops and goes to the start.
         p.play();
         p.setMeetingId(demo::failedMeetingId());
         QVERIFY(!p.playing());
@@ -132,38 +132,38 @@ private slots:
         QVERIFY(p.positionMs() >= 5000);
         QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
         QVERIFY(p.positionMs() >= 5250 && p.positionMs() < 5600);
-        // Utána a sima lejátszás folyamatos (nem áll meg újra a tartomány végén).
+        // Afterwards plain playback is continuous (it does not stop again at the range end).
         p.play();
         QTest::qWait(200);
         QVERIFY(p.playing());
         p.pause();
     }
 
-    // Sor-lejátszás elő-/utó-futással (150 / 100 ms), a szomszéd sorok határáig korlátozva.
+    // Line playback with lead-in / tail (150 / 100 ms), limited to the neighboring lines' boundary.
     void playRangeWithBoundsPadsAndClamps()
     {
         PlayerController p;
         p.setMeetingId(demo::defaultMeetingId());
-        // Korlát nélkül: 150 ms-mal előbb indul, 100 ms-mal később áll meg.
+        // Without a limit: starts 150 ms earlier, stops 100 ms later.
         p.playRange(5000, 5250, -1, -1);
         QVERIFY(p.playing());
         QCOMPARE(p.positionMs(), 4850);
         QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
         QVERIFY2(p.positionMs() >= 5350 && p.positionMs() < 5700, qPrintable(QString::number(p.positionMs())));
 
-        // Az előző sor 4950-kor ér véget, a következő 5300-kor kezdődik.
+        // The previous line ends at 4950, the next starts at 5300.
         p.playRange(5000, 5250, 4950, 5300);
         QCOMPARE(p.positionMs(), 4950);
         QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
         QVERIFY2(p.positionMs() >= 5300 && p.positionMs() < 5650, qPrintable(QString::number(p.positionMs())));
 
-        // Átfedő szomszéd (a határ a soron belül): nincs elő-/utó-futás, de a sor egésze szól.
+        // Overlapping neighbor (the boundary is inside the line): no lead-in / tail, but the whole line plays.
         p.playRange(5000, 5250, 5100, 5200);
         QCOMPARE(p.positionMs(), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 2000);
         QVERIFY(p.positionMs() >= 5250);
 
-        // A megbeszélés elején nem megy 0 alá.
+        // At the start of the meeting it does not go below 0.
         p.playRange(50, 300, -1, -1);
         QCOMPARE(p.positionMs(), 0);
         p.pause();
@@ -177,10 +177,10 @@ private slots:
         QCOMPARE(p.rate(), 2.0);
         p.seek(p.durationMs() - 400);
         p.play();
-        // 2× sebességgel a 400 ms kb. 200 ms alatt fogy el.
+        // At 2x speed 400 ms runs out in about 200 ms.
         QTRY_VERIFY_WITH_TIMEOUT(!p.playing(), 1500);
         QCOMPARE(p.positionMs(), p.durationMs());
-        // A végéről indítva elölről kezdi.
+        // Started from the end, it starts over from the beginning.
         p.play();
         QVERIFY(p.playing());
         QTRY_VERIFY(p.positionMs() < 2000);
@@ -203,7 +203,7 @@ private slots:
         p.setVolume(0.5);
         p.setRate(1.5);
         p.seek(30000);
-        QCOMPARE(FakeBackend::created, 0);     // lejátszásig nincs hang-motor
+        QCOMPARE(FakeBackend::created, 0);     // no audio engine until playback
 
         p.play();
         QCOMPARE(FakeBackend::created, 1);
@@ -213,12 +213,12 @@ private slots:
         QCOMPARE(b->volume, 0.5);
         QCOMPARE(b->rate, 1.5);
         QVERIFY(p.playing());
-        QCOMPARE(p.durationMs(), 60000);       // a motor által mért hossz az érvényes
+        QCOMPARE(p.durationMs(), 60000);       // the length measured by the engine is the valid one
 
         b->pos = 31000;
         QTRY_COMPARE(p.positionMs(), 31000);
 
-        // Előnézet: a valódi motor csak létező fájlt játszik.
+        // Preview: the real engine plays only an existing file.
         QSignalSpy errors(&p, &PlayerController::errorOccurred);
         p.playFile(QStringLiteral("/nincs/ilyen/track.ogg"));
         QCOMPARE(errors.count(), 1);
@@ -234,14 +234,14 @@ private slots:
         p.playFile(track);
         QCOMPARE(p.previewPath(), track);
         QVERIFY(p.previewPlaying());
-        QVERIFY(!p.playing());                 // a lekeverés áll
-        QCOMPARE(p.positionMs(), 31000);       // és megőrzi a pozícióját
+        QVERIFY(!p.playing());                 // the mixdown stops
+        QCOMPARE(p.positionMs(), 31000);       // and keeps its position
         QCOMPARE(p.previewDurationMs(), 5000);
         b->pos = 1200;
         QTRY_COMPARE(p.previewPositionMs(), 1200);
         QCOMPARE(p.positionMs(), 31000);
 
-        // Az előnézet végén visszatér a lekeveréshez (szünetben), a régi pozícióval.
+        // At the end of the preview it returns to the mixdown (paused), at the old position.
         b->finish();
         QCOMPARE(p.previewPath(), QString());
         QVERIFY(!p.previewPlaying());
@@ -250,7 +250,7 @@ private slots:
         QCOMPARE(b->pos, 31000);
         QVERIFY(p.playing());
 
-        // stopPreview kézzel; play() előnézet közben a lekeverést indítja.
+        // stopPreview by hand; play() during a preview starts the mixdown.
         p.playFile(track);
         QCOMPARE(p.previewPath(), track);
         p.stopPreview();
@@ -294,10 +294,10 @@ private slots:
             p.setMeetingId(m.id);
             QVERIFY(p.available());
             QCOMPARE(p.durationMs(), 42000);
-            // Nincs lekeverés → a legnagyobb AKTÍV sáv (az eldobott nem számít).
+            // No mixdown: the largest ACTIVE track (a dropped one does not count).
             QCOMPARE(QFileInfo(p.audioPath()).fileName(), QStringLiteral("track_loop.ogg"));
 
-            // Elkészül a lekeverés → a forrás átvált rá.
+            // The mixdown is finished: the source switches to it.
             write(QStringLiteral("mixdown.mp3"), 300);
             m.mixdownFile = QStringLiteral("mixdown.mp3");
             app.store()->saveMeeting(m);
@@ -305,7 +305,7 @@ private slots:
             QCOMPARE(QFileInfo(p.audioPath()).fileName(), QStringLiteral("mixdown.mp3"));
             QVERIFY(availability.count() >= 2);
 
-            // Hang nélküli megbeszélés: nem lejátszható.
+            // A meeting without audio: not playable.
             const tanara::Meeting empty = app.store()->createMeeting(QStringLiteral("Üres"));
             p.setMeetingId(empty.id);
             QVERIFY(!p.available());

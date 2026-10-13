@@ -1,14 +1,12 @@
+// Tanara: Settings + Meeting store unit tests.
 //
-// Tanara — Settings + Meeting store unit-tesztek.
+// IMPORTANT: the tests/unit/*.cpp files are GLOBbed into a SINGLE exe, and test_smoke.cpp
+// already owns QTEST_MAIN. So no further QTEST_MAIN/QTEST_GUILESS_MAIN can be used here: it
+// would cause a main symbol clash.
 //
-// FONTOS: a tests/unit/*.cpp fájlok EGYETLEN exe-be GLOB-olódnak, és a
-// test_smoke.cpp már birtokolja a QTEST_MAIN-t. Ezért itt NEM lehet újabb
-// QTEST_MAIN/QTEST_GUILESS_MAIN — az main-szimbólum-ütközést okozna.
-//
-// Megoldás MVP-re: a teszt-osztályokat egy static-init időben futó
-// regisztrátorral hajtjuk meg (QTest::qExec), így nincs main, nincs ütközés.
-// Ha integrációkor multi-test harnessre váltunk, ez a fájl könnyen átkapcsolható.
-//
+// The solution for the MVP: we drive the test classes with a registrar that runs at
+// static-init time (QTest::qExec), so there is no main and no clash. If we switch to a
+// multi-test harness on integration, this file is easy to switch over.
 #include <QtTest>
 #include <QCoreApplication>
 #include <QTemporaryDir>
@@ -31,7 +29,7 @@ class SettingsTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // Tanara Cloud beállítások round-trip + régi settings.json → defaultok.
+    // Tanara Cloud settings round trip + old settings.json gives defaults.
     void appSettings_cloudFieldsRoundTrip()
     {
         AppSettings s;
@@ -50,12 +48,12 @@ private slots:
         QCOMPARE(r.waitlistEmail, s.waitlistEmail);
 
         const AppSettings old = appSettingsFromJson(QJsonObject{ { QStringLiteral("audioDir"), QStringLiteral("/x") } });
-        QCOMPARE(old.cloudEnabled, false);                       // indulás előtt: teaser
+        QCOMPARE(old.cloudEnabled, false);                       // before launch: teaser
         QCOMPARE(old.cloudSttTier, QStringLiteral("accurate"));
         QVERIFY(old.waitlistEmail.isEmpty());
     }
 
-    // Az „Első lépések” jelzője oda-vissza jár; régi settings.json-ban hiányzik → false.
+    // The "Getting started" flag goes both ways; in an old settings.json it is missing, so false.
     void appSettings_onboardingDoneRoundTrip()
     {
         AppSettings s;
@@ -66,8 +64,8 @@ private slots:
         QCOMPARE(old.onboardingDone, false);
     }
 
-    // AppSettings JSON round-trip (ÚJ multi-provider shape).
-    // A sáv kezdőeltolása (Track::startOffsetMs) oda-vissza jár a meeting.json-ban; 0-nál kimarad.
+    // AppSettings JSON round trip (NEW multi-provider shape).
+    // A track's start offset (Track::startOffsetMs) goes both ways in meeting.json; at 0 it is omitted.
     void track_startOffsetRoundTrip()
     {
         Meeting m;
@@ -123,11 +121,11 @@ private slots:
         QCOMPARE(r.userSpeakerName, s.userSpeakerName);
         QCOMPARE(r.languageHints, s.languageHints);
 
-        // A kiválasztott provider id-k átjönnek.
+        // The selected provider ids come through.
         QCOMPARE(r.sttProviderId, s.sttProviderId);
         QCOMPARE(r.llmProviderId, s.llmProviderId);
 
-        // A kiválasztott config-ok mezői átjönnek (a map-ből / accessorral).
+        // The selected configs' fields come through (from the map / by accessor).
         QCOMPARE(r.sttSelected().type,    s.sttSelected().type);
         QCOMPARE(r.sttSelected().baseUrl, s.sttSelected().baseUrl);
         QCOMPARE(r.sttSelected().model,   s.sttSelected().model);
@@ -135,7 +133,7 @@ private slots:
         QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
         QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
 
-        // apiKey SOHA nem perzisztálódik a JSON-be — sem a providers blokkba.
+        // apiKey is NEVER persisted into the JSON, not into the providers block either.
         const QJsonObject sttProv =
             o.value(QStringLiteral("sttProviders")).toObject()
              .value(QStringLiteral("soniox")).toObject();
@@ -149,7 +147,7 @@ private slots:
         QVERIFY(r.llmSelected().apiKey.isEmpty());
     }
 
-    // Meeting-figyelő mezők JSON round-tripje (nem-default értékekkel).
+    // JSON round trip of the meeting watcher fields (with non-default values).
     void appSettings_detectorRoundTrip()
     {
         AppSettings s;
@@ -168,21 +166,21 @@ private slots:
         QCOMPARE(r.knownCallApps, (QStringList{QStringLiteral("zoom"), QStringLiteral("jitsi")}));
     }
 
-    // Back-compat: a figyelő-mezők nélküli (régi) JSON a defaultokkal tölt.
+    // Back-compat: an (old) JSON without the watcher fields loads with the defaults.
     void appSettings_detectorDefaultsWhenAbsent()
     {
-        const AppSettings d;                          // beépített defaultok
-        const AppSettings r = appSettingsFromJson(QJsonObject{});   // üres JSON
+        const AppSettings d;                          // built-in defaults
+        const AppSettings r = appSettingsFromJson(QJsonObject{});   // empty JSON
         QCOMPARE(r.detectorEnabled, d.detectorEnabled);
         QCOMPARE(r.detectorIntervalSec, d.detectorIntervalSec);
         QCOMPARE(r.watcherAutostart, d.watcherAutostart);
-        QVERIFY(!r.knownCallApps.isEmpty());          // a default lista megmarad
+        QVERIFY(!r.knownCallApps.isEmpty());          // the default list stays
     }
 
-    // Régi {stt:{...},llm:{...}} shape migrálódik az ÚJ map-ekbe.
+    // The old {stt:{...},llm:{...}} shape migrates into the NEW maps.
     void appSettings_migratesOldShape()
     {
-        // Kézzel épített RÉGI shape-ű JSON (nincs sttProviders/llmProviders).
+        // A hand-built OLD-shape JSON (no sttProviders/llmProviders).
         QJsonObject oldStt;
         oldStt[QStringLiteral("type")]    = QStringLiteral("soniox");
         oldStt[QStringLiteral("baseUrl")] = QStringLiteral("https://api.soniox.com/v1");
@@ -201,15 +199,15 @@ private slots:
 
         const AppSettings r = appSettingsFromJson(o);
 
-        // A típus lett az id (üres type → "soniox"/"openai-compat" fallback).
+        // The type became the id (an empty type falls back to "soniox"/"openai-compat").
         QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
         QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
 
-        // A config-ok a map-be kerültek az id alatt.
+        // The configs went into the map under the id.
         QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
         QVERIFY(r.llmConfigs.contains(QStringLiteral("openai-compat")));
 
-        // A mezők megvannak (baseUrl/model) — a kiválasztott config-on át.
+        // The fields are there (baseUrl/model), through the selected config.
         QCOMPARE(r.sttSelected().type,    QStringLiteral("soniox"));
         QCOMPARE(r.sttSelected().baseUrl, QStringLiteral("https://api.soniox.com/v1"));
         QCOMPARE(r.sttSelected().model,   QStringLiteral("stt-async-v5"));
@@ -218,7 +216,7 @@ private slots:
         QCOMPARE(r.llmSelected().model,   QStringLiteral("gemma-4-12b"));
     }
 
-    // Régi shape ÜRES type-pal → fallback id ("soniox"/"openai-compat").
+    // Old shape with an EMPTY type: fallback id ("soniox"/"openai-compat").
     void appSettings_migratesOldShapeEmptyType()
     {
         QJsonObject oldStt;
@@ -243,19 +241,19 @@ private slots:
         QCOMPARE(r.llmSelected().model, QStringLiteral("gemma-4-12b"));
     }
 
-    // Default languageHints == ["hu"] + a kiválasztott provider-config defaultjai.
+    // Default languageHints == ["hu"] + the selected provider config's defaults.
     void defaults_languageHintsHu()
     {
         const AppSettings d = SettingsManager::defaults(QStringLiteral("/tmp/x"));
         QCOMPARE(d.languageHints, (QStringList{QStringLiteral("hu")}));
-        QVERIFY(!d.userSpeakerName.trimmed().isEmpty());   // az OS-fiók neve (nincs beégetett név)
+        QVERIFY(!d.userSpeakerName.trimmed().isEmpty());   // the OS account's name (no hard-coded name)
         QCOMPARE(d.sttProviderId, QStringLiteral("soniox"));
         QCOMPARE(d.llmProviderId, QStringLiteral("openai-compat"));
         QCOMPARE(d.sttSelected().type, QStringLiteral("soniox"));
         QCOMPARE(d.llmSelected().baseUrl, QStringLiteral("http://localhost:1234/v1"));
     }
 
-    // SettingsManager: betölt → defaultokat ír → újratölt és egyezik.
+    // SettingsManager: loads, writes defaults, reloads and matches.
     void settingsManager_loadSaveRoundTrip()
     {
         QTemporaryDir tmp;
@@ -263,7 +261,7 @@ private slots:
         const QString meta = tmp.filePath(QStringLiteral("meta"));
 
         SettingsManager mgr(meta);
-        // A konstruktor defaultot ír, ha nincs fájl.
+        // The constructor writes the default if there is no file.
         QVERIFY(QFile::exists(mgr.settingsFilePath()));
         QCOMPARE(mgr.settings().languageHints, (QStringList{QStringLiteral("hu")}));
 
@@ -275,9 +273,8 @@ private slots:
         QCOMPARE(mgr2.settings().userSpeakerName, QStringLiteral("Béla"));
     }
 
-    // PRODUKCIÓS ÚT: régi {stt:{...},llm:{...}} shape settings.json lemezről
-    // betöltve (SettingsManager::load) az ÚJ map-ekbe migrálódik, az apiKey
-    // pedig NEM töltődik be JSON-ből.
+    // PRODUCTION PATH: a settings.json in the old {stt:{...},llm:{...}} shape loaded from disk
+    // (SettingsManager::load) migrates into the NEW maps, and the apiKey is NOT loaded from JSON.
     void settingsManager_migratesOldShapeFromDisk()
     {
         QTemporaryDir tmp;
@@ -285,8 +282,8 @@ private slots:
         const QString meta = tmp.filePath(QStringLiteral("meta"));
         QVERIFY(QDir().mkpath(meta));
 
-        // Kézzel írt RÉGI shape-ű settings.json (apiKey-vel együtt, hogy lássuk:
-        // a betöltés SOHA nem hozza vissza a JSON-ből).
+        // A hand-written OLD-shape settings.json (with the apiKey too, to see that loading NEVER
+        // brings it back from the JSON).
         QJsonObject oldStt;
         oldStt[QStringLiteral("type")]    = QStringLiteral("soniox");
         oldStt[QStringLiteral("baseUrl")] = QStringLiteral("https://api.soniox.com/v1");
@@ -311,11 +308,11 @@ private slots:
         f.write(QJsonDocument(root).toJson());
         f.close();
 
-        // Produkciós betöltés.
+        // Production load.
         SettingsManager mgr(meta);
         const AppSettings r = mgr.settings();
 
-        // type → id; a config a map-be került a megőrzött baseUrl/model-lel.
+        // type becomes id; the config went into the map with the preserved baseUrl/model.
         QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
         QCOMPARE(r.llmProviderId, QStringLiteral("openai-compat"));
         QVERIFY(r.sttConfigs.contains(QStringLiteral("soniox")));
@@ -326,14 +323,14 @@ private slots:
         QCOMPARE(r.llmSelected().model,   QStringLiteral("gemma-4-12b"));
         QCOMPARE(r.llmSelected().maxTokens, 4096);
 
-        // apiKey SOHA nem töltődik be JSON-ből.
+        // apiKey is NEVER loaded from JSON.
         QVERIFY(r.sttSelected().apiKey.isEmpty());
         QVERIFY(r.llmSelected().apiKey.isEmpty());
     }
 
-    // SAFETY NET (produkciós út): új-shape JSON, ahol a sttProviderId egy a
-    // map-ben NEM létező id-re mutat → a load essen vissza értelmes
-    // (nem-üres) kiválasztásra, ne adjon üres sttSelected()-et.
+    // SAFETY NET (production path): a new-shape JSON where sttProviderId points to an id that
+    // does NOT exist in the map: load must fall back to a sensible (non-empty) selection, and not
+    // give an empty sttSelected().
     void settingsManager_safetyNetStaleSelectedId()
     {
         QTemporaryDir tmp;
@@ -341,8 +338,7 @@ private slots:
         const QString meta = tmp.filePath(QStringLiteral("meta"));
         QVERIFY(QDir().mkpath(meta));
 
-        // Új shape: a sttProviders csak "soniox"-ot tartalmaz, de a kiválasztott
-        // id egy nem létező "ghost-stt".
+        // New shape: sttProviders contains only "soniox", but the selected id is a non-existent "ghost-stt".
         QJsonObject sonioxCfg;
         sonioxCfg[QStringLiteral("type")]    = QStringLiteral("soniox");
         sonioxCfg[QStringLiteral("baseUrl")] = QStringLiteral("https://api.soniox.com/v1");
@@ -372,16 +368,16 @@ private slots:
         SettingsManager mgr(meta);
         const AppSettings r = mgr.settings();
 
-        // A stale id-ről értelmes, NEM üres kiválasztásra esett vissza.
+        // It fell back from the stale id to a sensible, NON-empty selection.
         QVERIFY(!r.sttProviderId.isEmpty());
         QVERIFY(r.sttConfigs.contains(r.sttProviderId));
         QVERIFY(!r.sttSelected().type.isEmpty());
         QVERIFY(!r.sttSelected().baseUrl.isEmpty());
-        // A meglévő egyetlen config ("soniox") a használt fallback.
+        // The single existing config ("soniox") is the fallback used.
         QCOMPARE(r.sttProviderId, QStringLiteral("soniox"));
     }
 
-    // KeyStore: set/get/remove fájl-alapon.
+    // KeyStore: set/get/remove file-based.
     void keyStore_setGetRemove()
     {
         QTemporaryDir tmp;
@@ -393,7 +389,7 @@ private slots:
         ks.set(QStringLiteral("soniox.apiKey"), QStringLiteral("abc123"));
         QCOMPARE(ks.get(QStringLiteral("soniox.apiKey")), QStringLiteral("abc123"));
 
-        // Másik példány ugyanazon fájlon lássa az értéket.
+        // Another instance on the same file sees the value.
         KeyStore ks2(path);
         QCOMPARE(ks2.get(QStringLiteral("soniox.apiKey")), QStringLiteral("abc123"));
 
@@ -408,7 +404,7 @@ class StoreTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // createMeeting → mappa + meeting.json round-trip; loadAll/load egyezik.
+    // createMeeting: folder + meeting.json round trip; loadAll/load match.
     void meetingStore_createAndRoundTrip()
     {
         QTemporaryDir tmp;
@@ -424,17 +420,17 @@ private slots:
         QVERIFY(QDir(m.folder).exists());
         QVERIFY(QFile::exists(QDir(m.folder).filePath(QStringLiteral("meeting.json"))));
 
-        // load() a lemezről ugyanazt adja vissza.
+        // load() returns the same from disk.
         const Meeting loaded = store.load(m.id);
         QCOMPARE(loaded.id, m.id);
         QCOMPARE(loaded.title, QStringLiteral("Heti sync"));
 
-        // loadAll() tartalmazza.
+        // loadAll() contains it.
         const QVector<Meeting> all = store.loadAll();
         QCOMPARE(all.size(), 1);
         QCOMPARE(all.first().id, m.id);
 
-        // saveMeeting frissítés: durationMs + flag-ek.
+        // saveMeeting update: durationMs + flags.
         Meeting upd = loaded;
         upd.durationMs = 123456;
         upd.hasSummary = true;
@@ -445,7 +441,7 @@ private slots:
         QVERIFY(reread.hasSummary);
     }
 
-    // rebuildIndexFromDisk: ürített index újraépül a lemezről.
+    // rebuildIndexFromDisk: an emptied index is rebuilt from disk.
     void meetingStore_rebuildIndex()
     {
         QTemporaryDir tmp;
@@ -463,25 +459,22 @@ private slots:
     }
 };
 
-// ===========================================================================
-// FUTTATÁS / INTEGRÁCIÓ.
+// RUN / INTEGRATION.
 //
-// A tests/unit/*.cpp fájlok EGYETLEN exe-be GLOB-olódnak, és a test_smoke.cpp
-// már birtokolja a QTEST_MAIN-t. Két main / két QTEST_MAIN ütközne (link-hiba),
-// ami a párhuzamos build-et MINDENKINEK eltörné — ezért itt SEM main, SEM
-// QTEST_MAIN nincs. A fenti két teszt-osztály (SettingsTests, StoreTests)
-// így tisztán befordul a közös exe-be, futtatás nélkül.
+// The tests/unit/*.cpp files are GLOBbed into a SINGLE exe, and test_smoke.cpp already owns
+// QTEST_MAIN. Two mains / two QTEST_MAINs would clash (a link error), which would break the
+// parallel build for EVERYONE, so there is NEITHER main NOR QTEST_MAIN here. The two test
+// classes above (SettingsTests, StoreTests) thus build cleanly into the shared exe, without running.
 //
-// Hogy parancssorból is futtatható legyen önállóan (a közös exe SÉRTÉSE nélkül),
-// ezt a fájlt fordítsd külön a TANARA_STORE_SETTINGS_STANDALONE makróval:
+// To make it runnable from the command line on its own (WITHOUT violating the shared exe),
+// compile this file separately with the TANARA_STORE_SETTINGS_STANDALONE macro:
 //
 //   moc test_store_settings.cpp -o test_store_settings.moc -I core/include
 //   g++ -std=c++20 -DTANARA_STORE_SETTINGS_STANDALONE \
-//       test_store_settings.cpp <tanara_core+Qt linkek> -o store_tests && ./store_tests
+//       test_store_settings.cpp <tanara_core+Qt links> -o store_tests && ./store_tests
 //
-// Ekkor saját main jön létre; a közös GLOB-os build során a makró NINCS
-// definiálva, tehát NINCS main → nincs ütközés. Integrációkor a két osztály
-// változtatás nélkül átemelhető egy multi-test harnessbe.
+// Then it gets its own main; in the shared GLOB build the macro is NOT defined, so there is
+// NO main and no clash. On integration the two classes can be moved into a multi-test harness unchanged.
 #ifdef TANARA_STORE_SETTINGS_STANDALONE
 int main(int argc, char** argv)
 {

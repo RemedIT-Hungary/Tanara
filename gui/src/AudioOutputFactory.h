@@ -1,12 +1,10 @@
 #pragma once
+// Tanara: a QAudioOutput that FOLLOWS the system default output.
 //
-// Tanara — QAudioOutput, ami KÖVETI a rendszer default kimenetét.
-//
-// A sima QAudioOutput a létrehozáskori default eszközre rögzül: fülhallgató/hangszóró
-// váltásnál a lejátszás a régi eszközön ragad. A QMediaDevices::audioOutputsChanged
-// signalra kötve a setDevice() élő stream közben is átirányít — a mechanizmus
-// cross-platform (Linux: PipeWire/Pulse esemény, Windows: WASAPI device-notification).
-//
+// A plain QAudioOutput binds to the default device at creation: after switching
+// headphones/speakers, playback sticks to the old device. Connected to the
+// QMediaDevices::audioOutputsChanged signal, setDevice() redirects even a live stream. The
+// mechanism is cross-platform (Linux: PipeWire/Pulse event, Windows: WASAPI device notification).
 #include <QAudioDevice>
 #include <QAudioOutput>
 #include <QMediaDevices>
@@ -14,15 +12,15 @@
 
 namespace tanara_gui {
 
-// QAudioOutput a rendszer default kimenetére, default-követéssel. A parent birtokolja.
+// A QAudioOutput on the system default output, following default changes. The parent owns it.
 inline QAudioOutput* makeFollowDefaultAudioOutput(QObject* parent)
 {
     auto* out = new QAudioOutput(parent);
     auto* devices = new QMediaDevices(out);
     QObject::connect(devices, &QMediaDevices::audioOutputsChanged, out, [out]() {
         const QAudioDevice def = QMediaDevices::defaultAudioOutput();
-        // Guard: a signal hotplugnál is jön, nemcsak default-váltásnál — felesleges
-        // setDevice ne okozzon csuklást a futó lejátszásban.
+        // Guard: the signal also fires on hotplug, not only on a default change; a needless
+        // setDevice must not stutter running playback.
         if (!def.isNull() && out->device() != def)
             out->setDevice(def);
     });

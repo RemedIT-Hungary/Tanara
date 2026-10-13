@@ -1,12 +1,10 @@
-//
-// Adatbiztonság — a fájl-alapú tárak hibatűrése (csak ideiglenes mappákban):
-//  - árva-helyreállítás: élő felvétel mappáját (recording.lock / friss sáv-fájl) nem nyúlja;
-//  - index: egy mappa sosem szerepel kétszer; meeting törlése nem törli más meeting mappáját;
-//  - settings.json: sérült fájlt nem ír felül csendben, mentéskor félreteszi;
-//  - people.json / voiceprints.json: két „folyamat” (két tár-példány) nem írja felül egymást;
-//  - replaceFile: a régi fájl megmarad, ha a csere nem sikerül;
-//  - relocateTrack: a lekeverés, más sáv fájlja és nem-hangfájl nem lehet sáv.
-//
+// Data safety: the fault tolerance of the file-based stores (only in temporary folders):
+//  - orphan recovery: does not touch a live recording's folder (recording.lock / fresh track file);
+//  - index: a folder never appears twice; deleting a meeting does not delete another meeting's folder;
+//  - settings.json: a corrupt file is not silently overwritten, it is set aside on save;
+//  - people.json / voiceprints.json: two "processes" (two store instances) do not overwrite each other;
+//  - replaceFile: the old file stays if the replace fails;
+//  - relocateTrack: the mixdown, another track's file and a non-audio file cannot become a track.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -42,7 +40,7 @@ QByteArray readFile(const QString& path)
     return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
 }
 
-// A fájl módosítási idejének visszaállítása a múltba (mintha rég nem írtak volna bele).
+// Resets a file's modification time to the past (as if nobody had written to it for a long time).
 void backdate(const QString& path, int secs)
 {
     QFile f(path);
@@ -92,8 +90,8 @@ void DataSafetyTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
-    // A SettingsManager alapértelmezett mappái (felvételek, jegyzetek) is a temp mappába
-    // kerüljenek — a teszt SOSEM nyúl a valódi ~/.tanara / ~/Tanara mappához.
+    // SettingsManager's default folders (recordings, notes) go into the temp folder too: the
+    // test NEVER touches the real ~/.tanara / ~/Tanara folder.
     qputenv("TANARA_HOME", m_dir->filePath("home").toUtf8());
     m_audio = m_dir->filePath("recordings");
     m_meta = m_dir->filePath("meta");
@@ -101,7 +99,7 @@ void DataSafetyTest::init()
 
 void DataSafetyTest::cleanup() { m_dir.reset(); }
 
-// Felvétel-mappa meeting.json nélkül, egy régi (nem friss) sáv-fájllal.
+// A recording folder without meeting.json, with an old (not fresh) track file.
 QString DataSafetyTest::orphanFolder(const QString& name)
 {
     const QString folder = QDir(m_audio).filePath(name);
@@ -116,9 +114,9 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
     const QString live = orphanFolder("2026-01-05_1000_Elo-felvetel");
     const QString crashed = orphanFolder("2026-01-04_0900_Osszeomlott");
 
-    // Élő felvevő (a teszt saját PID-je él) erre a mappára: nem árva.
+    // A live recorder (the test's own PID is alive) on this folder: not an orphan.
     RecordingLock lock(QDir(m_meta).filePath("recording.lock"));
-    QVERIFY(lock.acquire(live + "/"));   // záró perjellel is ugyanaz a mappa
+    QVERIFY(lock.acquire(live + "/"));   // with a trailing slash it is the same folder
     QCOMPARE(store.recoverOrphanRecordings(), 1);
     QVERIFY(!QFile::exists(QDir(live).filePath("meeting.json")));
     QVERIFY(QFile::exists(QDir(crashed).filePath("meeting.json")));
@@ -126,12 +124,12 @@ void DataSafetyTest::orphanRecoverySkipsLiveLockFolder()
     QCOMPARE(all.size(), 1);
     QCOMPARE(QDir(all.first().folder).dirName(), QStringLiteral("2026-01-04_0900_Osszeomlott"));
 
-    // A felvétel véget ért (lock elengedve), meeting.json továbbra sincs → most már árva.
+    // The recording ended (lock released), meeting.json still absent: now it is an orphan.
     lock.release();
     QCOMPARE(store.recoverOrphanRecordings(), 1);
     QVERIFY(QFile::exists(QDir(live).filePath("meeting.json")));
 
-    // Elavult lock (halott PID) nem véd: az összeomlott felvevő mappája helyreáll.
+    // A stale lock (dead PID) does not protect: a crashed recorder's folder is recovered.
     const QString stale = orphanFolder("2026-01-06_1100_Halott-felvevo");
     writeFile(QDir(m_meta).filePath("recording.lock"),
               QJsonDocument(QJsonObject{{"pid", 2147483000}, {"meetingFolder", stale},
@@ -147,13 +145,13 @@ void DataSafetyTest::orphanRecoverySkipsFreshTracks()
     const QString folder = QDir(m_audio).filePath("2026-01-05_1000_Most-irjak");
     writeFile(QDir(folder).filePath("track_mic.ogg"), "regi");
     backdate(QDir(folder).filePath("track_mic.ogg"), 3600);
-    writeFile(QDir(folder).filePath("track_sys.ogg"), "epp-irodik");   // friss módosítás, lock nélkül
+    writeFile(QDir(folder).filePath("track_sys.ogg"), "epp-irodik");   // fresh modification, no lock
 
     QCOMPARE(store.recoverOrphanRecordings(), 0);
     QVERIFY(!QFile::exists(QDir(folder).filePath("meeting.json")));
     QVERIFY(store.loadAll().isEmpty());
 
-    // Pár perc csend után (senki nem ír bele) már árvának számít.
+    // After a few minutes of silence (nobody writes to it) it counts as an orphan.
     backdate(QDir(folder).filePath("track_sys.ogg"), 600);
     QCOMPARE(store.recoverOrphanRecordings(), 1);
     QCOMPARE(store.loadAll().size(), 1);
@@ -165,7 +163,7 @@ void DataSafetyTest::indexNeverListsFolderTwice()
     MeetingStore analyzer(m_audio, m_meta);
     Meeting a = analyzer.createMeeting("Helyreállított");
 
-    // Egy másik folyamat (a felvevő) ugyanebbe a mappába ÚJ id-vel írja a meeting.json-t.
+    // Another process (the recorder) writes meeting.json with a NEW id into the same folder.
     {
         MeetingStore recorder(m_audio, m_meta);
         Meeting b = a;
@@ -177,8 +175,8 @@ void DataSafetyTest::indexNeverListsFolderTwice()
     QCOMPARE(all.size(), 1);
     QCOMPARE(all.first().id, QStringLiteral("felvevo-id"));
 
-    // Régi indexben maradt kettős sor (a javítás előtti buildből): a lista így is egy sort ad,
-    // azt, amelyik a mappa meeting.json-jában áll.
+    // A duplicate row left in an old index (from a build before the fix): the list still gives
+    // one row, the one named in the folder's meeting.json.
     {
         QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "teszt-kettos-sor");
         db.setDatabaseName(QDir(m_meta).filePath("index.db"));
@@ -196,7 +194,7 @@ void DataSafetyTest::indexNeverListsFolderTwice()
     QCOMPARE(all.size(), 1);
     QCOMPARE(all.first().id, QStringLiteral("felvevo-id"));
 
-    // Index-újraépítés után is egy sor.
+    // After an index rebuild there is one row too.
     analyzer.rebuildIndexFromDisk();
     QCOMPARE(analyzer.loadAll().size(), 1);
 }
@@ -207,7 +205,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
     Meeting a = store.createMeeting("Helyreállított");
     writeFile(QDir(a.folder).filePath("track_mic.ogg"), "felvetel");
 
-    // A mappa meeting.json-ja már a felvevő id-jét tartalmazza; az indexben mindkét sor él.
+    // The folder's meeting.json already has the recorder's id; both rows are alive in the index.
     Meeting b = a;
     b.id = "felvevo-id";
     writeFile(QDir(a.folder).filePath("meeting.json"),
@@ -226,7 +224,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
     }
     QSqlDatabase::removeDatabase("teszt-masik-sor");
 
-    // A „(helyreállított)” bejegyzés törlése NEM viheti el a másik meeting mappáját.
+    // Deleting the "(recovered)" entry must NOT take the other meeting's folder.
     QSignalSpy removed(&store, &MeetingStore::meetingRemoved);
     QVERIFY(store.deleteMeeting(a.id));
     QCOMPARE(removed.count(), 1);
@@ -236,7 +234,7 @@ void DataSafetyTest::deleteKeepsFolderOfAnotherMeeting()
     QCOMPARE(all.size(), 1);
     QCOMPARE(all.first().id, b.id);
 
-    // A mappa tényleges tulajdonosának törlése viszi a mappát (a régi viselkedés).
+    // Deleting the folder's actual owner takes the folder (the old behavior).
     QVERIFY(store.deleteMeeting(b.id));
     QVERIFY(!QDir(a.folder).exists());
     QVERIFY(store.loadAll().isEmpty());
@@ -250,9 +248,9 @@ void DataSafetyTest::deleteKeepsLiveRecordingFolder()
     RecordingLock lock(QDir(m_meta).filePath("recording.lock"));
     QVERIFY(lock.acquire(a.folder));
 
-    QVERIFY(store.deleteMeeting(a.id));   // a bejegyzés eltűnik…
+    QVERIFY(store.deleteMeeting(a.id));   // the entry disappears...
     QVERIFY(store.loadAll().isEmpty());
-    QVERIFY(QFile::exists(QDir(a.folder).filePath("track_mic.ogg")));   // …a felvétel nem
+    QVERIFY(QFile::exists(QDir(a.folder).filePath("track_mic.ogg")));   // ...the recording does not
     lock.release();
 }
 
@@ -266,7 +264,7 @@ void DataSafetyTest::meetingJsonWrittenAtomically()
         m.contextNote = QString("megjegyzés %1").arg(i);
         store.saveMeeting(m);
     }
-    // A mappában csak a meeting.json van (nem maradt ideiglenes fájl), és érvényes JSON.
+    // The folder has only meeting.json (no temporary file remained), and it is valid JSON.
     QCOMPARE(QDir(m.folder).entryList(QDir::Files | QDir::Hidden), QStringList{"meeting.json"});
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(readFile(QDir(m.folder).filePath("meeting.json")), &err);
@@ -281,20 +279,20 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
 {
     QDir().mkpath(m_meta);
     const QString path = QDir(m_meta).filePath("settings.json");
-    // Félbemaradt írás: csonka JSON, benne a felhasználó beállításai.
+    // An interrupted write: truncated JSON, with the user's settings in it.
     const QByteArray broken = R"({"audioDir": "/mnt/felvetelek/tanara", "userSpeakerName": "Ádá)";
     writeFile(path, broken);
 
     SettingsManager sm(m_meta);
     QVERIFY(sm.loadFailed());
-    QCOMPARE(sm.settings().sttProviderId, QStringLiteral("soniox"));   // defaultok a memóriában
-    QCOMPARE(readFile(path), broken);                                  // a fájl ÉRINTETLEN
-    // Egy másik folyamat (felvevő / figyelő) betöltése sem írja felül.
+    QCOMPARE(sm.settings().sttProviderId, QStringLiteral("soniox"));   // defaults in memory
+    QCOMPARE(readFile(path), broken);                                  // the file is UNTOUCHED
+    // Another process (recorder / watcher) loading does not overwrite it either.
     { SettingsManager other(m_meta); QVERIFY(other.loadFailed()); }
     QCOMPARE(readFile(path), broken);
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files).size(), 1);
 
-    // Kifejezett mentés: a sérült fájl félrekerül (megmarad), az új érvényes.
+    // Explicit save: the corrupt file is set aside (kept), the new one is valid.
     AppSettings s = sm.settings();
     s.userSpeakerName = "Lilla";
     sm.setSettings(s);
@@ -305,14 +303,14 @@ void DataSafetyTest::corruptSettingsAreNotOverwritten()
     SettingsManager again(m_meta);
     QVERIFY(!again.loadFailed());
     QCOMPARE(again.settings().userSpeakerName, QStringLiteral("Lilla"));
-    // A következő mentés már nem tesz félre semmit.
+    // The next save sets nothing aside anymore.
     again.setSettings(again.settings());
     QCOMPARE(QDir(m_meta).entryList({"settings.json.corrupt-*"}, QDir::Files).size(), 1);
 }
 
 void DataSafetyTest::healthySettingsRoundTrip()
 {
-    // Nincs fájl → létrejön a defaultokkal (első indítás), mint eddig.
+    // No file: it is created with the defaults (first launch), as before.
     SettingsManager first(m_meta);
     QVERIFY(!first.loadFailed());
     const QString path = QDir(m_meta).filePath("settings.json");
@@ -321,7 +319,7 @@ void DataSafetyTest::healthySettingsRoundTrip()
     s.userSpeakerName = "Ödön";
     s.languageHints = QStringList{"hu", "en"};
     first.setSettings(s);
-    // Csak a settings.json marad (nincs ideiglenes / félretett fájl), és visszaolvasható.
+    // Only settings.json remains (no temporary / set-aside file), and it can be read back.
     QCOMPARE(QDir(m_meta).entryList({"settings.json*"}, QDir::Files | QDir::Hidden), QStringList{"settings.json"});
     SettingsManager second(m_meta);
     QCOMPARE(second.settings().userSpeakerName, QStringLiteral("Ödön"));
@@ -348,20 +346,20 @@ void DataSafetyTest::secretsKeepPermissionsAndContent()
 void DataSafetyTest::peopleFromTwoProcessesMerge()
 {
     const QString path = QDir(m_meta).filePath("people.json");
-    // Két „folyamat”: mindkettő induláskor betölt, aztán felváltva módosít.
+    // Two "processes": both load at startup, then modify alternately.
     PeopleStore analyzer(path);
     PeopleStore recorder(path);
     analyzer.add("Bence");
-    recorder.add("Lilla");          // a javítás előtt ez eldobta Bencét
-    analyzer.add("Zsófi");          // …ez pedig Lillát
+    recorder.add("Lilla");          // before the fix this dropped Bence
+    analyzer.add("Zsófi");          // ...and this dropped Lilla
     QCOMPARE(PeopleStore(path).names(), QStringList({"Bence", "Lilla", "Zsófi"}));
 
-    // Törlés / átnevezés a másik folyamat friss állapotára épül, és nem támaszt fel törölt nevet.
+    // Delete / rename builds on the other process's fresh state, and does not resurrect a deleted name.
     recorder.remove("Bence");
     analyzer.rename("Lilla", "Kovács Lilla");
     QCOMPARE(PeopleStore(path).names(), QStringList({"Kovács Lilla", "Zsófi"}));
     QCOMPARE(analyzer.names(), QStringList({"Kovács Lilla", "Zsófi"}));
-    // Két rekord a fájlban, és nem marad zár-fájl.
+    // Two records in the file, and no lock file remains.
     QCOMPARE(QJsonDocument::fromJson(readFile(path)).object().value("people").toArray().size(), 2);
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"people.json"});
 }
@@ -372,15 +370,15 @@ void DataSafetyTest::voiceprintsFromTwoProcessesMerge()
     VoiceprintStore analyzer(path);
     VoiceprintStore recorder(path);
     analyzer.addPrint("Bence", print(1, 0));
-    recorder.addPrint("Lilla", print(0, 1));        // a javítás előtt ez eldobta Bence lenyomatát
-    analyzer.addPrint("Bence", print(0.9f, 0.1f));  // …ez pedig Lilláét
+    recorder.addPrint("Lilla", print(0, 1));        // before the fix this dropped Bence's voiceprint
+    analyzer.addPrint("Bence", print(0.9f, 0.1f));  // ...and this dropped Lilla's
     {
         VoiceprintStore fresh(path);
         QCOMPARE(fresh.people(), QStringList({"Bence", "Lilla"}));
         QCOMPARE(fresh.printCount("Bence"), 2);
         QCOMPARE(fresh.printCount("Lilla"), 1);
     }
-    // A másik folyamat törlése megmarad: a következő írás nem támasztja fel.
+    // The other process's delete stays: the next write does not resurrect it.
     recorder.removePerson("Bence");
     analyzer.addPrint("Zsófi", print(0.5f, 0.5f));
     VoiceprintStore fresh(path);
@@ -397,10 +395,10 @@ void DataSafetyTest::corruptVoiceprintsAreSetAside()
     writeFile(path, broken);
     VoiceprintStore store(path);
     QCOMPARE(store.totalPrintCount(), 0);
-    QCOMPARE(readFile(path), broken);            // betöltéskor nem nyúl hozzá
+    QCOMPARE(readFile(path), broken);            // not touched on load
     store.addPrint("Lilla", print(0, 1));
     const QStringList aside = QDir(m_meta).entryList({"voiceprints.json.corrupt-*"}, QDir::Files);
-    QCOMPARE(aside.size(), 1);                   // a sérült fájl megmaradt (kézzel menthető)
+    QCOMPARE(aside.size(), 1);                   // the corrupt file stayed (can be saved by hand)
     QCOMPARE(readFile(QDir(m_meta).filePath(aside.first())), broken);
     QCOMPARE(VoiceprintStore(path).people(), QStringList{"Lilla"});
 }
@@ -412,18 +410,18 @@ void DataSafetyTest::replaceFileKeepsOldOnFailure()
     const QString part = QDir(m_meta).filePath("mixdown.part.mp3");
     writeFile(out, "REGI-KEVEREK");
 
-    // A csere nem tud megtörténni (nincs forrás) → a régi fájl ÉRINTETLEN. (A korábbi
-    // „töröld, aztán nevezd át” itt a régit már kitörölte volna.)
+    // The replace cannot happen (no source), so the old file is UNTOUCHED. (The earlier "delete,
+    // then rename" would have deleted the old one here.)
     QVERIFY(!replaceFile(part, out));
     QCOMPARE(readFile(out), QByteArray("REGI-KEVEREK"));
 
-    // Sikeres csere: az új tartalom a helyén, félkész / félretett fájl nem marad.
+    // Successful replace: the new content is in place, no half-finished / set-aside file remains.
     writeFile(part, "UJ-KEVEREK");
     QVERIFY(replaceFile(part, out));
     QCOMPARE(readFile(out), QByteArray("UJ-KEVEREK"));
     QCOMPARE(QDir(m_meta).entryList(QDir::Files | QDir::Hidden), QStringList{"mixdown.mp3"});
 
-    // Régi fájl nélkül is működik (első keverés).
+    // Works without an old file too (first mix).
     QVERIFY(QFile::remove(out));
     writeFile(part, "ELSO");
     QVERIFY(replaceFile(part, out));
@@ -450,10 +448,10 @@ void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
     TrackCatalog cat(&store);
     QSignalSpy changed(&cat, &TrackCatalog::tracksChanged);
     QString err;
-    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("mixdown.mp3"), &err));      // a lekeverés
+    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("mixdown.mp3"), &err));      // the mixdown
     QVERIFY(err.contains("lekeverés"));
-    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("track_sys.ogg"), &err));    // másik sáv fájlja
-    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("transcript.md"), &err));    // nem hangfájl
+    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("track_sys.ogg"), &err));    // another track's file
+    QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("transcript.md"), &err));    // not an audio file
     QVERIFY(err.contains("nem hangfájl"));
     QVERIFY(!cat.relocateTrack(m.id, "mic", folder.filePath("meeting.json"), &err));
     QVERIFY(!cat.relocateTrack(m.id, "mic", m_dir->filePath("kulso/jegyzet.txt"), &err));
@@ -461,16 +459,16 @@ void DataSafetyTest::relocateRejectsMixdownAndNonAudio()
     const Meeting same = store.load(m.id);
     QCOMPARE(same.tracks.first().file, QStringLiteral("track_mic.ogg"));
     QVERIFY(!same.mixdownDirty);
-    QVERIFY(!folder.exists("track_mic.txt"));   // semmit nem másolt be
+    QVERIFY(!folder.exists("track_mic.txt"));   // copied nothing in
 
-    // Valódi hangfájl a mappában továbbra is választható.
+    // A real audio file in the folder is still selectable.
     QVERIFY2(cat.relocateTrack(m.id, "mic", folder.filePath("regi-mic.ogg"), &err), qPrintable(err));
     QCOMPARE(store.load(m.id).tracks.first().file, QStringLiteral("regi-mic.ogg"));
 }
 
 void DataSafetyTest::deletingTracksNeverDeletesMixdown()
 {
-    // Régi (a javítás előtt készült) meeting.json: egy eldobott sáv a lekeverés fájljára mutat.
+    // An old meeting.json (made before the fix): a dropped track points to the mixdown file.
     MeetingStore store(m_audio, m_meta);
     Meeting m = store.createMeeting("Régi hiba");
     Track mic; mic.id = "mic"; mic.kind = TrackKind::Mic; mic.file = "track_mic.ogg"; mic.active = true;
@@ -487,8 +485,8 @@ void DataSafetyTest::deletingTracksNeverDeletesMixdown()
     TrackCatalog cat(&store);
     QCOMPARE(cat.deleteDroppedTracks(m.id), 2);
     QCOMPARE(store.load(m.id).tracks.size(), 1);
-    QVERIFY(!folder.exists("track_d.ogg"));                                   // a valódi eldobott sáv törlődött
-    QCOMPARE(readFile(folder.filePath("mixdown.mp3")), QByteArray("KEVEREK")); // a keverék nem
+    QVERIFY(!folder.exists("track_d.ogg"));                                   // the real dropped track was deleted
+    QCOMPARE(readFile(folder.filePath("mixdown.mp3")), QByteArray("KEVEREK")); // the mix was not
     QVERIFY(folder.exists("track_mic.ogg"));
 }
 

@@ -1,7 +1,7 @@
 #pragma once
-// tanara-cli track-sides — a sáv-oldal ellenőrzés mérése egy meeting-mappán (SideAnalysis).
-// AppController NÉLKÜL fut, és CSAK OLVAS: a tracks.activity.bin cache-t csak --write-cache-sel
-// írja a mappába. A kimenet ANGOL, átirat-szöveget nem ír ki.
+// tanara-cli track-sides: measures the track side check on a meeting folder (SideAnalysis).
+// Runs WITHOUT AppController and only READS: tracks.activity.bin is written to the folder only
+// with --write-cache. Output is English and contains no transcript text.
 #include <QStringList>
 
 namespace tanara::cli {

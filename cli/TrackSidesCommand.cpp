@@ -1,4 +1,4 @@
-// tanara-cli track-sides. Minden kimenet angol, tr() nélkül.
+// tanara-cli track-sides. All output is English, no tr().
 #include "TrackSidesCommand.h"
 
 #include "tanara/SettingsManager.h"
@@ -216,7 +216,7 @@ int runTrackSidesCommand(const QStringList& args)
     const SettingsManager sm;
     const QString userName = sm.settings().userSpeakerName;
 
-    // Aktivitás: a cache-ből, ha a lenyomat egyezik; különben számolva (a mappába csak --write-cache-sel ír).
+    // Activity: from the cache if the fingerprint matches, otherwise computed (written to the folder only with --write-cache).
     const QString fp = trackactivity::activityFingerprint(m, folder, frameMs);
     MeetingActivity act;
     bool fromCache = false;

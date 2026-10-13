@@ -1,10 +1,10 @@
-// A címke-vezérlők QML-oldala, valódi ablak nélkül (offscreen + szoftveres renderer):
-//  - a Címkék ablak minden demó-állapota (T10–T13, rename, people, peopleEmpty, peopleAdd) mindkét témában QML-figyelmeztetés
-//    nélkül töltődik be, és a T11 / T12 párbeszéde nyitva van;
-//  - a galéria „Címkék” szakasza (section="tags") és az önálló komponensek (TagChip, TagInput,
-//    TagField, TagRow a „Miért?” panellel) adat nélkül is figyelmeztetés nélkül rajzolódnak;
-//  - a TagRow a modelljén át működik: választás a beviteli mezőből → felkerül, Backspace az üres
-//    mezőben → az utolsó lekerül, a jelek kimennek.
+// The QML side of the tag controls, without a real window (offscreen + software renderer):
+//  - every demo state of the Tags window (T10-T13, rename, people, peopleEmpty, peopleAdd) loads
+//    in both themes without a QML warning, and the T11 / T12 dialogs are open;
+//  - the gallery's "Tags" section (section="tags") and the standalone components (TagChip,
+//    TagInput, TagField, TagRow with the "Why?" panel) render without data and without warnings;
+//  - TagRow works through its model: choosing from the input field applies it, Backspace in the
+//    empty field removes the last, the signals go out.
 #include "AppContext.h"
 #include "QmlApp.h"
 
@@ -79,7 +79,7 @@ private slots:
             QCOMPARE(del->property("title").toString(), QStringLiteral("Törlöd a #Nordvik címkét?"));
         if (state == QLatin1String("rename"))
             QVERIFY(win->property("detailPane").value<QObject*>()->property("renaming").toBool());
-        // Személyek-lista: a választó csak a „+ Személy” állapotban nyitott.
+        // People list: the picker is open only in the "+ Person" state.
         QCOMPARE(win->property("personPicker").value<QObject*>()->property("visible").toBool(),
                  state == QLatin1String("peopleAdd"));
         if (state == QLatin1String("people") || state == QLatin1String("peopleEmpty")) {
@@ -104,7 +104,7 @@ private slots:
         AppContext::instance()->setThemeMode(theme);
         QStringList warnings = render("Gallery", {{"section", "tags"}}, QSize(1280, 1100));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
-        // Önállóan, adat nélkül.
+        // Standalone, without data.
         for (const QString& page : {QStringLiteral("TagChip"), QStringLiteral("TagInput"), QStringLiteral("TagField"),
                                     QStringLiteral("TagRow")}) {
             warnings = render(page, {}, QSize(700, 400));
@@ -142,7 +142,7 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(input, "tagChosen", Q_ARG(QString, QStringLiteral("Muzeo")), Q_ARG(bool, false)));
         QCOMPARE(added.count(), 1);
         QCOMPARE(row->property("tags").toList().size(), 3);
-        // Kézi hozzáadás után együtt járó javaslatok.
+        // Co-occurring suggestions after a manual add.
         QCOMPARE(row->property("suggestionLabel").toString(), QStringLiteral("Muzeo mellé gyakran"));
 
         QVERIFY(QMetaObject::invokeMethod(input, "backspaceOnEmpty"));

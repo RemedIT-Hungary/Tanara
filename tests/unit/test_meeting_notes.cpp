@@ -1,9 +1,7 @@
-//
-// A megbeszélés-megjegyzés szabályai (tanara/library/MeetingNotes.h): cím-hasonlóság
-// (ékezet, dátum, szám), sablon-javaslatok (sorrend, kizárások), a figyelő régi automatikus
-// mondatának értelmezése (betöltéskor, summary.json-ban), az átírónak küldött kontextus és a
-// könyvtár gyorsítótáras javaslat-lekérdezése. Minden név és szó kitalált.
-//
+// The meeting note's rules (tanara/library/MeetingNotes.h): title similarity (accents, date,
+// number), template suggestions (order, exclusions), interpreting the watcher's old automatic
+// sentence (on load, in summary.json), the context sent to the transcriber and the library's
+// cached suggestion query. All names and words are made up.
 #include <QtTest>
 #include <QElapsedTimer>
 #include <QFile>
@@ -45,7 +43,7 @@ private slots:
     {
         QCOMPARE(titleWords(QStringLiteral("Nordvik HETI meeting · 2026. szept. 29. 14:02")),
                  (QStringList{"nordvik", "heti", "meeting"}));
-        // Ékezet- és kisbetű-független; számot tartalmazó szó (sorszám, verzió) kimarad.
+        // Accent- and case-insensitive; a word containing a number (ordinal, version) is left out.
         QCOMPARE(titleWords(QStringLiteral("Örvényes ÜGYFÉL-egyeztetés #12 v2")),
                  (QStringList{"orvenyes", "ugyfel", "egyeztetes"}));
         QCOMPARE(titleWords(QStringLiteral("Weekly sync – Monday, Oct 6")),
@@ -55,21 +53,21 @@ private slots:
 
     void titleSimilarityRules()
     {
-        // Ismétlődő megbeszélés: a dátum / sorszám nem számít.
+        // A recurring meeting: the date / ordinal does not matter.
         QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                               QStringLiteral("Nordvik heti meeting 2026. okt. 6.")));
         QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting #14"),
                               QStringLiteral("nordvik HETI Meeting #13")));
-        // Ékezet nélkül írt cím is rokon.
+        // A title written without accents is related too.
         QVERIFY(titlesSimilar(QStringLiteral("Qvarkó ütemezés"), QStringLiteral("Qvarko utemezes")));
-        // Egy szóval bővebb cím még rokon (3/4 közös), egy közös szó két különböző témánál nem.
+        // A title with one more word is still related (3/4 shared), one shared word between two different topics is not.
         QVERIFY(titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                               QStringLiteral("Nordvik heti meeting demó")));
         QVERIFY(!titlesSimilar(QStringLiteral("Nordvik bevezetés"), QStringLiteral("Nordvik árazás")));
-        // Csak gyenge szavak közösek: más projekt heti meetingje nem rokon.
+        // Only weak words in common: another project's weekly meeting is not related.
         QVERIFY(!titlesSimilar(QStringLiteral("Nordvik heti meeting"),
                                QStringLiteral("Lantos heti meeting")));
-        // Az automatikus hívás-nevek („Teams-hívás · …”) nem tesznek rokonná.
+        // Automatic call names ("Teams call ...") do not make anything related.
         QVERIFY(!titlesSimilar(QStringLiteral("Teams-hívás · okt. 3. 14:02"),
                                QStringLiteral("Teams-hívás · szept. 30. 9:15")));
         QCOMPARE(titleSimilarity({}, {QStringLiteral("nordvik")}), 0.0);
@@ -80,25 +78,25 @@ private slots:
         const QVector<Meeting> all = {
             meeting("self", "Nordvik heti meeting", day(29), "Mostani megjegyzés"),
             meeting("a", "Nordvik heti meeting", day(22), "A „Nordwig” helyesen: Nordvik."),
-            meeting("b", "Nordvik heti meeting", day(15), "  "),                       // üres
-            meeting("c", "Nordvik heti meeting", day(8), "Mostani   megjegyzés"),      // = a mostani
+            meeting("b", "Nordvik heti meeting", day(15), "  "),                       // empty
+            meeting("c", "Nordvik heti meeting", day(8), "Mostani   megjegyzés"),      // = the current one
             meeting("d", "Nordvik heti meeting – 2026. szept. 1.", day(1), "Régebbi: PixelTár."),
-            meeting("e", "Lantos árazás", day(28), "Más téma."),                     // nem rokon cím
-            meeting("f", "Nordvik heti meeting", day(25), "A „Nordwig” helyesen: Nordvik."), // ismétlés
+            meeting("e", "Lantos árazás", day(28), "Más téma."),                     // unrelated title
+            meeting("f", "Nordvik heti meeting", day(25), "A „Nordwig” helyesen: Nordvik."), // repeat
             meeting("g", "Nordvik heti meeting", day(27), "Automatikusan észlelt hívás: Zoom"),
             meeting("h", "Nordvik heti meeting", day(2), "Még régebbi."),
         };
         const QVector<NoteSuggestion> s =
             suggestNotes(all, "self", "Nordvik heti meeting", "Mostani megjegyzés", 3);
         QCOMPARE(s.size(), 3);
-        // Legújabb elöl; az azonos szöveg csak egyszer (a legújabb forrással); a saját, üres,
-        // a mostanival azonos, az automatikus és a nem rokon kimarad.
+        // Newest first; identical text only once (with the newest source); the own one, empty, the
+        // same as the current one, the automatic one and the unrelated one are left out.
         QCOMPARE(s.at(0).meetingId, QStringLiteral("f"));
         QCOMPARE(s.at(1).meetingId, QStringLiteral("h"));
         QCOMPARE(s.at(2).meetingId, QStringLiteral("d"));
         QCOMPARE(s.at(0).note, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
 
-        // Nincs összehasonlítható szó a címben → nincs javaslat.
+        // No comparable word in the title: no suggestion.
         QVERIFY(suggestNotes(all, "self", "Teams-hívás · okt. 3.", QString()).isEmpty());
         QVERIFY(suggestNotes(all, "self", "Nordvik heti meeting", QString(), 0).isEmpty());
     }
@@ -110,7 +108,7 @@ private slots:
         QCOMPARE(app, QStringLiteral("Microsoft Teams"));
         QVERIFY(parseAutoCallNote(QStringLiteral("  Automatically detected call: Zoom  "), &app));
         QCOMPARE(app, QStringLiteral("Zoom"));
-        // A felhasználó saját szövege nem az.
+        // The user's own text is not that.
         QVERIFY(!parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás: Teams\nA „Nordwig” helyesen: Nordvik.")));
         QVERIFY(!parseAutoCallNote(QStringLiteral("Teams-hívás a Nordvikkal")));
         QVERIFY(!parseAutoCallNote(QStringLiteral("Automatikusan észlelt hívás:")));
@@ -123,7 +121,7 @@ private slots:
         Meeting m = store.createMeeting(QStringLiteral("Teams-hívás · okt. 3. 14:02"));
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         store.saveMeeting(m);
-        // A régi formát közvetlenül a meeting.json-ba írjuk (mintha régi build írta volna).
+        // We write the old form straight into meeting.json (as if an old build had written it).
         const QString path = QDir(m.folder).filePath(QStringLiteral("meeting.json"));
         {
             QFile f(path);
@@ -139,7 +137,7 @@ private slots:
         QVERIFY(back.contextNote.isEmpty());
         QCOMPARE(back.detectedCallApp, QStringLiteral("Microsoft Teams"));
 
-        // A következő mentés már a tiszta formát írja.
+        // The next save already writes the clean form.
         store.saveMeeting(back);
         QFile f(path);
         QVERIFY(f.open(QIODevice::ReadOnly));
@@ -147,13 +145,13 @@ private slots:
         QVERIFY(!o.contains(QStringLiteral("contextNote")));
         QCOMPARE(o.value(QStringLiteral("detectedCallApp")).toString(), QStringLiteral("Microsoft Teams"));
 
-        // A felhasználó saját megjegyzése érintetlen; az angol forma is felismert.
+        // The user's own note is untouched; the English form is recognized too.
         Meeting u;
         u.contextNote = QStringLiteral("Automatically detected call: Zoom");
         u.detectedCallApp = QStringLiteral("Slack");
         QVERIFY(interpretLegacyNote(u));
         QVERIFY(u.contextNote.isEmpty());
-        QCOMPARE(u.detectedCallApp, QStringLiteral("Slack"));   // a meglévő mező nyer
+        QCOMPARE(u.detectedCallApp, QStringLiteral("Slack"));   // the existing field wins
         Meeting own;
         own.contextNote = QStringLiteral("A „pixel tár” helyesen: PixelTár.");
         QVERIFY(!interpretLegacyNote(own));
@@ -179,11 +177,11 @@ private slots:
             QVERIFY(!v.contains(QStringLiteral("Teams")));
         QVERIFY(!req.contextTerms.contains(QStringLiteral("Microsoft Teams")));
 
-        // Az automatikus mondat (ha valahogy mégis a mezőben maradna) sosem megy az átírónak.
+        // The automatic sentence (if it somehow stayed in the field) never goes to the transcriber.
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         fillSttContext(req, m);
         QVERIFY(req.context.isEmpty());
-        // Régi meeting.json-ból töltve sem.
+        // Not even when loaded from an old meeting.json.
         Meeting legacy = meetingFromJson(toJson(m));
         QVERIFY(sttContextText(legacy).isEmpty());
     }
@@ -197,11 +195,11 @@ private slots:
         SummaryDocument back = summarystore::fromJson(summarystore::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
         QCOMPARE(back.meta.contextNote, doc.meta.contextNote);
-        // Régi summary.json: nincs kulcs → ismeretlen (nincs „azóta változott” jelzés).
+        // Old summary.json: no key, so unknown (no "changed since" indicator).
         QJsonObject o = summarystore::toJson(doc);
         o.remove(QStringLiteral("contextNote"));
         QVERIFY(!summarystore::fromJson(o).meta.contextNoteKnown);
-        // Üres megjegyzéssel készült összefoglaló: ismert, üres.
+        // A summary made with an empty note: known, empty.
         doc.meta.contextNote.clear();
         back = summarystore::fromJson(summarystore::toJson(doc));
         QVERIFY(back.meta.contextNoteKnown);
@@ -214,7 +212,7 @@ private slots:
                                   QStringLiteral("topic"), QStringLiteral("analysis"), QStringLiteral("reduce")}) {
             const QString p = promptBuiltin(id);
             QVERIFY2(p.contains(QStringLiteral("use the corrected form")), qPrintable(id));
-            QVERIFY2(!p.contains(QLatin1Char('%')), qPrintable(id));   // nem maradt helykitöltő
+            QVERIFY2(!p.contains(QLatin1Char('%')), qPrintable(id));   // no placeholder remained
         }
     }
 
@@ -231,7 +229,7 @@ private slots:
         };
         const Meeting older = add(QStringLiteral("Nordvik heti meeting"), 1, QStringLiteral("Régi: PixelTár."));
         const Meeting newer = add(QStringLiteral("Nordvik heti meeting"), 15, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
-        // Pár száz más meeting (a hasonlóság-számítás így is gyors marad).
+        // A few hundred other meetings (the similarity computation stays fast).
         for (int i = 0; i < 300; ++i)
             add(QStringLiteral("Lantos projekt %1. egyeztetés témája %2")
                     .arg(i).arg(i % 7 ? QStringLiteral("árazás") : QStringLiteral("bevezetés")),
@@ -248,16 +246,16 @@ private slots:
         t.start();
         for (int i = 0; i < 50; ++i)
             s = lib.noteSuggestions(self.id, QString());
-        QVERIFY2(t.elapsed() < 2000, qPrintable(QString::number(t.elapsed())));   // jellemzően < 1 ms / hívás
+        QVERIFY2(t.elapsed() < 2000, qPrintable(QString::number(t.elapsed())));   // typically < 1 ms per call
 
-        // A megjegyzés változása után a könyvtár frissül (a store jelére).
+        // After the note changes the library refreshes (on the store's signal).
         Meeting n = store.load(newer.id);
         n.contextNote.clear();
         store.saveMeeting(n);
         s = lib.noteSuggestions(self.id, QString());
         QCOMPARE(s.size(), 1);
         QCOMPARE(s.at(0).meetingId, older.id);
-        // Ami a mostanival azonos, nem javaslat.
+        // What is identical to the current one is not a suggestion.
         QVERIFY(lib.noteSuggestions(self.id, QStringLiteral("Régi:  PixelTár.")).isEmpty());
         QVERIFY(lib.noteSuggestions(QStringLiteral("nincs-ilyen"), QString()).isEmpty());
     }

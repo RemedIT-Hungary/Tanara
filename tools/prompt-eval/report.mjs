@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bírálati pontok összesítése modell × prompt szerint. Használat: node report.mjs <tag> [S,M,L]
+// Aggregates review scores by model x prompt. Usage: node report.mjs <tag> [S,M,L]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

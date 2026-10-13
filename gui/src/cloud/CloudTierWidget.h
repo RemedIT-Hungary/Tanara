@@ -1,12 +1,10 @@
 #pragma once
-//
-// K-04 — Feldolgozási szint (Gyors / Pontos) és a meeting nyelve, feladatonként (átírás vagy
-// összefoglaló). A katalógus (/v1/models) metaadatai alapján figyelmeztet: nem diarizáló
-// átírás, a nyelvhez nem ajánlott modell. Expert-modell kiválasztva → azt mutatja, és egy
-// kattintással vissza lehet állni a szintekre. A választás AZONNAL a beállításokba kerül
-// (egy igazságforrás: a becslés-dialógus és a Beállítások Tanara Cloud panelje ugyanazt
-// állítja). A becslés-dialógus (CloudEstimateDialog) ágyazza be.
-//
+// Processing tier (Fast / Accurate) and the meeting language, per task (transcription or
+// summary). Warns based on the catalog (/v1/models) metadata: a non-diarizing transcription,
+// a model not recommended for the language. If an Expert model is selected it shows that, and
+// one click returns to the tiers. The choice goes into the settings IMMEDIATELY (one source
+// of truth: the estimate dialog and the Settings Tanara Cloud panel change the same thing).
+// Embedded by the estimate dialog (CloudEstimateDialog).
 #include "tanara/provider/ReadinessModel.h"
 
 #include <QWidget>
@@ -23,17 +21,17 @@ namespace tanara_gui {
 class CloudTierWidget : public QWidget {
     Q_OBJECT
 public:
-    // step: Transcribe (átírás) vagy Summarize (összefoglaló). showLanguage: nyelv-választó is.
+    // step: Transcribe or Summarize. showLanguage: also a language picker.
     CloudTierWidget(tanara::AppController* app, tanara::WorkflowStep step, bool showLanguage,
                     QWidget* parent = nullptr);
 
-    void refresh();                       // beállítások / katalógus változása után
+    void refresh();                       // after the settings / catalog change
 
-    // A nyelv-választó feltöltése.
+    // Fills the language picker.
     static void fillLanguages(QComboBox* combo, const QString& current);
 
 signals:
-    void changed();                       // szint / nyelv / Expert változott (→ újrabecslés)
+    void changed();                       // tier / language / Expert changed (re-estimate)
 
 private:
     tanara::AppController* m_app;

@@ -1,12 +1,10 @@
 #pragma once
+// Shared fixture for the view-model tests of the job views (PreTranscript / Summary / Track):
+// an isolated TANARA_HOME (QTemporaryDir), a real AppController, and a local fake HTTP server
+// standing in for the Soniox-like STT and OpenAI-compatible LLM endpoints; the same pattern as
+// in tests/unit/test_app_jobs.cpp. No real (paid) call is made, and ~/.tanara is not touched.
 //
-// A „nézetek” szelet nézetmodell-tesztjeinek közös kelléke (PreTranscript / Summary / Track):
-// izolált TANARA_HOME (QTemporaryDir), valódi AppController, és egy helyi ál-HTTP-szerver a
-// Soniox-szerű STT- és az OpenAI-kompatibilis LLM-végpontok helyén — ugyanaz a minta, mint a
-// tests/unit/test_app_jobs.cpp-ben. Valódi (fizetős) hívás NINCS, a ~/.tanara-hoz nem nyúl.
-//
-// Header-only; a tesztek a saját QTEST_MAIN-jükkel használják.
-//
+// Header-only; the tests use it with their own QTEST_MAIN.
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/jobs/MeetingJobTracker.h"
@@ -34,10 +32,10 @@ struct FakeRequest { QByteArray method; QString path; QByteArray body; };
 struct FakeReply {
     int status = 200;
     QByteArray body = "{}";
-    bool hold = false;   // ne válaszoljon (függő kérés — futó állapot / megszakítás teszteléséhez)
+    bool hold = false;   // do not respond (a hanging request, to test the running state / cancellation)
 };
 
-// Minimális ál-HTTP-szerver (127.0.0.1, véletlen port).
+// Minimal fake HTTP server (127.0.0.1, random port).
 class FakeHttp : public QObject {
 public:
     std::function<FakeReply(const FakeRequest&)> handler;
@@ -66,7 +64,7 @@ private:
             const QByteArray l = line.trimmed().toLower();
             if (l.startsWith("content-length:")) len = l.mid(15).trimmed().toLongLong();
         }
-        if (buf.size() < headEnd + 4 + len) return;   // a törzs még nem jött meg teljesen
+        if (buf.size() < headEnd + 4 + len) return;   // the body has not fully arrived yet
         FakeRequest req;
         const QList<QByteArray> first = head.left(head.indexOf('\r')).split(' ');
         req.method = first.value(0);
@@ -86,7 +84,7 @@ private:
     QTcpServer m_srv;
 };
 
-// OpenAI-kompatibilis chat-válasz a megadott tartalommal.
+// An OpenAI-compatible chat reply with the given content.
 inline QByteArray chat(const QString& content)
 {
     const QJsonObject msg{{"role", "assistant"}, {"content", content}};
@@ -94,7 +92,7 @@ inline QByteArray chat(const QString& content)
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
-// A Soniox-folyamat sikeres válaszai; status: a /transcriptions/<id> állapota.
+// Successful replies of the Soniox flow; status: the state of /transcriptions/<id>.
 inline FakeReply sonioxOk(const FakeRequest& r, const QByteArray& status = "completed")
 {
     static const QByteArray tokens =
@@ -109,7 +107,7 @@ inline FakeReply sonioxOk(const FakeRequest& r, const QByteArray& status = "comp
     return {200, "{}"};
 }
 
-// 16 bites mono WAV (szinusz) — valódi hang a lekeveréshez / hullámformához.
+// 16-bit mono WAV (sine): real audio for the mixdown / waveform.
 inline bool writeWav(const QString& path, int seconds, int rate = 8000)
 {
     const int n = seconds * rate;
@@ -131,8 +129,8 @@ inline bool writeWav(const QString& path, int seconds, int rate = 8000)
     return true;
 }
 
-// Izolált app: saját TANARA_HOME + ál-szerver + AppController (kulcsok nélkül indul, hogy a
-// kapuzás „hiányzó kulcs” ága is tesztelhető legyen — configure() állítja be).
+// Isolated app: own TANARA_HOME + fake server + AppController (starts without keys, so the
+// "missing key" branch of the gating can be tested too; set up by configure()).
 struct Sandbox {
     std::unique_ptr<QTemporaryDir> home;
     std::unique_ptr<FakeHttp> http;
@@ -162,10 +160,10 @@ struct Sandbox {
         home.reset();
     }
 
-    // A Soniox-kulcs megadása (ezzel lesz az átírás indítható).
+    // Sets the Soniox key (which makes transcription startable).
     void configureStt() { app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs")); }
 
-    // Felvétel egy (vagy több) WAV-sávval; a második sáv eldobott, ha dropSecond.
+    // A recording with one (or more) WAV tracks; the second track is dropped if dropSecond.
     tanara::Meeting recording(const QString& title, int seconds, bool secondTrack = false,
                               bool dropSecond = false)
     {
@@ -188,7 +186,7 @@ struct Sandbox {
         return m;
     }
 
-    // Kész átirattal rendelkező meeting, szolgáltató-hívás nélkül (két beszélő).
+    // A meeting with a finished transcript, no provider call (two speakers).
     tanara::Meeting transcribed(const QString& title)
     {
         tanara::Meeting m = recording(title, 2);
@@ -213,8 +211,8 @@ struct Sandbox {
         return m;
     }
 
-    // Hosszú (több részes) átirat: félpercenként egy bekezdés, két beszélő váltakozva — a gyors
-    // összefoglaló ~15 perces részekre bontja (40 perc → 3 rész). Ugyanaz, mint test_app_jobs-ban.
+    // A long (multi-part) transcript: one paragraph every half minute, two speakers alternating;
+    // the quick summary splits it into ~15-minute parts (40 minutes = 3 parts). Same as in test_app_jobs.
     tanara::Meeting transcribedLong(const QString& title, int minutes)
     {
         tanara::Meeting m = recording(title, 1);
@@ -236,8 +234,8 @@ struct Sandbox {
     }
 };
 
-// A gyors összefoglaló kérése: részjegyzet-hívás-e (a "notes" prompt), és ha igen, hányadik
-// részé (1-től); 0 = egylépéses vagy összefésülő hívás.
+// The quick-summary request: whether it is a part-note call (the "notes" prompt), and if so
+// which part (1-based); 0 = a single-pass or merge call.
 inline int notesPart(const FakeRequest& r)
 {
     const QJsonArray msgs = QJsonDocument::fromJson(r.body).object().value("messages").toArray();
@@ -246,7 +244,7 @@ inline int notesPart(const FakeRequest& r)
     return re.match(msgs.at(1).toObject().value("content").toString()).captured(1).toInt();
 }
 
-// Egy rész kitalált jegyzete (TOPICS / DECISIONS / OPEN / ACTIONS).
+// A made-up note for one part (TOPICS / DECISIONS / OPEN / ACTIONS).
 inline QString partNotes(int k)
 {
     return QStringLiteral("TOPICS\n### [%1:00-%1:40] Tárgy %2\n- Egy pont a(z) %2. részből.\n"
@@ -254,7 +252,7 @@ inline QString partNotes(int k)
         .arg((k - 1) * 15).arg(k);
 }
 
-// Az összefésülés kitalált válasza.
+// The made-up reply for the merge.
 inline QByteArray mergeReply()
 {
     return chat(QStringLiteral(

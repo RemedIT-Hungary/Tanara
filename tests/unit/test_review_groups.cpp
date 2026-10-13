@@ -1,7 +1,5 @@
-//
-// Jelölt-rangsor (CandidateRanker) és Átnézendő csoportok (ReviewGroups) KITALÁLT adaton: a
-// „hangok" kis dimenziós egységvektorok, a sáv-aktivitás szintetikus (nincs hang, nincs I/O).
-//
+// Candidate ranking (CandidateRanker) and review queue groups (ReviewGroups) on MADE-UP data:
+// the "voices" are low-dimensional unit vectors, the track activity is synthetic (no audio, no I/O).
 #include <QtTest>
 
 #include <cmath>
@@ -16,7 +14,7 @@ namespace {
 
 constexpr int kDim = 6;
 
-// Egységvektor a k. tengely felé, opcionális keveréssel a j. tengely felé (cos = c a k-hoz).
+// A unit vector toward axis k, optionally mixed toward axis j (cos = c to k).
 QVector<float> voice(int k, int j = -1, float c = 1.0f)
 {
     QVector<float> v(kDim, 0.0f);
@@ -77,7 +75,7 @@ bool hasEvidence(const QVector<Evidence>& ev, EvidenceKind k, Polarity p, const 
     return false;
 }
 
-// ---- meeting-szintű forgatókönyv -------------------------------------------------
+// ---- meeting-level scenario ----
 
 struct Span { qint64 s, e; float db; };
 
@@ -94,7 +92,7 @@ TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs, const 
     return t;
 }
 
-// Sorok: 4 mp-esek 5 mp-enként. side: 'L' mic, 'R' loopback, '-' rövid (1 mp, nincs hang).
+// Lines: 4 s each, every 5 s. side: 'L' mic, 'R' loopback, '-' short (1 s, no voice).
 struct LineSpec { QString raw; char side; int voiceAxis; bool confirmed = false; };
 
 struct Scenario {
@@ -138,8 +136,8 @@ class ReviewGroupsTest : public QObject {
 private slots:
     void sideConflictDemotesButKeeps()
     {
-        // A próba hangja Annához áll közelebb (0.8 vs 0.6), de a loopbackon szólt, Anna pedig
-        // mikrofonon beszél → Anna lejjebb kerül (otherSide), de a listán marad.
+        // The probe's voice is closer to Anna (0.8 vs 0.6), but it played on the loopback and Anna
+        // speaks on the microphone, so Anna drops lower (otherSide) but stays on the list.
         const RankContext ctx = context({profile("A", "Anna", Side::Local, 10, {voice(0), voice(0), voice(0)}, true),
                                          profile("B", "Béla", Side::Remote, 10, {voice(1), voice(1), voice(1)}, true)});
         const QVector<float> probe = voice(0, 1, 0.8f);
@@ -154,7 +152,7 @@ private slots:
         QVERIFY(hasEvidence(why, EvidenceKind::Side, Polarity::Contradict, "tracks"));
         QVERIFY(hasEvidence(find(cs, "B")->evidence, EvidenceKind::Side, Polarity::Support));
 
-        // Sáv-adat nélkül a hang dönt.
+        // Without track data the voice decides.
         cs = rankForLine(context(ctx.speakers, /*sidesActive*/ false), probe, Side::Remote, "A", false);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
         QVERIFY(!cs[0].otherSide);
@@ -162,11 +160,11 @@ private slots:
 
     void weightsTagsAndLines()
     {
-        // Azonos hang: a címke és a sorok száma dönt.
+        // The same voice: the tag and the line count decide.
         SpeakerProfile a = profile("A", "Anna", Side::Unknown, 20, {voice(0), voice(0)}, false);
         SpeakerProfile b = profile("B", "Béla", Side::Unknown, 2, {voice(0), voice(0)}, false);
-        // A címke-bizonyíték a PersonTagSnapshot szabályával: Anna kézi címkéje a megbeszélésé;
-        // Béla kézi címkés, a megbeszélés címkéi beértek (5 megbeszélés), és egyiken sem volt.
+        // The tag evidence by PersonTagSnapshot's rule: Anna's manual tag is the meeting's; Béla has
+        // a manual tag, the meeting's tags are mature (5 meetings), and he was at none of them.
         PersonTagSnapshot snap;
         QVector<PersonTagRow> rows;
         for (int i = 0; i < 5; ++i)
@@ -189,7 +187,7 @@ private slots:
         QVERIFY(hasEvidence(cb->evidence, EvidenceKind::Tag, Polarity::Contradict, "tags"));
         QVERIFY(hasEvidence(ca->evidence, EvidenceKind::LineCount, Polarity::Support));
         QCOMPARE(ca->linesHere, 20);
-        // A chip és a magyarázat (UX-terv 4.).
+        // The chip and the explanation.
         for (const Evidence& e : ca->evidence)
             if (e.kind == EvidenceKind::Tag) {
                 QCOMPARE(e.text, QStringLiteral("#Projekt X"));
@@ -197,7 +195,7 @@ private slots:
             }
         for (const Evidence& e : cb->evidence)
             if (e.kind == EvidenceKind::Tag) QCOMPARE(e.text, QStringLiteral("más címkék"));
-        // Fiatal címke (< 5 megbeszélés) nem büntet: nincs címke-bizonyíték.
+        // A young tag (< 5 meetings) does not penalize: no tag evidence.
         QVector<PersonTagRow> young = rows.mid(0, 2);
         snap.stats = std::make_shared<PersonTagStats>(PersonTagStats::compute(young, QString()));
         QVERIFY(snap.evidence("Béla", {"projekt-x", "heti"}).isEmpty());
@@ -205,7 +203,7 @@ private slots:
 
     void leaveOneOutAndPrints()
     {
-        // A mostani beszélő 3 sorból álló összegéből a próba kimarad (nem önmagához mér).
+        // The probe is left out of the current speaker's 3-line sum (it does not measure against itself).
         SpeakerProfile a = profile("A", "Anna", Side::Unknown, 3, {voice(0), voice(1), voice(1)}, false);
         const RankContext ctx = context({a});
         Probe p;
@@ -213,11 +211,11 @@ private slots:
         p.currentKey = "A";
         p.inCurrentSum = true;
         QString basis;
-        QVERIFY(std::abs(voiceScore(ctx.speakers[0], p, &basis)) < 1e-6);   // csak a két voice(1) marad
+        QVERIFY(std::abs(voiceScore(ctx.speakers[0], p, &basis)) < 1e-6);   // only the two voice(1) remain
         QCOMPARE(basis, QStringLiteral("lines"));
         p.inCurrentSum = false;
         QVERIFY(voiceScore(ctx.speakers[0], p) > 0.4);
-        // A lenyomat is referencia; a jobbik számít.
+        // The voiceprint is a reference too; the better one counts.
         SpeakerProfile c;
         c.personName = "Cecil";
         c.prints = {voice(2)};
@@ -237,9 +235,9 @@ private slots:
         QCOMPARE(w[0].fixTarget, QStringLiteral("pair:B"));
         QCOMPARE(w[0].kind, EvidenceKind::Similarity);
         QVERIFY(similarityWarnings(ctx, "C").isEmpty());
-        // A „Miért ő?" is tartalmazza.
+        // "Why them?" contains it too.
         QVERIFY(hasEvidence(selfEvidence(ctx, "A"), EvidenceKind::Similarity, Polarity::Neutral, "pair:B"));
-        // „Nem ő? Valójában…": a beszélő maga nincs a listán, a hasonló hang elöl.
+        // "Not them? Actually...": the speaker itself is not on the list, the similar voice first.
         const QVector<Candidate> cs = rankForSpeaker(ctx, "A");
         QCOMPARE(cs.size(), 2);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
@@ -247,8 +245,8 @@ private slots:
 
     void sideConflictGroup()
     {
-        // Ádám (mic) sorai közé 3 olyan került, ami a loopbackon szólt Béla hangján; Béla (B2)
-        // megerősített sorai a loopbackon → egy csoport: B1 → B2, sáv-ellentmondás bizonyítékkal.
+        // Among Ádám's (mic) lines 3 got in that played on the loopback in Béla's voice; Béla's (B2)
+        // confirmed lines are on the loopback: one group: B1 to B2, with track-contradiction evidence.
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
                              {"B2", 'R', 1, true}, {"B1", 'R', 1}, {"B1", 'L', 0}, {"B2", 'R', 1, true},
                              {"B1", 'R', 1}, {"B1", 'L', 0}});
@@ -267,7 +265,7 @@ private slots:
         QCOMPARE(r.sideConflicts.size(), 3);
         QCOMPARE(r.sideConflicts.value("u15000"), QStringLiteral("B1"));
         QVERIFY(!g->id.isEmpty());
-        // Nincs megfelelő azonos oldali jelölt → a javaslat üres (új résztvevő).
+        // No suitable same-side candidate: the suggestion is empty (a new participant).
         Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'L', 0}});
         solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
         solo.in.userName = "Ádám";
@@ -279,10 +277,10 @@ private slots:
 
     void coreMismatchGroup()
     {
-        // Sáv-adat nélkül (egysávos): A és B megerősített magja; A két nem megerősített sora B hangján.
+        // Without track data (single track): the confirmed cores of A and B; A's two unconfirmed lines in B's voice.
         Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'L', 1, true},
                              {"B", 'L', 1, true}, {"B", 'L', 1, true}, {"A", 'L', 1}, {"A", 'L', 0}, {"A", 'L', 1}});
-        sc.act.tracks.removeLast();   // csak mic
+        sc.act.tracks.removeLast();   // mic only
         const ReviewResult r = analyzeReview(sc.in, sc.act);
         QVERIFY(!r.sides.active);
         const ReviewGroup* g = group(r.groups, ReviewKind::CoreMismatch);
@@ -303,12 +301,12 @@ private slots:
         QVERIFY(g);
         QCOMPARE(g->utteranceIds.size(), 2);
         QVERIFY(g->proposedSpeakerKey.isEmpty());
-        QCOMPARE(r.groups.last().kind, ReviewKind::ShortLines);   // a végén
+        QCOMPARE(r.groups.last().kind, ReviewKind::ShortLines);   // at the end
     }
 
     void contaminatedCore()
     {
-        // A 8 megerősített sora: 5 a 0. hangon, 3 a 2. hangon (cos = 0) → két klaszter (37.5%).
+        // Its 8 confirmed lines: 5 on voice 0, 3 on voice 2 (cos = 0): two clusters (37.5%).
         QVector<LineSpec> specs;
         for (int i = 0; i < 5; ++i) specs << LineSpec{"A", 'L', 0, true};
         for (int i = 0; i < 3; ++i) specs << LineSpec{"A", 'L', 2, true};
@@ -327,7 +325,7 @@ private slots:
         QCOMPARE(g->utteranceIds, split.minority);
         QVERIFY(hasEvidence(g->evidence, EvidenceKind::Similarity, Polarity::Contradict));
 
-        // C nélkül: új névtelen résztvevő a javaslat.
+        // Without C: a new anonymous participant is the suggestion.
         specs.resize(8);
         Scenario noC = build(specs);
         r = analyzeReview(noC.in, MeetingActivity{});
@@ -335,7 +333,7 @@ private slots:
         QVERIFY(g);
         QVERIFY(g->proposedSpeakerKey.isEmpty() && g->proposedPersonName.isEmpty());
 
-        // Egységes mag (csak a 0. hang, kis zajjal) → nem szennyezett.
+        // A uniform core (only voice 0, with a little noise) is not contaminated.
         QVector<LineSpec> clean;
         for (int i = 0; i < 8; ++i) clean << LineSpec{"A", 'L', 0, true};
         Scenario cl = build(clean);
@@ -346,8 +344,8 @@ private slots:
 
     void similarToNewPerson()
     {
-        // Az új résztvevő (participant:1) két sora a 3. hangon; A-nál még 2 ilyen sor van
-        // (és 2 a saját hangján) → csoport a 2 sorral.
+        // The new participant's (participant:1) two lines are on voice 3; A still has 2 such lines
+        // (and 2 on its own voice): a group with the 2 lines.
         Scenario sc = build({{"A", 'L', 0}, {"A", 'L', 3}, {"A", 'L', 0}, {"A", 'L', 3}, {"A", 'L', 3}, {"A", 'L', 3}});
         OverlayParticipant p;
         p.key = "participant:1";
@@ -369,7 +367,7 @@ private slots:
 
     void outsidePersonCandidate()
     {
-        // A meetingen kívüli, lenyomattal bíró személy is jelölt (kulcs nélkül), tanult oldallal.
+        // A person outside the meeting who has a voiceprint is a candidate too (without a key), with a learned side.
         Scenario sc = build({{"A", 'L', 0}, {"A", 'L', 0}, {"A", 'R', 4}});
         sc.in.meeting.speakerMap = {{"A", "Anna"}};
         sc.in.personPrints.insert("Dénes", {voice(4)});
@@ -384,7 +382,7 @@ private slots:
         QVERIFY(cs[0].speakerKey.isEmpty());
     }
 
-    // G10: a kézi sáv-beosztás csak a három feltétel együttállásakor zár ki; különben levonás.
+    // G10: a manual track assignment excludes only when all three conditions coincide; otherwise a deduction.
     void sideVeto_onlyWhenAllThreeHold()
     {
         auto manualProfile = [](const QString& key, const QString& person, Side side, const QVector<QVector<float>>& v) {
@@ -396,9 +394,9 @@ private slots:
         RankContext ctx = context({manualProfile("A", "Anna", Side::Local, {voice(0), voice(0), voice(0)}),
                                    manualProfile("B", "Béla", Side::Remote, {voice(1), voice(1), voice(1)})});
         ctx.vetoActive = true;
-        const QVector<float> probe = voice(0, 1, 0.9f);   // Anna hangja, a hívás hangján
+        const QVector<float> probe = voice(0, 1, 0.9f);   // Anna's voice, on the call's voice
 
-        // 1+2+3: Anna kizárva, a lista végén, pontszám nélkül, a kizárás bizonyítékával.
+        // 1+2+3: Anna excluded, at the end of the list, without a score, with the exclusion's evidence.
         QVector<Candidate> cs = rankForLine(ctx, probe, Side::Remote, "", false);
         QCOMPARE(cs.size(), 2);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("B"));
@@ -414,7 +412,7 @@ private slots:
         QVERIFY(vetoEv);
         QVERIFY(!whyNot(cs[1]).isEmpty());
 
-        // Hiányzó beosztás egy elnevezettnél (vetoActive = false) → nincs kizárás, csak levonás.
+        // A missing assignment for one named person (vetoActive = false): no exclusion, only a deduction.
         ctx.vetoActive = false;
         cs = rankForLine(ctx, probe, Side::Remote, "", false);
         const Candidate* a = find(cs, "A");
@@ -422,21 +420,21 @@ private slots:
         QVERIFY(a->score > 0.0);
         ctx.vetoActive = true;
 
-        // Vegyes / ismeretlen sor → nincs kizárás.
+        // A mixed / unknown line: no exclusion.
         for (Side s : {Side::Mixed, Side::Unknown}) {
             cs = rankForLine(ctx, probe, s, "", false);
             for (const Candidate& c : cs) QVERIFY(!c.vetoed);
             QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
         }
 
-        // Több sávos személy (mikrofon + hívás) → sosem kizárt.
+        // A multi-track person (microphone + call): never excluded.
         ctx.speakers[0].manualSide = Side::Mixed;
         ctx.speakers[0].side = Side::Mixed;
         cs = rankForLine(ctx, probe, Side::Remote, "", false);
         QVERIFY(!find(cs, "A")->vetoed);
         QCOMPARE(cs[0].speakerKey, QStringLiteral("A"));
 
-        // Kézi beosztás nélküli (tanult oldalú) jelölt sosem kizárt, csak levonás.
+        // A candidate without a manual assignment (learned side) is never excluded, only a deduction.
         ctx.speakers[0].manualSide = Side::Unknown;
         ctx.speakers[0].side = Side::Local;
         ctx.speakers[0].sideBasis = QStringLiteral("learned");
@@ -445,32 +443,32 @@ private slots:
         QVERIFY(find(cs, "A")->otherSide);
     }
 
-    // G10: a vetoActive a meeting elnevezett beszélőiből (a névtelen nem blokkol); a személy kézi
-    // oldala a profilban.
+    // G10: vetoActive comes from the meeting's named speakers (an anonymous one does not block);
+    // the person's manual side is in the profile.
     void sideVeto_contextFromOverlay()
     {
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1}, {"B1", 'L', 0}, {"B3", 'R', 2}, {"B2", 'R', 1}});
         sc.in.meeting.speakerMap = {{"B1", "Ádám"}, {"B2", "Béla"}};
         sc.in.overlay.speakerTracks.insert("B1", {"mic"});
         ReviewResult r = analyzeReview(sc.in, sc.act);
-        QVERIFY(!r.context.vetoActive);   // Bélának nincs beosztása
+        QVERIFY(!r.context.vetoActive);   // Béla has no assignment
         sc.in.overlay.speakerTracks.insert("B2", {"loop"});
         r = analyzeReview(sc.in, sc.act);
-        QVERIFY(r.context.vetoActive);    // B3 névtelen: nem számít
+        QVERIFY(r.context.vetoActive);    // B3 is anonymous: does not count
         QCOMPARE(r.context.profile("B1")->manualSide, Side::Local);
         QCOMPARE(r.context.profile("B2")->manualSide, Side::Remote);
         QCOMPARE(r.context.profile("B3")->manualSide, Side::Unknown);
         const QVector<Candidate> cs = rankForLine(r.context, voice(0), Side::Remote, "B2", false);
         QVERIFY(find(cs, "B1")->vetoed);
         QCOMPARE(cs.last().speakerKey, QStringLiteral("B1"));
-        // Egysávos meeting: nincs kizárás.
+        // Single-track meeting: no exclusion.
         MeetingActivity micOnly = sc.act;
         micOnly.tracks.removeLast();
         QVERIFY(!analyzeReview(sc.in, micOnly).context.vetoActive);
     }
 
-    // G10: a SideConflict javaslata a másik oldal legjobb nem-kizárt jelöltje; ha nincs ismert
-    // személy ott → új beszélő azon az oldalon.
+    // G10: the SideConflict suggestion is the other side's best non-excluded candidate; if there
+    // is no known person there, a new speaker on that side.
     void sideVeto_sideConflictProposal()
     {
         Scenario sc = build({{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
@@ -485,7 +483,7 @@ private slots:
         QCOMPARE(g->proposedSpeakerKey, QStringLiteral("B2"));
         QVERIFY(!g->proposeNew);
 
-        // Béla nélkül: nincs ismert személy a hívás hangján → „új távoli beszélő".
+        // Without Béla: no known person on the call voice, so "new remote speaker".
         Scenario solo = build({{"B1", 'L', 0}, {"B1", 'L', 0}, {"B1", 'R', 1}, {"B1", 'R', 1}, {"B1", 'L', 0}});
         solo.in.meeting.speakerMap = {{"B1", "Ádám"}};
         solo.in.overlay.speakerTracks.insert("B1", {"mic"});
@@ -499,7 +497,7 @@ private slots:
         QVERIFY(g->subtitle.contains(QStringLiteral("új távoli beszélő")));
         QCOMPARE(g->utteranceIds.size(), 2);
 
-        // Kézi beosztás nélkül (csak a saját név) marad a régi: nincs javaslat.
+        // Without a manual assignment (only the own name) the old behavior stays: no suggestion.
         solo.in.overlay.speakerTracks.clear();
         solo.in.userName = "Ádám";
         r = analyzeReview(solo.in, solo.act);
@@ -507,7 +505,7 @@ private slots:
         QVERIFY(g && !g->proposeNew);
     }
 
-    // G10: a mag-eltérés sem javasol kizárt személyt.
+    // G10: the core mismatch does not suggest an excluded person either.
     void sideVeto_coreMismatchNeverProposesVetoed()
     {
         Scenario sc = build({{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true}, {"B", 'R', 1, true},
@@ -515,7 +513,7 @@ private slots:
         sc.in.meeting.speakerMap = {{"A", "Anna"}, {"B", "Béla"}};
         ReviewResult r = analyzeReview(sc.in, sc.act);
         const ReviewGroup* g = group(r.groups, ReviewKind::CoreMismatch);
-        QVERIFY(g && g->proposedSpeakerKey == QStringLiteral("B"));   // beosztás nélkül: javasolja
+        QVERIFY(g && g->proposedSpeakerKey == QStringLiteral("B"));   // without an assignment: suggests it
         sc.in.overlay.speakerTracks.insert("A", {"mic"});
         sc.in.overlay.speakerTracks.insert("B", {"loop"});
         r = analyzeReview(sc.in, sc.act);

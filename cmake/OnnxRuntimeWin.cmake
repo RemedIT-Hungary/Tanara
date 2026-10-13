@@ -1,12 +1,12 @@
-# OnnxRuntimeWin.cmake — a hivatalos ONNX Runtime win-x64 release bedrótozása.
+# OnnxRuntimeWin.cmake: wires up the official ONNX Runtime win-x64 release.
 #
-# Használat: a top-level CMakeLists hívja, ha WIN32 ÉS ONNXRUNTIME_ROOT_DIR meg van adva:
+# Usage: called from the top-level CMakeLists when WIN32 and ONNXRUNTIME_ROOT_DIR are set:
 #   cmake ... -DTANARA_BUILD_VOICEID=ON -DONNXRUNTIME_ROOT_DIR=C:/.../onnxruntime-win-x64-1.20.1
 #
-# A release-mappa szerkezete:  include/  lib/onnxruntime.dll  lib/onnxruntime.lib
-# Létrehoz egy onnxruntime::onnxruntime importált SHARED targetet (ezt linkeli a core).
-# A futtatáshoz az onnxruntime.dll-t a tanara.exe mellé kell tenni (a windeployqt
-# ezt nem húzza be — a packaging lépés másolja).
+# Release folder layout:  include/  lib/onnxruntime.dll  lib/onnxruntime.lib
+# Creates an imported SHARED target onnxruntime::onnxruntime (linked by core).
+# At run time onnxruntime.dll must sit next to tanara.exe (windeployqt does not pull it
+# in; the packaging step copies it).
 
 if(NOT EXISTS "${ONNXRUNTIME_ROOT_DIR}/include/onnxruntime_cxx_api.h")
     message(FATAL_ERROR
@@ -23,6 +23,6 @@ set_target_properties(onnxruntime::onnxruntime PROPERTIES
     IMPORTED_IMPLIB   "${_ort_lib}"
     INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_ROOT_DIR}/include")
 
-# A futásidejű DLL elérési útja a packaginghez (a tanara.exe mellé kell másolni).
+# Runtime DLL path for packaging (must be copied next to tanara.exe).
 set(ONNXRUNTIME_DLL "${_ort_dll}" CACHE FILEPATH "ONNX Runtime futásidejű DLL" FORCE)
 message(STATUS "ONNX Runtime (win-x64): ${ONNXRUNTIME_ROOT_DIR}")

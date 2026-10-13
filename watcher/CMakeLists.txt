@@ -1,6 +1,6 @@
-# tanara-watcher — pehelysúlyú háttér-figyelő (rendszertálca).
-# Csak a detektor-magot (tanara_core) + a QSystemTrayIcon-t (Qt6::Widgets) használja;
-# NINCS MainWindow / Multimedia / AppController → minimális, mindig-futó folyamat.
+# tanara-watcher: lightweight background watcher (system tray).
+# Uses only the detector core (tanara_core) + QSystemTrayIcon (Qt6::Widgets); NO MainWindow /
+# Multimedia / AppController, so it is a minimal always-running process.
 
 add_executable(tanara-watcher
     main.cpp
@@ -8,21 +8,21 @@ add_executable(tanara-watcher
     TrayWatcher.h
 )
 
-# WIN32_EXECUTABLE: ne nyisson konzol-ablakot Windowson (háttér-folyamat).
+# WIN32_EXECUTABLE: do not open a console window on Windows (background process).
 set_target_properties(tanara-watcher PROPERTIES WIN32_EXECUTABLE ON)
 
 target_link_libraries(tanara-watcher PRIVATE tanara_core Qt6::Widgets)
 tanara_copy_onnxruntime_dll(tanara-watcher)
 
-# Linuxon a hívás-notification a freedesktop Notifications D-Bus API-n megy (valódi
-# akció-gombokkal — a QSystemTrayIcon::showMessage kattintása Plasmán nem működik).
-# D-Bus nélkül (vagy nem-Linuxon) a showMessage-fallback él.
+# On Linux the call notification goes through the freedesktop Notifications D-Bus API (with
+# real action buttons; clicking QSystemTrayIcon::showMessage does not work on Plasma).
+# Without D-Bus (or off Linux) the showMessage fallback is used.
 if(UNIX AND NOT APPLE AND TARGET Qt6::DBus)
     target_link_libraries(tanara-watcher PRIVATE Qt6::DBus)
     target_compile_definitions(tanara-watcher PRIVATE TANARA_HAVE_DBUS)
 endif()
 
-# Az app-ikon (makeTanaraIcon) a gui/src/AppIcon.h header-only helperből (QtGui-only) —
-# a tálca-ikon konzisztenciájáért. Nem a gui targettől függünk, csak ezt az egy fejlécet
-# használjuk újra.
+# The app icon (makeTanaraIcon) comes from the header-only helper gui/src/AppIcon.h
+# (QtGui-only), for a consistent tray icon. We do not depend on the gui target, only reuse
+# this one header.
 target_include_directories(tanara-watcher PRIVATE ${CMAKE_SOURCE_DIR}/gui/src)

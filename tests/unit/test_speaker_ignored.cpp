@@ -1,12 +1,10 @@
-//
-// „Nem azonosítható" sor-állapot (OverlayUtterance::ignored) + a minta-tanítás átláthatósága
-// (Átnézendő-újratervezés, S1 közös alap). KITALÁLT adaton:
-//  - a hang-elemzés MINDEN ága kihagyja az ignored sort (SpeakerAnalysis, SideAnalysis,
-//    ReviewGroups / jelölt-profilok, hanglenyomat-gyűjtés), és az sosem bizonytalan;
-//  - SpeakerEditor: setUtterancesIgnored egy undo-lépés, perzisztál; nem-minta áthelyezés egy
-//    lépésben; eltérő-minta jelzés; minta-mérő.
-// A „hangok" kis dimenziós egységvektorok; nincs hang, nincs ffmpeg, a sáv-aktivitás szintetikus.
-//
+// The "cannot be identified" line state (OverlayUtterance::ignored) + the transparency of
+// sample teaching (shared base of the To review redesign). On MADE-UP data:
+//  - EVERY branch of the audio analysis skips the ignored line (SpeakerAnalysis, SideAnalysis,
+//    ReviewGroups / candidate profiles, voiceprint collection), and it is never uncertain;
+//  - SpeakerEditor: setUtterancesIgnored is one undo step, persists; a not-a-sample move in
+//    one step; mismatched-sample warning; sample meter.
+// The "voices" are low-dimensional unit vectors; no audio, no ffmpeg, the track activity is synthetic.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -43,11 +41,11 @@ QVector<float> voice(int k)
     return v;
 }
 
-// ---- tiszta elemzés --------------------------------------------------------------
+// ---- pure analysis ----
 struct L { int speaker; int axis; bool locked = false; bool noisy = false; bool ignored = false; };
 
 struct Lines {
-    QVector<QVector<float>> vecs;   // a mutatók élettartamához
+    QVector<QVector<float>> vecs;   // for the pointers' lifetime
     QVector<AnalysisLine> al;
 };
 
@@ -69,7 +67,7 @@ Lines make(const QVector<L>& spec)
     return out;
 }
 
-// ---- sáv-aktivitás ----------------------------------------------------------------
+// ---- track activity ----
 TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs,
                        const QVector<QPair<qint64, qint64>>& spans)
 {
@@ -84,7 +82,7 @@ TrackActivity activity(const QString& id, TrackKind kind, qint64 totalMs,
     return t;
 }
 
-// Sorok 4 mp-esek 5 mp-enként; side: 'L' mic, 'R' loopback, '-' rövid (1 mp, hang nélkül).
+// Lines are 4 s every 5 s; side: 'L' mic, 'R' loopback, '-' short (1 s, no audio).
 struct Spec { QString raw; char side; int axis; bool confirmed = false; bool ignored = false; };
 
 struct Scenario {
@@ -131,7 +129,7 @@ bool inAnyGroup(const QVector<ReviewGroup>& gs, const QString& id)
     return false;
 }
 
-// ---- szerkesztő-fixture (mint a test_speaker_review-ban) -----------------------------
+// ---- editor fixture (as in test_speaker_review) ----
 struct Fixture {
     QTemporaryDir dir;
     std::unique_ptr<MeetingStore> store;
@@ -201,8 +199,8 @@ bool waitReview(SpeakerEditor& ed)
     return spy.wait(5000);
 }
 
-// Ádám (B1, saját név → mikrofon) sorai közé 3 loopbackos, Béla-hangú sor került (3, 5, 8); Béla
-// (B2) megerősített sorai (1, 4, 7) a loopbackon.
+// Among Ádám's (B1, own name, so microphone) lines 3 loopback lines in Béla's voice got in
+// (3, 5, 8); Béla's (B2) confirmed lines (1, 4, 7) are on the loopback.
 QVector<Spec> sideScenario()
 {
     return {{"B1", 'L', 0}, {"B2", 'R', 1, true}, {"B1", 'L', 0}, {"B1", 'R', 1},
@@ -241,28 +239,28 @@ private slots:
         QVERIFY(back.utterances.value("u0").speaker.isEmpty());
     }
 
-    // ---- SpeakerAnalysis: minden ág ------------------------------------------------
+    // ---- SpeakerAnalysis: every branch ----
     void analysisCentroidAndUncertain()
     {
-        // 0. beszélő: 4 sor a 0. hangon + 1 sor az 1. hangon; 1. beszélő: 3 sor az 1. hangon.
+        // Speaker 0: 4 lines on voice 0 + 1 line on voice 1; speaker 1: 3 lines on voice 1.
         QVector<L> spec{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 1}, {1, 1}, {1, 1}, {1, 1}};
         Lines plain = make(spec);
-        QVERIFY(computeUncertain(plain.al, 2)[4]);                  // kontroll: a kakukktojás kétes
-        QVERIFY(computeFits(plain.al, 2)[0].own < 0.99);            // és húzza a centroidot
+        QVERIFY(computeUncertain(plain.al, 2)[4]);                  // control: the odd one out is doubtful
+        QVERIFY(computeFits(plain.al, 2)[0].own < 0.99);            // and pulls the centroid
 
         spec[4].ignored = true;
         Lines ign = make(spec);
         QVERIFY(!ign.al[4].hasEmbedding());
         const QVector<bool> unc = computeUncertain(ign.al, 2);
-        QVERIFY(!unc[4]);                                           // sosem bizonytalan
+        QVERIFY(!unc[4]);                                           // never uncertain
         const QVector<LineFit> fits = computeFits(ign.al, 2);
         QVERIFY(std::isnan(fits[4].own) && std::isnan(fits[4].other));
-        QCOMPARE(fits[0].own, 1.0);                                 // a centroid nélküle épül
+        QCOMPARE(fits[0].own, 1.0);                                 // the centroid is built without it
     }
 
     void analysisLockedAllSkipsIgnored()
     {
-        // A kModeLockedAll a zárolt ZAJOS sorokat is használja — az ignored onnan is kimarad.
+        // kModeLockedAll also uses the locked NOISY lines; the ignored one is left out from there too.
         QVector<L> spec{{0, 0, true, true}, {0, 0, true, true}, {0, 0, true, true}, {0, 0}, {1, 1}};
         QVERIFY(hasTrustedCore(make(spec).al, 2));
         RecheckAnalysis a = computeUncertainRechecked(make(spec).al, 2);
@@ -280,7 +278,7 @@ private slots:
 
     void analysisRecheckNeverFlagsIgnored()
     {
-        // Megerősített magok: 0 → 0. hang, 1 → 1. hang. A 6. sor az 1. hangon szól a 0-nál.
+        // Confirmed cores: 0 on voice 0, 1 on voice 1. Line 6 is on voice 1 under 0.
         QVector<L> spec{{0, 0, true}, {0, 0, true}, {0, 0, true}, {1, 1, true}, {1, 1, true}, {1, 1, true}, {0, 1}};
         QVERIFY(computeUncertainRechecked(make(spec).al, 2).lines[6].uncertain);
         spec[6].ignored = true;
@@ -289,13 +287,13 @@ private slots:
 
     void analysisSuggestAndPairSkipIgnored()
     {
-        // Forrás (0): 3× 0. hang + 2× 1. hang; cél (1): 2× 1. hang.
+        // Source (0): 3x voice 0 + 2x voice 1; target (1): 2x voice 1.
         QVector<L> spec{{0, 0}, {0, 0}, {0, 0}, {0, 1}, {0, 1}, {1, 1}, {1, 1}};
         QCOMPARE(suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3, 4}));
         spec[4].ignored = true;
         QCOMPARE(suggestSimilar(make(spec).al, 0, 1), (QVector<int>{3}));
 
-        // Páros átnézés: a 6. sor (0-nál, 1. hangon) kétes; ignored → nem.
+        // Pairwise review: line 6 (under 0, on voice 1) is doubtful; ignored: not.
         QVector<L> pair{{0, 0, true}, {0, 0, true}, {0, 0, true}, {1, 1, true}, {1, 1, true}, {1, 1, true}, {0, 1}};
         QVERIFY(computePairRecheck(make(pair).al, 0, 1).lines[6].flagged);
         pair[6].ignored = true;
@@ -307,7 +305,7 @@ private slots:
     // ---- SideAnalysis ----------------------------------------------------------------
     void sidesLearningAndConflictsSkipIgnored()
     {
-        // B1 megerősített sorai: 2 mikrofonon, 3 loopbackon (vegyes → nincs egyértelmű oldal).
+        // B1's confirmed lines: 2 on the microphone, 3 on the loopback (mixed, so no clear side).
         QVector<Spec> spec{{"B1", 'L', 0, true}, {"B1", 'L', 0, true}, {"B1", 'R', 0, true},
                            {"B1", 'R', 0, true}, {"B1", 'R', 0, true}, {"B1", 'R', 0}};
         Scenario sc = scenario(spec, true);
@@ -317,8 +315,8 @@ private slots:
         QCOMPARE(r.persons[0].remoteLines, 3);
         QVERIFY(r.persons[0].side != Side::Local);
 
-        // A 3 loopbackos megerősített sor „nem azonosítható" → a személy mikrofonos lesz; a nem
-        // ignored loopbackos sor ellentmondás, az ignored-ak nem.
+        // The 3 loopback confirmed lines become "cannot be identified", so the person becomes
+        // microphone; the non-ignored loopback line is a contradiction, the ignored ones are not.
         for (int i = 2; i <= 4; ++i) spec[i].ignored = true;
         sc = scenario(spec, true);
         r = analyzeSides(sc.in.meeting, sc.in.lines, sc.in.overlay, sc.act, QString());
@@ -331,10 +329,10 @@ private slots:
         QCOMPARE(r.conflicts[0].utteranceId, QStringLiteral("u25000"));
     }
 
-    // ---- ReviewGroups + jelölt-profilok ------------------------------------------------
+    // ---- ReviewGroups + candidate profiles ----
     void reviewGroupsAndProfilesSkipIgnored()
     {
-        // A: 3 megerősített (0. hang), B: 3 megerősített (1. hang); A-nál 2 sor B hangján + 1 rövid.
+        // A: 3 confirmed (voice 0), B: 3 confirmed (voice 1); for A 2 lines in B's voice + 1 short.
         QVector<Spec> spec{{"A", 'L', 0, true}, {"A", 'L', 0, true}, {"A", 'L', 0, true},
                            {"B", 'L', 1, true}, {"B", 'L', 1, true}, {"B", 'L', 1, true},
                            {"A", 'L', 1}, {"A", 'L', 1}, {"A", '-', -1}};
@@ -354,11 +352,11 @@ private slots:
         QVERIFY(core);
         QCOMPARE(core->utteranceIds, QStringList{"u35000"});
         QVERIFY(!inAnyGroup(r.groups, "u30000"));
-        QVERIFY(!group(r.groups, ReviewKind::ShortLines));          // az ignored rövid sor sem
-        QCOMPARE(r.context.profile("A")->lines, 4);                 // a profil sorszámában sincs
+        QVERIFY(!group(r.groups, ReviewKind::ShortLines));          // the ignored short line neither
+        QCOMPARE(r.context.profile("A")->lines, 4);                 // nor in the profile's line count
         QCOMPARE(r.context.profile("A")->sumCount, 4);
 
-        // Megerősített mag: az ignored zárolt sor sem számít bele (2 < kMinSpeakerLines → nincs mag).
+        // Confirmed core: the ignored locked line does not count either (2 < kMinSpeakerLines, so no core).
         spec[0].ignored = true;
         sc = scenario(spec, false);
         r = analyzeReview(sc.in, sc.act);
@@ -392,25 +390,25 @@ private slots:
 
         QSignalSpy changed(ed.get(), &SpeakerEditor::utterancesChanged);
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3)}, true));
-        QVERIFY(!ed->setUtterancesIgnored({fx.uid(3)}, true));     // már az
+        QVERIFY(!ed->setUtterancesIgnored({fx.uid(3)}, true));     // already that
         EditorUtterance u = ed->utterance(fx.uid(3));
         QVERIFY(u.ignored);
         QVERIFY(!u.uncertain);
         QVERIFY(u.uncertainReason.isEmpty());
-        QCOMPARE(u.speakerKey, QStringLiteral("B1"));               // a név marad
+        QCOMPARE(u.speakerKey, QStringLiteral("B1"));               // the name stays
         QVERIFY(!changed.isEmpty());
         QVERIFY(ed->undoText().contains(QStringLiteral("nem azonosítható")));
-        // A beszédidő a nevén marad.
+        // The talk time stays on the name.
         const QVector<EditorSpeaker> after = ed->speakers();
         QCOMPARE(after.size(), before.size());
         for (int i = 0; i < after.size(); ++i) {
             QCOMPARE(after[i].utteranceCount, before[i].utteranceCount);
             QCOMPARE(after[i].talkShare, before[i].talkShare);
         }
-        // Az összefoglaló szempontjából nem beszélő-változás.
+        // It is not a speaker change from the summary's point of view.
         QVERIFY(ed->summaryStale().correctedSpeakers == 0);
 
-        // Perzisztál.
+        // Persists.
         QVERIFY(loadOverlay(fx.meeting.folder).utterances.value(fx.uid(3)).ignored);
         {
             auto other = fx.editor();
@@ -425,11 +423,11 @@ private slots:
         QVERIFY(ed->utterance(fx.uid(3)).ignored);
         QCOMPARE(ed->undoSerials().size(), undoDepth);
 
-        // Visszavonás művelettel is (ignored=false), egy lépés.
+        // Undo with an operation too (ignored=false), one step.
         QVERIFY(ed->setUtterancesIgnored({fx.uid(3)}, false));
         QVERIFY(!ed->utterance(fx.uid(3)).ignored);
         QCOMPARE(ed->undoSerials().size(), undoDepth + 1);
-        QVERIFY(!loadOverlay(fx.meeting.folder).utterances.contains(fx.uid(3)));   // alapállapot → nincs bejegyzés
+        QVERIFY(!loadOverlay(fx.meeting.folder).utterances.contains(fx.uid(3)));   // the base state: no entry
     }
 
     void editorReviewGroupsSkipIgnored()
@@ -456,8 +454,8 @@ private slots:
         for (const QString& id : {fx.uid(3), fx.uid(5), fx.uid(8)})
             QVERIFY(!inAnyGroup(ed->reviewGroups(), id));
 
-        // A jelölt-rangsorban az ignored sor hangja nincs a mostani beszélő összegében, de a sorra
-        // továbbra is kérhetők jelöltek (a felhasználó később eldöntheti).
+        // In the candidate ranking the ignored line's voice is not in the current speaker's sum, but
+        // candidates can still be requested for the line (the user can decide later).
         QVERIFY(!ed->lineCandidates(fx.uid(3)).isEmpty());
     }
 
@@ -494,7 +492,7 @@ private slots:
         QVERIFY(!u.manuallyCorrected);
         QVERIFY(!u.noisy);
 
-        // Személyhez (új résztvevő) és új névtelenhez is egy lépésben.
+        // To a person (a new participant) and to a new anonymous one in one step too.
         const QString key = ed->moveUtterancesToPerson({fx.uid(5)}, "Cecil", true);
         QVERIFY(!key.isEmpty());
         QCOMPARE(ed->undoSerials().size(), 1);
@@ -504,7 +502,7 @@ private slots:
         QCOMPARE(ed->undoSerials().size(), 2);
         QVERIFY(ed->utterance(fx.uid(8)).noisy && ed->utterance(fx.uid(8)).manuallyCorrected);
 
-        // Az alapértelmezés (noisy=false) nem nyúl a zajos-jelzéshez.
+        // The default (noisy=false) does not touch the noisy flag.
         QVERIFY(ed->moveUtterances({fx.uid(0)}, "B2"));
         QVERIFY(!ed->utterance(fx.uid(0)).noisy);
     }
@@ -516,7 +514,7 @@ private slots:
         QSignalSpy spy(ed.get(), &SpeakerEditor::sampleDeviationChanged);
         QVERIFY(!ed->lastSampleDeviation().isValid());
 
-        // Béla hangú sor Bélához: illik.
+        // A line in Béla's voice to Béla: fits.
         QVERIFY(ed->moveUtterances({fx.uid(3)}, "B2"));
         SampleDeviation dv = ed->lastSampleDeviation();
         QVERIFY(dv.isValid());
@@ -526,7 +524,7 @@ private slots:
         QVERIFY(!dv.deviates);
         QCOMPARE(spy.count(), 1);
 
-        // Ádám hangú sor Bélához (mintaként): eltér.
+        // A line in Ádám's voice to Béla (as a sample): mismatch.
         QVERIFY(ed->moveUtterances({fx.uid(0)}, "B2"));
         dv = ed->lastSampleDeviation();
         QVERIFY(dv.isValid());
@@ -534,19 +532,19 @@ private slots:
         QVERIFY(dv.similarity < kSampleDeviationFit);
         QVERIFY(dv.deviates);
 
-        // Több sor egy döntésben: a legrosszabb jön vissza.
+        // Several lines in one decision: the worst comes back.
         ed->undo();
-        QVERIFY(!ed->lastSampleDeviation().isValid());               // visszavonás → érvénytelen
+        QVERIFY(!ed->lastSampleDeviation().isValid());               // undo: invalid
         QVERIFY(ed->moveUtterances({fx.uid(5), fx.uid(2)}, "B2"));
         QCOMPARE(ed->lastSampleDeviation().utteranceId, fx.uid(2));
         QVERIFY(ed->lastSampleDeviation().deviates);
 
-        // Minden más szerkesztés érvényteleníti.
+        // Every other edit invalidates it.
         QVERIFY(ed->setUtterancesNoisy({fx.uid(7)}, true));
         QVERIFY(!ed->lastSampleDeviation().isValid());
 
-        // Megerősítés: a sor a saját beszélőjéhez mérve. Ádámnak nincs megerősített sora, így a
-        // referencia a többi tiszta sora (0, 8, 9 — a 6. nélkül); a „nem minta" megerősítés nem mér.
+        // Confirmation: the line measured against its own speaker. Ádám has no confirmed line, so
+        // the reference is the other clean lines (0, 8, 9, without the 6th); a "not a sample" confirmation does not measure.
         QVERIFY(ed->confirmUtterances({fx.uid(6)}));
         dv = ed->lastSampleDeviation();
         QVERIFY(dv.isValid());
@@ -579,19 +577,19 @@ private slots:
         QCOMPARE(bela->sessionAdded, 1);
         QCOMPARE(bela->sessionAddedIds, QStringList{fx.uid(3)});
 
-        // Nem-minta áthelyezés: nem nő; ignored minta: kiesik.
+        // A not-a-sample move: does not grow; an ignored sample: drops out.
         QVERIFY(ed->moveUtterances({fx.uid(5)}, "B2", true));
         QCOMPARE(statsOf(ed->sampleStats(), "B2")->sampleLines, 4);
         QVERIFY(ed->setUtterancesIgnored({fx.uid(1)}, true));
         QCOMPARE(statsOf(ed->sampleStats(), "B2")->sampleLines, 3);
         QCOMPARE(statsOf(ed->sampleStats(), "B2")->sessionAdded, 1);
 
-        // Egy nem változtató művelet (lenyomat-anyag lekérdezése) nem jelez.
+        // A non-changing operation (querying the voiceprint material) does not signal.
         const int n = spy.count();
         ed->voiceprintMaterial("B2");
         QCOMPARE(spy.count(), n);
 
-        // Új szerkesztő = új munkamenet.
+        // A new editor = a new session.
         auto other = fx.editor();
         QCOMPARE(statsOf(other->sampleStats(), "B2")->sessionAdded, 0);
         QCOMPARE(statsOf(other->sampleStats(), "B2")->sampleLines, 3);

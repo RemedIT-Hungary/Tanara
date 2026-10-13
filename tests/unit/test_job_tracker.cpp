@@ -1,7 +1,5 @@
-//
-// MeetingJobTracker + JobErrors + JobStats — a meetingenkénti feldolgozási állapot:
-// levezetett ikon-állapotok, futó feladat szakaszai, megmaradó (újraindítást túlélő) hibák.
-//
+// MeetingJobTracker + JobErrors + JobStats: the per-meeting processing state: derived icon
+// states, the running job's stages, persistent (restart-surviving) errors.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -48,7 +46,7 @@ private:
     }
 };
 
-#ifndef Q_MOC_RUN   // (a moc a nyers string-literálokon elcsúszna)
+#ifndef Q_MOC_RUN   // (moc would get lost on raw string literals)
 
 void JobTrackerTest::init()
 {
@@ -75,7 +73,7 @@ void JobTrackerTest::emptyMeetingIsNone()
     QVERIFY(!s.mixdownRunning);
     QVERIFY(!s.busy());
     QVERIFY(!s.transcriptError.isValid());
-    // Állapotfájl csak akkor keletkezik, ha van mit őrizni.
+    // A state file is created only if there is something to keep.
     QVERIFY(!QFile::exists(QDir(m.folder).filePath(MeetingJobTracker::stateFileName())));
 }
 
@@ -90,7 +88,7 @@ void JobTrackerTest::flagsDeriveDone()
     const MeetingProcessingState s = t.state(m.id);
     QCOMPARE(s.transcriptState, StepState::Done);
     QCOMPARE(s.summaryState, StepState::Done);
-    QCOMPARE(s.identifyState, StepState::Done);   // régi meeting: a nevesített beszélő a jel
+    QCOMPARE(s.identifyState, StepState::Done);   // old meeting: a named speaker is the signal
 }
 
 void JobTrackerTest::runningJobAndStages()
@@ -118,9 +116,9 @@ void JobTrackerTest::runningJobAndStages()
     QCOMPARE(jp.stage(QStringLiteral("upload"))->state, StageState::Running);
     QCOMPARE(jp.stage(QStringLiteral("upload"))->percent, 42);
     QCOMPARE(jp.stage(QStringLiteral("transcribe"))->state, StageState::Waiting);
-    QCOMPARE(jp.stage(QStringLiteral("transcribe"))->percent, -1);   // nincs kitalált százalék
+    QCOMPARE(jp.stage(QStringLiteral("transcribe"))->percent, -1);   // no invented percentage
 
-    // Azonos érték → nincs fölös jel.
+    // The same value: no redundant signal.
     const int n = progress.count();
     t.setStagePercent(m.id, JobKind::Transcribe, QStringLiteral("upload"), 42);
     QCOMPARE(progress.count(), n);
@@ -128,7 +126,7 @@ void JobTrackerTest::runningJobAndStages()
     t.setStage(m.id, JobKind::Transcribe, QStringLiteral("upload"), StageState::Done);
     QCOMPARE(t.job(m.id, JobKind::Transcribe).stage(QStringLiteral("upload"))->percent, -1);
 
-    // Becslés: csak ha megadták; a hátralévő idő a kezdéstől számol.
+    // Estimate: only if given; the remaining time counts from the start.
     QCOMPARE(t.job(m.id, JobKind::Transcribe).etaSeconds(), -1);
     t.setEstimate(m.id, JobKind::Transcribe, 120);
     jp = t.job(m.id, JobKind::Transcribe);
@@ -164,7 +162,7 @@ void JobTrackerTest::failurePersistsAcrossRestart()
         QVERIFY(!s.busy());
     }
     QVERIFY(QFile::exists(QDir(m.folder).filePath(MeetingJobTracker::stateFileName())));
-    // „Újraindítás”: új tracker (és új store) ugyanarra a lemezre.
+    // "Restart": a new tracker (and a new store) on the same disk.
     MeetingStore store2(m_dir->filePath("rec"), m_dir->filePath("meta"));
     MeetingJobTracker t2(&store2);
     const MeetingProcessingState s = t2.state(m.id);
@@ -188,8 +186,8 @@ void JobTrackerTest::failedRetryKeepsDoneButShowsError()
     e.message = QStringLiteral("hiba");
     t.fail(m.id, JobKind::Transcribe, e);
     const MeetingProcessingState s = t.state(m.id);
-    QCOMPARE(s.transcriptState, StepState::Done);       // a korábbi átirat megvan
-    QVERIFY(s.transcriptError.isValid());               // de a bukott újrafutás látszik
+    QCOMPARE(s.transcriptState, StepState::Done);       // the earlier transcript exists
+    QVERIFY(s.transcriptError.isValid());               // but the failed rerun shows
 }
 
 void JobTrackerTest::successAndClearRemoveError()
@@ -209,7 +207,7 @@ void JobTrackerTest::successAndClearRemoveError()
     t.recordError(m.id, e);
     t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"));
     QCOMPARE(t.state(m.id).transcriptState, StepState::Running);
-    t.finish(m.id, JobKind::Transcribe);   // siker → a hiba érvényét veszti
+    t.finish(m.id, JobKind::Transcribe);   // success: the error loses its validity
     QVERIFY(!t.lastError(m.id, JobKind::Transcribe).isValid());
 }
 
@@ -246,7 +244,7 @@ void JobTrackerTest::summaryKindsShareSlot()
         t.clearError(m.id, JobKind::Summarize);
         QCOMPARE(t.state(m.id).summaryState, StepState::None);
     }
-    QCOMPARE(t.state(m.id).transcriptState, StepState::Done);   // a másik lépést nem érinti
+    QCOMPARE(t.state(m.id).transcriptState, StepState::Done);   // does not affect the other step
 }
 
 void JobTrackerTest::topicErrorsPersist()
@@ -282,17 +280,17 @@ void JobTrackerTest::identifyState()
         QCOMPARE(t.job(m.id, JobKind::Identify).done, 3);
         QCOMPARE(t.job(m.id, JobKind::Identify).total, 5);
         t.finish(m.id, JobKind::Identify);
-        QCOMPARE(t.state(m.id).identifyState, StepState::None);   // még nincs megjelölve
+        QCOMPARE(t.state(m.id).identifyState, StepState::None);   // not marked yet
         t.markIdentified(m.id);
         QCOMPARE(t.state(m.id).identifyState, StepState::Done);
     }
     MeetingJobTracker t2(m_store.get());
-    QCOMPARE(t2.state(m.id).identifyState, StepState::Done);       // újraindítás után is
+    QCOMPARE(t2.state(m.id).identifyState, StepState::Done);       // after a restart too
     QVERIFY(t2.identifiedAt(m.id).isValid());
     t2.markIdentified(m.id, false);
     QCOMPARE(t2.state(m.id).identifyState, StepState::None);
 
-    // Az átírás-feladat „identify” szakasza is futó azonosításnak számít.
+    // The transcription job's "identify" stage counts as a running identification too.
     t2.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"),
              {{QStringLiteral("identify"), QStringLiteral("Azonosítás"), StageState::Waiting, -1, QString()}});
     QCOMPARE(t2.state(m.id).identifyState, StepState::None);
@@ -309,11 +307,11 @@ void JobTrackerTest::mixdownState()
     MeetingProcessingState s = t.state(m.id);
     QVERIFY(s.mixdownRunning);
     QCOMPARE(s.mixdownPercent, 37);
-    QCOMPARE(s.transcriptState, StepState::None);   // az önálló keverés nem „átírás fut”
+    QCOMPARE(s.transcriptState, StepState::None);   // a standalone mix is not "transcription running"
     t.cancelled(m.id, JobKind::Mixdown);
     QVERIFY(!t.state(m.id).mixdownRunning);
 
-    // Átírás részeként futó keverés: a „mixdown” szakasz százaléka.
+    // A mix running as part of the transcription: the "mixdown" stage's percentage.
     t.begin(m.id, JobKind::Transcribe, QStringLiteral("Átírás"),
             {{QStringLiteral("mixdown"), QStringLiteral("Lekeverés"), StageState::Waiting, -1, QString()}});
     t.setStage(m.id, JobKind::Transcribe, QStringLiteral("mixdown"), StageState::Running, 12);
@@ -330,7 +328,7 @@ void JobTrackerTest::removedMeetingForgotten()
     t.begin(m.id, JobKind::Summarize, QStringLiteral("x"));
     QVERIFY(m_store->deleteMeeting(m.id));
     QVERIFY(!t.isBusy(m.id));
-    // Lezárás egy már törölt meetingen: nem omlik össze, nem hoz létre fájlt.
+    // Closing on an already deleted meeting: does not crash, creates no file.
     JobError e;
     e.message = QStringLiteral("hiba");
     t.fail(m.id, JobKind::Summarize, e);
@@ -352,10 +350,10 @@ void JobTrackerTest::describeHttp401()
     QCOMPARE(e.kind, JobKind::Transcribe);
     QCOMPARE(e.detail, QStringLiteral("HTTP 401 · invalid_api_key · Invalid API key."));
     QVERIFY(e.message.contains(QStringLiteral("API-kulcs")));
-    QVERIFY(!e.message.contains(QStringLiteral("Host requires")));   // emberi szöveg, nem a nyers
+    QVERIFY(!e.message.contains(QStringLiteral("Host requires")));   // human text, not the raw one
     QCOMPARE(e.fixActionHint, QStringLiteral("settings:stt"));
 
-    // OpenAI-kompatibilis törzs.
+    // OpenAI-compatible body.
     ex.body = R"({"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}})";
     const JobError e2 = describeJobFailure(JobKind::Summarize, QStringLiteral("LLM hiba"), &ex);
     QCOMPARE(e2.detail, QStringLiteral("HTTP 401 · invalid_api_key · Incorrect API key provided"));
@@ -390,7 +388,7 @@ void JobTrackerTest::describeWithoutExchange()
                                           QStringLiteral("Nem sikerült JSON-ként értelmezni a választ"), nullptr);
     QCOMPARE(e.message, QStringLiteral("Nem sikerült JSON-ként értelmezni a választ"));
     QVERIFY(e.detail.isEmpty());
-    QVERIFY(describeJobFailure(JobKind::Mixdown, QString(), nullptr).isValid());   // sosem üres
+    QVERIFY(describeJobFailure(JobKind::Mixdown, QString(), nullptr).isValid());   // never empty
 }
 
 void JobTrackerTest::describeCloud()
@@ -410,16 +408,16 @@ void JobTrackerTest::statsEstimateOnlyFromSamples()
     const QString path = m_dir->filePath("meta/job-stats.json");
     {
         JobStats st(path);
-        QCOMPARE(st.estimateSec(QStringLiteral("transcribe/soniox/x"), 3600), -1);   // minta nélkül nincs becslés
-        st.addSample(QStringLiteral("transcribe/soniox/x"), 60, 600);   // 0.1 arány
+        QCOMPARE(st.estimateSec(QStringLiteral("transcribe/soniox/x"), 3600), -1);   // no estimate without samples
+        st.addSample(QStringLiteral("transcribe/soniox/x"), 60, 600);   // 0.1 ratio
         QCOMPARE(st.estimateSec(QStringLiteral("transcribe/soniox/x"), 3600), 360);
-        QCOMPARE(st.estimateSec(QStringLiteral("transcribe/egyeb/x"), 3600), -1);    // más szolgáltatóra nem visz át
-        st.addSample(QStringLiteral("transcribe/soniox/x"), 5, 2);      // túl rövid minta → kimarad
+        QCOMPARE(st.estimateSec(QStringLiteral("transcribe/egyeb/x"), 3600), -1);    // does not carry over to another provider
+        st.addSample(QStringLiteral("transcribe/soniox/x"), 5, 2);      // too short a sample: left out
         QCOMPARE(st.sampleCount(QStringLiteral("transcribe/soniox/x")), 1);
     }
-    JobStats st2(path);   // perzisztens
+    JobStats st2(path);   // persistent
     QCOMPARE(st2.estimateSec(QStringLiteral("transcribe/soniox/x"), 1200), 120);
-    st2.addSample(QStringLiteral("transcribe/soniox/x"), 120, 600);     // 0.2 → mozgóátlag 0.13
+    st2.addSample(QStringLiteral("transcribe/soniox/x"), 120, 600);     // 0.2 gives a moving average of 0.13
     QCOMPARE(st2.estimateSec(QStringLiteral("transcribe/soniox/x"), 1000), 130);
 }
 

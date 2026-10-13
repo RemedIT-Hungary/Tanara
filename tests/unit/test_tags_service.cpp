@@ -1,9 +1,6 @@
-//
-// TagService + TagNames — a címkekészlet és a meetingenkénti címkék: kulcs-egyenlőség, nagyon
-// hasonló nevek, beviteli sorok, átnevezés / összevonás / törlés, visszavonás (csoportok),
-// elutasított javaslatok, perzisztencia (tags.json + meeting.json "tags").
-// Kitalált nevek és címek.
-//
+// TagService + TagNames: the tag set and the per-meeting tags: key equality, very similar
+// names, input rows, rename / merge / delete, undo (groups), rejected suggestions,
+// persistence (tags.json + meeting.json "tags"). Made-up names and titles.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -80,10 +77,10 @@ void TagsServiceTest::names()
     QCOMPARE(tagKey(QStringLiteral("Museum Plus")), tagKey(QStringLiteral("museumplus")));
     QCOMPARE(tagKey(QStringLiteral("MÉM-MDK")), QStringLiteral("memmdk"));
     QVERIFY(nearDuplicate(QStringLiteral("Museum Plus"), QStringLiteral("MuseumPlus")));
-    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvk")));        // 6+ betű: 1 eltérés
-    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvki")));       // betűcsere
-    QVERIFY(!nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordak")));       // 2 eltérés
-    QVERIFY(!nearDuplicate(QStringLiteral("Alfa"), QStringLiteral("Alfi")));           // rövid kulcs
+    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvk")));        // 6+ letters: 1 difference
+    QVERIFY(nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordvki")));       // letter swap
+    QVERIFY(!nearDuplicate(QStringLiteral("Nordvik"), QStringLiteral("Nordak")));       // 2 differences
+    QVERIFY(!nearDuplicate(QStringLiteral("Alfa"), QStringLiteral("Alfi")));           // short key
     QVERIFY(nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerprogrm1")));   // 10+: 2
     QVERIFY(!nearDuplicate(QStringLiteral("Partnerprogram"), QStringLiteral("Partnerpgrm123")));
     QCOMPARE(damerauLevenshtein(QStringLiteral("abcd"), QStringLiteral("abdc")), 1);
@@ -98,13 +95,13 @@ void TagsServiceTest::createAndKeyEquality()
     QVERIFY(!a.id.contains(QLatin1Char('{')));
     QCOMPARE(changed.count(), 1);
     const Tag b = svc->create(QStringLiteral("museumplus"));
-    QCOMPARE(b.id, a.id);                              // ugyanaz a kulcs → a meglévő
+    QCOMPARE(b.id, a.id);                              // the same key: the existing one
     QCOMPARE(svc->all().size(), 1);
     QCOMPARE(svc->byName(QStringLiteral("MUSEUM-PLUS")).id, a.id);
     QVERIFY(!svc->create(QStringLiteral("  # ")).isValid());
     QCOMPARE(svc->tag(a.id).name, QStringLiteral("Museum Plus"));
     QVERIFY(!svc->tag(QStringLiteral("nincs")).isValid());
-    // Nagyon hasonló nevek: a pontos kulcs nem, a kis elírás igen.
+    // Very similar names: the exact key no, the small typo yes.
     svc->create(QStringLiteral("Nordvik"));
     const QVector<Tag> sim = svc->similarNames(QStringLiteral("Nordvk"));
     QCOMPARE(sim.size(), 1);
@@ -117,11 +114,11 @@ void TagsServiceTest::renameRules()
     auto svc = makeService();
     const Tag a = svc->create(QStringLiteral("Nordvik"));
     const Tag b = svc->create(QStringLiteral("Partnerek"));
-    QVERIFY(!svc->rename(a.id, QStringLiteral("partnerek")));   // a kulcs másé
+    QVERIFY(!svc->rename(a.id, QStringLiteral("partnerek")));   // the key belongs to another
     QVERIFY(!svc->rename(a.id, QStringLiteral("  ")));
     QVERIFY(svc->rename(a.id, QStringLiteral("Nordvik Kft")));
     QCOMPARE(svc->tag(a.id).name, QStringLiteral("Nordvik Kft"));
-    QVERIFY(svc->rename(b.id, QStringLiteral("PARTNEREK")));     // saját kulcs, más írásmód
+    QVERIFY(svc->rename(b.id, QStringLiteral("PARTNEREK")));     // its own key, another spelling
     QCOMPARE(svc->tag(b.id).name, QStringLiteral("PARTNEREK"));
 }
 
@@ -134,7 +131,7 @@ void TagsServiceTest::persistence()
         id = svc->addTag(mid, QStringLiteral("Nordvik")).id;
         QVERIFY(!id.isEmpty());
     }
-    // tags.json alakja
+    // shape of tags.json
     QFile f(m_dir->filePath("meta/tags.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
@@ -147,7 +144,7 @@ void TagsServiceTest::persistence()
     QFile mj(QDir(m.folder).filePath("meeting.json"));
     QVERIFY(mj.open(QIODevice::ReadOnly));
     QCOMPARE(QJsonDocument::fromJson(mj.readAll()).object().value("tags").toArray().at(0).toString(), id);
-    // Új példány ugyanazt látja.
+    // A new instance sees the same.
     auto again = makeService();
     QCOMPARE(again->tagsOf(mid), QStringList{id});
     QCOMPARE(again->tag(id).name, QStringLiteral("Nordvik"));
@@ -162,9 +159,9 @@ void TagsServiceTest::meetingTags()
     const Tag b = svc->addTag(mid, QStringLiteral("Partnerek"));
     QCOMPARE(svc->tagsOf(mid), (QStringList{a.id, b.id}));
     QCOMPARE(mt.count(), 2);
-    QCOMPARE(svc->addTag(mid, a.id).id, a.id);        // már rajta: nincs változás
+    QCOMPARE(svc->addTag(mid, a.id).id, a.id);        // already on: no change
     QCOMPARE(mt.count(), 2);
-    QCOMPARE(svc->addTag(mid, QStringLiteral("nordvik")).id, a.id);   // név szerint is
+    QCOMPARE(svc->addTag(mid, QStringLiteral("nordvik")).id, a.id);   // by name too
     QCOMPARE(svc->tagsOf(mid).size(), 2);
     svc->removeTag(mid, a.id);
     QCOMPARE(svc->tagsOf(mid), QStringList{b.id});
@@ -184,12 +181,12 @@ void TagsServiceTest::inputRowsRecentAndMatches()
     const Tag ut = svc->addTag(m2, QStringLiteral("Ütemterv"));
     const Tag ugy = svc->create(QStringLiteral("Ügyfél-nordvik"));
 
-    // Üres mező → legutóbb használt.
+    // Empty field: the most recently used.
     QVector<TagInputRow> rows = svc->inputRows(QString());
     QVERIFY(!rows.isEmpty());
     for (const TagInputRow& r : rows) QCOMPARE(r.kind, TagInputRow::Recent);
 
-    // Ékezet- és kisbetű-független egyezés, előtag elöl, a végén „Új címke”.
+    // Accent- and case-insensitive match, prefix first, "New tag" at the end.
     rows = svc->inputRows(QStringLiteral("nord"));
     QCOMPARE(rows.size(), 3);
     QCOMPARE(rows.at(0).kind, TagInputRow::Match);
@@ -197,7 +194,7 @@ void TagsServiceTest::inputRowsRecentAndMatches()
     QCOMPARE(rows.at(0).matchStart, 0);
     QCOMPARE(rows.at(0).matchLen, 4);
     QCOMPARE(rows.at(0).meetingCount, 2);
-    QCOMPARE(rows.at(1).tag.id, ugy.id);               // részszó (szó eleje a kötőjel után)
+    QCOMPARE(rows.at(1).tag.id, ugy.id);               // substring (a word start after the hyphen)
     QCOMPARE(rows.at(1).matchStart, 7);
     QCOMPARE(rows.at(2).kind, TagInputRow::New);
     QCOMPARE(rows.at(2).tag.name, QStringLiteral("nord"));
@@ -205,12 +202,12 @@ void TagsServiceTest::inputRowsRecentAndMatches()
     rows = svc->inputRows(QStringLiteral("utem"));
     QCOMPARE(rows.first().tag.id, ut.id);
 
-    // Pontos kulcs-egyezés → nincs „Új címke” sor.
+    // Exact key match: no "New tag" row.
     rows = svc->inputRows(QStringLiteral("NORDVIK"));
     QCOMPARE(rows.first().tag.id, nord.id);
     for (const TagInputRow& r : rows) QVERIFY(r.kind != TagInputRow::New && r.kind != TagInputRow::ForceNew);
 
-    // Nincs találat → csak az „Új címke” (kijelölve).
+    // No match: only "New tag" (selected).
     rows = svc->inputRows(QStringLiteral("Zöldfa"));
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows.first().kind, TagInputRow::New);
@@ -221,11 +218,11 @@ void TagsServiceTest::inputRowsNearDuplicate()
 {
     auto svc = makeService();
     const Tag mp = svc->create(QStringLiteral("Museum Plus"));
-    // „MuseumPlus” kulcsa azonos → a meglévő, új nélkül.
+    // "MuseumPlus" has the same key: the existing one, without a new one.
     QVector<TagInputRow> rows = svc->inputRows(QStringLiteral("MuseumPlus"));
     QCOMPARE(rows.size(), 1);
     QCOMPARE(rows.first().tag.id, mp.id);
-    // Kis elírás → HASONLÓ MÁR VAN (kijelölve) + „Mégis új”.
+    // A small typo gives SIMILAR EXISTS (selected) + "Create anyway".
     rows = svc->inputRows(QStringLiteral("Museum Plsu"));
     QCOMPARE(rows.size(), 2);
     QCOMPARE(rows.at(0).kind, TagInputRow::NearDuplicate);
@@ -248,10 +245,10 @@ void TagsServiceTest::mergeRetagsAndOffersKept()
 
     svc->merge(from.id, keep.id);
     QVERIFY(!svc->tag(from.id).isValid());
-    QCOMPARE(svc->tagsOf(m1), (QStringList{keep.id, other.id}));   // a régi helyére
-    QCOMPARE(svc->tagsOf(m2), QStringList{keep.id});                // nincs duplikátum
-    QVERIFY(svc->isRejected(m2, keep.id));                          // az elutasítás átszállt
-    // A régi nevet begépelve a megtartottat kínálja (új címke nélkül).
+    QCOMPARE(svc->tagsOf(m1), (QStringList{keep.id, other.id}));   // in the old one's place
+    QCOMPARE(svc->tagsOf(m2), QStringList{keep.id});                // no duplicate
+    QVERIFY(svc->isRejected(m2, keep.id));                          // the rejection carried over
+    // Typing the old name offers the kept one (without a new tag).
     const QVector<TagInputRow> rows = svc->inputRows(QStringLiteral("Nordvik Zrt"));
     QCOMPARE(rows.first().tag.id, keep.id);
     for (const TagInputRow& r : rows) QVERIFY(r.kind != TagInputRow::New);
@@ -269,7 +266,7 @@ void TagsServiceTest::removeKeepsOtherTags()
     QCOMPARE(svc->tagsOf(m1), QStringList{b.id});
     QCOMPARE(svc->rejectedCount(), 0);
     QVERIFY(!svc->tag(a.id).isValid());
-    QVERIFY(m_store->load(m1).id == m1);   // a meeting megmarad
+    QVERIFY(m_store->load(m1).id == m1);   // the meeting stays
 }
 
 void TagsServiceTest::undoSingleAndGroups()
@@ -283,20 +280,20 @@ void TagsServiceTest::undoSingleAndGroups()
     const Tag a = svc->addTag(m1, QStringLiteral("Nordvik"));
     QVERIFY(svc->canUndo());
     QVERIFY(!svc->undoLabel().isEmpty());
-    svc->undo();                                  // a felrakás ÉS a létrehozás visszavonva
+    svc->undo();                                  // the apply AND the create undone
     QVERIFY(svc->tagsOf(m1).isEmpty());
     QVERIFY(!svc->tag(a.id).isValid());
 
-    // Tömeges hozzáadás: egy lépés.
+    // Bulk add: one step.
     const Tag b = svc->create(QStringLiteral("Partnerek"));
     svc->bulkAdd({m1, m2, m3}, b.id);
     QCOMPARE(svc->meetingCount(b.id), 3);
     QVERIFY(svc->undoLabel().contains(QStringLiteral("Partnerek")));
     svc->undo();
     QCOMPARE(svc->meetingCount(b.id), 0);
-    QVERIFY(svc->tag(b.id).isValid());            // a create külön lépés volt
+    QVERIFY(svc->tag(b.id).isValid());            // the create was a separate step
 
-    // Saját csoport: két módosítás egy lépésben.
+    // Own group: two changes in one step.
     svc->beginGroup(QStringLiteral("Javaslatok elfogadása"));
     svc->addTag(m1, b.id);
     svc->addTag(m1, QStringLiteral("Ütemterv"));
@@ -307,7 +304,7 @@ void TagsServiceTest::undoSingleAndGroups()
     QVERIFY(svc->tagsOf(m1).isEmpty());
     QVERIFY(!svc->byName(QStringLiteral("Ütemterv")).isValid());
 
-    // Összevonás visszavonása: a régi címke és a hozzárendelések visszajönnek.
+    // Undoing the merge: the old tag and the assignments come back.
     const Tag x = svc->addTag(m1, QStringLiteral("Alfa projekt"));
     const Tag y = svc->addTag(m2, QStringLiteral("Alfa"));
     svc->merge(x.id, y.id);
@@ -341,7 +338,7 @@ void TagsServiceTest::rejected()
         llmNew.isNew = true;
         svc->reject(m1, llmNew);
         QCOMPARE(rc.count(), 2);
-        // Az elutasítás visszavonható lépés (undo = visszavétel), csoportban is.
+        // The rejection is an undoable step (undo = taking it back), in a group too.
         svc->beginGroup(QStringLiteral("Nem illik ide"));
         svc->reject(m2, TagSuggestion{a.id, a.name});
         svc->endGroup();
@@ -350,18 +347,18 @@ void TagsServiceTest::rejected()
         svc->undo();
         QVERIFY(!svc->isRejected(m2, a.id));
         QVERIFY(svc->isRejected(m1, a.id));
-        QVERIFY(svc->isRejected(m1, QStringLiteral("nordvik")));          // név szerint is
-        QVERIFY(svc->isRejected(m1, QStringLiteral("arajanlat 2027")));   // az új név-ötlet kulcsa
-        QVERIFY(!svc->isRejected(m2, a.id));                              // csak arra a meetingre
+        QVERIFY(svc->isRejected(m1, QStringLiteral("nordvik")));          // by name too
+        QVERIFY(svc->isRejected(m1, QStringLiteral("arajanlat 2027")));   // the key of the new name idea
+        QVERIFY(!svc->isRejected(m2, a.id));                              // only for that meeting
         QCOMPARE(svc->rejectedCount(), 2);
-        svc->reject(m1, TagSuggestion{a.id, a.name});                     // ismétlés: nincs új bejegyzés
+        svc->reject(m1, TagSuggestion{a.id, a.name});                     // repeat: no new entry
         QCOMPARE(svc->rejectedCount(), 2);
-        // A felrakás feloldja az elutasítást.
+        // Applying lifts the rejection.
         svc->addTag(m1, a.id);
         QVERIFY(!svc->isRejected(m1, a.id));
         QCOMPARE(svc->rejectedCount(), 1);
     }
-    auto svc = makeService();                                            // perzisztens
+    auto svc = makeService();                                            // persistent
     QCOMPARE(svc->rejectedCount(), 1);
     svc->clearRejected();
     QCOMPARE(svc->rejectedCount(), 0);
@@ -389,7 +386,7 @@ void TagsServiceTest::usageAndProfile()
 
     const TagProfile prof = svc->profile(n.id);
     QCOMPARE(prof.meetingCount, 2);
-    QCOMPARE(prof.meetings.first().meetingId, m2);       // legújabb elöl
+    QCOMPARE(prof.meetings.first().meetingId, m2);       // newest first
     QCOMPARE(prof.topParticipants.first(), qMakePair(QStringLiteral("Kovács Anna"), 2));
     QCOMPARE(prof.cooccurring.size(), 1);
     QCOMPARE(prof.cooccurring.first(), qMakePair(p.id, 1));

@@ -1,8 +1,6 @@
-//
-// tanara-cli review: a valódi CLI (QProcess), IZOLÁLT TANARA_HOME-mal, kitalált megbeszélésen
-// (sávok nélkül; a beágyazások közvetlenül a cache-ben). Ellenőrzi, hogy a parancs CSAK OLVAS,
-// a JSON-ban ott a mag-eltérés csoport a bizonyítékaival, és átirat-szöveg nem jelenik meg.
-//
+// tanara-cli review: the real CLI (QProcess), with an ISOLATED TANARA_HOME, on a made-up
+// meeting (no tracks; the embeddings directly in the cache). Checks that the command only
+// READS, that the JSON has the core-mismatch group with its evidence, and that no transcript text appears.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -71,7 +69,7 @@ private slots:
         writeJson(QDir(folder).filePath("meeting.json"), QJsonObject{
             {"id", "review-1"}, {"title", "Review"},
             {"speakerMap", QJsonObject{{"A", "Anna"}, {"B", "Béla"}}}});
-        // A: 3 megerősített (0. hang), B: 3 megerősített (1. hang), A-nál 2 sor B hangján + 1 rövid.
+        // A: 3 confirmed (voice 0), B: 3 confirmed (voice 1), for A 2 lines in B's voice + 1 short.
         const QVector<QPair<QString, int>> spec{{"A", 0}, {"A", 0}, {"A", 0}, {"B", 1}, {"B", 1}, {"B", 1},
                                                 {"A", 1}, {"A", 0}, {"A", 1}, {"B", -1}};
         QJsonArray segs;
@@ -121,7 +119,7 @@ private slots:
         QVERIFY(!r.out.contains("titkos"));
         QCOMPARE(snapshot(folder), before);
 
-        // „Nem azonosítható": lines ignore → a review kihagyja, és jelöli.
+        // "Cannot be identified": lines ignore, so review skips it, and marks it.
         QCOMPARE(cli({"lines", "ignore", folder}).code, 2);
         QCOMPARE(cli({"lines", "ignore", folder, "u999"}).code, 1);
         QCOMPARE(snapshot(folder), before);
@@ -139,7 +137,7 @@ private slots:
         r = cli({"review", folder});
         QVERIFY(r.out.contains("Not identifiable (ignored by voice analysis): 1"));
 
-        // A sor-listázás: jelölők, szöveg nélkül; csak olvas.
+        // The line listing: markers, without text; read-only.
         const QMap<QString, QString> beforeList = snapshot(folder);
         r = cli({"lines", folder, "--json"});
         QVERIFY2(r.code == 0, qPrintable(r.err));

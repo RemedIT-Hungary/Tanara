@@ -1,8 +1,6 @@
 #pragma once
-//
-// Tanara app-ikon — kódból rajzolt mikrofon-ikon (nincs külső asset/plugin-függőség,
-// így minden platformon ugyanaz). QApplication::setWindowIcon-nal állítjuk be.
-//
+// Tanara app icon: a microphone icon drawn in code (no external asset/plugin dependency, so
+// it looks the same on every platform). Set with QApplication::setWindowIcon.
 #include <QIcon>
 #include <QPixmap>
 #include <QPainter>
@@ -19,7 +17,7 @@ inline QIcon makeTanaraIcon() {
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
 
-    // Háttér: lekerekített négyzet, kék→indigó átmenet.
+    // Background: rounded square, blue-to-indigo gradient.
     QLinearGradient g(0, 0, 256, 256);
     g.setColorAt(0.0, QColor(0x3B, 0x82, 0xF6));
     g.setColorAt(1.0, QColor(0x63, 0x66, 0xF1));
@@ -27,19 +25,19 @@ inline QIcon makeTanaraIcon() {
     p.setBrush(g);
     p.drawRoundedRect(QRectF(8, 8, 240, 240), 52, 52);
 
-    // Mikrofon-test (fehér kapszula).
+    // Microphone body (white capsule).
     p.setBrush(Qt::white);
     p.drawRoundedRect(QRectF(100, 44, 56, 104), 28, 28);
 
-    // Tartó-ív (cradle) a mikrofon alatt.
+    // Cradle arc under the microphone.
     QPen pen(Qt::white);
     pen.setWidth(14);
     pen.setCapStyle(Qt::RoundCap);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
-    p.drawArc(QRectF(78, 84, 100, 100), 180 * 16, 180 * 16);   // alsó félkör
+    p.drawArc(QRectF(78, 84, 100, 100), 180 * 16, 180 * 16);   // lower half circle
 
-    // Szár + talp.
+    // Stem + base.
     p.setPen(Qt::NoPen);
     p.setBrush(Qt::white);
     p.drawRoundedRect(QRectF(121, 182, 14, 20), 6, 6);

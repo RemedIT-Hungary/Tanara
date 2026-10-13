@@ -1,14 +1,11 @@
+// Recheck from the confirmed lines + "they talked over each other" (noisy line): the pure
+// analysis functions (SpeakerAnalysis) and SpeakerEditor's persistent path. In a temporary
+// folder, with MADE-UP data; the embeddings go straight into the cache (no model, no audio, no ffmpeg).
 //
-// Újraellenőrzés a megerősített sorok alapján + „egymásra beszéltek" (zajos sor) — a tiszta
-// elemző-függvények (SpeakerAnalysis) és a SpeakerEditor perzisztens útja. Ideiglenes
-// mappában, KITALÁLT adatokkal; az embeddingek közvetlenül a cache-be kerülnek (nincs modell,
-// nincs hang, nincs ffmpeg).
-//
-// A forgatókönyv: a diarizáció „Beszélő 1" (Anna) címkéje alá 3 olyan sor is került, amely
-// valójában Béla hangja (P: Béla hangja zajjal — Annához is kicsit hasonlít). Anna centroidját
-// ezek elhúzzák, így a rendes ítélet nem jelzi őket. Ha Anna 3 valódi sorát megerősítjük, az
-// újraellenőrzés pontosan ezt a 3 sort találja kétesnek, Béla javaslattal.
-//
+// The scenario: under diarization's "Speaker 1" (Anna) label 3 lines got in that are really
+// Béla's voice (P: Béla's voice with noise, it also resembles Anna a little). They pull Anna's
+// centroid away, so the regular verdict does not flag them. If we confirm 3 of Anna's real
+// lines, the recheck finds exactly these 3 lines doubtful, with Béla as the suggestion.
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
 #include <QtTest>
@@ -38,12 +35,12 @@ namespace {
 const QString kB1 = QStringLiteral("Beszélő 1");
 const QString kB2 = QStringLiteral("Beszélő 2");
 
-// A „hangok": A = Anna, B = Béla, P = Béla zajos hangja (cos(P,B) = 0.8, cos(P,A) = 0.6).
+// The "voices": A = Anna, B = Béla, P = Béla's noisy voice (cos(P,B) = 0.8, cos(P,A) = 0.6).
 const QVector<float> kA{1.0f, 0.0f, 0.0f};
 const QVector<float> kB{0.0f, 1.0f, 0.0f};
 const QVector<float> kP{0.6f, 0.8f, 0.0f};
 
-struct Row { qint64 startMs; qint64 durMs; QString raw; char voice; };   // voice: A/B/P, '-' = nincs
+struct Row { qint64 startMs; qint64 durMs; QString raw; char voice; };   // voice: A/B/P, '-' = none
 
 const QVector<Row>& scenario()
 {
@@ -51,16 +48,16 @@ const QVector<Row>& scenario()
         {0,     4000, kB1, 'A'},    // 0
         {5000,  4000, kB2, 'B'},    // 1
         {10000, 4000, kB1, 'A'},    // 2
-        {15000, 4000, kB1, 'P'},    // 3  valójában Béla
+        {15000, 4000, kB1, 'P'},    // 3  really Béla
         {20000, 4000, kB2, 'B'},    // 4
         {25000, 4000, kB1, 'A'},    // 5
-        {30000, 4000, kB1, 'P'},    // 6  valójában Béla
+        {30000, 4000, kB1, 'P'},    // 6  really Béla
         {35000, 4000, kB2, 'B'},    // 7
         {40000, 4000, kB1, 'A'},    // 8
-        {45000, 4000, kB1, 'P'},    // 9  valójában Béla
+        {45000, 4000, kB1, 'P'},    // 9  really Béla
         {50000, 4000, kB2, 'B'},    // 10
-        {55000, 4000, kB2, 'B'},    // 11 Anna közbeszól („igen, igen") → átfedés
-        {56500, 1200, kB1, '-'},    // 12 a közbeszólás (rövid, nincs embedding)
+        {55000, 4000, kB2, 'B'},    // 11 Anna interjects ("yes, yes"), so overlap
+        {56500, 1200, kB1, '-'},    // 12 the interjection (short, no embedding)
         {60000, 4000, kB2, 'B'},    // 13
     };
     return rows;
@@ -146,7 +143,7 @@ struct Fixture {
     }
 };
 
-// A tiszta függvényekhez: a forgatókönyv elemző-sorai (Anna = 0, Béla = 1).
+// For the pure functions: the scenario's analysis lines (Anna = 0, Béla = 1).
 struct PureLines {
     QVector<QVector<float>> vecs;
     QVector<AnalysisLine> lines;
@@ -160,7 +157,7 @@ struct PureLines {
         l.noisy = noisy;
         lines.append(l);
     }
-    // A vektorok címe a végleges tárolóban (az append után már nem mozdul).
+    // The vectors' address in the final storage (it no longer moves after append).
     QVector<AnalysisLine> build()
     {
         for (int i = 0; i < lines.size(); ++i) lines[i].embedding = &vecs[i];
@@ -171,16 +168,16 @@ struct PureLines {
 PureLines pollutedSpeaker(bool lockAnna)
 {
     PureLines p;
-    for (int i = 0; i < 4; ++i) p.add(kA, 0, 4000, lockAnna && i < 3);   // 0–3 Anna (0–2 megerősítve)
-    for (int i = 0; i < 3; ++i) p.add(kP, 0);                            // 4–6 Béla hangja Annánál
-    for (int i = 0; i < 4; ++i) p.add(kB, 1);                            // 7–10 Béla
+    for (int i = 0; i < 4; ++i) p.add(kA, 0, 4000, lockAnna && i < 3);   // 0-3 Anna (0-2 confirmed)
+    for (int i = 0; i < 3; ++i) p.add(kP, 0);                            // 4-6 Béla's voice under Anna
+    for (int i = 0; i < 4; ++i) p.add(kB, 1);                            // 7-10 Béla
     return p;
 }
 
-// ---- páronkénti átnézés: két HASONLÓ hang ----------------------------------
-// a = Anna, b = Béla (cos(a,b) = 0.85 — a „hasonló sorok" őre ezt már egy embernek veszi),
-// m = a kettő között, Bélához 0.087-tel közelebb (a globális 0.10-es küszöb alatt, a páronkénti
-// 0.05 fölött), c = Csaba (más hang), d = ismeretlen hang.
+// ---- pairwise review: two SIMILAR voices ----
+// a = Anna, b = Béla (cos(a,b) = 0.85; the "similar lines" guard already takes this for one
+// person), m = between the two, 0.087 closer to Béla (below the global 0.10 threshold, above
+// the pairwise 0.05), c = Csaba (another voice), d = unknown voice.
 const QVector<float> pa{1.0f, 0.0f, 0.0f, 0.0f};
 const QVector<float> pb{0.85f, 0.5268f, 0.0f, 0.0f};
 const QVector<float> pm{0.9063f, 0.4226f, 0.0f, 0.0f};
@@ -193,24 +190,24 @@ struct PairRow { QString raw; char voice; };
 const QVector<PairRow>& pairScenario()
 {
     static const QVector<PairRow> rows{
-        {kB1, 'a'},     // 0  Anna (megerősítendő)
-        {kB2, 'b'},     // 1  Béla (megerősítendő)
-        {kB1, 'a'},     // 2  Anna (megerősítendő)
-        {kB1, 'b'},     // 3  valójában Béla
-        {kB2, 'b'},     // 4  Béla (megerősítendő)
-        {kB1, 'a'},     // 5  Anna (megerősítendő)
-        {kB3, 'c'},     // 6  Csaba (megerősítendő)
-        {kB1, 'b'},     // 7  valójában Béla
-        {kB2, 'b'},     // 8  Béla (megerősítendő)
-        {kB3, 'c'},     // 9  Csaba (megerősítendő)
-        {kB1, 'm'},     // 10 a kettő között, Bélához közelebb
-        {kB3, 'c'},     // 11 Csaba (megerősítendő)
-        {kB3, 'a'},     // 12 valójában Anna — Csabánál (a páros átnézés nem nyúl hozzá)
-        {kB1, 'd'},     // 13 ismeretlen hang Annánál
+        {kB1, 'a'},     // 0  Anna (to be confirmed)
+        {kB2, 'b'},     // 1  Béla (to be confirmed)
+        {kB1, 'a'},     // 2  Anna (to be confirmed)
+        {kB1, 'b'},     // 3  really Béla
+        {kB2, 'b'},     // 4  Béla (to be confirmed)
+        {kB1, 'a'},     // 5  Anna (to be confirmed)
+        {kB3, 'c'},     // 6  Csaba (to be confirmed)
+        {kB1, 'b'},     // 7  really Béla
+        {kB2, 'b'},     // 8  Béla (to be confirmed)
+        {kB3, 'c'},     // 9  Csaba (to be confirmed)
+        {kB1, 'm'},     // 10 between the two, closer to Béla
+        {kB3, 'c'},     // 11 Csaba (to be confirmed)
+        {kB3, 'a'},     // 12 really Anna, under Csaba (the pairwise review does not touch it)
+        {kB1, 'd'},     // 13 unknown voice under Anna
         {kB2, 'b'},     // 14 Béla
-        {kB1, 'b'},     // 15 valójában Béla
+        {kB1, 'b'},     // 15 really Béla
         {kB3, 'c'},     // 16 Csaba
-        {kB2, 'a'},     // 17 valójában Anna — Bélánál
+        {kB2, 'a'},     // 17 really Anna, under Béla
     };
     return rows;
 }
@@ -280,19 +277,19 @@ struct PairFixture {
     }
 };
 
-// Tiszta függvényekhez: Anna = 0, Béla = 1. Anna: 3 megerősített + 2 sima a-sor, 3 b-sor
-// (Béláé); Béla: 3 megerősített + 2 sima b-sor, 1 a-sor (Annáé).
+// For the pure functions: Anna = 0, Béla = 1. Anna: 3 confirmed + 2 plain a lines, 3 b lines
+// (Béla's); Béla: 3 confirmed + 2 plain b lines, 1 a line (Anna's).
 PureLines similarPair(int lockedAnna = 3, int lockedBela = 3)
 {
     PureLines p;
     for (int i = 0; i < 5; ++i) p.add(pa, 0, 4000, i < lockedAnna);    // 0–4
-    for (int i = 0; i < 3; ++i) p.add(pb, 0);                           // 5–7 Béla hangja Annánál
+    for (int i = 0; i < 3; ++i) p.add(pb, 0);                           // 5-7 Béla's voice under Anna
     for (int i = 0; i < 5; ++i) p.add(pb, 1, 4000, i < lockedBela);    // 8–12
-    p.add(pa, 1);                                                       // 13 Anna hangja Bélánál
+    p.add(pa, 1);                                                       // 13 Anna's voice under Béla
     return p;
 }
 
-// Lenyomat-prior beszélő-indexenként (a tiszta függvényekhez).
+// Voiceprint prior per speaker index (for the pure functions).
 QVector<SpeakerPrior> priorFor(int speakerCount, int speaker, const QVector<QVector<float>>& prior,
                                const QVector<QVector<float>>& local = {}, const QVector<int>& replaced = {})
 {
@@ -303,7 +300,7 @@ QVector<SpeakerPrior> priorFor(int speakerCount, int speaker, const QVector<QVec
     return out;
 }
 
-// cos(e, Σ wᵢ·vᵢ) — a teszt kézi ellenőrzéséhez.
+// cos(e, sum of w_i * v_i): for checking the test by hand.
 double cosToWeighted(const QVector<float>& e, const QVector<QPair<double, QVector<float>>>& parts)
 {
     QVector<double> sum(e.size(), 0.0);
@@ -328,13 +325,13 @@ Voiceprint makePrint(const QVector<float>& v, const QString& meetingId, const QS
 class SpeakerRecheckTest : public QObject {
     Q_OBJECT
 private slots:
-    // ---- tiszta függvények -------------------------------------------------
+    // ---- pure functions ----
 
     void pure_pollutedCentroidHidesMislabeledLines()
     {
         PureLines p = pollutedSpeaker(/*lockAnna*/ true);
         const QVector<AnalysisLine> al = p.build();
-        // A rendes ítélet: Anna (elhúzott) centroidja eltakarja a 3 téves sort.
+        // The regular verdict: Anna's (pulled) centroid hides the 3 wrong lines.
         const QVector<bool> plain = computeUncertain(al, 2);
         QCOMPARE(int(std::count(plain.cbegin(), plain.cend(), true)), 0);
 
@@ -345,7 +342,7 @@ private slots:
             QCOMPARE(r.lines[i].otherSpeaker, 1);
             QVERIFY(r.lines[i].other - r.lines[i].own >= kUncertainMargin);
         }
-        QVERIFY(!r.lines[3].uncertain);                 // Anna megerősítetlen sora rendben
+        QVERIFY(!r.lines[3].uncertain);                 // Anna's unconfirmed line is fine
         for (int i = 7; i <= 10; ++i) QVERIFY(!r.lines[i].uncertain);
         QCOMPARE(r.trustedCore, (QVector<bool>{true, false}));
         QCOMPARE(r.coreLines, (QVector<int>{3, 0}));
@@ -357,33 +354,33 @@ private slots:
     void pure_withoutEnoughLockedLines_noCore()
     {
         PureLines p = pollutedSpeaker(/*lockAnna*/ false);
-        p.lines[0].locked = p.lines[1].locked = true;    // csak 2 megerősített sor
+        p.lines[0].locked = p.lines[1].locked = true;    // only 2 confirmed lines
         const QVector<AnalysisLine> al = p.build();
         QVERIFY(!hasTrustedCore(al, 2));
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
         QCOMPARE(r.coreSpeakers(), 0);
-        QCOMPARE(r.flagged(), 0);                       // a rendes centroidokkal ugyanaz, mint ma
+        QCOMPARE(r.flagged(), 0);                       // with the regular centroids the same as today
     }
 
     void pure_noisyLinesDoNotPolluteAndAreNotFlagged()
     {
-        // Alap: a szennyezett beszélő; utána 3 ZAJOS Béla-hangú sor is Annánál (közbeszólások).
+        // Base: the contaminated speaker; then 3 NOISY Béla-voiced lines under Anna too (interjections).
         PureLines base = pollutedSpeaker(true);
         const QVector<AnalysisLine> al0 = base.build();
         const QVector<LineFit> fits0 = computeFits(al0, 2);
 
         PureLines p = pollutedSpeaker(true);
         for (int i = 0; i < 3; ++i) p.add(kB, 0, 4000, /*locked*/ false, /*noisy*/ true);   // 11–13
-        p.add(kB, 0, 4000, /*locked*/ true, /*noisy*/ true);                                // 14 megerősítve, zajos
+        p.add(kB, 0, 4000, /* 14 confirmed, noisy */ true, /* 14 confirmed, noisy */ true);                                // 14 confirmed, noisy
         const QVector<AnalysisLine> al = p.build();
 
-        // A rendes centroid sem használja őket (Annának van elég tiszta sora).
+        // The regular centroid does not use them either (Anna has enough clean lines).
         const QVector<LineFit> fits = computeFits(al, 2);
         for (int i = 0; i <= 10; ++i) {
             QVERIFY(std::abs(fits[i].own - fits0[i].own) < 1e-9
                     || (std::isnan(fits[i].own) && std::isnan(fits0[i].own)));
         }
-        // Az újraellenőrzés magja a tiszta megerősített sorokból áll; a zajos sorokat nem jelöli.
+        // The recheck's core consists of the clean confirmed lines; it does not flag the noisy lines.
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
         QCOMPARE(r.coreLines.value(0), 3);
         QCOMPARE(r.flagged(), 3);
@@ -394,14 +391,14 @@ private slots:
     void pure_noisyLockedLinesCountOnlyWithoutCleanOnes()
     {
         PureLines p = pollutedSpeaker(false);
-        p.lines[0].locked = p.lines[1].locked = true;               // 2 tiszta megerősített
-        p.add(kA, 0, 4000, /*locked*/ true, /*noisy*/ true);        // + 1 zajos megerősített
+        p.lines[0].locked = p.lines[1].locked = true;               // 2 clean confirmed
+        p.add(kA, 0, 4000, /* + 1 noisy confirmed */ true, /* + 1 noisy confirmed */ true);        // + 1 noisy confirmed
         const QVector<AnalysisLine> al = p.build();
         QVERIFY(hasTrustedCore(al, 2));
         const RecheckAnalysis r = computeUncertainRechecked(al, 2);
-        QCOMPARE(r.coreLines.value(0), 3);                          // a zajos is beszámít
+        QCOMPARE(r.coreLines.value(0), 3);                          // the noisy one counts too
 
-        // Ha van elég tiszta, a zajos kimarad a magból.
+        // If there are enough clean ones, the noisy one is left out of the core.
         PureLines q = pollutedSpeaker(true);
         q.add(kB, 0, 4000, true, true);
         const RecheckAnalysis r2 = computeUncertainRechecked(q.build(), 2);
@@ -412,35 +409,35 @@ private slots:
     void pure_overlapDetection()
     {
         const QVector<TimedLine> tl{
-            {0, 4000, 0},           // 0: 1000 ms átfedés → zajos (≥ 1000 ms)
-            {3000, 4000, 1},        // 1: teljesen átfedett → zajos
-            {5000, 15000, 0},       // 2: 500 ms / 10 s → tiszta
-            {9000, 9500, 1},        // 3: teljesen átfedett → zajos
-            {20000, 50000, 0},      // 4: hosszú; az átfedés az embedding-ablakon KÍVÜL → tiszta
-            {21000, 23000, 1},      // 5: teljesen átfedett → zajos
-            {52000, 56000, 0},      // 6: ugyanaz a beszélő fedi át → tiszta
+            {0, 4000, 0},           // 0: 1000 ms overlap, so noisy (>= 1000 ms)
+            {3000, 4000, 1},        // 1: fully overlapped, so noisy
+            {5000, 15000, 0},       // 2: 500 ms / 10 s: clean
+            {9000, 9500, 1},        // 3: fully overlapped, so noisy
+            {20000, 50000, 0},      // 4: long; the overlap is OUTSIDE the embedding window, so clean
+            {21000, 23000, 1},      // 5: fully overlapped, so noisy
+            {52000, 56000, 0},      // 6: the same speaker overlaps it, so clean
             {53000, 54500, 0},      // 7
-            {60000, 61000, 0},      // 8: 400 ms / 1000 ms = 40 % → zajos (arány-szabály)
-            {60600, 64000, 1},      // 9: 400 ms / 3400 ms ≈ 12 % → tiszta
+            {60000, 61000, 0},      // 8: 400 ms / 1000 ms = 40%, so noisy (ratio rule)
+            {60600, 64000, 1},      // 9: 400 ms / 3400 ms, about 12%: clean
         };
         const QVector<bool> noisy = computeOverlapNoisy(tl);
         QCOMPARE(noisy, (QVector<bool>{true, true, false, true, false, true, false, false, true, false}));
     }
 
-    // ---- páronkénti átnézés (tiszta) ----------------------------------------
+    // ---- pairwise review (pure) ----
 
     void pure_pair_similarVoices_guardBlocksSuggestion_pairFlags()
     {
         PureLines p = similarPair();
         const QVector<AnalysisLine> al = p.build();
-        // A „hasonló sorok" javaslat a hasonló hang miatt hallgat — és ezt most meg is mondja.
+        // The "similar lines" suggestion is silent because of the similar voice, and now says so.
         const SuggestOutcome sg = suggestSimilarDetailed(al, /*source*/ 0, /*target*/ 1);
         QVERIFY(sg.lines.isEmpty());
         QVERIFY(sg.blockedBySimilarity);
         QVERIFY(sg.centroidSimilarity > kSuggestMaxCentroidSimilarity);
         QVERIFY(suggestSimilar(al, 0, 1).isEmpty());
 
-        // A páros átnézés: nincs őr, a téves sorok mindkét irányban előkerülnek.
+        // The pairwise review: no guard, the wrong lines come up in both directions.
         const PairRecheckAnalysis r = computePairRecheck(al, 0, 1);
         QVERIFY(r.valid);
         QCOMPARE(r.refLinesA, 3);
@@ -458,7 +455,7 @@ private slots:
         QVERIFY(r.lines[13].flagged);
         QCOMPARE(r.lines[13].hintedSpeaker, 0);
         for (int i : {0, 1, 2, 3, 4, 8, 9, 10, 11, 12}) QVERIFY(!r.lines[i].flagged);
-        // A zárolt sorokat nem ítéli meg (nincs érték), a sima sorokat igen.
+        // It does not judge the locked lines (no value), but it does the plain ones.
         QVERIFY(std::isnan(r.lines[0].toA));
         QVERIFY(std::abs(r.lines[3].toA - 1.0) < 1e-3);
     }
@@ -466,12 +463,12 @@ private slots:
     void pure_pair_marginsAndSkippedLines()
     {
         PureLines p = similarPair();
-        p.add(pm, 0);                               // 14 m: 0.087-tel közelebb Bélához → kétes
-        p.add(pm, 0, 2000);                         // 15 ugyanez rövid sorban: 0.10 kellene → nem
-        p.add(pb, 0, 2000);                         // 16 rövid, 0.15 → kétes
-        p.add(pb, 0, 1000);                         // 17 túl rövid → sosem
-        p.add(pb, 0, 4000, false, /*noisy*/ true);  // 18 zajos → sosem
-        p.add(pb, 0, 4000, /*locked*/ true, true);  // 19 zárolt (és zajos: a referenciába sem kerül)
+        p.add(pm, 0);                               // 14 m: 0.087 closer to Béla, so doubtful
+        p.add(pm, 0, 2000);                         // 15 the same in a short line: 0.10 is needed, so no
+        p.add(pb, 0, 2000);                         // 16 short, 0.15, so doubtful
+        p.add(pb, 0, 1000);                         // 17 too short, never
+        p.add(pb, 0, 4000, false, /* 18 noisy: never */ true);  // 18 noisy: never
+        p.add(pb, 0, 4000, /* 19 locked (and noisy: not in the reference either) */ true, true);  // 19 locked (and noisy: not in the reference either)
         const PairRecheckAnalysis r = computePairRecheck(p.build(), 0, 1);
         QCOMPARE(r.refLinesA, 3);
         QVERIFY(r.lines[14].flagged);
@@ -480,13 +477,13 @@ private slots:
         QVERIFY(!r.lines[17].flagged);
         QVERIFY(!r.lines[18].flagged);
         QVERIFY(!r.lines[19].flagged);
-        // A globális újraellenőrzés (0.10-es küszöb) az m-sort nem jelzi.
+        // The global recheck (0.10 threshold) does not flag the m line.
         QVERIFY(!computeUncertainRechecked(p.build(), 2).lines[14].uncertain);
     }
 
     void pure_pair_fallbackWhenFewLockedLines()
     {
-        // Annának csak 2 megerősített sora van: a referenciája az összes tiszta sora (8).
+        // Anna has only 2 confirmed lines: her reference is all her clean lines (8).
         PureLines p = similarPair(/*lockedAnna*/ 2);
         const PairRecheckAnalysis r = computePairRecheck(p.build(), 0, 1);
         QVERIFY(r.valid);
@@ -494,11 +491,11 @@ private slots:
         QVERIFY(!r.fallbackB);
         QCOMPARE(r.refLinesA, 8);
         QCOMPARE(r.refLinesB, 3);
-        // A szennyezett referenciával is előkerülnek (a sor önmaga nélkül mérve), de közelebbről.
+        // They come up with the contaminated reference too (the line measured without itself), but closer.
         for (int i : {5, 6, 7}) QVERIFY(r.lines[i].flagged);
         QVERIFY(r.centroidSimilarity > 0.85);
 
-        // Kevés sor (2 tiszta) → nem fut.
+        // Few lines (2 clean): does not run.
         PureLines q;
         q.add(pa, 0, 4000, true);
         q.add(pa, 0, 4000, true);
@@ -509,12 +506,12 @@ private slots:
         QVERIFY(r2.fallbackA);
         QCOMPARE(r2.refLinesA, 2);
         QCOMPARE(r2.flagged(), 0);
-        // Ugyanaz a beszélő kétszer / érvénytelen index → semmi.
+        // The same speaker twice / an invalid index: nothing.
         QVERIFY(!computePairRecheck(p.build(), 1, 1).valid);
         QVERIFY(!computePairRecheck(p.build(), 0, -1).valid);
     }
 
-    // ---- páronkénti átnézés (SpeakerEditor) --------------------------------
+    // ---- pairwise review (SpeakerEditor) ----
 
     void editor_pairRecheck_replacesOnlyPairMarks_persistsAndUndoes()
     {
@@ -522,8 +519,8 @@ private slots:
         auto ed = fx.editor();
         QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1, 4, 8, 6, 9, 11})));
 
-        // Előbb a globális újraellenőrzés: Annánál 3,7,15 (Béla), 13 (ismeretlen hang), Bélánál
-        // 17 (Anna), Csabánál 12 (Anna). Az m-sor (10) a globális küszöb alatt marad.
+        // First the global recheck: for Anna 3, 7, 15 (Béla), 13 (unknown voice), for Béla 17 (Anna),
+        // for Csaba 12 (Anna). The m line (10) stays below the global threshold.
         const SpeakerEditor::RecheckResult g = ed->recheckFromConfirmed();
         QCOMPARE(g.flagged, 6);
         QVERIFY(ed->utterance(pid(13)).rechecked);
@@ -548,14 +545,14 @@ private slots:
             QCOMPARE(u.likelySpeakerKey, kB2);
         }
         QCOMPARE(ed->utterance(pid(17)).likelySpeakerKey, kB1);
-        // Annál az A/B-sornál, amelyet ez az átnézés nem talált kétesnek, a régi jelzés lecserélődik…
+        // On the A/B line that this review did not find doubtful, the old flag is replaced ...
         QVERIFY(!ed->utterance(pid(13)).rechecked);
         QVERIFY(!fx.overlayUtterance(pid(13)).contains(QStringLiteral("rechecked")));
-        // …a többi beszélőé (Csaba) érintetlen.
+        // ... the others' (Csaba) is untouched.
         QVERIFY(ed->utterance(pid(12)).rechecked);
         QCOMPARE(ed->utterance(pid(12)).likelySpeakerKey, kB1);
 
-        // Perzisztencia.
+        // Persistence.
         QCOMPARE(fx.overlayUtterance(pid(10)).value(QStringLiteral("recheckHint")).toString(), kB2);
         {
             auto again = fx.editor();
@@ -565,7 +562,7 @@ private slots:
             QVERIFY(again->utterance(pid(12)).rechecked);
         }
 
-        // Egy visszavonási lépés: a globális állapot jön vissza; újra → a páros.
+        // One undo step: the global state comes back; redo gives the pairwise one.
         ed->undo();
         QVERIFY(ed->utterance(pid(13)).rechecked);
         QVERIFY(!ed->utterance(pid(10)).rechecked);
@@ -574,7 +571,7 @@ private slots:
         QVERIFY(ed->utterance(pid(10)).rechecked);
         QVERIFY(!ed->utterance(pid(13)).rechecked);
 
-        // Javítás / „Jó így" törli; változatlan újrafuttatás nem új lépés.
+        // A fix / "Fine as is" clears it; an unchanged rerun is not a new step.
         QVERIFY(ed->confirmUtterances({pid(10)}));
         QVERIFY(!ed->utterance(pid(10)).rechecked);
         QVERIFY(ed->moveUtterances({pid(3)}, kB2));
@@ -591,7 +588,7 @@ private slots:
         auto ed = fx.editor();
         QVERIFY(!ed->pairRecheckBlocker(kB1, kB1).isEmpty());
         QVERIFY(!ed->pairRecheckBlocker(kB1, QStringLiteral("nincs ilyen")).isEmpty());
-        // Megerősítés nélkül is fut (az összes tiszta sorral — ezt a fallback jelzi).
+        // It runs without confirmation too (with all clean lines; the fallback signals this).
         QVERIFY(ed->pairRecheckBlocker(kB1, kB2).isEmpty());
         const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
@@ -599,7 +596,7 @@ private slots:
         QCOMPARE(r.refLinesA, 8);
         QCOMPARE(r.refLinesB, 5);
 
-        // Kevés sor: Csaba 5 sorából 3 máshova kerül.
+        // Few lines: 3 of Csaba's 5 lines go elsewhere.
         QVERIFY(ed->moveUtterances(pids({6, 9, 11}), kB1));
         const QString why = ed->pairRecheckBlocker(kB3, kB2);
         QVERIFY2(why.startsWith(QStringLiteral("Csaba hangjához kevés a minta")), qPrintable(why));
@@ -610,7 +607,7 @@ private slots:
     {
         PairFixture fx;
         auto ed = fx.editor();
-        // Megerősített sorok nélkül: a javaslat hallgat (őr), de ajánlat sincs.
+        // Without confirmed lines: the suggestion is silent (guard), but there is no offer either.
         QVERIFY(ed->moveUtterances({pid(3)}, kB2));
         QVERIFY(!ed->hasPairOffer());
         ed->undo();
@@ -626,7 +623,7 @@ private slots:
         QCOMPARE(o.targetSpeakerKey, kB2);
         QVERIFY(o.centroidSimilarity > kSuggestMaxCentroidSimilarity);
 
-        // A következő szerkesztés eldobja; „Most nem" után ez a pár nem kerül elő újra.
+        // The next edit drops it; after "Not now" this pair does not come up again.
         QVERIFY(ed->confirmUtterances({pid(13)}));
         QVERIFY(!ed->hasPairOffer());
         QVERIFY(ed->moveUtterances({pid(7)}, kB2));
@@ -635,11 +632,11 @@ private slots:
         QVERIFY(!ed->hasPairOffer());
         QVERIFY(ed->moveUtterances({pid(15)}, kB2));
         QVERIFY(!ed->hasPairOffer());
-        // A másik irány ugyanaz a pár.
+        // The other direction is the same pair.
         QVERIFY(ed->moveUtterances({pid(17)}, kB1));
         QVERIFY(!ed->hasPairOffer());
 
-        // Névtelen cél: nincs ajánlat.
+        // Anonymous target: no offer.
         PairFixture fx2;
         fx2.meeting = fx2.store->load(fx2.meeting.id);
         fx2.meeting.speakerMap.remove(kB2);
@@ -659,10 +656,10 @@ private slots:
         QStringList noisy;
         for (const EditorUtterance& u : ed->utterances())
             if (u.noisy) noisy << u.id;
-        // A forgatókönyvben pontosan a közbeszólás és az alatta szóló sor.
+        // In the scenario exactly the interjection and the line under it.
         QCOMPARE(noisy, uids({11, 12}));
         QVERIFY(ed->utterance(uid(11)).noisyOverlap);
-        // Az automatikus jelzés nem perzisztál.
+        // The automatic flag does not persist.
         QVERIFY(!QFile::exists(overlayPath(fx.meeting.folder)));
     }
 
@@ -670,7 +667,7 @@ private slots:
     {
         Fixture fx;
         auto ed = fx.editor();
-        QCOMPARE(ed->uncertainCount(), 0);              // a rendes ítélet nem látja őket
+        QCOMPARE(ed->uncertainCount(), 0);              // the regular verdict does not see them
         QVERIFY(!ed->canRecheck());
         QVERIFY(ed->recheckBlocker().contains(QStringLiteral("Előbb erősíts meg vagy javíts legalább 3 sort egy beszélőnél")));
         QVERIFY(!ed->recheckFromConfirmed().ran);
@@ -698,11 +695,11 @@ private slots:
             QVERIFY(u.rechecked);
             QCOMPARE(u.likelySpeakerKey, kB2);
         }
-        QVERIFY(!ed->utterance(uid(8)).uncertain);       // Anna megerősítetlen sora rendben
-        QVERIFY(!ed->utterance(uid(11)).uncertain);      // a zajos sort nem jelöljük
+        QVERIFY(!ed->utterance(uid(8)).uncertain);       // Anna's unconfirmed line is fine
+        QVERIFY(!ed->utterance(uid(11)).uncertain);      // the noisy line is not flagged
         QCOMPARE(ed->undoText(), QStringLiteral("Beszélők újraellenőrzése"));
 
-        // Perzisztencia: újratöltés után is bizonytalanok, a javaslattal.
+        // Persistence: still uncertain after a reload, with the suggestion.
         QCOMPARE(fx.overlayUtterance(uid(3)).value(QStringLiteral("rechecked")).toBool(), true);
         QCOMPARE(fx.overlayUtterance(uid(3)).value(QStringLiteral("recheckHint")).toString(), kB2);
         ed.reset();
@@ -720,7 +717,7 @@ private slots:
         ed->recheckFromConfirmed();
         QCOMPARE(ed->uncertainCount(), 3);
 
-        // „Jó így" → nem bizonytalan; visszavonás → újra az.
+        // "Fine as is": not uncertain; undo: it is again.
         QVERIFY(ed->confirmUtterances({uid(3)}));
         QVERIFY(!ed->utterance(uid(3)).uncertain);
         QVERIFY(!fx.overlayUtterance(uid(3)).contains(QStringLiteral("rechecked")));
@@ -729,7 +726,7 @@ private slots:
         QVERIFY(ed->utterance(uid(3)).uncertain);
         QCOMPARE(ed->uncertainCount(), 3);
 
-        // Javítás (áthelyezés Bélához) → megszűnik; visszavonás → visszajön, a javaslattal.
+        // Fix (move to Béla): it ends; undo: it comes back, with the suggestion.
         QVERIFY(ed->moveUtterances({uid(6)}, kB2));
         QVERIFY(!ed->utterance(uid(6)).uncertain);
         QCOMPARE(ed->uncertainCount(), 2);
@@ -737,12 +734,12 @@ private slots:
         QVERIFY(ed->utterance(uid(6)).uncertain);
         QCOMPARE(ed->utterance(uid(6)).likelySpeakerKey, kB2);
 
-        // A hang-elemzés újraszámolása (pl. másik sor javítása) nem törli a jelzést.
+        // Recomputing the audio analysis (e.g. fixing another line) does not clear the flag.
         QVERIFY(ed->moveUtterances({uid(8)}, kB2));
         QVERIFY(ed->utterance(uid(9)).uncertain);
         ed->undo();
 
-        // Összevonás a javasolt beszélővel: a sor már ott van → a jelzés magától elenged.
+        // Merging with the suggested speaker: the line is already there, so the flag lets go by itself.
         QVERIFY(ed->mergeSpeakers(kB1, kB2));
         QCOMPARE(ed->uncertainCount(), 0);
         ed->undo();
@@ -756,17 +753,17 @@ private slots:
         ed->confirmUtterances(uids({0, 2, 5}));
         QCOMPARE(ed->recheckFromConfirmed().flagged, 3);
 
-        // Az egyik kétes sort Annáénak erősítjük meg: a mag ezzel már a P-hangot is tartalmazza,
-        // a másik kettő így nem kétes → az újabb újraellenőrzés elengedi őket.
+        // We confirm one of the doubtful lines as Anna's: the core now contains the P voice too, so
+        // the other two are not doubtful, so the next recheck releases them.
         QVERIFY(ed->confirmUtterances({uid(3)}));
         const SpeakerEditor::RecheckResult r = ed->recheckFromConfirmed();
         QCOMPARE(r.flagged, 0);
         QCOMPARE(r.confirmedLines, 4);
         QCOMPARE(ed->uncertainCount(), 0);
         QVERIFY(!fx.overlayUtterance(uid(6)).contains(QStringLiteral("rechecked")));
-        QVERIFY(fx.overlayUtterance(uid(9)).isEmpty());  // az alapértelmezett bejegyzés el is tűnik
+        QVERIFY(fx.overlayUtterance(uid(9)).isEmpty());  // the default entry disappears too
 
-        // Változatlan eredménynél nincs új visszavonási lépés.
+        // With an unchanged result there is no new undo step.
         const QString undo = ed->undoText();
         ed->recheckFromConfirmed();
         QCOMPARE(ed->undoText(), undo);
@@ -787,7 +784,7 @@ private slots:
             QVERIFY(ed->recheckBlocker().contains(QStringLiteral("hang-elemzése még nem")));
         }
         {
-            // A cache elég (a modell nélkül is): a megerősített sorok hiányoznak csak.
+            // The cache is enough (even without the model): only the confirmed lines are missing.
             Fixture fx;
             auto ed = fx.editor(/*withFactory*/ false);
             ed->confirmUtterances(uids({0, 2, 5}));
@@ -799,7 +796,7 @@ private slots:
     {
         Fixture fx;
         auto ed = fx.editor();
-        // „Jó így, de ne használd mintának".
+        // "Fine as is, but do not use it as a sample".
         QVERIFY(ed->confirmUtterances({uid(4)}, /*asNoisy*/ true));
         EditorUtterance u = ed->utterance(uid(4));
         QVERIFY(u.confirmed);
@@ -807,12 +804,12 @@ private slots:
         QVERIFY(!u.noisyOverlap);
         QCOMPARE(fx.overlayUtterance(uid(4)).value(QStringLiteral("noisy")).toBool(), true);
         QCOMPARE(ed->undoText(), QStringLiteral("1 sor megerősítése (nem hangminta)"));
-        // Egy már megerősített sor is megkaphatja.
+        // An already confirmed line can get it too.
         QVERIFY(ed->confirmUtterances({uid(1)}));
         QVERIFY(ed->confirmUtterances({uid(1)}, true));
-        QVERIFY(!ed->confirmUtterances({uid(1)}, true));    // már az
+        QVERIFY(!ed->confirmUtterances({uid(1)}, true));    // already that
 
-        // „Mintának használható": az automatikusan zajos sornál is felülír, és perzisztál.
+        // "Usable as a sample": it overrides on an automatically noisy line too, and persists.
         QVERIFY(ed->setUtterancesNoisy({uid(11)}, false));
         QVERIFY(!ed->utterance(uid(11)).noisy);
         QVERIFY(ed->utterance(uid(11)).noisyOverlap);
@@ -822,29 +819,29 @@ private slots:
         QVERIFY(!again->utterance(uid(11)).noisy);
         QVERIFY(again->utterance(uid(4)).noisy);
         QVERIFY(again->utterance(uid(12)).noisy);
-        again->undo();      // új munkamenet: nincs visszavonás-verem → semmi
+        again->undo();      // new session: no undo stack, so nothing
         QVERIFY(!again->utterance(uid(11)).noisy);
     }
 
-    // ---- tárolt lenyomatok a referenciában (SpeakerPrior) ----------------------
+    // ---- stored voiceprints in the reference (SpeakerPrior) ----
 
     void pure_prior_pullsFewConfirmedLinesTowardTheVoice_capped()
     {
-        // Anna 3 rövid megerősített sora kissé „elcsúszott" hangú (u); a korábbi lenyomatai a
-        // tiszta hangját (kA) hordozzák. A lenyomat Anna megerősítetlen kA-sorához húzza a
-        // referenciát — de csak a plafonig (a helyi súly harmada).
+        // Anna's 3 short confirmed lines have a slightly "drifted" voice (u); her earlier voiceprints
+        // carry her clean voice (kA). The voiceprint pulls the reference toward Anna's unconfirmed
+        // kA line, but only up to the ceiling (a third of the local weight).
         const QVector<float> u{0.8f, 0.6f, 0.0f};
         PureLines p;
         for (int i = 0; i < 3; ++i) p.add(u, 0, 1500, /*locked*/ true);   // 0–2 (4,5 mp)
         p.add(kA, 0);                                                      // 3
-        for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);             // 4–6 Béla
+        for (int i = 0; i < 3; ++i) p.add(kB, 1, 4000, true);             // 4-6 Béla
         const QVector<AnalysisLine> al = p.build();
 
         const RecheckAnalysis plain = computeUncertainRechecked(al, 2);
         const RecheckAnalysis withPrior = computeUncertainRechecked(al, 2, priorFor(2, 0, {kA, kA}));
         QVERIFY(std::abs(plain.lines[3].own - 0.8) < 1e-3);
         QVERIFY(withPrior.lines[3].own > plain.lines[3].own + 0.05);
-        // Kézi számolás: 4,5 mp · u + (4,5/3 = 1,5 mp) · kA.
+        // Hand computation: 4.5 s * u + (4.5/3 = 1.5 s) * kA.
         QVERIFY(std::abs(withPrior.lines[3].own - cosToWeighted(kA, {{4.5, u}, {1.5, kA}})) < 1e-6);
         const ReferenceInfo& ref = withPrior.refs[0];
         QVERIFY(ref.refLocal());
@@ -857,7 +854,7 @@ private slots:
         QCOMPARE(withPrior.refs[1].priorPrints, 0);
         QCOMPARE(withPrior.coreLines, (QVector<int>{3, 3}));
 
-        // Plafon alatt nincs vágás: 12 mp helyi súly mellett egy 4 mp-es lenyomat épp belefér.
+        // No clipping below the ceiling: with 12 s of local weight a 4 s voiceprint just fits.
         PureLines q = pollutedSpeaker(/*lockAnna*/ true);
         const RecheckAnalysis r = computeUncertainRechecked(q.build(), 2, priorFor(2, 0, {kA}));
         QVERIFY(!r.refs[0].priorCapped);
@@ -867,9 +864,9 @@ private slots:
 
     void pure_prior_capKeepsLocalDominance_localPrintNotCapped()
     {
-        // Anna 3 megerősített kA-sora, Béla 3 megerősített kB-sora. Annánál egy megerősítetlen
-        // x-sor, amely Bélához áll közelebb. Anna 5 korábbi lenyomata (más mikrofon) kB-szerű:
-        // vágás nélkül átbillentené az ítéletet, vágva nem.
+        // Anna's 3 confirmed kA lines, Béla's 3 confirmed kB lines. For Anna an unconfirmed x line
+        // that is closer to Béla. Anna's 5 earlier voiceprints (another microphone) are kB-like:
+        // without clipping they would tip the verdict, clipped they do not.
         const QVector<float> x{0.3f, 0.9539f, 0.0f};
         PureLines p;
         for (int i = 0; i < 3; ++i) p.add(kA, 0, 4000, true);    // 0–2 (12 mp)
@@ -883,15 +880,15 @@ private slots:
         QVERIFY(capped.refs[0].priorCapped);
         QVERIFY(capped.lines[3].uncertain);
         QCOMPARE(capped.lines[3].otherSpeaker, 1);
-        // Vágás nélkül (5 × 4 mp = 20 mp > 12 mp) Anna referenciája x-hez jobban illene, mint
-        // Béláé — a sor nem lenne kétes.
+        // Without clipping (5 x 4 s = 20 s > 12 s) Anna's reference would fit x better than Béla's:
+        // the line would not be doubtful.
         const double uncappedOwn = cosToWeighted(x, {{12.0, kA}, {20.0, kB}});
         QVERIFY(uncappedOwn > capped.lines[3].other);
-        // Vágva: 12 mp · kA + 4 mp · kB.
+        // Clipped: 12 s * kA + 4 s * kB.
         QVERIFY(std::abs(capped.lines[3].own - cosToWeighted(x, {{12.0, kA}, {4.0, kB}})) < 1e-6);
 
-        // Ugyanezek ITTENI lenyomatként helyi bizonyítékok: 10 mp-es súly, nincs vágás → a sor
-        // Annáé (nem kétes).
+        // The same as voiceprints made HERE are local evidence: a 10 s weight, no clipping, so the
+        // line is Anna's (not doubtful).
         const RecheckAnalysis local = computeUncertainRechecked(al, 2, priorFor(2, 0, {}, five));
         QCOMPARE(local.refs[0].localPrints, 5);
         QVERIFY(!local.refs[0].priorCapped);
@@ -901,16 +898,16 @@ private slots:
 
     void pure_prior_formsReferenceWithoutLockedLines()
     {
-        // Megerősített sor nincs: eddig a szennyezett rendes centroid eltakarta a téves sorokat.
+        // No confirmed line: until now the contaminated regular centroid hid the wrong lines.
         PureLines p = pollutedSpeaker(/*lockAnna*/ false);
         const QVector<AnalysisLine> al = p.build();
         QCOMPARE(computeUncertainRechecked(al, 2).flagged(), 0);
         QCOMPARE(computeUncertainRechecked(al, 2).refs[0].kind, ReferenceKind::Fallback);
 
-        // Annának van korábbi lenyomata → az adja a referenciáját (nincs helyi mag).
+        // Anna has an earlier voiceprint, which gives her reference (no local core).
         const QVector<SpeakerPrior> pr = priorFor(2, 0, {kA});
         const RecheckAnalysis r = computeUncertainRechecked(al, 2, pr);
-        QVERIFY(!hasTrustedCore(al, 2, pr));            // korábbi lenyomat egymaga nem helyi mag
+        QVERIFY(!hasTrustedCore(al, 2, pr));            // an earlier voiceprint alone is not a local core
         QCOMPARE(r.refs[0].kind, ReferenceKind::Prior);
         QCOMPARE(r.refs[0].lines, 0);
         QCOMPARE(r.refs[0].priorPrints, 1);
@@ -923,7 +920,7 @@ private slots:
             QCOMPARE(r.lines[i].otherSpeaker, 1);
         }
 
-        // ITTENI lenyomat egymaga is helyi mag.
+        // A voiceprint made HERE alone is a local core.
         const QVector<SpeakerPrior> lp = priorFor(2, 0, {}, {kA});
         QVERIFY(hasTrustedCore(al, 2, lp));
         const RecheckAnalysis l = computeUncertainRechecked(al, 2, lp);
@@ -936,7 +933,7 @@ private slots:
 
     void pure_prior_localPrintReplacesItsSampleLine()
     {
-        // Az itteni lenyomat mintasora (0) maga is megerősített: csak egyszer számít (a lenyomat).
+        // The sample line (0) of the voiceprint made here is itself confirmed: it counts only once (the voiceprint).
         PureLines p = pollutedSpeaker(/*lockAnna*/ true);
         const QVector<AnalysisLine> al = p.build();
         const RecheckAnalysis r = computeUncertainRechecked(al, 2, priorFor(2, 0, {}, {kA}, {0}));
@@ -944,7 +941,7 @@ private slots:
         QCOMPARE(r.refs[0].localPrints, 1);
         QCOMPARE(r.coreLines[0], 2);
         QCOMPARE(r.flagged(), 3);
-        // Páros átnézésnél ugyanígy.
+        // The same for the pairwise review.
         const PairRecheckAnalysis pr = computePairRecheck(al, 0, 1, priorFor(2, 0, {}, {kA}, {0}));
         QCOMPARE(pr.refA.lines, 2);
         QCOMPARE(pr.refA.localPrints, 1);
@@ -954,8 +951,8 @@ private slots:
 
     void pure_pair_priorReplacesFallback()
     {
-        // Bélának nincs megerősített sora: eddig fallback (az összes sora); korábbi lenyomattal
-        // az adja a referenciáját.
+        // Béla has no confirmed line: until now the fallback (all his lines); with an earlier
+        // voiceprint that gives his reference.
         PureLines p = similarPair(/*lockedAnna*/ 3, /*lockedBela*/ 0);
         const QVector<AnalysisLine> al = p.build();
         QVERIFY(computePairRecheck(al, 0, 1).fallbackB);
@@ -971,7 +968,7 @@ private slots:
         for (int i : {8, 9, 10, 11, 12}) QVERIFY(!r.lines[i].flagged);
         QCOMPARE(r.flagged(), 4);
 
-        // Itteni lenyomat helyi magként: kevés sor mellett is érvényes referencia.
+        // A voiceprint made here as a local core: a valid reference even with few lines.
         PureLines q = similarPair(/*lockedAnna*/ 0, /*lockedBela*/ 3);
         const PairRecheckAnalysis l = computePairRecheck(q.build(), 0, 1, priorFor(2, 0, {}, {pa}));
         QVERIFY(l.valid);
@@ -984,15 +981,15 @@ private slots:
     void editor_recheckUsesStoredVoiceprints()
     {
         Fixture fx;
-        // Anna itteni lenyomata a 0. sorból; Béla korábbi lenyomata egy másik megbeszélésből;
-        // egy más dimenziójú (más modell) lenyomat, amelyet ki kell hagyni.
+        // Anna's voiceprint made here from line 0; Béla's earlier voiceprint from another meeting;
+        // a voiceprint of another dimension (another model), which must be skipped.
         fx.prints->addPrint(QStringLiteral("Anna"),
                             makePrint(kA, fx.meeting.id, QStringLiteral("audio.ogg#0-4000")));
         fx.prints->addPrint(QStringLiteral("Béla"), makePrint(kB, QStringLiteral("masik-megbeszeles")));
         fx.prints->addPrint(QStringLiteral("Béla"),
                             makePrint({0.0f, 1.0f, 0.0f, 0.0f}, QStringLiteral("regi-modell")));
         auto ed = fx.editor();
-        // Az itteni lenyomat egymaga helyi mag → az újraellenőrzés megerősítés nélkül is fut.
+        // A voiceprint made here is a local core by itself, so the recheck runs without confirmation too.
         QVERIFY(ed->canRecheck());
 
         QVERIFY(ed->confirmUtterances(uids({0, 2, 5})));
@@ -1004,7 +1001,7 @@ private slots:
         QCOMPARE(r.references.size(), 2);
         const SpeakerEditor::SpeakerReference& anna = r.references[0];
         QCOMPARE(anna.speakerKey, kB1);
-        QCOMPARE(anna.lines, 2);                        // a 0. sor a lenyomatban számít
+        QCOMPARE(anna.lines, 2);                        // line 0 counts in the voiceprint
         QCOMPARE(anna.localPrints, 1);
         QCOMPARE(anna.priorPrints, 0);
         const SpeakerEditor::SpeakerReference& bela = r.references[1];
@@ -1013,7 +1010,7 @@ private slots:
         QCOMPARE(r.confirmedLines, 2);
         QCOMPARE(r.referenceSummary(),
                  QStringLiteral("Referencia: Anna 2 sor + 1 itteni lenyomat, Béla 1 korábbi lenyomat."));
-        // A visszajelzés alapja (T5): megerősített sorok, tárolt minták (ebből itteni), modell.
+        // The basis of the feedback: confirmed lines, stored samples (of which made here), model.
         QCOMPARE(r.localPrints, 1);
         QCOMPARE(r.priorPrints, 1);
         const QString model = VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId())->displayName;
@@ -1023,7 +1020,7 @@ private slots:
                      .arg(model));
     }
 
-    // A „két nagyon hasonló hang" figyelmeztetés szövege (magyar tizedesvessző, a legerősebb pár).
+    // The text of the "two very similar voices" warning (decimal separator, the strongest pair).
     void recheck_similarVoicesNote()
     {
         QVERIFY(SpeakerEditor::similarVoicesNote({}).isEmpty());
@@ -1038,7 +1035,7 @@ private slots:
         b.similarity = 0.91;
         QVERIFY(SpeakerEditor::similarVoicesNote({a, b}).endsWith(QStringLiteral("(További 1 hasonló pár.)")));
         SpeakerEditor::RecheckResult none;
-        QVERIFY(none.basisSummary().isEmpty());     // nem futott
+        QVERIFY(none.basisSummary().isEmpty());     // did not run
     }
 
     void editor_recheckWithoutPrints_noSummary()
@@ -1052,7 +1049,7 @@ private slots:
         QVERIFY(r.referenceSummary().isEmpty());
         QCOMPARE(r.storedPrints(), 0);
         QVERIFY(r.basisSummary().startsWith(QStringLiteral("Alapja: 3 megerősített sor · tárolt minta nélkül · modell")));
-        QVERIFY(r.similar.isEmpty());       // két jól elkülönülő hang
+        QVERIFY(r.similar.isEmpty());       // two well separated voices
     }
 
     void editor_pairRecheckUsesStoredVoiceprints()
@@ -1060,7 +1057,7 @@ private slots:
         PairFixture fx;
         fx.prints->addPrint(QStringLiteral("Béla"), makePrint(pb, QStringLiteral("masik-megbeszeles")));
         auto ed = fx.editor();
-        QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Bélának csak 1 megerősített sora
+        QVERIFY(ed->confirmUtterances(pids({0, 2, 5, 1})));     // Béla has only 1 confirmed line
         const SpeakerEditor::PairRecheckResult r = ed->recheckPair(kB1, kB2);
         QVERIFY(r.ran);
         QVERIFY(!r.fallbackB);
@@ -1076,7 +1073,7 @@ private slots:
     {
         Fixture fx;
         auto ed = fx.editor();
-        // Béla 6 hosszú sora közül a 11. zajos (átfedés) → 5 használható.
+        // Of Béla's 6 long lines the 11th is noisy (overlap), so 5 are usable.
         const VoiceprintMaterial before = ed->voiceprintMaterial(kB2);
         QCOMPARE(before.usableLines, 5);
         QVERIFY(ed->setUtterancesNoisy({uid(13)}, true));

@@ -1,14 +1,15 @@
-// Az „Átirat" fül (TranscriptTab.qml) működése kijelző nélkül (offscreen), a beépített
-// KITALÁLT meetingen: egér- és billentyű-események a QML-ablaknak (nem a felhasználó
-// asztalának), hamis lejátszóval és shell-lel. Lefedi: Ctrl+L, kattintás másik oszlopba,
-// Ctrl+Z, több sor kijelölése + számbillentyű, húzás, időbélyeg → seek, „+" → személyválasztó,
-// lejátszás-követés, a Shell pozíció-kérése, „Meghallgatom"; és a javítás hatóköre: név →
-// CSAK az a sor (kijelölésnél a kijelölt sorok), teljes beszélő a sáv-fejlécről / áttekintőről,
-// összevonás előtt megerősítés, minden átsorolás után értesítő sáv (Visszavonás / Hasonló N
-// sor is / „mind a N sora"), és a „Bizonytalan" szűrő nem ugrik el a javított sor alól.
-// Hanglenyomat: jelző a térkép-dokk (MapDock) minden során + saját panel, a blokk a sorról nyitott panel
-// teljes-beszélő hatókörében, ajánlat a sávon egy teljes beszélő elnevezése után, és a most
-// készült lenyomat visszavonása.
+// The "Transcript" tab (TranscriptTab.qml) without a display (offscreen), on the built-in
+// MADE-UP meeting: mouse and keyboard events to the QML window (not the user's desktop), with
+// a fake player and shell. Covers: Ctrl+L, clicking into another column, Ctrl+Z, selecting
+// several lines + a number key, drag, timestamp seek, "+" opens the person picker, playback
+// following, the Shell's position request, "Listen"; and the scope of a fix: name = ONLY that
+// line (with a selection, the selected lines), a whole speaker from the track header /
+// overview, confirmation before a merge, a notice bar after every reassignment (Undo /
+// "Similar N lines too" / "all N lines"), and the "Uncertain" filter does not jump away from
+// under the fixed line.
+// Voiceprint: an indicator on every row of the map dock (MapDock) + its own panel, the block in
+// the whole-speaker scope of the panel opened from a line, the offer on the bar after naming a
+// whole speaker, and undoing the just-created voiceprint.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "TranscriptEditorViewModel.h"
@@ -122,7 +123,7 @@ class TestTranscriptTab : public QObject {
     QString speakerOf(int row) const { return cell(row, Role::SpeakerKeyRole).toString(); }
     QString laneKey(int lane) const { return m_vm->lanes().at(lane).toMap().value(QStringLiteral("key")).toString(); }
 
-    // A sín `lane` oszlopának közepe a `row` sor magasságában (ablak-koordináta).
+    // The center of the rail's `lane` column at the height of row `row` (window coordinates).
     QPoint railPoint(int row, int lane)
     {
         QQuickItem* item = rowItem(row);
@@ -151,8 +152,8 @@ class TestTranscriptTab : public QObject {
             if (QQuickItem* hit = findByText(child, text)) return hit;
         return nullptr;
     }
-    // Keresés a LÁTHATÓ fában (a Repeater / ListView delegáltjai és a felugró panelek
-    // tartalma is megvan így).
+    // Search in the VISIBLE tree (this also covers the Repeater / ListView delegates and the
+    // content of popup panels).
     static void collect(QQuickItem* root, const QString& name, QList<QQuickItem*>& out)
     {
         if (!root || !root->isVisible()) return;
@@ -166,7 +167,7 @@ class TestTranscriptTab : public QObject {
         return out;
     }
     QQuickItem* visual(const char* name) const { return visuals(name).value(0); }
-    // Az Átnézendő kör eleji nyitó-javaslatai (S5) kihagyva (→ Később): a fókusz-kártya jön.
+    // The To review round-start opener suggestions skipped (Later): the focus card comes.
     bool skipOpeners()
     {
         QQuickItem* rv = m_window->findChild<QQuickItem*>(QStringLiteral("reviewView"));
@@ -176,18 +177,18 @@ class TestTranscriptTab : public QObject {
             QMetaObject::invokeMethod(rv, "openerLater");
         return rv->property("phase").toString() != QLatin1String("opener");
     }
-    // A panel egy választható sora (a meeting beszélője / ismert személy) név szerint.
+    // A selectable row of the panel (a speaker of the meeting / a known person) by name.
     QQuickItem* choice(const char* kind, const QString& personName) const
     {
         for (QQuickItem* item : visuals(kind))
             if (item->property("personName").toString() == personName) return item;
         return nullptr;
     }
-    // A sor-panel („Kinek a sora ez?", LinePopover) és a teljes beszélő panelje („Miért ő?").
+    // The line panel ("Whose line is this?", LinePopover) and the whole speaker's panel ("Why them?").
     QObject* popover() const { return m_window->findChild<QObject*>(QStringLiteral("linePopover")); }
     QObject* why() const { return m_window->findChild<QObject*>(QStringLiteral("speakerWhyPopover")); }
     QObject* changeBar() const { return m_window->findChild<QObject*>(QStringLiteral("changeBar")); }
-    // Az Átnézendő (fókusz-nézet) bekapcsolása, a háttér-elemzés és a munkalista bevárása.
+    // Switching on To review (the focus view), waiting for the background analysis and the work list.
     void openReview()
     {
         QVERIFY(QTest::qWaitFor([this] { return !m_vm->reviewRunning() && m_vm->reviewCount() > 0; }, 10000));
@@ -198,10 +199,10 @@ class TestTranscriptTab : public QObject {
         QTRY_VERIFY(visual("reviewFocusCard"));
         m_tab->forceActiveFocus();
     }
-    // A fókusz-kártya sora (a munkalista kurzora).
+    // The focus card's line (the work list's cursor).
     QString focusLine() const { return m_vm->reviewQueue()->currentUtterance(); }
-    // Az átsorolás értesítése (és ajánlatai) az „Imént" sorban: a sor látszik, és a változás él.
-    // (Az „Imént" sor maga Javítás módban mindig látszik: imentShown.)
+    // The reassignment notice (and its offers) in the "Just now" row: the row is visible and the change is live.
+    // (The "Just now" row itself is always visible in Edit mode: imentShown.)
     bool barShown() const { return imentShown() && m_vm->changeActive(); }
     bool imentShown() const { return changeBar() && changeBar()->property("visible").toBool(); }
     QString barText() const { return m_vm->changeText(); }
@@ -217,7 +218,7 @@ class TestTranscriptTab : public QObject {
                 return s.toMap().value(QStringLiteral("key")).toString();
         return {};
     }
-    // A beszélő ujjlenyomat-jele az áttekintőn.
+    // A speaker's voiceprint indicator on the overview.
     QQuickItem* markOf(const QString& key) const
     {
         for (QQuickItem* item : visuals("overviewVoiceprint"))
@@ -234,7 +235,7 @@ class TestTranscriptTab : public QObject {
         QQuickItem* item = visual(name);
         return item ? item->property("text").toString() : QStringLiteral("<nincs>");
     }
-    // A személy lenyomatainak száma a (kitalált) meeting lenyomat-tárában.
+    // The number of a person's voiceprints in the (made-up) meeting's voiceprint store.
     int printCount(const QString& person) const
     {
         for (const tanara::PersonInfo& p : m_vm->people())
@@ -256,14 +257,14 @@ class TestTranscriptTab : public QObject {
         return item ? item->findChild<QQuickItem*>(QStringLiteral("speakerName")) : nullptr;
     }
 
-    // A panel teljesen eltűnt (a záró animáció is lefutott): addig a fátyla még elnyeli a
-    // következő kattintást.
+    // The panel has fully disappeared (the closing animation has run too): until then its veil
+    // still swallows the next click.
     bool popupGone(const char* name) const
     {
         QObject* popup = m_window->findChild<QObject*>(QLatin1String(name));
         return popup && !popup->property("visible").toBool();
     }
-    // Ctrl+Z a szerkesztőnek (a panel zárása után a fókusz visszatértét megvárva).
+    // Ctrl+Z to the editor (after the panel closes, waiting for the focus to return).
     void undoKey()
     {
         QTRY_VERIFY(m_tab->hasActiveFocus());
@@ -331,7 +332,7 @@ private slots:
     {
         load();
         QVERIFY(m_vm->demo());
-        QVERIFY(!m_vm->railVisible());                      // alapból rejtve
+        QVERIFY(!m_vm->railVisible());                      // hidden by default
         QCOMPARE(m_tab->property("textX").toReal(), 0.0);
 
         QTest::keyClick(m_window.get(), Qt::Key_L, Qt::ControlModifier);
@@ -339,7 +340,7 @@ private slots:
         QVERIFY(m_tab->property("textX").toReal() > 100.0);
         pump();
 
-        // Kattintás a 2. sor (Fehér Ádám) harmadik oszlopába → a sor átkerül oda.
+        // A click into the third column of line 2 (Fehér Ádám): the line moves there.
         QSignalSpy resets(m_vm->rows(), &QAbstractItemModel::modelReset);
         const QString before = speakerOf(2);
         QCOMPARE(before, laneKey(1));
@@ -348,7 +349,7 @@ private slots:
         QVERIFY(cell(2, Role::CorrectedRole).toBool());
         QVERIFY(m_vm->canUndo());
         QCOMPARE(m_vm->selectedCount(), 0);
-        // Az értesítő sáv megjelent: mi történt + Visszavonás egy kattintásra.
+        // The notice bar appeared: what happened + Undo in one click.
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("1 sor átkerült ide: %1")
                                 .arg(m_vm->lanes().at(2).toMap().value(QStringLiteral("name")).toString()));
@@ -356,14 +357,14 @@ private slots:
 
         undoKey();
         QCOMPARE(speakerOf(2), before);
-        QVERIFY(!barShown());                               // visszavonás után nincs mit mutatni
+        QVERIFY(!barShown());                               // after undo there is nothing to show
         QTest::keyClick(m_window.get(), Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
         QCOMPARE(speakerOf(2), laneKey(2));
         undoKey();
         QCOMPARE(speakerOf(2), before);
         QCOMPARE(resets.count(), 0);
 
-        // Kattintás a sor SAJÁT blokkjára: kijelölés (nem áthelyezés).
+        // A click on the line's OWN block: selection (not a move).
         click(railPoint(2, 1));
         QCOMPARE(m_vm->selectedCount(), 1);
         QCOMPARE(speakerOf(2), before);
@@ -378,29 +379,29 @@ private slots:
         QVERIFY(bar);
         QVERIFY(!bar->property("visible").toBool());
 
-        // Kattintás a szövegen, majd Shift+kattintás: a 2–4. sor kijelölve (sín nélkül is megy).
+        // A click on the text, then Shift+click: lines 2-4 selected (works without the rail too).
         click(textPoint(2));
         QCOMPARE(m_vm->selectedCount(), 1);
         click(textPoint(4), Qt::ShiftModifier);
         QCOMPARE(m_vm->selectedCount(), 3);
         QVERIFY(bar->property("visible").toBool());
-        click(textPoint(3), Qt::ControlModifier);           // Ctrl: a 3. ki
+        click(textPoint(3), Qt::ControlModifier);           // Ctrl: line 3 out
         QCOMPARE(m_vm->selectedCount(), 2);
         click(textPoint(3), Qt::ControlModifier);
         QCOMPARE(m_vm->selectedCount(), 3);
 
-        // „2": a kijelölés a második beszélőhöz.
+        // "2": the selection to the second speaker.
         QTest::keyClick(m_window.get(), Qt::Key_2);
         for (int r : {2, 3, 4}) QCOMPARE(speakerOf(r), laneKey(1));
         QCOMPARE(m_vm->selectedCount(), 0);
         QVERIFY(!bar->property("visible").toBool());
-        // Számbillentyű után is ott a sáv (a kijelölés sávja helyén), a darabszámmal.
+        // After a number key the bar is there too (in place of the selection's bar), with the count.
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("3 sor átkerült ide: Fehér Ádám"));
-        undoKey();   // egy lépés
+        undoKey();   // one step
         for (int r : {2, 3, 4}) QCOMPARE(speakerOf(r), laneKey(0));
 
-        // Le / fel: a kijelölés léptetése; Enter: lejátszás a sortól.
+        // Down / up: steps the selection; Enter: plays from the line.
         click(textPoint(1));
         QTest::keyClick(m_window.get(), Qt::Key_Down);
         QCOMPARE(m_vm->currentRow(), 2);
@@ -413,7 +414,7 @@ private slots:
         load();
         m_vm->setRailVisible(true);
         pump();
-        // A 2. sor blokkját megfogva, a 4. oszlop fölé és a 3. sorig lehúzva.
+        // Grabbing line 2's block, dragged over column 4 and down to line 3.
         const QPoint from = railPoint(2, 1);
         const QPoint to = railPoint(3, 3);
         QTest::mousePress(m_window.get(), Qt::LeftButton, Qt::NoModifier, from);
@@ -429,11 +430,11 @@ private slots:
         QVERIFY(!m_tab->property("dragActive").toBool());
         QCOMPARE(speakerOf(2), laneKey(3));
         QCOMPARE(speakerOf(3), laneKey(3));
-        // Húzás után is megjelenik a sáv; a „Visszavonás" gombja egy lépésben visszacsinálja.
+        // After a drag the bar appears too; its "Undo" button reverts it in one step.
         QTRY_VERIFY(barShown());
         QVERIFY(barText().startsWith(QStringLiteral("2 sor átkerült ide: ")));
         QVERIFY(visual("changeUndo"));
-        click(center(visual("changeUndo")));                // a húzás egy lépés
+        click(center(visual("changeUndo")));                // the drag is one step
         QVERIFY(!barShown());
         QCOMPARE(speakerOf(2), laneKey(1));
         QCOMPARE(speakerOf(3), laneKey(0));
@@ -449,7 +450,7 @@ private slots:
         QCOMPARE(m_player->property("log").toString(), QStringLiteral("seek:72000;play;"));
         QCOMPARE(m_vm->playingRow(), 2);
 
-        // A lejátszás halad: a lista követi (a lejátszott sor látható marad).
+        // Playback advances: the list follows (the playing line stays visible).
         const int far = m_vm->rowForTime(600000);
         m_player->setProperty("positionMs", 600000);
         pump(60);
@@ -457,7 +458,7 @@ private slots:
         QVERIFY(m_list->property("contentY").toReal() > 0.0);
         QVERIFY(rowItem(far) != nullptr);
 
-        // A felhasználó elgörget: a következő sorra lépés NEM rántja vissza a listát.
+        // The user scrolls away: stepping to the next line does NOT pull the list back.
         QMetaObject::invokeMethod(m_list, "positionViewAtBeginning");
         pump();
         const qreal top = m_list->property("contentY").toReal();
@@ -468,18 +469,18 @@ private slots:
         QCOMPARE(m_list->property("contentY").toReal(), top);
         const qreal before = top;
 
-        // A Shell kérése (pl. összefoglaló-link): odagörget.
+        // The Shell's request (e.g. a summary link): scrolls there.
         QMetaObject::invokeMethod(m_shell, "transcriptPositionRequested", Q_ARG(int, 1200000));
         pump(60);
         QVERIFY(m_list->property("contentY").toReal() != before);
         QVERIFY(rowItem(m_vm->rowForTime(1200000)) != nullptr);
     }
 
-    // A névre kattintva CSAK AZ A SOR kerül át (ez volt a baj: régen a teljes beszélő ment).
+    // Clicking a name moves ONLY THAT LINE (that was the bug: it used to move the whole speaker).
     void nameClick_movesOnlyThatLine()
     {
         load();
-        QVERIFY(!m_vm->railVisible());                      // rejtett sín mellett is megy
+        QVERIFY(!m_vm->railVisible());                      // works with a hidden rail too
         QQuickItem* name = nameOf(2);
         QVERIFY(name);
         const QString from = speakerOf(2);
@@ -492,30 +493,30 @@ private slots:
         QTRY_VERIFY(popupOpen("linePopover"));
         QCOMPARE(m_tab->property("speakerPopoverRow").toInt(), 2);
         QCOMPARE(popover()->property("scope").toString(), QStringLiteral("line"));
-        // A cím és a lábléc kimondja a hatókört és a darabszámot.
+        // The title and the footer state the scope and the count.
         QCOMPARE(visual("popoverTitle")->property("text").toString(), QStringLiteral("Kinek a sora ez?"));
         QCOMPARE(visual("popoverFooter")->property("text").toString(),
                  QStringLiteral("1 sor kerül át · Ctrl+Z visszavonja · a gép tanul belőle"));
-        // Soronkénti hatókörben nincs hanglenyomat-jelölő, nincs „összevonás" lista; a meeting
-        // többi beszélője áthelyezési célként elöl áll.
+        // In the per-line scope there is no voiceprint marker and no "merge" list; the meeting's
+        // other speakers are first as move targets.
         QVERIFY(!visual("fixVoiceprints"));
         QVERIFY(!visual("mergeList"));
         QVERIFY(visual("meetingSpeakers"));
         QVERIFY(choice("speakerChoice", QStringLiteral("Varga Nóra")));
         QVERIFY(!choice("speakerChoice", cell(2, Role::SpeakerNameRole).toString()));
-        // A mostani beszélő a jelöltek végén, halványan („most ő").
+        // The current speaker is at the end of the candidates, dimmed ("current").
         QVERIFY(choice("currentChoice", cell(2, Role::SpeakerNameRole).toString()));
 
         type(QStringLiteral("varga"));
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTRY_VERIFY(popupGone("linePopover"));
         QCOMPARE(speakerOf(2), varga);
-        QCOMPARE(linesOf(from), lines - 1);                 // csak EGY sor ment
+        QCOMPARE(linesOf(from), lines - 1);                 // only ONE line moved
         QCOMPARE(linesOf(varga), vargaLines + 1);
-        QVERIFY(!popupOpen("mergeDialog"));                 // egy sor sosem kérdez
+        QVERIFY(!popupOpen("mergeDialog"));                 // a single line never asks
         QTRY_COMPARE(m_tab->property("speakerPopoverRow").toInt(), -1);
 
-        // A sáv: mi történt, Visszavonás; a forrásnak maradt sora → „mind a N sora" is ott van.
+        // The bar: what happened, Undo; the source still has lines, so "all N lines" is there too.
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("1 sor átkerült ide: Varga Nóra"));
         QCOMPARE(m_vm->changeRestCount(), lines - 1);
@@ -527,10 +528,10 @@ private slots:
         click(center(visual("changeUndo")));
         QCOMPARE(speakerOf(2), from);
         QCOMPARE(linesOf(from), lines);
-        QVERIFY(!m_vm->canUndo());                          // egyetlen lépés volt
+        QVERIFY(!m_vm->canUndo());                          // it was a single step
         QVERIFY(!barShown());
 
-        // Egy ismert (a meetingen még nem szereplő) személyhez: új résztvevő, csak ezzel a sorral.
+        // To a known person (not yet in the meeting): a new participant, with just this line.
         click(center(nameOf(2)));
         QTRY_VERIFY(popupOpen("linePopover"));
         type(QStringLiteral("molnar"));
@@ -543,7 +544,7 @@ private slots:
         QCOMPARE(linesOf(from), lines);
     }
 
-    // Ha a sor egy több soros kijelölés része, a névre kattintva a KIJELÖLT sorok mennek.
+    // If the line is part of a multi-line selection, clicking a name moves the SELECTED lines.
     void nameClick_withMultiSelection_movesSelection()
     {
         load();
@@ -556,7 +557,7 @@ private slots:
 
         click(center(nameOf(2)));
         QTRY_VERIFY(popupOpen("linePopover"));
-        QCOMPARE(m_vm->selectedCount(), 3);                 // a névre kattintás nem bontja a kijelölést
+        QCOMPARE(m_vm->selectedCount(), 3);                 // clicking a name does not break the selection
         QCOMPARE(popover()->property("scope").toString(), QStringLiteral("selection"));
         QVERIFY(visual("scopeSelection"));
         QCOMPARE(visual("popoverTitle")->property("text").toString(), QStringLiteral("Kié a kijelölt 3 sor?"));
@@ -567,15 +568,15 @@ private slots:
         for (int r : {2, 3, 4}) QCOMPARE(speakerOf(r), varga);
         QCOMPARE(linesOf(varga), vargaLines + 3);
         QCOMPARE(m_vm->selectedCount(), 0);
-        QVERIFY(!popupOpen("mergeDialog"));                 // a kijelölés sem kérdez
+        QVERIFY(!popupOpen("mergeDialog"));                 // a selection does not ask either
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("3 sor átkerült ide: Varga Nóra"));
 
-        undoKey();   // egy lépés
+        undoKey();   // one step
         QCOMPARE(QStringList({speakerOf(2), speakerOf(3), speakerOf(4)}), before);
         QVERIFY(!m_vm->canUndo());
 
-        // A kijelölésen kívüli sor nevére kattintva megint csak az az egy sor a hatókör.
+        // Clicking the name for a line outside the selection again makes that one line the scope.
         click(textPoint(2));
         click(textPoint(4), Qt::ShiftModifier);
         click(center(nameOf(0)));
@@ -587,8 +588,8 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // A sorról nyitott panelen a teljes beszélő KIFEJEZETT választás: minden sora megy, és ha
-    // a cél már beszélője a meetingnek (összevonás), előbb számokkal megerősítést kér.
+    // On the panel opened from a line the whole speaker is an EXPLICIT choice: all its lines go,
+    // and if the target is already a speaker of the meeting (a merge), it first asks for confirmation with the numbers.
     void wholeSpeakerScope_movesAll_andAsksBeforeMerge()
     {
         load();
@@ -598,16 +599,16 @@ private slots:
         const int feherLines = linesOf(feher);
         const int speakers = m_vm->speakerCount();
 
-        // 1) Átnevezés egy, a meetingen még nem szereplő személyre: nem kérdez, minden sora megy.
+        // 1) Renaming to a person not yet in the meeting: no question, all its lines go.
         click(center(nameOf(0)));
         QTRY_VERIFY(popupOpen("linePopover"));
         click(center(visual("scopeSpeaker")));
         QCOMPARE(popover()->property("scope").toString(), QStringLiteral("speaker"));
         QCOMPARE(visual("popoverTitle")->property("text").toString(), QStringLiteral("Kovács Lilla valójában…"));
         QCOMPARE(visual("popoverFooter")->property("text").toString(),
-                 QStringLiteral("A teljes beszélőre vonatkozik: mind az %1 sor · Ctrl+Z visszavonja").arg(lines));   // 52: „az"
-        QVERIFY(visual("fixVoiceprints"));                  // csak itt: a hanglenyomat-jelölő
-        QVERIFY(visual("mergeList"));                       // és az összevonás-lista
+                 QStringLiteral("A teljes beszélőre vonatkozik: mind az %1 sor · Ctrl+Z visszavonja").arg(lines));   // 52: "the"
+        QVERIFY(visual("fixVoiceprints"));                  // only here: the voiceprint marker
+        QVERIFY(visual("mergeList"));                       // and the merge list
         type(QStringLiteral("molnar"));
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTRY_VERIFY(popupGone("linePopover"));
@@ -616,12 +617,12 @@ private slots:
         QCOMPARE(linesOf(key), lines);
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("Kovács Lilla mind az %1 sora átkerült ide: Molnár Eszter").arg(lines));
-        QVERIFY(!visual("changeRest"));                     // teljes beszélő után nincs tömeges folytatás
+        QVERIFY(!visual("changeRest"));                     // no bulk continuation after a whole speaker
         click(center(visual("changeUndo")));
         QCOMPARE(cell(0, Role::SpeakerNameRole).toString(), QStringLiteral("Kovács Lilla"));
         QVERIFY(!m_vm->canUndo());
 
-        // 2) A cél már beszélő (Fehér Ádám): megerősítés számokkal; „Mégse" → semmi sem változik.
+        // 2) The target is already a speaker (Fehér Ádám): confirmation with numbers; "Cancel": nothing changes.
         click(center(nameOf(0)));
         QTRY_VERIFY(popupOpen("linePopover"));
         click(center(visual("scopeSpeaker")));
@@ -640,7 +641,7 @@ private slots:
         QCOMPARE(m_vm->speakerCount(), speakers);
         QTRY_VERIFY(m_tab->hasActiveFocus());
 
-        // 3) Ugyanez az „összevonás" listáról, most megerősítve: egy lépésben összeolvad.
+        // 3) The same from the "merge" list, now confirmed: merges in one step.
         click(center(nameOf(0)));
         QTRY_VERIFY(popupOpen("linePopover"));
         click(center(visual("scopeSpeaker")));
@@ -655,15 +656,15 @@ private slots:
         QCOMPARE(linesOf(feher), feherLines + lines);
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("Kovács Lilla mind az %1 sora átkerült ide: Fehér Ádám").arg(lines));
-        undoKey();   // egy lépés
+        undoKey();   // one step
         QCOMPARE(m_vm->speakerCount(), speakers);
         QCOMPARE(linesOf(key), lines);
         QCOMPARE(linesOf(feher), feherLines);
         QVERIFY(!m_vm->canUndo());
     }
 
-    // A beszélő-szintű helyek (sín-fejléc avatar, térkép név) a TELJES beszélő „Miért ő?"
-    // paneljét nyitják (handoff-v3 E3) — hatókör-választó nélkül, „Meghallgatás"-sal, okokkal.
+    // The speaker-level places (rail header avatar, map name) open the WHOLE speaker's "Why
+    // them?" panel with no scope picker, with "Listen" and reasons.
     void railAvatar_and_overviewName_openWholeSpeaker()
     {
         load();
@@ -675,13 +676,13 @@ private slots:
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
         QCOMPARE(why()->property("speakerKey").toString(), laneKey(1));
         QCOMPARE(m_tab->property("speakerPopoverRow").toInt(), -1);
-        QVERIFY(!visual("scopeLine"));                      // nincs mit választani: a teljes beszélő
+        QVERIFY(!visual("scopeLine"));                      // nothing to choose: the whole speaker
         QVERIFY(visual("listenButton"));
         QCOMPARE(visual("popoverTitle")->property("text").toString(), QStringLiteral("Fehér Ádám"));
-        QTRY_VERIFY(visual("whyBlock"));                    // MIÉRT Ő? — az okok, javítás-linkkel
+        QTRY_VERIFY(visual("whyBlock"));                    // WHY THEM? the reasons, with a fix link
         QVERIFY(!visuals("whyReason").isEmpty());
         QVERIFY(visual("notPresentLink"));
-        // Az összevonás-lista kérésre nyílik.
+        // The merge list opens on request.
         QVERIFY(!visual("mergeList"));
         click(center(visual("mergeLink")));
         QTRY_VERIFY(visual("mergeList"));
@@ -689,7 +690,7 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
 
-        // A térkép-dokk neve.
+        // The map dock's name.
         const QList<QQuickItem*> names = visuals("overviewName");
         QCOMPARE(int(names.size()), int(m_vm->overview().size()));
         const QString key = m_vm->overview().at(2).toMap().value(QStringLiteral("key")).toString();
@@ -699,12 +700,12 @@ private slots:
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
         QCOMPARE(why()->property("speakerKey").toString(), key);
         QVERIFY(!visual("scopeLine"));
-        // „Új személy…": személyválasztó; a teljes beszélő a választott névhez kerül (nem
-        // meetingbeli személyhez: megerősítés nélkül).
+        // "New person...": the person picker; the whole speaker goes to the chosen name (not a
+        // person in the meeting: without confirmation).
         click(center(visual("newPersonLink")));
         QTRY_VERIFY(popupOpen("personPicker"));
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
-        QTest::mouseMove(m_window.get(), QPoint(2, 2));     // a választó sorai a rámutatásra is kiemelnek
+        QTest::mouseMove(m_window.get(), QPoint(2, 2));     // the picker rows highlight on hover too
         type(QStringLiteral("balogh"));
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTRY_VERIFY(!popupOpen("personPicker"));
@@ -717,7 +718,7 @@ private slots:
         QCOMPARE(m_vm->speakerInfo(key).value(QStringLiteral("name")).toString(), oldName);
     }
 
-    // „Ő nem volt ott" (E3): a beszélő sorai névtelenek lesznek — egy visszavonási lépés.
+    // "Was not there": the speaker's lines become anonymous, one undo step.
     void speakerWhy_notPresent_makesLinesAnonymous()
     {
         load();
@@ -727,8 +728,8 @@ private slots:
         const int lines = linesOf(key);
         click(center(visuals("laneHead").at(1)));
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
-        QVERIFY(visual("fixVoiceprints"));                  // van lenyomata: a téves felismerés jelölője
-        click(center(visual("fixVoiceprints")));            // most ne nyúljunk a lenyomathoz
+        QVERIFY(visual("fixVoiceprints"));                  // it has a voiceprint: the wrong-recognition marker
+        click(center(visual("fixVoiceprints")));            // do not touch the voiceprint now
         click(center(visual("notPresentLink")));
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
         QVERIFY(m_vm->speakerInfo(key).value(QStringLiteral("anonymous")).toBool());
@@ -740,7 +741,7 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // „Melyik sávon beszél?" (E3): a kézi sáv-beosztás a panelről; egy lépés, visszavonható.
+    // "Which track does it speak on?": manual track assignment from the panel; one step, undoable.
     void speakerWhy_trackAssignment()
     {
         load(QStringLiteral("v3"));
@@ -754,10 +755,10 @@ private slots:
         const QList<QQuickItem*> chips = visuals("trackChip");
         QCOMPARE(int(chips.size()), 2);
         QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
-        click(center(chips.at(1)));                         // „Hívás hangja"
+        click(center(chips.at(1)));                         // "Call audio"
         QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
         QTRY_VERIFY(visuals("trackChip").at(1)->property("checked").toBool());
-        click(center(visuals("trackChip").at(1)));          // újra: a megkötés törlése
+        click(center(visuals("trackChip").at(1)));          // again: clears the constraint
         QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
@@ -767,7 +768,7 @@ private slots:
         QVERIFY(m_vm->editor()->trackAssignment(key).isEmpty());
     }
 
-    // T3: a sáv-chipek kapcsolók — több sáv is jelölhető, minden kattintás egy visszavonási lépés.
+    // The track chips are switches: several tracks can be marked, each click is one undo step.
     void speakerWhy_multiTrackToggle()
     {
         load(QStringLiteral("v3"));
@@ -777,14 +778,14 @@ private slots:
         click(center(visuals("laneHead").at(1)));
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
         QTRY_VERIFY(visual("tracksBlock"));
-        click(center(visuals("trackChip").at(1)));          // hívás
+        click(center(visuals("trackChip").at(1)));          // call
         QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
-        click(center(visuals("trackChip").at(0)));          // + mikrofon: mindkettő
+        click(center(visuals("trackChip").at(0)));          // + microphone: both
         QCOMPARE(m_vm->editor()->trackAssignment(key),
                  (QStringList{QStringLiteral("mic"), QStringLiteral("loopback")}));
         QTRY_VERIFY(visuals("trackChip").at(0)->property("checked").toBool());
         QVERIFY(visuals("trackChip").at(1)->property("checked").toBool());
-        click(center(visuals("trackChip").at(1)));          // − hívás
+        click(center(visuals("trackChip").at(1)));          // - call
         QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("mic")});
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
@@ -795,8 +796,8 @@ private slots:
         QCOMPARE(m_vm->editor()->trackAssignment(key), QStringList{QStringLiteral("loopback")});
     }
 
-    // T2: gyors „+ #Nordvik" a „Miért ő?" címke-sorában és a jelölt-sorokon: egy kattintás
-    // ráteszi, visszavonható toast jön (undoKey "tags"), az ajánlat eltűnik; a jelölt nem választódik.
+    // Quick "+ #Nordvik" in the "Why them?" panel's tag row and on the candidate rows: one click
+    // applies it, an undoable toast comes (undoKey "tags"), the offer disappears; the candidate is not chosen.
     void speakerWhy_quickTag()
     {
         load(QStringLiteral("v3"));
@@ -809,17 +810,17 @@ private slots:
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
         QTRY_VERIFY(visual("quickTagLink"));
         QCOMPARE(textOf("quickTagLink"), QStringLiteral("+ #Nordvik ráteszem"));
-        QVERIFY(visual("fixLink"));                         // a „Címkéi" link marad
+        QVERIFY(visual("fixLink"));                         // the "Tags" link stays
         click(center(visual("quickTagLink")));
         QVERIFY(m_vm->editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Molnár Eszter címkéje lett: #Nordvik")));
         QTRY_VERIFY(!visual("quickTagLink"));
-        QVERIFY(popupOpen("speakerWhyPopover"));            // a panel nyitva marad
+        QVERIFY(popupOpen("speakerWhyPopover"));            // the panel stays open
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("speakerWhyPopover"));
     }
 
-    // T2 a sor-panelen (E1): a jelölt chipje ráteszi a címkét, a sort NEM helyezi át.
+    // The tag quick-add on the line panel: the candidate's chip applies the tag, it does NOT move the line.
     void linePopover_quickTagChip()
     {
         load(QStringLiteral("v3"));
@@ -842,7 +843,7 @@ private slots:
         QTRY_VERIFY(popupGone("linePopover"));
     }
 
-    // D3: a sor-panel alján halk „Hanglenyomat-minta ebből a sorból (N mp)" sor; kattintásra minta.
+    // At the bottom of the line panel a quiet "Voiceprint sample from this line (N s)" row; a click makes a sample.
     void linePopover_sampleRow()
     {
         load(QStringLiteral("v3"));
@@ -856,7 +857,7 @@ private slots:
         QVERIFY2(text.contains(QStringLiteral("anglenyomat-minta ebből a sorból (")), qPrintable(text));
         const QString person = m_vm->speakerInfo(speakerOf(0)).value(QStringLiteral("personName")).toString();
         const int before = printCount(person);
-        // A teljes beszélő hatókörén a sor nem látszik (ott a hanglenyomat-panel él).
+        // In the whole speaker's scope the line is not shown (the voiceprint panel lives there).
         click(center(visual("scopeSpeaker")));
         QTRY_VERIFY(!visual("lineSampleRow"));
         click(center(visual("scopeLine")));
@@ -867,7 +868,7 @@ private slots:
         QVERIFY(m_shell->property("toasts").toString().contains(QStringLiteral("Hanglenyomat-minta készült")));
     }
 
-    // T1: az új személyhez hasonló sorok accent jelei a térkép-dokkon (MapDock.similarMarks).
+    // The accent marks of the lines similar to the new person on the map dock (MapDock.similarMarks).
     void mapDock_similarMarks()
     {
         load(QStringLiteral("v3"));
@@ -879,13 +880,13 @@ private slots:
         QTRY_VERIFY(visuals("mapSimilarMark").isEmpty());
     }
 
-    // A sáv „Hasonló N sor is" és „Megmutatom" művelete (rejtett sín mellett, a névről indulva).
+    // The bar's "Similar N lines too" and "Show me" actions (with the rail hidden, starting from the name).
     void changeBar_similarLines_oneUndoStep()
     {
         load();
         QVERIFY(!m_vm->railVisible());
         reveal(6);
-        // A 6. sor nyersen „Távoli 1", hangra Fehér Ádám: a névre kattintva hozzá kerül.
+        // Line 6 is raw "Remote 1", by voice Fehér Ádám: clicking the name moves it to them.
         const QString source = speakerOf(6);
         const QString feher = keyOfName(QStringLiteral("Fehér Ádám"));
         const int sourceLines = linesOf(source);
@@ -905,7 +906,7 @@ private slots:
         QVERIFY(visual("changeShow"));
         QVERIFY(visual("changeRest"));
 
-        // „Megmutatom": a sín bekapcsol, a javasolt sorok kiemelve; újra: elrejti.
+        // "Show me": the rail turns on, the suggested lines are highlighted; again: hides it.
         click(center(visual("changeShow")));
         QVERIFY(m_vm->suggestionShown());
         QVERIFY(m_vm->railVisible());
@@ -913,14 +914,14 @@ private slots:
         click(center(visual("changeShow")));
         QVERIFY(!m_vm->suggestionShown());
 
-        // „Hasonló N sor is": pontosan a javasolt sorok mennek, egyetlen további lépésben.
+        // "Similar N lines too": exactly the suggested lines go, in a single further step.
         click(center(visual("changeSimilar")));
         QCOMPARE(linesOf(source), sourceLines - 1 - similar);
         QVERIFY(!m_vm->suggestionActive());
         QTRY_VERIFY(barShown());
         QCOMPARE(barText(), QStringLiteral("%1 sor átkerült ide: Fehér Ádám").arg(similar));
         QVERIFY(!visual("changeSimilar"));
-        click(center(visual("changeUndo")));                // csak a hasonló sorok jönnek vissza
+        click(center(visual("changeUndo")));                // only the similar lines come back
         QCOMPARE(linesOf(source), sourceLines - 1);
         QCOMPARE(speakerOf(6), feher);
         undoKey();
@@ -928,8 +929,8 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // A sáv „<Forrás> mind a N sora" folytatása: megerősítést kér, majd a forrás MEGMARADT
-    // sorai egyetlen további lépésben a célhoz kerülnek.
+    // The bar's "<Source> all N lines" continuation: asks for confirmation, then the source's
+    // REMAINING lines go to the target in a single further step.
     void changeBar_restOfSource_confirmsAndIsOneStep()
     {
         load();
@@ -943,7 +944,7 @@ private slots:
         const int feherLines = linesOf(feher);
         const int speakers = m_vm->speakerCount();
 
-        click(railPoint(6, cell(2, Role::LaneRole).toInt()));       // kattintás Fehér Ádám oszlopába
+        click(railPoint(6, cell(2, Role::LaneRole).toInt()));       // a click into Fehér Ádám's column
         QCOMPARE(speakerOf(6), feher);
         QTRY_VERIFY(barShown());
         QCOMPARE(m_vm->changeRestCount(), sourceLines - 1);
@@ -952,7 +953,7 @@ private slots:
         QCOMPARE(rest->property("text").toString(),
                  QStringLiteral("%1 mind a %2 sora").arg(sourceName).arg(sourceLines - 1));
 
-        // „Mégse": semmi sem változik, a sáv marad.
+        // "Cancel": nothing changes, the bar stays.
         click(center(rest));
         QTRY_VERIFY(popupOpen("mergeDialog"));
         QCOMPARE(visual("mergeText")->property("text").toString(),
@@ -974,7 +975,7 @@ private slots:
                                 .arg(sourceName).arg(sourceLines - 1));
         QVERIFY(!visual("changeRest"));
 
-        // Egy visszavonás: csak a tömeges lépés; az elsőként javított sor a helyén marad.
+        // One undo: only the bulk step; the line fixed first stays in place.
         undoKey();
         QCOMPARE(m_vm->speakerCount(), speakers);
         QCOMPARE(linesOf(source), sourceLines - 1);
@@ -984,15 +985,15 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // Az „Imént" sor (S2) FIX helyen van: nem tűnik el időre; a × csak az ajánlatokat zárja, a
-    // következő szerkesztés lecseréli a szövegét — a visszavonhatóság ettől független.
+    // The "Just now" row sits in a FIXED place: it does not disappear over time; the x closes
+    // only the offers, the next edit replaces its text, and undoability is independent of that.
     void changeBar_staysCloseAndReplace()
     {
         load();
-        QVERIFY(!imentShown());                             // Olvasás: nincs döntés, nincs sor
+        QVERIFY(!imentShown());                             // Read: no decision, no row
         m_tab->setProperty("fixMode", true);
         pump();
-        QVERIFY(imentShown());                              // Javítás: mindig ott (üres állapottal)
+        QVERIFY(imentShown());                              // Edit: always there (with an empty state)
         QVERIFY(m_vm->lastDecision().isEmpty());
         QVERIFY(!changeBar()->property("timeoutMs").isValid());
         auto barBottom = [this] {
@@ -1005,21 +1006,21 @@ private slots:
         QVERIFY(!m_vm->suggestionActive());
         QCOMPARE(textOf("changeText"), barText());
         const int serial = m_vm->changeSerial();
-        click(railPoint(1, 1));                             // következő szerkesztés: új szöveg
+        click(railPoint(1, 1));                             // the next edit: new text
         QVERIFY(barShown());
         QVERIFY(m_vm->changeSerial() > serial);
-        pump(1500);                                         // nincs időzítő: marad
+        pump(1500);                                         // no timer: it stays
         QVERIFY(barShown());
-        QCOMPARE(barBottom(), barY);                        // az alja fix (a figyelmeztetés felfelé nő)
+        QCOMPARE(barBottom(), barY);                        // its bottom is fixed (a warning grows upward)
 
         click(center(visual("changeClose")));
         QVERIFY(!m_vm->changeActive());
-        QVERIFY(imentShown());                              // az „Imént" sor marad, az utolsó döntéssel
+        QVERIFY(imentShown());                              // the "Just now" row stays, with the last decision
         QVERIFY(m_vm->lastDecision().value(QStringLiteral("text")).toString().contains(QStringLiteral("átkerült")));
         QCOMPARE(textOf("changeText"), m_vm->lastDecision().value(QStringLiteral("text")).toString());
         QVERIFY(m_vm->canUndo());
 
-        // Résztvevő felvétele (más szerkesztés) megszünteti a régi értesítést; a sor marad.
+        // Adding a participant (another edit) ends the old notice; the row stays.
         click(railPoint(3, 2));
         QVERIFY(barShown());
         m_vm->addParticipant(QStringLiteral("Zita"));
@@ -1027,10 +1028,10 @@ private slots:
         QVERIFY(imentShown());
     }
 
-    // Az Átnézendő nézet (E2) „Egyenként" sorai: a javított sor a helyén marad („javítva"),
-    // így a következő kattintás nem egy másik sorra esik; a csoport összecsukásakor tűnik el.
-    // „Más…” a fókusz-kártyán: ugyanaz a soronkénti panel, mint a névről; a döntött sor a
-    // munkalistán a helyén marad, a kártya a következő nyitott sorra lép.
+    // The To review view's "One by one" rows: the fixed line stays in place ("fixed"), so the
+    // next click does not land on another line; it goes away when the group is collapsed.
+    // "Other..." on the focus card: the same per-line panel as from the name; the decided line
+    // stays in place on the work list, and the card steps to the next open line.
     void reviewView_decidedLineStays()
     {
         load();
@@ -1047,14 +1048,14 @@ private slots:
         QTRY_VERIFY(popupOpen("linePopover"));
         QCOMPARE(popover()->property("scope").toString(), QStringLiteral("line"));
         QCOMPARE(popover()->property("utteranceId").toString(), id);
-        QTest::keyClick(m_window.get(), Qt::Key_Down);      // az első javasolt jelölt
+        QTest::keyClick(m_window.get(), Qt::Key_Down);      // the first suggested candidate
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTRY_VERIFY(popupGone("linePopover"));
         QVERIFY(m_vm->lineInfo(id).value(QStringLiteral("speakerKey")).toString() != from);
-        QCOMPARE(linesOf(from), fromLines - 1);             // csak ez az egy sor
+        QCOMPARE(linesOf(from), fromLines - 1);             // only this one line
         QTRY_VERIFY(barShown());
 
-        // A sor ugyanott van a munkalistán, eldöntve; a kártya már a következőn.
+        // The line is in the same place on the work list, decided; the card is already on the next one.
         QTRY_VERIFY(!m_vm->reviewRunning());
         pump(80);
         QCOMPARE(q->indexOf(id), row);
@@ -1074,7 +1075,7 @@ private slots:
         click(center(add));
         QTRY_VERIFY(popupOpen("personPicker"));
 
-        // Új név begépelve → „Új személy" sor → Enter: új (üres) oszlop.
+        // A new name typed, then "New person" row, then Enter: a new (empty) column.
         for (const QChar c : QStringLiteral("Zalan"))
             QTest::keyClick(m_window.get(), c.toLatin1(), c.isUpper() ? Qt::ShiftModifier : Qt::NoModifier);
         pump();
@@ -1085,7 +1086,7 @@ private slots:
         QCOMPARE(added.value(QStringLiteral("name")).toString(), QStringLiteral("Zalan"));
         QCOMPARE(added.value(QStringLiteral("utteranceCount")).toInt(), 0);
 
-        // Egy sor áthelyezése az új oszlopba kattintással.
+        // Moving one line into the new column by a click.
         click(railPoint(1, lanes));
         QCOMPARE(cell(1, Role::SpeakerNameRole).toString(), QStringLiteral("Zalan"));
     }
@@ -1096,14 +1097,14 @@ private slots:
         openReview();
         const QString id = focusLine();
         const QVariantMap info = m_vm->lineInfo(id);
-        // A kártya lejátszás-gombja: a sor a határaira (+ 0,3 mp ráhagyás).
+        // The card's play button: the line to its boundaries (+ 0.3 s lead-out).
         m_player->setProperty("log", QString());
         click(center(visual("reviewFocusPlay")));
         QCOMPARE(m_player->property("log").toString(),
                  QStringLiteral("range:%1-%2;").arg(info.value(QStringLiteral("startMs")).toInt())
                                               .arg(info.value(QStringLiteral("endMs")).toInt() + 200));
 
-        // „Jó így": a sor megerősítve, a kártya továbblép.
+        // "Good as is": the line is confirmed, the card moves on.
         const int before = m_vm->uncertainCount();
         click(center(visual("reviewFocusConfirm")));
         QCOMPARE(m_vm->uncertainCount(), before - 1);
@@ -1111,7 +1112,7 @@ private slots:
         QVERIFY(m_vm->canUndo());
         QVERIFY(focusLine() != id);
 
-        // B: a következő nyitott sor; Shift+B: az előző sor.
+        // B: the next open line; Shift+B: the previous line.
         QQuickItem* view = visual("reviewView");
         QVERIFY(view);
         const QString current = view->property("currentUtterance").toString();
@@ -1139,7 +1140,7 @@ private slots:
         QCOMPARE(cell(0, Role::SpeakerNameRole).toString(), QStringLiteral("Kovács Lilla"));
         QVERIFY(!m_vm->canUndo());
 
-        // Le-nyíl kiemeli az első személyt → Enter őt választja.
+        // Down arrow highlights the first person, then Enter chooses them.
         QTest::keyClick(m_window.get(), Qt::Key_Down);
         QTest::keyClick(m_window.get(), Qt::Key_Return);
         QTRY_VERIFY(popupGone("linePopover"));
@@ -1147,7 +1148,7 @@ private slots:
         QVERIFY(m_vm->canUndo());
         m_vm->undo();
 
-        // A teljes beszélő panelje (a sín-fejlécről nyitva): az Enter ott sem csinál semmit.
+        // The whole speaker's panel (opened from the rail header): Enter does nothing there either.
         m_vm->setRailVisible(true);
         pump();
         click(center(visuals("laneHead").at(0)));
@@ -1181,12 +1182,12 @@ private slots:
         QTRY_VERIFY(!popupOpen("personPicker"));
     }
 
-    // Névsor nélküli (folytató) sornál a helyi menü „Más mondta…" pontja nyitja ugyanazt a
-    // soronkénti panelt.
+    // For a line without a name row (a continuation), the context menu's "Said by someone else..."
+    // item opens the same per-line panel.
     void contextMenu_fixLineWithoutNameRow()
     {
         load();
-        QVERIFY(!cell(4, Role::HeadRole).toBool());         // nincs névsora: nincs mire kattintani
+        QVERIFY(!cell(4, Role::HeadRole).toBool());         // it has no name row: nothing to click
         const QString from = speakerOf(4);
         const int lines = linesOf(from);
         QTest::mouseClick(m_window.get(), Qt::RightButton, Qt::NoModifier, textPoint(4));
@@ -1208,8 +1209,8 @@ private slots:
         QCOMPARE(speakerOf(4), from);
     }
 
-    // „Meghallgatás": a sorról nyitott panelen maga a sor szól; a beszélő-szintű panelen egy
-    // jellemző sor (a panel nyitva marad).
+    // "Listen": on the panel opened from a line the line itself plays; on the speaker-level panel
+    // a typical line (the panel stays open).
     void speakerPopover_listenPlaysLineOrSample()
     {
         load();
@@ -1220,8 +1221,8 @@ private slots:
         click(center(listen));
         QCOMPARE(m_player->property("log").toString(),
                  QStringLiteral("range:%1-%2;").arg(m_vm->rowStartMs(0)).arg(m_vm->rowEndMs(0)));
-        // A szomszéd-határok a lejátszónak (elő-/utó-futás korlátja): az első sor előtt nincs sor,
-        // a következő sor kezdete legalább a sor vége.
+        // The neighbor boundaries for the player (the lead-in / tail limit): there is no line before
+        // the first line, the next line's start is at least the line's end.
         {
             const QVariantList bounds = m_player->property("bounds").toList();
             QCOMPARE(bounds.size(), 2);
@@ -1254,8 +1255,8 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
     }
 
-    // Másolás: Ctrl+C a kijelölt sorokat teszi a vágólapra (név + időbélyeg + szöveg); jobb
-    // gombbal helyi menü; a kattintás-kijelölés és az időbélyeg-ugrás változatlan.
+    // Copy: Ctrl+C puts the selected lines on the clipboard (name + timestamp + text); right
+    // click gives a context menu; click selection and timestamp jump are unchanged.
     void copy_selectionAndContextMenu()
     {
         load();
@@ -1268,7 +1269,7 @@ private slots:
         QVERIFY(one.startsWith(cell(1, Role::SpeakerNameRole).toString()));
         QVERIFY(one.contains(cell(1, Role::TimeLabelRole).toString()));
 
-        // Több sor: beszélőváltáskor fejsor, a sorok szövege sorban.
+        // Several lines: a header line at a speaker change, the lines' text in order.
         click(textPoint(3), Qt::ShiftModifier);
         QCOMPARE(m_vm->selectedCount(), 3);
         QTest::keyClick(m_window.get(), Qt::Key_C, Qt::ControlModifier);
@@ -1277,15 +1278,15 @@ private slots:
         QVERIFY(many.indexOf(cell(1, Role::TextRole).toString()) < many.indexOf(cell(3, Role::TextRole).toString()));
         QCOMPARE(m_vm->selectionText(), many);
 
-        // Jobb gomb: helyi menü; a kijelölés nem változik tőle.
+        // Right click: context menu; the selection does not change because of it.
         QTest::mouseClick(m_window.get(), Qt::RightButton, Qt::NoModifier, textPoint(2));
         QTRY_VERIFY(popupOpen("rowMenu"));
         QCOMPARE(m_vm->selectedCount(), 3);
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(!popupOpen("rowMenu"));
-        QTRY_VERIFY(m_tab->hasActiveFocus());                // a menü zárása után a fókusz visszajön
+        QTRY_VERIFY(m_tab->hasActiveFocus());                // focus returns after the menu closes
 
-        // Ctrl+A: minden sor; a teljes átirat másolható.
+        // Ctrl+A: every line; the whole transcript can be copied.
         QTest::keyClick(m_window.get(), Qt::Key_A, Qt::ControlModifier);
         QCOMPARE(m_vm->selectedCount(), m_vm->utteranceCount());
         QCOMPARE(m_vm->copyAll(), m_vm->utteranceCount());
@@ -1300,8 +1301,8 @@ private slots:
         pump();
     }
 
-    // „Következő átnézendő": a B billentyű az Átnézendő nézetre vált, és ott a csoportok sorain
-    // lépked (Shift+B visszafelé); szövegmezőbe gépelve a betű nem lép.
+    // "Next to review": the B key switches to the To review view and steps through the groups'
+    // lines there (Shift+B backwards); typing into a text field, the letter does not step.
     void nextUncertain_switchesToReview()
     {
         load();
@@ -1312,7 +1313,7 @@ private slots:
         pump(60);
         QCOMPARE(viewMode(), QStringLiteral("review"));
         QVERIFY(m_vm->uncertainOnly());
-        QVERIFY(m_vm->railVisible());                        // a Javítás sínje
+        QVERIFY(m_vm->railVisible());                        // the Edit rail
         QQuickItem* view = visual("reviewView");
         QVERIFY(view);
         QTRY_VERIFY(!view->property("currentUtterance").toString().isEmpty());
@@ -1325,7 +1326,7 @@ private slots:
         pump();
         QCOMPARE(view->property("currentUtterance").toString(), first);
 
-        // A keresőmezőben a „b" betű szöveg, nem ugrás; a Ctrl+Z ott a mezőé.
+        // In the search field the letter "b" is text, not a jump; Ctrl+Z there belongs to the field.
         const int before = m_vm->currentRow();
         QMetaObject::invokeMethod(m_tab, "openSearch");
         pump();
@@ -1337,7 +1338,7 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // A következő / előző SOR (nem rés) a listában.
+    // The next / previous LINE (not gap) in the list.
     int lineAfter(int row, int dir) const
     {
         for (int r = row + dir; r >= 0 && r < m_vm->rows()->rowCount(); r += dir)
@@ -1346,8 +1347,8 @@ private slots:
     }
     QString playerLog() const { return m_player->property("log").toString(); }
 
-    // Sor-léptetés állva: a nyilak (←/↑ előző, →/↓ következő) és a térkép-dokk gombjai csak
-    // kijelölnek és megmutatnak; nincs tekerés, nincs lejátszás.
+    // Line stepping while stopped: the arrows (Left/Up previous, Right/Down next) and the map
+    // dock's buttons only select and show; no seeking, no playback.
     void lineStep_notPlaying()
     {
         load();
@@ -1373,13 +1374,13 @@ private slots:
         QVERIFY(m_tab->hasActiveFocus() || !nextButton->hasActiveFocus());
         click(center(prevButton));
         QCOMPARE(m_vm->currentRow(), 2);
-        // Állva: minden lépés a sor elejére teker (egy kurzor), lejátszás nélkül.
+        // Stopped: every step seeks to the line's start (one cursor), without playing.
         const QString s2 = QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(2));
         const QString sn = QStringLiteral("seek:%1;").arg(m_vm->rowStartMs(next));
         QCOMPARE(playerLog(), sn + s2 + sn + s2 + sn + s2);
         QVERIFY(!m_player->property("playing").toBool());
 
-        // A lista nem görget magától a nyilakra (a kijelölt sor látható marad).
+        // The list does not scroll by itself on the arrows (the selected line stays visible).
         const qreal y = m_list->property("contentY").toReal();
         QTest::keyClick(m_window.get(), Qt::Key_Right);
         QTest::keyClick(m_window.get(), Qt::Key_Left);
@@ -1387,8 +1388,8 @@ private slots:
         QCOMPARE(m_list->property("contentY").toReal(), y);
     }
 
-    // Egy kurzor (állva): a sor kiválasztása a sor elejére teker — egyetlen seek, lejátszás
-    // nélkül —, és a Szóköz innen indít. Ha a pozíció már a soron belül van, nincs tekerés.
+    // One cursor (stopped): selecting a line seeks to its start (a single seek) without playing,
+    // and Space starts from there. If the position is already inside the line, there is no seek.
     void cursor_selectWhilePausedMovesPosition()
     {
         load();
@@ -1399,13 +1400,13 @@ private slots:
         QCOMPARE(playerLog(), QStringLiteral("seek:%1;").arg(start));
         QCOMPARE(m_player->property("positionMs").toInt(), start);
         QVERIFY(!m_player->property("playing").toBool());
-        QCOMPARE(m_vm->currentRow(), 3);                     // nincs visszacsatolás
+        QCOMPARE(m_vm->currentRow(), 3);                     // no feedback loop
 
         m_player->setProperty("log", QString());
-        click(textPoint(3));                                 // ugyanaz a sor: a pozíció benne van
+        click(textPoint(3));                                 // the same line: the position is inside it
         QVERIFY(!playerLog().contains(QStringLiteral("seek:")));
 
-        // Szóköz: a kijelölt sor elejéről szól.
+        // Space: plays from the selected line's start.
         m_player->setProperty("log", QString());
         QTest::keyClick(m_window.get(), Qt::Key_Space);
         QVERIFY(m_player->property("playing").toBool());
@@ -1413,7 +1414,7 @@ private slots:
         QVERIFY(!playerLog().contains(QStringLiteral("seek:")));
     }
 
-    // Lejátszás közben a lejátszó alatti sor a kijelölt, ahogy a pozíció halad.
+    // During playback the line under the player is the selected one as the position advances.
     void cursor_playingUpdatesCurrentRow()
     {
         load();
@@ -1425,10 +1426,10 @@ private slots:
         m_player->setProperty("positionMs", m_vm->rowStartMs(b) + 5);
         QTRY_COMPARE(m_vm->currentRow(), b);
         QCOMPARE(m_vm->selectedCount(), 1);
-        QVERIFY(!playerLog().contains(QStringLiteral("seek:")));   // a követés nem teker
+        QVERIFY(!playerLog().contains(QStringLiteral("seek:")));   // following does not seek
     }
 
-    // A térkép-dokk ugrása a pozíció alatti sort jelöli ki (állva és lejátszás közben is).
+    // The map dock's jump selects the line under the position (stopped and during playback too).
     void cursor_dockSeekSelectsRow()
     {
         load();
@@ -1450,7 +1451,7 @@ private slots:
         QVERIFY(m_player->property("playing").toBool());
     }
 
-    // Lejátszás közben egy másik sorra kattintva a lejátszás oda ugrik és szól tovább.
+    // Clicking another line during playback: playback jumps there and keeps playing.
     void cursor_rowClickWhilePlayingSeeks()
     {
         load();
@@ -1466,8 +1467,8 @@ private slots:
         QCOMPARE(m_vm->currentRow(), 3);
     }
 
-    // Lejátszás közben: a lejátszó alatti sortól lép, a cél elejére teker (sima seek, nem
-    // playRange), és szól tovább.
+    // During playback: steps from the line under the player, seeks to the target's start (a
+    // plain seek, not playRange), and keeps playing.
     void lineStep_playing()
     {
         load();
@@ -1487,7 +1488,7 @@ private slots:
         QCOMPARE(m_vm->currentRow(), next);
         QTRY_COMPARE(m_vm->playingRow(), next);
 
-        // A dokk „Előző sor” gombja: a most szóló sor előtti sor eleje.
+        // The dock's "Previous line" button: the start of the line before the one now playing.
         m_player->setProperty("log", QString());
         QQuickItem* prevButton = visual("prevLineButton");
         QVERIFY(prevButton);
@@ -1498,7 +1499,7 @@ private slots:
         QVERIFY(!playerLog().contains(QStringLiteral("range:")));
     }
 
-    // Az Átnézendő nézetben a nyilak a csoportok sorain lépnek (mint a B).
+    // In the To review view the arrows step through the groups' lines (like B).
     void lineStep_reviewView()
     {
         load();
@@ -1509,7 +1510,7 @@ private slots:
         QVERIFY(view);
         QTRY_VERIFY(!view->property("currentUtterance").toString().isEmpty());
         const QString first = view->property("currentUtterance").toString();
-        // Az Átnézendőben ↓ / ↑ a munkalista következő / előző sora (a → itt „Később”).
+        // In To review Down / Up are the work list's next / previous line (Right is "Later" here).
         QTest::keyClick(m_window.get(), Qt::Key_Down);
         pump();
         QVERIFY(view->property("currentUtterance").toString() != first);
@@ -1519,8 +1520,8 @@ private slots:
         QCOMPARE(viewMode(), QStringLiteral("review"));
     }
 
-    // Olvasás · Javítás · Átnézendő (N): a szegmens három eleme; az Átnézendő a Javítás része, és
-    // kilépve a belépés előtti mód jön vissza; Ctrl+E Olvasás ↔ Javítás (az Átnézendőből Olvasás).
+    // Read, Edit, To review (N): the segment's three items; To review is part of Edit, and on
+    // leaving it the mode before entering returns; Ctrl+E toggles Read <-> Edit (from To review: Read).
     void viewModes_segmentAndReturn()
     {
         load();
@@ -1530,7 +1531,7 @@ private slots:
         QQuickItem* review = visual("modeReview");
         QVERIFY(review);
         QCOMPARE(textOf("reviewCount"), QString::number(m_vm->reviewCount()));
-        QVERIFY(!visual("uncertainChip"));                   // Javításkor csak a szegmens
+        QVERIFY(!visual("uncertainChip"));                   // in Edit only the segment
         click(center(review));
         QTRY_COMPARE(viewMode(), QStringLiteral("review"));
         QVERIFY(m_vm->uncertainOnly());
@@ -1541,9 +1542,9 @@ private slots:
         QTRY_COMPARE(viewMode(), QStringLiteral("read"));
         QVERIFY(!m_vm->uncertainOnly());
         QVERIFY(!m_vm->railVisible());
-        QVERIFY(visual("uncertainChip"));                    // Olvasáskor a csendes „N átnézendő sor"
+        QVERIFY(visual("uncertainChip"));                    // in Read the quiet "N lines to review"
 
-        // Kilépés nem a szegmensen át (pl. időbélyeg-ugrás): a belépés előtti mód jön vissza.
+        // Leaving not through the segment (e.g. a timestamp jump): the mode before entering returns.
         setViewMode("fix");
         m_vm->setUncertainOnly(true);
         pump();
@@ -1552,14 +1553,14 @@ private slots:
         pump();
         QCOMPARE(viewMode(), QStringLiteral("fix"));
         setViewMode("read");
-        m_vm->setUncertainOnly(true);                        // pl. az újraellenőrzés eredménye
+        m_vm->setUncertainOnly(true);                        // e.g. the result of a recheck
         pump();
         QCOMPARE(viewMode(), QStringLiteral("review"));
         m_vm->setUncertainOnly(false);
         pump();
         QCOMPARE(viewMode(), QStringLiteral("read"));
 
-        // Ctrl+E: Olvasás ↔ Javítás; az Átnézendőből az Olvasásba.
+        // Ctrl+E: Read <-> Edit; from To review into Read.
         QTest::keyClick(m_window.get(), Qt::Key_E, Qt::ControlModifier);
         QCOMPARE(viewMode(), QStringLiteral("fix"));
         setViewMode("review");
@@ -1570,8 +1571,8 @@ private slots:
         QCOMPARE(viewMode(), QStringLiteral("fix"));
     }
 
-    // 0 átnézendő sor: az Átnézendő szegmens 0-t mutat, és a nézet az üres állapot
-    // (felirat + „Beszélők újraellenőrzése…"), nem üres lista.
+    // 0 lines to review: the To review segment shows 0, and the view is the empty state
+    // (caption + "Recheck speakers..."), not an empty list.
     void viewModes_reviewEmptyState()
     {
         load();
@@ -1596,12 +1597,12 @@ private slots:
         QVERIFY(visual("emptyFilterRecheck"));
     }
 
-    // Szövegmezőbe gépelve a szerkesztő billentyűi (1–9, Szóköz, Ctrl+Y) nem sülnek el.
+    // Typing into a text field, the editor's keys (1-9, Space, Ctrl+Y) do not fire.
     void typingInSearchNeverTriggersEditorKeys()
     {
         load();
         m_vm->setRailVisible(true);
-        click(textPoint(1));                                 // a kurzor a sorra teker (egy kurzor)
+        click(textPoint(1));                                 // the cursor seeks to the line (one cursor)
         m_player->setProperty("log", QString());
         const QString speaker = speakerOf(1);
         QMetaObject::invokeMethod(m_tab, "openSearch");
@@ -1611,13 +1612,13 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_1);
         pump();
         QCOMPARE(m_vm->searchQuery(), QStringLiteral("2 1"));
-        QCOMPARE(speakerOf(1), speaker);                     // nem került át másik oszlopba
-        QCOMPARE(m_player->property("log").toString(), QString());   // a Szóköz nem indított lejátszást
+        QCOMPARE(speakerOf(1), speaker);                     // it did not move to another column
+        QCOMPARE(m_player->property("log").toString(), QString());   // Space did not start playback
         QVERIFY(!m_vm->canUndo());
     }
 
-    // Az áttekintő minden során ujjlenyomat-jel: van / nincs / névtelen. Kattintásra a
-    // hanglenyomat panelje: állapot, használható anyag, készítés, és a most készült visszavonása.
+    // Every row of the overview has a voiceprint marker: has / none / anonymous. A click opens the
+    // voiceprint panel: state, usable material, creation, and undoing the just-created one.
     void overviewVoiceprint_indicatorAndPopover()
     {
         load();
@@ -1626,15 +1627,15 @@ private slots:
         QCOMPARE(int(visuals("overviewVoiceprint").size()), int(m_vm->overview().size()));
         QCOMPARE(markState(lilla), QStringLiteral("has"));
         QCOMPARE(markState(anon), QStringLiteral("anonymous"));
-        // A jel nem tolja el az idővonalat: a név-oszlopon belül áll.
+        // The marker does not shift the timeline: it sits inside the name column.
         QQuickItem* mark = markOf(lilla);
         QVERIFY(mark->x() + mark->width() <= 120);
 
-        // Névtelen beszélőnél nem nyit semmit (a súgó megmondja, miért).
+        // For an anonymous speaker it opens nothing (the tooltip says why).
         click(center(markOf(anon)));
         QVERIFY(!popupOpen("voiceprintPopover"));
 
-        // 1) Akinek van: kimondja, és új minta készíthető.
+        // 1) One who has one: it says so, and a new sample can be made.
         click(center(mark));
         QTRY_VERIFY(popupOpen("voiceprintPopover"));
         QVERIFY(!popupOpen("speakerWhyPopover"));
@@ -1643,15 +1644,15 @@ private slots:
         QVERIFY2(textOf("voiceprintDetail").contains(QStringLiteral("hosszabb sora használható fel")),
                  qPrintable(textOf("voiceprintDetail")));
         QCOMPARE(textOf("voiceprintCreate"), QStringLiteral("Új minta készítése"));
-        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);     // megnyitásra semmi sem készül
+        QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);     // nothing is made on open
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("voiceprintPopover"));
 
-        // 2) Elnevezett, még lenyomat nélküli beszélő, elég anyaggal: itt készíthető.
+        // 2) A named speaker with no voiceprint yet, with enough material: can be created here.
         QVERIFY(m_vm->reassignSpeaker(anon, QStringLiteral("Bálint Péter"), false));
         m_vm->dismissChange();
         QTRY_COMPARE(markState(anon), QStringLiteral("none"));
-        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        pump();     // the overview rows were rebuilt: their place is final after the next layout
         click(center(markOf(anon)));
         QTRY_VERIFY(popupOpen("voiceprintPopover"));
         QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
@@ -1660,12 +1661,12 @@ private slots:
         QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
         click(center(visual("voiceprintCreate")));
         QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 1);
-        QTRY_COMPARE(markState(anon), QStringLiteral("has"));       // a jelző frissül
+        QTRY_COMPARE(markState(anon), QStringLiteral("has"));       // the indicator refreshes
         QCOMPARE(textOf("voiceprintState"), QStringLiteral("Van hanglenyomata"));
         QVERIFY2(textOf("voiceprintResult").startsWith(QStringLiteral("Elkészült ")), qPrintable(textOf("voiceprintResult")));
         QVERIFY(textOf("voiceprintResult").contains(QStringLiteral("mp beszédből")));
         QVERIFY(!visual("voiceprintCreate"));
-        // …és a most készült visszavonható: pontosan az törlődik.
+        // ... and the just-created one is undoable: exactly that is deleted.
         QVERIFY(visual("voiceprintUndo"));
         click(center(visual("voiceprintUndo")));
         QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
@@ -1676,13 +1677,13 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("voiceprintPopover"));
 
-        // 3) Kevés anyag: megmondja, mennyi hiányzik és mi segít — gomb nincs.
+        // 3) Too little material: it says how much is missing and what helps; there is no button.
         const QString id = m_vm->rowInfo(3).value(QStringLiteral("utteranceId")).toString();
         QVERIFY(m_vm->moveUtteranceToPerson(id, QStringLiteral("Ördög Ödön")));
         m_vm->dismissChange();
         const QString odon = keyOfName(QStringLiteral("Ördög Ödön"));
         QTRY_COMPARE(markState(odon), QStringLiteral("none"));
-        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        pump();     // the overview rows were rebuilt: their place is final after the next layout
         click(center(markOf(odon)));
         QTRY_VERIFY(popupOpen("voiceprintPopover"));
         QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
@@ -1695,8 +1696,8 @@ private slots:
         QTRY_VERIFY(m_tab->hasActiveFocus());
     }
 
-    // 11 beszélő: az „Egyéb (N)" sornak nincs jele; a névre kattintva kibomlik, és a keveset
-    // beszélők is saját jelet (és panelt) kapnak; vissza is csukható.
+    // 11 speakers: the "Other (N)" row has no marker; clicking the name expands it, and the
+    // low-talk speakers get their own marker (and panel) too; it can be collapsed again.
     void overviewVoiceprint_collapsedSpeakersAfterExpanding()
     {
         load(QStringLiteral("many"));
@@ -1705,7 +1706,7 @@ private slots:
         QCOMPARE(int(visuals("overviewVoiceprint").size()), shown - 1);
         const QString gergo = keyOfName(QStringLiteral("Horváth Gergő"));
         QVERIFY(!markOf(gergo));
-        // A sáv-fejléc pöttye ugyanazt az állapotot mutatja (elnevezett beszélőnél látszik).
+        // The track header's dot shows the same state (visible for a named speaker).
         m_vm->setRailVisible(true);
         pump();
         for (QQuickItem* dot : visuals("laneVoiceprint"))
@@ -1735,8 +1736,8 @@ private slots:
         QTRY_COMPARE(int(visuals("overviewVoiceprint").size()), shown - 1);
     }
 
-    // A sorról nyitott panelben a hanglenyomat-blokk csak a „<Név> minden sora" hatókörben
-    // látszik — ott ugyanúgy készíthető (és visszavonható), mint a teljes beszélő paneljében.
+    // In the panel opened from a line the voiceprint block shows only in the "<Name>'s every
+    // line" scope; it can be created there (and undone) the same way as in the whole speaker's panel.
     void linePopover_wholeSpeakerScope_hasVoiceprintBlock()
     {
         load();
@@ -1750,25 +1751,25 @@ private slots:
         QCOMPARE(textOf("voiceprintState"), QStringLiteral("Van hanglenyomata"));
         QVERIFY(textOf("voiceprintDetail").contains(QStringLiteral("hosszabb sora használható fel")));
         QVERIFY(visual("popoverFooter"));
-        // A blokk és a lábléc az ablakon belül marad (alacsony ablakban a listák rövidebbek).
+        // The block and the footer stay inside the window (in a low window the lists are shorter).
         QQuickItem* footer = visual("popoverFooter");
         QVERIFY(footer->mapToScene(QPointF(0, footer->height())).y() <= m_window->height());
         QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);
         click(center(visual("voiceprintCreate")));
         QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 2);
-        QVERIFY(popupOpen("linePopover"));               // a panel nyitva marad: visszavonható
+        QVERIFY(popupOpen("linePopover"));               // the panel stays open: undoable
         QVERIFY(textOf("voiceprintResult").startsWith(QStringLiteral("Elkészült ")));
         click(center(visual("voiceprintUndo")));
         QCOMPARE(printCount(QStringLiteral("Kovács Lilla")), 1);
-        QVERIFY(!m_vm->canUndo());                          // átsorolás nem történt
-        // Vissza a soronkénti hatókörre: a blokk eltűnik.
+        QVERIFY(!m_vm->canUndo());                          // no reassignment happened
+        // Back to the per-line scope: the block disappears.
         click(center(visual("scopeLine")));
         QVERIFY(!visual("voiceprintBlock"));
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("linePopover"));
 
-        // A teljes beszélő „Miért ő?" paneljéből (térkép név) a „Minták" link a hanglenyomat
-        // paneljét nyitja, ugyanezzel a blokkal.
+        // From the whole speaker's "Why them?" panel (map name) the "Samples" link opens the
+        // voiceprint panel, with the same block.
         const QList<QQuickItem*> names = visuals("overviewName");
         click(names.at(0)->mapToScene(QPointF(12, names.at(0)->height() / 2)).toPoint());
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
@@ -1790,14 +1791,14 @@ private slots:
         load();
         m_vm->setRailVisible(true);
         pump();
-        click(railPoint(3, 1));                             // egy sor: nincs ajánlat
+        click(railPoint(3, 1));                             // one line: no offer
         QTRY_VERIFY(barShown());
         QVERIFY(visual("changeUndo"));
         QVERIFY(!visual("changeVoiceprint"));
         undoKey();
         QVERIFY(!barShown());
 
-        // A névtelen beszélő nevet kap az áttekintő nevéről (a személynek nincs lenyomata).
+        // The anonymous speaker gets a name from the overview's name (the person has no voiceprint).
         const QString anon = keyOfName(QStringLiteral("Távoli 1"));
         QQuickItem* anonName = nullptr;
         for (QQuickItem* item : visuals("overviewName"))
@@ -1805,7 +1806,7 @@ private slots:
         QVERIFY(anonName);
         click(anonName->mapToScene(QPointF(12, anonName->height() / 2)).toPoint());
         QTRY_VERIFY(popupOpen("speakerWhyPopover"));
-        click(center(visual("newPersonLink")));             // „Új személy…" → személyválasztó
+        click(center(visual("newPersonLink")));             // "New person..." opens the person picker
         QTRY_VERIFY(popupOpen("personPicker"));
         QTest::mouseMove(m_window.get(), QPoint(2, 2));
         type(QStringLiteral("balint"));
@@ -1815,7 +1816,7 @@ private slots:
         QTRY_VERIFY(barShown());
         QVERIFY(visual("changeVoiceprint"));
         QCOMPARE(textOf("changeVoiceprint"), QStringLiteral("Hanglenyomat készítése"));
-        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);    // magától nem készül
+        QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);    // not created by itself
         QTRY_COMPARE(markState(anon), QStringLiteral("none"));
 
         click(center(visual("changeVoiceprint")));
@@ -1826,7 +1827,7 @@ private slots:
         QVERIFY(!visual("changeVoiceprint"));
         QTRY_COMPARE(markState(anon), QStringLiteral("has"));
 
-        // Visszavonás a sávon: a lenyomat törlődik, az elnevezés marad (az Ctrl+Z-vel megy).
+        // Undo on the bar: the voiceprint is deleted, the naming stays (that goes with Ctrl+Z).
         click(center(visual("changeUndo")));
         QCOMPARE(printCount(QStringLiteral("Bálint Péter")), 0);
         QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Bálint Péter"));
@@ -1839,14 +1840,14 @@ private slots:
         undoKey();
         QCOMPARE(m_vm->speakerInfo(anon).value(QStringLiteral("name")).toString(), QStringLiteral("Távoli 1"));
 
-        // Olyan személybe olvasztva, akinek már van lenyomata: nincs ajánlat.
+        // Merged into a person who already has a voiceprint: no offer.
         QVERIFY(m_vm->mergeSpeakers(anon, keyOfName(QStringLiteral("Fehér Ádám"))));
         QTRY_VERIFY(barShown());
         QVERIFY(!visual("changeVoiceprint"));
     }
 
-    // Két hasonló hang: a sáv második sora ajánlja a kettejük átnézését (Átnézés / Most nem);
-    // a „Ki mondta?" panel teljes-beszélő hatókörében ugyanez kézzel, a párt választva.
+    // Two similar voices: the bar's second row offers reviewing the two (Review / Not now); in
+    // the whole-speaker scope of the "Who said it?" panel the same by hand, choosing the pair.
     void pairRecheck_changeBarOffer_andPopover()
     {
         load();
@@ -1859,15 +1860,15 @@ private slots:
         QTRY_VERIFY(changeBar()->property("height").toReal() > 70);
         QVERIFY(!visual("changeSimilar"));
 
-        // „Most nem": az ajánlat eltűnik, az átsorolás értesítése marad.
-        pump(100);      // a megnőtt sáv elrendezése
+        // "Not now": the offer disappears, the reassignment notice stays.
+        pump(100);      // layout of the grown bar
         click(center(visual("pairOfferDecline")));
         QVERIFY(!m_vm->pairOfferActive());
         QVERIFY(barShown());
         QTRY_VERIFY(!visual("pairOffer"));
         m_vm->undo();
 
-        // „Átnézés": lefut (egy visszavonási lépés), a sáv helyén értesítés.
+        // "Review": it runs (one undo step), a notice in place of the bar.
         m_vm->applyDemoState(QStringLiteral("changePairOffer"));
         QTRY_VERIFY(visual("pairOfferAccept"));
         pump(100);
@@ -1880,7 +1881,7 @@ private slots:
         QVERIFY2(m_vm->undoText().startsWith(QStringLiteral("Átnézés: ")) || toast.startsWith(QStringLiteral("A megerősített")),
                  qPrintable(m_vm->undoText()));
 
-        // A panel: „Átnézés másik beszélővel…" → a pár kiválasztása → lefut.
+        // The panel: "Review with another speaker..." then choosing the pair, then it runs.
         m_vm->setRailVisible(true);
         pump();
         click(center(visuals("laneHead").at(1)));
@@ -1900,7 +1901,7 @@ private slots:
         QVERIFY(m_warnings.isEmpty());
     }
 
-    // Hangmodell nélkül: nincs halott gomb — a panel egyszer megmondja az okot, a sáv nem ajánl.
+    // Without a voice model: no dead button; the panel says the reason once, the bar offers nothing.
     void withoutVoiceModel_noDeadVoiceprintButton()
     {
         load(QStringLiteral("novoice"));
@@ -1910,7 +1911,7 @@ private slots:
         QVERIFY(!visual("changeVoiceprint"));
         m_vm->dismissChange();
         QTRY_COMPARE(markState(anon), QStringLiteral("none"));
-        pump();     // az áttekintő sorai újraépültek: a helyük a következő elrendezés után végleges
+        pump();     // the overview rows were rebuilt: their place is final after the next layout
         click(center(markOf(anon)));
         QTRY_VERIFY(popupOpen("voiceprintPopover"));
         QCOMPARE(textOf("voiceprintState"), QStringLiteral("Még nincs hanglenyomata"));
@@ -1920,7 +1921,7 @@ private slots:
         QTest::keyClick(m_window.get(), Qt::Key_Escape);
         QTRY_VERIFY(popupGone("voiceprintPopover"));
 
-        // A „Ki mondta?" panel blokkja ugyanígy.
+        // The "Who said it?" panel's block likewise.
         click(center(nameOf(0)));
         QTRY_VERIFY(popupOpen("linePopover"));
         click(center(visual("scopeSpeaker")));
@@ -1931,8 +1932,8 @@ private slots:
         QTRY_VERIFY(popupGone("linePopover"));
     }
 
-    // E1 a „v3" meetingen: a sor-panel jelöltjei bizonyítékkal, 1–3 billentyű; „Miért nem X?"
-    // okai a javítás helyével (Sáv-beosztás → a beszélő „Miért ő?" panelje a sáv-chipekkel).
+    // Review on the "v3" meeting: the line panel's candidates with evidence, keys 1-3; the reasons
+    // of "Why not X?" with the place of the fix (track assignment leads to the speaker's "Why them?" panel with the track chips).
     void linePopover_candidatesKeysAndWhyNot()
     {
         load(QStringLiteral("v3"));
@@ -1947,13 +1948,13 @@ private slots:
                  QStringLiteral("1"));
         QVERIFY(choice("currentChoice", QStringLiteral("Kovács Lilla")));
         QVERIFY(choice("currentChoice", QStringLiteral("Kovács Lilla"))->property("dimmed").toBool());
-        // A legjobb jelölt bizonyítéka: hang + ugyanaz a sáv + #Nordvik.
+        // The best candidate's evidence: voice + the same track + #Nordvik.
         const QVariantList ev = choice("speakerChoice", QStringLiteral("Fehér Gábor"))->property("evidence").toList();
         QStringList texts;
         for (const QVariant& e : ev) texts << e.toMap().value(QStringLiteral("text")).toString();
         QVERIFY2(texts.contains(QStringLiteral("ugyanaz a sáv")) && texts.contains(QStringLiteral("#Nordvik")),
                  qPrintable(texts.join(QLatin1Char('|'))));
-        // „Miért nem Kovács Lilla?": a sáv-ok, javítás-linkkel.
+        // "Why not Kovács Lilla?": the track reasons, with a fix link.
         QVERIFY(visual("whyNotBlock"));
         QVERIFY(!visuals("whyNotReason").isEmpty());
         QQuickItem* tracks = nullptr;
@@ -1961,7 +1962,7 @@ private slots:
             if (link->property("text").toString() == QStringLiteral("Sáv-beosztás")) tracks = link;
         QVERIFY(tracks);
 
-        // 1: a javasolt jelölt.
+        // 1: the suggested candidate.
         QTest::keyClick(m_window.get(), Qt::Key_1);
         QTRY_VERIFY(popupGone("linePopover"));
         QCOMPARE(speakerOf(2), gabor);
@@ -1969,7 +1970,7 @@ private slots:
         undoKey();
         QCOMPARE(speakerOf(2), lilla);
 
-        // Sáv-beosztás → a beszélő „Miért ő?" panelje, a sáv-chipekkel.
+        // Track assignment leads to the speaker's "Why them?" panel, with the track chips.
         click(center(nameOf(2)));
         QTRY_VERIFY(popupOpen("linePopover"));
         tracks = nullptr;
@@ -1985,11 +1986,11 @@ private slots:
         QVERIFY(m_warnings.isEmpty());
     }
 
-    // E2 a „v3" meetingen: „Mind a N → X" egy lépés (és visszavonható); a szennyezett mag sávjának
-    // „Szétválasztás" gombja is egy lépés.
-    // A szennyezett mag sávja a fókusz-kártya ALATT (az alsó kontextus-sorok helyén): Szétválasztás
-    // = egy visszavonási lépés. (A csoportos „Mind → X” a régi csoport-nézettel megszűnt; a
-    // nagy csoportokat az S5 nyitó-javaslata hozza vissza.)
+    // Review on the "v3" meeting: "All N to X" is one step (and undoable); the contaminated
+    // core's track "Split" button is also one step.
+    // The contaminated core's track under the focus card (in place of the lower context lines):
+    // Split = one undo step. (The group-level "All to X" went away with the old group view; the
+    // openers' suggestion of the S5 slice brings the big groups back.)
     void reviewView_contaminatedSplit()
     {
         load(QStringLiteral("v3"));
@@ -2006,7 +2007,7 @@ private slots:
 
         QTRY_VERIFY(!m_vm->reviewRunning());
         QTRY_VERIFY(visual("splitSpeaker"));
-        // A sáv a kártya alatt: alacsony nézetben a fókusz-terület saját görgetésével látszik.
+        // The bar under the card: in a low view the focus area is visible with its own scrolling.
         QQuickItem* flick = visual("reviewFocusFlick");
         QVERIFY(flick);
         flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toReal() - flick->height()));
@@ -2020,11 +2021,11 @@ private slots:
         QVERIFY(m_warnings.isEmpty());
     }
 
-    // ---- S2: az Átnézendő-újratervezés közös alapja ----------------------------------------
+    // ---- shared base of the To review redesign ----
 
 
-    // A közös billentyű-olvasó a FIZIKAI billentyűt adja: a magyar kiosztáson a Shift+6 „/”, a
-    // Shift+1 „'” — a scancode-ból mégis számjegy; a „0” (bal felső) a kiosztás szerinti Key_0.
+    // The shared key reader returns the PHYSICAL key: on the Hungarian layout Shift+6 is "/",
+    // Shift+1 is "'", but from the scancode it is still a digit; "0" (top left) is Key_0 per layout.
     void keys_physicalDecode()
     {
         QObject* keys = m_engine->singletonInstance<QObject*>("Tanara", "TranscriptKeys");
@@ -2046,26 +2047,26 @@ private slots:
         QVERIFY(k.value("plain").toBool());
         QCOMPARE(decode(Qt::Key_Apostrophe, shift, 10, "linux").value("digit").toInt(), 1);
         QCOMPARE(decode(Qt::Key_Slash, shift, 7, "windows").value("digit").toInt(), 6);
-        QCOMPARE(decode(Qt::Key_0, 0, 49, "linux").value("digit").toInt(), 0);   // HU „0” (bal felső)
+        QCOMPARE(decode(Qt::Key_0, 0, 49, "linux").value("digit").toInt(), 0);   // HU "0" (top left)
         QCOMPARE(decode(Qt::Key_6, int(Qt::KeypadModifier), 0, "").value("digit").toInt(), 6);
         QCOMPARE(decode(Qt::Key_Question, shift, 59, "linux").value("name").toString(), QStringLiteral("Comma"));
         QCOMPARE(decode(Qt::Key_M, 0, 58, "linux").value("name").toString(), QStringLiteral("M"));
         k = decode(Qt::Key_J, int(Qt::ControlModifier), 44, "linux");
         QCOMPARE(k.value("name").toString(), QStringLiteral("J"));
         QVERIFY(!k.value("plain").toBool());
-        // Natív kód nélkül (macOS) a Shift+6 nem számjegy (nincs találgatás).
+        // Without a native code (macOS) Shift+6 is not a digit (no guessing).
         QCOMPARE(decode(Qt::Key_Slash, shift, 0, "").value("name").toString(), QString());
         keys->setProperty("platform", platform);
     }
 
-    // Shift = nem minta: Shift+sín-kattintás és Shift+számjegy — a sor átkerül, „nem minta”,
-    // EGY visszavonási lépésben; lenyomott Shiftnél az előnézeti címke „→ Név · nem minta”.
+    // Shift = not a sample: Shift+rail click and Shift+digit; the line moves, "not a sample", in
+    // ONE undo step; with Shift held the preview label is "-> Name, not a sample".
     void shift_railClickAndDigit_nonSample_oneUndoStep()
     {
         load();
         m_tab->setProperty("fixMode", true);
         pump();
-        // Rámutatás + lenyomott Shift: a címke utótagot kap.
+        // Hover + Shift held: the label gets a suffix.
         QTest::mouseMove(m_window.get(), railPoint(3, 2) + QPoint(-30, 0));
         QTest::mouseMove(m_window.get(), railPoint(3, 2));
         QTRY_VERIFY(visual("dragChipLabel"));
@@ -2088,9 +2089,9 @@ private slots:
         undoKey();
         QCOMPARE(speakerOf(3), before);
         QVERIFY(!noisyOf(id));
-        QVERIFY(!m_vm->canUndo());                          // egy lépés volt
+        QVERIFY(!m_vm->canUndo());                          // it was one step
 
-        // Shift+számjegy a kijelölésre (a tesztben Key_2 + Shift; a scancode-utat a decode teszteli).
+        // Shift+digit on the selection (in the test Key_2 + Shift; the scancode path is tested by decode).
         reveal(5);
         click(textPoint(5));
         QVERIFY(m_vm->isRowSelected(5));
@@ -2105,7 +2106,7 @@ private slots:
         QVERIFY(!m_vm->canUndo());
     }
 
-    // Az Átnézendő nézetben is: Shift lenyomva „Jó így · nem minta”, és a kattintás nem-mintaként dönt.
+    // In the To review view too: with Shift held "Good as is, not a sample", and a click decides as not a sample.
     void shift_reviewButtons_nonSample()
     {
         load();
@@ -2124,8 +2125,8 @@ private slots:
         m_tab->setProperty("shiftHeld", false);
     }
 
-    // 0 = nem azonosítható: a Javításban a kijelölésre (újra 0: vissza), jelölő + halvány sor;
-    // a lista elrejtheti; az Átnézendőben a kiválasztott sorra és a sor-gombbal.
+    // 0 = cannot be identified: in Edit on the selection (again 0: back), marker + dimmed line;
+    // the list can hide it; in To review on the chosen line and with the line button.
     void zeroKey_ignored_markerFilterAndReview()
     {
         load();
@@ -2141,21 +2142,21 @@ private slots:
         QTRY_VERIFY(rowItem(2) && rowItem(2)->findChild<QQuickItem*>(QStringLiteral("ignoredMarker"))->isVisible());
         QCOMPARE(m_vm->lastDecision().value(QStringLiteral("chips")).toList().first().toMap()
                      .value(QStringLiteral("kind")).toString(), QStringLiteral("ignored"));
-        // A „nem azonosítható” sorok elrejtése a fejlécből.
+        // Hiding the "cannot be identified" lines from the header.
         QTRY_VERIFY(visual("ignoredToggle"));
         click(center(visual("ignoredToggle")));
         QVERIFY(m_vm->hideIgnored());
         QCOMPARE(m_vm->rows()->rowOfUtterance(idx2), -1);
         click(center(visual("ignoredToggle")));
         QVERIFY(!m_vm->hideIgnored());
-        // Újra 0 a kijelölésen: újra azonosítható.
+        // 0 again on the selection: identifiable again.
         click(textPoint(2));
         if (!m_vm->isRowSelected(2)) click(textPoint(2));
         QTest::keyClick(m_window.get(), Qt::Key_0);
         QVERIFY(!cell(2, Role::IgnoredRole).toBool());
         QCOMPARE(m_vm->ignoredCount(), 0);
 
-        // Átnézendő: a fókusz-sor 0-ra (a munkalistán a helyén marad), majd a következő a gombbal.
+        // To review: the focus line to 0 (it stays in place on the work list), then the next with the button.
         openReview();
         ReviewQueueModel* q = m_vm->reviewQueue();
         const QString id = focusLine();
@@ -2170,11 +2171,11 @@ private slots:
         QVERIFY(m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
         undoKey();
         QVERIFY(!m_vm->lineInfo(other).value(QStringLiteral("ignored")).toBool());
-        QTRY_COMPARE(focusLine(), other);                   // a fókusz a visszavont sorra
+        QTRY_COMPARE(focusLine(), other);                   // the focus on the undone line
     }
 
-    // Az „Imént” sor: J után „Jó így” + minta-chip; Shift+J nem minta; mini-napló; Ctrl+Z →
-    // „Visszavonva: …”; nem tűnik el.
+    // The "Just now" row: after J "Good as is" + a sample chip; Shift+J not a sample; mini-log;
+    // Ctrl+Z gives "Undone: ..."; it does not disappear.
     void imentRow_confirmChipsLogUndo()
     {
         load();
@@ -2216,8 +2217,8 @@ private slots:
         QCOMPARE(textOf("changeText"), last.value(QStringLiteral("text")).toString());
     }
 
-    // Eltérő minta (a v3 kitalált meeting hamis embedderével): az „Imént” sor figyelmeztet, és a
-    // „Legyen nem minta” a sort nem-mintává teszi (a figyelmeztetés eltűnik).
+    // Mismatched sample (with the v3 made-up meeting's fake embedder): the "Just now" row warns,
+    // and "Make it not a sample" makes the line not a sample (the warning goes away).
     void sampleWarning_deviatingSample()
     {
         load(QStringLiteral("v3"));
@@ -2227,7 +2228,7 @@ private slots:
         const QVariantMap dev = m_vm->sampleDeviation();
         QVERIFY(dev.value(QStringLiteral("pct")).toInt() < 50);
         QTRY_VERIFY(visual("sampleWarning"));
-        pump(150);                                          // a megnőtt sor elrendezése
+        pump(150);                                          // layout of the grown row
         QVERIFY(textOf("sampleWarningText").contains(dev.value(QStringLiteral("name")).toString()));
         QVERIFY(m_vm->decisionLog().size() >= 3);
         const QString id = dev.value(QStringLiteral("utteranceId")).toString();
@@ -2238,14 +2239,14 @@ private slots:
         QTRY_VERIFY(!visual("sampleWarning"));
     }
 
-    // Minta-mérő a dokkban: „N minta +k” a sampleStats szerint; a „+k” kattintásra a Javítás a
-    // most lett minta-sorokra szűr (Esc: vissza).
+    // Sample meter in the dock: "N samples +k" per sampleStats; a click on "+k" filters Edit to
+    // the lines that just became samples (Esc: back).
     void sampleMeter_valuesAndFilter()
     {
         load();
         m_tab->setProperty("fixMode", true);
         pump();
-        // Két hosszabb sor ugyanattól a beszélőtől: „Jó így”.
+        // Two longer lines from the same speaker: "Good as is".
         QString key;
         QStringList confirmed;
         for (int r = 0; r < m_vm->rows()->rowCount() && confirmed.size() < 2; ++r) {
@@ -2284,7 +2285,7 @@ private slots:
         QTRY_VERIFY(visual("sampleFilterNote"));
         m_vm->clearSelection();
         m_tab->forceActiveFocus();
-        QTest::keyClick(m_window.get(), Qt::Key_Escape);    // a szűrő
+        QTest::keyClick(m_window.get(), Qt::Key_Escape);    // the filter
         QCOMPARE(m_vm->listFilter(), QString());
     }
 
@@ -2302,7 +2303,7 @@ private slots:
         for (const char* variant : {"", "two", "many", "long", "novoice", "none"})
             for (const char* state : states)
                 QTest::addRow("%s-%s", *variant ? variant : "default", *state ? state : "plain")
-                    << QString::fromLatin1(variant) << QString::fromLatin1(state);        // v3 Javítás mód: üres változattal a „v3" kitalált meetingen futnak.
+                    << QString::fromLatin1(variant) << QString::fromLatin1(state);        // v3 Edit mode: with an empty variant they run on the "v3" made-up meeting.
         for (const char* state : {"markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                   "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
                                   "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
@@ -2326,7 +2327,7 @@ private slots:
         window.resize(1004, 640);
         tab->setParentItem(window.contentItem());
         window.show();
-        // A v3 állapotok a hang- és a háttér-elemzés után nyitják a paneljeiket.
+        // The v3 states open their panels after the audio and the background analysis.
         QTest::qWait(variant.isEmpty() && tab->property("v3Demo").toBool() ? 2500 : 180);
         tab.reset();
     }

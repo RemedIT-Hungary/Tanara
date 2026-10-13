@@ -1,8 +1,8 @@
-// SettingsEmbeddingModel — a Beállítások „Beágyazás” kártyája és a CÍMKEJAVASLATOK rész (C09):
-// a demó-állapotok (T14–T16) kitalált adata, majd izolált TANARA_HOME-on a valódi core-ral: a
-// mód a piszkozatba kerül (mentetlen-jelzés, Mégse), a helyi végpont kapcsolat-tesztje ÁL-HTTP-
-// szerver ellen, mentés → AppSettings mezők, modellváltás jelzése mentés előtt, a kapcsolók és
-// az elutasított javaslatok visszaállítása. Valódi hálózat / LM Studio nincs.
+// SettingsEmbeddingModel: the Settings "Embedding" card and the TAG SUGGESTIONS section: the
+// demo states' made-up data, then on an isolated TANARA_HOME with the real core: the mode goes
+// into the draft (unsaved indicator, Cancel), the local endpoint's connection test against a
+// FAKE HTTP server, save to the AppSettings fields, the model-change notice before saving,
+// resetting the switches and the rejected suggestions. No real network / LM Studio.
 #include "AppContext.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
@@ -38,7 +38,7 @@ class TestSettingsEmbeddingModel : public QObject {
         QVERIFY(m_home->isValid());
         qputenv("TANARA_HOME", m_home->path().toUtf8());
         qputenv("TANARA_CLOUD", "off");
-        qputenv("TANARA_CLOUD_URL", "http://127.0.0.1:9");   // zárt port: a gateway sosem érhető el
+        qputenv("TANARA_CLOUD_URL", "http://127.0.0.1:9");   // closed port: the gateway is never reachable
         m_app = std::make_unique<AppController>();
     }
 
@@ -55,7 +55,7 @@ private slots:
         qunsetenv("TANARA_CLOUD_URL");
     }
 
-    // ---- demó (T14–T16) ---------------------------------------------------------------------
+    // ---- demo ----
 
     void demoStatesMatchTheDesign()
     {
@@ -74,7 +74,7 @@ private slots:
         QCOMPARE(emb->statusText(), QStringLiteral("Kapcsolódva"));
         QVERIFY(!emb->restartPending());
         QVERIFY(!vm.dirty());
-        // A beállított szerepek összecsukva, „Kapcsolódva” állapottal.
+        // The configured roles collapsed, with a "Connected" state.
         QVERIFY(vm.stt()->configured() && !vm.stt()->expanded());
         QVERIFY(vm.llm()->configured() && !vm.llm()->expanded());
         QCOMPARE(vm.llm()->summaryText(), QStringLiteral("LM Studio · gemma-4-12b-qat"));
@@ -82,7 +82,7 @@ private slots:
         QCOMPARE(emb->card()->value(QStringLiteral("model")).toString(),
                  QStringLiteral("text-embedding-nomic-embed-text-v1.5"));
 
-        // Megszakítás / Előkészítés a demóban csak az állapotot váltja.
+        // Cancel / Prepare in the demo only switch the state.
         emb->cancelPreparation();
         QCOMPARE(emb->prepStatus(), QStringLiteral("idle"));
         emb->resumePreparation();
@@ -105,7 +105,7 @@ private slots:
         QCOMPARE(emb->mode(), QStringLiteral("cloud"));
         QVERIFY(emb->cloudInfo().contains(QStringLiteral("hangfelvétel és a hanglenyomatok a gépen maradnak")));
         QVERIFY(emb->cloudInfo().contains(QStringLiteral("120 kredit")));
-        QVERIFY(emb->cloudHint().isEmpty());                              // a demóban be van jelentkezve
+        QVERIFY(emb->cloudHint().isEmpty());                              // signed in in the demo
         QCOMPARE(emb->status(), QStringLiteral("ok"));
 
         vm.setDemoState(QStringLiteral("B04modelChange"));                // T15
@@ -119,12 +119,12 @@ private slots:
 
         vm.setDemoState(QStringLiteral("B04embeddingNone"));
         QCOMPARE(emb->mode(), QStringLiteral("none"));
-        QCOMPARE(emb->status(), QStringLiteral("neutral"));               // az „alap” nem hiba
+        QCOMPARE(emb->status(), QStringLiteral("neutral"));               // the default is not an error
         QCOMPARE(emb->statusText(), QStringLiteral("Alap szint"));
         QVERIFY(!emb->prepVisible());
         QVERIFY(emb->description().contains(QStringLiteral("alap szinten")));
 
-        // Elutasított javaslatok: 12 → visszaállítás.
+        // Rejected suggestions: 12, then reset.
         QCOMPARE(emb->rejectedCount(), 12);
         QSignalSpy rejected(emb, &SettingsEmbeddingModel::rejectedChanged);
         emb->clearRejected();
@@ -135,22 +135,22 @@ private slots:
     void deepLinkStillExpandsAndHighlights()
     {
         SettingsViewModel vm;
-        vm.setDemoState(QStringLiteral("B04"));                           // az STT kulcsa hiányzik
+        vm.setDemoState(QStringLiteral("B04"));                           // the STT key is missing
         QVERIFY(vm.stt()->highlighted());
         QVERIFY(vm.stt()->expanded());
-        QVERIFY(!vm.llm()->expanded());                                   // beállítva → összecsukva
+        QVERIFY(!vm.llm()->expanded());                                   // configured: collapsed
         vm.llm()->setExpanded(true);
         QVERIFY(vm.llm()->expanded());
         vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
         QVERIFY(vm.llm()->highlighted() && vm.llm()->expanded());
-        // A hibás teszt is kinyitja a kártyát.
+        // A failed test also opens the card.
         vm.setDemoState(QStringLiteral("B05"));
         QVERIFY(vm.llm()->expanded());
     }
 
     void standaloneElementShowsDemoData()
     {
-        SettingsEmbeddingModel emb;                                       // QML-ből szülő nélkül
+        SettingsEmbeddingModel emb;                                       // from QML, without a parent
         QVERIFY(!emb.card());
         emb.setDemoState(QStringLiteral("localRunning"));
         QCOMPARE(emb.mode(), QStringLiteral("local"));
@@ -162,7 +162,7 @@ private slots:
         QVERIFY(emb.restartPending());
     }
 
-    // ---- valódi core ----------------------------------------------------------------------
+    // ---- real core ----
 
     void modeIsADraftAndSavesToTheSettings()
     {
@@ -173,12 +173,12 @@ private slots:
         QCOMPARE(emb->mode(), QStringLiteral("none"));
         QCOMPARE(emb->status(), QStringLiteral("neutral"));
         QVERIFY(!emb->prepVisible());
-        QCOMPARE(emb->modeOptions().size(), 2);                           // Cloud nélküli build: nincs Cloud-elem
+        QCOMPARE(emb->modeOptions().size(), 2);                           // a build without Cloud: no Cloud item
         emb->setMode(QStringLiteral("cloud"));
         QCOMPARE(emb->mode(), QStringLiteral("none"));
         QVERIFY(!vm.dirty());
 
-        // Helyi végpont: piszkozat, alapértelmezett mezőkkel; vissza „alap”-ra → nincs változás.
+        // Local endpoint: a draft with the default fields; back to "default": no change.
         emb->setMode(QStringLiteral("local"));
         QCOMPARE(emb->mode(), QStringLiteral("local"));
         QVERIFY(vm.dirty());
@@ -189,7 +189,7 @@ private slots:
         QVERIFY(!vm.dirty());
         emb->setMode(QStringLiteral("local"));
 
-        // Kapcsolat-teszt és lekérés az ÁL-szerver ellen (a piszkozat címével, mentés előtt).
+        // Connection test and fetch against the FAKE server (with the draft's address, before saving).
         fakehttp::Server http;
         http.handler = [](const fakehttp::Request&) {
             return fakehttp::Reply{200, "{\"data\":[{\"id\":\"embed-a\"},{\"id\":\"embed-b\"}]}"};
@@ -207,7 +207,7 @@ private slots:
         QCOMPARE(http.count("GET", QStringLiteral("/v1/models")), 1);
         QVERIFY(card->options(QStringLiteral("model")).contains(QStringLiteral("embed-b")));
 
-        // Kapcsolók a piszkozatban.
+        // Switches in the draft.
         emb->setTagSuggestions(false);
         emb->setLlmTagSuggestions(false);
         QVERIFY(vm.save());
@@ -218,9 +218,9 @@ private slots:
         QCOMPARE(s.embeddingConfigs.value(embid::LocalId).baseUrl, http.base());
         QVERIFY(!s.tagSuggestions);
         QVERIFY(!s.llmTagSuggestions);
-        QVERIFY(emb->prepStatus() != QLatin1String("pending"));          // elmentve: a core előkészít
+        QVERIFY(emb->prepStatus() != QLatin1String("pending"));          // saved: core prepares
 
-        // Modellváltás: mentés ELŐTT jelezve; a Mégse eldobja.
+        // Model change: announced BEFORE saving; Cancel discards it.
         card->setValue(QStringLiteral("model"), QStringLiteral("embed-b"));
         QVERIFY(emb->restartPending());
         QVERIFY(emb->restartWarning().startsWith(QStringLiteral("Másik modellre váltasz.")));
@@ -229,7 +229,7 @@ private slots:
         QVERIFY(!emb->restartPending());
         QCOMPARE(emb->card()->value(QStringLiteral("model")).toString(), QStringLiteral("embed-a"));
 
-        // Más beállítás nem jelez modellváltást; mentve a core az új modellt kapja.
+        // Another setting does not announce a model change; once saved, core gets the new model.
         emb->setTagSuggestions(true);
         QVERIFY(!emb->restartPending());
         card->setValue(QStringLiteral("model"), QStringLiteral("embed-b"));
@@ -239,7 +239,7 @@ private slots:
         QCOMPARE(s.embeddingConfigs.value(embid::LocalId).model, QStringLiteral("embed-b"));
         QVERIFY(s.tagSuggestions);
 
-        // Vissza az alap szintre.
+        // Back to the default level.
         emb->setMode(QStringLiteral("none"));
         QVERIFY(vm.save());
         QVERIFY(m_app->settings()->settings().embeddingProviderId.isEmpty());
@@ -280,7 +280,7 @@ private slots:
         QCOMPARE(emb->rejectedCount(), 2);
         QVERIFY(changed.count() >= 1);
 
-        emb->clearRejected();                                             // azonnal, nem a piszkozatba
+        emb->clearRejected();                                             // at once, not into the draft
         QCOMPARE(emb->rejectedCount(), 0);
         QCOMPARE(svc->rejectedCount(), 0);
         QVERIFY(!vm.dirty());

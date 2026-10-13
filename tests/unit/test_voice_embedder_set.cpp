@@ -1,9 +1,8 @@
-//
-// A több modelles beágyazás alapjai: a beépített modell-leírók (licenc, letöltés, fbank-
-// paraméterek), a használt modellek kiválasztása (VoiceModelRegistry::active), a lustán töltő
-// VoiceEmbedderSet hamis „modellekkel”, és a voice-eval mérés (VoiceEval) kitalált vektorokon.
-// A valódi ONNX-próba csak akkor fut, ha a CAM++ modell megvan (csak olvassuk); különben QSKIP.
-//
+// Foundations of multi-model embedding: the built-in model descriptors (license, download,
+// fbank parameters), the selection of the models in use (VoiceModelRegistry::active), the
+// lazily loading VoiceEmbedderSet with fake "models", and the voice-eval measurement
+// (VoiceEval) on made-up vectors. The real ONNX probe runs only if the CAM++ model is there
+// (we only read it); otherwise QSKIP.
 #include <QtTest>
 #include <QTemporaryDir>
 
@@ -28,8 +27,8 @@ void touch(const QString& path)
     f.write("x");
 }
 
-// Hamis betöltő: modellenként egy állandó irányú vektor (a PCM hosszával skálázva — az
-// L2-normalizált irány ugyanaz). A "bad" id-jű modell nem tölthető be. calls: betöltések száma.
+// Fake loader: one constant-direction vector per model (scaled by the PCM length; the
+// L2-normalized direction is the same). The model with id "bad" cannot be loaded. calls: the number of loads.
 PcmEmbedderLoader fakeLoader(std::shared_ptr<int> calls)
 {
     return [calls](const VoiceModelSpec& spec, const QString&, QString* error) -> PcmEmbedder {
@@ -41,7 +40,7 @@ PcmEmbedderLoader fakeLoader(std::shared_ptr<int> calls)
         const int dim = spec.dim > 0 ? spec.dim : 3;
         const int hot = int(qHash(spec.id) % uint(dim));
         return [dim, hot](const QVector<float>& pcm) {
-            if (pcm.size() < 8000) return QVector<float>();   // „túl rövid”
+            if (pcm.size() < 8000) return QVector<float>();   // "too short"
             QVector<float> v(dim, 0.0f);
             v[hot] = 1.0f;
             return v;
@@ -82,7 +81,7 @@ private slots:
         QCOMPARE(we->license, QStringLiteral("CC-BY-4.0"));
         QCOMPARE(we->sizeBytes, qint64(26530550));
         QVERIFY(we->downloadUrl.endsWith(we->fileName));
-        // WeSpeaker infer_onnx.py: int16-skála, hamming, dither 0, CMN, 80 bin.
+        // WeSpeaker infer_onnx.py: int16 scale, hamming, dither 0, CMN, 80 bins.
         QCOMPARE(we->features.waveScale, 32768.0f);
         QCOMPARE(we->features.windowType, QStringLiteral("hamming"));
         QCOMPARE(we->features.dither, 0.0f);
@@ -94,7 +93,7 @@ private slots:
         QCOMPARE(eres->dim, 192);
         QCOMPARE(eres->sizeBytes, qint64(71441526));
         QCOMPARE(eres->license, QStringLiteral("Apache-2.0"));
-        QCOMPARE(eres->features.windowType, camp->features.windowType);   // mint a CAM++
+        QCOMPARE(eres->features.windowType, camp->features.windowType);   // like CAM++
         QCOMPARE(eres->features.waveScale, camp->features.waveScale);
         QCOMPARE(camp->features.windowType, QStringLiteral("povey"));
     }
@@ -109,17 +108,17 @@ private slots:
         touch(QDir(meta.path()).filePath("models/" + we.fileName));
         QCOMPARE(VoiceModelRegistry::active(enabled, meta.path(), QString()).size(), 1);
         touch(QDir(meta.path()).filePath("models/" + camp.fileName));
-        // eres2netv2 fájlja megvan, de nincs bekapcsolva → kimarad.
+        // eres2netv2's file exists but it is not switched on, so it is left out.
         touch(QDir(meta.path()).filePath("models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"));
         const auto act = VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(act.size(), 2);
-        QCOMPARE(act[0].id, QStringLiteral("campplus"));           // ábécérend
+        QCOMPARE(act[0].id, QStringLiteral("campplus"));           // alphabetical order
         QCOMPARE(act[1].id, QStringLiteral("wespeaker-resnet34-lm"));
 
         const VoiceEmbedderSet set = VoiceEmbedderSet::fromSettings(enabled, meta.path(), QString());
         QCOMPARE(set.modelIds(), QStringList({"campplus", "wespeaker-resnet34-lm"}));
         QVERIFY(!set.isEmpty());
-        // Tartalék: az engedélyezett ∩ elérhető üres, de a campplus megvan → egyedül az fut.
+        // Fallback: enabled and available is empty, but campplus exists, so it runs alone.
         QVERIFY(!VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).isEmpty());
         QCOMPARE(VoiceEmbedderSet::fromSettings({}, meta.path(), QString()).modelIds(), QStringList{"campplus"});
         QVERIFY(VoiceEmbedderSet::fromSettings({}, QString("/nincs/ilyen"), QString()).isEmpty());
@@ -129,19 +128,19 @@ private slots:
     {
         QCOMPARE(VoiceModelRegistry::defaultEnabledIds(), QStringList{"wespeaker-resnet34-lm"});
         QCOMPARE(VoiceModelRegistry::recommendedModelId(), QStringLiteral("wespeaker-resnet34-lm"));
-        QCOMPARE(VoiceModelRegistry::defaultModelId(), QStringLiteral("campplus"));   // régi utak
+        QCOMPARE(VoiceModelRegistry::defaultModelId(), QStringLiteral("campplus"));   // old paths
         QTemporaryDir meta;
         const QStringList enabled = VoiceModelRegistry::defaultEnabledIds();
-        // Semmi nincs letöltve: nincs modell, nincs tartalék.
+        // Nothing is downloaded: no model, no fallback.
         QVERIFY(VoiceModelRegistry::active(enabled, meta.path(), QString()).isEmpty());
         QVERIFY(!VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
-        // Csak a campplus fájl van meg → ["campplus"] tartalék.
+        // Only the campplus file exists: ["campplus"] as a fallback.
         touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("campplus")->fileName));
         const auto fb = VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(fb.size(), 1);
         QCOMPARE(fb[0].id, QStringLiteral("campplus"));
         QVERIFY(VoiceModelRegistry::isFallbackActive(enabled, meta.path(), QString()));
-        // A WeSpeaker megérkezik: ő fut egyedül, a tartalék kikapcsol.
+        // WeSpeaker arrives: it runs alone, the fallback switches off.
         touch(QDir(meta.path()).filePath("models/" + VoiceModelRegistry::spec("wespeaker-resnet34-lm")->fileName));
         const auto ok = VoiceModelRegistry::active(enabled, meta.path(), QString());
         QCOMPARE(ok.size(), 1);
@@ -156,28 +155,28 @@ private slots:
                               {fakeSpec("bad", 3), "/x/b"}},
                              fakeLoader(calls));
         QCOMPARE(set.modelIds(), QStringList({"alpha", "bad", "zeta"}));
-        QCOMPARE(*calls, 0);                                    // lusta: még semmi sem töltődött
+        QCOMPARE(*calls, 0);                                    // lazy: nothing loaded yet
 
         const QVector<float> pcm(16000, 0.1f);
         const EmbeddingSet got = set.embedPcm(pcm);
         QCOMPARE(*calls, 3);
-        QCOMPARE(got.keys(), QStringList({"alpha", "zeta"}));   // a be nem tölthető kimarad
+        QCOMPARE(got.keys(), QStringList({"alpha", "zeta"}));   // the one that cannot be loaded is left out
         QCOMPARE(got.value("alpha").size(), 3);
         QCOMPARE(got.value("zeta").size(), 4);
         QCOMPARE(set.lastError(), QStringLiteral("nem tölthető"));
 
         set.embedPcm(pcm);
-        QCOMPARE(*calls, 3);                                    // egyszer próbál betölteni modellenként
+        QCOMPARE(*calls, 3);                                    // tries to load once per model
         QCOMPARE(set.loadedModelIds(), QStringList({"alpha", "zeta"}));
         QVERIFY(set.ensureLoaded());
 
-        // Túl rövid: a betöltött modell kulcsa üres vektorral (megpróbáltuk), a többi kimarad.
+        // Too short: the loaded model's key with an empty vector (we tried), the others are left out.
         const EmbeddingSet shortSet = set.embedPcmWith(QVector<float>(100, 0.1f), {"zeta", "bad"});
         QCOMPARE(shortSet.keys(), QStringList({"zeta"}));
         QVERIFY(shortSet.value("zeta").isEmpty());
         QVERIFY(set.embedPcm(QVector<float>(100, 0.1f)).isEmpty());
 
-        // A friss másolat betöltetlen (saját példány a háttérszálnak).
+        // The fresh copy is unloaded (its own instance for the background thread).
         const VoiceEmbedderSet copy = set.freshCopy();
         QCOMPARE(copy.modelIds(), set.modelIds());
         copy.embedPcm(pcm);
@@ -191,7 +190,7 @@ private slots:
         QVERIFY(!set.isEmpty());
         QVERIFY(!set.ensureLoaded());
         QVERIFY(set.embedPcm(QVector<float>(16000, 0.1f)).isEmpty());
-        // A valódi betöltő hiányzó fájlra: nem tölthető, hibaüzenettel.
+        // The real loader on a missing file: cannot be loaded, with an error message.
         VoiceEmbedderSet real({{fakeSpec("campplus", 192), "/nincs/ilyen/modell.onnx"}});
         QVERIFY(!real.ensureLoaded());
         QVERIFY(!real.lastError().isEmpty());
@@ -199,7 +198,7 @@ private slots:
 
     void utteranceFactory_fromSet_usesAllModels()
     {
-        // A gyár egy dekódolással ad modellenkénti vektort (hamis modellek, valódi ffmpeg).
+        // The factory gives per-model vectors with one decode (fake models, real ffmpeg).
         if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) QSKIP("nincs ffmpeg");
         QTemporaryDir dir;
         const QString wav = dir.filePath("a.wav");
@@ -217,7 +216,7 @@ private slots:
         const EmbeddingSet got = e->embedAll(0, 2000, {"beta", "alpha", "gamma"});
         QCOMPARE(got.keys(), QStringList({"alpha", "beta"}));
         QCOMPARE(got.value("beta").size(), 5);
-        QVERIFY(!voiceUtteranceEmbedderFactory(VoiceEmbedderSet()));   // üres készlet → üres gyár
+        QVERIFY(!voiceUtteranceEmbedderFactory(VoiceEmbedderSet()));   // an empty set gives an empty factory
     }
 
     void realOnnx_campplusDimAndWarning()
@@ -234,13 +233,13 @@ private slots:
         QCOMPARE(v.size(), 192);
         QCOMPARE(ok.embeddingDim(), 192);
 
-        // Rossz várt dimenzió → figyelmeztetés (betöltéskor vagy az első inferenciánál).
+        // A wrong expected dimension: a warning (at load or at the first inference).
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("dimenzi")));
         VoiceEmbedder wrong(realModelPath(), camp.features, 256);
         QVERIFY(wrong.isValid());
         QCOMPARE(wrong.embedPcm(pcm).size(), 192);
 
-        // A hamming ablak (WeSpeaker-beállítás) is fut, más vektort ad.
+        // The hamming window (WeSpeaker setting) runs too, gives another vector.
         EmbedderConfig ham = camp.features;
         ham.windowType = QStringLiteral("hamming");
         VoiceEmbedder h(realModelPath(), ham, 192);
@@ -251,8 +250,8 @@ private slots:
 
     void eval_coresSplitAndCloser()
     {
-        // Két beszélő, két modell. A: 4 megerősített sor az „a” iránnyal + 1 B-hangú (tévesen A-n);
-        // B: 3 megerősített sor a „b” iránnyal.
+        // Two speakers, two models. A: 4 confirmed lines with direction "a" + 1 B-voiced (wrongly on A);
+        // B: 3 confirmed lines with direction "b".
         auto set = [](float x, float y) {
             const float n = std::sqrt(x * x + y * y);
             return EmbeddingSet{{"m1", {x / n, y / n}}, {"m2", {x / n, y / n, 0}}};
@@ -268,9 +267,9 @@ private slots:
             lines.append(l);
         };
         for (int i = 0; i < 4; ++i) add(0, true, 1, 0.05f * i);
-        add(0, false, 0, 1);              // B hangja A-n
+        add(0, false, 0, 1);              // B's voice on A
         for (int i = 0; i < 3; ++i) add(1, true, 0.05f * i, 1);
-        add(1, false, 0, 1, 800);         // túl rövid: nincs vektor
+        add(1, false, 0, 1, 800);         // too short: no vector
         const QVector<VoiceEvalSpeaker> spk{{"Beszélő 1", "Anna"}, {"Beszélő 2", "Béla"}};
 
         const VoiceEvalReport r = evaluateVoices(lines, spk, {"m1", "m2"}, 1500);
@@ -283,21 +282,21 @@ private slots:
             QCOMPARE(sp.coreLines, QVector<int>({4, 3}));
             QVERIFY(sp.coreCosine[0][1] < 0.2);
             QVERIFY(std::abs(sp.coreCosine[0][0] - 1.0) < 1e-6);
-            // A beszélő 5 sora: 4 + 1 szétválik, a két al-centroid távoli.
+            // The speaker's 5 lines: 4 + 1 split apart, the two sub-centroids are far apart.
             QCOMPARE(sp.splits[0].lines, 5);
             QCOMPARE(sp.splits[0].sizeA, 4);
             QCOMPARE(sp.splits[0].sizeB, 1);
             QVERIFY(sp.splits[0].centroidCosine < 0.2);
-            QVERIFY(std::isnan(sp.splits[1].centroidCosine));   // 3 sor: kevés a 2-középhez
-            QCOMPARE(sp.closerToOther, 1);                      // a B-hangú sor A-n
-            // A mag tagjai önmaguk nélkül mérődnek; B 3 tagú magjából egy kivéve kevés → kimarad.
+            QVERIFY(std::isnan(sp.splits[1].centroidCosine));   // 3 lines: too few for 2-means
+            QCOMPARE(sp.closerToOther, 1);                      // the B-voiced line on A
+            // The core's members are measured without themselves; one removed from B's 3-member core is too few, so left out.
             QCOMPARE(sp.closerChecked, 5);
         }
         const QJsonObject j = voiceEvalToJson(r);
         QCOMPARE(j.value("spaces").toArray().size(), 3);
         QCOMPARE(j.value("speakers").toArray().at(1).toObject().value("name").toString(), QStringLiteral("Béla"));
 
-        // Egy modell: nincs fúziós tér; mag nélküli beszélő → NaN a mátrixban.
+        // One model: no fusion space; a speaker without a core gives NaN in the matrix.
         for (VoiceEvalLine& l : lines) l.locked = l.speaker == 0 && l.locked;
         const VoiceEvalReport one = evaluateVoices(lines, spk, {"m1"}, 1500);
         QCOMPARE(one.spaces.size(), 1);

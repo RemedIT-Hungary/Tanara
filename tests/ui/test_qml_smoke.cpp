@@ -1,7 +1,7 @@
-// QML füstteszt: a modul fő oldalai (Main, Gallery) mindkét témában QML-figyelmeztetés
-// nélkül betöltődnek, a bundle-ölt ikonok és betűk megvannak, és Widgets-párbeszédablak
-// megjeleníthető a QML-ablak mellett (a Beállítások / Személyek egyelőre Widgetek).
-// Offscreen platformon fut (tests/CMakeLists.txt), AppController nélkül.
+// QML smoke test: the module's main pages (Main, Gallery) load in both themes without a QML
+// warning, the bundled icons and fonts exist, and a Widgets dialog can be shown next to the
+// QML window (Settings / People were still Widgets then). Runs on the offscreen platform
+// (tests/CMakeLists.txt), without AppController.
 #include "AppContext.h"
 #include "ImageProviders.h"
 #include "QmlApp.h"
@@ -23,7 +23,7 @@ using namespace tanara_qml;
 class TestQmlSmoke : public QObject {
     Q_OBJECT
 
-    // Betölt egy oldalt, és visszaadja a közben keletkezett QML-figyelmeztetéseket.
+    // Loads a page and returns the QML warnings produced meanwhile.
     static QStringList loadAndCollectWarnings(const QString& page, const QVariantMap& props = {})
     {
         QStringList warnings;
@@ -35,7 +35,7 @@ class TestQmlSmoke : public QObject {
                          });
         if (!loadPage(engine, page, props, QSize(1280, 820)))
             warnings << QStringLiteral("nem tölthető be: %1").arg(page);
-        QTest::qWait(150);   // kötések, animáció-indulás, felugrók
+        QTest::qWait(150);   // bindings, animation start, popups
         return warnings;
     }
 
@@ -60,7 +60,7 @@ private slots:
             for (const char* state : {"meeting", "empty", "noSelection", "preTranscript"})
                 QTest::addRow("Main-%s-%s", state, theme)
                     << "Main" << t << QVariantMap{{"shellState", state}, {"taskRunning", true}};
-            // design/handoff-v3: Áttekintés (V1/V3/V5/V6), Átirat + térkép-dokk (V4), fül-panel.
+            // The meeting view: Overview, Transcript + map dock, the tab panel.
             for (const char* state : {"overviewProcessing", "overviewDone", "overviewEmpty", "overviewNobody",
                                       "readingMap", "tabTooltip"})
                 QTest::addRow("Main-v3-%s-%s", state, theme)
@@ -105,7 +105,7 @@ private slots:
                     painted = qAlpha(img.pixel(x, y)) > 0;
             QVERIFY2(painted, qPrintable(name));
         }
-        // A szín tényleg érvényesül (nem fekete currentColor marad).
+        // The color really applies (it does not stay a black currentColor).
         const QImage red = TanaraImageProvider::renderIcon(QStringLiteral("square"), QColor(Qt::red),
                                                            2.0, QSize(24, 24));
         QCOMPARE(QColor(red.pixel(12, 3)).red(), 255);
@@ -117,14 +117,14 @@ private slots:
         const QImage img = TanaraImageProvider::renderShadow(32, 8, QColor(0, 0, 0, 128));
         QCOMPARE(img.width(), 2 * (2 * 32 + 8) + 1);
         const int mid = img.width() / 2;
-        QVERIFY(qAlpha(img.pixel(mid, mid)) > 100);              // a közepe telített
+        QVERIFY(qAlpha(img.pixel(mid, mid)) > 100);              // its center is saturated
         QVERIFY(qAlpha(img.pixel(0, mid)) < qAlpha(img.pixel(32, mid)));
-        QVERIFY(qAlpha(img.pixel(0, 0)) < 8);                    // a sarka gyakorlatilag üres
+        QVERIFY(qAlpha(img.pixel(0, 0)) < 8);                    // its corner is practically empty
     }
 
     void keyboardOperatesControls()
     {
-        // Tab viszi a fókuszt, Space / Return aktivál — egér nélkül is használható.
+        // Tab moves focus, Space / Return activate: usable without a mouse too.
         QQmlEngine engine;
         setupEngine(engine);
         QQmlComponent comp(&engine);
@@ -150,7 +150,7 @@ private slots:
         QVERIFY(button && check && sw);
 
         button->forceActiveFocus(Qt::TabFocusReason);
-        QVERIFY(button->property("visualFocus").toBool());       // → fókuszgyűrű látszik
+        QVERIFY(button->property("visualFocus").toBool());       // the focus ring shows
         QTest::keyClick(&window, Qt::Key_Space);
         QCOMPARE(root->property("clicks").toInt(), 1);
         QTest::keyClick(&window, Qt::Key_Return);
@@ -169,8 +169,8 @@ private slots:
         root->setParentItem(nullptr);
     }
 
-    // A héj és a szerkesztő gyorsbillentyűi: minden billentyű egy dolgot tesz, a fókusztól
-    // függően; szövegmezőbe gépelve egyik sem sül el.
+    // The shell's and the editor's shortcuts: each key does one thing, depending on focus; typing
+    // into a text field fires none of them.
     void shellShortcutsDependOnFocus()
     {
         QStringList warnings;
@@ -191,7 +191,7 @@ private slots:
         QVERIFY(search && list && transcriptSearch);
         auto tab = [window] { return window->property("currentTab").toInt(); };
 
-        // Ctrl+1…4: fülváltás (Áttekintés · Átirat · Vezetői összefoglaló · Memó) — bárhol áll a fókusz.
+        // Ctrl+1..4: switch tab (Overview, Transcript, Executive summary, Memo), wherever focus is.
         QTest::keyClick(window, Qt::Key_2, Qt::ControlModifier);
         QCOMPARE(tab(), 1);
         QTest::keyClick(window, Qt::Key_3, Qt::ControlModifier);
@@ -201,7 +201,7 @@ private slots:
         QTest::keyClick(window, Qt::Key_1, Qt::ControlModifier);
         QCOMPARE(tab(), 0);
 
-        // Ctrl+F a könyvtár keresőjébe visz; ott a számok, a Szóköz és a betűk szöveg.
+        // Ctrl+F goes to the library search; there the digits, Space and letters are text.
         QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier);
         QVERIFY(search->hasActiveFocus());
         QTest::keyClick(window, Qt::Key_2);
@@ -209,10 +209,10 @@ private slots:
         QTest::keyClick(window, Qt::Key_B);
         QCOMPARE(search->property("text").toString(), QStringLiteral("2 b"));
         QCOMPARE(tab(), 0);
-        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: a kereső kiürül
+        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: the search clears
         QCOMPARE(search->property("text").toString(), QString());
 
-        // Ctrl+Shift+F: keresés a megnyitott átiratban (bármelyik fülről oda vált).
+        // Ctrl+Shift+F: search in the open transcript (switches there from any tab).
         QTest::keyClick(window, Qt::Key_3, Qt::ControlModifier);
         QTest::keyClick(window, Qt::Key_F, Qt::ControlModifier | Qt::ShiftModifier);
         QCOMPARE(tab(), 1);
@@ -220,10 +220,10 @@ private slots:
         QTest::keyClick(window, Qt::Key_A);
         QTest::keyClick(window, Qt::Key_Space);
         QCOMPARE(transcriptSearch->property("text").toString(), QStringLiteral("a "));
-        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: az átirat-kereső bezárul
+        QTest::keyClick(window, Qt::Key_Escape);                 // Esc: the transcript search closes
         QTRY_VERIFY(!transcriptSearch->isVisible());
 
-        // F2: a cím szerkesztése; a mezőben a Ctrl+1 nem szöveg, de a betűk igen, a Szóköz is.
+        // F2: edit the title; in the field Ctrl+1 is not text, but letters are, and Space too.
         QTest::keyClick(window, Qt::Key_F2);
         auto* title = window->findChild<QQuickItem*>(QStringLiteral("meetingTitleEdit"));
         QVERIFY(title);
@@ -233,7 +233,7 @@ private slots:
         QTest::keyClick(window, Qt::Key_Space);
         QTest::keyClick(window, Qt::Key_X);
         QCOMPARE(title->property("text").toString(), before + QStringLiteral(" x"));
-        QTest::keyClick(window, Qt::Key_Escape);                 // elvetés
+        QTest::keyClick(window, Qt::Key_Escape);                 // discard
         QTRY_VERIFY(!title->hasActiveFocus());
 
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
@@ -244,7 +244,7 @@ private slots:
         QQmlApplicationEngine engine;
         QVERIFY(loadPage(engine, QStringLiteral("Main"), {}, QSize(1280, 820)));
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));
-        if (!window)   // a loadPage a motor gyerekeként hozza létre
+        if (!window)   // loadPage creates it as a child of the engine
             window = engine.findChild<QQuickWindow*>();
         QVERIFY(window);
         QVERIFY(window->isVisible());

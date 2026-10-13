@@ -1,10 +1,8 @@
+// Tanara: RecordingLock unit tests.
 //
-// Tanara — RecordingLock unit-tesztek.
-//
-// A lock (~/.tanara/recording.lock) jelzi, folyik-e felvétel: a felvevő felveszi,
-// a figyelő olvassa. Elavult (crash utáni, halott PID) lock inaktívnak számít.
-// Külön teszt-exe (tests/CMakeLists.txt GLOB), saját main → QTEST_GUILESS_MAIN.
-//
+// The lock (~/.tanara/recording.lock) shows whether a recording is in progress: the recorder
+// takes it, the watcher reads it. A stale lock (after a crash, a dead PID) counts as inactive.
+// A separate test exe (tests/CMakeLists.txt GLOB), its own main, so QTEST_GUILESS_MAIN.
 #include <QtTest>
 #include <QObject>
 #include <QCoreApplication>
@@ -19,7 +17,7 @@ class RecordingLockTests : public QObject {
     Q_OBJECT
 private slots:
 
-    // acquire() után a lock aktív (a saját PID él), a mappa és a PID visszaolvasható.
+    // After acquire() the lock is active (our own PID is alive), the folder and PID can be read back.
     void acquireThenReadActive()
     {
         QTemporaryDir dir;
@@ -33,7 +31,7 @@ private slots:
         QCOMPARE(info.meetingFolder, QStringLiteral("/tmp/meetingX"));
     }
 
-    // release() törli a lockot → nincs aktív felvétel.
+    // release() deletes the lock: no active recording.
     void releaseRemovesLock()
     {
         QTemporaryDir dir;
@@ -45,7 +43,7 @@ private slots:
         QVERIFY(!RecordingLock::read(path).active);
     }
 
-    // Elavult lock (nem-létező PID) → inaktív (a crash utáni árva lock nem blokkol).
+    // A stale lock (a non-existent PID) is inactive (an orphan lock after a crash does not block).
     void staleLockIsInactive()
     {
         QTemporaryDir dir;
@@ -61,7 +59,7 @@ private slots:
         QCOMPARE(info.pid, qint64(2000000000));
     }
 
-    // Nincs lock-fájl → nincs aktív felvétel (nem dob, nem crashel).
+    // No lock file means no active recording (does not throw or crash).
     void missingFileIsInactive()
     {
         QTemporaryDir dir;

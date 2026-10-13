@@ -1,16 +1,14 @@
-//
-// Megbeszélés-archívum (store/MeetingArchive) és a felvétel-mappa behúzása
-// (MeetingStore::adoptMeetingFolder) — csak ideiglenes mappákban, kitalált adattal:
-//  - export: manifeszt, a kihagyott fájlok (lock, *.tmp, transcript-backup-*, embedding,
-//    profile.json) nincsenek benne, a többi igen;
-//  - import egy másik tárba: a meeting.json a folder mezőn kívül azonos, a címkék, átirat,
-//    összefoglaló megvannak, az ideiglenes .import-* mappa eltűnik;
-//  - elutasítás: hiányzó manifeszt, rossz verzió, „../” bejegyzés, két felső mappa,
-//    már létező mappanév, már meglévő azonosító;
-//  - adoptMeetingFolder: másolás kívülről, helyben, áthelyezés .import-*-ból, meeting.json
-//    nélküli helyreállítás, név-ütközés;
-//  - AppController: háttérszálas export / import, címkék feloldása név szerint.
-//
+// Meeting archive (store/MeetingArchive) and adopting a recording folder
+// (MeetingStore::adoptMeetingFolder), only in temporary folders, with made-up data:
+//  - export: manifest, the skipped files (lock, *.tmp, transcript-backup-*, embedding,
+//    profile.json) are not in it, the rest are;
+//  - import into another store: meeting.json is identical except for the folder field, the
+//    tags, transcript, summary exist, the temporary .import-* folder disappears;
+//  - rejection: missing manifest, wrong version, a "../" entry, two top-level folders, an
+//    already existing folder name, an already existing id;
+//  - adoptMeetingFolder: copying from outside, in place, moving from .import-*, recovery
+//    without meeting.json, name clash;
+//  - AppController: background export / import, resolving tags by name.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -51,7 +49,7 @@ QJsonObject readJson(const QString& path)
     return QJsonDocument::fromJson(readFile(path)).object();
 }
 
-// Az archívum bejegyzés-nevei (miniz olvasóval).
+// The archive's entry names (with the miniz reader).
 QStringList zipEntries(const QString& zipPath)
 {
     QStringList out;
@@ -79,7 +77,7 @@ QByteArray zipEntryData(const QString& zipPath, const QString& name)
     return out;
 }
 
-// Kézzel összerakott archívum (a hibás / rosszindulatú esetekhez).
+// A hand-assembled archive (for the broken / malicious cases).
 void writeZip(const QString& zipPath, const QList<QPair<QByteArray, QByteArray>>& entries)
 {
     mz_zip_archive zip;
@@ -92,8 +90,8 @@ void writeZip(const QString& zipPath, const QList<QPair<QByteArray, QByteArray>>
     QVERIFY(mz_zip_writer_end(&zip));
 }
 
-// A miniz író nem enged „..” / abszolút nevet: ártalmatlan, azonos hosszú névvel írjuk, majd
-// a fájlban (helyi fejléc + központi könyvtár) bájtra kicseréljük.
+// The miniz writer does not allow ".." / absolute names: we write a harmless name of the same
+// length, then replace it byte for byte in the file (local header + central directory).
 void patchZipNames(const QString& zipPath, const QByteArray& from, const QByteArray& to)
 {
     QCOMPARE(from.size(), to.size());
@@ -147,7 +145,7 @@ private slots:
     void controllerExportImportWithTags();
 
 private:
-    // Kitalált megbeszélés a forrás-tárban, minden fajta fájllal.
+    // A made-up meeting in the source store, with every kind of file.
     Meeting makeFixture(MeetingStore& store, const QString& title = QStringLiteral("Ügyfél-egyeztetés"));
     QString recDir(const char* name) const { return m_dir->filePath(QString::fromLatin1(name)); }
 
@@ -182,7 +180,7 @@ Meeting MeetingArchiveTest::makeFixture(MeetingStore& store, const QString& titl
     writeFile(dir.filePath("transcript.speakers.json"), R"({"corrections":[]})");
     writeFile(dir.filePath("summary.md"), "# Összefoglaló\n- Döntés: jövő héten folytatjuk.\n");
     writeFile(dir.filePath("track_mic.peaks.json"), "[0,1,2]");
-    // Kimaradnak:
+    // Skipped:
     writeFile(dir.filePath("profile.json"), "{}");
     writeFile(dir.filePath("transcript.embeddings.bin"), QByteArray(128, 'e'));
     writeFile(dir.filePath("recording.lock"), "{}");
@@ -197,7 +195,7 @@ Meeting MeetingArchiveTest::makeFixture(MeetingStore& store, const QString& titl
     lb.id = QStringLiteral("loopback");
     lb.file = QStringLiteral("track_loopback.ogg");
     lb.kind = TrackKind::Loopback;
-    lb.startOffsetMs = 57200;   // később bekapcsolt sáv: az eltolás a meeting.json-nal utazik
+    lb.startOffsetMs = 57200;   // a track switched on later: the offset travels with meeting.json
     m.tracks = {mic, lb};
     m.mixdownFile = QStringLiteral("mixdown.mp3");
     m.hasTranscript = true;
@@ -274,12 +272,12 @@ void MeetingArchiveTest::exportImportRoundTrip()
     QCOMPARE(imported.id, m.id);
     const QString folder = QDir(m_dst->audioDir()).filePath(QFileInfo(m.folder).fileName());
     QCOMPARE(imported.folder, folder);
-    QCOMPARE(imported.tagIds, m.tagIds);   // a store-szinten az azonosítók változatlanok
+    QCOMPARE(imported.tagIds, m.tagIds);   // at store level the ids are unchanged
     QCOMPARE(imported.tracks.size(), 2);
     QCOMPARE(imported.tracks.at(1).startOffsetMs, qint64(57200));
     QCOMPARE(imported.tracks.at(0).startOffsetMs, qint64(0));
 
-    // meeting.json: a folder mezőn kívül azonos.
+    // meeting.json: identical except for the folder field.
     const QJsonObject a = readJson(QDir(m.folder).filePath("meeting.json"));
     const QJsonObject b = readJson(QDir(folder).filePath("meeting.json"));
     QCOMPARE(withoutFolder(b), withoutFolder(a));
@@ -291,7 +289,7 @@ void MeetingArchiveTest::exportImportRoundTrip()
     QVERIFY(!QFile::exists(QDir(folder).filePath("profile.json")));
     QVERIFY(!QFile::exists(QDir(folder).filePath("recording.lock")));
 
-    // Az ideiglenes mappa eltűnt; a meeting az indexben.
+    // The temporary folder is gone; the meeting is in the index.
     QVERIFY(QDir(m_dst->audioDir()).entryList({QStringLiteral(".import-*")},
                                               QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
     QCOMPARE(m_dst->loadAll().size(), 1);
@@ -388,7 +386,7 @@ void MeetingArchiveTest::importRefusesExistingFolderName()
     const QString zip = m_dir->filePath(QStringLiteral("ki.tanara.zip"));
     QString err;
     QVERIFY(MeetingArchive::exportMeeting(m, zip, &err));
-    // A célban már van ilyen nevű mappa (más tartalommal).
+    // The target already has a folder of that name (with other content).
     const QString clash = QDir(m_dst->audioDir()).filePath(QFileInfo(m.folder).fileName());
     writeFile(QDir(clash).filePath("track_mic.ogg"), "masik");
 
@@ -397,14 +395,14 @@ void MeetingArchiveTest::importRefusesExistingFolderName()
     const Meeting none = m_dst->adoptMeetingFolder(extracted, &err);
     QVERIFY(none.id.isEmpty());
     QVERIFY2(err.startsWith(QStringLiteral("Már van ilyen nevű felvétel")), qPrintable(err));
-    QCOMPARE(readFile(QDir(clash).filePath("track_mic.ogg")), QByteArray("masik"));   // érintetlen
+    QCOMPARE(readFile(QDir(clash).filePath("track_mic.ogg")), QByteArray("masik"));   // untouched
     QVERIFY(QDir(m_dst->audioDir()).entryList({QStringLiteral(".import-*")},
                                               QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
 }
 
 void MeetingArchiveTest::importRefusesExistingMeetingId()
 {
-    // Ugyanaz a megbeszélés (azonosító) más mappanévvel már a tárban van.
+    // The same meeting (id) with another folder name is already in the store.
     const Meeting m = makeFixture(*m_src);
     const QString zip = m_dir->filePath(QStringLiteral("ki.tanara.zip"));
     QString err;
@@ -430,7 +428,7 @@ void MeetingArchiveTest::adoptCopiesFromOutside()
     const Meeting a = m_dst->adoptMeetingFolder(m.folder, &err);
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
     QCOMPARE(a.id, m.id);
-    QVERIFY(QFileInfo::exists(m.folder));   // a forrás marad (másolás)
+    QVERIFY(QFileInfo::exists(m.folder));   // the source stays (a copy)
     QCOMPARE(a.folder, QDir(m_dst->audioDir()).filePath(QFileInfo(m.folder).fileName()));
     QVERIFY(QFile::exists(QDir(a.folder).filePath("transcript.md")));
 }
@@ -438,14 +436,14 @@ void MeetingArchiveTest::adoptCopiesFromOutside()
 void MeetingArchiveTest::adoptInPlace()
 {
     const Meeting m = makeFixture(*m_src);
-    // Index nélkül (pl. kézzel bemásolt mappa): új tár ugyanazon a mappán.
+    // Without an index (e.g. a hand-copied folder): a new store on the same folder.
     MeetingStore fresh(m_src->audioDir(), recDir("fresh-meta"));
     QString err;
     const Meeting a = fresh.adoptMeetingFolder(m.folder, &err);
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
     QCOMPARE(a.folder, m.folder);
     QCOMPARE(fresh.loadAll().size(), 1);
-    // Másodszor is megy (ugyanaz a mappa, ugyanaz az azonosító).
+    // Works a second time too (the same folder, the same id).
     QVERIFY2(!fresh.adoptMeetingFolder(m.folder, &err).id.isEmpty(), qPrintable(err));
     QCOMPARE(fresh.loadAll().size(), 1);
 }
@@ -461,7 +459,7 @@ void MeetingArchiveTest::adoptMovesFromImportTemp()
     const Meeting a = m_dst->adoptMeetingFolder(staged, &err);
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
     QVERIFY(!QFileInfo::exists(staged));
-    QVERIFY(!QFileInfo::exists(temp));   // az ideiglenes mappa is törlődött
+    QVERIFY(!QFileInfo::exists(temp));   // the temporary folder was deleted too
     QVERIFY(QFile::exists(QDir(a.folder).filePath("track_mic.ogg")));
 }
 
@@ -474,10 +472,10 @@ void MeetingArchiveTest::adoptRecoversWithoutJson()
     QVERIFY2(!a.id.isEmpty(), qPrintable(err));
     QVERIFY(a.title.contains(QStringLiteral("helyreállított")));
     QCOMPARE(a.tracks.size(), 1);
-    QCOMPARE(a.tracks.first().startOffsetMs, qint64(0));   // helyreállítva: 0 (a CLI align --auto igazít)
+    QCOMPARE(a.tracks.first().startOffsetMs, qint64(0));   // recovered: 0 (the CLI align --auto aligns)
     QVERIFY(QFile::exists(QDir(a.folder).filePath("meeting.json")));
 
-    // Hiba: se meeting.json, se sáv.
+    // Error: neither meeting.json nor a track.
     const QString empty = m_dir->filePath(QStringLiteral("ures"));
     QVERIFY(QDir().mkpath(empty));
     QVERIFY(m_dst->adoptMeetingFolder(empty, &err).id.isEmpty());
@@ -519,7 +517,7 @@ void MeetingArchiveTest::controllerExportImportWithTags()
         QCOMPARE(op, QStringLiteral("export:") + meetingId);
         QVERIFY(app.archiveBusy());
         QVERIFY(app.jobs()->isRunning(meetingId, JobKind::Export));
-        QVERIFY(app.exportMeetingArchive(meetingId, zip).isEmpty());   // közben nem indul második
+        QVERIFY(app.exportMeetingArchive(meetingId, zip).isEmpty());   // a second one does not start meanwhile
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 20000);
         QVERIFY2(finished.first().at(1).toBool(), qPrintable(finished.first().at(4).toString()));
         QCOMPARE(finished.first().at(3).toString(), zip);
@@ -529,7 +527,7 @@ void MeetingArchiveTest::controllerExportImportWithTags()
         QVERIFY(!progress.isEmpty());
     }
     {
-        // Másik „gép”: itt már van egy „nordvik” címke (más azonosítóval) → arra képeződik le.
+        // Another "machine": there is already a "nordvik" tag here (with another id), so it maps to that.
         qputenv("TANARA_HOME", m_dir->filePath("home-b").toUtf8());
         AppController app;
         const Tag local = app.tags()->create(QStringLiteral("nordvik"));
@@ -547,14 +545,14 @@ void MeetingArchiveTest::controllerExportImportWithTags()
         QCOMPARE(app.tags()->tag(m.tagIds.at(1)).name, QStringLiteral("Negyedéves"));
         QCOMPARE(app.tags()->tagsOf(meetingId), m.tagIds);
 
-        // Másodszor ugyanaz: hiba, semmi nem változik.
+        // The same a second time: an error, nothing changes.
         finished.clear();
         app.importMeetingArchive(zip);
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 20000);
         QVERIFY(!finished.first().at(1).toBool());
         QVERIFY(finished.first().at(4).toString().startsWith(QStringLiteral("Már van ilyen nevű felvétel")));
 
-        // Szinkron változat: hibás fájl.
+        // Synchronous variant: a broken file.
         QString err;
         writeFile(m_dir->filePath("nem-zip.tanara.zip"), "ez nem zip");
         QVERIFY(app.importMeetingArchiveNow(m_dir->filePath("nem-zip.tanara.zip"), &err).id.isEmpty());

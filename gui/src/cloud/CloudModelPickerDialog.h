@@ -1,10 +1,8 @@
 #pragma once
-//
-// K-05 — Expert mód: konkrét modell a kurált katalógusból (/v1/models, expert && !virtual),
-// áradattal és jelölésekkel (beszélők elkülönítése, a nyelvhez nem ajánlott). A választás a
-// settings cloudSttModel / cloudLlmModel mezőjébe kerül; „Vissza a Gyors / Pontos szintekhez”
-// törli (→ a tier virtuális modellje).
-//
+// Expert mode: a specific model from the curated catalog (/v1/models, expert && !virtual),
+// with price data and flags (speaker separation, not recommended for the language). The
+// choice goes into the settings field cloudSttModel / cloudLlmModel; "Back to the Fast /
+// Accurate tiers" clears it (so the tier's virtual model applies).
 #include <QDialog>
 
 class QLineEdit;
@@ -19,7 +17,7 @@ namespace tanara_gui {
 class CloudModelPickerDialog : public QDialog {
     Q_OBJECT
 public:
-    // kind: "stt" | "llm" — a kezdő fül.
+    // kind: "stt" | "llm", the initial tab.
     CloudModelPickerDialog(tanara::AppController* app, const QString& kind, QWidget* parent = nullptr);
 
 private:

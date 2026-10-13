@@ -1,4 +1,4 @@
-// tanara-cli voice-models / voice-eval. Minden kimenet angol, tr() nélkül.
+// tanara-cli voice-models / voice-eval. All output is English, no tr().
 #include "VoiceCommands.h"
 
 #include "tanara/Paths.h"
@@ -117,7 +117,7 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
           << "Target:   " << QDir::toNativeSeparators(target) << "\n";
     out().flush();
 
-    // A letöltés a GUI-val közös VoiceModelDownloaderen megy (QSaveFile, méret-ellenőrzés).
+    // The download goes through the VoiceModelDownloader shared with the GUI (QSaveFile, size check).
     VoiceModelDownloader dl;
     QEventLoop loop;
     bool done = false, ok = false;
@@ -153,8 +153,8 @@ int fetchModel(const SettingsManager& sm, const QString& id, bool force)
     return 0;
 }
 
-// voice-models verify <id>: a modellfájl ellenőrzése (méret-egyezés). exit 0: rendben (vagy nincs
-// mihez mérni), 1: hiányzik / eltér / ismeretlen id.
+// voice-models verify <id>: checks the model file (size match). Exit 0: OK (or nothing to
+// compare against), 1: missing / mismatch / unknown id.
 int verifyModel(const SettingsManager& sm, const QString& id)
 {
     const auto spec = VoiceModelRegistry::spec(id);
@@ -182,7 +182,7 @@ int verifyModel(const SettingsManager& sm, const QString& id)
     return (r == VoiceModelDownloader::VerifyResult::Ok || r == VoiceModelDownloader::VerifyResult::Unverifiable) ? 0 : 1;
 }
 
-// voice-models delete <id>: a LETÖLTÖTT fájl törlése (<metaDir>/models); a csomagban lévőt nem.
+// voice-models delete <id>: deletes the DOWNLOADED file (<metaDir>/models), not a bundled one.
 int deleteModel(const SettingsManager& sm, const QString& id)
 {
     const auto spec = VoiceModelRegistry::spec(id);
@@ -301,7 +301,7 @@ int runVoiceEvalCommand(const QStringList& args)
     if (entries.isEmpty()) { err() << "No voice model selected.\n"; return 1; }
     const VoiceEmbedderSet set(entries);
 
-    // CSAK olvasás: meeting.json, átirat-sorok, overlay; a cache-t nem töltjük és nem írjuk.
+    // READ-only: meeting.json, transcript lines, overlay; the cache is neither loaded nor written.
     Meeting m = MeetingStore::readMeetingFolder(folder);
     if (m.id.isEmpty()) { err() << "Not a meeting folder (no readable meeting.json): " << folder << "\n"; return 1; }
     m.folder = folder;
@@ -311,7 +311,7 @@ int runVoiceEvalCommand(const QStringList& args)
     const QString audio = speakeredit::mixdownPath(m);
     if (!QFileInfo::exists(audio)) { err() << "Mixdown audio missing: " << audio << "\n"; return 1; }
 
-    // Beszélők (megjelenési sorrendben) és a zajos sorok — a szerkesztő szabályaival.
+    // Speakers (in order of appearance) and the noisy lines, using the editor's rules.
     QVector<VoiceEvalSpeaker> speakers;
     QHash<QString, int> speakerIdx;
     QVector<int> lineSpeaker;
@@ -346,7 +346,7 @@ int runVoiceEvalCommand(const QStringList& args)
         el.locked = o != ov.utterances.constEnd() && (o->corrected || o->confirmed);
         el.noisy = (o != ov.utterances.constEnd() && o->noisy.has_value()) ? *o->noisy : autoNoisy.value(i);
         if (el.durationMs >= minMs) {
-            // Ugyanaz az ablak, mint a szerkesztőben: legfeljebb kMaxEmbedMs a sor közepéből.
+            // The same window as in the editor: at most kMaxEmbedMs from the middle of the line.
             qint64 s = l.startMs, e = l.endMs;
             if (e - s > speakeredit::kMaxEmbedMs) {
                 s = (l.startMs + l.endMs) / 2 - speakeredit::kMaxEmbedMs / 2;
@@ -356,7 +356,7 @@ int runVoiceEvalCommand(const QStringList& args)
             for (auto it = got.cbegin(); it != got.cend(); ++it)
                 if (!it.value().isEmpty()) el.vectors.insert(it.key(), it.value());
             ++done;
-            err() << "\rEmbedding lines: " << done << " / " << todo;   // haladás: stderr
+            err() << "\rEmbedding lines: " << done << " / " << todo;   // progress: stderr
             err().flush();
         }
         evalLines.append(el);

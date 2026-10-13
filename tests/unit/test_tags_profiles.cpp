@@ -1,8 +1,6 @@
-//
-// MeetingProfiles — klasszikus hasonlóság: toldalék-levágás, töltelékszavak, félrehallás-
-// összevonás, a hasonlóság sorrendje egy hat megbeszélésből álló kitalált könyvtáron, a
-// résztvevők ritkasági súlya, a profile.json gyorsítótár és az átirat-változás.
-//
+// MeetingProfiles: classic similarity: suffix stripping, filler words, mishearing merge,
+// the similarity order on a made-up library of six meetings, participants' rarity weight, the
+// profile.json cache and the transcript change.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -65,9 +63,9 @@ void TagsProfilesTest::suffixStripping()
     QCOMPARE(tagtext::stem(QStringLiteral("projektben")), QStringLiteral("projekt"));
     QCOMPARE(tagtext::stem(QStringLiteral("nordviknak")), QStringLiteral("nordvik"));
     QCOMPARE(tagtext::stem(QStringLiteral("utemtervet")), QStringLiteral("utemterv"));
-    QCOMPARE(tagtext::stem(QStringLiteral("raktarbol")), QStringLiteral("raktar"));   // -ből hajtogatva
-    QCOMPARE(tagtext::stem(QStringLiteral("hazban")), QStringLiteral("hazban"));     // a tő < 4 maradna
-    QCOMPARE(tagtext::stem(QStringLiteral("kamionokat")), QStringLiteral("kamiono")); // egyszer, a leghosszabb
+    QCOMPARE(tagtext::stem(QStringLiteral("raktarbol")), QStringLiteral("raktar"));   // folded from "-bol"
+    QCOMPARE(tagtext::stem(QStringLiteral("hazban")), QStringLiteral("hazban"));     // the stem < 4 would remain
+    QCOMPARE(tagtext::stem(QStringLiteral("kamionokat")), QStringLiteral("kamiono")); // once, the longest
 }
 
 void TagsProfilesTest::termsSkipNoise()
@@ -77,11 +75,11 @@ void TagsProfilesTest::termsSkipNoise()
     for (const auto& p : t) stems << p.first;
     QVERIFY(stems.contains(QStringLiteral("nordvi")) || stems.contains(QStringLiteral("nordvik")));
     QVERIFY(stems.contains(QStringLiteral("raktar")));
-    QVERIFY(!stems.contains(QStringLiteral("szoval")));   // töltelékszó
+    QVERIFY(!stems.contains(QStringLiteral("szoval")));   // filler word
     QVERIFY(!stems.contains(QStringLiteral("hogy")));
     QVERIFY(!stems.contains(QStringLiteral("ugye")));
     for (const QString& s : stems) QVERIFY2(!s.contains(QRegularExpression("\\d")), qPrintable(s));
-    // Az eredeti szóalak megmarad a megjelenítéshez.
+    // The original word form stays for display.
     QCOMPARE(t.at(0).second, QStringLiteral("Nordvik"));
 }
 
@@ -94,7 +92,7 @@ void TagsProfilesTest::similarityOrdering()
     QVector<SimilarHit> hits = p.similar(m_lib.nordvik1);
     QVERIFY(!hits.isEmpty());
     QCOMPARE(hits.first().meetingId, m_lib.nordvik2);
-    // Indoklás: közös résztvevő + közös kifejezések (megjelenített alakban) + hasonló cím.
+    // Reasoning: common participant + common phrases (in displayed form) + a similar title.
     bool person = false, terms = false, title = false;
     for (const SuggestionReason& r : hits.first().reasons) {
         if (r.kind == ReasonKind::Participant) { person = true; QVERIFY(r.values.contains("Kovács Anna")); QVERIFY(!r.values.contains("Ádám")); }
@@ -105,11 +103,11 @@ void TagsProfilesTest::similarityOrdering()
 
     QCOMPARE(p.similar(m_lib.budget1).first().meetingId, m_lib.budget2);
     QCOMPARE(p.similar(m_lib.museum2).first().meetingId, m_lib.museum1);
-    // Csökkenő pontszám, önmaga nincs benne.
+    // Descending score, itself not in it.
     hits = p.similar(m_lib.museum1);
     for (int i = 1; i < hits.size(); ++i) QVERIFY(hits.at(i - 1).score >= hits.at(i).score);
     for (const SimilarHit& h : hits) QVERIFY(h.meetingId != m_lib.museum1);
-    // A más témájú megbeszélés sokkal gyengébb (csak a mindenhol jelen lévő „Ádám” közös).
+    // The meeting of another topic is much weaker (only the "Ádám" present everywhere is shared).
     double budgetScore = 0;
     for (const SimilarHit& h : p.similar(m_lib.nordvik1, -1))
         if (h.meetingId == m_lib.budget1) budgetScore = h.score;
@@ -119,7 +117,7 @@ void TagsProfilesTest::similarityOrdering()
 void TagsProfilesTest::participantRarity()
 {
     MeetingProfiles p(m_store.get());
-    QVERIFY(p.participantWeight("Ádám") < 0.01);             // 6/6 megbeszélésen
+    QVERIFY(p.participantWeight("Ádám") < 0.01);             // on 6/6 meetings
     QVERIFY(qAbs(p.participantWeight("Kovács Anna") - (1.0 - (2.0 / 6.0) / 0.6)) < 1e-9);
     QVERIFY(p.participantWeight("Fehér Bence") > p.participantWeight("Kovács Anna"));
 }
@@ -128,8 +126,8 @@ void TagsProfilesTest::mishearingMerge()
 {
     MeetingProfiles p(m_store.get());
     buildAll(p);
-    // „RemedIT” (museum1) és a félrehallott „Remedi” (museum2) egy kifejezés: közös, és a
-    // leggyakoribb eredeti írásmóddal jelenik meg.
+    // "RemedIT" (museum1) and the misheard "Remedi" (museum2) are one phrase: shared, shown in
+    // the most frequent original spelling.
     const QStringList shared = p.sharedTerms(m_lib.museum1, m_lib.museum2, 20);
     QVERIFY2(shared.contains(QStringLiteral("RemedIT")), qPrintable(shared.join(", ")));
     QVERIFY(!shared.contains(QStringLiteral("Remedi")));
@@ -145,13 +143,13 @@ void TagsProfilesTest::profileCacheAndRebuild()
         buildAll(p);
         QVERIFY(QFile::exists(cache));
     }
-    // Új példány: a gyorsítótárból épül (ugyanaz az eredmény).
+    // New instance: built from the cache (the same result).
     MeetingProfiles p(m_store.get());
     buildAll(p);
     QCOMPARE(p.similar(m_lib.budget1).first().meetingId, m_lib.budget2);
 
-    // Az átirat változik (más téma) → a profil újraépül.
-    QTest::qWait(20);   // eltérő módosítási idő
+    // The transcript changes (another topic): the profile is rebuilt.
+    QTest::qWait(20);   // different modification time
     tagsfixture::writeSegments(m.folder, { "A MuseumPlus gyűjteményi rekordok leltári mezői.",
                                            "A MuseumPlus adatbázis migrációja." });
     QSignalSpy ready(&p, &MeetingProfiles::profileReady);
@@ -172,8 +170,8 @@ void TagsProfilesTest::draftByTitle()
 
 void TagsProfilesTest::parallelReadsWhileRebuilding()
 {
-    // Szálbiztonsági füstteszt: négy szál folyamatosan olvas, miközben a fő szál a sorokat
-    // (meeting.json-változás) és a profilokat (átirat-változás) újraépítteti.
+    // Thread-safety smoke test: four threads read continuously while the main thread has the
+    // rows (meeting.json change) and profiles (transcript change) rebuilt.
     MeetingProfiles p(m_store.get());
     buildAll(p);
     std::atomic<bool> stop{false};
@@ -198,11 +196,11 @@ void TagsProfilesTest::parallelReadsWhileRebuilding()
     for (int round = 0; round < 8; ++round) {
         Meeting m = m_store->load(m_lib.museum2);
         m.title = QStringLiteral("Remedi átadás %1").arg(round);
-        m_store->saveMeeting(m);          // meetingUpdated → a sor a háttérszálon frissül
-        p.invalidate(m_lib.budget1);      // a profil újraépül
+        m_store->saveMeeting(m);          // meetingUpdated: the row refreshes on the background thread
+        p.invalidate(m_lib.budget1);      // the profile is rebuilt
         p.ensureBuilt();
         QTRY_VERIFY_WITH_TIMEOUT(p.isIdle(), 10000);
-        // A fő szál olvasása közben sem akad meg (legfeljebb a korábbi pillanatképet kapja).
+        // The main thread's read does not stall either (it at most gets the earlier snapshot).
         QVERIFY(!p.similar(m_lib.nordvik1).isEmpty());
     }
     QTRY_VERIFY_WITH_TIMEOUT(reads.load() > 40, 10000);

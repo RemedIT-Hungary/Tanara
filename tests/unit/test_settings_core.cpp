@@ -1,12 +1,10 @@
-//
-// A Beállítások-ablak core-kiegészítései:
-//  - hangeszközök felhasználói neve (AppSettings::deviceNames → tanara::devicenames): tárolás,
-//    régi fájlok olvashatósága, feloldás EGY helyen (felvevő-név, sáv-név);
+// The Settings window's core additions:
+//  - the user name of audio devices (AppSettings::deviceNames, tanara::devicenames): storage,
+//    readability of old files, resolution in ONE place (recorder name, track name);
 //  - cloudEstimateBeforeRun;
-//  - autostart-védelem (TANARA_HOME mellett a valódi bejegyzéshez nem nyúlunk);
-//  - a promptok változói és kimeneti formája.
-// Minden lemez-művelet ideiglenes mappában történik.
-//
+//  - autostart guard (with TANARA_HOME we do not touch the real entry);
+//  - the prompts' variables and output form.
+// Every disk operation happens in a temporary folder.
 #include <QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -54,33 +52,33 @@ class SettingsCoreTest : public QObject {
 private slots:
     void initTestCase()
     {
-        // Izolált TANARA_HOME: a SettingsManager alapértelmezett mappái (felvételek, jegyzetek)
-        // is ide kerülnek — a felhasználó ~/.tanara és ~/Tanara mappájához semmi nem nyúl.
+        // Isolated TANARA_HOME: SettingsManager's default folders (recordings, notes) go here too;
+        // nothing touches the user's ~/.tanara and ~/Tanara folders.
         QVERIFY(m_home.isValid());
         qputenv("TANARA_HOME", m_home.path().toUtf8());
     }
     void init() { devicenames::setOverrides({}); }
     void cleanupTestCase() { devicenames::setOverrides({}); }
 
-    // ---- eszköznevek ---------------------------------------------------------------------
+    // ---- device names ----
 
     void displayNameFallsBackToShortName()
     {
         QCOMPARE(devicenames::displayName(kSpeakers), QStringLiteral("Kanto YU4"));
         QCOMPARE(devicenames::displayName(kSpeakers), tracknames::shortDeviceName(kSpeakers));
         QVERIFY(!devicenames::hasOverride(kSpeakers));
-        // Rövidíthetetlen (üres) név helyett maga a nyers név.
+        // Instead of an unshortenable (empty) name, the raw name itself.
         QCOMPARE(devicenames::displayName(QStringLiteral("x")), QStringLiteral("x"));
     }
 
     void overrideWinsEverywhere()
     {
         devicenames::setOverrides({{kSpeakers, QStringLiteral("  Nappali   hangfal ")}, {kMic, QString()}});
-        QCOMPARE(devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));   // egyszerűsítve
+        QCOMPARE(devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));   // simplified
         QVERIFY(devicenames::hasOverride(kSpeakers));
-        QVERIFY(!devicenames::hasOverride(kMic));          // az üres név nem felülírás
+        QVERIFY(!devicenames::hasOverride(kMic));          // an empty name is not an override
         QCOMPARE(devicenames::overrides().size(), 1);
-        // A piszkozat-tábla (Beállítások, mentés előtt) a globálistól független.
+        // The draft table (Settings, before saving) is independent of the global one.
         QCOMPARE(devicenames::displayName(kSpeakers, {}), QStringLiteral("Kanto YU4"));
         QCOMPARE(devicenames::displayName(kMic, {{kMic, QStringLiteral("Asztali mikrofon")}}),
                  QStringLiteral("Asztali mikrofon"));
@@ -95,14 +93,14 @@ private slots:
         QCOMPARE(before.size(), 3);
         QVERIFY(!before.contains(QStringLiteral("Nappali hangfal")));
 
-        // Az átnevezett eszköz sávja a felhasználó nevét kapja; a többi a szerep-nevét tartja.
+        // The renamed device's track gets the user's name; the others keep their role name.
         devicenames::setOverrides({{kSpeakers, QStringLiteral("Nappali hangfal")}});
         const QStringList after = tracknames::friendlyNames(tracks);
         QCOMPARE(after.at(2), QStringLiteral("Nappali hangfal"));
         QCOMPARE(after.at(0), before.at(0));
         QCOMPARE(after.at(1), before.at(1));
 
-        // A sáv saját (meeting-szintű) neve továbbra is erősebb.
+        // The track's own (meeting-level) name is still stronger.
         Meeting m;
         m.folder = QDir::tempPath();
         m.tracks = tracks;
@@ -119,12 +117,12 @@ private slots:
         devicenames::setOverrides({{kMic, QStringLiteral("Asztali")}, {mic2, QStringLiteral("Asztali")}});
         const QStringList names = tracknames::friendlyNames(
             {mk(QStringLiteral("a"), kMic, TrackKind::Mic), mk(QStringLiteral("b"), mic2, TrackKind::Mic)});
-        // Azonos felhasználói név: nem írjuk át „Asztali (…)”-ra, csak sorszám különbözteti meg.
+        // The same user name: we do not rewrite it as "Desktop (...)", only an ordinal tells them apart.
         QCOMPARE(names.at(0), QStringLiteral("Asztali"));
         QCOMPARE(names.at(1), QStringLiteral("Asztali 2"));
     }
 
-    // ---- tárolás -------------------------------------------------------------------------
+    // ---- storage ----
 
     void jsonRoundTrip()
     {
@@ -140,7 +138,7 @@ private slots:
 
     void oldFilesStayReadable()
     {
-        // Egy régi build settings.json-ja: az új kulcsok nélkül → alapértelmezések.
+        // An old build's settings.json: without the new keys, so defaults.
         QJsonObject old = toJson(AppSettings{});
         old.remove(QStringLiteral("deviceNames"));
         old.remove(QStringLiteral("cloudEstimateBeforeRun"));
@@ -150,8 +148,8 @@ private slots:
         QCOMPARE(s.cloudEstimateBeforeRun, true);
         QCOMPARE(s.userSpeakerName, QStringLiteral("Lilla"));
 
-        // Az új fájlt egy régi build is olvassa: a meglévő kulcsok jelentése nem változott,
-        // az újakat egyszerűen nem ismeri (itt: kivesszük őket, és minden más ugyanaz marad).
+        // An old build reads the new file too: the existing keys' meaning did not change, and it just
+        // does not know the new ones (here: we remove them, and everything else stays the same).
         AppSettings now;
         now.deviceNames = {{kMic, QStringLiteral("Asztali")}};
         now.audioQuality = QStringLiteral("medium");
@@ -181,12 +179,12 @@ private slots:
             mgr.setSettings(s);
             QCOMPARE(devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));
         }
-        // Új folyamat (itt: új példány) a lemezről is betölti.
+        // A new process (here: a new instance) loads from disk too.
         devicenames::setOverrides({});
         SettingsManager again(dir.path());
         QCOMPARE(again.settings().deviceNames.value(kSpeakers), QStringLiteral("Nappali hangfal"));
         QCOMPARE(devicenames::displayName(kSpeakers), QStringLiteral("Nappali hangfal"));
-        // A fájlban a kulcs a többi beállítás mellett áll.
+        // In the file the key sits next to the other settings.
         QFile f(again.settingsFilePath());
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
@@ -208,21 +206,21 @@ private slots:
         const QString text = QString::fromUtf8(f.readAll());
         QVERIFY(text.contains(QStringLiteral("[Desktop Entry]")));
         QVERIFY(text.contains(QStringLiteral("Exec=/opt/tanara/tanara-watcher\n")));
-        // Üres futtatható út → nem ír.
+        // An empty executable path: does not write.
         QVERIFY(!autostart::writeEntry(dir.filePath(QStringLiteral("x.desktop")), QString()));
         QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("x.desktop"))));
     }
 
     void autostartIsNeverTouchedInASandbox()
     {
-        // TANARA_HOME mellett (homokozó, teszt — itt végig be van állítva) a valódi
-        // ~/.config/autostart bejegyzés érinthetetlen: se létrehozás, se törlés, se átírás.
+        // With TANARA_HOME (sandbox, test; set throughout here) the real ~/.config/autostart entry is
+        // untouchable: no creation, deletion or rewrite.
         const QString real = autostart::watcherEntryPath();
         const bool existed = !real.isEmpty() && QFile::exists(real);
         const QDateTime stamp = existed ? QFileInfo(real).lastModified() : QDateTime();
 
 #if defined(Q_OS_WIN)
-        // Windowson a bejegyzés a HKCU\…\Run "Tanara Watcher" értéke.
+        // On Windows the entry is the "Tanara Watcher" value under HKCU\...\Run.
         const QString realRun = autostart::readRunValue(QLatin1String(autostart::kRunSubKey),
                                                          QLatin1String(autostart::kRunValueName));
 #endif
@@ -243,8 +241,8 @@ private slots:
         }
     }
 
-    // Windows Run-kulcs: írás → visszaolvasás → törlés egy SAJÁT, utána törölt teszt-kulcson
-    // (a valódi Run kulcshoz a teszt nem nyúl; nem marad utána semmi).
+    // Windows Run key: write, read back, delete on an OWN test key that is then deleted (the test
+    // does not touch the real Run key; nothing remains afterwards).
     void autostartRunValueRoundTrip()
     {
 #if defined(Q_OS_WIN)
@@ -256,14 +254,14 @@ private slots:
         });
         QVERIFY(autostart::readRunValue(key, name).isEmpty());
         QVERIFY(autostart::writeRunValue(key, name, QStringLiteral("C:/Program Files/Tanara/tanara-watcher.exe")));
-        // Idézőjeles, natív elválasztós út (a szóközös út miatt).
+        // A quoted path with native separators (because of the path with spaces).
         QCOMPARE(autostart::readRunValue(key, name),
                  QStringLiteral("\"C:\\Program Files\\Tanara\\tanara-watcher.exe\""));
-        QVERIFY(!autostart::writeRunValue(key, name, QString()));   // üres út → nem ír
+        QVERIFY(!autostart::writeRunValue(key, name, QString()));   // empty path: does not write
         QVERIFY(autostart::removeRunValue(key, name));
         QVERIFY(autostart::readRunValue(key, name).isEmpty());
-        QVERIFY(autostart::removeRunValue(key, name));               // már nincs → akkor is true
-        // A bejegyzés-út ember-olvasható registry-út.
+        QVERIFY(autostart::removeRunValue(key, name));               // already gone: true anyway
+        // The entry path is a human-readable registry path.
         QVERIFY(autostart::watcherEntryPath().endsWith(QStringLiteral("\\Run\\Tanara Watcher")));
 #else
         QVERIFY(autostart::readRunValue(QStringLiteral("x"), QStringLiteral("y")).isEmpty());
@@ -286,12 +284,12 @@ private slots:
         QFile f(dir.filePath(QStringLiteral("watcher/") + exe));
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.close();
-        // A build-fában: <build>/gui/tanara mellől a ../watcher/tanara-watcher.
+        // In the build tree: ../watcher/tanara-watcher from next to <build>/gui/tanara.
         QCOMPARE(autostart::findWatcherExecutable(dir.filePath(QStringLiteral("gui"))),
                  QFileInfo(f).absoluteFilePath());
     }
 
-    // ---- promptok ------------------------------------------------------------------------
+    // ---- prompts ----
 
     void promptVariablesAreTheOnesTheCodeSubstitutes()
     {
@@ -299,11 +297,11 @@ private slots:
         QVERIFY(!vars.isEmpty());
         for (const PromptVariable& v : vars) {
             QVERIFY(!v.description.isEmpty());
-            // Amit a jelmagyarázat ígér, azt az applySummaryLanguage tényleg kicseréli…
+            // What the legend promises, applySummaryLanguage really replaces ...
             const QString out = applySummaryLanguage(QStringLiteral("A: ") + v.token, QStringLiteral("angol"));
             QVERIFY2(!out.contains(v.token), qPrintable(v.token));
         }
-        // …és a beépített promptok csak ilyen változót használnak.
+        // ... and the built-in prompts use only such variables.
         static const QRegularExpression re(QStringLiteral("\\{\\{[^}]+\\}\\}"));
         QStringList known;
         for (const PromptVariable& v : vars) known << v.token;
@@ -320,8 +318,8 @@ private slots:
 
     void outputFormats()
     {
-        // A rövid forma kulcsai: az egylépéses ("single", régi neve "simple") és az összegző
-        // ("merge") prompt ugyanezeket kéri, és a séma-leírás is ezeket mutatja.
+        // The short form's keys: the single-pass ("single", formerly "simple") and the merge ("merge")
+        // prompt ask for the same ones, and the schema description shows them too.
         for (const QString& id : {QStringLiteral("single"), QStringLiteral("simple"), QStringLiteral("merge")}) {
             const PromptOutputFormat f = promptOutputFormat(id);
             QCOMPARE(f.kind, QStringLiteral("json"));
@@ -332,7 +330,7 @@ private slots:
                 QVERIFY2(promptBuiltin(id).contains(key), qPrintable(id + key));
             }
         }
-        // A jegyzet-lépés négy fejlécét a parser angolul várja.
+        // The parser expects the note step's four headers in English.
         const PromptOutputFormat notes = promptOutputFormat(QStringLiteral("notes"));
         QCOMPARE(notes.kind, QStringLiteral("text"));
         for (const QString& h : {QStringLiteral("TOPICS"), QStringLiteral("DECISIONS"),
@@ -341,7 +339,7 @@ private slots:
             QVERIFY2(promptBuiltin(QStringLiteral("notes")).contains(h + QLatin1Char('\n')), qPrintable(h));
         }
         QVERIFY(promptBuiltin(QStringLiteral("single")).contains(QStringLiteral("\nSUMMARY\n")));
-        // Az elemzés magyar szakaszcímeire illeszt a parser — ezek az angol promptban is maradnak.
+        // The parser matches the analysis's Hungarian section titles; these stay in the English prompt too.
         for (const QString& h : {QStringLiteral("## Döntések"), QStringLiteral("## Nyitott kérdések"),
                                  QStringLiteral("## Teendők")})
             QVERIFY2(promptBuiltin(QStringLiteral("analysis")).contains(h), qPrintable(h));

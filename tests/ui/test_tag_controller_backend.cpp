@@ -1,11 +1,11 @@
-// TagControllerBackend — a TagBackend varrat valódi AppController + TagService fölött.
-//  - készlet, legutóbbiak, felrakás / levétel, a core jeleinek továbbítása;
-//  - javaslatok: Computing → Ready (computing jelző), elemek a pendingTagSuggestions-ből
-//    (indok, hasonló megbeszélés), együtt járó (baseTagId), elutasítás;
-//  - profil (megbeszélések a hosszal), átnevezés / összevonás / törlés, visszavonás-csoport;
-//  - a MeetingTagsModel a controllerrel (a gyár ezt a backendet adja);
-//  - vázlat-javaslat cím alapján.
-// Izolált TANARA_HOME (QTemporaryDir), kitalált tesztkönyvtár; hálózat / LM Studio nincs.
+// TagControllerBackend: the TagBackend seam over a real AppController + TagService.
+//  - set, recents, apply / remove, forwarding core's signals;
+//  - suggestions: Computing to Ready (computing flag), items from pendingTagSuggestions
+//    (reason, similar meeting), co-occurring (baseTagId), rejection;
+//  - profile (meetings with their length), rename / merge / delete, undo group;
+//  - MeetingTagsModel with the controller (the factory returns this backend);
+//  - draft suggestion by title.
+// Isolated TANARA_HOME (QTemporaryDir), made-up test library; no network / LM Studio.
 #include "AppContext.h"
 #include "MeetingTagsModel.h"
 #include "TagBackend.h"
@@ -70,7 +70,7 @@ private slots:
         QVERIFY(b->canUndo());
         QCOMPARE(b->undoLabel(), QStringLiteral("Címke hozzáadva: #Nordvik"));
 
-        // Név szerint a meglévőt kapja (nem jön létre másik).
+        // By name it gets the existing one (no other is created).
         QCOMPARE(b->addTag(m_lib.nordvik2, QStringLiteral("nordvik"), TagAddSource::Suggestion), id);
         const QVector<TagItem> all = b->tags();
         QCOMPARE(all.size(), 1);
@@ -83,10 +83,10 @@ private slots:
 
         b->removeTag(m_lib.nordvik2, id);
         QVERIFY(b->tagsOf(m_lib.nordvik2).isEmpty());
-        b->undo();   // a levétel visszavonva
+        b->undo();   // the removal undone
         QCOMPARE(b->tagsOf(m_lib.nordvik2), QStringList{id});
 
-        // Üres meetingId: nem csinál semmit.
+        // Empty meetingId: does nothing.
         QVERIFY(b->addTag(QString(), QStringLiteral("X"), TagAddSource::Manual).isEmpty());
         QVERIFY(b->tagsOf(QString()).isEmpty());
     }
@@ -97,7 +97,7 @@ private slots:
         const QString nordvik = b->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"), TagAddSource::Manual);
         const QString log = b->addTag(m_lib.nordvik1, QStringLiteral("Logisztika"), TagAddSource::Manual);
 
-        QStringList seen;   // computing-állapot a jelek pillanatában
+        QStringList seen;   // computing state at the moment of the signals
         connect(b, &TagBackend::suggestionsChanged, this, [&](const QString& id) {
             if (id == m_lib.nordvik2) seen << (b->suggestions(id).computing ? "computing" : "ready");
         });
@@ -125,22 +125,22 @@ private slots:
         }
         QVERIFY(ids.contains(nordvik) && ids.contains(log));
 
-        // Elutasítás → isRejected igaz; a core szűrt újrakiadását (Computing nélkül) a backend
-        // nem veszi át, a szűrés a nézetmodellé — így a visszavonás után visszajön.
+        // Reject: isRejected becomes true; the backend does not take over core's filtered re-emit
+        // (without Computing), the filtering belongs to the view model, so after undo it comes back.
         const TagSuggestionItem first = st.items.first();
         b->reject(m_lib.nordvik2, first);
         QVERIFY(b->isRejected(m_lib.nordvik2, first.tagId));
         QCOMPARE(m_app->pendingTagSuggestions(m_lib.nordvik2).size(), 1);
         QCOMPARE(b->suggestions(m_lib.nordvik2).items.size(), 2);
-        b->undo();   // az elutasítás visszavonva
+        b->undo();   // the rejection undone
         QVERIFY(!b->isRejected(m_lib.nordvik2, first.tagId));
 
-        // Friss kérés (Computing → Ready) felülírja; törölt címke eleme kimarad.
+        // A fresh request (Computing to Ready) overwrites; a deleted tag's item is left out.
         b->remove(log);
         QVERIFY(b->suggestions(m_lib.nordvik2).items.size() == 1);
         b->undo();
 
-        // Más meeting állapota üres.
+        // Another meeting's state is empty.
         QVERIFY(b->suggestions(m_lib.museum1).items.isEmpty());
         QVERIFY(!b->suggestions(m_lib.museum1).computing);
     }
@@ -174,11 +174,11 @@ private slots:
         QCOMPARE(p.tagId, a);
         QCOMPARE(p.meetingCount, 2);
         QCOMPARE(p.meetings.size(), 2);
-        QCOMPARE(p.meetings.first().meetingId, m_lib.museum2);   // legújabb elöl
+        QCOMPARE(p.meetings.first().meetingId, m_lib.museum2);   // newest first
         QCOMPARE(p.meetings.first().durationMs, qint64(30 * 60 * 1000));
         QVERIFY(!p.participants.isEmpty());
 
-        // A kezelő nézetmodellje ugyanígy látja (a hossz szövegként).
+        // The manager view model sees it the same way (the length as text).
         TagsViewModel vm;
         vm.setController(m_app.get());
         vm.setSelectedId(a);
@@ -187,7 +187,7 @@ private slots:
         QCOMPARE(meetings.first().toMap().value("durationText").toString(), QStringLiteral("30 p"));
 
         QVERIFY(b->rename(a, QStringLiteral("MuseumPlus bevezetés")));
-        QVERIFY(!b->rename(a, QStringLiteral("museum plusz")));   // a név másé
+        QVERIFY(!b->rename(a, QStringLiteral("museum plusz")));   // the name belongs to another
         b->merge(dup, a);
         QCOMPARE(b->tagsOf(m_lib.museum2), QStringList{a});
         QCOMPARE(b->tags().size(), 1);
@@ -203,7 +203,7 @@ private slots:
         MeetingTagsModel m;
         m.setController(m_app.get());
         QVERIFY(dynamic_cast<TagControllerBackend*>(m.backend()));
-        // Controllerrel nincs demó-meeting: meetingId nélkül üres.
+        // With a controller there is no demo meeting: without a meetingId it is empty.
         QVERIFY(m.tags().isEmpty());
         m.setMeetingId(m_lib.nordvik1);
         QSignalSpy toasts(&m, &MeetingTagsModel::toast);
@@ -226,18 +226,18 @@ private slots:
         QCOMPARE(m.tags().size(), 1);
         QCOMPARE(m.suggestions().size(), 1);
         QVERIFY(toasts.count() >= 1);
-        QVERIFY(toasts.last().at(1).toBool());   // visszavonható
+        QVERIFY(toasts.last().at(1).toBool());   // undoable
         QVERIFY(m.canUndo());
         m.undo();
         QVERIFY(m.tags().isEmpty());
-        QCOMPARE(m.suggestions().size(), 2);   // a visszavont elfogadás után visszajön
+        QCOMPARE(m.suggestions().size(), 2);   // comes back after the accepted one is undone
         m.reject(0);
         QCOMPARE(m.suggestions().size(), 1);
         m.undo();
         QCOMPARE(m.suggestions().size(), 2);
     }
 
-    // C1: a résztvevők kézi címkéiből jövő javaslat („A résztvevők alapján”), átírás előtt is.
+    // A suggestion from the participants' manual tags ("Based on the participants"), before the transcript too.
     void participantTagSuggestionsAndLabel()
     {
         tanara::TagService* tags = m_app->tags();
@@ -263,7 +263,7 @@ private slots:
         QCOMPARE(reason.value("label").toString(), QStringLiteral("Résztvevők címkéje"));
         QCOMPARE(reason.value("text").toString(), QStringLiteral("Fehér Gábor, Varga Árpád (mindkettőjükön)"));
 
-        // Felrakás után eltűnik; a résztvevő-változás nem hozza vissza.
+        // After applying it disappears; a participant change does not bring it back.
         m.accept(0);
         QVERIFY(m.suggestions().isEmpty());
         m_app->addParticipant(mid, QStringLiteral("Szabó Bence"));
@@ -274,13 +274,13 @@ private slots:
     {
         TagBackend* b = m_backend.get();
         const QString nordvik = b->addTag(m_lib.nordvik1, QStringLiteral("Nordvik"), TagAddSource::Manual);
-        // A profilok háttérszálon épülnek (a fő szál nem tölt szinkron): megvárjuk a kört.
+        // The profiles are built on a background thread (the main thread does not load synchronously): we wait for the round.
         m_app->profiles()->ensureBuilt();
         QTRY_VERIFY_WITH_TIMEOUT(m_app->profiles()->isIdle(), 10000);
         const QVector<TagSuggestionItem> draft = b->draftSuggestions(QStringLiteral("Nordvik heti egyeztetés"));
         QVERIFY(!draft.isEmpty());
         QCOMPARE(draft.first().tagId, nordvik);
-        // A demó-backend a T07 kitalált javaslatát adja.
+        // The demo backend returns the made-up suggestion.
         std::unique_ptr<TagBackend> demo(createTagBackend(nullptr, nullptr));
         QCOMPARE(demo->draftSuggestions(QStringLiteral("Nordvik")).value(0).name, QStringLiteral("Ügyféltámogatás"));
     }

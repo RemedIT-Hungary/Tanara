@@ -1,17 +1,15 @@
+// Tanara Cloud: the lifecycle of X-Tanara-Job-Id in AppController (one processing run = one
+// id; resuming = a new run).
 //
-// Tanara Cloud — az X-Tanara-Job-Id életciklusa az AppController-ben (grill-döntés 29:
-// egy feldolgozás-futás = egy azonosító; folytatás = új futás).
-//
-// A teszt a mock-gatewayt indítja (node, kannázott LLM), izolált HOME-mal építi fel az
-// AppControllert (TANARA_CLOUD=live), device flow-val bejelentkezik, és a mock
-// usage-naplójából (GET /__mock/state) ellenőrzi a futásonkénti job id-ket:
-//   - komplex összefoglaló: témagyűjtés + téma-elemzések + összegzés = EGY job id,
-//     a K-07 (cloudCharged) egyszer, az összes hívással;
-//   - megszakítás (hiba) utáni folytatás: új job id, csak a hátralévő hívásokkal;
-//   - gyors összefoglaló: rövid megbeszélésnél egy hívás, saját job id; hosszúnál a részenkénti
-//     jegyzetek + az összegzés EGY futás (egy job id, egy K-07); hiba utáni folytatás új futás.
-// Node nélkül QSKIP.
-//
+// The test starts the mock-gateway (node, canned LLM), builds the AppController with an
+// isolated HOME (TANARA_CLOUD=live), signs in with the device flow, and checks the per-run job
+// ids from the mock's usage log (GET /__mock/state):
+//   - complex summary: topic gathering + topic analyses + final summary = ONE job id, the
+//     charge notice (cloudCharged) once, with all the calls;
+//   - resuming after a cancel (error): a new job id, only the remaining calls;
+//   - quick summary: for a short meeting one call, its own job id; for a long one the part
+//     notes + the final summary are ONE run (one job id, one charge notice); resuming after an error is a new run.
+// Without node: QSKIP.
 #include <QtTest>
 #include <QCoreApplication>
 #include <QDir>
@@ -93,9 +91,9 @@ void TestCloudJobId::initTestCase()
     }
     QVERIFY2(out.contains("mock-gateway 1.2.0"), out.constData());
 
-    // Izolált HOME (~/.tanara a temp alatt) + élő cloud-mód a mock ellen.
+    // Isolated HOME (~/.tanara under temp) + live cloud mode against the mock.
     qputenv("HOME", m_home.path().toUtf8());
-    // A HOME Windowson nem téríti el a QDir::homePath()-t → a TANARA_HOME is a temp alá mutat.
+    // On Windows HOME does not change QDir::homePath(), so TANARA_HOME points under temp too.
     qputenv("TANARA_HOME", m_home.filePath(".tanara").toUtf8());
     qputenv("TANARA_CLOUD", "live");
     qputenv("TANARA_CLOUD_URL", m_base.toUtf8());
@@ -165,7 +163,7 @@ QString TestCloudJobId::newMeetingWithTranscript(const QString& title)
     return m.id;
 }
 
-// A teljes komplex út (témagyűjtés → szerkesztés nélkül elemzés → összegzés) egy futás.
+// The whole complex path (topic gathering, analysis without editing, summary) is one run.
 void TestCloudJobId::complex_oneRunOneJobId()
 {
     const QString id = newMeetingWithTranscript(QStringLiteral("Komplex — egy futás"));
@@ -193,26 +191,26 @@ void TestCloudJobId::complex_oneRunOneJobId()
         jobs.insert(u.value("job_id").toString());
         ++calls;
     }
-    // Kannázott: 2 téma → témagyűjtés + 2 elemzés + összegzés.
+    // Canned: 2 topics: topic gathering + 2 analyses + summary.
     QCOMPARE(calls, 4);
     QCOMPARE(jobs.size(), 1);
     QVERIFY(!jobs.values().first().isEmpty());
 
-    // K-07: egyszer, a futás összes hívásával.
+    // Charge notice: once, with all the run's calls.
     QCOMPARE(charged.size(), 1);
     QCOMPARE(charged.first().at(1).toString(), QStringLiteral("complex"));
     QCOMPARE(charged.first().at(3).toInt(), 4);
 }
 
-// Hiba az elemzés közben → a futás lezárul; a „Folytatás” új futás, új job id-vel, és csak
-// a hátralévő részeket hívja.
+// An error during analysis ends the run; "Resume" is a new run with a new job id, and it
+// calls only the remaining parts.
 void TestCloudJobId::complex_continuationIsNewRun()
 {
     const QString id = newMeetingWithTranscript(QStringLiteral("Komplex — folytatás"));
     QVERIFY(!id.isEmpty());
     const int before = llmUsage().size();
 
-    // A témagyűjtés + az első elemzés sikerül, a második hívás 500-at kap.
+    // Topic gathering + the first analysis succeed, the second call gets a 500.
     mockConfig({ { "fail_chat_after", 2 } });
     QSignalSpy errors(m_app.get(), &AppController::cloudError);
     QVector<SummaryTopic> topics;
@@ -233,7 +231,7 @@ void TestCloudJobId::complex_continuationIsNewRun()
     QVERIFY(!firstJob.isEmpty());
     QCOMPARE(all[before + 1].toObject().value("job_id").toString(), firstJob);
 
-    // Folytatás (K-12 „Folytatás”): ugyanaz a hívás, mint a GUI-ban.
+    // Resume: the same call as in the GUI.
     mockConfig({ { "fail_chat_after", QJsonValue() } });
     QSignalSpy charged(m_app.get(), &AppController::cloudCharged);
     QSignalSpy done(m_app.get(), &AppController::summaryReady);
@@ -241,7 +239,7 @@ void TestCloudJobId::complex_continuationIsNewRun()
     QVERIFY(done.wait(20000));
 
     all = llmUsage();
-    QCOMPARE(all.size() - before, 4);   // + a hátralévő elemzés + összegzés
+    QCOMPARE(all.size() - before, 4);   // + the remaining analysis + summary
     const QString secondJob = all[before + 2].toObject().value("job_id").toString();
     QVERIFY(!secondJob.isEmpty());
     QVERIFY(secondJob != firstJob);
@@ -250,7 +248,7 @@ void TestCloudJobId::complex_continuationIsNewRun()
     QCOMPARE(charged.first().at(3).toInt(), 2);
 }
 
-// A gyors összefoglaló változatlan: egy hívás, saját (új) job id, quick mód.
+// The quick summary is unchanged: one call, its own (new) job id, quick mode.
 void TestCloudJobId::quick_ownJobId()
 {
     const QString id = newMeetingWithTranscript(QStringLiteral("Gyors"));
@@ -274,7 +272,7 @@ void TestCloudJobId::quick_ownJobId()
     QCOMPARE(charged.first().at(1).toString(), QStringLiteral("summary"));
 }
 
-// Hosszú (több részes) átirat: félpercenként egy bekezdés.
+// Long (multi-part) transcript: one paragraph every half minute.
 QString TestCloudJobId::newLongMeeting(const QString& title, int minutes)
 {
     Meeting m = m_app->store()->createMeeting(title);
@@ -294,9 +292,9 @@ QString TestCloudJobId::newLongMeeting(const QString& title, int minutes)
     return m.id;
 }
 
-// Hosszú megbeszélés gyors összefoglalója: 3 jegyzet-hívás + 1 összegzés = EGY futás (egy job
-// id), a K-07 egyszer, mind a négy hívással. Hiba közben: a futás lezárul (részleges terheléssel),
-// a folytatás új futás, és csak a hátralévő hívásokat indítja.
+// Quick summary of a long meeting: 3 note calls + 1 summary = ONE run (one job id), the
+// charge notice once, with all four calls. On an error: the run ends (with a partial charge),
+// the resume is a new run, and it starts only the remaining calls.
 void TestCloudJobId::quick_multiPartOneRun()
 {
     const QString id = newLongMeeting(QStringLiteral("Hosszú gyors"), 40);
@@ -325,13 +323,13 @@ void TestCloudJobId::quick_multiPartOneRun()
     const SummaryDocument doc = m_app->summaryDocument(id);
     QCOMPARE(doc.summary.execSummary,
              QStringLiteral("A csapat a MuseumPlus migrációt egyeztette; a szállítás jövő hétre került."));
-    // A kannázott jegyzet minden részben az egész részt egy (hasonló című) tárgynak írja → az
-    // összevonás 20 percnél megáll: részenként egy szakasz.
+    // The canned note writes the whole part as one (similarly titled) subject in every part, so
+    // the merge stops at 20 minutes: one section per part.
     QCOMPARE(doc.summary.memo.size(), 3);
     QCOMPARE(doc.summary.memo[0].startMs, 0);
     QCOMPARE(doc.summary.memo[2].startMs, 30 * 60000);
 
-    // Hiba a 2. jegyzet-hívásnál (az első sikeres, terhelt).
+    // An error at the 2nd note call (the first succeeded, charged).
     const QString id2 = newLongMeeting(QStringLiteral("Hosszú gyors — hiba"), 40);
     before = llmUsage().size();
     mockConfig({ { "fail_chat_after", 1 } });
@@ -339,12 +337,12 @@ void TestCloudJobId::quick_multiPartOneRun()
     m_app->summarizeMeeting(id2);
     QVERIFY(errors.wait(20000));
     QCOMPARE(errors.first().at(1).toString(), QStringLiteral("summary"));
-    QVERIFY(errors.first().at(3).value<Money>().micros > 0);    // részleges terhelés: nem „semmi”
+    QVERIFY(errors.first().at(3).value<Money>().micros > 0);    // partial charge: not "nothing"
     all = llmUsage();
     QCOMPARE(all.size() - before, 1);
     const QString firstJob = all[before].toObject().value("job_id").toString();
 
-    // Folytatás: új futás, új job id; csak a 2–3. rész + az összegzés.
+    // Resume: a new run, a new job id; only parts 2-3 + the summary.
     mockConfig({ { "fail_chat_after", QJsonValue() } });
     charged.clear();
     m_app->summarizeMeeting(id2);

@@ -1,9 +1,7 @@
 #pragma once
-//
-// K-03 — Bejelentkezés eszköz-kóddal (device flow). A kliens kódot mutat, megnyitja a
-// böngészőt (verification_uri_complete), és `interval` mp-enként lekérdez. Mégse →
-// POST /v1/auth/device/cancel (nem marad árva kulcs).
-//
+// Sign-in with a device code (device flow). The client shows a code, opens the browser
+// (verification_uri_complete) and polls every `interval` seconds. Cancel calls
+// POST /v1/auth/device/cancel (no orphan key is left).
 #include "tanara/cloud/CloudTypes.h"
 
 #include <QDateTime>
@@ -24,7 +22,7 @@ public:
     explicit CloudLoginDialog(tanara::AppController* app, QWidget* parent = nullptr);
 
 public slots:
-    void reject() override;          // Mégse → device/cancel
+    void reject() override;          // Cancel calls device/cancel
 
 protected:
     void showEvent(QShowEvent* e) override;

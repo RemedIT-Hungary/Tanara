@@ -1,14 +1,12 @@
+// Tanara: PwDumpParser unit tests.
 //
-// Tanara — PwDumpParser unit-tesztek.
+// From `pw-dump` (PipeWire) JSON output the parser decides whether a call is in progress: an
+// active (state=running) microphone-capturing stream (media.class=Stream/Input/Audio) from a
+// KNOWN call app, but NOT from our own binary. A pure function, so we test it with canned
+// JSON fixtures (no pw-dump run).
 //
-// A parser a `pw-dump` (PipeWire) JSON kimenetéből dönti el, folyik-e hívás:
-// aktív (state=running) mikrofon-fogó stream (media.class=Stream/Input/Audio) egy
-// ISMERT hívás-apptól, de NEM a saját binárisunktól. Tiszta függvény → befőzött
-// JSON-fixture-ökkel teszteljük (nincs pw-dump futtatás).
-//
-// FONTOS: külön teszt-exe (lásd tests/CMakeLists.txt GLOB), saját main-nel. A core
-// nem linkel Widgetset → QTEST_GUILESS_MAIN.
-//
+// IMPORTANT: a separate test exe (see tests/CMakeLists.txt GLOB), with its own main. Core
+// does not link Widgets, so QTEST_GUILESS_MAIN.
 #include <QtTest>
 #include <QObject>
 
@@ -16,7 +14,7 @@
 
 using namespace tanara;
 
-// Egyetlen Stream/Input/Audio node köré épített minimál pw-dump kimenet.
+// A minimal pw-dump output built around a single Stream/Input/Audio node.
 static QByteArray node(const QString& state, const QString& binary,
                        const QString& appName, const QString& mediaName)
 {
@@ -42,7 +40,7 @@ class PwDumpParserTests : public QObject {
 
 private slots:
 
-    // Aktív (running) Zoom mikrofon-fogó → meeting; appId/appName kinyerve.
+    // An active (running) Zoom microphone capture is a meeting; appId/appName extracted.
     void activeZoomIsMeeting()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -52,7 +50,7 @@ private slots:
         QCOMPARE(s.appName, QStringLiteral("Zoom"));
     }
 
-    // Ugyanaz a stream, de idle (nem fogja aktívan a mikrofont) → NEM meeting.
+    // The same stream, but idle (not actively capturing the microphone): NOT a meeting.
     void idleStreamIsNotMeeting()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -60,7 +58,7 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Ön-kizárás: a saját 'tanara' felvevő capture-je SOHA nem meeting.
+    // Self-exclusion: our own 'tanara' recorder's capture is NEVER a meeting.
     void selfCaptureExcluded()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -68,7 +66,7 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Discord képernyőmegosztás/játék-hang (media.name=game capture) → NEM hívás.
+    // Discord screen sharing / game audio (media.name=game capture): NOT a call.
     void gameCaptureIgnored()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -76,7 +74,7 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Ismeretlen (nem hívás-)app aktív capture-je, ami nincs a listán → NEM meeting.
+    // An active capture of an unknown (non-call) app that is not on the list: NOT a meeting.
     void unknownAppIgnored()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -85,9 +83,9 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Google Meet a Vivaldiban: a böngésző „vivaldi-bin” folyamata fogja a mikrofont,
-    // a media.name csak „RecordStream” (nincs „webrtc”). A listán a „meet” minden
-    // böngészőt lefed → meeting, Vivaldi néven.
+    // Google Meet in Vivaldi: the browser's "vivaldi-bin" process holds the microphone, the
+    // media.name is just "RecordStream" (no "webrtc"). "meet" on the list covers every browser:
+    // a meeting, named Vivaldi.
     void browserMeetViaMeetAlias()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -98,7 +96,7 @@ private slots:
         QCOMPARE(s.appName, QStringLiteral("Vivaldi"));
     }
 
-    // „meet” nélkül a böngésző mikrofonhasználata nem hívás (nincs a listán).
+    // Without "meet" a browser's microphone use is not a call (not on the list).
     void browserWithoutMeetIgnored()
     {
         const MeetingSignal s = detail::parsePwDump(
@@ -107,7 +105,7 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Playback (Stream/Output/Audio) stream nem mikrofon-fogás → figyelmen kívül.
+    // A playback (Stream/Output/Audio) stream is not a microphone capture: ignored.
     void playbackStreamIgnored()
     {
         const QByteArray json = QStringLiteral(R"([
@@ -120,7 +118,7 @@ private slots:
         QVERIFY(!s.active);
     }
 
-    // Hibás/nem-tömb bemenet → {active:false}, nem dob, nem crashel.
+    // Broken / non-array input gives {active:false}, does not throw or crash.
     void garbageInputIsInactive()
     {
         QVERIFY(!detail::parsePwDump(QByteArray("not json"), kKnown, kSelf).active);

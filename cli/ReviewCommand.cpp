@@ -1,4 +1,4 @@
-// tanara-cli review. Minden kimenet angol, tr() nélkül (a csoportok magyar feliratai kimaradnak).
+// tanara-cli review. All output is English, no tr() (the Hungarian group labels are omitted).
 #include "ReviewCommand.h"
 
 #include "tanara/SettingsManager.h"
@@ -58,8 +58,8 @@ QJsonObject candidateJson(const Candidate& c)
             {"otherSide", c.otherSide}, {"linesHere", c.linesHere}, {"evidence", ev}};
 }
 
-// A személyek tárolt lenyomatai fúziós vektorként (a testvér-lenyomatok — ugyanaz a minta más
-// modellekkel — együtt); csak a megadott dimenziójúak.
+// The people's stored voiceprints as fusion vectors (including sibling voiceprints, i.e. the
+// same sample under other models); only those with the requested dimension.
 QHash<QString, QVector<QVector<float>>> fusedPrints(const VoiceprintStore& vp, const QStringList& models, int dim)
 {
     QHash<QString, QVector<QVector<float>>> out;
@@ -107,7 +107,7 @@ int runReviewCommand(const QStringList& args)
     const SettingsManager sm;
     in.userName = sm.settings().userSpeakerName;
 
-    // Beágyazások: a cache-ből (a kért, vagy az alapmodell, vagy amelyik van).
+    // Embeddings: from the cache (the requested model, else the default, else whichever exists).
     const UtteranceEmbeddingCache cache = UtteranceEmbeddingCache::load(folder, in.overlay.transcriptFingerprint);
     if (models.isEmpty()) {
         const QString rec = VoiceModelRegistry::recommendedModelId();
@@ -130,7 +130,7 @@ int runReviewCommand(const QStringList& args)
     for (auto it = learned.cbegin(); it != learned.cend(); ++it)
         in.sideHints.learnedSides.insert(it.key().toCaseFolded(), sideFromName(it.value()));
 
-    // Sáv-aktivitás: a cache, különben a memóriában számolva (a mappába nem ír).
+    // Track activity: the cache, otherwise computed in memory (nothing is written to the folder).
     const QString fp = trackactivity::activityFingerprint(m, folder);
     MeetingActivity act = MeetingActivity::load(folder, fp);
     const bool fromCache = !act.isEmpty();

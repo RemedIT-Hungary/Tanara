@@ -1,12 +1,12 @@
-// Forrás-jelölők (`[t=mm:ss]`) a kimenetben — ugyanaz a szabály, mint az appban
-// (core/src/summary/SummarySources.cpp): idő → a legközelebbi bekezdés ±5 s-on belül.
-// Csak mér (lefedettség), a pontozás a bírálóé.
+// Source markers (`[t=mm:ss]`) in the output: the same rule as in the app
+// (core/src/summary/SummarySources.cpp): a time maps to the nearest paragraph within +-5 s.
+// It only measures (coverage); scoring is the reviewer's job.
 
 const TIME = String.raw`\d{1,3}:\d{2}(?::\d{2})?`;
 const MARKER = new RegExp(String.raw`\[\s*((?:t\s*=|u\d)[^\[\]\n]{0,80}|${TIME}(?:\s*[-–—]\s*${TIME})?(?:\s*[,;]\s*${TIME}(?:\s*[-–—]\s*${TIME})?)*)\s*\]`, 'g');
 export const TOLERANCE_MS = 5000;
 
-// "mm:ss" / "h:mm:ss" → ms; rossz idő (másodperc ≥ 60) → -1.
+// "mm:ss" / "h:mm:ss" -> ms; a bad time (seconds >= 60) -> -1.
 export function strictTime(s) {
   const m = String(s).trim().match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return -1;
@@ -18,7 +18,7 @@ export function strictTime(s) {
   return (Number(m[1]) * 60 + Number(m[2])) * 1000;
 }
 
-// Egy szöveg jelölői: { text (jelölő nélkül), refs: [{start, end} | {id}] }.
+// One text's markers: { text (without markers), refs: [{start, end} | {id}] }.
 export function extractMarkers(text) {
   const refs = [];
   const clean = String(text || '').replace(MARKER, (_, body) => {
@@ -36,21 +36,21 @@ export function extractMarkers(text) {
   return { text: clean, refs };
 }
 
-// Az átirat bekezdéseinek kezdőideje (`[mm:ss]` **Beszélő** …); a vég a következő kezdete.
+// Start times of the transcript's paragraphs (`[mm:ss]` **Speaker** ...); the end is the next one's start.
 export function paragraphTimes(transcript) {
   const starts = [...String(transcript).matchAll(/^`\[((?:\d+:)?\d+:\d{2})\]`/gm)].map((m) => strictTime(m[1])).filter((t) => t >= 0);
   return starts.map((s, i) => ({ start: s, end: i + 1 < starts.length ? starts[i + 1] : s + 60000 }));
 }
 
-// Feloldható-e egy idő-hivatkozás a bekezdésekre (tartalmazó, vagy ±tűrésen belüli).
+// Whether a time reference resolves to the paragraphs (containing, or within the tolerance).
 export function resolves(ref, paras) {
-  if (ref.id !== undefined) return true;   // az appban a segments.json id-je; itt nem ellenőrizhető
+  if (ref.id !== undefined) return true;   // in the app, the id from segments.json; cannot be checked here
   const from = ref.start, to = ref.end + 999;
   return paras.some((p) => (p.start <= to && p.end >= from)
     || (p.end < from ? from - p.end : p.start - to) <= TOLERANCE_MS);
 }
 
-// Mondatokra bontás (egyszerűsített): . ! ? … után, ha nagybetű / vég jön; a mondat utáni jelölő a mondaté.
+// Sentence splitting (simplified): after . ! ? ... when a capital letter / the end follows; a marker after a sentence belongs to that sentence.
 export function sentences(text) {
   const out = [];
   const re = new RegExp(String.raw`[^.!?…]*[.!?…]+["”)']*(?:\s*${MARKER.source})*(?=\s+[\p{Lu}\d"„]|\s*$)|[^.!?…]+$`, 'gu');
@@ -58,8 +58,9 @@ export function sentences(text) {
   return out;
 }
 
-// A rövid forma forrás-lefedettsége: hány állítás (mondat / döntés / nyitott kérdés / teendő) kapott jelölőt,
-// és ebből hány oldható fel az átiratra (transcript nélkül csak a jelölt szám).
+// Source coverage of the short form: how many claims (sentence / decision / open question /
+// action item) got a marker, and how many of those resolve to the transcript (without a
+// transcript, only the marked count).
 export function sourceStats(parsed, transcript) {
   if (!parsed) return null;
   const items = [
@@ -75,9 +76,9 @@ export function sourceStats(parsed, transcript) {
     coverage: items.length ? Number((resolved.length / items.length).toFixed(2)) : 0 };
 }
 
-// A memó-jegyzet (TOPICS) szerkezete, mint az appban (SummaryPipeline::parseNotes): `### cím`,
-// utána a bevezető (pötty nélküli sorok), a pontok (`- …`), és az al-címek (`#### Arguments`,
-// `#### Unresolved`). → [{ title, intro, points: [{ text, group }] }]
+// The memo note (TOPICS) structure, as in the app (SummaryPipeline::parseNotes): `### title`,
+// then the intro (lines without bullets), the points (`- ...`), and the sub-headings
+// (`#### Arguments`, `#### Unresolved`). -> [{ title, intro, points: [{ text, group }] }]
 export function parseTopics(notes) {
   const topics = [];
   let cur = null, group = '', introOpen = false, fresh = false, inTopics = false;
@@ -109,8 +110,8 @@ export function parseTopics(notes) {
   return topics;
 }
 
-// A memó forrás-lefedettsége: a bevezető-mondatok és a pontok közül hány kapott (feloldható)
-// jelölőt; az alszakaszok száma (arguments / open).
+// Source coverage of the memo: how many of the intro sentences and points got a (resolvable)
+// marker; the number of subsections (arguments / open).
 export function memoSourceStats(notes, transcript) {
   const topics = parseTopics(notes);
   const items = [];

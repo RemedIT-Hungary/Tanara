@@ -78,14 +78,14 @@ CloudEstimateDialog::CloudEstimateDialog(AppController* app, const QString& meet
     connect(m_start, &QPushButton::clicked, this, [this]() {
         if (m_retryMode) { m_retryMode = false; requestEstimate(); return; }
         if (m_last.valid && estimateLevel(m_last) == EstimateLevel::NotEnough) {
-            cloudui::startTopup(this, m_app);   // az indítás helyén a feltöltés
+            cloudui::startTopup(this, m_app);   // top-up in place of the start button
             return;
         }
         accept();
     });
     connect(m_topup, &QPushButton::clicked, this, [this]() { cloudui::startTopup(this, m_app); });
     connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    // Feltöltés után (a böngészőből visszatérve) a fiók frissül → újrabecslés.
+    // After a top-up (returning from the browser) the account refreshes, so we re-estimate.
     connect(m_app->cloud(), &CloudAccount::accountUpdated, this, [this](const AccountInfo& a) {
         if (m_last.valid && a.balance.micros != m_last.balance.micros) requestEstimate();
     });
@@ -120,7 +120,7 @@ void CloudEstimateDialog::render(const EstimateResult& e)
     m_last = e;
     const auto level = estimateLevel(e);
     m_main->setText(QStringLiteral("≈ ") + cloudui::money(e.estimate, MoneyStyle::Charge));
-    // Pontos (csak STT) becslésnél nincs sáv.
+    // No bar for an exact (STT-only) estimate.
     m_range->setText(e.low.micros == e.high.micros ? QString()
                      : tr("%1 – %2 között").arg(cloudui::money(e.low, MoneyStyle::Charge),
                                                 cloudui::money(e.high, MoneyStyle::Charge)));
@@ -199,7 +199,7 @@ void CloudEstimateDialog::onError(const CloudError& e)
         return;
     default: break;
     }
-    // A többi (401/403/426/429/503/500…) a közös hiba-dialógusban; a becslés nem terhel.
+    // The rest (401/403/426/429/503/500...) go to the shared error dialog; the estimate does not charge.
     const cloudui::ErrorAction a = cloudui::showCloudError(this, m_app, e, QStringLiteral("estimate"));
     if (a == cloudui::ErrorAction::Retry) { requestEstimate(); return; }
     if (a == cloudui::ErrorAction::Login) {

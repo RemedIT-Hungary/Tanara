@@ -1,7 +1,7 @@
-// Soniox-féle időzítés: a tokenek a kiadás pillanatát jelölik (~60 ms). A tokenek érintetlenek;
-// a merger a csoportosítás UTÁN a kész sorokat párnázza (kLeadMs előre, kTailMs hátra, a
-// szomszéd sorokig) — csak emissionTiming jelzővel (Soniox); a Whisper-út változatlan.
-// Tiszta függvények + a SonioxProvider egy kézzel írt válaszon (ál-HTTP, valódi hálózat nincs).
+// Soniox-style timing: the tokens mark the moment of emission (~60 ms). The tokens are
+// untouched; after grouping, the merger pads the finished lines (kLeadMs forward, kTailMs
+// back, up to the neighboring lines), only with the emissionTiming flag (Soniox); the Whisper
+// path is unchanged. Pure functions + SonioxProvider on a hand-written reply (fake HTTP, no real network).
 #include "fake_http.h"
 
 #include "tanara/stt/SonioxProvider.h"
@@ -52,11 +52,11 @@ private slots:
                              utt(9000, 9060)};
         sonioxtiming::padUtterances(u);
         QCOMPARE(u[0].startMs, 700);       // −300
-        QCOMPARE(u[0].endMs, 1300);        // a következő új kezdete (max(1300, 1150) = 1300)
-        QCOMPARE(u[1].startMs, 1300);      // az előző sor végéig
+        QCOMPARE(u[0].endMs, 1300);        // the next one's new start (max(1300, 1150) = 1300)
+        QCOMPARE(u[1].startMs, 1300);      // up to the previous line's end
         QCOMPARE(u[1].endMs, 2100);        // +100
         QCOMPARE(u[2].startMs, 4700);
-        QCOMPARE(u[2].endMs, 5060);        // a következő (B) új kezdete 5060
+        QCOMPARE(u[2].endMs, 5060);        // the next (B) one's new start 5060
         QCOMPARE(u[3].startMs, 5060);
         QCOMPARE(u[3].endMs, 6000);
         QCOMPARE(u[4].startMs, 8700);
@@ -69,21 +69,21 @@ private slots:
 
     void padUtterancesKeepsOverlapsAndTies()
     {
-        // Azonos kezdet (két beszélő egyszerre): egyformán mozdulnak; átfedő sor nem rövidül.
+        // The same start (two speakers at once): they move equally; an overlapping line is not shortened.
         QVector<Utterance> u{utt(100, 400), utt(1000, 1060), utt(1000, 1500, "B"), utt(1200, 1300, "C")};
         sonioxtiming::padUtterances(u);
-        QCOMPARE(u[0].startMs, 0);         // 0 alá nem
+        QCOMPARE(u[0].startMs, 0);         // not below 0
         QCOMPARE(u[1].startMs, 700);
         QCOMPARE(u[2].startMs, 700);
-        QCOMPARE(u[1].endMs, 1160);        // +100 (a C kezdete, 1200, nem korlátoz)
-        QCOMPARE(u[2].endMs, 1500);        // átfedőnél sem lesz rövidebb
-        QCOMPARE(u[3].startMs, 1200);      // a korábbi B még szól → nincs elő-futás
+        QCOMPARE(u[1].endMs, 1160);        // +100 (C's start, 1200, does not limit)
+        QCOMPARE(u[2].endMs, 1500);        // not shorter even with an overlap
+        QCOMPARE(u[3].startMs, 1200);      // the earlier B is still speaking, so no lead-in
         QCOMPARE(u[3].endMs, 1400);
         QCOMPARE(u[0].endMs, 500);
     }
 
-    // A valódi meetingen mért hiba: token-szintű párnázásnál egy 1560 ms-os szünet 1160 ms-ra
-    // szűkült, és a rövid sor beolvadt az előzőbe. A sor-szintű párnázás ezt nem teheti.
+    // The bug measured on a real meeting: with token-level padding a 1560 ms gap shrank to 1160
+    // ms, and the short line merged into the previous one. Line-level padding cannot do that.
     void shortLineAfterLongLineStaysSeparate()
     {
         QVector<QPair<qint64, qint64>> times;
@@ -101,7 +101,7 @@ private slots:
         QCOMPARE(b[1].startMs, 14320);
         QCOMPARE(b[1].endMs, 14900);
         QCOMPARE(b[0].endMs, 13160);
-        // A tokenek érintetlenek.
+        // The tokens are untouched.
         QCOMPARE(padded.tokens.size(), raw.tokens.size());
         for (int i = 0; i < raw.tokens.size(); ++i) {
             QCOMPARE(padded.tokens[i].startMs, raw.tokens[i].startMs);
@@ -109,7 +109,7 @@ private slots:
         }
     }
 
-    // Whisper-út (jelző nélkül): a sorok pontosan a token-időkből, változatlanul.
+    // Whisper path (without the flag): the lines come exactly from the token times, unchanged.
     void whisperPathUnchanged()
     {
         const MergedTranscript mt = mergeTranscripts({track("t1", "A", {{0, 320}, {320, 700}}, false),
@@ -133,7 +133,7 @@ private slots:
         QVERIFY(!sonioxtiming::looksLikeEmissionTiming(whisper));
     }
 
-    // A provider a kézzel írt Soniox-válasz tokenjeit érintetlenül, emissionTiming jelzővel adja.
+    // The provider returns the hand-written Soniox reply's tokens untouched, with the emissionTiming flag.
     void providerAppliesCorrection()
     {
         QTemporaryDir dir;
@@ -172,7 +172,7 @@ private slots:
         const TrackTranscript tt = done.at(0).at(0).value<TrackTranscript>();
         QCOMPARE(tt.tokens.size(), 3);
         QVERIFY(tt.emissionTiming);
-        // A tokenek a Soniox szerinti időkkel jönnek (a párnázás a sorokon, a mergerben történik).
+        // The tokens come with Soniox's times (the padding happens on the lines, in the merger).
         QCOMPARE(tt.tokens[0].startMs, 127410);
         QCOMPARE(tt.tokens[0].endMs, 127470);
         QCOMPARE(tt.tokens[2].startMs, 127650);

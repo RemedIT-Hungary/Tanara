@@ -19,8 +19,8 @@ CloudTermsDialog::CloudTermsDialog(AppController* app, bool mandatory, const QSt
                                    const QString& summary, QWidget* parent)
     : QDialog(parent), m_app(app), m_version(version)
 {
-    // Dátum (brief 7.4): HU „2026. 11. 01.”, EN „Nov 1, 2026”. A magyar ragozás
-    // („-tól/-től”) miatt a címben semleges alak: „Új ÁSZF, hatályos: …”.
+    // Date (HU "2026. 11. 01.", EN "Nov 1, 2026"). Because of Hungarian suffixes, the title uses
+    // a neutral form: "New terms, effective: ...".
     const QDate d = effective.toLocalTime().date();
     const QString date = !effective.isValid() ? QString()
         : cloudui::lang() == QLatin1String("hu") ? d.toString(QStringLiteral("yyyy. MM. dd."))
@@ -91,7 +91,7 @@ bool CloudTermsDialog::shouldOfferEarly(AppController* app)
     const TermsStatus t = app->cloud()->account().terms;
     if (!t.needsEarlyAcceptance()) return false;
     const QDateTime postponed = app->cloud()->termsPostponedAt();
-    return !postponed.isValid() || postponed.date() < QDate::currentDate();   // naponta legfeljebb egyszer
+    return !postponed.isValid() || postponed.date() < QDate::currentDate();   // at most once a day
 }
 
 bool CloudTermsDialog::offerEarly(AppController* app, QWidget* parent)

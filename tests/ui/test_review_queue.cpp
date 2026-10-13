@@ -1,9 +1,9 @@
-// Az Átnézendő munkalistája (S3, ReviewQueueModel) a beépített „v3" KITALÁLT meetingen (valódi
-// SpeakerEditor, hamis hang): fagyasztott időrendi pillanatkép, kurzor, Később, beérkező halmaz,
-// beemelés a végére, alreadyDecided, javaslat-frissülés, kör-zárás + következmény-jelölés,
-// mintázat-számláló, nyitó-javaslatok, demó-állapotok. Kijelző nélkül fut; a felhasználó adataihoz
-// nem nyúl. A „kézzel összerakott" csoportos esetek (syncFromReview / startFrom explicit bemenettel)
-// az eseményhurok pörgetése NÉLKÜL futnak, hogy a háttér-elemzés ne írja felül a bemenetet.
+// The review queue's work list (ReviewQueueModel) on the built-in MADE-UP "v3" meeting (real
+// SpeakerEditor, fake audio): frozen chronological snapshot, cursor, Later, the arrivals set,
+// promotion to the end, alreadyDecided, suggestion refresh, round end + consequence marking,
+// pattern counter, opener suggestions, demo states. Runs without a display; it touches no
+// user data. The "hand-assembled" group cases (syncFromReview / startFrom with explicit input)
+// run WITHOUT spinning the event loop, so the background analysis does not overwrite the input.
 #include "ReviewQueueModel.h"
 #include "TranscriptEditorViewModel.h"
 
@@ -60,7 +60,7 @@ bool flagged(const EditorUtterance& u)
     return u.confirmed || u.manuallyCorrected || u.ignored;
 }
 
-// Egy beszélő, aki nem `except`.
+// A speaker that is not `except`.
 QString otherSpeaker(const TranscriptEditorViewModel& vm, const QString& except)
 {
     for (const QVariant& s : vm.speakers()) {
@@ -83,8 +83,8 @@ class TestReviewQueue : public QObject {
     Q_OBJECT
 
 private slots:
-    // A pillanatkép időrendi; döntés után a sor a HELYÉN marad, a kurzor a következőre lép, és
-    // a háttér-elemzés után sem változik sem a sorrend, sem a sorok száma.
+    // The snapshot is chronological; after a decision the line STAYS IN PLACE, the cursor moves to
+    // the next, and neither the order nor the number of lines changes after the background analysis.
     void snapshot_listStaysAfterDecisions()
     {
         TranscriptEditorViewModel vm;
@@ -104,12 +104,12 @@ private slots:
         QVERIFY(role(q, 0, ReviewQueueModel::CurrentRole).toBool());
         QVERIFY(!role(q, 0, ReviewQueueModel::ReasonKindRole).toString().isEmpty());
 
-        // „Jó így" → decided a helyén, kurzor → 1.
+        // "Good as is": decided in place, cursor to 1.
         QVERIFY(vm.confirmUtterance(order[0]));
         QCOMPARE(stateAt(q, 0), QStringLiteral("decided"));
         QCOMPARE(role(q, 0, ReviewQueueModel::DecidedKindRole).toString(), QStringLiteral("confirmed"));
         QCOMPARE(q->currentIndex(), 1);
-        // Áthelyezés (a javaslatra, ha van) → decided / corrected, kurzor → 2.
+        // Move (to the suggestion, if any): decided / corrected, cursor to 2.
         const QString cur1 = role(q, 1, ReviewQueueModel::SpeakerKeyRole).toString();
         QString target = role(q, 1, ReviewQueueModel::LikelyKeyRole).toString();
         if (target.isEmpty() || target == cur1) target = otherSpeaker(vm, cur1);
@@ -118,14 +118,14 @@ private slots:
         QCOMPARE(role(q, 1, ReviewQueueModel::DecidedKindRole).toString(), QStringLiteral("corrected"));
         QCOMPARE(role(q, 1, ReviewQueueModel::OriginalKeyRole).toString(), cur1);
         QCOMPARE(q->currentIndex(), 2);
-        // Nem azonosítható → ignored, kurzor → 3.
+        // Cannot be identified: ignored, cursor to 3.
         QVERIFY(vm.setUtteranceIgnored(order[2], true));
         QCOMPARE(stateAt(q, 2), QStringLiteral("ignored"));
         QCOMPARE(q->currentIndex(), 3);
         QCOMPARE(q->decidedCount(), 2);
         QCOMPARE(q->ignoredCount(), 1);
 
-        // A háttér-elemzés újraszámol: a munkalista nem mozdul.
+        // The background analysis recomputes: the work list does not move.
         QVERIFY(settle(vm));
         QCOMPARE(idsOf(q), order);
         QCOMPARE(q->currentIndex(), 3);
@@ -156,7 +156,7 @@ private slots:
         QVERIFY(!q->jumpTo(n));
         QVERIFY(q->jumpTo(0));
 
-        // Később: a sor a VÉGÉRE, `later`; a kurzor a következő nyitott sorra (ami most a 0. helyen áll).
+        // Later: the line goes to the END, `later`; the cursor to the next open line (now at position 0).
         QVERIFY(q->later());
         QCOMPARE(q->count(), n);
         QCOMPARE(idsOf(q).last(), order[0]);
@@ -166,7 +166,7 @@ private slots:
         QCOMPARE(q->currentUtterance(), order[1]);
         QCOMPARE(role(q, n - 1, ReviewQueueModel::OrderRole).toInt(), n - 1);
 
-        // Döntés → következő; vissza a döntöttre, ott újradöntés → a következő nyitottra.
+        // Decision, then next; back to the decided one, re-deciding there goes to the next open one.
         QVERIFY(vm.confirmUtterance(order[1]));
         QCOMPARE(q->currentUtterance(), order[2]);
         QVERIFY(q->previous());
@@ -177,7 +177,7 @@ private slots:
         QCOMPARE(stateAt(q, 0), QStringLiteral("decided"));
         QCOMPARE(q->currentUtterance(), order[2]);
 
-        // Visszavonás: a legutóbbi „Jó így" vissza → a sor újra pending, a kurzor rá ugrik.
+        // Undo: the latest "Good as is" is undone, the line is pending again, the cursor jumps to it.
         QVERIFY(vm.confirmUtterance(order[2]));
         QCOMPARE(q->currentUtterance(), order[3]);
         vm.undo();
@@ -185,14 +185,14 @@ private slots:
         QCOMPARE(q->currentUtterance(), order[2]);
         QCOMPARE(idsOf(q).mid(0, 3), (QStringList{order[1], order[2], order[3]}));
 
-        // A later sorra is lehet ugrani, és ott dönteni.
+        // A later line can be jumped to and decided there.
         QVERIFY(q->jumpTo(n - 1));
         QVERIFY(vm.confirmUtterance(order[0]));
         QCOMPARE(stateAt(q, n - 1), QStringLiteral("decided"));
         QCOMPARE(q->laterCount(), 0);
     }
 
-    // Beérkező halmaz (+N új vár), beemelés a VÉGÉRE, alreadyDecided, javaslat-frissülés.
+    // Arrivals set (+N new waiting), promotion to the END, alreadyDecided, suggestion refresh.
     void incoming_admit_alreadyDecided_suggestionUpdated()
     {
         TranscriptEditorViewModel vm;
@@ -207,7 +207,7 @@ private slots:
 
         QVector<TranscriptEditorViewModel::ReviewView> views = vm.reviewViews();
         QVector<EditorUtterance> utts = vm.utterances();
-        // Egy új kétes sor (a munkalistán kívül).
+        // A new doubtful line (outside the work list).
         QString newId;
         for (EditorUtterance& u : utts) {
             if (q->indexOf(u.id) >= 0 || flagged(u) || u.uncertain) continue;
@@ -220,11 +220,11 @@ private slots:
             break;
         }
         QVERIFY(!newId.isEmpty());
-        // A 3. sor a háttérben már nem kétes.
+        // Line 3 is no longer doubtful in the background.
         const QString alreadyId = order[3];
         for (auto& v : views) v.ids.removeAll(alreadyId);
         utts[vm.utteranceIndexOf(alreadyId)].uncertain = false;
-        // A 2. sor javaslata megváltozik.
+        // Line 2's suggestion changes.
         const QString suggId = order[2];
         const QString oldLikely = role(q, 2, ReviewQueueModel::LikelyKeyRole).toString();
         const QString cur2 = role(q, 2, ReviewQueueModel::SpeakerKeyRole).toString();
@@ -258,7 +258,7 @@ private slots:
         QCOMPARE(sugg.first().first().toString(), suggId);
         QVERIFY(!role(q, 1, ReviewQueueModel::SuggestionUpdatedRole).toBool());
 
-        // Beemelés: a VÉGÉRE, a kurzor nem mozdul.
+        // Promotion: to the END, the cursor does not move.
         QCOMPARE(q->admitIncoming(), 1);
         QCOMPARE(q->count(), n + 1);
         QCOMPARE(idsOf(q).mid(0, n), order);
@@ -268,8 +268,8 @@ private slots:
         QCOMPARE(q->currentIndex(), 1);
         QCOMPARE(q->incomingCount(), 0);
 
-        // alreadyDecided (S7): nem nyitott — a kurzor átugorja; ha rááll, a Később tovább lép (a
-        // sor a helyén marad).
+        // alreadyDecided: not open, so the cursor skips it; when it lands on it, Later moves on (the
+        // line stays in place).
         const int open = q->openCount();
         QVERIFY(q->jumpTo(2));
         QVERIFY(q->advance());
@@ -286,24 +286,24 @@ private slots:
         QCOMPARE(stateAt(q, 3), QStringLiteral("alreadyDecided"));
         QCOMPARE(q->openCount(), open);
         QCOMPARE(q->currentIndex(), 4);
-        // Döntés a magától eldőlt sor előtt: a kurzor átugorja.
+        // A decision before the auto-decided line: the cursor skips it.
         QVERIFY(q->jumpTo(2));
         QVERIFY(vm.confirmUtterance(order[2]));
         QCOMPARE(q->currentIndex(), 4);
-        // „Enter: a név marad": a megerősítés decided-dé teszi.
+        // "Enter: keep the name": the confirmation makes it decided.
         QVERIFY(q->jumpTo(3));
         QVERIFY(vm.confirmUtterance(alreadyId));
         QCOMPARE(stateAt(q, 3), QStringLiteral("decided"));
     }
 
-    // Kör-zárás: számok, minta-növekmény, következmény-jelölés; új kör a beérkezőkből + később.
+    // Round end: numbers, sample increment, consequence marking; a new round from the arrivals + later.
     void roundSummary_consequence_nextRound()
     {
         TranscriptEditorViewModel vm;
         QVERIFY(openV3(vm));
         ReviewQueueModel* q = vm.reviewQueue();
         q->start();
-        // Három hosszabb sor „Jó így" (minta lesz), egy nem azonosítható, egy Később.
+        // Three longer lines "Good as is" (become samples), one cannot be identified, one Later.
         int confirmed = 0;
         for (int r = 0; r < q->count() && confirmed < 3; ++r) {
             const int len = role(q, r, ReviewQueueModel::EndMsRole).toInt() - role(q, r, ReviewQueueModel::StartMsRole).toInt();
@@ -337,7 +337,7 @@ private slots:
         QVERIFY(deltaSum >= 1);
         const QString grownKey = *grown.cbegin();
 
-        // Két új kétes sor: az egyik a mintát kapott beszélőé (következmény), a másik nem.
+        // Two new doubtful lines: one belongs to the speaker that got a sample (consequence), the other does not.
         QVector<EditorUtterance> utts = vm.utterances();
         QString causedId, otherId;
         for (EditorUtterance& u : utts) {
@@ -364,7 +364,7 @@ private slots:
         QCOMPARE(s.value(QStringLiteral("causedIds")).toStringList(), QStringList{causedId});
         QVERIFY(s.value(QStringLiteral("incomingInReviewed")).toInt() >= 0);
 
-        // Új kör: a nyitott + később + beérkező sorok, időrendben; a következmény jelölve.
+        // New round: the open + later + arrival lines, chronologically; the consequence marked.
         const int expected = countState(q, QStringLiteral("pending")) + 1 + 2;
         q->startNextRound();
         QCOMPARE(q->round(), 2);
@@ -378,11 +378,11 @@ private slots:
         QCOMPARE(q->laterCount(), 0);
         QCOMPARE(q->incomingCount(), 0);
         QCOMPARE(q->currentIndex(), 0);
-        // Az új kör alapvonala: még nincs minta-növekmény.
+        // The new round's baseline: no sample increment yet.
         QVERIFY(q->roundSummary().value(QStringLiteral("sampleDelta")).toList().isEmpty());
     }
 
-    // Mintázat: 4 azonos (ok, jelenlegi, javasolt) áthelyezés az utolsó 6-ból.
+    // Pattern: 4 identical (reason, current, suggested) moves out of the last 6.
     void recentPattern()
     {
         TranscriptEditorViewModel vm;
@@ -390,7 +390,7 @@ private slots:
         ReviewQueueModel* q = vm.reviewQueue();
         QVector<EditorUtterance> utts = vm.utterances();
         for (EditorUtterance& u : utts) u.uncertain = false;
-        // A legtöbb sorú beszélő 10 sora egy kitalált sáv-ellentmondás csoportban.
+        // The 10 lines of the speaker with the most lines, in a made-up track-contradiction group.
         QHash<QString, QStringList> bySpeaker;
         for (const EditorUtterance& u : std::as_const(utts))
             if (!flagged(u)) bySpeaker[u.speakerKey] << u.id;
@@ -423,18 +423,18 @@ private slots:
         QVERIFY(p.value(QStringLiteral("currentMatches")).toBool());
         QCOMPARE(p.value(QStringLiteral("sameAhead")).toStringList(), idsOf(q).mid(5));
 
-        // Két „Jó így" még belefér (4 / 6), a harmadik már nem.
+        // Two more "Good as is" still fit (4 / 6), the third does not.
         QVERIFY(vm.confirmUtterance(q->currentUtterance()));
         QVERIFY(vm.confirmUtterance(q->currentUtterance()));
         p = q->recentPattern();
         QCOMPARE(p.value(QStringLiteral("hits")).toInt(), 4);
         QCOMPARE(p.value(QStringLiteral("sameAhead")).toStringList(), idsOf(q).mid(7));
-        // „Nem": ez a hármas nem ajánlódik újra.
+        // "No": this triple is not offered again.
         q->dismissPattern(p.value(QStringLiteral("key")).toString());
         QVERIFY(q->recentPattern().isEmpty());
     }
 
-    // Nyitó-javaslatok: ≥ 15 sor, erős (hang ≥ 75 % vagy kézi sáv-ellentmondás), javaslattal.
+    // Opener suggestions: >= 15 lines, strong (voice >= 75% or a manual track contradiction), with a suggestion.
     void openers()
     {
         TranscriptEditorViewModel vm;
@@ -496,17 +496,17 @@ private slots:
         QVERIFY(manual.value(QStringLiteral("manualSide")).toBool());
         QCOMPARE(manual.value(QStringLiteral("voicePct")).toInt(), -1);
 
-        // S5 „Egyenként": a csoport sorai a kurzor helyére (itt a lista eleje), időrendben.
+        // "One by one": the group's lines go to the cursor's place (here the start of the list), chronologically.
         QVERIFY(q->jumpTo(0));
         QCOMPARE(q->bringToFront(manual.value(QStringLiteral("ids")).toStringList()), 15);
         QCOMPARE(idsOf(q).mid(0, 15), free.mid(18, 15));
         QCOMPARE(q->currentIndex(), 0);
-        // Egy döntés a csoportból → pendingCount csökken.
+        // A decision from the group lowers pendingCount.
         QVERIFY(vm.confirmUtterance(q->currentUtterance()));
         QCOMPARE(q->openers()[1].toMap().value(QStringLiteral("pendingCount")).toInt(), 14);
     }
 
-    // A demó-állapotok (az S4 képernyőképeihez / tesztjeihez).
+    // The demo states (for the focus view's screenshots / tests).
     void demoStates()
     {
         {
@@ -551,7 +551,7 @@ private slots:
         }
     }
 
-    // Új munkamenet → nincs munkalista.
+    // New session: no work list.
     void stopOnReload()
     {
         TranscriptEditorViewModel vm;

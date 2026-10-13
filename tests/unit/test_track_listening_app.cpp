@@ -1,12 +1,10 @@
-//
-// Sávok meghallgatása az AppController-ben (G6): a beszéd-csík aktivitása MINDEN sávra (a
-// lekeverésből kimaradtra is) háttérben számolva és gyorsítótárazva (trackActivityReady), és a
-// beszélő → sáv kötés (setParticipantTracks / participantTracks): átirat előtt a
-// Participant::tracks, átirat után a szerkesztő kézi sáv-beosztása (ugyanaz, amit a „Miért ő?"
-// chipek írnak), a következtetett oldal kézi kötés nélkül, és az átirat érkezésekor a
-// résztvevő kötése átkerül a beszélő beosztásába.
-// Szintetikus sávok (ffmpeg lavfi), IZOLÁLT TANARA_HOME, Soniox / LLM nélkül. ffmpeg nélkül QSKIP.
-//
+// Listening to tracks in AppController: the speech strip's activity for EVERY track (also the
+// one left out of the mixdown) computed in the background and cached (trackActivityReady), and
+// the speaker-to-track binding (setParticipantTracks / participantTracks): before the
+// transcript Participant::tracks, after the transcript the editor's manual track assignment
+// (the same one the "Why them?" chips write), the inferred side without a manual binding, and
+// when the transcript arrives the participant's binding moves into the speaker's assignment.
+// Synthetic tracks (ffmpeg lavfi), ISOLATED TANARA_HOME, without Soniox / LLM. Without ffmpeg QSKIP.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -27,7 +25,7 @@ using namespace tanara;
 
 namespace {
 
-// 24 mp-es sáv: freq Hz-es szinusz, ahol `on` igaz, máshol digitális csend.
+// A 24 s track: a sine of freq Hz where `on` is true, digital silence elsewhere.
 bool makeTrack(const QString& path, int freq, const QString& onExpr)
 {
     QProcess p;
@@ -85,7 +83,7 @@ void TrackListeningAppTest::cleanup()
     m_home.reset();
 }
 
-// Mikrofon: 220 Hz 0–8 és 16–24 mp; loopback: 440 Hz 8–16 mp, KÉZZEL kivéve a lekeverésből.
+// Microphone: 220 Hz at 0-8 and 16-24 s; loopback: 440 Hz at 8-16 s, MANUALLY excluded from the mixdown.
 Meeting TrackListeningAppTest::makeMeeting()
 {
     Meeting m = m_app->store()->createMeeting(QStringLiteral("Meghallgatás"));
@@ -147,7 +145,7 @@ void TrackListeningAppTest::activityCoversExcludedTrackAndIsCached()
 {
     if (!m_haveFfmpeg) QSKIP("nincs ffmpeg");
     const Meeting m0 = makeMeeting();
-    // A loopback kézzel kivéve (a lekeverés-újrakeverés mellékhatás, itt nem várjuk meg).
+    // The loopback is manually excluded (the mixdown remix is a side effect, we do not wait for it here).
     Meeting m = m_app->store()->load(m0.id);
     m.tracks[1].active = false;
     m.tracks[1].excludedReason = QStringLiteral("manual");
@@ -155,32 +153,32 @@ void TrackListeningAppTest::activityCoversExcludedTrackAndIsCached()
 
     QSignalSpy ready(m_app.get(), &AppController::trackActivityReady);
     MeetingActivity a = m_app->trackActivity(m0.id);
-    QVERIFY(a.isEmpty());                       // még nincs: háttérben számol
+    QVERIFY(a.isEmpty());                       // not there yet: computing in the background
     QVERIFY(m_app->trackActivityComputing(m0.id));
-    QVERIFY(m_app->trackActivity(m0.id).isEmpty());   // nem indul második számolás
+    QVERIFY(m_app->trackActivity(m0.id).isEmpty());   // no second computation starts
     QVERIFY(ready.wait(30000));
     QCOMPARE(ready.count(), 1);
     QCOMPARE(ready.first().at(0).toString(), m0.id);
     QVERIFY(!m_app->trackActivityComputing(m0.id));
 
     a = m_app->trackActivity(m0.id);
-    QCOMPARE(a.tracks.size(), 2);               // a kimaradt sáv is
+    QCOMPARE(a.tracks.size(), 2);               // the excluded track too
     QCOMPARE(a.tracks[0].trackId, QStringLiteral("mic"));
     QCOMPARE(a.tracks[1].trackId, QStringLiteral("loop"));
-    // A loopback 8–16 mp között szól: a 10. mp-nél magasan a padló felett, a 2. mp-nél nem.
+    // The loopback plays between 8 and 16 s: at 10 s well above the floor, at 2 s not.
     const TrackActivity& loop = a.tracks[1];
     QVERIFY(loop.dbAboveFloor.at(10000 / loop.frameMs) > 20.0f);
     QVERIFY(loop.dbAboveFloor.at(2000 / loop.frameMs) < 3.0f);
     QVERIFY(QFileInfo::exists(MeetingActivity::viewFilePath(m.folder)));
 
-    // Új AppController (új folyamat): a lemezről jön, számolás nélkül.
+    // A new AppController (a new process): it comes from disk, without computing.
     m_app = std::make_unique<AppController>();
     QSignalSpy ready2(m_app.get(), &AppController::trackActivityReady);
     QCOMPARE(m_app->trackActivity(m0.id).tracks.size(), 2);
     QVERIFY(!m_app->trackActivityComputing(m0.id));
     QCOMPARE(ready2.count(), 0);
 
-    // Ismeretlen meeting: üres, jel nélkül.
+    // Unknown meeting: empty, no signal.
     QVERIFY(m_app->trackActivity(QStringLiteral("nincs-ilyen")).isEmpty());
     QVERIFY(!m_app->trackActivityComputing(QStringLiteral("nincs-ilyen")));
 }
@@ -195,13 +193,13 @@ void TrackListeningAppTest::participantTracksSerialize()
     QCOMPARE(back.tracks, p.tracks);
     Participant none;
     none.id = "v2";
-    QVERIFY(!toJson(none).contains(QStringLiteral("tracks")));   // üresen nem írjuk ki
+    QVERIFY(!toJson(none).contains(QStringLiteral("tracks")));   // we do not write it out when empty
 }
 
 void TrackListeningAppTest::bindingBeforeTranscript()
 {
     const Meeting m0 = makeMeeting();
-    // Következtetett: a hangelemzés oldala (sides) → a bevont sávok.
+    // Inferred: the audio analysis's side (sides) gives the included tracks.
     ParticipantTrackBinding b = m_app->participantTracks(m0.id, "v1");
     QVERIFY(!b.manual);
     QCOMPARE(b.trackIds, QStringList{"mic"});
@@ -209,23 +207,23 @@ void TrackListeningAppTest::bindingBeforeTranscript()
     QCOMPARE(b.trackIds, QStringList{"loop"});
 
     QSignalSpy changed(m_app.get(), &AppController::participantsChanged);
-    // Ismeretlen sáv-id kimarad; a kötés a Participant::tracks-ba megy.
+    // An unknown track id is left out; the binding goes into Participant::tracks.
     QVERIFY(m_app->setParticipantTracks(m0.id, "v2", {"mic", "nincs", "loop"}));
     QCOMPARE(changed.count(), 1);
     QCOMPARE(m_app->participants(m0.id).at(1).tracks, (QStringList{"mic", "loop"}));
     b = m_app->participantTracks(m0.id, "v2");
     QVERIFY(b.manual);
     QCOMPARE(b.trackIds, (QStringList{"mic", "loop"}));
-    QVERIFY(!m_app->setParticipantTracks(m0.id, "v2", {"mic", "loop"}));   // nincs változás
+    QVERIFY(!m_app->setParticipantTracks(m0.id, "v2", {"mic", "loop"}));   // no change
     QCOMPARE(changed.count(), 1);
 
-    // Üres = vissza a következtetésre.
+    // Empty = back to inference.
     QVERIFY(m_app->setParticipantTracks(m0.id, "v2", {}));
     b = m_app->participantTracks(m0.id, "v2");
     QVERIFY(!b.manual);
     QCOMPARE(b.trackIds, QStringList{"loop"});
 
-    // Ismeretlen résztvevő / beszélő: nincs mit kötni.
+    // Unknown participant / speaker: nothing to bind.
     QVERIFY(!m_app->setParticipantTracks(m0.id, "nincs-ilyen", {"mic"}));
 }
 
@@ -236,7 +234,7 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
     SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed && ed->hasTranscript());
 
-    // Résztvevő-id → a nyers beszélője (a "@loopback" utótag nélkül) a szerkesztőben.
+    // Participant id: its raw speaker (without the "@loopback" suffix) in the editor.
     QVERIFY(m_app->setParticipantTracks(m.id, "v2", {"loop"}));
     QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 2")), QStringList{"loop"});
     QCOMPARE(m_app->participants(m.id).at(1).tracks, QStringList{"loop"});
@@ -244,16 +242,16 @@ void TrackListeningAppTest::bindingAfterTranscriptIsTheEditorAssignment()
     QVERIFY(b.manual);
     QCOMPARE(b.trackIds, QStringList{"loop"});
 
-    // A szerkesztő („Miért ő?") felől módosítva ugyanazt látjuk — egy adat.
+    // Modified from the editor's ("Why them?") side we see the same: one piece of data.
     QVERIFY(ed->setTrackAssignment(QStringLiteral("Beszélő 2"), {"mic"}));
     b = m_app->participantTracks(m.id, "v2");
     QCOMPARE(b.trackIds, QStringList{"mic"});
-    // Visszavonás → a korábbi kötés.
+    // Undo gives the earlier binding.
     ed->undo();
     QCOMPARE(m_app->participantTracks(m.id, "v2").trackIds, QStringList{"loop"});
 
-    // Beszélő-kulccsal is köthető (átirat utáni sor, résztvevő nélkül is); a hozzá tartozó
-    // résztvevő is megkapja.
+    // It can be bound by speaker key too (a post-transcript line, even without a participant); the
+    // participant belonging to it gets it too.
     QVERIFY(m_app->setParticipantTracks(m.id, QStringLiteral("Beszélő 1"), {"mic", "loop"}));
     QCOMPARE(ed->trackAssignment(QStringLiteral("Beszélő 1")), (QStringList{"mic", "loop"}));
     QCOMPARE(m_app->participants(m.id).at(0).tracks, (QStringList{"mic", "loop"}));
@@ -263,10 +261,10 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
 {
     Meeting m = makeMeeting();
     QVERIFY(m_app->setParticipantTracks(m.id, "v1", {"mic", "loop"}));
-    // Jóváhagyás átirat előtt; az átirat érkezése (applyParticipantsToTranscript) hozza át.
+    // Approval before the transcript; the transcript's arrival (applyParticipantsToTranscript) carries it over.
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
     writeTranscript(m);
-    // Az átirat-érkezés horga privát: a jóváhagyás újra-alkalmazása ugyanazt az utat járja.
+    // The transcript-arrival hook is private: re-applying the approval goes the same way.
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
     SpeakerEditor* ed = m_app->speakerEditor(m.id);
     QVERIFY(ed);
@@ -275,12 +273,13 @@ void TrackListeningAppTest::bindingCopiedToOverlayOnTranscript()
     QVERIFY(m_app->participantTracks(m.id, "v1").manual);
 }
 
-// Átirat előtti elemzés: a kézi sáv-kötés a párosítást (más sávon szóló klaszter nem lehet ő)
-// és a bizonyítékot („kézzel: hívás") is meghatározza; az újraelemzés megtartja a kötést.
+// Pre-transcript analysis: the manual track binding also determines the matching (a cluster
+// speaking on another track cannot be them) and the evidence ("by hand: call"); the
+// re-analysis keeps the binding.
 void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
 {
     Meeting m = makeMeeting();
-    m.participants[1].tracks = {"loop"};            // Béla kézzel a hívás sávjára kötve
+    m.participants[1].tracks = {"loop"};            // Béla bound to the call track by hand
     m.participants[1].source = ParticipantSource::Voice;
     ClusterSet cs;
     VoiceCluster onMic;
@@ -293,16 +292,16 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
     onLoop.windows = {{8000, 12000}};
     cs.clusters = {onMic, onLoop};
     participants::CandidateContext ctx;
-    // Mindkét klaszter Bélára hasonlít a legjobban (pl. visszhang a mikrofonon).
+    // Both clusters resemble Béla best (e.g. echo on the microphone).
     ctx.rank = [](const EmbeddingSet&) { return QVector<VoiceMatch>{{QStringLiteral("Béla"), 0.8}}; };
     const QVector<Participant> out = participants::buildParticipants(cs, m, ctx);
-    QCOMPARE(cs.clusters[0].matchName, QString());              // a mikrofon-klaszter nem ő
+    QCOMPARE(cs.clusters[0].matchName, QString());              // the microphone cluster is not them
     QCOMPARE(cs.clusters[1].matchName, QStringLiteral("Béla"));
     const Participant* bela = nullptr;
     for (const Participant& p : out)
         if (p.personName == QStringLiteral("Béla")) bela = &p;
     QVERIFY(bela);
-    QCOMPARE(bela->tracks, QStringList{"loop"});                 // az újraelemzés megtartja
+    QCOMPARE(bela->tracks, QStringList{"loop"});                 // the re-analysis keeps it
     bool manualSide = false;
     for (const Evidence& e : bela->evidence)
         if (e.kind == EvidenceKind::Side && e.text == QStringLiteral("kézzel: hívás")
@@ -310,7 +309,7 @@ void TrackListeningAppTest::manualTracksSteerClusterMatchAndEvidence()
             manualSide = true;
     QVERIFY(manualSide);
 
-    // Az AppController a kötés váltásakor a bizonyítékot is frissíti.
+    // When the binding changes AppController refreshes the evidence too.
     QVERIFY(m_app->setParticipantTracks(m.id, "v1", {"mic", "loop"}));
     bool both = false;
     for (const Evidence& e : m_app->participants(m.id).at(0).evidence)

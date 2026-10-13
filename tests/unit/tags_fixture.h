@@ -1,9 +1,7 @@
 #pragma once
-//
-// Közös, KITALÁLT tesztkönyvtár a címke-tesztekhez: hat megbeszélés rövid átirattal, három
-// témában (Nordvik szállítás, belső költségvetés, MuseumPlus bevezetés). A saját mikrofon-sáv
-// („Ádám”) mindegyiken ott van — ő a ritkasági súlyozás „mindenhol jelen lévő” résztvevője.
-//
+// Shared MADE-UP test library for the tag tests: six meetings with short transcripts, in three
+// topics (Nordvik delivery, internal budget, MuseumPlus rollout). The own microphone track (the own person)
+// is on every one of them: it is the "present everywhere" participant of the rarity weighting.
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>

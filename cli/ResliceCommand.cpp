@@ -1,4 +1,4 @@
-// tanara-cli reslice. Minden kimenet angol, tr() nélkül.
+// tanara-cli reslice. All output is English, no tr().
 #include "ResliceCommand.h"
 
 #include "tanara/edit/TranscriptReslice.h"

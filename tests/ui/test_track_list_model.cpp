@@ -1,6 +1,6 @@
-// TrackListModel + WaveformItem — a Sávok fül (M09) modellje izolált TANARA_HOME-on: nevek,
-// átnevezés, eldobott sáv visszaállítása / végleges törlése, hiányzó fájl megkeresése,
-// hullámforma-csúcsok és a lekeverés állapota (valódi ffmpeg-gel, ha van).
+// TrackListModel + WaveformItem: the model of the Tracks tab on an isolated TANARA_HOME: names,
+// renaming, restoring / permanently deleting a dropped track, locating a missing file,
+// waveform peaks and the mixdown state (with a real ffmpeg, if available).
 #include "JobTestSupport.h"
 #include "TrackListModel.h"
 #include "WaveformItem.h"
@@ -22,24 +22,24 @@ class TestTrackListModel : public QObject {
 private slots:
     void waveformBarLevels()
     {
-        // Átlagoló újramintavételezés, közös skálára (reference) vetítve, 0..1 közé szorítva;
-        // a szintek enyhén széthúzva (kitevő > 1): a hangos rész telt, a halk alacsony marad.
+        // Averaging resampling, projected onto a common scale (reference), clamped to 0..1; the
+        // levels stretched slightly (exponent > 1): the loud part is full, the quiet one stays low.
         const QList<qreal> peaks{1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5};
         const QList<qreal> bars = WaveformItem::barLevels(peaks, 4, 1.0);
         QCOMPARE(bars.size(), 4);
         QCOMPARE(bars[0], 1.0);
         QCOMPARE(bars[1], 0.0);
-        QVERIFY(bars[2] > 0.2 && bars[2] < 0.5);    // átlag 0,5 → széthúzva 0,5 alatt
+        QVERIFY(bars[2] > 0.2 && bars[2] < 0.5);    // mean 0.5, stretched below 0.5
         QVERIFY(qAbs(bars[2] - bars[3]) < 1e-9);
-        // A viszonyítási szint a felső percentilis: egyetlen kiugró érték nem nyomja össze a képet.
+        // The reference level is the upper percentile: a single outlier does not squash the picture.
         QList<qreal> many(100, 0.1);
         many[50] = 1.0;
         QVERIFY(WaveformItem::referenceLevel(many) < 0.2);
         QCOMPARE(WaveformItem::referenceLevel({}), 0.0);
-        // Csendes sáv a hangos sáv skáláján laposnak látszik.
+        // A quiet track looks flat on the loud track's scale.
         const QList<qreal> quiet = WaveformItem::barLevels({0.004, 0.003}, 2, 0.9);
         QVERIFY(quiet[0] < 0.1);
-        // Több oszlop, mint vödör → ismétel; üres bemenet → csupa nulla.
+        // More columns than buckets: repeats; empty input: all zeros.
         QCOMPARE(WaveformItem::barLevels({1.0}, 3, 0).size(), 3);
         QCOMPARE(WaveformItem::barLevels({}, 3, 0), QList<qreal>({0.0, 0.0, 0.0}));
     }
@@ -60,7 +60,7 @@ private slots:
         QCOMPARE(cell(model, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("loading"));
         QCOMPARE(model.mixdownState(), QStringLiteral("stale"));
 
-        // Demóban a műveletek memóriában működnek.
+        // In demo mode the actions work in memory.
         QVERIFY(model.rename(0, QStringLiteral("Fejhallgató")));
         QCOMPARE(cell(model, 0, TrackListModel::DisplayNameRole).toString(), QStringLiteral("Fejhallgató"));
         model.restore(2);
@@ -72,18 +72,18 @@ private slots:
         using P = QPair<qreal, qreal>;
         QCOMPARE(TrackListModel::waveExtent(0, 60000, 60000), P(0.0, 1.0));
         QCOMPARE(TrackListModel::waveExtent(15000, 30000, 60000), P(0.25, 0.5));
-        // Ismeretlen fájlhossz: a kezdetétől a végéig.
+        // Unknown file length: from its start to the end.
         QCOMPARE(TrackListModel::waveExtent(15000, -1, 60000), P(0.25, 0.75));
-        // A megbeszélésnél hosszabb fájl / túl nagy eltolás: a sávon belül marad.
+        // A file longer than the meeting / too large an offset: stays within the track.
         QCOMPARE(TrackListModel::waveExtent(0, 61000, 60000), P(0.0, 1.0));
         QCOMPARE(TrackListModel::waveExtent(45000, 30000, 60000), P(0.75, 0.25));
         QCOMPARE(TrackListModel::waveExtent(90000, 1000, 60000), P(1.0, 0.0));
-        // Ismeretlen megbeszélés-hossz: a teljes szélesség.
+        // Unknown meeting length: the full width.
         QCOMPARE(TrackListModel::waveExtent(5000, 1000, 0), P(0.0, 1.0));
     }
 
-    // Egy eszköz ki-be kapcsolva: két szakasz, a második később kezdődik. A sor második sora
-    // jelzi a szakaszt és a kezdetet, a hullámforma a helyén áll, a hossz a fájlé.
+    // A device switched off and on: two segments, the second starts later. The row's second line
+    // shows the segment and the start, the waveform is in place, the length is the file's.
     void segmentRowsAndWaveGap()
     {
         jobtest::Sandbox sb;
@@ -113,13 +113,13 @@ private slots:
         QVERIFY(raw2.endsWith(QStringLiteral("track_loop-2.wav")));
         QVERIFY(!cell(model, 0, TrackListModel::RawNameRole).toString().contains(QStringLiteral("szakasz")));
 
-        // Csúcsok még nincsenek: a hossz a kezdettől a megbeszélés végéig.
+        // No peaks yet: the length runs from the start to the end of the meeting.
         QCOMPARE(cell(model, 0, TrackListModel::WaveStartRole).toReal(), 0.0);
         QCOMPARE(cell(model, 2, TrackListModel::WaveStartRole).toReal(), 0.75);
         QCOMPARE(cell(model, 2, TrackListModel::WaveSpanRole).toReal(), 0.25);
         QCOMPARE(cell(model, 1, TrackListModel::DurationTextRole).toString(), QStringLiteral("00:03"));
 
-        // A csúcsok (valódi ffmpeg) után a fájl valódi hossza: 1 s → a sáv negyede.
+        // After the peaks (real ffmpeg) the file's real length: 1 s, a quarter of the track.
         if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty())
             QSKIP("ffmpeg nincs a PATH-on");
         model.requestWaveforms();
@@ -144,7 +144,7 @@ private slots:
         QCOMPARE(model.activeCount(), 1);
         QCOMPARE(model.droppedCount(), 1);
 
-        // Barátságos név a szerepből, alatta a nyers eszköznév + fájl.
+        // A friendly name from the role, below it the raw device name + file.
         QCOMPARE(cell(model, 0, TrackListModel::DisplayNameRole).toString(), QStringLiteral("Saját mikrofon"));
         QCOMPARE(cell(model, 0, TrackListModel::IconNameRole).toString(), QStringLiteral("mic"));
         QVERIFY(cell(model, 0, TrackListModel::RawNameRole).toString().contains("Teszt mikrofon"));
@@ -152,7 +152,7 @@ private slots:
         QVERIFY(!cell(model, 1, TrackListModel::ActiveRole).toBool());
         QCOMPARE(cell(model, 0, TrackListModel::DurationTextRole).toString(), QStringLiteral("00:01"));
 
-        // Átnevezés (perzisztens), üres névvel vissza a barátságosra.
+        // Rename (persistent), with an empty name back to the friendly one.
         QVERIFY(model.rename(0, QStringLiteral("Asztali mikrofon")));
         QCOMPARE(cell(model, 0, TrackListModel::DisplayNameRole).toString(), QStringLiteral("Asztali mikrofon"));
         QVERIFY(cell(model, 0, TrackListModel::RenamedRole).toBool());
@@ -160,12 +160,12 @@ private slots:
         QVERIFY(model.rename(0, QString()));
         QCOMPARE(cell(model, 0, TrackListModel::DisplayNameRole).toString(), QStringLiteral("Saját mikrofon"));
 
-        // Visszaállítás → aktív; a lekeverés ettől elavul / hiányzik.
+        // Restore: active; the mixdown becomes stale / missing because of it.
         model.restore(1);
         QTRY_COMPARE(model.droppedCount(), 0);
         QVERIFY(cell(model, 1, TrackListModel::ActiveRole).toBool());
 
-        // Újra eldobva, majd az eldobottak végleges törlése: a fájl is eltűnik, az aktív marad.
+        // Dropped again, then permanently deleting the dropped ones: the file disappears too, the active one stays.
         Meeting mm = sb.app->store()->load(m.id);
         mm.tracks[1].active = false;
         sb.app->store()->saveMeeting(mm);
@@ -179,8 +179,8 @@ private slots:
         QVERIFY(QFile::exists(QDir(m.folder).filePath("track_mic.wav")));
     }
 
-    // A megerősítő / fájlválasztó ablak alatt a kijelölés másik megbeszélésre válthat: a törlés
-    // és a fájl-hozzárendelés csak arra a megbeszélésre hat, amelyre a felhasználó rábólintott.
+    // Under the confirmation / file-picker window the selection can switch to another meeting:
+    // the delete and the file assignment affect only the meeting the user agreed to.
     void confirmedActionsNeverHitAnotherMeeting()
     {
         jobtest::Sandbox sb;
@@ -196,18 +196,18 @@ private slots:
         QVERIFY(!aTrack.isEmpty());
         QCOMPARE(model.trackIdAt(99), QString());
 
-        // …az ablak alatt a kijelölés B-re vált:
+        // ... under the window the selection switches to B:
         model.setMeetingId(b.id);
         QCOMPARE(model.droppedCount(), 1);
-        QCOMPARE(model.deleteDroppedIn(a.id), -1);         // A-ra szólt a megerősítés → semmi
+        QCOMPARE(model.deleteDroppedIn(a.id), -1);         // the confirmation was for A, so nothing
         QVERIFY(QFile::exists(bDropped));
         QCOMPARE(model.droppedCount(), 1);
         const QString src = sb.home->filePath("masik.wav");
         QVERIFY(QFile::copy(QDir(a.folder).filePath(a.tracks[0].file), src));
-        QVERIFY(!model.relocateTrack(a.id, aTrack, src).isEmpty());   // hibaüzenet, nincs másolás
+        QVERIFY(!model.relocateTrack(a.id, aTrack, src).isEmpty());   // an error message, no copy
         QCOMPARE(sb.app->store()->load(b.id).tracks[0].file, b.tracks[0].file);
 
-        // Egyező megbeszélésnél a törlés megtörténik.
+        // For a matching meeting the delete happens.
         QCOMPARE(model.deleteDroppedIn(b.id), 1);
         QVERIFY(!QFile::exists(bDropped));
     }
@@ -227,11 +227,11 @@ private slots:
         QCOMPARE(cell(model, 0, TrackListModel::DurationTextRole).toString(), QStringLiteral("–"));
         QCOMPARE(model.activeCount(), 0);
 
-        // Nem létező fájl → emberi hibaüzenet, nincs változás.
+        // A non-existent file gives a human error message, no change.
         QVERIFY(!model.relocate(0, sb.home->filePath("nincs-ilyen.wav")).isEmpty());
         QVERIFY(cell(model, 0, TrackListModel::MissingRole).toBool());
 
-        // A megtalált fájl a meeting mappájába másolódik (az eredeti a helyén marad).
+        // The found file is copied into the meeting's folder (the original stays in place).
         QCOMPARE(model.relocate(0, moved), QString());
         QTRY_VERIFY(!cell(model, 0, TrackListModel::MissingRole).toBool());
         QVERIFY(QFile::exists(moved));
@@ -251,7 +251,7 @@ private slots:
         QCOMPARE(cell(model, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("none"));
         QCOMPARE(model.mixdownState(), QStringLiteral("none"));
 
-        // A fül megjelenésekor kérjük a csúcsokat: számolás közben „loading”, utána „ready”.
+        // When the tab appears we request the peaks: "loading" while computing, then "ready".
         model.requestWaveforms();
         QCOMPARE(cell(model, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("loading"));
         QTRY_COMPARE_WITH_TIMEOUT(cell(model, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("ready"), 20000);
@@ -260,20 +260,20 @@ private slots:
         QVERIFY(model.peakReference() > 0.1);
         QCOMPARE(cell(model, 0, TrackListModel::DurationTextRole).toString(), QStringLiteral("00:02"));
 
-        // Új modell ugyanarra a meetingre: a gyorsítótárból azonnal megvan (kérés nélkül).
+        // A new model on the same meeting: available at once from the cache (without a request).
         TrackListModel second;
         second.setController(sb.app.get());
         second.setMeetingId(m.id);
         QCOMPARE(cell(second, 0, TrackListModel::PeaksStateRole).toString(), QStringLiteral("ready"));
 
-        // Lekeverés: fut (megszakítható) → kész; a keverék hullámformája is megjön.
+        // Mixdown: running (cancellable), then done; the mix's waveform arrives too.
         model.refreshMixdown();
         QCOMPARE(model.mixdownState(), QStringLiteral("running"));
         QVERIFY(model.mixdownCancellable());
         QTRY_COMPARE_WITH_TIMEOUT(model.mixdownState(), QStringLiteral("ready"), 30000);
         QTRY_VERIFY_WITH_TIMEOUT(!model.mixdownPeaks().isEmpty(), 20000);
 
-        // Egy sáv eldobása után a keverék elavult.
+        // After dropping a track the mix is stale.
         Meeting mm = sb.app->store()->load(m.id);
         mm.tracks[1].active = false;
         mm.mixdownDirty = true;
@@ -281,7 +281,7 @@ private slots:
         emit sb.app->tracksChanged(m.id);
         QTRY_COMPARE(model.mixdownState(), QStringLiteral("stale"));
 
-        // Megszakított lekeverés: a régi keverék érintetlen, az állapot elavult marad.
+        // Canceled mixdown: the old mix is untouched, the state stays stale.
         model.refreshMixdown();
         QCOMPARE(model.mixdownState(), QStringLiteral("running"));
         if (sb.app->cancelJob(m.id, JobKind::Mixdown)) {

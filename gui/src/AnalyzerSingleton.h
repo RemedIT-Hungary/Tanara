@@ -1,14 +1,12 @@
 #pragma once
+// AnalyzerSingleton: hands a request to the RUNNING analyzer (younger sibling of RecorderSingleton).
 //
-// AnalyzerSingleton — kérés átadása a FUTÓ elemzőnek (a RecorderSingleton kistestvére).
-//
-// Az új főablak figyel egy lokális socketen. A `tanara --meeting <id>` (az önálló felvevő
-// „Megnyitás az elemzőben” gombja indítja) előbb megpróbálja átadni a kérést a futó
-// elemzőnek — ha sikerül, kilép, így nem nyílik második elemző ugyanazon az adaton.
-// A név TANARA_HOME mellett a metaadat-mappa hash-ével egészül ki
-// (tanara::instanceScopeSuffix), mint a felvevőé: a homokozó-példány és a felhasználó valódi
-// elemzője sosem látja egymást.
-//
+// The new main window listens on a local socket. `tanara --meeting <id>` (started by the
+// standalone recorder's "Open in the analyzer" button) first tries to pass the request to the
+// running analyzer; if that works it exits, so no second analyzer opens on the same data.
+// With TANARA_HOME the name gets the metadata folder's hash appended
+// (tanara::instanceScopeSuffix), like the recorder's: a sandbox instance and the user's real
+// analyzer never see each other.
 #include "tanara/detect/RecordingLock.h"
 
 #include <QDataStream>
@@ -35,13 +33,13 @@ inline QString serverName()
 #endif
 }
 
-// Átadja az args-ot a futó elemzőnek. true = átadva és nyugtázva (a hívó kiléphet).
+// Passes args to the running analyzer. true = delivered and acknowledged (the caller may exit).
 inline bool forwardToExisting(const QStringList& args, int timeoutMs = 1500)
 {
     QLocalSocket sock;
     sock.connectToServer(serverName());
     if (!sock.waitForConnected(qMin(timeoutMs, 500)))
-        return false;   // nincs futó elemző (vagy stale socket)
+        return false;   // no running analyzer (or a stale socket)
     QByteArray payload;
     { QDataStream ds(&payload, QIODevice::WriteOnly); ds << args; }
     sock.write(payload);
@@ -50,8 +48,8 @@ inline bool forwardToExisting(const QStringList& args, int timeoutMs = 1500)
     return sock.readAll().startsWith("OK");
 }
 
-// Figyelés a kérésekre; a szerver a parent gyereke. nullptr, ha a nevet másik ÉLŐ elemző
-// fogja (nem vesszük el tőle); a crash után maradt socket-fájlt letakarítja.
+// Listens for requests; the server is a child of parent. nullptr if another LIVE analyzer
+// holds the name (we do not take it over); cleans up a socket file left after a crash.
 inline QLocalServer* listen(QObject* parent, std::function<void(const QStringList&)> handler)
 {
     {
@@ -84,7 +82,7 @@ inline QLocalServer* listen(QObject* parent, std::function<void(const QStringLis
     return server;
 }
 
-// A `--meeting <id>` értéke az argumentumokból ("" ha nincs).
+// The value of `--meeting <id>` from the arguments ("" if absent).
 inline QString meetingArg(const QStringList& args)
 {
     const int i = args.indexOf(QStringLiteral("--meeting"));

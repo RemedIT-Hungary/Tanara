@@ -1,12 +1,12 @@
-// A v3 megbeszélés-nézet héja (Main.qml) kijelző nélkül (offscreen), demó-adattal (App.demo,
-// nincs AppController): egysoros fejléc a négy füllel, a nem elérhető fül panelje, a
-// „Megbeszélés” menü, az Áttekintés részei (banner + „Később”, lépések, sávok, ADATOK,
-// összecsukott sorok, üres kártyák), az Átirat eszköz-sora (Olvasás / Javítás, Ctrl+E) és a
-// térkép-dokk (csak az Átirat / összefoglaló füleken; kattintás = ugrás). U6: felvétel után,
-// átírás előtt is az Áttekintés jelenik meg, az „Átírás indítása” a FELDOLGOZÁS lépésében.
-// Javító kör (G1): az első átírás szakaszai és „Megszakítás” a lépésben (A1), jegyzet-sablon és
-// észlelt hívás a forrás-kártyán, cím alapú címke-javaslat (A2, A3), kattintható jelvények és a
-// névtelen sor elnevezése (A4, A5), „Újraelemzés” és a menüpont új neve (D4), az üres eszköz-sor (S3).
+// The meeting view shell (Main.qml) without a display (offscreen), with demo data (App.demo, no
+// AppController): the one-line header with the four tabs, the panel of an unavailable tab, the
+// "Meeting" menu, the parts of the Overview (banner + "Later", steps, tracks, DATA, collapsed
+// rows, empty cards), the Transcript tool row (Read / Edit, Ctrl+E) and the map dock (only on
+// the Transcript / summary tabs; click = jump). After a recording, before transcription, the
+// Overview shows too, with "Start transcription" in the PROCESSING step.
+// Also covered: the first transcription's stages and "Cancel" in the step, note template and
+// detected call on the source card, title-based tag suggestion, clickable badges and naming an
+// anonymous line, "Re-analyze" and the menu item's new name, the empty tool row.
 #include "AppContext.h"
 #include "QmlApp.h"
 
@@ -24,7 +24,7 @@
 
 using namespace tanara_qml;
 
-// Ál-héj az Áttekintés indító gombjaihoz (a ShellActions szerződéses felületéből a kellő rész).
+// Fake shell for the Overview's start buttons (the needed part of the ShellActions contract surface).
 class StartSpy : public QObject {
     Q_OBJECT
 public:
@@ -63,8 +63,8 @@ class TestOverviewTab : public QObject {
         QVERIFY(QTest::qWaitForWindowActive(m_window));
         QTest::qWait(200);
     }
-    // A vizuális fában (a Repeater-delegáltak és a felugrók tartalma is) — a látható példány
-    // előnyben, ha több is van.
+    // In the visual tree (also the Repeater delegates and the popups' content); the visible
+    // instance is preferred if there are several.
     static void collect(QQuickItem* root, const QString& name, QList<QQuickItem*>& out)
     {
         if (!root) return;
@@ -93,7 +93,7 @@ class TestOverviewTab : public QObject {
         QQuickItem* it = item(name);
         return it && it->isVisible();
     }
-    // Több azonos nevű elem (a két „Megbeszélés” menü) közül látszik-e valamelyik.
+    // Whether any of several same-named items (the two "Meeting" menus) is visible.
     bool anyShown(const char* name) const
     {
         for (QQuickItem* it : items(name))
@@ -122,8 +122,8 @@ private slots:
         m_window = nullptr;
     }
 
-    // V1: az Áttekintés az első fül; a banner „Később”-re eltűnik; a nem elérhető összefoglaló
-    // fül kattintásra panelt nyit (és nem vált), a futó átírás a fülön.
+    // The Overview is the first tab; the banner disappears on "Later"; the unavailable summary
+    // tab opens a panel on click (and does not switch), a running transcription shows on the tab.
     void processing_bannerTabsAndPanel()
     {
         load(QStringLiteral("overviewProcessing"));
@@ -133,7 +133,7 @@ private slots:
         QVERIFY(shown("trackList"));
         QVERIFY(shown("participantList"));
         QVERIFY(!shown("statTiles"));
-        QVERIFY(!shown("mapDock"));                       // Áttekintésen a sima lejátszó
+        QVERIFY(!shown("mapDock"));                       // the plain player on the Overview
         QVERIFY(shown("seekSlider"));
         QVERIFY(shown("approvalBanner"));
         click(item("laterButton"));
@@ -144,20 +144,20 @@ private slots:
         QVERIFY(!tip->property("opened").toBool());
         click(item("tab_summary"));
         QTRY_VERIFY(tip->property("opened").toBool());
-        QCOMPARE(tab(), 0);                                // nem vált
-        // Átirat nélkül nincs mit indítani: a panel csak megmondja, mi hiányzik.
+        QCOMPARE(tab(), 0);                                // does not switch
+        // Without a transcript there is nothing to start: the panel only says what is missing.
         QCOMPARE(tip->property("tipTitle").toString(), QStringLiteral("Még nincs vezetői összefoglaló"));
         QVERIFY(tip->property("tipText").toString().contains(QStringLiteral("előbb az átírásnak")));
         QVERIFY(!shown("tabTipAction"));
         QTest::keyClick(m_window, Qt::Key_Escape);
         QTRY_VERIFY(!tip->property("opened").toBool());
 
-        // Az Átirat az átírás közben is megnyitható.
+        // The Transcript can be opened during transcription too.
         click(item("tab_transcript"));
         QCOMPARE(tab(), 1);
     }
 
-    // V3: kész megbeszélés — ADATOK, összecsukott lépések / sávok, kinyitva a részletek.
+    // A finished meeting: DATA, collapsed steps / tracks, details when expanded.
     void done_statsAndCollapsedRows()
     {
         load(QStringLiteral("overviewDone"));
@@ -169,16 +169,16 @@ private slots:
         QTRY_VERIFY(shown("pipelineSteps"));
         click(item("tracksCollapsed"));
         QTRY_VERIFY(shown("trackList"));
-        // A Vezetői összefoglaló és a Memó itt elérhető: a fülek váltanak.
+        // The Executive summary and the Memo are available here: the tabs switch.
         click(item("tab_memo"));
         QCOMPARE(tab(), 3);
         click(item("tab_summary"));
         QCOMPARE(tab(), 2);
     }
 
-    // G7b: az Áttekintés változás-sávja (a Main a közös verem jelére hívja): üzenet ·
-    // „Visszavonás · Ctrl+Z” · ×; visszavonás után „Visszavonva: …” teendő nélkül. Demóban (közös
-    // verem nélkül) a sáv maga mondja ki a visszavonást.
+    // The Overview's change bar (Main calls it on the shared stack's signal): message, "Undo
+    // Ctrl+Z", x; after an undo "Undone: ..." with no action. In demo mode (without the shared
+    // stack) the bar announces the undo itself.
     void done_changeBar()
     {
         load(QStringLiteral("overviewDone"));
@@ -194,14 +194,14 @@ private slots:
         QVERIFY(!shown("overviewChangeUndo"));
         click(item("overviewChangeClose"));
         QTRY_VERIFY(!shown("overviewChangeBar"));
-        // A nem hallott meghívott (A7) halványan a beszélők után.
+        // An invited participant who was not heard appears dimmed after the speakers.
         bool dimmedLast = false;
         for (QQuickItem* row : items("participantRow"))
             if (row->isVisible()) dimmedLast = row->opacity() < 1.0;
         QVERIFY(dimmedLast);
     }
 
-    // V5 / V6: az üres részek szaggatott kártyák a műveletekkel.
+    // Empty parts are dashed cards with the actions.
     void emptyAndNobodyCards()
     {
         load(QStringLiteral("overviewEmpty"));
@@ -210,7 +210,7 @@ private slots:
         QVERIFY(shown("emptyAddParticipant"));
         QVERIFY(shown("sourceDescribe"));
         QVERIFY(!shown("participantList"));
-        // A leírás helyben adható meg.
+        // The description can be entered in place.
         click(item("sourceDescribe"));
         QTRY_VERIFY(shown("sourceEditor"));
         for (const QChar c : QStringLiteral("Q4 review")) QTest::keyClick(m_window, c.toLatin1());
@@ -226,14 +226,14 @@ private slots:
         QVERIFY(!shown("peopleEmpty"));
     }
 
-    // V4: Átirat — eszköz-sor (Olvasás / Javítás, Ctrl+E) és térkép-dokk; a dokk csak itt (és
-    // az összefoglaló füleken) látszik; kattintás a térképen = ugrás.
+    // Transcript: tool row (Read / Edit, Ctrl+E) and the map dock; the dock shows only here (and
+    // on the summary tabs); a click on the map = jump.
     void reading_toolsRowAndMapDock()
     {
         load(QStringLiteral("readingMap"));
         QTRY_COMPARE(tab(), 1);
         QVERIFY(shown("modeSegment"));
-        QVERIFY(shown("modeReview"));                 // Olvasás · Javítás · Átnézendő (N)
+        QVERIFY(shown("modeReview"));                 // Read, Edit, To review (N)
         QVERIFY(shown("whoWasThereButton"));
         QTRY_VERIFY(shown("mapDock"));
         QVERIFY(!shown("seekSlider"));
@@ -252,7 +252,7 @@ private slots:
         };
         QVERIFY2(!popoverOpen(), "Ctrl+E után");
         click(item("modeRead"));
-        QVERIFY2(!popoverOpen(), "Olvasás után");   // a sín-fejléc nem takarja az eszköz-sort
+        QVERIFY2(!popoverOpen(), "Olvasás után");   // the rail header does not cover the tool row
         QTRY_VERIFY(!transcript->property("fixMode").toBool());
 
         QQuickItem* seek = item("mapSeekArea");
@@ -265,7 +265,7 @@ private slots:
         QVERIFY(!popoverOpen());
         QCOMPARE(tab(), 1);
 
-        // Vissza az Áttekintésre: a dokk helyén a lejátszó.
+        // Back to the Overview: the player takes the dock's place.
         QObject* shell = m_window->property("shell").value<QObject*>();
         QSignalSpy spy(shell, SIGNAL(currentTabChanged()));
         QTest::keyClick(m_window, Qt::Key_1, Qt::ControlModifier);
@@ -275,9 +275,9 @@ private slots:
         QVERIFY(shown("seekSlider"));
     }
 
-    // U6 (V5): felvétel után, átírás előtt az Áttekintés látszik — üres résztvevő-kártya,
-    // sávok, lépések; az „Átirat” lépésben az „Átírás indítása”, ami a héj startTranscription
-    // akcióját hívja. Az Átirat fül halvány, a panelje is felajánlja az indítást.
+    // After a recording, before transcription, the Overview shows: an empty participant card,
+    // tracks, steps; in the Transcript step "Start transcription", which calls the shell's
+    // startTranscription action. The Transcript tab is dimmed, and its panel offers the start too.
     void recorded_overviewBeforeTranscription()
     {
         load(QStringLiteral("overviewRecorded"));
@@ -286,10 +286,10 @@ private slots:
         QVERIFY(shown("pipelineSteps"));
         QVERIFY(shown("step_transcript"));
         QVERIFY(shown("trackList"));
-        int switches = 0;                                  // a sávok kapcsolhatók (a látható kapcsolók)
+        int switches = 0;                                  // the tracks can be switched (the visible switches)
         for (QQuickItem* it : items("trackSwitch")) switches += it->isVisible() ? 1 : 0;
         QCOMPARE(switches, 2);
-        int strips = 0;                                    // és beszéd-csíkkal meghallgathatók
+        int strips = 0;                                    // and listened to with the speech strip
         for (QQuickItem* it : items("trackActivityStrip")) strips += it->isVisible() ? 1 : 0;
         QVERIFY(strips >= 2);
         QVERIFY(shown("peopleEmpty"));
@@ -301,7 +301,7 @@ private slots:
         QVERIFY(!shown("statTiles"));
         QVERIFY(!shown("transcribeError"));
         QVERIFY(!shown("transcribeBlocker"));
-        QTRY_VERIFY(shown("identifySwitch"));             // a lépések a modell után töltődnek
+        QTRY_VERIFY(shown("identifySwitch"));             // the steps load after the model
         QQuickItem* start = item("startTranscriptionButton");
         QVERIFY(start && start->isVisible());
         QVERIFY(start->isEnabled());
@@ -311,9 +311,9 @@ private slots:
         StartSpy spy;
         overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
         click(start);
-        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:")}));   // demóban üres id
+        QCOMPARE(spy.calls, QStringList({QStringLiteral("startTranscription:")}));   // empty id in demo mode
 
-        // Az Átirat fül átírás előtt nem vált, a panel megmondja, mi hiányzik, és indít.
+        // The Transcript tab does not switch before transcription; the panel says what is missing and starts.
         QObject* tip = object("tabTooltip");
         QVERIFY(tip);
         click(item("tab_transcript"));
@@ -325,7 +325,7 @@ private slots:
         QTRY_VERIFY(!tip->property("opened").toBool());
     }
 
-    // U6: az átírás hibája a lépésben — figyelmet kérő kör, hiba-doboz, „Újra” és a javító művelet.
+    // A transcription error in the step: an attention circle, an error box, "Retry" and the fix action.
     void recordedError_retryAndFix()
     {
         load(QStringLiteral("overviewRecordedError"));
@@ -343,7 +343,7 @@ private slots:
                                          QStringLiteral("openSettings:providers:stt")}));
     }
 
-    // Átírás közben / után nincs indító a lépésekben.
+    // During / after transcription the steps have no start.
     void processing_noStartButton()
     {
         load(QStringLiteral("overviewProcessing"));
@@ -353,7 +353,7 @@ private slots:
         QVERIFY(!shown("identifySwitch"));
     }
 
-    // A „Megbeszélés” menü a menüsorban és a fejléc „…” gombján ugyanaz.
+    // The "Meeting" menu is the same in the menu bar and on the header's "..." button.
     void meetingMenu()
     {
         load(QStringLiteral("overviewDone"));
@@ -370,8 +370,8 @@ private slots:
         QTest::qWait(150);
     }
 
-    // A1: az első átírás futása közben az „Átirat” lépésben a szakaszok, a „Közben nyugodtan
-    // dolgozz tovább” sor és a „Megszakítás” (a héj cancelJob(…, Transcribe)-ja); nincs indító.
+    // First transcription running: in the "Transcript" step the stages, the "Feel free to keep
+    // working meanwhile" line and "Cancel" (the shell's cancelJob(..., Transcribe)); no start.
     void transcribing_stagesAndCancel()
     {
         load(QStringLiteral("overviewTranscribing"));
@@ -390,13 +390,13 @@ private slots:
         QCOMPARE(spy.calls, QStringList({QStringLiteral("cancelJob::%1").arg(int(tanara::JobKind::Transcribe))}));
         m_engine.reset();
 
-        // V1 (átírás közben, jelöltekkel) is megszakítható a lépésből.
+        // Can also be canceled from the step (with candidates, while transcribing).
         load(QStringLiteral("overviewProcessing"));
         QTRY_VERIFY(shown("cancelTranscriptionButton"));
     }
 
-    // A3 + A2: új felvételnél a forrás-kártya alatt a sablonok és az észlelt hívás; a sablon a
-    // szerkesztőbe kerül (a mentés a felhasználóé). A címkesor a cím alapján javasol.
+    // For a new recording: the templates and the detected call under the source card; the template
+    // goes into the editor (saving is the user's). The tag row suggests based on the title.
     void recorded_templatesAndTitleTags()
     {
         load(QStringLiteral("overviewRecorded"));
@@ -410,30 +410,30 @@ private slots:
         click(item("sourceTemplateChip"));
         QTRY_VERIFY(shown("sourceEditor"));
         QVERIFY(!item("sourceEditor")->property("text").toString().isEmpty());
-        QVERIFY(shown("sourceTemplates"));                 // szerkesztés közben is választható
+        QVERIFY(shown("sourceTemplates"));                 // can be chosen while editing too
         QTest::keyClick(m_window, Qt::Key_Escape);
         QTRY_VERIFY(shown("sourceDescribe"));
     }
 
-    // A4: átirat után a jelvény a „Miért ő?” panelt kéri arra a beszélőre (a héjtól); átirat
-    // előtt nem kattintható (csak tooltip). A5: a névtelen sor „Elnevezés…” gombja a
-    // személyválasztót nyitja; a választott név a sorra kerül (demóban helyben).
+    // After the transcript the badge asks the "Why this one?" panel for that speaker (from the
+    // shell); before the transcript it is not clickable (tooltip only). The "Name..." button of an
+    // anonymous line opens the person picker; the chosen name goes onto the line (in place in demo mode).
     void done_badgesAndNaming()
     {
         load(QStringLiteral("overviewDone"));
         QObject* overview = object("overviewTab");
         StartSpy spy;
         overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
-        // Az első sor (S1) egyetlen jelvénye az oldal volt („mikrofon”): azt a sáv-chipek váltják
-        // (G6), így az első kattintható jelvény a másodiké (S2, #Nordvik).
+        // The first line's only badge was the side ("microphone"): the track chips replace it, so the
+        // first clickable badge is the second one.
         click(item("participantBadge"));
         QCOMPARE(spy.calls, QStringList({QStringLiteral("openSpeakerWhy::S2")}));
         QVERIFY(shown("participantTrackChips"));
 
-        QCOMPARE(items("participantNameButton").size(), 6);   // + a nem hallott meghívott (A7)
+        QCOMPARE(items("participantNameButton").size(), 6);   // + the invited participant who was not heard
         int visibleName = 0;
         for (QQuickItem* it : items("participantNameButton")) visibleName += it->isVisible() ? 1 : 0;
-        QCOMPARE(visibleName, 1);                         // csak a névtelen „Távoli 1”
+        QCOMPARE(visibleName, 1);                         // only the anonymous "Remote 1"
         click(item("participantNameButton"));
         QObject* picker = object("overviewNamePicker");
         QVERIFY(picker);
@@ -454,10 +454,10 @@ private slots:
         overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
         spy.calls.clear();
         click(item("participantBadge"));
-        QVERIFY(spy.calls.isEmpty());                    // átirat előtt csak tooltip
+        QVERIFY(spy.calls.isEmpty());                    // before the transcript only a tooltip
     }
 
-    // D4: a hanglenyomat-lépés „Újraelemzés”-e (átirat után = a menü „Hanglenyomat-elemzés újra”).
+    // The voiceprint step's "Re-analyze" (after the transcript = the menu's "Re-run voiceprint analysis").
     void done_reanalyzeAndMenuName()
     {
         load(QStringLiteral("overviewDone"));
@@ -466,7 +466,7 @@ private slots:
         QObject* overview = object("overviewTab");
         StartSpy spy;
         overview->setProperty("shell", QVariant::fromValue<QObject*>(&spy));
-        // A jobb oszlop görgetése a lépés aljáig (a kinyitott lépések a lejátszó alá nyúlnak).
+        // Scrolling the right column to the bottom of the step (expanded steps extend below the player).
         QObject* right = object("overviewRight");
         QVERIFY(right);
         QTRY_VERIFY(right->property("contentHeight").toReal() > right->property("height").toReal());
@@ -484,7 +484,7 @@ private slots:
         QTest::qWait(150);
     }
 
-    // S3: az eszköz-sor rejtett gyerekkel 0 magas (nem marad üres 46 px), látható gyerekkel 46.
+    // The tool row with a hidden child has height 0 (no empty 46 px remains), with a visible child 46.
     void toolsRow_hiddenChildMeansEmpty()
     {
         QQmlEngine engine;

@@ -1,9 +1,7 @@
-//
-// LLM kontextus-kezelés: a „nem fér a kontextusba” hiba besorolása (LM Studio / llama.cpp /
-// OpenAI alak), a token-becslés és a lépcsők, az LM Studio natív API-jának értelmezése, a
-// betöltés előtti döntés, és az előkészítő (LlmModelPreparer) + a kapcsolat-teszt egy helyi
-// ál-szerveren. Valódi LM Studióhoz SEMMILYEN kérés nem megy.
-//
+// LLM context handling: classifying the "does not fit the context" error (LM Studio /
+// llama.cpp / OpenAI shape), the token estimate and the steps, interpreting LM Studio's
+// native API, the pre-load decision, and the preparer (LlmModelPreparer) + the connection test
+// on a local fake server. NO request goes to a real LM Studio.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -28,7 +26,7 @@ namespace {
 struct FakeRequest { QByteArray method; QString path; QByteArray body; };
 struct FakeReply { int status = 200; QByteArray body = "{}"; bool hold = false; };
 
-// Minimális ál-HTTP-szerver: minden kérést naplóz, a választ a handler adja.
+// Minimal fake HTTP server: logs every request, the handler gives the reply.
 class FakeHttp : public QObject {
 public:
     std::function<FakeReply(const FakeRequest&)> handler;
@@ -86,7 +84,7 @@ private:
     QTcpServer m_srv;
 };
 
-// A GET /api/v1/models válasz (a valódi LM Studio alakja), egy modell-példánnyal vagy anélkül.
+// The GET /api/v1/models reply (the real LM Studio's shape), with or without a model instance.
 QByteArray modelsJson(const QString& key, int ctx, int parallel, const QString& otherLoaded = QString())
 {
     QJsonArray models;
@@ -110,7 +108,7 @@ QByteArray modelsJson(const QString& key, int ctx, int parallel, const QString& 
     return QJsonDocument(QJsonObject{{"models", models}}).toJson(QJsonDocument::Compact);
 }
 
-// Az incidens: LM Studio a llama.cpp hibáját a saját üzenetébe ágyazva adja vissza.
+// The incident: LM Studio returns llama.cpp's error embedded in its own message.
 const char* kLmStudioIncident =
     R"({"error":"Engine protocol predict request returned 400: {\"error\":{\"code\":400,\"message\":\"request (6042 tokens) exceeds the available context size (4096 tokens), try increasing it\",\"type\":\"exceed_context_size_error\",\"n_prompt_tokens\":6042,\"n_ctx\":4096}}"})";
 const char* kLlamaCpp =
@@ -158,22 +156,22 @@ private slots:
 void LlmContextTest::estimateAndSteps()
 {
     QCOMPARE(estimateTokens(0), 0);
-    QCOMPARE(estimateTokens(2500), 1000);           // 2,5 karakter / token (magyar átirat)
+    QCOMPARE(estimateTokens(2500), 1000);           // 2.5 characters / token (Hungarian transcript)
     QCOMPARE(estimateTokens(2501), 1001);
-    // Bemenet + sablon, 10% ráhagyással, + a kimeneti keret.
+    // Input + template, with a 10% margin, + the output budget.
     QCOMPARE(callContextNeed(2500, 3000), int(std::ceil((1000 + 256) * 1.1)) + 3000);
     QCOMPARE(contextStepFor(5000), 8192);
     QCOMPARE(contextStepFor(9000), 16384);
     QCOMPARE(contextStepFor(17000), 20480);
     QCOMPARE(contextStepFor(30000), 32768);
-    QCOMPARE(contextStepFor(30000, 20000), 20000);   // a modell maximuma fölé nem
-    QCOMPARE(contextStepFor(300000), 300032);        // minden lépcső fölött: 1024-re kerekítve
-    // A keret visszafelé: ennyi karakter fér egy részbe a prompt + kimenet mellett.
+    QCOMPARE(contextStepFor(30000, 20000), 20000);   // not above the model's maximum
+    QCOMPARE(contextStepFor(300000), 300032);        // above every step: rounded to 1024
+    // The budget backwards: this many characters fit in a part next to the prompt + output.
     const int budget = partBudgetChars(16384, 4000, 3000);
     QVERIFY(budget > 0);
     QVERIFY(callContextNeed(4000 + budget, 3000) <= 16384);
     QVERIFY(callContextNeed(4000 + budget + 100, 3000) > 16384 - 100);
-    QCOMPARE(partBudgetChars(4096, 4000, 3000), -1);   // a legkisebb részhez is kevés
+    QCOMPARE(partBudgetChars(4096, 4000, 3000), -1);   // too little even for the smallest part
     QVERIFY(typicalSummaryPartNeed() > 8192 && typicalSummaryPartNeed() < 16384);
     QCOMPARE(nativeApiRoot(QStringLiteral("http://localhost:1234/v1/")), QStringLiteral("http://localhost:1234"));
     QCOMPARE(nativeApiRoot(QStringLiteral("http://host:8080")), QStringLiteral("http://host:8080"));
@@ -223,8 +221,8 @@ void LlmContextTest::overflowShapes()
 
 void LlmContextTest::classifiedMessage()
 {
-    // Az incidens a szolgáltató-hibák útján: emberi üzenet a két számmal, nyers JSON nélkül,
-    // a technikai sor más (nem ugyanaz a szöveg kétszer).
+    // The incident through the provider-error path: a human message with the two numbers, no raw
+    // JSON, the technical line is different (not the same text twice).
     for (const char* body : {kLmStudioIncident, kLlamaCpp}) {
         HttpExchange ex;
         ex.status = 400;
@@ -246,7 +244,7 @@ void LlmContextTest::classifiedMessage()
         QVERIFY(isReloadContextHint(e.fixActionHint));
         QCOMPARE(contextFixTokens(e.fixActionHint), 16384);
     }
-    // Más szerver (nincs natív API): a minimum a szövegben, a tipp a Beállításokba visz.
+    // Another server (no native API): the minimum in the text, the hint leads to Settings.
     HttpExchange ex;
     ex.status = 400;
     ex.body = kOpenAi;
@@ -256,11 +254,11 @@ void LlmContextTest::classifiedMessage()
     QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-context:32768"));
     QVERIFY(!isReloadContextHint(e.fixActionHint));
     QVERIFY(e.detail.contains(QStringLiteral("context_length_exceeded")));
-    // Ha a becslés a betöltöttnél nem nagyobb, a következő lépcsőt ajánljuk.
+    // If the estimate is not larger than the loaded one, we suggest the next step.
     hint.recommendedContext = 4000;
     QCOMPARE(describeJobFailure(JobKind::Summarize, QString(), &ex, &hint).fixActionHint,
              QStringLiteral("settings:llm-context:16384"));
-    // Az átírás hibáit nem soroljuk ide.
+    // We do not classify transcription errors here.
     QVERIFY(describeJobFailure(JobKind::Transcribe, QString(), &ex).fixActionHint != QStringLiteral("settings:llm-context"));
 }
 
@@ -280,7 +278,7 @@ void LlmContextTest::cloudOverflowHasNoReload()
 
 void LlmContextTest::probeParsing()
 {
-    // Betöltve (a valódi szerver alakja).
+    // Loaded (the real server's shape).
     LlmServerInfo i = parseLmStudioModels(modelsJson("qwen3.8-27b", 20480, 1), "qwen3.8-27b");
     QVERIFY(i.isLmStudio());
     QVERIFY(i.modelListed);
@@ -289,23 +287,23 @@ void LlmContextTest::probeParsing()
     QCOMPARE(i.instances.size(), 1);
     QCOMPARE(i.instances[0].contextLength, 20480);
     QCOMPARE(i.instances[0].parallel, 1);
-    QVERIFY(i.otherLoaded.isEmpty());   // a beágyazó (embedding) modell nem számít
+    QVERIFY(i.otherLoaded.isEmpty());   // the embedding model does not count
 
-    // Nincs betöltve.
+    // Not loaded.
     i = parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0), "qwen3.8-27b");
     QVERIFY(i.isLmStudio() && i.modelListed && !i.loaded());
 
-    // Más modell foglalja a szervert.
+    // Another model occupies the server.
     i = parseLmStudioModels(modelsJson("qwen3.8-27b", 0, 0, "racka-4b@q8_0"), "qwen3.8-27b");
     QVERIFY(!i.loaded());
     QCOMPARE(i.otherLoaded, QStringList{QStringLiteral("racka-4b@q8_0")});
 
-    // A beállított modell nincs a listán.
+    // The configured model is not in the list.
     i = parseLmStudioModels(modelsJson("qwen3.8-27b", 20480, 1), "valami-mas");
     QVERIFY(i.isLmStudio() && !i.modelListed);
     QCOMPARE(i.otherLoaded, QStringList{QStringLiteral("qwen3.8-27b")});
 
-    // Nincs natív API: OpenAI-lista, Soniox-szerű lista, hibatörzs, üres.
+    // No native API: an OpenAI list, a Soniox-like list, an error body, empty.
     QVERIFY(!parseLmStudioModels(R"({"data":[{"id":"x"}]})", "x").isLmStudio());
     QVERIFY(!parseLmStudioModels(R"({"models":[{"id":"stt-async"}]})", "x").isLmStudio());
     QVERIFY(!parseLmStudioModels(R"({"error":"Unexpected endpoint"})", "x").isLmStudio());
@@ -318,48 +316,48 @@ void LlmContextTest::decisionTable()
     const auto info = [](int ctx, int parallel) {
         return parseLmStudioModels(modelsJson("m", ctx, parallel), "m");
     };
-    // Már jó: nincs betöltés.
+    // Already fine: no load.
     PreloadDecision d = decidePreload(info(20480, 1), 15000, 0);
     QCOMPARE(d.action, A::None);
     QCOMPARE(d.contextLength, 20480);
-    // Kicsi a kontextus → újratöltés a legkisebb elég lépcsővel.
+    // Small context: reload with the smallest sufficient step.
     d = decidePreload(info(4096, 1), 15000, 0);
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.contextLength, 16384);
     QCOMPARE(d.unloadIds, QStringList{QStringLiteral("m")});
     QCOMPARE(d.reason, QStringLiteral("context-small"));
-    // parallel 4 (az incidens): újratöltés akkor is, ha a kontextus elég — egy szálon.
+    // parallel 4 (the incident): reload even if the context is enough, on one thread.
     d = decidePreload(info(32768, 4), 15000, 0);
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.reason, QStringLiteral("parallel"));
-    QCOMPARE(d.contextLength, 32768);    // automatikus módban a nagyobb, meglévő marad
+    QCOMPARE(d.contextLength, 32768);    // in automatic mode the larger existing one stays
     d = decidePreload(info(4096, 4), 6000, 0);
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.contextLength, 8192);
-    // Nincs betöltve → betöltés.
+    // Not loaded: load.
     d = decidePreload(info(0, 0), 9000, 0);
     QCOMPARE(d.action, A::Load);
     QCOMPARE(d.contextLength, 16384);
     QVERIFY(d.unloadIds.isEmpty());
-    // Rögzített beállítás: azzal töltünk; ha kisebb az igénynél, jelezzük.
+    // Fixed setting: we load with it; if it is smaller than needed, we report it.
     d = decidePreload(info(0, 0), 30000, 20480);
     QCOMPARE(d.action, A::Load);
     QCOMPARE(d.contextLength, 20480);
     QVERIFY(d.contextInsufficient);
-    // Rögzített, és a betöltött már ekkora: nem töltünk újra (úgysem lenne nagyobb).
+    // Fixed, and the loaded one is already that big: we do not reload (it would not be larger anyway).
     d = decidePreload(info(20480, 1), 30000, 20480);
     QCOMPARE(d.action, A::None);
-    // A kért minimum („Betöltés nagyobb kontextussal”) a betöltött fölött → újratöltés.
+    // The requested minimum ("Load with a larger context") above the loaded one: reload.
     d = decidePreload(info(16384, 1), 9000, 0, 30000);
     QCOMPARE(d.action, A::Reload);
     QCOMPARE(d.contextLength, 32768);
-    // A modell maximuma fölé nem kérünk.
+    // We do not ask above the model's maximum.
     LlmServerInfo small = info(0, 0);
     small.maxContext = 12000;
     d = decidePreload(small, 30000, 0);
     QCOMPARE(d.contextLength, 12000);
     QVERIFY(d.contextInsufficient);
-    // Nem LM Studio / ismeretlen modell: nincs teendő.
+    // Not LM Studio / unknown model: nothing to do.
     QCOMPARE(decidePreload(LlmServerInfo{}, 9000, 0).action, A::Skip);
     QCOMPARE(decidePreload(parseLmStudioModels(modelsJson("m", 4096, 1), "x"), 9000, 0).action, A::Skip);
 }
@@ -379,7 +377,7 @@ void LlmContextTest::preparerAlreadyFine()
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(failed.count(), 0);
     QCOMPARE(loading.count(), 0);
-    QCOMPARE(srv.log.size(), 1);                 // csak a GET — se kivétel, se betöltés
+    QCOMPARE(srv.log.size(), 1);                 // only the GET: no unload, no load
     QCOMPARE(p.loadedContext(), 20480);
     QVERIFY(!p.didLoad());
 }
@@ -401,7 +399,7 @@ void LlmContextTest::preparerReloadsSmallContext()
     QTRY_COMPARE(ready.count(), 1);
     QCOMPARE(loading.count(), 1);
     QCOMPARE(loading.at(0).at(0).toInt(), 16384);
-    // Sorrend: lekérdezés → kivétel → betöltés.
+    // Order: query, unload, load.
     QCOMPARE(srv.log.size(), 3);
     QCOMPARE(srv.log[1].path, QStringLiteral("/api/v1/models/unload"));
     QCOMPARE(QJsonDocument::fromJson(srv.log[1].body).object().value("instance_id").toString(),
@@ -421,7 +419,7 @@ void LlmContextTest::preparerReloadsParallel()
     FakeHttp srv;
     srv.handler = [](const FakeRequest& r) -> FakeReply {
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 4096, 4)};
-        if (r.path.endsWith("/unload")) return {404, R"({"error":{"type":"model_not_found"}})"};   // már nincs: rendben
+        if (r.path.endsWith("/unload")) return {404, R"({"error":{"type":"model_not_found"}})"};   // already gone: fine
         if (r.path.endsWith("/load")) return {200, R"({"instance_id":"qwen3.8-27b","status":"loaded"})"};
         return {404, "{}"};
     };
@@ -433,7 +431,7 @@ void LlmContextTest::preparerReloadsParallel()
     QCOMPARE(srv.count("POST", "/load"), 1);
     QCOMPARE(srv.lastBody("/load").value("parallel").toInt(), 1);
     QCOMPARE(srv.lastBody("/load").value("context_length").toInt(), 8192);
-    QCOMPARE(p.loadedContext(), 8192);   // load_config nélkül a kért érték
+    QCOMPARE(p.loadedContext(), 8192);   // without load_config the requested value
 }
 
 void LlmContextTest::preparerLoadsWhenNotLoaded()
@@ -448,7 +446,7 @@ void LlmContextTest::preparerLoadsWhenNotLoaded()
     QSignalSpy ready(&p, &LlmModelPreparer::ready);
     p.start(17000);
     QTRY_COMPARE(ready.count(), 1);
-    QCOMPARE(srv.count("POST", "/unload"), 0);   // a más modellhez nem nyúlunk
+    QCOMPARE(srv.count("POST", "/unload"), 0);   // we do not touch the other model
     QCOMPARE(srv.count("POST", "/load"), 1);
     QCOMPARE(srv.lastBody("/load").value("context_length").toInt(), 20480);
     QCOMPARE(p.serverInfo().otherLoaded, QStringList{QStringLiteral("racka-4b@q8_0")});
@@ -470,14 +468,14 @@ void LlmContextTest::preparerLoadRefusedOnce()
     QTRY_COMPARE(failed.count(), 1);
     QTest::qWait(100);
     QCOMPARE(ready.count(), 0);
-    QCOMPARE(srv.count("POST", "/load"), 1);     // egyetlen kísérlet
+    QCOMPARE(srv.count("POST", "/load"), 1);     // a single attempt
     const JobError e = failed.at(0).at(0).value<JobError>();
     QVERIFY2(e.message.contains(QStringLiteral("nem fér a videókártyára")), qPrintable(e.message));
     QVERIFY2(e.message.contains(QStringLiteral("racka-4b@q8_0")), qPrintable(e.message));
     QVERIFY(e.detail.contains(QStringLiteral("HTTP 500")));
     QVERIFY(e.detail.contains(QStringLiteral("insufficient")));
     QCOMPARE(e.fixActionHint, QStringLiteral("settings:llm-context"));
-    // Ugyanaz az előkészítő nem indul újra (nincs ismétlés).
+    // The same preparer does not start again (no repeat).
     p.start(60000);
     QTest::qWait(100);
     QCOMPARE(srv.count("POST", "/load"), 1);
@@ -491,7 +489,7 @@ void LlmContextTest::preparerBusyDoesNotUnload()
         return {200, "{}"};
     };
     LlmModelPreparer p(cfgFor(srv));
-    p.setBusyCheck([] { return true; });   // a Tanara épp egy másik kérést futtat
+    p.setBusyCheck([] { return true; });   // Tanara is running another request right now
     QSignalSpy failed(&p, &LlmModelPreparer::failed);
     p.start(12000);
     QTRY_COMPARE(failed.count(), 1);
@@ -504,7 +502,7 @@ void LlmContextTest::preparerCancelDuringLoad()
     FakeHttp srv;
     srv.handler = [](const FakeRequest& r) -> FakeReply {
         if (r.path == "/api/v1/models") return {200, modelsJson("qwen3.8-27b", 0, 0)};
-        FakeReply h; h.hold = true; return h;   // a betöltés „tart”
+        FakeReply h; h.hold = true; return h;   // the load "takes a while"
     };
     LlmModelPreparer p(cfgFor(srv));
     QSignalSpy ready(&p, &LlmModelPreparer::ready);
@@ -532,7 +530,7 @@ void LlmContextTest::preparerSkipsWithoutNativeApi()
     QVERIFY(!p.serverInfo().isLmStudio());
     QCOMPARE(p.loadedContext(), -1);
     QCOMPARE(srv.count("POST", ""), 0);
-    // A sikertelen próba is gyorsítótárba kerül: rövid időn belül nem kérdezünk újra.
+    // A failed probe is cached too: within a short time we do not ask again.
     LlmModelPreparer p2(cfgFor(srv));
     QSignalSpy ready2(&p2, &LlmModelPreparer::ready);
     p2.start(60000);
@@ -542,7 +540,7 @@ void LlmContextTest::preparerSkipsWithoutNativeApi()
 
 void LlmContextTest::connectionTestReportsServer()
 {
-    // Tiszta leírás: parallel > 1 és kevés kontextus → figyelmeztetés.
+    // A clean descriptor: parallel > 1 and little context gives a warning.
     QString text, warning;
     describeLlmServer(parseLmStudioModels(modelsJson("m", 4096, 4), "m"), &text, &warning);
     QVERIFY2(text.contains(QStringLiteral("LM Studio")), qPrintable(text));
@@ -556,7 +554,7 @@ void LlmContextTest::connectionTestReportsServer()
     describeLlmServer(LlmServerInfo{}, &text, &warning);
     QVERIFY(text.isEmpty());
 
-    // A „Kapcsolat tesztelése” a sikeres /models után a natív API-t is megkérdezi.
+    // "Test connection" also asks the native API after a successful /models.
     FakeHttp srv;
     srv.handler = [](const FakeRequest& r) -> FakeReply {
         if (r.path == "/v1/models") return {200, R"({"data":[{"id":"qwen3.8-27b"}]})"};
@@ -578,7 +576,7 @@ void LlmContextTest::connectionTestReportsServer()
     QCOMPARE(r.server.instances.value(0).parallel, 4);
     QVERIFY(!r.serverText.isEmpty());
     QVERIFY2(r.warning.contains(QStringLiteral("párhuzamos")), qPrintable(r.warning));
-    QCOMPARE(srv.count("POST", ""), 0);   // csak olvasó kérések
+    QCOMPARE(srv.count("POST", ""), 0);   // read-only requests only
 }
 
 #endif

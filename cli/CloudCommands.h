@@ -1,12 +1,12 @@
 #pragma once
-// tanara-cli — Tanara Cloud parancsok (lásd CloudCommands.cpp).
+// tanara-cli: Tanara Cloud commands (see CloudCommands.cpp).
 #include <QString>
 #include <QStringList>
 
 namespace tanara { class AppController; }
 
-// `cloud <alparancs> …` — visszatérés: kilépési kód.
+// `cloud <subcommand> ...`; returns the exit code.
 int runCloudCommand(tanara::AppController& app, const QStringList& args);
-// A becslés kiírása (K-06 szövegei). enoughOut: indítható-e (nem „nincs elég”).
+// Prints the estimate. enoughOut: whether the job can start (balance is sufficient).
 bool printCloudEstimate(tanara::AppController& app, const QString& meetingId, const QString& task,
                         const QString& mode, bool* enoughOut);

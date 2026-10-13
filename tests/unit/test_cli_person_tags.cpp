@@ -1,7 +1,5 @@
-//
-// tanara-cli tags people / person / set-person: a valódi CLI (QProcess), IZOLÁLT TANARA_HOME-mal,
-// kitalált megbeszélésekkel (a tesztfolyamat egy AppControllerrel írja őket a homokozóba).
-//
+// tanara-cli tags people / person / set-person: the real CLI (QProcess), with an ISOLATED
+// TANARA_HOME, made-up meetings (the test process writes them into the sandbox with an AppController).
 #include <QtTest>
 #include <QTemporaryDir>
 

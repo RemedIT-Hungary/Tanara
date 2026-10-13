@@ -1,11 +1,9 @@
-//
-// G4 — a megbeszélés közös visszavonási verme (edit/MeetingUndo.h) az AppController-ben: a
-// szerkesztő, a meetinghez tartozó címke-lépések és a résztvevő-műveletek időrendben; a más
-// megbeszélés címke-lépése nem kerül ide (és amíg felül van, átugorja a címke-bejegyzést); a
-// „Csak én beszéltem” elnyeli a szerkesztő kötés-lépését; a résztvevő tartós törlése (A6) és a
-// javasolt személy tartós elutasítása egy megbeszélésre (tags.json). Kitalált nevek, IZOLÁLT
-// TANARA_HOME; Soniox / LLM / hálózat nélkül.
-//
+// The meeting's shared undo stack (edit/MeetingUndo.h) in AppController: the editor, the
+// meeting's tag steps and the participant operations in chronological order; another
+// meeting's tag step does not come here (and while it is on top, it skips the tag entry);
+// "Only I spoke" swallows the editor's binding step; permanent deletion of a participant and
+// permanent rejection of a suggested person for one meeting (tags.json). Made-up names,
+// ISOLATED TANARA_HOME; without Soniox / LLM / network.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -87,7 +85,7 @@ void MeetingUndoTest::cleanup()
     m_home.reset();
 }
 
-// Két nyers beszélős átirat (Beszélő 1: 0–3 és 5–8 mp, Beszélő 2: 3–5 mp), hang nélkül.
+// A transcript with two raw speakers (Speaker 1: 0-3 and 5-8 s, Speaker 2: 3-5 s), without audio.
 Meeting MeetingUndoTest::makeMeeting(const QString& title, bool transcript)
 {
     Meeting m = m_app->store()->createMeeting(title);
@@ -139,7 +137,7 @@ void MeetingUndoTest::orderAcrossSources()
     QVERIFY(!u->canUndo());
     QSignalSpy changed(u, &MeetingUndoService::changed);
 
-    // 1. címke a meetingen, 2. beszélő-javítás, 3. kézi résztvevő, 4. leírás.
+    // 1. a tag on the meeting, 2. a speaker fix, 3. a manual participant, 4. a description.
     const Tag t = tags->addTag(m.id, QStringLiteral("Projekt"));
     QVERIFY(!t.id.isEmpty());
     QCOMPARE(u->count(), 1);
@@ -150,12 +148,12 @@ void MeetingUndoTest::orderAcrossSources()
     QVERIFY(!m_app->addParticipant(m.id, QStringLiteral("Molnár Eszter")).isEmpty());
     QCOMPARE(u->undoSource(), Source::Participants);
     m_app->setMeetingContextNote(m.id, QStringLiteral("Heti egyeztetés"));
-    m_app->setMeetingContextNote(m.id, QStringLiteral("Heti egyeztetés"));   // változatlan: nincs lépés
+    m_app->setMeetingContextNote(m.id, QStringLiteral("Heti egyeztetés"));   // unchanged: no step
     QCOMPARE(u->count(), 4);
     QCOMPARE(u->undoText(), QStringLiteral("Leírás módosítva"));
     QVERIFY(changed.count() >= 4);
 
-    // Más megbeszélés címke-lépése nem kerül ide.
+    // Another meeting's tag step does not come here.
     tags->addTag(other.id, QStringLiteral("Más"));
     QCOMPARE(u->count(), 4);
 
@@ -170,11 +168,11 @@ void MeetingUndoTest::orderAcrossSources()
     QVERIFY(!m_app->store()->load(m.id).speakerMap.values().contains(QStringLiteral("Fehér Gábor")));
     QVERIFY(!ed->canUndo());
 
-    // A címke-bejegyzés fölött a TagService-ben a másik megbeszélés lépése áll: most nem vonható vissza.
+    // Above the tag entry in TagService sits the other meeting's step: it cannot be undone now.
     QCOMPARE(u->count(), 1);
     QVERIFY(!u->canUndo());
     QVERIFY(!u->undo());
-    tags->undo();   // a másik megbeszélésé (pl. a Címkék ablakból)
+    tags->undo();   // the other meeting's (e.g. from the Tags window)
     QVERIFY(u->canUndo());
     QCOMPARE(u->undoSource(), Source::Tags);
     QVERIFY(u->undo());
@@ -193,13 +191,13 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
 
     QVERIFY(ed->reassignSpeaker(ed->speakers().first().key, QStringLiteral("Varga Árpád")));
     QCOMPARE(u->count(), 1);
-    ed->undo();   // közvetlenül a szerkesztőben (pl. a szerkesztő saját Ctrl+Z-je)
+    ed->undo();   // directly in the editor (e.g. the editor's own Ctrl+Z)
     QCOMPARE(u->count(), 0);
-    ed->redo();   // a visszahozott lépés a legfrissebb
+    ed->redo();   // the restored step is the newest
     QCOMPARE(u->count(), 1);
     QCOMPARE(u->undoSource(), Source::Speakers);
 
-    // Személy-címke az Áttekintésből: a meetinghez jelölt csoport ide tartozik.
+    // A person tag from the Overview: the group marked for the meeting belongs here.
     tags->beginGroup(QStringLiteral("Címke a résztvevőn"), m.id);
     tags->addPersonTag(QStringLiteral("Varga Árpád"), QStringLiteral("Csapat"));
     tags->endGroup();
@@ -207,8 +205,8 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
     QCOMPARE(u->undoSource(), Source::Tags);
     QCOMPARE(u->undoText(), QStringLiteral("Címke a résztvevőn"));
 
-    // Jelölés nélküli személy-címke (pl. a Személyek ablakból): nem ide tartozik, és amíg felül
-    // van, a címke-bejegyzés átugródik — a szerkesztő-lépés vonható vissza.
+    // A person tag without a marker (e.g. from the People window): does not belong here, and
+    // while it is on top the tag entry is skipped; the editor step can be undone.
     tags->addPersonTag(QStringLiteral("Varga Árpád"), QStringLiteral("Másik"));
     QCOMPARE(u->count(), 2);
     QCOMPARE(u->undoSource(), Source::Speakers);
@@ -219,7 +217,7 @@ void MeetingUndoTest::editorUndoRedoAndTagGroups()
     QVERIFY(u->undo());
     QVERIFY(m_app->store()->load(m.id).speakerMap.isEmpty());
 
-    // A szerkesztő bezárása: a szerkesztő-bejegyzései kiesnek.
+    // Closing the editor: its editor entries drop out.
     QVERIFY(ed->reassignSpeaker(ed->speakers().first().key, QStringLiteral("Varga Árpád")));
     QCOMPARE(u->count(), 1);
     QSignalSpy changed(u, &MeetingUndoService::changed);
@@ -238,8 +236,8 @@ void MeetingUndoTest::soloAbsorbsEditorStep()
     Meeting mm = m_app->store()->load(m.id);
     QVERIFY(mm.approval && mm.approval->solo);
     QVERIFY(hasParticipant(mm, kSelf));
-    QVERIFY(ed->canUndo());   // a kötések a szerkesztőn át mentek…
-    QCOMPARE(u->count(), 1);  // …de a közös veremben egy lépés
+    QVERIFY(ed->canUndo());   // the bindings went through the editor...
+    QCOMPARE(u->count(), 1);  // ...but in the shared stack it is one step
     QCOMPARE(u->undoText(), QStringLiteral("Csak én beszéltem"));
     for (const EditorSpeaker& s : ed->speakers())
         if (s.utteranceCount > 0) QCOMPARE(s.personName, kSelf);
@@ -261,13 +259,13 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     const QString cili = m_app->addParticipant(m.id, QStringLiteral("Molnár Eszter"));
     const QString dora = m_app->addParticipant(m.id, QStringLiteral("Szabó Bence"));
     QVERIFY(m_app->approveParticipants(m.id, m_app->participants(m.id)));
-    // Bence egy beszélő nevén is (az átirat-szerkesztőből).
+    // Bence also on a speaker's name (from the transcript editor).
     m_app->renameSpeaker(m.id, QStringLiteral("Beszélő 2"), QStringLiteral("Szabó Bence"), /*enroll*/ false);
     QCOMPARE(m_app->store()->load(m.id).speakerMap.value("Beszélő 2"), QStringLiteral("Szabó Bence"));
     const int before = u->count();
 
     QVERIFY(m_app->removeParticipant(m.id, dora));
-    QCOMPARE(u->count(), before + 1);   // a szerkesztő névtelenítő lépése elnyelve
+    QCOMPARE(u->count(), before + 1);   // the editor's anonymizing step is swallowed
     QCOMPARE(u->undoSource(), Source::Participants);
     QCOMPARE(u->undoText(), QStringLiteral("Résztvevő eltávolítva: Szabó Bence"));
     Meeting mm = m_app->store()->load(m.id);
@@ -279,7 +277,7 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     QVERIFY(!m_app->removeParticipant(m.id, dora));
     QVERIFY(!m_app->removeParticipant(QStringLiteral("nincs"), cili));
 
-    // Visszavonás: a résztvevő, a jóváhagyás-bejegyzése és a beszélő neve is visszajön.
+    // Undo: the participant, its approval entry and the speaker's name all come back.
     QVERIFY(u->undo());
     mm = m_app->store()->load(m.id);
     QVERIFY(hasParticipant(mm, QStringLiteral("Szabó Bence")));
@@ -288,7 +286,7 @@ void MeetingUndoTest::removeParticipantDurableWithUndo()
     QVERIFY(entry);
     QCOMPARE(mm.speakerMap.value("Beszélő 2"), QStringLiteral("Szabó Bence"));
 
-    // Tartós: újraindítás után sincs ott.
+    // Persistent: not there after a restart either.
     QVERIFY(m_app->removeParticipant(m.id, dora));
     m_app.reset();
     m_app = std::make_unique<AppController>();
@@ -309,14 +307,14 @@ void MeetingUndoTest::rejectSuggestedPersonForMeeting()
     const QString second = tagged(QStringLiteral("Másik Nordvik"), nord.id, {});
     tags->refreshPersonStatsNow();
 
-    // Legfeljebb 3 javaslat; a saját személy és a már résztvevők kimaradnak.
+    // At most 3 suggestions; the own person and those already participants are left out.
     QVector<PersonTagStat> sugg = tags->suggestPeopleForMeeting(target);
     QCOMPARE(sugg.size(), 3);
     for (const PersonTagStat& s : sugg) QVERIFY(s.name != kSelf);
     QCOMPARE(tags->suggestPeopleForMeeting(target, {}, 0).size(), 4);
     QCOMPARE(tags->suggestPeopleForMeeting(target, {QStringLiteral("fehér gábor")}, 0).size(), 3);
 
-    // × a javasolt személyen: csak erre a megbeszélésre, tartósan, a közös veremben.
+    // x on the suggested person: only for this meeting, persistent, in the shared stack.
     MeetingUndoService* u = m_app->meetingUndo(target);
     QVERIFY(u);
     const QString gabor = QStringLiteral("Fehér Gábor");
@@ -329,7 +327,7 @@ void MeetingUndoTest::rejectSuggestedPersonForMeeting()
     QCOMPARE(u->count(), 1);
     QCOMPARE(u->undoSource(), Source::Tags);
 
-    // A tags.json-ban {"person", "meetingId"} címke nélkül; egy új példány is látja.
+    // In tags.json {"person", "meetingId"} without a tag; a new instance sees it too.
     const QString path = QDir(m_app->store()->metadataDir()).filePath("tags.json");
     bool stored = false;
     for (const QJsonValue& v : readJson(path).value("rejected").toArray()) {
@@ -344,20 +342,20 @@ void MeetingUndoTest::rejectSuggestedPersonForMeeting()
         QVERIFY(fresh.isPersonRejectedForMeeting(gabor, target));
     }
 
-    // Visszavonás a közös veremből.
+    // Undo from the shared stack.
     QVERIFY(u->undo());
     QVERIFY(!tags->isPersonRejectedForMeeting(gabor, target));
     QCOMPARE(tags->suggestPeopleForMeeting(target, {}, 0).size(), 4);
 
-    // A megbeszélés törlésével az elutasítás is megy.
+    // Deleting the meeting removes the rejection too.
     tags->rejectPersonForMeeting(gabor, target);
     const int n = tags->rejectedCount();
     m_app->deleteMeeting(target);
     QCOMPARE(tags->rejectedCount(), n - 1);
 }
 
-// „Kiveszem” / „Beemelem” a közös veremben (a hangfájlok hiányoznak: a lekeverés nem készül el,
-// de a sáv-állapot visszaállítása ettől független).
+// "Exclude" / "Include" in the shared stack (the audio files are missing: the mixdown is not
+// made, but restoring the track state is independent of that).
 void MeetingUndoTest::trackExcludeIncludeUndo()
 {
     Meeting m = makeMeeting("Sávok", false);
@@ -377,7 +375,7 @@ void MeetingUndoTest::trackExcludeIncludeUndo()
     m_app->excludeTrack(m.id, "b");
     QVERIFY(!m_app->store()->load(m.id).tracks.at(1).included());
     QCOMPARE(u->undoText(), QStringLiteral("Sáv kivéve"));
-    m_app->excludeTrack(m.id, "b");   // már kivéve: nincs új lépés
+    m_app->excludeTrack(m.id, "b");   // already excluded: no new step
     QCOMPARE(u->count(), 1);
 
     tracks.clear();

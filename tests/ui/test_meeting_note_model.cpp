@@ -1,7 +1,7 @@
-// MeetingNoteModel — a megbeszélés-megjegyzés szerkesztése az Összefoglaló fülön és az átirat
-// előtti nézetben, izolált TANARA_HOME-on, ál-LLM-szerverrel (valódi szolgáltató-hívás nincs):
-// mentés a saját megbeszélésbe kijelölés-váltáskor is, sablon-javaslatok, csere / hozzáfűzés,
-// „a megjegyzés azóta változott” jelzés, észlelt hívás. Minden név és szó kitalált.
+// MeetingNoteModel: editing the meeting note on the Summary tab and in the pre-transcript view,
+// on an isolated TANARA_HOME with a fake LLM server (no real provider call): saving into its own
+// meeting even on a selection change, template suggestions, replace / append, the "the note
+// changed since" indicator, detected call. All names and words are made up.
 #include "JobTestSupport.h"
 #include "MeetingNoteModel.h"
 #include "PreTranscriptViewModel.h"
@@ -61,7 +61,7 @@ private slots:
         pre.setDemoState(QStringLiteral("note"));
         QCOMPARE(pre.note()->suggestions().size(), 2);
         QCOMPARE(pre.note()->detectedCallApp(), QStringLiteral("Microsoft Teams"));
-        // Demóban is bemásolható (csak a memóriában), és a bemásolt eltűnik a javaslatok közül.
+        // In demo mode it can be pasted too (memory only), and the pasted one disappears from the suggestions.
         pre.note()->applySuggestion(pick(pre.note(), 0), QStringLiteral("replace"));
         QVERIFY(pre.contextNote().contains(QStringLiteral("Nordvik")));
         QCOMPARE(pre.note()->suggestions().size(), 1);
@@ -79,24 +79,24 @@ private slots:
         MeetingNoteModel* note = vm.note();
         QCOMPARE(note->meetingId(), a.id);
 
-        // Mentés: a meeting.json-ba (a piszkozat csak a commitkor íródik ki).
+        // Save: into meeting.json (the draft is written only on commit).
         note->draft(QStringLiteral("A „Nordwig” helyesen: Nordvik."));
         QVERIFY(sb.app->store()->load(a.id).contextNote.isEmpty());
         note->commitDraft();
         QCOMPARE(sb.app->store()->load(a.id).contextNote, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
 
-        // Kijelölés-váltás a késleltetett mentés ELŐTT: a piszkozat a SAJÁT megbeszélésébe kerül.
+        // Selection change BEFORE the delayed save: the draft goes into its OWN meeting.
         vm.setNoteOpen(true);
         note->draft(QStringLiteral("A „pixel tár” helyesen: PixelTár."));
         vm.setMeetingId(b.id);
         QCOMPARE(sb.app->store()->load(a.id).contextNote, QStringLiteral("A „pixel tár” helyesen: PixelTár."));
         QVERIFY(sb.app->store()->load(b.id).contextNote.isEmpty());
-        QVERIFY(note->note().isEmpty());                     // már a b megjegyzése látszik
-        QVERIFY(!vm.noteOpen());                             // meeting-váltáskor a blokk bezárul
-        note->commitDraft();                                 // nincs függő piszkozat → semmi
+        QVERIFY(note->note().isEmpty());                     // b's note is already shown
+        QVERIFY(!vm.noteOpen());                             // the block closes on a meeting change
+        note->commitDraft();                                 // no pending draft, so nothing
         QVERIFY(sb.app->store()->load(b.id).contextNote.isEmpty());
 
-        // Másik nézetből (pl. átirat előtti nézet) mentett megjegyzés itt is megjelenik.
+        // A note saved from another view (e.g. the pre-transcript view) shows here too.
         sb.app->setMeetingContextNote(b.id, QStringLiteral("Lantos: Qvarko-modul."));
         QCOMPARE(note->note(), QStringLiteral("Lantos: Qvarko-modul."));
     }
@@ -119,14 +119,14 @@ private slots:
         vm.setMeetingId(self.id);
         MeetingNoteModel* note = vm.note();
         QVariantList s = note->suggestions();
-        QCOMPARE(s.size(), 2);                                // a nem rokon cím kimarad
-        QCOMPARE(s.at(0).toMap().value("meetingId").toString(), newer.id);   // legújabb elöl
+        QCOMPARE(s.size(), 2);                                // the unrelated title is left out
+        QCOMPARE(s.at(0).toMap().value("meetingId").toString(), newer.id);   // newest first
         QCOMPARE(s.at(0).toMap().value("title").toString(), QStringLiteral("nordvik HETI meeting #13"));
         QVERIFY(!s.at(0).toMap().value("dateText").toString().isEmpty());
         QCOMPARE(s.at(1).toMap().value("meetingId").toString(), older.id);
-        QVERIFY(note->note().isEmpty());                      // semmi nem töltődik ki magától
+        QVERIFY(note->note().isEmpty());                      // nothing fills in by itself
 
-        // Üres mezőbe: egyszerű bemásolás, azonnal mentve; a bemásolt eltűnik a javaslatok közül.
+        // Into an empty field: a simple paste, saved at once; the pasted one disappears from the suggestions.
         QSignalSpy changed(&vm, &PreTranscriptViewModel::contextNoteChanged);
         note->applySuggestion(pick(note, 0), QStringLiteral("replace"));
         QCOMPARE(sb.app->store()->load(self.id).contextNote, QStringLiteral("A „Nordwig” helyesen: Nordvik."));
@@ -134,18 +134,18 @@ private slots:
         QCOMPARE(note->suggestions().size(), 1);
         QCOMPARE(note->suggestions().at(0).toMap().value("meetingId").toString(), older.id);
 
-        // Hozzáfűzés: a meglévő után, új sorba — egy közben gépelt piszkozat is a meglévő része.
+        // Append: after the existing one, on a new line; a draft typed meanwhile is part of the existing one too.
         note->draft(QStringLiteral("A „Nordwig” helyesen: Nordvik. Téma: bevezetés."));
         note->applySuggestion(pick(note, 0), QStringLiteral("append"));
         QCOMPARE(sb.app->store()->load(self.id).contextNote,
                  QStringLiteral("A „Nordwig” helyesen: Nordvik. Téma: bevezetés.\nRésztvevők: Kovács Anna."));
-        QVERIFY(note->suggestions().size() == 2);             // a mostani már egyikkel sem azonos
+        QVERIFY(note->suggestions().size() == 2);             // the current one is no longer identical to either
 
-        // Csere: a régi szöveg helyére.
+        // Replace: in place of the old text.
         QCOMPARE(pick(note, 1), QStringLiteral("Résztvevők: Kovács Anna."));
         note->applySuggestion(pick(note, 1), QStringLiteral("replace"));
         QCOMPARE(sb.app->store()->load(self.id).contextNote, QStringLiteral("Résztvevők: Kovács Anna."));
-        note->applySuggestion(QStringLiteral("   "), QStringLiteral("replace"));   // üres → semmi
+        note->applySuggestion(QStringLiteral("   "), QStringLiteral("replace"));   // empty: nothing
         QCOMPARE(sb.app->store()->load(self.id).contextNote, QStringLiteral("Résztvevők: Kovács Anna."));
     }
 
@@ -154,7 +154,7 @@ private slots:
         jobtest::Sandbox sb;
         Meeting m = sb.recording(QStringLiteral("Teams-hívás · okt. 3. 14:02"), 1);
         sb.app->setMeetingDetectedCall(m.id, QStringLiteral("Microsoft Teams"));
-        // Régi build automatikus mondata a mezőben: üres megjegyzésnek látszik.
+        // An old build's automatic sentence in the field: it counts as an empty note.
         m = sb.app->store()->load(m.id);
         m.contextNote = QStringLiteral("Automatikusan észlelt hívás: Microsoft Teams");
         sb.app->store()->saveMeeting(m);
@@ -179,7 +179,7 @@ private slots:
         QCOMPARE(vm.view(), QStringLiteral("empty"));
         QVERIFY(!vm.noteChangedSinceSummary());
 
-        // A gyors összefoglaló a megjegyzést kontextusként kapja, és a summary.json megjegyzi.
+        // The quick summary gets the note as context, and summary.json remembers it.
         QByteArray sent;
         sb.http->handler = [&sent](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
@@ -196,18 +196,18 @@ private slots:
         QCOMPARE(vm.view(), QStringLiteral("summary"));
         QVERIFY(!vm.noteChangedSinceSummary());
 
-        // Változás után szelíd jelzés — de NEM elavult (sem itt, sem a könyvtárban).
+        // After a change a gentle indicator, but NOT stale (neither here nor in the library).
         QSignalSpy hint(&vm, &SummaryViewModel::noteHintChanged);
         vm.note()->setNote(QStringLiteral("A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul."));
         QVERIFY(hint.count() >= 1);
         QVERIFY(vm.noteChangedSinceSummary());
         QVERIFY(!vm.stale());
         QVERIFY(!sb.app->summaryStale(sb.app->store()->load(m.id)).stale);
-        // Csak szóköz-eltérés: nem változás.
+        // Whitespace-only difference: not a change.
         vm.note()->setNote(QStringLiteral("  A „Nordwig”  helyesen: Nordvik. "));
         QVERIFY(!vm.noteChangedSinceSummary());
 
-        // Régi összefoglaló (a summary.json nem tudja, mivel készült): nincs jelzés.
+        // Old summary (summary.json does not know what it was made with): no indicator.
         SummaryDocument old = doc;
         old.meta.contextNoteKnown = false;
         QVERIFY(summarystore::save(sb.app->store()->load(m.id).folder, old));

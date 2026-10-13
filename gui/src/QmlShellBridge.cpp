@@ -37,8 +37,8 @@ namespace tanara_gui {
 
 namespace {
 
-// Emberi összegző mondat: nincs név → „N különböző partner azonosítva";
-// van név → „A, B és X ismeretlen partner" (X==0 → csak a nevek).
+// Human-readable summary sentence: no name: "N different partners identified";
+// with names: "A, B and X unknown partners" (X==0: names only).
 QString participantsSummary(QStringList named, int unknownCount, int totalDistinct)
 {
     named.removeDuplicates();
@@ -59,20 +59,21 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
 {
     qApp->installEventFilter(this);
 
-    // A felvevő-kötés (az új QML-felvevő + singleton) külön osztályban él.
+    // The recorder binding (the new QML recorder + singleton) lives in a separate class.
     m_recorder = new ShellRecorderHost(m_controller, this);
-    // Háttér-módban (rejtett főablak) a felvevő az utolsó látható ablak — ha az is eltűnik
-    // (háttérbe küldték / bezárták), a főablak jön vissza, hogy maradjon mihez nyúlni.
+    // In background mode (hidden main window) the recorder is the last visible window; if it
+    // disappears too (sent to the background / closed), the main window comes back so there is
+    // something to work with.
     connect(m_recorder, &ShellRecorderHost::hidden, this, [this]() {
         if (mainWindowHidden()) emit showWindowRequested();
     });
-    // A felvevő „Megnyitás az elemzőben” gombja: a megbeszélés kijelölése + a főablak előre.
+    // The recorder's "Open in the analyzer" button: selects the meeting + raises the main window.
     connect(m_recorder, &ShellRecorderHost::openMeetingRequested, this, &QmlShellBridge::showMeeting);
-    // A felvevő „Rögzítés beállításai” gombja (R10).
+    // The recorder's "Recording settings" button.
     connect(m_recorder, &ShellRecorderHost::settingsRequested, this,
             [this]() { openSettings(QStringLiteral("recording")); });
-    // Felvétel vége: (a) „Leállítom és kilépek” → a főablak bezárható; (b) háttér-módban
-    // (rejtett főablak) → a főablak visszajön; (c) singleton-figyelés újrapróbálása.
+    // Recording ended: (a) "Stop and quit" lets the main window close; (b) in background mode
+    // (hidden main window) the main window comes back; (c) retry the singleton listening.
     connect(m_controller, &tanara::AppController::recordingStateChanged, this,
             [this](tanara::RecordingState st) {
                 if (st != tanara::RecordingState::Idle) return;
@@ -81,40 +82,40 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
                 m_recorder->retryListening();
             });
 
-    // A Beállítások QML-ablaka: nem modális, a mentés jelre frissítjük, ami tőle függ.
+    // The QML Settings window: non-modal; what depends on it is refreshed on the save signal.
     m_settingsDialogs = new SettingsWidgetsDialogs(m_controller, this);
     m_settingsDialogs->setPeopleOpener([this](const QString& person) { openPeopleAt(person); });
     m_people = new tanara_qml::PeopleWindowHost(m_controller, this);
     m_settingsDialogs->setTagsOpener([this](const QString& tagId) { openTagsAt(tagId); });
-    // A Címkék ablaka: „Megnyitás a könyvtárban szűrőként” → a könyvtár szűrése + a főablak
-    // előre; egy megbeszélés linkje → kijelölés + a főablak előre.
+    // The Tags window: "Open in the library as a filter" filters the library + raises the main
+    // window; a meeting link selects it + raises the main window.
     m_tags = new tanara_qml::TagsWindowHost(m_controller, this);
     connect(m_tags, &tanara_qml::TagsWindowHost::openInLibraryRequested, this,
             &QmlShellBridge::tagFilterRequested);
     connect(m_tags, &tanara_qml::TagsWindowHost::meetingRequested, this,
             &QmlShellBridge::showMeetingRequested);
-    // A címke személy-listájának sora → a Személyek ablak azon a személyen (U5).
+    // A row of a tag's person list opens the People window on that person.
     connect(m_tags, &tanara_qml::TagsWindowHost::personRequested, this,
             [this](const QString& person) { openPeopleAt(person); });
     m_settings = new tanara_qml::SettingsWindowHost(m_controller, m_settingsDialogs, this);
-    m_settings->setPersistTheme(false);   // a témát a főablak jegyzi meg (themeModeSaved)
+    m_settings->setPersistTheme(false);   // the main window remembers the theme (themeModeSaved)
     connect(m_settings, &tanara_qml::SettingsWindowHost::saved, this, [this] {
-        m_recorder->refreshFromSettings();    // a felvevő tükrözze az új eszköz-policyt / neveket
+        m_recorder->refreshFromSettings();    // the recorder reflects the new device policy / names
         refreshCloudChrome();
         emit readinessChanged();
     });
     connect(m_settings, &tanara_qml::SettingsWindowHost::themeModeSaved, this,
             &QmlShellBridge::themeModeSaved);
-    // B04: a hiányzó beállítás megvan → vissza a megbeszéléshez (a kijelölés nem változott).
+    // The missing setting is now in place: back to the meeting (the selection did not change).
     connect(m_settings, &tanara_qml::SettingsWindowHost::returnRequested, this,
             [this] { emit readinessChanged(); emit showMeetingRequested(QString()); });
     connect(m_settings, &tanara_qml::SettingsWindowHost::closed, this, [this] {
-        refreshCloudChrome();      // be- / kijelentkezés a Beállításokból mentés nélkül is hat
+        refreshCloudChrome();      // signing in / out from Settings takes effect even without saving
         emit readinessChanged();
     });
 
-    // Az „Első lépések” ablaka: „Beállítás most” → Beállítások › Szolgáltatások; az elfogadott
-    // téma a főablakhoz megy (az jegyzi meg), a mentett lépés a nézetek futtathatóságát frissíti.
+    // The "Getting started" window: "Set up now" opens Settings > Providers; the accepted theme
+    // goes to the main window (it remembers it), and the saved step refreshes whether the views can run.
     m_onboarding = new tanara_qml::OnboardingWindowHost(m_controller, m_settingsDialogs, this);
     m_settingsDialogs->setOnboardingOpener([this] { openOnboarding(); });
     connect(m_onboarding, &tanara_qml::OnboardingWindowHost::openSettingsRequested, this,
@@ -125,7 +126,7 @@ QmlShellBridge::QmlShellBridge(tanara::AppController* controller, QObject* paren
         m_recorder->refreshFromSettings();
         emit readinessChanged();
     });
-    // A Beállításokban mentett kulcs / szolgáltató → az „Első lépések” állapot-sora is frissül.
+    // A key / provider saved in Settings also refreshes the "Getting started" status row.
     connect(this, &QmlShellBridge::readinessChanged, this, [this] {
         if (m_onboarding->viewModel()) m_onboarding->viewModel()->refreshReadiness();
     });
@@ -150,9 +151,9 @@ bool QmlShellBridge::mainWindowHidden() const
 
 bool QmlShellBridge::eventFilter(QObject* watched, QEvent* event)
 {
-    // A QML-főablak nem QWidget, ezért a Widgets-párbeszédablakoknak nincs szülő-widgetje.
-    // Megjelenéskor az ablakkezelőnek megmondjuk, hogy a főablakhoz tartoznak (fölötte
-    // maradnak, hozzá igazodnak) — a felvevő (nem QDialog) önálló ablak marad.
+    // The QML main window is not a QWidget, so Widgets dialogs have no parent widget. When
+    // shown, we tell the window manager they belong to the main window (stay above it, follow
+    // it); the recorder (not a QDialog) stays a standalone window.
     if (event->type() == QEvent::Show && m_window && m_window->isVisible()) {
         auto* dialog = qobject_cast<QDialog*>(watched);
         if (dialog && dialog->isWindow() && !dialog->parentWidget()) {
@@ -164,7 +165,7 @@ bool QmlShellBridge::eventFilter(QObject* watched, QEvent* event)
     return tanara_qml::ShellBridge::eventFilter(watched, event);
 }
 
-// ---- Beállítások / Személyek ---------------------------------------------------------------
+// ---- Settings / People ----
 
 void QmlShellBridge::openSettings(const QString& page)
 {
@@ -193,8 +194,8 @@ void QmlShellBridge::openPeople()
 
 void QmlShellBridge::openPeopleAt(const QString& person)
 {
-    // Nem-modális QML-ablak, hogy a háttérben az átnevezés / összevonás / törlés hatása
-    // azonnal látszódjon a nyitott átiraton. Egy példány: a második kérés az elsőt hozza előre.
+    // Non-modal QML window, so the effect of a rename / merge / delete shows immediately on the
+    // open transcript in the background. One instance: a second request raises the first.
     if (m_shutDown)
         return;
     m_people->setTransientParent(m_window);
@@ -221,7 +222,7 @@ void QmlShellBridge::openTags()
 
 void QmlShellBridge::openTagsAt(const QString& tagId)
 {
-    // Nem-modális QML-ablak (a Személyek mintájára), egy példány.
+    // Non-modal QML window (like People), one instance.
     if (m_shutDown)
         return;
     m_tags->setTransientParent(m_window);
@@ -235,7 +236,7 @@ QObject* QmlShellBridge::tagsWindow() const
 
 void QmlShellBridge::openOnboarding()
 {
-    // Nem-modális QML-ablak, egy példány; kézzel mindig megnyílik (az onboardingDone-tól függetlenül).
+    // Non-modal QML window, one instance; always opens when requested by hand (regardless of onboardingDone).
     if (m_shutDown)
         return;
     m_onboarding->setTransientParent(m_window);
@@ -249,8 +250,8 @@ QObject* QmlShellBridge::onboardingWindow() const
 
 void QmlShellBridge::maybeOpenOnboarding()
 {
-    // Első indítás (minden módban): egyszer, a főablak fölött középen. A cloud-mód K-01
-    // választó ablaka (ha volt) már lezárult — az onboarding utána jön.
+    // First launch (in every mode): once, centered over the main window. The cloud-mode mode
+    // picker (if shown) has already closed; onboarding comes after it.
     if (m_shutDown || !m_autoOnboarding || mainWindowHidden())
         return;
     m_onboarding->setTransientParent(m_window);
@@ -268,7 +269,7 @@ QString QmlShellBridge::pickAudioFile()
 
 QStringList QmlShellBridge::pickAudioFiles()
 {
-    // Importáláshoz: bármi, amit az ffmpeg dekódol — a videók hangja is.
+    // For import: anything ffmpeg decodes, including the audio of videos.
     const QString start = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
     return QFileDialog::getOpenFileNames(
         nullptr, tr("Importálandó hangfájlok kiválasztása"), start,
@@ -300,7 +301,7 @@ QString QmlShellBridge::pickMeetingFolder()
         QFileDialog::ShowDirsOnly);
 }
 
-// ---- felvevő (lásd ShellRecorderHost) ----------------------------------------------------
+// ---- recorder (see ShellRecorderHost) ----
 
 void QmlShellBridge::startRecorderListening()
 {
@@ -319,8 +320,8 @@ QObject* QmlShellBridge::recorderWindow() const
 
 void QmlShellBridge::showMeeting(const QString& meetingId)
 {
-    // Másik folyamat (az önálló felvevő) által létrehozott megbeszélést a könyvtár még nem
-    // ismeri: az index közös (lemez), a könyvtár gyorsítótárát újratöltjük.
+    // A meeting created by another process (the standalone recorder) is not yet known to the
+    // library: the index is shared (on disk), so we reload the library's cache.
     if (!meetingId.isEmpty() && m_controller->library()
         && m_controller->library()->meeting(meetingId).id.isEmpty())
         m_controller->library()->invalidate();
@@ -329,9 +330,9 @@ void QmlShellBridge::showMeeting(const QString& meetingId)
 
 void QmlShellBridge::continueRecordingInBackground()
 {
-    // A lebegő felvevő önálló top-level ablak → az app életben marad; a főablakot a QML
-    // rejti el, és a felvétel végén (vagy ha a felvevő is eltűnik) magától visszajön
-    // (showWindowRequested).
+    // The floating recorder is a standalone top-level window, so the app stays alive; QML hides
+    // the main window, and it comes back by itself when the recording ends (or if the recorder
+    // disappears) (showWindowRequested).
     openRecorder();
 }
 
@@ -342,7 +343,7 @@ void QmlShellBridge::stopRecordingAndQuit()
         return;
     }
     m_quitAfterStop = true;
-    m_controller->stopRecording();   // aszinkron (kódolás) → Idle-nél quitRequested()
+    m_controller->stopRecording();   // async (encoding); quitRequested() when Idle
 }
 
 void QmlShellBridge::shutdown()
@@ -362,13 +363,13 @@ void QmlShellBridge::shutdown()
     m_recorder->shutdown();
 }
 
-// ---- résztvevők tippelése átirat előtt ----------------------------------------------------
+// ---- participant guessing before the transcript ----
 
 QString QmlShellBridge::identifyParticipantsPreview(const QString& meetingId, bool* cancelled)
 {
     if (cancelled) *cancelled = false;
-    // Megszakítható progress: a számítás a fő szálon fut, a callback minden lépésnél frissíti
-    // a dialógust + processEvents-szel életben tartja a UI-t és figyeli a „Megszakítás”-t.
+    // Cancellable progress: the computation runs on the main thread; the callback updates the
+    // dialog on every step, keeps the UI alive with processEvents and watches for "Cancel".
     QProgressDialog dlg(tr("Résztvevők azonosítása a hang alapján…"), tr("Megszakítás"), 0, 0, nullptr);
     dlg.setWindowTitle(tr("Résztvevők azonosítása"));
     dlg.setWindowModality(Qt::ApplicationModal);
@@ -403,7 +404,7 @@ QString QmlShellBridge::identifyParticipantsPreview(const QString& meetingId, bo
 void QmlShellBridge::wireCloud()
 {
     if (!m_controller->cloudLive())
-        return;   // teaser-mód: nincs chip, sáv, hálózat
+        return;   // teaser mode: no chip, bar, network
     tanara::CloudAccount* acc = m_controller->cloud();
 
     connect(m_controller, &tanara::AppController::cloudCharged, this, &QmlShellBridge::onCloudCharged);
@@ -412,7 +413,7 @@ void QmlShellBridge::wireCloud()
     connect(acc, &tanara::CloudAccount::accountUpdated, this, [this](const tanara::AccountInfo&) {
         m_lastCloudRefresh = QDateTime::currentDateTime();
         refreshCloudChrome();
-        // K-15 előzetes: indításkor / frissítéskor, naponta legfeljebb egyszer.
+        // Preview: at startup / on refresh, at most once a day.
         if (!m_termsOffered && CloudTermsDialog::shouldOfferEarly(m_controller)) {
             m_termsOffered = true;
             if (CloudTermsDialog::offerEarly(m_controller, nullptr))
@@ -431,7 +432,7 @@ void QmlShellBridge::wireCloud()
     connect(acc, &tanara::CloudAccount::clientTooOldDetected, this, [this](const QString& minClient) {
         refreshCloudChrome();
         emit readinessChanged();
-        if (m_tooOldShown) return;   // K-10: modális az első találkozáskor, utána tartós sáv
+        if (m_tooOldShown) return;   // modal on the first encounter, then a persistent bar
         m_tooOldShown = true;
         tanara::CloudError e;
         e.kind = tanara::CloudErrorKind::ClientTooOld;
@@ -457,8 +458,8 @@ void QmlShellBridge::windowShown()
     if (m_cloudStartupDone)
         return;
     m_cloudStartupDone = true;
-    // A főablak már látszik: az indulási ablakok (K-01, majd az „Első lépések”) a következő
-    // eseményhurok-körben jönnek, így az indulást nem tartják fel.
+    // The main window is already visible: the startup windows (mode picker, then "Getting
+    // started") come in the next event loop round, so they do not delay startup.
     QTimer::singleShot(0, this, [this] {
         startupCloudChecks();
         maybeOpenOnboarding();
@@ -470,7 +471,7 @@ void QmlShellBridge::startupCloudChecks()
     if (!m_controller->cloudLive())
         return;
     tanara::CloudAccount* acc = m_controller->cloud();
-    // K-01 — csak az első indításkor (élő cloud-módban).
+    // Mode picker: only on first launch (in live cloud mode).
     if (m_controller->settings()->isFirstRun()) {
         CloudModeDialog dlg(m_controller, nullptr);
         dlg.exec();
@@ -490,12 +491,12 @@ void QmlShellBridge::startupCloudChecks()
         return;
     acc->refreshAccount();
     acc->fetchModels();
-    acc->checkPendingTranscriptions();   // „Az előző átírás … visszaírtuk” (CLI-13)
+    acc->checkPendingTranscriptions();   // "The previous transcription ... was written back"
 }
 
 void QmlShellBridge::windowActivated()
 {
-    // Feltöltés a böngészőben → az ablak újra fókuszt kap → az egyenleg frissül (brief 5.4).
+    // Upload in the browser, then the window regains focus and the balance refreshes.
     if (m_controller->cloudLive() && m_controller->cloud()->isLoggedIn()
         && (!m_lastCloudRefresh.isValid()
             || m_lastCloudRefresh.secsTo(QDateTime::currentDateTime()) > 60)) {
@@ -513,7 +514,7 @@ void QmlShellBridge::refreshCloudChrome()
                            || m_controller->usesCloud(tanara::WorkflowStep::Summarize);
     const tanara::AccountInfo a = acc->account();
 
-    // --- egyenleg-chip (K-08) — saját kulcsos módban nincs ---
+    // --- balance chip --- not shown in own-key mode ---
     m_chipVisible = cloudUsed;
     m_chipTone = QStringLiteral("normal");
     m_chipToolTip.clear();
@@ -529,7 +530,7 @@ void QmlShellBridge::refreshCloudChrome()
         m_chipText = tr("Tanara Cloud: …");
     }
 
-    // --- sávok (K-08 / K-10 / notice): szint + szöveg + legfeljebb egy teendő ---
+    // --- bars (balance / too-old client / notice): level + text + at most one action ---
     QVariantList banners;
     auto add = [&banners](const QString& key, const QString& level, const QString& text,
                           const QString& cta, bool closable) {
@@ -538,7 +539,7 @@ void QmlShellBridge::refreshCloudChrome()
                                    {QStringLiteral("closable"), closable}});
     };
     if (cloudUsed) {
-        if (acc->clientTooOld())   // K-10 tartós sáv
+        if (acc->clientTooOld())   // persistent too-old-client bar
             add(QStringLiteral("tooOld"), QStringLiteral("critical"),
                 tr("A Tanara Cloudhoz frissítés kell (legalább %1). A saját kulcsos mód működik.")
                     .arg(acc->minClient()),
@@ -551,7 +552,7 @@ void QmlShellBridge::refreshCloudChrome()
                        "a saját kulcsos mód továbbra is működik."),
                     topupLabel, false);
             } else if (a.lowBalance) {
-                // ✕ → elrejtve a következő küszöbátlépésig (low_balance_since > az elrejtés ideje).
+                // Dismissed until the next threshold crossing (low_balance_since > the dismissal time).
                 const QDateTime dismissed = acc->lowBannerDismissedAt();
                 if (!dismissed.isValid()
                     || (a.lowBalanceSince.isValid() && a.lowBalanceSince > dismissed))
@@ -645,8 +646,8 @@ void QmlShellBridge::onCloudError(const QString& meetingId, const QString& kind,
     emit readinessChanged();
     if (a == cloudui::ErrorAction::Login) { cloudLogin(); return; }
     if (a != cloudui::ErrorAction::Retry && a != cloudui::ErrorAction::Continue) return;
-    // Újra / Folytatás: ugyanaz a lépés — új futás, új X-Tanara-Job-Id (a folytatás csak a
-    // hátralévő részekért fizet: a kész téma-elemzések a lemezen vannak).
+    // Retry / Resume: the same step: a new run, a new X-Tanara-Job-Id (resuming pays only for
+    // the remaining parts: the finished topic analyses are on disk).
     emit retryRequested(meetingId, kind);
 }
 
@@ -656,10 +657,10 @@ bool QmlShellBridge::confirmCloudEstimate(const QString& meetingId, const QStrin
     const tanara::WorkflowStep step = task == QLatin1String("transcribe")
         ? tanara::WorkflowStep::Transcribe : tanara::WorkflowStep::Summarize;
     if (!m_controller->usesCloud(step))
-        return true;   // BYO: nincs becslés
-    // A felhasználó a Beállításokban kikapcsolta a „költségbecslés minden feldolgozás előtt”
-    // kapcsolót: kérdés nélkül indul. Az akadályok (elfogyott egyenleg, ÁSZF, frissítés) a
-    // futás hibaágán ugyanúgy megállítják (onCloudError).
+        return true;   // BYO: no estimate
+    // The user turned off "estimate cost before every processing" in Settings: it starts without
+    // asking. The blockers (empty balance, terms, update) still stop it on the run's error path
+    // (onCloudError).
     if (!m_controller->settings()->settings().cloudEstimateBeforeRun)
         return true;
     CloudEstimateDialog dlg(m_controller, meetingId, task, mode, nullptr);

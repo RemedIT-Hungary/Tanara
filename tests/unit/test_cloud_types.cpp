@@ -1,7 +1,5 @@
-//
-// Tanara Cloud — a gateway-szerződés (docs/cloud-gateway-api.yaml 1.2.0) kliensoldali
-// feldolgozó / formázó függvényeinek unit-tesztjei (hálózat nélkül).
-//
+// Tanara Cloud: unit tests of the client-side parsing / formatting functions of the gateway
+// contract (docs/cloud-gateway-api.yaml 1.2.0) (no network).
 #include <QtTest>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -38,7 +36,7 @@ private slots:
     void waitlist_validation();
 };
 
-// A slot-törzsek a moc elől rejtve (a moc nem bírja a JSON raw-string literálokat).
+// The slot bodies are hidden from moc (moc cannot handle JSON raw-string literals).
 #ifndef Q_MOC_RUN
 void TestCloudTypes::money_balance_floorsAndLocalizes()
 {
@@ -98,7 +96,7 @@ void TestCloudTypes::error_402_hold()
     QHash<QByteArray, QByteArray> h{ { "x-tanara-request-id", "req_HDR" } };
     const CloudError e = parseCloudError(402, h, R"({"error":{"code":"insufficient_balance","message":"Nincs elég egyenleg.", "request_id":"req_01","support_url":"https://s/x","balance":{"amount_micros":200000,"currency":"USD"}, "needed":{"amount_micros":620000,"currency":"USD"},"needed_basis":"hold","topup_url":null,"contact_url":"https://c"}})");
     QCOMPARE(e.kind, CloudErrorKind::InsufficientBalance);
-    QCOMPARE(e.requestId, QStringLiteral("req_01"));       // a törzs request_id-je az elsődleges
+    QCOMPARE(e.requestId, QStringLiteral("req_01"));       // the body's request_id is the primary
     QCOMPARE(e.neededBasis, QStringLiteral("hold"));
     QCOMPARE(e.needed.micros, 620000);
     QCOMPARE(e.balance.micros, 200000);
@@ -116,7 +114,7 @@ void TestCloudTypes::error_kinds()
     QCOMPARE(t.termsVersion, QStringLiteral("2026-11-01"));
     const CloudError rl = parseCloudError(429, h, R"({"error":{"code":"rate_limited","message":"m","request_id":"r"}})");
     QCOMPARE(rl.kind, CloudErrorKind::RateLimited);
-    QCOMPARE(rl.retryAfterSec, 30);                     // a Retry-After fejlécből
+    QCOMPARE(rl.retryAfterSec, 30);                     // from the Retry-After header
     const CloudError sl = parseCloudError(429, h, R"({"error":{"code":"spend_limit_reached","message":"m","request_id":"r", "limit":{"period":"daily","amount":{"amount_micros":5000000,"currency":"USD"},"resets_at":"2026-10-02T00:00:00Z"},"settings_url":"https://w/keys"}})");
     QCOMPARE(sl.kind, CloudErrorKind::SpendLimit);
     QCOMPARE(sl.limitPeriod, QStringLiteral("daily"));
@@ -129,7 +127,7 @@ void TestCloudTypes::error_kinds()
     QCOMPARE(parseCloudError(500, {}, R"({"error":{"code":"internal_error","message":"m","request_id":"r"}})").kind, CloudErrorKind::Internal);
     const CloudError old = parseCloudError(426, { { "x-tanara-min-client", "0.2.0" } }, R"({"error":{"code":"client_too_old","message":"m","request_id":"r"}})");
     QCOMPARE(old.kind, CloudErrorKind::ClientTooOld);
-    QCOMPARE(old.minClient, QStringLiteral("0.2.0"));   // a fejlécből, ha a törzsben nincs
+    QCOMPARE(old.minClient, QStringLiteral("0.2.0"));   // from the header, if the body has none
     QCOMPARE(parseCloudError(401, h, "{}").kind, CloudErrorKind::Unauthorized);
     QCOMPARE(parseCloudError(401, h, "{}").requestId, QStringLiteral("req_H"));
     const CloudError de = parseCloudError(400, {}, R"({"error":{"code":"disposable_email","message":"m","request_id":"r","fields":{"email":{"code":"disposable_email","message":"x"}}}})");
@@ -166,7 +164,7 @@ void TestCloudTypes::account_parse()
 void TestCloudTypes::models_parse_and_tiers()
 {
     const QVector<CloudModel> ms = modelsFromJson(obj(R"({"object":"list","data":[ {"id":"tanara/stt-fast","object":"model","owned_by":"tanara","tanara":{"kind":"stt","tier":"fast","virtual":true,"expert":false, "display_name":"Gyors","diarization":false,"languages":null,"hidden_for_languages":["hu"],"price":{"per_hour":{"amount_micros":80000,"currency":"USD"}}}}, {"id":"tanara/stt-accurate","object":"model","owned_by":"tanara","tanara":{"kind":"stt","tier":"accurate","virtual":true, "diarization":true,"languages":null,"price":{"per_hour":{"amount_micros":400000,"currency":"USD"}}}}, {"id":"x/llm","object":"model","owned_by":"x","tanara":{"kind":"llm","tier":null,"virtual":false,"expert":true, "languages":["en"],"price":{"per_1m_input_tokens":{"amount_micros":3000000,"currency":"USD"},"per_1m_output_tokens":{"amount_micros":15000000,"currency":"USD"}}}}, {"id":"no-meta","object":"model","owned_by":"x"}]})"));
-    QCOMPARE(ms.size(), 3);   // a tanara-metaadat nélküli kimarad
+    QCOMPARE(ms.size(), 3);   // one without tanara metadata is left out
     const auto fast = findTierModel(ms, "stt", "fast");
     QVERIFY(fast.has_value());
     QVERIFY(!fast->diarization);
@@ -193,7 +191,7 @@ void TestCloudTypes::estimate_request_and_levels()
     QVERIFY(!o.contains("transcript_chars"));
     const QJsonArray calls = o.value("llm_calls").toArray();
     QCOMPARE(calls.size(), 3);
-    QVERIFY(calls[1].toObject().value("count").isNull());   // ismeretlen témaszám → null
+    QVERIFY(calls[1].toObject().value("count").isNull());   // unknown topic count: null
     QCOMPARE(calls[0].toObject().value("count").toInt(), 1);
 
     EstimateResult e = estimateFromJson(obj(R"({"estimate":{"amount_micros":460000,"currency":"USD"},"low":{"amount_micros":380000,"currency":"USD"}, "high":{"amount_micros":610000,"currency":"USD"},"balance":{"amount_micros":12400000,"currency":"USD"},"required":{"amount_micros":700000,"currency":"USD"}, "enough":true,"balance_after":{"amount_micros":11940000,"currency":"USD"},"low_balance_after":false,"vat_mode":"gross", "breakdown":[{"item":"stt","model":"tanara/stt-accurate","tier":"accurate","summary_mode":null,"amount":{"amount_micros":410000,"currency":"USD"},"exact":true}, {"item":"llm","model":"tanara/summary-accurate","tier":"accurate","summary_mode":"complex","amount":{"amount_micros":50000,"currency":"USD"},"exact":false}]})"));
@@ -230,11 +228,11 @@ void TestCloudTypes::device_code_parse()
 {
     const DeviceCode d = deviceCodeFromJson(obj(R"({"device_code":"dc","user_code":"WDJB-MJHT","verification_uri":"https://a/device", "interval":0,"expires_in":600})"));
     QCOMPARE(d.userCode, QStringLiteral("WDJB-MJHT"));
-    QCOMPARE(d.verificationUriComplete, QStringLiteral("https://a/device"));   // hiányzó complete → uri
-    QCOMPARE(d.interval, 1);                                                   // min. 1 mp
+    QCOMPARE(d.verificationUriComplete, QStringLiteral("https://a/device"));   // missing complete: uri
+    QCOMPARE(d.interval, 1);                                                   // min. 1 s
 }
 
-// MKT-02: a várólista-kérés összeállítása (csak a kitöltött opcionális mezők) + előellenőrzés.
+// Waitlist request assembly (only the filled optional fields) + pre-check.
 void TestCloudTypes::waitlist_body()
 {
     WaitlistSignup s;
@@ -248,13 +246,13 @@ void TestCloudTypes::waitlist_body()
     QCOMPARE(o.value("ui_language").toString(), QStringLiteral("hu"));
     QCOMPARE(o.value("platform").toString(), clientPlatform());
     QCOMPARE(o.value("client_version").toString(), libraryVersion());
-    QVERIFY(!o.contains("use_case"));              // opcionális, üres → nincs a törzsben
+    QVERIFY(!o.contains("use_case"));              // optional, empty: not in the body
     QVERIFY(!o.contains("meeting_languages"));
-    QVERIFY(!o.contains("attribution"));           // csak a webről
+    QVERIFY(!o.contains("attribution"));           // only from the web
 
     s.useCase = "interviews";
     s.meetingLanguages = { "hu", "other" };
-    s.uiLanguage = "de";                           // nem hu/en → kimarad
+    s.uiLanguage = "de";                           // not hu/en: left out
     o = waitlistToJson(s);
     QCOMPARE(o.value("use_case").toString(), QStringLiteral("interviews"));
     QCOMPARE(o.value("meeting_languages").toArray().size(), 2);
@@ -265,7 +263,7 @@ void TestCloudTypes::waitlist_validation()
 {
     WaitlistSignup s;
     s.email = "anna@example.com";
-    QCOMPARE(validateWaitlist(s), QStringLiteral("consent"));   // hozzájárulás kötelező
+    QCOMPARE(validateWaitlist(s), QStringLiteral("consent"));   // consent is required
     s.consent = true;
     QVERIFY(validateWaitlist(s).isEmpty());
     for (const char* bad : { "", "anna", "@example.com", "anna@", "anna@example", "a b@example.com", "a@b@c.hu", "anna@example." }) {

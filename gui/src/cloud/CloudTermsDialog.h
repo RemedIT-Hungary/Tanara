@@ -1,12 +1,10 @@
 #pragma once
-//
-// K-15 — ÁSZF-elfogadás. Két változat (kiegészítés-2 1.8):
-//  - előzetes (14 napos időszak): [Megtekintés] [Elfogadom] [Később] — „Később” naponta
-//    legfeljebb egyszer kérdez újra (CloudAccount::postponeTerms);
-//  - kötelező (hatálybalépés után, 403 terms_acceptance_required): [Megtekintés] [Elfogadom]
-//    [Mégse]. A futó feldolgozás nem szakad meg; a fiók-adatok, a modellek, a kijelentkezés megy.
-// Mindkettőn: „Nem fogadom el, fiók törlése” → a dashboard a böngészőben.
-//
+// Terms acceptance. Two variants:
+//  - preliminary (14-day period): [View] [Accept] [Later]; "Later" asks again at most once a
+//    day (CloudAccount::postponeTerms);
+//  - mandatory (after the effective date, 403 terms_acceptance_required): [View] [Accept]
+//    [Cancel]. Running processing is not interrupted; account data, models and sign-out still work.
+// Both have "I do not accept, delete my account", which opens the dashboard in the browser.
 #include "tanara/cloud/CloudTypes.h"
 
 #include <QDialog>
@@ -21,14 +19,14 @@ namespace tanara_gui {
 class CloudTermsDialog : public QDialog {
     Q_OBJECT
 public:
-    // version: az elfogadandó verzió; url: a szöveg; effective: hatálybalépés (előzetesnél).
+    // version: the version to accept; url: the text; effective: effective date (for the preliminary variant).
     CloudTermsDialog(tanara::AppController* app, bool mandatory, const QString& version,
                      const QString& url, const QDateTime& effective, const QString& summary,
                      QWidget* parent = nullptr);
 
-    // Indításkor / fiók-frissítés után: kell-e előzetes dialógus (és nem halasztották ma).
+    // At startup / after an account refresh: whether a preliminary dialog is needed (and was not postponed today).
     static bool shouldOfferEarly(tanara::AppController* app);
-    // Kényelmi belépők. true = elfogadta.
+    // Convenience entry points. true = accepted.
     static bool offerEarly(tanara::AppController* app, QWidget* parent);
     static bool requireFromError(tanara::AppController* app, const tanara::CloudError& e, QWidget* parent);
 

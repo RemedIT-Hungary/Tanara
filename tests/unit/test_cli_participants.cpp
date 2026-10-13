@@ -1,9 +1,7 @@
-//
-// tanara-cli participants <meeting-folder>: a valódi CLI (QProcess), IZOLÁLT TANARA_HOME-mal,
-// kitalált meeting.json-nal. Ellenőrzi az argumentum-hibákat, a lista JSON-ját (csoport,
-// alapértelmezett jelölés, nyers beszélők), hogy alapból CSAK OLVAS, és hogy modell nélkül az
-// --analyze hibával áll meg (semmit nem ír).
-//
+// tanara-cli participants <meeting-folder>: the real CLI (QProcess), with an ISOLATED
+// TANARA_HOME, a made-up meeting.json. Checks the argument errors, the list's JSON (group,
+// default check, raw speakers), that it only READS by default, and that without a model
+// --analyze stops with an error (writes nothing).
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -36,7 +34,7 @@ private slots:
     {
         QTemporaryDir dir;
         QCOMPARE(cli({"participants", dir.path(), "--bogus"}).code, 2);
-        QCOMPARE(cli({"participants", dir.path(), "--write"}).code, 2);   // --write csak --analyze-dzal
+        QCOMPARE(cli({"participants", dir.path(), "--write"}).code, 2);   // --write only with --analyze
         const Run r = cli({"participants", dir.path()});
         QCOMPARE(r.code, 1);
         QVERIFY(r.err.contains("Not a meeting folder"));
@@ -85,9 +83,9 @@ private slots:
         QVERIFY(t.out.contains("SURE (1)"));
         QVERIFY(t.out.contains("Beszélő 1 · microphone"));
         QVERIFY(t.out.contains("excluded (noSpeech)"));
-        QCOMPARE(readAll(meetingJson), before);   // csak olvas
+        QCOMPARE(readAll(meetingJson), before);   // reads only
 
-        // Modell nélkül (üres homokozó) az elemzés nem fut, és nem ír.
+        // Without a model (empty sandbox) the analysis does not run, and does not write.
         const Run a = cli({"participants", dir.path(), "--analyze", "--write"});
         QCOMPARE(a.code, 1);
         QVERIFY(a.err.contains("No usable voice model"));
@@ -95,8 +93,8 @@ private slots:
         QVERIFY(!QFile::exists(QDir(dir.path()).filePath("participants.analysis.json")));
     }
 
-    // G4 (A6): --remove — tartós törlés a meeting.json-ból (a jóváhagyás-bejegyzéssel és a nevére
-    // leképezett nyers beszélővel együtt).
+    // --remove: permanent deletion from meeting.json (together with the approval entry and the
+    // raw speaker mapped to its name).
     void removeParticipant()
     {
         QTemporaryDir dir;

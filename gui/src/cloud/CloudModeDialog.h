@@ -1,9 +1,7 @@
 #pragma once
-//
-// K-01 — Módválasztás első indításkor (egyszerű változat): „Saját kulcsok (BYO)” vs „Tanara
-// Cloud”, vizuálisan egyenrangú kártyák, egyik sincs előre kijelölve. Csak élő cloud-módban
-// és csak az első indításkor jelenik meg (teaser-módban soha — ott nincs felugró ablak).
-//
+// Mode choice on first launch (simple variant): "Own keys (BYO)" vs "Tanara Cloud", visually
+// equal cards, neither preselected. Shown only in live cloud mode and only on first launch
+// (never in teaser mode, where there is no pop-up window).
 #include <QDialog>
 
 namespace tanara { class AppController; }

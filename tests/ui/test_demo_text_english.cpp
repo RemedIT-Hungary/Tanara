@@ -1,7 +1,7 @@
-// A demo-tartalom angol változata (DemoText): angol demo-nyelvnél a kitalált megbeszélés címe,
-// az átirat első sora, a könyvtár első címe és a résztvevők nevei angolok — ékezetes magyar szó
-// nélkül —, magyar nyelvnél pedig változatlanul a magyar demo-szövegek szólnak. A demo-állapotok
-// szerkezete (sor-szám, időzítés, beszélő-kulcsok sorrendje) a két nyelven azonos.
+// The English version of the demo content (DemoText): with an English demo language the made-up
+// meeting's title, the transcript's first line, the library's first title and the participants'
+// names are English, with no accented Hungarian word; with Hungarian they stay the Hungarian demo
+// texts. The structure of the demo states (line count, timing, speaker-key order) is the same in both languages.
 #include "AppContext.h"
 #include "DemoText.h"
 #include "LibraryDemoData.h"
@@ -17,7 +17,7 @@ using namespace tanara_qml;
 
 namespace {
 
-// Magyar ékezetes betű (az angol demo-szövegben nem lehet).
+// A Hungarian accented letter (cannot appear in the English demo text).
 bool hasHungarianAccent(const QString& s)
 {
     static const QRegularExpression re(QStringLiteral("[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]"));
@@ -86,7 +86,7 @@ private slots:
         for (const QString& tag : demo::entry(demo::defaultMeetingId()).tagNames)
             QVERIFY2(!hasHungarianAccent(tag), qPrintable(tag));
 
-        // Magyarul a megszokott könyvtár (a nyelvenkénti gyorsítótár nem keveredik).
+        // In Hungarian it is the usual library (the per-language cache does not get mixed).
         demotext::setLanguageOverride(QStringLiteral("hu"));
         QCOMPARE(demo::meetings().first().entry.title, QStringLiteral("Termékcsapat heti egyeztetés"));
         QCOMPARE(demo::entry(demo::defaultMeetingId()).title, QStringLiteral("Negyedéves partnertalálkozó"));
@@ -104,7 +104,7 @@ private slots:
         const Shape enShape = shapeOf(en);
         QCOMPARE(en.selfName(), QStringLiteral("Emma Carter"));
 
-        // Ugyanannyi sor, ugyanott, ugyanazzal a beszélő-sorrenddel (csak a címkék angolok).
+        // The same number of lines, in the same places, with the same speaker order (only the labels are English).
         QCOMPARE(enShape.lines, huShape.lines);
         QCOMPARE(enShape.starts, huShape.starts);
         QCOMPARE(enShape.rawOrder.size(), huShape.rawOrder.size());

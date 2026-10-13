@@ -1,8 +1,8 @@
-// A v3 Javítás mód nézetmodellje (handoff-v3 E1–E4) a beépített „v3" KITALÁLT meetingen (valódi
-// SpeakerEditor, hamis hang, kitalált sáv-aktivitás): Átnézendő csoportok (sáv-ellentmondás,
-// mag-eltérés, rövid sorok, a csoportokon kívüli kétes sorok), egy csoport végrehajtása = egy
-// visszavonási lépés, szennyezett mag + szétválasztás, jelöltek bizonyítékkal, „Miért nem X?",
-// kézi sáv-beosztás, új személy + hasonló sorok. Kijelző nélkül fut; a felhasználó adataihoz nem nyúl.
+// The v3 Edit mode's view model on the built-in MADE-UP "v3" meeting (real SpeakerEditor, fake
+// audio, made-up track activity): review queue groups (track contradiction, core mismatch,
+// short lines, doubtful lines outside the groups), executing a group = one undo step,
+// contaminated core + splitting, candidates with evidence, "Why not X?", manual track
+// assignment, new person + similar lines. Runs without a display; it touches no user data.
 #include "CandidateListModel.h"
 #include "tanara/edit/PeopleDirectory.h"
 #include "ReviewGroupsModel.h"
@@ -24,7 +24,7 @@ bool waitIdle(const TranscriptEditorViewModel& vm)
     }, 15000);
 }
 
-// A háttér-elemzés egy újabb körének bevárása (a művelet után indul).
+// Waiting for another round of the background analysis (it starts after the action).
 bool settle(const TranscriptEditorViewModel& vm)
 {
     QTest::qWait(20);
@@ -77,13 +77,13 @@ private slots:
         QVERIFY(!vm.contaminated().isEmpty());
         QCOMPARE(vm.contaminated().value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
 
-        // A csoport-modell: kártyák + az aktív csoport alatt a „··· N sor" sor.
+        // The group model: cards + under the active group the "... N lines" row.
         ReviewGroupsModel* m = vm.reviewGroups();
         QVERIFY(m->count() >= 4);
         QCOMPARE(m->data(m->index(0), ReviewGroupsModel::RowKindRole).toString(), QStringLiteral("group"));
         QCOMPARE(m->data(m->index(1), ReviewGroupsModel::RowKindRole).toString(), QStringLiteral("more"));
 
-        // „Egyenként": a csoport sorai a kártya alatt; B a következő sorra lép.
+        // "One by one": the group's lines under the card; B steps to the next line.
         const QString gid = side->id;
         const int n = int(side->ids.size());
         m->setExpanded(gid, true);
@@ -92,7 +92,7 @@ private slots:
         QCOMPARE(first, 1);
         QCOMPARE(m->stepLine(first, 1), 2);
 
-        // „Mind a N → Fehér Gábor": egy lépés, a változás-sáv kiírja; visszavonás után visszajön.
+        // "All N to Fehér Gábor": one step, the change bar says so; after undo it comes back.
         const QString lilla = side->currentKey;
         const QString gabor = side->proposedKey;
         const int before = vm.speakerInfo(gabor).value(QStringLiteral("utteranceCount")).toInt();
@@ -107,7 +107,7 @@ private slots:
         QVERIFY(viewOf(vm, QStringLiteral("sideConflict")));
         Q_UNUSED(lilla);
 
-        // „Kihagyom": a csoport ebben a munkamenetben eltűnik.
+        // "Skip": the group disappears in this session.
         const int count = vm.reviewCount();
         vm.skipReviewGroup(gid);
         QVERIFY(!viewOf(vm, QStringLiteral("sideConflict")));
@@ -143,7 +143,7 @@ private slots:
         vm.applyDemoState(QStringLiteral("fixLinePopover"));
         QVERIFY(settle(vm));
 
-        // Az E1 sora: Lilla nevén, Gábor hangja a hívásról.
+        // The picker row: under Lilla's name, Gábor's voice from the call.
         const QString line = vm.rowUtteranceId(2);
         QCOMPARE(vm.rows()->data(vm.rows()->index(2), TranscriptListModel::UncertainReasonRole).toString(),
                  QStringLiteral("side"));
@@ -160,7 +160,7 @@ private slots:
         qInfo() << "top" << top << cands.data(cands.index(0), CandidateListModel::EvidenceRole);
         QCOMPARE(top.value(QStringLiteral("name")).toString(), QStringLiteral("Fehér Gábor"));
         QCOMPARE(cands.rowForKey(1), 0);
-        // A kereső a becenévre is talál (a többi személy-listával egyezően), a találat az alszövegben.
+        // The search finds by nickname too (matching the other person lists), the hit is in the substring.
         vm.setPeopleProvider([] {
             PersonInfo p;
             p.name = QStringLiteral("Fehér Gábor");
@@ -175,7 +175,7 @@ private slots:
         QCOMPARE(cands.count(), 0);
         cands.setQuery(QString());
         vm.setPeopleProvider({});
-        // A mostani beszélő a végén, halványan.
+        // The current speaker at the end, dimmed.
         const int last = cands.count() - 1;
         QVERIFY(cands.data(cands.index(last), CandidateListModel::CurrentRole).toBool());
         QVERIFY(cands.data(cands.index(last), CandidateListModel::DimmedRole).toBool());
@@ -188,7 +188,7 @@ private slots:
             sideReason |= w.toMap().value(QStringLiteral("fixTarget")).toString() == QLatin1String("tracks");
         QVERIFY(sideReason);
 
-        // „Melyik sávon beszél?": két chip; a kézi beosztás egy lépés, visszavonható.
+        // "Which track does it speak on?": two chips; manual assignment is one step, undoable.
         const QString gabor = keyOf(vm, QStringLiteral("Fehér Gábor"));
         const QVariantList tracks = vm.trackOptions(gabor);
         QCOMPARE(tracks.size(), 2);
@@ -198,7 +198,7 @@ private slots:
         vm.undo();
         QVERIFY(!vm.trackOptions(gabor).at(1).toMap().value(QStringLiteral("checked")).toBool());
 
-        // „Nem ő? Valójában…": a teljes beszélő jelöltjei (ő maga nincs köztük).
+        // "Not them? Actually...": the whole speaker's candidates (they themselves are not among them).
         CandidateListModel speaker;
         speaker.setEditor(&vm);
         speaker.setSpeakerKey(gabor);
@@ -207,9 +207,9 @@ private slots:
             QVERIFY(speaker.get(i).value(QStringLiteral("speakerKey")).toString() != gabor);
     }
 
-    // G10: ha minden elnevezett beszélő kézzel be van osztva, a sor oldalán nem szereplő személy
-    // kizárt: a felugró lista LEGALJÁN, halványan, „a sávja szerint nem ő" chippel, gyorsbillentyű
-    // nélkül — de választható.
+    // If every named speaker is assigned by hand, a person not on the line's side is excluded:
+    // at the very BOTTOM of the popup list, dimmed, with a "not them by their track" chip, with no
+    // shortcut, but selectable.
     void lineCandidates_sideVeto()
     {
         TranscriptEditorViewModel vm;
@@ -218,7 +218,7 @@ private slots:
         QVERIFY(waitIdle(vm));
         vm.applyDemoState(QStringLiteral("fixLinePopover"));
         QVERIFY(settle(vm));
-        const QString line = vm.rowUtteranceId(2);   // Lilla nevén, a hívás hangján
+        const QString line = vm.rowUtteranceId(2);   // under Lilla's name, in the call's voice
         const QString gabor = keyOf(vm, QStringLiteral("Fehér Gábor"));
         int named = 0;
         for (const QVariant& v : vm.speakers()) {
@@ -244,7 +244,7 @@ private slots:
             qInfo() << i << cands.get(i).value(QStringLiteral("name")).toString() << "vetoed" << vetoed
                     << cands.data(ix, CandidateListModel::EvidenceRole);
             if (!vetoed) {
-                QCOMPARE(firstVetoed, -1);   // a kizártak után nincs nem kizárt
+                QCOMPARE(firstVetoed, -1);   // no non-excluded one after the excluded
                 continue;
             }
             if (firstVetoed < 0) firstVetoed = i;
@@ -258,7 +258,7 @@ private slots:
             QVERIFY(cands.get(i).value(QStringLiteral("vetoed")).toBool());
         }
         QVERIFY(firstVetoed > 0);
-        // A mostani beszélő (Lilla, mikrofon) is kizárt: „most ő", a kizárás chipjével.
+        // The current speaker (Lilla, microphone) is excluded too: "current", with the exclusion chip.
         bool currentVetoChip = false;
         for (int i = 0; i < cands.count(); ++i) {
             if (!cands.data(cands.index(i), CandidateListModel::CurrentRole).toBool()) continue;
@@ -268,16 +268,16 @@ private slots:
         QVERIFY(currentVetoChip);
     }
 
-    // Gyors „+ #Címke" (T2): a megbeszélés címkéje, ha még nincs a személyen; a saját személy
-    // és aki már viseli, nem kap ajánlatot. A rátétel után a jelöltek újraszámolódnak.
+    // Quick "+ #Tag": the meeting's tag, if the person does not have it yet; the own person and
+    // anyone who already has it get no offer. After applying, the candidates are recomputed.
     void quickTag_offeredOnlyWhenMissing()
     {
         TranscriptEditorViewModel vm;
         vm.setDemoVariant(QStringLiteral("v3"));
         vm.resolveSession();
         QVERIFY(waitIdle(vm));
-        QVERIFY(vm.quickTagFor(QStringLiteral("Kovács Lilla")).isEmpty());     // saját személy
-        QVERIFY(vm.quickTagFor(QStringLiteral("Fehér Gábor")).isEmpty());      // már #Nordvik
+        QVERIFY(vm.quickTagFor(QStringLiteral("Kovács Lilla")).isEmpty());     // own person
+        QVERIFY(vm.quickTagFor(QStringLiteral("Fehér Gábor")).isEmpty());      // already #Nordvik
         QVERIFY(vm.quickTagFor(QString()).isEmpty());
         const QVariantMap q = vm.quickTagFor(QStringLiteral("Molnár Eszter"));
         QCOMPARE(q.value(QStringLiteral("tagId")).toString(), QStringLiteral("nordvik"));
@@ -291,7 +291,7 @@ private slots:
         QVERIFY(vm.editor()->personTagIds(QStringLiteral("Molnár Eszter")).contains(QStringLiteral("nordvik")));
         QVERIFY(!vm.addQuickTag(QStringLiteral("Kovács Lilla"), QStringLiteral("nordvik")));
         QVERIFY(settle(vm));
-        // A címke-bizonyíték már a közös címkét mutatja.
+        // The tag evidence already shows the shared tag.
         bool shared = false;
         for (const QVariant& e : vm.speakerEvidence(keyOf(vm, QStringLiteral("Molnár Eszter"))))
             shared |= e.toMap().value(QStringLiteral("kind")).toString() == QLatin1String("tag")
@@ -299,7 +299,7 @@ private slots:
         QVERIFY(shared);
     }
 
-    // A „speakerWhy" demó (E3): Gábor két sávon (kézi, több sáv), Árpádon még nincs #Nordvik.
+    // The "speakerWhy" demo: Gábor on two tracks (manual, several tracks), Árpád has no #Nordvik yet.
     void speakerWhyDemo_multiTrackAndQuickTag()
     {
         TranscriptEditorViewModel vm;
@@ -318,7 +318,7 @@ private slots:
                  QStringLiteral("Nordvik"));
     }
 
-    // Újraellenőrzés (T5): az eredmény megmondja, mire támaszkodott (sorok, minták, modellek).
+    // Recheck: the result says what it relied on (lines, samples, models).
     void recheck_reportsBasis()
     {
         TranscriptEditorViewModel vm;
@@ -354,7 +354,7 @@ private slots:
         QVERIFY(similar.value(QStringLiteral("count")).toInt() > 0);
         QVERIFY(vm.similarShown());
         QVERIFY(!vm.similarMarks().isEmpty());
-        // Az új személy oszlopa jelölt; a sorai „új személy" jelölőt kapnak.
+        // The new person's column is marked; its lines get a "new person" marker.
         QVERIFY(vm.rows()->data(vm.rows()->index(6), TranscriptListModel::NewPersonRole).toBool());
 
         const QString np = vm.newPersonKey();
@@ -366,7 +366,7 @@ private slots:
         QCOMPARE(vm.speakerInfo(np).value(QStringLiteral("utteranceCount")).toInt(), before);
     }
 
-    // C2: új személy címkés megbeszélésen — a változás-sáv egyszer kérdez (UX-terv 5.).
+    // A new person on a tagged meeting: the change bar asks once.
     void newPerson_tagQuestion()
     {
         TranscriptEditorViewModel vm;
@@ -386,9 +386,9 @@ private slots:
                  QStringLiteral("Címke a személyen: #Nordvik · Nagy Péter"));
         vm.undoChangeTagAnswer();
         QVERIFY(vm.changeTagQuestion().isEmpty());
-        QVERIFY(vm.changeActive());                     // az átsorolás értesítése marad
+        QVERIFY(vm.changeActive());                     // the reassignment notice stays
 
-        // A hasonló-sor demóban (és bármely nem címkés helyzetben) nincs kérdés.
+        // In the similar-lines demo (and in any untagged situation) there is no question.
         TranscriptEditorViewModel other;
         other.setDemoVariant(QStringLiteral("v3"));
         other.resolveSession();

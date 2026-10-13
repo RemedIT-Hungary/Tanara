@@ -1,20 +1,20 @@
-; Tanara — Windows-telepítő (Inno Setup 6).
+; Tanara: Windows installer (Inno Setup 6).
 ;
-; Felhasználói (per-user) telepítés, rendszergazdai jog nélkül:
-;   {localappdata}\Programs\Tanara  (pl. C:\Users\<név>\AppData\Local\Programs\Tanara)
+; Per-user install, no admin rights needed:
+;   {localappdata}\Programs\Tanara  (e.g. C:\Users\<name>\AppData\Local\Programs\Tanara)
 ;
-; Fordítás (lásd packaging/windows/README.md):
+; Build (see packaging/windows/README.md):
 ;   iscc /DDistDir=D:\Maszek\Tanara\dist /DBuildDir=D:\Maszek\Tanara\build packaging\windows\tanara.iss
 ;
-;   DistDir  — a windeployqt-vel összerakott, önálló mappa (tanara.exe, tanara-cli.exe,
-;              tanara-watcher.exe, Qt + QML pluginek, MinGW runtime, onnxruntime.dll,
+;   DistDir  - the self-contained folder assembled with windeployqt (tanara.exe, tanara-cli.exe,
+;              tanara-watcher.exe, Qt + QML plugins, MinGW runtime, onnxruntime.dll,
 ;              ffmpeg.exe + ffprobe.exe (LGPL-only build), models\campplus_sv_zh_en_16k.onnx,
-;              OLVASSEL.md, LICENSE, THIRD_PARTY_NOTICES.md, licenses\ — lásd README.md).
-;   BuildDir — a CMake build-mappa: innen jön a tanara-version.iss (a verzió a
-;              CMakeLists.txt project(VERSION)-jéből). /DAppVersion=x.y.z felülírja.
+;              OLVASSEL.md, LICENSE, THIRD_PARTY_NOTICES.md, licenses\; see README.md).
+;   BuildDir - the CMake build folder: tanara-version.iss comes from there (the version from
+;              project(VERSION) in CMakeLists.txt). /DAppVersion=x.y.z overrides it.
 ;
-; A felhasználói adatokat (%USERPROFILE%\.tanara, %USERPROFILE%\Tanara) az eltávolító
-; NEM törli — a felvételek és az átiratok a felhasználóé.
+; The uninstaller does NOT delete user data (%USERPROFILE%\.tanara, %USERPROFILE%\Tanara);
+; the recordings and transcripts belong to the user.
 
 #ifndef DistDir
   #error "Add meg a DistDir-t: iscc /DDistDir=<dist mappa> ..."
@@ -37,7 +37,7 @@
 #define WatcherExe "tanara-watcher.exe"
 
 [Setup]
-; Az AppId azonosítja a telepítést frissítéskor / eltávolításkor — NE változtasd meg.
+; The AppId identifies the installation on update / uninstall; DO NOT change it.
 AppId={{9F52DCF5-068F-45BA-9596-DDA2224D616E}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -55,12 +55,12 @@ OutputBaseFilename=Tanara-{#AppVersion}-win64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-; A Tanara (MIT) licenc az első oldalon; a harmadik felek licencei a {app}\licenses mappában
-; és a THIRD_PARTY_NOTICES.md-ben vannak (a DistDir-ből másolódnak).
+; The Tanara (MIT) license is on the first page; third-party licenses are in {app}\licenses
+; and in THIRD_PARTY_NOTICES.md (copied from DistDir).
 LicenseFile={#DistDir}\LICENSE
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName} {#AppVersion}
-; A futó tanara.exe / tanara-watcher.exe bezárása frissítés és eltávolítás előtt.
+; Closes the running tanara.exe / tanara-watcher.exe before an update and before uninstall.
 CloseApplications=yes
 RestartApplications=no
 
@@ -83,8 +83,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "watcherautostart"; Description: "{cm:WatcherAutostart}"; Flags: unchecked
 
 [Files]
-; A teljes, windeployqt-vel összerakott mappa (almappákkal: platforms, qml, models, licenses …).
-; Ebben van a LICENSE, a THIRD_PARTY_NOTICES.md és a licenses\ is — ezek nélkül ne készíts csomagot.
+; The whole folder assembled with windeployqt (with subfolders: platforms, qml, models, licenses ...).
+; It includes LICENSE, THIRD_PARTY_NOTICES.md and licenses\; do not build a package without them.
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -94,8 +94,8 @@ Name: "{group}\{cm:ReadmeName}"; Filename: "{app}\OLVASSEL.md"
 Name: "{group}\{cm:NoticesName}"; Filename: "{app}\THIRD_PARTY_NOTICES.md"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
-; Indítás bejelentkezéskor: parancsikon a felhasználó Startup mappájában (az app saját
-; autostart-kapcsolója Windowson még nem kezel bejegyzést).
+; Start at login: a shortcut in the user's Startup folder (the app's own autostart switch
+; does not handle an entry on Windows yet).
 Name: "{userstartup}\{cm:WatcherName}"; Filename: "{app}\{#WatcherExe}"; Tasks: watcherautostart
 
 [Run]

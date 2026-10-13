@@ -1,5 +1,5 @@
-// tanara-watcher — pehelysúlyú háttér meeting-figyelő (rendszertálca).
-// Nincs ablak: a tálca-ikonon él, és a `tanara --record` / `tanara` folyamatokat indítja.
+// tanara-watcher: lightweight background meeting watcher (system tray).
+// No window: lives in the tray icon and launches the `tanara --record` / `tanara` processes.
 #include "TrayWatcher.h"
 
 #include "tanara/Localization.h"
@@ -24,11 +24,11 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Tanara Watcher"));
     QApplication::setOrganizationName(QStringLiteral("RemedIT"));
-    // Nincs fő ablak → a tálca-ikon önmagában tartja életben a folyamatot.
+    // No main window, so the tray icon alone keeps the process alive.
     QApplication::setQuitOnLastWindowClosed(false);
 
-    // Fejlesztői QA: a három tálca-ikon PNG-be (sötét és világos panelre), majd kilépés.
-    //   QT_QPA_PLATFORM=offscreen tanara-watcher --render-icons <mappa>
+    // Developer QA: renders the three tray icons to PNG (for dark and light panels), then exits.
+    //   QT_QPA_PLATFORM=offscreen tanara-watcher --render-icons <folder>
     if (const int i = rawArgs.indexOf(QStringLiteral("--render-icons")); i >= 0 && i + 1 < rawArgs.size()) {
         const QDir out(rawArgs.at(i + 1));
         out.mkpath(QStringLiteral("."));
@@ -43,19 +43,19 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    // Egy-példány: PID-alapú lock (a QLockFile a stale/halott PID-et maga kezeli).
-    // A lock a metaadat-mappában él (~/.tanara, ill. TANARA_HOME mellett a sandboxban), így
-    // egy sandbox-figyelő nem blokkolja a felhasználó valódi figyelőjét, és fordítva.
+    // Single instance: PID-based lock (QLockFile handles a stale/dead PID itself).
+    // The lock lives in the metadata folder (~/.tanara, or with TANARA_HOME in the sandbox), so a
+    // sandbox watcher does not block the user's real watcher, and vice versa.
     const QString metaDir = tanara::paths::defaultMetadataDir();
     QDir().mkpath(metaDir);
     QLockFile instanceLock(tanara::watcherLockPath());
-    instanceLock.setStaleLockTime(0);   // csak PID-alapú stale-detektálás
+    instanceLock.setStaleLockTime(0);   // PID-based stale detection only
     if (!instanceLock.tryLock(100)) {
         qCInfo(tanara::lcApp).noquote() << "A tanara-watcher már fut — kilépés.";
         return 0;
     }
 
-    // UI-nyelv (settings.json uiLanguage) — a tray-menü/notification szövegek előtt.
+    // UI language (settings.json uiLanguage), before the tray menu / notification strings.
     tanara::installAppTranslator();
 
     tanara::registerBuiltinDetectors();

@@ -1,10 +1,8 @@
-//
-// Tanara — RecordingSession hamis capture-motorral (hangeszköz nélkül): a felvétel közben
-// bekapcsolt / ki-be kapcsolt sáv a megnyitás idejét kapja eltolásnak (startOffsetMs), a fájlja
-// csak a ténylegesen felvett szakasz (nincs vezető csend), és a néma loopback réseit — ahol a
-// pótlás be van kapcsolva — a felvevő csenddel tölti ki. Az encoder a valódi ffmpeg (nélküle
-// QSKIP). A „tracktiming” tiszta függvényei is itt.
-//
+// Tanara: RecordingSession with a fake capture engine (no audio device): a track switched on /
+// off and on during a recording gets its opening time as the offset (startOffsetMs), its file is
+// only the actually recorded segment (no leading silence), and the gaps of a silent loopback,
+// where gap filling is on, are filled with silence by the recorder. The encoder is the real
+// ffmpeg (without it QSKIP). The pure functions of "tracktiming" are here too.
 #include <QtTest>
 #include <QProcess>
 #include <QSignalSpy>
@@ -67,22 +65,22 @@ private slots:
 void RecordingSessionTest::fileRangeMapping()
 {
     using tracktiming::meetingToFileRange;
-    // Együtt induló sáv: változatlan.
+    // A track starting together: unchanged.
     auto r = meetingToFileRange(0, 1000, 4000);
     QVERIFY(r.valid());
     QCOMPARE(r.startMs, qint64(1000)); QCOMPARE(r.endMs, qint64(4000));
-    // 57,2 s-mal később induló sáv: a megbeszélés 60–63 s-a a fájl 2,8–5,8 s-a.
+    // A track starting 57.2 s later: the meeting's 60-63 s is the file's 2.8-5.8 s.
     r = meetingToFileRange(57200, 60000, 63000);
     QCOMPARE(r.startMs, qint64(2800)); QCOMPARE(r.endMs, qint64(5800));
-    // A sáv kezdete előtti tartomány: üres; az átlógó levágódik.
+    // A range before the track's start: empty; an overhang is clipped.
     QVERIFY(!meetingToFileRange(57200, 10000, 13000).valid());
     r = meetingToFileRange(57200, 56000, 59000);
     QCOMPARE(r.startMs, qint64(0)); QCOMPARE(r.endMs, qint64(1800));
-    // A fájl vége után: üres; az átlógó levágódik.
+    // After the file's end: empty; an overhang is clipped.
     QVERIFY(!meetingToFileRange(1000, 20000, 23000, 10000).valid());
     r = meetingToFileRange(1000, 10000, 13000, 10000);
     QCOMPARE(r.startMs, qint64(9000)); QCOMPARE(r.endMs, qint64(10000));
-    // Üres / fordított kérés.
+    // Empty / reversed request.
     QVERIFY(!meetingToFileRange(0, 5000, 5000).valid());
     Track t; t.startOffsetMs = 2000;
     QCOMPARE(tracktiming::fileRange(t, 2500, 3000).startMs, qint64(500));
@@ -94,14 +92,14 @@ void RecordingSessionTest::framesOwedHelper()
     QCOMPARE(expectedFrames(1000, 48000), qint64(48000));
     QCOMPARE(expectedFrames(-5, 48000), qint64(0));
     QCOMPARE(framesOwed(48000, 48000, 960), qint64(0));
-    QCOMPARE(framesOwed(48000, 47500, 960), qint64(0));        // a tűrésen belül: semmi
-    QCOMPARE(framesOwed(48000, 40000, 960), qint64(8000));     // hiány: mind pótolandó
-    QCOMPARE(framesOwed(48000, 50000, 960), qint64(0));        // előre futó eszköz: sosem negatív
-    // Pótlás csak akkor, ha az eszköz kGapIdleMs óta hallgat.
+    QCOMPARE(framesOwed(48000, 47500, 960), qint64(0));        // within the tolerance: nothing
+    QCOMPARE(framesOwed(48000, 40000, 960), qint64(8000));     // gap: all to be filled
+    QCOMPARE(framesOwed(48000, 50000, 960), qint64(0));        // a device running ahead: never negative
+    // Filling only if the device has been silent since kGapIdleMs.
     QCOMPARE(silenceToInsert(2000, kGapIdleMs - 1, 0, 48000), qint64(0));
     QCOMPARE(silenceToInsert(2000, kGapIdleMs, 0, 48000), qint64(96000));
-    QCOMPARE(silenceToInsert(2000, 500, 96000 - 100, 48000), qint64(0));   // 2 ms hiány < tűrés
-    // A loopback minden platformon pótol (a megszakadó monitor-folyam miatt), a mikrofon nem.
+    QCOMPARE(silenceToInsert(2000, 500, 96000 - 100, 48000), qint64(0));   // a 2 ms gap < tolerance
+    // Loopback fills on every platform (because of the interrupted monitor stream), the microphone does not.
     QVERIFY(fillsCaptureGaps(TrackKind::Loopback));
     QVERIFY(!fillsCaptureGaps(TrackKind::Mic));
 }
@@ -135,8 +133,8 @@ void RecordingSessionTest::lateAndToggledTracksGetOffsets()
     QVERIFY(!rec.trackOpen(1));
     QTest::qWait(500);
     const qint64 addAt2 = clock.elapsed();
-    QVERIFY(rec.addDevice(sys));                 // t ≈ 2 s: második szakasz
-    QVERIFY(!rec.addDevice(sys));                // nyitott sávon már van
+    QVERIFY(rec.addDevice(sys));                 // t about 2 s: the second segment
+    QVERIFY(!rec.addDevice(sys));                // the open track already has it
     QTest::qWait(500);
     rec.stop();
     QVERIFY(finished.wait(20000));
@@ -155,14 +153,14 @@ void RecordingSessionTest::lateAndToggledTracksGetOffsets()
     QCOMPARE(s1.deviceName, s2.deviceName);
     QVERIFY(m.durationMs >= 2400);
 
-    // A fájlok a ténylegesen felvett szakaszt tartalmazzák: nincs vezető csend.
+    // The files contain the actually recorded segment: no leading silence.
     const qint64 dMic = probeMs(QDir(m.folder).filePath(mic.file));
     const qint64 d1 = probeMs(QDir(m.folder).filePath(s1.file));
     const qint64 d2 = probeMs(QDir(m.folder).filePath(s2.file));
     QVERIFY2(qAbs(dMic - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMic).arg(m.durationMs)));
-    QVERIFY2(d1 > 300 && d1 < 800, qPrintable(QString::number(d1)));      // ~0,5 s, nem ~1,5 s
+    QVERIFY2(d1 > 300 && d1 < 800, qPrintable(QString::number(d1)));      // about 0.5 s, not about 1.5 s
     QVERIFY2(d2 > 300 && d2 < 800, qPrintable(QString::number(d2)));
-    // Eltolás + hossz a megbeszélés végén belül marad.
+    // Offset + length stay within the end of the meeting.
     QVERIFY(s2.startOffsetMs + d2 <= m.durationMs + 250);
 }
 
@@ -173,7 +171,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     FakeEngine* engine = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
     RecordingSession rec(dir.path(), QStringLiteral("Néma loopback"));
-    rec.setFillCaptureGaps(true);   // kifejezetten be (az alap is ez loopbacknál)
+    rec.setFillCaptureGaps(true);   // explicitly on (it is the default for loopback anyway)
     rec.setEngineFactory([&engine, &alive] {
         auto e = std::make_unique<FakeEngine>();
         e->silentNames << QStringLiteral("Speakers (loopback)");
@@ -190,7 +188,7 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
                dev(QStringLiteral("Speakers (loopback)"), TrackKind::Loopback)});
     feeder.start();
     QTest::qWait(700);
-    // Félúton „megszólal” a loopback egy rövid időre, aztán megint néma.
+    // Halfway the loopback "speaks" for a short time, then is silent again.
     engine->silentNames.clear();
     QTest::qWait(300);
     engine->silentNames << QStringLiteral("Speakers (loopback)");
@@ -203,12 +201,12 @@ void RecordingSessionTest::silentLoopbackGapsAreFilled()
     QCOMPARE(m.tracks.size(), 2);
     const qint64 dMic = probeMs(QDir(m.folder).filePath(m.tracks.at(0).file));
     const qint64 dLb = probeMs(QDir(m.folder).filePath(m.tracks.at(1).file));
-    // A néma szakaszok csenddel pótolva: a loopback fájlja ugyanolyan hosszú, mint a mic-é.
+    // The silent stretches are filled with silence: the loopback's file is as long as the mic's.
     QVERIFY2(qAbs(dLb - dMic) < 200, qPrintable(QStringLiteral("loopback %1 ms, mic %2 ms").arg(dLb).arg(dMic)));
 }
 
-// Felvétel közben kihúzott eszköz: csak az ő sávja zárul le (a fájlja a lezárásig tart), a
-// többi sáv megszakítás nélkül megy tovább, és egyik sáv eltolása sem változik.
+// A device unplugged during a recording: only its track closes (its file lasts until the
+// close), the other tracks go on without interruption, and no track's offset changes.
 void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
 {
     if (!haveFfmpeg()) QSKIP("ffmpeg/ffprobe nincs a PATH-on");
@@ -232,9 +230,9 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     feeder.start();
 
     QTest::qWait(800);
-    engine->vanish(headset);                     // kihúzták: nem jön több adat
+    engine->vanish(headset);                     // unplugged: no more data comes
     QTest::qWait(300);
-    rec.closeTrack(headset);                     // a hot-plug figyelő zárja le
+    rec.closeTrack(headset);                     // the hot-plug watcher closes it
     QCOMPARE(closed.size(), 1);
     QCOMPARE(closed.at(0).at(0).toInt(), 1);
     QCOMPARE(closed.at(0).at(1).toString(), headset);
@@ -242,13 +240,13 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     QVERIFY(!rec.trackOpen(1));
     QVERIFY(rec.trackOpen(0));
     QVERIFY(rec.trackOpen(2));
-    rec.closeTrack(headset);                     // ismételt jelzés: nincs második lezárás
+    rec.closeTrack(headset);                     // repeated signal: no second close
     QCOMPARE(closed.size(), 1);
 
     elapsed.clear();
     QTest::qWait(900);
-    QCOMPARE(rec.state(), RecordingState::Recording);   // a felvétel megy tovább
-    QVERIFY(elapsed.size() > 5);                        // a drain-szál dolgozik
+    QCOMPARE(rec.state(), RecordingState::Recording);   // the recording goes on
+    QVERIFY(elapsed.size() > 5);                        // the drain thread is working
     rec.stop();
     QVERIFY(finished.wait(20000));
     feeder.stop();
@@ -261,7 +259,7 @@ void RecordingSessionTest::unpluggedDeviceClosesOnlyItsTrack()
     const qint64 dMon = probeMs(QDir(m.folder).filePath(m.tracks.at(2).file));
     QVERIFY2(qAbs(dMic - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMic).arg(m.durationMs)));
     QVERIFY2(qAbs(dMon - m.durationMs) < 250, qPrintable(QStringLiteral("%1 vs %2").arg(dMon).arg(m.durationMs)));
-    // A kihúzott eszköz sávja a kihúzásig tartó hangot hordozza, lezárt, olvasható fájlként.
+    // The unplugged device's track carries the audio up to the unplug, as a closed, readable file.
     QVERIFY2(dHs > 600 && dHs < 1100, qPrintable(QString::number(dHs)));
 }
 

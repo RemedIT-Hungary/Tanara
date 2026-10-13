@@ -1,15 +1,13 @@
+// Optional smoke test on REAL sample data (on a disposable sandbox copy); SKIPPED by default.
 //
-// Opcionális füstteszt VALÓDI mintaadaton (eldobható sandbox-másolaton) — alapból KIMARAD.
+// Run:  TANARA_SANDBOX_HOME=<sandbox>/home ./build/tests/test_sandbox_smoke
+// (<sandbox>/home is a complete metadata folder: settings.json with audioDir, people.json,
+//  voiceprints.json, models/ ...). The test sets TANARA_HOME to it, so the real ~/.tanara is
+// untouched. It starts NO paid call (neither transcription nor summary): only local
+// operations: library queries, track names, waveform (ffmpeg), summary parsing, voice-based
+// identification (a local ONNX model).
 //
-// Futtatás:  TANARA_SANDBOX_HOME=<sandbox>/home ./build/tests/test_sandbox_smoke
-// (a <sandbox>/home egy teljes metaadat-mappa: settings.json az audioDir-rel, people.json,
-//  voiceprints.json, models/ …). A teszt a TANARA_HOME-ot erre állítja, így a valódi
-// ~/.tanara-hoz nem nyúl. Fizetős hívást NEM indít (se átírás, se összefoglaló): csak helyi
-// műveletek — könyvtár-lekérdezések, sáv-nevek, hullámforma (ffmpeg), összefoglaló-értelmezés,
-// hang-alapú azonosítás (helyi ONNX-modell).
-//
-// A kimenetben SZÁNDÉKOSAN nincs átirat-szöveg: csak darabszámok és időmérések.
-//
+// The output INTENTIONALLY has no transcript text: only counts and timings.
 #include <QtTest>
 #include <QSignalSpy>
 
@@ -48,11 +46,11 @@ void SandboxSmoke::initTestCase()
     qputenv("TANARA_CLOUD", "off");
     m_app = std::make_unique<AppController>();
     QCOMPARE(m_app->settings()->settings().metadataDir, paths::homeOverride());
-    // Biztonsági háló: a felvételek mappája nem lehet a valódi ~/Tanara.
+    // Safety net: the recordings folder must not be the real ~/Tanara.
     const QString audio = m_app->store()->audioDir();
     QVERIFY2(!audio.startsWith(QDir(QDir::homePath()).filePath("Tanara")),
              "a sandbox settings.json a VALÓDI ~/Tanara mappára mutat — megszakítva");
-    m_app->store()->rebuildIndexFromDisk();   // friss sandbox: az index üres
+    m_app->store()->rebuildIndexFromDisk();   // fresh sandbox: the index is empty
     m_app->library()->invalidate();
 }
 
@@ -78,10 +76,10 @@ void SandboxSmoke::libraryListSearchAndPending()
         sections[MeetingLibrary::sectionKey(e.section)]++;
     }
     for (int i = 1; i < all.count(); ++i)
-        QVERIFY(all.entries[i - 1].startedAt >= all.entries[i].startedAt);   // legújabb elöl
+        QVERIFY(all.entries[i - 1].startedAt >= all.entries[i].startedAt);   // newest first
 
-    // Ékezet nélküli, kisbetűs keresés egy gyakori szóra; a találatnál a kiemelt rész a
-    // hajtogatva egyező eredeti szöveg.
+    // Accent-free, lowercase search for a common word; at the hit the highlighted part is the
+    // original text that matches after folding.
     LibraryQuery q;
     q.text = QStringLiteral("koszonom");
     const LibraryResult cold = lib->query(q);
@@ -127,7 +125,7 @@ void SandboxSmoke::tracksAndWaveforms()
     qInfo("sávok: %d, eldobott: %d, hiányzó fájl: %d", total, dropped, missing);
     QCOMPARE(missing, 0);
 
-    // Hullámforma az első meeting összes sávjára (+ keverék): aszinkron, majd gyorsítótárból.
+    // Waveform for all tracks of the first meeting (+ the mix): asynchronous, then from the cache.
     const QString id = all.entries.last().id;
     const QVector<TrackView> views = m_app->tracks()->tracks(id);
     int expected = views.size() + (m_app->store()->load(id).mixdownFile.isEmpty() ? 0 : 1);
@@ -146,7 +144,7 @@ void SandboxSmoke::tracksAndWaveforms()
         QVERIFY(p.durationMs > 0);
     }
     for (const TrackView& v : m_app->tracks()->tracks(id))
-        QVERIFY(v.durationMs > 0);                       // a hossz a cache-ből már megvan
+        QVERIFY(v.durationMs > 0);                       // the length is already there from the cache
     ready.clear();
     m_app->requestWaveforms(id);
     QTRY_COMPARE_WITH_TIMEOUT(ready.count(), expected, 5000);
@@ -178,7 +176,7 @@ void SandboxSmoke::summariesAndTopics()
         int done = 0;
         for (const TopicStatus& s : sts) if (s.state == TopicState::Done) ++done;
         QVERIFY(done <= m_app->topicAnalyses(e.id).size());
-        // Átrendezés (megfordítás) perzisztál, majd vissza az eredetire.
+        // Reordering (reversing) persists, then back to the original.
         QVector<SummaryTopic> rev = topics;
         std::reverse(rev.begin(), rev.end());
         m_app->setMeetingTopics(e.id, rev);
@@ -193,8 +191,8 @@ void SandboxSmoke::summariesAndTopics()
 
 void SandboxSmoke::identifyAsync()
 {
-    // Egy átirattal rendelkező meeting: a nevek törlése után a háttérszálas azonosítás újra
-    // megtalálja őket a lenyomat-DB-ből (helyi modell; ha nincs modell, kimarad).
+    // A meeting with a transcript: after deleting the names the background identification finds
+    // them again from the voiceprint DB (local model; skipped if there is no model).
     QString id;
     for (const LibraryEntry& e : m_app->library()->query().entries)
         if (e.hasTranscript && !m_app->store()->load(e.id).speakerMap.isEmpty()) id = e.id;

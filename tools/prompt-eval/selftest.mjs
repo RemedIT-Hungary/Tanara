@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// A forrás-jelölők (`[t=mm:ss]`) értelmezésének és a jelölős promptoknak az önellenőrzése —
-// LLM és LM Studio NÉLKÜL (kézzel írt, hamis modell-válaszokkal). Használat: node selftest.mjs
+// Self-check of the source-marker (`[t=mm:ss]`) parsing and the marker prompts, WITHOUT an LLM
+// or LM Studio (with hand-written fake model replies). Usage: node selftest.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,7 +47,7 @@ t('lefedettség hamis válaszon (tűrés ±5 s)', () => {
     actionItems: [{ text: 'Ajánlat küldése [t=05:02]', owner: 'Béla', due: 'péntek' }],
   };
   assert.deepEqual(sourceStats(parsed, transcript), { items: 6, marked: 5, resolved: 4, coverage: 0.67 });
-  // A nyitott kérdések is állítások (v4).
+  // Open questions count as claims too.
   assert.deepEqual(sourceStats({ ...parsed, openQuestions: ['Mennyi az ár? [t=01:06]', 'Kérdés jelölő nélkül'] }, transcript),
     { items: 8, marked: 6, resolved: 5, coverage: 0.63 });
   assert.equal(sourceStats(null, transcript), null);
@@ -62,9 +62,9 @@ t('a jelölős promptok kérik a jelölőt', () => {
 t('a beépített promptok (PromptLibrary.cpp) is kérik a jelölőt', () => {
   const cpp = fs.readFileSync(path.join(HERE, '..', '..', 'core', 'src', 'PromptLibrary.cpp'), 'utf8');
   assert.ok(cpp.includes('const char* const kSourceMarkers = R"PROMPT(SOURCE MARKERS'));
-  assert.equal((cpp.match(/%SOURCE_MARKERS%/g) || []).length, 3);   // merge + single + a csere
+  assert.equal((cpp.match(/%SOURCE_MARKERS%/g) || []).length, 3);   // merge + single + the replacement
 });
-// ---- memó (TOPICS): bevezető, pontok, alszakaszok — hamis jegyzet-válasszal ----
+// ---- memo (TOPICS): intro, points, subsections, with a fake notes reply ----
 const notes = [
   'TOPICS',
   '### [00:00-02:30] Árazás',

@@ -1,9 +1,8 @@
-//
-// tanara-cli voice-models / voice-eval: a parancsok a valódi CLI-n (QProcess), IZOLÁLT
-// TANARA_HOME-mal. Hálózatot nem használ (a fetch csak a „már létezik” ágon fut). A voice-eval
-// végig-próbája a valódi CAM++ modellel megy (csak olvasva, a homokozóba linkelve) — ha nincs meg,
-// vagy nincs ffmpeg, QSKIP. A voice-eval nem írhat a meeting-mappába: ezt is ellenőrizzük.
-//
+// tanara-cli voice-models / voice-eval: the commands on the real CLI (QProcess), with an
+// ISOLATED TANARA_HOME. No network (fetch runs only on the "already exists" branch). The
+// voice-eval end-to-end run uses the real CAM++ model (read-only, linked into the sandbox);
+// if it is missing, or there is no ffmpeg, QSKIP. voice-eval must not write into the meeting
+// folder: that is checked too.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QJsonArray>
@@ -26,7 +25,7 @@ QJsonObject readJson(const QString& path)
     return QJsonDocument::fromJson(f.readAll()).object();
 }
 
-// A mappa pillanatképe: név → méret + módosítási idő.
+// A folder snapshot: name to size + modification time.
 QMap<QString, QString> snapshot(const QString& dir)
 {
     QMap<QString, QString> m;
@@ -59,7 +58,7 @@ private slots:
             QVERIFY(r.out.contains(s.id));
             QVERIFY(r.out.contains(s.license));
         }
-        // Alapból csak a wespeaker be (és az ajánlott); fájl sehol (a homokozóban nincs modell).
+        // By default only wespeaker is on (and the recommended one); no file anywhere (there is no model in the sandbox).
         const QStringList lines = r.out.split('\n');
         for (const QString& l : lines) {
             if (l.startsWith("wespeaker-resnet34-lm ")) {
@@ -86,7 +85,7 @@ private slots:
         QVERIFY(r.err.contains("Unknown voice model"));
         QCOMPARE(settingsModels(), QStringList({"campplus"}));
 
-        // A meglévő fájl helye a listában.
+        // The existing file's place in the list.
         touch(modelFile("wespeaker-resnet34-lm"));
         r = cli({"voice-models", "list"});
         QVERIFY(r.out.contains(QDir::toNativeSeparators(modelFile("wespeaker-resnet34-lm"))));
@@ -100,7 +99,7 @@ private slots:
         const qint64 size = QFileInfo(target).size();
         const Run r = cli({"voice-models", "fetch", "eres2netv2"});
         QCOMPARE(r.code, 1);
-        QVERIFY(r.out.contains("Apache-2.0"));                    // a licenc a letöltés előtt
+        QVERIFY(r.out.contains("Apache-2.0"));                    // the license before the download
         QVERIFY(r.out.contains("modelscope.cn"));
         QVERIFY(r.err.contains("--force"));
         QCOMPARE(QFileInfo(target).size(), size);
@@ -108,7 +107,7 @@ private slots:
         QCOMPARE(cli({"voice-models", "fetch"}).code, 2);
     }
 
-    // G4 (B1): verify / delete a homokozóban (a „touch” fájl 1 bájt → méret-eltérés).
+    // verify / delete in the sandbox (the "touch" file is 1 byte, so a size mismatch).
     void verifyAndDelete()
     {
         const QString id = QStringLiteral("eres2netv2");
@@ -133,7 +132,7 @@ private slots:
     void voiceEvalArgumentErrors()
     {
         QCOMPARE(cli({"voice-eval"}).code, 2);
-        // Nincs modellfájl a homokozóban.
+        // There is no model file in the sandbox.
         Run r = cli({"voice-eval", m_home->path()});
         QCOMPARE(r.code, 1);
         QVERIFY(r.err.contains("Model file missing"));
@@ -146,11 +145,11 @@ private slots:
         if (!QFileInfo::exists(real)) QSKIP("a CAM++ modell nincs meg (~/.tanara/models)");
         if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) QSKIP("nincs ffmpeg");
         QDir().mkpath(QFileInfo(modelFile("campplus")).absolutePath());
-        QVERIFY(QFile::link(real, modelFile("campplus")));   // csak olvasva használjuk
+        QVERIFY(QFile::link(real, modelFile("campplus")));   // used read-only
         QVERIFY(cli({"voice-models", "enable", "campplus"}).code == 0);
         QVERIFY(cli({"voice-models", "disable", "wespeaker-resnet34-lm"}).code == 0);
 
-        // Kitalált megbeszélés: A (200 Hz) és B (700+1300 Hz) 4 mp-enként váltakozik.
+        // A made-up meeting: A (200 Hz) and B (700+1300 Hz) alternate every 4 s.
         QTemporaryDir meetingDir;
         const QString folder = meetingDir.path();
         QProcess ff;
@@ -177,19 +176,19 @@ private slots:
         const QMap<QString, QString> before = snapshot(folder);
         const Run r = cli({"voice-eval", folder, "--json", "--min-ms", "1500"});
         QVERIFY2(r.code == 0, qPrintable(r.err));
-        QCOMPARE(snapshot(folder), before);                      // semmit nem írt a mappába
+        QCOMPARE(snapshot(folder), before);                      // wrote nothing into the folder
 
         const QJsonObject j = QJsonDocument::fromJson(r.out.toUtf8()).object();
         QCOMPARE(j.value("models").toArray(), QJsonArray({"campplus"}));
         const QJsonArray spaces = j.value("spaces").toArray();
-        QCOMPARE(spaces.size(), 1);                              // egy modell: nincs fúziós tér
+        QCOMPARE(spaces.size(), 1);                              // one model: no fusion space
         const QJsonObject sp = spaces.first().toObject();
         QCOMPARE(sp.value("linesCovered").toInt(), 6);
         QCOMPARE(j.value("speakers").toArray().size(), 2);
         QCOMPARE(sp.value("coreLines").toArray(), QJsonArray({3, 3}));
         QVERIFY(sp.value("coreCosine").toArray().at(0).toArray().at(1).isDouble());
 
-        // Szöveges kimenet is.
+        // Text output too.
         const Run t = cli({"voice-eval", folder});
         QCOMPARE(t.code, 0);
         QVERIFY(t.out.contains("== campplus =="));

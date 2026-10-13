@@ -1,11 +1,11 @@
-// A felvevő nézetmodellje (tanara_qml::RecorderViewModel): a design-állapotok kitalált
-// adattal (controller nélkül), a szint-skála, az automatikus név — és a felvevő QML-oldalai
-// figyelmeztetés nélkül betöltődnek.
+// The recorder's view model (tanara_qml::RecorderViewModel): the design states with made-up
+// data (without a controller), the level scale, the automatic name, and the recorder's QML
+// pages load without a warning.
 //
-// ÉLŐ teszt (alapból kimarad): TANARA_LIVE_AUDIO_TEST=1 mellett egy ideiglenes mappába
-// (TANARA_HOME = QTemporaryDir, a felhasználó adataihoz nem nyúl) valódi, pár másodperces
-// felvételt készít a gép hangeszközeivel: szintek ≥ 20 Hz, sáv hozzáadása felvétel közben,
-// leállítás → „Elmentve” csak a lezárt sávfájlok után, nincs lekeverés-indítás.
+// LIVE test (skipped by default): with TANARA_LIVE_AUDIO_TEST=1 it makes a real recording of a
+// few seconds with the machine's audio devices in a temporary folder (TANARA_HOME =
+// QTemporaryDir, the user's data is untouched): levels >= 20 Hz, adding a track during the
+// recording, stop: "Saved" only after the track files are closed, no mixdown start.
 #include "AppContext.h"
 #include "QmlApp.h"
 #include "RecorderViewModel.h"
@@ -48,7 +48,7 @@ class TestRecorderViewModel : public QObject {
 private slots:
     void initTestCase()
     {
-        // Biztonsági háló: a teszt semmilyen úton ne érje el a felhasználó ~/.tanara mappáját.
+        // Safety net: the test must not reach the user's ~/.tanara folder in any way.
         QVERIFY(m_home.isValid());
         qputenv("TANARA_HOME", m_home.path().toUtf8());
         AppContext::instance()->setDemo(true);
@@ -91,16 +91,16 @@ private slots:
         QCOMPARE(vm.state(), QStringLiteral("recording"));
         QCOMPARE(vm.trackCount(), 3);
         QCOMPARE(vm.elapsedText(), QStringLiteral("00:12:47"));
-        QVERIFY(!role(vm, 0, "locked").toBool());         // rögzített sáv: kikapcsolható
+        QVERIFY(!role(vm, 0, "locked").toBool());         // recorded track: can be switched off
         QVERIFY(role(vm, 0, "toggleable").toBool());
-        QVERIFY(role(vm, 1, "toggleable").toBool());      // nem rögzített: bekapcsolható
+        QVERIFY(role(vm, 1, "toggleable").toBool());      // not recorded: can be switched on
         QCOMPARE(role(vm, 3, "status").toString(), QStringLiteral("silentWarn"));
 
         vm.setDemoState(QStringLiteral("R06"));
         QVERIFY(vm.askVisible());
         vm.continueRecording();
         QVERIFY(!vm.askVisible());
-        QCOMPARE(vm.state(), QStringLiteral("recording"));   // a „Folytatom” nem állít le
+        QCOMPARE(vm.state(), QStringLiteral("recording"));   // "Continue" does not stop
 
         vm.setDemoState(QStringLiteral("R09"));
         QCOMPARE(vm.state(), QStringLiteral("done"));
@@ -117,7 +117,7 @@ private slots:
         RecorderViewModel vm;
         vm.setDemoState(QStringLiteral("R01"));
         QSignalSpy counts(&vm, &RecorderViewModel::countsChanged);
-        vm.toggleDevice(1);                                // kikapcsolt mikrofon be
+        vm.toggleDevice(1);                                // a switched-off microphone on
         QCOMPARE(vm.selectedCount(), 4);
         vm.toggleDevice(1);
         QCOMPARE(vm.selectedCount(), 3);
@@ -126,11 +126,11 @@ private slots:
         vm.setTitle(QStringLiteral("  Heti státusz  "));
         QCOMPARE(vm.title(), QStringLiteral("Heti státusz"));
         QVERIFY(!vm.titleAutomatic());
-        vm.setTitle(QString());                            // üresre nem írható
+        vm.setTitle(QString());                            // cannot be set to empty
         QCOMPARE(vm.title(), QStringLiteral("Heti státusz"));
 
-        // Felvétel közben a nem rögzített eszköz bekapcsolható, a rögzített kikapcsolható (és
-        // újra be: új szakasz); egyik sem zárolt.
+        // During a recording a device that is not recorded can be switched on, a recorded one can be
+        // switched off (and on again: a new segment); neither is locked.
         vm.setDemoState(QStringLiteral("R04"));
         vm.toggleDevice(1);
         QVERIFY(role(vm, 1, "selected").toBool());
@@ -157,7 +157,7 @@ private slots:
         QVERIFY(!vm.titleAutomatic());
     }
 
-    // C06: címkék indítás előtt és felvétel közben (kitalált adattal), Ctrl+T a nézetmodellen át.
+    // Tags before the start and during a recording (made-up data), Ctrl+T through the view model.
     void tagsBeforeAndDuringRecording()
     {
         RecorderViewModel vm;
@@ -166,23 +166,23 @@ private slots:
         QCOMPARE(vm.tagIds(), QStringList{QStringLiteral("t-nordvik")});
 
         QSignalSpy tags(&vm, &RecorderViewModel::tagsChanged);
-        QVERIFY(vm.addTag(QStringLiteral("  q4 TERVEZÉS ")));              // a meglévő címke, kis/nagybetűtől függetlenül
+        QVERIFY(vm.addTag(QStringLiteral("  q4 TERVEZÉS ")));              // the existing tag, regardless of case
         QCOMPARE(vm.tagIds(), (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-q4")}));
         QCOMPARE(vm.tags().at(1).toMap().value("name").toString(), QStringLiteral("Q4 tervezés"));
-        QVERIFY(!vm.addTag(QStringLiteral("Nordvik")));                    // már rajta van
+        QVERIFY(!vm.addTag(QStringLiteral("Nordvik")));                    // already on
         QVERIFY(!vm.addTag(QStringLiteral("   ")));
-        QVERIFY(vm.addTag(QStringLiteral("Új ügyfél")));                   // új név
+        QVERIFY(vm.addTag(QStringLiteral("Új ügyfél")));                   // new name
         QCOMPARE(vm.tags().size(), 3);
         vm.removeTag(QStringLiteral("t-nordvik"));
         QCOMPARE(vm.tags().first().toMap().value("id").toString(), QStringLiteral("t-q4"));
         QCOMPARE(tags.count(), 3);
 
-        // Ctrl+T: a nézetmodell kéri a mező megnyitását.
+        // Ctrl+T: the view model asks for the field to open.
         QSignalSpy input(&vm, &RecorderViewModel::tagInputRequested);
         QVERIFY(vm.openTagInput());
         QCOMPARE(input.count(), 1);
 
-        // Felvétel közben is szerkeszthető.
+        // Editable during a recording too.
         vm.setDemoState(QStringLiteral("R03"));
         QCOMPARE(vm.state(), QStringLiteral("recording"));
         QCOMPARE(vm.tagIds(), (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-q4")}));
@@ -191,7 +191,7 @@ private slots:
         QVERIFY(vm.addTag(QStringLiteral("Partnerek")));
         QCOMPARE(vm.tags().size(), 3);
 
-        // A kész felvételnél és eszköz nélkül nincs címke-sor.
+        // A finished recording and no device: no tag row.
         vm.setDemoState(QStringLiteral("R09"));
         QVERIFY(!vm.tagsEditable());
         QVERIFY(!vm.openTagInput());
@@ -201,9 +201,9 @@ private slots:
         QVERIFY(vm.tags().isEmpty());
     }
 
-    // A core-ra kötve: a név a készletbe kerül (TagService::create), az id-k a felvétel
-    // címkéiként a controllerhez (setRecordingTags); átnevezés / törlés követve. Hang-eszközhöz
-    // nem nyúl (csak a címkék vannak bekötve).
+    // Bound to core: the name goes into the set (TagService::create), the ids go to the
+    // controller as the recording's tags (setRecordingTags); rename / delete are followed. It
+    // does not touch the audio device (only the tags are wired).
     void tagsGoToTheController()
     {
         QTemporaryDir home;
@@ -218,10 +218,10 @@ private slots:
 
             RecorderViewModel vm;
             vm.attachTagsOnly(&c);
-            QTest::qWait(10);                                   // a sorba állított App.controller-keresés lefut
-            QVERIFY(vm.tags().isEmpty());                       // nincs demó-adat
-            QVERIFY(vm.addTag(QStringLiteral("nordvik")));      // a meglévő (kulcs-egyezés)
-            QVERIFY(vm.addTag(QStringLiteral("Q4 tervezés")));  // új a készletben
+            QTest::qWait(10);                                   // the queued App.controller lookup runs
+            QVERIFY(vm.tags().isEmpty());                       // no demo data
+            QVERIFY(vm.addTag(QStringLiteral("nordvik")));      // the existing one (key match)
+            QVERIFY(vm.addTag(QStringLiteral("Q4 tervezés")));  // new in the set
             QCOMPARE(vm.tagIds().first(), existing.id);
             QVERIFY(svc->byName(QStringLiteral("Q4 tervezés")).isValid());
             QCOMPARE(c.recordingTags(), vm.tagIds());
@@ -264,7 +264,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
-    // A gazda controller nélkül is létrehozza az ablakot; a bezárás (nem fut felvétel) closed().
+    // The host creates the window even without a controller; closing (no recording running) emits closed().
     void hostCreatesWindow()
     {
         RecorderWindowHost host(nullptr);
@@ -279,9 +279,9 @@ private slots:
         QVERIFY(!host.isVisible());
     }
 
-    // A főalkalmazásban a felvevő SAJÁT QML-motort kap a főablak motorja mellett. Az `App`
-    // singleton folyamat-szintű, ezért a téma váltása mindkét motor Theme-jében megjelenik,
-    // és a második motor sem ad figyelmeztetést.
+    // In the main app the recorder gets its OWN QML engine next to the main window's engine. The
+    // `App` singleton is process-wide, so a theme change shows in both engines' Theme, and the
+    // second engine gives no warning either.
     void hostWithOwnEngineFollowsTheme()
     {
         AppContext::instance()->setThemeMode(QStringLiteral("light"));
@@ -289,7 +289,7 @@ private slots:
         auto collect = [&warnings](const QList<QQmlError>& l) {
             for (const QQmlError& e : l) warnings << e.toString();
         };
-        QQmlApplicationEngine mainEngine;            // a főablak motorja
+        QQmlApplicationEngine mainEngine;            // the main window's engine
         connect(&mainEngine, &QQmlEngine::warnings, &mainEngine, collect);
         QVERIFY(loadPage(mainEngine, QStringLiteral("RecorderPreview"), {}, QSize(420, 640)));
         QQmlComponent comp(&mainEngine);
@@ -297,7 +297,7 @@ private slots:
         std::unique_ptr<QObject> mainScope(comp.create());
         QVERIFY2(mainScope, qPrintable(comp.errorString()));
 
-        RecorderWindowHost host(nullptr);            // engine = nullptr → saját motor
+        RecorderWindowHost host(nullptr);            // engine = nullptr: its own engine
         QVERIFY(host.show());
         QQmlEngine* recEngine = qmlEngine(host.window());
         QVERIFY(recEngine && recEngine != &mainEngine);
@@ -330,17 +330,17 @@ private slots:
             QSKIP("nincs ffmpeg");
         AppContext::instance()->setDemo(false);
         QTemporaryDir home;
-        qputenv("TANARA_HOME", home.path().toUtf8());   // a user ~/.tanara-ja érintetlen
+        qputenv("TANARA_HOME", home.path().toUtf8());   // the user's ~/.tanara is untouched
         {
             tanara::AppController c;
-            c.setAutoMixdownAfterRecording(false);       // mint az önálló felvevő-folyamat
+            c.setAutoMixdownAfterRecording(false);       // like the standalone recorder process
             RecorderViewModel vm;
             vm.setController(&c);
             if (vm.deviceCount() < 2)
                 QSKIP("legalább két capture-eszköz kell");
             qInfo() << "eszközök:" << vm.deviceCount();
 
-            // 1) Szintek MINDEN eszközre felvétel előtt, ≥ 20 Hz.
+            // 1) Levels for EVERY device before recording, >= 20 Hz.
             QHash<QString, int> seen;
             auto conn = connect(&c, &tanara::AppController::deviceLevelPeak, this,
                                 [&seen](const QString& n, float, float) { ++seen[n]; });
@@ -349,33 +349,33 @@ private slots:
             for (auto it = seen.cbegin(); it != seen.cend(); ++it)
                 QVERIFY2(it.value() >= 20, qPrintable(QStringLiteral("%1: %2 Hz").arg(it.key()).arg(it.value())));
 
-            // 2) Csak az első eszközzel indulunk.
+            // 2) We start with the first device only.
             for (int i = 0; i < vm.deviceCount(); ++i)
                 if (role(vm, i, "selected").toBool() != (i == 0)) vm.toggleDevice(i);
             QCOMPARE(vm.selectedCount(), 1);
-            QCOMPARE(c.lastUsedDeviceNames().size(), 1);   // a kijelölés mentve
+            QCOMPARE(c.lastUsedDeviceNames().size(), 1);   // the selection is saved
             vm.setTitle(QStringLiteral("Élő teszt"));
             vm.start();
             QTRY_COMPARE_WITH_TIMEOUT(vm.state(), QStringLiteral("recording"), 8000);
             QCOMPARE(vm.trackCount(), 1);
             QVERIFY(role(vm, 0, "selected").toBool());
 
-            // 3) Felvétel közben is jön szint a rögzített ÉS a nem rögzített eszközökről.
+            // 3) During a recording levels come from the recorded AND the unrecorded devices.
             seen.clear();
             QTest::qWait(1500);
             QCOMPARE(seen.size(), vm.deviceCount());
             for (auto it = seen.cbegin(); it != seen.cend(); ++it)
                 QVERIFY2(it.value() >= 30, qPrintable(QStringLiteral("%1: %2 / 1,5 mp").arg(it.key()).arg(it.value())));
 
-            // 4) Második eszköz bekapcsolása felvétel közben → új sáv.
+            // 4) Switching on a second device during a recording: a new track.
             vm.toggleDevice(1);
             QTRY_COMPARE_WITH_TIMEOUT(vm.trackCount(), 2, 5000);
             QVERIFY(role(vm, 1, "selected").toBool());
             QVERIFY(vm.errorText().isEmpty());
-            vm.setTitle(QStringLiteral("Élő teszt (átnevezve)"));   // átnevezés felvétel közben
+            vm.setTitle(QStringLiteral("Élő teszt (átnevezve)"));   // rename during a recording
             QTest::qWait(1500);
 
-            // 5) Leállítás: előbb „stopping”, és „done” csak a lezárt fájlok után.
+            // 5) Stop: first "stopping", and "done" only after the files are closed.
             QSignalSpy finished(&c, &tanara::AppController::recordingFinished);
             vm.stop();
             QCOMPARE(vm.state(), QStringLiteral("stopping"));
@@ -403,15 +403,15 @@ private slots:
             }
             qInfo() << "sávok:" << m.tracks.size() << "hosszak (mp):" << durations << "meeting:" << m.durationMs;
             if (durations.size() == 2) {
-                // A később indult sáv elejét csend tölti ki → a két fájl egyforma hosszú.
+                // The start of the later-starting track is filled with silence, so the two files are equally long.
                 QVERIFY(durations[0] > 2.5);
                 QVERIFY(qAbs(durations[0] - durations[1]) < 0.4);
             }
-            // Nincs (félbehagyott) lekeverés.
+            // No (interrupted) mixdown.
             QVERIFY(!QFileInfo::exists(QDir(m.folder).filePath(QStringLiteral("mixdown.mp3"))));
             QVERIFY(!QFileInfo::exists(QDir(m.folder).filePath(QStringLiteral("mixdown.part.mp3"))));
 
-            // 6) „Új felvétel”: vissza üresjáratba, ugyanazokkal a forrásokkal.
+            // 6) "New recording": back to idle, with the same sources.
             vm.newRecording();
             QCOMPARE(vm.state(), QStringLiteral("idle"));
             QVERIFY(vm.titleAutomatic());

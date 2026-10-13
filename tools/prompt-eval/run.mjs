@@ -1,19 +1,19 @@
 #!/usr/bin/env node
-// Prompt-kiértékelő: összefoglaló-promptok × lokális modellek × átiratok, LM Studio-n át.
+// Prompt evaluator: summary prompts x local models x transcripts, through LM Studio.
 //
-// Forrás-jelölős változatok: en7 (egylépéses), chunk:map1:red3 (darabolt); az app beépített
-// promptjai (core/src/PromptLibrary.cpp, újrafordítás nélkül): @single, chunk:@notes:@merge —
-// ezeknél a memó (TOPICS: bevezető, pontok, #### Arguments / Unresolved) forrás-lefedettsége is
-// mérődik (memoSources). A jelölő-értelmező LLM nélküli önellenőrzése: node selftest.mjs.
+// Source-marker variants: en7 (single-pass), chunk:map1:red3 (chunked); the app's built-in
+// prompts (core/src/PromptLibrary.cpp, no rebuild): @single, chunk:@notes:@merge; for these
+// the source coverage of the memo (TOPICS: intro, points, #### Arguments / Unresolved) is
+// measured too (memoSources). LLM-free self-check of the marker parser: node selftest.mjs.
 //
 //   node run.mjs --models google/gemma-4-12b-qat,qwen/qwen3-coder-30b \
 //                --prompts hu0,en1,en2 --meetings S,M,L [--ctx 49152] [--max-tokens 8000]
 //                [--temp 0.2] [--lang Hungarian] [--tag r1] [--force]
 //
-// A modelleket EGYMÁS UTÁN tölti be (lms load --parallel 1), futás után kiüríti a GPU-t.
-// Bemenet: .local/data/<id>.md (átirat) + .local/data/<id>.ctx (kontextus-jegyzet, opcionális).
-// Kimenet: .local/runs/<tag>/<modell>__<prompt>__<meeting>.json  (+ összesítő a végén).
-// A .local/ privát adat (valódi átiratok) — nincs verziókövetve.
+// Loads the models ONE AFTER ANOTHER (lms load --parallel 1) and empties the GPU after the run.
+// Input: .local/data/<id>.md (transcript) + .local/data/<id>.ctx (context note, optional).
+// Output: .local/runs/<tag>/<model>__<prompt>__<meeting>.json  (+ a summary at the end).
+// .local/ is private data (real transcripts); it is not version controlled.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,12 +39,12 @@ const TEMP = Number(arg('temp', 0.2));
 const LANG = arg('lang', 'Hungarian');
 const TAG = arg('tag', 'r1');
 const FORCE = flag('force');
-// A modell „gondolkodása": none = kikapcsolva (reasoning_effort: "none"), default = a modell alapja.
+// The model's "thinking": none = off (reasoning_effort: "none"), default = the model's own setting.
 const REASONING = arg('reasoning', 'none');
-const PAUSE_MS = Number(arg('pause', 8)) * 1000;   // szünet a futások között (GPU kímélése)
-const MAX_RETRY = 0;                               // NINCS újrapróbálás: egy modell-összeomlás = GPU-reset
-// A modell GPU-ra tett hányada (lms load --gpu). Üres = az LM Studio dönt (ez tele tudja tölteni
-// a kártyát, és akkor az asztal éhezik) — nagy modellnél adj meg pl. 0.8-at.
+const PAUSE_MS = Number(arg('pause', 8)) * 1000;   // pause between runs (spares the GPU)
+const MAX_RETRY = 0;                               // NO retry: a model crash = a GPU reset
+// The fraction of the model put on the GPU (lms load --gpu). Empty = LM Studio decides (it can
+// fill the card completely, starving the desktop); for a big model give e.g. 0.8.
 const GPU_RATIO = arg('gpu-ratio', '');
 const DATA = path.join(HERE, '.local', 'data');
 const OUT = path.join(HERE, '.local', 'runs', TAG);
@@ -59,8 +59,8 @@ const sh = (cmd, args, opts = {}) => {
 };
 const safe = (s) => s.replace(/[^a-zA-Z0-9._-]+/g, '_');
 
-// A felhasználói üzenet ugyanúgy épül, mint az appban (SummaryService::buildUserPrompt);
-// az angol promptokhoz angol címkével.
+// The user message is built the same way as in the app (SummaryService::buildUserPrompt);
+// with an English label for the English prompts.
 function userPrompt(meeting, english) {
   const transcript = fs.readFileSync(path.join(DATA, meeting + '.md'), 'utf8').trim();
   const ctxFile = path.join(DATA, meeting + '.ctx');
@@ -70,7 +70,7 @@ function userPrompt(meeting, english) {
   return out + '----\n' + transcript;
 }
 
-// Megengedő JSON-kinyerés, mint az appban (kódkerítés le, első { … utolsó }).
+// Lenient JSON extraction, as in the app (strip the code fence, first { ... last }).
 function extractJson(raw) {
   let s = raw.trim();
   if (s.startsWith('```')) {
@@ -128,8 +128,8 @@ async function chat(model, system, user, maxTokens = MAX_TOKENS) {
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
     body: JSON.stringify({
       model, temperature: TEMP, max_tokens: maxTokens, stream: false,
-      // A gondolkodás kikapcsolása modellcsaládonként más: a Gemma a reasoning_effort: "none"-t
-      // érti; a Qwen 3.x-nél csak az üres <think> blokkal előtöltött asszisztens-üzenet hat.
+      // Turning thinking off differs by model family: Gemma understands reasoning_effort: "none";
+      // for Qwen 3.x only an assistant message prefilled with an empty <think> block has an effect.
       ...(REASONING === 'default' || /qwen/i.test(model) ? {} : { reasoning_effort: REASONING }),
       messages: [{ role: 'system', content: system }, { role: 'user', content: user },
         ...(REASONING === 'none' && /qwen/i.test(model) ? [{ role: 'assistant', content: '<think>\n\n</think>\n\n' }] : [])],
@@ -148,8 +148,8 @@ async function chat(model, system, user, maxTokens = MAX_TOKENS) {
   };
 }
 
-// ---- Darabolt futás: az átiratot ~N perces részekre vágjuk, részenként jegyzet (map), majd a
-// jegyzetekből végső összefoglaló (reduce). Prompt-azonosító: "chunk:<map>:<reduce>[:perc]".
+// ---- Chunked run: the transcript is cut into ~N-minute parts, notes per part (map), then a
+// final summary from the notes (reduce). Prompt id: "chunk:<map>:<reduce>[:minutes]".
 const CHUNK_MIN_DEFAULT = Number(arg('chunk-min', 15));
 function splitTranscript(text, minutes) {
   const paras = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -162,7 +162,7 @@ function splitTranscript(text, minutes) {
     cur.push(p);
   }
   if (cur.length) chunks.push(cur.join('\n\n'));
-  // egy nagyon rövid záró darabot az előzőhöz csapunk
+  // a very short final chunk is merged into the previous one
   if (chunks.length > 1 && chunks[chunks.length - 1].length < 1500) { const last = chunks.pop(); chunks[chunks.length - 1] += '\n\n' + last; }
   return chunks;
 }
@@ -193,13 +193,13 @@ async function chatChunked(model, spec, meeting, remind = false) {
   return { ...agg, httpStatus: r.httpStatus, error: r.error, finish: r.finish, text: r.text, chunks: chunks.length };
 }
 
-// Egy prompt szövege: "@<id>" = az app beépített promptja, különben prompts/<id>.md.
+// A prompt's text: "@<id>" = the app's built-in prompt, otherwise prompts/<id>.md.
 function promptText(id, lang) {
   if (id.startsWith('@')) return builtinPrompt(id.slice(1), lang).trim();
   return fs.readFileSync(path.join(HERE, 'prompts', id + '.md'), 'utf8').trim().replaceAll('{{NYELV}}', lang);
 }
 
-// A memó-jegyzet a kimenetből: egylépésesnél a SUMMARY előtti rész, daraboltnál a részjegyzetek.
+// The memo note from the output: for single-pass the part before SUMMARY, for chunked the part notes.
 function memoNotes(r) {
   if (Array.isArray(r.notes) && r.notes.length) return r.notes.join('\n\n');
   const text = String(r.text || '');
@@ -208,14 +208,14 @@ function memoNotes(r) {
   return cut >= 0 ? text.slice(0, cut) : text;
 }
 
-// Nyelvi emlékeztető az átirat után (a legutolsó, amit a modell olvas).
+// Language reminder after the transcript (the very last thing the model reads).
 const REMINDER = '\n\n----\nReminder: write the output in Hungarian (magyarul), whatever the language of these instructions.';
 
 const gpu = () => sh('rocm-smi', ['-u', '--showmeminfo', 'vram', 'gtt']).split('\n')
   .filter((l) => /GPU use|Used Memory/.test(l)).map((l) => l.replace(/\s+/g, ' ').trim()).join(' | ');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// VRAM / GTT bájtban (rocm-smi). A GTT növekedése = a modell kilóg a VRAM-ból a rendszermemóriába.
+// VRAM / GTT in bytes (rocm-smi). GTT growth means the model spills out of VRAM into system memory.
 const mem = () => {
   const t = sh('rocm-smi', ['--showmeminfo', 'vram', 'gtt']);
   const n = (re) => { const m = t.match(re); return m ? Number(m[1]) : 0; };
@@ -223,13 +223,13 @@ const mem = () => {
            gtt: n(/GTT Total Used Memory \(B\): (\d+)/) };
 };
 const GB = 1024 ** 3;
-const noFit = new Set();   // modellek, amelyek ezzel a kontextussal nem férnek a VRAM-ba
+const noFit = new Set();   // models that do not fit into VRAM with this context
 const clean = (t) => t.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\r/g, '\n');
 const loaded = () => { try { return JSON.parse(sh('lms', ['ps', '--json'])); } catch { return null; } };
 const serverUp = async () => { try { return (await fetch(BASE + '/models', { signal: AbortSignal.timeout(4000) })).ok; } catch { return false; } };
 
-// A modell CSAK általunk, --parallel 1-gyel és a kért kontextussal betöltve futhat. Ha az LM Studio
-// (pl. GPU-reset után) magától töltötte újra más beállítással, kiürítjük és újratöltjük.
+// The model may run ONLY if loaded by us, with --parallel 1 and the requested context. If LM
+// Studio reloaded it by itself with other settings (e.g. after a GPU reset), we unload and reload it.
 async function ensureLoaded(model) {
   for (let attempt = 1; attempt <= 3; ++attempt) {
     if (!(await serverUp())) {
@@ -250,8 +250,8 @@ async function ensureLoaded(model) {
     const out = sh('lms', ['load', model, '-c', String(CTX), '--parallel', '1', ...(GPU_RATIO ? ['--gpu', GPU_RATIO] : []), '-y'], { timeout: 10 * 60 * 1000 });
     console.log(`  load #${attempt}: ${/\[exit/.test(out) ? clean(out).trim().split('\n').slice(-2).join(' ') : 'ok'} (${((Date.now() - t0) / 1000).toFixed(0)} s) ${est} | ${gpu()}`);
     await sleep(2000);
-    // VRAM-őr: ha a kártya gyakorlatilag tele van, vagy a GTT megugrott, a modell kilóg → nem futtatjuk
-    // (lassú és összeomlik). Az lms becslése ezt alábecsüli, ezért a tényleges foglalást nézzük.
+    // VRAM guard: if the card is practically full, or GTT jumped, the model spills over, so we do
+    // not run it (slow, and it crashes). lms underestimates this, so we look at the actual allocation.
     const after = mem();
     if (after.vramTotal && (after.vram > after.vramTotal - 1.2 * GB || after.gtt - before.gtt > 0.4 * GB)) {
       console.log(`  NEM FÉR BE: VRAM ${(after.vram / GB).toFixed(1)} / ${(after.vramTotal / GB).toFixed(1)} GiB, GTT +${((after.gtt - before.gtt) / GB).toFixed(2)} GiB — modell kihagyva (kisebb --ctx kell)`);
@@ -264,14 +264,14 @@ async function ensureLoaded(model) {
   return false;
 }
 
-// GPU-reset őr: ha a kernel a futás kezdete óta GPU-resetet naplózott, AZONNAL leállunk és ürítünk
-// (a reset után az asztal is megakadhat; nem próbálkozunk tovább).
+// GPU reset guard: if the kernel logged a GPU reset since the run started, we stop and unload
+// IMMEDIATELY (after a reset the desktop may stall too; we do not keep trying).
 const resetCount = () => (sh('journalctl', ['-k', '-b', '--no-pager']).match(/GPU reset begin/g) || []).length;
 const resetsAtStart = resetCount();
 const gpuWasReset = () => resetCount() > resetsAtStart;
 
-// Hőfigyelés: a kártya memóriája terhelés alatt a kritikus határ (108 °C) közelébe megy. Minden kérés
-// előtt megvárjuk, hogy visszahűljön; így a hosszú körök sem járatják tartósan a határon.
+// Thermal watch: under load the card's memory approaches the critical limit (108 C). Before
+// every request we wait for it to cool down, so long rounds do not sit at the limit either.
 const MEM_HOT = Number(arg('mem-hot', 102)), MEM_COOL = Number(arg('mem-cool', 95));
 const memTemp = () => { const m = sh('rocm-smi', ['-t']).match(/Sensor memory\) \(C\): ([\d.]+)/); return m ? Number(m[1]) : 0; };
 async function coolDown() {
@@ -313,7 +313,7 @@ for (const model of MODELS) {
       }
       catch (e) { r = { httpStatus: 0, secs: 0, text: '', reasoning: '', finish: 'exception', usage: {}, stats: {}, error: String(e).slice(0, 300) }; }
       if (r.httpStatus === 200 && !r.error && r.finish) break;
-      // Összeomlás / GPU-reset: várunk, ürítünk, és tiszta betöltéssel újrapróbáljuk.
+      // Crash / GPU reset: we wait, unload, and retry with a clean load.
       console.log(`  hiba (${r.error || r.finish || r.httpStatus})`);
       if (tries >= MAX_RETRY) break;
       await sleep(25000);
@@ -344,13 +344,13 @@ for (const model of MODELS) {
       decisions: a.parsed && Array.isArray(a.parsed.decisions) ? a.parsed.decisions.length : -1,
       actionItems: a.parsed && Array.isArray(a.parsed.actionItems) ? a.parsed.actionItems.length : -1,
       execChars: a.parsed && a.parsed.execSummary ? a.parsed.execSummary.length : 0,
-      // Forrás-jelölők (`[t=mm:ss]`): jelölt / feloldható / összes állítás (en7, red3 promptok).
+      // Source markers (`[t=mm:ss]`): marked / resolvable / total claims (en7, red3 prompts).
       sources: sourceStats(a.parsed, fs.readFileSync(path.join(DATA, m + '.md'), 'utf8')),
-      // A memó (TOPICS) jelölői: bevezető-mondatok + pontok, alszakaszok (ha a kimenetben van jegyzet).
+      // The memo's (TOPICS) markers: intro sentences + points, subsections (if the output has notes).
       memoSources: memoNotes(r) ? memoSourceStats(memoNotes(r), fs.readFileSync(path.join(DATA, m + '.md'), 'utf8')) : null,
       text: r.text, parsed: a.parsed, chunks: r.chunks || 0, notes: r.notes || undefined,
     };
-    if (!failed) fs.writeFileSync(file, JSON.stringify(row, null, 2));   // a hibás futás újrafuttatható marad
+    if (!failed) fs.writeFileSync(file, JSON.stringify(row, null, 2));   // a failed run stays re-runnable
     rows.push(row);
     console.log(`${p.padEnd(6)} ${m}  ${String(row.secs).padStart(6)} s  in ${row.promptTokens} out ${row.completionTokens} think ${row.reasoningChars}  ${row.finish.padEnd(7)} valid=${row.valid} dec=${row.decisions} act=${row.actionItems} exec=${row.execChars}${row.sources && row.sources.marked ? ` src=${row.sources.resolved}/${row.sources.items}` : ''}${row.error ? ' ERR ' + row.error : ''}${row.parseError ? ' parse: ' + row.parseError : ''}`);
     if (failStreak >= 3) { console.log('\n3 egymást követő hiba — leállás.'); break outer; }
@@ -362,7 +362,7 @@ for (const model of MODELS) {
 }
 sh('lms', ['unload', '--all']);
 
-// Összesítő (a szöveg nélkül) — a bírálat külön lépés.
+// Summary (without the text); the review is a separate step.
 const summary = rows.map(({ text, parsed, ...rest }) => rest);
 fs.writeFileSync(path.join(OUT, '_summary.json'), JSON.stringify(summary, null, 2));
 console.log(`\n${rows.length} futás → ${OUT}`);

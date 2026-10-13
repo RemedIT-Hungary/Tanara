@@ -1,9 +1,9 @@
-// Az „Első lépések” ablak QML-oldala, valódi ablak nélkül (offscreen + szoftveres renderer):
-//  - minden demó-állapot (welcome · you · folders · providers · watcher · done) mindkét témában
-//    QML-figyelmeztetés nélkül töltődik be, és a lépés oldala látszik;
-//  - a lábléc gombjai a lépéshez igazodnak (Kihagyom csak döntési lépésen, Kész-nél „Kezdjük”);
-//  - a gombok a modellen át működnek: Tovább / Kihagyom / Vissza, a Kész bezárja az ablakot;
-//  - a Beállítások › Általános lapján az „Első lépések” hivatkozás demóban látszik.
+// The QML side of the "Getting started" window, without a real window (offscreen + software renderer):
+//  - every demo state (welcome, you, folders, providers, watcher, done) loads in both themes
+//    without a QML warning, and the step's page is visible;
+//  - the footer buttons follow the step (Skip only on a decision step, "Let's go" at Done);
+//  - the buttons work through the model: Next / Skip / Back, Done closes the window;
+//  - on the Settings > General page the "Getting started" link is visible in demo mode.
 #include "AppContext.h"
 #include "QmlApp.h"
 
@@ -21,7 +21,7 @@ using namespace tanara_qml;
 class TestOnboardingRender : public QObject {
     Q_OBJECT
 
-    // A vizuális fán keres (a Repeater példányai nem a QObject-fában vannak).
+    // Searches the visual tree (Repeater instances are not in the QObject tree).
     static QQuickItem* inTree(QQuickItem* item, const QString& name)
     {
         if (!item) return nullptr;
@@ -106,10 +106,10 @@ private slots:
         QCOMPARE(vm->property("step").toString(), QStringLiteral("folders"));
         QVERIFY(click(named(win, "backButton")));
         QCOMPARE(vm->property("step").toString(), QStringLiteral("you"));
-        // A navigáció elemei is léptetnek.
+        // The navigation items step too.
         QVERIFY(click(named(win, "step-done")));
         QCOMPARE(vm->property("step").toString(), QStringLiteral("done"));
-        QVERIFY(click(named(win, "nextButton")));             // Kezdjük → bezár
+        QVERIFY(click(named(win, "nextButton")));             // "Let's go" closes
         QTRY_VERIFY(!win->isVisible());
         QVERIFY(vm->property("done").toBool());
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));

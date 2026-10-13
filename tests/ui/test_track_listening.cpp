@@ -1,13 +1,13 @@
-// Sávok meghallgatása (G6) kijelző nélkül:
-//  - PlayerController: a logikai sáv szakaszának feloldása megbeszélés-időből (resolveTrackSeek),
-//    sáv-lejátszás valódi AppControllerrel és ál-motorral (ugrás a 2. szakaszba, szünet / folytatás,
-//    a szakasz végén a következő szakasz);
-//  - a beszéd-csík számítása (TrackActivityModel::laneFrom, TrackActivityItem::columns);
-//  - ParticipantTrackBinder demó-adattal (következtetett → kézi kötés, vissza);
-//  - QML: a „Sávok részletei” (TracksTab) és a kompakt sor (TrackRow compact, ahogy az Áttekintés
-//    SÁVOK listája használja) — kattintás a csíkra = ugrás + lejátszás azon a sávon, a kapcsoló
-//    mindkét helyen; a sáv-chip kattintása a kötést váltja.
-// G6_SHOT_DIR beállítva: a kompakt sorok + chipek képernyőképe (világos és sötét) oda kerül.
+// Listening to tracks without a display:
+//  - PlayerController: resolving a logical track's segment from meeting time (resolveTrackSeek),
+//    track playback with a real AppController and a fake engine (jump to the 2nd segment,
+//    pause / resume, the next segment at the end of a segment);
+//  - computing the speech strip (TrackActivityModel::laneFrom, TrackActivityItem::columns);
+//  - ParticipantTrackBinder with demo data (inferred to manual binding, and back);
+//  - QML: the "Track details" (TracksTab) and the compact row (TrackRow compact, as the
+//    Overview's TRACKS list uses it): a click on the strip = jump + play on that track, the
+//    switch in both places; a click on the track chip toggles the binding.
+// With G6_SHOT_DIR set: screenshots of the compact rows + chips (light and dark) go there.
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 #include "ParticipantTrackBinder.h"
@@ -89,7 +89,7 @@ QList<QQuickItem*> visibleItems(QQuickItem* root, const char* name)
     return out;
 }
 
-// A harness: a kompakt sávsorok (mint az Áttekintés SÁVOK listáján) + egy résztvevő sáv-chipjei.
+// The harness: compact track rows (as in the Overview's TRACKS list) + a participant's track chips.
 const char* kCompactHarness = R"(
 import QtQuick
 import QtQuick.Window
@@ -191,11 +191,11 @@ private slots:
         QCOMPARE(s.index, 2);
         QCOMPARE(s.offsetMs, 60000);
         QCOMPARE(s.fileMs, 10000);
-        s = PlayerController::resolveTrackSeek(tracks, "mic-2", 5000);   // szakasz-id → a vezető
+        s = PlayerController::resolveTrackSeek(tracks, "mic-2", 5000);   // segment id: the leader
         QCOMPARE(s.leaderId, QStringLiteral("mic"));
         QCOMPARE(s.index, 0);
         QCOMPARE(s.fileMs, 5000);
-        s = PlayerController::resolveTrackSeek(tracks, "late", 2000);    // a kezdete előtt → az eleje
+        s = PlayerController::resolveTrackSeek(tracks, "late", 2000);    // before its start: the start
         QCOMPARE(s.index, 3);
         QCOMPARE(s.fileMs, 0);
         QCOMPARE(PlayerController::resolveTrackSeek(tracks, "nincs", 0).index, -1);
@@ -238,11 +238,11 @@ private slots:
             QCOMPARE(p.previewMeetingMs(), 70000);
             QVERIFY(p.previewPlaying());
             QVERIFY(!p.playing());
-            QCOMPARE(p.positionMs(), 5000);          // a lekeverés pozíciója érintetlen
+            QCOMPARE(p.positionMs(), 5000);          // the mixdown's position is untouched
             b->pos = 12000;
             QTRY_COMPARE(p.previewMeetingMs(), 72000);
 
-            // Szünet / folytatás: a forrás és a pozíció megmarad.
+            // Pause / resume: the source and the position stay.
             p.toggleTrack(QStringLiteral("mic"));
             QVERIFY(!p.previewPlaying());
             QCOMPARE(p.previewTrackId(), QStringLiteral("mic"));
@@ -251,13 +251,13 @@ private slots:
             QVERIFY(p.previewPlaying());
             QCOMPARE(int(b->sources.size()), sourcesBefore);
 
-            // Másik sáv: az ő fájlja, megbeszélés-időben.
+            // Another track: its own file, in meeting time.
             p.playTrack(QStringLiteral("loop"), 3000);
             QVERIFY(b->sources.last().endsWith(QLatin1String("l.ogg")));
             QCOMPARE(p.previewTrackId(), QStringLiteral("loop"));
             QCOMPARE(b->pos, 3000);
 
-            // Az első szakasz vége → a következő szakasz az elejétől; az utolsó vége → kész.
+            // The end of the first segment goes to the next segment from its start; the end of the last: done.
             p.playTrack(QStringLiteral("mic"), 1000);
             QVERIFY(b->sources.last().endsWith(QLatin1String("a.ogg")));
             b->finish();
@@ -268,7 +268,7 @@ private slots:
             QCOMPARE(p.previewTrackId(), QString());
             QCOMPARE(p.previewPath(), QString());
 
-            // Hiányzó fájl: hiba, nincs előnézet.
+            // Missing file: an error, no preview.
             QFile::remove(QDir(m.folder).filePath("l.ogg"));
             QSignalSpy errors(&p, &PlayerController::errorOccurred);
             p.playTrack(QStringLiteral("loop"), 0);
@@ -288,8 +288,8 @@ private slots:
         for (int i = 0; i < 10; ++i) t.dbAboveFloor << 30.0f;
         for (int i = 0; i < 10; ++i) t.dbAboveFloor << 2.0f;
         for (int i = 0; i < 5; ++i) t.dbAboveFloor << nan;
-        for (int i = 0; i < 10; ++i) t.dbAboveFloor << 25.0f;   // a beszédszint −10 dB-en belül
-        for (int i = 0; i < 4; ++i) t.dbAboveFloor << 12.0f;    // aktív, de messze a beszédszint alatt
+        for (int i = 0; i < 10; ++i) t.dbAboveFloor << 25.0f;   // the speech level within -10 dB
+        for (int i = 0; i < 4; ++i) t.dbAboveFloor << 12.0f;    // active, but well below the speech level
         const TrackActivityModel::Lane lane = TrackActivityModel::laneFrom(t);
         QCOMPARE(lane.frames.size(), 39);
         QCOMPARE(lane.speechFrames, 20);
@@ -299,17 +299,17 @@ private slots:
         QCOMPARE(lane.frames.at(30), qint8(TrackActivityModel::Speech));
         QCOMPARE(lane.frames.at(36), qint8(TrackActivityModel::Quiet));
 
-        // Oszlopok: [S,S,Q,Q,N,N,S,Q] 1 s-os keretek, 8 s, 4 oszlop.
+        // Columns: [S,S,Q,Q,N,N,S,Q] 1 s frames, 8 s, 4 columns.
         const QVector<qint8> f = {1, 1, 0, 0, -1, -1, 1, 0};
         QCOMPARE(TrackActivityItem::columns(f, 0, 1000, 8000, 4), (QVector<qreal>{1.0, 0.0, -1.0, 0.5}));
-        // Később kezdődő sáv (origin 2 s) 10 s-os idővonalon, 5 oszlop: az első üres.
+        // A track starting later (origin 2 s) on a 10 s timeline, 5 columns: the first is empty.
         const QVector<qreal> late = TrackActivityItem::columns(f, 2000, 1000, 10000, 5);
         QCOMPARE(late.at(0), -1.0);
         QCOMPARE(late.at(1), 1.0);
         QCOMPARE(late.at(2), 0.0);
         QCOMPARE(late.at(3), -1.0);
         QCOMPARE(late.at(4), 0.5);
-        // Sok keret, kevés oszlop (2 óra × 50 ms): gyors és helyes arány.
+        // Many frames, few columns (2 hours x 50 ms): fast and the right ratio.
         QVector<qint8> big(144000, 0);
         for (int i = 0; i < 144000; i += 4) big[i] = 1;
         QElapsedTimer timer;
@@ -330,7 +330,7 @@ private slots:
         const int first = m.nextSpeechMs(QStringLiteral("mic"), 0);
         QVERIFY(first >= 0);
         QVERIFY(m.nextSpeechMs(QStringLiteral("mic"), first) == first);
-        QCOMPARE(m.nextSpeechMs(QStringLiteral("system"), 0), -1);   // beszéd nélküli sáv
+        QCOMPARE(m.nextSpeechMs(QStringLiteral("system"), 0), -1);   // a track without speech
         QVERIFY(m.speechShare(QStringLiteral("call")) > m.speechShare(QStringLiteral("system")));
         m.setDemoState(QStringLiteral("loading"));
         QCOMPARE(m.state(), QStringLiteral("loading"));
@@ -343,20 +343,20 @@ private slots:
         QVERIFY(b.available());
         auto chip = [&b](const QString& id, int i) { return b.chips(id).at(i).toMap(); };
         QCOMPARE(b.chips(QStringLiteral("p1")).size(), 2);
-        QVERIFY(chip("p1", 0).value("on").toBool());            // következtetett: mikrofon
+        QVERIFY(chip("p1", 0).value("on").toBool());            // inferred: microphone
         QVERIFY(!chip("p1", 0).value("manual").toBool());
         QVERIFY(!chip("p1", 1).value("on").toBool());
         QVERIFY(b.chips(QStringLiteral("suggest:Szabó Bence")).isEmpty());
 
-        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("call")));   // + hívás → kézi, mindkettő
+        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("call")));   // + call: manual, both
         QVERIFY(chip("p1", 0).value("on").toBool() && chip("p1", 1).value("on").toBool());
         QVERIFY(chip("p1", 0).value("manual").toBool());
-        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("mic")));    // csak a hívás
+        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("mic")));    // only the call
         QVERIFY(!chip("p1", 0).value("on").toBool());
-        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("call")));   // üres → vissza a következtetésre
+        QVERIFY(b.toggle(QStringLiteral("p1"), QStringLiteral("call")));   // empty: back to the inferred one
         QVERIFY(chip("p1", 0).value("on").toBool());
         QVERIFY(!chip("p1", 0).value("manual").toBool());
-        // A következtetett egyetlen sáv kattintása = megerősítés.
+        // Clicking the single inferred track = confirmation.
         QVERIFY(b.toggle(QStringLiteral("p2"), QStringLiteral("call")));
         QVERIFY(chip("p2", 1).value("on").toBool());
         QVERIFY(chip("p2", 1).value("manual").toBool());
@@ -364,8 +364,8 @@ private slots:
         QVERIFY(!chip("p2", 1).value("manual").toBool());
     }
 
-    // „Sávok részletei”: csík-kattintás → ugrás + lejátszás azon a sávon; kapcsoló → kivétel, és
-    // a kimaradt sornál „Beemelem”.
+    // "Track details": a strip click = jump + play on that track; the switch = exclusion, and
+    // "Include" on the excluded row.
     void detailsStripSeekAndSwitch()
     {
         PlayerController player;
@@ -390,40 +390,40 @@ private slots:
         click(w, strips.first(), 0.1);
         QCOMPARE(player.previewTrackId(), QStringLiteral("call"));
         QVERIFY(player.previewPlaying());
-        // A csík az ACTIVITY idővonalán (a demó: 30:34) ugrik.
+        // The strip jumps on the ACTIVITY timeline (the demo: 30:34).
         const qreal expected = 0.1 * ((30 * 60 + 34) * 1000);
         QVERIFY2(std::abs(player.previewMeetingMs() - expected) < expected * 0.05,
                  qPrintable(QString::number(player.previewMeetingMs())));
-        // A lejátszás-fej a csíkon.
+        // The playhead on the strip.
         QVERIFY(!visibleItems(strips.first(), "trackActivityPlayhead").isEmpty());
 
-        // Lejátszás gomb ugyanazon a sávon = szünet.
+        // The play button on the same track = pause.
         click(w, visibleItems(rows.at(1), "trackPlay").value(0));
         QVERIFY(!player.previewPlaying());
-        // A mikrofon lejátszása az első beszédnél kezd.
+        // Playing the microphone starts at the first speech.
         click(w, visibleItems(rows.at(0), "trackPlay").value(0));
         QCOMPARE(player.previewTrackId(), QStringLiteral("mic"));
         TrackActivityModel probe;
         probe.setDemoState(QStringLiteral("overviewDone"));
         const int firstSpeech = probe.nextSpeechMs(QStringLiteral("mic"), 0);
-        // (a néma motor órája közben halad)
+        // (while the silent engine's clock advances)
         QVERIFY2(player.previewMeetingMs() >= firstSpeech && player.previewMeetingMs() < firstSpeech + 1000,
                  qPrintable(QString::number(player.previewMeetingMs())));
         player.stopPreview();
 
-        // Kapcsoló → kivéve: a sor „Beemelem”-et mutat, arra vissza.
+        // Switch to excluded: the row shows "Include", and back with it.
         QVERIFY(visibleItems(rows.at(0), "trackInclude").isEmpty());
         click(w, visibleItems(rows.at(0), "trackSwitch").value(0));
         QTRY_VERIFY(!visibleItems(rows.at(0), "trackInclude").isEmpty());
         click(w, visibleItems(rows.at(0), "trackInclude").value(0));
         QTRY_VERIFY(visibleItems(rows.at(0), "trackInclude").isEmpty());
         QVERIFY(!visibleItems(rows.at(0), "trackSwitch").isEmpty());
-        // Végleges törlés: a gomb megvan (shell nélkül tiltott).
+        // Permanent delete: the button exists (disabled without a shell).
         QVERIFY(!visibleItems(rows.at(0), "trackDelete").isEmpty());
         QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(QLatin1Char('\n'))));
     }
 
-    // A kompakt sor (az Áttekintés SÁVOK listájának komponense) és a sáv-chipek.
+    // The compact row (the component of the Overview's TRACKS list) and the track chips.
     void compactRowsAndChips()
     {
         PlayerController player;
@@ -447,7 +447,7 @@ private slots:
         const QList<QQuickItem*> strips = visibleItems(rows.at(0), "trackActivityStrip");
         QCOMPARE(strips.size(), 1);
         QCOMPARE(strips.first()->height(), 18.0);
-        // A kimaradt (beszéd nélküli) sornál is van csík (meghallgatható a döntéshez) és „Beemelem”.
+        // The excluded (no speech) row has a strip too (can be listened to before deciding) and "Include".
         QCOMPARE(visibleItems(rows.at(2), "trackActivityStrip").size(), 1);
         QCOMPARE(visibleItems(rows.at(2), "trackInclude").size(), 1);
 
@@ -455,7 +455,7 @@ private slots:
         QCOMPARE(player.previewTrackId(), QStringLiteral("system"));
         QVERIFY(player.previewPlaying());
 
-        // Kapcsoló a kompakt soron is.
+        // The switch on the compact row too.
         click(w, visibleItems(rows.at(1), "trackSwitch").value(0));
         QTRY_VERIFY(!visibleItems(rows.at(1), "trackInclude").isEmpty());
         click(w, visibleItems(rows.at(1), "trackInclude").value(0));
@@ -464,7 +464,7 @@ private slots:
         if (const QByteArray dir = qgetenv("G6_SHOT_DIR"); !dir.isEmpty()) {
             player.stopPreview();
             player.playTrack(QStringLiteral("call"), 400000);
-            player.toggleTrack(QStringLiteral("call"));      // szünet: álló lejátszás-fej
+            player.toggleTrack(QStringLiteral("call"));      // pause: a standing playhead
             QTest::qWait(100);
             w->grabWindow().save(QString::fromLocal8Bit(dir) + "/G6_compact_light.png");
             AppContext::instance()->setThemeMode(QStringLiteral("dark"));
@@ -473,7 +473,7 @@ private slots:
             AppContext::instance()->setThemeMode(QStringLiteral("light"));
         }
 
-        // Sáv-chip: Fehér Gábor (p2) következtetett hívás → a mikrofon chip kattintására kézi kötés.
+        // Track chip: Fehér Gábor (p2) inferred call, a click on the microphone chip gives a manual binding.
         auto* binder = obj->findChild<ParticipantTrackBinder*>(QStringLiteral("binder"));
         QVERIFY(binder);
         const QList<QQuickItem*> chipSets = visibleItems(w->contentItem(), "participantTrackChips");

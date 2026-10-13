@@ -1,13 +1,11 @@
+// SpeakerEditor / SpeakerOverlay / PeopleDirectory unit tests, in temporary folders, with a
+// FAKE embedder (the "voice" is derived from the utterance's start time). It uses no real
+// data, model or ffmpeg.
 //
-// SpeakerEditor / SpeakerOverlay / PeopleDirectory unit-tesztek — ideiglenes mappákban,
-// HAMIS embedderrel (a „hang" a megszólalás kezdőidejéből tudható). Valódi adatot,
-// modellt vagy ffmpeg-et NEM használ.
-//
-// A szintetikus meeting: a diarizáció két címkét adott („Beszélő 1", „Beszélő 2"), de a
-// „Beszélő 1" valójában KÉT ember (A = Anna, C = Cili) — pont az az eset, amit a
-// szerkesztőnek szét kell tudnia bontani. „Beszélő 2" = B = Béla; egy sora (17.) tévesen
-// került hozzá (valójában A hangja).
-//
+// The synthetic meeting: diarization gave two labels ("Speaker 1", "Speaker 2"), but
+// "Speaker 1" is really TWO people (A = Anna, C = Cili), exactly the case the editor must be
+// able to split. "Speaker 2" = B = Béla; one of its lines (the 17th) was wrongly attached
+// (really A's voice).
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -42,7 +40,7 @@ const QVector<Row>& scenario()
         {0,      4000, kB1, 'A'},   // 0
         {6000,   5000, kB2, 'B'},   // 1
         {13000,  4000, kB1, 'A'},   // 2
-        {19000,   800, kB2, 'B'},   // 3  rövid
+        {19000,   800, kB2, 'B'},   // 3  short
         {22000,  4000, kB1, 'C'},   // 4
         {28000,  6000, kB2, 'B'},   // 5
         {36000,  4000, kB1, 'A'},   // 6
@@ -51,12 +49,12 @@ const QVector<Row>& scenario()
         {55000,  3500, kB1, 'C'},   // 9
         {60500,  4500, kB1, 'A'},   // 10
         {67000,  5000, kB2, 'B'},   // 11
-        {74000,  1000, kB1, 'C'},   // 12 rövid
+        {74000,  1000, kB1, 'C'},   // 12 short
         {77000,  4000, kB1, 'A'},   // 13
         {83000,  6000, kB1, 'C'},   // 14
         {91000,  5000, kB2, 'B'},   // 15
         {98000,  4000, kB1, 'A'},   // 16
-        {104000, 4000, kB2, 'A'},   // 17 tévesen a 2-es címkén
+        {104000, 4000, kB2, 'A'},   // 17 wrongly on label 2
     };
     return rows;
 }
@@ -69,7 +67,7 @@ QStringList uids(std::initializer_list<int> rows)
     return out;
 }
 
-// Hamis embedder: a szelet közepe alapján megmondja, kinek a hangja (ortogonális vektorok).
+// Fake embedder: from the middle of the slice it says whose voice it is (orthogonal vectors).
 struct FakeWorld {
     std::atomic_int embedCalls{0};
     std::atomic_int opens{0};
@@ -100,12 +98,12 @@ private:
     std::shared_ptr<FakeWorld> m_world;
 };
 
-// Több modelles hamis embedder: "x" ugyanazt adja, mint a FakeEmbedder, "y" és "z" más
-// dimenziójú, de szintén beszélőnként ortogonális vektort. Minden kérést naplóz.
+// A multi-model fake embedder: "x" gives the same as FakeEmbedder, "y" and "z" give vectors
+// of other dimensions, but also orthogonal per speaker. It logs every request.
 struct MultiWorld {
     std::atomic_int opens{0};
     std::atomic_int calls{0};
-    QStringList seen;                  // a kért modell-listák (csak a háttérszál írja)
+    QStringList seen;                  // the requested model lists (only the background thread writes)
 };
 
 class MultiFakeEmbedder : public IUtteranceEmbedder {
@@ -149,7 +147,7 @@ QString readText(const QString& path)
     return QString::fromUtf8(f.readAll());
 }
 
-// Egy teszt-környezet: ideiglenes audio/metadata mappa, store-ok, egy átírt meeting.
+// A test environment: temporary audio/metadata folders, stores, a transcribed meeting.
 struct Fixture {
     QTemporaryDir dir;
     std::unique_ptr<MeetingStore> store;
@@ -227,7 +225,7 @@ struct Fixture {
         return ed;
     }
 
-    // Embeddingek kiszámolása (megvárva a háttérszálat).
+    // Computing the embeddings (waiting for the background thread).
     static bool embed(SpeakerEditor& ed)
     {
         QSignalSpy done(&ed, &SpeakerEditor::embeddingFinished);
@@ -290,7 +288,7 @@ void SpeakerEditorTest::utteranceIds_stableAndUnique()
         segs.append(o);
     };
     add(1000, 2000, kB1);
-    add(1000, 2500, kB2);   // azonos kezdőidő (átfedő beszélők)
+    add(1000, 2500, kB2);   // the same start time (overlapping speakers)
     add(3000, 4000, kB1);
     writeJson(dir.filePath(QStringLiteral("transcript.segments.json")), QJsonDocument(segs));
 
@@ -299,7 +297,7 @@ void SpeakerEditorTest::utteranceIds_stableAndUnique()
     QCOMPARE(a[0].id, QStringLiteral("u1000"));
     QCOMPARE(a[1].id, QStringLiteral("u1000-2"));
     QCOMPARE(a[2].id, QStringLiteral("u3000"));
-    // Újraolvasva ugyanazok az azonosítók és ugyanaz az ujjlenyomat.
+    // Read again: the same ids and the same fingerprint.
     const QVector<TranscriptLine> b = speakeredit::loadTranscriptLines(dir.path());
     for (int i = 0; i < a.size(); ++i) QCOMPARE(a[i].id, b[i].id);
     QCOMPARE(speakeredit::transcriptFingerprint(a), speakeredit::transcriptFingerprint(b));
@@ -332,7 +330,7 @@ void SpeakerEditorTest::readModel_speakersAndUtterances()
     const QVector<EditorSpeaker> sp = ed->speakers();
     QCOMPARE(sp.size(), 2);
     QCOMPARE(sp[0].key, kB1);
-    QCOMPARE(sp[0].displayName, kB1);       // névtelen → a nyers címke
+    QCOMPARE(sp[0].displayName, kB1);       // anonymous: the raw label
     QVERIFY(sp[0].anonymous);
     QCOMPARE(sp[0].colorIndex, 0);
     QCOMPARE(sp[0].utteranceCount, 11);
@@ -358,15 +356,15 @@ void SpeakerEditorTest::readModel_speakersAndUtterances()
 void SpeakerEditorTest::oldMeeting_withoutOverlayOrTranscript()
 {
     Fixture fx;
-    // Régi meeting: nincs transcript.speakers.json → minden a nyers állapotból oldódik fel.
+    // Old meeting: no transcript.speakers.json, so everything resolves from the raw state.
     QVERIFY(!QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));
     auto ed = fx.editor();
     QCOMPARE(ed->speakers().size(), 2);
     QVERIFY(!ed->canUndo());
-    // Az olvasás nem hoz létre overlay-fájlt.
+    // Reading does not create an overlay file.
     QVERIFY(!QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));
 
-    // Átirat nélküli meeting: üres modell, a műveletek no-opok.
+    // A meeting without a transcript: an empty model, the operations are no-ops.
     const Meeting empty = fx.store->createMeeting(QStringLiteral("Üres"));
     SpeakerEditor none(fx.store.get(), fx.people.get(), fx.prints.get(), empty.id);
     QVERIFY(!none.hasTranscript());
@@ -375,7 +373,7 @@ void SpeakerEditorTest::oldMeeting_withoutOverlayOrTranscript()
     QVERIFY(!none.moveUtterances({QStringLiteral("u0")}, kB1));
     QVERIFY(none.moveUtterancesToPerson({QStringLiteral("u0")}, QStringLiteral("X")).isEmpty());
 
-    // Ismeretlen meeting sem omlik össze.
+    // An unknown meeting does not crash either.
     SpeakerEditor unknown(fx.store.get(), nullptr, nullptr, QStringLiteral("nincs-ilyen"));
     QVERIFY(!unknown.hasTranscript());
     QVERIFY(unknown.addParticipant(QStringLiteral("X")).isEmpty());
@@ -387,14 +385,14 @@ void SpeakerEditorTest::move_undoRedo_persist()
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}});
     auto ed = fx.editor();
 
-    QVERIFY(!ed->moveUtterances(uids({4}), kB1));               // már ott van → nincs lépés
+    QVERIFY(!ed->moveUtterances(uids({4}), kB1));               // already there: no step
     QVERIFY(!ed->moveUtterances(uids({4}), QStringLiteral("nincs")));
     QVERIFY(!ed->canUndo());
 
     QVERIFY(ed->moveUtterances(uids({4, 7}), kB2));
     QCOMPARE(ed->utterance(uid(4)).speakerKey, kB2);
     QVERIFY(ed->utterance(uid(4)).manuallyCorrected);
-    QCOMPARE(ed->utterance(uid(4)).rawLabel, kB1);              // a nyers címke érintetlen
+    QCOMPARE(ed->utterance(uid(4)).rawLabel, kB1);              // the raw label is untouched
     QCOMPARE(ed->speaker(kB1).utteranceCount, 9);
     QCOMPARE(ed->speaker(kB2).utteranceCount, 9);
     QVERIFY(ed->canUndo());
@@ -402,13 +400,13 @@ void SpeakerEditorTest::move_undoRedo_persist()
     QVERIFY(ed->undoText().contains(QStringLiteral("Béla")));
     QVERIFY(ed->undoText().startsWith(QStringLiteral("2 ")));
 
-    // A transcript.md a feloldott nevekkel frissült; a segments.json nyers maradt.
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    // transcript.md was refreshed with the resolved names; segments.json stays raw.
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Béla** L4a L4b")));
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L0a L0b")));
     QCOMPARE(speakeredit::loadTranscriptLines(fx.meeting.folder)[4].rawLabel, kB1);
 
-    // Perzisztens: egy új munkamenet ugyanazt látja (undo-verem nélkül).
+    // Persistent: a new session sees the same (without an undo stack).
     {
         auto ed2 = fx.editor();
         QCOMPARE(ed2->utterance(uid(7)).speakerKey, kB2);
@@ -421,16 +419,16 @@ void SpeakerEditorTest::move_undoRedo_persist()
     QVERIFY(!ed->utterance(uid(4)).manuallyCorrected);
     QVERIFY(!ed->canUndo());
     QVERIFY(ed->canRedo());
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L4a L4b")));
-    QVERIFY(!QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));   // üres overlay → nincs fájl
+    QVERIFY(!QFile::exists(speakeredit::overlayPath(fx.meeting.folder)));   // empty overlay: no file
 
     ed->redo();
     QCOMPARE(ed->utterance(uid(7)).speakerKey, kB2);
     QVERIFY(ed->canUndo());
     QVERIFY(!ed->canRedo());
 
-    // Új művelet törli a redo-vermet; minden művelet pontosan egy lépés.
+    // A new operation clears the redo stack; every operation is exactly one step.
     ed->undo();
     QVERIFY(ed->moveUtterances(uids({9}), kB2));
     QVERIFY(!ed->canRedo());
@@ -444,7 +442,7 @@ void SpeakerEditorTest::move_toNewPerson_andAnonymous()
     fx.people->add(QStringLiteral("Anna"));
     auto ed = fx.editor();
 
-    // Vadonatúj személy: résztvevő jön létre, a névlistába is bekerül — lenyomat NEM készül.
+    // A brand-new person: a participant is created, it also goes onto the name list; NO voiceprint is made.
     const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), QStringLiteral("  Cili "));
     QVERIFY(speakeredit::isParticipantKey(cili));
     EditorSpeaker s = ed->speaker(cili);
@@ -452,27 +450,27 @@ void SpeakerEditorTest::move_toNewPerson_andAnonymous()
     QCOMPARE(s.personName, QStringLiteral("Cili"));
     QVERIFY(s.added);
     QCOMPARE(s.utteranceCount, 2);
-    QCOMPARE(s.colorIndex, 2);                  // a két nyers címke után
+    QCOMPARE(s.colorIndex, 2);                  // after the two raw labels
     QVERIFY(fx.people->names().contains(QStringLiteral("Cili")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Cili** L4a L4b")));
 
-    // Ugyanahhoz a személyhez újra: a meglévő beszélőhöz megy, nem lesz második oszlop.
+    // To the same person again: it goes to the existing speaker, no second column.
     QCOMPARE(ed->moveUtterancesToPerson(uids({9}), QStringLiteral("cili")), cili);
     QCOMPARE(ed->speakers().size(), 3);
     QCOMPARE(ed->speaker(cili).utteranceCount, 3);
 
-    // Új névtelen résztvevő.
+    // A new anonymous participant.
     const QString anon = ed->moveUtterancesToNewParticipant(uids({14}));
     QVERIFY(speakeredit::isParticipantKey(anon));
     QVERIFY(anon != cili);
     QVERIFY(ed->speaker(anon).anonymous);
     QCOMPARE(ed->speaker(anon).displayName, QStringLiteral("Új beszélő 1"));
     QCOMPARE(ed->speaker(anon).colorIndex, 3);
-    QCOMPARE(ed->speaker(cili).colorIndex, 2);  // a szín a szerkesztéstől nem változik
+    QCOMPARE(ed->speaker(cili).colorIndex, 2);  // the color does not change from the edit
 
-    // Undo ×3: minden visszaáll, az újonnan felvett személy is kikerül a névlistából.
+    // Undo x3: everything is restored, the newly added person leaves the name list too.
     ed->undo(); ed->undo(); ed->undo();
     QVERIFY(!ed->canUndo());
     QCOMPARE(ed->speakers().size(), 2);
@@ -488,26 +486,26 @@ void SpeakerEditorTest::reassign_keepsSpeakerMapSemantics()
     Fixture fx;
     auto ed = fx.editor();
 
-    // Nyers beszélő elnevezése = a régi speakerMap-bejegyzés (a CLI ezt olvassa).
+    // Naming a raw speaker = the old speakerMap entry (the CLI reads this).
     QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
     QCOMPARE(ed->speaker(kB1).displayName, QStringLiteral("Anna"));
     QVERIFY(fx.people->names().contains(QStringLiteral("Anna")));
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Anna** L0a L0b")));
-    QCOMPARE(fx.prints->totalPrintCount(), 0);      // nincs automatikus tanítás
-    QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("anna")));     // ugyanaz → nincs lépés
+    QCOMPARE(fx.prints->totalPrintCount(), 0);      // no automatic teaching
+    QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("anna")));     // the same: no step
     QVERIFY(!ed->reassignSpeaker(kB1, QStringLiteral("  ")));
 
     ed->undo();
     QVERIFY(!fx.diskMap().contains(kB1));
     QVERIFY(ed->speaker(kB1).anonymous);
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Beszélő 1** L0a L0b")));
     ed->redo();
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
 
-    // Kézzel felvett résztvevő átnevezése az overlay-ben él (a speakerMap nem változik).
+    // Renaming a manually added participant lives in the overlay (the speakerMap does not change).
     const QString p = ed->moveUtterancesToNewParticipant(uids({4}));
     QVERIFY(ed->reassignSpeaker(p, QStringLiteral("Cili")));
     QCOMPARE(ed->speaker(p).personName, QStringLiteral("Cili"));
@@ -519,12 +517,12 @@ void SpeakerEditorTest::reassign_toExistingPerson_merges()
     Fixture fx;
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
     auto ed = fx.editor();
-    // A 2-es címkét is Annához rendeljük → nem lesz két Anna-oszlop: összevonás.
+    // We assign label 2 to Anna too, so there are not two Anna columns: a merge.
     QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Anna")));
     QCOMPARE(ed->speakers().size(), 1);
     QCOMPARE(ed->speaker(kB1).utteranceCount, scenario().size());
     QCOMPARE(ed->utterance(uid(1)).speakerKey, kB1);
-    QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Anna"));  // a régi UI is Annát lát
+    QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Anna"));  // the old UI sees Anna too
     ed->undo();
     QCOMPARE(ed->speakers().size(), 2);
     QVERIFY(!fx.diskMap().contains(kB2));
@@ -534,7 +532,7 @@ void SpeakerEditorTest::reassign_fixVoiceprints_undo()
 {
     Fixture fx;
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
-    // Béla lenyomatai: egy EBBŐL a meetingből (a 2-es címke egyik sorából), egy máshonnan.
+    // Béla's voiceprints: one FROM this meeting (from a line of label 2), one from elsewhere.
     Voiceprint here; here.embedding = {0, 1, 0};
     here.sourceMeetingId = fx.meeting.id;
     here.sampleRef = QStringLiteral("mixdown.mp3#28000-34000");
@@ -548,7 +546,7 @@ void SpeakerEditorTest::reassign_fixVoiceprints_undo()
     auto ed = fx.editor();
     QVERIFY(Fixture::embed(*ed));
 
-    // „Téves felismerés": a 2-es címke valójában Dóra.
+    // "Wrong recognition": label 2 is really Dóra.
     QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra"), /*fixVoiceprints*/ true));
     QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
     QCOMPARE(fx.prints->printsFor(QStringLiteral("Béla")).first().id, QStringLiteral("mashol"));
@@ -558,20 +556,20 @@ void SpeakerEditorTest::reassign_fixVoiceprints_undo()
     QVERIFY(VoiceprintStore::cosineSimilarity(made.embedding, {0, 1, 0}) > 0.99);
     QVERIFY(ed->speaker(kB2).hasVoiceprint);
 
-    // Az undo a lenyomat-mellékhatásokat is visszacsinálja…
+    // Undo also reverts the voiceprint side effects ...
     ed->undo();
     QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 2);
     QCOMPARE(fx.prints->printCount(QStringLiteral("Dóra")), 0);
     QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Béla"));
-    // …a redo pedig újra alkalmazza (ugyanazzal a lenyomattal).
+    // ... and redo applies them again (with the same voiceprint).
     ed->redo();
     QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 1);
     QCOMPARE(fx.prints->printsFor(QStringLiteral("Dóra")).first().id, made.id);
-    // A lemezen is (a store perzisztál).
+    // On disk too (the store persists).
     VoiceprintStore reread(fx.prints->filePath());
     QCOMPARE(reread.printCount(QStringLiteral("Dóra")), 1);
 
-    // Jelölő nélkül a lenyomatokhoz nem nyúl.
+    // Without the marker it does not touch the voiceprints.
     ed->undo();
     QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra"), false));
     QCOMPARE(fx.prints->printCount(QStringLiteral("Béla")), 2);
@@ -583,7 +581,7 @@ void SpeakerEditorTest::revertToAnonymous()
     Fixture fx;
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
     auto ed = fx.editor();
-    QVERIFY(!ed->revertSpeakerToAnonymous(kB2));        // már névtelen
+    QVERIFY(!ed->revertSpeakerToAnonymous(kB2));        // already anonymous
     QVERIFY(ed->revertSpeakerToAnonymous(kB1));
     QVERIFY(ed->speaker(kB1).anonymous);
     QCOMPARE(ed->speaker(kB1).displayName, kB1);
@@ -591,7 +589,7 @@ void SpeakerEditorTest::revertToAnonymous()
     ed->undo();
     QCOMPARE(ed->speaker(kB1).personName, QStringLiteral("Anna"));
 
-    // Nevesített résztvevő névtelenítve címkét kap.
+    // A named participant that is made anonymous gets a label.
     const QString p = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
     QVERIFY(ed->revertSpeakerToAnonymous(p));
     QVERIFY(ed->speaker(p).anonymous);
@@ -609,24 +607,24 @@ void SpeakerEditorTest::merge_undo()
     QVERIFY(!ed->mergeSpeakers(kB1, kB1));
     QVERIFY(!ed->mergeSpeakers(kB1, QStringLiteral("nincs")));
 
-    // Nyers címke összevonása egy másikba: a régi UI felé a cél személye látszik.
+    // Merging a raw label into another: toward the old UI the target's person shows.
     QVERIFY(ed->mergeSpeakers(kB1, kB2));
     QCOMPARE(ed->speakers().size(), 2);                 // Béla + Cili
     QVERIFY(ed->speaker(kB1).key.isEmpty());
     QCOMPARE(ed->utterance(uid(0)).speakerKey, kB2);
-    QCOMPARE(ed->utterance(uid(4)).speakerKey, cili);   // a kézzel átrakott sor marad
-    QVERIFY(!ed->utterance(uid(0)).manuallyCorrected);  // teljes-beszélő művelet nem „javítva"
+    QCOMPARE(ed->utterance(uid(4)).speakerKey, cili);   // the manually moved line stays
+    QVERIFY(!ed->utterance(uid(0)).manuallyCorrected);  // a whole-speaker operation is not "fixed"
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Béla"));
-    ed->flushPendingWrites();   // a transcript.md késleltetve íródik
+    ed->flushPendingWrites();   // transcript.md is written with a delay
     QVERIFY(fx.markdown().contains(QStringLiteral("**Béla** L0a L0b")));
-    QVERIFY(!ed->moveUtterances(uids({1}), kB1));       // megszűnt beszélő nem célpont
+    QVERIFY(!ed->moveUtterances(uids({1}), kB1));       // a vanished speaker is not a target
 
-    // Résztvevő összevonása nyers beszélőbe: a résztvevő megszűnik.
+    // Merging a participant into a raw speaker: the participant disappears.
     QVERIFY(ed->mergeSpeakers(cili, kB2));
     QCOMPARE(ed->speakers().size(), 1);
     QCOMPARE(ed->speaker(kB2).utteranceCount, scenario().size());
 
-    // A cél átnevezése az összevont címkét is viszi (speakerMap-kompatibilitás).
+    // Renaming the target carries the merged label too (speakerMap compatibility).
     QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Dóra")));
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Dóra"));
     QCOMPARE(fx.diskMap().value(kB2), QStringLiteral("Dóra"));
@@ -646,20 +644,20 @@ void SpeakerEditorTest::addAndRemoveParticipant()
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
     auto ed = fx.editor();
 
-    // Sor nélküli résztvevő (akit a rendszer nem különített el).
+    // A participant with no lines (one the system did not separate).
     const QString dora = ed->addParticipant(QStringLiteral("Dóra"));
     QVERIFY(!dora.isEmpty());
     QCOMPARE(ed->speaker(dora).utteranceCount, 0);
     QCOMPARE(ed->speakers().size(), 3);
-    QCOMPARE(ed->addParticipant(QStringLiteral("Béla")), kB2);     // már beszélő → nincs új
+    QCOMPARE(ed->addParticipant(QStringLiteral("Béla")), kB2);     // already a speaker: no new one
     QCOMPARE(ed->speakers().size(), 3);
     const QString anon = ed->addParticipant();
     QCOMPARE(ed->speaker(anon).displayName, QStringLiteral("Új beszélő 1"));
 
-    // Perzisztens: új munkamenetben is ott vannak a sor nélküli résztvevők.
+    // Persistent: in a new session the participants with no lines are there too.
     QCOMPARE(fx.editor()->speakers().size(), 4);
 
-    // Csak üres beszélő távolítható el.
+    // Only an empty speaker can be removed.
     QVERIFY(ed->moveUtterances(uids({4}), dora));
     QVERIFY(!ed->removeParticipant(dora));
     QVERIFY(!ed->removeParticipant(kB1));
@@ -669,7 +667,7 @@ void SpeakerEditorTest::addAndRemoveParticipant()
     QCOMPARE(ed->speakers().size(), 4);
     QCOMPARE(ed->speaker(anon).displayName, QStringLiteral("Új beszélő 1"));
 
-    // Kiürült nyers beszélő is eltávolítható (és undo-val visszajön).
+    // An emptied raw speaker can be removed too (and comes back with undo).
     QStringList all;
     for (const EditorUtterance& u : ed->utterances())
         if (u.speakerKey == kB1) all << u.id;
@@ -685,34 +683,34 @@ void SpeakerEditorTest::confirm_andUncertainty()
 {
     Fixture fx;
     auto ed = fx.editor();
-    QCOMPARE(ed->uncertainCount(), 0);              // embedding nélkül semmi sem bizonytalan
+    QCOMPARE(ed->uncertainCount(), 0);              // without embeddings nothing is uncertain
     QVERIFY(Fixture::embed(*ed));
 
-    // A 17. sor a 2-es címkén van, de A hangja → egy másik beszélőre hasonlít jobban.
+    // Line 17 is on label 2, but it is A's voice, so it resembles another speaker more.
     QCOMPARE(ed->uncertainUtteranceIds(), uids({17}));
     QVERIFY(ed->utterance(uid(17)).uncertain);
     QVERIFY(!ed->utterance(uid(1)).uncertain);
 
-    // „Jó így": megerősítve többé nem bizonytalan; egy undo-lépés.
+    // "Fine as is": once confirmed it is no longer uncertain; one undo step.
     QSignalSpy count(ed.get(), &SpeakerEditor::uncertainCountChanged);
     QVERIFY(ed->confirmUtterances(uids({17})));
     QVERIFY(ed->utterance(uid(17)).confirmed);
     QVERIFY(!ed->utterance(uid(17)).uncertain);
     QCOMPARE(ed->uncertainCount(), 0);
     QCOMPARE(count.last().at(0).toInt(), 0);
-    QVERIFY(!ed->confirmUtterances(uids({17})));    // már megerősített
+    QVERIFY(!ed->confirmUtterances(uids({17})));    // already confirmed
     ed->undo();
     QVERIFY(ed->utterance(uid(17)).uncertain);
 
-    // Kézzel a helyére téve sem bizonytalan (és „javítva").
+    // Placed by hand, it is not uncertain either (and "fixed").
     QVERIFY(ed->moveUtterances(uids({17}), kB1));
     QVERIFY(!ed->utterance(uid(17)).uncertain);
     QVERIFY(ed->utterance(uid(17)).manuallyCorrected);
     QCOMPARE(ed->uncertainCount(), 0);
 }
 
-// Újraellenőrzés: a „Beszélő 1" két ember (A, C). Ha A három sorát megerősítjük, a mag
-// csak A hangja → C sorai (a sajátjukhoz sem illenek) és a 2-es címkén ragadt A-sor kétesek.
+// Recheck: "Speaker 1" is two people (A, C). If we confirm three of A's lines, the core is
+// only A's voice, so C's lines (they do not fit their own either) and the A line stuck on label 2 are doubtful.
 void SpeakerEditorTest::recheck_fromConfirmedLines_splitsMixedSpeaker()
 {
     Fixture fx;
@@ -728,20 +726,20 @@ void SpeakerEditorTest::recheck_fromConfirmedLines_splitsMixedSpeaker()
     QCOMPARE(r.speakersWithConfirmedCore, 1);
     QCOMPARE(r.confirmedLines, 3);
     QCOMPARE(ed->uncertainUtteranceIds(), uids({4, 7, 9, 14, 17}));
-    // C sorainál nincs javaslat (máshoz sem illenek), a 17. sornál a hang A-é → Beszélő 1.
+    // For C's lines there is no suggestion (they fit no other either), for line 17 the voice is A's, so Speaker 1.
     QCOMPARE(ed->utterance(uid(4)).likelySpeakerKey, QString());
     QCOMPARE(ed->utterance(uid(17)).likelySpeakerKey, kB1);
     QVERIFY(ed->utterance(uid(4)).rechecked);
-    QVERIFY(!ed->utterance(uid(12)).uncertain);       // rövid: sosem kétes
+    QVERIFY(!ed->utterance(uid(12)).uncertain);       // short: never doubtful
 
-    // A jelzés túléli a rendes újraszámolást (újabb embedding-futás, újratöltés).
+    // The flag survives a regular recompute (another embedding run, a reload).
     QVERIFY(Fixture::embed(*ed));
     QCOMPARE(ed->uncertainCount(), 5);
     ed.reset();
     auto again = fx.editor();
     QCOMPARE(again->uncertainUtteranceIds(), uids({4, 7, 9, 14, 17}));
 
-    // C sorait új résztvevőhöz rakva a jelzés megszűnik (javítva).
+    // Placing C's lines under a new participant clears the flag (fixed).
     QVERIFY(!again->moveUtterancesToNewParticipant(uids({4, 7, 9, 14})).isEmpty());
     QCOMPARE(again->uncertainUtteranceIds(), uids({17}));
 }
@@ -751,11 +749,11 @@ void SpeakerEditorTest::shortLines_neverUncertain()
     Fixture fx;
     auto ed = fx.editor();
     QVERIFY(Fixture::embed(*ed));
-    // A rövid (3., 12.) sorokra nem is készül embedding → nem árasztják el a listát.
+    // For the short (3rd, 12th) lines no embedding is made, so they do not flood the list.
     const int longLines = int(std::count_if(scenario().cbegin(), scenario().cend(),
         [](const Row& r) { return r.durMs >= speakeredit::kMinEmbedMs; }));
     QCOMPARE(fx.world->embedCalls.load(), longLines);
-    // Rossz helyre téve sem lesznek bizonytalanok (kézi munka marad).
+    // Placed in the wrong place they do not become uncertain either (manual work stays).
     QVERIFY(ed->mergeSpeakers(kB2, kB1));
     QVERIFY(!ed->utterance(uid(3)).uncertain);
     QVERIFY(!ed->utterance(uid(12)).uncertain);
@@ -767,7 +765,7 @@ void SpeakerEditorTest::suggestion_afterMove_acceptIsOneStep()
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Béla")}});
     auto ed = fx.editor();
 
-    // Embedding nélkül nincs javaslat (de a művelet megy).
+    // Without embeddings there is no suggestion (but the operation works).
     QVERIFY(!ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili")).isEmpty());
     QVERIFY(!ed->hasSuggestion());
     ed->undo();
@@ -781,10 +779,10 @@ void SpeakerEditorTest::suggestion_afterMove_acceptIsOneStep()
     QCOMPARE(sg.targetSpeaker, cili);
     QCOMPARE(sg.sourceSpeakerKey, kB1);
     QCOMPARE(sg.anchorUtteranceId, uid(4));
-    // Az 1-es címke többi C-hangú sora — a rövid 12. kimarad, A sorai nem kerülnek bele.
+    // The other C-voiced lines of label 1: the short 12th is left out, A's lines do not get in.
     QCOMPARE(sg.utteranceIds, uids({7, 9, 14}));
 
-    // Elfogadás = EGY undo-lépés.
+    // Accepting = ONE undo step.
     QVERIFY(ed->acceptSuggestion());
     QVERIFY(!ed->hasSuggestion());
     QCOMPARE(ed->speaker(cili).utteranceCount, 4);
@@ -796,9 +794,9 @@ void SpeakerEditorTest::suggestion_afterMove_acceptIsOneStep()
     ed->undo();
     QVERIFY(ed->speaker(cili).key.isEmpty());
 
-    // Elvetés: a javaslat eltűnik, lépés nélkül.
+    // Dismiss: the suggestion disappears, without a step.
     ed->redo();
-    QVERIFY(!ed->hasSuggestion());                  // redo nem ajánl újra
+    QVERIFY(!ed->hasSuggestion());                  // redo does not offer again
     QVERIFY(ed->moveUtterances(uids({7}), cili));
     QVERIFY(ed->hasSuggestion());
     QCOMPARE(ed->suggestion().utteranceIds, uids({9, 14}));
@@ -815,14 +813,14 @@ void SpeakerEditorTest::embedding_progressCancelAndCache()
     QVERIFY(ed->embeddingsSupported());
     QVERIFY(!ed->embeddingsComplete());
 
-    // Megszakítás menet közben: részeredmény megmarad, a folytatás csak a hiányzókat számolja.
+    // Cancel midway: the partial result stays, the resume computes only the missing ones.
     fx.world->delayMs = 15;
     QSignalSpy progress(ed.get(), &SpeakerEditor::embeddingProgress);
     QSignalSpy finished(ed.get(), &SpeakerEditor::embeddingFinished);
     QSignalSpy running(ed.get(), &SpeakerEditor::embeddingRunningChanged);
     ed->startEmbedding();
     QVERIFY(ed->isEmbeddingRunning());
-    ed->startEmbedding();                           // futás közben no-op
+    ed->startEmbedding();                           // a no-op while running
     ed->cancelEmbedding();
     QVERIFY(finished.wait(10000));
     QCOMPARE(finished.last().at(0).toBool(), false);
@@ -836,12 +834,12 @@ void SpeakerEditorTest::embedding_progressCancelAndCache()
     fx.world->delayMs = 0;
     QVERIFY(Fixture::embed(*ed));
     QVERIFY(ed->embeddingsComplete());
-    QCOMPARE(fx.world->embedCalls.load(), longLines);   // semmit sem számolt kétszer
+    QCOMPARE(fx.world->embedCalls.load(), longLines);   // nothing was computed twice
     QVERIFY(!progress.isEmpty());
     QCOMPARE(progress.last().at(0).toInt(), progress.last().at(1).toInt());
-    QCOMPARE(fx.world->opens.load(), 2);                // futásonként EGY dekódolás
+    QCOMPARE(fx.world->opens.load(), 2);                // ONE decode per run
 
-    // A cache a meeting-mappában él: új munkamenet számolás nélkül kész.
+    // The cache lives in the meeting folder: a new session is ready without computing.
     QVERIFY(QFile::exists(UtteranceEmbeddingCache::filePath(fx.meeting.folder)));
     auto ed2 = fx.editor();
     QVERIFY(ed2->embeddingsComplete());
@@ -849,7 +847,7 @@ void SpeakerEditorTest::embedding_progressCancelAndCache()
     QVERIFY(Fixture::embed(*ed2));
     QCOMPARE(fx.world->embedCalls.load(), longLines);
 
-    // Futó szál mellett is biztonságosan megszüntethető.
+    // It can be destroyed safely with a running thread.
     UtteranceEmbeddingCache::remove(fx.meeting.folder);
     fx.world->delayMs = 15;
     auto ed3 = fx.editor();
@@ -860,18 +858,18 @@ void SpeakerEditorTest::embedding_progressCancelAndCache()
 void SpeakerEditorTest::embedding_gracefulWithoutModel()
 {
     Fixture fx;
-    // Nincs gyár (nincs modell / voice-ID nélküli build).
+    // No factory (no model / a build without voice-ID).
     auto plain = fx.editor(/*withEmbedder*/ false);
     QVERIFY(!plain->embeddingsSupported());
     QSignalSpy fin(plain.get(), &SpeakerEditor::embeddingFinished);
     plain->startEmbedding();
     QCOMPARE(fin.count(), 1);
     QCOMPARE(fin.first().at(0).toBool(), false);
-    QVERIFY(plain->moveUtterances(uids({4}), kB2));     // a szerkesztés így is működik
+    QVERIFY(plain->moveUtterances(uids({4}), kB2));     // editing works this way too
     QCOMPARE(plain->uncertainCount(), 0);
     plain->undo();
 
-    // Van gyár, de a hang / modell nem nyitható meg.
+    // There is a factory, but the audio / model cannot be opened.
     fx.world->openOk = false;
     auto ed = fx.editor();
     QVERIFY(!Fixture::embed(*ed));
@@ -879,27 +877,27 @@ void SpeakerEditorTest::embedding_gracefulWithoutModel()
     QCOMPARE(ed->uncertainCount(), 0);
     QVERIFY(!ed->isEmbeddingRunning());
 
-    // A valódi gyár hiányzó modellel: open() false, nem omlik össze.
+    // The real factory with a missing model: open() false, no crash.
     auto real = voiceUtteranceEmbedderFactory(QStringLiteral("/nincs/ilyen/modell.onnx"))();
     QVERIFY(real);
     QVERIFY(!real->open(QStringLiteral("/nincs/ilyen/hang.mp3")));
     QVERIFY(real->embed(0, 3000).isEmpty());
 }
 
-// Kézi minta egyetlen, kifejezetten kiválasztott sorból: a 15 mp-es minimum nem él, de a
-// bizonytalan / rövid sor és a másik beszélő sora nem fogadható el.
+// A manual sample from a single, explicitly chosen line: the 15 s minimum does not apply,
+// but an uncertain / short line and another speaker's line cannot be accepted.
 void SpeakerEditorTest::voiceprint_fromSingleLine()
 {
     Fixture fx;
     auto ed = fx.editor();
-    const QString cili = ed->moveUtterancesToPerson(uids({14}), QStringLiteral("Cili"));  // 6 mp-es sor
+    const QString cili = ed->moveUtterancesToPerson(uids({14}), QStringLiteral("Cili"));  // 6 s line
     QCOMPARE(fx.prints->totalPrintCount(), 0);
 
-    // Nem az ő sora → nincs minta.
+    // Not their line: no sample.
     VoiceprintResult r = ed->createVoiceprintFromLines(cili, uids({4}));
     QVERIFY(!r.ok);
 
-    // Az ő egyetlen hosszú sora elég.
+    // Their single long line is enough.
     QSignalSpy vpSig(ed.get(), &SpeakerEditor::voiceprintsChanged);
     r = ed->createVoiceprintFromLines(cili, uids({14}));
     QVERIFY2(r.ok, qPrintable(r.error));
@@ -909,7 +907,7 @@ void SpeakerEditorTest::voiceprint_fromSingleLine()
     QCOMPARE(fx.prints->printsFor(QStringLiteral("Cili")).first().sampleRef,
              QStringLiteral("mixdown.mp3#83000-89000"));
 
-    // Rövid sor → érthető hiba, nem készül minta.
+    // A short line: an understandable error, no sample is made.
     const QString dani = ed->moveUtterancesToPerson(uids({3}), QStringLiteral("Dani"));   // 0,8 mp
     r = ed->createVoiceprintFromLines(dani, uids({3}));
     QVERIFY(!r.ok);
@@ -917,10 +915,10 @@ void SpeakerEditorTest::voiceprint_fromSingleLine()
     QCOMPARE(fx.prints->printCount(QStringLiteral("Dani")), 0);
 }
 
-// Több modell: egy háttérfutás = egy open() (egy dekódolás) minden modellre; a cache
-// modellenként tárol; az elemzés a fúziós vektorral ugyanazt adja, mint egy modellel; a kézi
-// lenyomat modellenként külön Voiceprint, és a visszavonás mindet viszi. Új modell bekapcsolásakor
-// csak az hiányzik, és csak azt számolja.
+// Several models: one background run = one open() (one decode) for all models; the cache
+// stores per model; the analysis with the fusion vector gives the same as with one model; the
+// manual voiceprint is a separate Voiceprint per model, and undo takes them all. When a new
+// model is switched on, only it is missing, and only it is computed.
 void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
 {
     Fixture fx;
@@ -937,7 +935,7 @@ void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
     for (const QString& m : std::as_const(world->seen)) QCOMPARE(m, QStringLiteral("x,y"));
     QCOMPARE(ed->uncertainUtteranceIds(), uids({17}));
 
-    // A cache modellenként a lemezen (v2).
+    // The cache per model on disk (v2).
     const UtteranceEmbeddingCache cache = UtteranceEmbeddingCache::load(
         fx.meeting.folder,
         speakeredit::transcriptFingerprint(speakeredit::loadTranscriptLines(fx.meeting.folder)));
@@ -945,7 +943,7 @@ void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
     QCOMPARE(cache.vectors("x").value(uid(0)), (QVector<float>{1, 0, 0}));
     QCOMPARE(cache.vectors("y").value(uid(0)), (QVector<float>{1, 0, 0, 0}));
 
-    // Kézi lenyomat: modellenként egy, közös mintával; a visszavonás mindkettőt viszi.
+    // Manual voiceprint: one per model, with a shared sample; undo takes both.
     const QString cili = ed->moveUtterancesToPerson(uids({4, 7, 9, 14}), QStringLiteral("Cili"));
     const VoiceprintResult r = ed->createVoiceprint(cili);
     QVERIFY2(r.ok, qPrintable(r.error));
@@ -961,8 +959,8 @@ void SpeakerEditorTest::embedding_multiModel_oneDecodeFusedPrints()
     QVERIFY(ed->removeVoiceprint(r.printId));
     QCOMPARE(fx.prints->printCount(QStringLiteral("Cili")), 0);
 
-    // Új modell: amíg nincs vektora, nincs fúziós vektor (nincs hang-alapú bizonytalanság);
-    // a következő futás csak a "z"-t számolja, megint egyetlen open()-nel.
+    // New model: until it has a vector there is no fusion vector (no audio-based uncertainty);
+    // the next run computes only "z", again with a single open().
     ed->setVoiceModelIds({"x", "y", "z"});
     QVERIFY(!ed->embeddingsComplete());
     QCOMPARE(ed->uncertainCount(), 0);
@@ -980,12 +978,12 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     Fixture fx;
     auto ed = fx.editor();
 
-    // Névtelen beszélőhöz nem készül.
+    // None is made for an anonymous speaker.
     VoiceprintResult r = ed->createVoiceprint(kB2);
     QVERIFY(!r.ok);
     QVERIFY(!r.error.isEmpty());
 
-    // Kevés anyag: megmondja, mennyi hiányzik, és nem készít gyenge lenyomatot.
+    // Little material: it says how much is missing, and makes no weak voiceprint.
     const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
     VoiceprintMaterial mat = ed->voiceprintMaterial(cili);
     QVERIFY(!mat.sufficient);
@@ -998,12 +996,12 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     QVERIFY(r.error.contains(QStringLiteral("11")));
     QCOMPARE(fx.prints->totalPrintCount(), 0);
 
-    // Elég anyaggal: a hosszabb sorokból, a cache nélkül is (ilyenkor most számol).
+    // With enough material: from the longer lines, even without the cache (it computes now).
     QVERIFY(ed->moveUtterances(uids({7, 9, 14}), cili));
     mat = ed->voiceprintMaterial(cili);
     QVERIFY(mat.sufficient);
     QCOMPARE(mat.usableMs, 4000 + 5000 + 3500 + 6000);
-    QCOMPARE(fx.prints->totalPrintCount(), 0);          // az átsorolás magától nem tanít
+    QCOMPARE(fx.prints->totalPrintCount(), 0);          // reassigning does not teach by itself
     QSignalSpy vpSig(ed.get(), &SpeakerEditor::voiceprintsChanged);
     r = ed->createVoiceprint(cili);
     QVERIFY2(r.ok, qPrintable(r.error));
@@ -1013,14 +1011,14 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
     const Voiceprint vp = fx.prints->printsFor(QStringLiteral("Cili")).first();
     QCOMPARE(vp.id, r.printId);
     QCOMPARE(vp.sourceMeetingId, fx.meeting.id);
-    QCOMPARE(vp.sampleRef, QStringLiteral("mixdown.mp3#83000-89000"));  // a leghosszabb sor
+    QCOMPARE(vp.sampleRef, QStringLiteral("mixdown.mp3#83000-89000"));  // the longest line
     QVERIFY(VoiceprintStore::cosineSimilarity(vp.embedding, {0, 0, 1}) > 0.99);
     QVERIFY(ed->speaker(cili).hasVoiceprint);
 
-    // Modell nélkül: érthető hiba.
+    // Without a model: an understandable error.
     fx.setSpeakerMap({{kB2, QStringLiteral("Béla")}});
     auto plain = fx.editor(/*withEmbedder*/ false);
-    // A kézi készítés visszavonása: pontosan az a lenyomat törlődik, a jelző visszaáll.
+    // Undoing the manual creation: exactly that voiceprint is deleted, the indicator goes back.
     {
         const VoiceprintResult again = ed->createVoiceprint(cili);
         QVERIFY(again.ok && !again.printId.isEmpty());
@@ -1042,7 +1040,7 @@ void SpeakerEditorTest::voiceprint_explicitOnly()
 void SpeakerEditorTest::summaryStale_lifecycle()
 {
     Fixture fx;
-    // Összefoglaló nélkül nincs mit elavultnak jelölni.
+    // Without a summary there is nothing to mark stale.
     {
         auto ed = fx.editor();
         QVERIFY(ed->moveUtterances(uids({4}), kB2));
@@ -1060,37 +1058,37 @@ void SpeakerEditorTest::summaryStale_lifecycle()
     QCOMPARE(ed->summaryStale().correctedSpeakers, 1);
     QCOMPARE(stale.count(), 1);
     QCOMPARE(stale.last().at(0).toBool(), true);
-    QVERIFY(ed->moveUtterances(uids({7}), cili));               // ugyanaz a beszélő → még 1
+    QVERIFY(ed->moveUtterances(uids({7}), cili));               // the same speaker: still 1
     QCOMPARE(ed->summaryStale().correctedSpeakers, 1);
     QVERIFY(ed->reassignSpeaker(kB2, QStringLiteral("Béla")));
     QCOMPARE(ed->summaryStale().correctedSpeakers, 2);
-    QVERIFY(ed->confirmUtterances(uids({1})));                  // megerősítés nem beszélő-változás
+    QVERIFY(ed->confirmUtterances(uids({1})));                  // a confirmation is not a speaker change
     QCOMPARE(ed->summaryStale().correctedSpeakers, 2);
 
-    // Megnyitott szerkesztő nélkül is kiolvasható (könyvtár-ikon).
+    // Readable without an open editor too (library icon).
     QCOMPARE(speakeredit::summaryStale(fx.store->load(fx.meeting.id)).correctedSpeakers, 2);
 
-    // Visszavonva az összefoglaló-kori állapotig: nem elavult.
+    // Undone to the state at the summary: not stale.
     ed->undo(); ed->undo(); ed->undo(); ed->undo();
     QVERIFY(!ed->summaryStale().stale);
     ed->redo(); ed->redo();
     QCOMPARE(ed->summaryStale().correctedSpeakers, 1);
 
-    // „Rendben így".
+    // "Fine as is".
     ed->dismissSummaryStale();
     QVERIFY(!ed->summaryStale().stale);
     QCOMPARE(stale.last().at(0).toBool(), false);
     QVERIFY(!speakeredit::summaryStale(fx.store->load(fx.meeting.id)).stale);
-    // Az elfogadás UTÁNI visszavonás újra változás az összefoglalóhoz képest.
+    // An undo AFTER accepting is a change again relative to the summary.
     ed->undo();
     QVERIFY(ed->summaryStale().stale);
 
-    // Új összefoglaló készült → törlődik; fájl-szinten is (szerkesztő nélkül).
+    // A new summary was made: cleared; at file level too (without an editor).
     ed->notifySummaryRegenerated();
     QVERIFY(!ed->summaryStale().stale);
     ed.reset();
     const Meeting m = fx.store->load(fx.meeting.id);
-    QVERIFY(speakeredit::markSummaryStale(m, {kB1}));           // régi UI átnevezés horga
+    QVERIFY(speakeredit::markSummaryStale(m, {kB1}));           // the old UI's rename hook
     QVERIFY(!speakeredit::markSummaryStale(m, {kB1}));
     QVERIFY(speakeredit::summaryStale(m).stale);
     QVERIFY(speakeredit::clearSummaryStale(m.folder));
@@ -1105,7 +1103,7 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
     QVERIFY(!ed->retranscribeImpact().manualCorrections());
 
     const QString cili = ed->moveUtterancesToPerson(uids({4, 7}), QStringLiteral("Cili"));
-    QVERIFY(ed->confirmUtterances(uids({1, 4})));       // a 4. már javított → nem számít kétszer
+    QVERIFY(ed->confirmUtterances(uids({1, 4})));       // the 4th is already fixed: it does not count twice
     QVERIFY(Fixture::embed(*ed));
     RetranscribeImpact imp = ed->retranscribeImpact();
     QCOMPARE(imp.correctedUtterances, 2);
@@ -1113,13 +1111,13 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
     QCOMPARE(imp.manualCorrections(), 3);
     QCOMPARE(imp.addedParticipants, 1);
     QCOMPARE(imp.namedSpeakers, 2);
-    // Fájl-szinten ugyanaz (megnyitott szerkesztő nélkül).
+    // The same at file level (without an open editor).
     const Meeting m = fx.store->load(fx.meeting.id);
     const RetranscribeImpact disk = speakeredit::retranscribeImpact(m);
     QCOMPARE(disk.manualCorrections(), 3);
     QCOMPARE(disk.namedSpeakers, 2);
 
-    // Másolat a mostani átiratról.
+    // A copy of the current transcript.
     const QString backup = speakeredit::backupTranscript(m);
     QVERIFY(!backup.isEmpty());
     QVERIFY(backup.startsWith(m.folder));
@@ -1128,9 +1126,9 @@ void SpeakerEditorTest::retranscribe_impactBackupDiscard()
         QVERIFY2(QFile::exists(QDir(backup).filePath(QLatin1String(f))), f);
     QVERIFY(readText(QDir(backup).filePath(QStringLiteral("transcript.md")))
                 .contains(QStringLiteral("**Cili** L4a L4b")));
-    QVERIFY(speakeredit::backupTranscript(m) != backup);    // második másolat nem írja felül
+    QVERIFY(speakeredit::backupTranscript(m) != backup);    // a second copy does not overwrite
 
-    // Új átirat készült: a kézi javítások és az embedding-cache eldobva.
+    // A new transcript was made: the manual fixes and the embedding cache dropped.
     speakeredit::discardForNewTranscript(m.folder);
     QSignalSpy reloaded(ed.get(), &SpeakerEditor::reloaded);
     ed->reloadTranscript();
@@ -1149,7 +1147,7 @@ void SpeakerEditorTest::overlay_fingerprintMismatchDropsEdits()
         auto ed = fx.editor();
         ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
     }
-    // Az átirat kicserélődik az overlay „háta mögött" (egy sorral rövidebb).
+    // The transcript is replaced behind the overlay's back (one line shorter).
     QFile f(speakeredit::segmentsPath(fx.meeting.folder));
     QVERIFY(f.open(QIODevice::ReadOnly));
     QJsonArray segs = QJsonDocument::fromJson(f.readAll()).array();
@@ -1158,7 +1156,7 @@ void SpeakerEditorTest::overlay_fingerprintMismatchDropsEdits()
     writeJson(speakeredit::segmentsPath(fx.meeting.folder), QJsonDocument(segs));
 
     auto ed = fx.editor();
-    QCOMPARE(ed->speakers().size(), 2);                 // a régi javítások nem alkalmazódnak
+    QCOMPARE(ed->speakers().size(), 2);                 // the old fixes are not applied
     QCOMPARE(ed->utterance(uid(4)).speakerKey, kB1);
     QVERIFY(!ed->utterance(uid(4)).manuallyCorrected);
 }
@@ -1176,17 +1174,17 @@ void SpeakerEditorTest::applyResolvedSpeakers_tokens()
         TranscriptToken t; t.startMs = s; t.endMs = e; t.speaker = spk; t.text = QStringLiteral("x");
         mt.tokens << t;
     };
-    tok(0, 2000, kB1);          // 0. sor → Anna (speakerMap)
-    tok(24000, 26000, kB1);     // 4. sor → Cili (soronkénti felülírás)
-    tok(6000, 8000, kB2);       // 1. sor → Béla
-    tok(500000, 501000, kB1);   // sorhoz nem köthető → beszélő-szint (Anna)
+    tok(0, 2000, kB1);          // line 0: Anna (speakerMap)
+    tok(24000, 26000, kB1);     // line 4: Cili (per-line override)
+    tok(6000, 8000, kB2);       // line 1: Béla
+    tok(500000, 501000, kB1);   // cannot be tied to a line: speaker level (Anna)
     speakeredit::applyResolvedSpeakers(mt, fx.store->load(fx.meeting.id));
     QCOMPARE(mt.tokens[0].speaker, QStringLiteral("Anna"));
     QCOMPARE(mt.tokens[1].speaker, QStringLiteral("Cili"));
     QCOMPARE(mt.tokens[2].speaker, QStringLiteral("Béla"));
     QCOMPARE(mt.tokens[3].speaker, QStringLiteral("Anna"));
 
-    // Overlay nélkül: pontosan a régi speakerMap-alkalmazás.
+    // Without an overlay: exactly the old speakerMap application.
     Fixture plain;
     plain.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
     MergedTranscript mt2;
@@ -1204,8 +1202,8 @@ void SpeakerEditorTest::externalChange_refresh()
     const QString cili = ed->moveUtterancesToPerson(uids({4}), QStringLiteral("Cili"));
     QVERIFY(ed->canUndo());
 
-    // A régi UI / auto-azonosítás elnevezi a nyers címkét: a kézi javítás megmarad,
-    // és az undo-verem is (az overlay nem változott).
+    // The old UI / auto-identification names the raw label: the manual fix stays, and so does
+    // the undo stack (the overlay did not change).
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}});
     speakeredit::recordIdentification(fx.meeting.folder, kB1, QStringLiteral("Anna"), 0.71);
     QSignalSpy speakers(ed.get(), &SpeakerEditor::speakersChanged);
@@ -1216,13 +1214,13 @@ void SpeakerEditorTest::externalChange_refresh()
     QCOMPARE(ed->utterance(uid(4)).speakerKey, cili);
     QVERIFY(ed->canUndo());
 
-    // Az undo csak a saját lépését vonja vissza — a külső elnevezést nem írja felül.
+    // Undo reverts only its own step; it does not overwrite the external naming.
     ed->undo();
     QCOMPARE(fx.diskMap().value(kB1), QStringLiteral("Anna"));
     QCOMPARE(ed->utterance(uid(4)).speakerKey, kB1);
     ed->redo();
 
-    // Globális személy-átnevezés az overlay-t írja → teljes újratöltés, verem eldobva.
+    // A global person rename writes the overlay: a full reload, the stack dropped.
     QVERIFY(speakeredit::renamePersonInOverlay(fx.meeting.folder, QStringLiteral("Cili"),
                                                QStringLiteral("Cecília")));
     QSignalSpy reloaded(ed.get(), &SpeakerEditor::reloaded);
@@ -1231,7 +1229,7 @@ void SpeakerEditorTest::externalChange_refresh()
     QCOMPARE(ed->speaker(cili).personName, QStringLiteral("Cecília"));
     QVERIFY(!ed->canUndo());
 
-    // Személy törlése: a résztvevő névtelenné válik, a sorai megmaradnak.
+    // Deleting a person: the participant becomes anonymous, its lines stay.
     QVERIFY(speakeredit::removePersonFromOverlay(fx.meeting.folder, QStringLiteral("Cecília")));
     ed->refreshFromDisk();
     QVERIFY(ed->speaker(cili).anonymous);
@@ -1250,13 +1248,13 @@ void SpeakerEditorTest::fineGrainedSignals()
 
     QVERIFY(ed->moveUtterances(uids({4, 9}), kB2));
     QCOMPARE(rows.count(), 1);
-    QCOMPARE(rows.last().at(0).toStringList(), uids({4, 9}));   // csak az érintett sorok
+    QCOMPARE(rows.last().at(0).toStringList(), uids({4, 9}));   // only the affected lines
     QCOMPARE(speakers.count(), 1);
     QCOMPARE(undo.count(), 1);
-    QCOMPARE(map.count(), 0);                                   // a speakerMap nem változott
+    QCOMPARE(map.count(), 0);                                   // the speakerMap did not change
 
     QVERIFY(ed->reassignSpeaker(kB1, QStringLiteral("Anna")));
-    QCOMPARE(rows.count(), 1);                                  // sor-adat nem változott
+    QCOMPARE(rows.count(), 1);                                  // the line data did not change
     QCOMPARE(speakers.count(), 2);
     QCOMPARE(map.count(), 1);
     QCOMPARE(map.last().at(0).toString(), fx.meeting.id);
@@ -1284,8 +1282,8 @@ void SpeakerEditorTest::people_directoryAndSearch()
     fx.people->add(QStringLiteral("Béla"));
     fx.people->add(QStringLiteral("Ödön"));
     Voiceprint vp; vp.embedding = {1, 0, 0};
-    fx.prints->addPrint(QStringLiteral("anna"), vp);        // kisbetű-független egyesítés
-    fx.prints->addPrint(QStringLiteral("Zita"), vp);        // csak lenyomata van
+    fx.prints->addPrint(QStringLiteral("anna"), vp);        // case-insensitive merge
+    fx.prints->addPrint(QStringLiteral("Zita"), vp);        // has only a voiceprint
     fx.setSpeakerMap({{kB1, QStringLiteral("Anna")}, {kB2, QStringLiteral("Anna")}});
     {
         auto ed = fx.editor();
@@ -1301,18 +1299,18 @@ void SpeakerEditorTest::people_directoryAndSearch()
         for (const PersonInfo& p : all) if (p.name == n) return p;
         return PersonInfo();
     };
-    QCOMPARE(find(QStringLiteral("Anna")).meetingCount, 2);     // meetingenként egyszer számít
+    QCOMPARE(find(QStringLiteral("Anna")).meetingCount, 2);     // counts once per meeting
     QVERIFY(find(QStringLiteral("Anna")).hasVoiceprint);
     QCOMPARE(find(QStringLiteral("Béla")).meetingCount, 0);
     QVERIFY(!find(QStringLiteral("Béla")).hasVoiceprint);
-    QCOMPARE(find(QStringLiteral("Ödön")).meetingCount, 1);     // kézzel felvett résztvevőként
+    QCOMPARE(find(QStringLiteral("Ödön")).meetingCount, 1);     // as a manually added participant
     QVERIFY(find(QStringLiteral("Zita")).hasVoiceprint);
 
     const QVector<PersonInfo> hits = filterPeople(all, QStringLiteral("odo"));
     QCOMPARE(hits.size(), 1);
     QCOMPARE(hits.first().name, QStringLiteral("Ödön"));
     QCOMPARE(filterPeople(all, QString()).size(), 4);
-    // Névkezdetre illő előbb, mint a belső egyezés.
+    // A name-start match comes before an inner match.
     const QVector<PersonInfo> a = filterPeople(all, QStringLiteral("a"));
     QCOMPARE(a.first().name, QStringLiteral("Anna"));
     QCOMPARE(a.size(), 3);                                      // Anna, Béla, Zita
@@ -1329,9 +1327,9 @@ void SpeakerEditorTest::analysis_pureFunctions()
     };
     for (int i = 0; i < 5; ++i) add(&A, 0, 4000);
     for (int i = 0; i < 5; ++i) add(&B, 1, 4000);
-    add(&B, 0, 4000);               // 10: rossz helyen
-    add(&B, 0, 4000, true);         // 11: rossz helyen, de zárolt
-    add(nullptr, 0, 900);           // 12: nincs embedding
+    add(&B, 0, 4000);               // 10: in the wrong place
+    add(&B, 0, 4000, true);         // 11: in the wrong place, but locked
+    add(nullptr, 0, 900);           // 12: no embedding
 
     const QVector<bool> unc = computeUncertain(lines, 2);
     for (int i = 0; i < 10; ++i) QVERIFY(!unc[i]);
@@ -1345,13 +1343,13 @@ void SpeakerEditorTest::analysis_pureFunctions()
     QCOMPARE(fits[10].otherSpeaker, 1);
     QVERIFY(qIsNaN(fits[12].own));
 
-    // Kevés minta a beszélőről → nem ítélünk.
+    // Little sample of the speaker: we do not judge.
     QVector<AnalysisLine> few;
     AnalysisLine x; x.embedding = &A; x.speaker = 0; x.durationMs = 4000;
     few << x << x;
     QVERIFY(!computeUncertain(few, 1)[0]);
 
-    // Javaslat: a 0-s beszélőnél maradt B-hangú sor az 1-eshez húz; a zárolt nem ajánlott.
+    // Suggestion: the B-voiced line left under speaker 0 pulls toward 1; the locked one is not suggested.
     QCOMPARE(suggestSimilar(lines, 0, 1), QVector<int>{10});
     QVERIFY(suggestSimilar(lines, 0, 0).isEmpty());
     QVERIFY(suggestSimilar(lines, 1, 0).isEmpty());

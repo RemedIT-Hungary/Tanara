@@ -1,11 +1,9 @@
+// ConnectionTester: the core backend of Settings' "Test connection" button.
 //
-// ConnectionTester — a Beállítások „Kapcsolat tesztelése” gombjának core-háttere.
-//
-// Helyi ál-HTTP-szerverrel (valódi szolgáltató-hívás NINCS): mit kérdez (út, fejléc), és
-// hogyan sorolja be a választ — elérhető + modell-lista, hiányzó modell, elutasított kulcs,
-// nem API, szerverhiba, elutasított kapcsolat, hibás cím. Plusz a helyi végpont felismerése és
-// a beépített szolgáltatók próba-leírói.
-//
+// With a local fake HTTP server (NO real provider call): what it asks (path, header), and how
+// it classifies the reply: reachable + model list, missing model, rejected key, not an API,
+// server error, refused connection, bad address. Plus recognizing a local endpoint and the
+// built-in providers' probe descriptors.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -24,7 +22,7 @@ namespace {
 struct FakeRequest { QByteArray method; QString path; QByteArray auth; };
 struct FakeReply { int status = 200; QByteArray body = "{}"; };
 
-// Minimális ál-HTTP-szerver (mint a test_app_jobs.cpp-ben), a kérés-fejlécek rögzítésével.
+// Minimal fake HTTP server (as in test_app_jobs.cpp), recording the request headers.
 class FakeHttp : public QObject {
 public:
     std::function<FakeReply(const FakeRequest&)> handler;
@@ -86,7 +84,7 @@ ProviderDescriptor probeDescriptor()
 class TestConnectionTester : public QObject {
     Q_OBJECT
 
-    // Egy próba lefuttatása és az eredmény megvárása.
+    // Running a probe and waiting for the result.
     static ConnectionTestResult run(const ProviderDescriptor& d, const ProviderConfig& cfg, int timeoutMs = 3000)
     {
         ConnectionTester tester;
@@ -107,17 +105,17 @@ private slots:
             return FakeReply{200, "{\"data\":[{\"id\":\"zeta\"},{\"id\":\"alfa\"}]}"};
         };
         ProviderConfig cfg;
-        cfg.baseUrl = http.base() + QStringLiteral("/");     // a záró perjel nem számít
+        cfg.baseUrl = http.base() + QStringLiteral("/");     // the trailing slash does not matter
         cfg.model = QStringLiteral("alfa");
         cfg.apiKey = QStringLiteral("titok");
         const ConnectionTestResult r = run(probeDescriptor(), cfg);
         QVERIFY(r.ok());
         QCOMPARE(r.httpStatus, 200);
         QVERIFY(r.latencyMs >= 0);
-        QCOMPARE(r.models, (QStringList{QStringLiteral("alfa"), QStringLiteral("zeta")}));   // rendezve
+        QCOMPARE(r.models, (QStringList{QStringLiteral("alfa"), QStringLiteral("zeta")}));   // sorted
         QVERIFY(r.warning.isEmpty());
         QVERIFY(r.message.isEmpty());
-        // Pontosan egy GET a próba-útra, a kulccsal.
+        // Exactly one GET to the probe path, with the key.
         QCOMPARE(http.log.size(), 1);
         QCOMPARE(http.log.first().method, QByteArray("GET"));
         QCOMPARE(http.log.first().path, QStringLiteral("/v1/models"));
@@ -134,10 +132,10 @@ private slots:
         cfg.baseUrl = http.base();
         cfg.model = QStringLiteral("nincs-ilyen");
         const ConnectionTestResult r = run(probeDescriptor(), cfg);
-        QVERIFY(r.ok());                                   // a kapcsolat él
+        QVERIFY(r.ok());                                   // the connection is alive
         QCOMPARE(r.models.size(), 2);
-        QVERIFY(r.warning.contains(QStringLiteral("nincs-ilyen")));   // de a modell nincs a listán
-        QVERIFY(http.log.first().auth.isEmpty());          // kulcs nélkül nincs Authorization
+        QVERIFY(r.warning.contains(QStringLiteral("nincs-ilyen")));   // but the model is not in the list
+        QVERIFY(http.log.first().auth.isEmpty());          // without a key there is no Authorization
     }
 
     void rejectedKey()
@@ -151,9 +149,9 @@ private slots:
         QCOMPARE(r.status, ConnectionTestResult::Status::AuthFailed);
         QCOMPARE(r.code, QStringLiteral("HTTP 401"));
         QVERIFY(r.message.contains(QStringLiteral("kulcs")));
-        QVERIFY(r.latencyMs >= 0);                         // válasz jött, csak elutasító
+        QVERIFY(r.latencyMs >= 0);                         // a reply came, just a rejecting one
 
-        // Kulcs nélkül más a tanács: a végpont kulcsot kér.
+        // Without a key the advice differs: the endpoint asks for a key.
         cfg.apiKey.clear();
         const ConnectionTestResult r2 = run(probeDescriptor(), cfg);
         QCOMPARE(r2.status, ConnectionTestResult::Status::AuthFailed);
@@ -170,7 +168,7 @@ private slots:
         QCOMPARE(r.status, ConnectionTestResult::Status::NotAnApi);
         QCOMPARE(r.code, QStringLiteral("HTTP 404"));
 
-        // 200, de nem modell-lista (pl. egy weboldal): nem tekintjük sikeresnek.
+        // 200, but not a model list (e.g. a web page): we do not count it as success.
         http.handler = [](const FakeRequest&) { return FakeReply{200, "<html>hello</html>"}; };
         r = run(probeDescriptor(), cfg);
         QCOMPARE(r.status, ConnectionTestResult::Status::NotAnApi);
@@ -195,7 +193,7 @@ private slots:
 
     void connectionRefused()
     {
-        // Egy biztosan zárt helyi port: megnyitjuk, megjegyezzük, bezárjuk.
+        // A certainly closed local port: we open it, remember it, close it.
         quint16 port = 0;
         {
             FakeHttp http;
@@ -204,8 +202,8 @@ private slots:
         }
         ProviderConfig cfg;
         cfg.baseUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(port);
-        // Windowson a zárt portra a kapcsolódás RST után is újrapróbál (~2 s/kísérlet), így
-        // a 3 s-os próba-idő ETIMEDOUT-ba futna; az app alapértéke (8 s) bőven elég.
+        // On Windows a closed port is retried even after RST (~2 s per attempt), so a 3 s probe time
+        // would end in ETIMEDOUT; the app's default (8 s) is plenty.
 #if defined(Q_OS_WIN)
         const ConnectionTestResult r = run(probeDescriptor(), cfg, 8000);
 #else
@@ -215,23 +213,23 @@ private slots:
         QCOMPARE(r.code, QStringLiteral("ECONNREFUSED"));
         QCOMPARE(r.httpStatus, 0);
         QCOMPARE(r.latencyMs, qint64(-1));
-        QVERIFY(r.message.contains(QStringLiteral("helyi szerver")));   // helyi címnél ez a tanács
+        QVERIFY(r.message.contains(QStringLiteral("helyi szerver")));   // for a local address this is the advice
     }
 
     void badConfigNeverSendsARequest()
     {
         ProviderConfig cfg;
-        ConnectionTestResult r = run(probeDescriptor(), cfg);            // üres cím
+        ConnectionTestResult r = run(probeDescriptor(), cfg);            // empty address
         QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
         QCOMPARE(r.code, QStringLiteral("EINVAL"));
-        cfg.baseUrl = QStringLiteral("ftp://example.invalid/v1");        // nem http(s)
+        cfg.baseUrl = QStringLiteral("ftp://example.invalid/v1");        // not http(s)
         r = run(probeDescriptor(), cfg);
         QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
-        cfg.baseUrl = QStringLiteral("localhost:1234/v1");               // séma nélkül
+        cfg.baseUrl = QStringLiteral("localhost:1234/v1");               // without a scheme
         r = run(probeDescriptor(), cfg);
         QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
 
-        // Próba-leíró nélkül a provider nem tesztelhető.
+        // Without a probe descriptor the provider cannot be tested.
         cfg.baseUrl = QStringLiteral("http://127.0.0.1:9/v1");
         r = run(ProviderDescriptor{}, cfg);
         QCOMPARE(r.status, ConnectionTestResult::Status::BadConfig);
@@ -264,14 +262,14 @@ private slots:
         QVERIFY(isLocalEndpoint(QStringLiteral("http://nas.local:1234")));
         QVERIFY(!isLocalEndpoint(QStringLiteral("https://api.soniox.com/v1")));
         QVERIFY(!isLocalEndpoint(QStringLiteral("https://api.openai.com/v1")));
-        QVERIFY(!isLocalEndpoint(QStringLiteral("http://172.32.0.1/v1")));   // a 172.16/12-n kívül
+        QVERIFY(!isLocalEndpoint(QStringLiteral("http://172.32.0.1/v1")));   // outside 172.16/12
         QVERIFY(!isLocalEndpoint(QString()));
     }
 
     void builtinProvidersDeclareAProbe()
     {
         registerBuiltinProviders();
-        // Minden beépített (saját kulcsos) szolgáltató megmondja, mit lehet tőle ingyen kérdezni.
+        // Every built-in (own-key) provider says what can be asked of it for free.
         for (const ProviderDescriptor& d : SttProviderRegistry::instance().all()) {
             if (d.authMode == AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
@@ -281,12 +279,12 @@ private slots:
             if (d.authMode == AuthMode::Login) continue;
             QVERIFY2(d.probe.isValid(), qPrintable(d.id));
         }
-        // A „Haladó” mezők leíróból jönnek.
+        // The "Advanced" fields come from the descriptor.
         const ProviderDescriptor llm = LlmProviderRegistry::instance().descriptor(QStringLiteral("openai-compat"));
         int advanced = 0;
         for (const ConfigField& f : llm.fields)
             if (f.advanced) ++advanced;
-        QCOMPARE(advanced, 2);   // hőmérséklet + max. tokenek
+        QCOMPARE(advanced, 2);   // temperature + max tokens
     }
 
     void describeHttpClassification()

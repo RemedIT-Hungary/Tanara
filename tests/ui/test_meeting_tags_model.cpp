@@ -1,10 +1,10 @@
-// MeetingTagsModel — a fejléc címkesora (C03/C04) és a „Miért?” panel adatai.
-//  - controller nélkül a T01 sorai (none … llm, why), a feliratok a forrás szerint;
-//  - elfogadás / elutasítás / „Mind” / eltávolítás: egy-egy visszavonható lépés a
-//    lépés nevével (toast), a visszavonás után a javaslat visszajön;
-//  - kézi hozzáadás után együtt járó javaslat („Muzeo mellé gyakran”);
-//  - a varrat: ál-backenddel a hívások (forrás: kézi / javaslat / nyelvi modell), az elutasítottak
-//    és a már felrakottak kiszűrése.
+// MeetingTagsModel: the header's tag row and the data of the "Why?" panel.
+//  - without a controller the sample rows (none ... llm, why), the labels by source;
+//  - accept / reject / "All" / remove: one undoable step each, named after the step (toast),
+//    and after undo the suggestion returns;
+//  - after a manual add, a co-occurring suggestion ("often goes with Muzeo");
+//  - the seam: with a fake backend the calls (source: manual / suggestion / language model),
+//    filtering out the rejected and the already applied.
 #include "AppContext.h"
 #include "MeetingTagsModel.h"
 #include "test_tag_backend.h"
@@ -74,8 +74,9 @@ private slots:
         QVERIFY(!m.canUndo());
     }
 
-    // A2: átírás előtt, rendes javaslat nélkül a cím alapú tartalék (draftTitle) javasol; rendes
-    // javaslat mellett nem; az elutasított / felrakott kiesik, és elfogadható.
+    // Before transcription, with no regular suggestion, the title-based fallback (draftTitle)
+    // suggests; with a regular suggestion it does not; a rejected / applied one drops out, and
+    // can be accepted.
     void draftTitleFallback()
     {
         MeetingTagsModel m;
@@ -93,11 +94,11 @@ private slots:
         QCOMPARE(suggestionNames(m), QStringList({"Ügyféltámogatás"}));
         m.accept(0);
         QVERIFY(tagNames(m).contains(QStringLiteral("Ügyféltámogatás")));
-        QVERIFY(m.suggestions().isEmpty());              // a felrakott nem jön vissza javaslatként
+        QVERIFY(m.suggestions().isEmpty());              // an applied tag does not come back as a suggestion
         m.undo();
         m.setDraftTitle(QString());
         QVERIFY(m.suggestions().isEmpty());
-        // Rendes javaslat mellett a tartalék nem szól bele.
+        // With a regular suggestion the fallback stays out.
         m.setDemoState("similar");
         m.setDraftTitle(QStringLiteral("Ügyféltámogatás heti"));
         QCOMPARE(m.suggestionSource(), QStringLiteral("similar"));
@@ -133,12 +134,12 @@ private slots:
         QCOMPARE(m.undoLabel(), QStringLiteral("Javaslat elutasítva: #Q4 tervezés"));
         m.reject(0);
         QVERIFY(m.suggestions().isEmpty());
-        QCOMPARE(m.suggestionLabel(), QString());       // javaslat nélkül nincs felirat
+        QCOMPARE(m.suggestionLabel(), QString());       // no suggestion, no label
         m.undo();
         QCOMPARE(suggestionNames(m), QStringList({"Partnerek"}));
         m.undo();
         QCOMPARE(suggestionNames(m), QStringList({"Partnerek", "Q4 tervezés"}));
-        // Érvénytelen index: semmi.
+        // Invalid index: nothing.
         m.reject(7);
         m.accept(-1);
         QVERIFY(!m.canUndo());
@@ -162,14 +163,14 @@ private slots:
     {
         MeetingTagsModel m;
         m.setDemoState("few");
-        const QString id = m.add(QStringLiteral("muzeo"));      // név szerint, kisbetűvel is
+        const QString id = m.add(QStringLiteral("muzeo"));      // by name, lowercase too
         QCOMPARE(id, QStringLiteral("t-muzeo"));
         QCOMPARE(tagNames(m), QStringList({"Nordvik", "Partnerek", "Muzeo"}));
         QCOMPARE(m.suggestionLabel(), QStringLiteral("Muzeo mellé gyakran"));
         QCOMPARE(suggestionNames(m), QStringList({"MÉM-MDK", "Gyűjteménykezelés"}));
         QCOMPARE(m.undoLabel(), QStringLiteral("Címke hozzáadva: #Muzeo"));
 
-        // Ami már rajta van, nem kerül fel újra; új név létrejön.
+        // What is already on is not added again; a new name is created.
         QCOMPARE(m.add(QStringLiteral("Nordvik")), QStringLiteral("t-nordvik"));
         QCOMPARE(m.tags().size(), 3);
         m.add(QStringLiteral("  Pilot   2027 "));
@@ -230,7 +231,7 @@ private slots:
         QCOMPARE(b.tags().size(), 0);
     }
 
-    // ---- a varrat: ál-backend a controller helyén ----
+    // ---- the seam: a fake backend in place of the controller ----
     void backendSeam()
     {
         FakeTagBackend backend;
@@ -240,12 +241,12 @@ private slots:
         backend.onMeeting["m1"] = {"x"};
         TagSuggestionState s;
         s.source = "llm";
-        s.items = {{"x", "Xenon", false, "llm", 0.9, {}, {}},          // már rajta van → kiesik
+        s.items = {{"x", "Xenon", false, "llm", 0.9, {}, {}},          // already applied: dropped
                    {"y", "Ypszilon", false, "llm", 0.8, {}, {}},
                    {"", "Omega", true, "llm", 0.5, {}, {}},
                    {"z", "Zéta", false, "llm", 0.4, {}, {}}};
         backend.pending["m1"] = s;
-        backend.rejected.insert("m1|z");                               // elutasított → kiesik
+        backend.rejected.insert("m1|z");                               // rejected: dropped
 
         MeetingTagsModel m;
         m.setBackend(&backend);
@@ -274,13 +275,13 @@ private slots:
         m.undo();
         QVERIFY(backend.calls.contains("undo"));
 
-        // Számolás jelzése.
+        // Signals the count.
         TagSuggestionState busy;
         busy.computing = true;
         backend.pending["m1"] = busy;
         emit backend.suggestionsChanged("m1");
         QVERIFY(m.computing());
-        // Másik megbeszélés jele nem érinti.
+        // Another meeting's signal does not affect it.
         QSignalSpy spy(&m, &MeetingTagsModel::suggestionsChanged);
         emit backend.suggestionsChanged("m2");
         QCOMPARE(spy.count(), 0);

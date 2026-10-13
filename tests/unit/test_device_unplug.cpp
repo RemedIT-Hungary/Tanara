@@ -1,10 +1,8 @@
-//
-// Tanara — eszköz kihúzása felvétel közben, az AppController szintjén (hamis capture-motor és
-// szimulált eszköz-felsorolás, valódi hangeszköz nélkül). Az eszköz-halmaz változása NEM
-// állítja le a felvételt: a kihúzott eszköz sávja két egymás utáni hiány után lezárul
-// (recordingTrackClosed), a többi sáv megy tovább, a felvétel végén minden sáv a meeting része.
-// Az encoder a valódi ffmpeg (nélküle QSKIP). Izolált TANARA_HOME.
-//
+// Tanara: unplugging a device during a recording, at the AppController level (fake capture
+// engine and simulated device enumeration, no real audio device). A change of the device set
+// does NOT stop the recording: the unplugged device's track closes after two consecutive
+// absences (recordingTrackClosed), the other tracks go on, and at the end of the recording
+// every track is part of the meeting. The encoder is the real ffmpeg (without it QSKIP). Isolated TANARA_HOME.
 #include <QtTest>
 #include <QProcess>
 #include <QSignalSpy>
@@ -104,14 +102,14 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     feeder.start();
     QTest::qWait(600);
 
-    // Kihúzás: az eszköz eltűnik a felsorolásból, a capture-je elhal.
+    // Unplug: the device disappears from the enumeration, its capture dies.
     engine->vanish(headset.name);
     app->devices()->setDeviceListOverride(QVector<AudioDeviceInfo>{mic, mon});
     app->refreshDevices();
-    // Egyetlen hiány még nem zár (átmeneti eltűnés), és a felvétel semmiképp nem áll le.
+    // A single absence does not close yet (a transient disappearance), and the recording never stops.
     QCOMPARE(closed.size(), 0);
     QCOMPARE(app->recordingState(), RecordingState::Recording);
-    // A második (időzített) felsorolás után lezárul a sáv.
+    // After the second (timed) enumeration the track closes.
     QVERIFY(closed.wait(4000));
     QCOMPARE(closed.size(), 1);
     QCOMPARE(closed.at(0).at(0).toString(), headset.name);
@@ -120,7 +118,7 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     QCOMPARE(app->disconnectedRecordingDeviceNames(), QStringList{headset.name});
     QCOMPARE(engine->closeCalls, 1);
 
-    // További eszköz-változások (és egy átmenetileg üres felsorolás) sem állítják le.
+    // Further device changes (and a temporarily empty enumeration) do not stop it either.
     app->refreshDevices();
     app->devices()->setDeviceListOverride(QVector<AudioDeviceInfo>{});
     app->refreshDevices();
@@ -130,8 +128,9 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     QCOMPARE(app->recordingState(), RecordingState::Recording);
     QCOMPARE(closed.size(), 1);
 
-    // Visszadugás: az eszköz újra a felsorolásban. Egy látás még nem elég (stabilitás), a
-    // második (időzített) felsorolás után magától újra rögzítjük: új sáv, eltolással.
+    // Plug back in: the device is in the enumeration again. One sighting is not enough
+    // (stability); after the second (timed) enumeration we record it again by ourselves: a new
+    // track, with an offset.
     QSignalSpy added(app.get(), &AppController::recordingTrackAdded);
     QSignalSpy returned(app.get(), &AppController::recordingDeviceReturned);
     engine->revive(headset.name);
@@ -154,14 +153,14 @@ void DeviceUnplugTest::unplugDuringRecordingClosesOnlyThatTrack()
     const Meeting m = finished.at(0).at(0).value<Meeting>();
     QCOMPARE(m.tracks.size(), 4);
     for (int i = 0; i < 3; ++i) QCOMPARE(m.tracks.at(i).startOffsetMs, qint64(0));
-    // A visszatért eszköz új szakasza: ugyanaz az eszköznév, későbbi kezdet, saját fájl.
+    // The returned device's new segment: the same device name, a later start, its own file.
     QCOMPARE(m.tracks.at(3).deviceName, headset.name);
     QVERIFY2(m.tracks.at(3).startOffsetMs > 1000, qPrintable(QString::number(m.tracks.at(3).startOffsetMs)));
     QVERIFY(m.tracks.at(3).file != m.tracks.at(1).file);
     const qint64 dMic = probeMs(QDir(m.folder).filePath(m.tracks.at(0).file));
     const qint64 dHs = probeMs(QDir(m.folder).filePath(m.tracks.at(1).file));
     QVERIFY2(qAbs(dMic - m.durationMs) < 300, qPrintable(QStringLiteral("%1 vs %2").arg(dMic).arg(m.durationMs)));
-    QVERIFY2(dHs > 400 && dHs < 900, qPrintable(QString::number(dHs)));   // a kihúzásig (~0,6 s)
+    QVERIFY2(dHs > 400 && dHs < 900, qPrintable(QString::number(dHs)));   // until the unplug (~0.6 s)
 
     app.reset();
     qunsetenv("TANARA_HOME");

@@ -1,8 +1,6 @@
-//
-// LlmTagSuggester — a jelöltlista és a felhasználói üzenet összeállítása, a „pick: / new:”
-// sorok engedékeny feldolgozása, a javaslatokká alakítás (meglévő / nagyon hasonló / új név,
-// legfeljebb 2), és egy teljes futás egy ál-HTTP-szerver ellen (gondolkodás kikapcsolva).
-//
+// LlmTagSuggester: assembling the candidate list and the user message, lenient parsing of the
+// "pick: / new:" lines, turning them into suggestions (existing / very similar / new name, at
+// most 2), and a full run against a fake HTTP server (thinking off).
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -75,8 +73,8 @@ void LlmTagSuggesterTest::candidatesAndMessage()
     sug.name = m_museum.name;
     const QVector<LlmTagCandidate> c = s.candidates({ sug });
     QCOMPARE(c.size(), 3);
-    QCOMPARE(c.first().tagId, m_museum.id);          // a javaslat elöl
-    QCOMPARE(c.at(1).tagId, m_nordvik.id);           // aztán a leggyakoribb
+    QCOMPARE(c.first().tagId, m_museum.id);          // the suggestion first
+    QCOMPARE(c.at(1).tagId, m_nordvik.id);           // then the most frequent
     QVERIFY(c.at(1).profileLine.contains(QStringLiteral("Kovács Anna")));
     QVERIFY(c.at(1).profileLine.contains(QStringLiteral("Nordvik ütemterv egyeztetés")));
 
@@ -111,13 +109,13 @@ void LlmTagSuggesterTest::lenientParsing()
 void LlmTagSuggesterTest::toSuggestions()
 {
     LlmTagSuggester s(m_tags.get());
-    const QVector<LlmTagCandidate> c = s.candidates({});   // Nordvik, MuseumPlus/Belső (gyakoriság)
+    const QVector<LlmTagCandidate> c = s.candidates({});   // Nordvik, MuseumPlus/Internal (by frequency)
     QCOMPARE(c.first().tagId, m_nordvik.id);
     LlmTagSuggester::Parsed p;
     p.picks = { 1, 2, 99 };
     p.newNames = { QStringLiteral("Nordvk"), QStringLiteral("Raktárköltözés"), QStringLiteral("Audit"),
                    QStringLiteral("Harmadik") };
-    // A museum2-n: a Nordvik (1) és a 2. jelölt meglévő; „Nordvk” ≈ Nordvik → nem új.
+    // On museum2: Nordvik (1) and the 2nd candidate are existing; "Nordvk" is close to Nordvik, so not new.
     QVector<TagSuggestion> out = s.toSuggestions(p, c, m_lib.museum2);
     QStringList names;
     for (const TagSuggestion& x : out) {
@@ -127,12 +125,12 @@ void LlmTagSuggesterTest::toSuggestions()
     QCOMPARE(names.count(QStringLiteral("Nordvik")), 1);
     QVERIFY(names.contains(QStringLiteral("Raktárköltözés")));
     QVERIFY(names.contains(QStringLiteral("Audit")));
-    QVERIFY(!names.contains(QStringLiteral("Harmadik")));     // legfeljebb 2 új
+    QVERIFY(!names.contains(QStringLiteral("Harmadik")));     // at most 2 new
     int newCount = 0;
     for (const TagSuggestion& x : out) if (x.isNew) { ++newCount; QVERIFY(x.tagId.isEmpty()); }
     QCOMPARE(newCount, 2);
 
-    // A meetingen lévő és az elutasított kimarad.
+    // The one already on the meeting and the rejected one are left out.
     TagSuggestion rej; rej.name = QStringLiteral("Audit"); rej.isNew = true;
     m_tags->reject(m_lib.nordvik1, rej);
     out = s.toSuggestions(p, c, m_lib.nordvik1);
@@ -167,7 +165,7 @@ void LlmTagSuggesterTest::fullRunAgainstFakeServer()
     QCOMPARE(list.size(), 2);
     QCOMPARE(list.at(0).tagId, m_nordvik.id);
     QVERIFY(list.at(1).isNew);
-    // A kérés: gondolkodás kikapcsolva (Gemma: reasoning_effort none), két üzenet.
+    // The request: thinking off (Gemma: reasoning_effort none), two messages.
     const QJsonObject body = http.lastBody("/chat/completions");
     QCOMPARE(body.value("reasoning_effort").toString(), QStringLiteral("none"));
     QCOMPARE(body.value("messages").toArray().size(), 2);

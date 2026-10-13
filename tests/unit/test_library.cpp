@@ -1,8 +1,6 @@
-//
-// MeetingLibrary + TextFold — a könyvtár-oldalsáv lekérdezései: dátum-szekciók, ékezet- és
-// kisbetű-független teljes szöveges keresés (cím + átirat) kivonattal és találat-hellyel,
-// szűrők, „Ezek várnak rád”, inkrementális jelek, gyorsítótár-érvénytelenítés.
-//
+// MeetingLibrary + TextFold: the library sidebar's queries: date sections, accent- and
+// case-insensitive full-text search (title + transcript) with snippet and hit position,
+// filters, "These are waiting for you", incremental signals, cache invalidation.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -52,7 +50,7 @@ private:
 
     std::unique_ptr<QTemporaryDir> m_dir;
     std::unique_ptr<MeetingStore> m_store;
-    const QDateTime m_now{QDate(2026, 10, 1), QTime(15, 0)};   // csütörtök
+    const QDateTime m_now{QDate(2026, 10, 1), QTime(15, 0)};   // Thursday
 };
 
 void LibraryTest::init()
@@ -108,10 +106,10 @@ void LibraryTest::foldKeepsLengthAndStripsAccents()
 {
     const QString src = QStringLiteral("Ödön ÁRVÍZTŰRŐ tükörfúrógép — Ǘ ß 😀");
     const QString folded = textfold::fold(textfold::normalize(src));
-    QCOMPARE(folded.size(), textfold::normalize(src).size());   // 1:1 hossz → a pozíciók egyeznek
+    QCOMPARE(folded.size(), textfold::normalize(src).size());   // 1:1 length, so the positions match
     QVERIFY(folded.startsWith(QStringLiteral("odon arvizturo tukorfurogep")));
-    QVERIFY(folded.contains(QStringLiteral(" u ")));             // Ǘ → u (többszörös ékezet)
-    // Felbontott (NFD) bemenet: a normalize olvasztja össze, így is illeszkedik.
+    QVERIFY(folded.contains(QStringLiteral(" u ")));             // U-umlaut to u (multiple accents)
+    // Decomposed (NFD) input: normalize merges it, so it matches that way too.
     const QString nfd = QStringLiteral("Ödön");
     QCOMPARE(textfold::fold(textfold::normalize(nfd)), QStringLiteral("odon"));
     QCOMPARE(textfold::foldQuery(QStringLiteral("  ÖDÖN   úr ")), QStringLiteral("odon ur"));
@@ -124,11 +122,11 @@ void LibraryTest::findPhraseAndWords()
     QVERIFY(r.isValid());
     QCOMPARE(r.start, 15);
     QCOMPARE(r.length, 4);
-    // Több szó: előbb a teljes kifejezés …
+    // Several words: first the whole phrase ...
     r = textfold::find(text, textfold::foldQuery("Ödön küldi"));
     QCOMPARE(r.start, 15);
     QCOMPARE(r.length, 10);
-    // … ha az nincs, de minden szó megvan: az első szó helye.
+    // ... if that is absent but every word is present: the first word's position.
     r = textfold::find(text, textfold::foldQuery("pénteken árajánlat"));
     QCOMPARE(r.start, int(text.indexOf("penteken")));
     QCOMPARE(r.length, 8);
@@ -147,12 +145,12 @@ void LibraryTest::snippetAroundMatch()
     textfold::Range in;
     const QString sn = textfold::snippet(text, hit, &in);
     QVERIFY(in.isValid());
-    QCOMPARE(sn.mid(in.start, in.length), QStringLiteral("Ödön"));   // az EREDETI (ékezetes) szöveg
+    QCOMPARE(sn.mid(in.start, in.length), QStringLiteral("Ödön"));   // the ORIGINAL (accented) text
     QVERIFY(sn.startsWith(QChar(0x2026)));
     QVERIFY(sn.endsWith(QChar(0x2026)));
     QVERIFY(!sn.contains(QLatin1Char('\n')));
     QVERIFY(sn.size() < 140);
-    // Rövid szöveg: nincs csonkolás, nincs „…”.
+    // Short text: no truncation, no "...".
     const QString shortText = QStringLiteral("Ödön itt van.");
     const QString sn2 = textfold::snippet(shortText, {0, 4}, &in);
     QCOMPARE(sn2, shortText);
@@ -163,15 +161,15 @@ void LibraryTest::snippetAroundMatch()
 
 void LibraryTest::sections()
 {
-    const QDate today(2026, 10, 1);   // csütörtök
+    const QDate today(2026, 10, 1);   // Thursday
     auto sec = [&](const QDate& d) { return MeetingLibrary::sectionFor(QDateTime(d, QTime(10, 0)), today); };
     QCOMPARE(sec(QDate(2026, 10, 1)), DateSection::Today);
     QCOMPARE(sec(QDate(2026, 9, 30)), DateSection::Yesterday);
-    QCOMPARE(sec(QDate(2026, 9, 29)), DateSection::ThisWeek);   // kedd
-    QCOMPARE(sec(QDate(2026, 9, 28)), DateSection::ThisWeek);   // hétfő
-    QCOMPARE(sec(QDate(2026, 9, 27)), DateSection::Earlier);    // előző vasárnap
+    QCOMPARE(sec(QDate(2026, 9, 29)), DateSection::ThisWeek);   // Tuesday
+    QCOMPARE(sec(QDate(2026, 9, 28)), DateSection::ThisWeek);   // Monday
+    QCOMPARE(sec(QDate(2026, 9, 27)), DateSection::Earlier);    // the previous Sunday
     QCOMPARE(sec(QDate(2025, 1, 1)), DateSection::Earlier);
-    // Hétfőn a „tegnap” (vasárnap) tegnap marad, az „ezen a héten” üres.
+    // On Monday "yesterday" (Sunday) stays yesterday, and "this week" is empty.
     QCOMPARE(MeetingLibrary::sectionFor(QDateTime(QDate(2026, 9, 27), QTime(9, 0)), QDate(2026, 9, 28)),
              DateSection::Yesterday);
     QCOMPARE(MeetingLibrary::sectionKey(DateSection::ThisWeek), QStringLiteral("thisWeek"));
@@ -213,7 +211,7 @@ void LibraryTest::searchTitleAccentInsensitive()
     const LibraryEntry& e = r.entries.first();
     QVERIFY(e.titleMatch.isValid());
     QCOMPARE(e.title.mid(e.titleMatch.start, e.titleMatch.length), QStringLiteral("Ödön"));
-    QVERIFY(e.snippet.isEmpty());    // átiratban nincs találat
+    QVERIFY(e.snippet.isEmpty());    // no hit in the transcript
     q.text = "ÖDÖN HETI";
     QCOMPARE(lib.query(q, m_now).count(), 1);
 }
@@ -236,8 +234,8 @@ void LibraryTest::searchTranscriptSnippet()
     QVERIFY(!e.titleMatch.isValid());
     QVERIFY(e.snippetMatch.isValid());
     QCOMPARE(e.snippet.mid(e.snippetMatch.start, e.snippetMatch.length), QStringLiteral("Ödön küldi"));
-    QCOMPARE(e.snippetMs, qint64(65000));                      // a megszólalás kezdete (ugráshoz)
-    QCOMPARE(e.snippetSpeaker, QStringLiteral("Kovács Lilla")); // a megjelenített (leképezett) név
+    QCOMPARE(e.snippetMs, qint64(65000));                      // the utterance's start (for the jump)
+    QCOMPARE(e.snippetSpeaker, QStringLiteral("Kovács Lilla")); // the displayed (mapped) name
     QVERIFY(lib.isWarm());
 }
 
@@ -273,18 +271,18 @@ void LibraryTest::filters()
     QCOMPARE(r.count(), 2);
 
     q = {};
-    q.people = {QStringLiteral("odon")};                // ékezet nélkül is
+    q.people = {QStringLiteral("odon")};                // without accents too
     r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().title, QStringLiteral("Csak átirat"));
     QVERIFY(r.entries.first().participants.contains(QStringLiteral("Ödön")));
 
-    q.people = {QStringLiteral("Ádám")};                // a saját mikrofon-sáv beszélője mindenhol ott van
+    q.people = {QStringLiteral("Ádám")};                // the own-microphone track's speaker is on all of them
     QCOMPARE(lib.query(q, m_now).count(), 3);
-    q.people = {QStringLiteral("Ádám"), QStringLiteral("Lilla")};   // mindkettő kell
+    q.people = {QStringLiteral("Ádám"), QStringLiteral("Lilla")};   // both are required
     QCOMPARE(lib.query(q, m_now).count(), 1);
 
-    // Szűrő + szöveg együtt.
+    // Filter + text together.
     q = {};
     q.noSummary = true;
     q.text = "hello";
@@ -300,7 +298,7 @@ void LibraryTest::people()
     MeetingLibrary lib(m_store.get());
     const QVector<PersonPresence> p = lib.people();
     QCOMPARE(p.size(), 3);
-    QCOMPARE(p.at(0).meetingCount, 2);                  // Ádám és Lilla 2-2, Ödön 1
+    QCOMPARE(p.at(0).meetingCount, 2);                  // two each for the own person and Lilla, 1 for Ödön
     QCOMPARE(p.at(2).name, QStringLiteral("Ödön"));
     QCOMPARE(p.at(2).meetingCount, 1);
 }
@@ -325,7 +323,7 @@ void LibraryTest::pendingItems()
     QVERIFY(pendingSpy.count() >= 2);
 
     const QVector<PendingItem> items = lib.pendingItems();
-    QCOMPARE(items.size(), 2);                           // a futó és a kész nem „vár rád”
+    QCOMPARE(items.size(), 2);                           // the running and the finished one are not "waiting for you"
     QCOMPARE(items.at(0).meetingId, waiting.id);
     QCOMPARE(items.at(0).kind, PendingKind::AwaitingTranscription);
     QCOMPARE(items.at(1).meetingId, failed.id);
@@ -333,7 +331,7 @@ void LibraryTest::pendingItems()
     QCOMPARE(items.at(1).error.detail, QStringLiteral("HTTP 401 · invalid_api_key"));
     QCOMPARE(lib.pendingItems(1).size(), 1);
 
-    // A lista-bejegyzés állapota a trackerből jön.
+    // The list entry's state comes from the tracker.
     QCOMPARE(lib.entry(failed.id, m_now).state.transcriptState, StepState::Failed);
     QCOMPARE(lib.entry(running.id, m_now).state.transcriptState, StepState::Running);
 
@@ -344,13 +342,13 @@ void LibraryTest::pendingItems()
 void LibraryTest::incrementalSignals()
 {
     MeetingLibrary lib(m_store.get());
-    QCOMPARE(lib.query({}, m_now).count(), 0);           // betöltve (üres)
+    QCOMPARE(lib.query({}, m_now).count(), 0);           // loaded (empty)
     QSignalSpy added(&lib, &MeetingLibrary::meetingAdded);
     QSignalSpy changed(&lib, &MeetingLibrary::meetingChanged);
     QSignalSpy removed(&lib, &MeetingLibrary::meetingRemoved);
 
     Meeting m = m_store->createMeeting("Új");
-    QCOMPARE(added.count(), 1);                          // egy új meeting → pontosan egy „added”
+    QCOMPARE(added.count(), 1);                          // one new meeting: exactly one "added"
     QCOMPARE(added.at(0).at(0).toString(), m.id);
     QCOMPARE(lib.meetingCount(), 1);
 
@@ -360,7 +358,7 @@ void LibraryTest::incrementalSignals()
     QCOMPARE(lib.entry(m.id, m_now).title, QStringLiteral("Átnevezve"));
     QCOMPARE(lib.meeting(m.id).title, QStringLiteral("Átnevezve"));
 
-    // Régebbi meeting érkezik (pl. helyreállított): a rendezés megmarad.
+    // An older meeting arrives (e.g. recovered): the ordering stays.
     Meeting old = m_store->createMeeting("Régebbi");
     old.startedAt = m.startedAt.addDays(-10);
     m_store->saveMeeting(old);
@@ -384,7 +382,7 @@ void LibraryTest::transcriptChangeInvalidatesCache()
     q.text = "elso";
     QCOMPARE(lib.query(q, m_now).count(), 1);
 
-    // Újra-átírás: a fájl változik, majd a store jelez (saveMeeting) → a szöveg újratöltődik.
+    // Re-transcription: the file changes, then the store signals (saveMeeting), so the text reloads.
     QTest::qWait(20);
     writeSegments(m, {{0, "Beszélő 1", "A második, hosszabb változat szövege került a helyére."}});
     m_store->saveMeeting(m);
@@ -393,20 +391,20 @@ void LibraryTest::transcriptChangeInvalidatesCache()
     q.text = "elso";
     QCOMPARE(lib.query(q, m_now).count(), 0);
 
-    // Csak a beszélő-hozzárendelés változik: a szöveg-cache marad, a név frissül.
+    // Only the speaker assignment changes: the text cache stays, the name refreshes.
     m.speakerMap.insert("Beszélő 1", "Ödön");
     m_store->saveMeeting(m);
     q.text = "masodik";
     QCOMPARE(lib.query(q, m_now).entries.first().snippetSpeaker, QStringLiteral("Ödön"));
 
-    // Kézi érvénytelenítés (pl. külső folyamat írt a mappába).
+    // Manual invalidation (e.g. an external process wrote into the folder).
     lib.invalidate();
     QCOMPARE(lib.query(q, m_now).count(), 1);
 }
 
 void LibraryTest::manyMeetingsStayResponsive()
 {
-    // 300 meeting, egyenként ~200 megszólalással (~20 kB szöveg).
+    // 300 meetings, ~200 utterances each (~20 kB of text).
     QVector<Seg> segs;
     for (int i = 0; i < 200; ++i)
         segs.append({i * 5000, QStringLiteral("Beszélő %1").arg(i % 4 + 1),
@@ -426,16 +424,16 @@ void LibraryTest::manyMeetingsStayResponsive()
 
     LibraryQuery q;
     q.text = "tuzoltofecskendo";
-    LibraryResult r = lib.query(q, m_now);                // első keresés: betölti az átiratokat
+    LibraryResult r = lib.query(q, m_now);                // first search: loads the transcripts
     const qint64 coldMs = clock.restart();
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().id, needleId);
     QCOMPARE(r.entries.first().snippetMs, qint64(150 * 5000));
 
-    r = lib.query(q, m_now);                              // meleg keresés: memóriából
+    r = lib.query(q, m_now);                              // warm search: from memory
     const qint64 warmMs = clock.restart();
     QCOMPARE(r.count(), 1);
-    q.text = "heti teendoket";                            // mindenhol találat
+    q.text = "heti teendoket";                            // a hit everywhere
     QCOMPARE(lib.query(q, m_now).count(), 300);
     const qint64 allHitsMs = clock.elapsed();
     qInfo("lista: %lld ms, hideg keresés: %lld ms, meleg keresés: %lld ms, 300 találat: %lld ms",
@@ -452,12 +450,12 @@ void LibraryTest::warmUpLoadsInBackground()
     QVERIFY(!lib.isWarm());
     QSignalSpy warmed(&lib, &MeetingLibrary::warmedUp);
     lib.warmUp();
-    QVERIFY(!lib.isWarm() || warmed.count() == 0);       // nem a hívásban tölt (nem blokkol)
+    QVERIFY(!lib.isWarm() || warmed.count() == 0);       // does not load in the call (does not block)
     QVERIFY(warmed.wait(5000));
     QVERIFY(lib.isWarm());
 }
 
-// ---- címkék ---------------------------------------------------------------------------------
+// ---- tags ----
 
 void LibraryTest::tagsInEntriesAndFilter()
 {
@@ -477,10 +475,10 @@ void LibraryTest::tagsInEntriesAndFilter()
     QVERIFY(lib.entry(c.id, m_now).tagIds.isEmpty());
 
     LibraryQuery q;
-    q.tags = {nord.id, part.id};                       // Bármelyik (VAGY)
+    q.tags = {nord.id, part.id};                       // Any (OR)
     QVERIFY(!q.isEmpty());
     QCOMPARE(lib.query(q, m_now).count(), 2);
-    q.tagsAll = true;                                  // Mindegyik (ÉS)
+    q.tagsAll = true;                                  // All (AND)
     LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().id, a.id);
@@ -490,9 +488,9 @@ void LibraryTest::tagsInEntriesAndFilter()
     r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QCOMPARE(r.entries.first().id, c.id);
-    q.tags = {nord.id};                                // címke nélküli VAGY Nordvik
+    q.tags = {nord.id};                                // untagged OR Nordvik
     QCOMPARE(lib.query(q, m_now).count(), 2);
-    // Törölt címke: kikerül a bejegyzésből, a szűrőben nem számít.
+    // A deleted tag: removed from the entry, not counted in the filter.
     QSignalSpy tc(&lib, &MeetingLibrary::tagsChanged);
     tags.remove(nord.id);
     QVERIFY(tc.count() >= 1);
@@ -509,13 +507,13 @@ void LibraryTest::searchInTagNames()
     tags.addTag(a.id, QStringLiteral("Ügyfél-Nordvik"));
 
     LibraryQuery q;
-    q.text = QStringLiteral("ugyfel");                 // ékezet- és kisbetű-független
+    q.text = QStringLiteral("ugyfel");                 // accent- and case-insensitive
     LibraryResult r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
     QVERIFY(r.entries.first().tagMatch);
     QCOMPARE(r.entries.first().tagMatchName, QStringLiteral("Ügyfél-Nordvik"));
     QVERIFY(!r.entries.first().titleMatch.isValid());
-    // Átirat-találat: nem címke-találat.
+    // Transcript hit: not a tag hit.
     q.text = QStringLiteral("raktar");
     r = lib.query(q, m_now);
     QCOMPARE(r.count(), 1);
@@ -529,7 +527,7 @@ void LibraryTest::tagOptionsAndUntagged()
     add("C", m_now.addDays(-6));
     TagService tags(m_store.get(), m_dir->filePath("meta/tags.json"));
     MeetingLibrary lib(m_store.get());
-    QVERIFY(lib.tagOptions().isEmpty());               // TagService nélkül nincs címke
+    QVERIFY(lib.tagOptions().isEmpty());               // no tags without TagService
     lib.setTagService(&tags);
     const Tag x = tags.addTag(a.id, QStringLiteral("Zebra"));
     tags.addTag(b.id, x.id);
@@ -537,9 +535,9 @@ void LibraryTest::tagOptionsAndUntagged()
     tags.create(QStringLiteral("Használatlan"));
     const QVector<TagUsage> opts = lib.tagOptions();
     QCOMPARE(opts.size(), 3);
-    QCOMPARE(opts.at(0).tag.name, QStringLiteral("Zebra"));   // gyakoriság szerint
+    QCOMPARE(opts.at(0).tag.name, QStringLiteral("Zebra"));   // by frequency
     QCOMPARE(opts.at(0).meetingCount, 2);
-    QCOMPARE(opts.at(1).tag.name, QStringLiteral("Alfa"));    // azonos számnál ABC
+    QCOMPARE(opts.at(1).tag.name, QStringLiteral("Alfa"));    // ties alphabetical
     QCOMPARE(opts.at(2).meetingCount, 0);
     QCOMPARE(opts.at(0).lastUsedAt, a.startedAt);
     QCOMPARE(lib.untaggedCount(), 1);

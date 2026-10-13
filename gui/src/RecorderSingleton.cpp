@@ -14,9 +14,9 @@ namespace tanara_gui {
 
 QString RecorderSingleton::serverName()
 {
-    // TANARA_HOME mellett (sandbox / teszt) a név a metaadat-mappa hash-ével egészül ki
-    // (tanara::instanceScopeSuffix), így a sandbox-példány és a felhasználó valódi felvevője
-    // SOHA nem látja egymást: nincs kérés-továbbítás és nincs név-ütközés egyik irányban sem.
+    // With TANARA_HOME (sandbox / test) the name gets the metadata folder's hash appended
+    // (tanara::instanceScopeSuffix), so a sandbox instance and the user's real recorder NEVER
+    // see each other: no request forwarding and no name clash in either direction.
     const QString scope = tanara::instanceScopeSuffix();
 #if defined(Q_OS_WIN)
     return QStringLiteral("tanara-recorder") + scope;
@@ -30,14 +30,14 @@ bool RecorderSingleton::forwardToExisting(const QStringList& args, int timeoutMs
     QLocalSocket sock;
     sock.connectToServer(serverName());
     if (!sock.waitForConnected(qMin(timeoutMs, 500)))
-        return false;   // nincs élő példány (vagy stale socket) → mi leszünk az
+        return false;   // no live instance (or a stale socket), so we become it
     QByteArray payload;
     { QDataStream ds(&payload, QIODevice::WriteOnly); ds << args; }
     sock.write(payload);
     if (!sock.waitForBytesWritten(timeoutMs))
         return false;
-    // Nyugta: a szerver "OK"-ot ír vissza, miután feldolgozta. E nélkül egy lefagyott
-    // példányt élőnek hinnénk és elveszne a kérés.
+    // Acknowledgement: the server writes back "OK" after handling. Without it a hung instance
+    // would be taken for alive and the request would be lost.
     if (!sock.waitForReadyRead(timeoutMs))
         return false;
     const bool ok = sock.readAll().startsWith("OK");
@@ -53,8 +53,8 @@ bool RecorderSingleton::listen()
 {
     if (m_server)
         return true;
-    // Ha él egy példány, NEM vesszük át a nevet. Ha nem él (stale socket-fájl a crash
-    // után), letakarítjuk és mi figyelünk.
+    // If an instance is alive, we do NOT take over the name. If not (a stale socket file after a
+    // crash), we clean it up and listen.
     {
         QLocalSocket probe;
         probe.connectToServer(serverName());
@@ -73,7 +73,7 @@ bool RecorderSingleton::listen()
     }
     connect(m_server, &QLocalServer::newConnection, this, [this]() {
         while (QLocalSocket* c = m_server->nextPendingConnection()) {
-            // Kis payload (argumentum-lista) → rövid blokkoló olvasás elegendő.
+            // Small payload (argument list), so a short blocking read is enough.
             if (!c->waitForReadyRead(500)) { c->deleteLater(); continue; }
             QByteArray data = c->readAll();
             QStringList args;

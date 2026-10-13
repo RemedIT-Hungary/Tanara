@@ -15,7 +15,7 @@ private:
 };
 
 QVector<TrackTranscript> MergerTest::makeTwoTracks() {
-    // Sáv A: "Ádám" beszél 0ms és 2000ms-nál.
+    // Track A: "Ádám" speaks at 0 ms and 2000 ms.
     TrackTranscript a;
     a.trackId = QStringLiteral("mic");
     a.speakerLabel = QStringLiteral("Ádám");
@@ -33,7 +33,7 @@ QVector<TrackTranscript> MergerTest::makeTwoTracks() {
         a.tokens.append(t);
     }
 
-    // Sáv B: "Béla" beszél 1000ms-nál (a kettő közé ékelődik).
+    // Track B: "Béla" speaks at 1000 ms (wedged between the two).
     TrackTranscript b;
     b.trackId = QStringLiteral("loopback");
     b.speakerLabel = QStringLiteral("Béla");
@@ -53,11 +53,11 @@ void MergerTest::merges_orders_and_labels() {
 
     QCOMPARE(m.tokens.size(), 3);
 
-    // startMs szerint rendezett
+    // sorted by startMs
     for (int i = 1; i < m.tokens.size(); ++i)
         QVERIFY(m.tokens[i - 1].startMs <= m.tokens[i].startMs);
 
-    // sorrend: Ádám(0) -> Béla(1000) -> Ádám(2000)
+    // order: Ádám(0) -> Béla(1000) -> Ádám(2000)
     QCOMPARE(m.tokens[0].speaker, QStringLiteral("Ádám"));
     QCOMPARE(m.tokens[0].trackId, QStringLiteral("mic"));
     QCOMPARE(m.tokens[1].speaker, QStringLiteral("Béla"));
@@ -73,7 +73,7 @@ void MergerTest::renderMarkdown_containsSpeakers() {
 
     QVERIFY(md.contains(QStringLiteral("Ádám")));
     QVERIFY(md.contains(QStringLiteral("Béla")));
-    // van legalább egy timestamp-prefix
+    // there is at least one timestamp prefix
     QVERIFY(md.contains(QStringLiteral("[00:00]")));
 }
 

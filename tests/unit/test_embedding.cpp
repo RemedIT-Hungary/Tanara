@@ -1,8 +1,6 @@
-//
-// Beágyazás: az OpenAI-kompatibilis provider egy ál-HTTP-szerver ellen (kötegelés, sorrend,
-// hiba), a text.embeddings.bin oda-vissza, a darabolás, a könyvtár-előkészítés (haladás,
-// megszakítás, hiba, folytatás) és a modellváltás miatti érvénytelenítés. Valódi végpont nincs.
-//
+// Embedding: the OpenAI-compatible provider against a fake HTTP server (batching, order,
+// error), text.embeddings.bin both ways, chunking, library preparation (progress, cancel,
+// error, resume) and invalidation on a model change. No real endpoint.
 #include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -23,8 +21,8 @@ using namespace tanara;
 #ifndef Q_MOC_RUN
 namespace {
 
-// Determinisztikus „beágyazás”: a szöveg hosszából és első betűjéből; az index-mező
-// szándékosan fordított sorrendben jön (a kliensnek az index szerint kell rendeznie).
+// Deterministic "embedding": from the text's length and first letter; the index field
+// intentionally arrives in reverse order (the client must sort by index).
 QByteArray embeddingsReply(const QByteArray& body)
 {
     const QJsonArray input = QJsonDocument::fromJson(body).object().value("input").toArray();
@@ -133,7 +131,7 @@ void EmbeddingTest::providerBatchesAndOrder()
     QVERIFY(m_http->log.first().head.contains("Bearer titok"));
     const auto vectors = done.first().first().value<QVector<QVector<float>>>();
     QCOMPARE(vectors.size(), 20);
-    for (int i = 0; i < 20; ++i) QCOMPARE(int(vectors.at(i).at(0)), i + 1);   // sorrendben
+    for (int i = 0; i < 20; ++i) QCOMPARE(int(vectors.at(i).at(0)), i + 1);   // in order
 }
 
 void EmbeddingTest::providerErrors()
@@ -156,7 +154,7 @@ void EmbeddingTest::providerErrors()
     QSignalSpy failed2(job2, &EmbeddingJob::failed);
     QVERIFY(failed2.wait(5000));
 
-    // Cím nélkül nem megy ki kérés.
+    // Without a title no request goes out.
     OpenAiCompatibleEmbeddingProvider none(ProviderConfig{});
     EmbeddingJob* job3 = none.embed({ { "x" }, QString() });
     QSignalSpy failed3(job3, &EmbeddingJob::failed);
@@ -175,12 +173,12 @@ void EmbeddingTest::chunking()
     TranscriptLine empty; empty.text = "   ";
     lines.insert(3, empty);
     const QVector<EmbeddingChunk> chunks = EmbeddingIndex::chunkTranscript(lines, 1500);
-    QCOMPARE(chunks.size(), 4);                      // 3 megszólalás (1202 kar.) / darab
+    QCOMPARE(chunks.size(), 4);                      // 3 utterances (1202 chars) / chunk
     QCOMPARE(chunks.first().startMs, 0);
     QCOMPARE(chunks.first().endMs, 2900);
     QVERIFY(chunks.first().text.size() <= 1500);
     QCOMPARE(chunks.last().endMs, 9900);
-    // Egy túl hosszú megszólalás egymagában egy darab.
+    // A single over-long utterance is one chunk by itself.
     TranscriptLine big; big.text = QString(4000, QLatin1Char('y'));
     QCOMPARE(EmbeddingIndex::chunkTranscript({ big }, 1500).size(), 1);
 }
@@ -204,7 +202,7 @@ void EmbeddingTest::indexFileRoundTrip()
     QCOMPARE(out.at(1).startMs, 11);
     QCOMPARE(out.at(1).endMs, 20);
     QCOMPARE(out.at(0).vector, in.at(0).vector);
-    // Eltérő hosszú vektorok / sérült fájl: elutasítva.
+    // Vectors of different length / a corrupt file: rejected.
     in[1].vector = { 1.0f };
     QVERIFY(!EmbeddingIndex::writeFile(m_dir->filePath("y.bin"), "m", in));
     QFile bad(m_dir->filePath("bad.bin"));
@@ -212,7 +210,7 @@ void EmbeddingTest::indexFileRoundTrip()
     bad.write("TNEMB1garbage");
     bad.close();
     QVERIFY(!EmbeddingIndex::readFile(m_dir->filePath("bad.bin"), &model, &out));
-    // Átlag: normalizált.
+    // Mean: normalized.
     QVector<EmbeddingChunk> c(2);
     c[0].vector = { 2.0f, 0.0f }; c[1].vector = { 0.0f, 5.0f };
     const QVector<float> mean = EmbeddingIndex::meanVector(c);
@@ -228,7 +226,7 @@ void EmbeddingTest::preparerProgressAndDone()
     EmbeddingPreparer prep(m_store.get(), &index, m_dir->filePath("meta/embedding-state.json"));
     QSignalSpy changed(&prep, &EmbeddingPreparer::stateChanged);
     QVERIFY(!prep.isConfigured());
-    prep.start();                                    // provider nélkül: nem indul
+    prep.start();                                    // without a provider: does not start
     QCOMPARE(prep.state().status, EmbeddingState::Idle);
 
     prep.setProvider(embeddingproviders::LocalId, QStringLiteral("teszt-embed"), factory());
@@ -242,16 +240,16 @@ void EmbeddingTest::preparerProgressAndDone()
     QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
     QCOMPARE(prep.state().prepared, 6);
     QVERIFY(prep.state().lastRun.isValid());
-    QVERIFY(progress.contains(3));                   // lépésenkénti haladás
+    QVERIFY(progress.contains(3));                   // per-step progress
     QVERIFY(index.has(lib.nordvik1));
     QVERIFY(QFile::exists(QDir(m_store->load(lib.museum1).folder).filePath("text.embeddings.bin")));
-    // Állapot-fájl
+    // State file.
     QFile f(m_dir->filePath("meta/embedding-state.json"));
     QVERIFY(f.open(QIODevice::ReadOnly));
     const QJsonObject st = QJsonDocument::fromJson(f.readAll()).object();
     QCOMPARE(st.value("model").toString(), QStringLiteral("teszt-embed"));
     QVERIFY(!st.value("lastRun").toString().isEmpty());
-    // Újraindítás: nincs teendő, nem megy ki kérés.
+    // Restart: nothing to do, no request goes out.
     const int before = m_http->count("POST", "/embeddings");
     prep.start();
     QTRY_COMPARE(int(prep.state().status), int(EmbeddingState::Done));
@@ -277,7 +275,7 @@ void EmbeddingTest::preparerErrorAndResume()
     prep.resume();
     QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
     QCOMPARE(prep.state().prepared, 6);
-    QCOMPARE(calls, 7);                              // a kész kettő nem ment újra
+    QCOMPARE(calls, 7);                              // the two finished ones did not run again
 }
 
 void EmbeddingTest::preparerCancelAndResume()
@@ -313,16 +311,16 @@ void EmbeddingTest::modelChangeInvalidates()
     QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
     QVERIFY(index.has(lib.budget1));
 
-    // Másik modell: a régi index nem érvényes (a fájl modellje más), a „naprakész” törlődik.
+    // Another model: the old index is not valid (the file's model differs), "up to date" is cleared.
     prep.setProvider(embeddingproviders::LocalId, QStringLiteral("masik-embed"), factory());
     QVERIFY(!index.has(lib.budget1));
     QCOMPARE(prep.state().prepared, 0);
     QVERIFY(!prep.state().lastRun.isValid());
-    // invalidateAll: a fájlok is törlődnek.
+    // invalidateAll: the files are deleted too.
     index.invalidateAll();
     QVERIFY(!QFile::exists(QDir(m_store->load(lib.budget1).folder).filePath("text.embeddings.bin")));
     QVERIFY(reset.count() >= 2);
-    // Az új átirat elavulttá teszi az indexet.
+    // A new transcript makes the index stale.
     prep.start();
     QTRY_COMPARE_WITH_TIMEOUT(int(prep.state().status), int(EmbeddingState::Done), 10000);
     QVERIFY(index.has(lib.budget1));

@@ -1,10 +1,8 @@
 #pragma once
-//
-// MediaPlayerBackend — a QML-lejátszó (tanara_qml::PlayerController) valódi hang-motorja:
-// QMediaPlayer + a rendszer alapértelmezett kimenetét KÖVETŐ QAudioOutput (fülhallgató /
-// hangszóró váltásnál a lejátszás átmegy az új eszközre — lásd AudioOutputFactory.h).
-// A main.cpp regisztrálja: PlayerController::setBackendFactory(…).
-//
+// MediaPlayerBackend: the real audio engine of the QML player (tanara_qml::PlayerController):
+// QMediaPlayer + a QAudioOutput that FOLLOWS the system default output (when switching
+// headphones / speakers, playback moves to the new device; see AudioOutputFactory.h).
+// main.cpp registers it: PlayerController::setBackendFactory(...).
 #include "PlayerBackend.h"
 
 #include <QMediaPlayer>
@@ -34,7 +32,7 @@ private:
 
     QMediaPlayer* m_player = nullptr;
     QAudioOutput* m_output = nullptr;
-    // A forrás betöltődéséig kért pozíció (a QMediaPlayer a betöltés előtti seeket eldobhatja).
+    // The position requested until the source has loaded (QMediaPlayer may drop a seek made before loading).
     qint64 m_pendingPosition = -1;
     bool m_loaded = false;
 };

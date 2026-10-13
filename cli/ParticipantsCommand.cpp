@@ -1,4 +1,4 @@
-// tanara-cli participants. Minden kimenet angol, tr() nélkül.
+// tanara-cli participants. All output is English, no tr().
 #include "ParticipantsCommand.h"
 
 #include "tanara/Paths.h"
@@ -30,7 +30,7 @@ namespace {
 QTextStream& out() { static QTextStream s(stdout); return s; }
 QTextStream& err() { static QTextStream s(stderr); return s; }
 
-// A bizonyíték-szövegek a GUI-ba szánt magyar rövid feliratok; a CLI a gépi nevüket írja.
+// The evidence strings are short Hungarian GUI labels; the CLI prints their machine names.
 QString evidenceText(const Evidence& e)
 {
     QString s = evidenceKindName(e.kind) + QLatin1Char(':') + polarityName(e.polarity);
@@ -93,10 +93,9 @@ void printText(const Meeting& m, const QString& analysisNote)
     out().flush();
 }
 
-// --remove: a résztvevő tartós törlése (mint az AppController::removeParticipant, szerkesztő
-// nélkül): a jóváhagyás-bejegyzése is kikerül, a kötött nyers beszélői — ha az ő nevére voltak
-// leképezve — névtelenek lesznek (a transcript.md újragenerálva). A soronkénti kézi javításokat
-// (overlay) nem érinti.
+// --remove: permanently deletes the participant (like AppController::removeParticipant, minus
+// the editor): the approval entry goes too, and raw speakers bound to that name become
+// anonymous (transcript.md is regenerated). Per-line manual fixes (the overlay) are untouched.
 int removeParticipant(Meeting& m, const QString& id, bool json)
 {
     const auto it = std::find_if(m.participants.cbegin(), m.participants.cend(),

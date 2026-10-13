@@ -1,9 +1,7 @@
+// Tanara: unit tests of the instance scope (sandbox isolation).
 //
-// Tanara — példány-hatókör (sandbox-elszigetelés) unit-tesztek.
-//
-// TANARA_HOME mellett a felvevő-singleton neve és a lock-fájlok a sandbox metaadat-mappájához
-// kötődnek, így egy teszt-példány soha nem éri el a felhasználó valódi felvevőjét/figyelőjét.
-//
+// With TANARA_HOME the recorder singleton's name and the lock files are tied to the sandbox's
+// metadata folder, so a test instance never reaches the user's real recorder / watcher.
 #include <QtTest>
 #include <QTemporaryDir>
 
@@ -18,31 +16,31 @@ private slots:
 
     void cleanup() { qunsetenv("TANARA_HOME"); }
 
-    // TANARA_HOME nélkül a valódi példány neve változatlan (nincs utótag).
+    // Without TANARA_HOME the real instance's name is unchanged (no suffix).
     void noOverrideNoSuffix()
     {
         qunsetenv("TANARA_HOME");
         QVERIFY(instanceScopeSuffix().isEmpty());
     }
 
-    // Két különböző sandbox két különböző, stabil utótagot kap — és egyik sem üres.
+    // Two different sandboxes get two different, stable suffixes, and neither is empty.
     void suffixDependsOnDirectory()
     {
         QTemporaryDir a, b;
         qputenv("TANARA_HOME", a.path().toUtf8());
         const QString sa = instanceScopeSuffix();
-        QCOMPARE(instanceScopeSuffix(), sa);            // stabil
+        QCOMPARE(instanceScopeSuffix(), sa);            // stable
         qputenv("TANARA_HOME", b.path().toUtf8());
         const QString sb = instanceScopeSuffix();
         QVERIFY(!sa.isEmpty() && !sb.isEmpty());
         QVERIFY(sa != sb);
         QVERIFY(sa.startsWith(QLatin1Char('-')));
-        // Ugyanaz a mappa más írásmóddal (záró perjel) ugyanazt adja.
+        // The same folder spelled differently (trailing slash) gives the same.
         qputenv("TANARA_HOME", (a.path() + QStringLiteral("/")).toUtf8());
         QCOMPARE(instanceScopeSuffix(), sa);
     }
 
-    // A lock-fájlok a sandboxban élnek — akkor is, ha a beállítás más mappát mondana.
+    // The lock files live in the sandbox, even if the setting names another folder.
     void lockPathsLiveInSandbox()
     {
         QTemporaryDir dir;
@@ -54,7 +52,7 @@ private slots:
         QVERIFY(watcherLockPath().endsWith(QStringLiteral("watcher.lock")));
     }
 
-    // A sandbox lockja nem látszik egy másik sandboxból (és viszont).
+    // A sandbox's lock is not visible from another sandbox (and vice versa).
     void sandboxLockInvisibleElsewhere()
     {
         QTemporaryDir a, b;

@@ -1,10 +1,10 @@
-// LibrarySelectionModel — a könyvtár többes kijelölése és a közös címkézés (C05, T05).
-//  - demó-módban (controller nélkül): Ctrl / Shift+kattintás logikája, a panel adatai
-//    (kijelöltek, közös / részleges címkék), tömeges felrakás / levétel a mintakönyvtáron;
-//  - a QML-oldal: a LibrarySidebar sorain Ctrl / Shift+kattintás jelöl ki, Esc megszünteti,
-//    sima kattintás megnyit; a jelölőnégyzetek csak kijelölés közben látszanak;
-//  - valódi AppControllerrel, IZOLÁLT TANARA_HOME-ban: a tömeges változás a TagService-en át
-//    megy, és EGY visszavonással visszaáll.
+// LibrarySelectionModel: the library's multi-selection and shared tagging.
+//  - in demo mode (no controller): the Ctrl / Shift+click logic, the panel data (selected
+//    meetings, shared / partial tags), bulk add / remove on the sample library;
+//  - the QML side: Ctrl / Shift+click on LibrarySidebar rows selects, Esc clears, a plain click
+//    opens; the checkboxes show only while selecting;
+//  - with a real AppController in an ISOLATED TANARA_HOME: a bulk change goes through
+//    TagService and is undone by ONE undo step.
 #include "AppContext.h"
 #include "LibraryDemoData.h"
 #include "LibraryListModel.h"
@@ -57,12 +57,12 @@ private slots:
 
         s.toggle(QStringLiteral("demo-tamogatas"));
         QCOMPARE(s.count(), 2);
-        // A lista sorrendjében (legújabb elöl), nem a kattintás sorrendjében.
+        // In list order (newest first), not in click order.
         QCOMPARE(s.ids(), (QStringList{QStringLiteral("demo-tamogatas"), QStringLiteral("demo-partner")}));
         QCOMPARE(changed.count(), 1);
         QVERIFY(s.contains(QStringLiteral("demo-partner")));
 
-        // Újabb Ctrl+kattintás hozzáad, a kijelölten elvesz.
+        // Another Ctrl+click adds; on a selected one it removes.
         s.toggle(QStringLiteral("demo-belepo"));
         QCOMPARE(s.count(), 3);
         s.toggle(QStringLiteral("demo-tamogatas"));
@@ -70,7 +70,7 @@ private slots:
 
         s.clear();
         QCOMPARE(s.count(), 0);
-        // Megnyitott megbeszélés nélkül egy elemmel indul (a nézet ezt sima megnyitásnak veszi).
+        // With no meeting open it starts with one item (the view treats this as a plain open).
         s.setCurrentId(QString());
         s.toggle(QStringLiteral("demo-heti"));
         QCOMPARE(s.ids(), QStringList{QStringLiteral("demo-heti")});
@@ -81,15 +81,15 @@ private slots:
         LibraryListModel lib;
         LibrarySelectionModel s;
         s.setLibrary(&lib);
-        s.setCurrentId(QStringLiteral("demo-tamogatas"));    // 2. sor
+        s.setCurrentId(QStringLiteral("demo-tamogatas"));    // row 2
 
-        s.rangeTo(QStringLiteral("demo-arazas"));            // 5. sor
+        s.rangeTo(QStringLiteral("demo-arazas"));            // row 5
         QCOMPARE(s.ids(), (QStringList{QStringLiteral("demo-tamogatas"), QStringLiteral("demo-partner"),
                                        QStringLiteral("demo-bemutato"), QStringLiteral("demo-arazas")}));
-        // A horgony marad: visszafelé is onnan számol.
+        // The anchor stays: going backwards counts from it too.
         s.rangeTo(QStringLiteral("demo-heti"));
         QCOMPARE(s.ids(), (QStringList{QStringLiteral("demo-heti"), QStringLiteral("demo-tamogatas")}));
-        // Ctrl+kattintás után az új horgony a kattintott elem.
+        // After a Ctrl+click the new anchor is the clicked item.
         s.toggle(QStringLiteral("demo-infra"));
         s.rangeTo(QStringLiteral("demo-tervezes"));
         QCOMPARE(s.ids(), (QStringList{QStringLiteral("demo-infra"), QStringLiteral("demo-tervezes")}));
@@ -100,7 +100,7 @@ private slots:
         LibraryListModel lib;
         LibrarySelectionModel s;
         s.setLibrary(&lib);
-        // A T05 kijelölése.
+        // The selection from the design sample.
         s.selectIds({QStringLiteral("demo-belepo"), QStringLiteral("demo-tamogatas"), QStringLiteral("demo-partner")});
         QCOMPARE(s.count(), 3);
 
@@ -130,25 +130,25 @@ private slots:
         s.setLibrary(&lib);
         s.selectIds({QStringLiteral("demo-tamogatas"), QStringLiteral("demo-partner"), QStringLiteral("demo-belepo")});
 
-        // A részleges címke kattintásra mindegyikre felkerül (azonosítóval).
+        // A partial tag is added to all of them on click (with its id).
         s.addTagToAll(QStringLiteral("t-partnerek"));
         QVERIFY(tagRow(s, QStringLiteral("Partnerek")).value("full").toBool());
         QCOMPARE(demo::tagsOf(QStringLiteral("demo-tamogatas")),
                  (QStringList{QStringLiteral("t-nordvik"), QStringLiteral("t-partnerek")}));
-        // A lista sorai is frissülnek.
+        // The list rows update too.
         const int row = lib.indexOfMeeting(QStringLiteral("demo-tamogatas"));
         QCOMPARE(lib.data(lib.index(row), LibraryListModel::TagNamesRole).toStringList(),
                  (QStringList{QStringLiteral("Nordvik"), QStringLiteral("Partnerek")}));
 
-        // Név szerint: a meglévőt használja (kis-nagybetű / ékezet nem számít) …
+        // By name: uses the existing one (case / accents do not matter) ...
         s.addTagToAll(QStringLiteral("belso"));
         QVERIFY(tagRow(s, QStringLiteral("Belső")).value("full").toBool());
-        // … ismeretlen névnél új címke.
+        // ... a new tag for an unknown name.
         s.addTagToAll(QStringLiteral("Pilot 2027"));
         QVERIFY(tagRow(s, QStringLiteral("Pilot 2027")).value("full").toBool());
         QVERIFY(!demo::tagIdByName(QStringLiteral("Pilot 2027")).isEmpty());
 
-        // × → mindegyikről lekerül.
+        // x removes it from all of them.
         s.removeTagFromAll(QStringLiteral("t-nordvik"));
         QVERIFY(tagRow(s, QStringLiteral("Nordvik")).isEmpty());
         QVERIFY(!demo::tagsOf(QStringLiteral("demo-partner")).contains(QStringLiteral("t-nordvik")));
@@ -180,7 +180,7 @@ private slots:
         auto* selection = sidebar->property("selection").value<LibrarySelectionModel*>();
         QVERIFY(selection);
 
-        // A lista sorai (a delegate-ek csak a vizuális fában vannak, a QObject-fában nem).
+        // The list rows (delegates are only in the visual tree, not in the QObject tree).
         std::function<QQuickItem*(QQuickItem*, const QString&)> findRow =
             [&](QQuickItem* parent, const QString& id) -> QQuickItem* {
             for (QQuickItem* it : parent->childItems()) {
@@ -202,18 +202,18 @@ private slots:
         QVERIFY(findRow(sidebar, QStringLiteral("demo-heti")));
 
         QVERIFY(!checkBoxShown(QStringLiteral("demo-heti")));
-        // Ctrl+kattintás: a megnyitott megbeszéléssel együtt kettő; a jelölőnégyzetek megjelennek.
+        // Ctrl+click: together with the open meeting that makes two; the checkboxes appear.
         QTest::mouseClick(&window, Qt::LeftButton, Qt::ControlModifier, rowCenter(QStringLiteral("demo-tamogatas")));
         QCOMPARE(selection->count(), 2);
         QVERIFY(checkBoxShown(QStringLiteral("demo-heti")));
-        // Shift+kattintás: tartomány a horgonytól.
+        // Shift+click: a range from the anchor.
         QTest::mouseClick(&window, Qt::LeftButton, Qt::ShiftModifier, rowCenter(QStringLiteral("demo-arazas")));
         QCOMPARE(selection->ids(), (QStringList{QStringLiteral("demo-tamogatas"), QStringLiteral("demo-partner"),
                                                 QStringLiteral("demo-bemutato"), QStringLiteral("demo-arazas")}));
-        // Esc (a listán) megszünteti.
+        // Esc (on the list) clears.
         QTest::keyClick(&window, Qt::Key_Escape);
         QCOMPARE(selection->count(), 0);
-        // Sima kattintás: megnyitás, kijelölés nélkül.
+        // Plain click: opens, without selecting.
         QTest::mouseClick(&window, Qt::LeftButton, Qt::ControlModifier, rowCenter(QStringLiteral("demo-heti")));
         QCOMPARE(selection->count(), 2);
         QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, rowCenter(QStringLiteral("demo-arazas")));
@@ -222,7 +222,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
     }
 
-    // ---- valódi controller, izolált TANARA_HOME ----
+    // ---- real controller, isolated TANARA_HOME ----
     void realBulkTaggingIsOneUndoStep()
     {
         QTemporaryDir home;
@@ -252,7 +252,7 @@ private slots:
             QCOMPARE(s.count(), 3);
             QCOMPARE(tagRow(s, QStringLiteral("Alfa")).value("countText").toString(), QStringLiteral("1/3"));
 
-            // Új név: létrehozás + felrakás mind a háromra — egy lépés.
+            // New name: create + add to all three, in one step.
             s.addTagToAll(QStringLiteral("Béta"));
             const tanara::Tag beta = tags->byName(QStringLiteral("Béta"));
             QVERIFY(beta.isValid());
@@ -265,7 +265,7 @@ private slots:
                 QVERIFY(!tags->tagsOf(id).contains(beta.id));
             QVERIFY(tags->tagsOf(ids.at(0)).contains(alfa.id));
 
-            // Részleges → mindegyikre, majd × mindegyikről; mindkettő egy-egy lépés.
+            // Partial: added to all, then x removes from all; each is one step.
             s.addTagToAll(alfa.id);
             for (const QString& id : ids)
                 QVERIFY(tags->tagsOf(id).contains(alfa.id));
@@ -277,7 +277,7 @@ private slots:
                 QVERIFY(tags->tagsOf(id).contains(alfa.id));
             QTRY_VERIFY(tagRow(s, QStringLiteral("Alfa")).value("full").toBool());
 
-            // Törölt megbeszélés kiesik a kijelölésből.
+            // A deleted meeting drops out of the selection.
             app.deleteMeeting(ids.at(2));
             QTRY_COMPARE(s.count(), 2);
         }

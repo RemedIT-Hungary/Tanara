@@ -1,5 +1,5 @@
-// SummaryViewModel + TopicListModel — az Összefoglaló fül (M06 / M07 / M08) állapotai izolált
-// TANARA_HOME-on, ál-LLM-szerverrel (valódi szolgáltató-hívás nincs).
+// SummaryViewModel + TopicListModel: the states of the Summary tab on an isolated TANARA_HOME
+// with a fake LLM server (no real provider call).
 #include "JobTestSupport.h"
 #include "ShellMeetingModel.h"
 #include "SummaryProgress.h"
@@ -35,9 +35,9 @@ const char* kQuickJson =
     "\"actionItems\":[{\"text\":\"Ajánlat elküldése\",\"owner\":\"Beszélő 2\",\"due\":\"holnap\"}],"
     "\"participants\":[\"Beszélő 1\",\"Vendég\"]}";
 
-// Forrás-jelölős gyors összefoglaló (v3): a mondatok, a döntés és a teendő a két megszólalásra
-// mutat (u0: „Sziasztok, az ajánlatot” — Beszélő 1; u900: „holnap küldjük.” — Beszélő 2); a
-// második mondatnak nincs jelölője.
+// A quick summary with source markers: the sentences, the decision and the action item point
+// to the two utterances (u0: "Hi all, the offer" from Speaker 1; u900: "we will send it
+// tomorrow." from Speaker 2); the second sentence has no marker.
 const char* kSourcedJson =
     "{\"execSummary\":\"Rövid egyeztetés az ajánlatról. [t=00:00] Holnap küldik. [t=00:01] Jelölő nélküli mondat.\","
     "\"decisions\":[\"Az ajánlat holnap megy ki. [t=00:01]\"],"
@@ -61,13 +61,13 @@ private slots:
         QCOMPARE(rest, QStringLiteral("A súgót kiterjesztik."));
         QCOMPARE(SummaryViewModel::splitTimestamp(QStringLiteral("(1:02:10) – Döntés"), &rest), 3730000);
         QCOMPARE(rest, QStringLiteral("Döntés"));
-        // Nincs időbélyeg → nincs hivatkozás, a szöveg érintetlen (a szám a mondat része).
+        // No timestamp, so no reference, the text is untouched (the number is part of the sentence).
         QCOMPARE(SummaryViewModel::splitTimestamp(QStringLiteral("A határidő 12:30-kor jár le."), &rest), -1);
         QCOMPARE(rest, QStringLiteral("A határidő 12:30-kor jár le."));
         QCOMPARE(SummaryViewModel::splitTimestamp(QStringLiteral("3 fővel bővül a csapat."), &rest), -1);
     }
 
-    // A feladat-szakaszok leképezése (Összefoglaló fül + feladat-sáv).
+    // Mapping of the job stages (Summary tab + job bar).
     void summaryProgressMapping()
     {
         auto job = [](const QVector<JobStage>& stages, int done, int total) {
@@ -80,14 +80,14 @@ private slots:
             j.total = total;
             return j;
         };
-        // Rövid megbeszélés: egy szakasz, határozatlan.
+        // Short meeting: one stage, indeterminate.
         SummaryProgress p = SummaryProgress::from(job({{"single", "Összefoglalás", StageState::Running, -1, {}}}, -1, -1));
         QCOMPARE(p.stage, QStringLiteral("single"));
         QCOMPARE(p.percent, -1);
         QCOMPARE(p.stages.size(), 1);
         QVERIFY(!p.label.isEmpty());
 
-        // Részenkénti jegyzet: valós csík a kész részekből, és a korábbi futásból átvett részek.
+        // Part notes: a real bar from the finished parts, and parts taken over from an earlier run.
         const JobProgress notes = job({{"notes", "Jegyzetelés részenként", StageState::Running, -1,
                                         "3/5. rész · 2 korábbi futásból"},
                                        {"merge", "Összegzés", StageState::Waiting, -1, {}}}, 2, 5);
@@ -104,7 +104,7 @@ private slots:
         QCOMPARE(p.stages.at(0).toMap().value("percent").toInt(), 40);
         QCOMPARE(p.stages.at(1).toMap().value("state").toString(), QStringLiteral("waiting"));
 
-        // Összefésülés: határozatlan; a jegyzetelés kész.
+        // Merge: indeterminate; the note taking is done.
         p = SummaryProgress::from(job({{"notes", "Jegyzetelés részenként", StageState::Done, -1, "5 rész kész"},
                                        {"merge", "Összegzés", StageState::Running, -1, {}}}, 5, 5));
         QCOMPARE(p.stage, QStringLiteral("merge"));
@@ -113,7 +113,7 @@ private slots:
         QCOMPARE(p.stages.at(0).toMap().value("state").toString(), QStringLiteral("done"));
         QCOMPARE(p.stages.at(1).toMap().value("state").toString(), QStringLiteral("running"));
 
-        // Szakaszok nélküli összegzés (témánkénti elemzés vége) és más feladat: nincs leképezés.
+        // A summary without stages (end of the per-topic analysis) and another job: no mapping.
         QVERIFY(!SummaryProgress::from(job({}, -1, -1)).isValid());
         JobProgress other = notes;
         other.kind = JobKind::AnalyzeTopics;
@@ -121,7 +121,7 @@ private slots:
         QCOMPARE(SummaryProgress::reusedParts(QStringLiteral("3/5. rész")), 0);
         QCOMPARE(SummaryProgress::reusedParts(QStringLiteral("Part 3/5 · 4 from an earlier run")), 4);
 
-        // A feladat-sáv ugyanígy: k / n rész valós százalékkal, az összefésülés határozatlan.
+        // The job bar likewise: k / n parts with a real percentage, the merge indeterminate.
         QVariantMap strip = ShellMeetingModel::describeJob(notes);
         QCOMPARE(strip.value("percent").toInt(), 40);
         QVERIFY2(strip.value("detail").toString().contains(QStringLiteral("2 / 5")), qPrintable(strip.value("detail").toString()));
@@ -130,8 +130,8 @@ private slots:
         QCOMPARE(strip.value("percent").toInt(), -1);
     }
 
-    // A demó-állapotok: vezetői összefoglaló nyitott kérdésekkel, memó (sok / kevés szakasz),
-    // régi összefoglaló, futás részekkel, hiba megtartott részekkel, témák nyitott kérdései.
+    // The demo states: executive summary with open questions, memo (many / few sections), old
+    // summary, a run with parts, an error with kept parts, topics' open questions.
     void demoMemoProgressAndOldSummaries()
     {
         SummaryViewModel vm;
@@ -147,7 +147,7 @@ private slots:
         QCOMPARE(first.value("points").toStringList().size(), 2);
         QCOMPARE(vm.memo().at(23).toMap().value("stamp").toString(), QStringLiteral("1:15:30"));
 
-        // Másolás: vezetői rész (memó nélkül), csak a memó, vagy mindkettő.
+        // Copy: the executive part (without the memo), the memo only, or both.
         const QString exec = vm.markdownFor(QStringLiteral("exec"));
         QVERIFY(exec.contains(QStringLiteral("## Vezetői összefoglaló")));
         QVERIFY(exec.contains(QStringLiteral("## Nyitott kérdések")));
@@ -166,10 +166,10 @@ private slots:
         QCOMPARE(vm.section(), QStringLiteral("memo"));
         QCOMPARE(sectionSpy.size(), 1);
         QCOMPARE(vm.memo().size(), 4);
-        vm.setSection(QStringLiteral("bármi"));             // ismeretlen → rövid forma
+        vm.setSection(QStringLiteral("bármi"));             // unknown: short form
         QCOMPARE(vm.section(), QStringLiteral("exec"));
 
-        // Régi (memó előtti) összefoglaló: a vezetői rész, a memó helyén magyarázat.
+        // Old (pre-memo) summary: the executive part, an explanation in the memo's place.
         vm.setDemoState(QStringLiteral("oldSummary"));
         QCOMPARE(vm.memoState(), QStringLiteral("missing"));
         QVERIFY(vm.openQuestions().isEmpty());
@@ -179,12 +179,12 @@ private slots:
         QCOMPARE(vm.section(), QStringLiteral("memo"));
         QCOMPARE(vm.memoState(), QStringLiteral("missing"));
 
-        // Témánkénti összefoglaló: nincs memó-nézet; a témák nyitott kérdései megvannak.
+        // Per-topic summary: no memo view; the topics' open questions are there.
         vm.setDemoState(QStringLiteral("topicsDoc"));
         QCOMPARE(vm.memoState(), QStringLiteral("none"));
         QCOMPARE(vm.topicSections().at(0).toMap().value("openQuestions").toStringList().size(), 1);
 
-        // Futás: részenkénti jegyzet (3 / 6, ebből 2 korábbról), összefésülés, egy lépés.
+        // Run: part notes (3 / 6, of which 2 from earlier), merge, one step.
         vm.setDemoState(QStringLiteral("emptyRunningParts"));
         QVERIFY(vm.jobRunning());
         QCOMPARE(vm.jobStage(), QStringLiteral("notes"));
@@ -203,33 +203,33 @@ private slots:
         QVERIFY(vm.jobRunning());
         QCOMPARE(vm.jobStage(), QStringLiteral("notes"));
 
-        // Hiba megtartott részekkel.
+        // Error with kept parts.
         vm.setDemoState(QStringLiteral("emptyErrorKept"));
         QVERIFY(vm.errorKeptParts());
         QVERIFY(!vm.jobRunning());
         vm.clearError();
         QVERIFY(!vm.errorKeptParts());
 
-        // Témakártyák: a kész téma nyitott kérdései.
+        // Topic cards: the finished topic's open questions.
         vm.setDemoState(QStringLiteral("topics"));
         QCOMPARE(vm.topics()->data(vm.topics()->index(0), TopicListModel::ResultOpenQuestionsRole)
                      .toStringList().size(), 1);
         QVERIFY(vm.topics()->roleNames().values().contains("resultOpenQuestions"));
     }
 
-    // Hosszú megbeszélés valódi controllerrel, ál-szerverrel: a futás szakaszai a nézetmodellben,
-    // megszakítás, elbukott futás megtartott részekkel, folytatás, majd a memó és a másolás.
+    // A long meeting with a real controller and a fake server: the run's stages in the view
+    // model, cancel, a failed run with kept parts, resume, then the memo and copying.
     void longMeetingPartsFailResumeAndMemo()
     {
         jobtest::Sandbox sb;
-        const Meeting m = sb.transcribedLong("Hosszú megbeszélés", 40);   // 3 rész
+        const Meeting m = sb.transcribedLong("Hosszú megbeszélés", 40);   // 3 parts
         const Meeting other = sb.transcribed("Másik");
         SummaryViewModel vm;
         vm.setController(sb.app.get());
         vm.setMeetingId(m.id);
         QCOMPARE(vm.view(), QStringLiteral("empty"));
 
-        // 1) A 2. rész függőben: a jegyzetelés 1 / 3-nál tart, valós százalékkal; megszakítható.
+        // 1) Part 2 is pending: note taking is at 1 / 3, with a real percentage; cancellable.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
             const int k = jobtest::notesPart(r);
@@ -249,8 +249,8 @@ private slots:
         QVERIFY(!vm.errorKeptParts());
         QVERIFY(QDir(m.folder).exists(QStringLiteral("summary.notes.json")));
 
-        // 2) Újraindítás: az 1. rész a korábbi futásból jön; a 2. rész most elbukik → a hiba
-        //    jelzi, hogy a kész részek megmaradtak.
+        // 2) Restart: part 1 comes from the earlier run; part 2 fails now, so the error says the
+        //    finished parts were kept.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
             const int k = jobtest::notesPart(r);
@@ -265,7 +265,7 @@ private slots:
         QVERIFY(vm.errorKeptParts());
         QCOMPARE(vm.view(), QStringLiteral("empty"));
 
-        // 3) Folytatás: csak a hiányzó részek + az összefésülés fut; kész a memó.
+        // 3) Resume: only the missing parts + the merge run; the memo is done.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
             const int k = jobtest::notesPart(r);
@@ -288,12 +288,12 @@ private slots:
         QCOMPARE(third.value("range").toString(), QStringLiteral("30:00–30:40"));
         QCOMPARE(third.value("points").toStringList(), QStringList({"Egy pont a(z) 3. részből."}));
         QCOMPARE(vm.openQuestions().size(), 2);
-        // A core a döntések / nyitott kérdések elejéről leveszi az időbélyeget → nincs hivatkozás.
+        // Core strips the timestamp from the start of decisions / open questions, so there is no reference.
         QCOMPARE(vm.openQuestions().at(0).toMap().value("ms").toLongLong(), -1);
         QCOMPARE(vm.openQuestions().at(0).toMap().value("text").toString(), QStringLiteral("Nyitott ügy 3"));
         QCOMPARE(vm.decisions().at(0).toMap().value("text").toString(), QStringLiteral("Marad a terv."));
 
-        // Másolás-változatok.
+        // Copy variants.
         const QString exec = vm.markdownFor(QStringLiteral("exec"));
         QVERIFY(exec.contains(QStringLiteral("## Nyitott kérdések")));
         QVERIFY(!exec.contains(QStringLiteral("## Memó")));
@@ -304,19 +304,19 @@ private slots:
         QVERIFY(vm.markdownFor(QStringLiteral("all")).contains(QStringLiteral("### Tárgy 2")));
         QVERIFY(vm.copyToClipboard(QStringLiteral("exec")));
 
-        // A memó-nézet meetingváltáskor visszaáll a rövid formára.
+        // On a meeting switch the memo view goes back to the short form.
         vm.setSection(QStringLiteral("memo"));
         QCOMPARE(vm.section(), QStringLiteral("memo"));
         vm.setMeetingId(other.id);
         QCOMPARE(vm.section(), QStringLiteral("exec"));
-        QCOMPARE(vm.memoState(), QStringLiteral("none"));   // nincs összefoglalója
+        QCOMPARE(vm.memoState(), QStringLiteral("none"));   // it has no summary
     }
 
     void demoStatesWithoutController()
     {
         SummaryViewModel vm;
         QVERIFY(vm.demo());
-        QCOMPARE(vm.view(), QStringLiteral("summary"));          // alap: M07, elavult
+        QCOMPARE(vm.view(), QStringLiteral("summary"));          // default: stale
         QVERIFY(vm.stale());
         QCOMPARE(vm.staleCount(), 3);
         QCOMPARE(vm.decisions().size(), 3);
@@ -338,7 +338,7 @@ private slots:
         QCOMPARE(vm.view(), QStringLiteral("topics"));
         QCOMPARE(vm.topics()->count(), 5);
         QCOMPARE(topicState(vm.topics(), 3), QStringLiteral("failed"));
-        // Demóban a szerkesztés memóriában működik.
+        // In demo mode editing works in memory.
         QVERIFY(vm.topics()->addTopic(QStringLiteral("Új téma"), QString()));
         QCOMPARE(vm.topics()->count(), 6);
         vm.topics()->moveTopic(5, 0);
@@ -361,7 +361,7 @@ private slots:
         QVERIFY(vm.canRun());
         QVERIFY2(vm.transcriptLine().contains("2 beszélő"), qPrintable(vm.transcriptLine()));
 
-        // Hiányzó szerver-cím → a sáv megnevezi, a gomb a szolgáltatókhoz visz.
+        // A missing server address: the bar names it, the button leads to the providers.
         AppSettings s = sb.app->settings()->settings();
         const QString model = s.llmConfigs[s.llmProviderId].baseUrl;
         s.llmConfigs[s.llmProviderId].baseUrl.clear();
@@ -373,7 +373,7 @@ private slots:
         sb.app->settings()->setSettings(s);
         QVERIFY(vm.canRun());
 
-        // Futó állapot: a kérés függőben → megszakítható; megszakítás után nincs hiba.
+        // Running state: the request is pending, so cancellable; after cancel there is no error.
         sb.http->handler = [](const jobtest::FakeRequest&) { return jobtest::FakeReply{200, "{}", true}; };
         sb.app->summarizeMeeting(m.id);
         QVERIFY(vm.jobRunning());
@@ -384,7 +384,7 @@ private slots:
         QVERIFY(vm.errorMessage().isEmpty());
         QCOMPARE(vm.view(), QStringLiteral("empty"));
 
-        // Hiba: megmarad az üzenet + a technikai sor; elvethető.
+        // Error: the message + the technical line stay; can be dismissed.
         sb.http->handler = [](const jobtest::FakeRequest&) -> jobtest::FakeReply {
             return {500, "{\"error\":{\"message\":\"overloaded\",\"code\":\"overloaded\"}}"};
         };
@@ -395,7 +395,7 @@ private slots:
         vm.clearError();
         QVERIFY(vm.errorMessage().isEmpty());
 
-        // Siker: a nézet az összefoglalóra vált, strukturált tartalommal.
+        // Success: the view switches to the summary, with structured content.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (r.path.endsWith("/chat/completions")) return {200, jobtest::chat(QString::fromUtf8(kQuickJson))};
             return {404, "{}"};
@@ -407,25 +407,25 @@ private slots:
         QCOMPARE(vm.mode(), QStringLiteral("quick"));
         QCOMPARE(vm.execSummary(), QStringLiteral("Rövid egyeztetés az ajánlatról."));
         QCOMPARE(vm.decisions().size(), 1);
-        QCOMPARE(vm.decisions().at(0).toMap().value("ms").toLongLong(), -1);   // nincs időbélyeg az adatban
+        QCOMPARE(vm.decisions().at(0).toMap().value("ms").toLongLong(), -1);   // no timestamp in the data
         QCOMPARE(vm.actions().size(), 1);
-        // A felelős a meeting beszélője → a beszélő színében (colorIndex 1: a második megszólaló).
+        // The owner is a speaker of the meeting, so in the speaker's color (colorIndex 1: the second speaker).
         QCOMPARE(vm.actions().at(0).toMap().value("ownerIndex").toInt(), 1);
         QVERIFY(vm.metaLine().contains("saját kulcs"));
         QCOMPARE(vm.modelLine(), QStringLiteral("teszt-modell"));
-        // Résztvevők: a két beszélő beszédidő-aránnyal. A résztvevő-listát a core az átirat
-        // beszélőiből állítja össze (nem a modell válaszából) → a csak említett „Vendég” nincs benne.
+        // Participants: the two speakers with talk-time share. Core builds the participant list from
+        // the transcript's speakers (not from the model's reply), so the merely mentioned "Guest" is not in it.
         QCOMPARE(vm.participants().size(), 2);
         QVERIFY(vm.participants().at(0).toMap().value("percent").toInt() > 0);
         QVERIFY(!vm.stale());
 
-        // Beszélő-javítás az összefoglaló után → elavult, valós számmal; „Rendben így” elengedi.
+        // A speaker fix after the summary makes it stale, with a real count; "Fine as is" releases it.
         SpeakerEditor* editor = sb.app->speakerEditor(m.id);
         QVERIFY(editor);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), QStringLiteral("Minta Márta")));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QCOMPARE(vm.staleCount(), 1);
-        // A résztvevő-lista követi a szerkesztést.
+        // The participant list follows the edit.
         bool renamed = false;
         for (const QVariant& p : vm.participants())
             renamed |= p.toMap().value("name").toString() == QStringLiteral("Minta Márta");
@@ -460,15 +460,15 @@ private slots:
         QCOMPARE(vm.actions().at(0).toMap().value("ownerIndex").toInt(), 0);
         QCOMPARE(vm.actions().at(0).toMap().value("due").toString(), QStringLiteral("péntek"));
         QCOMPARE(vm.actions().at(1).toMap().value("owner").toString(), QString());
-        QCOMPARE(vm.participants().size(), 2);                 // a két beszélő, nincs külön „említett”
-        // Memó előtti összefoglaló: nincs memó, nincsenek nyitott kérdések; a másolás a teljes szöveg.
+        QCOMPARE(vm.participants().size(), 2);                 // the two speakers, no separate "mentioned"
+        // Pre-memo summary: no memo, no open questions; copy is the whole text.
         QCOMPARE(vm.memoState(), QStringLiteral("missing"));
         QVERIFY(vm.memo().isEmpty());
         QVERIFY(vm.openQuestions().isEmpty());
         QVERIFY(vm.markdownFor(QStringLiteral("memo")).isEmpty());
         QCOMPARE(vm.markdownFor(QStringLiteral("exec")), vm.markdownFor(QStringLiteral("all")));
-        QVERIFY(!vm.metaLine().isEmpty());                     // a fájl ideje
-        QVERIFY(vm.modelLine().isEmpty());                     // régi összefoglaló: nincs modell-adat
+        QVERIFY(!vm.metaLine().isEmpty());                     // the file's time
+        QVERIFY(vm.modelLine().isEmpty());                     // old summary: no model data
         QVERIFY(vm.copyToClipboard());
     }
 
@@ -485,7 +485,7 @@ private slots:
         QCOMPARE(vm->view(), QStringLiteral("empty"));
         QVERIFY(!vm->hasTopics());
 
-        // Téma-javaslat a modelltől → megnyílik a szerkesztő.
+        // A topic suggestion from the model opens the editor.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
             return {200, jobtest::chat(QStringLiteral(
@@ -500,7 +500,7 @@ private slots:
         QCOMPARE(topics->count(), 2);
         QCOMPARE(topics->missingCount(), 2);
 
-        // Hozzáadás / szerkesztés / átrendezés / törlés — mind azonnal a lemezre kerül.
+        // Add / edit / reorder / delete: all go to disk immediately.
         QVERIFY(!topics->addTopic(QStringLiteral("   "), QString()));
         QVERIFY(topics->addTopic(QStringLiteral("Határidők"), QStringLiteral("Mikorra")));
         QCOMPARE(topics->count(), 3);
@@ -513,12 +513,12 @@ private slots:
         QCOMPARE(onDisk[1].title, QStringLiteral("Árazás és csomagok"));
         topics->moveTopic(0, 1);
         QCOMPARE(sb.app->meetingTopics(m.id)[1].title, QStringLiteral("Határidők"));
-        topics->removeTopic(2);                                // „Pilot” törölve
+        topics->removeTopic(2);                                // "Pilot" deleted
         QCOMPARE(topics->count(), 2);
         QCOMPARE(sb.app->meetingTopics(m.id).size(), 2);
         QVERIFY(topics->countsText().contains("2 téma"));
 
-        // Elemzés: az első sikerül, a második elbukik.
+        // Analysis: the first succeeds, the second fails.
         int call = 0;
         sb.http->handler = [&call](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
@@ -545,8 +545,8 @@ private slots:
         QVERIFY(!vm->analyzing());
         QVERIFY(!vm->hasSummary());
 
-        // „Újraindítás”: új nézetmodell ugyanarra a meetingre → a lemezről folytatódik
-        // (a munkaterület nyitva, a kész és a hibás téma állapota megvan).
+        // "Restart": a new view model on the same meeting continues from disk (the workspace is
+        // open, the finished and the failed topic states are there).
         vm.reset();
         vm = std::make_unique<SummaryViewModel>();
         vm->setController(sb.app.get());
@@ -557,16 +557,16 @@ private slots:
         QCOMPARE(topicState(topics, 0), QStringLiteral("done"));
         QCOMPARE(topicState(topics, 1), QStringLiteral("failed"));
 
-        // A hibás téma önállóan újrafuttatható; futás közben megszakítható.
+        // The failed topic can be re-run on its own; cancellable while running.
         sb.http->handler = [](const jobtest::FakeRequest&) { return jobtest::FakeReply{200, "{}", true}; };
         const QVector<SummaryTopic> list = sb.app->meetingTopics(m.id);
         sb.app->analyzeTopic(m.id, list[1]);
         QCOMPARE(topicState(topics, 1), QStringLiteral("running"));
         topics->cancelTopic(1);
         QTRY_VERIFY_WITH_TIMEOUT(topicState(topics, 1) != QStringLiteral("running"), 10000);
-        QCOMPARE(topicState(topics, 0), QStringLiteral("done"));       // a kész eredmény megmaradt
+        QCOMPARE(topicState(topics, 0), QStringLiteral("done"));       // the finished result stayed
 
-        // Hiányzók elemzése működő szolgáltatóval → összegzés → a nézet az összefoglalóra vált.
+        // Analyzing the missing ones with a working provider, then the reduce; the view switches to the summary.
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (!r.path.endsWith("/chat/completions")) return {404, "{}"};
             return {200, jobtest::chat(QStringLiteral(
@@ -579,15 +579,15 @@ private slots:
         QCOMPARE(vm->mode(), QStringLiteral("topics"));
         QCOMPARE(vm->topicSections().size(), 2);
         QVERIFY(!vm->execSummary().isEmpty());
-        // A témák megmaradtak: a munkaterület újra megnyitható.
+        // The topics stayed: the workspace can be reopened.
         vm->setTopicsOpen(true);
         QCOMPARE(vm->view(), QStringLiteral("topics"));
         QCOMPARE(vm->topics()->doneCount(), 2);
     }
 
-    // Kontextus-hiba LM Studióval: a hibasáv a besorolt üzenetet mutatja (egyszer, nyers JSON
-    // nélkül), a javító műveletek: „Betöltés nagyobb kontextussal” (token), Beállítások, Újra.
-    // Ugyanez a téma-kártyán (TopicListModel szerepek).
+    // Context error with LM Studio: the error bar shows the classified message (once, without raw
+    // JSON), the fix actions: "Load with a larger context" (tokens), Settings, Retry.
+    // The same on the topic card (TopicListModel roles).
     void contextOverflowFixActions()
     {
         jobtest::Sandbox sb;
@@ -600,10 +600,10 @@ private slots:
         const QByteArray overflow =
             "{\"error\":\"Engine protocol predict request returned 400: {\\\"error\\\":{\\\"code\\\":400,\\\"message\\\":\\\"request (40000 tokens) exceeds the available context size (32768 tokens), try increasing it\\\",\\\"type\\\":\\\"exceed_context_size_error\\\",\\\"n_prompt_tokens\\\":40000,\\\"n_ctx\\\":32768}}\"}";
         sb.http->handler = [overflow](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
-            if (r.path == "/api/v1/models")   // LM Studio, a modell már jó kontextussal, egy szálon
+            if (r.path == "/api/v1/models")   // LM Studio, the model already has a good context, one thread
                 return {200, "{\"models\":[{\"type\":\"llm\",\"key\":\"teszt-modell\",\"max_context_length\":131072,\"loaded_instances\":[{\"id\":\"teszt-modell\",\"config\":{\"context_length\":32768,\"parallel\":1}}]}]}"};
             if (r.path.endsWith("/chat/completions")) return {400, overflow};
-            return {500, "{}"};   // betöltés / kivétel nem várt
+            return {500, "{}"};   // load / exception not expected
         };
         sb.app->summarizeMeeting(m.id);
         QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty(), 10000);
@@ -612,13 +612,13 @@ private slots:
         QVERIFY(!vm.errorMessage().contains(QLatin1Char('{')));
         QVERIFY(!vm.errorDetail().contains(QLatin1Char('{')));
         QVERIFY(!vm.errorDetail().contains(QStringLiteral("Engine protocol")));
-        QCOMPARE(vm.fixReloadContext(), 49152);                // a betöltött 32 768 fölötti lépcső
+        QCOMPARE(vm.fixReloadContext(), 49152);                // the step above the loaded 32,768
         QCOMPARE(vm.fixActionLabel(), QStringLiteral("Beállítások"));
         QCOMPARE(vm.fixActionPage(), QStringLiteral("providers"));
         for (const jobtest::FakeRequest& r : sb.http->log)
             QVERIFY2(!r.path.startsWith(QStringLiteral("/api/v1/models/")), qPrintable(r.path));
 
-        // A téma-kártya ugyanígy.
+        // The topic card likewise.
         const QVector<SummaryTopic> list = sb.app->setMeetingTopics(m.id, {{QString(), QStringLiteral("Árazás"), QString()}});
         TopicListModel* topics = vm.topics();
         sb.app->analyzeTopic(m.id, list[0]);
@@ -627,7 +627,7 @@ private slots:
         QCOMPARE(topics->data(topics->index(0), TopicListModel::FixActionPageRole).toString(), QStringLiteral("providers"));
         QVERIFY(!topics->data(topics->index(0), TopicListModel::ErrorRole).toString().contains(QLatin1Char('{')));
 
-        // Más hiba: nincs újratöltés-gomb.
+        // Another error: no reload button.
         sb.app->jobs()->clearError(m.id, JobKind::Summarize);
         sb.http->handler = [](const jobtest::FakeRequest& r) -> jobtest::FakeReply {
             if (r.path.endsWith("/chat/completions")) return {500, "{\"error\":{\"message\":\"model crashed\"}}"};
@@ -637,7 +637,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!vm.errorMessage().isEmpty() && !vm.jobRunning(), 10000);
         QCOMPARE(vm.fixReloadContext(), 0);
     }
-    // v3 demó-állapotok (S1–S3): állítások, chipek, térkép-sorok, idézetek, célzott elavulás.
+    // Demo states: claims, chips, map rows, quotes, targeted staleness.
     void sourcesDemoStates()
     {
         SummaryViewModel vm;
@@ -647,7 +647,7 @@ private slots:
         QCOMPARE(vm.sentences()->count(), 4);
         QCOMPARE(vm.decisionItems()->count(), 3);
         QCOMPARE(vm.todoItems()->count(), 2);
-        // S2: a nyitott kérdések is állítások, forrás-chippel.
+        // Open questions are claims too, with a source chip.
         QCOMPARE(vm.questionItems()->count(), 2);
         QCOMPARE(vm.questionItems()->get(0).value("statementId").toString(), QStringLiteral("q1"));
         QCOMPARE(vm.questionItems()->get(0).value("spans").toList().at(0).toMap().value("stamp").toString(),
@@ -657,11 +657,11 @@ private slots:
         const QVariantMap s1 = vm.sentences()->get(0);
         QCOMPARE(s1.value("statementId").toString(), QStringLiteral("s1"));
         QCOMPARE(s1.value("spans").toList().at(0).toMap().value("stamp").toString(), QStringLiteral("00:04"));
-        // Teendő: felelős a beszélő színében + határidő az actionItems-ből.
+        // Action item: the owner in the speaker's color + the due date from actionItems.
         const QVariantMap t1 = vm.todoItems()->get(0);
         QCOMPARE(t1.value("owners").toList().at(0).toMap().value("index").toInt(), 1);
         QCOMPARE(t1.value("due").toString(), QStringLiteral("okt. 15."));
-        // A térkép „Forrás” sora: az összes forrás, az s1-é kiemelve.
+        // The map's "Source" row: all the sources, s1's highlighted.
         QCOMPARE(vm.activeStatementId(), QStringLiteral("s1"));
         int active = 0;
         for (const QVariant& m : vm.sourceMarks()) active += m.toMap().value("active").toBool();
@@ -669,7 +669,7 @@ private slots:
         QVERIFY(vm.sourceMarks().size() >= 9);
         QVERIFY(vm.mapHint().startsWith(QStringLiteral("kék")));
         QVERIFY2(vm.generationLine().contains(QStringLiteral("1298 megszólalásból")), qPrintable(vm.generationLine()));
-        // „Honnan jön ez?”: az s1 két megszólalásból jön, időrendben.
+        // "Where does this come from?": s1 comes from two utterances, in chronological order.
         const QVariantMap det = vm.sourceDetails(QStringLiteral("s1"));
         QCOMPARE(det.value("count").toInt(), 2);
         const QVariantList quotes = det.value("quotes").toList();
@@ -677,11 +677,11 @@ private slots:
         QCOMPARE(quotes.at(1).toMap().value("stamp").toString(), QStringLiteral("01:16"));
         QVERIFY(!quotes.at(0).toMap().value("text").toString().isEmpty());
         QVERIFY(vm.sourceDetails(QStringLiteral("nincs")).isEmpty());
-        // Jelzés (demóban memóriában).
+        // Flag (in memory in demo mode).
         QVERIFY(vm.flagStatement(QStringLiteral("d2")));
         QVERIFY(vm.decisionItems()->get(1).value("flagged").toBool());
         QVERIFY(vm.sourceDetails(QStringLiteral("d2")).value("flagged").toBool());
-        // Források ki: a térkép-sor üres.
+        // Sources off: the map row is empty.
         QSignalSpy marks(&vm, &SummaryViewModel::marksChanged);
         vm.setSourcesVisible(false);
         QVERIFY(marks.count() > 0);
@@ -689,7 +689,7 @@ private slots:
         vm.setDemoState(QStringLiteral("sourcesOff"));
         QVERIFY(!vm.sourcesVisible());
 
-        // Memó: hét szakasz sávként, a 3. kiemelve; a szakaszok beszélői színnel.
+        // Memo: seven sections as a bar, the 3rd highlighted; the sections' speakers in color.
         vm.setDemoState(QStringLiteral("memoSections"));
         QCOMPARE(vm.section(), QStringLiteral("memo"));
         QCOMPARE(vm.sectionBands().size(), 7);
@@ -701,8 +701,8 @@ private slots:
         QCOMPARE(sec.value("speakers").toList().at(1).toMap().value("colorIndex").toInt(), 1);
         QCOMPARE(vm.memo().at(6).toMap().value("sourceRange").toString(), QStringLiteral("115:50–131:04"));
         QVERIFY(vm.generationLine().startsWith(QStringLiteral("Memó · 7 szakasz")));
-        // S2: a memó-pontok és -bevezetők is állítások; a 3. szakasz bevezetője két mondat
-        // (chippel), utána „Elhangzott érvek” (3 pont) és „Nyitott kérdés” (1).
+        // Memo points and intros are claims too; section 3's intro is two sentences (with chips),
+        // followed by "Arguments made" (3 points) and "Open question" (1).
         QCOMPARE(vm.memoItems()->count(), 16);
         const QVariantList intro = sec.value("introRows").toList();
         QCOMPARE(intro.size(), 2);
@@ -719,12 +719,12 @@ private slots:
         QCOMPARE(m32.value("spans").toList().size(), 2);
         QCOMPARE(blocks.at(1).toMap().value("title").toString(), QStringLiteral("Nyitott kérdés"));
         QCOMPARE(vm.sourceDetails(QStringLiteral("m3.2")).value("count").toInt(), 2);
-        // Állítás nélküli pont (5. szakasz): puszta sor, forrás nélkül.
+        // A point without a claim (section 5): a bare line, no source.
         const QVariantMap plain = vm.memo().at(4).toMap().value("blocks").toList().at(0).toMap()
                                       .value("rows").toList().at(0).toMap();
         QVERIFY(plain.value("statementId").toString().isEmpty());
         QVERIFY(!plain.value("hasSources").toBool());
-        // A térkép „Forrás” sora a memóban: a memó-állítások forrásai, a kiemelt szakaszé aktív.
+        // The map's "Source" row in the memo: the memo claims' sources, the highlighted section's is active.
         active = 0;
         for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
         QCOMPARE(active, 7);
@@ -733,14 +733,14 @@ private slots:
         for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
         QCOMPARE(active, 2);
         vm.setActiveStatementId(QString());
-        // Jelzés egy memó-ponton: a szakasz sora is jelzett.
+        // Flag on a memo point: the section's row is flagged too.
         QVERIFY(vm.flagStatement(QStringLiteral("m3.1")));
         QVERIFY(vm.memo().at(2).toMap().value("blocks").toList().at(0).toMap().value("rows").toList()
                     .at(0).toMap().value("flagged").toBool());
         vm.setActiveSection(4);
         QVERIFY(vm.sectionBands().at(4).toMap().value("active").toBool());
 
-        // Célzott elavulás: az érintett állítás / forrás / felelős.
+        // Targeted staleness: the affected claim / source / owner.
         vm.setDemoState(QStringLiteral("staleTargeted"));
         QVERIFY(vm.stale());
         QVERIFY(vm.staleTargeted());
@@ -753,7 +753,7 @@ private slots:
         const QVariantMap staleTodo = vm.todoItems()->get(0);
         QCOMPARE(staleTodo.value("ownerStale").toString(), QStringLiteral("Fehér Gábor → Varga Árpád?"));
         QCOMPARE(staleTodo.value("ownerStaleIndex").toInt(), 2);
-        // Kijelölés nélkül a térkép az érintett forrásokat emeli ki.
+        // Without a selection the map highlights the affected sources.
         QVERIFY(vm.activeStatementId().isEmpty());
         active = 0;
         for (const QVariant& m : vm.sourceMarks()) active += m.toMap().value("active").toBool();
@@ -761,19 +761,19 @@ private slots:
         QCOMPARE(vm.mapHint(), QStringLiteral("kék: a javítás által érintett források"));
         QVERIFY(vm.generationLine().contains(QStringLiteral("azóta 3 beszélő-javítás")));
 
-        // Forrás nélküli (régi) összefoglaló: a mai nézet.
+        // A summary without sources (old): today's view.
         vm.setDemoState(QStringLiteral("noSources"));
         QVERIFY(!vm.hasStatements());
         QCOMPARE(vm.sentences()->count(), 0);
         QVERIFY(vm.sourceMarks().isEmpty());
         QCOMPARE(vm.memoState(), QStringLiteral("ready"));
-        // A régi demó-állapotok sem kapnak állításokat.
+        // The old demo states get no claims either.
         vm.setDemoState(QStringLiteral("done"));
         QVERIFY(!vm.hasStatements());
     }
 
-    // Valódi controllerrel: jelölős gyors összefoglaló → állítások a megszólalásokra kötve,
-    // idézet az átiratból, jelzés a lemezre, beszélő-javítás → célzott elavulás.
+    // With a real controller: a quick summary with markers gives claims bound to the utterances,
+    // a quote from the transcript, a flag to disk, a speaker fix gives targeted staleness.
     void sourcesFromController()
     {
         jobtest::Sandbox sb;
@@ -792,17 +792,17 @@ private slots:
         QCOMPARE(vm.sentences()->count(), 3);
         QCOMPARE(vm.decisionItems()->count(), 1);
         QCOMPARE(vm.todoItems()->count(), 1);
-        // A jelölők a szövegből lekerültek; a 2. mondat a „holnap küldjük.” sorra mutat.
+        // The markers were removed from the text; sentence 2 points to the "we will send it tomorrow." line.
         QCOMPARE(vm.sentences()->get(0).value("text").toString(), QStringLiteral("Rövid egyeztetés az ajánlatról."));
         const QVariantList spans = vm.sentences()->get(1).value("spans").toList();
         QCOMPARE(spans.size(), 1);
         QCOMPARE(spans.at(0).toMap().value("utteranceIds").toStringList(), QStringList{QStringLiteral("u900")});
-        // Jelölő nélküli mondat: nincs forrás (nem hiba).
+        // A sentence without a marker: no source (not an error).
         QVERIFY(!vm.sentences()->get(2).value("hasSources").toBool());
         QCOMPARE(vm.todoItems()->get(0).value("due").toString(), QStringLiteral("holnap"));
         QCOMPARE(vm.todoItems()->get(0).value("owners").toList().at(0).toMap().value("index").toInt(), 1);
         QCOMPARE(vm.sourceMarks().size(), 2);
-        // Idézet a beszélő-szerkesztőből.
+        // Quote from the speaker editor.
         const QVariantMap det = vm.sourceDetails(rowId(vm.sentences(), 1));
         QCOMPARE(det.value("count").toInt(), 1);
         const QVariantMap q = det.value("quotes").toList().at(0).toMap();
@@ -811,7 +811,7 @@ private slots:
         QCOMPARE(q.value("startMs").toLongLong(), 900);
         QVERIFY(!vm.staleTargeted() || vm.affectedStatements() == 0);
 
-        // Jelzés → summary.json; újratöltés után is jelzett.
+        // Flag goes to summary.json; still flagged after a reload.
         const QString did = rowId(vm.decisionItems(), 0);
         QVERIFY(vm.flagStatement(did));
         QTRY_VERIFY(vm.decisionItems()->get(0).value("flagged").toBool());
@@ -819,12 +819,12 @@ private slots:
         QVERIFY(vm.decisionItems()->get(0).value("flagged").toBool());
         QVERIFY(!vm.flagStatement(QStringLiteral("nincs-ilyen")));
 
-        // Beszélő-javítás: a „Beszélő 2” sorára mutató állítások és a teendő felelőse érintett.
+        // Speaker fix: the claims pointing to "Speaker 2"'s lines and the action item's owner are affected.
         SpeakerEditor* editor = sb.app->speakerEditor(m.id);
         QVERIFY(editor->reassignSpeaker(QStringLiteral("Beszélő 2"), QStringLiteral("Minta Márta")));
         QTRY_VERIFY_WITH_TIMEOUT(vm.stale(), 5000);
         QVERIFY(vm.staleTargeted());
-        QCOMPARE(vm.affectedStatements(), 2);   // a 2. mondat + a döntés
+        QCOMPARE(vm.affectedStatements(), 2);   // sentence 2 + the decision
         QCOMPARE(vm.affectedTodos(), 1);
         QVERIFY(vm.sentences()->get(1).value("affected").toBool());
         QVERIFY(!vm.sentences()->get(0).value("affected").toBool());
@@ -834,7 +834,7 @@ private slots:
         int active = 0;
         for (const QVariant& mk : vm.sourceMarks()) active += mk.toMap().value("active").toBool();
         QCOMPARE(active, 1);
-        // „Rendben így”: nincs több jelölés.
+        // "Fine as is": no more markings.
         vm.dismissStale();
         QTRY_VERIFY_WITH_TIMEOUT(!vm.stale(), 5000);
         QVERIFY(!vm.sentences()->get(1).value("affected").toBool());

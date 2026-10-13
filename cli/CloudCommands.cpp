@@ -1,19 +1,19 @@
-// tanara-cli — Tanara Cloud parancsok (headless; a GUI K-képernyőinek CLI-megfelelői).
+// tanara-cli: Tanara Cloud commands (headless; CLI counterparts of the GUI cloud screens).
 //
-//   cloud status                         fiók, egyenleg (ÁFA-jelöléssel), ≈ óra, ÁSZF, notice-ok
-//   cloud login                          device flow (a kódot és a címet kiírja, majd vár)
-//   cloud key <api_key>                  kézi API-kulcs (a dashboardról, W-14)
-//   cloud logout                         kijelentkezés (a helyi kulcs mindenképp törlődik)
-//   cloud use [cloud|byo]                az átírás + összefoglaló szolgáltatója
-//   cloud tier <stt|llm> <fast|accurate>  szint; cloud lang <kód|auto>
-//   cloud models                         katalógus (tier / Expert, ár, diarizáció)
+//   cloud status                         account, balance (with VAT note), approx. hours, terms, notices
+//   cloud login                          device flow (prints the code and URL, then waits)
+//   cloud key <api_key>                  set an API key by hand (from the dashboard)
+//   cloud logout                         sign out (the local key is always deleted)
+//   cloud use [cloud|byo]                provider for transcription + summary
+//   cloud tier <stt|llm> <fast|accurate>  tier; cloud lang <code|auto>
+//   cloud models                         catalog (tier / Expert, price, diarization)
 //   cloud estimate <id> [transcribe|summarize] [--mode quick|complex]
-//   cloud accept-terms [verzió]
-//   cloud pending                        félbemaradt átírások visszaírás-ellenőrzése
+//   cloud accept-terms [version]
+//   cloud pending                        check pending transcriptions for write-back
 //   cloud waitlist <email> --consent [--use-case meetings|interviews|audio_files|other] [--langs hu,en]
 //
-// A szövegek a K-06 / K-09 / K-10 szövegeinek angol változatai (describeCloudError). A CLI
-// kimenete angol, fordítás nélkül — lásd cli/README.md.
+// The texts are the English versions of the GUI cloud strings (describeCloudError). CLI
+// output is English and untranslated; see cli/README.md.
 #include "CloudCommands.h"
 
 #include "tanara/AppController.h"
@@ -31,11 +31,11 @@ using namespace tanara;
 namespace {
 QTextStream& out() { static QTextStream s(stdout); return s; }
 QTextStream& err() { static QTextStream s(stderr); return s; }
-// A CLI kimenete mindig angol (lásd main.cpp) — a pénz- és időformátum is.
+// CLI output is always English (see main.cpp), including money and time formats.
 QString lang() { return QStringLiteral("en"); }
 QString money(const Money& m, MoneyStyle st = MoneyStyle::Balance) { return formatMoney(m, st, lang()); }
 
-// Egy jel megvárása (timeout ms; true = megjött).
+// Waits for a signal (timeout in ms; true = it arrived).
 template <typename Sender, typename Signal>
 bool waitFor(Sender* sender, Signal signal, int timeoutMs)
 {
@@ -172,7 +172,7 @@ int runCloudCommand(AppController& app, const QStringList& args)
         });
         QObject::connect(acc, &CloudAccount::deviceFlowSucceeded, &loop, [&](const QString& email) {
             out() << QStringLiteral("Signed in: %1").arg(email) << "\n"; rc = 0;
-            // a fiók és a katalógus betöltésére még várunk
+            // the account and catalog are still loading
             QTimer::singleShot(1500, &loop, &QEventLoop::quit);
         });
         QObject::connect(acc, &CloudAccount::deviceFlowFailed, &loop, [&](const CloudError& e) {
