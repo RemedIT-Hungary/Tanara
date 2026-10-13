@@ -1,6 +1,6 @@
 import QtQuick
 
-// Forgó „folyamatban” jel (loader-circle). A running kikapcsolásával megáll.
+// Rotating "in progress" indicator (loader-circle). Stops when `running` is turned off.
 TIcon {
     id: root
     property bool running: visible

@@ -2,22 +2,22 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// A Címkék ablaka (design/handoff-tags, C08, T10–T13): külön, átméretezhető, nem modális
-// ablak (960 × 660), a Személyek ablak szerkezetével. Bal oldalt kereshető, rendezhető lista
-// (288 px), jobb oldalt a kijelölt címke tanult profilja és a megbeszélései. A natív ablakkeret
-// marad, ezért a spec 36 px-es saját címsora nincs megrajzolva.
+// The Tags window: a separate, resizable, non-modal window (960 x 660) built like the People
+// window. On the left a searchable, sortable list (288 px), on the right the selected tag's
+// learned profile and its meetings. The native window frame stays, so the spec's own 36 px
+// title bar is not drawn.
 //
-// Billentyűk: Ctrl+F kereső · F2 átnevezés · Del törlés (megerősítéssel) · Ctrl+Z visszavonás
-// (szövegmezőben a mező saját visszavonása él) · Ctrl+W bezárás.
+// Keys: Ctrl+F search · F2 rename · Del delete (with confirmation) · Ctrl+Z undo (in a text
+// field the field's own undo applies) · Ctrl+W close.
 //
-// Önállóan is betölthető képhez (kitalált címkékkel):
-//   tanara --qml-shot ki.png --qml-page TagsWindow --size 960x660 --qml-prop 'demoState="T10"'
-// demoState: T10 (részletek) · T11 (összevonás) · T12 (törlés) · T13 (üres) · rename ·
-//            people (Személyek-lista) · peopleEmpty (még senki) · peopleAdd (+ Személy választó)
+// Can load standalone to render an image (with fictional tags):
+//   tanara --qml-shot out.png --qml-page TagsWindow --size 960x660 --qml-prop 'demoState="T10"'
+// demoState: T10 (details) · T11 (merge) · T12 (delete) · T13 (empty) · rename ·
+//            people (People list) · peopleEmpty (nobody yet) · peopleAdd (+ Person picker)
 ApplicationWindow {
     id: window
 
-    // A gazda adja át (kezdő property-ként); nélküle az App.controller / demó érvényes.
+    // The host passes it in (as an initial property); without it App.controller / the demo applies.
     property QtObject hostController: null
     property string demoState: ""
     property alias vm: model
@@ -29,10 +29,10 @@ ApplicationWindow {
     property alias personPicker: personPicker
     property real listWidth: 288
 
-    // A könyvtár szűrése erre a címkére / egy megbeszélés megnyitása (wave 2: a héj köti be).
+    // Filter the library by this tag / open a meeting (wave 2: the shell binds it).
     signal openInLibraryRequested(string tagId)
     signal meetingRequested(string meetingId)
-    // A Személyek-lista sora: a Személyek ablak ezen a személyen (a gazda köti be).
+    // A People list row: the People window on this person (the host binds it).
     signal personRequested(string name)
 
     title: qsTr("Címkék")

@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 
-// M02 — nincs kijelölt megbeszélés: „Válassz egy megbeszélést” + az „Ezek várnak rád” kártya
-// (átírásra váró felvételek, elavult összefoglalók, sikertelen átírások). Ha semmi nem vár,
-// a kártya nem látszik.
+// No meeting selected: "Choose a meeting" + the "Waiting for you" card (recordings awaiting
+// transcription, stale summaries, failed transcriptions). If nothing is waiting, the card is
+// hidden.
 Item {
     id: root
 
-    property var shell: null                 // ShellActions vagy null
+    property var shell: null                 // ShellActions or null
 
     LibraryPendingModel { id: pending }
 

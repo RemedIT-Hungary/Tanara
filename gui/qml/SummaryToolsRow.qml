@@ -2,12 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az összefoglaló fülek eszköz-sora (S1/S2, 46 px): generálás-adat („Gyors összefoglaló ·
-// okt. 1. 17:05 · LM Studio · 1298 megszólalásból”) · „Források” kapcsoló (be: accentSoft) ·
-// Másolás · Újragenerálás. A héj (U1) a fejléc alatti eszköz-sorba teszi; amíg ott nincs
-// helye, a SummaryTab teteje mutatja (showSectionSwitch: ideiglenes váltó a két forma közt,
-// amíg a „Memó” nem külön fül).
-//   SummaryToolsRow { vm: summaryTab.vm; meetingId: …; shell: … }
+// The summary tabs' toolbar (46 px): generation info ("Quick summary · Oct 1 17:05 · LM Studio ·
+// from 1298 utterances") · "Sources" switch (on: accentSoft) · Copy · Regenerate. The shell puts it
+// into the toolbar row under the header; while there is no room there, the top of SummaryTab shows
+// it (showSectionSwitch: a temporary switch between the two forms until "Memo" is its own tab).
+//   SummaryToolsRow { vm: summaryTab.vm; meetingId: ...; shell: ... }
 Rectangle {
     id: root
 
@@ -30,7 +29,7 @@ Rectangle {
                        : qsTr("Az összefoglaló a vágólapra került."))
     }
     function regenerate() {
-        root.vm.note.commitDraft()   // a függő megjegyzés-piszkozat már az új futásba kerüljön
+        root.vm.note.commitDraft()   // the pending note draft should go into the new run
         if (root.vm.mode === "topics" && root.vm.hasTopics) root.vm.topicsOpen = true
         else if (root.shell) root.shell.startQuickSummary(root.meetingId)
     }
@@ -46,7 +45,7 @@ Rectangle {
         anchors { fill: parent; leftMargin: 24; rightMargin: 20; bottomMargin: 1 }
         spacing: 10
 
-        // Ideiglenes: a két forma közti váltó, amíg a fejlécben nincs külön „Memó” fül.
+        // Temporary: the switch between the two forms until the header has a separate "Memo" tab.
         SettingsSegmented {
             visible: root.showSectionSwitch && root.vm.memoState !== "none"
             implicitHeight: 30
@@ -67,7 +66,7 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        // „Források”: pirula-kapcsoló (be: accentSoft + accent keret és felirat).
+        // "Sources": pill switch (on: accentSoft + accent border and label).
         T.AbstractButton {
             id: sourcesToggle
             objectName: "sourcesToggle"

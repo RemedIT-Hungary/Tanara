@@ -1,26 +1,26 @@
 import QtQuick
 import QtQuick.Layouts
 
-// „Miről szól” forrás-kártya (design/handoff-v3 V1/V5, 6. döntés). Ebben a változatban egy
-// forrás van: a kézi leírás (Meeting::contextNote — az átírás és az összefoglaló is használja).
-// Naptár-kártya később jön (új kártya ugyanide, sosem új fejléc-sor); addig a „Naptár
-// összekapcsolása” csak helyőrző.
-//   leírás van  → surface kártya: 32 px accentSoft ikon, „Leírás” 14/600 + „kézzel megadva”,
-//                 a szöveg 13 px, jobbra „Szerkesztés”
-//   nincs       → szaggatott kártya: „Nincs hozzá naptár-esemény” + „Leírás megadása” /
-//                 „Naptár összekapcsolása”
-//   szerkesztés → szövegmező + Mentés / Mégse (Ctrl+Enter / Esc)
-// Átirat előtt a kártya alatt egy tömör sor (a régi átirat előtti oldal jegyzet-szerkesztőjéből):
-//   „Sablon hasonló megbeszélésből:” + chipek (MeetingNoteModel.suggestions; a tooltip az eleje;
-//   kattintásra a szerkesztőbe kerül: üres mezőbe csere, különben hozzáfűzés — a mentés a
-//   felhasználóé) — csak ha nincs leírás vagy éppen szerkeszt; és az „Észlelt hívás: Teams” sor
-//   (MeetingNoteModel.detectedCallApp, csak tájékoztatás).
+// "What it is about" source card. In this version there is one source: the manual description
+// (Meeting::contextNote - transcription and summary both use it). A calendar card comes later
+// (a new card in the same place, never a new header row); until then "Link calendar" is only a
+// placeholder.
+//   has description -> surface card: 32 px accentSoft icon, "Description" 14/600 + "entered
+//                      manually", the text 13 px, "Edit" on the right
+//   none            -> dashed card: "No calendar event for it" + "Add description" /
+//                      "Link calendar"
+//   editing         -> text field + Save / Cancel (Ctrl+Enter / Esc)
+// Before the transcript a compact row sits below the card (from the old pre-transcript note editor):
+//   "Template from a similar meeting:" + chips (MeetingNoteModel.suggestions; the tooltip is the
+//   beginning; a click puts it in the editor: replace an empty field, otherwise append - saving
+//   is up to the user) - only with no description or while editing; and the "Call detected:
+//   Teams" row (MeetingNoteModel.detectedCallApp, informational only).
 Item {
     id: root
 
     property string note: ""
     property bool editing: false
-    // [{ title, dateText, preview, note }] — MeetingNoteModel.suggestions (üres → nincs sor).
+    // [{ title, dateText, preview, note }] - MeetingNoteModel.suggestions (empty: no row).
     property var suggestions: []
     property string detectedCallApp: ""
 
@@ -29,7 +29,7 @@ Item {
 
     signal saveRequested(string note)
 
-    // Sablon a szerkesztőbe: üres mezőbe csere, különben új sorba hozzáfűzés.
+    // Template into the editor: replace an empty field, otherwise append on a new line.
     function useTemplate(text) {
         if (!root.editing) root.startEdit()
         const current = editor.text.trim()
@@ -50,7 +50,7 @@ Item {
 
     implicitHeight: mainHeight + (extras.visible ? extras.implicitHeight + 8 : 0)
 
-    // ---- leírás ----
+    // ---- description ----
     Rectangle {
         id: card
         objectName: "sourceCard"
@@ -104,7 +104,7 @@ Item {
         }
     }
 
-    // ---- üres ----
+    // ---- empty ----
     Item {
         id: empty
         visible: !root.editing && root.note === ""
@@ -160,7 +160,7 @@ Item {
         }
     }
 
-    // ---- szerkesztés ----
+    // ---- editing ----
     ColumnLayout {
         id: editBox
         visible: root.editing
@@ -194,7 +194,7 @@ Item {
             TButton { objectName: "sourceSave"; text: qsTr("Mentés"); size: "small"; variant: "primary"; onClicked: root.finish(true) }
         }
     }
-    // ---- sablonok + észlelt hívás (átirat előtt) ----
+    // ---- templates + detected call (before the transcript) ----
     ColumnLayout {
         id: extras
         objectName: "sourceExtras"

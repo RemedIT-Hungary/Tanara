@@ -1,12 +1,12 @@
 import QtQuick
 
-// A Személyek ablak „Címkék” szakasza (vault UX-terv 2., 3.2, 7.): a „Becenevek” fölött.
-//  - szerkeszthető személy: TagField (chipek ×-szel + beviteli mező; keresés a címkekészletben,
-//    új címke is), alatta a javaslat-sor: „Ezeken szokott ott lenni: [+ #Nordvik 11/14] … · Mind”
-//    (legfeljebb 3 látszik, a többi „+N” mögött; kattintás = elfogadás, × = elutasítás);
-//    helyette muted sor, ha a statisztika még számol, vagy ha a személy kevés megbeszélésen volt;
-//  - saját személy: csak egy muted magyarázó sor (a címkék rá nem adnak bizonyítékot);
-//  - névtelen mintatartó: a szakasz nem látszik (a hívó rejti: vm.tagsMode === "none").
+// "Tags" section of the People window (vault UX plan 2, 3.2, 7), above "Nicknames":
+//  - editable person: TagField (chips with x + input; searches the tag set, new tags allowed),
+//    below it the suggestion row: "Usually there: [+ #Nordvik 11/14] ... - All"
+//    (at most 3 shown, the rest behind "+N"; click = accept, x = reject);
+//    replaced by a muted line while statistics are still computing or the person has few meetings;
+//  - own person: only a muted explanatory line (tags give no evidence for them);
+//  - anonymous sample holder: the section is hidden (the caller hides it: vm.tagsMode === "none").
 //   PersonTagsSection { vm: peopleViewModel; width: … }
 Column {
     id: root
@@ -49,7 +49,7 @@ Column {
         onRemoveRequested: (id) => root.vm.removePersonTag(id)
     }
 
-    // A javaslat-sor: helyet foglal, nem ugrik (szöveg vagy chipek).
+    // The suggestion row: reserves space, does not jump (text or chips).
     Flow {
         id: suggestionRow
         objectName: "personTagSuggestions"

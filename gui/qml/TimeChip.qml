@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Egyenközű idő-chip egy forrás-hivatkozáshoz (S1–S3) vagy egy memó-szakasz időtartományához
-// (S2, play ikonnal). Alap: accentSoft háttér + accent felirat; active (a kijelölt állításé):
-// accent + textOnAccent; warn (a forrásában más lett a beszélő): warnSoft + warnInk + warnLine.
+// Monospace time chip for a source reference or a memo section's time range (with a play
+// icon). Default: accentSoft background + accent label; active (the selected claim's):
+// accent + textOnAccent; warn (the speaker changed in its source): warnSoft + warnInk + warnLine.
 //   TimeChip { text: "12:41"; warn: true; onClicked: … }
 //   TimeChip { text: "31:10–44:05"; iconName: "play"; large: true }
 T.AbstractButton {
@@ -12,7 +12,7 @@ T.AbstractButton {
     property bool active: false
     property bool warn: false
     property string iconName: ""
-    property bool large: false              // 20 px magas, 11.5-ös betű (szakasz-fejléc)
+    property bool large: false              // 20 px high, 11.5 font (section header)
     property string toolTipText: ""
     property bool stateHovered: hovered
     property bool stateFocused: visualFocus

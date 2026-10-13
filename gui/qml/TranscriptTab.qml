@@ -2,84 +2,66 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Átirat" fül: az átirat-szerkesztő (3a). Felül eszköztár + áttekintő, alatta a
-// megszólalások listája; bal oldalt a bekapcsolható beszélő-sín (soronkénti átsorolás:
-// kattintás másik oszlopba, húzás, több sor kijelölése + alsó sáv / 1–9 billentyű).
+// "Transcript" tab: the transcript editor. A toolbar and overview sit on top of the list of
+// utterances; an optional speaker rail on the left reassigns lines (click another column, drag,
+// or select several lines and use the bottom bar / the 1-9 keys). State comes from
+// TranscriptEditorViewModel.
 //
-// A javítás hatóköre (a tulajdonossal egyeztetve, a tervezői spectől szándékosan eltérve):
-//  - egy sor NEVÉRE kattintva (vagy „Más mondta…") alapból CSAK AZ A SOR kerül át (több soros
-//    kijelölés részeként: a kijelölt sorok); a teljes beszélő ott kifejezett választás;
-//  - a TELJES beszélő a beszélő-szintű helyekről javítható: sín-fejléc avatar, térkép-dokk név,
-//    a sor-panel „Miért ő?" linkje → „Miért ő?" panel (SpeakerWhyPopover, handoff-v3 E3);
-//  - a sor-panel (LinePopover, E1): jelöltek bizonyítékkal, „Miért nem X?" + a javítás helye;
-//  - három nézet az eszköz-sor szegmensén: Olvasás · Javítás · Átnézendő (N) — az utóbbi a
-//    fókusz-nézet (ReviewFocusView, „A” koncepció): egy kétes sor egy rögzített kártyán, egy
-//    billentyűs ítéletekkel, a fagyasztott munkalistán (reviewQueue); 0 sornál üres állapot +
-//    újraellenőrzés;
-//  - új személy után a hozzá hasonló sorok a sínen (accent keret) és a térképen (E4);
-//  - hanglenyomat CSAK kifejezett műveletre készül: a térkép ujjlenyomat-jele (saját panel), a
-//    „Miért ő?" Minták-linkje, a sor-panel teljes-beszélő hatóköre, és — egy teljes beszélő
-//    elnevezése után, ha a személynek még nincs — az értesítő sáv „Hanglenyomat készítése" gombja;
-//  - minden átsorolás után alul értesítő sáv: mi történt + Visszavonás / „Hasonló N sor is" /
-//    „<Forrás> mind a N sora";
-//  - két beszélő összevonása előtt számokkal megerősítő ablak (egy sor / kijelölés sosem kérdez).
-// Az állapotot a TranscriptEditorViewModel adja.
+// Fix scope (agreed with the owner, deliberately different from the designer spec):
+//  - Clicking a line's NAME (or "Someone else said...") moves ONLY THAT LINE by default (the
+//    selected lines if it is part of a multi-line selection); moving the whole speaker is an
+//    explicit choice.
+//  - The WHOLE speaker can be fixed from speaker-level places only: rail header avatar, map dock
+//    name, and the "Why them?" link of the line popover (SpeakerWhyPopover).
+//  - The line popover (LinePopover) shows candidates with evidence and "Why not X?".
+//  - Three views on the toolbar segment: Read, Fix, To review (N). The last one is the focus view
+//    (ReviewFocusView): one doubtful line on a pinned card, key-driven verdicts, on the frozen
+//    work list (reviewQueue); with 0 lines it shows an empty state plus a recheck button.
+//  - After a new person is named, similar lines show on the rail (accent border) and on the map.
+//  - A voiceprint is created only on an explicit action: the map's fingerprint mark (own panel),
+//    the "Why them?" Samples link, the whole-speaker scope of the line popover, and the notice
+//    bar's "Make voiceprint" button after naming a whole speaker who has none yet.
+//  - Every reassignment shows a notice bar: what happened + Undo / "N similar lines too" /
+//    "All N lines of <source>".
+//  - Merging two speakers asks for confirmation with numbers (a single line / selection never asks).
 //
-// Képernyőképhez (kitalált mintaadat, lásd TranscriptDemoSession):
+// For screenshots (fictional sample data, see TranscriptDemoSession):
 //   demoVariant: "" | "two" | "many" | "long" | "novoice" | "none"
-//   demoState:   "" | "rail" | "playing" | "selection" | "suggestion" | "suggestionShown" |
-//                "filter" | "search" | "searchEmpty" | "linePopover" | "selectionPopover" |
-//                "lineToSpeakerPopover" | "speakerPopover" | "personPicker" | "drag" |
-//                "expanded" | "changeLine" | "changeSelection" | "changeSpeaker" |
-//                "changeFilter" | "mergeConfirm" | "changeVoiceprint" | "changeVoiceprintDone" |
-//                "voiceprintHas" | "voiceprintNone" | "voiceprintDone" | "voiceprintShort" |
-//                "changePairOffer" | "speakerPopoverPair" |
-//                v3 Javítás mód (a „v3" kitalált meetingen, ha demoVariant üres):
-//                "markers" | "fixLinePopover" | "reviewGroups" | "reviewExpanded" |
-//                "contaminatedCore" | "speakerWhy" | "newPersonSimilar" | "newPersonTag" (a sáv
-//                címke-kérdése: „X új személy. Ráteszem a #Nordvik címkét?”) |
-//                S2 (közös alap): "imentWarning" (az „Imént” sor eltérő-minta figyelmeztetéssel és
-//                mini-naplóval; "imentLog": a napló nyitva) | "shiftPreview" (lenyomott Shift: „→ Név · nem minta” előnézet) |
-//                "ignoredRows" (nem azonosítható sorok, minta-jelek) | "sampleFilter" (a minta-mérő
-//                „+N most” szűrője) |
-//                S6 (söprés-mód): "sweepStop" (megálló + döntés-sáv) | "sweepContinuous" (folyamatos
-//                mód, utólagos ablak) | "sweepSectionDone" (szakasz-összesítő, „N sor újra kétes”)
-//                S4 (fókusz-nézet): "reviewFocus" | "reviewFocusDecided" | "reviewFocusIncoming" |
-//                "reviewFocusSummary" | "reviewFocusAlreadyDecided" | S7: "reviewFocusSkipped"
-//                (lásd TranscriptEditorViewModelQueue.cpp)
-//                S5: "reviewFocusOpener" | "reviewFocusOpenerDoubt" (nyitó-javaslat) | "reviewFocusOffer" |
-//                "reviewFocusOfferList" (mintázat-ajánlat; a lista kinyitva)
+//   demoState:   see TranscriptEditorViewModelQueue.cpp and TranscriptDemoSession for the full
+//                list of values (rail, playing, selection, suggestion, filter, search,
+//                linePopover, speakerPopover, personPicker, drag, mergeConfirm, voiceprint*,
+//                review*, sweep*, imentWarning, shiftPreview, ignoredRows, sampleFilter, ...)
 //
-// Billentyűk (fizikai hely szerint, TranscriptKeys): 1–9 a kijelölés a sín n. beszélőjéhez,
-// Shift+1–9 / Shift+sín-kattintás / Shift+húzás = ugyanez „nem minta”; 0 = nem azonosítható
-// (újra 0: újra azonosítható); J = Jó így (Shift+J: nem minta); M = Más… (a sor panelje);
-// B / Shift+B = következő / előző átnézendő; nyilak, Szóköz, Enter, Esc, Ctrl+C / A / Z; [ / ] =
-// tempó − / + (1,0–2,0×).
-// Söprés-módban (a Javítás nézet „Söprés” kapcsolója, S6) a billentyűk a CÉLSORRA vonatkoznak
-// (megálló > utólagos ablak > futó sor; kijelölés nélkül, a kijelölés nem változik): Enter =
-// alapértelmezés (javaslat, különben Jó így), J, 0, 1–9, M = Más…, Shift = nem minta; → = Később
-// (megállóban) / a következő megálló; ← = a sor eleje; Shift+← / → = előző / következő sor; Szóköz
-// a megállóban = tovább döntés nélkül.
+// Keys (by physical position, TranscriptKeys): 1-9 move the selection to the rail's nth speaker;
+// Shift+1-9 / Shift+rail click / Shift+drag = same but "not a sample"; 0 = not identifiable
+// (again: identifiable again); J = Looks right (Shift+J: not a sample); M = Someone else...
+// (the line popover); B / Shift+B = next / previous line to review; arrows, Space, Enter, Esc,
+// Ctrl+C / A / Z; [ / ] = speed down / up (1.0-2.0x).
+// In sweep mode (the "Sweep" switch of the Fix view) the keys act on the TARGET LINE (stop >
+// trailing window > playing line; no selection needed, the selection does not change): Enter =
+// default (suggestion, otherwise Looks right), J, 0, 1-9, M, Shift = not a sample; Right = Later
+// (at a stop) / next stop; Left = line start; Shift+Left / Right = previous / next line; Space
+// at a stop = continue without a decision.
 Item {
     id: root
 
-    // ---- a szelet-szerződés bemenetei (CONTRACT.md) ----
+    // ---- slice contract inputs (CONTRACT.md) ----
     property string meetingId: ""      // selected meeting; "" = none
     property var player: null          // PlayerController or null
     property var shell: null           // ShellActions or null
 
     property string demoVariant: ""
     property string demoState: ""
-    // A héj kikapcsolhatja a Ctrl+Z-t, amíg a fókusz nem a szerkesztőben van (ott a címke-lépés
-    // visszavonása él; lásd Main.qml tagUndoActive).
+    // The shell can disable Ctrl+Z while focus is not in the editor (the tag step undo lives there;
+    // see Main.qml tagUndoActive).
     property bool undoAllowed: true
-    // Olvasás (tiszta lista) / Javítás (sín, jelölők, átnézendők) — Ctrl+E, eszköz-sor szegmens.
-    // Belépéskor a megbeszélés megjegyzett sín-állapota dönt; a Javítás bekapcsolja a sínt.
+    // Read (plain list) / Fix (rail, markers, review) -- Ctrl+E, toolbar segment. On entry the
+    // meeting's remembered rail state decides; Fix turns the rail on.
     property bool fixMode: false
     onFixModeChanged: if (editorVm.hasTranscript && editorVm.railVisible !== fixMode) editorVm.railVisible = fixMode
-    // A három nézet (eszköz-sor szegmens, Nézet menü): "read" | "fix" | "review". Az Átnézendő
-    // a Javítás része (sín, jelölők, soronkénti műveletek; alatta editorVm.uncertainOnly);
-    // kilépve a belépés előtti mód (Olvasás vagy Javítás) jön vissza.
+    // The three views (toolbar segment, View menu): "read" | "fix" | "review". Review is part of Fix
+    // (rail, markers, per-line actions; editorVm.uncertainOnly underneath); leaving it restores the
+    // mode from before (Read or Fix).
     readonly property string viewMode: reviewShown ? "review" : fixMode ? "fix" : "read"
     property bool reviewEntered: false
     property bool reviewReturnFix: false
@@ -91,24 +73,24 @@ Item {
         }
         const fix = mode === "fix"
         if (editorVm.uncertainOnly) {
-            root.reviewReturnFix = fix          // az onUncertainOnlyChanged ezt állítja vissza
+            root.reviewReturnFix = fix          // onUncertainOnlyChanged restores this
             editorVm.uncertainOnly = false
         }
         root.fixMode = fix
     }
-    // A minta-mérő „+N most” kattintása (MapDock.samplesClicked): a Javítás ezekre a sorokra szűr.
+    // Click on the sample meter's "+N now" (MapDock.samplesClicked): Fix filters to those lines.
     function showSessionSamples(speakerKey) {
         if (!editorVm.hasTranscript) return false
         if (root.viewMode !== "fix") root.setViewMode("fix")
         root.forceActiveFocus()
         return editorVm.showSessionSamples(speakerKey)
     }
-    // Ctrl+E: Olvasás ↔ Javítás; az Átnézendőből (ami Javítás-jellegű) az Olvasásba.
+    // Ctrl+E: Read <-> Fix; from To review (a Fix-like view) back to Read.
     function toggleFixMode() { setViewMode(viewMode === "read" ? "fix" : "read") }
-    // „Ki volt ott?” (eszköz-sor) — a héj nyitja a résztvevő-párbeszédet.
+    // "Who was there?" (toolbar): the shell opens the participants dialog.
     signal participantsRequested()
 
-    // ---- v3 Javítás mód (a térkép-dokk és az eszköz-sor ezeket olvassa) ----
+    // ---- Fix mode (the map dock and the toolbar read these) ----
     readonly property var v3DemoStates: ["markers", "fixLinePopover", "reviewGroups", "reviewExpanded",
                                          "contaminatedCore", "speakerWhy", "newPersonSimilar", "newPersonTag",
                                          "imentWarning", "imentLog", "shiftPreview", "ignoredRows", "sampleFilter",
@@ -118,12 +100,12 @@ Item {
                                          "reviewFocusOpener", "reviewFocusOpenerDoubt", "reviewFocusOffer",
                                          "reviewFocusOfferList"]
     readonly property bool v3Demo: v3DemoStates.indexOf(demoState) >= 0
-    // Az Átnézendő fókusz-nézet látszik (a szegmens harmadik eleme = editorVm.uncertainOnly).
+    // The To review focus view is showing (third segment item = editorVm.uncertainOnly).
     readonly property bool reviewShown: editorVm.uncertainOnly && editorVm.hasTranscript
-    // Az új személyhez hasonló sorok a térképnek: [x, w, …] (0..1); ugyanezek az
-    // editorVm.overview `marks` listáiban is (a MapDock accent jelei).
+    // Lines similar to the new person, for the map: [x, w, ...] (0..1); the same ones are in
+    // editorVm.overview `marks` (the accent marks of MapDock).
     readonly property var similarMarks: editorVm.similarMarks
-    // Az imént felvett személy oszlopa a sínen (-1 = nincs / összecsukva).
+    // Column of the just-added person on the rail (-1 = none / collapsed).
     readonly property int newPersonLane: {
         const key = editorVm.newPersonKey
         if (key === "") return -1
@@ -131,7 +113,7 @@ Item {
         for (let i = 0; i < lanes.length; ++i) if (lanes[i].key === key) return i
         return -1
     }
-    // A sín-fejléc mellett: mit csinál itt a kattintás / mi a kiemelés.
+    // Next to the rail header: what a click does here / what the highlight means.
     readonly property string railNote: reviewShown ? qsTr("Átnézendő: csak a kétes sorok, okok szerint")
         : sweepOn ? qsTr("Söprés: hallgasd végig; a billentyűk a futó (megálló) sorra vonatkoznak · 1–%1 beszélő · J: Jó így · 0: nem azonosítható · Shift: nem minta").arg(Math.min(9, laneCount))
         : editorVm.newPersonKey !== "" && editorVm.similarShown && newPersonLane >= 0
@@ -139,15 +121,15 @@ Item {
         : root.shiftHeld ? qsTr("Shift: nem minta — a sor átkerül, de a hangja nem tanítja a felismerést")
         : qsTr("másik oszlopra kattintás: áthelyezés · 1–%1: a kijelöltek áthelyezése · Shift: nem minta · 0: nem azonosítható").arg(Math.min(9, laneCount))
 
-    // ---- a sorok (TranscriptRow) ezt olvassák ----
+    // ---- the rows (TranscriptRow) read these ----
     readonly property bool railShown: editorVm.railVisible && editorVm.hasTranscript
     readonly property real railX: 12
     readonly property real railWidth: railHeader.implicitWidth
     readonly property real textX: railShown ? railX + railWidth + 1 : 0
     readonly property int laneCount: editorVm.lanes.length
     readonly property bool groupShown: railHeader.groupShown
-    // A sín oszlopa a sín bal szélétől mért x alapján (a Javítás és az Átnézendő sín-kattintása):
-    // >= 0 beszélő; -1 „+N" csoport; -3 „+"; -9 semmi.
+    // Rail column from the x offset to the rail's left edge (rail click in Fix and To review):
+    // >= 0 speaker; -1 "+N" group; -3 "+"; -9 nothing.
     function railLaneAt(x) {
         let lx = x - 4
         if (lx < 0) return -9
@@ -164,15 +146,15 @@ Item {
     property int dragFromRow: -1
     property int dragToRow: -1
     property int dragLane: -1
-    // Rámutatás a sínen (egy sor másik oszlopa): ugyanaz az előnézet, mint húzáskor (cél-cella a
-    // beszélő színével, „→ Név" címke) — az Átnézendő sínjével azonos működés.
+    // Hover on the rail (another column for a line): same preview as while dragging (target cell in
+    // the speaker's color, "-> Name" label); same behavior as the To review rail.
     property int hoverRow: -1
     property int hoverLane: -1
     readonly property int previewLane: dragActive ? dragLane : hoverLane
     readonly property int previewColorIndex: previewLane >= 0 && previewLane < laneCount ? editorVm.lanes[previewLane].colorIndex : 0
-    // A Shift épp le van nyomva („nem minta” módosító): az előnézeti címke „→ Név · nem minta”,
-    // szaggatott keretű cél-cella, a gombfeliratok „· nem minta” utótagot kapnak. A billentyű-
-    // eseményekből és a sín egér-módosítóiból frissül; fókusz-vesztéskor nullázódik.
+    // Shift is held down ("not a sample" modifier): the preview label reads "-> Name · not a sample",
+    // the target cell has a dashed border, button labels get a "· not a sample" suffix. Updated from
+    // key events and rail mouse modifiers; reset on focus loss.
     property bool shiftHeld: false
     onActiveFocusChanged: if (!activeFocus && !reviewView.activeFocus) shiftHeld = false
     Connections {
@@ -181,9 +163,9 @@ Item {
     }
     readonly property string nonSampleSuffix: qsTr(" · nem minta")
 
-    // ---- S6: söprés-mód (a Javítás nézetben; a VM söprés-blokkja: TranscriptEditorViewModel) ----
+    // ---- sweep mode (in the Fix view; the VM's sweep block: TranscriptEditorViewModel) ----
     readonly property bool sweepOn: editorVm.sweepActive && root.viewMode === "fix"
-    // A térkép-dokk söprés-rétege (Main.qml → MapDock.sweep); üres map: nincs söprés.
+    // The map dock's sweep layer (Main.qml -> MapDock.sweep); empty map: no sweep.
     readonly property var sweepDock: sweepOn ? editorVm.sweepDock : ({})
     onViewModeChanged: if (viewMode !== "fix" && editorVm.sweepActive) editorVm.sweepActive = false
     function setSweep(on) {
@@ -193,7 +175,7 @@ Item {
         Qt.callLater(root.updateViewport)
         return editorVm.sweepActive === on
     }
-    // A söprés-billentyűk célsora: megálló > utólagos ablak > futó sor; különben a kiválasztott sor.
+    // Target line of the sweep keys: stop > trailing window > playing line; otherwise the selected line.
     function sweepTarget() {
         const t = editorVm.sweepTargetRow
         return t >= 0 ? t : editorVm.currentRow
@@ -211,7 +193,7 @@ Item {
         root.openLinePopover(row, item.head ? item.nameItem : item)
         return true
     }
-    // Ugrás egy időpontra és lejátszás onnan (a söprés útjai: következő megálló, összesítő gombjai).
+    // Jump to a time and play from there (sweep paths: next stop, summary buttons).
     function sweepSeekPlay(ms) {
         if (ms < 0) return
         const row = editorVm.rowForTime(ms)
@@ -223,14 +205,14 @@ Item {
         root.cursorSync = false
         if (root.player.playing !== true) root.player.play()
     }
-    // ←: a célsor eleje (a megálló a sor végén újra megáll).
+    // Left: start of the target line (the stop at the line's end stops again).
     function sweepReplay() {
         const row = sweepTarget()
         if (row < 0) return
         editorVm.sweepDecide(row, "replay", -1, false)
         root.sweepSeekPlay(editorVm.rowStartMs(row))
     }
-    // →: a következő megálló eleje (a lejátszás onnan szól).
+    // Right: start of the next stop (playback sounds from there).
     function sweepJumpNext() {
         const from = Math.max(sweepTarget(), editorVm.playingRow)
         const row = editorVm.sweepNextStopRow(from)
@@ -240,7 +222,7 @@ Item {
         }
         root.sweepSeekPlay(editorVm.rowStartMs(row))
     }
-    // [ / ]: tempó 1,0–2,0× negyedekben (a lejátszó-sor és a söprés-sáv mutatja).
+    // [ / ]: speed 1.0-2.0x in quarter steps (shown by the player row and the sweep bar).
     function changeTempo(direction) {
         if (!root.player) return
         const now = root.player.rate || 1.0
@@ -250,7 +232,7 @@ Item {
     function tempoLabel(r) {
         return String(Math.round(r * 100) / 100).replace(".", Qt.locale().decimalPoint) + "×"
     }
-    // A söprés billentyűi (igaz: elfogyasztva). Söprés-módon kívül semmit nem csinál.
+    // Sweep keys (true: consumed). Does nothing outside sweep mode.
     function sweepKey(k) {
         if (!root.sweepOn) return false
         const stop = editorVm.sweepStopRow
@@ -283,22 +265,22 @@ Item {
     property int speakerPopoverRow: -1
     readonly property bool canPlay: !!player && player.available !== false
 
-    // ---- lejátszó ----
+    // ---- player ----
     readonly property int playerPosition: (player && player.positionMs) || 0
     readonly property bool playerActive: !!player && !(player.previewPath) && (player.playing === true || playerPosition > 0)
     onPlayerPositionChanged: editorVm.setPlaybackPosition(playerPosition, playerActive)
     onPlayerActiveChanged: editorVm.setPlaybackPosition(playerPosition, playerActive)
-    // A lejátszás követése: csak akkor görgetünk, ha az előző lejátszott sor látszott (a
-    // felhasználó nem görgetett el), vagy ugrás történt (keresősáv, időbélyeg).
+    // Playback following: scroll only if the previously played line was visible (the user did not
+    // scroll away), or a jump happened (seek bar, timestamp).
     property int lastPlayingRow: -1
     property bool followNext: false
-    // Egy kurzor: a kijelölt sor és a lejátszó pozíciója kétirányban együtt mozog. Állva a sor
-    // kiválasztása a sor elejére teker (lejátszás nélkül); lejátszás közben a lejátszó alatti sor
-    // lesz a kijelölt (több soros kijelölést nem bont meg). A cursorSync őr a visszacsatolás ellen
-    // (kijelölés → tekerés → pozíció → kijelölés).
+    // One cursor: the selected line and the player position move together in both directions. While
+    // stopped, selecting a line seeks to its start (no playback); while playing, the line under the
+    // player becomes selected (a multi-line selection is kept). The cursorSync guard prevents
+    // feedback (selection -> seek -> position -> selection).
     property bool cursorSync: false
-    // A lejátszó a sor elejére (sima seek; lejátszás közben szól tovább). Ha a pozíció már a soron
-    // belül van, nincs tekerés.
+    // Seek the player to the line start (plain seek; playback continues). If the position is already
+    // inside the line, no seek.
     function seekToRow(row) {
         if (!root.player || row < 0 || root.cursorSync) return
         const start = editorVm.rowStartMs(row)
@@ -310,7 +292,7 @@ Item {
         root.player.seek(start)
         root.cursorSync = false
     }
-    // A pozíció alatti sor lesz a kijelölt (a lejátszó követése, térkép-ugrás).
+    // The line under the position becomes selected (player follow, map jump).
     function selectRowAtCursor(row) {
         if (row < 0 || root.cursorSync || editorVm.selectedCount > 1 || editorVm.currentRow === row) return
         root.cursorSync = true
@@ -325,7 +307,7 @@ Item {
 
     focus: true
 
-    // Szövegmezőben (kereső, személyválasztó) a szerkesztő billentyűi nem élnek.
+    // In a text field (search, person picker) the editor keys do not apply.
     readonly property bool textInputFocused: {
         const it = root.Window.activeFocusItem
         return !!it && (it instanceof TextInput || it instanceof TextEdit)
@@ -336,18 +318,18 @@ Item {
         const it = root.Window.activeFocusItem
         if (it && !it.visible) root.forceActiveFocus()
     }
-    // „Következő bizonytalan": a kijelölt (különben az első látható) sortól lép tovább.
-    // Az Átnézendő nézeten kívül oda vált (0 sornál az üres állapot látszik, nincs jelzés).
+    // "Next uncertain": steps on from the selected line (otherwise the first visible one). Outside
+    // To review it switches there (with 0 lines the empty state shows, no notice).
     function nextUncertain(direction) {
         root.forceActiveFocus()
         if (!root.reviewShown) {
-            root.setViewMode("review")      // a fókusz-nézet az első nyitott soron indul
+            root.setViewMode("review")      // the focus view starts on the first open line
             return
         }
         if (!reviewView.step(direction) && root.shell) root.shell.toast(qsTr("Nincs átnézendő sor."))
     }
-    // Újraellenőrzés a megerősített / javított sorok hangja alapján. A héjon át (megerősítő
-    // ablak + visszajelzés); héj nélkül (demó, képernyőkép) közvetlenül.
+    // Recheck based on the sound of confirmed / fixed lines. Through the shell (confirm dialog +
+    // feedback); without a shell (demo, screenshot) directly.
     function recheckSpeakers() {
         if (root.shell && root.shell.recheckSpeakers && root.meetingId !== "") {
             root.shell.recheckSpeakers(root.meetingId)
@@ -374,7 +356,7 @@ Item {
         const toggle = (modifiers & Qt.ControlModifier) !== 0
         const range = (modifiers & Qt.ShiftModifier) !== 0
         editorVm.selectRow(index, toggle, range)
-        // Egy sor kiválasztása = a kurzor oda (állva tekerés, lejátszás közben ugrás és tovább szól).
+        // Selecting a line = cursor goes there (stopped: seek; playing: jump and keep playing).
         if (!toggle && !range && editorVm.selectedCount === 1 && editorVm.isRowSelected(index))
             root.seekToRow(index)
     }
@@ -387,7 +369,7 @@ Item {
         player.seek(ms)
         if (player.playing !== true) player.play()
     }
-    // Egy sor meghallgatása kis elő-/utó-futással, a szomszéd sorok határáig (PlayerController).
+    // Listen to one line with a short lead-in / tail, up to the neighbors' boundaries (PlayerController).
     function playLine(startMs, endMs) {
         if (!player) return
         root.cursorSync = true
@@ -396,10 +378,10 @@ Item {
         const b = editorVm.playBounds(startMs, endMs)
         player.playRange(startMs, endMs, b.minStartMs, b.maxEndMs)
     }
-    // Előző / következő sor (térkép-dokk gombjai, nyilak). Lejátszás közben a lejátszó alatti
-    // sortól lép, a cél elejére teker és szól tovább (sima ugrás, nem playRange); állva kijelöli,
-    // megmutatja és a lejátszót a sor elejére teszi (lejátszás nélkül; a Szóköz innen indít).
-    // Az Átnézendő nézetben a csoportok sorain lép (mint a B).
+    // Previous / next line (map dock buttons, arrows). While playing, steps from the line under the
+    // player, seeks to the target's start and keeps playing (plain jump, not playRange); while
+    // stopped, selects it, reveals it and puts the player at its start (no playback; Space starts
+    // from there). In To review it steps over the groups' lines (like B).
     function stepLine(delta) {
         if (!editorVm.hasTranscript) return -1
         const playing = !!root.player && root.player.playing === true
@@ -427,7 +409,7 @@ Item {
     }
     function revealRow(row, mode) {
         if (row < 0 || row >= list.count) return
-        if (list.height <= 0) { pendingRevealRow = row; return }    // még nincs méret: később
+        if (list.height <= 0) { pendingRevealRow = row; return }    // no size yet: later
         list.positionViewAtIndex(row, mode === undefined ? ListView.Center : mode)
         updateViewport()
     }
@@ -446,11 +428,11 @@ Item {
         const start = editorVm.rowStartFraction(first)
         viewportStart = start
         viewportSize = Math.max(0, editorVm.rowEndFraction(last) - start)
-        // Söprés: a fagyasztott ablak a látható sorokból (± 2 sor, a VM-ben).
+        // Sweep: the frozen window from the visible lines (+-2 lines, in the VM).
         editorVm.setSweepWindow(first, last)
     }
-    // Ugrás az idővonal egy pontjára (a térkép-dokk kattintása): a lista odagörget, a lejátszó teker.
-    // A pozíció alatti sor lesz a kijelölt (lejátszás közben és állva is).
+    // Jump to a point on the timeline (map dock click): the list scrolls there, the player seeks.
+    // The line under the position becomes selected (playing and stopped).
     function seekToFraction(fraction) {
         const ms = editorVm.timeAtFraction(fraction)
         const row = editorVm.rowForTime(ms)
@@ -463,21 +445,21 @@ Item {
         }
         root.selectRowAt(ms)
     }
-    // A térkép-ugrás más fülről (Main.qml): a pozíció alatti sor kijelölése.
+    // Map jump from another tab (Main.qml): select the line under the position.
     function selectRowAt(ms) {
         if (!editorVm.hasTranscript) return
         root.cursorSync = true
         if (editorVm.selectedCount <= 1) editorVm.selectOnly(editorVm.rowForTime(ms))
         root.cursorSync = false
     }
-    // A panel a horgony alá kerül; ha ott nem fér el (pl. a lejátszó fölötti térkép-dokk
-    // neve), fölé.
+    // The panel goes below the anchor; if it does not fit there (e.g. the name of the map dock
+    // above the player), above it.
     function popoverY(anchorItem, popupHeight) {
         const below = anchorItem.mapToItem(root, 0, anchorItem.height).y + 6
         if (below + popupHeight <= root.height) return Math.round(below)
         return Math.round(Math.max(0, anchorItem.mapToItem(root, 0, 0).y - popupHeight - 6))
     }
-    // A TELJES beszélő panelje (sáv-fejléc avatar, térkép-dokk név).
+    // Panel of the WHOLE speaker (rail header avatar, map dock name).
     function openSpeakerPopover(speakerKey, anchorItem, focusTracks) {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
         speakerWhy.speakerKey = speakerKey
@@ -487,7 +469,7 @@ Item {
         speakerPopoverRow = -1
         speakerWhy.open()
     }
-    // „Miért ő?" a sor-panelről (a panel helyén nyílik).
+    // "Why them?" from the line popover (opens in the popover's place).
     function openSpeakerWhyAt(speakerKey, x, y, focusTracks) {
         speakerWhy.speakerKey = speakerKey
         speakerWhy.focusTracks = focusTracks === true
@@ -495,7 +477,7 @@ Item {
         speakerWhy.y = Math.round(Math.max(0, y))
         speakerWhy.open()
     }
-    // A hanglenyomat saját panelje (az áttekintő ujjlenyomat-jeléről).
+    // The voiceprint's own panel (from the overview's fingerprint mark).
     function openVoiceprintPopover(speakerKey, anchorItem) {
         const p = anchorItem.mapToItem(root, 0, anchorItem.height)
         voiceprintPopover.speakerKey = speakerKey
@@ -503,8 +485,8 @@ Item {
         voiceprintPopover.y = root.popoverY(anchorItem, voiceprintPopover.implicitHeight)
         voiceprintPopover.open()
     }
-    // EGY SOR panelje (a sor neve, „Más mondta…", helyi menü): alapból csak ez a sor megy;
-    // ha a sor egy több soros kijelölés része, a kijelölés.
+    // Panel of ONE LINE (the line's name, "Someone else said...", context menu): by default only this
+    // line moves; if it is part of a multi-line selection, the selection moves.
     function openLinePopover(row, anchorItem, px, py) {
         const line = editorVm.rowInfo(row)
         if (line.utteranceId === undefined) return
@@ -515,7 +497,7 @@ Item {
         showLinePopover(line, p.x - 7, p.y + 6)
         speakerPopoverRow = row
     }
-    // Egy sor panelje a sor-azonosítóval (az Átnézendő nézet „Más…" gombjáról).
+    // A line's panel by line id (from the "Other..." button of To review).
     function openLinePopoverFor(utteranceId, anchorItem) {
         const line = editorVm.lineInfo(utteranceId)
         if (line.utteranceId === undefined) return
@@ -534,8 +516,8 @@ Item {
         linePopover.y = Math.round(Math.max(0, Math.min(y, root.height - linePopover.implicitHeight - 8)))
         linePopover.open()
     }
-    // Egy panelről nyitott másik panel csak az első BEZÁRULTA után nyílik (különben a bezáródó
-    // panel visszaadná a fókuszt a szerkesztőnek, és az új panel billentyűi nem élnének).
+    // A panel opened from another panel opens only after the first one CLOSED (otherwise the closing
+    // panel would give focus back to the editor and the new panel's keys would not work).
     property var afterPopupClose: null
     function runAfterPopupClose() {
         if (!afterPopupClose) return false
@@ -548,9 +530,9 @@ Item {
         const mark = toolbar.voiceprintMark(key)
         if (mark) root.openVoiceprintPopover(key, mark)
     }
-    // „Ő nem volt ott": a beszélő sorai névtelenek lesznek, és a „Ki volt ott?" jelölése is
-    // törlődik (ParticipantsViewModel.unbind). Ha nincs hozzá résztvevő (vagy demó), a beszélő
-    // egyszerűen névtelenné válik — mindkét út egy visszavonási lépés.
+    // "They were not there": the speaker's lines become anonymous and the "Who was there?" mark is
+    // cleared too (ParticipantsViewModel.unbind). If there is no participant (or demo), the speaker
+    // simply becomes anonymous -- both paths are one undo step.
     function markNotPresent(speakerKey, fixVoiceprints) {
         const person = editorVm.personOf(speakerKey)
         let participantId = ""
@@ -569,8 +551,8 @@ Item {
         if (participantId !== "") participantsVm.unbind(participantId)
         if (participantsVm) participantsVm.destroy()
     }
-    // Két beszélő összevonása előtt megerősítés, számokkal. request: { kind: "merge" |
-    // "reassign" | "rest", fromKey, intoKey, personName, fix }. Üres forrásnál nincs mit kérdezni.
+    // Confirmation before merging two speakers, with numbers. request: { kind: "merge" |
+    // "reassign" | "rest", fromKey, intoKey, personName, fix }. Nothing to ask for an empty source.
     function requestMerge(request) {
         const from = editorVm.speakerInfo(request.fromKey)
         const into = editorVm.speakerInfo(request.intoKey)
@@ -588,7 +570,7 @@ Item {
         else if (request.kind === "rest") editorVm.moveRestOfSource()
         else editorVm.mergeSpeakers(request.fromKey, request.intoKey)
     }
-    // A most javított sor maradjon látható, amikor az értesítő sáv megjelenik alatta.
+    // Keep the just-fixed line visible when the notice bar appears below it.
     property int keepVisibleRow: -1
     function keepRowVisible() {
         if (keepVisibleRow >= 0 && keepVisibleRow < list.count)
@@ -602,28 +584,28 @@ Item {
         picker.open()
     }
 
-    // QA / szkriptek: a nézetmodell elérése (hook.findObject("transcriptTab").editor).
+    // QA / scripts: access to the view model (hook.findObject("transcriptTab").editor).
     readonly property alias editor: editorVm
     TranscriptEditorViewModel {
         id: editorVm
         meetingId: root.meetingId
-        // A v3 demó-állapotok a handoff neveivel épített „v3" kitalált meetingen futnak.
+        // The demo states run on the fictional "v3" meeting (built with the handoff names).
         demoVariant: root.demoVariant !== "" ? root.demoVariant : root.v3Demo ? "v3" : ""
         highlightColor: Theme.warnSoft
         highlightCurrentColor: Theme.warnLine
         timelineMs: (root.player && root.player.durationMs) || 0
 
         onRevealRequested: row => root.revealRow(row)
-        // Söprés (S6): megálló → a lejátszó megáll, a döntés-sáv látsszon; döntés → tovább szól;
-        // a szakasz vége → megáll (összesítő).
+        // Sweep: at a stop the player pauses and the decision bar shows; a decision resumes playback;
+        // the end of the section pauses (summary).
         onSweepStopReached: row => {
             if (root.player && root.player.playing === true) root.player.pause()
             Qt.callLater(() => { if (row >= 0 && row < list.count) list.positionViewAtIndex(row, ListView.Contain) })
         }
         onSweepResumeRequested: { if (root.player && root.player.playing !== true) root.player.play() }
         onSweepSectionEnded: { if (root.player && root.player.playing === true) root.player.pause() }
-        // Az Átnézendő nézet a Javítás mód része (újraellenőrzés után a VM maga is bekapcsolja).
-        // Újraellenőrzés után a VM maga is bekapcsolja; kilépéskor a korábbi mód tér vissza.
+        // The To review view is part of Fix mode (the VM turns it on itself after a recheck); on exit
+        // the previous mode returns.
         onUncertainOnlyChanged: {
             if (uncertainOnly && hasTranscript) {
                 if (!root.reviewEntered) {
@@ -663,14 +645,14 @@ Item {
                 if (root.followNext || jumped || root.isRowVisible(root.lastPlayingRow))
                     list.positionViewAtIndex(row, ListView.Contain)
                 root.followNext = false
-                // Lejátszás közben a lejátszó alatti sor a kijelölt (egy kurzor).
+                // While playing, the line under the player is the selected one (one cursor).
                 if (root.player && root.player.playing === true) root.selectRowAtCursor(row)
             }
             root.lastPlayingRow = row
         }
     }
 
-    // A Shell kérése (pl. az összefoglaló időbélyeg-linkje): görgetés az adott időhöz.
+    // Request from the shell (e.g. the summary's timestamp link): scroll to that time.
     Connections {
         target: root.shell
         ignoreUnknownSignals: true
@@ -681,7 +663,7 @@ Item {
         }
     }
 
-    // ---- billentyűk ----
+    // ---- keys ----
     Shortcut {
         sequences: ["Ctrl+E"]
         enabled: root.visible && editorVm.hasTranscript
@@ -702,7 +684,7 @@ Item {
         enabled: root.visible && editorVm.canRedo && !root.textInputFocused
         onActivated: editorVm.redo()
     }
-    // A kijelölés / az Átnézendő kiválasztott sora: „nem azonosítható” ki-be (0).
+    // The selection / To review's selected line: toggle "not identifiable" (0).
     function toggleIgnored() {
         if (root.reviewShown) {
             const id = reviewView.currentUtterance
@@ -710,13 +692,14 @@ Item {
             return editorVm.setUtteranceIgnored(id, editorVm.lineInfo(id).ignored !== true)
         }
         if (editorVm.selectedCount === 0) return false
-        // Ha a kijelölés minden sora már nem azonosítható: újra azonosítható; különben az lesz.
+        // If all selected lines are already not identifiable: make them identifiable again; otherwise
+        // the opposite.
         let all = true
         for (let r = 0; r < list.count && all; ++r)
             if (editorVm.isRowSelected(r) && editorVm.rowInfo(r).ignored !== true) all = false
         return editorVm.setSelectionIgnored(!all)
     }
-    // „Más…” (M): a kiválasztott sor panelje.
+    // "Someone else..." (M): the selected line's panel.
     function openFixForCurrent() {
         if (root.reviewShown) return reviewView.fixCurrent()
         const row = editorVm.currentRow
@@ -734,12 +717,12 @@ Item {
         const k = TranscriptKeys.decode(event)
         root.shiftHeld = k.name === "Shift" || k.shift
         if (k.name === "Shift" || !editorVm.hasTranscript) return
-        // Átnézendő (fókusz-nézet): a saját billentyű-térképe (ReviewFocusView.handleKey) előbb.
+        // To review (focus view): its own key map (ReviewFocusView.handleKey) goes first.
         if (root.reviewShown && reviewView.handleKey(k, event)) {
             event.accepted = true
             return
         }
-        // Söprés-mód (S6): a célsor billentyűi; [ / ]: tempó (mindig).
+        // Sweep mode: the target line's keys; [ / ]: speed (always).
         if (root.sweepKey(k)) {
             event.accepted = true
             return
@@ -757,25 +740,25 @@ Item {
             editorVm.selectAll()
             event.accepted = true
         } else if (k.plain && k.name === "B") {
-            // B: a következő átnézendő sor — az Átnézendő nézetben (oda vált, ha még nem ott van).
+            // B: next line to review -- in the To review view (switches there if not already).
             root.nextUncertain(k.shift ? -1 : 1)
             event.accepted = true
         } else if (k.plain && k.name === "digit" && k.digit === 0 && !k.shift) {
-            // 0: nem azonosítható (Javítás: a kijelölés; Átnézendő: a kiválasztott sor).
+            // 0: not identifiable (Fix: the selection; To review: the selected line).
             root.toggleIgnored()
             event.accepted = true
         } else if (k.plain && k.name === "digit" && k.digit >= 1 && editorVm.selectedCount > 0 && !root.reviewShown) {
             editorVm.moveSelectionToLane(k.digit - 1, k.shift)
             event.accepted = true
         } else if (k.plain && k.name === "J") {
-            // J: Jó így (Shift: nem minta).
+            // J: Looks right (Shift: not a sample).
             editorVm.confirmSelection(k.shift)
             event.accepted = true
         } else if (k.plain && !k.shift && k.name === "M") {
             root.openFixForCurrent()
             event.accepted = true
         } else if (k.plain && !k.shift && (k.name === "Down" || k.name === "Up" || k.name === "Left" || k.name === "Right")) {
-            // Nyilak: előző / következő sor (Olvasás, Javítás, Átnézendő); a lista nem görget.
+            // Arrows: previous / next line (Read, Fix, To review); the list does not scroll.
             root.stepLine(k.name === "Down" || k.name === "Right" ? 1 : -1)
             event.accepted = true
         } else if (k.name === "Escape" && editorVm.selectedCount > 0) {
@@ -796,7 +779,7 @@ Item {
         }
     }
 
-    // ---- nincs átirat ----
+    // ---- no transcript ----
     Column {
         visible: !editorVm.hasTranscript && !editorVm.legacyTranscript
         anchors.centerIn: parent
@@ -812,7 +795,7 @@ Item {
         }
     }
 
-    // ---- régi formátumú átirat: olvasható (és másolható), de itt nem szerkeszthető ----
+    // ---- old-format transcript: readable (and copyable), but not editable here ----
     ColumnLayout {
         visible: !editorVm.hasTranscript && editorVm.legacyTranscript
         anchors.fill: parent
@@ -897,17 +880,17 @@ Item {
             onRecheckRequested: root.recheckSpeakers()
             onSpeakerClicked: (speakerKey, anchor) => root.openSpeakerPopover(speakerKey, anchor)
             onVoiceprintClicked: (speakerKey, anchor) => root.openVoiceprintPopover(speakerKey, anchor)
-            // A kereső bezárása után a billentyűk újra a szerkesztőéi (ne a rejtett mezőéi).
+            // After the search closes, the keys belong to the editor again (not the hidden field).
             onSearchOpenChanged: if (!searchOpen) Qt.callLater(root.releaseHiddenFocus)
         }
 
-        // Rögzített fejléc: a sín oszlopfejei + a megszólalás-számláló + a hang-elemzés állapota.
+        // Pinned header: the rail's column heads + the utterance counter + the voice analysis state.
         Rectangle {
             id: headRow
-            // Csak a sín oszlopfejei (a számláló és a hangelemzés az eszköz-soré); rejtett sínnél 0
-            // magas (nem `visible: false`: a láthatóság-váltás után az elrendezés késve frissülne).
+            // Only the rail's column heads (the counter and voice analysis belong to the toolbar); height 0
+            // with the rail hidden (not `visible: false`: the layout would update late after the toggle).
             Layout.fillWidth: true
-            // Az Átnézendő fókusz-nézetben sincs (ott a beszélő-számsor a kártyán).
+            // Also absent in the To review focus view (the speaker number row is on the card there).
             implicitHeight: root.railShown && !root.reviewShown ? railHeader.implicitHeight : 0
             clip: true
             color: Theme.surface
@@ -924,8 +907,8 @@ Item {
                 muted: true
                 font.pixelSize: Theme.fontCaption
             }
-            // A lista szűrői a fejléc jobb szélén: a minta-mérő „+N most” szűrője (törölhető) és a
-            // „nem azonosítható” sorok elrejtése / mutatása.
+            // List filters at the header's right edge: the sample meter's "+N now" filter (clearable) and
+            // hiding / showing the "not identifiable" lines.
             Row {
                 id: filterRow
                 visible: root.railShown
@@ -934,7 +917,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: -4
                 spacing: 12
-                // Söprés-mód (S6): csak a Javítás nézetben.
+                // Sweep mode: Fix view only.
                 TSwitch {
                     id: sweepToggle
                     objectName: "sweepToggle"
@@ -1036,17 +1019,17 @@ Item {
                         root.pendingRevealRow = -1
                         Qt.callLater(root.revealRow, row)
                     }
-                    // A sáv megjelenésekor a lista alacsonyabb lesz: a javított sor ne csússzon ki.
+                    // When the bar appears the list gets shorter: the fixed line must not slide out.
                     if (height > 0 && root.keepVisibleRow >= 0) Qt.callLater(root.keepRowVisible)
                     root.updateViewport()
                 }
                 onCountChanged: Qt.callLater(root.updateViewport)
 
-                // A sín egérkezelése egy közös rétegben (a húzás több soron át is tarthat):
-                //  kattintás a sor saját blokkjára → kijelölés (Ctrl / Shift: több sor)
-                //  kattintás másik oszlopba        → a sor (vagy a kijelölés) átkerül oda
-                //  kattintás a „+" oszlopba         → személyválasztó erre a sorra
-                //  húzás                            → az érintett sorok a cél-oszlopba
+                // Rail mouse handling in one shared layer (a drag can span several lines):
+                //  click on a line's own block   -> select (Ctrl / Shift: several lines)
+                //  click on another column       -> the line (or the selection) moves there
+                //  click on the "+" column       -> person picker for this line
+                //  drag                          -> the affected lines go to the target column
                 MouseArea {
                     id: railArea
                     visible: root.railShown
@@ -1086,7 +1069,7 @@ Item {
                         root.dragLane = lane >= 0 ? lane : -1
                         railArea.placeChip(x, y)
                     }
-                    // Rámutatás: a sor és a másik oszlop (saját oszlop / szünet-sor felett nincs előnézet).
+                    // Hover: the line and the other column (no preview over its own column / a pause row).
                     function updateHover(x, y) {
                         const row = railArea.rowAt(y)
                         const item = row >= 0 && editorVm.rowStartMs(row) >= 0 ? list.itemAtIndex(row) : null
@@ -1128,7 +1111,7 @@ Item {
                     onExited: railArea.clearHover()
                     onReleased: mouse => {
                         if (pressRow < 0) return
-                        // Shift = „nem minta”: a sor (a sorok) átkerülnek, de a hangjuk nem minta.
+                        // Shift = "not a sample": the line(s) move, but their sound is not a sample.
                         const noisy = (mouse.modifiers & Qt.ShiftModifier) !== 0
                         if (root.dragActive) {
                             if (root.dragLane >= 0)
@@ -1151,12 +1134,12 @@ Item {
                             if (!editorVm.isRowSelected(row)) editorVm.selectOnly(row)
                             root.openPicker("selection", railHeader.addItem)
                         }
-                        // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
+                        // After a reassignment the line is elsewhere: the preview follows the current mouse position.
                         Qt.callLater(() => { if (railArea.containsMouse) railArea.updateHover(railArea.mouseX, railArea.mouseY) })
                     }
                     onCanceled: railArea.resetDrag()
 
-                    // Húzás közben a lista széleinél magától görög.
+                    // While dragging, the list scrolls by itself near its edges.
                     Timer {
                         interval: 30
                         repeat: true
@@ -1175,9 +1158,9 @@ Item {
                     }
                 }
 
-                // Lebegő címke húzás és rámutatás közben: [→] Név (áthelyezés) vagy [✓] Név · marad
-                // (a sor saját oszlopa) — ugyanazok az ikonok, mint a fókusz-kártya gombjain (S7).
-                // Shift: „… · nem minta”, szaggatott keretben.
+                // Floating label while dragging and hovering: [->] Name (move) or [check] Name · stays (the
+                // line's own column) -- the same icons as the focus card's buttons.
+                // Shift: "... · not a sample", dashed border.
                 Rectangle {
                     id: dragChip
                     objectName: "dragChip"
@@ -1227,7 +1210,7 @@ Item {
                 }
             }
 
-            // Átnézendő (S4, „A” koncepció): a fókusz-nézet; a lista helyén.
+            // To review (focus view): replaces the list.
             ReviewFocusView {
                 id: reviewView
                 objectName: "reviewView"
@@ -1238,7 +1221,7 @@ Item {
             }
         }
 
-        // Söprés (S6): a szakasz végén az összesítő (az „Imént” sor fölött).
+        // Sweep: the summary at the end of a section (above the "Just now" row).
         SweepSectionBar {
             id: sweepSummaryBar
             objectName: "sweepSummary"
@@ -1250,8 +1233,8 @@ Item {
             onDismissRequested: { editorVm.dismissSweepSummary(); root.forceActiveFocus() }
         }
 
-        // Az „Imént” sor: a lista alatt, FIX helyen (Javítás / Átnézendő nézetben mindig; az
-        // Olvasásban csak egy átsorolás után). Nem tűnik el magától.
+        // The "Just now" row: below the list, at a FIXED place (always in the Fix / To review views; in
+        // Read only after a reassignment). Does not disappear by itself.
         TranscriptChangeBar {
             id: changeBar
             objectName: "changeBar"
@@ -1264,9 +1247,9 @@ Item {
             onVoiceprintPanelRequested: key => root.openVoiceprintFor(key)
         }
 
-        // Söprés (S6): a fagyasztott ablak, „mögötted: N sor újra kétes” (kattintásra a lista), az
-        // előtted álló kétes sorok, a szakasz, a mód (megálló / folyamatos) és a tempó — a lejátszó
-        // (térkép-dokk) közvetlen szomszédjában.
+        // Sweep: the frozen window, "behind you: N lines doubtful again" (click opens the list), the
+        // doubtful lines ahead, the section, the mode (stop / continuous) and the speed -- right next to
+        // the player (map dock).
         Rectangle {
             id: sweepStrip
             objectName: "sweepStrip"
@@ -1386,7 +1369,7 @@ Item {
         TranscriptSelectionBar {
             id: selectionBar
             objectName: "selectionBar"
-            // Az Átnézendőben a kijelölés a fókusz-sor (a kártya gombjai döntenek): nincs sáv.
+            // In To review the selection is the focus line (the card's buttons decide): no bar.
             visible: editorVm.selectedCount > 0 && !root.reviewShown
             Layout.fillWidth: true
             Layout.leftMargin: 24
@@ -1403,7 +1386,7 @@ Item {
         editor: editorVm
         anonymousText: root.pickerTarget === "participant" ? qsTr("Névtelen résztvevő")
                      : root.pickerTarget === "speaker" ? qsTr("Névtelen beszélő") : qsTr("Új névtelen résztvevő")
-        // „Új személy…" a „Miért ő?" panelről: a teljes beszélő a választott névhez kerül.
+        // "New person..." from the "Why them?" panel: the whole speaker goes to the chosen name.
         property string speakerKey: ""
         property bool fixVoiceprints: false
         onPersonChosen: name => {
@@ -1428,7 +1411,7 @@ Item {
         onClosed: root.forceActiveFocus()
     }
 
-    // „Kinek a sora ez?" (E1): egy sor / a kijelölés / (kifejezett választásra) a teljes beszélő.
+    // "Whose line is this?": one line / the selection / (on explicit choice) the whole speaker.
     LinePopover {
         id: linePopover
         objectName: "linePopover"
@@ -1449,7 +1432,7 @@ Item {
         }
     }
 
-    // „Miért ő?" (E3): a teljes beszélő — bizonyíték, sáv-beosztás, jelöltek, „Ő nem volt ott".
+    // "Why them?": the whole speaker -- evidence, rail layout, candidates, "They were not there".
     SpeakerWhyPopover {
         id: speakerWhy
         objectName: "speakerWhyPopover"
@@ -1458,7 +1441,7 @@ Item {
         onListenRequested: (startMs, endMs) => root.playLine(startMs, endMs)
         onMergeRequested: request => root.requestMerge(request)
         onVoiceprintRequested: key => root.afterPopupClose = () => root.openVoiceprintFor(key)
-        // A „Címkéi” javító link: a Személyek ablak a Címkék szakaszra görgetve (C4).
+        // The "Tags" fix link: the People window scrolled to the Tags section.
         onPeopleRequested: person => { if (root.shell && root.shell.openPeople) root.shell.openPeople(person, "tags") }
         onNewPersonRequested: (key, fix) => {
             const x = speakerWhy.x, y = speakerWhy.y
@@ -1479,7 +1462,7 @@ Item {
         }
     }
 
-    // Söprés (S6): „mögötted: N sor újra kétes” listája — a soridők, kattintásra a sorra ugrás.
+    // Sweep: the list of "behind you: N lines doubtful again" -- the line times, click jumps to the line.
     function openRebehindList(anchorItem) {
         const p = anchorItem.mapToItem(root, 0, 0)
         rebehindPopover.x = Math.round(Math.max(8, Math.min(p.x, root.width - rebehindPopover.width - 8)))
@@ -1551,15 +1534,15 @@ Item {
         }
     }
 
-    // „Ő nem volt ott": a „Ki volt ott?" jelölés is frissül (a résztvevő kötése megszűnik). Csak
-    // a művelethez jön létre (ne töltse a résztvevőket minden megbeszélés-váltáskor).
+    // "They were not there": the "Who was there?" mark updates too (the participant binding ends).
+    // Created only for the action (so it does not load participants on every meeting switch).
     Component {
         id: participantsComponent
         ParticipantsViewModel {}
     }
 
-    // A hanglenyomat panelje: állapot, használható anyag, készítés (és a most készült
-    // visszavonása). Lenyomat csak az itteni gombra készül.
+    // The voiceprint panel: state, usable material, creation (and undoing the one just made). A
+    // voiceprint is created only by the button here.
     TPopover {
         id: voiceprintPopover
         objectName: "voiceprintPopover"
@@ -1576,8 +1559,8 @@ Item {
         }
     }
 
-    // Két beszélő összevonása: megerősítés számokkal (M10 minta). Egy sor / kijelölés
-    // áthelyezése sosem kérdez — ez csak a teljes beszélőt érintő összeolvasztás előtt áll.
+    // Merging two speakers: confirmation with numbers. Moving a line / selection never asks; this
+    // guards only the merge of a whole speaker.
     TDialog {
         id: mergeDialog
         objectName: "mergeDialog"
@@ -1613,14 +1596,14 @@ Item {
         onClosed: root.forceActiveFocus()
     }
 
-    // A sor helyi menüje (jobb gomb): lejátszás, másolás.
+    // The line's context menu (right click): play, copy.
     TMenu {
         id: rowMenu
         objectName: "rowMenu"
         property int row: -1
         readonly property bool inSelection: editorVm.selectedCount > 1 && editorVm.isRowSelected(row)
-        // „Más mondta…": a panel csak a menü bezárulta UTÁN nyílik (különben a menü záráskor
-        // visszavenné a fókuszt a panel keresőmezőjétől).
+        // "Someone else said...": the panel opens only AFTER the menu closes (otherwise the menu would
+        // take focus back from the panel's search field on close).
         property bool fixPending: false
         onClosed: {
             if (fixPending) {
@@ -1649,7 +1632,7 @@ Item {
             shortcutText: "J"
             onTriggered: rowMenu.inSelection ? editorVm.confirmSelection(false) : editorVm.confirmRow(rowMenu.row)
         }
-        // „Nem azonosítható” (0): a név marad, a hang-elemzés figyelmen kívül hagyja; újra: vissza.
+        // "Not identifiable" (0): the name stays, voice analysis ignores the line; again: reverts.
         TMenuItem {
             objectName: "rowMenuIgnore"
             readonly property bool ignored: rowMenu.visible && rowMenu.row >= 0
@@ -1661,8 +1644,8 @@ Item {
             onTriggered: rowMenu.inSelection ? editorVm.setSelectionIgnored(!ignored)
                                              : editorVm.setRowIgnored(rowMenu.row, !ignored)
         }
-        // Hanglenyomat-minta ebből a sorból (a sor felugrójában is ott van; itt a jobb-klikk útja).
-        // Bizonytalan sornál egyben megerősítés is.
+        // Voiceprint sample from this line (also in the line popup; this is the right-click path).
+        // For an uncertain line it also confirms it.
         TMenuItem {
             objectName: "rowMenuSample"
             readonly property var info: rowMenu.visible && rowMenu.row >= 0
@@ -1702,13 +1685,13 @@ Item {
         }
     }
 
-    // ---- demó-állapotok (képernyőkép) ----
+    // ---- demo states (screenshots) ----
     Timer {
         id: demoTimer
         interval: 120
         property int tries: 0
         property int settled: 0
-        // A hanglenyomat-panel demó-beszélője: az első, amelyik az állapotnak megfelel.
+        // Demo speaker of the voiceprint panel: the first one that fits the state.
         function voiceprintDemoKey(s) {
             const list = editorVm.speakers
             for (let i = 0; i < list.length; ++i) {
@@ -1727,7 +1710,7 @@ Item {
         onTriggered: {
             const s = root.demoState
             if (s.startsWith("voiceprint")) {
-                // A hang-elemzés végén áll elő az állapot: addig várunk (legfeljebb ~6 mp).
+                // The state appears when voice analysis finishes: wait for it (at most ~6 s).
                 const key = editorVm.embeddingRunning ? "" : voiceprintDemoKey(s)
                 if (key === "") {
                     if (++tries < 50) demoTimer.start()
@@ -1742,7 +1725,7 @@ Item {
                 root.openVoiceprintPopover(key, mark)
                 if (s === "voiceprintDone") voiceprintPanel.create()
             } else if (root.v3Demo) {
-                // A v3 állapotok a hang-elemzés és a háttér-elemzés (csoportok) végén állnak elő.
+                // The v3 states appear after voice analysis and the background analysis (groups) finish.
                 if (editorVm.demoStatePending() || editorVm.embeddingRunning || editorVm.reviewRunning
                         || ++settled < 3 || (s === "newPersonSimilar" && !editorVm.newPersonSimilar.count)) {
                     if (++tries < 150) demoTimer.start()
@@ -1750,7 +1733,7 @@ Item {
                 }
                 root.applyV3DemoView(s)
             } else if (s === "speakerPopover" || s === "speakerPopoverPair") {
-                // A teljes beszélő: a sáv-fejléc első avatarjáról (Pair: a pár-választó nyitva).
+                // The whole speaker: from the rail header's first avatar (Pair: the pair chooser open).
                 if (root.laneCount > 0) root.openSpeakerPopover(editorVm.lanes[0].key, railHeader)
                 if (s === "speakerPopoverPair") speakerWhy.pairPicking = true
             } else if (s === "linePopover" || s === "lineToSpeakerPopover") {
@@ -1778,7 +1761,7 @@ Item {
             }
         }
     }
-    // A v3 demó-állapotok nézet-része (a VM előkészítése után): panel, kinyitott csoport.
+    // View part of the v3 demo states (after the VM prepared them): panel, opened group.
     function applyV3DemoView(s) {
         const keyOf = name => {
             const lanes = editorVm.lanes
@@ -1792,7 +1775,7 @@ Item {
                 if (item) root.openLinePopover(2, item.nameItem)
             }
         } else if (s === "reviewFocus") {
-            reviewView.demoPlayPos = 0.42      // az auto-lejátszás épp szól (képernyőkép)
+            reviewView.demoPlayPos = 0.42      // auto-play is playing right now (screenshot)
         } else if (s === "speakerWhy") {
             list.positionViewAtBeginning()
             const lane = Math.max(0, keyOf(DemoText.name("Fehér Gábor")))
@@ -1803,7 +1786,7 @@ Item {
         } else if (s === "imentLog") {
             changeBar.logOpen = true
         } else if (s === "shiftPreview") {
-            // Lenyomott Shift + rámutatás a 3. sor egy másik oszlopára: „→ Név · nem minta”.
+            // Shift held + hover on another column of the 3rd line: "-> Name · not a sample".
             list.positionViewAtBeginning()
             const item = list.itemAtIndex(2)
             if (item && root.laneCount > 1) {
@@ -1815,7 +1798,7 @@ Item {
                 dragChip.y = Math.max(2, p.y - 26)
             }
         } else if (s === "sweepStop" || s === "sweepContinuous" || s === "sweepSectionDone") {
-            // Söprés (S6): a VM állítja be a pillanatot; a lejátszó-pozíciót itt adjuk (nincs lejátszó).
+            // Sweep: the VM sets the moment; the player position is given here (there is no player).
             const ms = editorVm.stageSweepDemo(s)
             if (ms >= 0) editorVm.setPlaybackPosition(ms, true)
             const target = s === "sweepSectionDone" ? editorVm.rowForTime(ms) : editorVm.sweepTargetRow

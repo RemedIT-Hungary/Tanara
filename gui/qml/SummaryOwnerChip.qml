@@ -1,21 +1,21 @@
 import QtQuick
 
-// Felelős-chip a teendők mellett (nem kattintható): a meeting beszélőjénél a beszélő színében
-// (pötty + soft háttér + ink szöveg), más névnél semleges. warn (S3, célzott elavulás): a
-// felelős forrás-sorának beszélője azóta más — szaggatott warn keret, „Fehér Gábor → Varga
-// Árpád?”, a pötty az új beszélő színében (dotIndex). compact: a v3 listák 22 px-es chipje
-// (1 px beszélőszín-kerettel).
+// Owner chip next to to-dos (not clickable): for a meeting speaker in the speaker's color
+// (dot + soft background + ink text), neutral for any other name. warn (targeted staleness): the
+// owner's source row now has another speaker - dashed warn border, "Fehér Gábor -> Varga
+// Árpád?", the dot in the new speaker's color (dotIndex). compact: the 22 px chip of the
+// summary lists (1 px speaker-color border).
 //   SummaryOwnerChip { name: "Kovács Lilla"; speakerIndex: 0 }
 //   SummaryOwnerChip { name: "Fehér Gábor → Varga Árpád?"; warn: true; dotIndex: 2; compact: true }
 Rectangle {
     id: root
     property string name: ""
-    property int speakerIndex: -1          // -1: nem a meeting beszélője
+    property int speakerIndex: -1          // -1: not a meeting speaker
     property bool warn: false
-    property int dotIndex: speakerIndex    // a pötty színe (warn: az új beszélőé; -1: nincs pötty)
+    property int dotIndex: speakerIndex    // dot color (warn: the new speaker's; -1: no dot)
     property bool compact: false
 
-    property real maximumWidth: 240        // hosszabb név kipontozva
+    property real maximumWidth: 240        // a longer name is elided
 
     readonly property bool person: warn ? dotIndex >= 0 : speakerIndex >= 0
     readonly property real dotSize: compact ? 16 : 18

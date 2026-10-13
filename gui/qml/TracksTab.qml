@@ -2,23 +2,22 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Sávok részletei” (M09, G6): a felvétel hangsávjai érthető forrásnévvel, beszéd-csíkkal
-// (kattintva oda ugrik és a sávon szól), kapcsolóval és állapottal (eldobott · csendes →
-// visszaállítható; hiányzó fájl → megkereshető; végleges törlés), alatta a lekeverés
-// sora (kész / elavult → frissíthető / fut % megszakítással), végül az eldobott sávok
-// végleges törlése megerősítéssel.
-// Képernyőképhez: --qml-prop 'demoState="default|loading|idle"'.
+// "Track details": the recording's audio tracks with a clear source name, a speech stripe (click
+// seeks there and plays on the track), a switch and a state (dropped · silent -> restorable;
+// missing file -> locatable; permanent delete), below it the mixdown row (ready / stale ->
+// refreshable / running % with cancel), finally the permanent delete of dropped tracks with
+// confirmation. For screenshots: --qml-prop 'demoState="default|loading|idle"'.
 Item {
     id: root
 
-    property string meetingId: ""      // a kijelölt megbeszélés; "" = nincs
-    property var player: null          // PlayerController vagy null
-    property var shell: null           // ShellActions vagy null
+    property string meetingId: ""      // the selected meeting; "" = none
+    property var player: null          // PlayerController or null
+    property var shell: null           // ShellActions or null
     property string demoState: ""
 
     readonly property string previewPath: player ? player.previewPath : ""
     readonly property real nameWidth: Math.max(180, Math.min(300, width * 0.3))
-    // A sorok így kapják (a TrackRow saját `tracks` / `activity` property-je elfedné az id-t).
+    // This is how the rows get it (TrackRow's own `tracks` / `activity` property would shadow the id).
     readonly property alias trackModel: tracks
     readonly property alias activityModel: activity
 
@@ -27,32 +26,31 @@ Item {
         meetingId: root.meetingId
         demoState: root.demoState
     }
-    // A beszéd-csíkok adatai (a core sáv-aktivitása; ha nincs, a háttérben számol).
+    // Data of the speech stripes (the core's track activity; if missing, it computes in the background).
     TrackActivityModel {
         id: activity
         meetingId: root.meetingId
         demoState: root.demoState
     }
 
-    // A hullámformákat a fül első megjelenésekor (és meeting-váltáskor) kérjük.
+    // The waveforms are requested at the tab's first appearance (and on meeting switch).
     function ensureWaveforms() { if (visible) tracks.requestWaveforms() }
     onVisibleChanged: ensureWaveforms()
-    // A következő körben: addigra a modell meetingId-kötése is lefutott (különben a kérés még
-    // az ELŐZŐ megbeszélésre menne, és az új sávjai hullámforma nélkül maradnának).
+    // In the next round: by then the model's meetingId binding has run too (otherwise the request
+    // would still go to the PREVIOUS meeting and the new tracks would stay without a waveform).
     onMeetingIdChanged: Qt.callLater(ensureWaveforms)
     Component.onCompleted: ensureWaveforms()
 
-    // A sávonkénti műveletek (lejátszás a csíkon, kapcsoló, átnevezés, megkeresés, visszaállítás,
-    // végleges törlés) a TrackRow-ban vannak — ugyanaz a komponens, mint az Áttekintés SÁVOK-sora.
-    // Az alábbi kettő a fül saját (fájl-szintű) felülete: egy sávfájl előnézete és egy sor
-    // hangfájljának megkeresése.
+    // Per-track actions (playback on the stripe, switch, rename, locate, restore, permanent delete)
+    // are in TrackRow -- the same component as the Overview's TRACKS row. The two below are the
+    // tab's own (file-level) surface: previewing a track file and locating a row's audio file.
     function togglePreview(path) {
         if (!root.player) return
         if (root.previewPath === path) root.player.stopPreview()
         else root.player.playFile(path)
     }
-    // A fájlválasztó beágyazott eseményhurkot futtat: a megbeszélést és a sáv azonosítóját
-    // ELŐTTE jegyezzük meg, és a modell csak akkor hajtja végre, ha még egyezik.
+    // The file dialog runs a nested event loop: remember the meeting and the track id BEFORE it, and
+    // the model executes only if they still match.
     function locate(row) {
         if (!root.shell) return
         const meeting = tracks.meetingId
@@ -74,7 +72,7 @@ Item {
             root.shell.toast(qsTr("Közben másik megbeszélésre váltottál, ezért semmi nem törlődött."))
             return
         }
-        // Ha épp egy törlendő sáv szól előnézetként, előbb elengedjük a fájlt.
+        // If a track to be deleted is currently playing as a preview, release the file first.
         if (root.player && root.previewPath !== "") root.player.stopPreview()
         const removed = tracks.deleteDroppedIn(meeting)
         if (removed >= 0) root.shell.toast(qsTr("%n eldobott sáv törölve.", "", removed))
@@ -95,7 +93,7 @@ Item {
             width: flick.width - 48
             spacing: 14
 
-            // ---- sávok ----
+            // ---- tracks ----
             Rectangle {
                 visible: tracks.count > 0
                 Layout.fillWidth: true
@@ -130,7 +128,7 @@ Item {
                 wrapMode: Text.Wrap
             }
 
-            // ---- lekeverés ----
+            // ---- mixdown ----
             Rectangle {
                 visible: tracks.count > 0
                 Layout.fillWidth: true
@@ -176,7 +174,7 @@ Item {
                         }
                     }
 
-                    // fut: valós százalék (az ffmpeg haladásából)
+                    // running: real percent (from ffmpeg progress)
                     RowLayout {
                         visible: tracks.mixdownState === "running"
                         Layout.fillWidth: true
@@ -194,7 +192,7 @@ Item {
                             font.pixelSize: Theme.fontCaption
                         }
                     }
-                    // kész / elavult: a keverék hullámformája
+                    // ready / stale: the mix's waveform
                     WaveformItem {
                         id: mixWave
                         visible: tracks.mixdownState === "ready" || tracks.mixdownState === "stale"
@@ -243,7 +241,7 @@ Item {
                                 size: "small"
                                 enabled: tracks.activeCount > 0
                                 onClicked: {
-                                    // A lejátszó elengedi a régi keveréket, hogy felülírható legyen.
+                                    // The player releases the old mix so it can be overwritten.
                                     if (root.player && root.player.playing) root.player.pause()
                                     tracks.refreshMixdown()
                                 }
@@ -253,7 +251,7 @@ Item {
                 }
             }
 
-            // ---- eldobott sávok ----
+            // ---- dropped tracks ----
             RowLayout {
                 visible: tracks.droppedCount > 0
                 Layout.fillWidth: true

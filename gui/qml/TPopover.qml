@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Lehorgonyzott felugró panel (személyválasztó, beszélő-popover…): raised, sugár 8, árnyék.
-// A tartalom a szokásos módon gyerekként adható meg; szélességet a hívó ad (pl. 300 / 340).
+// Anchored popup panel (person picker, speaker popover...): raised, radius 8, shadow.
+// Content can be given as children as usual; the caller sets the width (e.g. 300 / 340).
 //   TPopover { id: pop; width: 300; y: anchor.height + 6;  ColumnLayout { anchors.fill: parent … } }
 T.Popup {
     id: control

@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Fülsor aláhúzással (1 px alsó vonal, az aktív fül alatt 2 px accent).
+// Tab row with an underline (1 px bottom line, 2 px accent under the active tab).
 //   TTabBar { id: tabs
-//       TTabButton { text: qsTr("Átirat") }
-//       TTabButton { text: qsTr("Összefoglaló"); pillText: qsTr("elavult") }
+//       TTabButton { text: qsTr("Transcript") }
+//       TTabButton { text: qsTr("Summary"); pillText: qsTr("stale") }
 //   }
-//   StackLayout { currentIndex: tabs.currentIndex; … }
+//   StackLayout { currentIndex: tabs.currentIndex; ... }
 T.TabBar {
     id: control
 

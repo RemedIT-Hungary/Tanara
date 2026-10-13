@@ -1,7 +1,7 @@
 import QtQuick
 
-// Kiemelt felület: raised háttér + 1 px keret + árnyék. Ez a menük, popoverek és
-// párbeszédablakok háttere; önállóan is használható „lebegő” panelnek.
+// Elevated surface: raised background + 1 px border + shadow. The background of menus, popovers
+// and dialogs; also usable on its own as a "floating" panel.
 Rectangle {
     id: root
     property bool elevated: true

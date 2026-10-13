@@ -2,26 +2,25 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Megbeszélés-fejléc, EGY sor (design/handoff-v3 „Header”, 1–3. döntés): 56 px, alsó vonal.
-// Cím 19/600 + ceruza (✎ / F2 / dupla kattintás: helyben átnevezés) · függőleges elválasztó ·
-// fülek „Áttekintés · Átirat · Vezetői összefoglaló · Memó” · … „…” (a Megbeszélés menü).
-// A futó lépés a fülén látszik („Átirat 62%” pirula); a még nem elérhető fül halvány, és
-// rámutatásra / kattintásra egy panel mondja meg, mi hiányzik, és felajánlja a műveletet.
-// A régi meta-sor, a címkesor és a „Résztvevők azonosítása” gomb innen kikerült (Áttekintés,
-// Megbeszélés menü).
-// Önállóan (képernyőkép) kitalált minta: demoState = "" | "tabTooltip" (a Vezetői
-// összefoglaló fül panelje nyitva, V4).
+// Meeting header, ONE row: 56 px, bottom line. Title 19/600 + pencil (edit / F2 / double click:
+// rename in place) · vertical divider · tabs "Overview · Transcript · Executive summary · Memo"
+// · ... "..." (the Meeting menu). The running step shows on its tab (a "Transcript 62%" pill); a
+// tab that is not available yet is faded, and on hover / click a panel says what is missing and
+// offers the action. The old meta row, the tag row and the "Identify participants" button left
+// this header (Overview, Meeting menu).
+// Standalone (screenshot) demo state: demoState = "" | "tabTooltip" (the Executive summary
+// tab's panel open).
 Item {
     id: root
 
-    property var shell: null                 // ShellActions vagy null
-    property var meeting: null               // ShellMeetingModel vagy null (önálló képernyőkép)
+    property var shell: null                 // ShellActions or null
+    property var meeting: null               // ShellMeetingModel or null (standalone screenshot)
     property string meetingId: meeting ? meeting.meetingId : ""
-    // 0 Áttekintés · 1 Átirat · 2 Vezetői összefoglaló · 3 Memó
+    // 0 Overview · 1 Transcript · 2 Executive summary · 3 Memo
     property int currentTab: 0
     property string demoState: ""
 
-    // Az adatok a ShellMeetingModel-ből; demóban / képernyőképhez felülírhatók.
+    // Data from the ShellMeetingModel; can be overridden in the demo / for screenshots.
     property string title: meeting ? meeting.title : DemoText.t("Negyedéves partnertalálkozó", "Quarterly partner review")
     property bool hasTranscript: meeting ? meeting.hasTranscript : true
     property bool hasSummary: meeting ? meeting.hasSummary : false
@@ -37,7 +36,7 @@ Item {
     signal participantsRequested()
 
     function tabAvailable(index) {
-        // Az Átirat az átírás közben is megnyitható (a fülön a haladás).
+        // The Transcript opens during transcription too (the tab shows the progress).
         if (index === 1) return root.hasTranscript || root.transcribePercent >= 0
         if (index >= 2) return root.hasSummary
         return true
@@ -52,12 +51,12 @@ Item {
         if (!titleEdit.visible)
             return
         titleEdit.visible = false
-        // A fókusz ne maradjon a (láthatatlan) mezőben: a Szóköz / nyilak oda mennének.
+        // Focus must not stay in the (invisible) field: Space / arrows would go there.
         if (titleEdit.activeFocus) root.forceActiveFocus()
         if (commit && root.shell && titleEdit.text.trim() !== "" && titleEdit.text.trim() !== root.title)
             root.shell.renameMeeting(root.meetingId, titleEdit.text)
     }
-    // A nem elérhető fül panelje (kattintás / rámutatás).
+    // The unavailable tab's panel (click / hover).
     function openTabTip(index, tabItem, pinned) {
         if (!tabItem) return
         tabTip.tabIndex = index
@@ -78,7 +77,7 @@ Item {
         anchors { fill: parent; leftMargin: Theme.space5; rightMargin: Theme.space4 }
         spacing: 14
 
-        // ---- cím + ceruza ----
+        // ---- title + pencil ----
         Item {
             id: titleBox
             Layout.fillHeight: true
@@ -139,7 +138,7 @@ Item {
             color: Theme.border
         }
 
-        // ---- fülek ----
+        // ---- tabs ----
         Row {
             id: tabRow
             objectName: "meetingTabs"
@@ -271,13 +270,13 @@ Item {
 
     TDivider { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } }
 
-    // ---- a nem elérhető fül panelje (V4 jobb felső) ----
+    // ---- the unavailable tab's panel ----
     TPopover {
         id: tabTip
         objectName: "tabTooltip"
         property int tabIndex: 2
         property bool pinned: false
-        // A fül bal széle alatt, a fejléc alsó vonalára 8 px-re ráfutva (V4).
+        // Below the tab's left edge, overlapping the header's bottom line by 8 px.
         x: Math.max(0, Math.min(root.width - width, root.tipAnchorX))
         y: root.height - 8
         width: 320
@@ -302,7 +301,7 @@ Item {
         readonly property string actionText: tabIndex === 1 ? (transcribing ? "" : qsTr("Átírás indítása"))
                                            : root.hasTranscript && !summarizing ? qsTr("Összefoglaló készítése") : ""
 
-        // Rámutatással nyitva: bezárul, ha sem a fül, sem a panel fölött nincs az egér.
+        // Opened by hover: closes when the mouse is over neither the tab nor the panel.
         Timer {
             interval: 300
             repeat: true
@@ -359,7 +358,7 @@ Item {
                     wrapMode: Text.Wrap
                 }
             }
-            // A fül tartalma (témánkénti elemzés, megjegyzés) így is elérhető marad.
+            // The tab's content (per-topic analysis, note) stays reachable this way.
             TButton {
                 objectName: "tabTipOpen"
                 visible: tabTip.tabIndex >= 2 && root.hasTranscript

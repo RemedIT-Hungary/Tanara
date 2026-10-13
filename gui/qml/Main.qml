@@ -2,66 +2,68 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Tanara — főablak (héj). Szerkezet (design/handoff/README.md, „Window structure”; a
-// megbeszélés-nézet a design/handoff-v3 szerint):
-//   menüsor (36: Fájl · Megbeszélés · Nézet) · oldalsáv (276) · tartalom:
-//   egysoros fejléc (56: cím, fülek Áttekintés · Átirat · Vezetői összefoglaló · Memó, „…”) ·
-//   fülenkénti eszköz-sor (46) · a fül tartalma · alul a lejátszó (52, Áttekintésen) vagy a
-//   térkép-dokk (beszélő-sávok + 44 px vezérlősor, az Átirat és az összefoglaló füleken).
-// Itt él a kijelölés, a „melyik nézet látszik” döntés, a menük, a gyorsbillentyűk, az ablak
-// megjegyzett mérete és a bezárás-védelem; a régiókat külön komponensek töltik ki. A
-// tartalom-komponensek (OverviewTab, TranscriptTab, SummaryTab) a szerződés
-// (CONTRACT.md) három property-jét kapják: meetingId / player / shell.
+// Tanara main window (shell). Structure (design/handoff/README.md, "Window structure"; the
+// meeting view follows design/handoff-v3):
+//   menu bar (36: File - Meeting - View) - sidebar (276) - content:
+//   one-line header (56: title, tabs Overview - Transcript - Executive summary - Memo, "...") -
+//   per-tab tool row (46) - the tab content - at the bottom the player (52, on Overview) or the
+//   map dock (speaker tracks + 44 px control row, on the Transcript and summary tabs).
+// This is where the selection, the "which view shows" decision, the menus, the shortcuts, the window's
+// remembered size and the close guard live; separate components fill the regions. The
+// content components (OverviewTab, TranscriptTab, SummaryTab) get three properties of the
+// contract (CONTRACT.md): meetingId / player / shell.
 ApplicationWindow {
     id: window
 
-    // ---- felülbírálások demóhoz / képernyőképhez / füstteszthez ----
-    // "" = az adatokból számolt állapot; különben kényszerített:
-    // "empty" (M01) | "noSelection" (M02) | "preTranscript" (M03–M05) | "meeting" (fülek)
+    // ---- overrides for demo / screenshots / smoke tests ----
+    // "" = the state computed from data; otherwise forced:
+    // "empty" | "noSelection" | "preTranscript" | "meeting" (tabs)
     property string shellState: ""
-    // Demóban: minta-feladat a feladat-sávban.
+    // In demo: a sample task in the task bar.
     property bool taskRunning: false
-    // Demóban: kezdő keresőszöveg (az M05 oldalsáv képéhez).
+    // In demo: initial search text (for the sidebar's search screenshot).
     property string demoSearch: ""
-    // Demóban / képernyőképhez: induláskor megnyíló felugró vagy állapot —
+    // In demo / screenshots: a popup or state that opens at startup -
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
     // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
     // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop" |
-    // "tagToast" (címke-lépés toast „Visszavonás”-sal) | "selection" (T05: többes kijelölés) |
-    // "overviewChange" (G7b: az Áttekintés változás-sávja „Visszavonás”-sal)
+    // "tagToast" (tag step toast with "Undo") | "selection" (multi-select) |
+    // "overviewChange" (the Overview change bar with "Undo")
     property string demoOverlay: ""
-    // Demóban: a fejléc címkesorának kitalált állapota (MeetingTagsModel.demoState: none | few |
+    // In demo: fictional state of the header tag row (MeetingTagsModel.demoState: none | few |
     // many | computing | similar | cooccur | llm | why).
     property string demoTags: ""
-    // Demóban / képernyőképhez a v3 megbeszélés-nézet állapota (design/handoff-v3):
-    // "overviewProcessing" (V1) | "overviewDone" (V3) | "overviewEmpty" (V5) |
-    // "overviewNobody" (V6) | "overviewRecorded" (U6: felvétel után, átírás előtt; az „Átírás
-    // indítása” a lépésben) | "overviewRecordedError" (U6: az átírás nem sikerült) |
-    // "overviewTranscribing" (A1: az első átírás fut, a lépésben szakaszok + „Megszakítás”) |
-    // "readingMap" (V4: Átirat + térkép-dokk) | "tabTooltip" (V4 panel).
+    // In demo / screenshots: state of the v3 meeting view (design/handoff-v3):
+    // "overviewProcessing" | "overviewDone" | "overviewEmpty" |
+    // "overviewNobody" | "overviewRecorded" (after recording, before transcription; "Start
+    // transcription" in the step) | "overviewRecordedError" (transcription failed) |
+    // "overviewTranscribing" (first transcription running, sections + "Cancel" in the step) |
+    // "readingMap" (Transcript + map dock) | "tabTooltip" (tab panel).
     property string demoState: ""
     readonly property bool demoOverview: demoState.startsWith("overview")
-    // Demóban átirat nélküli állapotok (a fejléc Átirat füle ilyenkor nem / csak futva elérhető).
+    // In demo: states without a transcript (the header's Transcript tab is unavailable / reachable
+    // only while running).
     readonly property bool demoNoTranscript: ["overviewProcessing", "overviewEmpty", "overviewRecorded",
                                               "overviewRecordedError", "overviewTranscribing"].indexOf(demoState) >= 0
-    // "summarySources" (S1: 2. fül, forrás-chipek) | "memoSections" (S2: 3. fül) — a bekötött
-    // eszköz-sor és a dokk Forrás/Szakaszok sorának képernyőképéhez.
+    // "summarySources" (2nd tab, source chips) | "memoSections" (3rd tab) - for the screenshot of the wired
+    // tool row and the dock's Source / Sections row.
     readonly property bool demoSummary: demoState === "summarySources" || demoState === "memoSections"
 
-    // ---- állapot ----
+    // ---- state ----
     readonly property string computedState: sidebar.library.totalCount === 0 ? "empty"
                                           : !currentMeeting.exists ? "noSelection"
                                           : currentMeeting.hasTranscript ? "meeting" : "preTranscript"
     readonly property string viewState: shellState !== "" ? shellState : computedState
     readonly property bool hasMeeting: viewState === "meeting" || viewState === "preTranscript"
-    // 0 = Áttekintés, 1 = Átirat, 2 = Vezetői összefoglaló, 3 = Memó
+    // 0 = Overview, 1 = Transcript, 2 = Executive summary, 3 = Memo
     property alias currentTab: shellActions.currentTab
-    // Alul a térkép-dokk (Átirat és összefoglaló fülek, ha van átirat), különben a lejátszó.
+    // The map dock at the bottom (Transcript and summary tabs, if there is a transcript),
+    // otherwise the player.
     readonly property bool mapDockShown: currentTab > 0 && header.hasTranscript && transcriptTab.editor.overview.length > 0
-    // A tartalom-komponensek demó-módban üres azonosítót kapnak (→ saját mintatartalom).
+    // In demo mode the content components get an empty ID (-> their own sample content).
     readonly property string contentMeetingId: App.demo ? "" : shellActions.currentMeetingId
 
-    // A tesztek / QA-szkriptek belépőpontjai.
+    // Entry points for tests / QA scripts.
     readonly property alias shell: shellActions
     readonly property alias player: playerController
     readonly property alias library: sidebar.library
@@ -75,8 +77,8 @@ ApplicationWindow {
     property bool quitConfirmed: false
     property bool restoring: true
 
-    // A Szóköz a lejátszóé, kivéve ha szövegmezőben vagyunk, billentyűzettel fókuszált
-    // vezérlőn állunk (ott a Szóköz azt aktiválja), vagy párbeszédablak van nyitva.
+    // Space belongs to the player, except in a text field, on a keyboard-focused control (there Space
+    // activates it), or while a dialog is open.
     readonly property bool spaceTogglesPlayer: {
         if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
             return false
@@ -88,11 +90,11 @@ ApplicationWindow {
         return it.visualFocus !== true
     }
 
-    // Ctrl+Z (G7b): EGY kulcs a megbeszélés-nézetben — a megbeszélés közös visszavonási verme
-    // (shellActions.undoMeeting → MeetingUndoService: szerkesztő, címkék, résztvevő-műveletek
-    // időrendben), bármelyik fülön és fókuszban. Szövegmezőben a mező saját visszavonása él; a
-    // Személyek / Címkék ablak a saját vermét vonja vissza. Controller nélkül (demó) a címke-modell
-    // és a szerkesztő saját visszavonása marad.
+    // Ctrl+Z: ONE key in the meeting view - the meeting's shared undo stack
+    // (shellActions.undoMeeting -> MeetingUndoService: editor, tag and participant actions
+    // in chronological order), on any tab and focus. In a text field the field's own undo applies; the
+    // People / Tags windows undo their own stack. Without a controller (demo) the tag model's
+    // and the editor's own undo remain.
     readonly property bool undoKeyFree: {
         if (!hasMeeting || dialogs.anyOpen || participantsDialog.opened || importDialog.visible)
             return false
@@ -108,15 +110,15 @@ ApplicationWindow {
         return true
     }
 
-    // A könyvtár szűrése egy címkére (fejléc-chip, Címkék ablak): a keresés, a többi szűrő és a
-    // többes kijelölés törlődik, csak ez az egy címke marad.
+    // Filter the library to one tag (header chip, Tags window): search, other filters and the
+    // multi-select are cleared, only this one tag stays.
     function filterLibraryByTag(tagId) {
         if (tagId !== "")
             sidebar.filterByTag(tagId)
     }
 
-    // „Ki volt ott?” (U3): a párbeszédet a ShellActions.openParticipants nyitja; amíg az nincs
-    // beépítve, egy rövid jelzés.
+    // "Who was there?": the dialog is opened by ShellActions.openParticipants; until it is
+    // wired in, a short notice.
     function openParticipants() {
         const id = shellActions.currentMeetingId
         if (typeof shellActions.openParticipants === "function")
@@ -124,15 +126,15 @@ ApplicationWindow {
         else
             toast.show(qsTr("A „Ki volt ott?” párbeszéd még nincs beépítve ebbe a változatba."), "", "", false)
     }
-    // Fülváltás. Az Átiratra lépve a jóváhagyásra váró elemzést felajánlja (U3:
-    // ShellActions.maybeOfferParticipants).
+    // Tab switch. Moving to Transcript offers the analysis awaiting approval
+    // (ShellActions.maybeOfferParticipants).
     function showTab(index) {
         shellActions.showTab(index)
         if (index === 1 && typeof shellActions.maybeOfferParticipants === "function")
             shellActions.maybeOfferParticipants(shellActions.currentMeetingId)
     }
-    // A Vezetői összefoglaló és a Memó ugyanaz a SummaryTab, más szakasszal (U4: a SummaryTab
-    // `section` property-je, "exec" | "memo").
+    // Executive summary and Memo are the same SummaryTab with a different section (SummaryTab's
+    // `section` property, "exec" | "memo").
     function syncSummarySection() {
         if (summaryTab && "section" in summaryTab && currentTab >= 2)
             summaryTab.section = currentTab === 3 ? "memo" : "exec"
@@ -148,7 +150,7 @@ ApplicationWindow {
     font.family: Theme.fontSans
     font.pixelSize: Theme.fontBody
 
-    // ---- nézetmodellek ----
+    // ---- view models ----
     ShellUiState { id: uiState }
     PlayerController {
         id: playerController
@@ -163,18 +165,18 @@ ApplicationWindow {
         onCurrentMeetingIdChanged: {
             if (!window.restoring)
                 uiState.setValue("selectedMeetingId", currentMeetingId)
-            // Átirat nélküli megbeszélésnél mindig a lépések látszanak először (a fejléc-modell
-            // a kijelölés után frissül, ezért a következő körben nézzük meg).
+            // For a meeting without a transcript the steps always show first (the header model
+            // updates after the selection, so we check in the next round).
             Qt.callLater(() => { if (!currentMeeting.hasTranscript) shellActions.currentTab = 0 })
         }
         onToastRequested: (text, tone, requestId, usageLink, undoKey, revealPath) =>
                           toast.show(text, tone, requestId, usageLink, undoKey, revealPath)
-        // A címke-lépések egy közös visszavonási vermen vannak (TagService): bármelyik modell
-        // visszavonása a legutóbbi lépést veszi vissza.
+        // Tag steps share one undo stack (TagService): undoing from any model
+        // reverts the latest step.
         onUndoRequested: (undoKey) => { if (undoKey === "tags") currentMeeting.tags.undo() }
-        // G7b: a közös verem új lépése. Az Áttekintésen a változás-sáv mondja ki („… · Visszavonás”);
-        // máshol a résztvevő-lépés (pl. a „Ki volt ott?” jóváhagyása az Átiratból) toastot kap, a
-        // szerkesztő-lépést az Átirat saját sávja, a címke-lépést a címkesor toastja mutatja.
+        // A new step on the shared stack. On Overview the change bar announces it ("... - Undo");
+        // elsewhere a participant step (e.g. approving "Who was there?" from the Transcript) gets a toast, an
+        // editor step is shown by the Transcript's own bar, a tag step by the tag row's toast.
         onMeetingChangePosted: (text, source) => {
             if (shellActions.currentTab === 0 && window.hasMeeting) {
                 overviewTab.showChange(text)
@@ -196,8 +198,8 @@ ApplicationWindow {
     }
     ShellImportModel {
         id: importModel
-        // A háttérbe tett (bezárt ablakú) importálás hibája értesítésként jelenik meg; az
-        // ablak újranyitásakor a részletek is ott vannak.
+        // An error from a backgrounded import (window closed) appears as a notification; the
+        // details are there when the window is reopened.
         onFailed: (message) => {
             if (!importDialog.visible)
                 toast.show(qsTr("Az importálás nem sikerült: %1").arg(message), "danger", "", false)
@@ -214,7 +216,7 @@ ApplicationWindow {
         property: "demoState"
         value: window.demoTags
     }
-    // v3 demó-állapotok: a fejléc fül-állapota a képernyőnek megfelelően (V1/V3/V4/V5/V6).
+    // v3 demo states: the header's tab state matching the screen.
     Binding {
         when: App.demo && window.demoState !== ""
         target: header; property: "hasTranscript"
@@ -236,7 +238,7 @@ ApplicationWindow {
         value: window.demoState === "overviewProcessing" ? 62 : window.demoState === "overviewEmpty" ? 18
              : window.demoState === "overviewTranscribing" ? 0 : -1
     }
-    // A4: az Áttekintés jelvényéről a szerkesztő „Miért ő?” panelje (a fül már az Átirat).
+    // From the Overview badge: the editor's "Why them?" panel (the tab is Transcript by then).
     Connections {
         target: shellActions
         ignoreUnknownSignals: true
@@ -244,11 +246,11 @@ ApplicationWindow {
             Qt.callLater(() => transcriptTab.openSpeakerWhyAt(speakerKey, transcriptTab.width / 2 - 215, 56))
         }
     }
-    // A címkesor lépései (elfogadás, elutasítás, levétel) a héj toastján, „Visszavonás”-sal.
+    // Tag row steps (accept, reject, remove) go to the shell toast with "Undo".
     Connections {
         target: currentMeeting.tags
         function onToast(text, undoable) {
-            // Az Áttekintésen a visszavonható címke-lépést a közös változás-sáv mondja ki.
+            // On Overview the shared change bar announces the undoable tag step.
             if (undoable && shellActions.hasMeetingUndo && shellActions.currentTab === 0) return
             shellActions.toast(text, undoable ? "tags" : "")
         }
@@ -260,7 +262,7 @@ ApplicationWindow {
         function onStopPromptRequested(reason) { dialogs.openStopPrompt(reason) }
         function onShowWindowRequested() { window.show(); window.raise(); window.requestActivate() }
         function onQuitRequested() { window.quitConfirmed = true; window.close() }
-        // A Beállításokban mentett téma: megjegyezzük a következő indításra.
+        // Theme saved in Settings: remember it for the next start.
         function onThemeModeSaved(mode) { window.setTheme(mode) }
     }
 
@@ -278,7 +280,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         if (App.demo) {
-            // Demó / képernyőkép: a kért állapothoz illő minta-megbeszélés.
+            // Demo / screenshot: a sample meeting matching the requested state.
             sidebar.forceEmpty = shellState === "empty"
             if (shellState === "preTranscript")
                 shellActions.currentMeetingId = "demo-bemutato"
@@ -292,7 +294,7 @@ ApplicationWindow {
                 Qt.callLater(() => shellActions.showTab(3))
             if (demoSearch !== "")
                 sidebar.searchText = demoSearch
-            // A felugrók a kijelölés lefutása után nyílnak (a fül-visszaállítás utáni körben).
+            // Popups open after the selection has run (in the round after the tab restore).
             Qt.callLater(() => Qt.callLater(window.applyDemoOverlay))
         } else {
             const g = uiState.value("window", null)
@@ -302,7 +304,7 @@ ApplicationWindow {
             }
             if (g && g.maximized)
                 Qt.callLater(window.showMaximized)
-            // A --theme / TANARA_THEME erősebb a megjegyzett témánál.
+            // --theme / TANARA_THEME wins over the remembered theme.
             const theme = uiState.value("themeMode", "")
             if (theme !== "" && App.themeMode === "system")
                 App.themeMode = theme
@@ -320,7 +322,7 @@ ApplicationWindow {
     onActiveChanged: if (active && App.bridge) App.bridge.windowActivated()
 
     onClosing: (close) => {
-        // FELVÉTEL KÖZBEN a kilépés megszakítaná a felvételt → előbb megkérdezzük.
+        // WHILE RECORDING, quitting would abort the recording -> ask first.
         if (shellActions.recording && !window.quitConfirmed) {
             close.accepted = false
             dialogs.openCloseWhileRecording()
@@ -345,8 +347,8 @@ ApplicationWindow {
         case "tagToast": toast.show(DemoText.t("Javaslat elutasítva: #Nordvik", "Suggestion dismissed: #Nordvik"), "", "", false, "tags"); break
         case "overviewChange": overviewTab.showChange(DemoText.t("Résztvevő eltávolítva: Lantos Réka", "Participant removed: Rachel Lane")); break
         case "cloudToast": toast.show(DemoText.t("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "Transcription failed because of a provider error. The charge ($0.42) has been refunded."), "", "req_8f3a2c71d0", true); break
-        case "filters": sidebar.applyDemo("filters"); break       // T04: címke-szűrők + popover
-        case "selection": sidebar.applyDemo("selection"); break   // T05
+        case "filters": sidebar.applyDemo("filters"); break       // tag filters + popover
+        case "selection": sidebar.applyDemo("selection"); break   // multi-select
         case "rename": header.startRename(); break
         case "tracks": shellActions.showTab(0); overviewTab.openTracks(); break
         case "import": importModel.demoState = "files"; importDialog.open(); break
@@ -366,13 +368,13 @@ ApplicationWindow {
         uiState.setValue("themeMode", mode)
     }
 
-    // ---- gyorsbillentyűk ----
+    // ---- shortcuts ----
     Shortcut { sequences: [StandardKey.Quit]; onActivated: window.close() }
     Shortcut { sequence: "Alt+F"; onActivated: fileMenu.open() }
     Shortcut { sequence: "Alt+M"; enabled: window.hasMeeting; onActivated: meetingMenu.open() }
     Shortcut { sequence: "Alt+N"; onActivated: viewMenu.open() }
-    // Ctrl+F: a könyvtár keresője (a mező ezt a tippet mutatja); Ctrl+Shift+F: keresés a
-    // megnyitott átiratban.
+    // Ctrl+F: the library search (the field shows this hint); Ctrl+Shift+F: search in the
+    // open transcript.
     Shortcut { sequences: [StandardKey.Find]; onActivated: sidebar.focusSearch() }
     Shortcut {
         sequence: "Ctrl+Shift+F"
@@ -406,7 +408,7 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // ---- 1. Menüsor (natív ablakkeret marad; a menük a címsor stílusában) ----
+        // ---- 1. Menu bar (the native window frame stays; the menus use the title bar style) ----
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: Theme.titleBarHeight
@@ -549,7 +551,7 @@ ApplicationWindow {
                             onTriggered: window.showTab(3)
                         }
                         TMenuSeparator {}
-                        // Az Átirat három nézete (az eszköz-sor szegmensével azonos).
+                        // The three Transcript views (same as the tool row's segmented control).
                         TMenuItem {
                             objectName: "modeReadItem"
                             text: qsTr("Olvasás")
@@ -615,7 +617,7 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
 
-                // Felvétel fut — mindig látszik, a felvevőt hozza előre.
+                // Recording is running - always visible, brings the recorder to the front.
                 TButton {
                     visible: shellActions.recording
                     text: qsTr("Felvétel folyamatban")
@@ -623,7 +625,7 @@ ApplicationWindow {
                     iconName: "circle-dot"
                     onClicked: shellActions.openRecorder()
                 }
-                // Tanara Cloud egyenleg-chip (K-08) — saját kulcsos módban nincs.
+                // Tanara Cloud balance chip - absent in own-key mode.
                 TButton {
                     visible: App.bridge ? App.bridge.cloudChipVisible : false
                     text: App.bridge ? App.bridge.cloudChipText : ""
@@ -644,7 +646,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // ---- 2. Oldalsáv ----
+            // ---- 2. Sidebar ----
             Rectangle {
                 Layout.preferredWidth: Theme.sidebarWidth
                 Layout.fillHeight: true
@@ -661,7 +663,7 @@ ApplicationWindow {
                 TDivider { vertical: true; anchors { top: parent.top; bottom: parent.bottom; right: parent.right } }
             }
 
-            // ---- 3–7. Tartalom ----
+            // ---- 3-7. Content ----
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -691,7 +693,7 @@ ApplicationWindow {
                         shell: shellActions
                     }
 
-                    // ---- egysoros fejléc (56) ----
+                    // ---- one-line header (56) ----
                     MeetingHeader {
                         id: header
                         visible: window.hasMeeting
@@ -703,7 +705,7 @@ ApplicationWindow {
                         onTabRequested: (index) => window.showTab(index)
                         onParticipantsRequested: window.openParticipants()
                     }
-                    // Futó, megszakítható feladatok (export, azonosítás, újra-átírás …).
+                    // Running, cancelable tasks (export, identification, re-transcription ...).
                     ColumnLayout {
                         visible: window.hasMeeting && currentMeeting.tasks.length > 0
                         Layout.fillWidth: true
@@ -724,7 +726,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- a fülek tartalma ----
+                    // ---- tab contents ----
                     StackLayout {
                         id: pages
                         visible: window.hasMeeting
@@ -732,10 +734,10 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         currentIndex: Math.min(shellActions.currentTab, 2)
 
-                        // 0 — Áttekintés: a felvétel után azonnal, átírás előtt is (U6). Az „Átírás
-                        // indítása”, a hiányzó beállítás és a hiba a FELDOLGOZÁS „Átirat” lépésében
-                        // van; hang nélkül (importálás közben, sérült mappa) ugyanez a fül a hiányt
-                        // a lépésekben mondja meg (a régi PreTranscriptView itt már nem kell).
+                        // 0 - Overview: right after recording, even before transcription. "Start transcription",
+                        // the missing setting and the error are in the PROCESSING "Transcript" step; without audio
+                        // (during import, damaged folder) this tab states the gap in the steps (the old
+                        // PreTranscriptView is no longer needed here).
                         OverviewTab {
                             id: overviewTab
                             objectName: "overviewTab"
@@ -747,22 +749,22 @@ ApplicationWindow {
                             demoState: window.demoOverview ? window.demoState : ""
                             onParticipantsRequested: window.openParticipants()
                         }
-                        // 1 — Átirat (az eszköz-sor a szerkesztő tetején: TranscriptToolbar)
+                        // 1 - Transcript (the tool row is at the top of the editor: TranscriptToolbar)
                         TranscriptTab {
                             id: transcriptTab
                             objectName: "transcriptTab"
                             meetingId: window.contentMeetingId
                             player: playerController
                             shell: shellActions
-                            // A közös verem alatt a szerkesztő Ctrl+Z-je a Main-é (egy kulcs).
+                            // Under the shared stack the editor's Ctrl+Z belongs to Main (one key).
                             undoAllowed: !shellActions.hasMeetingUndo && !window.demoTagUndoActive
                             onParticipantsRequested: window.openParticipants()
                         }
-                        // 2–3 — Vezetői összefoglaló / Memó (ugyanaz a nézet, más szakasszal)
+                        // 2-3 - Executive summary / Memo (the same view with a different section)
                         ColumnLayout {
                             spacing: 0
-                            // U4: ide kerül az összefoglaló eszköz-sora (generálás-meta · Források ·
-                            // Másolás · Újragenerálás) — a SummaryTab `toolsRow` komponense.
+                            // The summary's tool row goes here (generation meta - Sources - Copy - Regenerate) - the
+                            // SummaryTab's `toolsRow` component.
                             MeetingToolsRow {
                                 id: summaryTools
                                 objectName: "summaryTools"
@@ -785,7 +787,8 @@ ApplicationWindow {
                                 shell: shellActions
                                 demoState: window.demoState === "summarySources" ? "sourcesOn"
                                          : window.demoState === "memoSections" ? "memoSections" : ""
-                                // A héj eszköz-sora és térkép-dokkja veszi át (U1 ↔ U4 bekötés).
+                                // The shell's tool row and map dock take over (wiring between the
+                                // tool row and the dock).
                                 embedToolsRow: false
                                 embedMapRows: false
                                 showSectionSwitch: false
@@ -794,7 +797,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- alul: lejátszó (Áttekintés) vagy térkép-dokk (Átirat, összefoglaló) ----
+                    // ---- bottom: player (Overview) or map dock (Transcript, summary) ----
                     Rectangle {
                         visible: window.hasMeeting && !window.mapDockShown
                         Layout.fillWidth: true
@@ -820,20 +823,21 @@ ApplicationWindow {
                         lanesExpanded: transcriptTab.editor.lanesExpanded
                         timelineMs: transcriptTab.editor.timelineMs > 0 ? transcriptTab.editor.timelineMs
                                                                         : playerController.durationMs
-                        // U4: a SummaryTab `sourceMarks` / `sectionBands` listái ({ startMs, endMs, active }).
-                        // S2: a memó (3. fül) állításainak forrásai is (a vm a nézet szerint adja).
+                        // The SummaryTab's `sourceMarks` / `sectionBands` lists ({ startMs, endMs, active }).
+                        // The sources of the memo's (3rd tab) claims too (the vm provides them per view).
                         sourceMarks: (shellActions.currentTab === 2 || shellActions.currentTab === 3)
                                      && summaryTab && ("sourceMarks" in summaryTab)
                                      ? summaryTab.sourceMarks : []
                         sectionBands: shellActions.currentTab === 3 && summaryTab && ("sectionBands" in summaryTab)
                                       ? summaryTab.sectionBands : []
-                        // T1 / E4: az új személyhez hasonló sorok accent jelei (csak az Átirat fülön).
+                        // Accent marks of rows similar to the new person (only on the Transcript tab).
                         similarMarks: shellActions.currentTab === 1 ? transcriptTab.similarMarks : []
-                        // S2: minta-mérő (az Átirat Javítás / Átnézendő nézetében); „+N most” → szűrés.
+                        // Sample meter (in the Transcript's Fix / To review views); "+N now" -> filter.
                         sampleStats: shellActions.currentTab === 1 && transcriptTab.viewMode !== "read"
                                      ? transcriptTab.editor.sampleStats : []
                         onSamplesClicked: key => transcriptTab.showSessionSamples(key)
-                        // S6: söprés-mód (kétes-pöttyök, szakaszok, fagyasztott ablak) — csak az Átirat fülön.
+                        // Sweep mode (doubtful dots, sections, frozen window) - only on the
+                        // Transcript tab.
                         sweep: shellActions.currentTab === 1 ? transcriptTab.sweepDock : ({})
                         onSeekRequested: (fraction) => {
                             if (shellActions.currentTab === 1) transcriptTab.seekToFraction(fraction)
@@ -843,7 +847,8 @@ ApplicationWindow {
                                 transcriptTab.selectRowAt(ms)
                             }
                         }
-                        // Előző / következő sor: az Átirat logikája (lejátszás közben ugrás, állva kijelölés).
+                        // Previous / next row: the Transcript's logic (jump while playing, select
+                        // while stopped).
                         onLineStepRequested: delta => {
                             transcriptTab.stepLine(delta)
                             if (shellActions.currentTab === 1) transcriptTab.forceActiveFocus()
@@ -861,16 +866,16 @@ ApplicationWindow {
                     }
                 }
 
-                // ---- Könyvtár: többes kijelölés (C05, T05) — a tartalom helyén a kijelölés-panel ----
+                // ---- Library: multi-select - the selection panel replaces the content ----
                 LibrarySelectionPanel {
                     objectName: "selectionPanel"
                     anchors.fill: parent
                     visible: sidebar.selection.count > 1
                     selection: sidebar.selection
                 }
-                // ---- /többes kijelölés ----
+                // ---- /multi-select ----
 
-                // Nem-modális értesítés a tartalom alján (a lejátszó fölött).
+                // Non-modal notification at the bottom of the content (above the player).
                 ShellToast {
                     id: toast
                     objectName: "toast"
@@ -887,7 +892,7 @@ ApplicationWindow {
         }
     }
 
-    // ---- húzd-és-ejtsd: hang- / videófájl az ablakra → importálás; *.zip → archívum-import ----
+    // ---- drag and drop: audio / video file onto the window -> import; *.zip -> archive import ----
     DropArea {
         id: windowDrop
         anchors.fill: parent
@@ -958,7 +963,7 @@ ApplicationWindow {
         shell: shellActions
     }
 
-    // „Ki volt ott?” (U3): a ShellActions.participantsDialogRequested jelre nyílik.
+    // "Who was there?": opens on the ShellActions.participantsDialogRequested signal.
     ParticipantsDialog {
         id: participantsDialog
         shell: shellActions
@@ -968,8 +973,8 @@ ApplicationWindow {
         id: dialogs
         shell: shellActions
         onBackgroundRequested: {
-            // A lebegő felvevő önálló ablak → az app életben marad; a főablak a felvétel
-            // végén magától visszajön.
+            // The floating recorder is a separate window -> the app stays alive; the main window comes
+            // back by itself when the recording ends.
             if (App.bridge)
                 App.bridge.continueRecordingInBackground()
             window.hide()

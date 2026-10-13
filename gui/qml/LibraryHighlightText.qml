@@ -1,8 +1,8 @@
 import QtQuick
 
-// Egysoros szöveg kiemelt találattal (könyvtár-keresés): előtte / találat (warnSoft háttér) /
-// utána; a végén kipontoz. Találat nélkül csak az `after` látszik (sima, kipontozott sor).
-//   LibraryHighlightText { before: "…a "; match: "demó"; after: " előtt még…" }
+// Single-line text with a highlighted hit (library search): before / hit (warnSoft background) /
+// after; elided at the end. Without a hit only `after` shows (a plain, elided line).
+//   LibraryHighlightText { before: "...a "; match: "demo"; after: " before..." }
 Item {
     id: root
 
@@ -14,7 +14,7 @@ Item {
     property color color: Theme.textMuted
     property color matchColor: Theme.text
 
-    // A Text a sorvégi szóközt nem számolja a szélességbe → a darabok közé kézzel tesszük.
+    // Text does not count a trailing space in its width -> we put spaces between the pieces by hand.
     readonly property real spaceWidth: Math.round(pixelSize * 0.28)
 
     implicitHeight: afterLabel.implicitHeight

@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A felvevő eszköz-kapcsolója (30×18). Be: accent; ki: borderStrong körvonal.
-// locked: leválasztott eszköz sávja — lakat a gombban, nem kapcsolható.
+// The recorder's device switch (30x18). On: accent; off: borderStrong outline.
+// locked: the track of a disconnected device -- a lock in the knob, cannot be toggled.
 T.Switch {
     id: control
     property bool locked: false

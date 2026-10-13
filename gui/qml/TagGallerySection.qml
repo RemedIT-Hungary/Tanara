@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Shapes
 
-// A galéria „Címkék” szakasza: a handoff T01 / T01b lapja (design/handoff-tags/screenshots).
-// C01: minden chip-fajta + „Nem téveszthető össze” sor · C02: a beviteli mező négy állapota (a
-// lista helyben kirajzolva, felugró nélkül) · C03–C04: a fejléc címkesorának hét állapota.
-// A mintaszövegek fejlesztői tartalom (mint a Gallery.qml-ben) → szándékosan nincsenek qsTr()-ben.
-//   Gallery { section: "tags" }   — csak ez a szakasz
+// The gallery's "Tags" section: the handoff's tag sheets (design/handoff-tags/screenshots).
+// Chip kinds + a "Cannot be confused" row; the input field in its four states (the list is
+// drawn in place, without a popup); the seven states of the header tag row.
+// The sample texts are developer content (as in Gallery.qml) -> intentionally not wrapped in qsTr().
+//   Gallery { section: "tags" }   - only this section
 Column {
     id: root
 
@@ -41,7 +41,8 @@ Column {
             PathLine { x: root.width; y: 0.5 }
         }
     }
-    // Egy beviteli-mező állapot: a mező (aktív kinézettel) és alatta a lista, ahogy a felugró mutatná.
+    // One input-field state: the field (with its active look) and below it the list as the popup
+    // would show it.
     component InputDemo: Column {
         id: demo
         property string typed: ""
@@ -90,7 +91,7 @@ Column {
         }
     }
 
-    // ------------------------------------------------------------------ C01
+    // ------------------------------------------------------------------ chip kinds
     Column {
         width: root.width
         spacing: 14
@@ -149,7 +150,7 @@ Column {
         }
     }
 
-    // ------------------------------------------------------------------ C02
+    // ------------------------------------------------------------------ input states
     Column {
         width: root.width
         spacing: 14
@@ -171,7 +172,7 @@ Column {
         }
     }
 
-    // ------------------------------------------------------------------ C03–C04
+    // ------------------------------------------------------------------ header tag row states
     Column {
         width: root.width
         spacing: 12

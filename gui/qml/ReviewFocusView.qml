@@ -2,41 +2,37 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az „Átnézendő” nézet, „A” koncepció (Fókusz-sor; koncepció-dokumentum 2. fejezet): egyszerre
-// egy kétes sor a RÖGZÍTETT helyű fókusz-kártyán (ReviewFocusCard), automatikusan megszólal, és
-// egy billentyűvel eldől. Fölötte és alatta 3–3 halvány kontextus-sor (az átirat sorai idő szerint,
-// címke nélkül, soronként az időugrással), alul az időrendi munkalista-csík (a kurzor), felül a
-// haladás („N / M”), a kör száma, a magától eldőlt sorok számlálója („Mind megerősítem”), a
-// „+K új vár” számláló és az auto-lejátszás kapcsolója. A munkalista a ReviewQueueModel (vm.reviewQueue) fagyasztott
-// pillanatképe: a háttér-elemzés sosem rendezi át, csak a „+K új vár” számláló nő.
+// The "To review" (Átnézendő) view, concept "A" (focus queue): one doubtful line at a time sits on
+// a FIXED-position focus card (ReviewFocusCard), plays automatically, and one key decides it.
+// Three faded context lines above and below (transcript lines in time order, no tag, each with a
+// seek), the chronological work-queue strip at the bottom (the cursor), and in the header the
+// progress ("N / M"), the round number, the counter of auto-decided lines ("Confirm all"), the
+// "+K new waiting" counter and the auto-play switch. The queue is a frozen snapshot of the
+// ReviewQueueModel (vm.reviewQueue): background analysis never reorders it, only "+K new" grows.
 //
-// A kártya helye (y) és mérete sosem változik: ami alá kerül (szennyezett mag sávja, az S5
-// ajánlat-sávja a `offerSlot` Loaderben), az az alsó kontextus-sorok helyét veszi el. 760 px alatt
-// a nézet saját görgetéssel fér el.
+// The card's y and size never change: whatever sits below it (contaminated-core strip, the offer
+// strip in the `offerSlot` Loader) takes room from the lower context lines. Under 760 px the
+// view scrolls on its own.
 //
-// Billentyűk (fizikai hely szerint, TranscriptKeys; a TranscriptTab hívja a handleKey()-t):
-//   Enter alapértelmezés (a javasolt név; ha nincs javaslat: a név marad) · J a név marad ·
-//   1–9 a sín n. beszélője · + új beszélő · Shift+… nem minta · 0 nem azonosítható · M Más… (a
-//   sor panelje) · → Később · ← / ↑ előző tétel · ↓ következő tétel (bármilyen állapotú) ·
-//   B / Shift+B (a Tab) következő / előző NYITOTT · Ctrl+Enter Mind megerősítem (a magától
-//   eldőlt sorok, egy lépés) · Szóköz lejátszás / szünet ·
-//   R újra az elejéről · , / . az előző / következő kontextus-sor · Esc a Javítás nézet ugyanazon
-//   a soron · Ctrl+Z (a Tab Shortcutja) visszavonás: a fókusz a visszavont sorra ugrik.
-//   Kör-zárásnál: Enter következő kör · → később hagyottak · K kész · Ctrl+Enter Mind megerősítem.
-// A magától eldőlt (alreadyDecided) sorokat a kurzor átugorja (S7): nem nyitottak; ↑ / ← / ↓ a
-// csíkon rájuk is lép, ott a kártya normálisan mutatja (Enter = a név marad).
-//   Nyitó-javaslatnál (S5): Enter Mind az N → Y (✗ szúrópróba után: Egyenként) · Shift+Enter nem
-//   minta · E Egyenként · → Később · 1–3 szúrópróba lejátszása · Shift+1–3 ✓ / ✗ váltás · Szóköz
-//   szünet · Esc Javítás. Mintázat-ajánlatnál (a fókusz-kártya billentyűi közben is élnek):
-//   I Igen · Shift+I Igen, nem minta · N Nem · L Megmutatom / Elrejtem.
-// Az S5 helyei: `openerComponent` + `openerShown` (a kör eleji „nyitó” állapot-ág, a kártya
-// helyén; ReviewFocusOpener) és `offerComponent` (az `offerSlot` Loader, a kártya ALATT;
-// ReviewFocusOffer — csak akkor nem null, ha van élő ajánlat).
+// Keys (physical position, TranscriptKeys; TranscriptTab calls handleKey()): Enter default (suggested
+//   name; none: keep the name) · J keep the name · 1-9 the n-th speaker of the rail · + new speaker ·
+//   Shift+... not a sample · 0 unidentifiable · M Other... (line panel) · Right Later · Left/Up
+//   previous item · Down next item (any state) · B / Shift+B next / previous OPEN · Ctrl+Enter Confirm
+//   all (auto-decided lines, one step) · Space play / pause · R replay · , / . previous / next
+//   context line · Esc Correct view on the same line · Ctrl+Z undo (focus jumps to the undone line).
+//   Round end: Enter next round · Right left-over · K done. Opener: Enter All N -> Y (after a failed
+//   spot check: One by one) · Shift+Enter not a sample · E One by one · 1-3 play spot check ·
+//   Shift+1-3 toggle ok/bad. Pattern offer: I Yes · Shift+I Yes, not a sample · N No · L Show / Hide.
+// The cursor skips auto-decided (alreadyDecided) lines: they are not open; up / left / down on
+// the strip still reach them, and the card shows them normally (Enter = keep the name).
+// `openerComponent` + `openerShown` hold the round-start opener state (in place of the card,
+// ReviewFocusOpener); `offerComponent` (the `offerSlot` Loader, BELOW the card, ReviewFocusOffer)
+// is non-null only while a live offer exists.
 Item {
     id: root
 
     required property var vm                // TranscriptEditorViewModel
-    required property var tab               // TranscriptTab (lejátszó, panelek, nézet-váltás)
+    required property var tab               // TranscriptTab (player, panels, view switch)
 
     readonly property var queue: vm.reviewQueue
     readonly property var player: tab.player
@@ -46,18 +42,17 @@ Item {
     readonly property alias flick: flick
     readonly property alias offerSlot: offerSlot
 
-    // ---- S5 helyek ----
-    // A kör eleji nyitó-javaslat: ha nem null és `openerShown`, a kártya helyén ez látszik.
+    // The round-start opener: when non-null and `openerShown`, it shows in place of the card.
     property Component openerComponent: openerDefault
     property bool openerShown: false
-    // Az ajánlat-sáv (mintázat-ajánlat) a kártya ALATT: ha nem null, az `offerSlot` ezt tölti be,
-    // és az alsó kontextus-sorok helyét veszi el.
+    // The offer strip (pattern offer) BELOW the card: when non-null, `offerSlot` loads it and it
+    // takes room from the lower context lines.
     property Component offerComponent: offerActive ? offerDefault : null
 
-    // ---- S5: nyitó-javaslatok (a kör elején, egymás után) ----
-    property var openerIds: []              // a kör nyitóinak groupId-jei (a kör elején)
+    // ---- openers (at the start of a round, one after another) ----
+    property var openerIds: []              // groupIds of the round's openers
     property int openerIndex: -1
-    property var opener: ({})               // a mostani nyitó (queue.openers() friss eleme)
+    property var opener: ({})               // the current opener (fresh item of queue.openers())
     property var openerSpots: []            // [{ utteranceId, timeLabel, lineText, startMs, endMs }]
     property var spotHeard: [false, false, false]
     property var spotOk: [true, true, true]
@@ -70,7 +65,7 @@ Item {
         }
         return -1
     }
-    // ---- S5: mintázat-ajánlat (a kártya alatt) ----
+    // ---- pattern offer (below the card) ----
     property var offerData: ({})
     property var offerLines: []
     property bool offerExpanded: false
@@ -82,30 +77,30 @@ Item {
         return ""
     }
 
-    // Állapot-ág: "empty" | "summary" | "opener" | "focus"
+    // State branch: "empty" | "summary" | "opener" | "focus"
     readonly property bool emptyState: queue.active && queue.count === 0 && queue.incomingCount === 0
     readonly property bool summaryShown: queue.active && queue.roundComplete && !emptyState
     readonly property string phase: !queue.active ? "" : emptyState ? "empty" : summaryShown ? "summary"
                                     : openerShown && openerComponent ? "opener" : "focus"
-    // Képernyőkép (demó): a kártya „szól” ennél a helyzetnél (0..1; < 0: a valódi lejátszó).
+    // Screenshot (demo): the card "plays" at this position (0..1; < 0: the real player).
     property real demoPlayPos: -1
     property var summary: ({})
     property var contextLines: []
 
-    // Rögzített geometria (a flick tartalmában): a kártya y-ja minden fókusz-állapotban ugyanaz.
+    // Fixed geometry (inside the flick content): the card's y is the same in every focus state.
     readonly property int topPad: 12
     readonly property int ctxHeight: 30
     readonly property int ctxGap: 4
-    readonly property int ctxCount: 3                // kontextus-sor a kártya fölött és alatt
+    readonly property int ctxCount: 3                // context lines above and below the card
     readonly property int cardY: topPad + ctxCount * ctxHeight + ctxCount * ctxGap + 4
     readonly property real cardWidth: Math.max(320, Math.min(flick.width - 48, 1040))
 
-    // A haladás: a kör sorai közül a már nem nyitottak (a „később” sorok nem számítanak késznek).
+    // Progress: lines of the round that are no longer open ("later" lines do not count as done).
     readonly property int doneCount: queue.count - queue.openCount - queue.laterCount
     readonly property int totalCount: queue.count
 
-    // ---- lejátszás ----
-    readonly property int playTailMs: 200      // + a lejátszó 100 ms utó-futása ≈ 0,3 s ráhagyás
+    // ---- playback ----
+    readonly property int playTailMs: 200      // + 100 ms player tail ≈ 0.3 s of padding
     readonly property int positionMs: (player && player.positionMs) || 0
     readonly property bool playerPlaying: !!player && player.playing === true
     readonly property int cardStartMs: current.startMs || 0
@@ -115,13 +110,13 @@ Item {
     readonly property real cardPlayPos: cardEndMs > cardStartMs
                                         ? Math.max(0, Math.min(1, (positionMs - cardStartMs) / (cardEndMs - cardStartMs))) : 0
 
-    // ---- munkalista ----
-    // A pillanatkép a háttér-elemzés VÉGÉN készül (különben a még futó elemzés eredménye rögtön
-    // „+N új vár”-ként jönne); addig a „keresése…” felirat látszik.
+    // ---- work queue ----
+    // The snapshot is taken at the END of background analysis (otherwise the result of a still
+    // running analysis would show up as "+N new"); until then "searching..." shows.
     function ensureStarted() {
         if (!root.visible || !vm.hasTranscript) return
         if (!vm.queueActive) {
-            if (vm.reviewRunning || vm.embeddingRunning) return     // a startWait időzítő újrapróbálja
+            if (vm.reviewRunning || vm.embeddingRunning) return     // the startWait timer retries
             queue.start()
         }
         refreshContext()
@@ -137,8 +132,8 @@ Item {
     function refreshContext() {
         root.contextLines = currentUtterance !== "" ? vm.contextLines(currentUtterance, ctxCount, ctxCount) : []
     }
-    // Időugrás (ms) a sor és a kártya felőli szomszédja között (fölötte: a következő sorig, alatta:
-    // az előző sortól); -1: nincs sor.
+    // Seek (ms) between a line and its neighbor on the card side (above: up to the next line, below:
+    // from the previous line); -1: no line.
     function gapFor(offset) {
         const line = contextAt(offset)
         if (line.utteranceId === undefined) return -1
@@ -154,7 +149,7 @@ Item {
         for (let i = 0; i < contextLines.length; ++i) if (contextLines[i].offset === offset) return contextLines[i]
         return ({})
     }
-    // A fókusz-sor a VM kijelölt sora is (a dokk és a lejátszó követi, mint a Javításban).
+    // The focus line is also the VM's selected line (the dock and player follow, as in Correct view).
     function syncRow() {
         const id = currentUtterance
         if (id === "") return
@@ -166,7 +161,7 @@ Item {
         vm.selectOnly(row)
         tab.cursorSync = false
     }
-    // A sor lejátszása a határaira (+ ráhagyás); a kártya sora lesz a kijelölt.
+    // Plays the line within its bounds (+ padding); the card's line becomes the selected one.
     function playUtterance(id, tailMs) {
         if (!player || id === "") return false
         const info = vm.lineInfo(id)
@@ -199,9 +194,9 @@ Item {
         playCard()
     }
 
-    // ---- ítéletek (a kurzor sorára) ----
-    // A döntés után a modell maga lép a következő nyitott sorra; ha nem lépett (a döntés nem
-    // változtatott, pl. egy már megerősített sor „Jó így”-e), továbblépünk.
+    // ---- decisions (on the cursor line) ----
+    // After a decision the model itself moves to the next open line; if it did not (the decision
+    // changed nothing, e.g. "Fine as is" on an already confirmed line), we advance.
     function decide(action) {
         const before = currentUtterance
         if (before === "") return false
@@ -235,12 +230,12 @@ Item {
         if (key === (queue.current.speakerKey || "")) return confirmCurrent(noisy)
         return decide(id => vm.moveUtteranceToSpeaker(id, key, noisy === true))
     }
-    // „+”: a sor egy új, névtelen beszélőhöz.
+    // "+": the line goes to a new, anonymous speaker.
     function moveToNew(noisy) {
         if (currentUtterance === "") return false
         return decide(id => vm.moveUtteranceToNewParticipant(id, noisy === true))
     }
-    // „Mind megerősítem” (Ctrl+Enter): a magától eldőlt sorok (≥ 1,5 s) egy visszavonási lépésben.
+    // "Confirm all" (Ctrl+Enter): auto-decided lines (>= 1.5 s) in one undo step.
     function confirmSettled() {
         const n = vm.confirmSettled()
         tab.forceActiveFocus()
@@ -251,14 +246,14 @@ Item {
         tab.forceActiveFocus()
         return ok
     }
-    // „M”: a sor panelje (a Tab LinePopovere) a „Más…” gombról.
+    // "M": the line's panel (the tab's LinePopover) from the "Other..." button.
     function fixCurrent() {
         if (currentUtterance === "" || root.phase !== "focus") return false
         tab.openLinePopoverFor(currentUtterance, card.otherAnchor)
         return true
     }
-    // B / Shift+B, a térkép-dokk sor-léptetője: következő / előző NYITOTT sor.
-    // A nézetbe lépéskor (még nincs munkalista) a kurzor az első nyitott soron marad.
+    // B / Shift+B, the map dock's line stepper: next / previous OPEN line.
+    // On entering the view (no queue yet) the cursor stays on the first open line.
     function step(direction) {
         if (!queue.active) {
             ensureStarted()
@@ -266,7 +261,7 @@ Item {
         }
         return direction < 0 ? queue.retreat() : queue.advance()
     }
-    // Esc / „Kész”: vissza a Javítás nézetbe, ugyanazon a soron.
+    // Esc / "Done": back to Correct view, on the same line.
     function openFix() {
         const id = currentUtterance
         const info = id !== "" ? vm.lineInfo(id) : ({})
@@ -291,7 +286,7 @@ Item {
         tab.forceActiveFocus()
     }
 
-    // ---- S5: nyitó-javaslatok ----
+    // ---- openers ----
     function lineOf(id) {
         const m = queue.get(queue.indexOf(id))
         return { utteranceId: id, timeLabel: m.timeLabel || "", lineText: m.lineText || "",
@@ -302,7 +297,7 @@ Item {
         for (let i = 0; i < list.length; ++i) if (list[i].groupId === groupId) return list[i]
         return null
     }
-    // A kör elején (start / új kör): a nyitók, amelyeknek van még nyitott sora.
+    // At round start (start / new round): the openers that still have open lines.
     function startOpeners() {
         const ids = []
         for (const o of queue.openers()) if ((o.pendingCount || 0) > 0) ids.push(o.groupId)
@@ -310,7 +305,7 @@ Item {
         root.openerIndex = -1
         showOpener(0)
     }
-    // Az i. (vagy az utána következő, még nyitott sorú) nyitó; ha nincs több: a fókusz.
+    // The i-th opener (or the next one with an open line); if none is left: the focus card.
     function showOpener(i) {
         for (; i < openerIds.length; ++i) {
             const o = openerById(openerIds[i])
@@ -344,7 +339,7 @@ Item {
         }
         return out
     }
-    // Enter: Mind az N → Y (egy visszavonási lépés); ✗ szúrópróba után az alapértelmezés az Egyenként.
+    // Enter: All N -> Y (one undo step); after a failed spot check the default is One by one.
     function openerDefault_(noisy) {
         return openerDoubt ? openerSingle() : openerAccept(noisy)
     }
@@ -354,14 +349,14 @@ Item {
         nextOpener()
         return ok
     }
-    // E: a nyitó sorai a munkalista elejére (a kurzor helyére), és egyenként jönnek.
+    // E: the opener's lines go to the front of the queue (at the cursor) and come one by one.
     function openerSingle() {
         if (phase !== "opener") return false
         queue.bringToFront(pendingOpenerIds())
         nextOpener()
         return true
     }
-    // →: a nyitó kimarad, a sorok a helyükön maradnak.
+    // Right: the opener is skipped, its lines stay where they are.
     function openerLater() {
         if (phase !== "opener") return false
         nextOpener()
@@ -387,7 +382,7 @@ Item {
         tab.forceActiveFocus()
         return true
     }
-    // Demó (képernyőkép): a szúrópróba állapota.
+    // Demo (screenshot): spot-check state.
     function applyOpenerDemo() {
         const s = tab.demoState || ""
         if (s === "reviewFocusOpener") {
@@ -398,7 +393,7 @@ Item {
         }
     }
 
-    // ---- S5: mintázat-ajánlat ----
+    // ---- pattern offer ----
     function refreshOffer() {
         const p = queue.active ? queue.recentPattern() : ({})
         const key = p.key || ""
@@ -433,10 +428,10 @@ Item {
         tab.forceActiveFocus()
     }
 
-    // A TranscriptTab Keys.onPressed-je hívja (k = TranscriptKeys.decode(event)); igaz: kezelve.
+    // Called by TranscriptTab's Keys.onPressed (k = TranscriptKeys.decode(event)); true: handled.
     function handleKey(k, event) {
         if (!queue.active) return false
-        // Ctrl+Enter: Mind megerősítem (fókuszban és a kör-zárásnál).
+        // Ctrl+Enter: Confirm all (in focus and at round end).
         if (k.name === "Enter" && k.ctrl && !k.alt && !k.meta && !k.shift
                 && (root.phase === "focus" || root.phase === "summary")) {
             confirmSettled()
@@ -466,13 +461,13 @@ Item {
         if (root.phase !== "focus") return k.name === "Escape" ? openFix() : false
         if (k.name === "Escape") return openFix()
         if (!k.plain) return false
-        // A mintázat-ajánlat billentyűi (a kártya többi billentyűje közben is él).
+        // Pattern-offer keys (also live alongside the card's other keys).
         if (root.offerActive) {
             if (event.key === Qt.Key_I) { offerYes(k.shift); return true }
             if (event.key === Qt.Key_N && !k.shift) { offerNo(); return true }
             if (event.key === Qt.Key_L && !k.shift) { toggleOfferList(); return true }
         }
-        // „+” (a számsor „Új beszélő…” chipje; a magyar kiosztáson a Shift+3 a számsoré marad).
+        // "+" (the "New speaker..." chip of the number row; on the Hungarian layout Shift+3 stays with the number row).
         if (k.name === "" && event.key === Qt.Key_Plus) { moveToNew(false); return true }
         switch (k.name) {
         case "Enter": acceptDefault(k.shift); return true
@@ -507,31 +502,31 @@ Item {
     }
     Connections {
         target: root.queue
-        // Kör eleje (start / új kör): a nyitó-javaslatok sorra.
+        // Round start (start / new round): the openers in sequence.
         function onRoundChanged() { root.startOpeners() }
         function onActiveChanged() { if (!root.queue.active) root.showOpener(root.openerIds.length) }
         function onPatternChanged() { root.refreshOffer() }
         function onCountsChanged() { root.refreshSummary() }
         function onIncomingChanged() {
-            // Üres munkalistánál (pl. újraellenőrzés után) az új kétes sorokkal új kör indul.
+            // On an empty queue (e.g. after a recheck) the new doubtful lines start a new round.
             if (root.visible && root.queue.active && root.queue.count === 0 && root.queue.incomingCount > 0)
                 Qt.callLater(() => { if (root.queue.count === 0 && root.queue.incomingCount > 0) root.queue.start() })
             root.refreshSummary()
         }
         function onCurrentChanged() {
             root.refreshContext()
-            root.refreshOffer()         // a sameAhead a kurzor sorát kihagyja
+            root.refreshOffer()         // sameAhead skips the cursor line
         }
     }
     Connections {
         target: root.vm
-        // Új megbeszélés: a VM leállította a munkalistát; ha látszunk, újraindul.
+        // New meeting: the VM stopped the queue; if visible, it restarts.
         function onSessionChanged() {
             root.lastAutoPlayed = ""
             Qt.callLater(root.ensureStarted)
         }
         function onSpeakersChanged() { root.refreshContext() }
-        // Visszavonás után a fókusz a visszavont sorra (ha a modell nem oda ugrott).
+        // After undo the focus goes to the undone line (if the model did not jump there).
         function onDecisionsChanged() {
             root.refreshContext()
             const d = root.vm.lastDecision
@@ -541,7 +536,7 @@ Item {
         }
     }
 
-    // ---- fejléc: kör, haladás, „+K új vár”, auto-lejátszás ----
+    // ---- header: round, progress, "+K new waiting", auto-play ----
     Rectangle {
         id: header
         objectName: "reviewFocusHeader"
@@ -570,7 +565,7 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
-            // A magától eldőlt sorok (a kurzor átugorja): „N magától eldőlt · Mind megerősítem”.
+            // Auto-decided lines (the cursor skips them): "N auto-decided · Confirm all".
             Row {
                 objectName: "reviewFocusSettledBar"
                 visible: root.queue.alreadyDecidedCount > 0
@@ -622,7 +617,7 @@ Item {
                 mono: true
                 font.pixelSize: Theme.fontSmall
             }
-            // „+K új vár”: fix helyen; a szám nő, a lista nem mozdul. Kattintás: a lista végére.
+            // "+K new waiting": fixed place; the number grows, the list does not move. Click: end of the list.
             Rectangle {
                 id: incoming
                 objectName: "reviewFocusIncoming"
@@ -686,7 +681,7 @@ Item {
         TDivider { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } }
     }
 
-    // ---- fókusz-terület: kontextus + kártya + az alá kerülő elemek; szűk helyen saját görgetés ----
+    // ---- focus area: context + card + items below it; scrolls on its own when space is tight ----
     Flickable {
         id: flick
         objectName: "reviewFocusFlick"
@@ -706,7 +701,7 @@ Item {
                   : lower.y + lower.height
             visible: root.phase === "focus" || root.phase === "opener" || root.phase === "summary"
 
-            // Felső kontextus-sorok (−2, −1).
+            // Upper context lines (-2, -1).
             Column {
                 id: upper
                 objectName: "reviewFocusUpper"
@@ -755,7 +750,7 @@ Item {
                 }
             }
 
-            // A kör eleji nyitó-javaslat (S5) a kártya helyén.
+            // The round-start opener in place of the card.
             Loader {
                 id: openerSlot
                 objectName: "reviewFocusOpenerSlot"
@@ -766,8 +761,8 @@ Item {
                 sourceComponent: root.openerComponent
             }
 
-            // A kártya ALATT: szennyezett mag sávja, S5 ajánlat-sáv, alsó kontextus-sorok (+1, +2).
-            // Ami ide kerül, az a kontextus-sorok helyét veszi el — a kártyáét sosem.
+            // BELOW the card: contaminated-core strip, offer strip, lower context lines (+1, +2).
+            // What goes here takes room from the context lines, never from the card.
             Column {
                 id: lower
                 objectName: "reviewFocusLower"
@@ -822,7 +817,7 @@ Item {
         }
     }
 
-    // ---- munkalista-csík ----
+    // ---- work-queue strip ----
     ReviewFocusWorklist {
         id: worklist
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -835,7 +830,7 @@ Item {
         }
     }
 
-    // ---- S5: a nyitó-javaslat és az ajánlat-sáv alapértelmezett komponensei ----
+    // ---- default components of the opener and the offer strip ----
     Component {
         id: openerDefault
         ReviewFocusOpener {
@@ -871,7 +866,7 @@ Item {
         }
     }
 
-    // ---- nincs átnézendő sor (innen is kérhető az újraellenőrzés) ----
+    // ---- no lines to review (a recheck can be requested from here too) ----
     Column {
         objectName: "reviewEmpty"
         visible: root.phase === "empty" || !root.queue.active
@@ -884,7 +879,7 @@ Item {
             muted: true
         }
         TButton {
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad
+            focusPolicy: Qt.TabFocus     // on click the focus stays with the editor
             objectName: "emptyFilterRecheck"
             visible: root.phase === "empty" && root.vm.voiceAvailable && !root.vm.embeddingRunning && !root.vm.reviewRunning
             anchors.horizontalCenter: parent.horizontalCenter

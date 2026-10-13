@@ -1,35 +1,35 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az Átnézendő kör eleji NYITÓ-JAVASLATA (S5; koncepció-dokumentum 2.7 + 5. fejezet, „D” módján):
-// egy nagy, erős csoport egyben, a fókusz-kártya HELYÉN, mielőtt a sorok egyenként jönnek.
-// Cím (a csoport címe), „N sor → Y” (vagy „→ új beszélő”), bizonyíték-chipek, a hatás előre
-// („Y +N sor (+n minta) · X −N · kétes marad: K”), 3 időben szórt szúrópróba (▶ idő + szöveg;
-// meghallgatás után ✓ / ✗ a fülünk szerint; „k/3 meghallgatva — ez nem garancia”), és a gombok
-// billentyű-felirattal: [Enter Mind az N → Y] [E Egyenként] [→ Később]. Ha egy szúrópróba ✗,
-// az alapértelmezés (Enter) az „Egyenként” lesz — a kiemelés is átvált. Shift = nem minta.
-// Az állapotot (meghallgatva, ítélet, épp szól) a ReviewFocusView tartja; ez csak kirajzol.
-//   opener: a ReviewQueueModel.openers() egy eleme (+ a nézet friss pendingCount-ja)
-//   spots:  a szúrópróba-sorok [{ utteranceId, timeLabel, lineText }] (a munkalista get()-jéből)
+// The round-start OPENER SUGGESTION of To review ("D" mode): one big, strong group at once, in
+// place of the focus card, before the lines come one by one. Title (the group's title), "N lines
+// -> Y" (or "-> new speaker"), evidence chips, the effect in advance ("Y +N lines (+n samples) ·
+// X -N · uncertain remains: K"), 3 time-spread spot checks (play time + text; after listening
+// ok / bad by your ear; "k/3 listened - this is no guarantee"), and the buttons with key
+// labels: [Enter All N -> Y] [E One by one] [Right Later]. If a spot check is bad, the default
+// (Enter) becomes "One by one" - the highlight switches too. Shift = not a sample.
+// ReviewFocusView keeps the state (listened, verdict, playing now); this only draws.
+//   opener: an item of ReviewQueueModel.openers() (+ the view's fresh pendingCount)
+//   spots:  the spot-check lines [{ utteranceId, timeLabel, lineText }] (from the queue's get())
 Rectangle {
     id: root
 
     property var opener: ({})
     property var spots: []
-    property var lanes: []                  // TranscriptEditorViewModel.lanes (a színekhez)
-    property int position: 0                // hányadik nyitó (0-tól)
+    property var lanes: []                  // TranscriptEditorViewModel.lanes (for the colors)
+    property int position: 0                // index of the opener (from 0)
     property int total: 1
-    property int remainAfter: 0             // „kétes marad”: a kör nyitott sorai a nyitó után
+    property int remainAfter: 0             // "uncertain remains": the round's open lines after this opener
     property var heard: [false, false, false]
-    property var judged: [true, true, true] // true = ✓ (egyezett), false = ✗
+    property var judged: [true, true, true] // true = ok (matched), false = bad
     property int playingSpot: -1
     property bool shiftHeld: false
 
     signal acceptClicked()
     signal singleClicked()
     signal laterClicked()
-    signal spotClicked(int index)           // lejátszás
-    signal verdictClicked(int index)        // ✓ / ✗ váltás
+    signal spotClicked(int index)           // play
+    signal verdictClicked(int index)        // toggle ok / bad
 
     readonly property int count: opener.pendingCount !== undefined ? opener.pendingCount : (opener.count || 0)
     readonly property int sampleCount: Math.min(count, opener.sampleCount || 0)
@@ -51,7 +51,7 @@ Rectangle {
     border.width: 2
     border.color: doubt ? Theme.warnLine : Theme.accentLine
 
-    // „Mind az 5 → Y” / „Mind a 16 → Y”: a névelő a szám kiejtése szerint (egy, öt…, ezer…).
+    // "All 5 -> Y" / "All 16 -> Y": the Hungarian article (a / az) follows the number's pronunciation.
     function allTo(n, name) {
         const az = n === 1 || (n >= 1000 && n < 2000) || String(n).charAt(0) === "5"
         return az ? qsTr("Mind az %1 → %2").arg(n).arg(name) : qsTr("Mind a %1 → %2").arg(n).arg(name)
@@ -72,7 +72,7 @@ Rectangle {
         width: root.width - 44
         spacing: 12
 
-        // ---- fejléc: mi ez, hányadik ----
+        // ---- header: what this is, which one ----
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -91,7 +91,7 @@ Rectangle {
             }
         }
 
-        // ---- a csoport címe + honnan → hova ----
+        // ---- the group's title + from -> to ----
         TLabel {
             objectName: "reviewOpenerTitle"
             Layout.fillWidth: true
@@ -135,7 +135,7 @@ Rectangle {
                 font.pixelSize: Theme.fontBody
             }
             Item { Layout.preferredWidth: 4 }
-            // Bizonyíték-chipek; szűk helyen levágva.
+            // Evidence chips; clipped when space is tight.
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 20
@@ -156,7 +156,7 @@ Rectangle {
             }
         }
 
-        // ---- hatás előre (diff) ----
+        // ---- effect in advance (diff) ----
         Rectangle {
             objectName: "reviewOpenerImpact"
             Layout.fillWidth: true
@@ -192,7 +192,7 @@ Rectangle {
             }
         }
 
-        // ---- szúrópróba ----
+        // ---- spot check ----
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -259,7 +259,7 @@ Rectangle {
                             font.pixelSize: Theme.fontCaption
                             color: Theme.accent
                         }
-                        // ✓ / ✗: a füled ítélete (csak meghallgatás után).
+                        // ok / bad: your ear's verdict (only after listening).
                         Rectangle {
                             objectName: "reviewOpenerVerdict"
                             visible: spot.wasHeard
@@ -304,7 +304,7 @@ Rectangle {
             }
         }
 
-        // ---- döntés ----
+        // ---- decision ----
         Flow {
             Layout.fillWidth: true
             spacing: 8

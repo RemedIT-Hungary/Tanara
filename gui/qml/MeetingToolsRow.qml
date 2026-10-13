@@ -1,14 +1,14 @@
 import QtQuick
 
-// Fülenkénti eszköz-sor a fejléc alatt (design/handoff-v3, 3. döntés): 46 px, alul 1 px vonal,
-// 0 20 0 24 belső margó; a fejléc sosem mozdul, ez a sor cseréli a tartalmát fülenként.
-// Az Átirat fülé a TranscriptToolbar (a szerkesztőben él); az összefoglaló fülekét az U4
-// `toolsRow` komponense tölti ide (Main.qml: summaryTools). Üresen nem látszik.
-//   MeetingToolsRow { SummaryToolsRow { … } }
-// „Üres” az is, ha minden gyereke rejtett (S3: régi, forrás nélküli összefoglalónál a
-// SummaryToolsRow visible: false — ilyenkor nem marad üres 46 px-es sáv). A sor maga ezért nem
-// rejtőzik (a rejtett szülő a gyerekeit is rejtené, és a feltétel sosem lenne igaz újra):
-// 0 magas, levágva.
+// Per-tab tools row below the header: 46 px, 1 px line at the bottom, 0 20 0 24 inner margin;
+// the header never moves, this row swaps its content per tab. For the Transcript tab it is the
+// TranscriptToolbar (which lives in the editor); the summary tabs' is loaded here from the
+// `toolsRow` component (Main.qml: summaryTools). Not shown when empty.
+//   MeetingToolsRow { SummaryToolsRow { ... } }
+// "Empty" also means every child is hidden (an old, source-less summary: SummaryToolsRow is
+// visible: false, so no empty 46 px strip remains). The row itself therefore does not hide
+// (a hidden parent would hide its children, and the condition could never become true again):
+// zero height, clipped.
 Item {
     id: root
 

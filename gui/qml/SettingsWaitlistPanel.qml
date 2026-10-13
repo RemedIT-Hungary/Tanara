@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Tanara Cloud — „hamarosan” (teaser-mód): a várólista-ajánlat az új vizuális nyelven.
-// Adatot csak a gomb megnyomásakor küld (CloudAccount::joinWaitlist); a feliratkozás ténye
-// azonnal mentődik, nem a piszkozat része.
+// Tanara Cloud -- "coming soon" (teaser mode): the waitlist offer in the new visual language.
+// Data is sent only when the button is pressed (CloudAccount::joinWaitlist); the fact of signing
+// up is saved immediately, it is not part of the draft.
 Rectangle {
     id: root
 
@@ -42,7 +42,7 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- feliratkozott ----
+        // ---- signed up ----
         Rectangle {
             visible: root.joined
             Layout.fillWidth: true
@@ -81,7 +81,7 @@ Rectangle {
             onClicked: root.cloud.resetWaitlist()
         }
 
-        // ---- űrlap ----
+        // ---- form ----
         GridLayout {
             visible: !root.joined
             Layout.fillWidth: true

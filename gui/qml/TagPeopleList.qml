@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Címkék ablak „Személyek” listája (a „Jellemző résztvevők” utódja; vault UX-terv 2. fejezet).
-// Fejléc: SZEMÉLYEK + szám + „+ Személy”. Sor (34 px): 26 px avatar, név, „11 / 14” (mono,
-// muted), jobb oldalt az állapot:
-//   felrakva    → „# címkéje” (muted), rámutatva × (levétel a személyről);
-//   csak tanult → szaggatott „+ Ráteszem” chip, × = „nem tartozik ide” (elutasítás).
-// A „0 / 14 · címkéje” az előre felvett, még egy megbeszélésen sem látott személy.
-// Sorra kattintás: personClicked (a Személyek ablak azon a személyen). Üresen a magyarázó sor.
+// The "People" list of the Tags window (successor of "Typical participants"; vault UX plan ch. 2).
+// Header: PEOPLE + count + "+ Person". Row (34 px): 26 px avatar, name, "11 / 14" (mono,
+// muted), status on the right:
+//   applied     -> "# tag" (muted), x on hover (remove from the person);
+//   learned only -> dashed "+ Apply" chip, x = "does not belong" (reject).
+// "0 / 14 - tag" is a pre-added person not yet seen in any meeting.
+// Click on a row: personClicked (the People window opens on that person). When empty, an explanatory line.
 //   TagPeopleList { people: vm.detail.people; onAcceptRequested: (n) => vm.addPerson(n) }
 Column {
     id: root
@@ -141,7 +141,7 @@ Column {
                 font.pixelSize: Theme.fontCaption
             }
 
-            // Jobb oldal: állapot.
+            // Right side: status.
             Item {
                 id: stateBox
                 anchors.right: parent.right
@@ -169,7 +169,7 @@ Column {
                         muted: true
                         font.pixelSize: Theme.fontCaption
                     }
-                    // Rámutatva: levétel (helyet mindig foglal, hogy a sor ne ugorjon).
+                    // On hover: remove (always reserves the space so the row does not jump).
                     TIconButton {
                         objectName: "tagPersonRemove"
                         anchors.verticalCenter: parent.verticalCenter

@@ -1,19 +1,19 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Szegmentált választó (Beállítások): sunken sáv 3 px belső térrel, 28 px magas elemek; a
-// kiválasztott elem raised + 1 px árnyék, 600-as betű.
+// Segmented selector (Settings): a sunken track with 3 px padding, 28 px high items; the selected
+// item is raised + 1 px shadow, weight 600.
 //   SettingsSegmented {
-//       options: [{ value: "system", label: qsTr("Rendszer"), iconName: "monitor" }, …]
+//       options: [{ value: "system", label: qsTr("System"), iconName: "monitor" }, ...]
 //       value: vm.themeMode; onPicked: (v) => vm.themeMode = v
 //   }
 Rectangle {
     id: root
 
-    // [{ value, label, iconName?, enabled? (alapból igaz), toolTip? (a tiltott elem magyarázata) }]
+    // [{ value, label, iconName?, enabled? (default true), toolTip? (explains a disabled item) }]
     property var options: []
     property string value: ""
-    property bool stretch: false       // az elemek egyenlően kitöltik a szélességet
+    property bool stretch: false       // the items fill the width equally
     signal picked(string value)
 
     implicitWidth: row.implicitWidth + 6
@@ -45,13 +45,13 @@ Rectangle {
                 Accessible.role: Accessible.RadioButton
                 Accessible.checked: current
                 Accessible.description: modelData.toolTip || ""
-                // Tiltott elem: nem választható, de a súgója rámutatva látszik.
+                // Disabled item: not selectable, but its tooltip shows on hover.
                 onClicked: if (!current && allowed) root.picked(modelData.value)
                 Keys.onReturnPressed: click()
                 Keys.onSpacePressed: click()
 
                 background: Item {
-                    Rectangle {            // 1 px árnyék a kiválasztott elem alatt
+                    Rectangle {            // 1 px shadow below the selected item
                         visible: seg.current
                         x: 0; y: 1
                         width: parent.width; height: parent.height

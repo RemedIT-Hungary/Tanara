@@ -1,11 +1,10 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Címkék ablak jobb oldala (T10, T13): a kijelölt címke fejléce a műveletekkel (Átnevezés
-// helyben, Összevonás…, törlés), a „tanult, nem kell szerkeszteni” sor, a profil két oszlopban
-// (SZEMÉLYEK · JELLEMZŐ KIFEJEZÉSEK + GYAKRAN EGYÜTT) és a megbeszélései. A
-// kifejezések kerek, „#” nélküli pirulák — így nem téveszthetők össze a címkékkel.
-// Üres készletnél (T13) a „Még nincs címke” állapot.
+// Right side of the Tags window: header of the selected tag with actions (inline Rename, Merge...,
+// delete), the "learned, no need to edit" line, the profile in two columns (PEOPLE - TYPICAL
+// PHRASES + OFTEN TOGETHER) and its meetings. Phrases are round pills without "#", so they cannot be
+// confused with tags. With an empty set: the "No tags yet" state.
 Item {
     id: root
 
@@ -23,7 +22,7 @@ Item {
     signal openInLibraryRequested(string id)
     signal personRequested(string name)
     signal addPersonRequested()
-    // A „+ Személy” gomb (a személyválasztó ehhez igazodik).
+    // The "+ Person" button (the person picker aligns to it).
     readonly property alias addPersonButton: peopleColumn.addButton
 
     function startRename() {
@@ -50,7 +49,7 @@ Item {
         }
     }
 
-    // ---- üres állapot (T13) ----
+    // ---- empty state ----
     Column {
         objectName: "tagsEmptyState"
         visible: root.emptyState
@@ -97,7 +96,7 @@ Item {
             width: Math.min(flick.width - 56, 760)
             spacing: 20
 
-            // ---- fejléc ----
+            // ---- header ----
             Item {
                 width: parent.width
                 height: Math.max(44, headText.height)
@@ -135,7 +134,7 @@ Item {
                     TLabel {
                         objectName: "tagDetailMeta"
                         visible: !root.renaming
-                        // A gombok alatt is elfér (azok csak a név magasságáig érnek).
+                        // Fits below the buttons too (they only reach the height of the name).
                         width: content.width - 58
                         text: root.detail.meta !== undefined ? root.detail.meta : ""
                         muted: true
@@ -143,7 +142,7 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    // Átnevezés helyben.
+                    // Inline rename.
                     Row {
                         visible: root.renaming
                         spacing: 6
@@ -239,7 +238,7 @@ Item {
                 }
             }
 
-            // ---- a profil tanult, nem szerkesztendő ----
+            // ---- the profile is learned, not to be edited ----
             Rectangle {
                 width: parent.width
                 height: infoText.implicitHeight + 16
@@ -260,7 +259,7 @@ Item {
                 }
             }
 
-            // ---- két oszlop ----
+            // ---- two columns ----
             Item {
                 width: parent.width
                 height: Math.max(peopleColumn.height, termsColumn.height)
@@ -329,7 +328,7 @@ Item {
                 }
             }
 
-            // ---- megbeszélések ----
+            // ---- meetings ----
             Column {
                 width: parent.width
                 spacing: 8

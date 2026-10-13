@@ -2,10 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Összefoglaló fül — M08: témánkénti elemzés. Fejléc (számlálók, „Téma hozzáadása”,
-// „Hiányzók elemzése”), alatta a téma-kártyák: hozzáadás / szerkesztés / törlés / húzásos
-// átrendezés (mind azonnal mentve), témánként külön futtatás, megszakítás és újrapróbálás.
-// Az állapot a lemezről jön, ezért újraindítás után onnan folytatható, ahol abbamaradt.
+// Summary tab - per-topic analysis. Header (counters, "Add topic", "Analyze missing"), below it
+// the topic cards: add / edit / delete / drag reorder (all saved immediately), per-topic run,
+// cancel and retry. State comes from disk, so work can resume after a restart where it stopped.
 Item {
     id: root
 
@@ -13,8 +12,8 @@ Item {
     property string meetingId: ""
     property var shell: null
     property bool adding: false
-    // A mező elrejtése után a fókusz ne maradjon a (láthatatlan) szövegmezőben: különben a
-    // billentyűk (Szóköz, nyilak, gyorsbillentyűk) oda mennének.
+    // After hiding the field, focus must not stay in the (invisible) text field: otherwise keys
+    // (Space, arrows, shortcuts) would go there.
     onAddingChanged: if (!adding) Qt.callLater(root.releaseHiddenFocus)
     function releaseHiddenFocus() {
         const it = root.Window.activeFocusItem
@@ -28,14 +27,15 @@ Item {
     function removeTopic(row, title, hasResult) {
         const meeting = root.meetingId
         const topicId = root.topics.topicIdAt(row)
-        // Kész elemzésű témánál megerősítést kérünk (az elemzés kikerül az összegzésből).
+        // For a topic with a finished analysis we ask for confirmation (the analysis leaves the
+        // summary).
         if (hasResult && root.shell
                 && !root.shell.confirm(qsTr("Törlöd a témát?"),
                                        qsTr("„%1” elemzése kikerül az összegzésből. A többi téma eredménye megmarad.").arg(title),
                                        qsTr("Téma törlése"), true))
             return
-        // A megerősítés alatt a kijelölés (vagy a téma-lista) megváltozhatott: csak ugyanabban
-        // a megbeszélésben, azonosító szerint törlünk.
+        // During the confirmation the selection (or the topic list) may have changed: delete only
+        // in the same meeting, by id.
         if (root.meetingId === meeting) root.topics.removeTopicById(topicId)
     }
     function beginAdd() {
@@ -55,7 +55,7 @@ Item {
         anchors { fill: parent; leftMargin: 24; rightMargin: 24; topMargin: 18 }
         spacing: 12
 
-        // ---- fejléc ----
+        // ---- header ----
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -94,8 +94,8 @@ Item {
                 onClicked: root.beginAdd()
             }
             TButton {
-                // Ha minden téma kész, de még nincs (friss) összegzés, ugyanez a művelet az
-                // összegzést készíti el.
+                // If every topic is done but there is no (fresh) summary yet, the same action
+                // builds the summary.
                 text: root.topics.missingCount > 0 || root.topics.count === 0 || root.topics.busy
                       ? qsTr("Hiányzók elemzése") : qsTr("Összegzés készítése")
                 variant: "primary"; size: "small"
@@ -117,12 +117,12 @@ Item {
             onRetryRequested: root.analyzeMissing()
         }
 
-        // ---- kártyák ----
+        // ---- cards ----
         ListView {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.rightMargin: -14                  // a görgetősáv a jobb margóba kerül
+            Layout.rightMargin: -14                  // the scrollbar goes into the right margin
             model: root.topics
             spacing: 12
             clip: true
@@ -176,7 +176,7 @@ Item {
                 onSaveRequested: (newTitle, newSummary) => root.topics.updateTopic(index, newTitle, newSummary)
                 onMoveRequested: (delta) => root.topics.moveTopic(index, index + delta)
                 onDragMoved: (y) => {
-                    // A mutató alatti kártya helyére lép, ha a közepén túlhaladt.
+                    // The card under the pointer takes its place once the pointer passes its middle.
                     const p = card.mapToItem(list.contentItem, 10, y)
                     const to = list.indexAt(p.x, p.y)
                     if (to < 0 || to === index) return
@@ -202,7 +202,7 @@ Item {
                     wrapMode: Text.Wrap
                 }
 
-                // ---- új téma felvétele ----
+                // ---- new topic ----
                 Rectangle {
                     id: addCard
                     visible: root.adding

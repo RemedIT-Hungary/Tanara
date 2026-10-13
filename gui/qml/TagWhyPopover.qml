@@ -1,14 +1,14 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// „Miért ezek?” (T02): 420 px-es panel a címkesor „Miért?” gombja alatt. Javaslatonként: a
-// chip, „Hozzáadás” (elsődleges, 26 px) és „Nem illik ide”; az indokok rácsban (130 px | többi):
-// „Közös résztvevő”, „Közös kifejezések”, „Hasonló cím”, „Résztvevők címkéje” (a címkét viselő
-// résztvevők, „(mindkettőjükön)”); a „Hasonló megbeszélés” linkek accent
-// színnel (megnyitják azt a megbeszélést). Alul: az elutasított javaslat itt nem jön újra.
+// "Why these?": a 420 px panel below the tag row's "Why?" button. Per suggestion: the chip,
+// "Add" (primary, 26 px) and "Doesn't fit"; the reasons in a grid (130 px | rest): "Shared
+// participant", "Shared phrases", "Similar title", "Participants' tag" (the participants who
+// carry the tag, "(both of them)"); the "Similar meeting" links are accent colored (they open
+// that meeting). At the bottom: a rejected suggestion does not come back here.
 //   suggestions: [{ name, isNew, reasons: [{ kind, values, label?, text? }],
 //                   similarMeetings: [{ meetingId, title, dateText }] }] (MeetingTagsModel.whyData())
-// Adat nélkül kitalált mintát mutat (galéria, kép).
+// Without data it shows made-up samples (gallery, screenshots).
 TPopover {
     id: popover
 
@@ -58,7 +58,7 @@ TPopover {
                     width: body.width
                     spacing: 7
 
-                    // Felső elválasztó: a vonal alatt 12 px (5 + a 7-es köz).
+                    // Top separator: 12 px below the line (5 + the 7 gap).
                     Item {
                         width: parent.width
                         height: 5

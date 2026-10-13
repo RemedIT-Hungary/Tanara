@@ -1,14 +1,13 @@
 import QtQuick
 
-// A „Megbeszélés” menü (design/handoff-v3, 5. döntés): a menüsor „Megbeszélés” menüje és a
-// fejléc „…” gombja ugyanezt nyitja. Átnevezés · Ki volt ott? · Újraellenőrzés · Újra-átírás ·
-// Exportálás · Megnyitás mappában · Törlés. A „Hanglenyomat-elemzés újra” (D4, a régi „Résztvevők
-// azonosítása (hang alapján)”) a hangelemzés kézi újrafuttatása átírás után; ugyanezt adja az
-// Áttekintés hanglenyomat-lépésének „Újraelemzés” gombja.
+// The "Meeting" menu: the menu bar's "Meeting" menu and the header's "..." button open the same
+// thing. Rename · Who was there? · Recheck · Re-transcribe · Export · Show in folder · Delete.
+// "Redo voiceprint analysis" (formerly "Identify participants (by voice)") is the manual rerun of
+// voice analysis after transcription; the Overview voiceprint step's "Reanalyze" button does the same.
 TMenu {
     id: root
 
-    property var shell: null                 // ShellActions vagy null
+    property var shell: null                 // ShellActions or null
     property string meetingId: ""
     property bool hasMeeting: meetingId !== "" || !shell
     property bool hasTranscript: true

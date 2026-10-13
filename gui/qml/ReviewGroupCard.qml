@@ -1,9 +1,9 @@
 import QtQuick
 
-// Egy Átnézendő csoport kártyája (handoff-v3 E2): 28 px-es ikon-csempe · cím 14/600 + mono
-// darabszám · alcím + bizonyíték-chipek · döntés: „Mind a N → X" (egy visszavonási lépés),
-// „Egyenként" (a csoport sorai a kártya alatt, soronkénti gombokkal), „Kihagyom". A tájékoztató
-// csoport (rövid sorok) semleges, egyetlen „Megmutatom" gombbal.
+// One To review group card: 28 px icon tile · title 14/600 + mono count · subtitle + evidence
+// chips · decision: "All N -> X" (one undo step), "One by one" (the group's lines below the
+// card, with per-line buttons), "Skip". The informational group (short lines) is neutral, with
+// a single "Show" button.
 Rectangle {
     id: root
 
@@ -14,7 +14,7 @@ Rectangle {
     property int lineCount: 0
     property var evidence: []
     property string proposedName: ""
-    // G10: a javaslat ÚJ beszélő ezen az oldalon ("local" | "remote"; üres = a proposedName a cél).
+    // The suggestion is a NEW speaker on this side ("local" | "remote"; empty: proposedName is the target).
     property string newSpeakerSide: ""
     readonly property string targetName: newSpeakerSide === "remote" ? qsTr("új beszélő (hívás hangja)")
                                        : newSpeakerSide === "local" ? qsTr("új beszélő (mikrofon)")
@@ -23,7 +23,7 @@ Rectangle {
     property bool canApply: false
     property bool expanded: false
     property bool active: false
-    // „az" a magánhangzóval kezdődő számnevek előtt (1, 5, 50…): a hívó adja (vm.needsAz).
+    // The Hungarian "az" (vs "a") before numerals that start with a vowel sound (1, 5, 50...): the caller sets it (vm.needsAz).
     property bool needsAz: false
 
     signal applyRequested()
@@ -109,7 +109,7 @@ Rectangle {
             topPadding: 2
             spacing: 6
             TButton {
-                focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                focusPolicy: Qt.TabFocus     // on click the focus stays with the editor (B, 1, Ctrl+Z)
                 objectName: "reviewApply"
                 visible: root.canApply
                 size: "small"
@@ -119,7 +119,7 @@ Rectangle {
                 onClicked: root.applyRequested()
             }
             TButton {
-                focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                focusPolicy: Qt.TabFocus     // on click the focus stays with the editor (B, 1, Ctrl+Z)
                 objectName: root.actionable ? "reviewOneByOne" : "reviewShow"
                 size: "small"
                 text: root.actionable ? (root.expanded ? qsTr("Összecsukás") : qsTr("Egyenként"))
@@ -127,7 +127,7 @@ Rectangle {
                 onClicked: root.expandToggled()
             }
             TButton {
-                focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                focusPolicy: Qt.TabFocus     // on click the focus stays with the editor (B, 1, Ctrl+Z)
                 objectName: "reviewSkip"
                 visible: root.actionable
                 size: "small"

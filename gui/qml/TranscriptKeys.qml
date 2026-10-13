@@ -1,33 +1,33 @@
 pragma Singleton
 import QtQuick
 
-// A szerkesztő-nézetek (Javítás, Átnézendő, söprés) KÖZÖS billentyű-olvasója: a FIZIKAI
-// billentyűt adja vissza a módosítókkal, a kiosztástól függetlenül. Ok: a magyar kiosztáson a
-// Shift+számjegy írásjel (Shift+6 = „/”), így az `event.key` Shift mellett nem számjegy. A
-// számsor 1–9 és a vessző / pont ezért a scancode-ból is olvasható (Linux X11 / Wayland: xkb
-// keycode = evdev + 8; Windows: PC scancode); a betűk (J, M, R, B…) a kiosztás felirata szerint.
-// A „0” a magyar kiosztáson a bal felső billentyű: azt az `event.key` (Qt.Key_0) adja.
-// macOS-en a QML nem kapja meg a natív kódot: ott a Shift+szám csak az `event.key` szerint megy.
+// Shared key reader for the editing views (Fix, To review, sweep mode): it returns the PHYSICAL
+// key plus modifiers, independent of the keyboard layout. Why: on a Hungarian layout
+// Shift+digit produces punctuation (Shift+6 = "/"), so `event.key` is not a digit with Shift held.
+// The digit row 1-9 and comma / period are therefore also read from the scancode (Linux X11 /
+// Wayland: xkb keycode = evdev + 8; Windows: PC scancode); letters (J, M, R, B...) follow the layout label.
+// "0" is the top-left key on the Hungarian layout, so `event.key` (Qt.Key_0) covers it.
+// On macOS QML gets no native code: Shift+digit works by `event.key` only there.
 //
 //   Keys.onPressed: event => {
 //       const k = TranscriptKeys.decode(event)
-//       if (k.name === "digit" && k.plain) moveTo(k.digit - 1, k.shift)   // Shift = nem minta
+//       if (k.name === "digit" && k.plain) moveTo(k.digit - 1, k.shift)   // Shift = not a sample
 //   }
 //
 // decode() → { name, digit, shift, ctrl, alt, meta, plain }
 //   name: "digit" | "J" | "M" | "R" | "B" | "Z" | "Y" | "C" | "A" | "Enter" | "Space" | "Escape" |
 //         "Left" | "Right" | "Up" | "Down" | "Comma" | "Period" | "BracketLeft" | "BracketRight" |
-//         "Shift" | "" (egyéb)
-// A „[” / „]” (söprés: tempó − / +) a P melletti két billentyű a fizikai helyén (magyar
-// kiosztáson „ő” / „ú”).
-//   digit: 0–9 (name === "digit"), különben -1
-//   plain: nincs Ctrl / Alt / Meta (a Shift megengedett — az a „nem minta” módosító)
+//         "Shift" | "" (other)
+// "[" / "]" (sweep mode: tempo down / up) are the two keys next to P, by physical position
+// (on the Hungarian layout they type two accented letters).
+//   digit: 0-9 (name === "digit"), otherwise -1
+//   plain: no Ctrl / Alt / Meta (Shift is allowed: it is the "not a sample" modifier)
 QtObject {
-    // Platform-függő scancode-ok (a tesztek felülírhatják: "linux" | "windows" | "")
+    // Platform-dependent scancodes (tests can override: "linux" | "windows" | "")
     property string platform: Qt.platform.os === "windows" ? "windows"
                             : Qt.platform.os === "linux" ? "linux" : ""
 
-    // A számsor 1–9 scancode-ja (index = számjegy − 1), a vessző és a pont.
+    // Scancodes of the digit row 1-9 (index = digit - 1), comma and period.
     readonly property var linuxDigits: [10, 11, 12, 13, 14, 15, 16, 17, 18]
     readonly property var windowsDigits: [2, 3, 4, 5, 6, 7, 8, 9, 10]
     readonly property var linuxPunct: ({ comma: 59, period: 60 })
@@ -49,7 +49,7 @@ QtObject {
             plain: false
         }
         out.plain = !out.ctrl && !out.alt && !out.meta
-        // 1) Számjegy: a kiosztás szerinti (és a numerikus billentyűzet), majd a fizikai számsor.
+        // 1) Digit: by layout (and the numeric keypad), then the physical digit row.
         if (key >= Qt.Key_0 && key <= Qt.Key_9) {
             out.name = "digit"
             out.digit = key - Qt.Key_0
@@ -62,15 +62,15 @@ QtObject {
             out.digit = at + 1
             return out
         }
-        // 2) Vessző / pont: Shift mellett a magyar kiosztáson „?” / „:”.
+        // 2) Comma / period: with Shift they type "?" / ":" on the Hungarian layout.
         const punct = platform === "windows" ? windowsPunct : platform === "linux" ? linuxPunct : ({})
         if (key === Qt.Key_Comma || (scanCode > 0 && scanCode === punct.comma)) { out.name = "Comma"; return out }
         if (key === Qt.Key_Period || (scanCode > 0 && scanCode === punct.period)) { out.name = "Period"; return out }
-        // 3) „[” / „]” (a P melletti két billentyű; magyar kiosztáson „ő” / „ú”).
+        // 3) "[" / "]" (the two keys next to P).
         const br = platform === "windows" ? windowsBrackets : platform === "linux" ? linuxBrackets : ({})
         if (key === Qt.Key_BracketLeft || (scanCode > 0 && scanCode === br.left)) { out.name = "BracketLeft"; return out }
         if (key === Qt.Key_BracketRight || (scanCode > 0 && scanCode === br.right)) { out.name = "BracketRight"; return out }
-        // 4) Betűk és vezérlők a kiosztás szerint.
+        // 4) Letters and control keys by layout.
         switch (key) {
         case Qt.Key_J: out.name = "J"; break
         case Qt.Key_M: out.name = "M"; break

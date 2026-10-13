@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Feladat-sáv: a kijelölt megbeszélésen futó megszakítható háttérfeladat (azonosítás,
-// lekeverés, összefoglaló, újra-átírás …) — accentSoft doboz, ikon, cím, haladás-szöveg,
-// 4 px-es folyamatjelző (százalék nélkül futó csík) és „Megszakítás”.
-// `task`: a ShellMeetingModel.tasks egy eleme ({ kind, title, detail, eta, iconName, percent,
-// cancellable, cancelling }); nélküle (önálló képernyőkép) kitalált minta látszik.
+// Task bar: the cancelable background task running on the selected meeting (identification,
+// mixdown, summary, re-transcribe ...) -- accentSoft box, icon, title, progress text, 4 px
+// progress bar (indeterminate stripe without a percentage) and "Cancel".
+// `task`: an item of ShellMeetingModel.tasks ({ kind, title, detail, eta, iconName, percent,
+// cancellable, cancelling }); without it (standalone screenshot) a made-up sample shows.
 Rectangle {
     id: root
 

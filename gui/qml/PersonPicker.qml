@@ -1,24 +1,24 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Személyválasztó panel (K5, 300 px): keresőmező (gépelésre szűr, ékezet-függetlenül), az
-// ismert személyek (monogram, név, „12 megbeszélés" / „nincs hanglenyomat", ujjlenyomat-ikon),
-// „Új személy: „…"" sor, alul súgó. Enter az első / kiemelt találatot választja, fel / le léptet.
-// Rendezés: már résztvevő → közös címkés („#Nordvik · 11 / 14 · 12 megbeszélés”; ≥ 6 sornál
-// „A #Nordvik alapján” szakaszcímmel) → többi (PersonListModel). tagId: a Címkék ablak
-// „+ Személy” módja (a címke a viszonyítás; akin már rajta van, kimarad).
+// Person picker panel (300 px): search field (filters as you type, accent-insensitive), known
+// people (monogram, name, "12 meetings" / "no voiceprint", fingerprint icon), a "New person: <name>"
+// row, help at the bottom. Enter picks the first / highlighted hit, up / down moves.
+// Order: already a participant -> shared tag ("#Nordvik - 11 / 14 - 12 meetings"; with >= 6 rows
+// under a "By #Nordvik" section title) -> the rest (PersonListModel). tagId: the Tags window's
+// "+ Person" mode (the tag is the reference; people who already have it are left out).
 //   PersonPicker { id: picker; editor: vm; onPersonChosen: name => … ; onAnonymousChosen: … }
 TPopover {
     id: control
 
     property var editor: null               // TranscriptEditorViewModel
-    property var participants: null         // ParticipantsViewModel (a „Ki volt ott?" párbeszédben)
-    property string tagId: ""               // Címkék ablak: ehhez a címkéhez választunk
+    property var participants: null         // ParticipantsViewModel (in the "Who was there?" dialog)
+    property string tagId: ""               // Tags window: we pick for this tag
     property alias peopleModel: people
     property string initialQuery: ""
-    // A névtelen lehetőség felirata (üres → nincs ilyen sor).
+    // Label of the anonymous option (empty -> no such row).
     property string anonymousText: qsTr("Névtelen résztvevő")
-    // Az alsó súgósor.
+    // The bottom help row.
     property string hintText: qsTr("A beszélő névtelenül is maradhat; később is elnevezheted.")
 
     signal personChosen(string name)
@@ -29,8 +29,8 @@ TPopover {
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
 
     readonly property int rowHeight: 44
-    // A kiemelt sor: 0…count-1 = személy; count = az alsó („Új személy" / névtelen) sor.
-    // -1 = nincs kiemelés (üres keresővel így nyílik: egy véletlen Enter ne válasszon senkit).
+    // The highlighted row: 0..count-1 = person; count = the bottom ("New person" / anonymous) row.
+    // -1 = no highlight (opens like this with an empty search: a stray Enter picks nobody).
     property int currentIndex: -1
     readonly property bool bottomRowShown: people.canCreate || (search.text.trim() === "" && anonymousText !== "")
 
@@ -128,7 +128,8 @@ TPopover {
                     width: list.width
                     height: control.rowHeight
                     personName: name
-                    // Becenévre talált: a becenév is látszik, hogy érthető legyen, miért van a listában.
+                    // Found by nickname: the nickname is shown too, so it is clear why the person
+                    // is listed.
                     subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
                            + (inMeeting ? qsTr("már résztvevő")
                            : tagHint !== "" ? tagHint
@@ -172,7 +173,7 @@ TPopover {
             }
         }
 
-        // Lábléc (surface): az alsó sarkok a panel lekerekítését követik.
+        // Footer (surface): the bottom corners follow the panel's rounding.
         Item {
             width: parent.width
             height: hint.height + 18

@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Egy szolgáltató-kártya mező-rácsa (SettingsProviderCard, a Beágyazás kártya): címke +
-// szerkesztő + (hiba / súgó) soronként. A szerkesztő a mező típusa szerint: szöveg / cím /
-// titok (szem-gombbal) / szám (csúszka vagy mező) / lista („Lekérés”-sel).
+// The field grid of a provider card (SettingsProviderCard, the Embedding card): label + editor +
+// (error / help) per row. The editor depends on the field type: text / URL / secret (with an
+// eye button) / number (slider or field) / list (with "Fetch").
 //   SettingsProviderFields { card: vm.llm; fields: vm.llm.fields }
 GridLayout {
     id: root
@@ -16,17 +16,17 @@ GridLayout {
     columnSpacing: 12
     rowSpacing: 8
 
-    // Egy mező szerkesztője a típusa szerint.
+    // One field's editor by its type.
     component FieldEditor: RowLayout {
         id: editor
         required property var field
-        // Az érték / hiba / helykitöltő a nézetmodellből, a `revision` kötésbe vételével.
+        // Value / error / placeholder from the view model, binding to `revision`.
         readonly property var fieldValue: (root.card.revision, root.card.value(field.key))
         readonly property string fieldError: (root.card.revision, root.card.fieldError(field.key))
         readonly property string fieldPlaceholder: (root.card.revision, root.card.placeholder(field.key))
         spacing: 6
 
-        // szöveg / cím
+        // text / URL
         SettingsTextField {
             visible: editor.field.type === "text" || editor.field.type === "url"
             Layout.fillWidth: true
@@ -39,7 +39,7 @@ GridLayout {
             Accessible.name: editor.field.label
             onEdited: (t) => root.card.setValue(editor.field.key, t)
         }
-        // titok: maszkolva, szem-gombbal
+        // secret: masked, with an eye button
         SettingsTextField {
             id: secret
             property bool shown: false
@@ -80,7 +80,7 @@ GridLayout {
                 TToolTip { visible: eye.hovered; text: eye.Accessible.name }
             }
         }
-        // lista (a „Lekérés” feltölti; szabad szöveg is beírható)
+        // list ("Fetch" fills it; free text can be typed too)
         SettingsCombo {
             visible: editor.field.type === "combo"
             Layout.fillWidth: true
@@ -105,7 +105,7 @@ GridLayout {
             toolTipText: qsTr("A modellek lekérése a megadott címről")
             onClicked: root.card.fetchModels()
         }
-        // szám: tartománnyal és tizedesekkel csúszka (hőmérséklet), különben mező
+        // number: a slider with range and decimals (temperature), otherwise a field
         ShellSlider {
             id: slider
             readonly property real span: Math.max(editor.field.maxValue, Number(editor.fieldValue)) - editor.field.minValue

@@ -1,7 +1,7 @@
 import QtQuick
 
-// A kijelölés sötét alsó sávja: „3 sor kijelölve · Áthelyezés:" + beszélő-chipek a
-// billentyűjükkel (1, 2 …), „Új személy…" (utána: hozzá hasonló sorok), „Mégse". Fordított színekkel (text háttér).
+// The selection's dark bottom bar: "3 lines selected · Move to:" + speaker chips with their keys
+// (1, 2 ...), "New person..." (then: lines similar to it), "Cancel". Inverted colors (text background).
 Rectangle {
     id: root
 
@@ -35,7 +35,7 @@ Rectangle {
         font.pixelSize: Theme.fontSmall
     }
 
-    // A chipek vízszintesen görgethetők, ha nem férnek ki (sok beszélő).
+    // The chips scroll horizontally if they do not fit (many speakers).
     Flickable {
         anchors.left: moveLabel.right
         anchors.leftMargin: 10

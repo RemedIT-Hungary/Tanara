@@ -1,21 +1,21 @@
 import QtQuick
 
-// Bizonyíték-chip (handoff-v3, 13. döntés): miért javasoljuk / miért kétes. 20 px, sugár 4,
-// ikon fajtánként (hang, sáv: mikrofon / hívás, naptár, címke, sorok, hasonlóság, kézi).
-//   polarity: "support"    jó: accentSoft + accent (quiet: true → semleges, mint a V2 soraiban)
-//             "neutral"    semleges: sunken + text
-//             "contradict" ellentmondó: szaggatott borderStrong keret, halvány felirat, × / ⚠ ikon
-//   EvidenceChip { kind: "voice"; polarity: "support"; text: "hang 84%" }
-//   EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: "hívás-sáv" }
-// A „Ki volt ott?" párbeszéd és a szerkesztő (E1 popover, E2 csoportok) közös eleme.
+// Evidence chip: why we suggest it / why it is doubtful. 20 px, radius 4, an icon per kind (voice,
+// track: mic / call, calendar, tag, lines, similarity, manual).
+//   polarity: "support"    good: accentSoft + accent (quiet: true -> neutral, as in the V2 rows)
+//             "neutral"    neutral: sunken + text
+//             "contradict" contradicting: dashed borderStrong border, faint label, x / warning icon
+//   EvidenceChip { kind: "voice"; polarity: "support"; text: "voice 84%" }
+//   EvidenceChip { kind: "side"; side: "loopback"; polarity: "neutral"; text: "call-audio track" }
+// Shared element of the "Who was there?" dialog and the editor (line popover, groups).
 Item {
     id: root
 
     property string kind: "voice"       // voice | side | calendar | tag | lines | similarity | manual
     property string polarity: "neutral" // support | neutral | contradict
-    property string side: ""            // side fajtánál: "mic" | "loopback" | ""
+    property string side: ""            // for kind "side": "mic" | "loopback" | ""
     property string text: ""
-    property bool quiet: false          // a támogató bizonyíték is semleges színnel
+    property bool quiet: false          // supporting evidence also in the neutral color
 
     readonly property bool good: polarity === "support" && !quiet
     readonly property bool bad: polarity === "contradict"

@@ -1,14 +1,14 @@
 import QtQuick
 
-// Szintmérő: 14 szegmens (5×10 px, 2 px köz, sugár 1). Az i-edik szegmens világít, ha
-// i < level; 0–8 vuLow, 9–11 vuMid, 12–13 vuHigh. Csúcstartás: 1 px-es belső keret a `peak`
-// indexű szegmensen. Nem rögzített eszköznél (active: false) a világító szegmensek vuOff.
+// Level meter: 14 segments (5x10 px, 2 px gap, radius 1). Segment i lights if i < level; 0-8 vuLow,
+// 9-11 vuMid, 12-13 vuHigh. Peak hold: a 1 px inner border on the segment at index `peak`. For a
+// device that is not recording (active: false) the lit segments use vuOff.
 //   VuMeter { level: model.level; peak: model.peak; active: model.selected }
 Row {
     id: root
     property int level: 0          // 0..14
-    property int peak: -1          // szegmens-index, -1 = nincs
-    property bool active: true     // rögzített / kiválasztott eszköz
+    property int peak: -1          // segment index, -1 = none
+    property bool active: true     // recorded / selected device
 
     spacing: 2
 

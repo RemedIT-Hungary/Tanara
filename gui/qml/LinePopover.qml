@@ -1,22 +1,22 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// „Kinek a sora ez?" (handoff-v3 E1, 390 px): egy sor (vagy a kijelölés) beszélőjének javítása.
-// A sor nevéről, a „Más…" gombról (Átnézendő) és a helyi menüből nyílik. A hatókör mindig ki
-// van írva: „Csak ez a sor" (alap) · „Kijelölt N sor" · „<Utónév> mind a N sora" (a teljes
-// beszélő — itt kifejezett választás, előtte megerősítés, ha összevonás lesz belőle).
-//   JAVASOLT: a jelöltek bizonyítékkal (CandidateListModel), 1–3 billentyűvel; a másik sávon
-//   beszélő és a mostani beszélő halvány, de választható; a kézi sáv-beosztás szerint kizárt
-//   („a sávja szerint nem ő") a lista legalján, halványan, gyorsbillentyű nélkül — kézzel választható.
-//   MIÉRT NEM X?: a mostani beszélő ellen szóló okok, mindegyik mellett a javítás helye
-//   (Sáv-beosztás → a beszélő „Miért ő?" panelje a sáv-chipekkel; Minták → hanglenyomat).
-//   „Új személy ebből a sorból…": név megadása (üresen: új névtelen résztvevő).
-//   Alul halkan: „Hanglenyomat-minta ebből a sorból (N mp)" — bizonytalan soron „Jó így +
-//   hanglenyomat-minta…" (a jobb klikkes menüpont is megmarad); a jelölt-sorokon gyors
-//   „+ #Címke", ha a megbeszélés címkéje még nincs a személyen.
-//   S2: „Nem azonosítható" (a sor / a kijelölés; a név marad, a hang-elemzés kihagyja) — a már
-//   nem azonosítható sornál „Újra azonosítható".
-// Minden választás egy visszavonási lépés; a hívó (TranscriptTab) kéri a megerősítést.
+// "Whose line is this?" (390 px): corrects the speaker of one line (or the selection).
+// Opens from the line's name, the "Other..." button (To review) and the context menu. The scope
+// is always shown: "Only this line" (default) · "Selected N lines" · "<First name>, all N lines"
+// (the whole speaker - an explicit choice here, with confirmation if it becomes a merge).
+//   SUGGESTED: candidates with evidence (CandidateListModel), keys 1-3; a speaker on the other
+//   track and the current speaker are faded but selectable; those excluded by the manual track
+//   assignment ("not them by their track") sit faded at the very bottom, no hotkey.
+//   WHY NOT X?: reasons against the current speaker, each with where to fix it (Track assignment
+//   -> the speaker's "Why them?" panel with the track chips; Samples -> voiceprint).
+//   "New person from this line...": enter a name (empty: a new anonymous participant).
+//   Quietly at the bottom: "Voiceprint sample from this line (N s)" - on an uncertain line
+//   "Fine as is + voiceprint sample..." (the right-click menu item stays too); candidate rows
+//   have a quick "+ #Tag" if the meeting's tag is not on the person yet.
+//   "Unidentifiable" (the line / selection; the name stays, voice analysis skips it); on an
+//   already unidentifiable line "Identifiable again".
+// Every choice is one undo step; the caller (TranscriptTab) asks for confirmation.
 TPopover {
     id: control
 
@@ -26,23 +26,23 @@ TPopover {
     property string lineTime: ""
     property int lineStartMs: -1
     property int lineEndMs: -1
-    // > 1: a sor egy több soros kijelölés része (ekkor az az alapértelmezett hatókör).
+    // > 1: the line is part of a multi-line selection (then that is the default scope).
     property int selectionCount: 0
-    // "line" | "selection" | "speaker" — megnyitáskor mindig a legszűkebb.
+    // "line" | "selection" | "speaker" - always the narrowest one on open.
     property string scope: "line"
     property var info: ({})
     property string initialQuery: ""
     property bool canListen: false
-    // „Új személy ebből a sorból…": a kereső az új nevet várja.
+    // "New person from this line...": the search field expects the new name.
     property bool naming: false
 
     signal listenRequested(int startMs, int endMs)
-    // { kind: "merge" | "reassign", fromKey, intoKey, personName, fix } — a hívó erősítteti meg.
+    // { kind: "merge" | "reassign", fromKey, intoKey, personName, fix } - the caller asks for confirmation.
     signal mergeRequested(var request)
-    // A teljes beszélő „Miért ő?" panelje (a „Miért ő?" linkről, a Sáv-beosztás javításról).
+    // The whole speaker's "Why them?" panel (from the "Why them?" link, the Track assignment fix).
     signal speakerWhyRequested(string speakerKey, bool tracks)
     signal voiceprintRequested(string speakerKey)
-    // Gyors címke került egy személyre: a hívó visszavonható toastot mutat (undoKey "tags").
+    // A quick tag was added to a person: the caller shows an undoable toast (undoKey "tags").
     signal tagAdded(string text)
 
     width: 390
@@ -52,7 +52,7 @@ TPopover {
     readonly property bool wholeSpeaker: scope === "speaker"
     readonly property string speakerName: (info.name || "")
                                           + (info.nameDuplicate && info.rawLabel ? " (" + info.rawLabel + ")" : "")
-    // „Lilla mind a 368 sora": elnevezett személynél az utónév (a magyar névsorrend szerint az utolsó szó).
+    // "Lilla, all 368 lines": for a named person the first name (the last word in Hungarian name order).
     readonly property string shortName: info.anonymous === false && (info.name || "").indexOf(" ") > 0
                                         ? info.name.substring(info.name.lastIndexOf(" ") + 1) : (info.name || "")
     readonly property bool named: info.anonymous === false
@@ -62,9 +62,9 @@ TPopover {
     readonly property var whyItems: scope === "line" && editor && utteranceId !== "" && whyRevision >= 0
                                     ? editor.whyNot(utteranceId) : []
     property int whyRevision: 0
-    // A billentyűzettel kiemelt sor: 0…candidates.count-1 a jelöltek, utána a „Másik személy" lista.
+    // The keyboard-highlighted row: 0...candidates.count-1 are the candidates, then the "Another person" list.
     property int currentIndex: -1
-    // „Hanglenyomat-minta ebből a sorból" (D3): { ok, reason, seconds, personName, confirmFirst }.
+    // "Voiceprint sample from this line": { ok, reason, seconds, personName, confirmFirst }.
     readonly property var sampleInfo: scope === "line" && editor && utteranceId !== "" && whyRevision >= 0
                                       ? editor.lineSampleInfo(utteranceId) : ({})
     readonly property bool sampleShown: scope === "line" && !naming && !typed && (sampleInfo.personName || "") !== ""
@@ -94,7 +94,7 @@ TPopover {
         search.forceActiveFocus()
     }
 
-    // ---- választás: a hatókör dönti el, mi történik ----
+    // ---- choice: the scope decides what happens ----
     function choosePerson(name) {
         if (name === "") return
         if (scope === "line") {
@@ -136,8 +136,8 @@ TPopover {
         if (index < candidates.count) chooseCandidate(index)
         else choosePerson(people.nameAt(index - candidates.count))
     }
-    // Enter: a kiemelt sor; beírt szövegnél a legjobb találat vagy az új személy. Üres keresővel,
-    // kiemelés nélkül SEMMI (egy véletlen Enter ne rendeljen át semmit).
+    // Enter: the highlighted row; with typed text the best match or the new person. With an empty
+    // search and no highlight NOTHING (a stray Enter must not reassign anything).
     function chooseFirst() {
         const total = (naming ? 0 : candidates.count) + people.count
         if (naming) {
@@ -239,7 +239,7 @@ TPopover {
     contentItem: Column {
         id: column
 
-        // ---- fejléc ----
+        // ---- header ----
         Item {
             width: parent.width
             height: headColumn.height + 22
@@ -321,7 +321,7 @@ TPopover {
             }
         }
 
-        // ---- hatókör ----
+        // ---- scope ----
         Item {
             width: parent.width
             height: 32
@@ -347,7 +347,7 @@ TPopover {
         }
         TDivider { width: parent.width }
 
-        // ---- kereső ----
+        // ---- search ----
         Item {
             width: parent.width
             height: 50
@@ -370,7 +370,7 @@ TPopover {
                     if (control.naming) { control.naming = false; search.text = "" }
                     else control.close()
                 }
-                // 1–3: a javasolt jelölt (üres keresővel).
+                // 1-3: the suggested candidate (with an empty search).
                 Keys.onPressed: event => {
                     if (control.typed || control.naming) return
                     if (event.key >= Qt.Key_1 && event.key <= Qt.Key_3) {
@@ -382,12 +382,12 @@ TPopover {
             }
         }
 
-        // ---- a lista (görgethető, ha nem fér ki) ----
+        // ---- the list (scrolls if it does not fit) ----
         Flickable {
             id: body
             width: parent.width
-            // A fej, a kereső, az „Új személy" sor és a lábléc mellett a lista a többi helyet kapja
-            // (a hívó a panelt feljebb tolja, ha a sor alatt nem fér el).
+            // Besides the header, search, "New person" row and footer the list gets the rest of the space
+            // (the caller shifts the panel up if it does not fit below the line).
             readonly property real maxHeight: T.Overlay.overlay ? T.Overlay.overlay.height - 2 * control.margins - 236 - sampleRow.height : 420
             height: Math.min(bodyColumn.implicitHeight, Math.max(160, maxHeight))
             contentHeight: bodyColumn.implicitHeight
@@ -399,7 +399,7 @@ TPopover {
                 id: bodyColumn
                 width: body.width
 
-                // JAVASOLT / (keresés:) EBBEN A MEGBESZÉLÉSBEN
+                // SUGGESTED / (search:) IN THIS MEETING
                 SectionHead {
                     visible: !control.naming && candidates.count > 0
                     label: control.typed ? qsTr("EBBEN A MEGBESZÉLÉSBEN")
@@ -435,7 +435,7 @@ TPopover {
                     }
                 }
 
-                // ---- keresés: másik (ismert) személy, új személy ----
+                // ---- search: another (known) person, new person ----
                 SectionHead {
                     visible: people.count > 0 && control.typed && !control.naming
                     label: qsTr("MÁSIK SZEMÉLY")
@@ -453,7 +453,7 @@ TPopover {
                         x: 8
                         width: bodyColumn.width - 16
                         personName: name
-                        // Közös címkés személynél a tanult kapcsolat látszik („#Nordvik · 11 / 14 · 12 megbeszélés”).
+                        // A person with a shared tag shows the learned link ("#Nordvik · 11 / 14 · 12 meetings").
                         subText: (matchedAlias !== "" ? qsTr("„%1”").arg(matchedAlias) + " · " : "")
                                + (tagHint !== "" ? tagHint
                                : meetingCount > 0 ? qsTr("%n megbeszélés", "", meetingCount) : qsTr("nincs hanglenyomat"))
@@ -489,7 +489,7 @@ TPopover {
                 }
                 Item { width: 1; height: 6 }
 
-                // ---- MIÉRT NEM X? ----
+                // ---- WHY NOT X? ----
                 Rectangle {
                     objectName: "whyNotBlock"
                     visible: control.scope === "line" && control.whyItems.length > 0 && !control.typed && !control.naming
@@ -523,7 +523,7 @@ TPopover {
                     }
                 }
 
-                // ---- teljes beszélő: téves felismerés + hanglenyomat ----
+                // ---- whole speaker: wrong recognition + voiceprint ----
                 Item {
                     visible: control.wholeSpeaker && control.named && control.info.hasVoiceprint === true
                     width: parent.width
@@ -552,7 +552,7 @@ TPopover {
             }
         }
 
-        // ---- „Új személy ebből a sorból…" ----
+        // ---- "New person from this line..." ----
         Item {
             visible: !control.wholeSpeaker && !control.naming
             width: parent.width
@@ -592,7 +592,7 @@ TPopover {
             }
         }
 
-        // ---- „Nem azonosítható" (S2): halk sor; a sor / a kijelölés hang-elemzésből kihagyva ----
+        // ---- "Unidentifiable": quiet row; the line / selection is excluded from voice analysis ----
         Item {
             id: ignoreRow
             objectName: "lineIgnoreRow"
@@ -669,7 +669,7 @@ TPopover {
             }
         }
 
-        // ---- „Hanglenyomat-minta ebből a sorból" (D3): halk sor; nem mintázható sornál az ok ----
+        // ---- "Voiceprint sample from this line": quiet row; for a line that cannot be sampled, the reason ----
         Item {
             id: sampleRow
             objectName: "lineSampleRow"
@@ -728,7 +728,7 @@ TPopover {
             }
         }
 
-        // ---- lábléc: hány sor mozdul ----
+        // ---- footer: how many lines move ----
         Item {
             width: parent.width
             height: 34

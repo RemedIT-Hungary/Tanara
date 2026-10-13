@@ -1,7 +1,7 @@
 import QtQuick
 
-// Állapot-pirula (11/600). tone: "warn" | "success" | "danger" | "accent" | "neutral".
-//   TPill { text: qsTr("elavult"); tone: "warn" }
+// Status pill (11/600). tone: "warn" | "success" | "danger" | "accent" | "neutral".
+//   TPill { text: qsTr("stale"); tone: "warn" }
 Rectangle {
     id: root
     property string text: ""

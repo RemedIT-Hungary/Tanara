@@ -1,6 +1,6 @@
 import QtQuick
 
-// 3 px-es fókuszgyűrű a szülő köré. A vezérlők hátterének gyerekeként él:
+// 3 px focus ring around the parent. It lives as a child of a control's background:
 //   TFocusRing { visible: control.stateFocused; targetRadius: control.radius }
 Rectangle {
     property real targetRadius: Theme.radiusControl

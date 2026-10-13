@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az Átnézendő MINTÁZAT-AJÁNLATA (S5; koncepció-dokumentum 2.2, 8. lépés): ha az utolsó 6
-// döntésből ≥ 4 ugyanaz az (ok, jelenlegi, javasolt) hármas, a fókusz-kártya ALATT (az alsó
-// kontextus-sorok helyén, a kártya nem mozdul) egy sáv: „A hátralévőből még N sor ugyanilyen
-// (ok · X → Y). Mind az N → Y?” + [L Megmutatom] (a sorok kompakt, görgethető listája ▶-tel, a
-// sáv alatt) + [I Igen] (egy visszavonási lépés; Shift = nem minta) + [N Nem] (ez a minta ebben a
-// körben nem jön vissza). Az állapotot (kinyitva, épp szól) a ReviewFocusView tartja.
-//   offer: a ReviewQueueModel.recentPattern() térképe
-//   lines: a sameAhead sorai [{ utteranceId, timeLabel, lineText, startMs, endMs }]
+// The PATTERN OFFER of To review: when at least 4 of the last 6 decisions share the same
+// (reason, current, suggested) triple, a strip appears BELOW the focus card (in place of the
+// lower context lines; the card does not move): "N more of the remaining lines look the same
+// (reason · X -> Y). All N -> Y?" + [L Show] (a compact, scrollable list of the lines with a
+// play button, below the strip) + [I Yes] (one undo step; Shift = not a sample) + [N No] (this
+// pattern does not come back in this round). ReviewFocusView keeps the state (expanded, playing).
+//   offer: the ReviewQueueModel.recentPattern() map
+//   lines: the sameAhead lines [{ utteranceId, timeLabel, lineText, startMs, endMs }]
 Rectangle {
     id: root
 
@@ -103,7 +103,7 @@ Rectangle {
             }
         }
 
-        // A sorok listája (Megmutatom): legfeljebb 5 sor magas, a többi görgetve.
+        // The list of lines (Show): at most 5 lines tall, the rest scrolls.
         ListView {
             id: list
             objectName: "reviewOfferList"

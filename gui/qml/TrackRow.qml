@@ -1,21 +1,21 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Egy hangsáv sora — EGY komponens, két mód (G6):
-//  * compact (Áttekintés › SÁVOK, design/handoff-v3 V1): 26 px kerek lejátszás/szünet · forrás-ikon +
-//    név 13/600 · alszöveg („beszéd 38% · Kovács Lilla”) · kapcsoló 30×18 (benne van-e a
-//    lekeverésben; kimaradt sávnál „Beemelem”) · alatta 18 px-es beszéd-csík.
-//  * teljes („Sávok részletei”, TracksTab): ugyanezek 40 px-es csíkkal, + átnevezés (ceruza /
-//    dupla kattintás), nyers eszköznév, hiányzó fájl „Megkeresés…”, eldobott sáv „Visszaállítás”,
-//    végleges törlés (megerősítéssel).
-// A meghallgatás MINDKÉT módban a sávon szól, megbeszélés-időben (PlayerController::playTrack): a
-// lejátszás gomb az első beszédnél kezd (ha van aktivitás), a csíkra kattintva oda ugrik.
+// One track row - ONE component, two modes:
+//  * compact (Overview > TRACKS): 26 px round play/pause · source icon + name 13/600 · subtext
+//    ("speech 38% · Kovács Lilla") · 30x18 switch (whether the track is in the mixdown; for a
+//    left-out track "Include") · an 18 px speech strip below.
+//  * full ("Track details", TracksTab): the same with a 40 px strip, + rename (pencil / double
+//    click), raw device name, "Locate..." for a missing file, "Restore" for a dropped track,
+//    permanent delete (with confirmation).
+// Listening plays the track in BOTH modes, in meeting time (PlayerController::playTrack): the play
+// button starts at the first speech (if there is activity); clicking the strip seeks there.
 //
-// Repeater-delegáltként a modell-sort (TrackListModel) a required index / model adja:
+// As a Repeater delegate the model row (TrackListModel) comes from the required index / model:
 //   Repeater { model: tracks; TrackRow { compact: true; tracks: tracks; player: player; activity: activity } }
-// tracks: TrackListModel · player: PlayerController (vagy null) · activity: TrackActivityModel ·
-// shell: ShellActions (fájlválasztó, megerősítés, toast; teljes módban) · sideWho: ki beszél
-// oldalanként (OverviewViewModel.sideWho; üres → nem írjuk ki).
+// tracks: TrackListModel · player: PlayerController (or null) · activity: TrackActivityModel ·
+// shell: ShellActions (file picker, confirmation, toast; full mode) · sideWho: who speaks on
+// each side (OverviewViewModel.sideWho; empty: not shown).
 Item {
     id: root
 
@@ -31,7 +31,7 @@ Item {
     property real nameWidth: 300
     property bool first: index === 0
 
-    // ---- a sor adatai (a modell-sor szerepeiből) ----
+    // ---- row data (from the model row's roles) ----
     readonly property string trackId: model.trackId || ""
     readonly property string groupId: model.groupId || trackId
     readonly property bool missing: !!model.missing
@@ -39,11 +39,11 @@ Item {
     readonly property bool included: !!model.included
     readonly property string excludedReason: model.excludedReason || ""
     readonly property bool excluded: excludedReason !== ""
-    // Felvétel után eldobott (csendes) sáv, amit nem a beszéd-ellenőrzés / a kézi kivétel tett félre.
+    // A silent track dropped after recording that neither the speech check nor a manual exclusion set aside.
     readonly property bool dropped: !active && !excluded
     readonly property bool dim: excluded || !active
 
-    // ---- lejátszás ----
+    // ---- playback ----
     readonly property bool previewing: player !== null && player.previewTrackId !== ""
                                        && player.previewTrackId === groupId
     readonly property bool playingNow: previewing && player.previewPlaying
@@ -63,7 +63,7 @@ Item {
     function togglePlay() {
         if (!root.canPlay) return
         if (root.previewing) { root.player.toggleTrack(root.groupId); return }
-        // Első meghallgatás: ott kezdjük, ahol tényleg beszéd van.
+        // First listen: start where there is actually speech.
         const at = root.activity ? root.activity.nextSpeechMs(root.groupId, 0) : -1
         root.player.playTrack(root.groupId, at)
     }
@@ -73,8 +73,8 @@ Item {
     function setIncluded(on) {
         if (root.tracks) root.tracks.setIncluded(root.index, on)
     }
-    // A fájlválasztó / megerősítés beágyazott eseményhurkot futtat: közben a kijelölés másik
-    // megbeszélésre válthat. A megbeszélést és a sáv id-ját ELŐTTE jegyezzük meg.
+    // The file picker / confirmation runs a nested event loop: the selection may switch to another
+    // meeting meanwhile. Remember the meeting and the track id BEFORE it.
     function locate() {
         if (!root.shell || !root.tracks) return
         const meeting = root.tracks.meetingId
@@ -97,12 +97,12 @@ Item {
             root.shell.toast(qsTr("Közben másik megbeszélésre váltottál, ezért semmi nem törlődött."))
             return
         }
-        // Ha épp ez a sáv szól, előbb elengedjük a fájlt.
+        // If this very track is playing, release the file first.
         if (root.player && root.previewing) root.player.stopPreview()
         if (root.tracks.deleteTrackIn(meeting, id)) root.shell.toast(qsTr("A sáv törölve."))
     }
 
-    // ---- átnevezés (teljes mód) ----
+    // ---- rename (full mode) ----
     property bool editing: false
     onEditingChanged: if (!editing) Qt.callLater(root.releaseHiddenFocus)
     function releaseHiddenFocus() {
@@ -133,7 +133,7 @@ Item {
     }
     HoverHandler { id: hover }
 
-    // Közös darabok (az inline komponens nem látja a `root` id-t: az `r` a sor).
+    // Shared pieces (the inline component cannot see the `root` id: `r` is the row).
     component PlayButton: TIconButton {
         property var r: null
         objectName: "trackPlay"
@@ -180,7 +180,7 @@ Item {
         onSeekRequested: (ms) => r.seek(ms)
     }
 
-    // ================= kompakt (Áttekintés) =================
+    // ================= compact (Overview) =================
     ColumnLayout {
         id: compactCol
         visible: root.compact
@@ -236,7 +236,7 @@ Item {
         }
     }
 
-    // ================= teljes („Sávok részletei”) =================
+    // ================= full ("Track details") =================
     RowLayout {
         visible: !root.compact
         anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
@@ -254,7 +254,7 @@ Item {
             opacity: root.dim ? 0.75 : 1
         }
 
-        // ---- név + állapot + nyers eszköznév ----
+        // ---- name + state + raw device name ----
         ColumnLayout {
             Layout.preferredWidth: root.nameWidth
             Layout.minimumWidth: root.nameWidth
@@ -344,7 +344,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             opacity: root.dim ? 0.75 : 1
         }
-        // Állapot szerinti művelet: kapcsoló / Beemelem / Visszaállítás / Megkeresés…
+        // Action by state: switch / Include / Restore / Locate...
         Item {
             Layout.preferredWidth: 110
             implicitHeight: 28

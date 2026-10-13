@@ -1,40 +1,39 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Összefoglaló fül. A SummaryViewModel.view szerint három nézet egyike látszik:
-//   "empty"   M06 — még nincs összefoglaló (SummaryEmptyView)
-//   "summary" M07 — kész összefoglaló:
-//       forrásos gyors összefoglaló (v3, vm.hasStatements): SummaryExecView (S1/S3) vagy a
-//       memó (section "memo") SummaryMemoView (S2), fölötte az eszköz-sor (SummaryToolsRow);
-//       régi (állítások nélküli) összefoglaló: SummaryDocView, változatlanul;
-//   "topics"  M08 — témánkénti elemzés (SummaryTopicsView)
-// Képernyőképhez: --qml-prop 'demoState="stale|done|memo|memoShort|oldSummary|oldMemo|running|
+// Summary tab. SummaryViewModel.view selects one of three views:
+//   "empty"   no summary yet (SummaryEmptyView)
+//   "summary" finished summary: sourced quick summary (vm.hasStatements): SummaryExecView or,
+//       for the memo (section "memo"), SummaryMemoView, with the tools row (SummaryToolsRow)
+//       above; an old summary without statements: SummaryDocView, unchanged;
+//   "topics"  per-topic analysis (SummaryTopicsView)
+// For screenshots: --qml-prop 'demoState="stale|done|memo|memoShort|oldSummary|oldMemo|running|
 // topicsDoc|empty|emptyBlocked|emptyRunning|emptyRunningParts|emptyRunningMerge|emptyError|
-// emptyErrorKept|emptyNote|noteOpen|noteChanged|topics"' (alapértelmezés: "stale"); v3:
+// emptyErrorKept|emptyNote|noteOpen|noteChanged|topics"' (default: "stale"), plus
 // "sourcesOn|sourcesOff|sourcePopover|memoSections|staleTargeted|noSources".
 //
-// A héj (U1) bekötése: az eszköz-sort (SummaryToolsRow { vm: summaryTab.vm … }) a fejléc alatti
-// eszköz-sorba, a térkép-sorokat (SummaryMapRows { vm: summaryTab.vm; player: … }) a dokk
-// extraRows helyére teszi, és embedToolsRow / embedMapRows / showSectionSwitch = false. Addig
-// ezek IDEIGLENESEN itt, a fül tetején látszanak.
+// The shell wires it up by placing the tools row (SummaryToolsRow { vm: summaryTab.vm ... }) in
+// the tools row under the header and the map rows (SummaryMapRows { vm: summaryTab.vm; player: ... })
+// in the dock's extraRows, and setting embedToolsRow / embedMapRows / showSectionSwitch = false.
+// Until then they show TEMPORARILY here, at the top of the tab.
 Item {
     id: root
 
-    property string meetingId: ""      // a kijelölt megbeszélés; "" = nincs
-    property var player: null          // PlayerController vagy null
-    property var shell: null           // ShellActions vagy null
+    property string meetingId: ""      // the selected meeting; "" = none
+    property var player: null          // PlayerController or null
+    property var shell: null           // ShellActions or null
     property string demoState: ""
-    // A témánkénti munkaterület (M08) nyitva van-e — kívülről is váltható.
+    // Whether the per-topic workspace is open - can also be toggled from outside.
     property alias topicsOpen: summaryVm.topicsOpen
-    // A kész összefoglaló látható formája: "exec" (Vezetői összefoglaló) | "memo" (Memó) —
-    // a héj fülei állítják.
+    // The finished summary's visible form: "exec" (Executive summary) | "memo" (Memo) -
+    // set by the shell's tabs.
     property alias section: summaryVm.section
     readonly property alias vm: summaryVm
-    // A héj térkép-dokkjának (U1) sorai: Forrás-jelek és Memó-szakaszok ({ startMs, endMs, active }).
+    // Rows of the shell's map dock: Source marks and Memo sections ({ startMs, endMs, active }).
     readonly property var sourceMarks: summaryVm.sourceMarks
     readonly property var sectionBands: summaryVm.sectionBands
 
-    // Ideiglenes beágyazások (amíg a héj eszköz-sora / térkép-dokkja nem veszi át).
+    // Temporary embeddings (until the shell's tools row / map dock takes them over).
     property bool embedToolsRow: true
     property bool embedMapRows: true
     property bool showSectionSwitch: true
@@ -48,7 +47,7 @@ Item {
         demoState: root.demoState
     }
 
-    // A Beállítások bezárása után a kapuzás újraolvasása.
+    // Re-reads the gating after Settings closes.
     onVisibleChanged: if (visible) summaryVm.refresh()
     Connections {
         target: Qt.application
@@ -59,7 +58,7 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // IDEIGLENES: az U1 eszköz-sora veszi át.
+        // TEMPORARY: the shell's tools row takes over.
         SummaryToolsRow {
             objectName: "summaryToolsRow"
             visible: root.embedToolsRow && root.sourcesLayout
@@ -69,7 +68,7 @@ Item {
             shell: root.shell
             showSectionSwitch: root.showSectionSwitch
         }
-        // IDEIGLENES: az U1 térkép-dokkjának extraRows helye veszi át.
+        // TEMPORARY: the shell's map dock takes the extraRows place.
         Rectangle {
             visible: root.embedMapRows && root.sourcesLayout && (mapRows.showSources || mapRows.showSections)
             Layout.fillWidth: true
@@ -108,7 +107,7 @@ Item {
                 active: root.sourcesLayout && !root.memoLayout
                 visible: active
                 sourceComponent: SummaryExecView { vm: summaryVm; meetingId: root.meetingId; shell: root.shell; player: root.player }
-                // Képernyőképhez: a felugró nyitva.
+                // For screenshots: the popover is open.
                 onLoaded: if (root.demoState === "sourcePopover") demoPopoverTimer.start()
             }
             Loader {
@@ -126,8 +125,8 @@ Item {
         }
     }
 
-    // A demó „sourcePopover” állapota: az első mondat első chipjén nyitva (a bekezdés
-    // elrendezése után).
+    // The demo "sourcePopover" state: open on the first sentence's first chip (after the
+    // paragraph's layout).
     Timer {
         id: demoPopoverTimer
         interval: 60

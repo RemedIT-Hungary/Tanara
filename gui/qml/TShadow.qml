@@ -1,8 +1,8 @@
 import QtQuick
 
-// Felugrók / párbeszédablakok árnyéka: 0 12 32 + 0 1 3 (Theme.shadowColor / shadowTightColor).
-// Shader nélkül: előre elmosott kilencfoltos kép a kép-providerből, ezért a szoftveres
-// rendererrel is ugyanúgy néz ki. A háttér-téglalap gyerekeként használd:
+// Shadow of popups / dialogs: 0 12 32 + 0 1 3 (Theme.shadowColor / shadowTightColor). Without a
+// shader: a pre-blurred nine-patch image from the image provider, so it looks the same with the
+// software renderer too. Use it as a child of the background rectangle:
 //   background: Rectangle { radius: 8; TShadow { radius: parent.radius } }
 Item {
     id: root

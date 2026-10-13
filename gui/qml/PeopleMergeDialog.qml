@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Összevonás (P04): kereshető jelölt-lista hang-hasonlóság szerint (százalék csak akkor, ha
-// mindkét félnek van hanglenyomata), a megmaradó név választása, és az eredmény valódi
-// számokkal. Az összevonás nem vonható vissza — ezt a párbeszéd ki is mondja.
+// Merge: searchable candidate list by voice similarity (a percentage only if both sides have a
+// voiceprint), choice of the surviving name, and the result with real numbers. The merge cannot
+// be undone - the dialog says so.
 TDialog {
     id: dialog
 
@@ -17,7 +17,7 @@ TDialog {
 
     function reload() {
         candidates = vm ? vm.mergeCandidates(search.text) : []
-        // Ha a kiválasztott kiesett a szűrésből, nincs kiválasztás.
+        // If the selected candidate dropped out of the filter, nothing is selected.
         if (chosen !== "" && !candidates.some(c => c.name === chosen)) chosen = ""
     }
     function openFor(query, preselect) {
@@ -205,7 +205,8 @@ TDialog {
             objectName: "mergeConfirm"
             text: qsTr("Összevonás")
             variant: "primary"
-            // Letiltás helyett rejtve, amíg nincs kivel (a letiltott gomb szaggatott keretet kapna).
+            // Hidden instead of disabled while there is no candidate (a disabled button would get
+            // a dashed border).
             visible: dialog.chosen !== ""
             leftPadding: 16; rightPadding: 16
             onClicked: {

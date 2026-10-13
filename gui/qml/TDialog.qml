@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Modális megerősítő párbeszédablak fátyollal (az M10 minta): 440 px, sugár 10, cím 18/600.
-// A tartalom egy 14 px-es térközű oszlopba kerül (Layout.fillWidth-et adj a gyerekeknek);
-// a gombok az `actions`-be, jobbra igazítva (a megerősítő gomb legyen az utolsó).
-//   TDialog { id: dlg; title: qsTr("Újra-átírod a megbeszélést?")
-//       TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; text: qsTr("…23 kézi javítás elvész…") }
-//       TCheckBox { Layout.fillWidth: true; checked: true; text: qsTr("A mostani átirat maradjon meg másolatként") }
-//       actions: [ TButton { text: qsTr("Mégse"); onClicked: dlg.reject() },
-//                  TButton { text: qsTr("Újra-átírás"); variant: "danger"; onClicked: dlg.accept() } ]
+// Modal confirmation dialog with a scrim (the standard dialog pattern): 440 px, radius 10, title 18/600.
+// Content goes into a column with 14 px spacing (give children Layout.fillWidth);
+// buttons go into `actions`, right-aligned (the confirming button last).
+//   TDialog { id: dlg; title: qsTr("Re-transcribe the meeting?")
+//       TLabel { Layout.fillWidth: true; wrapMode: Text.Wrap; text: qsTr("...23 manual fixes are lost...") }
+//       TCheckBox { Layout.fillWidth: true; checked: true; text: qsTr("Keep the current transcript as a copy") }
+//       actions: [ TButton { text: qsTr("Cancel"); onClicked: dlg.reject() },
+//                  TButton { text: qsTr("Re-transcribe"); variant: "danger"; onClicked: dlg.accept() } ]
 //   }
 T.Dialog {
     id: control

@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Téma-kártya (M08): fogantyú az átrendezéshez, cím, leírás, állapot-pirula, és az állapot
-// szerinti tartalom — kész: az elemzés eredménye; fut / sorban áll: csík megszakítással;
-// hibás: üzenet + „Újra”; vár: semmi. A műveletek (szerkesztés, törlés, futtatás) a kártya
-// fölé húzott egérrel vagy billentyű-fókusszal jelennek meg. A szerkesztés helyben történik.
+// Topic card: a handle for reordering, title, description, status pill, and state-dependent
+// content -- done: the analysis result; running / queued: a stripe with cancel; failed: message
+// + "Retry"; waiting: nothing. The actions (edit, delete, run) appear on mouse hover over the card
+// or on keyboard focus. Editing happens in place.
 Rectangle {
     id: root
 
@@ -14,8 +14,8 @@ Rectangle {
     property string topicState: "waiting"     // waiting | queued | running | done | failed
     property string error: ""
     property string errorDetail: ""
-    // A hiba javító műveletei: Beállítások (fixActionLabel → fixActionPage), ill. kontextus-
-    // hibánál LM Studióval „Betöltés nagyobb kontextussal” (fixReloadContext token, 0 = nincs).
+    // The error's fix actions: Settings (fixActionLabel -> fixActionPage), or for a context error with
+    // LM Studio "Load with larger context" (fixReloadContext tokens, 0 = none).
     property string fixActionLabel: ""
     property string fixActionPage: ""
     property int fixReloadContext: 0
@@ -24,27 +24,27 @@ Rectangle {
     property var resultDecisions: []
     property var resultOpenQuestions: []
     property var resultActions: []
-    property bool canRun: true                // a szolgáltató kész (különben a futtatás tiltva)
+    property bool canRun: true                // the provider is ready (otherwise running is disabled)
     property string blockedReason: ""
     property bool editing: false
-    // A mező elrejtése után a fókusz ne maradjon a (láthatatlan) szövegmezőben: különben a
-    // billentyűk (Szóköz, nyilak, gyorsbillentyűk) oda mennének.
+    // After hiding the field, focus must not stay in the (invisible) text field: otherwise the keys
+    // (Space, arrows, shortcuts) would go there.
     onEditingChanged: if (!editing) Qt.callLater(root.releaseHiddenFocus)
     function releaseHiddenFocus() {
         const it = root.Window.activeFocusItem
         if (it && !it.visible) root.forceActiveFocus()
     }
     property bool dragging: false
-    property bool expanded: false             // a hosszú elemzés teljes szövege látszik
+    property bool expanded: false             // the long analysis shows its full text
 
     signal runRequested()
-    signal reloadContextRequested(int tokens)   // újratöltés nagyobb kontextussal + újra
+    signal reloadContextRequested(int tokens)   // reload with larger context + retry
     signal settingsRequested(string page)
     signal cancelRequested()
     signal removeRequested()
     signal saveRequested(string title, string summary)
-    signal moveRequested(int delta)           // billentyűs átrendezés: -1 fel, +1 le
-    // Húzás a fogantyúnál: y a kártya koordinátáiban.
+    signal moveRequested(int delta)           // keyboard reorder: -1 up, +1 down
+    // Drag at the handle: y in the card's coordinates.
     signal dragMoved(real y)
     signal dragFinished()
 
@@ -73,7 +73,7 @@ Rectangle {
 
     HoverHandler { id: hover }
 
-    // ---- fogantyú (húzás + Ctrl+fel/le) ----
+    // ---- handle (drag + Ctrl+up/down) ----
     Item {
         id: grip
         x: 4; y: 8
@@ -122,7 +122,7 @@ Rectangle {
         width: root.width - 36 - 14
         spacing: 5
 
-        // ================= megjelenítés =================
+        // ================= display =================
         RowLayout {
             visible: !root.editing
             Layout.fillWidth: true
@@ -189,13 +189,13 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // kész: az elemzés eredménye
+        // done: the analysis result
         ColumnLayout {
             visible: !root.editing && root.hasResult && !root.active
             Layout.fillWidth: true
             Layout.topMargin: 4
             spacing: 6
-            // Hosszú elemzés összecsukva jelenik meg (6 sor), kérésre a teljes szöveg.
+            // A long analysis shows collapsed (6 lines), the full text on request.
             Item {
                 id: resultBox
                 readonly property real lineHeight: 21
@@ -273,7 +273,7 @@ Rectangle {
             }
         }
 
-        // fut / sorban áll: a modell nem ad százalékot → futó csík; külön megszakítható
+        // running / queued: the model gives no percentage -> indeterminate stripe; cancelable separately
         RowLayout {
             visible: !root.editing && root.active
             Layout.fillWidth: true
@@ -298,7 +298,7 @@ Rectangle {
             }
         }
 
-        // hibás: üzenet + Újra
+        // failed: message + Retry
         RowLayout {
             visible: !root.editing && root.failed
             Layout.fillWidth: true
@@ -348,7 +348,7 @@ Rectangle {
             }
         }
 
-        // ================= szerkesztés =================
+        // ================= editing =================
         ColumnLayout {
             visible: root.editing
             Layout.fillWidth: true

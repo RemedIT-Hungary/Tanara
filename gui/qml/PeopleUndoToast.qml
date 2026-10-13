@@ -1,7 +1,7 @@
 import QtQuick
 
-// A Személyek ablak alsó, középre igazított értesítése (P03): fordított színű (szöveg-színű
-// háttér), opcionális „Visszavonás” gombbal. ~8 mp után eltűnik; amíg az egér rajta áll, marad.
+// The People window's bottom, centered notification: inverted colors (text-colored
+// background), with an optional "Undo" button. Disappears after ~8 s; stays while the mouse is over it.
 Item {
     id: root
 

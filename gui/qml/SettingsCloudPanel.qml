@@ -1,19 +1,19 @@
 import QtQuick
 import QtQuick.Layouts
 
-// B06 — Tanara Cloud (élő mód): fiók-sor, egyenleg + becsült órák, minőség-szintek,
-// „költségbecslés indítás előtt”. Minden adat a CloudAccount-ból jön (SettingsCloudModel);
-// a bejelentkezés, a feltöltés, az Expert-modell és az ÁSZF a meglévő Widgets-ablakokat nyitja.
+// Tanara Cloud (live mode): account row, balance + estimated hours, quality tiers,
+// "cost estimate before start". All data comes from CloudAccount (SettingsCloudModel); sign-in,
+// upload, the Expert model and the ToS open the existing Widgets windows.
 Column {
     id: root
 
     property var vm: null                          // SettingsViewModel
     readonly property var cloud: vm ? vm.cloud : null
-    signal logoutRequested()                       // a megerősítő ablakot a befoglaló nyitja
+    signal logoutRequested()                       // the host opens the confirmation window
 
     spacing: 16
 
-    // ---- fiók ----
+    // ---- account ----
     Rectangle {
         width: parent.width
         height: Math.max(60, accountCol.implicitHeight + 24)
@@ -80,7 +80,7 @@ Column {
         }
     }
 
-    // ---- állapot-sor (leválasztva, elfogyott, frissítés kell…) ----
+    // ---- status row (disconnected, out of credit, refresh needed...) ----
     TBanner {
         id: stateBanner
         readonly property var info: root.cloud ? root.cloud.notice : ({})
@@ -112,7 +112,7 @@ Column {
         }
     }
 
-    // ---- egyenleg + minőség ----
+    // ---- balance + quality ----
     RowLayout {
         visible: root.cloud && root.cloud.loggedIn
         width: parent.width

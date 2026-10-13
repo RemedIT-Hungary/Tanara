@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// A memó tartalomjegyzéke (S2): 236 px oszlop, jobb oldali elválasztóval. Szakaszonként
-// „N. cím” + egyenközű időtartomány; a kiemelt (aktív) szakasz accentSoft háttérrel, 600-as
-// betűvel. Kattintás / Enter: picked(index).
-//   MemoToc { sections: vm.memo; activeIndex: vm.activeSection; onPicked: (i) => … }
+// The memo's table of contents: a 236 px column with a right divider. Per section "N. title" +
+// an evenly spaced time range; the highlighted (active) section has an accentSoft background and
+// weight 600. Click / Enter: picked(index).
+//   MemoToc { sections: vm.memo; activeIndex: vm.activeSection; onPicked: (i) => ... }
 Rectangle {
     id: root
 
-    property var sections: []          // vm.memo: [{ title, sourceRange, … }]
+    property var sections: []          // vm.memo: [{ title, sourceRange, ... }]
     property int activeIndex: -1
     signal picked(int index)
 

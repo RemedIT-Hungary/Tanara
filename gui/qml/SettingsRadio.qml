@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Rádiógomb (Beállítások): 16 px-es kör — ki: 1,5 px borderStrong; be: 5 px accent keret.
-// Felirattal: SettingsRadio { text: qsTr("Automatikusan, a felvétel után"); checked: …; onClicked: … }
+// Radio button (Settings): 16 px circle -- off: 1.5 px borderStrong; on: 5 px accent border.
+// With a label: SettingsRadio { text: qsTr("Automatically, after the recording"); checked: ...; onClicked: ... }
 T.AbstractButton {
     id: control
 

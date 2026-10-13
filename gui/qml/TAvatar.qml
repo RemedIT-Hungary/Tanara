@@ -1,9 +1,9 @@
 import QtQuick
 
-// Beszélő-avatar monogrammal. variant: "soft" (lágy kitöltés + 2 px gyűrű a beszélőszínben —
-// listákban, fejlécekben) | "solid" (teli beszélőszín — a sáv-fejlécben, 20 px).
-//   TAvatar { name: "Kovács Lilla"; speakerIndex: 0 }            // 24 px, soft
-//   TAvatar { name: "Távoli 2"; speakerIndex: 5; variant: "solid"; size: 20 }
+// Speaker avatar with a monogram. variant: "soft" (soft fill + 2 px ring in the speaker color --
+// in lists, headers) | "solid" (solid speaker color -- in the rail header, 20 px).
+//   TAvatar { name: "Emma Carter"; speakerIndex: 0 }            // 24 px, soft
+//   TAvatar { name: "Remote 2"; speakerIndex: 5; variant: "solid"; size: 20 }
 Rectangle {
     id: root
     property string name: ""

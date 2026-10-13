@@ -1,18 +1,18 @@
 import QtQuick
 
-// Többchipes címkemező (C05 / C07): 36 px magas (több címkénél sort tör), raised háttér,
-// 1 px borderStrong keret (fókuszban accent + gyűrű). A felrakott címkék × jellel, utánuk a
-// beépített beviteli mező („Címke hozzáadása…”) a C02 listával.
-// Hol: az átirat előtti 1. lépés, az import párbeszéd, a tömeges címkézés panelje.
-//   tags: [{ id, name, countText?, partial? }] — partial: tömeges kijelölésnél csak néhányon
-//         van rajta (szaggatott keret, „1/3”); countText: a chip száma („3/3”)
+// Multi-chip tag field: 36 px high (wraps to more lines with many tags), raised background,
+// 1 px borderStrong border (focused: accent + ring). Applied tags with an x, followed by the
+// built-in input ("Add tag...") with the suggestion list.
+// Used in: step 1 before the transcript, the import dialog, the bulk-tagging panel.
+//   tags: [{ id, name, countText?, partial? }] - partial: in a bulk selection only some
+//         have it (dashed border, "1/3"); countText: the chip's count ("3/3")
 //   TagField { tags: vm.tags; onAddRequested: (name, isNew) => vm.add(name); onRemoveRequested: (id) => vm.remove(id) }
 Rectangle {
     id: root
 
     property var tags: []
     property string placeholderText: qsTr("Címke hozzáadása…")
-    // Minden chipre (ha a sor maga nem ad countText-et).
+    // For every chip (if the row itself gives no countText).
     property string countText: ""
     property var inputModel: null
     property bool stateFocused: input.field.activeFocus
@@ -34,15 +34,15 @@ Rectangle {
 
     TFocusRing { visible: root.stateFocused; border.color: Theme.accentSoft }
 
-    // Saját beviteli modell, ha a gazda nem ad: a valódi controllerrel a teljes címkekészlet
-    // (legutóbbiak, találatok), nélküle a demó-készlet — így az autocomplete mindenhol ugyanaz.
+    // Own input model if the host gives none: with the real controller the full tag set
+    // (recent, matches), without it the demo set - so autocomplete is the same everywhere.
     TagInputModel {
         id: ownInputModel
         controller: App.controller
         excludeIds: root.tags.map(t => t.id)
     }
 
-    // Kattintás az üres részre: a mezőbe.
+    // Click on the empty area: into the field.
     TapHandler { onTapped: input.open() }
 
     Flow {
@@ -75,7 +75,7 @@ Rectangle {
             onTagChosen: (name, isNew) => root.addRequested(name, isNew)
             onBackspaceOnEmpty: if (root.tags.length > 0) root.removeRequested(root.tags[root.tags.length - 1].id)
 
-            // A mező kitölti az utolsó sor maradékát.
+            // The field fills the rest of the last line.
             function lastRowWidth() {
                 let rowY = -1, used = 0
                 for (let i = 0; i < flow.children.length; ++i) {

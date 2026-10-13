@@ -1,7 +1,7 @@
 import QtQuick
 
-// A Címkék ablak listájának egy sora (T10): 28 px-es sunken csempe „#” jellel, név 14/500
-// (kijelölve 600, accentSoft háttér; a keresés találata kiemelve), alatta „14 megbeszélés · okt. 2.”.
+// One row of the Tags window list: 28 px sunken tile with a "#", name 14/500
+// (selected 600, accentSoft background; search hit highlighted), below it "14 meetings - Oct 2".
 Item {
     id: root
 

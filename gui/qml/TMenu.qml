@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Felugró menü (raised, sugár 8, árnyék). Elemei: TMenuItem, TMenuSeparator.
+// Popup menu (raised, radius 8, shadow). Items: TMenuItem, TMenuSeparator.
 //   TMenu { id: more
-//       TMenuItem { text: qsTr("Átnevezés"); iconName: "pencil"; onTriggered: … }
+//       TMenuItem { text: qsTr("Rename"); iconName: "pencil"; onTriggered: ... }
 //       TMenuSeparator {}
-//       TMenuItem { text: qsTr("Törlés…"); iconName: "trash-2"; danger: true }
+//       TMenuItem { text: qsTr("Delete..."); iconName: "trash-2"; danger: true }
 //   }
 //   TIconButton { iconName: "ellipsis"; onClicked: more.popup(this, 0, height + 4) }
 T.Menu {

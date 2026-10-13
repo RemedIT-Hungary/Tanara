@@ -1,15 +1,15 @@
 import QtQuick
 
-// A beszélő-sín rögzített fejléce: látható beszélőnként egy 24 px-es oszlop (20 px-es teli
-// avatar a beszélő színében, a sarkán hanglenyomat-pötty: teli zöld, ha a személynek van
-// hanglenyomata, üres karika, ha elnevezett, de még nincs; alatta az oldal ikonja: mikrofon /
-// hívás hangja — handoff-v3 E1; az imént felvett személy avatarja accent gyűrűt kap — E4), az
-// összecsukott „+N" csoport, és a „+" (új résztvevő) oszlop. A sorok oszlopai ehhez igazodnak.
+// Pinned header of the speaker rail: one 24 px column per visible speaker (a 20 px solid avatar
+// in the speaker's color, with a voiceprint dot on its corner: solid green if the person has a
+// voiceprint, an empty ring if named but without one; below it the side icon: mic / call audio;
+// a just-added person's avatar gets an accent ring), the collapsed "+N" group, and the "+" (new
+// participant) column. The row columns line up with this.
 Item {
     id: root
 
     required property var vm                // TranscriptEditorViewModel
-    property bool addOpen: false            // a „+" személyválasztója nyitva van
+    property bool addOpen: false            // the "+" person picker is open
     readonly property alias addItem: addColumn
 
     signal speakerClicked(string speakerKey, Item anchor)
@@ -34,7 +34,7 @@ Item {
                 required property int index
                 width: Theme.laneWidth
                 height: root.implicitHeight
-                // Az imént felvett személy oszlopa: 2 px accent gyűrű az avatar körül (E4).
+                // Column of a just-added person: 2 px accent ring around the avatar.
                 Rectangle {
                     visible: laneHead.modelData.isNew === true
                     anchors.centerIn: avatar
@@ -52,8 +52,8 @@ Item {
                     name: laneHead.modelData.name
                     speakerIndex: laneHead.modelData.colorIndex
                 }
-                // Hanglenyomat-jel az avatar jobb alsó sarkán: teli zöld = van, üres karika = elnevezett,
-                // de még nincs; névtelennél nincs.
+                // Voiceprint mark on the avatar's bottom-right corner: solid green = has one, empty ring = named
+                // but none yet; none for an unnamed speaker.
                 Rectangle {
                     objectName: "laneVoiceprint"
                     property string voiceprint: laneHead.modelData.voiceprint
@@ -65,7 +65,7 @@ Item {
                     border.color: laneHead.modelData.hasVoiceprint ? Theme.surface : Theme.borderStrong
                     visible: !laneHead.modelData.anonymous
                 }
-                // Melyik sávon beszél (a sáv-elemzés szerint): mikrofon / hívás hangja.
+                // Which track the speaker is on (per track analysis): mic / call audio.
                 TIcon {
                     objectName: "laneSide"
                     readonly property string side: laneHead.modelData.side || "unknown"
@@ -96,7 +96,7 @@ Item {
             }
         }
 
-        // „+N": a keveset beszélők összecsukott csoportja — kattintásra kinyílik.
+        // "+N": collapsed group of low-talking speakers - expands on click.
         Item {
             visible: root.groupShown || root.collapseShown
             width: visible ? Theme.laneGroupWidth : 0
@@ -134,7 +134,7 @@ Item {
             }
         }
 
-        // „+": új résztvevő (személyválasztó).
+        // "+": new participant (person picker).
         Item {
             id: addColumn
             objectName: "addParticipant"

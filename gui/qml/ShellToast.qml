@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Nem-modális értesítés a tartalom alján (a régi állapotsor-üzenetek és a Tanara Cloud
-// költség-értesítései helyett): szöveg, opcionálisan másolható hibaazonosító és „Napló a
-// weben” hivatkozás, „Visszavonás” (undoKey: a visszavonható lépés gazdája, pl. "tags"),
-// „Megnyitás mappában” (revealPath: egy kész fájl, pl. az exportált archívum), bezáró ×.
-// Magától eltűnik; az új üzenet a régit váltja.
-//   toast.show(qsTr("Elkészült az átirat"), "", "", false)
-//   toast.show(qsTr("Javaslat elutasítva: #Nordvik"), "", "", false, "tags")
+// Non-modal notification at the bottom of the content (replaces the old status-bar messages and the
+// Tanara Cloud cost notices): text, optional copyable error ID and "Log on the web" link,
+// "Undo" (undoKey: owner of the undoable step, e.g. "tags"), "Show in folder" (revealPath: a
+// finished file, e.g. the exported archive) and a close x. It disappears on its own; a new message
+// replaces the old one.
+//   toast.show(qsTr("Transcript ready"), "", "", false)
+//   toast.show(qsTr("Suggestion rejected: #Nordvik"), "", "", false, "tags")
 Item {
     id: root
 
@@ -30,7 +30,7 @@ Item {
         root.undoKey = undoKey || ""
         root.revealPath = revealPath || ""
         root.shown = true
-        // Költség / hiba / kész fájl: tovább marad kint (van rajta teendő vagy azonosító).
+        // Cost / error / finished file: stays longer (there is something to act on or an ID to copy).
         hideTimer.interval = root.requestId !== "" || root.usageLink || root.revealPath !== "" ? 20000
                            : root.tone === "danger" ? 12000 : 6000
         hideTimer.restart()
@@ -46,7 +46,7 @@ Item {
     implicitHeight: row.implicitHeight + 16
 
     Timer { id: hideTimer; onTriggered: root.shown = false }
-    // Vágólapra másolás (a QML-nek nincs közvetlen vágólap-API-ja).
+    // Copy to clipboard (QML has no direct clipboard API).
     TextEdit { id: clip; visible: false }
 
     Rectangle {

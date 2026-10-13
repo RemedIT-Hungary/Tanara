@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Egy hangminta sora (P01): lejátszás · forrás (eszköz-ikon + név) és alatta a megbeszélés
-// teljes címe (törik, nem vágódik) · dátum · hossz · „…” menü, amely a sora alatt nyílik.
+// One voice sample row: play · source (device icon + name) and below it the meeting's full
+// title (wraps, not clipped) · date · length · "..." menu that opens below the row.
 Item {
     id: root
 
@@ -91,8 +91,8 @@ Item {
             wrapMode: Text.Wrap
         }
     }
-    // Dátum; alatta a modell-jelölés („2/2 modell”), ha több hangmodell van használatban vagy
-    // valamelyikkel még nincs lenyomat (súgóban: melyikkel van, melyikkel nincs).
+    // Date; below it the model mark ("2/2 models") if several voice models are in use or
+    // one of them has no voiceprint yet (tooltip: which one has it, which one does not).
     Column {
         anchors.right: lengthLabel.left
         anchors.rightMargin: 12

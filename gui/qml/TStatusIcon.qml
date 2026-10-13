@@ -1,8 +1,8 @@
 import QtQuick
 
-// Könyvtár-állapotikon (20×20). kind: "transcript" | "summary" | "identified";
-// state: "done" | "running" | "error" | "stale" | "missing". Mindig adj toolTipText-et.
-//   TStatusIcon { kind: "summary"; state: "stale"; toolTipText: qsTr("Összefoglaló: elavult") }
+// Library status icon (20x20). kind: "transcript" | "summary" | "identified";
+// state: "done" | "running" | "error" | "stale" | "missing". Always give a toolTipText.
+//   TStatusIcon { kind: "summary"; state: "stale"; toolTipText: qsTr("Summary: stale") }
 Rectangle {
     id: root
     property string kind: "transcript"

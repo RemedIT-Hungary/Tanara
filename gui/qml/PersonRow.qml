@@ -1,9 +1,9 @@
 import QtQuick
 
-// Egy személy sora a választó panelekben. Két méret:
-//   magas (44 px, PersonPicker): 28 px monogram · név 14/500 + alsor 12 · ujjlenyomat-ikon
-//   alacsony (38 px, LinePopover / SpeakerWhyPopover): 24 px monogram · név 14 · jobb oldalt az alsor
-// speakerIndex >= 0: a monogram a beszélő színében (a meeting egy másik beszélője).
+// One person row in the picker panels. Two sizes:
+//   tall (44 px, PersonPicker): 28 px monogram · name 14/500 + sub row 12 · fingerprint icon
+//   short (38 px, LinePopover / SpeakerWhyPopover): 24 px monogram · name 14 · sub row on the right
+// speakerIndex >= 0: the monogram in the speaker's color (another speaker of the meeting).
 Item {
     id: root
 
@@ -47,7 +47,7 @@ Item {
         }
     }
 
-    // Magas sor: név + alatta az alsor.
+    // Tall row: name + the sub row below.
     Column {
         visible: !root.compact
         anchors.left: avatar.right
@@ -82,7 +82,7 @@ Item {
         color: Theme.textMuted
     }
 
-    // Alacsony sor: név balra, alsor jobbra.
+    // Short row: name left, sub row right.
     TLabel {
         visible: root.compact
         anchors.left: avatar.right

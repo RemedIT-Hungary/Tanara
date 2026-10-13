@@ -1,12 +1,12 @@
 import QtQuick
 
-// Beszéd-csík (G6): egy sáv idővonala a megbeszélés teljes hosszán — a beszédes keretek
-// (≥ a sáv beszédszintje − 10 dB) a sáv színével, a csend vékony alapvonallal, ahol a sávnak
-// nincs hangja (később indult / szakaszok közti rés), üres. A lejátszás-fej függőleges vonal.
-// Kattintás / húzás = ugrás oda és lejátszás EZEN a sávon (seekRequested(ms), megbeszélés-idő);
-// hoverre idő-buborék. Kompakt (18 px) az Áttekintés jobb oszlopában, nagy (40 px) a „Sávok
-// részletei"-ben. Ha az aktivitás még számol / nincs: szürke, lüktető csík.
-//   TrackActivityStrip { activity: activityModel; trackId: model.groupId; positionMs: …; onSeekRequested: (ms) => … }
+// Speech strip: one track's timeline over the meeting's full length - speech frames (>= the
+// track's speech level - 10 dB) in the track's color, silence a thin baseline, empty where the
+// track has no sound (started later / gaps between segments). The playhead is a vertical line.
+// Click / drag = seek there and play ON THIS track (seekRequested(ms), meeting time); a time
+// bubble on hover. Compact (18 px) in the Overview's right column, large (40 px) in "Track
+// details". While the activity is still computing / absent: a gray, pulsing strip.
+//   TrackActivityStrip { activity: activityModel; trackId: model.groupId; positionMs: ...; onSeekRequested: (ms) => ... }
 Item {
     id: root
 
@@ -14,9 +14,9 @@ Item {
     property string trackId: ""
     property bool compact: false
     property int durationMs: activity ? activity.durationMs : 0
-    property int positionMs: -1              // a lejátszás-fej (megbeszélés-idő); -1 = nincs
+    property int positionMs: -1              // the playhead (meeting time); -1 = none
     property color color: Theme.accent
-    property bool dimmed: false              // kimaradt / eldobott sáv: halványabb
+    property bool dimmed: false              // left-out / dropped track: fainter
 
     signal seekRequested(int ms)
 
@@ -55,7 +55,7 @@ Item {
             color: root.color
             quietColor: Theme.borderStrong
             emptyColor: Theme.border
-            // Számolás közben lüktet (a képernyőképen állókép).
+            // Pulses while computing (static in screenshots).
             SequentialAnimation on opacity {
                 running: root.loading && root.visible
                 loops: Animation.Infinite
@@ -66,7 +66,7 @@ Item {
         }
     }
 
-    // ---- hover: halvány jelölő + idő-buborék ----
+    // ---- hover: faint marker + time bubble ----
     Rectangle {
         visible: mouse.containsMouse && root.durationMs > 0
         x: Math.round(mouse.mouseX)
@@ -86,7 +86,7 @@ Item {
         }
     }
 
-    // ---- lejátszás-fej ----
+    // ---- playhead ----
     Rectangle {
         objectName: "trackActivityPlayhead"
         visible: root.positionMs >= 0 && root.durationMs > 0

@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A felvevő pirula-mérete (R05): állapot-pötty, idő, sávonként egy 4 px-es mini-mérő,
-// kerek leállítás-gomb, kinyitás. ~230×40, sugár 20. Húzással mozgatható.
+// The recorder's pill size: state dot, time, one 4 px mini meter per track, round stop button,
+// expand. ~230x40, radius 20. Draggable.
 Item {
     id: root
     property var vm: null
@@ -33,7 +33,7 @@ Item {
         height: parent.height
         spacing: 10
 
-        Rectangle {                           // 10 px pötty 3 px recLine gyűrűvel
+        Rectangle {                           // 10 px dot with a 3 px recLine ring
             anchors.verticalCenter: parent.verticalCenter
             width: 16; height: 16; radius: 8
             color: root.recording ? Theme.recLine : "transparent"
@@ -50,7 +50,7 @@ Item {
             font.pixelSize: 15
             font.weight: Theme.weightMedium
         }
-        Row {                                 // sávonként egy mini-mérő
+        Row {                                 // one mini meter per track
             anchors.verticalCenter: parent.verticalCenter
             height: 16
             spacing: 2

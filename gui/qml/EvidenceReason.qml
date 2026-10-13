@@ -1,12 +1,12 @@
 import QtQuick
 
-// Egy ok a „Miért nem X?" (E1) és a „Miért ő?" (E3) blokkban: ikon (a bizonyíték fajtája;
-// zöld = mellette szól, warn = ellene / figyelmeztet), „Hang:" + a mondat, jobbra a javítás
-// helye (accent link: Sáv-beosztás · Minták · Címkéi · Módosítás · Kettejük átnézése).
+// One reason in the "Why not X?" and "Why them?" blocks: icon (the evidence kind;
+// green = speaks for, warn = against / warning), "Voice:" + the sentence, and on the right the
+// fix location (accent link: Track assignment - Samples - Tags - Edit - Review the two).
 //   EvidenceReason { evidence: editorVm.whyNot(id)[0]; onFixClicked: ev => … }
-// `evidence`: a TranscriptEditorViewModel.evidenceMap() térképe.
-// quickLabel: nem üres → a javítás-link előtt egy kattintásos gyors művelet (a címke-sorban:
-// „+ #Nordvik ráteszem", quickClicked) — a „Címkéi" link mellette marad.
+// `evidence`: a map from TranscriptEditorViewModel.evidenceMap().
+// quickLabel: if not empty -> a one-click quick action before the fix link (in the tag row:
+// "+ apply #Nordvik", quickClicked) - the "Tags" link stays next to it.
 Item {
     id: root
 

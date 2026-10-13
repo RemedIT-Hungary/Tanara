@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
 
-// B02 — Rögzítés: alapértelmezett források (a felvevő eszközlistája élő szintmérővel és
-// átnevezéssel), „minden eszköz” kapcsoló, hangminőség, lekeverés.
+// Recording: default sources (the recorder's device list with a live level meter and
+// renaming), "all devices" switch, audio quality, mixdown.
 Column {
     id: root
 
     property var vm: null
-    // Melyik sor nevét szerkeszti épp a felhasználó (-1 = egyiket sem).
+    // Which row's name the user is editing (-1 = none).
     property int editingRow: -1
 
     spacing: 20
 
-    // Az eszközlista újraépült (csatlakoztatás / leválasztás): a sorszám már mást jelenthet.
+    // The device list was rebuilt (plug / unplug): an index may now mean something else.
     Connections {
         target: root.vm ? root.vm.devices : null
         function onModelReset() { root.editingRow = -1 }
@@ -105,7 +105,7 @@ Column {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 3
 
-                                // ---- név + ceruza (kattintásra szerkeszthető) ----
+                                // ---- name + pencil (editable on click) ----
                                 Item {
                                     width: parent.width
                                     height: dev.editing ? 28 : nameLabel.implicitHeight
@@ -147,7 +147,7 @@ Column {
                                         font.weight: Theme.weightSemiBold
                                         placeholderText: dev.defaultName
                                         Accessible.name: qsTr("Az eszköz neve")
-                                        // Az üres név visszaállítja a gyári (rövidített) nevet.
+                                        // An empty name restores the factory (shortened) name.
                                         onAccepted: root.finishRename(dev.index, text, true)
                                         Keys.onEscapePressed: root.finishRename(dev.index, "", false)
                                         onActiveFocusChanged: if (!activeFocus && dev.editing) root.finishRename(dev.index, text, true)

@@ -1,6 +1,6 @@
 import QtQuick
 
-// Szakaszcímke: 12/600, nagybetűs, +0.06em betűköz, halvány (pl. „DÖNTÉSEK”, „MA”).
+// Section label: 12/600, uppercase, +0.06em letter spacing, faded (e.g. "DECISIONS", "TODAY").
 TLabel {
     muted: true
     font.pixelSize: Theme.fontCaption

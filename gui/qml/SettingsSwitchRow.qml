@@ -1,10 +1,10 @@
 import QtQuick
 
-// Kapcsoló-sor (Beállítások): a felvevő 30×18-as kapcsolója (RecorderSwitch) + 14/500 felirat
-// + opcionális 13 px-es magyarázat; alá további tartalom tehető (pl. léptető).
-//   SettingsSwitchRow { text: qsTr("Induljon el a bejelentkezéskor"); checked: vm.watcherAutostart
+// Switch row (Settings): the recorder's 30x18 switch (RecorderSwitch) + a 14/500 label + an
+// optional 13 px explanation; more content can go below (e.g. a stepper).
+//   SettingsSwitchRow { text: qsTr("Start at login"); checked: vm.watcherAutostart
 //                       onToggled: (on) => vm.watcherAutostart = on }
-// large: a „fő” kapcsoló (38×22), 15/600 címmel.
+// large: the "main" switch (38x22), with a 15/600 title.
 Item {
     id: root
 
@@ -18,7 +18,7 @@ Item {
     implicitWidth: 400
     implicitHeight: Math.max(sw.height + 2, textCol.implicitHeight)
 
-    // A nagy kapcsoló ugyanaz a rajz 38×22-ben (a RecorderSwitch mérete rögzített).
+    // The large switch is the same drawing at 38x22 (RecorderSwitch's size is fixed).
     Rectangle {
         id: bigSwitch
         visible: root.large

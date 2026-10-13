@@ -2,24 +2,24 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Könyvtár-oldalsáv (276 px): „Új felvétel”, keresés (Ctrl+F) szűrő-chipekkel (állapot,
-// személy, címke) és találatszámmal, a „+ Szűrő” popover (LibraryFilterPopover), a
-// megbeszélések listája dátum-szekciókkal, állapot-ikonokkal és címke-sorral, többes kijelölés
-// (Ctrl / Shift+kattintás, Esc; a jobb oldali panelt a Main.qml mutatja a `selection` alapján),
-// alul „Személyek · Címkék · ⚙”. Az adat a LibraryListModelből jön (a core MeetingLibrary
-// fölött; App.demo módban kitalált mintakönyvtár).
+// Library sidebar (276 px): "New recording", search (Ctrl+F) with filter chips (status, person,
+// tag) and a hit count, the "+ Filter" popover (LibraryFilterPopover), the meeting list with
+// date sections, status icons and a tag row, multi-select (Ctrl / Shift+click, Esc; Main.qml shows
+// the right-hand panel based on `selection`), and "People - Tags - gear" at the bottom. Data comes
+// from LibraryListModel (over the core MeetingLibrary; a fictional sample library in App.demo
+// mode).
 Item {
     id: root
 
-    property var shell: null                 // ShellActions vagy null (önálló képernyőkép)
+    property var shell: null                 // ShellActions or null (standalone screenshot)
     property string currentMeetingId: ""
     property alias forceEmpty: libraryModel.forceEmpty
     property alias searchText: libraryModel.searchText
     readonly property alias library: libraryModel
-    // Többes kijelölés (LibrarySelectionModel); count > 1 → a Main.qml a kijelölés-panelt mutatja.
+    // Multi-select (LibrarySelectionModel); count > 1 -> Main.qml shows the selection panel.
     readonly property alias selection: selectionModel
-    property var importModel: null            // ShellImportModel: a háttérben futó importálás sávjához
-    // A futó importálás sávjára kattintottak (a Main.qml a párbeszédablakot hozza vissza).
+    property var importModel: null            // ShellImportModel: for the background import strip
+    // The running-import strip was clicked (Main.qml brings the dialog back).
     signal importStripClicked()
 
     function focusSearch() {
@@ -27,8 +27,8 @@ Item {
         search.selectAll()
     }
 
-    // Szűrés egyetlen címkére (a címke-chip / a kezelő „Megnyitás a könyvtárban szűrőként”
-    // útja): a keresés és a többi szűrő törlődik.
+    // Filter to a single tag (the tag chip / the manager's "Open in library as filter"
+    // path): search and all other filters are cleared.
     function filterByTag(tagId) {
         selectionModel.clear()
         libraryModel.clearFilters()
@@ -36,13 +36,13 @@ Item {
             libraryModel.tags = [tagId]
     }
 
-    // A címkék kezelője (a héj adja; régebbi héjban még nincs).
+    // The tag manager (provided by the shell; absent in older shells).
     function openTags() {
         if (root.shell && root.shell.openTags)
             root.shell.openTags()
     }
 
-    // Demó / képernyőkép: "filters" (T04: címke-szűrők + nyitott popover) | "selection" (T05).
+    // Demo / screenshot: "filters" (tag filters + open popover) | "selection" (multi-select).
     function applyDemo(state) {
         if (state === "filters") {
             libraryModel.tags = ["t-nordvik", "t-partnerek"]
@@ -56,7 +56,7 @@ Item {
         filterPopover.open()
     }
 
-    // Kattintás egy soron: Ctrl → kijelölés váltása, Shift → tartomány, különben megnyitás.
+    // Click on a row: Ctrl toggles selection, Shift selects a range, otherwise open.
     function rowClicked(meetingId, snippetMs, modifiers) {
         if (modifiers & Qt.ControlModifier) {
             selectionModel.toggle(meetingId)
@@ -70,7 +70,7 @@ Item {
         }
     }
 
-    // Egyelemű kijelölés = az az egy megbeszélés megnyitva.
+    // A single-item selection means that one meeting is open.
     function settleSelection() {
         if (selectionModel.count !== 1)
             return
@@ -84,7 +84,7 @@ Item {
             root.currentMeetingId = meetingId
             return
         }
-        // Keresési találatra kattintva az átiratban a találat megszólalásához ugrunk.
+        // Clicking a search hit jumps to the matching utterance in the transcript.
         if (snippetMs >= 0)
             root.shell.seekTo(meetingId, snippetMs)
         else
@@ -102,9 +102,9 @@ Item {
         list.positionViewAtIndex(row, ListView.Contain)
     }
 
-    // A kijelölt elem legyen látható, ha kívülről választották ki (új felvétel, „Ezek várnak
-    // rád”, indításkori visszaállítás). Csak akkor görgetünk, ha tényleg kilóg — és csak
-    // miután a lista elrendeződött (induláskor a szekció-fejlécek még nincsenek meg).
+    // Keep the selected item visible when it was selected from outside (new recording, "Waiting
+    // for you", startup restore). Scroll only if it is actually clipped, and only after the
+    // list has laid out (the section headers do not exist yet at startup).
     function revealCurrent() {
         const row = libraryModel.indexOfMeeting(currentMeetingId)
         if (row < 0 || list.height <= 0)
@@ -141,7 +141,7 @@ Item {
                 toolTipText: qsTr("A felvevő megnyitása külön ablakban (Ctrl+N)")
                 onClicked: if (root.shell) root.shell.openRecorder()
             }
-            // Másodlagos út egy megbeszéléshez: meglévő hangfájlból.
+            // Secondary way to create a meeting: from an existing audio file.
             TIconButton {
                 objectName: "sidebarImport"
                 iconName: "import"
@@ -166,13 +166,13 @@ Item {
             hint: "Ctrl+F"
             text: libraryModel.searchText
             onTextChanged: libraryModel.searchText = text
-            // Az első fókuszkor előtöltjük az átiratok szövegét, hogy a keresés azonnali legyen.
+            // On first focus, preload the transcript text so search is instant.
             onActiveFocusChanged: if (activeFocus) libraryModel.warmUp()
             Keys.onDownPressed: { list.forceActiveFocus(); root.moveSelection(1) }
             Keys.onReturnPressed: { libraryModel.refreshNow(); if (libraryModel.count > 0) root.moveSelection(1) }
         }
 
-        // Szűrő-chipek (csak keresés / szűrés közben látszanak, hogy a nyugalmi lista tiszta maradjon).
+        // Filter chips (visible only while searching / filtering, so the idle list stays clean).
         Flow {
             id: chips
             visible: libraryModel.filtered || search.activeFocus || filterPopover.visible
@@ -204,7 +204,7 @@ Item {
                     onClicked: libraryModel.removePerson(modelData)
                 }
             }
-            // Címke-szűrők: a címke-chip (×-szel), hogy ne tévesszük össze a személy-chippel.
+            // Tag filters: the tag chip (with x), so it is not confused with a person chip.
             Repeater {
                 model: libraryModel.tagFilterItems
                 TagChip {
@@ -245,7 +245,7 @@ Item {
             elide: Text.ElideRight
         }
 
-        // ---- a lista (vagy az üres állapotai) ----
+        // ---- the list (or its empty states) ----
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -263,7 +263,7 @@ Item {
                 cacheBuffer: 400
                 activeFocusOnTab: true
                 keyNavigationEnabled: false
-                // A görgetősáv csak görgetés / rámutatás közben látszik (nyugalomban tiszta lista).
+                // The scrollbar shows only while scrolling / hovering (a clean list at rest).
                 T.ScrollBar.vertical: TScrollBar {
                     opacity: active ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: Theme.durationNormal } }
@@ -306,7 +306,7 @@ Item {
                     }
                 }
 
-                // Billentyűzettel érkezett-e a fókusz (ekkor látszik a kijelölés fókusz-kerete).
+                // Whether focus arrived via keyboard (then the selection shows its focus ring).
                 property bool keyNav: false
                 property bool tapFocus: false
                 onActiveFocusChanged: {
@@ -333,7 +333,7 @@ Item {
                 }
             }
 
-            // M01 — üres könyvtár.
+            // Empty library.
             ColumnLayout {
                 visible: libraryModel.totalCount === 0 && !libraryModel.filtered
                 anchors.centerIn: parent
@@ -360,7 +360,7 @@ Item {
                 }
             }
 
-            // Szűrés / keresés találat nélkül.
+            // No results for the filter / search.
             ColumnLayout {
                 visible: libraryModel.count === 0 && libraryModel.filtered
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -391,12 +391,12 @@ Item {
             }
         }
 
-        // ---- lábléc ----
+        // ---- footer ----
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 0
             TDivider { Layout.fillWidth: true }
-            // „Személyek · Címkék · ⚙” — hogy kiférjen, a Beállítások ikonra rövidül.
+            // "People - Tags - gear": the Settings label shrinks to an icon so it fits.
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 8
@@ -437,14 +437,14 @@ Item {
     LibraryFilterPopover {
         id: filterPopover
         parent: addFilter
-        // A design szerint kicsit balra lóg (az ablak szélénél a margó megfogja).
+        // Per the design it hangs slightly to the left (at the window edge the margin catches it).
         x: -40
         y: addFilter.height + 6
         library: libraryModel
         onManageTagsRequested: root.openTags()
     }
 
-    // Kívülről választott megbeszélés (héj, „Ezek várnak rád”, kezelő): a kijelölés megszűnik.
+    // Meeting selected from outside (shell, "Waiting for you", manager): the selection is cleared.
     Connections {
         target: root
         function onCurrentMeetingIdChanged() {
@@ -453,7 +453,7 @@ Item {
         }
     }
 
-    // Helyi menü a lista elemein.
+    // Context menu on list items.
     TMenu {
         id: itemMenu
         property string meetingId: ""

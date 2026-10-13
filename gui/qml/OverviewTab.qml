@@ -2,43 +2,43 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Áttekintés fül (design/handoff-v3 V1/V3/V5/V6, 6–10. döntés): az első fül, két oszlop.
-//   bal (miről és kikről): MIRŐL SZÓL (forrás-kártya: kézi leírás; naptár később), címkemező a
-//       javaslatokkal, KIK VOLTAK OTT (résztvevők forrás-jelvényekkel és beszédaránnyal; üresen
-//       „+ Résztvevő” / „Csak én beszéltem”; ha mindenki ismeretlen: a nyers beszélők +
-//       „Elnevezem őket”), és a jóváhagyás-banner („A hanglenyomat-elemzés kész: N jelölt”).
-//   jobb 340 px (technikai): FELDOLGOZÁS lépései, SÁVOK (lejátszás, lekeverés-kapcsoló,
-//       „Beemelem”); kész megbeszélésnél ADATOK 2×3 csempe és a lépések / sávok egy-egy sorba
-//       csukva. A régi Sávok fül teljes nézete (átnevezés, megkeresés, visszaállítás, végleges
-//       törlés, lekeverés) a „Részletek” panelen.
-// Átirat előtt (U6) is ez a fül látszik: a sávok hallgathatók / kapcsolhatók, résztvevő és címke
-//       adható, és az „Átírás indítása” (szolgáltató-állapot, hiányzó beállítás, hiba „Újra”-val)
-//       a FELDOLGOZÁS „Átirat” lépésében él (TranscribeStepPanel); kézi lekeverésnél a „Lekeverés”
-//       lépésben a „Lekeverés indítása”, a hanglenyomat-lépésben az azonosítás kapcsolója.
-// Az első átírás futása közben (A1) ugyanebben a lépésben a szakaszok, a „Közben nyugodtan
-//       dolgozz tovább” sor és a „Megszakítás”. Átírás előtt a forrás-kártya alatt a jegyzet-
-//       sablonok hasonló megbeszélésekből és az észlelt hívás (A3); a címkesor a cím alapján
-//       javasol, ha nincs más javaslat (A2, MeetingTagsModel.draftTitle).
-// A résztvevő-sor jelvényei (A4): tooltip a bizonyítékkal; átirat után kattintásra a szerkesztő
-//       „Miért ő?” panelje (shell.openSpeakerWhy). A névtelen sor (A5) kattintásra / „Elnevezés…”
-//       gombbal elnevezhető: átirat után személyválasztó → editor.reassignSpeaker; átirat előtt a
-//       „Ki volt ott?” párbeszéd (ott a név szerkeszthető). A hanglenyomat-lépésen „Újraelemzés” (D4).
-// A „Ki volt ott?” párbeszéd (U3) a participantsRequested jelre nyílik (Main: shell.openParticipants).
-// Változás-sáv (G7b, v3 4. döntés): az Áttekintés minden művelete (jóváhagyás, „Csak én beszéltem”,
-//       sáv be / ki, leírás, résztvevő felvétele / törlése, javaslat elutasítása, címke, elnevezés) a
-//       megbeszélés KÖZÖS visszavonási vermébe kerül (MeetingUndoService); a Main a héj
-//       meetingChangePosted jelére showChange(text)-et hív → sötét sáv a bal oszlop alján:
-//       „<mi történt> · Visszavonás · Ctrl+Z · ×”; visszavonás után „Visszavonva: …” (showUndone).
-// Képernyőképhez: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
-//   overviewRecorded|overviewRecordedError|overviewTranscribing"'.
+// Overview tab: the first tab, two columns.
+//   Left (what and who): ABOUT (source card: manual description; calendar later), tag field with
+//       suggestions, WHO WAS THERE (participants with source badges and talk share; when empty
+//       "+ Participant" / "Only I spoke"; when everyone is unknown: the raw speakers + "Name
+//       them"), and the approval banner ("Voiceprint analysis is done: N candidates").
+//   Right, 340 px (technical): PROCESSING steps, TRACKS (playback, mixdown switch, "Mix in");
+//       for a finished meeting STATS as a 2x3 tile grid, with steps / tracks collapsed to one
+//       row each. The full view of the old Tracks tab (rename, locate, restore, permanent
+//       delete, mixdown) is in the "Details" panel.
+// This tab also shows before a transcript exists: tracks can be played / toggled, participants
+// and tags can be added, and "Start transcription" (provider state, missing setup, error with
+// "Retry") lives in the PROCESSING "Transcript" step (TranscribeStepPanel); for a manual mixdown
+// the "Start mixdown" button is in the "Mixdown" step, the identification switch in the voiceprint
+// step. During the first transcription the same step shows the sections, the "Keep working
+// meanwhile" row and "Cancel". Before transcription, below the source card: note templates from
+// similar meetings and the detected call; the tag row suggests from the title when there is
+// no other suggestion (MeetingTagsModel.draftTitle).
+// Participant row badges: tooltip with the evidence; after transcription a click opens the
+// editor's "Why them?" panel (shell.openSpeakerWhy). An anonymous row can be named by click /
+// "Name..." button: after transcription a person picker -> editor.reassignSpeaker; before it the
+// "Who was there?" dialog (the name is editable there). The voiceprint step has "Reanalyze".
+// The "Who was there?" dialog opens on the participantsRequested signal (Main: shell.openParticipants).
+// Change bar: every Overview action (approval, "Only I spoke", track on / off, description,
+// adding / removing a participant, rejecting a suggestion, tag, naming) goes onto the meeting's
+// SHARED undo stack (MeetingUndoService); Main calls showChange(text) on the shell's
+// meetingChangePosted signal -> dark bar at the bottom of the left column:
+// "<what happened> · Undo · Ctrl+Z · x"; after an undo "Undone: ..." (showUndone).
+// For screenshots: --qml-prop 'demoState="overviewProcessing|overviewDone|overviewEmpty|overviewNobody|
+// overviewRecorded|overviewRecordedError|overviewTranscribing"'.
 Item {
     id: root
 
     property string meetingId: ""
-    property var player: null                // PlayerController vagy null
-    property var shell: null                 // ShellActions vagy null
-    property var tagsModel: null             // MeetingTagsModel (ShellMeetingModel.tags) vagy null
-    property var editor: null                // TranscriptEditorViewModel (a személyválasztóhoz) vagy null
+    property var player: null                // PlayerController or null
+    property var shell: null                 // ShellActions or null
+    property var tagsModel: null             // MeetingTagsModel (ShellMeetingModel.tags) or null
+    property var editor: null                // TranscriptEditorViewModel (for the person picker) or null
     property string demoState: ""
 
     readonly property alias vm: vm
@@ -47,20 +47,20 @@ Item {
 
     signal participantsRequested()
 
-    // „Később”: a banner ebben a munkamenetben, ennél a megbeszélésnél nem jön elő.
+    // "Later": the banner does not come back in this session for this meeting.
     property var laterFor: ({})
     readonly property bool bannerShown: vm.approvalPending && !laterFor[meetingId]
-    // Kész állapotban az összecsukott sorok nyitása.
+    // Opening the collapsed rows in the done state.
     property bool stepsOpen: false
     property bool tracksOpen: false
     onMeetingIdChanged: { stepsOpen = false; tracksOpen = false; changeBar.dismiss() }
 
-    // A V5-szerű (két sávos, üres) demó-állapotok.
+    // The V5-like (two-track, empty) demo states.
     readonly property bool demoTwoTracks: ["overviewEmpty", "overviewNobody", "overviewRecorded",
                                            "overviewRecordedError", "overviewTranscribing"].indexOf(root.demoState) >= 0
-    // Átirat előtt, az átírás indítása előtt: a lépésekben az indító vezérlők.
+    // Before transcription starts: the start controls inside the steps.
     readonly property bool beforeTranscription: !vm.hasTranscript && !vm.transcribing
-    // A hanglenyomat-lépés állapota: várakozva „Elemzés indítása”, lefutott elemzés után „Újraelemzés”.
+    // State of the voiceprint step: while waiting "Start analysis", after a finished analysis "Reanalyze".
     readonly property string voiceState: {
         for (const s of vm.steps) if (s.key === "voice") return s.state
         return ""
@@ -74,8 +74,8 @@ Item {
         meetingId: root.meetingId
         demoState: root.demoState
     }
-    // Az átírás kapuzása, hibája, a lekeverés állapota és az azonosítás kapcsolója (a régi
-    // átirat előtti nézet modellje) — csak amíg nincs átirat.
+    // Transcription gating, its error, the mixdown state and the identification switch (the model of
+    // the old pre-transcript view) -- only while there is no transcript.
     PreTranscriptViewModel {
         id: pre
         meetingId: vm.hasTranscript ? "" : root.meetingId
@@ -89,19 +89,19 @@ Item {
         meetingId: root.meetingId
         demoState: root.demoTwoTracks ? "overviewTwo" : "overview"
     }
-    // Beszélő → sáv kötés a KIK VOLTAK OTT soraiban (G6, sáv-chipek).
+    // Speaker -> track binding in the WHO WAS THERE rows (track chips).
     ParticipantTrackBinder {
         id: trackBinder
         objectName: "participantTrackBinder"
         meetingId: root.meetingId
     }
-    // Saját címke-modell, ha a gazda nem ad (önálló képernyőkép): kitalált készlet.
+    // Own tag model when the host gives none (standalone screenshot): a made-up set.
     MeetingTagsModel {
         id: ownTags
         demoState: root.demoTwoTracks ? "none"
                  : root.demoState === "overviewDone" ? "few" : "similar"
     }
-    // A Beállítások bezárása után a kapuzás újraolvasása (kulcs került be / ki).
+    // Re-read the gating after Settings closes (a key was added / removed).
     onVisibleChanged: if (visible && root.beforeTranscription) pre.refresh()
     Connections {
         target: Qt.application
@@ -111,7 +111,7 @@ Item {
         }
     }
     readonly property var effectiveTags: tagsModel ? tagsModel : ownTags
-    // A2: átírás előtt a cím alapú tartalék-javaslat (ha nincs rendes javaslat).
+    // Title-based fallback suggestion before transcription (when there is no real suggestion).
     Binding {
         target: root.effectiveTags
         property: "draftTitle"
@@ -124,22 +124,22 @@ Item {
         picker.y = p.y + 6
         picker.open()
     }
-    // A „Sávok részletei” panel (régi Sávok fül; a Main demó-állapota is ezt nyitja).
+    // The "Track details" panel (old Tracks tab; Main's demo state opens it too).
     function openTracks() { tracksDialog.open() }
-    // Átírás indítása előtt (a lépés gombja, a hiba „Újra”-ja) a félbehagyott leírás mentődik.
+    // Before transcription starts (step button, error "Retry") the unfinished description is saved.
     function commitSource() { if (sourceCard.editing) sourceCard.finish(true) }
     function solo() {
         if (vm.setSolo() || !root.shell) return
         root.shell.toast(qsTr("Ehhez add meg a saját neved: Beállítások › Beszélők › Te."))
         root.shell.openSettings("speakers")
     }
-    // A4: a jelvény → a szerkesztő „Miért ő?” panelje arra a beszélőre (Átirat fül).
+    // The badge -> the editor's "Why them?" panel for that speaker (Transcript tab).
     function explainSpeaker(speakerKey) {
         if (root.shell && typeof root.shell.openSpeakerWhy === "function")
             root.shell.openSpeakerWhy(root.meetingId, speakerKey)
     }
-    // A5: a névtelen sor elnevezése. Átirat után személyválasztó (→ editor.reassignSpeaker);
-    // átirat előtt a „Ki volt ott?” párbeszéd (a core ott engedi a név megadását).
+    // Naming an anonymous row. After transcription a person picker (-> editor.reassignSpeaker);
+    // before it the "Who was there?" dialog (the core lets the name be set there).
     function nameRow(row, anchor) {
         if (!vm.hasTranscript || (row.speakerKey || "") === "") {
             root.participantsRequested()
@@ -151,19 +151,19 @@ Item {
         namePicker.y = p.y + 6
         namePicker.open()
     }
-    // A változás-sáv (a Main hívja a közös verem jeleire; demóban a képernyőképhez).
+    // The change bar (Main calls it on the shared stack's signals; in the demo, for screenshots).
     function showChange(text) { changeBar.post(text, false) }
     function showUndone(text) { changeBar.post(qsTr("Visszavonva: %1").arg(text), true) }
     function hideChange() { changeBar.dismiss() }
 
-    // „Elemzés indítása” / „Újraelemzés” (D4): átirat után a menü „Hanglenyomat-elemzés újra”-jával
-    // azonos (héj), átirat előtt a nyers sávok hangelemzése (analyzeParticipants).
+    // "Start analysis" / "Reanalyze": after transcription the same as the menu's "Redo voiceprint
+    // analysis" (shell); before it, voice analysis of the raw tracks (analyzeParticipants).
     function reanalyze() {
         if (vm.hasTranscript) { if (root.shell) root.shell.identifyParticipants(root.meetingId) }
         else vm.reanalyze()
     }
 
-    // Szakasz-fejléc: 12/600 nagybetűs címke · halvány tipp · jobbra accent hivatkozás.
+    // Section header: 12/600 uppercase label · dim hint · accent link on the right.
     component SectionHeader: RowLayout {
         id: sh
         property string title: ""
@@ -214,7 +214,7 @@ Item {
             background: Item { TFocusRing { visible: link.visualFocus; targetRadius: Theme.radiusTag } }
         }
     }
-    // Összecsukott sor (kész állapot): ikon-kör · cím + alszöveg · ›
+    // Collapsed row (done state): icon circle · title + subtext · >
     component CollapsedRow: T.AbstractButton {
         id: cr
         property string iconName: ""
@@ -250,12 +250,12 @@ Item {
         }
     }
 
-    // Sötét változás-sáv (a TranscriptChangeBar formanyelvén): üzenet · Visszavonás · Ctrl+Z · ×.
-    // Rámutatás alatt nem jár le; az új üzenet a régit váltja.
+    // Dark change bar (in the style of TranscriptChangeBar): message · Undo · Ctrl+Z · x. It does not
+    // expire while hovered; a new message replaces the old one.
     component ChangeBar: Rectangle {
         id: bar
         property string text: ""
-        property bool undone: false     // „Visszavonva: …” — nincs több teendő rajta
+        property bool undone: false     // "Undone: ..." -- nothing left to do on it
         property bool shown: false
         function post(message, isUndone) {
             bar.text = message
@@ -308,7 +308,7 @@ Item {
                 onClicked: {
                     const hasUndo = root.shell && root.shell.hasMeetingUndo === true
                     if (hasUndo) root.shell.undoMeeting()
-                    else bar.post(qsTr("Visszavonva: %1").arg(bar.text), true)   // demó
+                    else bar.post(qsTr("Visszavonva: %1").arg(bar.text), true)   // demo
                 }
             }
             BarAction {
@@ -319,7 +319,7 @@ Item {
             }
         }
     }
-    // Sötét sávra írt művelet (felirat + opcionális ikon). `strong`: keretes, hangsúlyos.
+    // Action written on the dark bar (label + optional icon). `strong`: framed, emphasized.
     component BarAction: Item {
         id: action
         property string text: ""
@@ -373,7 +373,7 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // ================= bal oszlop =================
+        // ================= left column =================
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -381,7 +381,7 @@ Item {
                 id: leftFlick
                 objectName: "overviewLeft"
                 anchors.fill: parent
-                // A lebegő változás-sáv ne takarja az utolsó sort.
+                // The floating change bar must not cover the last row.
                 contentHeight: left.implicitHeight + 36 + (changeBar.visible ? changeBar.height + 12 : 0)
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
@@ -523,7 +523,7 @@ Item {
                         }
                     }
 
-                    // Jóváhagyás-banner (a hangelemzés kész, még nincs döntés).
+                    // Approval banner (voice analysis is done, no decision yet).
                     Rectangle {
                         objectName: "approvalBanner"
                         visible: root.bannerShown
@@ -589,7 +589,7 @@ Item {
             }
         }
 
-        // ================= jobb oszlop (340) =================
+        // ================= right column (340) =================
         Rectangle {
             Layout.preferredWidth: 340
             Layout.fillHeight: true
@@ -611,7 +611,7 @@ Item {
                     width: rightFlick.width - 36
                     spacing: 10
 
-                    // ---- kész: ADATOK + összecsukott sorok ----
+                    // ---- done: STATS + collapsed rows ----
                     SectionHeader { visible: vm.allDone && vm.stats.length > 0; Layout.fillWidth: true; title: qsTr("ADATOK") }
                     StatTiles {
                         objectName: "statTiles"
@@ -661,7 +661,7 @@ Item {
                         }
                     }
 
-                    // ---- lépések ----
+                    // ---- steps ----
                     SectionHeader {
                         visible: !vm.allDone
                         Layout.fillWidth: true
@@ -672,7 +672,7 @@ Item {
                         visible: !vm.allDone || root.stepsOpen
                         Layout.fillWidth: true
                         steps: vm.steps
-                        // Átírás előtt az indító, az első átírás közben a szakaszok + „Megszakítás” (A1).
+                        // Before transcription the start control, during the first transcription the sections + "Cancel".
                         transcriptContent: !vm.hasTranscript && (root.beforeTranscription || vm.transcribing)
                                            ? transcribeStep : null
                         mixdownContent: root.beforeTranscription && (pre.mixdownState === "missing" || pre.mixdownState === "stale")
@@ -680,7 +680,7 @@ Item {
                         voiceContent: root.identifyShown || root.reanalyzeShown ? voiceStep : null
                     }
 
-                    // ---- sávok ----
+                    // ---- tracks ----
                     SectionHeader {
                         visible: !vm.allDone || root.tracksOpen
                         Layout.fillWidth: true
@@ -703,7 +703,7 @@ Item {
         }
     }
 
-    // ---- a lépésekbe ágyazott vezérlők (átirat előtt) ----
+    // ---- controls embedded in the steps (before transcription) ----
     Component {
         id: transcribeStep
         TranscribeStepPanel {
@@ -765,7 +765,7 @@ Item {
         }
     }
 
-    // ---- „+ Résztvevő” ----
+    // ---- "+ Participant" ----
     PersonPicker {
         id: picker
         objectName: "overviewPersonPicker"
@@ -773,7 +773,7 @@ Item {
         anonymousText: ""
         onPersonChosen: name => vm.addParticipant(name)
     }
-    // ---- „Elnevezés…” (névtelen beszélő, átirat után) ----
+    // ---- "Name..." (anonymous speaker, after transcription) ----
     PersonPicker {
         id: namePicker
         objectName: "overviewNamePicker"
@@ -787,7 +787,7 @@ Item {
         }
     }
 
-    // ---- a régi Sávok fül teljes nézete ----
+    // ---- the old Tracks tab's full view ----
     TDialog {
         id: tracksDialog
         objectName: "tracksDialog"

@@ -1,6 +1,6 @@
 import QtQuick
 
-// „alapért.” jelölés a rendszer alapértelmezett eszközén (felvevő + Beállítások „Rögzítés”).
+// "default" mark on the system's default device (recorder + Settings "Recording").
 Rectangle {
     width: defText.implicitWidth + 10
     height: 15

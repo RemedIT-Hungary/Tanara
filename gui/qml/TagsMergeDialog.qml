@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Címkék összevonása (T11): 500 px. Jelöltek: előbb a hasonló nevűek, aztán a gyakran együtt
-// járók; „MEGMARADÓ NÉV” rádiógombok; az eredmény valódi számokkal („16 megbeszélés (1 közös)”),
-// és hogy a megszűnő név beírásakor a mező a megmaradót ajánlja. Visszavonható (Ctrl+Z / toast).
+// Merge tags: 500 px. Candidates: similar names first, then often-together ones; "NAME TO KEEP"
+// radio buttons; the result with real numbers ("16 meetings (1 shared)"), and typing the
+// retiring name makes the field suggest the surviving one. Undoable (Ctrl+Z / toast).
 TDialog {
     id: dialog
 
@@ -184,7 +184,8 @@ TDialog {
             objectName: "mergeConfirm"
             text: qsTr("Összevonás")
             variant: "primary"
-            // Letiltás helyett rejtve, amíg nincs kivel (a letiltott gomb szaggatott keretet kapna).
+            // Hidden instead of disabled while there is no candidate (a disabled button would get
+            // a dashed border).
             visible: dialog.chosen !== ""
             leftPadding: 16; rightPadding: 16
             onClicked: {

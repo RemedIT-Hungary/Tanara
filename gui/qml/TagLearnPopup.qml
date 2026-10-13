@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A „Ki volt ott?” jóváhagyása utáni tanulási kérdés (vault UX-terv 5.): nem-modális sötét sáv
-// az ablak alján (a toast fölött), ~8 mp; rámutatva és nyitott „Egyenként…” listával marad.
-// A válasz a toastra „Visszavonás”-sal megy ki (a címke-verem: shell.toast(…, "tags")).
-//   TagLearnPopup { vm: participantsViewModel; shell: shellActions }   →   openIfAsked()
+// The learning question after approving "Who was there?" (vault UX plan 5): a non-modal dark
+// strip at the bottom of the window (above the toast), ~8 s; it stays while hovered and while
+// the "One by one..." list is open. The answer goes out on the toast with "Undo" (the tag
+// stack: shell.toast(..., "tags")).
+//   TagLearnPopup { vm: participantsViewModel; shell: shellActions }   ->   openIfAsked()
 T.Popup {
     id: popup
     objectName: "tagLearnPopup"
@@ -15,7 +16,7 @@ T.Popup {
     readonly property var question: vm ? vm.learnQuestion : ({})
     readonly property bool asked: !!question && (question.text || "") !== ""
 
-    // true: van kérdés, a sáv nyitva.
+    // true: there is a question, the strip is open.
     function openIfAsked() {
         if (!asked) return false
         bar.expanded = false

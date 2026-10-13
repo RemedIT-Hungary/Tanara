@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Chip (24 px, 12/600). Fajtái:
-//   szűrő:         TChip { text: qsTr("Bizonytalan 12"); checkable: true }  (be: accent stílus)
-//   eltávolítható: TChip { text: …; removable: true; onRemoved: … }         (× a végén)
-//   személy:       TChip { text: "Varga Nóra"; speakerIndex: 3 }            (beszélőszín + pötty)
-//   hozzáadás:     TChip { text: qsTr("Szűrő"); dashed: true }              (szaggatott, + ikon)
+// Chip (24 px, 12/600). Kinds:
+//   filter:      TChip { text: qsTr("Uncertain 12"); checkable: true }  (on: accent style)
+//   removable:   TChip { text: ...; removable: true; onRemoved: ... }   (x at the end)
+//   person:      TChip { text: "Varga Nora"; speakerIndex: 3 }          (speaker color + dot)
+//   add:         TChip { text: qsTr("Filter"); dashed: true }           (dashed, + icon)
 T.AbstractButton {
     id: control
 
@@ -13,7 +13,7 @@ T.AbstractButton {
     property bool removable: false
     property bool dashed: false
     property string iconName: dashed ? "plus" : ""
-    property string tone: "accent"                   // "accent" | "neutral" (ha nincs speakerIndex)
+    property string tone: "accent"                   // "accent" | "neutral" (without speakerIndex)
     property bool stateHovered: hovered
     property bool stateFocused: visualFocus
     signal removed()

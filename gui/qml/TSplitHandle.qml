@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Elválasztó fogantyú SplitView-hoz:  SplitView { handle: TSplitHandle {} }
-// 1 px-es vonal, ±3 px megfogható sávval; húzás közben accent.
+// Divider handle for SplitView:  SplitView { handle: TSplitHandle {} }
+// 1 px line with a +-3 px grab area; accent while dragging.
 Rectangle {
     id: root
     implicitWidth: 1

@@ -1,21 +1,23 @@
 import QtQuick
 
-// Az átirat-lista egy sora: megszólalás (névsor csak beszélőváltáskor és jelölt sornál, alatta a
-// szöveg), vagy a szűrő „··· N biztos sor elrejtve" elválasztója. Bal oldalt (ha a sín látszik) a
-// beszélő-oszlopok ezen sorra eső szelete; a sín egérkezelése a TranscriptTab-ban van (egy közös
-// réteg, hogy a húzás több soron át is működjön). A NÉVRE kattintva ennek a sornak a beszélője
-// javítható (LinePopover; a teljes beszélő a sín-fejlécről / a térképről: SpeakerWhyPopover).
-// Javítás módban (sín látszik) a névsor jelölői (handoff-v3 E1): pipa (megerősítve), „rövid",
-// „bizonytalan · sáv | hang | címke", „javítva", „új személy", „egymásra beszéltek", és (S2) a
-// döntött sorokon a minta-jel (tömör hullám = minta, áthúzott = nem minta), valamint a
-// „? nem azonosítható" jelölő; a nem azonosítható sor halvány (nem sraffozott).
-// Söprés-módban (S6): a megálló sor (itt állt meg a lejátszás) accent bal-csíkkal, alatta a
-// döntés-sáv (SweepDecisionBar); folyamatos módban az utólagos ablak sora szaggatott accent
-// kerettel (ez a billentyűk célsora, nem a futó sor); jobbra „megálló” / „utólagos ablak” jelölő.
+// One row of the transcript list: an utterance (the name line only at a speaker change and on a
+// flagged line, the text below it), or the filter's "... N sure lines hidden" divider. On the
+// left (when the rail is visible) the slice of the speaker columns that falls on this row; the
+// rail's mouse handling lives in TranscriptTab (one shared layer so a drag can span rows).
+// Clicking the NAME corrects this line's speaker (LinePopover; the whole speaker from the rail
+// header / the map: SpeakerWhyPopover).
+// In Correct mode (rail visible) the name line carries markers: check (confirmed), "short",
+// "uncertain - track | voice | tag", "corrected", "new person", "talked over each other", on
+// decided lines the sample mark (solid wave = sample, struck through = not a sample) and the
+// "? unidentifiable" marker; an unidentifiable line is faded (not hatched).
+// Sweep mode: the stopped line (playback stopped here) gets an accent left stripe and the
+// decision bar (SweepDecisionBar) below it; in continuous mode the retroactive-window line gets
+// a dashed accent border (it is the keys' target line, not the playing one); "stopped" /
+// "retroactive window" markers on the right.
 Item {
     id: row
 
-    // ---- a modellből ----
+    // ---- from the model ----
     required property int index
     required property string kind
     required property int utteranceIndex
@@ -50,8 +52,8 @@ Item {
     required property int startMs
     required property int endMs
 
-    // ---- a TranscriptTab-tól ----
-    required property var tab               // TranscriptTab (állapot + műveletek)
+    // ---- from TranscriptTab ----
+    required property var tab               // TranscriptTab (state + actions)
     required property var vm                // TranscriptEditorViewModel
 
     readonly property bool gap: kind === "gap"
@@ -60,10 +62,10 @@ Item {
     readonly property real textX: tab.textX
     readonly property bool inDrag: tab.dragActive && index >= Math.min(tab.dragFromRow, tab.dragToRow)
                                    && index <= Math.max(tab.dragFromRow, tab.dragToRow)
-    // Előnézet (húzás vagy rámutatás): a cél-oszlop cellája ezen a soron.
+    // Preview (drag or hover): the target column's cell on this row.
     readonly property bool inPreview: inDrag || (!tab.dragActive && tab.hoverRow === index)
     readonly property alias nameItem: nameBox
-    // ---- söprés (S6) ----
+    // ---- sweep mode ----
     readonly property bool sweepOn: tab.sweepOn
     readonly property bool sweepStopped: sweepOn && !gap && vm.sweepStopRow === index
     readonly property bool sweepAfter: sweepOn && !gap && vm.sweepAfterRow === index
@@ -72,7 +74,7 @@ Item {
     width: ListView.view ? ListView.view.width : 0
     height: gap ? 24 : body.height
 
-    // ---- elválasztó (szűrő) ----
+    // ---- divider (filter) ----
     readonly property string gapText: {
         const f = vm.listFilter
         if (f === "samples") return qsTr("··· %n sor elrejtve", "", row.hiddenCount)
@@ -98,7 +100,7 @@ Item {
         }
     }
 
-    // A sín jobb széle.
+    // The rail's right edge.
     Rectangle {
         visible: row.tab.railShown && !row.gap
         x: row.textX - 1
@@ -107,17 +109,17 @@ Item {
         color: Theme.border
     }
 
-    // ---- megszólalás ----
+    // ---- utterance ----
     Item {
         id: body
         visible: !row.gap
         width: row.width
         height: row.gap ? 0 : textColumn.y + textColumn.height + 6
 
-        // A „nem azonosítható" sor halvány (a sín-cellája és a szövege is).
+        // An "unidentifiable" line is faded (its rail cell and its text).
         opacity: row.ignored && !row.selected ? 0.5 : 1
 
-        // Sor-háttér: lejátszott = accentSoft; kijelölt = raised + 1.5 px accent keret.
+        // Row background: played = accentSoft; selected = raised + 1.5 px accent border.
         Rectangle {
             anchors.fill: parent
             visible: row.playing || row.selected || row.sweepStopped
@@ -125,7 +127,7 @@ Item {
             border.width: row.selected ? 1.5 : 0
             border.color: Theme.accent
         }
-        // Söprés: a megálló sor bal accent-csíkja; az utólagos ablak sora szaggatott keretben.
+        // Sweep: the stopped line's left accent stripe; the retroactive-window line has a dashed border.
         Rectangle {
             objectName: "sweepStopBar"
             visible: row.sweepStopped
@@ -146,7 +148,7 @@ Item {
             lineWidth: 1.5
         }
 
-        // A sín ezen sorra eső szelete.
+        // The rail slice that falls on this row.
         Loader {
             active: row.tab.railShown
             x: row.tab.railX
@@ -176,7 +178,7 @@ Item {
             }
         }
 
-        // Kattintás a szövegen: kijelölés (Ctrl / Shift: több sor); dupla kattintás: lejátszás innen.
+        // Click on the text: select (Ctrl / Shift: several lines); double click: play from here.
         MouseArea {
             x: row.textX
             width: body.width - x
@@ -197,8 +199,8 @@ Item {
             width: body.width - x - 20
             spacing: 2
 
-            // Névsor: név (kattintható: ez a sor kié) · időbélyeg · jelölők. (A soronkénti döntés
-            // gombjai az Átnézendő nézet „Egyenként" soraiban vannak: ReviewGroupsView.)
+            // Name line: name (clickable: whose line this is) · timestamp · markers. (The per-line decision
+            // buttons are in the "One by one" rows of the To review view: ReviewGroupsView.)
             Item {
                 visible: row.head
                 width: parent.width
@@ -274,7 +276,7 @@ Item {
                         TToolTip { visible: stampHover.hovered; text: qsTr("Lejátszás innen") }
                     }
 
-                    // ---- jelölők (Javítás módban; olvasáskor csak a bizonytalan / javítva) ----
+                    // ---- markers (in Correct mode; when reading only the uncertain / corrected ones) ----
                     TranscriptMarker {
                         objectName: "newPersonMarker"
                         visible: row.newPerson && row.tab.railShown
@@ -285,7 +287,7 @@ Item {
                     TranscriptMarker {
                         id: statePill
                         objectName: "statePill"
-                        // Az új személy sorainál a „javítva" magától értetődik (az „új személy" mondja).
+                        // On new-person lines "corrected" is implied (the "new person" marker says it).
                         visible: row.uncertain || (row.corrected && !(row.newPerson && row.tab.railShown))
                         anchors.verticalCenter: parent.verticalCenter
                         kind: row.uncertain ? "uncertain" : "corrected"
@@ -319,7 +321,7 @@ Item {
                         toolTipText: qsTr("Túl rövid a hang-ellenőrzéshez: csak fülre dönthető el, kié")
                     }
 
-                    // Minta-jel a döntött sorokon: tömör hullám = hangminta lett, áthúzott = nem minta.
+                    // Sample mark on decided lines: solid wave = became a voice sample, struck through = not a sample.
                     TranscriptMarker {
                         objectName: "sampleMarker"
                         visible: row.sampleState !== "" && row.tab.railShown
@@ -330,8 +332,8 @@ Item {
                                      : row.noisy ? qsTr("Nem minta: egymásra beszéltek / zajos, a hangját nem használom")
                                      : qsTr("Nem minta: túl rövid ahhoz, hogy a hangja minta legyen")
                     }
-                    // „Egymásra beszéltek": visszafogott jelzés; a sor nem hangminta (a döntött
-                    // soron az áthúzott hullám mondja ki).
+                    // "Talked over each other": a subdued flag; the line is not a voice sample (on a decided
+                    // line the struck-through wave says so).
                     TranscriptMarker {
                         id: noisyPill
                         objectName: "noisyPill"
@@ -342,7 +344,7 @@ Item {
                               ? qsTr("Ebben a sorban más is beszél egyszerre, ezért a hangját nem használom mintának (bizonytalanság-jelzés, hanglenyomat).")
                               : qsTr("Megjelölted, hogy ezt a sort ne használjam hangmintának (bizonytalanság-jelzés, hanglenyomat).")
                     }
-                    // A jelzés visszavonása: csak rámutatáskor, hogy ne zajosítsa a listát.
+                    // Undoing the flag: only on hover, so it does not clutter the list.
                     TButton {
                         objectName: "noisyClear"
                         visible: row.noisy && (rowHover.hovered || hovered)
@@ -358,7 +360,7 @@ Item {
                         onClicked: row.vm.setRowNoisy(row.index, false)
                     }
                 }
-                // Söprés: jobbra a megálló-jelölők.
+                // Sweep: the stop markers on the right.
                 TPill {
                     objectName: "sweepStopPill"
                     visible: row.sweepStopped || row.sweepAfter || row.sweepUpcoming
@@ -378,7 +380,7 @@ Item {
                 wrapMode: Text.Wrap
                 cssLineHeight: Theme.transcriptLineHeight
             }
-            // Söprés, megálló: a döntés-sáv a sor alatt.
+            // Sweep, stopped: the decision bar below the row.
             Loader {
                 objectName: "sweepDecisionLoader"
                 active: row.sweepStopped
@@ -398,7 +400,7 @@ Item {
             }
         }
 
-        // Névsor nélküli (folytató) bekezdésnél az időbélyeg rámutatáskor jelenik meg.
+        // For a continuation paragraph (no name line) the timestamp appears on hover.
         Loader {
             active: !row.head && rowHover.hovered
             anchors.right: parent.right

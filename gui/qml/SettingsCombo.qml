@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Legördülő választó (Beállítások). Két fajtája:
-//   választó:      SettingsCombo { options: [{ value, label, tag? }]; value: …; onPicked: (v) => … }
-//   szerkeszthető: SettingsCombo { editable: true; options: ["a", "b"]; value: …; onPicked: … }
-//                  — szabad szöveg is beírható (modellnév, nyelv); a lista csak segít.
-// A lista a mező alatt nyílik (raised, sugár 8, árnyék), elemei 38 px magasak; az opcionális
-// `tag` zöld pirulaként áll a sor végén.
+// Dropdown chooser (Settings). Two kinds:
+//   chooser:  SettingsCombo { options: [{ value, label, tag? }]; value: ...; onPicked: (v) => ... }
+//   editable: SettingsCombo { editable: true; options: ["a", "b"]; value: ...; onPicked: ... }
+//             - free text can be typed too (model name, language); the list only helps.
+// The list opens below the field (raised, radius 8, shadow), items are 38 px high; the optional
+// `tag` shows as a green pill at the end of the row.
 Item {
     id: root
 
@@ -17,7 +17,7 @@ Item {
     property bool mono: false
     property bool hasError: false
     property int fieldHeight: Theme.controlHeight
-    property bool demoOpen: false          // képernyőképhez: nyitva jelenik meg
+    property bool demoOpen: false          // for screenshots: shown open
     readonly property alias popupOpen: popup.opened
     signal picked(string value)
 
@@ -35,11 +35,11 @@ Item {
     function openList() { if (root.options.length > 0) popup.open() }
 
     Component.onCompleted: if (demoOpen) Qt.callLater(openList)
-    // A gépelés megszakítja a `text: value` kötést: a kívülről jövő változást (eldobás,
-    // visszaállítás) így vezetjük vissza a mezőbe.
+    // Typing breaks the `text: value` binding: this carries a change from outside (discard,
+    // restore) back into the field.
     onValueChanged: if (field.text !== value) field.text = value
 
-    // ---- választó (nem szerkeszthető) ----
+    // ---- chooser (not editable) ----
     T.AbstractButton {
         id: button
         visible: !root.editable
@@ -87,7 +87,7 @@ Item {
         }
     }
 
-    // ---- szerkeszthető ----
+    // ---- editable ----
     TTextField {
         id: field
         visible: root.editable

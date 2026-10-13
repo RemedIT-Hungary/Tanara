@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A fókusz-kártya fölötti / alatti halvány kontextus-sor (az átirat sora, idő szerint — nem csak
-// a kétesek): ▷ · idő · beszélő · szöveg (egy sor, elide) · időugrás („+6 s”: a csend a sor és a
-// kártya felőli szomszédja között). A hely akkor is megmarad, ha nincs ott sor (a kártya nem
-// ugrál). Kattintás: meghallgatás (a kártyához legközelebbi két sor: `,` / `.`).
-//   line:  TranscriptEditorViewModel.contextLines() egy eleme (üres map: nincs sor)
-//   gapMs: az időugrás ms-ban (< 0: nincs jelzés)
+// The faint context row above / below the focus card (the transcript's line by time -- not only
+// the doubtful ones): play · time · speaker · text (one line, elided) · time gap ("+6 s": the
+// silence between the line and its neighbor toward the card). The space stays even when there
+// is no line (the card does not jump). Click: listen (the two lines nearest the card: `,` / `.`).
+//   line:  an item of TranscriptEditorViewModel.contextLines() (empty map: no line)
+//   gapMs: the time gap in ms (< 0: no indicator)
 Item {
     id: root
 

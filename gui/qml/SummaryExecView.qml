@@ -2,19 +2,19 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Vezetői összefoglaló forrás-hivatkozásokkal (S1, célzott elavulással S3). Csak forrásos
-// gyors összefoglalónál (vm.hasStatements); régi összefoglalónál a SummaryDocView marad.
+// Executive summary with source references. Only for a sourced quick summary
+// (vm.hasStatements); for an old summary SummaryDocView stays.
 //
-// Bal oldalt a szöveg: a mondatok egy folyó bekezdésben, mindegyik után a forrás-idő-chip(ek);
-// rámutatva a mondat accentSoft hátteret kap és a térkép „Forrás” sorában kigyullad. A chip
-// kattintásra (Enter / Szóköz) a „Honnan jön ez?” felugrót nyitja. Döntések és teendők: a
-// sor végén a chipek (a nyitott kérdéseknél is); teendőnél a felelős-chip a beszélő színében. Elavultnál (S3) a banner
-// megszámolja az érintett állításokat / teendőket, az érintett mondat 2 px warnLine
-// aláhúzást, az érintett forrás warn chipet, az érintett felelős szaggatott „X → Y?” chipet
-// kap. Jelölő nélküli állítás: nincs chip, rámutatva „Nincs forrás”. A nyitott kérdések is
-// állítások (chippel); a régebbi összefoglalónál forrás nélküli lista.
-// Jobb oldalt (250 px) a résztvevők beszédidő-aránnyal, egy rövid magyarázat, a megbeszélés-
-// megjegyzés és a megmaradt műveletek (Témánkénti elemzés, Megnyitás mappában).
+// Left: the text, the sentences in one running paragraph, each followed by its source time
+// chip(s); on hover the sentence gets an accentSoft background and lights up in the map's
+// "Source" row. Clicking a chip (Enter / Space) opens the "Where does this come from?" popup.
+// Decisions and to-dos: chips at the end of the row (open questions too); on a to-do the owner
+// chip takes the speaker's color. When stale, the banner counts the affected statements /
+// to-dos, the affected sentence gets a 2 px warnLine underline, the affected source a warn chip,
+// the affected owner a dashed "X -> Y?" chip. A statement without a marker: no chip, "No source"
+// on hover. Open questions are statements too (with a chip); an older summary has a plain list.
+// Right (250 px): participants with talk-time share, a short explanation, the meeting note and
+// the remaining actions (Per-topic analysis, Open in folder).
 Item {
     id: root
 
@@ -26,10 +26,10 @@ Item {
 
     readonly property bool showChips: vm.sourcesVisible
     readonly property var paragraphTokens: buildTokens(vm.sentences.rows, showChips)
-    // A „Nincs forrás” súgó horgonya (egyetlen közös súgó az összes szóhoz).
+    // Anchor of the "No source" help (one shared help for all words).
     property Item tipAnchor: null
 
-    // A bekezdés elemei: szavak (a mondat azonosítójával) és a mondat utáni idő-chipek.
+    // Paragraph items: words (with the sentence's id) and the time chips after the sentence.
     function buildTokens(rows, chips) {
         const out = []
         for (let r = 0; r < rows.length; ++r) {
@@ -48,7 +48,7 @@ Item {
         return out
     }
     function hover(sid, on) {
-        if (sourcePopover.opened) return   // nyitott felugrónál az ő állítása marad kijelölve
+        if (sourcePopover.opened) return   // with an open popover its statement stays selected
         if (on) root.vm.activeStatementId = sid
         else if (root.vm.activeStatementId === sid && !(sourcePopover.opened && sourcePopover.statementId === sid))
             root.vm.activeStatementId = ""
@@ -85,7 +85,7 @@ Item {
         text: qsTr("Nincs forrás: ehhez a modell nem jelölt időpontot.")
     }
 
-    // Egy állítás a döntések / teendők közt: pont, szöveg, (felelős, határidő), idő-chipek.
+    // A statement among decisions / to-dos: dot, text, (owner, due date), time chips.
     component StatementItem: Rectangle {
         id: item
         required property var modelData
@@ -209,7 +209,7 @@ Item {
                     onRetryRequested: root.regenerate()
                 }
 
-                // ---- célzott elavulás (S3) ----
+                // ---- targeted staleness ----
                 Rectangle {
                     objectName: "staleBanner"
                     visible: root.vm.stale
@@ -258,7 +258,7 @@ Item {
                     }
                 }
 
-                // ---- a vezetői összefoglaló mondatai, folyó bekezdésben ----
+                // ---- the executive summary's sentences, in a running paragraph ----
                 Flow {
                     id: paragraph
                     objectName: "execParagraph"
@@ -278,7 +278,7 @@ Item {
                                           : chip.implicitWidth + 4 + 2 + (modelData.last ? spaceWidth : 0)
                             height: 26
 
-                            // Szó: háttér (kijelölve) + aláhúzás (elavult forrás).
+                            // Word: background (selected) + underline (stale source).
                             Rectangle {
                                 visible: token.isWord && (token.active && root.showChips || token.modelData.affected)
                                 y: 3
@@ -330,7 +330,7 @@ Item {
                     }
                 }
 
-                // ---- döntések ----
+                // ---- decisions ----
                 ColumnLayout {
                     visible: root.vm.decisionItems.count > 0
                     Layout.fillWidth: true
@@ -346,7 +346,7 @@ Item {
                     }
                 }
 
-                // ---- nyitott kérdések: állításként, forrás-chippel (S2) ----
+                // ---- open questions: as statements, with a source chip ----
                 ColumnLayout {
                     objectName: "openQuestionItems"
                     visible: root.vm.questionItems.count > 0
@@ -362,7 +362,7 @@ Item {
                         }
                     }
                 }
-                // Régebbi (v3 előtti) forrásos összefoglaló: a nyitott kérdéseknek nincs állítása.
+                // An older (pre-source) sourced summary: open questions have no statement.
                 ColumnLayout {
                     visible: root.vm.questionItems.count === 0 && root.vm.openQuestions.length > 0
                     Layout.fillWidth: true
@@ -392,7 +392,7 @@ Item {
                     }
                 }
 
-                // ---- teendők ----
+                // ---- to-dos ----
                 ColumnLayout {
                     visible: root.vm.todoItems.count > 0
                     Layout.fillWidth: true
@@ -410,7 +410,7 @@ Item {
             }
         }
 
-        // ================= jobb oszlop =================
+        // ================= right column =================
         Rectangle {
             Layout.preferredWidth: 250
             Layout.fillHeight: true
@@ -480,7 +480,7 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    // ---- megbeszélés-megjegyzés (összecsukható) ----
+                    // ---- meeting note (collapsible) ----
                     TDivider { Layout.fillWidth: true; Layout.topMargin: 8 }
                     T.AbstractButton {
                         id: noteToggle

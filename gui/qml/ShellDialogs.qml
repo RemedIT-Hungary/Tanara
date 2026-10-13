@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A héj megerősítő párbeszédablakai az M10 minta szerint (fátyol + 440 px-es ablak, konkrét
-// következmény, jobbra a megerősítő gomb): újra-átírás, törlés, bezárás felvétel közben,
-// „Vége a meetingnek?”, és a ShellActions.confirm() általános ablaka.
+// The shell's confirmation dialogs following the M10 pattern (veil + 440 px window, concrete
+// consequence, confirm button on the right): re-transcribe, delete, close while recording,
+// "End of the meeting?", and the general window of ShellActions.confirm().
 Item {
     id: root
 
@@ -11,7 +11,7 @@ Item {
     readonly property bool anyOpen: retranscribeDialog.visible || deleteDialog.visible
                                     || closeDialog.visible || stopDialog.visible || confirmDialog.visible
 
-    // A felhasználó a háttérben folytatja a felvételt / leállítja és kilép (a Main.qml kezeli).
+    // The user continues recording in the background / stops and quits (handled by Main.qml).
     signal backgroundRequested()
     signal stopAndQuitRequested()
 
@@ -40,7 +40,7 @@ Item {
         confirmDialog.open()
     }
 
-    // ---- M10: újra-átírás ----
+    // ---- M10: re-transcribe ----
     TDialog {
         id: retranscribeDialog
         objectName: "retranscribeDialog"
@@ -75,7 +75,7 @@ Item {
         ]
     }
 
-    // ---- törlés ----
+    // ---- delete ----
     TDialog {
         id: deleteDialog
         objectName: "deleteDialog"
@@ -104,7 +104,7 @@ Item {
         ]
     }
 
-    // ---- bezárás felvétel közben ----
+    // ---- close while recording ----
     TDialog {
         id: closeDialog
         objectName: "closeDialog"
@@ -132,9 +132,9 @@ Item {
         ]
     }
 
-    // ---- „Vége a meetingnek?” (hívás-vég / csend észlelve; magától nem állítunk le) ----
-    // A QML-felvevővel ezt a felvevő saját doboza (R06) kérdezi meg; ez az ablak csak akkor
-    // nyílik, ha egy híd stopPromptRequested jelet küld (a QmlShellBridge nem küld).
+    // ---- "End of the meeting?" (call end / silence detected; we never stop by ourselves) ----
+    // With the QML recorder the recorder's own box asks this; this dialog opens only if a bridge
+    // sends the stopPromptRequested signal (QmlShellBridge does not).
     TDialog {
         id: stopDialog
         objectName: "stopDialog"
@@ -179,7 +179,7 @@ Item {
                 onClicked: { confirmDialog.answer = true; confirmDialog.close() }
             }
         ]
-        // Bármilyen bezárás (gomb, Esc, mellé kattintás) válasz: a confirm() erre vár.
+        // Any close (button, Esc, click outside) is an answer: confirm() waits for it.
         onClosed: if (root.shell) root.shell.resolveConfirm(confirmDialog.answer)
     }
 }

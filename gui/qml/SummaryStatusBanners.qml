@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az Összefoglaló fül közös állapot-sávjai, egymás alatt (csak ami épp érvényes):
-//   - futó feladat (összefoglaló / téma-javaslat / záró összegzés) megszakítással,
-//   - megmaradt hiba (emberi üzenet + technikai sor, újrapróbálás, javító művelet; kontextus-
-//     hibánál LM Studióval „Betöltés nagyobb kontextussal”: újratöltés + újra),
-//   - hiányzó beállítás (megnevezve; a gomb a Beállítások megfelelő oldalára visz).
-// showJob: az M06 üres állapot saját futás-kártyát rajzol, ott a futó sáv kikapcsolható.
+// The Summary tab's shared status bars, stacked (only what currently applies):
+//   - running job (summary / topic suggestion / final wrap-up) with cancel,
+//   - remaining error (human message + technical line, retry, fix action; for a context error
+//     with LM Studio "Load with larger context": reload + retry),
+//   - missing setup (named; the button leads to the matching Settings page).
+// showJob: the empty state draws its own run card, there the running bar can be switched off.
 ColumnLayout {
     id: root
 
@@ -24,16 +24,16 @@ ColumnLayout {
     visible: jobVisible || errorVisible || blockerVisible
     spacing: 10
 
-    // A hiányzó nyelvi modellhez a Beállítások az LLM-kártyát kiemelve nyílik (B04).
+    // For a missing language model Settings opens with the LLM card highlighted.
     function openSettings(page) {
         if (!root.shell) return
         if (page === "providers") root.shell.openSettings(page, "llm")
         else root.shell.openSettings(page)
     }
 
-    // Futó feladat: cím, a futó szakasz („Jegyzetek készítése: 3 / 6 rész” — valós csík;
-    // „Összefésülés” / egy lépés — határozatlan), megszakítás; alatta, ha egy korábbi futás
-    // részjegyzeteit használja újra, az is.
+    // Running job: title, the running phase ("Making notes: part 3 / 6" -- real bar; "Merging" / a
+    // single step -- indeterminate), cancel; below it, if it reuses partial notes of an earlier run,
+    // that too.
     Rectangle {
         visible: root.jobVisible
         Layout.fillWidth: true

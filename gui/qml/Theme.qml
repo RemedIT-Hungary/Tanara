@@ -1,11 +1,11 @@
 pragma Singleton
 import QtQuick
 
-// Tanara — a „Nyomat / Print” téma tokenjei (a design/handoff/qml/theme/Theme.qml-ből; a
-// hex-értékek az OKLCH eredetikből számoltak — forrás: design/handoff/tokens.json).
-// Használat (a modulon belül import nélkül):  color: Theme.text
-// A `dark` alapból az App.dark-ot követi (rendszer-színséma, vagy --theme / TANARA_THEME /
-// App.themeMode felülbírálás) — közvetlenül ne írd, az App.themeMode-ot állítsd.
+// Tanara - the tokens of the "Print" theme (from design/handoff/qml/theme/Theme.qml; the hex
+// values are computed from the OKLCH originals - source: design/handoff/tokens.json).
+// Usage (inside the module, no import): color: Theme.text
+// `dark` follows App.dark by default (system color scheme, or the --theme / TANARA_THEME /
+// App.themeMode override) - do not write it directly, set App.themeMode.
 QtObject {
     id: theme
     property bool dark: App.dark
@@ -20,8 +20,8 @@ QtObject {
     readonly property color text: dark ? "#ecebe8" : "#191b1d"
     readonly property color textMuted: dark ? "#acaba7" : "#585b5f"
     readonly property color accent: dark ? "#7eb1f3" : "#2f62ac"
-    // FIGYELEM: a spec „onAccent” / „onSpeaker” tokenje itt textOnAccent / textOnSpeaker — az
-    // „on…” nevű property-t a QML jelkezelőnek nézi (az értéke némán fekete lett).
+    // WARNING: the spec's "onAccent" / "onSpeaker" tokens are textOnAccent / textOnSpeaker here - QML
+    // takes a property named "on..." for a signal handler (its value silently turned black).
     readonly property color textOnAccent: dark ? "#09121f" : "#fcfcfc"
     readonly property color accentSoft: dark ? "#1e2e47" : "#e1ecfc"
     readonly property color accentLine: dark ? "#304d78" : "#bacfef"
@@ -39,7 +39,7 @@ QtObject {
     readonly property color rec: dark ? "#e9504d" : "#d42f34"
     readonly property color scrim: dark ? "#80000000" : "#5913161b"
     readonly property color shadow: dark ? "#80000000" : "#2e11161f"
-    // Állapot-réteg (hover / lenyomva) alapszíne: a vezérlő fölé kerül kis átlátszósággal.
+    // Base color of the state layer (hover / pressed): drawn over the control with low opacity.
     readonly property color stateLayer: dark ? "#ffffff" : "#000000"
     readonly property real hoverOpacity: dark ? 0.07 : 0.05
     readonly property real pressedOpacity: dark ? 0.13 : 0.10
@@ -71,7 +71,7 @@ QtObject {
     readonly property int weightMedium: Font.Medium      // 500
     readonly property int weightSemiBold: Font.DemiBold  // 600
     readonly property int weightBold: Font.Bold          // 700
-    readonly property real labelSpacing: 0.72  // szakaszcímke: 12 px × 0.06em
+    readonly property real labelSpacing: 0.72  // section label: 12 px x 0.06em
     readonly property real transcriptLineHeight: 1.55
 
     // ---- Spacing (4-pt grid) ----
@@ -89,7 +89,7 @@ QtObject {
     readonly property int radiusPopup: 8       // menus, popovers, list containers
     readonly property int radiusDialog: 10     // dialogs, window
     readonly property int radiusPill: 999
-    readonly property int radiusTag: 4         // címke-chip (szögletes, a személy-chip kerek)
+    readonly property int radiusTag: 4         // tag chip (square; the person chip is round)
 
     // ---- Sizes ----
     readonly property int controlHeight: 34    // primary/secondary buttons, fields
@@ -121,7 +121,7 @@ QtObject {
     readonly property color shadowColor: dark ? "#80000000" : "#2e11161f"
     readonly property int shadowBlur: 32
     readonly property int shadowOffsetY: 12
-    // A második, szoros réteg (0 1 3) — lásd TShadow.
+    // The second, tight layer (0 1 3) - see TShadow.
     readonly property color shadowTightColor: dark ? "#59000000" : "#1f11161f"
     readonly property int focusRingWidth: 3
 
@@ -130,14 +130,14 @@ QtObject {
     readonly property int durationNormal: 200
     readonly property int easing: Easing.OutCubic
 
-    // ---- Segédek ----
-    // Szín → "rrggbb" / "aarrggbb" az image://tanara/… azonosítókhoz (TIcon, TShadow).
+    // ---- Helpers ----
+    // Color -> "rrggbb" / "aarrggbb" for the image://tanara/... ids (TIcon, TShadow).
     function hex(c) { return String(c).slice(1) }
-    // Szín adott átlátszósággal (pl. Theme.alpha(Theme.text, 0.12)).
+    // A color with a given opacity (e.g. Theme.alpha(Theme.text, 0.12)).
     function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-    // Monogram egy névből: "Kovács Lilla" → "KL", "Távoli 2" → "T2".
+    // Monogram from a name: "Kovács Lilla" -> "KL", "Távoli 2" -> "T2".
     function monogram(name) {
-        // A becenév („Dompa", (Dompa)) nem számít névrésznek; az írásjelek sem kerülnek a monogramba.
+        // A nickname ("Dompa", (Dompa)) does not count as a name part; punctuation stays out of the monogram too.
         const words = String(name).trim().split(/\s+/).filter(p => p.length > 0)
         const isNick = p => /^["'„”“(\[].*["'”“)\]]$/.test(p)
         const clean = p => p.replace(/^[^\p{L}\p{N}]+/u, "")

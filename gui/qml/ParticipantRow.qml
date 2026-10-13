@@ -1,9 +1,9 @@
 import QtQuick
 
-// A „Ki volt ott?" párbeszéd egy sora (V2): jelölőnégyzet, avatar, név (130 px), bizonyíték-
-// chipek, jobbra a leképezés-chip („→ Beszélő 1 · hívás"; bejelölve accentSoft, kikapcsolva
-// sunken; átirat előtt „→ átirat után"). A ki nem jelölt sor 70%-os. Névtelen (ismeretlen hangú)
-// sornál „Elnevezés…" gomb; a párbeszédben felvett sornál ×.
+// One row of the "Who was there?" dialog: checkbox, avatar, name (130 px), evidence chips, and on the
+// right the mapping chip ("-> Speaker 1 - call"; accentSoft when checked, sunken when
+// unchecked; before the transcript "-> after the transcript"). An unchecked row is drawn at 70%.
+// An unnamed (unknown voice) row gets a "Name..." button; a row added in the dialog gets an x.
 //   ParticipantRow { row: modelData; onToggled: (on) => …; onNameRequested: (anchor) => …; onRemoveRequested: … }
 Item {
     id: root

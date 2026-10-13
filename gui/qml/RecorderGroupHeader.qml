@@ -1,10 +1,10 @@
 import QtQuick
 
-// Eszköz-csoport feje a felvevő eszközlistájában ÉS a Beállítások „Rögzítés” lapján:
-// „MIKROFONOK amit mondasz” · „HANGKIMENETEK amit hallasz” · „EGYÉB BEMENETEK”.
+// Device group header in the recorder's device list AND on the Settings "Recording" page:
+// "MICROPHONES what you say" - "OUTPUTS what you hear" - "OTHER INPUTS".
 //   RecorderGroupHeader { group: dev.group; visible: dev.groupFirst }
 Row {
-    property int group: 0          // 0 mikrofon · 1 hangkimenet · 2 egyéb bemenet
+    property int group: 0          // 0 microphone - 1 output - 2 other input
 
     spacing: 6
     TLabel {

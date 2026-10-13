@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A háttérben futó importálás jelzése az oldalsávban (a feladat-sáv keskeny rokona): cím,
-// valós százalék, megszakítás. Kattintásra a párbeszédablak jön vissza (clicked).
-// `model`: ShellImportModel; nélküle (önálló képernyőkép) kitalált minta látszik.
+// Indicator of the import running in the background, in the sidebar (a narrow relative of the
+// task strip): title, real percent, cancel. A click brings the dialog back (clicked).
+// `model`: ShellImportModel; without it (standalone screenshot) a made-up sample shows.
 Rectangle {
     id: root
 

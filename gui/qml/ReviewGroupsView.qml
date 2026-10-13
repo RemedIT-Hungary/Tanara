@@ -1,50 +1,51 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Az „Átnézendő" nézet (handoff-v3 E2, 15. döntés): a kétes sorok okok szerint csoportosítva,
-// csoportonként egy döntéssel (és egy visszavonási lépéssel). Felül a szennyezett mag sávja
-// (ContaminatedCoreBanner); alatta a csoport-kártyák (ReviewGroupCard); a kinyitott
-// („Egyenként") csoport sorai a kártya alatt, soronként: Meghallgatom · „X mondta" (1) · Jó így ·
-// Jó így, de nem minta · Más…; az aktív, összecsukott csoport alatt „··· N sor ebben a
-// csoportban · Kinyitás". Az eldöntött sor a helyén marad, amíg a csoport nyitva van.
-// B / Shift+B a csoportok sorain lépked (TranscriptTab). Lista-modell: editorVm.reviewGroups.
-// S2: Shift = „nem minta” mindenhol (sín-kattintás / -húzás, „X mondta”, „Jó így”, 1, J) —
-// lenyomott Shiftnél a feliratok „· nem minta” utótagot kapnak; „Nem azonosítható” (0) sor-gomb;
-// a döntött sor jelölője: javítva / jó így / nem azonosítható + minta-jel.
+// "To review" view: doubtful utterances grouped by reason, one decision per group (and one
+// undo step). On top the contaminated-core banner (ContaminatedCoreBanner); below it the
+// group cards (ReviewGroupCard); the lines of an expanded ("One by one") group sit under the
+// card, per line: Listen - "X said" (1) - Fine as is - Fine, but not a sample - Other...;
+// under the active collapsed group "... N lines in this group - Expand". A decided line stays
+// in place while its group is open. B / Shift+B step through the group lines (TranscriptTab).
+// List model: editorVm.reviewGroups.
+// Shift = "not a sample" everywhere (rail click / drag, "X said", "Fine as is", 1, J): while
+// Shift is held the labels get a "- not a sample" suffix; "Not identifiable" (0) is a row
+// button; a decided row shows a marker: fixed / fine / not identifiable + sample mark.
 Item {
     id: root
 
     required property var vm                // TranscriptEditorViewModel
-    required property var tab               // TranscriptTab (lejátszás, panelek)
-    // A billentyűzettel / kattintással kiválasztott sor (sor-azonosító); "" = nincs.
+    required property var tab               // TranscriptTab (playback, panels)
+    // The row selected by keyboard / click (row ID); "" = none.
     property string currentUtterance: ""
     readonly property alias list: list
-    // A beszélő-sín (a Javítás nézetéé, tab.railX / railWidth) a sorok mellett: a kártyák, a
-    // kijelölés-keret és a szöveg a sín jobb széle mellől indulnak; sín nélkül a régi margók.
+    // The speaker rail (Fix view's, tab.railX / railWidth) beside the rows: cards, selection
+    // frame and text start at the rail's right edge; without a rail the old margins apply.
     readonly property bool railShown: tab.railShown
     readonly property real contentX: railShown ? tab.textX + 8 : 24
     readonly property real contentRight: 20
-    // Húzás a sínen (egy sor): a megfogott sor és a cél-oszlop; a cella és a lebegő címke ebből rajzol.
+    // Drag on the rail (one row): the grabbed row and target column; the cell and the floating
+    // label draw from this.
     property string dragUtterance: ""
     property bool dragActive: false
     property int dragLane: -1
-    // Rámutatás a sínen (egy sor másik oszlopa): ugyanaz az előnézet, mint húzáskor — a cél-cella
-    // a beszélő színével és a „→ Név" címke —, hogy látszódjon, hova kerülne a sor kattintásra.
+    // Hover on the rail (another column of a row): same preview as while dragging (target cell in
+    // the speaker's color and a "-> Name" label), so it is clear where a click would put the row.
     property string hoverUtterance: ""
     property int hoverLane: -1
     readonly property int previewLane: dragActive ? dragLane : hoverLane
     readonly property int previewColorIndex: previewLane >= 0 && previewLane < tab.laneCount ? vm.lanes[previewLane].colorIndex : 0
 
-    // A kulcs oszlopa a sínen (-1 = nincs látható oszlopa).
+    // The key's column on the rail (-1 = no visible column).
     function laneOfKey(key) {
         if (!key) return -1
         const lanes = vm.lanes
         for (let i = 0; i < lanes.length; ++i) if (lanes[i].key === key) return i
         return -1
     }
-    // Kattintás a sín egy oszlopára egy sor mellett (a Javítás sín-kattintásának mintájára):
-    //  saját oszlop → a sor kiválasztása; másik oszlop → a sor átkerül ahhoz a beszélőhöz;
-    //  „+N" → az összecsukott oszlopok ki/be; „+" → a sor személyválasztója.
+    // Click on a rail column next to a row (modeled on the Fix view's rail click):
+    //  own column -> select the row; another column -> move the row to that speaker;
+    //  "+N" -> toggle the collapsed columns; "+" -> the row's person picker.
     function railClicked(utteranceId, ownLane, lane, anchor, noisy) {
         if (utteranceId === "") return false
         root.currentUtterance = utteranceId
@@ -69,7 +70,7 @@ Item {
     signal speakerWhyRequested(string speakerKey, Item anchor)
     signal lineFixRequested(string utteranceId, Item anchor)
 
-    // A sor kiválasztása + odagörgetés (B / Shift+B).
+    // Select the row and scroll to it (B / Shift+B).
     function step(direction) {
         let from = currentUtterance !== "" ? vm.reviewGroups.rowOfLine(currentUtterance) : -1
         if (from < 0) from = list.indexAt(list.width / 2, list.contentY + 1)
@@ -79,8 +80,8 @@ Item {
         Qt.callLater(() => list.positionViewAtIndex(row, ListView.Contain))
         return true
     }
-    // A sor a javasolt beszélőhöz: kulccsal a meeting beszélőjéhez, kulcs nélkül (a csoport csak
-    // nevet javasol, pl. a meetingen kívüli személyt) a személyhez.
+    // Assign the row to the suggested speaker: by key to the meeting's speaker; without a key (the group
+    // only suggests a name, e.g. a person outside the meeting) to the person.
     function moveToLikely(utteranceId, likelyKey, likelyName, noisy) {
         if (likelyKey !== "") return vm.moveUtteranceToSpeaker(utteranceId, likelyKey, noisy === true)
         if (likelyName !== "") return vm.moveUtteranceToPerson(utteranceId, likelyName, noisy === true)
@@ -91,19 +92,19 @@ Item {
         const item = row >= 0 ? list.itemAtIndex(row) : null
         return item && item.lineItem ? item.lineItem : null
     }
-    // „1" (Shift+1: nem minta): a kiválasztott sor a javasolt beszélőhöz.
+    // "1" (Shift+1: not a sample): the selected row goes to the suggested speaker.
     function acceptCurrent(noisy) {
         const li = currentLine()
         if (li && li.likelyName !== "" && !li.decided)
             return moveToLikely(currentUtterance, li.likelyKey, li.likelyName, noisy)
         return false
     }
-    // „J" (Shift+J: nem minta): a kiválasztott sor „Jó így".
+    // "J" (Shift+J: not a sample): the selected row is "Fine as is".
     function confirmCurrent(noisy) {
         const li = currentLine()
         return !!li && !li.decided && vm.confirmUtterance(currentUtterance, noisy === true)
     }
-    // „M": a kiválasztott sor panelje („Más…").
+    // "M": the selected row's panel ("Other...").
     function fixCurrent() {
         const li = currentLine()
         if (!li) return false
@@ -129,7 +130,7 @@ Item {
         width: list.width
         height: lineColumn.implicitHeight + 16
 
-        // A sín ezen sorra eső szelete (a kattintást a lista feletti railArea kezeli).
+        // The slice of the rail for this row (the railArea above the list handles the click).
         Loader {
             id: railLoader
             objectName: "reviewRailCells"
@@ -244,7 +245,7 @@ Item {
                 topPadding: 2
                 spacing: 6
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     objectName: "lineListen"
                     size: "small"
                     iconName: "play"
@@ -257,7 +258,7 @@ Item {
                     }
                 }
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     objectName: "lineLikely"
                     visible: line.likelyName !== ""
                     size: "small"
@@ -270,7 +271,7 @@ Item {
                     }
                 }
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     objectName: "lineConfirm"
                     size: "small"
                     text: qsTr("Jó így") + (line.nonSample ? root.tab.nonSampleSuffix : "")
@@ -281,7 +282,7 @@ Item {
                     }
                 }
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     objectName: "lineConfirmNoisy"
                     size: "small"
                     variant: "ghost"
@@ -293,7 +294,7 @@ Item {
                     }
                 }
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     objectName: "lineIgnore"
                     size: "small"
                     variant: "ghost"
@@ -305,7 +306,7 @@ Item {
                     }
                 }
                 TButton {
-                    focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+                    focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
                     id: fixButton
                     objectName: "lineFix"
                     size: "small"
@@ -321,8 +322,8 @@ Item {
         }
     }
 
-    // Bekapcsoláskor a nézet tetejéről (a szennyezett-mag sávjával) indul.
-    // A késleltetett hívásra a nézet már meg is szűnhetett (demo-állapotváltás, teszt): őrzés.
+    // When turned on, the view starts at the top (with the contaminated-core banner).
+    // The delayed call may outlive the view (demo state change, test): guard.
     onVisibleChanged: if (visible) Qt.callLater(() => { if (list) list.positionViewAtBeginning() })
 
     ListView {
@@ -432,10 +433,10 @@ Item {
         }
     }
 
-    // A sín kattintása és húzása egy rétegben a sorok felett (a Javítás railArea-jának mintájára).
-    // Kattintás: railClicked. Húzás (egy sor): a megfogott sor cellája a cél-oszlopot mutatja,
-    // lebegő „→ Név" címkével; elengedéskor a sor oda kerül. Csoport- és „további" sorokon
-    // semleges: a kattintás átmegy a kártyára.
+    // Rail click and drag in one layer above the rows (modeled on the Fix view's railArea).
+    // Click: railClicked. Drag (one row): the grabbed row's cell shows the target column with a
+    // floating "-> Name" label; on release the row moves there. Neutral on group and "more"
+    // rows: the click passes through to the card.
     MouseArea {
         id: railArea
         objectName: "reviewRailArea"
@@ -472,7 +473,7 @@ Item {
             root.dragLane = lane >= 0 ? lane : -1
             railArea.placeChip(x, y)
         }
-        // Rámutatás: a sor és a másik oszlop (saját oszlop / kártya felett nincs előnézet).
+        // Hover: the row and the other column (no preview over its own column / the card).
         function updateHover(x, y) {
             const li = railArea.lineAt(y)
             const lane = li ? root.tab.railLaneAt(x) : -9
@@ -506,7 +507,7 @@ Item {
         onReleased: mouse => {
             if (!pressItem) return
             const li = pressItem
-            const noisy = (mouse.modifiers & Qt.ShiftModifier) !== 0     // Shift = nem minta
+            const noisy = (mouse.modifiers & Qt.ShiftModifier) !== 0     // Shift = not a sample
             root.tab.forceActiveFocus()
             if (root.dragActive) {
                 const lane = root.dragLane
@@ -516,13 +517,13 @@ Item {
                 railArea.resetDrag()
                 root.railClicked(li.utteranceId, li.lane, root.tab.railLaneAt(mouse.x), li.railCells, noisy)
             }
-            // Átsorolás után a sor már máshol van: az előnézet a mostani egérhelyzet szerint.
+            // After reassignment the row is elsewhere: the preview follows the current mouse position.
             Qt.callLater(() => { if (railArea.containsMouse) railArea.updateHover(railArea.mouseX, railArea.mouseY) })
         }
         onCanceled: railArea.resetDrag()
     }
 
-    // Lebegő címke húzás és rámutatás közben: „→ Név" (a Javítás dragChip-jének mintájára).
+    // Floating label while dragging and hovering: "-> Name" (modeled on the Fix view's dragChip).
     Rectangle {
         id: dragChip
         objectName: "reviewDragChip"
@@ -551,7 +552,7 @@ Item {
         }
     }
 
-    // A háttér-elemzés fut: finom jelzés (a csoportok utána frissülnek).
+    // Background analysis is running: a subtle indicator (the groups refresh afterward).
     Row {
         objectName: "reviewRunning"
         visible: root.vm.reviewRunning
@@ -568,7 +569,7 @@ Item {
         }
     }
 
-    // Nincs átnézendő sor (innen is kérhető az újraellenőrzés).
+    // Nothing to review (re-check can be requested from here too).
     Column {
         objectName: "reviewEmpty"
         visible: list.count === 0 && (root.vm.contaminated.speakerKey || "") === ""
@@ -581,7 +582,7 @@ Item {
             muted: true
         }
         TButton {
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+            focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
             objectName: "emptyFilterRecheck"
             visible: root.vm.voiceAvailable && !root.vm.embeddingRunning && !root.vm.reviewRunning
             anchors.horizontalCenter: parent.horizontalCenter

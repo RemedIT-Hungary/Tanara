@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Gomb. variant: "primary" | "secondary" | "ghost" | "danger" (teli, megerősítő romboló
-// művelet) | "dangerSoft" | "dangerGhost" | "record" (csak felvétel-indításra).
-// size: "normal" (34 px) | "small" (28 px, eszköztár). Opcionális ikon elöl / hátul.
-//   TButton { text: qsTr("Átírás indítása"); variant: "primary"; iconName: "audio-lines" }
+// Button. variant: "primary" | "secondary" | "ghost" | "danger" (solid, confirms a destructive
+// action) | "dangerSoft" | "dangerGhost" | "record" (only for starting a recording).
+// size: "normal" (34 px) | "small" (28 px, toolbar). Optional icon in front / behind.
+//   TButton { text: qsTr("Start transcription"); variant: "primary"; iconName: "audio-lines" }
 T.Button {
     id: control
 
@@ -14,10 +14,10 @@ T.Button {
     property string trailingIconName: ""
     property real iconSize: small ? 15 : 16
     property real radius: Theme.radiusControl
-    property bool muted: false                       // ghost: halvány felirat (oldalsáv-lábléc)
+    property bool muted: false                       // ghost: faint label (sidebar footer)
     property int horizontalAlignment: Qt.AlignHCenter
     property string toolTipText: ""
-    // Állapot-felülbírálás (a galéria ezzel mutatja a hover / fókusz állapotot).
+    // State override (the gallery uses it to show the hover / focus state).
     property bool stateHovered: hovered
     property bool stateFocused: visualFocus
 
@@ -108,7 +108,7 @@ T.Button {
         border.width: control.variant === "secondary" && control.enabled ? 1 : 0
         border.color: Theme.borderStrong
 
-        // Letiltva: olvasható felirat süllyesztett háttéren, szaggatott kerettel.
+        // Disabled: readable label on a sunken background, with a dashed border.
         TDashedRect {
             anchors.fill: parent
             visible: !control.enabled && !control.ghost

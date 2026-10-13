@@ -2,17 +2,17 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Vezérlő-galéria: a design-rendszer minden eleme minden állapotában, mindkét témában.
-//   interaktívan:   tanara --gallery [--theme dark]
-//   képernyőkép:    tanara --qml-shot ki.png --qml-page Gallery --theme dark --size 1280x2600
-// overlay: "" | "dialog" | "menu" | "popover" — induláskor megnyit egy VALÓDI felugrót
-// (pl. --qml-prop overlay=dialog), a fátyol / árnyék / pozicionálás ellenőrzéséhez.
-// v3 héj-elemek (EvidenceChip, TimeChip, TranscriptMarker, CandidateRow, EvidenceReason, TagRowOverview,
-// StatTiles, PipelineSteps): lásd a „Bizonyíték-chip” … „Áttekintés” szakaszokat.
-// Javító kör: TrackActivityStrip (kitalált beszéd-keretekkel), ParticipantTrackChips, TagLearnBar,
-// BackfillSkipNote, gyors „+ #Címke” — lásd a „Sávok és tanulás” szakaszt.
-// section: "" (minden) | "tags" — csak az adott szakasz (pl. --qml-prop 'section="tags"').
-// A mintaszövegek fejlesztői tartalom → szándékosan nincsenek qsTr()-ben.
+// Control gallery: every design-system element in every state, in both themes.
+//   interactive:  tanara --gallery [--theme dark]
+//   screenshot:   tanara --qml-shot out.png --qml-page Gallery --theme dark --size 1280x2600
+// overlay: "" | "dialog" | "menu" | "popover" - opens a REAL popup at startup
+// (e.g. --qml-prop overlay=dialog), to check scrim / shadow / positioning.
+// Meeting-shell elements (EvidenceChip, TimeChip, TranscriptMarker, CandidateRow, EvidenceReason, TagRowOverview,
+// StatTiles, PipelineSteps): see the "Evidence chip" ... "Overview" sections.
+// Track and learning elements: TrackActivityStrip (with fictional speech frames), ParticipantTrackChips, TagLearnBar,
+// BackfillSkipNote, quick "+ #Tag" - see the "Tracks and learning" section.
+// section: "" (all) | "tags" - only that section (e.g. --qml-prop 'section="tags"').
+// The sample texts are developer content -> intentionally not wrapped in qsTr().
 Item {
     id: root
 
@@ -66,7 +66,7 @@ Item {
         }
         Caption { text: parent.name }
     }
-    // Egy vezérlő + alatta az állapot neve.
+    // One control + the state name below it.
     component Shown: Column {
         property string caption: ""
         default property alias content: holder.data
@@ -102,7 +102,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         T.ScrollBar.vertical: TScrollBar {}
 
-        // Csak a „Címkék” szakasz (a T01 lap).
+        // Only the "Tags" section (the handoff's tag sheet).
         TagGallerySection {
             id: tagsOnly
             visible: root.section === "tags"
@@ -134,7 +134,7 @@ Item {
                 }
             }
 
-            // ---------------------------------------------------------------- színek
+            // ---------------------------------------------------------------- colors
             Section {
                 title: DemoText.t("Felület és szöveg", "Surfaces and text")
                 Swatch { name: "bg"; swatchColor: Theme.bg }
@@ -179,7 +179,7 @@ Item {
                 }
             }
 
-            // ------------------------------------------------------------ tipográfia
+            // ------------------------------------------------------------ typography
             Section {
                 title: DemoText.t("Tipográfia", "Typography")
                 ColumnLayout {
@@ -226,7 +226,7 @@ Item {
                 }
             }
 
-            // ---------------------------------------------------------------- ikonok
+            // ---------------------------------------------------------------- icons
             Section {
                 title: DemoText.t("Ikonok (Lucide, stroke 1.75) — 16 px, lent 20 px és színezve", "Icons (Lucide, stroke 1.75) — 16 px, below 20 px and tinted")
                 flowSpacing: 14
@@ -249,7 +249,7 @@ Item {
                 TSpinner {}
             }
 
-            // ---------------------------------------------------------------- gombok
+            // ---------------------------------------------------------------- buttons
             Section {
                 title: DemoText.t("Gombok — 34 px (és 28 px)", "Buttons — 34 px (and 28 px)")
                 ColumnLayout {
@@ -285,7 +285,7 @@ Item {
                 }
             }
 
-            // ---------------------------------------------------------------- mezők
+            // ---------------------------------------------------------------- fields
             Section {
                 title: DemoText.t("Mezők", "Fields")
                 Shown { caption: "placeholder"; TTextField { placeholderText: DemoText.t("Megbeszélés címe", "Meeting title") } }
@@ -312,7 +312,7 @@ Item {
                 Shown { caption: "textarea placeholder"; TTextArea { width: 300; placeholderText: DemoText.t("Nevek, szakszavak, témák…", "Names, terms, topics…") } }
             }
 
-            // ------------------------------------------------- kapcsoló, jelölőnégyzet
+            // ------------------------------------------------- switch, checkbox
             Section {
                 title: DemoText.t("Kapcsoló · jelölőnégyzet", "Switch · checkbox")
                 flowSpacing: 20
@@ -328,7 +328,7 @@ Item {
                 Shown { caption: "disabled"; TCheckBox { text: DemoText.t("Letiltva", "Disabled"); checked: true; enabled: false } }
             }
 
-            // ------------------------------------------------- pirula, chip, állapot
+            // ------------------------------------------------- pill, chip, status
             Section {
                 title: DemoText.t("Pirulák · chipek · állapotikonok", "Pills · chips · status icons")
                 flowSpacing: 16
@@ -368,7 +368,7 @@ Item {
                     TStatusIcon { kind: "identified"; state: "missing" } } }
             }
 
-            // ------------------------------------------------- fülek, folyamat
+            // ------------------------------------------------- tabs, progress
             Section {
                 title: DemoText.t("Fülek · folyamatjelző", "Tabs · progress indicator")
                 flowSpacing: 32
@@ -406,7 +406,7 @@ Item {
                 }
             }
 
-            // ------------------------------------------------- bannerek, kártyák
+            // ------------------------------------------------- banners, cards
             Section {
                 title: DemoText.t("Bannerek", "Banners")
                 TBanner {
@@ -482,7 +482,7 @@ Item {
                 }
             }
 
-            // ------------------------------------------------- a Beállítások vezérlői
+            // ------------------------------------------------- Settings controls
             Section {
                 id: settingsSection
                 title: DemoText.t("Beállítások (Settings*): szegmentált választó, rádió, kapcsoló-sor, léptető, lenyíló, állapot-pirula, navigáció", "Settings (Settings*): segmented picker, radio, switch row, stepper, dropdown, status pill, navigation")
@@ -571,7 +571,7 @@ Item {
                 }
             }
 
-            // ------------------------------------------------- menü, popover, dialog
+            // ------------------------------------------------- menu, popover, dialog
             Section {
                 title: DemoText.t("Menü · popover · párbeszédablak (helyben kirajzolva; valódi felugró: overlay property)", "Menu · popover · dialog (drawn inline; real popup: overlay property)")
                 flowSpacing: 40
@@ -700,7 +700,7 @@ Item {
                 TagGallerySection { width: page.width }
             }
 
-            // ------------------------------------------------- v3 héj: bizonyíték, idő, jelölő
+            // ------------------------------------------------- meeting shell: evidence, time, marker
             Section {
                 title: DemoText.t("Bizonyíték-chip (EvidenceChip): 3 polaritás × fajták", "Evidence chip (EvidenceChip): 3 polarities × kinds")
                 flowSpacing: 10
@@ -915,7 +915,8 @@ Item {
             Section {
                 title: DemoText.t("Sávok és tanulás (javító kör): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote", "Tracks and learning (fix round): TrackActivityStrip · ParticipantTrackChips · TagLearnBar · BackfillSkipNote")
                 flowSpacing: 24
-                // Kitalált, determinisztikus beszéd-keretek (TrackActivityModel demó-adata: mic, call, system, mic2).
+                // Fictional, deterministic speech frames (demo data of TrackActivityModel: mic,
+                // call, system, mic2).
                 TrackActivityModel { id: galleryActivity }
                 TrackActivityModel { id: galleryActivityLoading; demoState: "loading" }
                 Shown {
@@ -1000,7 +1001,8 @@ Item {
                         }
                     }
                 }
-                // C++ segéd (nem vizuális): a Személyek részletek-panel „N minta nem pótolható” sora.
+                // C++ helper (not visual): the People detail panel's "N samples cannot be
+                // refilled" row.
                 BackfillSkipNote { id: gallerySkipNote; person: DemoText.name("Fehér Gábor"); demoState: "samplesModels" }
                 Shown {
                     caption: DemoText.t("BackfillSkipNote · text + detail (tooltip) — a Személyek ablak jelzése", "BackfillSkipNote · text + detail (tooltip) — the People window notice")
@@ -1046,7 +1048,7 @@ Item {
         if (overlay === "dialog") {
             demoDialog.open()
         } else if (overlay === "menu" || overlay === "popover") {
-            // Az elrendezés elkészülte után görgetünk a gombokhoz, és csak utána nyitunk.
+            // After layout is done we scroll to the buttons, and only then open.
             Qt.callLater(() => {
                 flick.contentY = Math.max(0, flick.contentHeight - flick.height)
                 if (overlay === "menu") demoMenu.open(); else demoPopover.open()

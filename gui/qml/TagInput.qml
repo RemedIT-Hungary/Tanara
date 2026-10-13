@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Címke-beviteli mező (C02): 24 px-es soron belüli mező (standalone: 28 px, űrlapokban), accent
-// keret + 3 px accentSoft gyűrű, elöl „#” ikon; alatta a TagInputPopover lista.
-// Billentyűk: Enter a kijelölt sort adja hozzá · ↑↓ a listában · Esc bezár (closed(), a hívó
-// adja vissza a fókuszt) · Backspace üres mezőben backspaceOnEmpty() (az utolsó címke törlése).
-// bare: keret, háttér és „#” nélkül — többchipes mezőbe ágyazva (TagField).
+// Tag input field: 24 px inline field (standalone: 28 px, in forms), accent border + 3 px
+// accentSoft ring, a "#" icon in front; the TagInputPopover list below.
+// Keys: Enter adds the selected row · up/down in the list · Esc closes (closed(); the caller
+// gives focus back) · Backspace in an empty field emits backspaceOnEmpty() (delete the last tag).
+// bare: no border, background or "#" -- embedded in a multi-chip field (TagField).
 //   TagInput { model: tagInputModel; onTagChosen: (name, isNew) => meetingTags.add(name) }
-// model nélkül saját TagInputModel-t használ (kitalált készlet) — galériához, képhez.
+// Without a model it uses its own TagInputModel (made-up set) -- for the gallery and screenshots.
 Item {
     id: root
 
@@ -19,7 +19,7 @@ Item {
     property alias text: field.text
     property alias field: field
     property alias popover: popover
-    // Galéria / kép: fókusz nélkül is aktív kinézet.
+    // Gallery / screenshot: active look even without focus.
     property bool stateFocused: field.activeFocus
     signal tagChosen(string name, bool isNew)
     signal backspaceOnEmpty()
@@ -27,7 +27,7 @@ Item {
 
     readonly property var effectiveModel: model ? model : ownModel
 
-    // Fókusz a mezőbe + a lista megnyitása.
+    // Focus into the field + open the list.
     function open() {
         field.forceActiveFocus()
         popover.open()
@@ -116,7 +116,7 @@ Item {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
-        // Kép / galéria: a villogó kurzor helyett álló jel, hogy a mező aktívnak látsszon.
+        // Screenshot / gallery: a static mark instead of the blinking cursor, so the field looks active.
         Rectangle {
             visible: root.stateFocused && !field.activeFocus
             x: field.leftPadding + (field.length ? field.contentWidth + 2 : placeholderMetrics.advanceWidth + 4)

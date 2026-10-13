@@ -2,12 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Címkemező az Áttekintésen (design/handoff-v3 V1/V3): raised, borderStrong keret, sugár 7.
-// Benne a felrakott címkék (×), a beépített beviteli mező („Címke…”), és — ha van — egy
-// elválasztó után a javaslatok: a forrás neve (pl. „A résztvevők alapján:”, a D-szelet
-// People-forrása), szaggatott accent chipek (kattintás: felrakás · ×: nem illik ide) és
-// „Miért?” (TagWhyPopover). Ugyanaz a MeetingTagsModel, ami korábban a fejléc címkesoráé volt
-// (ShellMeetingModel.tags): közös visszavonási verem, toast „Visszavonás”-sal.
+// Tag field on the Overview: raised, borderStrong border, radius 7. Inside: the applied tags
+// (x), the built-in input ("Tag..."), and - if there are any - after a divider the suggestions:
+// the source name (e.g. "Based on the participants:", the People source), dashed accent chips
+// (click: apply · x: does not fit here) and "Why?" (TagWhyPopover). The same MeetingTagsModel
+// that used to back the header tag row (ShellMeetingModel.tags): shared undo stack, toast with "Undo".
 Rectangle {
     id: root
 
@@ -64,7 +63,7 @@ Rectangle {
             onBackspaceOnEmpty: if (root.model && root.tags.length > 0) root.model.remove(root.tags[root.tags.length - 1].id)
         }
 
-        // ---- javaslatok ----
+        // ---- suggestions ----
         Row {
             visible: root.hasSuggestions
             height: 24
@@ -72,7 +71,7 @@ Rectangle {
             Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 1; height: 16; color: Theme.border }
             TLabel {
                 anchors.verticalCenter: parent.verticalCenter
-                // A D-szelet People-forrása: a résztvevők kézi címkéiből.
+                // The People source: from the participants' manual tags.
                 text: !root.model ? ""
                       : root.model.suggestionSource === "people" ? qsTr("A résztvevők alapján:")
                       : root.model.suggestionLabel + ":"

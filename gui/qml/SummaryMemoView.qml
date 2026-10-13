@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Memó szakaszokkal (S2): balra a tartalomjegyzék (MemoToc, 236 px), jobbra a szakaszok
-// időrendben. Szakasz-fejléc: „N. cím” 19/600, alatta az időtartomány-chip (kattintás =
-// lejátszás onnan) és a szakasz beszélői; utána a bevezető (folyó bekezdés, mondatonként
-// idő-chippel), a törzs pontjai, majd az alszakaszok („ELHANGZOTT ÉRVEK”, „NYITOTT KÉRDÉS” —
-// ez utóbbi pont nélkül, bekezdésként). Minden állítás után az idő-chip(ek); a chip a
-// „Honnan jön ez?” felugrót nyitja, rámutatva az állítás kiemelődik (és a térkép „Forrás”
-// sorában is). A kiemelt szakasz (vm.activeSection) a görgetést követi, és a térkép
-// „Szakaszok” sávjában accent.
+// Memo with sections: table of contents (MemoToc, 236 px) on the left, the sections in
+// chronological order on the right. Section header: "N. title" 19/600, below it the time-range
+// chip (click = play from there) and the section's speakers; then the intro (running paragraph,
+// a time chip per sentence), the body points, then subsections ("ARGUMENTS MADE", "OPEN
+// QUESTION" - the latter as a paragraph, without bullets). Time chip(s) follow each claim; a chip
+// opens the "Where does this come from?" popup, and hovering highlights the claim (and in the
+// map's "Source" row too). The highlighted section (vm.activeSection) follows scrolling and is
+// accent in the map's "Sections" bar.
 Item {
     id: root
 
@@ -19,9 +19,9 @@ Item {
     property var player: null
     property alias popover: sourcePopover
 
-    property bool tracking: true       // a görgetés követi-e a kiemelt szakaszt
+    property bool tracking: true       // whether scrolling follows the highlighted section
     readonly property bool showChips: vm.sourcesVisible
-    // A „Nincs forrás” súgó horgonya (egy közös súgó).
+    // Anchor of the "No source" help (one shared help).
     property Item tipAnchor: null
 
     function hover(sid, on) {
@@ -33,7 +33,7 @@ Item {
         root.vm.activeStatementId = sid
         sourcePopover.openFor(sid, anchor)
     }
-    // Egy bekezdés elemei: szavak (az állítás azonosítójával) és a mondat utáni idő-chipek.
+    // Items of a paragraph: words (with the claim's ID) and the time chips after a sentence.
     function buildTokens(rows, chips) {
         const out = []
         for (let r = 0; r < rows.length; ++r) {
@@ -95,8 +95,8 @@ Item {
         text: qsTr("Nincs forrás: ehhez a modell nem jelölt időpontot.")
     }
 
-    // Folyó bekezdés állításokból (a bevezető, ill. a „Nyitott kérdés” alszakasz): szavanként
-    // egy Flow-ban, a mondat után az idő-chip(ek).
+    // Running paragraph of claims (the intro, or the "Open question" subsection): word by word
+    // in one Flow, with the time chip(s) after the sentence.
     component StatementParagraph: Flow {
         id: para
         property var rows: []
@@ -165,7 +165,7 @@ Item {
         }
     }
 
-    // Egy memó-pont: pötty, szöveg, a sor végén (jobbra) az idő-chipek.
+    // One memo point: bullet, text, time chips at the end of the line (right).
     component MemoPoint: Rectangle {
         id: point
         required property var modelData
@@ -224,7 +224,7 @@ Item {
         }
     }
 
-    // A képernyőkép / visszatérés: a kiemelt szakaszhoz görget.
+    // Screenshot / return: scroll to the highlighted section.
     Component.onCompleted: if (vm.activeSection > 0) initialScroll.start()
     Timer {
         id: initialScroll
@@ -338,14 +338,15 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
-                        // Bevezető: folyó bekezdés, mondatonként chippel.
+                        // Intro: running paragraph, a chip per sentence.
                         StatementParagraph {
                             objectName: "memoIntro"
                             visible: rows.length > 0
                             Layout.topMargin: 6
                             rows: section.modelData.introRows || []
                         }
-                        // A törzs pontjai, utána az alszakaszok (cím + pontok; a nyitott kérdés bekezdés).
+                        // The body points, then the subsections (title + points; the open question
+                        // is a paragraph).
                         Repeater {
                             model: section.modelData.blocks || []
                             ColumnLayout {

@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Csak-ikon gomb. variant: "outline" (1 px keret) | "flat" (keret nélkül) | "solid"
-// (text háttér + bg ikon; kerek lejátszás-gombhoz a radius-t állítsd height/2-re).
-// checkable + checked: accentSoft háttér, accent keret és ikon (pl. „Sávok” kapcsoló).
-// Mindig adj toolTipText-et: az a hozzáférhető neve is.
-//   TIconButton { iconName: "ellipsis"; toolTipText: qsTr("További műveletek") }
+// Icon-only button. variant: "outline" (1 px border) | "flat" (no border) | "solid"
+// (text background + bg icon; for a round play button set radius to height/2).
+// checkable + checked: accentSoft background, accent border and icon (e.g. the "Tracks" toggle).
+// Always give a toolTipText: it is also the accessible name.
+//   TIconButton { iconName: "ellipsis"; toolTipText: qsTr("More actions") }
 T.Button {
     id: control
 

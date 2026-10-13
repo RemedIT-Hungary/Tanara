@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az Áttekintés üres részei (design/handoff-v3 V5/V6): szaggatott borderStrong kártya egy
-// ikonnal, egy mondatnyi „miért” és a művelet(ek). A gombok / chipek a `actions` sorba
-// kerülnek (a szöveg alá, az ikonnal egy vonalban beljebb).
-//   EmptyCard { iconName: "users"; title: qsTr("Még nem tudjuk, kik voltak ott"); text: …
-//       TButton { text: qsTr("+ Résztvevő") } }
+// The Overview's empty parts: a dashed borderStrong card with an icon, one "why" sentence and
+// the action(s). Buttons / chips go into the `actions` row (below the text, indented to line up
+// with the icon).
+//   EmptyCard { iconName: "users"; title: qsTr("We do not know yet who was there"); text: ...
+//       TButton { text: qsTr("+ Participant") } }
 Item {
     id: root
 

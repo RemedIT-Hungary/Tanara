@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A munkalista időrendi csíkja az Átnézendő fókusz-nézet alján: egy cella egy sor, a lista
-// sorrendjében (■ eldöntve a beszélő színével · halványabb: nem minta · □ hátra · ◇ később ·
-// ? nem azonosítható · ✓ magától eldőlt — ezeket a kurzor átugorja). A kurzor cellája keretes;
-// kattintás: oda ugrik. A csík a kurzor (↑ / ↓ a tételek közt), fölötte a helye: „70 / 197 ·
-// következő kétes 23:10” (S7).
+// Chronological strip of the work list at the bottom of the "To review" focus view: one cell per
+// row, in list order (decided = speaker color - fainter: not a sample - back - later -
+// ? not identifiable - check = settled by itself; the cursor skips the last three). The cursor's
+// cell has a frame; a click jumps there. The strip is the cursor (up / down between items), above
+// it its position: "70 / 197 - next doubtful 23:10".
 //   queue: TranscriptEditorViewModel.reviewQueue (ReviewQueueModel)
 Rectangle {
     id: root
@@ -14,9 +14,9 @@ Rectangle {
     signal jump(int index)
 
     readonly property int count: queue ? queue.count : 0
-    // Cella-szélesség: sok sornál keskenyebb (a csík nem görget, mindig az egész kör látszik).
+    // Cell width: narrower with many rows (the strip does not scroll, the whole circle always shows).
     readonly property real cellWidth: count > 0 ? Math.max(3, Math.min(14, (strip.width + 3) / count - 3)) : 14
-    // A kurzor helye és a következő nyitott sor ideje (a modell jelzéseire újraszámolva).
+    // The cursor position and the time of the next open row (recomputed on the model's signals).
     readonly property string positionText: {
         if (!queue) return ""
         const n = queue.count, i = queue.currentIndex

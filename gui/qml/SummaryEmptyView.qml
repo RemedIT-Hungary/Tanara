@@ -2,10 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Összefoglaló fül — M06: még nincs összefoglaló. Két választó kártya (gyors: ajánlott;
-// témánkénti), alattuk a megbeszélés-megjegyzés (sablon-javaslatokkal) és a szolgáltató;
-// hiányzó beállításnál a sáv megnevezi és odavisz; futás közben a kártyák helyén a folyamat
-// látszik megszakítással.
+// Summary tab - no summary yet. Two choice cards (quick: recommended; per-topic), below them the
+// meeting note (with template suggestions) and the provider; for a missing setting the strip
+// names it and leads there; while running the progress replaces the cards, with a cancel.
 Flickable {
     id: root
 
@@ -19,7 +18,7 @@ Flickable {
     clip: true
     T.ScrollBar.vertical: TScrollBar {}
 
-    // Indítás előtt a függő megjegyzés-piszkozat mentése: a futás már az újat kapja.
+    // Before starting, save the pending note draft: the run already gets the new one.
     function startQuick() {
         noteEditor.commit()
         if (root.shell) root.shell.startQuickSummary(root.meetingId)
@@ -42,7 +41,7 @@ Flickable {
 
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredWidth: 1           // egyenlő oszlopok
+        Layout.preferredWidth: 1           // equal columns
         implicitHeight: cardCol.implicitHeight + 36
         radius: Theme.radiusPopup
         color: Theme.raised
@@ -122,7 +121,7 @@ Flickable {
             onRetryRequested: root.startQuick()
         }
 
-        // ---- futó állapot (összefoglaló készül / témák javaslása) ----
+        // ---- running state (summary being made / topics being suggested) ----
         Rectangle {
             visible: root.vm.jobRunning
             Layout.fillWidth: true
@@ -149,9 +148,9 @@ Flickable {
                         elide: Text.ElideRight
                     }
                 }
-                // Több szakasz (részenkénti jegyzet + összefésülés): szakasz-lista, a jegyzetelésnél
-                // valós csík a kész részekből. Egy szakasz: csík (határozatlan — a modell nem ad
-                // köztes haladást) + a szakasz neve.
+                // Several stages (per-part notes + merge): a stage list, for note-taking a real strip from the
+                // finished parts. One stage: a strip (indeterminate - the model gives no intermediate
+                // progress) + the stage name.
                 ColumnLayout {
                     visible: root.vm.jobStages.length > 1
                     Layout.fillWidth: true
@@ -226,7 +225,7 @@ Flickable {
             }
         }
 
-        // ---- a két út ----
+        // ---- the two paths ----
         GridLayout {
             visible: !root.vm.jobRunning
             Layout.fillWidth: true
@@ -254,7 +253,7 @@ Flickable {
             }
         }
 
-        // ---- megbeszélés-megjegyzés: az összefoglaló (és egy újra-átírás) ezt kapja ----
+        // ---- meeting note: the summary (and a re-transcription) gets this ----
         ColumnLayout {
             visible: !root.vm.jobRunning
             Layout.fillWidth: true

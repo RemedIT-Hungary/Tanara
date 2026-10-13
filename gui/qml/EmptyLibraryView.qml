@@ -1,14 +1,14 @@
 import QtQuick
 import QtQuick.Layouts
 
-// M01 — üres könyvtár: mit csinál a Tanara, a három lépés (Felvétel → Átirat →
-// Összefoglaló), „Felvétel indítása”, „Hangfájl importálása” (a második út az első
-// megbeszéléshez) és „Hívásfigyelő beállítása” (Beállítások › Figyelő). Alul egy sor a
-// másik gépről hozott megbeszéléshez: „Archívum importálása” (*.tanara.zip).
+// Empty library: what Tanara does, the three steps (Record -> Transcript -> Summary), "Start
+// recording", "Import audio file" (the second path to the first meeting) and "Set up call
+// watcher" (Settings > Watcher). At the bottom a row for a meeting brought from another machine:
+// "Import archive" (*.tanara.zip).
 Item {
     id: root
 
-    property var shell: null                 // ShellActions vagy null
+    property var shell: null                 // ShellActions or null
 
     component Step: Rectangle {
         id: step

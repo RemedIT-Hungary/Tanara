@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A könyvtár-lista egy eleme: cím (14/600, egysoros), alatta meta („okt. 2. · 30 p”) és a
-// három állapot-ikon (átirat / összefoglaló / azonosítva), harmadik sorban a címkék sima
-// szövegként („#Nordvik  #Partnerek  +1”; címke nélkül nincs harmadik sor). Keresésnél a
-// harmadik sor a találat: címke-találat („címke: #Nordvik”, címke-ikonnal) és/vagy az átirat
-// kivonata. Többes kijelöléskor minden sor elején jelölőnégyzet (16 px).
-// A LibraryListModel szerepeit kapja `required property`-ként.
+// One item of the library list: title (14/600, one line), below it meta ("Oct 2 · 30 min") and
+// the three state icons (transcript / summary / identified), on a third row the tags as plain
+// text ("#Nordvik  #Partners  +1"; no tags: no third row). When searching, the third row is the
+// match: a tag match ("tag: #Nordvik", with a tag icon) and/or the transcript excerpt. In
+// multi-select every row starts with a checkbox (16 px).
+// It receives the LibraryListModel roles as `required property`.
 Item {
     id: root
 
@@ -33,16 +33,16 @@ Item {
 
     property bool selected: false
     property bool keyboardFocused: false
-    // Többes kijelölés: látszik-e a jelölőnégyzet, és be van-e jelölve.
+    // Multi-select: whether the checkbox is visible, and whether it is checked.
     property bool selectionMode: false
     property bool checked: false
-    // modifiers: Qt.ControlModifier / Qt.ShiftModifier (Ctrl / Shift+kattintás)
+    // modifiers: Qt.ControlModifier / Qt.ShiftModifier (Ctrl / Shift+click)
     signal activated(int modifiers)
-    // Kattintás a jelölőnégyzetre (mint a Ctrl+kattintás).
+    // Click on the checkbox (like Ctrl+click).
     signal checkToggled()
     signal contextMenuRequested(real x, real y)
 
-    // A címke-találat sora csak akkor, ha a cím nem talált (cím-találatnál a sima címke-sor).
+    // The tag-match row only when the title did not match (on a title match the plain tag row).
     readonly property bool showTagHit: tagMatch && titleMatch === ""
     readonly property bool showTags: !hasSnippet && !showTagHit && tagLine.length > 0
 
@@ -71,7 +71,7 @@ Item {
         }
     }
 
-    // Jelölőnégyzet (16 px, bejelölve accent) — csak többes kijelölés közben.
+    // Checkbox (16 px, accent when checked) - only during multi-select.
     Rectangle {
         id: checkBox
         visible: root.selectionMode
@@ -122,7 +122,7 @@ Item {
             TStatusIcon { kind: "summary"; state: root.summaryState; toolTipText: root.summaryTip }
             TStatusIcon { kind: "identified"; state: root.identifyState; toolTipText: root.identifyTip }
         }
-        // Keresés: a találat egy címke nevében („címke: #Nordvik”, a címke kiemelve).
+        // Search: the match is in a tag name ("tag: #Nordvik", the tag highlighted).
         RowLayout {
             visible: root.showTagHit
             Layout.fillWidth: true
@@ -134,7 +134,7 @@ Item {
                 match: "#" + root.tagMatchName
             }
         }
-        // Keresés: kivonat az átiratból a találattal.
+        // Search: an excerpt of the transcript with the match.
         LibraryHighlightText {
             visible: root.hasSnippet
             Layout.fillWidth: true
@@ -142,7 +142,7 @@ Item {
             match: root.snippetMatch
             after: root.snippetAfter
         }
-        // A címkék sima szövegként, egy sorban (ami nem fér: „+N”).
+        // The tags as plain text, in one row (what does not fit: "+N").
         Row {
             visible: root.showTags
             Layout.fillWidth: true

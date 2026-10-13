@@ -1,12 +1,12 @@
 pragma Singleton
 import QtQuick
 
-// Tanara — a KITALÁLT demo-tartalom nyelvi kapcsolója QML-ben (a C++ DemoText.h-ra épül).
-// Magyar UI-nál a magyar, angol UI-nál a természetes angol demo-szöveg / -név szól; NEM qsTr
-// (a demo-tartalom nem a felület fordítása). Használat (a modulon belül import nélkül):
-//   text: DemoText.t("Negyedéves partnertalálkozó", "Quarterly partner review")
-//   name: DemoText.name("Kovács Lilla")          // angolul "Emma Carter"
-//   model: DemoText.names(["Kovács Lilla", "Fehér Gábor"])
+// Language switch for the FICTIONAL demo content in QML (built on the C++ DemoText.h). With a
+// Hungarian UI the Hungarian demo text / name sounds, with an English UI the natural English
+// one; NOT qsTr (demo content is not a translation of the UI). Usage (inside the module, no import):
+//   text: DemoText.t("<Hungarian text>", "Quarterly partner review")
+//   name: DemoText.name("<Hungarian name>")          // in English "Emma Carter"
+//   model: DemoText.names(["<Hungarian name 1>", "<Hungarian name 2>"])
 QtObject {
     id: demoText
     readonly property bool en: DemoTextCpp.en

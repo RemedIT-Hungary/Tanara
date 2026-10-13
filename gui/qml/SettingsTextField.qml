@@ -1,8 +1,8 @@
 import QtQuick
 
-// Szövegmező a Beállításokhoz: a nézetmodell értékét mutatja (`value`), a gépelést az
-// `edited` jelben adja vissza. A kívülről jövő változás (eldobás, visszaállítás, másik
-// szolgáltató) akkor is megjelenik, ha a felhasználó már írt a mezőbe.
+// Text field for Settings: shows the view model's value (`value`) and reports typing through
+// the `edited` signal. A change from outside (discard, restore, another provider) shows up
+// even if the user has already typed in the field.
 //   SettingsTextField { value: vm.userName; onEdited: (t) => vm.userName = t }
 TTextField {
     id: control
@@ -11,7 +11,7 @@ TTextField {
     signal edited(string text)
 
     text: value
-    // Gépelés közben a kiürített szám-mező (a modellben 0) ne íródjon vissza "0"-ként.
+    // While typing, a cleared number field (0 in the model) must not be written back as "0".
     function sync() {
         if (text !== value && !(activeFocus && text.trim() === "" && value === "0")) text = value
     }

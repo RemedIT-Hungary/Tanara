@@ -2,17 +2,17 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Ki volt ott?" (handoff-v3 V2): a hangelemzés résztvevő-jelöltjeinek jóváhagyása. Fátyol +
-// 820 px-es ablak; cím + mono meta (modellek · kor), segítő szöveg; csoportok (Biztos / Kétséges /
-// Meghívott, de nem hallottuk / a párbeszédben hozzáadottak), az üres csoport rejtve; hozzáadás-
-// mező (PersonPicker) + címke-alapú javaslat; lábléc: info a kötetlen nyers beszélőkről,
-// „Kihagyás" (skipApproval), „Tovább · N résztvevő" (approveParticipants). Elemzés közben
-// forgó jel; a bezárás (Esc) döntés nélkül hagyja („később").
+// "Who was there?": approval of the participant candidates from voice analysis. Scrim +
+// 820 px window; title + mono meta (models - age), helper text; groups (Sure / Doubtful /
+// Invited but not heard / added in the dialog), an empty group is hidden; add field
+// (PersonPicker) + tag-based suggestion; footer: info about unassigned raw speakers,
+// "Skip" (skipApproval), "Continue - N participants" (approveParticipants). A spinner shows
+// during analysis; closing (Esc) leaves it undecided ("later").
 //
-// A ShellDialogs mintájára a Main.qml hostolja:  ParticipantsDialog { shell: shellActions }
-// A shell.openParticipants(id) / maybeOfferParticipants(id) jelére magától nyílik.
-// Képernyőkép: demoState = allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet |
-// learnQuestion | learnNewPerson (a „Tovább” utáni tanulási kérdés, TagLearnPopup)
+// Hosted by Main.qml like ShellDialogs:  ParticipantsDialog { shell: shellActions }
+// It opens by itself on shell.openParticipants(id) / maybeOfferParticipants(id).
+// Screenshots: demoState = allSure | doubts | invitedNotHeard | addPerson | running | noTranscriptYet |
+// learnQuestion | learnNewPerson (the learning question after "Continue", TagLearnPopup)
 Item {
     id: root
 
@@ -40,7 +40,7 @@ Item {
 
     Component.onCompleted: {
         if (root.demoState === "") return
-        // A jóváhagyás utáni tanulási kérdés (képernyőkép): a párbeszéd már bezárult.
+        // The learning question after approval (screenshot): the dialog has already closed.
         if (root.demoState.startsWith("learn")) {
             vm.approve()
             Qt.callLater(learnPopup.openIfAsked)
@@ -55,16 +55,16 @@ Item {
         const n = vm.checkedCount
         if (!vm.approve()) return
         dialog.close()
-        // Tanulási kérdés (UX-terv 5.): ha van, a sáv kérdez (a jóváhagyás toastja helyett).
+        // Learning question: if present, the bar asks (instead of the approval toast).
         if (learnPopup.openIfAsked()) return
-        // G7b: a jóváhagyás a megbeszélés közös visszavonásának lépése — a héj változás-sávja
-        // (Áttekintés) ill. toastja „Visszavonás”-sal mondja ki (shell.meetingChangePosted).
-        // Közös verem nélkül (demó) a régi, visszavonás nélküli visszajelzés.
+        // Approval is a step of the meeting's shared undo stack - the shell's change bar (Overview)
+        // or its toast says so with "Undo" (shell.meetingChangePosted).
+        // Without the shared stack (demo) the old feedback without undo applies.
         if (root.shell && root.shell.hasMeetingUndo !== true)
             root.shell.toast(qsTr("Résztvevők jóváhagyva: %n.", "", n))
     }
 
-    // „X és Y másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?”
+    // "X and Y are at a #Nordvik meeting for the second time. Apply the tag to them?"
     TagLearnPopup {
         id: learnPopup
         vm: root.viewModel
@@ -74,7 +74,7 @@ Item {
         if (vm.skip()) dialog.close()
     }
 
-    // A sor elnevezése (ismeretlen hang).
+    // Naming the row (unknown voice).
     PersonPicker {
         id: namePicker
         objectName: "participantsNamePicker"
@@ -107,7 +107,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 0
 
-            // ---- cím + meta + segítő szöveg ----
+            // ---- title + meta + helper text ----
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: 22
@@ -146,7 +146,7 @@ Item {
                 }
             }
 
-            // ---- csoportok (görgethető, ha nem fér ki) ----
+            // ---- groups (scrollable if they do not fit) ----
             Flickable {
                 id: flick
                 Layout.fillWidth: true
@@ -166,7 +166,7 @@ Item {
                     spacing: 6
                     bottomPadding: 12
 
-                    // Elemzés közben: forgó jel + mit várunk.
+                    // During analysis: spinner + what we are waiting for.
                     Rectangle {
                         objectName: "participantsRunning"
                         visible: vm.running
@@ -196,7 +196,7 @@ Item {
                         }
                     }
 
-                    // Nincs jelölt (és nem is fut elemzés).
+                    // No candidate (and no analysis running).
                     Item {
                         visible: !vm.running && vm.rowCount === 0
                         width: parent.width
@@ -280,7 +280,7 @@ Item {
                         }
                     }
 
-                    // ---- hozzáadás + címke-alapú javaslat ----
+                    // ---- add + tag-based suggestion ----
                     Item { width: 1; height: 2 }
                     Row {
                         spacing: 8
@@ -310,7 +310,8 @@ Item {
                             PersonPicker {
                                 id: addPicker
                                 objectName: "participantsAddPicker"
-                                // Ha alatta nem fér el (a párbeszéd alja), a mező fölé nyílik.
+                                // If it does not fit below (the dialog's bottom), it opens above
+                                // the field.
                                 y: addField.mapToItem(root, 0, addField.height).y + implicitHeight + 14 > root.height
                                    ? -implicitHeight - 6 : addField.height + 6
                                 participants: vm
@@ -385,7 +386,7 @@ Item {
                 }
             }
 
-            // ---- lábléc ----
+            // ---- footer ----
             TDivider { Layout.fillWidth: true }
             RowLayout {
                 Layout.fillWidth: true
@@ -414,7 +415,7 @@ Item {
                         font.pixelSize: Theme.fontCaption
                         text: vm.infoText
                     }
-                    // K1: a címke csak rangsorol, a döntés a hangé (UX-terv 4.).
+                    // The tag only ranks; the voice decides (UX plan 4).
                     TLabel {
                         objectName: "participantsRule"
                         Layout.fillWidth: true

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Jelölőnégyzet (16 px, sugár 4). A felirat tördelődik; a négyzet az első sorhoz igazodik.
+// Checkbox (16 px, radius 4). The label wraps; the box aligns with the first line.
 T.CheckBox {
     id: control
 

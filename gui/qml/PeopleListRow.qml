@@ -1,8 +1,8 @@
 import QtQuick
 
-// A Személyek ablak névsorának egy sora (P01): 28 px monogram, név (a keresés találata
-// kiemelve), „te” jelző, alatta ikon + megbeszélés- és mintaszám. Ha a sor új szakaszt kezd
-// (`header`), fölötte a szakasz címkéje áll.
+// One row of the People window's name list: 28 px monogram, name (search match highlighted),
+// "you" marker, below it an icon + meeting and sample counts. If the row starts a new section
+// (`header`), the section label sits above it.
 Item {
     id: root
 
@@ -15,7 +15,7 @@ Item {
     property string before: ""
     property string match: ""
     property string after: ""
-    // A keresés a személy címkéjén talált: címke-ikon a meta előtt („címke: #Nordvik …”).
+    // The search matched the person's tag: a tag icon before the meta ("tag: #Nordvik ...").
     property bool tagHit: false
     property bool selected: false
     signal clicked()
@@ -85,7 +85,7 @@ Item {
             Row {
                 width: parent.width
                 spacing: 6
-                // A név nem rövidül: a listasáv átméretezhető (és csak végszükségben vág).
+                // The name is not shortened: the list pane is resizable (and clips only as a last resort).
                 TLabel {
                     id: nameLabel
                     width: Math.min(implicitWidth, parent.width - (mePill.visible ? mePill.width + 6 : 0))

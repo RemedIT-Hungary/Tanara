@@ -1,12 +1,12 @@
 import QtQuick
 
-// Tanulási kérdés a személy-címkékhez (vault UX-terv 5.), a változás-sáv sötét formanyelvén:
-//   „Fehér Gábor és Varga Árpád másodszor van #Nordvik megbeszélésen. Rájuk teszem a címkét?”
-//   Igen · Nem · Egyenként… · ×
-// Az „Egyenként…” egy kis listát nyit (személy · #címke, soronként Igen / Nem). Az „Igen” és a
-// „Nem” egy-egy visszavonási lépés (a hívó toastja „Visszavonás”-sal). A bezárás nem elutasítás.
-// Kétféle hely: önálló sáv (a „Ki volt ott?” utáni TagLearnPopup) és beágyazott sor a
-// szerkesztő változás-sávjában (embedded: nincs saját háttér, árnyék és ×).
+// Learning question for person tags, in the change bar's dark style:
+//   "Emma Carter and Ben Hall are in a #Nordvik meeting for the second time. Tag them?"
+//   Yes · No · One by one... · x
+// "One by one..." opens a small list (person · #tag, Yes / No per row). "Yes" and "No" are each
+// one undo step (the caller's toast has "Undo"). Closing is not a rejection.
+// Two places: a standalone bar (the TagLearnPopup after "Who was there?") and an embedded row in
+// the editor's change bar (embedded: no own background, shadow or x).
 //   question: { text, pairs: [{ index, name, tagName, text }] } (ParticipantsViewModel.learnQuestion)
 Rectangle {
     id: root
@@ -29,7 +29,7 @@ Rectangle {
     TShadow { visible: !root.embedded; radius: root.radius }
     HoverHandler { id: hover }
 
-    // Sötét sávra írt művelet (a TranscriptChangeBar BarAction-jének mása).
+    // Action written on the dark bar (a copy of TranscriptChangeBar's BarAction).
     component LearnAction: Item {
         id: action
         property string text: ""

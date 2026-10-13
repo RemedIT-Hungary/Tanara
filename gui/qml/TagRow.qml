@@ -1,15 +1,15 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A megbeszélés címkesora a fejlécben (C03/C04): mindig 26 px magas és sosem tör, így a később
-// érkező javaslat nem tolja el a felületet. Egy sorban, 6 px-es közökkel:
-//   [felrakott címkék…] [+N] [+ Címke]  |  [✦] felirat  [≤ 2 javaslat] [+N] Mind  (i) Miért?
-// Számolás közben: | ⟳ „Javaslatok készülnek…”. Javaslat nélkül a „+ Címke” után semmi.
-// Billentyű: ha a sor (vagy egy chipje) fókuszban van, a T megnyitja a beviteli mezőt.
+// The meeting's tag row in the header: always 26 px high and never wraps, so a suggestion that
+// arrives later does not shift the layout. One row, 6 px gaps:
+//   [applied tags...] [+N] [+ Tag]  |  [sparkle] label  [<= 2 suggestions] [+N] All  (i) Why?
+// While computing: | spinner "Preparing suggestions...". With no suggestions nothing follows "+ Tag".
+// Key: when the row (or one of its chips) has focus, T opens the input field.
 //
-// Adat: a `model` (MeetingTagsModel) — ha meg van adva, a sor maga hívja a műveleteit, és a
-// jeleket csak tájékoztatásul adja ki. A tags / suggestions / suggestionLabel / computing
-// property-k felülírhatók; model nélkül saját, kitalált adatos modellt használ (`demoState`).
+// Data: the `model` (MeetingTagsModel) - if given, the row calls its actions itself and only
+// emits the signals for information. The tags / suggestions / suggestionLabel / computing
+// properties can be overridden; without a model it uses its own fictional demo model (`demoState`).
 FocusScope {
     id: root
 
@@ -20,11 +20,11 @@ FocusScope {
     property string suggestionLabel: effectiveModel ? effectiveModel.suggestionLabel : ""
     property bool computing: effectiveModel ? effectiveModel.computing : false
     property bool editable: true
-    // A beviteli mező modellje (megadható közösnek; nélküle saját).
+    // The input field's model (can be passed in as shared; without it, its own).
     property var inputModel: null
     property int maxVisibleTags: 6
     property int maxVisibleSuggestions: 2
-    // Galéria / kép: ennek a chipnek fókusz-kinézete van; a „Miért?” panel nyitva.
+    // Gallery / image: this chip has a focus look; the "Why?" panel is open.
     property int demoFocusedTag: -1
     property bool demoWhyOpen: false
     property alias whyPopover: why
@@ -81,7 +81,7 @@ FocusScope {
         excludeIds: root.effectiveModel ? root.effectiveModel.tagIds : []
     }
 
-    // ---- mérés: hány felrakott címke fér ki (legfeljebb maxVisibleTags) ----
+    // ---- measuring: how many applied tags fit (at most maxVisibleTags) ----
     Row {
         id: measure
         visible: false
@@ -152,7 +152,7 @@ FocusScope {
             }
         }
 
-        // „+ Címke” — szerkesztéskor helyén a beviteli mező.
+        // "+ Tag" - when editing, the input field takes its place.
         Item {
             id: addSlot
             visible: root.editable
@@ -216,7 +216,7 @@ FocusScope {
             }
         }
 
-        // ---- javaslatok ----
+        // ---- suggestions ----
         Row {
             id: suggestionPart
             visible: root.hasSuggestions
@@ -345,7 +345,7 @@ FocusScope {
             }
         }
 
-        // ---- számolás közben ----
+        // ---- while computing ----
         Row {
             id: computingPart
             visible: root.computing

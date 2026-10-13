@@ -2,19 +2,19 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Szolgáltató-kártya (B04 / B05): „Átírás (STT)” vagy „Összefoglaló (LLM)”. A mezők a
-// nézetmodellből jönnek (SettingsProviderModel — a provider-registry leírói alapján), itt
-// csak a típusuk szerinti szerkesztő áll: szöveg / cím / titok (szem-gombbal) / szám
-// (csúszka vagy mező) / lista („Lekérés”-sel). Alul: „Kapcsolat tesztelése” + „Haladó”.
-// C09: a már beállított szerep egysoros, összecsukott kártya (cím · szolgáltató · állapot);
-// a fejlécre kattintva nyílik / csukódik. A mély hivatkozás és a hibás teszt mindig nyitja.
+// Provider card: "Transcription (STT)" or "Summary (LLM)". The fields come from the view model
+// (SettingsProviderModel, based on the provider registry's descriptors); here only the editor
+// for each field type: text / URL / secret (with an eye button) / number (slider or field) /
+// list (with "Fetch"). Below: "Test connection" + "Advanced". An already configured role is a
+// one-line collapsed card (title · provider · status); a header click expands / collapses it.
+// A deep link and a failed test always expand it.
 Rectangle {
     id: root
 
     property var card: null            // SettingsProviderModel
     property string title: ""
     property string subtitle: ""
-    property bool demoDropdown: false  // képernyőképhez: a szolgáltató-lista nyitva
+    property bool demoDropdown: false  // for screenshots: the provider list is open
     property bool collapsible: true
 
     readonly property bool failed: card && card.testState === "failed"
@@ -27,7 +27,7 @@ Rectangle {
     border.width: highlighted ? 1.5 : 1
     border.color: failed ? Theme.dangerLine : highlighted ? Theme.accent : Theme.border
 
-    Rectangle {                        // B04: 3 px accentSoft gyűrű a kiemelt kártya körül
+    Rectangle {                        // 3 px accentSoft ring around the highlighted card
         visible: root.highlighted && !root.failed
         anchors.fill: parent
         anchors.margins: -3
@@ -38,7 +38,7 @@ Rectangle {
         z: -1
     }
 
-    // A fejléc kattintható (nyit / csuk), billentyűvel is.
+    // The header is clickable (expand / collapse), also by keyboard.
     T.AbstractButton {
         id: headerBtn
         visible: root.collapsible
@@ -66,7 +66,7 @@ Rectangle {
         width: parent.width - 32
         spacing: 12
 
-        // ---- fej: cím + állapot ----
+        // ---- head: title + status ----
         RowLayout {
             id: header
             Layout.fillWidth: true
@@ -98,7 +98,7 @@ Rectangle {
                 font.pixelSize: Theme.fontCaption
                 elide: Text.ElideRight
             }
-            // Összecsukva teszt nélkül is jelzi, hogy a szerep be van állítva.
+            // Collapsed, it shows that the role is set up even without a test.
             SettingsStatusPill {
                 readonly property bool untested: root.collapsed && root.card && root.card.testState === ""
                 status: !root.card ? "" : untested ? (root.card.configured ? "ok" : "") : root.card.testState
@@ -106,13 +106,13 @@ Rectangle {
             }
         }
 
-        // ---- a kártya törzse (összecsukva rejtve) ----
+        // ---- card body (hidden when collapsed) ----
         ColumnLayout {
             visible: !root.collapsed
             Layout.fillWidth: true
             spacing: 12
 
-            // ---- szolgáltató ----
+            // ---- provider ----
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -133,7 +133,7 @@ Rectangle {
                 }
             }
 
-            // ---- a szolgáltató mezői ----
+            // ---- the provider's fields ----
             SettingsProviderFields {
                 Layout.fillWidth: true
                 visible: root.card && root.card.fields.length > 0
@@ -157,7 +157,7 @@ Rectangle {
                 wrapMode: Text.Wrap
             }
 
-            // ---- a teszt hibája / figyelmeztetése ----
+            // ---- the test's error / warning ----
             Rectangle {
                 visible: root.failed
                 Layout.fillWidth: true
@@ -193,8 +193,8 @@ Rectangle {
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.Wrap
             }
-            // Sikeres teszt után a szerver adatai (LM Studio: betöltött kontextus, párhuzamosság) —
-            // ha a Haladó rész nyitva van, ott látszik a kontextus-beállítás mellett.
+            // After a successful test, the server's data (LM Studio: loaded context, parallelism) -- if the
+            // Advanced part is open, it shows there next to the context setting.
             TLabel {
                 visible: root.card && root.card.testState === "ok" && root.card.serverInfo !== "" && !advGrid.visible
                 Layout.fillWidth: true
@@ -204,7 +204,7 @@ Rectangle {
                 wrapMode: Text.Wrap
             }
 
-            // ---- haladó mezők ----
+            // ---- advanced fields ----
             Rectangle {
                 visible: advGrid.visible
                 Layout.fillWidth: true
@@ -219,7 +219,7 @@ Rectangle {
                 fields: root.card ? root.card.advancedFields : []
                 rowSpacing: 10
             }
-            // A modell „gondolkodása” az összefoglalónál (csak saját kulcsos LLM): alapból ki.
+            // The model's "thinking" for the summary (own-key LLM only): off by default.
             ColumnLayout {
                 visible: advGrid.visible && root.card && root.card.reasoningAvailable
                 Layout.fillWidth: true
@@ -251,8 +251,8 @@ Rectangle {
                     wrapMode: Text.Wrap
                 }
             }
-            // A modell kontextusa (csak saját kulcsos LLM): automatikus vagy rögzített tokenszám.
-            // LM Studiónál a Tanara a feladat előtt ekkorával (egy szálon) tölti be a modellt.
+            // The model's context (own-key LLM only): automatic or a fixed token count. With LM Studio,
+            // Tanara loads the model with this size (single thread) before the task.
             ColumnLayout {
                 visible: advGrid.visible && root.card && root.card.contextAvailable
                 Layout.fillWidth: true
@@ -290,7 +290,7 @@ Rectangle {
                 }
             }
 
-            // ---- műveletek ----
+            // ---- actions ----
             RowLayout {
                 Layout.fillWidth: true
                 visible: root.card && (root.card.testable || root.card.advancedFields.length > 0)

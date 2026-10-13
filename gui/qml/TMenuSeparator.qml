@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Menü-elválasztó (1 px, 4/6 margó).
+// Menu separator (1 px, 4/6 margin).
 T.MenuSeparator {
     implicitWidth: 40
     implicitHeight: 9

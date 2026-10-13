@@ -2,36 +2,36 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Átirat előtti nézet — a fülek helyett látszik, amíg a megbeszélésnek nincs átirata.
-// Három állapot a feldolgozási állapotból (PreTranscriptViewModel.state):
-//   "steps"   M03: kontextus → előkészítés → átírás (a hiány megnevezve, a gomb odavisz)
-//   "running" M04: szakasz-lista valós haladással, megszakítható
-//   "failed"  M05: hibakártya újrapróbálással és javító művelettel
-// Képernyőképhez: --qml-prop 'demoState="steps|ready|cloud|mixing|running|uploading|failed|note"'.
+// Pre-transcript view - shown instead of the tabs while a meeting has no transcript.
+// Three states from the processing state (PreTranscriptViewModel.state):
+//   "steps"   context -> preparation -> transcription (the missing part is named, the button leads there)
+//   "running" section list with real progress, cancelable
+//   "failed"  error card with retry and a fix action
+// For screenshots: --qml-prop 'demoState="steps|ready|cloud|mixing|running|uploading|failed|note"'.
 Item {
     id: root
 
-    property string meetingId: ""      // a kijelölt megbeszélés; "" = nincs
-    property var player: null          // PlayerController vagy null (itt nem használt)
-    property var shell: null           // ShellActions vagy null
+    property string meetingId: ""      // the selected meeting; "" = none
+    property var player: null          // PlayerController or null (unused here)
+    property var shell: null           // ShellActions or null
     property string demoState: ""
 
     PreTranscriptViewModel {
         id: vm
         meetingId: root.meetingId
         demoState: root.demoState
-        // A címke-lépések a héj toastján, „Visszavonás”-sal (közös visszavonási verem).
+        // Tag steps go to the shell toast with "Undo" (shared undo stack).
         onToast: (text, undoable) => { if (root.shell) root.shell.toast(text, undoable ? "tags" : "") }
     }
 
-    // A Beállítások bezárása után a kapuzás újraolvasása (kulcs került be / ki).
+    // After Settings closes, re-read the gating (a key was added / removed).
     onVisibleChanged: if (visible) vm.refresh()
     Connections {
         target: Qt.application
         function onStateChanged() { if (Qt.application.state === Qt.ApplicationActive && root.visible) vm.refresh() }
     }
 
-    // A hiányzó átíró-szolgáltatóhoz a Beállítások az STT-kártyát kiemelve nyílik (B04).
+    // For a missing transcription provider, Settings opens with the STT card highlighted.
     function openSettings(page) {
         if (!root.shell) return
         if (page === "providers") root.shell.openSettings(page, "stt")
@@ -60,7 +60,7 @@ Item {
                           : vm.state === "running" ? runningBox.implicitHeight
                           : vm.state === "failed" ? failed.implicitHeight : 0
 
-            // ================= M03 — lépések =================
+            // ================= steps =================
             ColumnLayout {
                 id: steps
                 visible: vm.state === "steps"
@@ -82,7 +82,7 @@ Item {
                     tone: "current"
                     title: qsTr("Miről szólt a megbeszélés?")
 
-                    // ---- Címkék (C07, T07): átirat előtt itt, nem a fejlécben ----
+                    // ---- Tags: here before the transcript, not in the header ----
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -100,7 +100,7 @@ Item {
                             onAddRequested: (name, isNew) => vm.tags.add(name)
                             onRemoveRequested: (id) => vm.tags.remove(id)
                         }
-                        // „Javasolt: [+ chip] hasonló cím: „…” · Észlelt hívás: …”
+                        // "Suggested: [+ chip] similar title: "..." - Detected call: ..."
                         Row {
                             visible: vm.tagSuggestions.length > 0
                             Layout.fillWidth: true
@@ -145,7 +145,7 @@ Item {
                     MeetingNoteEditor {
                         id: noteEditor
                         Layout.fillWidth: true
-                        // Az észlelt hívás a javaslat-sorban áll, ha az látszik.
+                        // The detected call sits in the suggestion row if that is visible.
                         showDetectedCall: vm.tagSuggestions.length === 0
                         model: vm.note
                         accessibleName: qsTr("Miről szólt a megbeszélés?")
@@ -161,7 +161,7 @@ Item {
                     tag: qsTr("opcionális")
                     contentSpacing: 10
 
-                    // --- Résztvevők azonosítása hang alapján ---
+                    // --- Identify participants by voice ---
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -194,8 +194,8 @@ Item {
                         }
                     }
 
-                    // --- Lekeverés: az átírás ebből dolgozik, ezért nem kapcsolható ki; itt az
-                    //     állapota látszik, és előre elkészíthető. ---
+                    // --- Mixdown: transcription works from it, so it cannot be turned off; its
+                    //     state shows here and it can be prepared in advance. ---
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -284,7 +284,7 @@ Item {
                     title: qsTr("Átírás")
                     contentSpacing: 10
 
-                    // Hiányzó beállítás: megnevezve, a gomb odavisz.
+                    // Missing setting: named, the button leads there.
                     TBanner {
                         visible: vm.blocker.title !== undefined
                         Layout.fillWidth: true
@@ -305,7 +305,7 @@ Item {
                         }
                     }
 
-                    // Tanara Cloud: szint (Gyors / Pontos) és nyelv az indító gomb fölött.
+                    // Tanara Cloud: tier (Fast / Accurate) and language above the start button.
                     ColumnLayout {
                         visible: vm.cloudSelected
                         Layout.fillWidth: true
@@ -383,7 +383,7 @@ Item {
                         }
                     }
 
-                    // „Hamarosan” sor (csak ha a build tartalmazza a Tanara Cloud előzetesét).
+                    // "Coming soon" row (only if the build includes the Tanara Cloud preview).
                     RowLayout {
                         visible: vm.cloudTeaser
                         Layout.fillWidth: true
@@ -404,7 +404,7 @@ Item {
                 }
             }
 
-            // ================= M04 — átírás folyamatban =================
+            // ================= transcription in progress =================
             ColumnLayout {
                 id: runningBox
                 visible: vm.state === "running"
@@ -434,7 +434,8 @@ Item {
                                 font.weight: Theme.weightSemiBold
                                 elide: Text.ElideRight
                             }
-                            // Becslés csak akkor, ha van korábbi mért futás ugyanezzel a szolgáltatóval.
+                            // An estimate only if there is an earlier measured run with the same
+                            // provider.
                             TLabel {
                                 visible: vm.etaText !== ""
                                 text: vm.etaText
@@ -490,7 +491,7 @@ Item {
                 }
             }
 
-            // ================= M05 — az átírás nem sikerült =================
+            // ================= transcription failed =================
             ColumnLayout {
                 id: failed
                 visible: vm.state === "failed"

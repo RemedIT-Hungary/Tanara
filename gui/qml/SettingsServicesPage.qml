@@ -2,24 +2,23 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B04–B06 — Szolgáltatások: „Saját kulcs” vagy „Tanara Cloud” (ha a build és a beállítás
-// engedi), alatta a két szolgáltató-kártya (C09: a beállított szerep összecsukva) vagy a
-// Cloud-panel / várólista-ajánlat; mindkét módban a „Beágyazás” kártya (címkejavaslatok) és
-// a CÍMKEJAVASLATOK kapcsolói.
+// Services: "Own key" or "Tanara Cloud" (if the build and setting allow it), below it the two
+// provider cards (the configured role collapsed) or the Cloud panel / waitlist offer; in both
+// modes the "Embedding" card (tag suggestions) and the TAG SUGGESTIONS switches.
 Column {
     id: root
 
     property var vm: null
-    property bool demoDropdown: false      // B04 képernyőkép: az STT-lista nyitva
+    property bool demoDropdown: false      // screenshot: the STT list is open
     signal logoutRequested()
-    signal rejectedResetRequested()        // „Visszaállítás”: az ablak megerősítést kér
+    signal rejectedResetRequested()        // "Reset": the window asks for confirmation
 
     readonly property string availability: vm ? vm.cloudAvailability : "none"
     readonly property bool cloudView: vm && vm.serviceMode === "cloud" && availability !== "none"
 
     spacing: 16
 
-    // ---- módválasztó ----
+    // ---- mode selector ----
     RowLayout {
         visible: root.availability !== "none"
         width: parent.width
@@ -112,7 +111,7 @@ Column {
         }
     }
 
-    // ---- saját kulcs ----
+    // ---- own key ----
     Column {
         visible: !root.cloudView
         width: parent.width
@@ -141,7 +140,7 @@ Column {
         SettingsProviderCard {
             objectName: "sttCard"
             width: parent.width
-            z: 2                            // a lenyíló lista a következő kártya fölé kerüljön
+            z: 2                            // the dropdown list goes over the next card
             card: root.vm ? root.vm.stt : null
             title: qsTr("Átírás")
             subtitle: qsTr("beszédből szöveg (STT)")
@@ -170,14 +169,14 @@ Column {
         vm: root.vm
     }
 
-    // ---- C09: beágyazás (címkejavaslatokhoz) ----
+    // ---- embedding (for tag suggestions) ----
     SettingsEmbeddingCard {
         objectName: "embeddingCard"
         width: parent.width
         emb: root.vm ? root.vm.embedding : null
     }
 
-    // ---- CÍMKEJAVASLATOK ----
+    // ---- TAG SUGGESTIONS ----
     Column {
         objectName: "tagSuggestionSettings"
         width: parent.width

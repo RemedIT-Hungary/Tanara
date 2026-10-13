@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Kapcsoló (34×20). A felirat 14/500; hosszabb magyarázatot a hívó tegyen alá (13, muted).
+// Switch (34x20). The label is 14/500; the caller puts a longer explanation below (13, muted).
 T.Switch {
     id: control
 

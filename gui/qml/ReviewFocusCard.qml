@@ -2,25 +2,25 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az Átnézendő fókusz-kártyája (S7, a „fókusz-kártya mock” nyugodt változata): bal oldalon nagy,
-// kerek lejátszó-gomb (alatta „Space”); jobbra a sor beszélője (avatar, név, idő, ok) KÖZVETLENÜL
-// a szöveg fölött (mint az átiratban), a szöveg (max. 3 sor), alatta a hullámforma + idő +
-// bizonyíték-chipek. Alatta a fix gomb-sor (Enter · J · 0 · M · →: hely, szélesség, billentyű
-// sosem változik; a nevek a feliraton, a művelet ikonja színes, a gomb maga színtelen), a
-// „Shift = nem minta” sor és a teljes nevű beszélő-számsor (1–9 = a sín oszlopai, „most” szürke
-// kitöltés, „javasolt” vékony accent keret — ez az egyetlen kék a kártyán).
-// A kártya magassága nem függ a sortól: a szöveg-blokk fix, a számsor magassága csak a sín
-// beszélőitől függ (minden chip helyet tart a „most” / „javasolt” jelnek, így menet közben nem
-// rendeződik át). A helyét a ReviewFocusView adja.
-//   item:  a ReviewQueueModel.current térképe (utteranceId, state, likelyName, reasons …)
+// The focus card of To review: on the left a big round play button ("Space" below it); on the
+// right the line's speaker (avatar, name, time, reason) DIRECTLY above the text (as in the
+// transcript), the text (max 3 lines), below it the waveform + time + evidence chips. Below
+// that the fixed button row (Enter · J · 0 · M · Right: position, width and key never change;
+// the names are on the label, the action icon is colored, the button itself colorless), the
+// "Shift = not a sample" row and the speaker number row with full names (1-9 = the rail's
+// columns, "now" gray fill, "suggested" thin accent border - the only blue on the card).
+// The card's height does not depend on the line: the text block is fixed, the number row's
+// height depends only on the rail's speakers (every chip reserves room for the "now" /
+// "suggested" mark, so nothing reflows mid-use). ReviewFocusView provides its position.
+//   item:  the ReviewQueueModel.current map (utteranceId, state, likelyName, reasons ...)
 Rectangle {
     id: root
 
     property var item: ({})
-    property var lanes: []                  // TranscriptEditorViewModel.lanes (a sín sorrendje)
+    property var lanes: []                  // TranscriptEditorViewModel.lanes (the rail's order)
     property bool shiftHeld: false
-    property bool playing: false            // a kártya sora szól
-    property real playPos: 0                // 0..1 a soron belül
+    property bool playing: false            // the card's line is playing
+    property real playPos: 0                // 0..1 within the line
     property int durationMs: 0
 
     signal enterClicked()
@@ -43,9 +43,9 @@ Rectangle {
     readonly property bool hasSuggestion: !alreadyDecided && (likelyName !== "" || likelyNewSide !== "")
                                           && likelyKey !== (item.speakerKey || "")
     readonly property bool suggestsNew: hasSuggestion && likelyName === "" && likelyNewSide !== ""
-    // A bizonyíték-szövegek röviden (a javaslat alszövegéhez): „hang 91% · a mikrofonon szólt”.
+    // The evidence texts, short (for the suggestion's subtext): "voice 91% · spoke on the mic".
     readonly property string evidenceText: (item.reasons || []).map(r => r.text || "").filter(t => t !== "").slice(0, 2).join(" · ")
-    // Az Enter-gomb: a javasolt név (→), új beszélő, vagy ha nincs javaslat, a mostani név (✓ marad).
+    // The Enter button: the suggested name (right), a new speaker, or with no suggestion the current name (check: stays).
     readonly property string enterText: !hasSuggestion ? speakerName
                                        : suggestsNew ? qsTr("Új beszélő") : likelyName
     readonly property string enterSub: !hasSuggestion ? qsTr("marad · (= J)")
@@ -54,7 +54,7 @@ Rectangle {
     readonly property string enterIcon: !hasSuggestion ? "check" : suggestsNew ? "user-plus" : "arrow-right"
     readonly property alias otherAnchor: otherButton
 
-    // Rögzített méretek.
+    // Fixed sizes.
     readonly property int pad: 18
     readonly property int nameRowHeight: 26
     readonly property int textBlockHeight: 84
@@ -62,7 +62,7 @@ Rectangle {
     readonly property int bodyHeight: nameRowHeight + 4 + textBlockHeight + 6 + playerRowHeight
     readonly property int buttonHeight: 48
     readonly property int fixedHeight: 16 + bodyHeight + 14 + buttonHeight + 8 + 20 + 10 + 1 + 12 + 14
-    // Minden chip helyet tart a jelnek (a leghosszabb: „javasolt”).
+    // Every chip reserves room for the mark (the longest: "suggested").
     readonly property real markWidth: Math.max(markProbe.implicitWidth, markProbe2.implicitWidth)
 
     objectName: "reviewFocusCard"
@@ -78,7 +78,7 @@ Rectangle {
         const s = Math.max(0, Math.round(ms / 1000))
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
     }
-    // Determinisztikus „hullámforma” a sor azonosítójából (a csík a lejátszás haladását mutatja).
+    // Deterministic "waveform" from the line's id (the strip shows playback progress).
     function barHeight(i) {
         let seed = 7
         const id = root.utteranceId
@@ -90,7 +90,7 @@ Rectangle {
     TLabel { id: markProbe; visible: false; text: qsTr("javasolt"); font.pixelSize: Theme.fontMicro; font.weight: Theme.weightSemiBold }
     TLabel { id: markProbe2; visible: false; text: qsTr("most"); font.pixelSize: Theme.fontMicro; font.weight: Theme.weightSemiBold }
 
-    // ---- nagy lejátszó-gomb + „Space” ----
+    // ---- big play button + "Space" ----
     T.Button {
         id: playButton
         objectName: "reviewFocusPlay"
@@ -138,7 +138,7 @@ Rectangle {
         font.pixelSize: Theme.fontMicro
     }
 
-    // ---- a sor: beszélő a szöveg fölött → szöveg → hullámforma + bizonyítékok ----
+    // ---- the line: speaker above the text -> text -> waveform + evidence ----
     Column {
         id: body
         x: playButton.x + playButton.width + 16
@@ -177,7 +177,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 40
             }
-            // Állapot-jelek (csak ha a kurzor egy nem nyitott soron áll, vagy változott valami).
+            // State marks (only when the cursor is on a non-open line, or something changed).
             TPill {
                 objectName: "reviewFocusUpdated"
                 visible: root.item.suggestionUpdated === true && !root.alreadyDecided
@@ -258,7 +258,7 @@ Rectangle {
                 muted: true
                 font.pixelSize: Theme.fontCaption
             }
-            // Bizonyíték-chipek; szűk helyen levágva.
+            // Evidence chips; clipped when space is tight.
             Item {
                 Layout.minimumWidth: 0
                 Layout.maximumWidth: chips.implicitWidth
@@ -287,7 +287,7 @@ Rectangle {
         }
     }
 
-    // ---- döntés-gombok: hely, szélesség, sorrend, billentyű fix ----
+    // ---- decision buttons: position, width, order, key fixed ----
     Item {
         id: buttonRow
         objectName: "reviewFocusButtons"
@@ -384,7 +384,7 @@ Rectangle {
         }
     }
 
-    // ---- „Shift = ugyanez, de nem minta” ----
+    // ---- "Shift = the same, but not a sample" ----
     Row {
         id: shiftHint
         objectName: "reviewFocusShiftHint"
@@ -417,7 +417,7 @@ Rectangle {
         }
     }
 
-    // ---- beszélő-számsor: teljes nevek, a sín sorrendjében (1–9), + új beszélő ----
+    // ---- speaker number row: full names, in the rail's order (1-9), + new speaker ----
     Rectangle {
         x: 0
         y: shiftHint.y + shiftHint.height + 10
@@ -488,7 +488,7 @@ Rectangle {
                         font.pixelSize: Theme.fontSmall
                         font.weight: Theme.weightMedium
                     }
-                    // A jel helye minden chipen megvan (a sor nem rendeződik át).
+                    // The mark's place exists on every chip (the row does not reflow).
                     TLabel {
                         objectName: "reviewFocusLaneMark"
                         anchors.verticalCenter: parent.verticalCenter
@@ -508,7 +508,7 @@ Rectangle {
                 }
             }
         }
-        // „+ Új beszélő…”: javasoltként, ha a javaslat egy új beszélő.
+        // "+ New speaker...": as suggested, if the suggestion is a new speaker.
         Rectangle {
             id: newChip
             objectName: "reviewFocusLaneNew"

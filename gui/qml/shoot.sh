@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Képernyőkép-készlet a QML-felületről, látható ablak nélkül (offscreen + szoftveres renderer).
-#   gui/qml/shoot.sh                 → build/shots/*.png  (galéria + a főablak állapotai, 2 témában)
-#   gui/qml/shoot.sh Gallery         → csak az adott oldal(ak): <Típus>[:SZxM[:név=érték,...]]
+# Screenshot set for the QML UI, no visible window (offscreen + software renderer).
+#   gui/qml/shoot.sh                 -> build/shots/*.png  (gallery + main window states, 2 themes)
+#   gui/qml/shoot.sh Gallery         -> only the given page(s): <Type>[:WxH[:name=value,...]]
 #   gui/qml/shoot.sh SummaryTab:900x600 'Main:1280x820:shellState="empty"'
-#   SHOT_DELAY=4000 gui/qml/shoot.sh Main:1280x820:demoState=\"readingMap\"   → 4 s várakozás a mentés előtt
-# Környezet: TANARA_BIN (alapértelmezés: build/gui/tanara), SHOT_DIR (build/shots), SHOT_SCALE (1),
-#   SHOT_DELAY (ms; a tanara --delay értéke — hosszú átmenethez / aszinkron mintaadathoz).
-#   Ha nincs megadva: a tanara alapja (300 ms), kivéve a TranscriptTab-ot (v3 demo-állapotai a
-#   kitalált megbeszélést aszinkron töltik be), ott 2500 ms.
-# A v3 héj felvételei (alap-készlet után): lásd a gui/qml/README.md „Screenshot recipes (v3)" részét.
-# A javító kör állapotai (példák):
+#   SHOT_DELAY=4000 gui/qml/shoot.sh Main:1280x820:demoState=\"readingMap\"   -> wait 4 s before saving
+# Environment: TANARA_BIN (default: build/gui/tanara), SHOT_DIR (build/shots), SHOT_SCALE (1),
+#   SHOT_DELAY (ms; passed as tanara --delay, for long transitions / async sample data).
+#   Default: the tanara default (300 ms), except TranscriptTab, whose demo states load the
+#   fictional meeting asynchronously, so it gets 2500 ms.
+# More recipes: see "Screenshot recipes (v3)" in gui/qml/README.md.
+# Examples with demo states:
 #   gui/qml/shoot.sh 'Main:1280x820:demoState="overviewTranscribing"' 'TracksTab:1004x640:demoState="default"' \
 #     'ParticipantsDialog:1000x760:demoState="learnQuestion"' 'MapDock:1100x200:demoState="similarMarks"' \
 #     'SettingsWindow:900x880:demoState="B08verify"' 'SettingsWindow:900x880:demoState="B08partial"' \
 #     'PeopleWindow:960x1100:demoState="tagsFocus"' 'TranscriptTab:1100x760:demoState="newPersonTag"'
-# A Gallery új szakasza („Sávok és tanulás”) a lap alján van: a teljes lap magassága 6900.
+# The Gallery "Tracks and learning" section is at the bottom of the page: full page height is 6900.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

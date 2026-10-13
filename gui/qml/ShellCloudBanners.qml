@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Tanara Cloud sávok a tartalom tetején (K-08 kevés / elfogyott egyenleg, K-10 frissítés
-// kell, szerver-közlemények): szint = szín + ikon + szöveg, legfeljebb egy teendő-gomb, és
-// ahol lehet, elrejtő ×. A sávokat a híd adja (App.bridge.cloudBanners).
+// Tanara Cloud bars at the top of the content (low / empty balance, update required, server
+// notices): level = color + icon + text, at most one action button, and a dismiss x where
+// possible. The bridge provides the bars (App.bridge.cloudBanners).
 ColumnLayout {
     id: root
 
-    property var bridge: null                // ShellBridge vagy null
+    property var bridge: null                // ShellBridge or null
     // [{ key, level: "critical"|"warning"|"info", text, cta, closable }]
     property var banners: bridge ? bridge.cloudBanners : []
 

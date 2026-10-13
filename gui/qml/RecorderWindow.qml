@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Window
 
-// A lebegő felvevő ablaka: keret nélküli, (ahol a platform engedi) mindig felül, 380 px
-// széles, a magassága a tartalmat követi; pirula-módban ~230×40. A tartalom a RecorderView /
-// RecorderPill elem. A C++ oldali gazda (tanara_qml::RecorderWindowHost) hozza létre, az
-// kezeli a pozíciót, az él-illesztést, a háttérbe küldést és a bezárást.
+// The floating recorder's window: frameless, (where the platform allows) always on top, 380 px
+// wide, height follows the content; in pill mode ~230x40. The content is the RecorderView /
+// RecorderPill item. The C++ host (tanara_qml::RecorderWindowHost) creates it and handles the
+// position, edge snapping, sending to the background and closing.
 Window {
     id: win
 
@@ -15,26 +15,26 @@ Window {
     property bool pinSupported: true
     property bool pill: false
 
-    signal hideRequested()            // háttérbe (tálcára)
-    signal closeRequested()           // bezárás (felvétel közben nem jön)
-    signal userMoved()                // a felhasználó áthelyezte (pozíció-mentés, él-illesztés)
+    signal hideRequested()            // to the background (tray)
+    signal closeRequested()           // close (does not come while recording)
+    signal userMoved()                // the user moved it (position save, edge snapping)
 
     title: qsTr("Tanara felvevő")
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint | (pinned ? Qt.WindowStaysOnTopHint : 0)
     width: pill ? pillItem.implicitWidth : view.implicitWidth
     height: pill ? pillItem.implicitHeight : view.implicitHeight
-    // Fix méret (keret nélküli ablak, nem méretezhető): a korlátok ugyanazt követik, mint a méret.
+    // Fixed size (frameless window, not resizable): the limits follow the same as the size.
     minimumWidth: pill ? pillItem.implicitWidth : view.implicitWidth
     maximumWidth: minimumWidth
     minimumHeight: pill ? pillItem.implicitHeight : view.implicitHeight
     maximumHeight: minimumHeight
 
-    // A kérdés (R06) és a bezárás-lap a teljes nézetben él: pirulából ilyenkor kinyitunk.
+    // The question and the close sheet live in the full view: a pill expands then.
     function showFull() { win.pill = false }
 
-    // Az ablakkezelő felőli bezárás (Alt+F4, tálca „Bezárás”): felvétel közben SOHA nem zár
-    // és nem állít le — a bezárás-lapot nyitja.
+    // Close from the window manager (Alt+F4, taskbar "Close"): while recording it NEVER closes or
+    // stops -- it opens the close sheet.
     onClosing: (close) => {
         close.accepted = false
         win.showFull()

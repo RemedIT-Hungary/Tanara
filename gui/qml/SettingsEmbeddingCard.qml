@@ -2,11 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Beágyazás” kártya (C09, T14–T16) a Szolgáltatások lapon: a címkejavaslatok beágyazó
-// modellje. Nincs (alap) / Helyi végpont / Tanara Cloud; a helyi végpont mezői (Cím, Modell +
-// Lekérés, Haladó: kulcs) és kapcsolat-tesztje; a Cloud tájékoztatója; a modellváltás
-// mentés előtti figyelmeztetése; alul a KÖNYVTÁR ELŐKÉSZÍTÉSE állapota.
-// Az „alap” semleges választás, nem hiba: nincs figyelmeztető szín.
+// "Embedding" card on the Services page: the embedding model for tag suggestions. None (default) /
+// Local endpoint / Tanara Cloud; the local endpoint's fields (URL, Model + Fetch, Advanced: key)
+// and its connection test; the Cloud notice; the warning about a model change before saving; at
+// the bottom the LIBRARY PREPARATION status. "Default" is a neutral choice, not an error: no
+// warning color.
 //   SettingsEmbeddingCard { emb: vm.embedding }
 Rectangle {
     id: root
@@ -23,7 +23,7 @@ Rectangle {
     border.width: 1
     border.color: failed ? Theme.dangerLine : Theme.border
 
-    // Kis szöveges link-gomb (Újraelőkészítés).
+    // Small text link button (Re-prepare).
     component LinkButton: T.AbstractButton {
         id: link
         implicitWidth: linkLabel.implicitWidth + 4
@@ -51,7 +51,7 @@ Rectangle {
         width: parent.width - 32
         spacing: 12
 
-        // ---- fej ----
+        // ---- head ----
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -90,7 +90,7 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- helyi végpont: Cím (URL), Modell + Lekérés ----
+        // ---- local endpoint: URL, Model + Fetch ----
         SettingsProviderFields {
             visible: root.mode === "local" && root.card !== null && root.card.fields.length > 0
             Layout.fillWidth: true
@@ -112,7 +112,7 @@ Rectangle {
             fields: root.card ? root.card.advancedFields : []
         }
 
-        // ---- a kapcsolat-teszt hibája ----
+        // ---- the connection test's error ----
         Rectangle {
             visible: root.mode === "local" && root.card !== null && root.card.testState === "failed"
             Layout.fillWidth: true
@@ -149,7 +149,7 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- Tanara Cloud: mi megy fel, mennyibe kerül ----
+        // ---- Tanara Cloud: what is sent, what it costs ----
         Rectangle {
             objectName: "embeddingCloudInfo"
             visible: root.mode === "cloud"
@@ -180,7 +180,7 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- modellváltás: mentés ELŐTT ----
+        // ---- model change: BEFORE saving ----
         Rectangle {
             objectName: "embeddingRestartWarning"
             visible: root.emb !== null && root.emb.restartPending
@@ -202,7 +202,7 @@ Rectangle {
             }
         }
 
-        // ---- KÖNYVTÁR ELŐKÉSZÍTÉSE ----
+        // ---- LIBRARY PREPARATION ----
         ColumnLayout {
             objectName: "embeddingPrep"
             visible: root.emb !== null && root.emb.prepVisible
@@ -212,7 +212,7 @@ Rectangle {
             TDivider { Layout.fillWidth: true }
             TSectionLabel { text: qsTr("Könyvtár előkészítése") }
 
-            // Még nincs elmentve a választás.
+            // The choice is not saved yet.
             TLabel {
                 visible: root.prep === "pending"
                 Layout.fillWidth: true
@@ -222,7 +222,7 @@ Rectangle {
                 wrapMode: Text.Wrap
             }
 
-            // Fut: számláló, hátralévő idő, 6 px-es sáv, Megszakítás.
+            // Running: counter, time left, 6 px bar, Cancel.
             RowLayout {
                 visible: root.prep === "running"
                 Layout.fillWidth: true
@@ -268,7 +268,7 @@ Rectangle {
                 wrapMode: Text.Wrap
             }
 
-            // Megállt: hiba + Folytatás.
+            // Stopped: error + Resume.
             Rectangle {
                 visible: root.prep === "error"
                 Layout.fillWidth: true
@@ -294,14 +294,14 @@ Rectangle {
                         objectName: "embeddingResume"
                         size: "small"
                         text: qsTr("Folytatás")
-                        // Mentetlen modellváltásnál a régi beállítással folytatna: előbb mentés.
+                        // With an unsaved model change it would continue with the old setting: save first.
                         enabled: root.emb !== null && !root.emb.restartPending
                         onClicked: root.emb.resumePreparation()
                     }
                 }
             }
 
-            // Naprakész.
+            // Up to date.
             RowLayout {
                 visible: root.prep === "done"
                 Layout.fillWidth: true
@@ -321,7 +321,7 @@ Rectangle {
                 }
             }
 
-            // Nem fut (félbehagyva / még el sem indult): Előkészítés.
+            // Not running (abandoned / not started yet): Prepare.
             RowLayout {
                 visible: root.prep === "idle"
                 Layout.fillWidth: true
@@ -342,7 +342,7 @@ Rectangle {
             }
         }
 
-        // ---- műveletek (helyi végpont) ----
+        // ---- actions (local endpoint) ----
         RowLayout {
             visible: root.mode === "local" && root.card !== null && root.card.testable
             Layout.fillWidth: true

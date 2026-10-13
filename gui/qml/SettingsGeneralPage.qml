@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B01 — Általános: nyelv és téma, a három mappa. (A saját név és hanglenyomat a Beszélők lapon.)
+// General: language and theme, the three folders. (Your own name and voiceprint are on the
+// Speakers page.)
 Column {
     id: root
 
@@ -10,7 +11,7 @@ Column {
 
     spacing: 22
 
-    // ---- MEGJELENÉS ----
+    // ---- APPEARANCE ----
     Column {
         width: parent.width
         spacing: 12
@@ -63,7 +64,7 @@ Column {
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-    // ---- MAPPÁK ----
+    // ---- FOLDERS ----
     Column {
         width: parent.width
         spacing: 14
@@ -115,9 +116,9 @@ Column {
                     }
                     TButton {
                         text: qsTr("Tallózás…")
-                        // Rögzített mappánál (TANARA_HOME) nincs mit tallózni. Elrejtjük, nem
-                        // letiltjuk: a letiltott gomb szaggatott kerete (Shape) a szoftveres
-                        // rendererrel kilógna a görgetett terület vágásából.
+                        // For a pinned folder (TANARA_HOME) there is nothing to browse. We hide the button instead
+                        // of disabling it: a disabled button's dashed border (Shape) would stick out of the scrolled
+                        // area's clip with the software renderer.
                         visible: !folder.modelData.locked
                         font.pixelSize: Theme.fontSmall
                         onClicked: root.vm.browseFolder(folder.modelData.key)
@@ -147,7 +148,7 @@ Column {
         }
     }
 
-    // ---- ELSŐ LÉPÉSEK (kis hivatkozás; csak a főablak folyamatában) ----
+    // ---- FIRST STEPS (small link; only in the main window flow) ----
     Rectangle { visible: onboardingRow.visible; width: parent.width; height: 1; color: Theme.border }
     Row {
         id: onboardingRow

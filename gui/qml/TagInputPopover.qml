@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A címke-beviteli mező felugró listája (C02): 300 px (kompakt / felvevő: 250 px, 28 px-es
-// sorok, legfeljebb 3), raised, sugár 8, árnyék. Fejléc: „LEGUTÓBB HASZNÁLT” (üres mező) vagy
-// „HASONLÓ MÁR VAN” (nagyon hasonló név). Sor: # ikon, név a találat kiemelésével (warnSoft),
-// darabszám mono; az „Új címke: „…”” / „Mégis új: „…”” sor + ikonnal. Alul billentyű-tipp.
-// A fókusz a mezőben marad (focus: false); a billentyűket a TagInput kezeli.
+// The tag input field's popup list: 300 px (compact / recorder: 250 px, 28 px rows, at most 3),
+// raised, radius 8, shadow. Header: "RECENTLY USED" (empty field) or "SIMILAR EXISTS" (a very
+// similar name). Row: # icon, name with the match highlighted (warnSoft), count in mono; the
+// "New tag: "..."" / "New anyway: "..."" row has a + icon. A keyboard hint at the bottom.
+// Focus stays in the field (focus: false); TagInput handles the keys.
 TPopover {
     id: popover
 

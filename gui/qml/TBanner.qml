@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Sáv-értesítés ikonnal és műveletekkel. tone: "warn" | "accent" | "danger".
-// A gyerekei (TButton size: "small") a jobb oldali művelet-sorba kerülnek.
-//   TBanner { tone: "warn"; text: qsTr("Az összefoglaló óta 3 beszélőt javítottál…")
-//       TButton { text: qsTr("Frissítés"); size: "small" }
-//       TButton { text: qsTr("Rendben így"); size: "small"; variant: "ghost" }
+// Banner notification with an icon and actions. tone: "warn" | "accent" | "danger".
+// Its children (TButton size: "small") go into the action row on the right.
+//   TBanner { tone: "warn"; text: qsTr("You corrected 3 speakers since the summary...")
+//       TButton { text: qsTr("Refresh"); size: "small" }
+//       TButton { text: qsTr("Fine as is"); size: "small"; variant: "ghost" }
 //   }
 Rectangle {
     id: root

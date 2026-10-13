@@ -1,21 +1,21 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Személyek ablak jobb oldala (P01–P03, P06): a kijelölt személy fejléce a műveletekkel,
-// címkék, becenevek, megjegyzés, hangminták (vagy a „még nincs hanglenyomata” doboz) és a
-// megbeszélései. Görgethető; a hosszú címek törnek.
+// Right side of the People window: header of the selected person with actions, tags,
+// nicknames, note, voice samples (or the "no voiceprint yet" box) and their meetings.
+// Scrollable; long titles wrap.
 Item {
     id: root
 
     property var vm: null
-    // A P06 üres állapot helyett a saját személy adatai (ha a sorára kattintott).
+    // Instead of the empty state: the own person's data (if their row was clicked).
     property bool showSelfDetail: false
     property bool renaming: false
     property bool aliasEditing: false
     property bool showAllSamples: false
     property bool showAllMeetings: false
     property string selectedSampleId: ""
-    // Képernyőképhez: ennek a mintának a menüje nyitva; az átnevező / becenév mező szövege.
+    // For screenshots: this sample's menu is open; the rename / nickname field text.
     property int demoMenuRow: -1
     property string demoRenameText: ""
     property string demoAliasText: ""
@@ -65,7 +65,7 @@ Item {
         aliasEditing = keepOpen
         if (keepOpen) aliasField.forceActiveFocus()
     }
-    // A megjegyzés mentése, ha változott (fókuszvesztés, személyváltás, ablak bezárása előtt).
+    // Save the note if it changed (on focus loss, person change, before the window closes).
     function commitNote() {
         if (vm && vm.hasSelection && noteArea.text !== vm.note) vm.setNote(noteArea.text)
     }
@@ -92,11 +92,11 @@ Item {
             flick.contentY = 0
         }
         function onDetailChanged() { if (!noteArea.activeFocus) noteArea.text = root.vm.note }
-        // Mély hivatkozás egy szakaszra (C4: a „Címkéi” link → a Címkék szakasz).
+        // Deep link to a section (the "Tags" link -> the Tags section).
         function onSectionRequested(section) { Qt.callLater(root.scrollToSection, section) }
     }
-    // A szakasz a nézet tetejére (amennyire a görgetés engedi); a kijelölés-váltás utáni
-    // elrendezés után fut.
+    // The section to the top of the view (as far as scrolling allows); runs after the layout
+    // that follows a selection change.
     function scrollToSection(section) {
         if (section !== "tags" || !tagsSection.visible) return
         const target = content.y + tagsSection.y - 20
@@ -106,7 +106,7 @@ Item {
     }
     Component.onCompleted: if (vm) noteArea.text = vm.note
 
-    // ---- üres állapot (P06) ----
+    // ---- empty state ----
     Column {
         visible: root.emptyState
         anchors.centerIn: parent
@@ -155,7 +155,8 @@ Item {
         clip: true
         T.ScrollBar.vertical: TScrollBar {}
 
-        // A mély hivatkozás célja egy pillanatra kiemelve (a Column-on kívül, hogy ne rendezze).
+        // The deep-link target is highlighted for a moment (outside the Column so it does not lay
+        // it out).
         Rectangle {
             id: tagsFlash
             objectName: "tagsFlash"
@@ -180,7 +181,7 @@ Item {
             width: Math.min(flick.width - 56, 760)
             spacing: 20
 
-            // ---- fejléc ----
+            // ---- header ----
             Item {
                 width: parent.width
                 height: Math.max(44, headText.height)
@@ -205,7 +206,7 @@ Item {
                     width: parent.width - 58 - (actions.visible ? actions.width + 12 : 0)
                     spacing: 4
 
-                    // Név + adatok.
+                    // Name + details.
                     TLabel {
                         objectName: "detailName"
                         visible: !root.renaming
@@ -226,7 +227,7 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    // A lenyomat-pótlás fut (új hangmodell): a minták újraszámolódnak.
+                    // Voiceprint refill is running (new voice model): the samples are being recomputed.
                     Row {
                         objectName: "backfillNote"
                         visible: !root.renaming && root.vm && root.vm.backfillRunning
@@ -240,7 +241,7 @@ Item {
                         }
                     }
 
-                    // A legutóbbi pótlásból kimaradt minták (Beállítások › Beszélők listája szerint).
+                    // Samples left out of the latest refill (per the Settings > Speakers list).
                     Row {
                         id: skipNoteRow
                         objectName: "backfillSkipNote"
@@ -258,7 +259,7 @@ Item {
                         TToolTip { visible: skipNoteHover.hovered; text: skipNote.detail }
                     }
 
-                    // Átnevezés helyben (P02).
+                    // Inline rename.
                     Row {
                         visible: root.renaming
                         spacing: 6
@@ -342,7 +343,7 @@ Item {
                         leftPadding: 10; rightPadding: 10
                         onClicked: root.mergeRequested()
                     }
-                    // A saját személy nem törölhető: a gomb nála nincs.
+                    // The own person cannot be deleted: no button for them.
                     TIconButton {
                         objectName: "deleteButton"
                         visible: root.vm && !root.vm.selectedIsSelf
@@ -356,7 +357,7 @@ Item {
                 }
             }
 
-            // ---- tanult sáv-oldal (brief E02 3.): „Jellemzően: helyi / távoli / nincs adat” ----
+            // ---- learned track side (brief): "Usually: local / remote / no data" ----
             Row {
                 objectName: "defaultSideRow"
                 visible: root.vm && root.vm.defaultSideVisible
@@ -393,7 +394,7 @@ Item {
                 }
             }
 
-            // ---- címkék (a becenevek fölött; a névtelen mintatartónál nincs) ----
+            // ---- tags (above the nicknames; none for the anonymous sample holder) ----
             PersonTagsSection {
                 id: tagsSection
                 objectName: "personTagsSection"
@@ -402,7 +403,7 @@ Item {
                 vm: root.vm
             }
 
-            // ---- becenevek + megjegyzés ----
+            // ---- nicknames + note ----
             Item {
                 width: parent.width
                 height: Math.max(aliasColumn.height, noteColumn.height)
@@ -460,7 +461,7 @@ Item {
                                 }
                             }
                         }
-                        // A „+ Becenév” helyben mezővé alakul.
+                        // The "+ Nickname" turns into a field in place.
                         TTextField {
                             id: aliasField
                             objectName: "aliasField"
@@ -533,7 +534,7 @@ Item {
                         font.pixelSize: Theme.fontSmall
                         placeholderText: qsTr("Megjegyzés hozzáadása…")
                         Accessible.name: qsTr("Megjegyzés a személyhez")
-                        // Automatikus mentés, amikor a mező elveszti a fókuszt.
+                        // Auto-save when the field loses focus.
                         onActiveFocusChanged: if (!activeFocus) root.commitNote()
                         Keys.onEscapePressed: { text = root.vm.note; flick.forceActiveFocus() }
                         background: Rectangle {
@@ -547,7 +548,7 @@ Item {
                 }
             }
 
-            // ---- hanglenyomat ----
+            // ---- voiceprint ----
             Column {
                 width: parent.width
                 spacing: 8
@@ -563,7 +564,7 @@ Item {
                     }
                 }
 
-                // Minták listája.
+                // Sample list.
                 Rectangle {
                     visible: root.vm && root.vm.sampleCount > 0
                     width: parent.width
@@ -636,7 +637,7 @@ Item {
                     }
                 }
 
-                // Még nincs hanglenyomata (P03).
+                // No voiceprint yet.
                 Item {
                     visible: root.vm && root.vm.sampleCount === 0
                     width: parent.width
@@ -676,8 +677,8 @@ Item {
                                 objectName: "createVoiceprint"
                                 height: 30
                                 enabled: root.vm && !root.vm.creatingVoiceprint
-                                // A letiltott gomb szaggatott kerete a szoftveres rajzolóval kilógna
-                                // a görgetett területről: készítés közben a haladás-sor váltja.
+                                // A disabled button's dashed border would stick out of the scrolled area with the software
+                                // renderer: while it is being made, the progress row replaces it.
                                 visible: root.vm && !root.vm.creatingVoiceprint
                                 text: root.vm ? root.vm.planButtonText : ""
                                 variant: "primary"
@@ -712,7 +713,7 @@ Item {
                 }
             }
 
-            // ---- megbeszélések ----
+            // ---- meetings ----
             Column {
                 width: parent.width
                 spacing: 8
@@ -752,7 +753,7 @@ Item {
                         Repeater {
                             model: !root.vm ? [] : root.showAllMeetings ? root.vm.meetings
                                  : root.vm.meetings.slice(0, root.meetingLimit)
-                            // A sorok nem műveletek (ebben a változatban innen nem nyílik megbeszélés).
+                            // Rows are not actions (in this version no meeting opens from here).
                             Item {
                                 id: meetingRow
                                 required property var modelData

@@ -1,12 +1,12 @@
 import QtQuick
 
-// Egy jelölt a „Kinek a sora ez?" (E1 JAVASOLT) és a „Miért ő?" (E3 NEM Ő? VALÓJÁBAN…)
-// listában: 24 px avatar (a meeting beszélőjénél a színében; meetingen kívüli személynél
-// semleges, szaggatott), név 13.5/600 + alsor („86 sor itt" / „most ő" / „12 megbeszélés"),
-// alatta a bizonyíték-chipek (EvidenceChip), jobbra a gyorsbillentyű (1–3). A másik sávon
-// beszélő jelölt és a mostani beszélő halvány (60 %), de választható.
-// quickTagLabel: nem üres → a chipek végén szaggatott accent „+ #Nordvik" (a megbeszélés címkéje
-// még nincs a személyen): egy kattintás ráteszi (quickTagClicked), a sor választása nélkül.
+// One candidate in the "Whose line is this?" (SUGGESTED) and "Why them?" (NOT THEM? ACTUALLY...)
+// lists: 24 px avatar (in the meeting speaker's color; for a person outside the meeting neutral,
+// dashed), name 13.5/600 + sub-row ("86 lines here" / "this one now" / "12 meetings"), below
+// it the evidence chips (EvidenceChip), on the right the shortcut (1-3). A candidate who speaks
+// on the other track and the current speaker are faint (60%) but selectable.
+// quickTagLabel: not empty -> at the end of the chips a dashed accent "+ #Nordvik" (the meeting's
+// tag is not on the person yet): one click applies it (quickTagClicked), without choosing the row.
 Item {
     id: root
 
@@ -17,7 +17,7 @@ Item {
     property string keyHint: ""
     property bool dimmed: false
     property bool highlighted: false
-    // A támogató bizonyíték accent színnel (a legjobb jelöltnél); különben semleges.
+    // The supporting evidence in the accent color (for the best candidate); otherwise neutral.
     property bool strongEvidence: false
     property string quickTagLabel: ""
     readonly property alias hovered: hover.hovered
@@ -44,7 +44,7 @@ Item {
         name: root.personName
         speakerIndex: Math.max(0, root.colorIndex)
     }
-    // Meetingen kívüli személy: semleges, szaggatott avatar.
+    // Person outside the meeting: neutral, dashed avatar.
     Item {
         visible: root.colorIndex < 0
         x: 6; y: 7
@@ -99,7 +99,7 @@ Item {
                     TToolTip { visible: chipHover.hovered && (modelData.detail || "") !== ""; text: modelData.detail || ""; delay: 300 }
                 }
             }
-            // Gyors címke: szaggatott accent chip (a sor kattintását nem váltja ki).
+            // Quick tag: dashed accent chip (does not trigger the row's click).
             Item {
                 id: quickTag
                 objectName: "quickTagChip"
@@ -158,8 +158,8 @@ Item {
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler {
         id: rowTap
-        // A gyors címke-chipre eső kattintás nem választja a jelöltet. A lenyomáskor döntünk: a
-        // chip a saját kattintására eltűnik, mire ez a kezelő a felengedést megkapja.
+        // A click on the quick tag chip does not choose the candidate. We decide on press: the chip
+        // disappears on its own click, before this handler receives the release.
         property bool onQuickTag: false
         onPressedChanged: if (pressed) onQuickTag = quickTag.visible
                                                    && quickTag.contains(quickTag.mapFromItem(root, point.position))

@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Söprés-mód (S6): a szakasz-összesítő az „Imént” sor fölött, amikor a lejátszás egy szakasz
-// (12 perc vagy 20 kétes sor) végére ért: „Szakasz kész · 12:00–24:00” — eldöntve, nem
-// azonosítható, később, a háttérből jött; az új minták beszélőnként; a mögötted újra kétesnek
-// jelölt sorok; [Következő szakasz] [Visszanézem őket (N)] [Kihagyottak (N)] ×.
-// summary: TranscriptEditorViewModel.sweepSectionSummary (üres map: rejtve).
+// Sweep mode: the section summary above the "Just now" row, when playback has reached the end
+// of a section (12 minutes or 20 doubtful lines): "Section done · 12:00-24:00" -- decided,
+// not identifiable, later, came from the background; the new samples per speaker; the lines
+// marked doubtful again behind you; [Next section] [Look at them again (N)] [Skipped (N)] x.
+// summary: TranscriptEditorViewModel.sweepSectionSummary (empty map: hidden).
 Rectangle {
     id: root
 

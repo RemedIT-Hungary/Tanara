@@ -1,14 +1,14 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Az Átnézendő fókusz-nézet (ReviewFocusView) döntés-gombja billentyű-felirattal:
-// [Enter  Fehér Gábor mondta]. nonSample: a Shift lenyomva → „· nem minta” utótag (ha a hely
-// engedi: showSuffix) és szaggatott keret — a minta-ítélet így a gomb előtt látszik.
-// A gomb sosem veszi el a fókuszt (a billentyűk a szerkesztőé maradnak).
-// S7 (a fókusz-kártya fix gomb-sora): variant "calm" — színtelen gomb (panel + keret), csak az
-// ikon színes; `iconName` / `iconColor` a művelet ikonja (→ áthelyezés, ✓ marad …), `subText`
-// a második sor (alszöveg). Ilyenkor a cím a gomb szélességéhez igazodva elide-olódik (a gomb
-// szélességét a hívó adja, a név sosem tolja el a többit); a „· nem minta” az alszövegre kerül.
+// Decision button with a key label for the "To review" focus view (ReviewFocusView):
+// [Enter  Gabor Feher said]. nonSample: Shift is held -> a "- not a sample" suffix (if space
+// allows: showSuffix) and a dashed border - so the sample verdict shows before the click.
+// The button never takes focus (keys stay with the editor).
+// Variant "calm" (the focus card's fixed button row): a colorless button (panel + border), only the
+// icon is colored; `iconName` / `iconColor` are the action's icon (-> move, check stays ...),
+// `subText` is the second line. The title then elides to the button width (the caller sets the
+// width, so a name never pushes the others); "- not a sample" goes on the subtext.
 T.Button {
     id: control
 
@@ -16,7 +16,7 @@ T.Button {
     property string variant: "secondary"      // primary | secondary | ghost | calm
     property bool nonSample: false
     property bool showSuffix: true
-    property bool dimmed: false               // halvány (pl. a J, ha ugyanazt csinálja, mint az Enter)
+    property bool dimmed: false               // faded (e.g. J when it does the same as Enter)
     property string toolTipText: ""
     property string iconName: ""
     property color iconColor: Theme.textMuted
@@ -57,7 +57,7 @@ T.Button {
     }
 
     contentItem: Item {
-        // Egysoros: [kulcs  felirat] középre.
+        // Single line: [key  label] centered.
         Row {
             id: row
             visible: !control.twoLine
@@ -83,7 +83,7 @@ T.Button {
                 color: control.foreground
             }
         }
-        // Kétsoros (S7): [kulcs  ikon  Név / alszöveg], balra zárva, a cím elide-olódik.
+        // Two lines: [key  icon  Name / subtext], left-aligned, the title elides.
         KeyCap {
             id: cap2
             visible: control.twoLine && control.keyText !== ""

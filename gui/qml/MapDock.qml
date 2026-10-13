@@ -1,37 +1,39 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Térkép-dokk (design/handoff-v3 V4, 12. döntés): a lejátszó fölött beszélőnként egy 13 px-es
-// sor (név 104 px a beszélő tintájával · 8 px-es sáv · beszédarány %), accent lejátszás-vonal,
-// a lista épp látható szakasza halvány sávként; alatta a 44 px-es vezérlősor (előző sor,
-// lejátszás, következő sor, idő, tipp, sebesség, hangerő). A térkép a keresősáv: kattintás = ugrás; a név = a beszélő menüje.
-// Az Átirat (Olvasás és Javítás) és az összefoglaló fülek alján látszik.
-// A név-oszlop végén (rögzített helyen, a sávot nem tolja el) a hanglenyomat-jel: teli zöld =
-// van hanglenyomata, halvány körvonal = elnevezett, de még nincs, névtelennél áttetsző és nem
-// kattintható; kattintásra a hanglenyomat panelje (TranscriptTab.openVoiceprintPopover).
+// Map dock: above the player, one 13 px row per speaker (name 104 px in the speaker's tint · 8 px
+// bar · talk share %), an accent playback line, the list's currently visible part as a faint
+// band; below it the 44 px control row (previous line, play, next line, time, hint, speed,
+// volume). The map is the seek bar: click = jump; the name = the speaker's menu. Shown at the
+// bottom of the Transcript (Read and Fix) and summary tabs.
+// At the end of the name column (fixed place, does not shift the bar) is the voiceprint mark:
+// solid green = has a voiceprint, faint outline = named but none yet, translucent and not
+// clickable for an anonymous speaker; a click opens the voiceprint panel
+// (TranscriptTab.openVoiceprintPopover).
 //
-// lanes: a TranscriptEditorViewModel.overview sorai ({ key, name, colorIndex, pct, segments,
-// marks, nameDuplicate, rawLabel }; colorIndex < 0 = „Egyéb (N)”).
-// sourceMarks / sectionBands: az összefoglaló fülek extra sora (U4: SummaryViewModel), elemei
-// { startMs, endMs, active } — „Forrás” (accent = aktív állítás, accentLine = a többi; a
-// beszélő-sávok ilyenkor 45 %-ra halványulnak) ill. „Szakaszok” (aktív szakasz accent).
-// similarMarks: az új személyhez hasonló sorok (E4; TranscriptTab.similarMarks, [x, w, x, w, …]
-// 0..1 az idővonalon): accent jelek a sávok fölött + halvány accent oszlop a sávokon át, hogy a
-// beszélőtől függetlenül látsszon, hol vannak (a sorok a saját sávjukon is accent jelet kapnak).
-// sampleStats (S2, minta-mérő): a TranscriptEditorViewModel.sampleStats elemei ({ key, sampleLines,
-// sessionAdded, durationText, … }); ha nem üres, a sorok végén „23 minta +4” (a „+4” = ebben a
-// munkamenetben lett minta, accent), tooltipben az idő; kattintásra samplesClicked(key) — a
-// Javítás ezekre a sorokra szűr.
-// sweep (S6, söprés-mód): a TranscriptEditorViewModel.sweepDock ({ uncertain: [x…], decided: [x…],
+// lanes: rows of TranscriptEditorViewModel.overview ({ key, name, colorIndex, pct, segments,
+// marks, nameDuplicate, rawLabel }; colorIndex < 0 = "Other (N)").
+// sourceMarks / sectionBands: the summary tabs' extra row (SummaryViewModel), items
+// { startMs, endMs, active } -- "Source" (accent = active claim, accentLine = the rest; the
+// speaker bars fade to 45% then) or "Sections" (active section accent).
+// similarMarks: lines similar to the new person (TranscriptTab.similarMarks, [x, w, x, w, ...]
+// 0..1 on the timeline): accent marks above the bars + a faint accent column through the bars so
+// it is visible where they are regardless of speaker (the lines also get an accent mark on
+// their own bar).
+// sampleStats (sample meter): items of TranscriptEditorViewModel.sampleStats ({ key, sampleLines,
+// sessionAdded, durationText, ... }); when not empty, "23 samples +4" at the row end ("+4" = became
+// a sample in this session, accent), the duration in the tooltip; a click emits samplesClicked(key)
+// -- Fix filters to those lines.
+// sweep (sweep mode): TranscriptEditorViewModel.sweepDock ({ uncertain: [x...], decided: [x...],
 // frozenStart, frozenEnd, sections: [{ start, end, done, active }], doneCount, total, aheadCount });
-// ha nem üres, a sávok alatt „Kétes” sor (pöttyök: warn = előtted álló kétes, zöld = eldöntve) és
-// „Szakaszok” sor (pipa = kész, accent = a mostani), a sávokon át a fagyasztott ablak sávja.
-// Önállóan (képernyőkép) kitalált mintával rajzol; demoState: "" | "similarMarks" (E4 jelek) |
-// "sampleMeter" (minta-mérő) | "sweep" (söprés-réteg).
+// when not empty, below the bars a "Doubtful" row (dots: warn = doubtful ahead, green = decided) and
+// a "Sections" row (check = done, accent = current), plus the frozen window's band across the bars.
+// Standalone (screenshot) it draws made-up sample data; demoState: "" | "similarMarks" |
+// "sampleMeter" | "sweep".
 Rectangle {
     id: root
 
-    property var player: null                // PlayerController vagy null
+    property var player: null                // PlayerController or null
     property var lanes: demoLanes
     property real viewportStart: 0.31
     property real viewportSize: 0.05
@@ -51,8 +53,8 @@ Rectangle {
     signal voiceprintClicked(string speakerKey, Item anchor)
     signal expandRequested()
     signal collapseRequested()
-    signal lineStepRequested(int delta)     // „Előző sor” / „Következő sor” (a vezérlősorban)
-    signal samplesClicked(string speakerKey) // a minta-mérő „+N most” része: szűrés ezekre a sorokra
+    signal lineStepRequested(int delta)     // "Previous line" / "Next line" (in the control row)
+    signal samplesClicked(string speakerKey) // the sample meter's "+N now" part: filter to those lines
 
     readonly property real nameWidth: 104
     readonly property real trackX: Theme.space5 + nameWidth + 10
@@ -72,7 +74,7 @@ Rectangle {
         return rows
     }
 
-    // Önálló képernyőképhez (V4 nevei).
+    // For standalone screenshots (V4 names).
     readonly property var demoLanes: {
         const names = [DemoText.name("Kovács Lilla"), DemoText.name("Fehér Gábor"), DemoText.name("Varga Árpád"), DemoText.name("Molnár Eszter"), DemoText.raw("Távoli 1")]
         const pct = [22, 26, 19, 15, 7]
@@ -221,7 +223,7 @@ Rectangle {
                     color: laneRow.other ? Theme.borderStrong : Theme.speakerLine(laneRow.modelData.colorIndex)
                     markColor: Theme.accent
                 }
-                // Minta-mérő: „23 minta +4” (a +4 ebben a munkamenetben lett minta).
+                // Sample meter: "23 samples +4" (+4 became a sample in this session).
                 Item {
                     id: meter
                     objectName: "sampleMeter"
@@ -283,7 +285,7 @@ Rectangle {
                 }
             }
         }
-        // Kibontott „Egyéb” mellett: vissza az összecsukott nézethez.
+        // Next to the expanded "Other": back to the collapsed view.
         Item {
             visible: root.collapsedCount > 0 && root.lanesExpanded
             width: lanesColumn.width
@@ -300,7 +302,7 @@ Rectangle {
                 TapHandler { onTapped: root.collapseRequested() }
             }
         }
-        // Söprés (S6): a kétes sorok pöttyei és a szakaszok.
+        // Sweep: the dots of doubtful lines and the sections.
         Item {
             id: sweepDotsRow
             objectName: "mapSweepDots"
@@ -404,7 +406,7 @@ Rectangle {
                 font.pixelSize: Theme.fontMicro
             }
         }
-        // Az összefoglaló fülek extra sorai (U4): „Forrás” jelölők / „Szakaszok” sávok.
+        // The summary tabs' extra rows: "Source" marks / "Sections" bars.
         Repeater {
             model: root.extraRows
             Item {
@@ -447,7 +449,7 @@ Rectangle {
         }
     }
 
-    // Az új személyhez hasonló sorok (E4): halvány accent oszlop a sávokon át + accent jel fölöttük.
+    // Lines similar to the new person: a faint accent column through the bars + an accent mark above.
     Repeater {
         objectName: "mapSimilarMarks"
         model: Math.floor(root.similarMarks.length / 2)
@@ -476,7 +478,7 @@ Rectangle {
         }
     }
 
-    // A lista épp látható szakasza (7 % szövegszín) és a lejátszás-vonal (accent).
+    // The list's currently visible part (7% text color) and the playback line (accent).
     Rectangle {
         visible: root.viewportSize > 0 && root.lanes.length > 0
         x: root.trackX + Math.round(root.viewportStart * root.trackWidth)
@@ -486,7 +488,7 @@ Rectangle {
         radius: 2
         color: Theme.alpha(Theme.text, 0.07)
     }
-    // Söprés (S6): a fagyasztott ablak (a látható sorok ± 2) a sávokon át.
+    // Sweep: the frozen window (visible lines +-2) across the bars.
     Rectangle {
         objectName: "mapFrozenWindow"
         visible: root.sweepShown && (root.sweep.frozenEnd || 0) > (root.sweep.frozenStart || 0)

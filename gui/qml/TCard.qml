@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Kártya (surface, 1 px keret, sugár 8). tone: "default" | "raised" | "accent" (ajánlott
-// választás: 1.5 px accent keret) | "danger" (hibakártya: dangerSoft / dangerLine).
-// A tartalom gyerekként adható meg (tipikusan egy ColumnLayout anchors.fill: parent-tel).
+// Card (surface, 1 px border, radius 8). tone: "default" | "raised" | "accent" (the recommended
+// choice: 1.5 px accent border) | "danger" (error card: dangerSoft / dangerLine).
+// The content goes in as children (typically a ColumnLayout with anchors.fill: parent).
 T.Pane {
     id: control
 

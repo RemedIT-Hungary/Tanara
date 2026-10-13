@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Egysoros beviteli mező (34 px). hasError: danger keret (a hibaszöveget a hívó teszi alá:
-// TLabel 12 px, Theme.dangerInk). mono: kulcsokhoz, azonosítókhoz.
+// Single-line input field (34 px). hasError: danger border (the caller puts the error text
+// below: TLabel 12 px, Theme.dangerInk). mono: for keys, identifiers.
 T.TextField {
     id: control
 

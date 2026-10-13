@@ -1,11 +1,11 @@
 import QtQuick
 
-// Képernyőkép-burok a felvevőhöz: a RecorderView / RecorderPill elemet a design egy
-// állapotában (kitalált eszközökkel) rajzolja ki, ablak nélkül.
-//   tanara --qml-shot ki.png --qml-page RecorderPreview --size 420x600 --qml-prop 'demoState="R03"'
-// demoState: R01 összecsukva · R02 kinyitva + cím-szerkesztés · R03 felvétel · R04 felvétel
-// kinyitva · R05 pirula · R06 „Vége a megbeszélésnek?” · R07 bezárás-lap · R09 kész · R10 nincs eszköz
-// · R03typing: felvétel közben a címke-mező nyitva, „q4” begépelve (T08c)
+// Screenshot shell for the recorder: it draws the RecorderView / RecorderPill in one design
+// state (with made-up devices), without a window.
+//   tanara --qml-shot out.png --qml-page RecorderPreview --size 420x600 --qml-prop 'demoState="R03"'
+// demoState: R01 collapsed · R02 expanded + title editing · R03 recording · R04 recording
+// expanded · R05 pill · R06 "End of the meeting?" · R07 close sheet · R09 done · R10 no device
+// · R03typing: tag field open while recording, "q4" typed
 Rectangle {
     id: root
     property string demoState: "R01"
@@ -24,7 +24,7 @@ Rectangle {
             visible: root.demoState !== "R05"
             vm: model
             expanded: root.demoState === "R02" || root.demoState === "R04"
-            // R02: a cím-mező szerkesztés közben; R07: a bezárás-lap nyitva.
+            // R02: the title field while editing; R07: the close sheet open.
             Timer {
                 interval: 1
                 running: true

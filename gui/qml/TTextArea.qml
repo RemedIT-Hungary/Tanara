@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Többsoros mező (pl. „Miről szólt a megbeszélés?”). A tartalommal nő; hosszú szöveghez
-// tedd Flickable-be (TextArea.flickable).
+// Multi-line field (e.g. "What was the meeting about?"). Grows with content; for long text
+// put it in a Flickable (TextArea.flickable).
 T.TextArea {
     id: control
 
@@ -10,7 +10,7 @@ T.TextArea {
     property bool stateFocused: activeFocus
 
     implicitWidth: 320
-    // Üres mezőnél a (több soros) helykitöltő szöveg is beleférjen.
+    // Room for a (multi-line) placeholder text when the field is empty.
     implicitHeight: Math.max(64, Math.max(contentHeight, placeholder.visible ? placeholder.implicitHeight : 0)
                                  + topPadding + bottomPadding)
     leftPadding: 12; rightPadding: 12; topPadding: 10; bottomPadding: 10

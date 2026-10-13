@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Keresőmező (32 px): süllyesztett háttér, nagyító, jobb oldalt billentyű-tipp (hint),
-// szöveg esetén törlő ×. Fókuszban raised háttér + accent keret + gyűrű.
-//   TSearchField { placeholderText: qsTr("Keresés"); hint: "Ctrl+F" }
+// Search field (32 px): sunken background, magnifier, key hint on the right (hint), clear x when
+// there is text. Focused: raised background + accent border + ring.
+//   TSearchField { placeholderText: qsTr("Search"); hint: "Ctrl+F" }
 T.TextField {
     id: control
 

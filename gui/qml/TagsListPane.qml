@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Címkék ablak bal oldali sávja (T10, T13): kereső („Címke keresése”), darabszám + rendezés
-// (Legutóbb használt / ABC / Leggyakoribb), a lista; üres készletnél szaggatott tipp.
+// The Tags window's left pane: search ("Search tags"), count + sort (Recently used / A-Z /
+// Most frequent), the list; for an empty set a dashed hint.
 Rectangle {
     id: root
 
@@ -137,7 +137,7 @@ Rectangle {
             width: list.width
             height: emptyHint.visible ? emptyHint.height + 12 : noResult.visible ? noResult.implicitHeight + 20 : 10
 
-            // T13: még nincs címke.
+            // No tags yet.
             Item {
                 id: emptyHint
                 objectName: "tagsEmptyHint"

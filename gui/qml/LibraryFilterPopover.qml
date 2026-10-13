@@ -2,10 +2,10 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// A könyvtár „+ Szűrő” popovere (C05, T04), 300 px: ÁLLAPOT jelölőnégyzetek (nincs
-// összefoglaló / nincs átirat), RÉSZTVEVŐ (a leggyakoribb személyek), CÍMKE „Bármelyik /
-// Mindegyik” választóval (VAGY / ÉS), címke-keresővel, a címkék darabszámmal, „Címke nélkül”,
-// alul „Címkék kezelése…” (a kezelő ablak). A szűrés azonnal érvényes, a popover nyitva marad.
+// The library's "+ Filter" popover, 300 px: STATUS checkboxes (no summary / no transcript),
+// PARTICIPANT (the most frequent people), TAG with an "Any / All" switch (OR / AND), a tag
+// search, tags with counts, "No tag", and at the bottom "Manage tags..." (the manager window).
+// Filtering applies immediately, the popover stays open.
 //   LibraryFilterPopover { library: libraryModel; onManageTagsRequested: shell.openTags() }
 TPopover {
     id: root
@@ -17,7 +17,7 @@ TPopover {
     padding: 6
     onOpened: tagSearch.text = ""
 
-    // Egy jelölőnégyzetes sor (30 px): négyzet, opcionális „#”, név, jobbra szám.
+    // A checkbox row (30 px): box, optional "#", name, count on the right.
     component OptionRow: T.AbstractButton {
         id: option
         property bool on: false
@@ -89,7 +89,7 @@ TPopover {
     contentItem: ColumnLayout {
         spacing: 0
 
-        // ---- ÁLLAPOT ----
+        // ---- STATUS ----
         SectionTitle {
             Layout.leftMargin: 8
             Layout.topMargin: 6
@@ -109,7 +109,7 @@ TPopover {
             onClicked: root.library.noTranscript = !root.library.noTranscript
         }
 
-        // ---- RÉSZTVEVŐ (a leggyakoribbak; a többi névre a keresés is rátalál) ----
+        // ---- PARTICIPANT (the most frequent; the rest are found by searching) ----
         TDivider {
             visible: peopleRepeater.count > 0
             Layout.fillWidth: true
@@ -136,7 +136,7 @@ TPopover {
             }
         }
 
-        // ---- CÍMKE ----
+        // ---- TAG ----
         TDivider {
             Layout.fillWidth: true
             Layout.margins: 4
@@ -153,7 +153,7 @@ TPopover {
                 Layout.fillWidth: true
                 text: qsTr("Címke")
             }
-            // Bármelyik (VAGY) / Mindegyik (ÉS).
+            // Any (OR) / All (AND).
             Rectangle {
                 objectName: "tagModeSwitch"
                 implicitWidth: modeRow.implicitWidth + 4
@@ -199,7 +199,7 @@ TPopover {
                 }
             }
         }
-        // Címke keresése (28 px, süllyesztett).
+        // Tag search (28 px, sunken).
         Rectangle {
             Layout.fillWidth: true
             Layout.margins: 4
@@ -244,7 +244,7 @@ TPopover {
             id: tagList
             objectName: "tagFilterList"
             Layout.fillWidth: true
-            // Legfeljebb ~6 sor látszik, a többi görgethető.
+            // At most ~6 rows show, the rest scrolls.
             Layout.preferredHeight: Math.min(contentHeight, 6 * 30)
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -283,7 +283,7 @@ TPopover {
             Layout.margins: 4
             Layout.topMargin: 6; Layout.bottomMargin: 2
         }
-        // Másodlagos út a kezelőhöz.
+        // Secondary path to the manager.
         T.AbstractButton {
             id: manage
             objectName: "manageTags"

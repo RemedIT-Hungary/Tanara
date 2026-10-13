@@ -1,17 +1,17 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Buborék-súgó. A vezérlők (TButton, TIconButton, TStatusIcon…) a toolTipText property-n
-// át maguk példányosítják; saját elemhez:
+// Tooltip bubble. Controls (TButton, TIconButton, TStatusIcon...) instantiate it themselves through
+// their toolTipText property; for your own item:
 //   HoverHandler { id: hh }   TToolTip { visible: hh.hovered; text: qsTr("…") }
 T.ToolTip {
     id: control
 
-    // Elfér-e a buborék az ablakon BELÜL a szülő fölött vagy alatt? Kis ablakban (pl. a
-    // felvevő pirula-módja, 40 px magas) nem: ott az ablakon belülre kényszerített buborék a
-    // gombra csúszna és kitakarná (nem lehet rákattintani). Ilyenkor külön popup-ablakként
-    // jelenik meg (Popup.Window), ami kilóghat az ablakból; ahol ezt a platform nem tudja,
-    // a Qt visszaesik Popup.Item-re, ezért ott rövid idő után magától eltűnik (timeout).
+    // Does the bubble fit INSIDE the window above or below the parent? In a small window (e.g. the
+    // recorder's pill mode, 40 px high) it does not: a bubble forced inside the window would slide
+    // onto the button and cover it (it could not be clicked). Then it appears as a separate popup
+    // window (Popup.Window) that may extend beyond the window; where the platform cannot do this,
+    // Qt falls back to Popup.Item, so there it disappears on its own after a short time (timeout).
     readonly property real gap: 6
     readonly property bool fitsAbove: parent ? parent.mapToItem(null, 0, 0).y - implicitHeight - gap >= 0 : true
     readonly property bool fitsBelow: {

@@ -1,10 +1,12 @@
 import QtQuick
 
-// Beszélő → sáv kötés chipjei a KIK VOLTAK OTT sorban (G6): sávonként egy chip (mikrofon / hívás
-// hangja; több sáv is bekapcsolható), kattintva váltható. A következtetett oldal sávjai halványan
-// (sunken + keret), a kézi kötés accent (accentSoft + accent ikon/felirat); a ki nem kapcsolt sáv
-// szaggatott keretes, halvány. Egy sorban, rövid névvel („mikrofon” / „hívás”, ha abból egy van). Ugyanaz az adat, mint a szerkesztő „Miért ő?" MELYIK SÁVON BESZÉL? chipjei
-// (ParticipantTrackBinder → AppController::setParticipantTracks).
+// Speaker -> track binding chips in the WHO WAS THERE row: one chip per track (mic / call audio;
+// several tracks can be switched on), toggled by a click. Tracks of the inferred side are faint
+// (sunken + border), a manual binding is accent (accentSoft + accent icon / label); a track that
+// is switched off has a dashed border, faint. In one row, with a short name ("mic" / "call" when
+// there is only one of them). The same data as the editor's "Why them?" WHICH TRACK IS THE SPEAKER
+// ON? chips (ParticipantTrackBinder -> AppController::setParticipantTracks).
+//   ParticipantTrackChips { binder: trackBinder; participantId: modelData.id }
 //   ParticipantTrackChips { binder: trackBinder; participantId: modelData.id }
 Row {
     id: root

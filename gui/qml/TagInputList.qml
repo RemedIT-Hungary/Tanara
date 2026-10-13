@@ -1,9 +1,9 @@
 import QtQuick
 
-// A címke-beviteli lista tartalma (C02) — a TagInputPopover ezt mutatja; a galéria helyben,
-// felugró nélkül is kirajzolja. Fejléc: „LEGUTÓBB HASZNÁLT” (üres mező) vagy „HASONLÓ MÁR VAN”;
-// sor: # ikon, név a találat kiemelésével (warnSoft), darabszám mono; „Új címke: „…”” /
-// „Mégis új: „…”” + ikonnal; alul billentyű-tipp.
+// The tag input list's content -- the TagInputPopover shows it; the gallery also draws it in
+// place, without a popup. Header: "RECENTLY USED" (empty field) or "SIMILAR EXISTS"; row: #
+// icon, name with the match highlighted (warnSoft), count in mono; "New tag: "..."" /
+// "New anyway: "..."" with an icon; a keyboard hint at the bottom.
 Column {
     id: list
 
@@ -105,7 +105,7 @@ Column {
         }
     }
 
-    // Billentyű-tipp a lista alatt (felső elválasztóval).
+    // Keyboard hint below the list (with a top separator).
     Item {
         width: list.width
         height: hint.implicitHeight + 4 + 12

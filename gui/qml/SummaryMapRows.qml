@@ -1,11 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A térkép-dokk összefoglaló-sorai (S1–S3): „Szakaszok” (memó: a szakaszok sávként, a kiemelt
-// accent) és „Forrás” (az állítások forrásai: accentLine, a kijelölt / érintett accent).
-// A beszélő-sávokkal azonos rácsban: 104 px név-oszlop, a sáv, 30 px arány-oszlop. Kattintás
-// = ugrás oda a lejátszóban. Az U1 térkép-dokkja az `extraRows` helyére teheti; addig a
-// SummaryTab teteje mutatja (ideiglenesen).
+// The map dock's summary rows: "Sections" (memo: the sections as bars, the highlighted one
+// accent) and "Source" (the statements' sources: accentLine, the selected / affected one accent).
+// Same grid as the speaker bars: 104 px name column, the bar, 30 px ratio column. A click
+// seeks there in the player. The shell's map dock can take it as its `extraRows`; until then
+// the top of SummaryTab shows it (temporarily).
 //   SummaryMapRows { vm: summaryTab.vm; player: playerController }
 ColumnLayout {
     id: root
@@ -15,7 +15,7 @@ ColumnLayout {
     property real labelWidth: 104
     property bool showSections: vm.section === "memo" && vm.sectionBands.length > 0
     property bool showSources: vm.sourceMarks.length > 0
-    property bool showHint: false      // a vezérlősor súgója (csak az ideiglenes csíkban)
+    property bool showHint: false      // help for the control row (only in the temporary strip)
 
     readonly property real duration: Math.max(1, vm.durationMs)
 

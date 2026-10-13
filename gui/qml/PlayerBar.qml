@@ -1,15 +1,15 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Lejátszó-sáv (52 px): kerek lejátszás / szünet, idő („00:17 / 30:34”, mono), mi szól
-// („lekevert hang”), pozíció-csúszka (húzható), sebesség („1×”) és hangerő. A PlayerControllert
-// `player`-ként kapja; nélküle (önálló képernyőkép) álló mintaállapot látszik.
-// A térkép-dokkban (MapDock) csúszka nélkül, egy rövid tippel áll: ott a térkép a keresősáv.
-// lineSteps: a lejátszás-gomb két oldalán „Előző sor” / „Következő sor” (lineStepRequested).
+// Player bar (52 px): round play / pause, time ("00:17 / 30:34", mono), what is playing
+// ("mixdown audio"), position slider (draggable), speed ("1x") and volume. It receives the
+// PlayerController as `player`; without it (standalone screenshot) a static sample state shows.
+// In the map dock (MapDock) it has no slider and a short hint: there the map is the seek bar.
+// lineSteps: "Previous line" / "Next line" on both sides of the play button (lineStepRequested).
 Item {
     id: root
 
-    property var player: null                // PlayerController vagy null
+    property var player: null                // PlayerController or null
     property string label: qsTr("lekevert hang")
     property bool showSlider: true
     property string hint: ""
@@ -21,7 +21,7 @@ Item {
     readonly property bool playing: player ? player.playing : false
     readonly property int positionMs: player ? player.positionMs : 0
     readonly property int durationMs: player ? player.durationMs : 1834000
-    // A térkép-dokk tesztjeiben egyszerű ál-lejátszó is jöhet: a hiányzó mezőnél az alapérték.
+    // Map dock tests may pass a simple fake player: missing fields fall back to defaults.
     readonly property real rate: player && player.rate !== undefined ? player.rate : 1.0
     readonly property real volume: player && player.volume !== undefined ? player.volume : 1.0
     readonly property var rates: [0.75, 1.0, 1.25, 1.5, 2.0]
@@ -47,7 +47,7 @@ Item {
             variant: "flat"
             iconName: "chevron-left"
             iconSize: 16
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (nyilak, B)
+            focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (arrows, B)
             toolTipText: qsTr("Előző sor (←)")
             onClicked: root.lineStepRequested(-1)
         }
@@ -70,7 +70,7 @@ Item {
             variant: "flat"
             iconName: "chevron-right"
             iconSize: 16
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (nyilak, B)
+            focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (arrows, B)
             toolTipText: qsTr("Következő sor (→)")
             onClicked: root.lineStepRequested(1)
         }

@@ -2,12 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Többes kijelölés jobb oldali panelje (C05, T05): „3 megbeszélés kijelölve” + billentyű-tippek,
-// a kijelöltek listája (cím, címkék, dátum), CÍMKÉK: a közös címkék chipjei (mindegyiken: tömör
-// keret „3/3”; csak némelyiken: szaggatott „1/3” — kattintásra mindegyikre felkerül; × mindegyikről
-// leveszi), beviteli mező „Címke hozzáadása mind a 3 megbeszéléshez…”, „Kijelölés megszüntetése”.
-// Minden tömeges változás egy visszavonható lépés (LibrarySelectionModel → TagService-csoport).
-//   LibrarySelectionPanel { selection: sidebar.selection }
+// Right-hand panel for multi-select: "3 meetings selected" + key hints, the selected list (title,
+// tags, date), TAGS: chips of the shared tags (on all: solid border "3/3"; on some only: dashed
+// "1/3" - click applies to all; x removes from all), input "Add tag to all 3 meetings...",
+// "Clear selection". Every bulk change is one undo step (LibrarySelectionModel -> TagService
+// group).
 Rectangle {
     id: root
 
@@ -18,8 +17,8 @@ Rectangle {
     focus: visible
     Keys.onEscapePressed: if (root.selection) root.selection.clear()
 
-    // A panel takarja az alatta lévő megbeszélés-nézetet: egér / rámutatás ne menjen át.
-    // A kattintás az üres részre elveszi a fókuszt a mezőtől (az Esc ide jöjjön).
+    // The panel covers the meeting view below it: mouse / hover must not pass through.
+    // Clicking the empty area takes focus away from the field (so Esc arrives here).
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true
@@ -50,7 +49,7 @@ Rectangle {
             y: 56
             spacing: 18
 
-            // ---- cím + tippek ----
+            // ---- title + hints ----
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -72,7 +71,7 @@ Rectangle {
                 }
             }
 
-            // ---- a kijelölt megbeszélések ----
+            // ---- the selected meetings ----
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: itemsColumn.implicitHeight
@@ -133,7 +132,7 @@ Rectangle {
                 }
             }
 
-            // ---- CÍMKÉK ----
+            // ---- TAGS ----
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 10

@@ -2,20 +2,20 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Összefoglaló fül — M07: kész összefoglaló. Fent az elavult-sáv (ha a készítése óta
-// beszélőt javítottak), két oszlop: balra a tartalom, jobbra a résztvevők beszédidő-aránnyal,
-// a keletkezés adatai és a műveletek.
+// Summary tab: a finished summary. On top the stale bar (if a speaker was fixed since it was made),
+// two columns: content on the left, on the right the participants with talk share, the
+// generation details and the actions.
 //
-// A gyors összefoglalónak két formája van, a bal oszlop tetején kapcsolóval:
-//   „Vezetői összefoglaló” (alap): áttekintés, döntések, nyitott kérdések, teendők;
-//   „Memó”: időrendi jegyzet szakaszonként (cím, időkeret → ugrás a lejátszóban és az
-//   átiratban, pontok), sok szakasznál tartalomjegyzékkel.
-// A régi (memó előtti) összefoglalónál a memó helyén rövid magyarázat + „Újragenerálás”.
-// Témánkénti összefoglalónál nincs kapcsoló: a vezetői rész alatt a témaszekciók állnak.
+// The quick summary has two forms, switched at the top of the left column:
+//   "Executive summary" (default): overview, decisions, open questions, to-dos;
+//   "Memo": chronological notes per section (title, time range -> jump in the player and the
+//   transcript, points), with a table of contents for many sections.
+// For an old (pre-memo) summary a short explanation + "Regenerate" replaces the memo.
+// A per-topic summary has no switch: the topic sections follow the executive part.
 //
-// A jobb oszlopban a megbeszélés-megjegyzés összecsukható blokkja (alapból csukva: az eleje
-// látszik); nyitva szerkeszthető, sablon-javaslatokkal. Ha az összefoglaló óta változott, az
-// „Újragenerálás” alatt szelíd jelzés áll (a könyvtárban nem lesz tőle elavult).
+// The right column holds the meeting note's collapsible block (collapsed by default: the start
+// shows); editable when open, with template suggestions. If it changed since the summary, a gentle
+// hint sits under "Regenerate" (it does not make the meeting stale in the library).
 Flickable {
     id: root
 
@@ -26,7 +26,7 @@ Flickable {
     readonly property bool narrow: width < 720
     readonly property bool hasSwitch: vm.memoState !== "none"
     readonly property bool showMemo: hasSwitch && vm.section === "memo"
-    // Tartalomjegyzék: csak ha a memó már nem tekinthető át egy pillantással.
+    // Table of contents: only if the memo can no longer be taken in at a glance.
     readonly property bool tocVisible: vm.memo.length >= 6
     readonly property bool anyStamp: {
         for (let i = 0; i < vm.decisions.length; ++i)
@@ -43,8 +43,8 @@ Flickable {
     T.ScrollBar.vertical: TScrollBar {}
 
     function regenerate() {
-        noteEditor.commit()   // a függő megjegyzés-piszkozat már az új futásba kerüljön
-        // Témánkénti összefoglalónál a témákat kell újraelemezni → a munkaterület nyílik meg.
+        noteEditor.commit()   // a pending note draft must go into the new run
+        // For a per-topic summary the topics must be re-analyzed -> the workspace opens.
         if (vm.mode === "topics" && vm.hasTopics) vm.topicsOpen = true
         else if (root.shell) root.shell.startQuickSummary(root.meetingId)
     }
@@ -61,7 +61,7 @@ Flickable {
                        : part === "memo" ? qsTr("A memó a vágólapra került.")
                        : qsTr("Az összefoglaló a vágólapra került."))
     }
-    // A memó egy szakaszára görget (tartalomjegyzékből).
+    // Scroll to a memo section (from the table of contents).
     function scrollToSection(index) {
         const it = memoRepeater.itemAt(index)
         if (!it) return
@@ -69,7 +69,7 @@ Flickable {
         root.contentY = Math.max(0, Math.min(y, root.contentHeight - root.height))
     }
 
-    // Kattintható időbélyeg (accent, egyenközű): a lejátszót és az átiratot oda ugratja.
+    // Clickable timestamp (accent, monospace): jumps the player and the transcript there.
     component StampLink: Item {
         id: link
         property string text: ""
@@ -99,7 +99,7 @@ Flickable {
         }
     }
 
-    // Kis pont a felsorolás elején.
+    // Small dot at the start of a list item.
     component Bullet: Rectangle {
         implicitWidth: 4; implicitHeight: 4; radius: 2
         color: Theme.borderStrong
@@ -108,8 +108,8 @@ Flickable {
         Layout.leftMargin: 2
     }
 
-    // Időbélyeges lista (döntések, nyitott kérdések): az időbélyeg-oszlop csak akkor van,
-    // ha az adatban tényleg van időbélyeg.
+    // List with timestamps (decisions, open questions): the timestamp column exists only
+    // if the data really has a timestamp.
     component StampedList: ColumnLayout {
         id: stamped
         property string heading: ""
@@ -147,10 +147,10 @@ Flickable {
         }
     }
 
-    // Pontokba szedett lista (döntések a témaszekciókban, teendők felelőssel).
+    // Bulleted list (decisions in topic sections, to-dos with an owner).
     component PointList: ColumnLayout {
         property string heading: ""
-        property var items: []             // string vagy { text, owner, due }
+        property var items: []             // string or { text, owner, due }
         visible: items.length > 0
         spacing: 4
         TLabel {
@@ -195,7 +195,7 @@ Flickable {
             onRetryRequested: root.regenerate()
         }
 
-        // ---- elavult-sáv ----
+        // ---- stale bar ----
         TBanner {
             visible: root.vm.stale
             Layout.fillWidth: true
@@ -226,14 +226,14 @@ Flickable {
             columnSpacing: 32
             rowSpacing: 24
 
-            // ================= bal oszlop: tartalom =================
+            // ================= left column: content =================
             ColumnLayout {
                 id: leftCol
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 spacing: 18
 
-                // ---- a két forma közti váltó (a rövid forma az alap) ----
+                // ---- switch between the two forms (the short form is the default) ----
                 SettingsSegmented {
                     visible: root.hasSwitch
                     Layout.bottomMargin: -2
@@ -247,17 +247,17 @@ Flickable {
                     onPicked: (v) => { root.vm.section = v; root.contentY = 0 }
                 }
 
-                // ================= vezetői összefoglaló =================
+                // ================= executive summary =================
                 ColumnLayout {
                     visible: !root.showMemo && root.vm.execSummary !== ""
                     Layout.fillWidth: true
                     spacing: 6
-                    // A kapcsoló már megnevezi a részt; címke csak nélküle (témánkénti mód).
+                    // The switch already names the part; a label only without it (per-topic mode).
                     TSectionLabel { visible: !root.hasSwitch; text: qsTr("Vezetői összefoglaló") }
                     TLabel {
                         Layout.fillWidth: true
-                        // A Qt a rögzített sormagasság többletét a sor FÖLÉ teszi (a CSS felezi) →
-                        // 3 px-lel feljebb toljuk, hogy a címke és a következő szakasz köze stimmeljen.
+                        // Qt puts the extra of a fixed line height ABOVE the line (CSS splits it) ->
+                        // we shift up 3 px so the gap between the label and the next section is right.
                         Layout.topMargin: -3
                         Layout.bottomMargin: 3
                         text: root.vm.execSummary
@@ -300,7 +300,7 @@ Flickable {
                                 Layout.topMargin: 7
                                 Layout.bottomMargin: 7
                                 spacing: 12
-                                // A teendőknek nincs „kész” állapota az adatban → pont, nem jelölőnégyzet.
+                                // To-dos have no "done" state in the data -> a bullet, not a checkbox.
                                 Item {
                                     implicitWidth: 16; implicitHeight: 20
                                     Layout.alignment: Qt.AlignVCenter
@@ -316,7 +316,8 @@ Flickable {
                                     cssLineHeight: 1.4
                                     wrapMode: Text.Wrap
                                 }
-                                // Több felelős → több chip (szűk helyen több sorba törnek).
+                                // Several owners -> several chips (they wrap onto more lines when
+                                // narrow).
                                 Flow {
                                     visible: actionRow.modelData.owners.length > 0
                                     Layout.alignment: Qt.AlignVCenter
@@ -348,7 +349,7 @@ Flickable {
                     }
                 }
 
-                // ---- témánkénti összefoglaló: témaszekciók ----
+                // ---- per-topic summary: topic sections ----
                 ColumnLayout {
                     visible: !root.showMemo && root.vm.topicSections.length > 0
                     Layout.fillWidth: true
@@ -400,8 +401,8 @@ Flickable {
                     }
                 }
 
-                // ================= memó =================
-                // Régi összefoglaló: a memó helyén magyarázat + újragenerálás.
+                // ================= memo =================
+                // Old summary: an explanation + regenerate in place of the memo.
                 Rectangle {
                     visible: root.showMemo && root.vm.memoState === "missing"
                     Layout.fillWidth: true
@@ -448,7 +449,7 @@ Flickable {
                     }
                 }
 
-                // Tartalomjegyzék: két oszlopban, oszloponként felülről lefelé.
+                // Table of contents: two columns, top to bottom within each column.
                 ColumnLayout {
                     visible: root.showMemo && root.tocVisible
                     Layout.fillWidth: true
@@ -469,7 +470,7 @@ Flickable {
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 1      // egyenlő oszlopok
+                                Layout.preferredWidth: 1      // equal columns
                                 implicitHeight: 26
                                 hoverEnabled: true
                                 activeFocusOnTab: true
@@ -500,7 +501,7 @@ Flickable {
                     TDivider { Layout.fillWidth: true; Layout.topMargin: 10 }
                 }
 
-                // A szakaszok: cím, időkeret (ugrás), pontok.
+                // The sections: title, time range (jump), points.
                 ColumnLayout {
                     visible: root.showMemo && root.vm.memoState === "ready"
                     Layout.fillWidth: true
@@ -553,7 +554,7 @@ Flickable {
                 }
             }
 
-            // ================= jobb oszlop: résztvevők, metaadat, műveletek =================
+            // ================= right column: participants, metadata, actions =================
             ColumnLayout {
                 Layout.preferredWidth: 250
                 Layout.maximumWidth: root.narrow ? col.width : 250
@@ -578,7 +579,8 @@ Flickable {
                                 name: person.modelData.name
                                 speakerIndex: Math.max(0, person.modelData.colorIndex)
                             }
-                            // Az összefoglaló említi, de nem a meeting beszélője: semleges jel.
+                            // The summary mentions them but they are not the meeting's speaker:
+                            // neutral mark.
                             Rectangle {
                                 visible: person.modelData.colorIndex < 0
                                 implicitWidth: 24; implicitHeight: 24; radius: 12
@@ -631,7 +633,7 @@ Flickable {
                     }
                 }
 
-                // ---- megbeszélés-megjegyzés (összecsukható) ----
+                // ---- meeting note (collapsible) ----
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 6
@@ -666,7 +668,7 @@ Flickable {
                             }
                         }
                     }
-                    // Csukva: az eleje (vagy mire jó), és az észlelt hívás.
+                    // Collapsed: the start (or what it is for), and the detected call.
                     TLabel {
                         visible: !root.vm.noteOpen
                         Layout.fillWidth: true
@@ -730,7 +732,7 @@ Flickable {
                         toolTipText: root.vm.canRun ? "" : (root.vm.blocker.reason || "")
                         onClicked: root.regenerate()
                     }
-                    // A megjegyzés az összefoglaló óta változott: szelíd jelzés, nem elavult-jel.
+                    // The note changed since the summary: a gentle hint, not a stale mark.
                     RowLayout {
                         visible: root.vm.noteChangedSinceSummary
                         Layout.fillWidth: true
@@ -750,7 +752,7 @@ Flickable {
                             wrapMode: Text.Wrap
                         }
                     }
-                    // Memós összefoglalónál a menü választ: vezetői rész, memó vagy mindkettő.
+                    // For a memo summary the menu picks: executive part, memo, or both.
                     TButton {
                         id: copyButton
                         Layout.fillWidth: true

@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 
-// ADATOK (design/handoff-v3 V3): 2 × 3 csempe — raised, keret, sugár 7; címke 11/600 (halvány,
-// betűközzel), érték 19 px mono, alszöveg 11.5. stats: [{ label, value, sub }]
+// STATS: 2 x 3 tiles -- raised, border, radius 7; label 11/600 (faint, letter-spaced), value
+// 19 px mono, subtext 11.5. stats: [{ label, value, sub }]
 GridLayout {
     id: root
 

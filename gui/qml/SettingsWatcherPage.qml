@@ -2,21 +2,21 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B03 — Hívásfigyelő: fő kapcsoló az élő „Most: … használja a mikrofont” sorral, indítás
-// bejelentkezéskor, rákérdezés a megbeszélés végén (csend-léptetővel), a figyelt
-// alkalmazások chipjei (a most észlelt kiemelve), új alkalmazás felvétele, haladó beállítás.
+// Call watcher: the main switch with the live "Now: ... is using the microphone" row, start at
+// login, a prompt at the end of the meeting (with a silence stepper), chips of the watched
+// apps (the one detected now highlighted), adding a new app, advanced settings.
 Column {
     id: root
 
     property var vm: null
     property bool advancedOpen: false
-    property bool demoAddOpen: false       // képernyőképhez: a hozzáadás-panel nyitva
+    property bool demoAddOpen: false       // for screenshots: the add panel is open
 
     spacing: 20
 
     Component.onCompleted: if (demoAddOpen) Qt.callLater(function() { addPopup.openFresh() })
 
-    // ---- fő kapcsoló ----
+    // ---- main switch ----
     Rectangle {
         width: parent.width
         height: masterRow.implicitHeight + 28
@@ -98,7 +98,7 @@ Column {
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-    // ---- figyelt alkalmazások ----
+    // ---- watched apps ----
     Column {
         width: parent.width
         spacing: 10
@@ -332,7 +332,7 @@ Column {
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-    // ---- haladó ----
+    // ---- advanced ----
     Column {
         width: parent.width
         spacing: 12

@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Kör-zárás az Átnézendő fókusz-nézetben (koncepció 2.2 / 9. lépés): mi dőlt el, mi lett minta
-// beszélőnként, és mit talált közben a háttér-elemzés. Enter = következő kör (a beérkezők + a
-// később hagyottak), → = csak a később hagyottak, K = kész (vissza a Javításba).
+// Round end in the To review focus view: what was decided, what became a pattern per speaker,
+// and what background analysis found meanwhile. Enter = next round (the newly arrived + the
+// left-over), Right = only the left-over, K = done (back to Correct).
 //   summary: ReviewQueueModel.roundSummary()
 Rectangle {
     id: root
@@ -53,7 +53,7 @@ Rectangle {
             text: qsTr("Kész: <b>%1 eldöntve</b>, %2 nem azonosítható, %3 később.")
                       .arg(root.summary.decided || 0).arg(root.summary.ignored || 0).arg(root.later)
         }
-        // A magától eldőlt sorok (S7): ugyanaz a „Mind megerősítem”, mint a fejlécben.
+        // The auto-decided lines: the same "Confirm all" as in the header.
         RowLayout {
             objectName: "reviewSummarySettled"
             Layout.fillWidth: true
@@ -78,7 +78,7 @@ Rectangle {
                 onClicked: root.confirmSettledClicked()
             }
         }
-        // Minta-hozzájárulás beszélőnként (a kör eleje óta).
+        // Sample contribution per speaker (since the round start).
         Flow {
             objectName: "reviewSummarySamples"
             Layout.fillWidth: true

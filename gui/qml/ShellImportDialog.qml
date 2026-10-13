@@ -2,13 +2,13 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Hangfájl importálása” — meglévő hang- / videófájlokból új megbeszélés (fájlonként egy
-// sáv; a többcsatornás fájl kérésre csatornánként külön sávra bontva). Az M10 párbeszédablak-
-// minta szélesebb (560 px) változata, két állapottal:
-//   űrlap  — a fájlok a beolvasott adataikkal, cím + dátum, „saját mikrofon”, sávszám szóban;
-//   futás  — valós haladás, „Megszakítás”, és „Háttérben folytatom” (az ablak bezárható, az
-//            importálás megy tovább; az oldalsáv ShellImportStrip-je mutatja).
-// Az adat a ShellImportModelből jön (`model`); a natív fájlválasztót a `shell` nyitja.
+// "Import audio file": a new meeting from existing audio / video files (one track per file; a
+// multichannel file can be split into one track per channel on request). A wider (560 px)
+// variant of the standard dialog pattern, with two states:
+//   form    - files with their probed data, title + date, "own microphone", track count in words;
+//   running - real progress, "Cancel", and "Continue in background" (the window can be closed, the
+//             import goes on; the sidebar's ShellImportStrip shows it).
+// Data comes from ShellImportModel (`model`); the native file chooser is opened by `shell`.
 TDialog {
     id: root
 
@@ -17,8 +17,8 @@ TDialog {
 
     readonly property bool running: model ? model.running : false
 
-    // Megnyitás a megadott fájlokkal (üres lista: csak megnyílik — futó importálásnál a
-    // haladást mutatja, különben az üres űrlapot a „Fájlok kiválasztása…” gombbal).
+    // Open with the given files (empty list: it just opens - shows progress if an import is
+    // running, otherwise the empty form with the "Choose files..." button).
     function openWith(files) {
         if (model && !model.running && files && files.length > 0)
             model.addFiles(files)
@@ -35,11 +35,11 @@ TDialog {
     objectName: "importDialog"
     width: Math.min(560, (parent ? parent.width : 560) - 32)
     title: running ? qsTr("Importálás folyamatban") : qsTr("Hangfájl importálása")
-    // Mellé kattintásra ne vesszen el a kitöltött űrlap; Esc = „Mégse” / „Háttérben folytatom”.
+    // A click outside must not discard the filled form; Esc = "Cancel" / "Continue in background".
     closePolicy: T.Popup.CloseOnEscape
     onRejected: if (model && !model.running) model.reset()
 
-    // ---- futás -------------------------------------------------------------------------
+    // ---- running -------------------------------------------------------------------------
     ColumnLayout {
         visible: root.running
         Layout.fillWidth: true
@@ -78,7 +78,7 @@ TDialog {
         }
     }
 
-    // ---- űrlap -------------------------------------------------------------------------
+    // ---- form -----------------------------------------------------------------------------
     TBanner {
         visible: !root.running && root.model && root.model.error !== ""
         Layout.fillWidth: true
@@ -87,7 +87,7 @@ TDialog {
         text: root.model ? root.model.error : ""
     }
 
-    // Még nincs fájl: ejtési felület + választó gomb.
+    // No file yet: drop surface + chooser button.
     TDashedRect {
         visible: !root.running && root.model && root.model.fileCount === 0
         Layout.fillWidth: true
@@ -124,11 +124,11 @@ TDialog {
         }
     }
 
-    // A fájlok listája.
+    // The file list.
     Rectangle {
         visible: !root.running && root.model && root.model.fileCount > 0
         Layout.fillWidth: true
-        // Alacsony ablakban rövidebb lista (görgethető), hogy az űrlap és a gombok kiférjenek.
+        // In a short window the list is shorter (scrollable) so the form and buttons fit.
         implicitHeight: Math.min(fileColumn.implicitHeight,
                                  Math.max(120, Math.min(264, (root.parent ? root.parent.height : 820) - 556))) + 2
         radius: Theme.radiusPopup
@@ -214,7 +214,7 @@ TDialog {
                                     onClicked: root.model.removeFile(fileRow.index)
                                 }
                             }
-                            // Többcsatornás fájl: a bontás látható, egy mozdulattal állítható döntés.
+                            // Multichannel file: the split is visible, a one-gesture decision.
                             RowLayout {
                                 visible: fileRow.modelData.canSplit
                                 Layout.fillWidth: true
@@ -280,7 +280,7 @@ TDialog {
         }
     }
 
-    // Cím + dátum.
+    // Title + date.
     RowLayout {
         visible: !root.running && root.model && root.model.fileCount > 0
         Layout.fillWidth: true
@@ -326,8 +326,8 @@ TDialog {
         wrapMode: Text.Wrap
     }
 
-    // Címkék (C07, T09): többchipes mező + javaslat-sor a cím (fájlnév) alapján. Az importált
-    // megbeszélésre kerülnek, amikor elkészült.
+    // Tags: multi-chip field + suggestion row based on the title (file name). They are applied to
+    // the imported meeting when it is done.
     ColumnLayout {
         visible: !root.running && root.model && root.model.fileCount > 0
         Layout.fillWidth: true
@@ -359,7 +359,7 @@ TDialog {
                 font.pixelSize: Theme.fontCaption
             }
             Repeater {
-                // Legfeljebb kettő látszik (mint a fejléc sorában).
+                // At most two are shown (as in the header row).
                 model: root.model ? root.model.suggestions.slice(0, 2) : []
                 TagChip {
                     required property var modelData
@@ -381,7 +381,7 @@ TDialog {
         }
     }
 
-    // Saját mikrofon (elhagyható).
+    // Own microphone (optional).
     ColumnLayout {
         visible: !root.running && root.model && root.model.trackCount > 0 && !root.model.probing
         Layout.fillWidth: true
@@ -446,7 +446,7 @@ TDialog {
         }
     }
 
-    // A végeredmény szóban.
+    // The final result in words.
     ColumnLayout {
         visible: !root.running && root.model && root.model.fileCount > 0
         Layout.fillWidth: true
@@ -503,7 +503,7 @@ TDialog {
         }
     ]
 
-    // Elkészült → az ablak bezárul (a megbeszélést a ShellActions jelöli ki).
+    // Done -> the window closes (ShellActions selects the meeting).
     Connections {
         target: root.model
         function onImported(meetingId) { root.close() }

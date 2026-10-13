@@ -2,18 +2,18 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az „Imént" sor (az Átnézendő-újratervezés közös alapja, koncepció 1.3): a szerkesztő alján,
-// a lista alatt, FIX helyen — nem toast, nem tűnik el magától. Kimondja az utolsó döntést
-// („12:58 · 1 sor átkerült ide: Fehér Gábor") és a mellékhatását (chipek: „minta lett" /
-// „nem minta" / „nem azonosítható", „2 másik sor javaslata változott"), mellette
-// Visszavonás (Ctrl+Z) és az előző 5 döntés lenyitható mini-naplója. Ha a döntés mintája eltér a
-// beszélő többi sorától, egy második sor figyelmeztet: „Ez a minta eltér X többi sorától (hang
-// 41%). Biztos?" + „Legyen nem minta".
-// Az átsorolás folytatásai a sorban maradnak, amíg a következő szerkesztés le nem cseréli őket:
-//   Hasonló N sor is (+ Megmutatom) · „<Forrás> mind a N sora" · Hanglenyomat készítése · ×;
-// új személy után (E4) „Még N sor hangja hasonlít…" + „Mind a N hozzá", a hanglenyomat
-// készültsége, a címke-kérdés (TagLearnBar); két hasonló hang esetén a páros átnézés ajánlata.
-// A × csak az ajánlatokat zárja; az „Imént" sor marad.
+// The "Just now" row (shared base of the To review redesign): at the bottom of the editor, under
+// the list, at a FIXED place - not a toast, it does not vanish by itself. It states the last
+// decision ("12:58 · 1 line moved here: Fehér Gábor") and its side effect (chips: "became a
+// sample" / "not a sample" / "unidentifiable", "2 other lines' suggestions changed"), with
+// Undo (Ctrl+Z) and a collapsible mini log of the previous 5 decisions. If the decision's
+// sample differs from the speaker's other lines, a second row warns: "This sample differs from
+// X's other lines (voice 41%). Sure?" + "Make it not a sample".
+// Follow-ups of a reassignment stay in the row until the next edit replaces them: "N similar
+// lines too" (+ Show) · "<Source>, all N lines" · Create voiceprint · x; after a new person
+// "N more lines sound similar..." + "All N to them", the voiceprint readiness, the tag question
+// (TagLearnBar); for two similar voices the offer to review the pair. The x closes only the
+// offers; the "Just now" row stays.
 Rectangle {
     id: root
 
@@ -21,19 +21,19 @@ Rectangle {
     readonly property var last: vm.lastDecision
     readonly property bool hasLast: (last.text || "") !== ""
     readonly property bool change: vm.changeActive
-    readonly property bool offer: change && vm.suggestionActive   // „Hasonló N sor is" vár válaszra
-    readonly property bool pairOffer: change && vm.pairOfferActive // a két hasonló hang átnézése
-    // Új személy (E4): a hozzá hasonló sorok ajánlata és a hanglenyomat készültsége.
+    readonly property bool offer: change && vm.suggestionActive   // "N similar lines too" awaits an answer
+    readonly property bool pairOffer: change && vm.pairOfferActive // review of the two similar voices
+    // New person: the offer of lines similar to them and the voiceprint readiness.
     readonly property bool newPerson: vm.changeNewPerson
     readonly property var similar: vm.newPersonSimilar
     readonly property bool similarOffer: newPerson && (similar.count || 0) > 0
     readonly property var readiness: vm.newPersonReadiness
     readonly property bool readinessShown: newPerson && (readiness.text || "") !== ""
-    // Új személy: a címke-kérdés (vagy a már megadott válasz).
+    // New person: the tag question (or the answer already given).
     readonly property var tagQuestion: vm.changeTagQuestion
     readonly property bool tagAsked: (tagQuestion.text || "") !== ""
     readonly property bool tagAnswered: (tagQuestion.answer || "") !== ""
-    // Eltérő minta (a legutóbbi mintát adó döntés).
+    // Differing sample (the latest decision that produced a sample).
     readonly property var deviation: vm.sampleDeviation
     readonly property bool warnShown: (deviation.utteranceId || "") !== ""
     readonly property var log: vm.decisionLog
@@ -41,15 +41,15 @@ Rectangle {
     onLogOpenChanged: logOpen && log.length > 0 ? logPopup.open() : logPopup.close()
     onLogChanged: if (log.length === 0) logOpen = false
 
-    // A tömeges folytatás megerősítést kér: a hívó nyitja a párbeszédablakot.
+    // A bulk follow-up asks for confirmation: the caller opens the dialog.
     signal restRequested()
-    // A hanglenyomat panelje (a „Hanglenyomat, ha elég" mellett, ha a hívó meg akarja mutatni).
+    // The voiceprint panel (next to "Voiceprint, if enough", when the caller wants to show it).
     signal voiceprintPanelRequested(string speakerKey)
 
     implicitHeight: column.implicitHeight + 1
     color: Theme.surface
 
-    // A sor művelete (felirat + opcionális ikon). `strong`: keretes, hangsúlyos.
+    // A row action (label + optional icon). `strong`: bordered, emphasized.
     component BarAction: Item {
         id: action
         property string text: ""
@@ -120,8 +120,8 @@ Rectangle {
         TToolTip { visible: action.toolTipText !== "" && hover.hovered; text: action.toolTipText }
     }
 
-    // Mellékhatás-chip: „minta lett" (success), „nem minta" / „nem azonosítható" (semleges),
-    // „N másik sor javaslata változott" (accent).
+    // Side-effect chip: "became a sample" (success), "not a sample" / "unidentifiable" (neutral),
+    // "N other lines' suggestions changed" (accent).
     component EffectChip: Rectangle {
         id: effect
         property string kind: ""
@@ -172,7 +172,7 @@ Rectangle {
         }
     }
 
-    // Elválasztó a sor részei között.
+    // Separator between the row's parts.
     component RowRule: Rectangle {
         x: 24
         width: parent ? parent.width - 40 : 0
@@ -187,7 +187,7 @@ Rectangle {
         y: 1
         width: parent.width
 
-        // ---- az „Imént" sor ----
+        // ---- the "Just now" row ----
         Item {
             id: mainRow
             objectName: "imentRow"
@@ -198,8 +198,8 @@ Rectangle {
                 anchors { fill: parent; leftMargin: 24; rightMargin: 12 }
                 spacing: 8
 
-                // A döntés igéje ugyanazzal az ikonnal, mint a fókusz-kártya gombjain (S7):
-                // → áthelyezés · ✓ marad · ⊘ nem azonosítható.
+                // The decision verb uses the same icon as the focus card's buttons: moved / stays / unidentifiable.
+                // (arrow = move · check = stays · circled slash = unidentifiable).
                 TIcon {
                     objectName: "imentIcon"
                     readonly property string verb: root.last.undone === true ? "" : (root.last.verb || "")
@@ -331,7 +331,7 @@ Rectangle {
             }
         }
 
-        // ---- eltérő minta: figyelmeztetés + „Legyen nem minta" ----
+        // ---- differing sample: warning + "Make it not a sample" ----
         Item {
             id: warnRow
             objectName: "sampleWarning"
@@ -369,7 +369,7 @@ Rectangle {
             }
         }
 
-        // ---- új személy: a hozzá hasonló sorok (E4) ----
+        // ---- new person: lines similar to them ----
         Item {
             id: similarRow
             objectName: "newPersonSimilar"
@@ -426,7 +426,7 @@ Rectangle {
             }
         }
 
-        // ---- új személy: a hanglenyomat készültsége (E4) ----
+        // ---- new person: voiceprint readiness ----
         Item {
             id: readinessRow
             objectName: "newPersonReadiness"
@@ -478,7 +478,7 @@ Rectangle {
             }
         }
 
-        // ---- a két hasonló hang átnézésének ajánlata ----
+        // ---- offer to review the two similar voices ----
         Item {
             id: pairRow
             objectName: "pairOffer"
@@ -532,7 +532,7 @@ Rectangle {
             }
         }
 
-        // ---- új személy: címke-kérdés (UX-terv 5.; a TagLearnBar sötét formanyelvén) ----
+        // ---- new person: tag question (styled like the dark TagLearnBar) ----
         Item {
             id: tagRow
             objectName: "newPersonTagRow"
@@ -615,11 +615,11 @@ Rectangle {
         }
     }
 
-    // ---- az előző döntések (mini-napló), az „Imént" sor fölé nyílik ----
+    // ---- previous decisions (mini log), opens above the "Just now" row ----
     TPopover {
         id: logPopup
         objectName: "decisionLog"
-        focus: false            // a billentyűk a szerkesztőéi maradnak (Ctrl+Z, 0, J…)
+        focus: false            // keys stay with the editor (Ctrl+Z, 0, J...)
         x: Math.max(8, root.width - width - 12)
         y: -height - 4
         width: Math.min(560, root.width - 24)

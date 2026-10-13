@@ -3,26 +3,25 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// A Beállítások ablaka (design/handoff-settings, B01–B07): külön, átméretezhető ablak
-// (900 × 680), bal oldali navigáció hat lappal, görgethető tartalom, lábléc a mentetlen
-// változások jelzésével és a „Mégse” / „Mentés” gombokkal.
+// The Settings window: a separate, resizable window (900 x 680), left navigation with six pages,
+// scrollable content, a footer with the unsaved-changes indicator and "Cancel" / "Save" buttons.
 //
-// A változások a „Mentés”-re érvényesülnek (kivétel a téma: azonnal látszik). Bezáráskor,
-// ha van mentetlen változás, rákérdez (Mentés / Elvetés / Mégse). A natív ablakkeret marad
-// (mint a főablaknál), ezért a spec 36 px-es saját címsora nincs megrajzolva.
+// Changes apply on "Save" (except the theme, which shows immediately). Closing with unsaved
+// changes asks (Save / Discard / Cancel). The native window frame stays (as in the main window),
+// so the spec's own 36 px title bar is not drawn.
 //
-// A C++ gazda (tanara_qml::SettingsWindowHost) hozza létre és nyitja a kért lapon; önállóan
-// is betölthető képernyőképhez:
-//   tanara --qml-shot ki.png --qml-page SettingsWindow --size 900x680 --qml-prop 'demoState="B03"'
-// demoState: B01 … B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
+// The C++ host (tanara_qml::SettingsWindowHost) creates it and opens the requested page; it can
+// also be loaded standalone for screenshots:
+//   tanara --qml-shot out.png --qml-page SettingsWindow --size 900x680 --qml-prop 'demoState="B03"'
+// demoState: B01 ... B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
-// · B04embeddingNone · B04modelChange (C09, T14–T16) · rejectedReset (megerősítés)
+// · B04embeddingNone · B04modelChange · rejectedReset (confirmation)
 // · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
-//   (Beszélők lap: hangmodellek, lenyomat-pótlás)
+//   (Speakers page: voice models, voiceprint backfill)
 ApplicationWindow {
     id: window
 
-    // A gazda adja át (kezdő property-ként); nélkülük az App.controller / demó érvényes.
+    // Passed by the host (as initial properties); without them App.controller / demo applies.
     property QtObject hostController: null
     property QtObject hostDialogs: null
     property string demoState: ""
@@ -37,7 +36,7 @@ ApplicationWindow {
     color: Theme.bg
     font.family: Theme.fontSans
     font.pixelSize: Theme.fontBody
-    // Külön ablak, nem modális: a főablak mellette használható marad.
+    // A separate, non-modal window: the main window stays usable next to it.
     flags: Qt.Window
 
     SettingsViewModel {
@@ -50,7 +49,7 @@ ApplicationWindow {
         if (hostController) {
             model.controller = hostController
         } else if (demoState !== "") {
-            // Képernyőkép / demó: a segéd-állapotok (felugrók) egy lapot is kijelölnek.
+            // Screenshot / demo: the helper states (popups) also select a page.
             const base = demoState === "addApp" ? "B03" : demoState === "logout" ? "B06"
                        : demoState === "reset" ? "B07" : demoState === "rejectedReset" ? "B04embeddingDone" : demoState
             model.demoState = base
@@ -68,7 +67,7 @@ ApplicationWindow {
         }
     }
 
-    // ---- bezárás ----
+    // ---- closing ----
     function requestClose() {
         if (model.dirty) unsavedDialog.open()
         else { window.closeConfirmed = true; window.close() }
@@ -87,10 +86,10 @@ ApplicationWindow {
         unsavedDialog.open()
     }
     onVisibleChanged: {
-        // A szintfigyelés és a hívás-észlelés csak addig megy, amíg a lapjuk látszik.
+        // Level monitoring and call detection run only while their page is visible.
         if (!visible) {
             window.closeConfirmed = false
-            // Rejtett ablakban ne maradjon nyitva kérdés (újranyitáskor tiszta lappal indul).
+            // No question stays open in a hidden window (reopening starts clean).
             unsavedDialog.close(); resetDialog.close(); logoutDialog.close(); schemaDialog.close()
             rejectedDialog.close()
         }
@@ -99,8 +98,8 @@ ApplicationWindow {
     Binding { target: model; property: "watching"; value: window.visible && model.page === "watcher" }
 
     Shortcut { sequences: [StandardKey.Save]; enabled: model.dirty; onActivated: model.save() }
-    // Esc szándékosan nem zár: a lenyíló listák és felugrók használják (a gyorsbillentyű
-    // megelőzné őket). Bezárás: Ctrl+W vagy az ablak × gombja.
+    // Esc deliberately does not close: dropdowns and popups use it (the shortcut would preempt
+    // them). Close with Ctrl+W or the window's x button.
     Shortcut { sequences: [StandardKey.Close]; onActivated: window.requestClose() }
 
     readonly property var pages: [
@@ -121,7 +120,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // ---- navigáció ----
+            // ---- navigation ----
             Rectangle {
                 Layout.preferredWidth: 208
                 Layout.fillHeight: true
@@ -146,7 +145,7 @@ ApplicationWindow {
                         }
                     }
                 }
-                // Verzió a navigáció alján (hibajelentésnél ebből látszik, melyik build fut).
+                // Version at the bottom of the navigation (a bug report shows which build runs).
                 TLabel {
                     objectName: "versionLabel"
                     x: 20
@@ -159,7 +158,7 @@ ApplicationWindow {
                 }
             }
 
-            // ---- tartalom ----
+            // ---- content ----
             Flickable {
                 id: content
                 Layout.fillWidth: true
@@ -170,7 +169,7 @@ ApplicationWindow {
                 clip: true
                 T.ScrollBar.vertical: TScrollBar {}
 
-                // Lapváltáskor a tetejére.
+                // Back to the top on page change.
                 Connections {
                     target: model
                     function onPageChanged() { content.contentY = 0 }
@@ -234,7 +233,7 @@ ApplicationWindow {
             }
         }
 
-        // ---- lábléc ----
+        // ---- footer ----
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 56
@@ -266,7 +265,7 @@ ApplicationWindow {
                 }
                 TButton {
                     objectName: "saveButton"
-                    // C09: modellváltáskor a gomb is megmondja, mi történik mentéskor.
+                    // When the model changes, the button also says what happens on save.
                     text: model.embedding.restartPending && model.dirty ? qsTr("Mentés és újraindítás") : qsTr("Mentés")
                     variant: "primary"
                     enabled: model.dirty
@@ -274,7 +273,7 @@ ApplicationWindow {
                     onClicked: model.save()
                 }
             }
-            // Mentés után pár másodpercig „Elmentve” áll a láblécben.
+            // After saving, "Saved" shows in the footer for a few seconds.
             Timer {
                 id: saveNote
                 interval: 2500
@@ -283,7 +282,7 @@ ApplicationWindow {
         }
     }
 
-    // ---- párbeszédablakok ----
+    // ---- dialogs ----
     TDialog {
         id: unsavedDialog
         title: qsTr("Mented a változásokat?")
@@ -305,7 +304,7 @@ ApplicationWindow {
                 variant: "primary"
                 onClicked: {
                     unsavedDialog.accept()
-                    // Hibás mezővel nem zárunk: a hibás lap látszik.
+                    // With an invalid field we do not close: the page with the error is shown.
                     if (model.save()) { window.closeConfirmed = true; window.close() }
                 }
             }

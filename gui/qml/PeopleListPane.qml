@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Személyek ablak bal oldali sávja: kereső (név és becenév), „Új személy”, darabszám +
-// rendezés, és a névsor szakaszokkal. Üres állapot (P06) és eredménytelen keresés a lista alatt.
+// The People window's left rail: search (name and nickname), "New person", count + sort, and the
+// list of names with sections. The empty state and a search with no result show below the list.
 Rectangle {
     id: root
 
     property var vm: null
-    // Képernyőképhez: a rendezés menüje nyitva.
+    // For screenshots: the sort menu is open.
     property bool demoSortOpen: false
-    // Hamis: a kijelölt sor nincs kiemelve (P06: a részletező az üres állapotot mutatja).
+    // False: the selected row is not highlighted (the detail pane shows the empty state).
     property bool showSelection: true
     signal newPersonRequested(string name)
-    // A sor kiválasztása előtt a részletező elmenti a félbehagyott megjegyzést.
+    // Before another row is selected the detail pane saves the unfinished note.
     signal aboutToSelect()
     signal personClicked(string name)
 
@@ -32,7 +32,7 @@ Rectangle {
             width: parent.width - 38
             placeholderText: qsTr("Név, becenév vagy címke")
             font.pixelSize: Theme.fontBody
-            // Szöveggel fókusz nélkül is kiemelt marad (P02).
+            // With text it stays highlighted even without focus.
             stateFocused: activeFocus || length > 0
             onTextChanged: if (root.vm && root.vm.query !== text) root.vm.query = text
             Component.onCompleted: if (root.vm) text = root.vm.query
@@ -155,14 +155,14 @@ Rectangle {
             root.personClicked(root.vm.people.nameAt(next))
             positionViewAtIndex(next, ListView.Contain)
         }
-        // A kijelölt sor látszódjon (mély hivatkozás, visszavonás utáni kijelölés).
+        // The selected row should be visible (deep link, selection after an undo).
         onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
 
         footer: Item {
             width: list.width
             height: hint.visible ? hint.height + 24 : noResult.visible ? noResult.height + 20 : 10
 
-            // P06: csak a saját személy van.
+            // Only the own person exists.
             Item {
                 id: hint
                 visible: root.vm && root.vm.onlySelf && !root.vm.searching
@@ -193,7 +193,7 @@ Rectangle {
                 }
             }
 
-            // Eredménytelen keresés.
+            // Search with no result.
             Column {
                 id: noResult
                 objectName: "noResult"

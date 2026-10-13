@@ -2,10 +2,10 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// „Honnan jön ez?” (S1): egy állítás forrás-idézetei, 440 px. Idézetenként avatar, név, idő,
-// „Meghallgatom” (a megszólalás lejátszása) és maga az idézet az átirat sorából; lábléc:
-// „Ugrás az átiratba” (fül-váltás + a sorra ugrás) és „Nem így hangzott el? · Jelzem”.
-//   SourcePopover { id: pop; vm: summaryVm; player: …; shell: …; meetingId: … }
+// "Where does this come from?": a statement's source quotes, 440 px. Per quote an avatar, name,
+// time, "Listen" (plays the utterance) and the quote itself from the transcript line; footer:
+// "Jump to the transcript" (tab switch + seek to the line) and "Not what was said? · Report".
+//   SourcePopover { id: pop; vm: summaryVm; player: ...; shell: ...; meetingId: ... }
 //   pop.openFor("s1", chipItem)
 TPopover {
     id: root
@@ -24,7 +24,7 @@ TPopover {
     width: 440
     padding: 0
 
-    // A chip alá (ha nem fér, fölé) nyílik, a chip bal széléhez igazítva.
+    // Opens below the chip (above it if it does not fit), aligned to the chip's left edge.
     function openFor(statementId, anchor) {
         details = vm.sourceDetails(statementId)
         if (!details.statementId) return
@@ -53,7 +53,7 @@ TPopover {
 
     onClosed: if (vm.activeStatementId === statementId) vm.activeStatementId = ""
 
-    // Szöveges link-gomb (accent / halvány), opcionális ikonnal.
+    // Text link button (accent / faded), with an optional icon.
     component LinkButton: T.AbstractButton {
         id: link
         property string iconName: ""
@@ -115,7 +115,7 @@ TPopover {
             }
         }
 
-        // Célzott elavulás: a forrás beszélője azóta más.
+        // Targeted staleness: the source's speaker has changed since.
         RowLayout {
             visible: (root.details.staleBecause || "") !== ""
             Layout.fillWidth: true

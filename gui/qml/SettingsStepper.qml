@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Léptető (Beállítások): 32 px magas, „− | érték | +”; az érték Plex Mono 13/500.
+// Stepper (Settings): 32 px high, "- | value | +"; the value is Plex Mono 13/500.
 //   SettingsStepper { value: vm.silenceAskMinutes; from: 0; to: 60
-//                     textFor: (v) => v === 0 ? qsTr("kikapcsolva") : qsTr("%n perc", "", v)
+//                     textFor: (v) => v === 0 ? qsTr("off") : qsTr("%n min", "", v)
 //                     onMoved: (v) => vm.silenceAskMinutes = v }
 Rectangle {
     id: root

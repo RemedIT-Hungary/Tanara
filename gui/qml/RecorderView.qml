@@ -1,27 +1,27 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A felvevő teljes tartalma (design/handoff-recorder, R01–R10) EGY elemben: saját címsor,
-// cím-mező, indítás / felvétel-állapot, forrás-sorok vagy a kinyitott eszköz-lista, a
-// „Vége a megbeszélésnek?” doboz, a bezárás-lap és a kész / nincs-eszköz állapot.
-// Az ablakot (keret nélküli, mindig felül) a RecorderWindow adja; ez az elem képernyőképhez
-// és beágyazáshoz önállóan is használható. Szélessége 380 px, a magassága a tartalmat követi.
-//   RecorderView { vm: RecorderViewModel {} ; onHideRequested: … }
+// The recorder's whole content in ONE item: its own title bar, title field, start / recording
+// state, source rows or the expanded device list, the "End of the meeting?" box, the close
+// sheet and the done / no-device states. RecorderWindow provides the window (frameless, always
+// on top); this item also works standalone for screenshots and embedding. Width 380 px, height
+// follows the content.
+//   RecorderView { vm: RecorderViewModel {} ; onHideRequested: ... }
 Item {
     id: root
 
     property var vm: null                    // RecorderViewModel
-    property bool expanded: false            // kinyitott eszköz-lista (R02 / R04)
-    property bool pinned: true               // „Mindig felül”
-    property bool pinSupported: true         // hamis: a platform nem engedi (Wayland)
-    property bool sheetOpen: false           // bezárás felvétel közben (R07)
+    property bool expanded: false            // expanded device list
+    property bool pinned: true               // "Always on top"
+    property bool pinSupported: true         // false: the platform does not allow it (Wayland)
+    property bool sheetOpen: false           // close while recording
     property bool editingTitle: false
-    property bool closeAfterStop: false      // „Leállítás és bezárás” után a kész állapot zár
+    property bool closeAfterStop: false      // after "Stop and close" the done state closes
 
-    signal moveRequested()                   // a címsor húzása
+    signal moveRequested()                   // title bar drag
     signal pillRequested()
-    signal hideRequested()                   // háttérbe (tálcára)
-    signal closeRequested()                  // bezárás (csak ha nem fut felvétel)
+    signal hideRequested()                   // to the background (tray)
+    signal closeRequested()                  // close (only when no recording runs)
 
     readonly property string st: vm ? vm.state : "idle"
     readonly property bool recording: st === "recording" || st === "stopping"
@@ -32,7 +32,7 @@ Item {
     width: implicitWidth
     height: implicitHeight
 
-    // A ✕ gomb / ablak-bezárás: felvétel közben SOHA nem állít le — a lapot nyitja.
+    // The X button / window close: NEVER stops a running recording -- it opens the sheet.
     function requestClose() {
         if (root.recording) root.sheetOpen = true
         else root.closeRequested()
@@ -49,13 +49,13 @@ Item {
         if (root.vm && titleInput.text.trim() !== "") root.vm.title = titleInput.text
     }
 
-    // Címke-mező (Ctrl+T / „+ Címke”): a fókusz bezáráskor oda tér vissza, ahol volt.
+    // Tag field (Ctrl+T / "+ Tag"): on close focus returns to where it was.
     function beginTagInput(text) {
         if (!root.vm || !root.vm.tagsEditable) return
         if (!tagRow.adding) tagRow.returnFocus = root.Window.activeFocusItem
         tagRow.adding = true
         tagInput.open()
-        if (text) tagInput.text = text          // képernyőkép (T08c): gépelés közben
+        if (text) tagInput.text = text          // screenshot: while typing
     }
     function endTagInput() {
         if (!tagRow.adding) return
@@ -128,7 +128,7 @@ Item {
         }
     }
 
-    // ---- kártya ----
+    // ---- card ----
     Rectangle {
         id: card
         anchors.fill: parent
@@ -138,14 +138,14 @@ Item {
         border.color: Theme.borderStrong
     }
 
-    // ---- címsor (30 px) ----
+    // ---- title bar (30 px) ----
     Item {
         id: titleBar
         x: 1; y: 1
         width: parent.width - 2
         height: 30
 
-        Rectangle {                       // surface háttér, felül lekerekítve
+        Rectangle {                       // surface background, rounded at the top
             anchors.fill: parent
             radius: Theme.radiusDialog - 1
             color: Theme.surface
@@ -159,7 +159,7 @@ Item {
         }
         TapHandler { onDoubleTapped: root.expanded = !root.expanded }
 
-        Rectangle {                       // állapot-pötty (felvételnél 3 px recLine gyűrűvel)
+        Rectangle {                       // status dot (while recording with a 3 px recLine ring)
             id: dotRing
             x: 9 - (root.recording ? 3 : 0)
             anchors.verticalCenter: parent.verticalCenter
@@ -214,7 +214,7 @@ Item {
         }
     }
 
-    // ---- törzs: 12 px belső margó, 10 px köz ----
+    // ---- body: 12 px inner margin, 10 px gap ----
     Column {
         id: body
         x: 12
@@ -222,7 +222,7 @@ Item {
         width: parent.width - 24
         spacing: 10
 
-        // Hiba (indítás / sáv-hozzáadás nem sikerült)
+        // Error (start / adding a track failed)
         Rectangle {
             visible: root.vm && root.vm.errorText !== ""
             width: parent.width
@@ -248,7 +248,7 @@ Item {
             }
         }
 
-        // R06 — „Vége a megbeszélésnek?” (soha nem állít le magától)
+        // "End of the meeting?" (never stops by itself)
         Rectangle {
             visible: root.vm && root.vm.askVisible
             width: parent.width
@@ -297,7 +297,7 @@ Item {
             }
         }
 
-        // Cím-mező (32 px) — minden állapotban szerkeszthető
+        // Title field (32 px) -- editable in every state
         Column {
             width: parent.width
             spacing: 4
@@ -310,7 +310,7 @@ Item {
                 border.width: 1
                 border.color: root.editingTitle ? Theme.accent : Theme.border
 
-                Rectangle {               // 3 px accentSoft gyűrű szerkesztéskor
+                Rectangle {               // 3 px accentSoft ring while editing
                     visible: root.editingTitle
                     anchors.fill: parent
                     anchors.margins: -3
@@ -371,8 +371,8 @@ Item {
             }
         }
 
-        // Címkék (C06, T08a–c): kompakt chipek (× mindig látszik) + „+ Címke  Ctrl+T”. Indítás
-        // előtt és felvétel közben (összecsukva és kinyitva is) szerkeszthető; a pirulában nincs.
+        // Tags: compact chips (x always visible) + "+ Tag  Ctrl+T". Editable before start and while
+        // recording (collapsed and expanded); absent in the pill.
         Flow {
             id: tagRow
             objectName: "recorderTagRow"
@@ -453,14 +453,14 @@ Item {
             }
             Connections {
                 target: tagInput.field
-                // Máshová kattintva (üres mezővel) a gomb tér vissza.
+                // Clicking elsewhere (with an empty field) brings the button back.
                 function onActiveFocusChanged() {
                     if (!tagInput.field.activeFocus && tagRow.adding && tagInput.text === "") root.endTagInput()
                 }
             }
         }
 
-        // Indítás (R01/R02)
+        // Start
         RecorderButton {
             visible: root.st === "idle"
             width: parent.width
@@ -475,7 +475,7 @@ Item {
             onClicked: root.vm.start()
         }
 
-        // Felvétel-állapot + Leállítás (R03/R04). A piros rész jelző, nem gomb.
+        // Recording state + Stop. The red part is an indicator, not a button.
         Item {
             visible: root.recording
             width: parent.width
@@ -487,7 +487,7 @@ Item {
                 color: Theme.recSoft
                 border.width: 1
                 border.color: Theme.recLine
-                Rectangle {               // 12 px pötty 4 px recLine gyűrűvel (1,2 mp lüktetés)
+                Rectangle {               // 12 px dot with a 4 px recLine ring (1.2 s pulse)
                     id: recRing
                     x: 12 - 4
                     anchors.verticalCenter: parent.verticalCenter
@@ -537,12 +537,12 @@ Item {
                 fontSize: 14
                 text: qsTr("Leállítás")
                 toolTipText: "Ctrl+."
-                enabled: root.st === "recording"     // a sávfájlok lezárása alatt rövid időre tiltva
+                enabled: root.st === "recording"     // briefly disabled while the track files are being closed
                 onClicked: root.vm.stop()
             }
         }
 
-        // R09 — kész
+        // Done
         Rectangle {
             visible: root.st === "done"
             width: parent.width
@@ -609,7 +609,7 @@ Item {
             }
         }
 
-        // R10 — nincs hangeszköz
+        // No audio device
         Column {
             visible: root.st === "noDevice"
             width: parent.width
@@ -658,7 +658,7 @@ Item {
             Item { width: 1; height: 0 }
         }
 
-        // Forrás-sorok (összecsukott nézet): csak a kiválasztott / rögzített eszközök
+        // Source rows (collapsed view): only the selected / recorded devices
         Column {
             visible: !root.expanded && (root.st === "idle" || root.recording)
             width: parent.width
@@ -718,11 +718,11 @@ Item {
             }
         }
 
-        // Lábléc (összecsukva): „3 / 6 forrás rögzül” · „Források ▾”
+        // Footer (collapsed): "3 / 6 sources recording" · "Sources v"
         Item {
             visible: !root.expanded && (root.st === "idle" || root.recording)
             width: parent.width
-            height: 30 - 10 + 8          // a törzs alsó 12 px-es margójába lóg, mint a designban
+            height: 30 - 10 + 8          // overlaps the body's bottom 12 px margin, as in the design
             Rectangle { x: -4; width: parent.width + 8; height: 1; color: Theme.border }
             TLabel {
                 x: 4
@@ -759,7 +759,7 @@ Item {
             }
         }
 
-        // Kinyitott eszköz-lista (R02 / R04)
+        // Expanded device list
         Column {
             visible: root.expanded && (root.st === "idle" || root.recording)
             width: parent.width
@@ -838,13 +838,13 @@ Item {
                             required property bool toggleable
                             width: devCol.width
 
-                            RecorderGroupHeader {      // csoportfej (a Beállításokkal közös)
+                            RecorderGroupHeader {      // group header (shared with Settings)
                                 visible: dev.groupFirst
                                 height: visible ? 26 : 0
                                 topPadding: 8
                                 group: dev.group
                             }
-                            Rectangle {                // eszköz-sor
+                            Rectangle {                // device row
                                 x: -4
                                 width: dev.width + 10
                                 height: 44
@@ -950,7 +950,7 @@ Item {
         }
     }
 
-    // ---- R07: bezárás felvétel közben — lap a címsor alatt, fátyol fölött ----
+    // ---- close while recording: sheet below the title bar, above the veil ----
     Item {
         id: sheetLayer
         visible: root.sheetOpen
@@ -978,7 +978,7 @@ Item {
             color: Theme.raised
             Rectangle { width: parent.width; height: parent.radius; color: Theme.raised }
             Rectangle { width: parent.width; height: 1; color: Theme.border }
-            MouseArea { anchors.fill: parent }       // a lapon a kattintás nem zár
+            MouseArea { anchors.fill: parent }       // a click on the sheet does not close
 
             Column {
                 id: sheetCol

@@ -2,12 +2,12 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B08 — Beszélők: a saját név és hanglenyomat (az Általános lapról ide költözött), a
-// beszélő-felismerő hangmodellek (letöltés, ellenőrzés, törlés, bekapcsolás, újraolvasás) és a
-// lenyomat-pótlás állapota (k / N; kész után a kimaradt minták listája személyenként).
-// A modellek bekapcsolása a piszkozat része (Mentés); a letöltés és a törlés azonnali.
-// Demó: B08verify (ellenőrzés + méret-eltérés), B08delete (a törlés megerősítése nyitva),
-// B08partial (a kimaradt minták listája kinyitva).
+// Speakers: your own name and voiceprint, the speaker-recognition voice models (download,
+// verify, delete, enable, rescan) and the voiceprint backfill status (k / N; when done, the
+// list of skipped samples per person). Enabling the models is part of the draft (Save); download
+// and delete are immediate.
+// Demo states: verify (verification + size mismatch), delete (delete confirmation open),
+// partial (skipped-samples list expanded).
 //   SettingsSpeakersPage { vm: model }
 Column {
     id: root
@@ -19,7 +19,7 @@ Column {
 
     spacing: 22
 
-    // A lap megnyitásakor: a fájlok újraolvasása és ellenőrzése (méret).
+    // On opening the page: rescan and verify the files (size).
     onVisibleChanged: if (visible && models) models.refresh()
 
     function askDelete(id, name) {
@@ -29,7 +29,7 @@ Column {
         deleteDialog.open()
     }
 
-    // ---- a letöltött modell törlésének megerősítése ----
+    // ---- confirmation for deleting a downloaded model ----
     TDialog {
         id: deleteDialog
         objectName: "voiceModelDeleteDialog"
@@ -75,7 +75,7 @@ Column {
         ]
     }
 
-    // Demó-állapotok, amelyekhez nyitott felület kell.
+    // Demo states that need an open surface.
     function applyDemo() {
         if (root.demoState === "B08delete") root.askDelete("campplus", "CAM++")
         else if (root.demoState === "B08partial") root.skipsExpanded = true
@@ -83,7 +83,7 @@ Column {
     onDemoStateChanged: Qt.callLater(applyDemo)
     Component.onCompleted: Qt.callLater(applyDemo)
 
-    // ---- TE ----
+    // ---- YOU ----
     Column {
         width: parent.width
         spacing: 12
@@ -174,7 +174,7 @@ Column {
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-    // ---- HANGMODELLEK ----
+    // ---- VOICE MODELS ----
     Column {
         width: parent.width
         spacing: 12
@@ -188,7 +188,7 @@ Column {
             wrapMode: Text.Wrap
         }
 
-        // Nincs egyetlen modell sem: a hangelemzés ki van kapcsolva.
+        // No model at all: voice analysis is off.
         Rectangle {
             objectName: "voiceModelsNone"
             visible: root.models !== null && !root.models.anyAvailable
@@ -240,7 +240,7 @@ Column {
             }
         }
 
-        // Van modell, de egy sincs bekapcsolva.
+        // There are models, but none is enabled.
         TBanner {
             objectName: "voiceModelsAllOff"
             visible: root.models !== null && root.models.anyAvailable && root.models.activeCount === 0
@@ -250,7 +250,7 @@ Column {
             text: qsTr("Egy hangmodell sincs bekapcsolva, ezért a hangelemzés ki van kapcsolva.")
         }
 
-        // A WeSpeaker nincs meg (vagy nincs bekapcsolva), ezért a CAM++ tartalék fut.
+        // WeSpeaker is missing (or not enabled), so the CAM++ fallback runs.
         Rectangle {
             objectName: "voiceModelsFallback"
             visible: root.models !== null && root.models.fallbackActive
@@ -287,7 +287,7 @@ Column {
             }
         }
 
-        // Nincs hálózat: a letöltés nem indul.
+        // No network: the download does not start.
         TBanner {
             objectName: "voiceModelsOffline"
             visible: root.models !== null && root.models.offline
@@ -300,7 +300,7 @@ Column {
         Repeater {
             model: root.models
             SettingsVoiceModelCard {
-                // A szerepek a `model`-en át (a „state” / „enabled” név az Item saját tulajdonsága).
+                // Roles go through `model` (the "state" / "enabled" names are the Item's own properties).
                 required property var model
                 width: parent.width
                 list: root.models
@@ -327,7 +327,7 @@ Column {
             }
         }
 
-        // ---- a minták pótlása az új modellel ----
+        // ---- backfilling samples with the new model ----
         Rectangle {
             objectName: "voiceBackfill"
             visible: root.models !== null && root.models.backfillState !== ""
@@ -410,7 +410,7 @@ Column {
                     indeterminate: root.models !== null && root.models.backfillProgress < 0
                     value: root.models ? Math.max(0, root.models.backfillProgress) : 0
                 }
-                // Kész, de maradt kimaradt minta: kinek, melyik, miért (lenyíló lista).
+                // Done, but skipped samples remain: whose, which, why (dropdown list).
                 T.AbstractButton {
                     id: skipsToggle
                     objectName: "voiceBackfillDetails"
@@ -474,7 +474,7 @@ Column {
                                 x: 0; y: 6
                                 width: parent.width
                                 spacing: 10
-                                // A személy neve: link a Személyek ablakra (ő lesz kijelölve).
+                                // The person's name: a link to the People window (they get selected).
                                 T.AbstractButton {
                                     id: personLink
                                     objectName: "voiceBackfillSkipPerson"
@@ -535,7 +535,7 @@ Column {
             }
         }
 
-        // Fúzió + ajánlott alapállapot.
+        // Fusion + the recommended default.
         Column {
             width: parent.width
             spacing: 4
@@ -557,7 +557,7 @@ Column {
             }
         }
 
-        // Kézzel bemásolt modellfájl (pl. másik gépről): újraolvasás.
+        // A model file copied in by hand (e.g. from another machine): rescan.
         Row {
             spacing: 6
             TLabel {

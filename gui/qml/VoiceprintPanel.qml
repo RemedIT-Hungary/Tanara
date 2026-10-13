@@ -1,28 +1,28 @@
 import QtQuick
 
-// Egy beszélő hanglenyomata, érthetően: van-e, mennyi használható beszéde van ebben a
-// megbeszélésben, és innen készíthető is. Ugyanez a blokk áll az áttekintő ujjlenyomat-jelének
-// saját paneljében és (tömör elrendezésben) a „Ki mondta?" panel teljes-beszélő hatókörében.
-// Szabály: lenyomat CSAK kifejezett gombnyomásra készül; a most készült lenyomat itt
-// visszavonható (pontosan az az egy törlődik). Ha a hang-elemzés nem érhető el, a blokk ezt
-// egyszer megmondja, és nem kínál gombot.
+// A speaker's voiceprint, explained: whether there is one, how much usable speech the speaker has
+// in this meeting, and one can be created from here. The same block is in the overview fingerprint
+// mark's own panel and (compact layout) in the whole-speaker scope of the "Who said it?" panel.
+// Rule: a voiceprint is created ONLY on an explicit button press; the one just created can be
+// undone here (exactly that one is deleted). If voice analysis is unavailable, the block says so
+// once and offers no button.
 Item {
     id: root
 
     property var editor: null               // TranscriptEditorViewModel
     property string speakerKey: ""
-    // Tömör: a gomb a fejsor jobb szélén, rövid felirattal (a „Ki mondta?" panel alján);
-    // különben saját panel: névvel, a gomb alul, teljes felirattal.
+    // Compact: the button at the header row's right edge with a short label (at the bottom of the
+    // "Who said it?" panel); otherwise its own panel: with the name, the button at the bottom, full label.
     property bool compact: false
 
-    // reset() / refresh() tölti; a műveletek után frissül.
+    // Filled by reset() / refresh(); updates after actions.
     property var info: ({})
     property var material: ({})
-    property string createdPrintId: ""      // a most (itt) készült lenyomat
+    property string createdPrintId: ""      // the voiceprint just created (here)
     property string resultText: ""
     property bool resultError: false
 
-    // A lenyomat-állapot változott (készült / visszavonva): a hívó frissítheti a sajátját.
+    // The voiceprint state changed (created / undone): the caller can refresh its own.
     signal changed()
 
     readonly property bool named: info.anonymous === false
@@ -98,7 +98,7 @@ Item {
         }
         Item {
             width: parent.width
-            // Tömör elrendezésben a gomb ebben a sorban áll: legyen alatta hely.
+            // In the compact layout the button sits in this row: leave room below it.
             height: Math.max(stateLabel.height, root.compact && root.hasAction ? 26 : 0)
             TLabel {
                 id: stateLabel
@@ -150,7 +150,7 @@ Item {
         }
     }
 
-    // A művelet: tömören a fejsor jobb szélén, különben a szöveg alatt.
+    // The action: compact at the header row's right edge, otherwise below the text.
     TButton {
         id: createButton
         objectName: "voiceprintCreate"

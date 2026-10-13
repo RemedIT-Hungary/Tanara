@@ -3,23 +3,23 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Az „Első lépések” ablak (K14 — nem volt designer-csomag: a Beállítások-ablak és az üres
-// könyvtár vizuális nyelvét követi). Külön, nem modális ablak (720 × 640): bal oldalt a hat
-// lépés a Beállítások navigációjának elemeivel, jobbra a lépés tartalma, alul a lábléc.
+// The "Getting started" window (no designer package: follows the visual language of the Settings
+// window and the empty library). A separate, non-modal window (720 x 640): the six steps on the
+// left (with the Settings navigation's items), the step content on the right, a footer below.
 //
-// Varázsló, nem egyetlen görgetett oldal: a hat témából négy valódi döntés (név + megjelenés,
-// mappák, szolgáltatók, figyelő), és mindegyiknek külön „Kihagyom” kell — lépésenként ez
-// egyértelmű (a gomb a látható tartalomra vonatkozik), egy hosszú oldalon nem lenne az. A
-// „Tovább” azonnal menti az adott lépést, így a félbehagyott varázsló is megtartja, amit addig
-// elfogadtak. SEMMI sem kötelező: „Később” / × bármikor bezár.
+// A wizard, not one scrolled page: of the six topics four are real decisions (name + appearance,
+// folders, providers, watcher), and each needs its own "Skip" -- per step that is unambiguous (the
+// button applies to the visible content), on one long page it would not be. "Next" saves the
+// current step right away, so an abandoned wizard keeps what was accepted so far. NOTHING is
+// mandatory: "Later" / x closes at any time.
 //
-// A C++ gazda (tanara_qml::OnboardingWindowHost) hozza létre; önállóan is betölthető képhez:
-//   tanara --qml-shot ki.png --qml-page OnboardingWindow --size 720x640 --qml-prop 'demoState="you"'
+// The C++ host (tanara_qml::OnboardingWindowHost) creates it; it can also be loaded standalone:
+//   tanara --qml-shot out.png --qml-page OnboardingWindow --size 720x640 --qml-prop 'demoState="you"'
 // demoState: welcome · you · folders · providers · watcher · done
 ApplicationWindow {
     id: window
 
-    // A gazda adja át (kezdő property-ként); nélkülük az App.controller / demó érvényes.
+    // Passed by the host (as initial properties); without them App.controller / demo applies.
     property QtObject hostController: null
     property QtObject hostDialogs: null
     property string demoState: ""
@@ -46,7 +46,7 @@ ApplicationWindow {
         else if (demoState !== "") model.demoState = demoState
     }
 
-    // A Beállításokban közben mentett kulcs / szolgáltató: visszatéréskor friss állapot-sor.
+    // Key / provider saved meanwhile in Settings: a fresh status row on return.
     onActiveChanged: if (active) model.refreshReadiness()
 
     Shortcut { sequences: [StandardKey.Close]; onActivated: window.close() }
@@ -56,7 +56,7 @@ ApplicationWindow {
     readonly property bool decisionStep: model.step === "you" || model.step === "folders"
                                          || model.step === "providers" || model.step === "watcher"
 
-    // Egy lépés fejléce: „2 / 6” · cím · bevezető.
+    // A step header: "2 / 6" · title · intro.
     component StepHeader: Column {
         id: header
         property string title: ""
@@ -88,7 +88,7 @@ ApplicationWindow {
         }
     }
 
-    // Halvány, ikonos megjegyzés-sor (pl. „később is módosítható”).
+    // Faint note row with an icon (e.g. "can be changed later").
     component Note: Row {
         id: note
         property string text: ""
@@ -111,7 +111,7 @@ ApplicationWindow {
         }
     }
 
-    // Az üres könyvtár számozott lépés-chipje (Felvétel → Átirat → Összefoglaló).
+    // The empty library's numbered step chip (Record -> Transcript -> Summary).
     component FlowStep: Rectangle {
         id: flowStep
         property int number: 1
@@ -147,7 +147,7 @@ ApplicationWindow {
         }
     }
 
-    // Állapot-sor a szolgáltatóknál / az összegzésben: ikon + szöveg.
+    // Status row for the providers / the summary: icon + text.
     component StatusLine: Row {
         id: statusLine
         property string text: ""
@@ -178,7 +178,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // ---- lépések ----
+            // ---- steps ----
             Rectangle {
                 Layout.preferredWidth: 188
                 Layout.fillHeight: true
@@ -220,7 +220,7 @@ ApplicationWindow {
                 }
             }
 
-            // ---- tartalom ----
+            // ---- content ----
             Flickable {
                 id: content
                 Layout.fillWidth: true
@@ -247,7 +247,7 @@ ApplicationWindow {
                           : watcherPage.visible ? watcherPage.implicitHeight
                           : donePage.implicitHeight
 
-                    // ---- 1. Üdvözlés ----
+                    // ---- 1. Welcome ----
                     Column {
                         id: welcomePage
                         objectName: "page-welcome"
@@ -283,7 +283,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- 2. Te ----
+                    // ---- 2. You ----
                     Column {
                         id: youPage
                         objectName: "page-you"
@@ -363,7 +363,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- 3. Mappák ----
+                    // ---- 3. Folders ----
                     Column {
                         id: foldersPage
                         objectName: "page-folders"
@@ -425,8 +425,8 @@ ApplicationWindow {
                                         onClicked: model.browseFolder(folder.modelData.key)
                                     }
                                     TIconButton {
-                                        // Elrejtjük, nem letiltjuk (a letiltott gomb szaggatott kerete a
-                                        // szoftveres rendererrel kilógna a görgetett terület vágásából).
+                                        // Hidden, not disabled (a disabled button's dashed border would stick out of the scrolled
+                                        // area's clip with the software renderer).
                                         visible: !folder.modelData.isDefault
                                         iconName: "rotate-ccw"
                                         iconSize: 15
@@ -449,7 +449,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- 4. Szolgáltatások ----
+                    // ---- 4. Services ----
                     Column {
                         id: providersPage
                         objectName: "page-providers"
@@ -509,7 +509,7 @@ ApplicationWindow {
                             iconName: "cloud"
                             text: qsTr("Tanara Cloud: hamarosan — átírás és összefoglaló saját kulcs nélkül.")
                         }
-                        // Hangmodell (E01): ha hiányzik a WeSpeaker, letölthető innen is; kihagyható.
+                        // Voice model: if WeSpeaker is missing it can be downloaded from here too; skippable.
                         VoiceModelOnboardingRow {
                             width: parent.width
                             controller: window.hostController
@@ -517,7 +517,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- 5. Hívásfigyelő ----
+                    // ---- 5. Call watcher ----
                     Column {
                         id: watcherPage
                         objectName: "page-watcher"
@@ -554,7 +554,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // ---- 6. Kész ----
+                    // ---- 6. Done ----
                     Column {
                         id: donePage
                         objectName: "page-done"
@@ -600,7 +600,7 @@ ApplicationWindow {
             }
         }
 
-        // ---- lábléc ----
+        // ---- footer ----
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 56

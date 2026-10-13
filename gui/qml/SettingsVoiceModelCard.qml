@@ -2,17 +2,17 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Hangmodell-kártya (Beállítások › Beszélők, B08): név + „ajánlott” jelölés, állapot-pirula,
-// „Bekapcsolva” kapcsoló (csak meglévő modellnél), a letöltött fájl menüje (Ellenőrzés újra,
-// Törlés…); egy mondat arról, mire jó; licenc + forrás link + méret + dimenzió (a letöltés ELŐTT
-// is látszik); állapotfüggő művelet: Letöltés / folyamatjelző + Mégse / ellenőrzés… / hiba (pl.
-// „méret nem egyezik”) + Újra / offline. A törlés megerősítése a lapé (deleteRequested).
-//   SettingsVoiceModelCard { list: vm.voiceModels; model: <a VoiceModelListModel egy sora> }
+// Voice model card (Settings > Speakers): name + "recommended" mark, status pill, "Enabled"
+// switch (only for an existing model), menu of the downloaded file (Verify again, Delete...);
+// a sentence on what it is for; license + source link + size + dimension (visible BEFORE
+// download); state-dependent action: Download / progress + Cancel / verifying... / error (e.g.
+// "size mismatch") + Retry / offline. The page owns the delete confirmation (deleteRequested).
+//   SettingsVoiceModelCard { list: vm.voiceModels; model: <one row of VoiceModelListModel> }
 Rectangle {
     id: root
 
-    property var list: null              // VoiceModelListModel (a műveletekhez)
-    // A sor szerepei (a Repeater delegate-je adja át).
+    property var list: null              // VoiceModelListModel (for the actions)
+    // Row roles (passed by the Repeater delegate).
     property string modelId: ""
     property string name: ""
     property string blurb: ""
@@ -29,15 +29,15 @@ Rectangle {
     property bool enabledModel: false
     property bool canEnable: false
     property bool recommended: false
-    property bool corrupt: false         // a fájl mérete eltér a várttól
-    property bool hasFile: false         // van letöltött fájl (<metaDir>/models) — törölhető
-    property bool canDelete: false       // most törölhető (nem töltődik / ellenőrződik)
-    // Képernyőképhez: a menü nyitva.
+    property bool corrupt: false         // file size differs from the expected one
+    property bool hasFile: false         // a downloaded file exists (<metaDir>/models): deletable
+    property bool canDelete: false       // deletable now (not downloading / verifying)
+    // For screenshots: menu open.
     property bool demoMenuOpen: false
 
     readonly property bool failed: state_ === "error"
 
-    // A „Törlés…” menüpont: a lap kérdez rá (TDialog), és ő hívja a list.deleteModel-t.
+    // The "Delete..." menu item: the page asks for confirmation (TDialog) and calls list.deleteModel.
     signal deleteRequested(string modelId, string name)
 
     function openMenu() { menu.open() }
@@ -50,7 +50,7 @@ Rectangle {
     border.width: 1
     border.color: failed ? Theme.dangerLine : Theme.border
 
-    // Kis szöveges link (a forrás-lap).
+    // Small text link (the source page).
     component LinkButton: T.AbstractButton {
         id: link
         property string iconName: ""
@@ -93,7 +93,7 @@ Rectangle {
         width: parent.width - 32
         spacing: 8
 
-        // ---- fej: név, ajánlott, állapot, kapcsoló ----
+        // ---- head: name, recommended, status, switch ----
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -145,7 +145,7 @@ Rectangle {
                     checked = Qt.binding(function() { return root.enabledModel && root.canEnable })
                 }
             }
-            // A letöltött fájl műveletei (a csomagban lévőnél nincs).
+            // Actions on the downloaded file (none for a bundled one).
             TIconButton {
                 id: menuButton
                 objectName: "voiceModelMenu-" + root.modelId
@@ -197,7 +197,7 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- méret · dimenzió · licenc · forrás (a letöltés előtt is látszik) ----
+        // ---- size - dimension - license - source (visible before download too) ----
         Flow {
             Layout.fillWidth: true
             spacing: 6
@@ -221,7 +221,7 @@ Rectangle {
             }
         }
 
-        // ---- nincs letöltve: Letöltés ----
+        // ---- not downloaded: Download ----
         RowLayout {
             visible: root.state_ === "missing"
             Layout.fillWidth: true
@@ -237,7 +237,7 @@ Rectangle {
             Item { Layout.fillWidth: true }
         }
 
-        // ---- letöltés fut: sáv + Mégse ----
+        // ---- download running: bar + Cancel ----
         RowLayout {
             visible: root.state_ === "downloading"
             Layout.fillWidth: true
@@ -263,7 +263,7 @@ Rectangle {
             }
         }
 
-        // ---- hiba: üzenet + Újra ----
+        // ---- error: message + Retry ----
         Rectangle {
             visible: root.failed
             Layout.fillWidth: true
@@ -295,7 +295,7 @@ Rectangle {
             }
         }
 
-        // ---- offline: a letöltés nem indul (a magyarázat a lap tetején, egyszer) ----
+        // ---- offline: download does not start (explained once at the top of the page) ----
         RowLayout {
             visible: root.state_ === "offline"
             Layout.fillWidth: true

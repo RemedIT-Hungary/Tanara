@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az átirat előtti lépéssor (M03) egy lépése: 28 px-es számozott kör, alatta 2 px-es
-// összekötő vonal, jobbra a cím és a tartalom. tone: "current" (teli accent) | "next"
-// (accent keret) | "idle" (semleges keret). A gyerekek a cím alá kerülnek.
-//   PreTranscriptStep { number: 1; tone: "current"; title: qsTr("Miről szólt a megbeszélés?") … }
+// One step of the pre-transcript step list: a 28 px numbered circle, a 2 px connector line
+// below it, the title and content on the right. tone: "current" (filled accent) | "next"
+// (accent border) | "idle" (neutral border). Children go below the title.
+//   PreTranscriptStep { number: 1; tone: "current"; title: qsTr("What was the meeting about?") ... }
 Item {
     id: root
 
     property int number: 1
     property string tone: "idle"
     property string title: ""
-    property string tag: ""            // pl. „opcionális” a cím mellett
-    property bool last: false          // az utolsó lépés alatt nincs vonal és alsó térköz
+    property string tag: ""            // e.g. "optional" next to the title
+    property bool last: false          // no line or bottom spacing below the last step
     property real contentSpacing: 8
     default property alias content: body.data
 

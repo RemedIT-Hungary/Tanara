@@ -1,14 +1,14 @@
 import QtQuick
 
-// Lucide ikon (gui/qml/icons/<name>.svg) tetszőleges témaszínnel. A kép-provider a kért
-// fizikai pixelméretben raszterel (méret × devicePixelRatio) → törtléptéken is éles.
+// Lucide icon (gui/qml/icons/<name>.svg) in any theme color. The image provider rasterizes at
+// the requested physical pixel size (size x devicePixelRatio) -> sharp at fractional scales too.
 //   TIcon { name: "search"; size: 15; color: Theme.textMuted }
 Item {
     id: root
     property string name: ""
     property color color: Theme.text
     property real size: Theme.iconSize
-    property real strokeWidth: 1.75        // a 24-es Lucide-rácson értve
+    property real strokeWidth: 1.75        // on the 24-unit Lucide grid
 
     implicitWidth: size
     implicitHeight: size

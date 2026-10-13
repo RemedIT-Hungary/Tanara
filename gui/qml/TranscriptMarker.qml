@@ -1,15 +1,15 @@
 import QtQuick
 
-// Egy sor jelölője a Javítás módban (handoff-v3 E1, 14. döntés), 18 px magas:
-//   "confirmed"  pipa (megerősítve, „Jó így"), halvány, felirat nélkül
-//   "short"      „rövid" + fül-ikon, körvonalas (a hang ennyiből nem dönt)
-//   "uncertain"  „bizonytalan · sáv | hang | címke" + az ok ikonja, warn
-//   "corrected"  „javítva", success
-//   "newPerson"  „új személy" + user-plus, accent
-//   "noisy"      „egymásra beszéltek", semleges
-//   "ignored"    „? nem azonosítható", szürke (a hang-elemzés figyelmen kívül hagyja)
-//   "sample"     tömör hullám (a döntött sor hangmintának számít), felirat nélkül, tooltip
-//   "noSample"   áthúzott hullám (döntött, de nem minta), felirat nélkül, tooltip
+// Marker of one row in Fix mode, 18 px high:
+//   "confirmed"  check (confirmed, "Fine as is"), faded, no label
+//   "short"      "short" + ear icon, outlined (the voice cannot decide from this much)
+//   "uncertain"  "uncertain - track | voice | tag" + the reason's icon, warn
+//   "corrected"  "fixed", success
+//   "newPerson"  "new person" + user-plus, accent
+//   "noisy"      "overlapping speech", neutral
+//   "ignored"    "? not identifiable", gray (voice analysis ignores it)
+//   "sample"     solid waveform (a decided row counts as a voice sample), no label, tooltip
+//   "noSample"   struck-through waveform (decided but not a sample), no label, tooltip
 //   TranscriptMarker { kind: "uncertain"; reason: "side" }
 Rectangle {
     id: root
@@ -63,7 +63,7 @@ Rectangle {
         id: row
         anchors.centerIn: parent
         spacing: 4
-        // „Nem azonosítható": kör alakú „?".
+        // "Not identifiable": a round "?".
         Rectangle {
             visible: root.kind === "ignored"
             anchors.verticalCenter: parent.verticalCenter
@@ -91,7 +91,7 @@ Rectangle {
                 size: root.kind === "confirmed" || root.wave ? 13 : 11
                 color: root.kind === "noSample" ? Theme.alpha(root.ink, 0.6) : root.ink
             }
-            // Áthúzott hullám: „nem minta".
+            // Struck-through waveform: "not a sample".
             Rectangle {
                 visible: root.kind === "noSample"
                 anchors.centerIn: parent

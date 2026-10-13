@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 
-// Szaggatott keretű, lekerekített téglalap (hozzáadás-chip, ejtési cél, letiltott gomb).
+// Dashed-border rounded rectangle (add chip, drop target, disabled button).
 Shape {
     id: root
     property color color: Theme.borderStrong

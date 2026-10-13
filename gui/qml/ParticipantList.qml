@@ -2,28 +2,28 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// KIK VOLTAK OTT lista (design/handoff-v3 V1/V3): surface, keret, sugár 8; sor 8/12 px:
-// 26 px avatar (beszélő-színű lágy kitöltés + gyűrű, monogram) · név 13.5/600 (150 px, alatta
-// opcionális alszöveg) · forrás-jelvények (20 px, sugár 4, sunken + 11 px ikon; ellentmondó =
-// szaggatott borderStrong, halvány; címke-javaslat = accentSoft) · beszédarány-sáv (a beszélő
-// vonalszínével) vagy „+ Hozzáadás” · ×. A lemondott meghívott és az átirat után nem hallott
-// (unheard: „nem hallottuk” jelvény) résztvevő 55 %; a javasolt személy szaggatott avatarral,
-// halvány névvel, „javasolt” alszöveggel. A × tartós (törlés / a javaslat elutasítása erre a
-// megbeszélésre); a közös visszavonás (Ctrl+Z, változás-sáv) hozza vissza.
-// A jelvény (13. döntés, „bizonyíték mindenhol, javítás helye mindenhol”): tooltipje a bizonyíték
-// magyarázata (source.detail); átirat után (a sornak van beszélő-kulcsa) kattintható, és a
-// szerkesztő „Miért ő?” paneljét nyitja arra a beszélőre (whyRequested). A névtelen sor
-// („elnevezhető”) kattintásra és a jobb szélső „Elnevezés…” gombbal elnevezhető (nameRequested).
-// Sáv-chipek (G6): a forrás-jelvények után a beszélő sávjai (ParticipantTrackChips; kattintva a
-// kötés vált, ugyanaz az adat, mint a „Miért ő?” MELYIK SÁVON BESZÉL? chipjei).
+// WHO WAS THERE list: surface, border, radius 8; row 8/12 px:
+// 26 px avatar (soft fill in the speaker color + ring, monogram) - name 13.5/600 (150 px, optional
+// subtext below) - source badges (20 px, radius 4, sunken + 11 px icon; contradicting = dashed
+// borderStrong, faded; tag suggestion = accentSoft) - talk-share bar (in the speaker's line
+// color) or "+ Add" - x. A declined invitee and a participant not heard after the transcript
+// (unheard: "not heard" badge) are drawn at 55%; a suggested person has a dashed avatar, a
+// faded name and a "suggested" subtext. The x is persistent (delete / reject the suggestion for
+// this meeting); the shared undo (Ctrl+Z, change bar) brings it back.
+// The badge ("evidence everywhere, fix location everywhere"): its tooltip is the evidence
+// explanation (source.detail); after the transcript (the row has a speaker key) it is clickable
+// and opens the editor's "Why them?" panel for that speaker (whyRequested). An unnamed row
+// ("nameable") can be named by click or the right-hand "Name..." button (nameRequested).
+// Track chips: after the source badges come the speaker's tracks (ParticipantTrackChips; a click
+// toggles the binding; same data as the "Why them?" WHICH TRACK DOES THEY SPEAK ON? chips).
 // people: OverviewViewModel.participants · trackBinder: ParticipantTrackBinder
 Rectangle {
     id: root
 
     property var people: []
-    // Kattintható-e a jelvény („Miért ő?”): átirat után igen.
+    // Whether the badge is clickable ("Why them?"): yes after the transcript.
     property bool canExplain: true
-    // Beszélő → sáv kötés (G6): ParticipantTrackBinder; null → nincsenek sáv-chipek.
+    // Speaker -> track binding: ParticipantTrackBinder; null -> no track chips.
     property var trackBinder: null
 
     signal addRequested(string name)
@@ -37,7 +37,7 @@ Rectangle {
     border.width: 1
     border.color: Theme.border
 
-    // Forrás-jelvény.
+    // Source badge.
     component SourceBadge: T.AbstractButton {
         id: badge
         property var source: ({})
@@ -125,7 +125,7 @@ Rectangle {
                     color: Theme.border
                 }
                 HoverHandler { id: rowHover; cursorShape: row.nameable ? Qt.PointingHandCursor : Qt.ArrowCursor }
-                // A névtelen sor kattintásra elnevezhető (a gombok és a jelvények a sajátjukat kapják).
+                // An unnamed row can be named by click (buttons and badges get their own clicks).
                 TapHandler {
                     enabled: row.nameable
                     onTapped: root.nameRequested(row.modelData, nameButton)
@@ -193,8 +193,8 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 4
                         Repeater {
-                            // A sáv-chipek mutatják az oldalt: a (nem ellentmondó) mikrofon / hívás
-                            // jelvény ilyenkor kimarad.
+                            // The track chips show the side: the (non-contradicting) mic / call
+                            // badge is omitted then.
                             model: trackChips.visible
                                    ? (row.modelData.sources || []).filter(s => s.negative === true
                                                                          || (s.icon !== "mic" && s.icon !== "phone"))
@@ -208,7 +208,8 @@ Rectangle {
                         ParticipantTrackChips {
                             id: trackChips
                             binder: root.trackBinder
-                            // A nem hallott résztvevőnek nincs beszéde: nincs mit sávhoz kötni.
+                            // A participant who was not heard has no speech: nothing to bind to a
+                            // track.
                             participantId: row.suggested || row.modelData.unheard === true ? "" : (row.modelData.id || "")
                         }
                     }
@@ -259,7 +260,8 @@ Rectangle {
                     }
                     TIconButton {
                         objectName: "participantRemove"
-                        // A hely mindig foglalt (különben a sor ugrálna hoverre); csak a láthatóság vált.
+                        // The space is always reserved (otherwise the row would jump on hover);
+                        // only visibility toggles.
                         visible: row.modelData.removable === true
                         readonly property bool shown: row.suggested || rowHover.hovered || activeFocus
                         opacity: shown ? 1 : 0

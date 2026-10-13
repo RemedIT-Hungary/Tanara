@@ -1,17 +1,17 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az Áttekintés „Átirat” lépésébe ágyazott indító (design/handoff-v3 V5, U6): átirat előtt a
-// FELDOLGOZÁS oszlopban itt indul az átírás. A régi átirat előtti nézet (PreTranscriptView)
-// 3. lépésének és hiba-kártyájának tartalma, a 272 px-es lépés-oszlophoz tömörítve:
-//   - hiányzó beállítás (warn doboz, a gomb a Beállítások megfelelő lapjára visz);
-//   - Tanara Cloud: Gyors / Pontos szint és nyelv;
-//   - „Átírás indítása” (primary) + szolgáltató, ill. a zárolás oka;
-//   - hiba: danger doboz az üzenettel, „Újra” és a javító művelet;
-//   - futás közben (A1, a régi M04): a szakaszok tömör listája (állapot-kör, név, haladás), a
-//     „Közben nyugodtan dolgozz tovább” sor és a „Megszakítás” (cancelJob(…, Transcribe)). Az
-//     összesített haladás és a becsült idő a lépés alszövegében és csíkjában van.
-// vm: PreTranscriptViewModel · shell: ShellActions vagy null · meetingId: a megbeszélés.
+// Launcher embedded in the Overview "Transcript" step: before the transcript, transcription
+// starts here in the PROCESSING column. It holds the content of the old pre-transcript view's
+// (PreTranscriptView) step 3 and error card, condensed for the 272 px step column:
+//   - missing setting (warn box, the button leads to the matching Settings page);
+//   - Tanara Cloud: Fast / Accurate tier and language;
+//   - "Start transcription" (primary) + provider, or the reason it is locked;
+//   - error: danger box with the message, "Retry" and the fixing action;
+//   - while running: a compact list of stages (state circle, name, progress), the
+//     "Feel free to keep working meanwhile" row and "Cancel" (cancelJob(..., Transcribe)). The
+//     overall progress and the estimated time are in the step's subtext and strip.
+// vm: PreTranscriptViewModel · shell: ShellActions or null · meetingId: the meeting.
 ColumnLayout {
     id: root
 
@@ -25,7 +25,7 @@ ColumnLayout {
 
     signal startRequested()
 
-    // A hiányzó átíró-szolgáltatóhoz a Beállítások az STT-kártyát kiemelve nyílik (B04).
+    // For a missing transcription provider Settings opens with the STT card highlighted.
     function openSettings(page) {
         if (!root.shell) return
         if (page === "providers") root.shell.openSettings(page, "stt")
@@ -38,7 +38,7 @@ ColumnLayout {
 
     spacing: 8
 
-    // Egy szakasz tömören (a 272 px-es oszlophoz): 14 px-es kör · név · állapot / százalék.
+    // One stage, compact (for the 272 px column): 14 px circle · name · state / percent.
     component StageLine: RowLayout {
         id: sl
         property var stage: ({})
@@ -83,7 +83,7 @@ ColumnLayout {
         }
     }
 
-    // ---- futás (A1) ----
+    // ---- running ----
     ColumnLayout {
         objectName: "transcribeRunning"
         visible: root.running
@@ -121,7 +121,7 @@ ColumnLayout {
         }
     }
 
-    // ---- hiba ----
+    // ---- error ----
     Rectangle {
         objectName: "transcribeError"
         visible: root.failed
@@ -189,7 +189,7 @@ ColumnLayout {
         }
     }
 
-    // ---- hiányzó beállítás ----
+    // ---- missing setting ----
     Rectangle {
         objectName: "transcribeBlocker"
         visible: !root.failed && !root.running && root.blocker.title !== undefined
@@ -233,7 +233,7 @@ ColumnLayout {
         }
     }
 
-    // ---- Tanara Cloud: szint és nyelv ----
+    // ---- Tanara Cloud: tier and language ----
     Flow {
         visible: !root.failed && !root.running && root.vm !== null && root.vm.cloudSelected
         Layout.fillWidth: true
@@ -275,7 +275,7 @@ ColumnLayout {
         wrapMode: Text.Wrap
     }
 
-    // ---- indítás ----
+    // ---- start ----
     ColumnLayout {
         visible: !root.failed && !root.running
         Layout.fillWidth: true

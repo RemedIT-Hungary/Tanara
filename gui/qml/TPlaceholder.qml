@@ -1,7 +1,7 @@
 import QtQuick
 
-// Ideiglenes helykitöltő a még el nem készült képernyőrészekhez (a héj-váz használja).
-// A szeleteket építő agentek a placeholder-fájlok TELJES tartalmát lecserélik.
+// Temporary placeholder for screen parts not built yet (used by the shell scaffold).
+// Agents building the slices replace the placeholder files' content entirely.
 Item {
     id: root
     property string label: ""

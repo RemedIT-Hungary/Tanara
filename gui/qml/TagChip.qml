@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Címke-chip (C01): szögletes (Theme.radiusTag), semleges, „#” jellel — így nem téveszthető
-// össze a kerek, színes személy-chippel és a kis, kerek állapot-pirulával.
-//   kind: "applied"   felrakott címke: raised, 1 px borderStrong (rámutatva / fókuszban text), „#”
-//         "suggested" javasolt meglévő címke: szaggatott accent keret, „+”, mindig ×
-//         "llmNew"    a nyelvi modell új neve: szaggatott accent, ✦ + „ÚJ” jelölés, ×
-//         "overflow"  „+N”: sunken, keret nélkül
-//         "partial"   tömeges kijelölésnél csak néhányon rajta: szaggatott borderStrong, „1/3”
-//   compact: 22 px (felvevő), removable: × (felrakottnál csak rámutatva / fókuszban),
-//   mini: 18 px / 11 px (a megjegyzés-kártyák jelzése), removeAlwaysVisible: a × mindig látszik
-//   (többchipes mezőben), countText: szám a név után (mono 11, pl. „1/3”, „6×”). Legfeljebb 180 px; a hosszú név
-//   elvágva, teljes alakja súgóban.
-//   TagChip { text: "Nordvik"; removable: true; onClicked: …; onRemoveRequested: … }
+// Tag chip: square (Theme.radiusTag), neutral, with a "#" sign -- so it cannot be confused with
+// the round, colored person chip or the small round status pill.
+//   kind: "applied"   tag on the item: raised, 1 px borderStrong (text on hover / focus), "#"
+//         "suggested" suggested existing tag: dashed accent border, "+", always x
+//         "llmNew"    new name from the language model: dashed accent, sparkle + "NEW" mark, x
+//         "overflow"  "+N": sunken, no border
+//         "partial"   in a bulk selection only some have it: dashed borderStrong, "1/3"
+//   compact: 22 px (recorder), removable: x (for applied only on hover / focus),
+//   mini: 18 px / 11 px (the note cards' indicator), removeAlwaysVisible: the x always shows
+//   (in a multi-chip field), countText: a number after the name (mono 11, e.g. "1/3", "6x").
+//   At most 180 px; a long name is elided, its full form in the tooltip.
+//   TagChip { text: "Nordvik"; removable: true; onClicked: ...; onRemoveRequested: ... }
 T.AbstractButton {
     id: control
 
@@ -83,7 +83,7 @@ T.AbstractButton {
             Text {
                 id: label
                 anchors.verticalCenter: parent.verticalCenter
-                // A név a maximális szélességből annyit kap, amennyi a többi rész után marad.
+                // The name gets as much of the maximum width as remains after the other parts.
                 width: Math.min(implicitWidth,
                                 Math.max(24, control.maxWidth - control.leftPadding - control.rightPadding - othersWidth()))
                 function othersWidth() {

@@ -1,8 +1,8 @@
 import QtQuick
 
-// A kapcsolat-teszt állapot-pirulája: „Kapcsolódva · 210 ms” (successSoft / successInk,
-// circle-check), „Nem érhető el” (dangerSoft / dangerInk, circle-x), „Tesztelés…” (forgó jel),
-// "neutral": semleges tájékoztatás ikon nélkül (sunken / textMuted, pl. „Alap szint”).
+// The connection test's state pill: "Connected · 210 ms" (successSoft / successInk,
+// circle-check), "Unreachable" (dangerSoft / dangerInk, circle-x), "Testing..." (spinner),
+// "neutral": neutral information with no icon (sunken / textMuted, e.g. "Basic tier").
 //   SettingsStatusPill { state: card.testState; text: card.statusText }
 Rectangle {
     id: root

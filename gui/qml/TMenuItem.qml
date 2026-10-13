@@ -1,15 +1,15 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Menüelem (32 px). iconName: elöl; shortcutText: jobbra, mono 11; danger: romboló művelet
-// (dangerInk); checked: pipa a végén. Menün kívül (oszlopban) is használható.
+// Menu item (32 px). iconName: at the start; shortcutText: on the right, mono 11; danger: a
+// destructive action (dangerInk); checked: a check mark at the end. Also usable outside a menu (in a column).
 T.MenuItem {
     id: control
 
     property string iconName: ""
     property string shortcutText: ""
     property bool danger: false
-    property bool reserveIconSpace: false          // ikon nélküli elem igazítása az ikonosakhoz
+    property bool reserveIconSpace: false          // align an icon-less item with the icon ones
     property bool stateHovered: highlighted || hovered
 
     readonly property color ink: !enabled ? Theme.borderStrong
@@ -41,7 +41,7 @@ T.MenuItem {
                 color: control.ink
                 anchors.verticalCenter: parent.verticalCenter
             }
-            // Hely a jobbra igazított résznek (gyorsbillentyű / pipa).
+            // Room for the right-aligned part (shortcut / check mark).
             Item {
                 width: trailing.implicitWidth > 0 ? trailing.implicitWidth + 14 : 0
                 height: 1

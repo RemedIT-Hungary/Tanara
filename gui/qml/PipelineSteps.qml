@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 
-// FELDOLGOZÁS lépései (design/handoff-v3 V1/V5/V6): 22 px-es kör — kész = successSoft + pipa;
-// figyelmet kér = warnSoft „!”, a sor raised + warnLine keret; fut = 2 px accent gyűrű + 4 px
-// haladás-csík; vár = szaggatott borderStrong kör. A párhuzamos lépéseken mono „‖ párhuzamosan”.
+// PROCESSING steps: 22 px circle - done = successSoft + check; needs attention = warnSoft "!", row
+// raised + warnLine border; running = 2 px accent ring + 4 px progress bar; waiting = dashed
+// borderStrong circle. Parallel steps get a mono "|| in parallel" label.
 // steps: [{ key, title, sub, state, parallel, progress }] (OverviewViewModel.steps).
-// mixdownContent / voiceContent / transcriptContent: a lépés alá beágyazott tartalom (átirat
-// előtt az „Átírás indítása” a „transcript” lépésben, kézi lekeverésnél a „Lekeverés indítása”).
+// mixdownContent / voiceContent / transcriptContent: content embedded below the step (before the
+// transcript, "Start transcription" in the "transcript" step; "Start mixdown" for manual mixdown).
 ColumnLayout {
     id: root
 

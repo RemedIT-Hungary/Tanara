@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Egy fül a TTabBar-ban. Aktív: 600 + 2 px accent aláhúzás; inaktív: halvány. Opcionális
-// pirula (pillText / pillTone), pl. „elavult” az Összefoglaló fülön.
+// One tab in a TTabBar. Active: 600 + 2 px accent underline; inactive: faded. Optional
+// pill (pillText / pillTone), e.g. "stale" on the Summary tab.
 T.TabButton {
     id: control
 
@@ -11,7 +11,7 @@ T.TabButton {
     property bool stateHovered: hovered
     property bool stateFocused: visualFocus
 
-    // Explicit szélesség: különben a TabBar egyenlően szétosztaná a füleket a teljes sávon.
+    // Explicit width: otherwise the TabBar would spread the tabs evenly over the whole bar.
     width: implicitWidth
     implicitWidth: row.implicitWidth + leftPadding + rightPadding
     implicitHeight: Math.max(row.implicitHeight, 20) + topPadding + bottomPadding

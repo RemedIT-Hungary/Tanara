@@ -1,14 +1,14 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Söprés-mód (S6), megálló: a döntés-sáv a kétes sor alatt, ahol a lejátszás megállt (a
-// TranscriptRow tölti be). Minden gomb a billentyűjét is mutatja; a billentyűk a TranscriptTab-ban
-// élnek (fizikai hely szerint, TranscriptKeys), a gombok ugyanazt hívják:
-//   Enter  az alapértelmezés: a hangra javasolt beszélő („Fehér Gábor mondta”), különben „Jó így”
-//   J      Jó így          0  Nem azonosítható        1–9  a sín n. beszélője
-//   M      Más… (a sor panelje)                       →    Később (a következő megállóig)
-//   Space  tovább döntés nélkül   ←  a sor eleje      Shift  nem minta (a feliratok is váltanak)
-// Döntés után a lejátszás magától folytatódik (TranscriptEditorViewModel.sweepResumeRequested).
+// Sweep mode, stopped: the decision bar below the doubtful line where playback stopped (loaded
+// by TranscriptRow). Every button shows its key too; the keys live in TranscriptTab (by physical
+// position, TranscriptKeys), the buttons call the same actions:
+//   Enter  the default: the speaker suggested for the voice ("Fehér Gábor said it"), else "Fine as is"
+//   J      Fine as is      0  Unidentifiable        1-9  the n-th speaker of the rail
+//   M      Other... (the line's panel)              Right  Later (until the next stop)
+//   Space  continue without deciding   Left  line start   Shift  not a sample (labels switch too)
+// After a decision playback resumes by itself (TranscriptEditorViewModel.sweepResumeRequested).
 Item {
     id: root
 
@@ -19,7 +19,7 @@ Item {
     required property int ownLane
     required property string likelyKey
     required property string likelyName
-    // Gombokra (és az objectName-ekre) a tesztek / képernyőképek is támaszkodnak.
+    // Tests / screenshots also rely on the buttons (and the objectNames).
     readonly property bool hasSuggestion: likelyKey !== "" && likelyKey !== speakerKey
     readonly property bool shift: tab.shiftHeld
     readonly property string suffix: shift ? tab.nonSampleSuffix : ""
@@ -28,7 +28,7 @@ Item {
     implicitHeight: column.implicitHeight + 12
     implicitWidth: column.implicitWidth
 
-    // Billentyű-sapkás gomb (TButton + a billentyű felirata elöl).
+    // Key-cap button (TButton + the key label in front).
     component KeyButton: TButton {
         id: kb
         property string keyText: ""

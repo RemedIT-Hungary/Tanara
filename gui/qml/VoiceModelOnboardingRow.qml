@@ -1,10 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Első lépések › Szolgáltatások: egy sor a hangmodellről. Ha hiányzik az ajánlott modell (WeSpeaker),
-// „Hangmodell letöltése (28 MB)” gomb ugyanazzal a letöltővel, mint a Beállítások › Beszélők
-// lap; kihagyható (a lépés „Kihagyom”-ja vagy egyszerűen a „Tovább”). Ha a modell megvan,
-// nem látszik.
+// First steps > Services: one row about the voice model. If the recommended model (WeSpeaker)
+// is missing, a "Download voice model (28 MB)" button using the same downloader as Settings >
+// Speakers; skippable (the step's "Skip" or simply "Continue"). Hidden when the model is there.
 //   VoiceModelOnboardingRow { controller: window.hostController; demoState: "B08none" }
 Rectangle {
     id: root
@@ -13,8 +12,8 @@ Rectangle {
     property string demoState: ""
     readonly property string st: list.defaultState
 
-    // Csak akkor látszik, ha volt mit tenni (hiányzott a modell) — a sikeres letöltés után
-    // a megerősítés marad.
+    // Shown only if there was something to do (the model was missing) - after a successful
+    // download the confirmation stays.
     property bool wasMissing: false
     onStChanged: if (st !== "" && st !== "downloaded" && st !== "bundled") wasMissing = true
 

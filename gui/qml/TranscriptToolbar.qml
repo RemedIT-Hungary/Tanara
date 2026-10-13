@@ -1,15 +1,14 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Az Átirat fül eszköz-sora (design/handoff-v3 V4, 3. döntés): 46 px, alul 1 px vonal.
-// Olvasás · Javítás · Átnézendő (N) szegmens (Ctrl+E: Olvasás ↔ Javítás; B: Átnézendő) · állapot
-// („1298 megszólalás · 5 beszélő”, hangelemzés) · … · Olvasáskor a csendes „N átnézendő sor”
-// (0-nál az újraellenőrzés) · „Ki volt ott?” · keresés.
-// Nincs állandó visszavonás-gomb (Ctrl+Z, értesítő sáv) és sáv-kapcsoló (Nézet › Beszélő-
-// oszlopok, Ctrl+L); a beszélőnkénti idővonal a lejátszó fölötti térkép-dokkba került (MapDock).
-// A Javítás mód tartalma (sín, jelölők, Átnézendő csoportok) a szerkesztőé. Az Átnézendő szegmens
-// mindig mutatja a darabszámot (0-t is: akkor az üres állapot látszik, nem üres lista); az
-// állapot az Átnézendő nézetben „84 / 1298 sor · 3 csoport".
+// The Transcript tab's toolbar: 46 px, 1 px line at the bottom. Read · Fix · To review (N)
+// segment (Ctrl+E: Read <-> Fix; B: To review) · status ("1298 utterances · 5 speakers", voice
+// analysis) · ... · in Read the quiet "N lines to review" (at 0 the recheck) · "Who was there?" ·
+// search. No permanent undo button (Ctrl+Z, notice bar) and no rail switch (View > Speaker
+// columns, Ctrl+L); the per-speaker timeline moved into the map dock above the player (MapDock).
+// The Fix mode content (rail, markers, To review groups) belongs to the editor. The To review
+// segment always shows the count (0 too: then the empty state shows, not an empty list); in the
+// To review view the status reads "84 / 1298 lines · 3 groups".
 Item {
     id: root
 
@@ -17,15 +16,15 @@ Item {
     property bool searchOpen: false
     property bool fixMode: false
     property string viewMode: fixMode ? "fix" : "read"     // "read" | "fix" | "review"
-    // Megmaradt a régi felület (a térkép-dokk kapja a Main.qml-ben).
+    // The old UI is kept (the map dock gets it in Main.qml).
     property real viewportStart: 0
     property real viewportSize: 0
 
-    signal modeRequested(string mode)       // Olvasás / Javítás / Átnézendő
-    signal participantsRequested()          // „Ki volt ott?”
+    signal modeRequested(string mode)       // Read / Fix / To review
+    signal participantsRequested()          // "Who was there?"
     signal searchStepRequested(int direction)
-    signal nextUncertainRequested()         // „Következő átnézendő" (B)
-    signal recheckRequested()               // 0 átnézendő: újraellenőrzés a megerősített sorok alapján
+    signal nextUncertainRequested()         // "Next to review" (B)
+    signal recheckRequested()               // 0 to review: recheck based on the confirmed lines
     signal seekRequested(real fraction)
     signal speakerClicked(string speakerKey, Item anchor)
     signal voiceprintClicked(string speakerKey, Item anchor)
@@ -42,10 +41,10 @@ Item {
         searchOpen = false
         vm.searchQuery = ""
     }
-    // A hanglenyomat-jel a térkép-dokkban él; önálló képernyőképnél az állapot-felirat a horgony.
+    // The voiceprint mark lives in the map dock; in a standalone screenshot the status label is the anchor.
     function voiceprintMark(speakerKey) { return statusLabel }
 
-    // Csendes eszköz-gomb (28 px): ikon + felirat; `checked`: accentSoft / accent.
+    // Quiet tool button (28 px): icon + label; `checked`: accentSoft / accent.
     component QuietButton: Item {
         id: qb
         property string text: ""
@@ -105,7 +104,7 @@ Item {
         anchors { fill: parent; leftMargin: Theme.space5; rightMargin: 20 }
         spacing: 10
 
-        // ---- Olvasás · Javítás · Átnézendő (N) ----
+        // ---- Read · Fix · To review (N) ----
         Rectangle {
             id: segment
             objectName: "modeSegment"
@@ -163,7 +162,7 @@ Item {
                                 font.pixelSize: Theme.fontSmall
                                 font.weight: seg.active ? Theme.weightSemiBold : Theme.weightRegular
                             }
-                            // Az Átnézendő darabszáma: mindig látszik, 0-nál is.
+                            // The To review count: always visible, also at 0.
                             Rectangle {
                                 visible: seg.review
                                 anchors.verticalCenter: parent.verticalCenter
@@ -182,7 +181,7 @@ Item {
                                     font.weight: Theme.weightMedium
                                 }
                             }
-                            // Háttér-elemzés közben finom jelzés.
+                            // A subtle indicator during background analysis.
                             TSpinner {
                                 visible: seg.review && root.vm.reviewRunning
                                 anchors.verticalCenter: parent.verticalCenter
@@ -210,7 +209,7 @@ Item {
             font.pixelSize: Theme.fontMicro
         }
 
-        // ---- állapot ----
+        // ---- status ----
         TLabel {
             id: statusLabel
             objectName: "transcriptStatus"
@@ -225,7 +224,7 @@ Item {
             font.pixelSize: 12
             elide: Text.ElideRight
         }
-        // Hang-elemzés: futás közben halk folyamatjelző; ha nem érhető el, egy rövid jelzés.
+        // Voice analysis: a quiet progress indicator while running; a short notice if unavailable.
         Row {
             visible: !root.searchOpen && root.vm.embeddingRunning
             spacing: 8
@@ -256,7 +255,7 @@ Item {
             TToolTip { visible: voiceNoteHover.hovered; text: root.vm.voiceNote; delay: 150 }
         }
 
-        // ---- keresés (az állapot helyén) ----
+        // ---- search (in place of the status) ----
         RowLayout {
             visible: root.searchOpen
             Layout.fillWidth: true
@@ -303,9 +302,9 @@ Item {
             Item { Layout.fillWidth: true }
         }
 
-        // Olvasáskor a csendes „N átnézendő sor" (kattintásra az Átnézendő nézet). Nincs (több)
-        // átnézendő sor: az újraellenőrzést kínálja — a megerősített és javított sorok hangjához
-        // méri a többit. Javítás / Átnézendő módban a szegmens darabszáma elég.
+        // In Read, the quiet "N lines to review" (a click opens the To review view). When no (more)
+        // lines need review it offers the recheck -- measures the rest against the sound of the
+        // confirmed and fixed lines. In Fix / To review the segment's count is enough.
         QuietButton {
             id: reviewButton
             objectName: "uncertainChip"

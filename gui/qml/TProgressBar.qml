@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Folyamatjelző. thickness: 4 (feladat-sáv, keresősáv) vagy 6 (szakasz-lista). indeterminate:
-// futó csík. trackColor: accentSoft dobozban (TaskStrip) állítsd Theme.bg-re.
+// Progress indicator. thickness: 4 (task strip, search strip) or 6 (stage list). indeterminate:
+// a running strip. trackColor: in an accentSoft box (TaskStrip) set it to Theme.bg.
 T.ProgressBar {
     id: control
 

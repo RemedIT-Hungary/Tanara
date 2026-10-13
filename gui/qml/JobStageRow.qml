@@ -1,10 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Egy futó feladat egy szakasza (M04 szakasz-lista): állapot-kör, név, jobbra a VALÓS haladás.
-// state: "waiting" | "running" | "done" | "failed" | "skipped". Százalék csak akkor látszik,
-// ha a szakasz tényleg mér (percent >= 0); különben futó (határozatlan) csík.
-//   JobStageRow { label: qsTr("Feltöltés"); stageState: "running"; percent: 62 }
+// One stage of a running job (the stage list): state circle, name, and the REAL progress on the
+// right. state: "waiting" | "running" | "done" | "failed" | "skipped". The percent shows only
+// when the stage really measures (percent >= 0); otherwise a running (indeterminate) strip.
+//   JobStageRow { label: qsTr("Upload"); stageState: "running"; percent: 62 }
 RowLayout {
     id: root
 
@@ -12,10 +12,10 @@ RowLayout {
     property string stageState: "waiting"
     property int percent: -1
     property string detail: ""
-    // Futó szakasz, amely nem kap saját csíkot (pl. a beszélő-szétválasztás az átírással egy
-    // menetben fut): csak ez a megjegyzés látszik.
+    // A running stage that gets no strip of its own (e.g. speaker separation runs in one pass with
+    // transcription): only this note shows.
     property string runningNote: ""
-    // Futó, mérő szakasznál a százalék HELYETT ez a darab-haladás látszik (pl. „3 / 6 rész”).
+    // For a running, measuring stage this part-progress shows INSTEAD of the percent (e.g. "3 / 6 parts").
     property string progressText: ""
     property real labelWidth: 220
 
@@ -48,7 +48,7 @@ RowLayout {
         font.weight: root.running ? Theme.weightSemiBold : Theme.weightRegular
         color: root.running || root.done ? Theme.text : Theme.textMuted
     }
-    // Futó szakasz: csík (+ százalék, ha van valós mérés).
+    // A running stage: a strip (+ percent, if there is a real measurement).
     RowLayout {
         visible: root.running && root.runningNote === ""
         Layout.fillWidth: true

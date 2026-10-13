@@ -1,21 +1,21 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// „Miért ő?" — a TELJES beszélő panelje (handoff-v3 E3, 430 px). A sín-fejléc avatarjáról, a
-// térkép-dokk nevéről és a sor-panel „Miért ő?" linkjéről nyílik.
-//   MIÉRT Ő?: amire a gép támaszkodott (hang a mintákhoz, sáv, címke, hasonló hang), mindegyik
-//     mellett a javítás helye: Minták (hanglenyomat), Címkéi (Személyek ablak), Módosítás (a
-//     sáv-chipek lent), Kettejük átnézése (páronkénti átnézés).
-//   MELYIK SÁVON BESZÉL?: a kézi sáv-beosztás (egyetlen igazság, ugyanaz, mint az Áttekintésben),
-//     a chipek kapcsolók: több sáv is jelölhető (mindegyik kattintás egy visszavonási lépés);
-//     alatta, amit a gép tanult.
-//   Gyors címke: ha a megbeszélés címkéje még nincs a személyen, a címke-sorban (vagy ha nincs
-//     ilyen sor, egy pótolt sorban) „+ #Nordvik ráteszem", a jelöltek chipjei végén „+ #Nordvik";
-//     egy kattintás (TagService, a címke-vermen visszavonható), a „Címkéi" link marad.
-//   NEM Ő? VALÓJÁBAN…: jelöltek bizonyítékkal (a beszélő minden sora hozzájuk kerül).
-//   Új személy… · Összevonás egy másik beszélővel… · Átnézés másik beszélővel… · Ő nem volt ott.
-//   „Ha másé, a sorai kerüljenek ki X hanglenyomatából" (téves felismerés).
-// Minden művelet egy visszavonási lépés; az összevonást a hívó erősítteti meg.
+// "Why them?" -- the panel of the WHOLE speaker (430 px). Opens from the rail header avatar, the
+// map dock name and the line popover's "Why them?" link.
+//   WHY THEM?: what the machine relied on (voice vs. samples, track, tag, similar voice), each
+//     with its place to fix: Samples (voiceprint), Tags (People window), Change (the track chips
+//     below), Review the two (pairwise review).
+//   WHICH TRACK IS THE SPEAKER ON?: the manual track assignment (single source of truth, same as
+//     in the Overview); the chips are switches, several tracks can be marked (each click is one
+//     undo step); below it, what the machine learned.
+//   Quick tag: if the meeting's tag is not on the person yet, "+ #Nordvik add it" in the tag row
+//     (or in an added row if there is none), "+ #Nordvik" at the end of the candidates' chips; one
+//     click (TagService, undoable on the tag stack), the "Tags" link stays.
+//   NOT THEM? ACTUALLY...: candidates with evidence (all lines of the speaker go to them).
+//   New person... · Merge with another speaker... · Review with another speaker... · They were not there.
+//   "If it is someone else's, its lines should leave X's voiceprint" (wrong recognition).
+// Every action is one undo step; the caller asks for confirmation of a merge.
 TPopover {
     id: control
 
@@ -23,7 +23,7 @@ TPopover {
     property string speakerKey: ""
     property var info: ({})
     property bool canListen: false
-    // Nyitáskor a sáv-chipek kiemelése (a „Sáv-beosztás" / „Módosítás" javításról).
+    // On open, highlight the track chips (from the "Track assignment" / "Change" fix).
     property bool focusTracks: false
     property bool merging: false
     property bool pairPicking: false
@@ -32,11 +32,11 @@ TPopover {
     signal mergeRequested(var request)
     signal voiceprintRequested(string speakerKey)
     signal peopleRequested(string personName)
-    // „Új személy…": a hívó személyválasztót nyit; a választott névhez kerül a teljes beszélő.
+    // "New person...": the caller opens a person picker; the whole speaker goes to the chosen name.
     signal newPersonRequested(string speakerKey, bool fixVoiceprints)
-    // „Ő nem volt ott": a sorai névtelenek lesznek, a „Ki volt ott?" is frissül (a hívó intézi).
+    // "They were not there": its lines become anonymous, "Who was there?" updates too (the caller handles it).
     signal notPresentRequested(string speakerKey, bool fixVoiceprints)
-    // Gyors címke került egy személyre: a hívó visszavonható toastot mutat (undoKey "tags").
+    // A quick tag was put on a person: the caller shows an undoable toast (undoKey "tags").
     signal tagAdded(string text)
 
     width: 430
@@ -54,13 +54,13 @@ TPopover {
     readonly property var others: editor && revision >= 0 ? editor.speakersMatching("", speakerKey) : []
     readonly property var pairCandidates: editor && named && revision >= 0 ? editor.pairCandidates(speakerKey) : []
     readonly property bool fix: fixBox.visible && fixBox.checked
-    // A beszélő személyére tehető gyors címke ({ tagId, name, label } vagy üres).
+    // The quick tag that can go on the speaker's person ({ tagId, name, label } or empty).
     readonly property var selfQuickTag: editor && named && revision >= 0 ? editor.quickTagFor(info.personName || "") : ({})
     readonly property bool hasTagReason: {
         for (let i = 0; i < reasons.length; ++i) if (reasons[i].kind === "tag") return true
         return false
     }
-    // Ha a személynek nincs címke-sora (nincs címkéje), a gyors címke egy pótolt sorban jelenik meg.
+    // If the person has no tag row (no tags), the quick tag shows in an added row.
     readonly property var shownReasons: {
         if (hasTagReason || !selfQuickTag.tagId) return reasons
         const out = []
@@ -86,8 +86,8 @@ TPopover {
         else
             editor.reassignSpeaker(key, c.personName, fixPrints)
     }
-    // Sáv-chip = kapcsoló: a kattintott sáv be / ki, a többi marad (több sáv is jelölhető); ha
-    // egy sem marad, a megkötés törlődik (a gép újra maga dönt). Minden kattintás egy lépés.
+    // Track chip = switch: the clicked track toggles, the others stay (several can be marked); if none
+    // remains, the constraint is cleared (the machine decides again). Each click is one step.
     function toggleTrack(trackId, checked) {
         const ids = []
         for (let i = 0; i < tracks.length; ++i) {
@@ -172,7 +172,7 @@ TPopover {
             font.pixelSize: Theme.fontMicro + 0.5
         }
     }
-    // Link-sor: ikon · felirat (accent vagy szöveg színű) · halvány magyarázat.
+    // Link row: icon · label (accent or text color) · faint explanation.
     component LinkRow: Item {
         id: link
         property string iconName: ""
@@ -223,7 +223,7 @@ TPopover {
     }
 
     contentItem: Column {
-        // ---- fejléc ----
+        // ---- header ----
         Item {
             width: parent.width
             height: head.height + 22
@@ -297,7 +297,7 @@ TPopover {
                 id: bodyColumn
                 width: body.width
 
-                // ---- MIÉRT Ő? ----
+                // ---- WHY THEM? ----
                 Column {
                     objectName: "whyBlock"
                     visible: control.reasons.length > 0
@@ -320,7 +320,7 @@ TPopover {
                     }
                 }
 
-                // ---- MELYIK SÁVON BESZÉL? ----
+                // ---- WHICH TRACK IS THE SPEAKER ON? ----
                 Item {
                     id: tracksBlock
                     objectName: "tracksBlock"
@@ -404,7 +404,7 @@ TPopover {
                     }
                 }
 
-                // ---- NEM Ő? VALÓJÁBAN… ----
+                // ---- NOT THEM? ACTUALLY... ----
                 Item {
                     visible: candidates.count > 0
                     width: parent.width
@@ -436,7 +436,7 @@ TPopover {
                     }
                 }
 
-                // ---- további teendők ----
+                // ---- more actions ----
                 Column {
                     x: 10
                     width: parent.width - 20
@@ -545,7 +545,7 @@ TPopover {
                     }
                 }
 
-                // ---- téves felismerés ----
+                // ---- wrong recognition ----
                 Item {
                     visible: control.named && control.info.hasVoiceprint === true
                     width: parent.width
@@ -564,7 +564,7 @@ TPopover {
             }
         }
 
-        // ---- lábléc ----
+        // ---- footer ----
         Item {
             width: parent.width
             height: 34

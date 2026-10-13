@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// B07 — Összefoglaló: célnyelv, az öt prompt két csoportban, fülekben („módosítva” jelzéssel és
-// visszaállítással), egyenközű szerkesztő sorszámokkal és {{VÁLTOZÓ}}-kiemeléssel, a
-// változók jelmagyarázata és a csak olvasható kimeneti séma.
+// Summary page: target language, the five prompts in two groups, in tabs (with a "modified"
+// indicator and reset), a monospaced editor with line numbers and {{VARIABLE}} highlighting, a
+// legend of the variables and the read-only output schema.
 Column {
     id: root
 
     property var vm: null
-    signal resetRequested()            // megerősítést kér a befoglaló ablak
+    signal resetRequested()            // the enclosing window asks for confirmation
     signal schemaRequested()
 
     readonly property var currentGroup: {
@@ -79,8 +79,8 @@ Column {
             }
         }
 
-        // Két csoport: gyors összefoglaló (egy lépésben / részjegyzet / összefésülés) és
-        // témánkénti elemzés; alatta egy mondat arról, mikor melyik utasítás fut.
+        // Two groups: quick summary (one step / partial note / merge) and per-topic analysis; below it a
+        // sentence about when which instruction runs.
         SettingsSegmented {
             options: root.vm ? root.vm.promptGroups : []
             value: root.vm ? root.vm.promptGroup : "quick"
@@ -95,8 +95,8 @@ Column {
             wrapMode: Text.Wrap
         }
 
-        // Csoportonként egy fülsor; a fülek modellje állandó (a promptTabs indexei), így
-        // gépelés közben („módosítva” jelzés) nem épülnek újra.
+        // One tab row per group; the tabs' model is constant (the promptTabs indices), so they are not
+        // rebuilt while typing (the "modified" indicator).
         Repeater {
             model: root.vm ? root.vm.promptGroups : []
             TTabBar {
@@ -124,7 +124,7 @@ Column {
             }
         }
 
-        // ---- szerkesztő: sorszám-oszlop + szöveg ----
+        // ---- editor: line number column + text ----
         Rectangle {
             id: editorBox
             width: parent.width
@@ -135,7 +135,7 @@ Column {
             border.color: editor.activeFocus ? Theme.accent : Theme.border
             clip: true
 
-            readonly property int lineHeightPx: 20      // 12 px × 1.65
+            readonly property int lineHeightPx: 20      // 12 px x 1.65
 
             Flickable {
                 id: flick
@@ -152,7 +152,7 @@ Column {
                     else if (contentY + height < r.y + r.height + 10) contentY = r.y + r.height + 10 - height
                 }
 
-                // Sorszámok: a dokumentum sorai (bekezdései) szerint; a tördelt sor folytatása üres.
+                // Line numbers follow the document's lines (paragraphs); a wrapped line's continuation is blank.
                 Column {
                     id: gutter
                     x: 0; y: editor.topPadding
@@ -207,7 +207,7 @@ Column {
             }
         }
 
-        // ---- változók ----
+        // ---- variables ----
         Flow {
             width: parent.width
             spacing: 14
@@ -245,7 +245,7 @@ Column {
             }
         }
 
-        // ---- kimeneti séma ----
+        // ---- output schema ----
         Rectangle {
             width: parent.width
             height: Math.max(40, schemaText.implicitHeight + 18)
@@ -287,7 +287,7 @@ Column {
         }
     }
 
-    // ---- a szerkesztő és a nézetmodell összehangolása ----
+    // ---- syncing the editor with the view model ----
     property bool loading: false
     property var lineTops: [0]
 
@@ -295,11 +295,11 @@ Column {
         if (!root.vm) return
         root.loading = true
         if (editor.text !== root.vm.promptText) editor.text = root.vm.promptText
-        highlighter.applyLineHeight(editorBox.lineHeightPx)   // 12 px × 1,65 (a betöltés törli a formátumot)
+        highlighter.applyLineHeight(editorBox.lineHeightPx)   // 12 px x 1.65 (loading clears the format)
         root.loading = false
         root.relayout()
     }
-    // A dokumentum minden sorának (bekezdésének) felső éle a szerkesztőben — a sorszámokhoz.
+    // Top edge of every document line (paragraph) in the editor -- for the line numbers.
     function relayout() {
         const text = editor.text
         const tops = []

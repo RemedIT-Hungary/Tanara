@@ -1,9 +1,9 @@
 import QtQuick
 
-// Szennyezett mag (handoff-v3 E2): egy beszélő megerősített sorai két különböző hangra esnek —
-// amíg ez nincs rendben, minden újraellenőrzés rossz irányba visz, ezért az Átnézendő nézet
-// tetején áll. warnSoft sáv: szétválasztás-ikon · cím + (N / M sor) · „Szétválasztás" ·
-// „Miért?" (a beszélő „Miért ő?" panelje).
+// Contaminated core: a speaker's confirmed rows fall on two different voices - until this is
+// fixed every re-check goes the wrong way, so it sits at the top of the "To review" view.
+// warnSoft bar: split icon - title + (N / M rows) - "Split" - "Why?" (the speaker's "Why them?"
+// panel).
 //   ContaminatedCoreBanner { info: editorVm.contaminated }
 Rectangle {
     id: root
@@ -53,7 +53,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
         TButton {
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+            focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
             objectName: "splitSpeaker"
             size: "small"
             text: qsTr("Szétválasztás")
@@ -61,7 +61,7 @@ Rectangle {
             onClicked: root.splitRequested(root.info.speakerKey || "")
         }
         TButton {
-            focusPolicy: Qt.TabFocus     // kattintásra a fókusz a szerkesztőé marad (B, 1, Ctrl+Z)
+            focusPolicy: Qt.TabFocus     // clicks leave focus with the editor (B, 1, Ctrl+Z)
             id: why
             objectName: "contaminatedWhy"
             size: "small"

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// Vékony görgetősáv:
+// Thin scroll bar:
 //   import QtQuick.Templates as T
 //   ListView { T.ScrollBar.vertical: TScrollBar {} }
 T.ScrollBar {

@@ -1,8 +1,8 @@
 import QtQuick
 
-// Vékony csúszka (lejátszó: pozíció és hangerő): 4 px-es sáv accent kitöltéssel, 12 px-es
-// gombbal. `value` 0…1 (kívülről kötött); húzás / kattintás közben a `moved(v)` jelet adja,
-// a kötött értéket nem írja felül. Billentyűzet: ← / → `keyStep` lépéssel.
+// Thin slider (player: position and volume): 4 px track with an accent fill, 12 px handle.
+// `value` 0..1 (bound from outside); while dragging / clicking it emits `moved(v)` and does not
+// overwrite the bound value. Keyboard: left / right in `keyStep` steps.
 Item {
     id: root
 

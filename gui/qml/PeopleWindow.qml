@@ -2,24 +2,23 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// A Személyek ablaka (design/handoff-people, P01–P06): külön, átméretezhető, nem modális
-// ablak (960 × 660). Bal oldalt kereshető névsor (a sáv szélessége húzható), jobb oldalt a
-// kijelölt személy: becenevek, megjegyzés, hangminták, megbeszélések. A natív ablakkeret
-// marad (mint a főablaknál és a Beállításoknál), ezért a spec 36 px-es saját címsora nincs
-// megrajzolva.
+// The People window: a separate, resizable, non-modal window (960 x 660). On the left a
+// searchable list of names (the rail width is draggable), on the right the selected person:
+// nicknames, note, voice samples, meetings. The native window frame stays (as in the main window
+// and Settings), so the spec's own 36 px title bar is not drawn.
 //
-// Billentyűk: Ctrl+F kereső · F2 átnevezés · Del törlés (megerősítéssel) · Szóköz a kijelölt
-// minta lejátszása · Ctrl+Z visszavonás (szövegmezőben a mező saját visszavonása él).
+// Keys: Ctrl+F search · F2 rename · Del delete (with confirmation) · Space plays the selected
+// sample · Ctrl+Z undo (in a text field the field's own undo applies).
 //
-// A C++ gazda (tanara_qml::PeopleWindowHost) hozza létre; önállóan is betölthető képhez:
-//   tanara --qml-shot ki.png --qml-page PeopleWindow --size 960x1100 --qml-prop 'demoState="P04"'
-// demoState: P01 … P06 · newPerson · sampleNew · sampleMove · noResult · sort · allSamples ·
+// The C++ host (tanara_qml::PeopleWindowHost) creates it; it can also be loaded standalone:
+//   tanara --qml-shot out.png --qml-page PeopleWindow --size 960x1100 --qml-prop 'demoState="P04"'
+// demoState: P01 ... P06 · newPerson · sampleNew · sampleMove · noResult · sort · allSamples ·
 //            deleteKeep · creating · toastPlain · tagsSection · tagsSuggested · tagsSelf ·
-//            samplesModels · backfill · tagsFocus (a „Címkéi” link: a Címkék szakaszra görgetve)
+//            samplesModels · backfill · tagsFocus (the "Tags" link: scrolled to the Tags section)
 ApplicationWindow {
     id: window
 
-    // A gazda adja át (kezdő property-ként); nélküle az App.controller / demó érvényes.
+    // Passed by the host (as initial properties); without it App.controller / demo applies.
     property QtObject hostController: null
     property string demoState: ""
     property alias vm: model
@@ -40,7 +39,7 @@ ApplicationWindow {
     color: Theme.bg
     font.family: Theme.fontSans
     font.pixelSize: Theme.fontBody
-    // Külön ablak, nem modális: a főablak mellette használható marad.
+    // A separate window, non-modal: the main window stays usable next to it.
     flags: Qt.Window
 
     PeopleViewModel {
@@ -82,7 +81,7 @@ ApplicationWindow {
         }
     }
 
-    // ---- műveletek indítása ----
+    // ---- starting actions ----
     function selectPerson(name) {
         detail.showSelfDetail = true
         model.selectedName = name
@@ -120,13 +119,13 @@ ApplicationWindow {
     }
     onVisibleChanged: {
         if (visible) return
-        // Rejtett ablakban ne szóljon minta, és ne maradjon nyitva kérdés.
+        // In a hidden window no sample plays and no question stays open.
         model.stopSample()
         mergeDialog.close(); deleteDialog.close(); newPersonDialog.close(); sampleTargetDialog.close()
         toast.hide()
     }
 
-    // Szövegmezőben a billentyűk a mezőé (Del, szóköz, Ctrl+Z).
+    // In a text field the keys belong to the field (Del, Space, Ctrl+Z).
     readonly property bool typing: activeFocusItem instanceof TextInput || activeFocusItem instanceof TextEdit
     readonly property bool dialogOpen: mergeDialog.opened || deleteDialog.opened || newPersonDialog.opened
                                        || sampleTargetDialog.opened
@@ -136,10 +135,10 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Delete]; enabled: !window.typing && !window.dialogOpen; onActivated: window.openDelete() }
     Shortcut { sequence: "Space"; enabled: !window.typing && !window.dialogOpen; onActivated: detail.playSelectedSample() }
     Shortcut { sequences: [StandardKey.Undo]; enabled: !window.typing && !window.dialogOpen && model.canUndo; onActivated: { toast.hide(); model.undo() } }
-    // Esc szándékosan nem zár: a mezők és a felugrók használják. Bezárás: Ctrl+W vagy az ablak × gombja.
+    // Esc deliberately does not close: fields and popups use it. Close with Ctrl+W or the window's x button.
     Shortcut { sequences: [StandardKey.Close]; onActivated: window.close() }
 
-    // ---- tartalom ----
+    // ---- content ----
     PeopleListPane {
         id: listPane
         width: Math.max(240, Math.min(window.listWidth, window.width - 520))
@@ -150,7 +149,7 @@ ApplicationWindow {
         onPersonClicked: (name) => window.selectPerson(name)
         onNewPersonRequested: (name) => window.openNewPerson(name)
     }
-    // A sáv szélessége húzható (a nevek így rövidítés nélkül elférnek).
+    // The rail width is draggable (so names fit without truncation).
     Rectangle {
         id: splitter
         x: listPane.width
@@ -194,7 +193,7 @@ ApplicationWindow {
         onUndoRequested: model.undo()
     }
 
-    // ---- párbeszédablakok ----
+    // ---- dialogs ----
     PeopleMergeDialog { id: mergeDialog; vm: model }
     PeopleSampleTargetDialog { id: sampleTargetDialog; vm: model }
 

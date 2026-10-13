@@ -2,13 +2,12 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// A megbeszélés-megjegyzés szerkesztője (MeetingNoteModel) — az átirat előtti nézet 1. lépése
-// és az Összefoglaló fül közös része. Fentről lefelé: sablon-javaslatok a korábbi, hasonló
-// című megbeszélésekből (kattintásra a mezőbe kerülnek; ha a mezőben már van szöveg, rákérdez:
-// csere vagy hozzáfűzés; a kártyán a forrás-megbeszélés címkéi mini chipként), a mező, alatta a
-// magyarázat és az észlelt hívás.
-// Mentés: késleltetve (900 ms) és fókuszvesztéskor; a piszkozatot a modell a megbeszélés
-// azonosítójával együtt őrzi, így sosem kerülhet másik megbeszélésbe.
+// The meeting note editor (MeetingNoteModel) -- step 1 of the pre-transcript view, and a shared
+// part of the Summary tab. Top to bottom: template suggestions from earlier meetings with similar
+// titles (a click puts them into the field; if the field already has text it asks: replace or
+// append; the card shows the source meeting's tags as mini chips), the field, below it the
+// explanation and the detected call. Saving: delayed (900 ms) and on focus loss; the model keeps
+// the draft together with the meeting id, so it can never end up in another meeting.
 ColumnLayout {
     id: root
 
@@ -16,27 +15,27 @@ ColumnLayout {
     property string helperText: ""
     property string placeholderText: qsTr("Például: Résztvevők: Kovács Anna, Szabó Bence. A „Nordwig” helyesen: Nordvik. A „kvarc modul” helyesen: Qvarko-modul.")
     property string accessibleName: qsTr("Megjegyzés a megbeszéléshez")
-    // Szűk oszlopban (az Összefoglaló jobb oldalán) a javaslat-kártyák tömörebbek.
+    // In a narrow column (right of the Summary) the suggestion cards are more compact.
     property bool compact: false
     property int fieldHeight: 96
-    // Az észlelt hívás sora (az átirat előtti nézetben a címke-javaslat sorában áll, ha az látszik).
+    // The detected call row (in the pre-transcript view it sits in the tag suggestion row, if visible).
     property bool showDetectedCall: true
 
     spacing: 8
 
     function commit() { saveTimer.stop(); root.model.commitDraft() }
-    // A javaslat SZÖVEGÉVEL dolgozunk (nem indexszel): a piszkozat mentése újraszámolhatja a listát.
+    // We work with the suggestion's TEXT (not an index): saving the draft can recompute the list.
     function pick(text) {
         saveTimer.stop()
         if (area.text.trim() === "") root.apply(text, "replace")
         else { choice.suggestion = text; choice.open() }
     }
     function apply(text, mode) {
-        root.model.applySuggestion(text, mode)   // a függő piszkozatot is menti
+        root.model.applySuggestion(text, mode)   // also saves the pending draft
         area.text = root.model.note
     }
 
-    // ---- sablon-javaslatok ----
+    // ---- template suggestions ----
     ColumnLayout {
         visible: root.model.suggestions.length > 0
         Layout.fillWidth: true
@@ -59,7 +58,7 @@ ColumnLayout {
                 implicitHeight: sugCol.implicitHeight + 16
                 hoverEnabled: true
                 Accessible.name: qsTr("Javaslat: %1, %2").arg(modelData.title).arg(modelData.dateText)
-                focusPolicy: Qt.TabFocus      // kattintásra a mező tartja a fókuszt
+                focusPolicy: Qt.TabFocus      // on click the field keeps focus
                 onClicked: root.pick(modelData.note)
 
                 background: Rectangle {
@@ -88,7 +87,7 @@ ColumnLayout {
                             TIcon { name: "copy"; size: 13; color: Theme.textMuted }
                             TLabel {
                                 id: sugTitle
-                                // A cím a teljes szélességét kapja, ha a chipek és a dátum mellett elfér.
+                                // The title gets its full width if it fits next to the chips and the date.
                                 Layout.preferredWidth: Math.max(40, Math.min(implicitWidth,
                                     sugCol.width - 13 - 3 * sugRow.spacing
                                     - (sugTagRow.visible ? sugTagRow.implicitWidth + sugRow.spacing : 0)
@@ -98,7 +97,7 @@ ColumnLayout {
                                 font.weight: Theme.weightMedium
                                 elide: Text.ElideRight
                             }
-                            // A forrás-megbeszélés címkéi (mini chip, 18 px).
+                            // The source meeting's tags (mini chip, 18 px).
                             Row {
                                 id: sugTagRow
                                 visible: !root.compact && sugTags.count > 0
@@ -112,7 +111,7 @@ ColumnLayout {
                                         focusPolicy: Qt.NoFocus
                                         text: modelData
                                         maxWidth: 140
-                                        onClicked: root.pick(sug.modelData.note)   // a kártya része
+                                        onClicked: root.pick(sug.modelData.note)   // part of the card
                                     }
                                 }
                             }
@@ -147,7 +146,7 @@ ColumnLayout {
         }
     }
 
-    // ---- a mező ----
+    // ---- the field ----
     TTextArea {
         id: area
         Layout.fillWidth: true
@@ -156,8 +155,8 @@ ColumnLayout {
         Component.onCompleted: text = root.model.note
         onEditingFinished: root.commit()
         onActiveFocusChanged: if (!activeFocus) root.commit()
-        // A piszkozatot a modell a megbeszélés azonosítójával együtt őrzi: a késleltetett
-        // mentés így sosem kerülhet másik megbeszélésbe.
+        // The model keeps the draft together with the meeting id: the delayed save can never end up in
+        // another meeting.
         onTextChanged: if (activeFocus) { root.model.draft(text); saveTimer.restart() }
         Accessible.name: root.accessibleName
         Timer { id: saveTimer; interval: 900; onTriggered: root.commit() }
@@ -180,7 +179,7 @@ ColumnLayout {
         wrapMode: Text.Wrap
     }
 
-    // ---- észlelt hívás (a figyelőtől; csak tájékoztatás) ----
+    // ---- detected call (from the watcher; informational only) ----
     RowLayout {
         visible: root.showDetectedCall && root.model.detectedCallApp !== ""
         Layout.fillWidth: true

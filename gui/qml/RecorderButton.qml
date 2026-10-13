@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A felvevő gombjai (a design saját méreteivel). kind:
-//   "inverted"  — text háttér / bg felirat (Leállítás: semleges, NEM piros)
-//   "primary"   — accent        "secondary" — raised + borderStrong keret
-//   "outline"   — csak keret    "dangerOutline" — dangerLine keret, dangerInk felirat
-//   "ghost"     — keret nélkül  "record" — rec háttér, fehér felirat
-// mark: "" | "square" (leállítás-jel) | "dot" (felvétel-pötty, markColor színnel)
+// The recorder's buttons (with the design's own sizes). kind:
+//   "inverted"  -- text background / bg label (Stop: neutral, NOT red)
+//   "primary"   -- accent        "secondary" -- raised + borderStrong border
+//   "outline"   -- border only   "dangerOutline" -- dangerLine border, dangerInk label
+//   "ghost"     -- no border     "record" -- rec background, white label
+// mark: "" | "square" (stop mark) | "dot" (recording dot, in markColor)
 T.Button {
     id: control
     property string kind: "secondary"
@@ -15,7 +15,7 @@ T.Button {
     property string mark: ""
     property real markSize: 10
     property color markColor: foreground
-    property string hint: ""               // billentyű-tipp a felirat után (mono)
+    property string hint: ""               // keyboard hint after the label (mono)
     property real radius: 6
     property real fontSize: 13
     property int fontWeight: Theme.weightSemiBold

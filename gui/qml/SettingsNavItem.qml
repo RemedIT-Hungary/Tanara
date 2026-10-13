@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Templates as T
 
-// A Beállítások bal oldali navigációjának egy eleme: 36 px, sugár 6, 16 px ikon + 14 px
-// felirat. Aktív: accentSoft háttér, 600; inaktív: halvány. `warn`: 8 px-es figyelmeztető
-// pötty a sor végén (pl. hiányzó szolgáltató).
+// One item of the Settings left navigation: 36 px, radius 6, 16 px icon + 14 px label. Active:
+// accentSoft background, 600; inactive: faint. `warn`: an 8 px warning dot at the row's end
+// (e.g. a missing provider).
 T.AbstractButton {
     id: control
 

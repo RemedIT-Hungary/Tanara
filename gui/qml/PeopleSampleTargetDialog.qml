@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Egy minta új gazdája: „Új személy ebből a mintából…” (mode "new": nevet kér; létező névnél
-// áthelyezés lesz belőle) és „Áthelyezés másik személyhez…” (mode "move": kereshető lista).
-// Mindkét esetben a minta elhagyja a mostani hanglenyomatot; a lépés visszavonható.
+// New owner of a sample: "New person from this sample..." (mode "new": asks for a name; an
+// existing name turns it into a move) and "Move to another person..." (mode "move": searchable
+// list). In both cases the sample leaves the current voiceprint; the step is undoable.
 TDialog {
     id: dialog
 
@@ -59,7 +59,7 @@ TDialog {
         onTextChanged: { dialog.errorText = ""; dialog.reload() }
         onAccepted: {
             if (dialog.typed === "" || dialog.typedIsCurrent) return
-            // Áthelyezésnél az egyetlen találat a cél; különben a beírt név (létező vagy új).
+            // When moving, the single hit is the target; otherwise the typed name (existing or new).
             if (!dialog.typedExists && dialog.mode === "move" && dialog.choices.length === 1)
                 dialog.commit(dialog.choices[0].name)
             else
@@ -69,7 +69,8 @@ TDialog {
     ListView {
         id: list
         objectName: "targetList"
-        // Új személynél csak gépelés közben látszik (a hasonló nevű meglévők), áthelyezésnél mindig.
+        // For a new person it shows only while typing (similarly named existing people), always
+        // when moving.
         visible: count > 0 && (dialog.mode === "move" || dialog.typed !== "")
         Layout.fillWidth: true
         Layout.topMargin: -4

@@ -1,11 +1,10 @@
 import QtQuick
 
-// SÁVOK lista az Áttekintésen (design/handoff-v3 V1, 7. döntés): raised, keret, sugár 8.
-// A sor a közös TrackRow kompakt módja (G6): lejátszás/szünet a sávon (az első beszédtől) ·
-// forrás-ikon + név · alszöveg („beszéd 38% · Kovács Lilla”) · lekeverés-kapcsoló / „Beemelem” ·
-// alatta 18 px-es beszéd-csík (kattintva oda ugrik és a sávon szól). A „Részletek” panel
-// (TracksTab) ugyanezt a komponenst használja teljes módban (átnevezés, megkeresés,
-// visszaállítás, végleges törlés).
+// TRACKS list on the Overview: raised, border, radius 8. A row is the compact mode of the shared
+// TrackRow: play / pause on the track (from the first speech) · source icon + name · subtext
+// ("speech 38% · Emma Carter") · mixdown switch / "Mix in" · below it an 18 px speech stripe
+// (a click seeks there and plays on the track). The "Details" panel (TracksTab) uses the same
+// component in full mode (rename, locate, restore, permanent delete).
 // tracks: TrackListModel · player: PlayerController · sideWho: OverviewViewModel.sideWho
 Rectangle {
     id: root
@@ -20,7 +19,7 @@ Rectangle {
     border.width: 1
     border.color: Theme.border
 
-    // A beszéd-csíkok adatai (a core sáv-aktivitása; ha nincs, a háttérben számol).
+    // Data of the speech stripes (the core's track activity; if missing, it computes in the background).
     TrackActivityModel {
         id: activityModel
         meetingId: root.tracks ? root.tracks.meetingId : ""
