@@ -9,7 +9,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/voiceid/VoiceModelRegistry.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/PromptLibrary.h"
 #include "tanara/AppController.h"
@@ -195,7 +196,7 @@ void PathsTest::voiceModelResolutionOrder()
 {
     QTemporaryDir meta, app;
     QVERIFY(meta.isValid() && app.isValid());
-    const QString rel = QStringLiteral("models/") + paths::voiceModelFileName();
+    const QString rel = QStringLiteral("models/") + VoiceModelRegistry::defaultModelFileName();
     const QString userModel = QDir(meta.path()).filePath(rel);
     const QString appModel = QDir(app.path()).filePath(rel);
     auto touch = [](const QString& f) {
@@ -206,17 +207,17 @@ void PathsTest::voiceModelResolutionOrder()
     };
 
     // 1) neither exists: the expected place (metadata folder), independent of appDir
-    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
-    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
+    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
+    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
 
     // 2) only next to the app: the bundled model
     touch(appModel);
-    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), appModel);
-    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), QString()), userModel);
+    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), appModel);
+    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), QString()), userModel);
 
     // 3) the user's model takes precedence
     touch(userModel);
-    QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()), userModel);
+    QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()), userModel);
 }
 
 QTEST_GUILESS_MAIN(PathsTest)

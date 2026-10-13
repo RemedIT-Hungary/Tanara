@@ -1,6 +1,6 @@
 #include "DemoText.h"
 
-#include "tanara/Localization.h"
+#include "tanara/foundation/i18n/Localization.h"
 
 #include <QHash>
 #include <QRegularExpression>

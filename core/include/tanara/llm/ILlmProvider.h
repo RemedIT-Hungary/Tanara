@@ -2,8 +2,9 @@
 //
 // LLM plugin contract. A single OpenAI-compatible implementation covers the
 // LM Studio / Ollama / OpenAI / Claude endpoints. Stream-ready for the future.
-#include "tanara/Types.h"
 #include <QObject>
+#include <QString>
+#include <QVariantMap>
 
 namespace tanara {
 

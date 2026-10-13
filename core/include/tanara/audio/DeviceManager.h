@@ -1,7 +1,7 @@
 #pragma once
 //
 // Enumeration of capture (microphone + monitor/loopback) devices with miniaudio.
-#include "tanara/Types.h"
+#include "tanara/domain/Audio.h"
 
 #include <QObject>
 #include <QVector>

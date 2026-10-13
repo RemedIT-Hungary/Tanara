@@ -12,7 +12,7 @@
 // The forbidden (other) side ranks LOWER, it does not remove: except the manual track assignment's
 // exclusion (sides::vetoes): then the candidate is vetoed, without a score, at the end of the list.
 // The similarity warning (two cores' cosine >= kSimilarWarn) only informs, it does not affect the score.
-#include "tanara/edit/Evidence.h"
+#include "tanara/domain/Participant.h"
 #include "tanara/edit/SideAnalysis.h"
 #include "tanara/tags/PersonTags.h"
 

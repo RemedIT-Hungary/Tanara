@@ -1,5 +1,5 @@
 #include "SpeakerRailCells.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QPainter>
 #include <QPainterPath>

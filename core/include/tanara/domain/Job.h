@@ -1,6 +1,6 @@
 #pragma once
 //
-// STRUCTURED state types of the background tasks (transcription, summary, topic analysis,
+// Domain: STRUCTURED state types of the background tasks (transcription, summary, topic analysis,
 // mixdown, identification). Plain value types (no QObject), sendable in queued signals
 // (Q_DECLARE_METATYPE below). The library list's status icons, the task strip and the tab
 // contents are drawn from these.
@@ -14,8 +14,9 @@
 
 namespace tanara {
 
-struct HttpExchange;   // tanara/cloud/CloudTypes.h
-struct CloudError;
+// State of one STT provider job (one track's transcription at the provider). Not to be confused with
+// the meeting-level job state (JobProgress / MeetingProcessingState below).
+enum class SttJobState { Idle, Uploading, Queued, Processing, Completed, Failed };
 
 // State of a processing step on a meeting (for the library icons).
 //  - for identification (identifyState) Failed does not occur.

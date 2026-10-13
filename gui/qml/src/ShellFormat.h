@@ -3,7 +3,7 @@
 // Tanara QML: the shell's (library, header, player) shared text formatters: date, length,
 // playback time, status icon keys. Pure functions, stateless.
 //
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QDateTime>
 #include <QLocale>

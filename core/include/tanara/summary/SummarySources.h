@@ -10,8 +10,8 @@
 //   - the marked time -> the nearest utterance (+-kToleranceMs),
 //   - completing the Summary: statements, sourceSpeakers, memo-section speakers,
 //   - targeted staleness: which statements' source lines have a speaker that changed since.
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/domain/Summary.h"
+#include "tanara/domain/Transcript.h"
 
 #include <QHash>
 #include <QMap>
@@ -26,14 +26,7 @@ namespace summarysrc {
 // Largest deviation between the marked time and the utterance.
 constexpr qint64 kToleranceMs = 5000;
 
-// One utterance of the transcript (for source resolution).
-struct SourceLine {
-    QString id;             // "u<startMs>" (transcript.segments.json)
-    qint64  startMs = 0;
-    qint64  endMs = 0;
-    QString speakerKey;     // resolved speaker key
-    QString speakerName;    // displayed name (as the LLM saw it)
-};
+// SourceLine and linesFromSegments are in domain/Summary.h (shared with the editor).
 
 // One item of a marker, raw: a time (range) or an utterance id.
 struct SourceRef {
@@ -47,10 +40,6 @@ struct MarkedText {
     QString text;
     QVector<SourceRef> refs;
 };
-
-// Lines built from the speech blocks (if there is no transcript.segments.json): id = "u<startMs>",
-// key = name = the block's speaker.
-QVector<SourceLine> linesFromSegments(const QVector<Utterance>& segments);
 
 // Extracting and stripping markers. The text's structure (line breaks) stays; the space before the
 // marker and the space before punctuation after the marker disappear ("word [t=1:00]." -> "word."). A
@@ -74,7 +63,7 @@ void fillMemoSpeakers(QVector<MemoSection>& memo, const QVector<SourceLine>& lin
 // Completing the Summary built from the model's output: the markers are stripped from every field
 // (execSummary, decisions, openQuestions, actionItems, the memo's intros and points), statements and
 // sourceSpeakers are filled (the executive summary's sentences, decisions, open questions, action items, the
-// memo's intro sentences and points; ids per Types.h), and the memo sections get speakers. Items that are
+// memo's intro sentences and points; ids per domain/Summary.h), and the memo sections get speakers. Items that are
 // empty without a marker are dropped.
 void attachSources(Summary& s, const QVector<SourceLine>& lines);
 
@@ -92,16 +81,7 @@ QString memoGroupLabel(const QString& key);
 // first occurrence. [(key, [point indexes])]
 QVector<QPair<QString, QVector<int>>> memoGroups(const MemoSection& m);
 
-// Targeted staleness. then: the speakers recorded when the summary was made (Summary::sourceSpeakers);
-// now: the current resolution (utteranceId -> speaker); changedKeys: the speaker keys corrected since the
-// summary (empty after "Fine as is" -> nothing is affected). A source line is affected if its name became
-// different since, and the old or the new key was corrected. Fills the statements' staleBecause /
-// ownerStaleBecause fields and the info's targeted fields (does not touch info.stale / correctedSpeakers).
-// info.targeted: whether there is a statement with a source.
-void applyTargetedStaleness(QVector<SummaryStatement>& statements,
-                            const QMap<QString, SourceSpeaker>& then,
-                            const QHash<QString, SourceSpeaker>& now,
-                            const QStringList& changedKeys, SummaryStaleInfo& info);
+// applyTargetedStaleness (targeted staleness): domain/Summary.h (shared with the editor).
 
 } // namespace summarysrc
 } // namespace tanara

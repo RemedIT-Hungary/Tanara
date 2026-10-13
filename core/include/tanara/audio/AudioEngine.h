@@ -6,7 +6,7 @@
 //
 // The methods are virtual: tests drive the RecordingSession with a fake engine (without a real
 // audio device); see RecordingSession::setEngineFactory.
-#include "tanara/Types.h"
+#include "tanara/domain/Audio.h"
 #include "tanara/audio/RingBuffer.h"
 
 #include <QVector>

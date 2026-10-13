@@ -11,7 +11,7 @@
 //
 // An index is valid if its model is the current model and it is not older than the transcript
 // (transcript.segments.json). The vectors load into memory lazily, per meeting.
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QHash>
 #include <QMutex>

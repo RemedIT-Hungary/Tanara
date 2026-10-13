@@ -13,7 +13,7 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/audio/WaveformService.h"
 #include "tanara/jobs/MeetingJobTracker.h"
@@ -91,7 +91,7 @@ void SandboxSmoke::libraryListSearchAndPending()
         QVERIFY(e.titleMatch.isValid() || e.snippetMatch.isValid());
         if (e.snippetMatch.isValid()) {
             const QString hit = e.snippet.mid(e.snippetMatch.start, e.snippetMatch.length);
-            QCOMPARE(textfold::foldQuery(hit), QStringLiteral("koszonom"));
+            QCOMPARE(text::foldQuery(hit), QStringLiteral("koszonom"));
             QVERIFY(e.snippetMs >= 0);
         }
     }

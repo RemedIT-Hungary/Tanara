@@ -1,7 +1,7 @@
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/summary/SummarySources.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/domain/Voice.h"
 
 #include <QJsonValue>
 
@@ -580,7 +580,7 @@ QJsonObject toJson(const AppSettings& s)
     o[QStringLiteral("tagSuggestions")]      = s.tagSuggestions;
     o[QStringLiteral("llmTagSuggestions")]   = s.llmTagSuggestions;
     o[QStringLiteral("reviewAutoPlay")]      = s.reviewAutoPlay;
-    o[QStringLiteral("voiceModels")]         = stringListToArray(VoiceModelRegistry::normalizeIds(s.voiceModels));
+    o[QStringLiteral("voiceModels")]         = stringListToArray(voicemodels::normalizeIds(s.voiceModels));
 
     // Meeting watcher (background detector + tray).
     o[QStringLiteral("detectorEnabled")]     = s.detectorEnabled;
@@ -667,7 +667,7 @@ AppSettings appSettingsFromJson(const QJsonObject& o)
     s.reviewAutoPlay    = o.value(QStringLiteral("reviewAutoPlay")).toBool(s.reviewAutoPlay);
     // Speaker models: a missing key -> the default; an empty list is valid (every model off).
     if (o.contains(QStringLiteral("voiceModels")))
-        s.voiceModels = VoiceModelRegistry::normalizeIds(
+        s.voiceModels = voicemodels::normalizeIds(
             arrayToStringList(o.value(QStringLiteral("voiceModels")).toArray()));
 
     s.uiLanguage = o.value(QStringLiteral("uiLanguage")).toString(s.uiLanguage);

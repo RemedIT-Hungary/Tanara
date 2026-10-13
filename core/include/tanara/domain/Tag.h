@@ -1,6 +1,6 @@
 #pragma once
 //
-// Tags: shared value types (the contract between TagService, the suggesters and the UI).
+// Domain: tags, shared value types (the contract between TagService, the suggesters and the UI).
 //
 // A tag's meaning comes not from its name but from which meetings it was applied to: the
 // suggestions (similar meetings, co-occurring tags, the language model) work from that.

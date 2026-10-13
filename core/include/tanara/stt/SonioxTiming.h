@@ -13,7 +13,7 @@
 // (1.5 s pause threshold) would merge what used to be separate lines (measured: 9 lines in one meeting).
 // So grouping runs on the ORIGINAL token times, tokens.json stays untouched; only the finished lines'
 // start / end move. Whisper-compatible provider word timestamps are real start/end pairs: this does not run on them.
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
 
 #include <QVector>
 

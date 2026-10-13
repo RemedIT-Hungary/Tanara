@@ -30,7 +30,7 @@
 // new one is ready; personStatsChanged), before that the first read is synchronous (tests, CLI).
 // The own person is left out of every rule.
 #include "tanara/tags/PersonTags.h"
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QHash>
 #include <QObject>

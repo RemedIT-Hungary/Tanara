@@ -2,10 +2,10 @@
 #include "tanara/tags/MeetingProfiles.h"
 #include "tanara/tags/TagNames.h"
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/SharedFile.h"
+#include "tanara/foundation/SharedFile.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -516,7 +516,7 @@ QVector<TagUsage> TagService::all(Sort sort) const
             }
             break;
         }
-        return textfold::fold(a.tag.name).localeAwareCompare(textfold::fold(b.tag.name)) < 0;
+        return text::fold(a.tag.name).localeAwareCompare(text::fold(b.tag.name)) < 0;
     });
     return out;
 }
@@ -573,7 +573,7 @@ QVector<TagInputRow> TagService::inputRows(const QString& typed, int limit) cons
         return rows;
     }
 
-    const QString fq = textfold::fold(norm);
+    const QString fq = text::fold(norm);
     const QString key = tagKey(norm);
     const int exactIdx = d->indexOfKey(key, true);
 
@@ -581,7 +581,7 @@ QVector<TagInputRow> TagService::inputRows(const QString& typed, int limit) cons
     QVector<Cand> cands;
     for (int i = 0; i < d->tags.size(); ++i) {
         if (i == exactIdx) continue;
-        const QString fn = textfold::fold(d->tags.at(i).tag.name);
+        const QString fn = text::fold(d->tags.at(i).tag.name);
         const int pos = fn.indexOf(fq);
         int tier = -1;
         if (pos == 0) tier = 0;
@@ -607,7 +607,7 @@ QVector<TagInputRow> TagService::inputRows(const QString& typed, int limit) cons
         shown.insert(r.tag.id);
     };
     if (exactIdx >= 0) {
-        const int pos = textfold::fold(d->tags.at(exactIdx).tag.name).indexOf(fq);
+        const int pos = text::fold(d->tags.at(exactIdx).tag.name).indexOf(fq);
         addMatch(exactIdx, pos);
     }
     for (const Cand& c : std::as_const(cands)) {
@@ -1118,7 +1118,7 @@ QStringList TagService::peopleWith(const QString& tagId) const
     for (auto it = all.constBegin(); it != all.constEnd(); ++it)
         if (it.value().contains(tagId) && !d->isSelf(it.key())) out << it.key();
     std::sort(out.begin(), out.end(), [](const QString& a, const QString& b) {
-        return textfold::fold(a).localeAwareCompare(textfold::fold(b)) < 0;
+        return text::fold(a).localeAwareCompare(text::fold(b)) < 0;
     });
     return out;
 }
@@ -1175,7 +1175,7 @@ bool statLess(const PersonTagStat& a, const PersonTagStat& b)
         if (!b.lastShared.isValid()) return true;
         return a.lastShared > b.lastShared;
     }
-    return textfold::fold(a.name).localeAwareCompare(textfold::fold(b.name)) < 0;
+    return text::fold(a.name).localeAwareCompare(text::fold(b.name)) < 0;
 }
 
 } // namespace
@@ -1222,7 +1222,7 @@ QVector<PersonTagStat> TagService::personTagStats(const QString& name) const
     std::sort(out.begin(), out.end(), [this](const PersonTagStat& a, const PersonTagStat& b) {
         if (a.manual != b.manual) return a.manual;
         if (a.shared != b.shared) return a.shared > b.shared;
-        return textfold::fold(tag(a.tagId).name).localeAwareCompare(textfold::fold(tag(b.tagId).name)) < 0;
+        return text::fold(tag(a.tagId).name).localeAwareCompare(text::fold(tag(b.tagId).name)) < 0;
     });
     return out;
 }

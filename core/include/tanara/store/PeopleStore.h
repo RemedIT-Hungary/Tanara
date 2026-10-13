@@ -28,7 +28,7 @@
 //
 // Several processes may write it: every modification rereads the fresh state from disk under lock (if
 // it changed), applies the change to that, and writes atomically (see store/SharedFile.h).
-#include "tanara/store/SharedFile.h"
+#include "tanara/foundation/SharedFile.h"
 
 #include <QHash>
 #include <QJsonObject>

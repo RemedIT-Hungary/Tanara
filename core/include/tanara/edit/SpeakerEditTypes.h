@@ -8,6 +8,9 @@
 //  - SPEAKER: a participant of the meeting, with a stable key. Either a raw diarization
 //    label ("Speaker 1": the key is the label itself) or a manually added participant
 //    ("participant:N"). Can be bound to a person (a name) or anonymous.
+#include "tanara/domain/Participant.h"
+#include "tanara/domain/Summary.h"
+
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -78,13 +81,7 @@ struct SpeakerSampleStats {
     }
 };
 
-// A binding for the participant approval (SpeakerEditor::applyBindings): the raw speaker (or
-// only its given lines) goes to a person; empty personName = set anonymous.
-struct SpeakerBinding {
-    QString     rawLabel;
-    QString     personName;
-    QStringList utteranceIds;   // empty = the whole raw speaker
-};
+// SpeakerBinding: domain/Participant.h.
 
 // A speaker of the meeting (the track/column in the editor).
 struct EditorSpeaker {
@@ -152,20 +149,7 @@ struct VoiceprintResult {
     qint64  missingMs = 0;      // if there is not enough material: how much is missing
 };
 
-// Summary staleness: the speaker assignment changed since it was made.
-// Targeted staleness (if the summary has statements with source references): which
-// statements / action items have source lines whose speaker changed. Without statements (old
-// or per-topic summary) targeted == false and only the whole-document flag applies.
-struct SummaryStaleInfo {
-    bool stale = false;
-    int  correctedSpeakers = 0; // "You corrected N speakers since the summary"
-    bool targeted = false;              // statement-level data exists (the fields below are valid)
-    int  affectedStatements = 0;        // affected statements + decisions ("2 statements")
-    int  affectedTodos = 0;             // affected action items ("1 action item")
-    int  ownerChanges = 0;              // of which: action items whose owner is affected too
-    QStringList affectedStatementIds;   // a SummaryStatement::id-k
-    QStringList affectedUtteranceIds;   // for highlighting on the map
-};
+// SummaryStaleInfo: domain/Summary.h.
 
 // What is lost on re-transcription (for the confirmation dialog).
 struct RetranscribeImpact {
@@ -185,7 +169,6 @@ Q_DECLARE_METATYPE(tanara::SpeakerSuggestion)
 Q_DECLARE_METATYPE(tanara::PersonInfo)
 Q_DECLARE_METATYPE(tanara::VoiceprintMaterial)
 Q_DECLARE_METATYPE(tanara::VoiceprintResult)
-Q_DECLARE_METATYPE(tanara::SummaryStaleInfo)
 Q_DECLARE_METATYPE(tanara::RetranscribeImpact)
 Q_DECLARE_METATYPE(tanara::SampleDeviation)
 Q_DECLARE_METATYPE(tanara::SpeakerSampleStats)

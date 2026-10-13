@@ -2,7 +2,7 @@
 
 #include "DemoText.h"
 
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/tags/TagNames.h"
 
 #include <QHash>
@@ -231,7 +231,7 @@ const DemoMeeting* find(const QString& meetingId)
 
 tanara::LibraryResult query(const tanara::LibraryQuery& q)
 {
-    namespace tf = tanara::textfold;
+    namespace tf = tanara::text;
     tanara::LibraryResult res;
     res.totalMeetings = int(meetings().size());
     const QString needle = tf::foldQuery(q.text);

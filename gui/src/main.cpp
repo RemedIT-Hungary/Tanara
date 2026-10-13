@@ -27,12 +27,13 @@
 #include "ShellRecorderHost.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Localization.h"
-#include "tanara/Logging.h"
-#include "tanara/Paths.h"
+#include "tanara/app/StartupDiagnostics.h"
+#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/MeetingStore.h"
-#include "tanara/detect/RecordingLock.h"   // watcherLockPath()
+#include "tanara/foundation/ProcessLock.h"   // watcherLockPath()
 
 #include "AppContext.h"
 #include "MediaPlayerBackend.h"
@@ -321,7 +322,7 @@ int main(int argc, char** argv) {
     QApplication::setWindowIcon(tanara_gui::makeTanaraIcon());   // every window + the tray
 
     // UI language (settings.json uiLanguage), BEFORE any widget is constructed.
-    tanara::installAppTranslator();
+    tanara::installAppTranslator(tanara::SettingsManager().settings().uiLanguage);
 
     // QML developer modes (screenshot / gallery / demo): WITHOUT AppController; the user's real
     // data (~/.tanara, ~/Tanara) is not touched, and the view models supply sample data.

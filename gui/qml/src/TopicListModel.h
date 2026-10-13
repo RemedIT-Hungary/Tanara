@@ -13,7 +13,7 @@
 // fictional sample data, and editing then happens in memory only.
 //
 #include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QAbstractListModel>
 #include <QPointer>

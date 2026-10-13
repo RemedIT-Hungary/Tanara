@@ -20,7 +20,6 @@
 //
 // Undoable: deleting a sample, moving a sample (and "new person from this sample"), deleting a
 // nickname, rename. NOT undoable: merge, deleting a person: they rewrite every affected meeting; the stack is cleared then.
-#include "tanara/Types.h"
 #include "tanara/edit/SpeakerEditTypes.h"
 #include "tanara/edit/UtteranceEmbeddings.h"
 

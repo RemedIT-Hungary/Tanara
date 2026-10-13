@@ -6,9 +6,8 @@
 //
 // Several processes may write it: every modification rereads the fresh state from disk under lock
 // (if it changed), applies the change to that, and writes atomically (see store/SharedFile.h).
-#include "tanara/Types.h"
-#include "tanara/store/SharedFile.h"
-#include "tanara/voiceid/EmbeddingSet.h"
+#include "tanara/domain/Voice.h"
+#include "tanara/foundation/SharedFile.h"
 
 #include <QString>
 #include <QStringList>

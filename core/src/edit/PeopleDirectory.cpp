@@ -13,22 +13,6 @@
 
 namespace tanara {
 
-QString foldForSearch(const QString& text)
-{
-    // Canonical decomposition (o-double-acute -> o + a combining mark), then dropping the combining marks.
-    const QString decomposed = text.normalized(QString::NormalizationForm_D);
-    QString out;
-    out.reserve(decomposed.size());
-    for (const QChar c : decomposed) {
-        const QChar::Category cat = c.category();
-        if (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_SpacingCombining
-            || cat == QChar::Mark_Enclosing)
-            continue;
-        out += c;
-    }
-    return out.toCaseFolded();
-}
-
 bool matchesSearch(const QString& text, const QString& needle)
 {
     const QString n = foldForSearch(needle.trimmed());

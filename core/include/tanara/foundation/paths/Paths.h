@@ -36,14 +36,8 @@ QString metadataFile(const QString& relative, const QString& configuredDir = QSt
 QString defaultAudioDir();
 QString defaultNotesDir();
 
-// File name and resolution of the DEFAULT speaker-embedding model (CAM++); uses the
-// VoiceModelRegistry rule (which covers the other models too). Order:
-//  1) <metaDir>/models/<name>  - the user's own (downloaded) model;
-//  2) <appDir>/models/<name>   - a model bundled with the app (Windows zip/installer);
-//  3) neither exists -> the path from 1) (the "expected location", for error messages / download target).
-// appDir may be empty (e.g. without QCoreApplication); then 2) is skipped.
-QString voiceModelFileName();
-QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir);
+// (The speaker-embedding model file resolution lives in voiceid/VoiceModelRegistry:
+// VoiceModelRegistry::defaultModelFileName() / resolveDefaultModelPath().)
 
 } // namespace paths
 } // namespace tanara

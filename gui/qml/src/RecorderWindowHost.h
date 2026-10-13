@@ -27,7 +27,7 @@ class QQuickWindow;
 
 namespace tanara {
 class AppController;
-class RecordingLock;
+class ProcessLock;
 }
 
 namespace tanara_qml {
@@ -109,7 +109,7 @@ private:
     bool m_ownEngine = false;
     QPointer<QQuickWindow> m_window;
     QPointer<RecorderViewModel> m_vm;
-    std::unique_ptr<tanara::RecordingLock> m_lock;
+    std::unique_ptr<tanara::ProcessLock> m_lock;
     bool m_hideEnabled = true;
     bool m_manageLock = true;
     bool m_restoring = false;

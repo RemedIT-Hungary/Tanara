@@ -7,7 +7,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/voiceid/VoiceModelRegistry.h"
 
@@ -84,9 +84,9 @@ private slots:
         touch(userModel);
         QCOMPARE(VoiceModelRegistry::resolvePath(s, meta.path(), app.path()), userModel);
         // The old paths function uses the same rule.
-        QCOMPARE(paths::resolveVoiceModelPath(meta.path(), app.path()),
+        QCOMPARE(VoiceModelRegistry::resolveDefaultModelPath(meta.path(), app.path()),
                  VoiceModelRegistry::resolvePath(s, meta.path(), app.path()));
-        QCOMPARE(paths::voiceModelFileName(), s.fileName);
+        QCOMPARE(VoiceModelRegistry::defaultModelFileName(), s.fileName);
     }
 
     void normalizeIds_sortedUnique()

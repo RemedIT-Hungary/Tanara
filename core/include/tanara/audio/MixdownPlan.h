@@ -7,7 +7,7 @@
 // Offset: a track that starts later (Track::startOffsetMs > 0: a device enabled during recording,
 // the second span of a device, a track aligned with `align`) is put in place with adelay, so in the
 // mix every sound is at its place by meeting time.
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QString>
 #include <QStringList>

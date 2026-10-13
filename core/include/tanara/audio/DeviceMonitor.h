@@ -10,7 +10,7 @@
 // return at once, levels come after the open. active() mirrors the request (true during startup too;
 // false after a failed open), deviceNames() fills after the open. After stop() stale levels already
 // sent do not get out.
-#include "tanara/Types.h"
+#include "tanara/domain/Audio.h"
 #include <QObject>
 #include <QStringList>
 #include <QVector>

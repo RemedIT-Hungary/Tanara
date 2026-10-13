@@ -23,7 +23,7 @@
 #include "MeetingNoteModel.h"
 #include "MeetingTagsModel.h"
 
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QObject>
 #include <QPointer>

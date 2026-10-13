@@ -2,7 +2,7 @@
 #include "tanara/library/MeetingNotes.h"
 #include "tanara/summary/SummaryPipeline.h"
 #include "tanara/summary/SummarySources.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/store/JsonSerialization.h"
 
 #include <QDir>
@@ -79,7 +79,7 @@ enum class TopicPart { Detail, Decisions, Open, Actions };
 
 Section classifyHeading(const QString& heading)
 {
-    const QString h = textfold::foldQuery(heading);
+    const QString h = text::foldQuery(heading);
     if (h.startsWith(QStringLiteral("nyitott")))                    return Section::Open;
     if (h.startsWith(QStringLiteral("memo")))                       return Section::Memo;
     if (h.contains(QStringLiteral("dontes")))                       return Section::Decisions;

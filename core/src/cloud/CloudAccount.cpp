@@ -1,6 +1,7 @@
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/store/KeyStore.h"
 #include "tanara/Types.h"
+#include "tanara/foundation/Version.h"
 
 #include <QDir>
 #include <QFile>

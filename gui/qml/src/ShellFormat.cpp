@@ -1,6 +1,7 @@
 #include "ShellFormat.h"
+#include "tanara/foundation/time/TimeFormat.h"
 
-#include "tanara/Localization.h"
+#include "tanara/foundation/i18n/Localization.h"
 
 #include <QCoreApplication>
 
@@ -44,13 +45,7 @@ QString shortDuration(qint64 ms)
 
 QString clock(qint64 ms, bool padMinutes)
 {
-    const qint64 total = qMax<qint64>(0, ms) / 1000;
-    const qint64 h = total / 3600, m = (total % 3600) / 60, s = total % 60;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0'))
-            .arg(s, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(m, padMinutes ? 2 : 1, 10, QLatin1Char('0'))
-        .arg(s, 2, 10, QLatin1Char('0'));
+    return tanara::timefmt::clock(ms, padMinutes);
 }
 
 QString stepStateKey(tanara::StepState state)

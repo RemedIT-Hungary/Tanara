@@ -31,14 +31,14 @@ public:
 private:
     void parseResponse(const QByteArray& body);
     void fail(const QString& error);
-    void setState(JobState state);
+    void setState(SttJobState state);
 
     ProviderConfig m_cfg;
     SttRequest     m_req;
 
     QNetworkAccessManager* m_nam = nullptr;
     QPointer<QNetworkReply> m_reply;
-    JobState m_state = JobState::Idle;
+    SttJobState m_state = SttJobState::Idle;
     bool     m_finished = false;
 };
 

@@ -15,7 +15,7 @@
 //
 // The Tanara Cloud path does not use these (it has no native API).
 #include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 #include "tanara/llm/LlmContext.h"
 
 #include <QObject>

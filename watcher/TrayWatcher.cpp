@@ -2,11 +2,11 @@
 #include "RecorderTrayIcon.h"   // tanara_gui::makeTrayIcon (header-only, from gui/common via tanara_shell_common)
 
 #include "tanara/SettingsManager.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/detect/Autostart.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 #include "tanara/audio/PlaybackRouting.h"
 #include "tanara/audio/TrackCatalog.h"
 
@@ -199,6 +199,11 @@ void TrayWatcher::applySettings()
         m_lastOfferedRef.clear();
         refreshState();
     }
+}
+
+QString TrayWatcher::configuredUiLanguage()
+{
+    return tanara::SettingsManager().settings().uiLanguage;
 }
 
 QString TrayWatcher::formatElapsed(qint64 seconds)

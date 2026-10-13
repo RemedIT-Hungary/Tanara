@@ -9,7 +9,7 @@
 #include "TagsWindowHost.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/store/MeetingStore.h"

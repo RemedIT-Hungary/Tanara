@@ -1,6 +1,6 @@
 #include "RecorderSingleton.h"
-#include "tanara/Logging.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/ProcessLock.h"
 
 #include <QDataStream>
 #include <QLocalServer>

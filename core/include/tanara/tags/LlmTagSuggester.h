@@ -11,7 +11,7 @@
 // Parsing is lenient (case, bullets, quotes, "none"). pick gives existing tags (source = Llm), new
 // at most 2 new name ideas (isNew); if a new name is a nearDuplicate of an existing one, it
 // suggests the existing one instead. Thinking is off (per ProviderConfig::reasoning, as for the summary).
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QObject>
 #include <QPointer>

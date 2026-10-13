@@ -3,6 +3,7 @@
 // People for the picker panels: name + whether there is a voiceprint + in how many meetings they
 // appear, and accent-/case-insensitive name search ("odon" matches "Odon" with accents).
 #include "tanara/edit/SpeakerEditTypes.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QString>
 #include <QVector>
@@ -13,9 +14,8 @@ class MeetingStore;
 class PeopleStore;
 class VoiceprintStore;
 
-// Folded form for searching: lowercase, without accents (o-double-acute -> o, u-double-acute -> u,
-// e-acute -> e ...).
-QString foldForSearch(const QString& text);
+// Folded form for searching: lowercase, without accents (foundation: text::foldForSearch).
+using text::foldForSearch;
 
 // True if `needle` is a substring of `text` (accent- and case-insensitively). An empty needle matches everything.
 bool matchesSearch(const QString& text, const QString& needle);

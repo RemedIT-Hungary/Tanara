@@ -1,7 +1,7 @@
 #include "tanara/SettingsManager.h"
 #include "tanara/store/JsonSerialization.h"
-#include "tanara/Paths.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/audio/TrackCatalog.h"
 #include "tanara/voiceid/VoiceModelRegistry.h"
 

@@ -1,6 +1,6 @@
 #include "tanara/edit/TrackActivity.h"
 
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/audio/TrackCatalog.h"
 
 #include <QCryptographicHash>
@@ -75,12 +75,6 @@ bool readTrack(QDataStream& in, TrackActivity& t)
 }
 
 } // namespace
-
-int TrackActivity::coveredFrames() const
-{
-    return int(std::count_if(dbAboveFloor.cbegin(), dbAboveFloor.cend(),
-                             [](float v) { return !std::isnan(v); }));
-}
 
 namespace trackactivity {
 

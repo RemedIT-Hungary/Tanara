@@ -1,5 +1,5 @@
 #include "tanara/edit/SpeakerEditor.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/SideAnalysis.h"

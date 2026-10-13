@@ -1,5 +1,5 @@
 #include "tanara/audio/DeviceManager.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include <QElapsedTimer>
 
 #include "miniaudio.h"

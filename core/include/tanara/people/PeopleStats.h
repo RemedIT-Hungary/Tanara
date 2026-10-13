@@ -8,8 +8,8 @@
 // speakerMap). With dozens of meetings this would be noticeable on the main thread, so it runs on a
 // BACKGROUND THREAD and is cached per meeting: the three files' mtime + size is the key, so a
 // refresh rereads only the changed meetings. The cache lasts for the process life (not on disk).
-#include "tanara/Types.h"
-#include "tanara/store/SharedFile.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/foundation/SharedFile.h"
 
 #include <QDateTime>
 #include <QHash>

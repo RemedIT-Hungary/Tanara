@@ -216,51 +216,11 @@
  },
  "legacy": [
   [
-   "Paths*",
-   "foundation"
-  ],
-  [
-   "Logging*",
-   "foundation"
-  ],
-  [
-   "Localization*",
-   "foundation"
-  ],
-  [
-   "Version*",
-   "foundation"
-  ],
-  [
-   "library/TextFold*",
-   "foundation"
-  ],
-  [
-   "store/SharedFile*",
-   "foundation"
-  ],
-  [
    "store/KeyStore*",
    "foundation"
   ],
   [
-   "detect/RecordingLock*",
-   "foundation"
-  ],
-  [
    "Types.h",
-   "domain"
-  ],
-  [
-   "tags/TagTypes.h",
-   "domain"
-  ],
-  [
-   "jobs/JobTypes.h",
-   "domain"
-  ],
-  [
-   "voiceid/EmbeddingSet.h",
    "domain"
   ],
   [

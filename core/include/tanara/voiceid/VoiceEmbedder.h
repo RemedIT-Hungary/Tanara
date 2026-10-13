@@ -3,7 +3,6 @@
 // VoiceEmbedder: speaker-embedding extraction: 16 kHz mono PCM -> fbank (kaldi-native-fbank)
 // -> ONNX model (3D-Speaker CAM++) -> an L2-normalized embedding vector. UI-independent (core).
 // The fbank/normalization parameters are tunable (empirically tuned for an exact kaldi match).
-#include "tanara/Types.h"
 
 #include <QString>
 #include <QVector>

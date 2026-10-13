@@ -1,6 +1,6 @@
 #include "tanara/audio/AudioEngine.h"
 #include "tanara/audio/DetachedJob.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include "miniaudio.h"
 

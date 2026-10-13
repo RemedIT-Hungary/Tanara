@@ -1,7 +1,7 @@
 #include "tanara/store/VoiceprintStore.h"
-#include "tanara/Logging.h"
-#include "tanara/Paths.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/domain/Voice.h"
 
 #include <QDir>
 #include <QFile>
@@ -75,7 +75,7 @@ void VoiceprintStore::addPrint(const QString& name, Voiceprint print)
         print.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     print.dim = print.embedding.size();
     if (print.model.isEmpty())
-        print.model = VoiceModelRegistry::defaultModelId();
+        print.model = voicemodels::defaultModelId();
     // To be safe we store it normalized (so the cosine stays stable).
     print.embedding = l2normalize(print.embedding);
 
@@ -201,7 +201,7 @@ double personScore(const QVector<Voiceprint>& prints, const EmbeddingSet& query,
 EmbeddingSet defaultSet(const QVector<float>& embedding)
 {
     EmbeddingSet set;
-    if (!embedding.isEmpty()) set.insert(VoiceModelRegistry::defaultModelId(), embedding);
+    if (!embedding.isEmpty()) set.insert(voicemodels::defaultModelId(), embedding);
     return set;
 }
 
@@ -211,7 +211,7 @@ QVector<VoiceMatch> VoiceprintStore::rankedMatches(const EmbeddingSet& query,
                                                    const QStringList& modelIds) const
 {
     QVector<VoiceMatch> out;
-    const QStringList ids = VoiceModelRegistry::normalizeIds(modelIds);
+    const QStringList ids = voicemodels::normalizeIds(modelIds);
     bool any = false;
     for (const QString& id : ids) any = any || !query.value(id).isEmpty();
     if (!any || m_people.isEmpty())
@@ -233,12 +233,12 @@ VoiceMatch VoiceprintStore::bestMatch(const EmbeddingSet& query, const QStringLi
 
 VoiceMatch VoiceprintStore::bestMatch(const QVector<float>& embedding) const
 {
-    return bestMatch(defaultSet(embedding), {VoiceModelRegistry::defaultModelId()});
+    return bestMatch(defaultSet(embedding), {voicemodels::defaultModelId()});
 }
 
 QVector<VoiceMatch> VoiceprintStore::rankedMatches(const QVector<float>& embedding) const
 {
-    return rankedMatches(defaultSet(embedding), {VoiceModelRegistry::defaultModelId()});
+    return rankedMatches(defaultSet(embedding), {voicemodels::defaultModelId()});
 }
 
 QStringList VoiceprintStore::printsMissingModel(const QString& name, const QString& modelId) const
@@ -390,8 +390,8 @@ void VoiceprintStore::load()
             vp.device = o.value(QStringLiteral("device")).toString();
             vp.sampleRef = o.value(QStringLiteral("sampleRef")).toString();
             vp.createdAt = o.value(QStringLiteral("createdAt")).toString();
-            vp.model = o.value(QStringLiteral("model")).toString(VoiceModelRegistry::defaultModelId());
-            if (vp.model.isEmpty()) vp.model = VoiceModelRegistry::defaultModelId();
+            vp.model = o.value(QStringLiteral("model")).toString(voicemodels::defaultModelId());
+            if (vp.model.isEmpty()) vp.model = voicemodels::defaultModelId();
             for (const QJsonValue& r : o.value(QStringLiteral("sourceRefs")).toArray())
                 if (!r.toString().isEmpty()) vp.sourceRefs << r.toString();
             if (!vp.embedding.isEmpty())

@@ -1,5 +1,4 @@
-#include "tanara/Paths.h"
-#include "tanara/voiceid/VoiceModelRegistry.h"
+#include "tanara/foundation/paths/Paths.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -63,18 +62,6 @@ QString defaultNotesDir()
     if (!over.isEmpty())
         return QDir(over).filePath(QStringLiteral("notes"));
     return QDir(QDir::homePath()).filePath(QStringLiteral("Tanara/notes"));
-}
-
-QString voiceModelFileName()
-{
-    return VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId())->fileName;
-}
-
-QString resolveVoiceModelPath(const QString& metaDir, const QString& appDir)
-{
-    // Single resolution rule: VoiceModelRegistry's (for the base model).
-    return VoiceModelRegistry::resolvePath(*VoiceModelRegistry::spec(VoiceModelRegistry::defaultModelId()),
-                                           metaDir, appDir);
 }
 
 } // namespace paths

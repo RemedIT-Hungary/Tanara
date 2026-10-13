@@ -13,7 +13,7 @@
 #include "PlayerController.h"
 
 #include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 #include "tanara/provider/ReadinessModel.h"
 
 #include <QHash>

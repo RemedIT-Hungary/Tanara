@@ -1,4 +1,4 @@
-// MeetingLibrary + TextFold: the library sidebar's queries: date sections, accent- and
+// MeetingLibrary + text folding (foundation/text): the library sidebar's queries: date sections, accent- and
 // case-insensitive full-text search (title + transcript) with snippet and hit position,
 // filters, "These are waiting for you", incremental signals, cache invalidation.
 #include <QtTest>
@@ -9,7 +9,7 @@
 #include <QJsonObject>
 
 #include "tanara/library/MeetingLibrary.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/tags/TagService.h"
@@ -100,38 +100,38 @@ Meeting LibraryTest::add(const QString& title, const QDateTime& when, const QVec
     return m;
 }
 
-// ---- TextFold ---------------------------------------------------------------------------
+// ---- text folding (foundation/text) -----------------------------------------------------------
 
 void LibraryTest::foldKeepsLengthAndStripsAccents()
 {
     const QString src = QStringLiteral("Ödön ÁRVÍZTŰRŐ tükörfúrógép — Ǘ ß 😀");
-    const QString folded = textfold::fold(textfold::normalize(src));
-    QCOMPARE(folded.size(), textfold::normalize(src).size());   // 1:1 length, so the positions match
+    const QString folded = text::fold(text::normalize(src));
+    QCOMPARE(folded.size(), text::normalize(src).size());   // 1:1 length, so the positions match
     QVERIFY(folded.startsWith(QStringLiteral("odon arvizturo tukorfurogep")));
     QVERIFY(folded.contains(QStringLiteral(" u ")));             // U-umlaut to u (multiple accents)
     // Decomposed (NFD) input: normalize merges it, so it matches that way too.
     const QString nfd = QStringLiteral("Ödön");
-    QCOMPARE(textfold::fold(textfold::normalize(nfd)), QStringLiteral("odon"));
-    QCOMPARE(textfold::foldQuery(QStringLiteral("  ÖDÖN   úr ")), QStringLiteral("odon ur"));
+    QCOMPARE(text::fold(text::normalize(nfd)), QStringLiteral("odon"));
+    QCOMPARE(text::foldQuery(QStringLiteral("  ÖDÖN   úr ")), QStringLiteral("odon ur"));
 }
 
 void LibraryTest::findPhraseAndWords()
 {
-    const QString text = textfold::fold(QStringLiteral("Az árajánlatot Ödön küldi el pénteken."));
-    textfold::Range r = textfold::find(text, textfold::foldQuery("odon"));
+    const QString text = text::fold(QStringLiteral("Az árajánlatot Ödön küldi el pénteken."));
+    text::Range r = text::find(text, text::foldQuery("odon"));
     QVERIFY(r.isValid());
     QCOMPARE(r.start, 15);
     QCOMPARE(r.length, 4);
     // Several words: first the whole phrase ...
-    r = textfold::find(text, textfold::foldQuery("Ödön küldi"));
+    r = text::find(text, text::foldQuery("Ödön küldi"));
     QCOMPARE(r.start, 15);
     QCOMPARE(r.length, 10);
     // ... if that is absent but every word is present: the first word's position.
-    r = textfold::find(text, textfold::foldQuery("pénteken árajánlat"));
+    r = text::find(text, text::foldQuery("pénteken árajánlat"));
     QCOMPARE(r.start, int(text.indexOf("penteken")));
     QCOMPARE(r.length, 8);
-    QVERIFY(!textfold::find(text, textfold::foldQuery("ödön szerdán")).isValid());
-    QVERIFY(!textfold::find(text, QString()).isValid());
+    QVERIFY(!text::find(text, text::foldQuery("ödön szerdán")).isValid());
+    QVERIFY(!text::find(text, QString()).isValid());
 }
 
 void LibraryTest::snippetAroundMatch()
@@ -140,10 +140,10 @@ void LibraryTest::snippetAroundMatch()
         "Először átnéztük a múlt heti feladatokat, aztán rátértünk a lényegre.\n"
         "Az árajánlatot Ödön küldi el pénteken, a szerződést pedig Lilla nézi át hétfőn, "
         "utána egyeztetünk a megrendelővel a részletekről és a határidőkről.");
-    const textfold::Range hit = textfold::find(textfold::fold(text), textfold::foldQuery("odon"));
+    const text::Range hit = text::find(text::fold(text), text::foldQuery("odon"));
     QVERIFY(hit.isValid());
-    textfold::Range in;
-    const QString sn = textfold::snippet(text, hit, &in);
+    text::Range in;
+    const QString sn = text::snippet(text, hit, &in);
     QVERIFY(in.isValid());
     QCOMPARE(sn.mid(in.start, in.length), QStringLiteral("Ödön"));   // the ORIGINAL (accented) text
     QVERIFY(sn.startsWith(QChar(0x2026)));
@@ -152,7 +152,7 @@ void LibraryTest::snippetAroundMatch()
     QVERIFY(sn.size() < 140);
     // Short text: no truncation, no "...".
     const QString shortText = QStringLiteral("Ödön itt van.");
-    const QString sn2 = textfold::snippet(shortText, {0, 4}, &in);
+    const QString sn2 = text::snippet(shortText, {0, 4}, &in);
     QCOMPARE(sn2, shortText);
     QCOMPARE(in.start, 0);
 }

@@ -1,4 +1,5 @@
 #include "VoiceModelListModel.h"
+#include "tanara/foundation/time/TimeFormat.h"
 
 #include "DemoText.h"
 
@@ -6,7 +7,7 @@
 #include "SettingsViewModel.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/VoiceprintStore.h"
@@ -56,10 +57,7 @@ bool usable(const QString& state)
 // "12:03" / "1:02:03" (meeting time, ms).
 QString clock(qint64 ms)
 {
-    const qint64 sec = qMax<qint64>(0, ms / 1000);
-    const qint64 h = sec / 3600, m = (sec % 3600) / 60, ss = sec % 60;
-    return h > 0 ? QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(ss, 2, 10, QLatin1Char('0'))
-                 : QStringLiteral("%1:%2").arg(m).arg(ss, 2, 10, QLatin1Char('0'));
+    return tanara::timefmt::clock(ms);
 }
 
 QString reasonText(VoiceprintBackfillSkip::Reason reason)

@@ -12,9 +12,12 @@
 //     function over the voiceprint DB).
 // Once a transcript exists, bindRawSpeakers binds the clusters to the raw STT speakers by time
 // overlap; a two-sided raw speaker (mic AND call) splits into two participants.
-#include "tanara/Types.h"
-#include "tanara/edit/SpeakerEditTypes.h"
-#include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/domain/Audio.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Participant.h"
+#include "tanara/domain/Voice.h"
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Overlay.h"
 #include "tanara/edit/TrackActivity.h"
 #include "tanara/tags/PersonTags.h"
 #include "tanara/voiceid/EmbeddingSet.h"
@@ -38,28 +41,6 @@ struct SpeechWindow {
     qint64  startMs = 0;
     qint64  endMs = 0;
     qint64 durationMs() const { return endMs - startMs; }
-};
-
-// A voice cluster: (presumably) one speaker on one track.
-struct VoiceCluster {
-    QString trackId;
-    QString side;
-    QVector<QPair<qint64, qint64>> windows;   // the member windows [start, end) in meeting time
-    EmbeddingSet centroid;                    // per-model L2-normalized centroid (not persisted)
-    QString sampleRef;                        // "<file>#start-end": the medoid window
-    // Result of the matching (filled by buildParticipants):
-    QString participantId;
-    QString matchName;                        // the accepted voiceprint match (above threshold); empty = unknown
-    double  matchScore = -1.0;                // score of the best match (also below the threshold)
-    qint64 speechMs() const;
-};
-
-struct ClusterSet {
-    QStringList modelIds;           // models taking part in the fusion
-    QVector<VoiceCluster> clusters;
-    int windows = 0;                // how many (embedded) windows it consisted of
-    bool cancelled = false;
-    QString error;                  // did not run: why (e.g. no model)
 };
 
 // The persisted part of the analysis (<folder>/participants.analysis.json): the clusters'

@@ -11,7 +11,8 @@
 // if only the merge failed, only the merge reruns). The cache is deleted after a successful run.
 // On failure there is NO partial result: only summaryFailed is emitted.
 // The provider is NOT owned (never deleted).
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/llm/ILlmProvider.h"
 #include "tanara/llm/LlmContext.h"
 #include "tanara/summary/SummaryPipeline.h"

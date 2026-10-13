@@ -13,7 +13,7 @@
 // the second run's "nothing to do" marker).
 //
 // UI-independent, no QObject.
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
 #include "tanara/edit/SpeakerOverlay.h"
 
 #include <QMap>

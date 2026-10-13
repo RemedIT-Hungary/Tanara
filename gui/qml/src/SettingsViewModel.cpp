@@ -9,8 +9,8 @@
 #include "SettingsProviderModel.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Localization.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/PromptLibrary.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"

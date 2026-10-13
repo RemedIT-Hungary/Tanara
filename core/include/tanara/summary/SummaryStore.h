@@ -10,7 +10,7 @@
 //
 // summary.md stays the human-readable / copied-into-notes form; if someone edits it by hand (newer
 // than summary.json), the markdown is the truth and the metadata comes from the json.
-#include "tanara/Types.h"
+#include "tanara/domain/Summary.h"
 
 #include <QJsonObject>
 #include <QMetaType>

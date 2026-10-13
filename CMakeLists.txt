@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(tanara VERSION 0.5.11 LANGUAGES CXX)
 
 # The displayed version comes from ONE place: the numeric part from project(VERSION), the
-# suffix (e.g. "a" = alpha; empty = release) from here. core/src/Version.cpp receives it as
+# suffix (e.g. "a" = alpha; empty = release) from here. core/src/foundation/Version.cpp receives it as
 # TANARA_VERSION.
 set(TANARA_VERSION_SUFFIX "")
 set(TANARA_VERSION "${PROJECT_VERSION}${TANARA_VERSION_SUFFIX}")

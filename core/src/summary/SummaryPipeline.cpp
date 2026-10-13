@@ -1,6 +1,7 @@
 #include "tanara/summary/SummaryPipeline.h"
+#include "tanara/foundation/time/TimeFormat.h"
 #include "tanara/TranscriptMerger.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -56,7 +57,7 @@ Sec headingOf(const QString& line)
     while (!t.isEmpty() && (t.back() == QLatin1Char('*') || t.back() == QLatin1Char(':')
                             || t.back() == QLatin1Char('_') || t.back().isSpace()))
         t.chop(1);
-    const QString f = textfold::foldQuery(t);
+    const QString f = text::foldQuery(t);
     static const QStringList topics{QStringLiteral("topics"), QStringLiteral("topic"),
                                     QStringLiteral("temak"), QStringLiteral("tema"),
                                     QStringLiteral("notes"), QStringLiteral("jegyzetek"),
@@ -80,7 +81,7 @@ Sec headingOf(const QString& line)
 // The "none" markers (- none, - nincs, - n/a, - (none), - dash).
 bool isNoneItem(const QString& text)
 {
-    QString f = textfold::foldQuery(text);
+    QString f = text::foldQuery(text);
     f.remove(QRegularExpression(QStringLiteral("[()\\[\\].\\-–—*]")));
     f = f.trimmed();
     return f.isEmpty() || f == QLatin1String("none") || f == QLatin1String("nincs")
@@ -289,7 +290,7 @@ PartNotes parseNotesImpl(const QString& raw, const TranscriptPart& part, bool fa
     return n;
 }
 
-QString foldedTitle(const QString& s) { return textfold::foldQuery(s).trimmed(); }
+QString foldedTitle(const QString& s) { return text::foldQuery(s).trimmed(); }
 
 QSet<QString> titleWords(const QString& folded)
 {
@@ -504,10 +505,7 @@ qint64 parseTimestamp(const QString& s)
 
 QString formatTimestamp(qint64 ms)
 {
-    if (ms < 0) ms = 0;
-    const qint64 sec = ms / 1000;
-    return QStringLiteral("%1:%2").arg(sec / 60, 2, 10, QLatin1Char('0'))
-                                  .arg(sec % 60, 2, 10, QLatin1Char('0'));
+    return timefmt::timestamp(ms < 0 ? 0 : ms);
 }
 
 // ---- notes --------------------------------------------------------------------------

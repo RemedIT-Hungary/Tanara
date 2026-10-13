@@ -26,7 +26,7 @@
 //
 // Similarity: 0.45 * participants (weighted Jaccard) + 0.40 * phrases (cosine) +
 // 0.15 * title (meetingnotes::titleSimilarity).
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QHash>
 #include <QObject>

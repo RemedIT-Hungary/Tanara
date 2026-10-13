@@ -1,6 +1,6 @@
 #include "tanara/audio/DeviceMonitor.h"
 #include "tanara/audio/AudioEngine.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QElapsedTimer>
 #include <QMetaObject>

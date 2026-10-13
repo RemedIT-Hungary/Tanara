@@ -11,8 +11,8 @@
 //    (hasTranscript/hasSummary/speakerMap) + the above.
 //
 // UI-independent (QtCore). List models can update incrementally on the signals.
-#include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Job.h"
 
 #include <QObject>
 #include <QHash>

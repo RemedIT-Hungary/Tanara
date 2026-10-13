@@ -2,11 +2,11 @@
 // No window: lives in the tray icon and launches the `tanara --record` / `tanara` processes.
 #include "TrayWatcher.h"
 
-#include "tanara/Localization.h"
-#include "tanara/Logging.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/detect/DetectorRegistry.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 #include "RecorderTrayIcon.h"
 
 #include <QApplication>
@@ -56,7 +56,7 @@ int main(int argc, char** argv)
     }
 
     // UI language (settings.json uiLanguage), before the tray menu / notification strings.
-    tanara::installAppTranslator();
+    tanara::installAppTranslator(tanara_watcher::TrayWatcher::configuredUiLanguage());
 
     tanara::registerBuiltinDetectors();
 

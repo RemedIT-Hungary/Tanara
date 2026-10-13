@@ -1,6 +1,6 @@
 #include "tanara/people/PeopleStats.h"
 
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/MeetingStore.h"

@@ -19,8 +19,8 @@
 // (moved from the temporary .import-* folder, which is then cleaned up).
 //
 // UI-independent, thread-safe (no QObject, no shared state), so it can run on a worker thread.
-#include "tanara/Types.h"
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Tag.h"
 
 #include <QDateTime>
 #include <QString>

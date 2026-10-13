@@ -5,7 +5,7 @@
 #include "TagDemoBackend.h"
 #include "TagMatching.h"
 
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QCoreApplication>
 
@@ -167,14 +167,14 @@ void TagsViewModel::rebuild()
         });
     }
 
-    const QString needle = tanara::textfold::foldQuery(m_filter);
+    const QString needle = tanara::text::foldQuery(m_filter);
     QVector<TagListRow> rows;
     for (const TagItem& t : std::as_const(sorted)) {
         TagListRow r{t.id, t.name, tr("%1 megbeszélés · %2").arg(t.meetingCount).arg(fmt::shortDate(t.lastUsedAt)),
                      t.name, QString(), QString()};
         if (!needle.isEmpty()) {
-            const QString nfc = tanara::textfold::normalize(t.name);
-            const int at = tanara::textfold::fold(nfc).indexOf(needle);
+            const QString nfc = tanara::text::normalize(t.name);
+            const int at = tanara::text::fold(nfc).indexOf(needle);
             if (at < 0) continue;
             if (nfc == t.name) {
                 r.before = t.name.left(at);

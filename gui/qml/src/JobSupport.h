@@ -5,7 +5,7 @@
 // formatting, translating the core's machine hints (fixActionHint) into a button label +
 // Settings page, and naming the provider. Stateless functions.
 //
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 #include "tanara/provider/ReadinessModel.h"
 
 #include <QString>

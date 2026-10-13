@@ -10,7 +10,7 @@
 #include "AppContext.h"
 #include "QmlApp.h"
 
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>

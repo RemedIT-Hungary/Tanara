@@ -3,10 +3,13 @@
 // A failed background task -> a displayable error (human explanation + a technical line).
 // Pure functions (no state, no I/O); AppController calls them with the provider's last failed
 // HTTP response (ProviderConfig::onExchange) and the raw error text.
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 #include "tanara/llm/LlmContext.h"
 
 namespace tanara {
+
+struct HttpExchange;   // tanara/cloud/CloudTypes.h
+struct CloudError;
 
 // The technical line of a failed HTTP exchange: "HTTP 401 | invalid_api_key | <message>".
 // For a network error (no HTTP response): "network | <Qt error text>". From the body it recognizes

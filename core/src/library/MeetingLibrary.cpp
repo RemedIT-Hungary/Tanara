@@ -190,7 +190,7 @@ const MeetingLibrary::TextDoc* MeetingLibrary::textDoc(const Meeting& m) const
             doc.segMs.reserve(arr.size());
             for (const QJsonValue& v : arr) {
                 const QJsonObject o = v.toObject();
-                const QString t = textfold::normalize(o.value(QStringLiteral("text")).toString()).trimmed();
+                const QString t = text::normalize(o.value(QStringLiteral("text")).toString()).trimmed();
                 if (t.isEmpty()) continue;
                 if (!doc.text.isEmpty()) doc.text += QLatin1Char('\n');
                 doc.segStart.append(int(doc.text.size()));
@@ -198,7 +198,7 @@ const MeetingLibrary::TextDoc* MeetingLibrary::textDoc(const Meeting& m) const
                 doc.segSpeaker.append(o.value(QStringLiteral("speaker")).toString());
                 doc.text += t;
             }
-            doc.folded = textfold::fold(doc.text);
+            doc.folded = text::fold(doc.text);
         }
     }
     const auto ins = d->texts.insert(m.id, doc);
@@ -294,10 +294,10 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
     LibraryResult res;
     res.totalMeetings = int(d->meetings.size());
     const QDate today = now.date();
-    const QString fq = textfold::foldQuery(q.text);
+    const QString fq = text::foldQuery(q.text);
     QStringList wantPeople;
     for (const QString& p : q.people) {
-        const QString f = textfold::foldQuery(p);
+        const QString f = text::foldQuery(p);
         if (!f.isEmpty()) wantPeople << f;
     }
 
@@ -327,7 +327,7 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         if (!tagsOk(m)) continue;
         if (!wantPeople.isEmpty()) {
             QStringList have;
-            for (const QString& p : participantsOf(m)) have << textfold::foldQuery(p);
+            for (const QString& p : participantsOf(m)) have << text::foldQuery(p);
             bool all = true;
             for (const QString& w : wantPeople)
                 if (!have.contains(w)) { all = false; break; }
@@ -340,23 +340,23 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         }
 
         // Title match (we cache the folded title per meeting).
-        const QString nfcTitle = textfold::normalize(m.title);
+        const QString nfcTitle = text::normalize(m.title);
         auto ft = d->foldedTitle.constFind(m.id);
         if (ft == d->foldedTitle.constEnd())
-            ft = d->foldedTitle.insert(m.id, textfold::fold(nfcTitle));
-        const textfold::Range titleHit = textfold::find(*ft, fq);
+            ft = d->foldedTitle.insert(m.id, text::fold(nfcTitle));
+        const text::Range titleHit = text::find(*ft, fq);
 
         // Transcript match.
-        textfold::Range textHit;
+        text::Range textHit;
         const TextDoc* doc = m.hasTranscript ? textDoc(m) : nullptr;
-        if (doc) textHit = textfold::find(doc->folded, fq);
+        if (doc) textHit = text::find(doc->folded, fq);
 
         // Tag match (accent- and case-insensitively in the tag's name).
         QString tagHit;
         if (d->tags) {
             for (const QString& id : m.tagIds) {
                 const Tag t = d->tags->tag(id);
-                if (t.isValid() && textfold::find(textfold::fold(textfold::normalize(t.name)), fq).isValid()) {
+                if (t.isValid() && text::find(text::fold(text::normalize(t.name)), fq).isValid()) {
                     tagHit = t.name;
                     break;
                 }
@@ -370,7 +370,7 @@ LibraryResult MeetingLibrary::query(const LibraryQuery& q, const QDateTime& now)
         e.title = nfcTitle;               // the titleMatch positions are valid for this (NFC) form
         e.titleMatch = titleHit;
         if (textHit.isValid()) {
-            e.snippet = textfold::snippet(doc->text, textHit, &e.snippetMatch);
+            e.snippet = text::snippet(doc->text, textHit, &e.snippetMatch);
             // Which utterance the match falls into (the last one that does not start later).
             const auto up = std::upper_bound(doc->segStart.constBegin(), doc->segStart.constEnd(),
                                              textHit.start);

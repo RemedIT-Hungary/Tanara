@@ -1,5 +1,5 @@
 #include "tanara/tags/TagNames.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QVector>
 
@@ -9,7 +9,7 @@ namespace tanara {
 
 QString normalizeTagName(const QString& name)
 {
-    QString s = textfold::normalize(name).simplified();
+    QString s = text::normalizeName(name);
     int i = 0;
     while (i < s.size() && (s.at(i) == QLatin1Char('#') || s.at(i).isSpace())) ++i;
     return s.mid(i);
@@ -17,7 +17,7 @@ QString normalizeTagName(const QString& name)
 
 QString tagKey(const QString& name)
 {
-    const QString folded = textfold::fold(textfold::normalize(name));
+    const QString folded = text::fold(text::normalize(name));
     QString out;
     out.reserve(folded.size());
     for (const QChar c : folded)

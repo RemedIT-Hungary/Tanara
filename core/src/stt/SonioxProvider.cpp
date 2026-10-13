@@ -81,7 +81,7 @@ void SonioxJob::report(QNetworkReply* reply, const QByteArray& body) const {
         m_cfg.onExchange(makeHttpExchange(reply, body));
 }
 
-void SonioxJob::setState(JobState state) {
+void SonioxJob::setState(SttJobState state) {
     if (m_state == state)
         return;
     m_state = state;
@@ -96,7 +96,7 @@ void SonioxJob::fail(const QString& error) {
     // We clean up after a failed/cancelled job too: the already uploaded file / created transcription
     // must not stay at Soniox until the 30-day eviction (storage quota + data).
     cleanup();
-    setState(JobState::Failed);
+    setState(SttJobState::Failed);
     emit failed(error);
 }
 
@@ -134,7 +134,7 @@ void SonioxJob::start() {
 
 // --- 1) POST /files (multipart) -> file_id ---
 void SonioxJob::uploadFile() {
-    setState(JobState::Uploading);
+    setState(SttJobState::Uploading);
     emit progress(0, tr("Fájl feltöltése…"));
 
     auto* file = new QFile(m_req.audioFilePath);
@@ -197,7 +197,7 @@ void SonioxJob::uploadFile() {
 void SonioxJob::createTranscription() {
     if (m_finished)
         return;
-    setState(JobState::Queued);
+    setState(SttJobState::Queued);
     emit progress(20, tr("Átírás indítása…"));
 
     QJsonObject payload;
@@ -269,7 +269,7 @@ void SonioxJob::createTranscription() {
                      .arg(QString::fromUtf8(body)));
             return;
         }
-        setState(JobState::Processing);
+        setState(SttJobState::Processing);
         emit progress(40, tr("Feldolgozás…"));
         m_pollTimer->start();
     });
@@ -324,7 +324,7 @@ void SonioxJob::pollStatus() {
             // queued / processing / running etc.: we stay in the poll. Every successful poll is a "heartbeat",
             // so the elapsed time + the counter visibly move, the UI does not look frozen, and it shows the connection is alive.
             ++m_pollCount;
-            setState(JobState::Processing);
+            setState(SttJobState::Processing);
             emit progress(60, tr("Feldolgozás (%1)… %2 · %3. életjel")
                                   .arg(status, formatElapsed(m_clock.elapsed()))
                                   .arg(m_pollCount));
@@ -397,7 +397,7 @@ void SonioxJob::fetchTranscript() {
         cleanup();
 
         m_finished = true;
-        setState(JobState::Completed);
+        setState(SttJobState::Completed);
         emit progress(100, tr("Kész"));
         emit finished(tt);
     });

@@ -2,7 +2,7 @@
 
 #include "AudioOutputFactory.h"
 
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QUrl>
 

@@ -10,7 +10,7 @@ add_library(tanara_core STATIC ${TANARA_CORE_SOURCES} ${TANARA_CORE_HEADERS})
 target_include_directories(tanara_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # The version comes from the root CMakeLists (TANARA_VERSION); only Version.cpp gets it, so a version bump
 # recompiles a single file.
-set_source_files_properties(src/Version.cpp PROPERTIES
+set_source_files_properties(src/foundation/Version.cpp PROPERTIES
     COMPILE_DEFINITIONS "TANARA_VERSION=\"${TANARA_VERSION}\"")
 target_compile_features(tanara_core PUBLIC cxx_std_20)
 

@@ -1,6 +1,6 @@
 #include "tanara/voiceid/VoiceEmbedderSet.h"
 
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
 
 #include <QFileInfo>

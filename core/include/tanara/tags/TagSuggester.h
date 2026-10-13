@@ -14,7 +14,7 @@
 // needed for a suggestion is made on the main thread; suggestFrom uses it plus the thread-safe
 // readers of MeetingProfiles / EmbeddingIndex, so it can run on a background thread. The methods
 // reading TagService directly (suggest, cooccur, suggestForDraft) belong to the main thread.
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QHash>
 #include <QSet>

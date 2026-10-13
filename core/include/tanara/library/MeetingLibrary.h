@@ -12,11 +12,11 @@
 // meeting on signals of the store / AppController. With a few hundred meetings the first search
 // loads the transcripts (warmUp() does this ahead of time, in slices, in the event loop), after
 // that a search runs in memory.
-#include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Job.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/library/TextFold.h"
-#include "tanara/tags/TagTypes.h"
+#include "tanara/foundation/text/Text.h"
+#include "tanara/domain/Tag.h"
 
 #include <QObject>
 #include <QHash>
@@ -43,9 +43,9 @@ struct LibraryEntry {
     MeetingProcessingState state;      // icon states (if the library got a tracker)
 
     // --- search hit (all invalid/empty for an empty search) ---
-    textfold::Range titleMatch;        // position of the match in the title
+    text::Range titleMatch;        // position of the match in the title
     QString   snippet;                 // snippet from the transcript around the match
-    textfold::Range snippetMatch;      // position of the match in the snippet
+    text::Range snippetMatch;      // position of the match in the snippet
     qint64    snippetMs = -1;          // start of the utterance containing the match (for jumping)
     QString   snippetSpeaker;          // the speaker (displayed name)
 

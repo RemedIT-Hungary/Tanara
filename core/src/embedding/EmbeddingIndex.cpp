@@ -1,7 +1,7 @@
 #include "tanara/embedding/EmbeddingIndex.h"
-#include "tanara/edit/SpeakerOverlay.h"
+#include "tanara/domain/Overlay.h"
 #include "tanara/store/MeetingStore.h"
-#include "tanara/store/SharedFile.h"
+#include "tanara/foundation/SharedFile.h"
 #include "tanara/tags/MeetingProfiles.h"
 
 #include <QDataStream>

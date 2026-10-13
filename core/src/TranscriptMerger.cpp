@@ -1,4 +1,5 @@
 #include "tanara/TranscriptMerger.h"
+#include "tanara/foundation/time/TimeFormat.h"
 #include "tanara/stt/SonioxTiming.h"
 
 #include <QString>
@@ -36,12 +37,7 @@ MergedTranscript mergeTranscripts(const QVector<TrackTranscript>& tracks) {
 
 namespace {
 QString formatTimestamp(qint64 ms) {
-    const qint64 totalSec = ms / 1000;
-    const qint64 mm = totalSec / 60;
-    const qint64 ss = totalSec % 60;
-    return QStringLiteral("%1:%2")
-        .arg(mm, 2, 10, QLatin1Char('0'))
-        .arg(ss, 2, 10, QLatin1Char('0'));
+    return timefmt::timestamp(ms);
 }
 
 } // namespace

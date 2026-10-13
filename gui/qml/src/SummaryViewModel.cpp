@@ -1,7 +1,7 @@
 #include "SummaryViewModel.h"
 
 #include "DemoText.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include "AppContext.h"
 #include "JobSupport.h"

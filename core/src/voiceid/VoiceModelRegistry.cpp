@@ -96,6 +96,17 @@ QString VoiceModelRegistry::resolvePath(const VoiceModelSpec& spec, const QStrin
     return user;
 }
 
+QString VoiceModelRegistry::defaultModelFileName()
+{
+    return spec(defaultModelId())->fileName;
+}
+
+QString VoiceModelRegistry::resolveDefaultModelPath(const QString& metaDir, const QString& appDir)
+{
+    // Single resolution rule: resolvePath (for the base model).
+    return resolvePath(*spec(defaultModelId()), metaDir, appDir);
+}
+
 QVector<VoiceModelSpec> VoiceModelRegistry::available(const QString& metaDir, const QString& appDir)
 {
     QVector<VoiceModelSpec> out;
@@ -139,13 +150,7 @@ bool VoiceModelRegistry::isFallbackActive(const QStringList& enabledIds, const Q
 
 QStringList VoiceModelRegistry::normalizeIds(const QStringList& ids)
 {
-    QStringList out;
-    for (const QString& id : ids) {
-        const QString t = id.trimmed();
-        if (!t.isEmpty() && !out.contains(t)) out << t;
-    }
-    std::sort(out.begin(), out.end());
-    return out;
+    return voicemodels::normalizeIds(ids);
 }
 
 } // namespace tanara

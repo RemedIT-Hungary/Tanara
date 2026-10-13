@@ -1,5 +1,6 @@
 #include "tanara/store/MeetingArchive.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/Version.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <miniz.h>
 
@@ -16,8 +17,6 @@
 #include <cstring>
 
 namespace tanara {
-
-QString libraryVersion();   // Version.cpp
 
 namespace {
 

@@ -1,7 +1,7 @@
 // tanara-cli participants. All output is English, no tr().
 #include "ParticipantsCommand.h"
 
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/ParticipantAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"

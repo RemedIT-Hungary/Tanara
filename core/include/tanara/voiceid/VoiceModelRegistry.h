@@ -4,6 +4,7 @@
 // parameters, license, source) and the resolution of the model file. A single resolution rule:
 // <metaDir>/models/<fileName>, otherwise <appDir>/models/<fileName>.
 // The list of enabled models is the "voiceModels" key of settings.json (SettingsManager).
+#include "tanara/domain/Voice.h"
 #include "tanara/voiceid/VoiceEmbedder.h"
 
 #include <QString>
@@ -30,7 +31,7 @@ class VoiceModelRegistry {
 public:
     // Model id of the "old" single-model paths (voiceprints and caches without a model field belong to this:
     // "campplus"). NOT the recommended model; for that see recommendedModelId().
-    static QString defaultModelId() { return QStringLiteral("campplus"); }
+    static QString defaultModelId() { return voicemodels::defaultModelId(); }
     // The recommended (and by default enabled) model: WeSpeaker ResNet34-LM. On four real meetings it
     // separated the speakers best.
     static QString recommendedModelId() { return QStringLiteral("wespeaker-resnet34-lm"); }
@@ -44,6 +45,13 @@ public:
     // <metaDir>/models/<fileName> if it exists; otherwise <appDir>/models/<fileName> if it exists;
     // otherwise the first (the "expected location", for an error message / download target). appDir may be empty.
     static QString resolvePath(const VoiceModelSpec& spec, const QString& metaDir, const QString& appDir);
+    // File name and resolution of the DEFAULT model (defaultModelId(), CAM++) with the rule above. Order:
+    //  1) <metaDir>/models/<name>  - the user's own (downloaded) model;
+    //  2) <appDir>/models/<name>   - a model bundled with the app (Windows zip/installer);
+    //  3) neither exists -> the path from 1) (the "expected location", for error messages / download target).
+    // appDir may be empty (e.g. without QCoreApplication); then 2) is skipped.
+    static QString defaultModelFileName();
+    static QString resolveDefaultModelPath(const QString& metaDir, const QString& appDir);
     // Of the built-in models, those whose file exists.
     static QVector<VoiceModelSpec> available(const QString& metaDir, const QString& appDir);
 

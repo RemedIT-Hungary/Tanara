@@ -5,7 +5,8 @@
 //   then at stop the per-track encoders are closed and a finished tanara::Meeting is produced.
 //   The mixed .mp3 (mixdown) is NOT made here; AppController makes it asynchronously so that
 //   stopping does not freeze the UI (see AppController::regenerateMixdown()).
-#include "tanara/Types.h"
+#include "tanara/domain/Audio.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QObject>
 #include <QString>

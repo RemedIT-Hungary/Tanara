@@ -9,7 +9,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QElapsedTimer>
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>

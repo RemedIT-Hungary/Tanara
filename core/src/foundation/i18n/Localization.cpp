@@ -1,6 +1,5 @@
-#include "tanara/Localization.h"
-#include "tanara/Logging.h"
-#include "tanara/SettingsManager.h"
+#include "tanara/foundation/i18n/Localization.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QCoreApplication>
 #include <QLocale>
@@ -12,10 +11,9 @@ namespace {
 QString s_activeLang = QStringLiteral("hu");
 }
 
-void installAppTranslator(const QString& metadataDir)
+void installAppTranslator(const QString& uiLanguage)
 {
-    SettingsManager sm(metadataDir);
-    QString lang = sm.settings().uiLanguage;
+    QString lang = uiLanguage;
 
     if (lang != QStringLiteral("hu") && lang != QStringLiteral("en")) {
         // "auto" (or an unknown value): the system locale decides: a Hungarian system -> hu, everything

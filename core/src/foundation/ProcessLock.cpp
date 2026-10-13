@@ -1,6 +1,6 @@
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -65,12 +65,12 @@ QString watcherLockPath()
     return QDir(paths::defaultMetadataDir()).filePath(QStringLiteral("watcher.lock"));
 }
 
-RecordingLock::RecordingLock(const QString& lockPath)
+ProcessLock::ProcessLock(const QString& lockPath)
     : m_path(lockPath)
 {
 }
 
-bool RecordingLock::acquire(const QString& meetingFolder)
+bool ProcessLock::acquire(const QString& meetingFolder)
 {
     QJsonObject o;
     o[QStringLiteral("pid")]           = QCoreApplication::applicationPid();
@@ -87,7 +87,7 @@ bool RecordingLock::acquire(const QString& meetingFolder)
     return true;
 }
 
-void RecordingLock::release()
+void ProcessLock::release()
 {
     if (!m_owned)
         return;
@@ -99,7 +99,7 @@ void RecordingLock::release()
     m_owned = false;
 }
 
-RecordingLock::Info RecordingLock::read(const QString& lockPath)
+ProcessLock::Info ProcessLock::read(const QString& lockPath)
 {
     Info info;
     QFile f(lockPath);

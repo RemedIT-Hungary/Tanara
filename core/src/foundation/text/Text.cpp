@@ -1,7 +1,9 @@
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
+
+#include <QRegularExpression>
 
 namespace tanara {
-namespace textfold {
+namespace text {
 
 QString normalize(const QString& s)
 {
@@ -94,5 +96,48 @@ QString snippet(const QString& text, const Range& match, Range* matchInSnippet,
     return out;
 }
 
-} // namespace textfold
+QString foldForSearch(const QString& text)
+{
+    // Canonical decomposition (o-double-acute -> o + a combining mark), then dropping the combining marks.
+    const QString decomposed = text.normalized(QString::NormalizationForm_D);
+    QString out;
+    out.reserve(decomposed.size());
+    for (const QChar c : decomposed) {
+        const QChar::Category cat = c.category();
+        if (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_SpacingCombining
+            || cat == QChar::Mark_Enclosing)
+            continue;
+        out += c;
+    }
+    return out.toCaseFolded();
+}
+
+QString asciiSlug(const QString& in, int maxLength, const QString& fallback)
+{
+    QString s;
+    for (const QChar c : in.normalized(QString::NormalizationForm_KD))
+        if (c.category() != QChar::Mark_NonSpacing) s.append(c);
+    static const QRegularExpression nonWord(QStringLiteral("[^A-Za-z0-9]+"));
+    s.replace(nonWord, QStringLiteral("-"));
+    static const QRegularExpression edges(QStringLiteral("^-+|-+$"));
+    s.replace(edges, QString());
+    s = s.toLower();
+    if (maxLength >= 0) s = s.left(maxLength);
+    return s.isEmpty() ? fallback : s;
+}
+
+QString slug(const QString& in, const QString& fallback)
+{
+    QString out;
+    for (QChar c : in) out += (c.isLetterOrNumber() ? c : QChar('-'));
+    while (out.contains(QStringLiteral("--"))) out.replace(QStringLiteral("--"), QStringLiteral("-"));
+    return out.isEmpty() ? fallback : out;
+}
+
+QString normalizeName(const QString& name)
+{
+    return normalize(name).simplified();
+}
+
+} // namespace text
 } // namespace tanara

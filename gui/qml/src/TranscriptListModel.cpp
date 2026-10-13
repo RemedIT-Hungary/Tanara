@@ -1,5 +1,5 @@
 #include "TranscriptListModel.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include "TranscriptEditorViewModel.h"
 

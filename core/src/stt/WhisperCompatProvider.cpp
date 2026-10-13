@@ -1,5 +1,5 @@
 #include "tanara/stt/WhisperCompatProvider.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -97,7 +97,7 @@ WhisperCompatJob::~WhisperCompatJob()
     }
 }
 
-void WhisperCompatJob::setState(JobState state)
+void WhisperCompatJob::setState(SttJobState state)
 {
     if (m_state == state)
         return;
@@ -116,7 +116,7 @@ void WhisperCompatJob::fail(const QString& error)
         m_reply->deleteLater();
         m_reply = nullptr;
     }
-    setState(JobState::Failed);
+    setState(SttJobState::Failed);
     emit failed(error);
 }
 
@@ -168,7 +168,7 @@ void WhisperCompatJob::start()
                              QByteArrayLiteral("Bearer ") + m_cfg.apiKey.toUtf8());
     request.setTransferTimeout(kTransferTimeoutMs);
 
-    setState(JobState::Uploading);
+    setState(SttJobState::Uploading);
     emit progress(0, tr("Hang feltöltése…"));
 
     m_reply = m_nam->post(request, multi);
@@ -181,7 +181,7 @@ void WhisperCompatJob::start()
                     emit uploadProgress(sent, total);
                 }
                 if (total > 0 && sent == total) {
-                    setState(JobState::Processing);
+                    setState(SttJobState::Processing);
                     emit progress(60, tr("Átírás folyamatban…"));
                 }
             });
@@ -281,7 +281,7 @@ void WhisperCompatJob::parseResponse(const QByteArray& body)
 
     m_finished = true;
     emit progress(100, tr("Kész"));
-    setState(JobState::Completed);
+    setState(SttJobState::Completed);
     emit finished(result);
 }
 

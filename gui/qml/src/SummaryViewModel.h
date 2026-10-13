@@ -47,7 +47,7 @@
 #include "TopicListModel.h"
 
 #include "tanara/Types.h"
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QHash>
 #include <QObject>

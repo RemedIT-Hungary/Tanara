@@ -7,7 +7,7 @@
 //   3. requestReduce        - global summary + merged action items from the per-topic analyses
 // AppController sequences the calls (the local model runs with parallel=1, so strictly in order).
 // The provider is NOT owned (never deleted).
-#include "tanara/Types.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/llm/ILlmProvider.h"
 
 #include <QObject>

@@ -1,4 +1,4 @@
-#include "tanara/Types.h"
+#include "tanara/foundation/Version.h"
 
 namespace tanara {
 // TANARA_VERSION is given by the build (CMakeLists.txt: project(VERSION) + TANARA_VERSION_SUFFIX).

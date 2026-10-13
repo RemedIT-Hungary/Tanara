@@ -32,6 +32,9 @@ public:
     // Sets up the detector + tray. false if no detector is available or there is no tray.
     bool start();
 
+    // The UI language from settings.json (uiLanguage: "auto"|"hu"|"en"), for installAppTranslator().
+    static QString configuredUiLanguage();
+
     // "HH:MM:SS" from elapsed seconds (for the balloon and the menu header).
     static QString formatElapsed(qint64 seconds);
     // The call notification text; outputName: the output the app is playing to ("" = unknown).

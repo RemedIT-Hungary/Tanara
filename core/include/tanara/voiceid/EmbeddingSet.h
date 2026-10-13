@@ -1,15 +1,14 @@
 #pragma once
 //
-// EmbeddingSet: the embeddings of an audio slice (or voiceprint) per model, and the fusion.
-// The model order is deterministic everywhere: the QMap sorts by key.
-#include <QMap>
+// The fusion of an EmbeddingSet (the per-model embeddings of an audio slice or voiceprint). The type
+// itself is in domain/Voice.h.
+#include "tanara/domain/Voice.h"
+
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 namespace tanara {
-
-using EmbeddingSet = QMap<QString /*modelId*/, QVector<float>>;
 
 namespace fusion {
 

@@ -10,7 +10,9 @@
 //
 // The decoder is replaceable (PcmDecoder); unit tests compute with a fake decoder.
 // The cache is in the meeting folder: tracks.activity.bin (tied to the track files' fingerprint).
-#include "tanara/Types.h"
+// The value types (TrackActivity, MeetingActivity) are in domain/Activity.h.
+#include "tanara/domain/Activity.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QString>
 #include <QVector>
@@ -19,36 +21,6 @@
 #include <optional>
 
 namespace tanara {
-
-struct TrackActivity {
-    QString trackId;                // id of the logical track's first span
-    TrackKind kind = TrackKind::Other;
-    int frameMs = 50;
-    qint64 originMs = 0;            // start of the first frame in MEETING time
-    QVector<float> dbAboveFloor;    // per frame >= 0; NaN = no data (a gap)
-    float floorDb = 0.0f;           // estimated noise floor (10th percentile of the frame dBs), dBFS
-
-    // How many frames carry data (not NaN).
-    int coveredFrames() const;
-    qint64 coveredMs() const { return qint64(coveredFrames()) * frameMs; }
-    qint64 endMs() const { return originMs + qint64(dbAboveFloor.size()) * frameMs; }
-};
-
-struct MeetingActivity {
-    QString fingerprint;            // activityFingerprint(): if it changes, we recompute
-    QVector<TrackActivity> tracks;
-
-    bool isEmpty() const { return tracks.isEmpty(); }
-    static QString filePath(const QString& meetingFolder);   // tracks.activity.bin
-    // The display cache (speech strip): of EVERY track, including those left out of the mixdown (for the
-    // keep / drop decision). See AppController::trackActivity.
-    static QString viewFilePath(const QString& meetingFolder);   // tracks.activity.view.bin
-    // An empty result (filled with the fingerprint, with no tracks) if there is no file / the fingerprint
-    // differs / the format is unknown. path: the cache file (empty = filePath(meetingFolder)).
-    static MeetingActivity load(const QString& meetingFolder, const QString& fingerprint,
-                                const QString& path = {});
-    bool save(const QString& meetingFolder, const QString& path = {}) const;
-};
 
 namespace trackactivity {
 

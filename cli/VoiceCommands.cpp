@@ -1,7 +1,7 @@
 // tanara-cli voice-models / voice-eval. All output is English, no tr().
 #include "VoiceCommands.h"
 
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/SpeakerAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"

@@ -12,7 +12,7 @@
 // PersonTagStats is an immutable snapshot; PersonTagSnapshot (statistics + manual tags + tag
 // names) can be passed between threads, so the evidence can also be computed on a background
 // thread (identification / recheck).
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QDateTime>
 #include <QHash>

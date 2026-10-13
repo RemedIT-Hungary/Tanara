@@ -44,7 +44,7 @@ private:
     QNetworkRequest makeRequest(const QString& path) const;
     void report(QNetworkReply* reply, const QByteArray& body) const;   // gateway-hook (onExchange)
     void fail(const QString& error);
-    void setState(JobState state);
+    void setState(SttJobState state);
     void abortInFlight();
 
     ProviderConfig m_cfg;
@@ -56,7 +56,7 @@ private:
 
     QString  m_fileId;
     QString  m_transcriptionId;
-    JobState m_state = JobState::Idle;
+    SttJobState m_state = SttJobState::Idle;
     bool     m_finished = false;           // so we do not emit again after finished/failed
 
     QElapsedTimer m_clock;                 // total elapsed time since the job started (UI progress)

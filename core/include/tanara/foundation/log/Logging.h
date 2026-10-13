@@ -56,13 +56,6 @@ void initLogging(const LogOptions& opts);
 QString  currentLogFilePath();   // absolute path of the main log file ("" if toFile=false)
 LogLevel currentLogLevel();      // the level passed to initLogging
 
-class AppController;
-
-// Startup diagnostics: version, platform, resolved folders, settings (SECRETS OMITTED),
-// provider selection, audio devices seen, meetings in the store.
-// The detailed dump appears at DEBUG level; the header at INFO.
-void logStartupDiagnostics(const AppController& app);
-
 } // namespace tanara
 
 #include <QElapsedTimer>

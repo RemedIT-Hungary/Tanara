@@ -4,8 +4,8 @@
 // the share of frames near speech level (Track::speechRatio). If a track has practically no speech,
 // it is left out of the mixdown (Track::excludedReason = "noSpeech", active = false); the user can take
 // it back with the "Include" action. Pure functions, no I/O.
-#include "tanara/Types.h"
-#include "tanara/edit/TrackActivity.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Activity.h"
 
 #include <QStringList>
 

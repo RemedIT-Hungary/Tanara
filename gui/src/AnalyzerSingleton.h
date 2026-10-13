@@ -7,7 +7,7 @@
 // With TANARA_HOME the name gets the metadata folder's hash appended
 // (tanara::instanceScopeSuffix), like the recorder's: a sandbox instance and the user's real
 // analyzer never see each other.
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 
 #include <QDataStream>
 #include <QLocalServer>

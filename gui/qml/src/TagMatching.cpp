@@ -1,6 +1,6 @@
 #include "TagMatching.h"
 
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QSet>
 
@@ -10,12 +10,12 @@ namespace tanara_qml::tagmatch {
 
 QString normalizeName(const QString& name)
 {
-    return tanara::textfold::normalize(name).simplified();
+    return tanara::text::normalize(name).simplified();
 }
 
 QString foldName(const QString& name)
 {
-    return tanara::textfold::fold(tanara::textfold::normalize(name));
+    return tanara::text::fold(tanara::text::normalize(name));
 }
 
 QString key(const QString& name)
@@ -121,7 +121,7 @@ QVector<InputRow> inputRows(const QVector<TagItem>& all, const QVector<TagItem>&
 
     auto matchRow = [&](const TagItem* t, const QString& kind) {
         InputRow r{kind, t->id, t->name, t->meetingCount, -1, 0};
-        const QString nfc = tanara::textfold::normalize(t->name);
+        const QString nfc = tanara::text::normalize(t->name);
         for (const Hit& h : std::as_const(hits)) {
             if (h.tag != t) continue;
             // The highlight is exact only if the name's NFC form equals the stored one.

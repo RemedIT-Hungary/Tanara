@@ -4,10 +4,10 @@
 #include "RecorderViewModel.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Logging.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 
 #include <QDir>
 #include <QGuiApplication>

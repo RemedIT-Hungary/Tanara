@@ -1,6 +1,7 @@
 #pragma once
 //
-// RecordingLock: a "is a recording going on" marker file (~/.tanara/recording.lock).
+// ProcessLock (formerly RecordingLock): a PID-checked marker file between processes, today the
+// "is a recording going on" lock (~/.tanara/recording.lock).
 // The recorder (tanara --record) takes it at startup and releases it at shutdown; the watcher
 // reads it so it does not offer to record if one is already running. Headless (core).
 //
@@ -23,9 +24,9 @@ QString instanceScopeSuffix();
 QString recordingLockPath(const QString& configuredMetadataDir = QString());
 QString watcherLockPath();
 
-class RecordingLock {
+class ProcessLock {
 public:
-    explicit RecordingLock(const QString& lockPath);
+    explicit ProcessLock(const QString& lockPath);
 
     // At recording start: writes its own PID + the meeting folder. true on success.
     bool acquire(const QString& meetingFolder);
@@ -45,5 +46,8 @@ private:
     QString m_path;
     bool    m_owned = false;         // whether we took it (release deletes only then)
 };
+
+// The old name; kept until the module folders move (P5).
+using RecordingLock = ProcessLock;
 
 } // namespace tanara

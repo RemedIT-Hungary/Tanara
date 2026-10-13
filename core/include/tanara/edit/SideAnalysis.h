@@ -30,7 +30,8 @@
 // inferred from the confirmed lines > the default learned in people.json > own name = Local
 // (or the speaker bound to a track). The inferred side overrides the default only with a clear
 // majority (kOverrideMinLines / kOverrideMajority).
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
+#include "tanara/domain/Participant.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/edit/TrackActivity.h"
 

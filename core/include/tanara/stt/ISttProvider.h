@@ -2,7 +2,8 @@
 //
 // STT plugin contract. Async, signal-based (fits the Qt event loop), and
 // prepared for a later live/streaming mode (startLive()).
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
+#include "tanara/domain/Job.h"
 #include <QObject>
 
 namespace tanara {
@@ -16,7 +17,7 @@ public:
     virtual void cancel() = 0;
 
 signals:
-    void stateChanged(tanara::JobState state);
+    void stateChanged(tanara::SttJobState state);
     void progress(int percent, const QString& message);
     // REAL progress of the audio upload in bytes (from the network layer). During transcription the
     // providers give no percentage; only the stateChanged states exist.

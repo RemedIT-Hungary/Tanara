@@ -1,5 +1,6 @@
 // tanara-cli track-sides. All output is English, no tr().
 #include "TrackSidesCommand.h"
+#include "tanara/foundation/time/TimeFormat.h"
 
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/SideAnalysis.h"
@@ -33,9 +34,7 @@ QString kindName(TrackKind k)
 
 QString clock(qint64 ms)
 {
-    const qint64 s = ms / 1000;
-    return QStringLiteral("%1:%2:%3").arg(s / 3600).arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
-        .arg(s % 60, 2, 10, QLatin1Char('0'));
+    return timefmt::hms(ms);
 }
 
 QString num(double v, int prec = 2) { return std::isnan(v) ? QStringLiteral("-") : QString::number(v, 'f', prec); }

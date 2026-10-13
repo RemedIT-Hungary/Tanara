@@ -9,7 +9,7 @@
 #include <QTemporaryDir>
 #include <QFile>
 
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 
 using namespace tanara;
 

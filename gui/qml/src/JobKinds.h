@@ -3,7 +3,7 @@
 // Tanara QML: the values of tanara::JobKind from QML: `JobKinds.Transcribe` etc.
 // shell.cancelJob(meetingId, kind) expects this number. Only an enum carrier (not instantiable).
 //
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QObject>
 #include <QtQml/qqmlregistration.h>

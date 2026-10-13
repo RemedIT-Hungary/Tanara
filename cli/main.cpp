@@ -30,6 +30,7 @@
 //                                                      lines with markers; "ignored" marking (ReviewCommand.cpp)
 //   reslice <meeting-folder> [--dry-run] [--json]   re-pad Soniox lines, carrying ids over (ResliceCommand.cpp)
 #include "tanara/AppController.h"
+#include "tanara/app/StartupDiagnostics.h"
 #include "CloudCommands.h"
 #include "ParticipantsCommand.h"
 #include "ResliceCommand.h"
@@ -38,7 +39,7 @@
 #include "TrackSidesCommand.h"
 #include "VoiceCommands.h"
 #include "tanara/cloud/CloudAccount.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
 #include "tanara/import/AudioImporter.h"

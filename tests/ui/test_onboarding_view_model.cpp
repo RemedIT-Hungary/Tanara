@@ -14,7 +14,7 @@
 #include "OnboardingWindowHost.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/store/JsonSerialization.h"
 

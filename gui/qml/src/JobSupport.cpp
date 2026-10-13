@@ -1,4 +1,5 @@
 #include "JobSupport.h"
+#include "tanara/foundation/time/TimeFormat.h"
 
 #include "AppContext.h"
 
@@ -30,13 +31,7 @@ bool demoMode(tanara::AppController* controller)
 
 QString formatDuration(qint64 ms)
 {
-    if (ms < 0)
-        return QStringLiteral("–");
-    const qint64 total = (ms + 500) / 1000;
-    const qint64 h = total / 3600, m = (total % 3600) / 60, s = total % 60;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'));
+    return tanara::timefmt::duration(ms);
 }
 
 QString formatEta(int seconds)

@@ -1,6 +1,6 @@
 #include "tanara/library/MeetingNotes.h"
 
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/stt/ISttProvider.h"
 
 #include <QRegularExpression>
@@ -119,7 +119,7 @@ void fillSttContext(SttRequest& req, const Meeting& m)
 QStringList titleWords(const QString& title)
 {
     static const QRegularExpression splitRe(QStringLiteral("[^\\p{L}\\p{N}]+"));
-    const QString folded = textfold::fold(textfold::normalize(title));
+    const QString folded = text::fold(text::normalize(title));
     QStringList out;
     for (const QString& w : folded.split(splitRe, Qt::SkipEmptyParts)) {
         if (w.size() < 2)

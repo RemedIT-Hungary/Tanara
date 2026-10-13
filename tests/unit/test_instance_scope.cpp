@@ -5,8 +5,8 @@
 #include <QtTest>
 #include <QTemporaryDir>
 
-#include "tanara/Paths.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/ProcessLock.h"
 
 using namespace tanara;
 

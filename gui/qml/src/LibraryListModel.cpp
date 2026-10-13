@@ -5,7 +5,7 @@
 #include "ShellFormat.h"
 
 #include "tanara/AppController.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/tags/TagService.h"
 
 #include <algorithm>
@@ -32,7 +32,7 @@ QString clipBefore(const QString& before)
 
 struct Parts { QString before, match, after; };
 
-Parts split(const QString& text, const tanara::textfold::Range& r, bool clip)
+Parts split(const QString& text, const tanara::text::Range& r, bool clip)
 {
     if (!r.isValid() || r.start + r.length > text.size())
         return {QString(), QString(), text};
@@ -383,11 +383,11 @@ QVariantList LibraryListModel::tagOptionsMatching(const QString& text) const
     std::stable_partition(tags.begin(), tags.end(), [this](const tanara::TagUsage& u) {
         return m_query.tags.contains(u.tag.id);
     });
-    const QString needle = tanara::textfold::foldQuery(text);
+    const QString needle = tanara::text::foldQuery(text);
     QVariantList out;
     for (const tanara::TagUsage& u : std::as_const(tags)) {
         if (!needle.isEmpty()
-            && !tanara::textfold::find(tanara::textfold::fold(tanara::textfold::normalize(u.tag.name)), needle).isValid())
+            && !tanara::text::find(tanara::text::fold(tanara::text::normalize(u.tag.name)), needle).isValid())
             continue;
         out.append(tagOption(u));
     }

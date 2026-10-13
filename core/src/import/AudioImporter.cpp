@@ -1,7 +1,8 @@
 #include "tanara/import/AudioImporter.h"
 #include "tanara/store/JsonSerialization.h"
 #include "tanara/store/MeetingStore.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -29,15 +30,7 @@ QString trImport(const char* text)
 // File-name part for the track: accent-free, lowercase, hyphenated ASCII (like the recorded tracks').
 QString slugify(const QString& in)
 {
-    QString s;
-    for (const QChar c : in.normalized(QString::NormalizationForm_KD))
-        if (c.category() != QChar::Mark_NonSpacing) s.append(c);
-    static const QRegularExpression nonWord(QStringLiteral("[^A-Za-z0-9]+"));
-    s.replace(nonWord, QStringLiteral("-"));
-    static const QRegularExpression edges(QStringLiteral("^-+|-+$"));
-    s.replace(edges, QString());
-    s = s.toLower().left(48);
-    return s.isEmpty() ? QStringLiteral("sav") : s;
+    return text::asciiSlug(in, 48, QStringLiteral("sav"));
 }
 
 // The track's name so that TrackCatalog's shortening (tracknames::shortDeviceName, which cuts the

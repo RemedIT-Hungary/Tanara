@@ -21,7 +21,7 @@
 //
 #include "TagBackend.h"
 
-#include "tanara/tags/TagTypes.h"
+#include "tanara/domain/Tag.h"
 
 #include <QHash>
 #include <QPointer>

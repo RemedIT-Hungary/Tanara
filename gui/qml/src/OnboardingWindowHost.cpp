@@ -5,7 +5,7 @@
 #include "SettingsDialogs.h"
 
 #include "tanara/AppController.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/SettingsManager.h"
 
 #include <QQmlComponent>

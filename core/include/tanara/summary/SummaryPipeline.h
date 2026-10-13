@@ -12,7 +12,8 @@
 //      action items from the notes (selecting, not copying): renderNotesForMerge + parseMergeJson.
 // For a meeting with one part, 2+4 is ONE call ("single" prompt): TOPICS + SUMMARY JSON: parseSingle.
 // The orchestration (call order, cache, cancel) lives in SummaryService.
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
+#include "tanara/domain/Summary.h"
 #include "tanara/summary/SummarySources.h"
 
 #include <QByteArray>

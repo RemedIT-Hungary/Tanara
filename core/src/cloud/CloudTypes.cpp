@@ -1,5 +1,6 @@
 #include "tanara/cloud/CloudTypes.h"
-#include "tanara/Types.h"
+#include "tanara/foundation/time/TimeFormat.h"
+#include "tanara/foundation/Version.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -117,12 +118,7 @@ QString formatHours(double hours, const QString& lang)
 
 QString formatDuration(qint64 ms)
 {
-    if (ms < 0) ms = 0;
-    const qint64 s = ms / 1000;
-    const qint64 h = s / 3600, mnt = (s % 3600) / 60, sec = s % 60;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3").arg(h).arg(mnt, 2, 10, QLatin1Char('0')).arg(sec, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(mnt).arg(sec, 2, 10, QLatin1Char('0'));
+    return timefmt::clock(ms);
 }
 
 QString vatLabel(const QString& vatMode)

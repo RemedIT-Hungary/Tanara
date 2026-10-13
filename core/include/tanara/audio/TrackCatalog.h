@@ -6,7 +6,7 @@
 //
 // (Restoring / individually deleting a track and the mixdown live in AppController:
 //  restoreTrack / deleteTrack / regenerateMixdown. The waveform: WaveformService.)
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QMap>
 #include <QObject>

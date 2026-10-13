@@ -2,7 +2,7 @@
 //
 // Merges per-track transcripts into one chronological, per-speaker transcript.
 // The implementation of MergedTranscript::renderMarkdown() also lives here (in the .cpp).
-#include "tanara/Types.h"
+#include "tanara/domain/Transcript.h"
 #include <QVector>
 
 namespace tanara {

@@ -3,7 +3,7 @@
 #include <QCoreApplication>
 
 #include "tanara/audio/TrackCatalog.h"
-#include "tanara/audio/TrackTiming.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/edit/CandidateRanker.h"
 #include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/TrackSpeech.h"
@@ -27,13 +27,6 @@
 #include <cmath>
 
 namespace tanara {
-
-qint64 VoiceCluster::speechMs() const
-{
-    qint64 sum = 0;
-    for (const auto& w : windows) sum += w.second - w.first;
-    return sum;
-}
 
 // ---- persisted analysis ------------------------------------------------------------------
 

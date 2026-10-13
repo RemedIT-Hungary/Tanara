@@ -7,32 +7,14 @@
 // meeting's `Track::startOffsetMs`. Every time range the program stores (transcript timestamps,
 // the "file#start-end" references of voiceprint samples) is meant in MEETING time; before reading from
 // a track file it must be converted to file time (meetingToFileRange).
-#include "tanara/Types.h"
+#include "tanara/domain/Audio.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QtGlobal>
 
 namespace tanara::tracktiming {
 
-// A time range within a file (ms). Invalid (valid() == false) if the requested meeting range falls
-// entirely before the track's start, or is empty.
-struct FileRange {
-    qint64 startMs = -1;
-    qint64 endMs = -1;
-    bool valid() const { return startMs >= 0 && endMs > startMs; }
-};
-
-// Meeting time [startMs, endMs) -> the track file's time. The part before the track's start is cut
-// off (there is no audio before the file's zero point); if fileDurationMs >= 0, the part after the
-// file's end too. If nothing remains, it returns an invalid range.
-FileRange meetingToFileRange(qint64 offsetMs, qint64 startMs, qint64 endMs,
-                             qint64 fileDurationMs = -1);
-
-// The same for a track (with its startOffsetMs).
-inline FileRange fileRange(const Track& track, qint64 startMs, qint64 endMs,
-                           qint64 fileDurationMs = -1)
-{
-    return meetingToFileRange(track.startOffsetMs, startMs, endMs, fileDurationMs);
-}
+// FileRange, meetingToFileRange and fileRange (meeting time -> file time) are in domain/Meeting.h.
 
 // ---- filling capture gaps --------------------------------------------------------------
 //

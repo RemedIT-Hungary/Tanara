@@ -20,7 +20,7 @@
 //    final name and meeting.json. After an error / cancel the folder is deleted.
 //  - The importer does NOT make a mixdown: the caller (AppController) starts it per mixdownMode,
 //    exactly as at the end of a recording.
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QObject>
 #include <QVector>

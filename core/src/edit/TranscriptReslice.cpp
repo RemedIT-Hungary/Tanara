@@ -3,7 +3,7 @@
 #include "tanara/edit/UtteranceEmbeddings.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/stt/SonioxTiming.h"
-#include "tanara/summary/SummarySources.h"
+#include "tanara/domain/Summary.h"
 
 #include <QDir>
 #include <QFile>

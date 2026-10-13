@@ -1,12 +1,12 @@
 #include "tanara/tags/MeetingProfiles.h"
 #include "tanara/tags/TagNames.h"
-#include "tanara/Logging.h"
+#include "tanara/foundation/log/Logging.h"
 #include "tanara/edit/SpeakerOverlay.h"
 #include "tanara/library/MeetingLibrary.h"
 #include "tanara/library/MeetingNotes.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/text/Text.h"
 #include "tanara/store/MeetingStore.h"
-#include "tanara/store/SharedFile.h"
+#include "tanara/foundation/SharedFile.h"
 
 #include <QDir>
 #include <QJsonArray>
@@ -120,11 +120,11 @@ QVector<QPair<QString, QString>> terms(const QString& text)
 {
     static const QRegularExpression splitRe(QStringLiteral("[^\\p{L}\\p{N}]+"));
     QVector<QPair<QString, QString>> out;
-    const QString nfc = textfold::normalize(text);
+    const QString nfc = text::normalize(text);
     for (const QString& tok : nfc.split(splitRe, Qt::SkipEmptyParts)) {
         if (tok.size() < 3) continue;
         if (std::any_of(tok.cbegin(), tok.cend(), [](QChar c) { return c.isDigit(); })) continue;
-        const QString folded = textfold::fold(tok);
+        const QString folded = text::fold(tok);
         if (isStopWord(folded)) continue;
         const QString s = stem(folded);
         if (s.size() < 3 || isStopWord(s)) continue;

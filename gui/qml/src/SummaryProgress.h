@@ -13,7 +13,7 @@
 //   run, a separate sentence says so. A Summarize task without phases (the per-topic
 //   analysis' closing summary) and every other task: stage empty, the task's title, indeterminate.
 //
-#include "tanara/jobs/JobTypes.h"
+#include "tanara/domain/Job.h"
 
 #include <QCoreApplication>
 #include <QString>

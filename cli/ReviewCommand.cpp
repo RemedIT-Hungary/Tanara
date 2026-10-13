@@ -1,5 +1,6 @@
 // tanara-cli review. All output is English, no tr() (the Hungarian group labels are omitted).
 #include "ReviewCommand.h"
+#include "tanara/foundation/time/TimeFormat.h"
 
 #include "tanara/SettingsManager.h"
 #include "tanara/edit/CandidateRanker.h"
@@ -250,9 +251,7 @@ namespace {
 
 QString clock(qint64 ms)
 {
-    const qint64 s = ms / 1000;
-    return QStringLiteral("%1:%2.%3").arg(s / 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'))
-        .arg((ms % 1000) / 100);
+    return timefmt::clockMs(ms);
 }
 
 int setIgnored(const QString& folder, const QVector<TranscriptLine>& lines, const QStringList& ids, bool ignored)

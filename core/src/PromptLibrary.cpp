@@ -1,6 +1,6 @@
 #include "tanara/PromptLibrary.h"
-#include "tanara/Paths.h"
-#include "tanara/library/TextFold.h"
+#include "tanara/foundation/paths/Paths.h"
+#include "tanara/foundation/text/Text.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -308,7 +308,7 @@ QString summaryLanguageName(const QString& language)
         {QStringLiteral("japan"), QStringLiteral("Japanese")},
         {QStringLiteral("kinai"), QStringLiteral("Chinese")},
     };
-    const QString key = textfold::foldQuery(lang).trimmed();
+    const QString key = text::foldQuery(lang).trimmed();
     const auto it = names.constFind(key);
     return it != names.constEnd() ? it.value() : lang;
 }

@@ -1,7 +1,8 @@
 #include "tanara/AppController.h"
 
-#include "tanara/Logging.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/log/Logging.h"
+#include "tanara/foundation/text/Text.h"
+#include "tanara/foundation/paths/Paths.h"
 #include "tanara/PromptLibrary.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
@@ -27,7 +28,7 @@
 #include "tanara/SummaryService.h"
 #include "tanara/ComplexSummaryService.h"
 #include "tanara/TranscriptMerger.h"
-#include "tanara/Localization.h"
+#include "tanara/foundation/i18n/Localization.h"
 #include "tanara/cloud/CloudAccount.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/jobs/JobErrors.h"
@@ -467,22 +468,19 @@ void saveLastDevices(const QString& path, const QStringList& names) {
     if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); f.commit(); }
 }
 
-QString sttPhase(JobState s) {
+QString sttPhase(SttJobState s) {
     switch (s) {
-    case JobState::Uploading:  return QCoreApplication::translate("AppController", "Hang feltöltése…");
-    case JobState::Queued:     return QCoreApplication::translate("AppController", "Várakozás a Soniox sorban…");
-    case JobState::Processing: return QCoreApplication::translate("AppController", "Átírás folyamatban…");
-    case JobState::Completed:  return QCoreApplication::translate("AppController", "Sáv kész");
-    case JobState::Failed:     return QCoreApplication::translate("AppController", "Hiba");
+    case SttJobState::Uploading:  return QCoreApplication::translate("AppController", "Hang feltöltése…");
+    case SttJobState::Queued:     return QCoreApplication::translate("AppController", "Várakozás a Soniox sorban…");
+    case SttJobState::Processing: return QCoreApplication::translate("AppController", "Átírás folyamatban…");
+    case SttJobState::Completed:  return QCoreApplication::translate("AppController", "Sáv kész");
+    case SttJobState::Failed:     return QCoreApplication::translate("AppController", "Hiba");
     default:                   return QStringLiteral("…");
     }
 }
 
 QString slugify(const QString& s) {
-    QString out;
-    for (QChar c : s) out += (c.isLetterOrNumber() ? c : QChar('-'));
-    while (out.contains(QStringLiteral("--"))) out.replace(QStringLiteral("--"), QStringLiteral("-"));
-    return out.isEmpty() ? QStringLiteral("meeting") : out;
+    return text::slug(s, QStringLiteral("meeting"));
 }
 
 // The last FAILED HTTP exchange of a provider call (for the remembered error's technical line).
@@ -1117,7 +1115,7 @@ AppController::AppController(QObject* parent)
     d->voiceprints = std::make_unique<VoiceprintStore>(
         QDir(d->metaDir).filePath(QStringLiteral("voiceprints.json")));
     d->appDir = QCoreApplication::instance() ? QCoreApplication::applicationDirPath() : QString();
-    d->voiceModelPath = paths::resolveVoiceModelPath(d->metaDir, d->appDir);
+    d->voiceModelPath = VoiceModelRegistry::resolveDefaultModelPath(d->metaDir, d->appDir);
     d->backfillPool.setMaxThreadCount(1);
     d->backfillPool.setObjectName(QStringLiteral("tanara-voiceprint-backfill"));
     d->analysisPool.setMaxThreadCount(2);
@@ -2859,19 +2857,19 @@ void AppController::transcribeFromMixdown(const QString& meetingId)
             d->jobs->setStagePercent(meetingId, JobKind::Transcribe, QStringLiteral("upload"),
                                      int(sent * 100 / total));
     });
-    connect(job, &SttJob::stateChanged, this, [this, id = m.id, diarizing](JobState st) {
+    connect(job, &SttJob::stateChanged, this, [this, id = m.id, diarizing](SttJobState st) {
         emit jobProgress(id, sttPhase(st));
         // During transcription the providers give NO percentage, only a state (upload / queued / processing).
         // The provider does speaker separation in the same pass as transcription, so the two stages run and
         // close together.
         const JobKind k = JobKind::Transcribe;
-        if (st == JobState::Uploading) {
+        if (st == SttJobState::Uploading) {
             d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Running, 0);
-        } else if (st == JobState::Queued || st == JobState::Processing) {
+        } else if (st == SttJobState::Queued || st == SttJobState::Processing) {
             d->jobs->setStage(id, k, QStringLiteral("upload"), StageState::Done);
             d->jobs->setStage(id, k, QStringLiteral("transcribe"), StageState::Running);
             d->jobs->setStageDetail(id, k, QStringLiteral("transcribe"),
-                                    st == JobState::Queued ? tr("sorban áll") : QString());
+                                    st == SttJobState::Queued ? tr("sorban áll") : QString());
             if (diarizing)
                 d->jobs->setStage(id, k, QStringLiteral("diarize"), StageState::Running);
         }

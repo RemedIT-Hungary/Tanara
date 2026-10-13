@@ -10,7 +10,6 @@
 //  - error: the Error state with a message; the queue stops (Continue = resume()).
 //  - enqueue(meetingId): background embedding of a meeting transcribed later (if there is a provider).
 // lastRun and the model go into <metadataDir>/embedding-state.json.
-#include "tanara/Types.h"
 
 #include <QDateTime>
 #include <QObject>

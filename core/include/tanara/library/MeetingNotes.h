@@ -12,7 +12,7 @@
 //    "<Project> weekly meeting"). Titles are compared word by word, accent- and case-insensitive,
 //    ignoring dates and numbers (titleWords / titleSimilarity). With a few hundred meetings one
 //    call takes microseconds.
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 
 #include <QDateTime>
 #include <QString>

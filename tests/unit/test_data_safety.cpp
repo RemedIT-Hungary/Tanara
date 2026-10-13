@@ -15,11 +15,11 @@
 
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/TrackCatalog.h"
-#include "tanara/detect/RecordingLock.h"
+#include "tanara/foundation/ProcessLock.h"
 #include "tanara/store/KeyStore.h"
 #include "tanara/store/MeetingStore.h"
 #include "tanara/store/PeopleStore.h"
-#include "tanara/store/SharedFile.h"
+#include "tanara/foundation/SharedFile.h"
 #include "tanara/store/VoiceprintStore.h"
 
 using namespace tanara;

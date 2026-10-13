@@ -21,12 +21,12 @@
 //
 // "Unidentifiable" lines (OverlayUtterance::ignored) go into none of the kinds and do not count in
 // the ranking's profiles (line count, line sum, confirmed core) either.
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 #include "tanara/edit/CandidateRanker.h"
-#include "tanara/edit/Evidence.h"
+#include "tanara/domain/Participant.h"
 #include "tanara/edit/SideAnalysis.h"
 #include "tanara/edit/SpeakerOverlay.h"
-#include "tanara/edit/TrackActivity.h"
+#include "tanara/domain/Activity.h"
 
 #include <QHash>
 #include <QMetaType>

@@ -1,5 +1,5 @@
 #include "tanara/detect/Autostart.h"
-#include "tanara/Paths.h"
+#include "tanara/foundation/paths/Paths.h"
 
 #include <QDir>
 #include <QFile>

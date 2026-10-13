@@ -6,7 +6,7 @@
 //   yyyy-MM-dd_HHmm_<titleslug>_<shortid>
 // containing meeting.json (JsonSerialization). <metadataDir>/index.db (Qt6::Sql,
 // SQLite) only caches the metadata for fast listing and can be rebuilt from disk any time.
-#include "tanara/Types.h"
+#include "tanara/domain/Meeting.h"
 #include <QObject>
 #include <QVector>
 
