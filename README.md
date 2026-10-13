@@ -82,6 +82,8 @@ sudo dnf install cmake ninja-build gcc-c++ \
 
 ## Build
 
+Full build instructions (Fedora, Windows, options, tests, CI): [docs/BUILD.md](docs/BUILD.md).
+
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build
