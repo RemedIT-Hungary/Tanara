@@ -459,10 +459,7 @@ ApplicationWindow {
                         StepHeader {
                             counter: window.stepCounter
                             title: qsTr("Szolgáltatások")
-                            lead: model.cloudChosen
-                                ? qsTr("A Tanara Cloudot választottad: az átírás és az összefoglaló a fiókodon fut, "
-                                       + "saját kulcs nem kell. A Beállításokban bármikor válthatsz saját kulcsra.")
-                                : qsTr("A Tanara a saját kulcsoddal dolgozik: az átírást a Soniox végzi (API-kulcs kell "
+                            lead: qsTr("A Tanara a saját kulcsoddal dolgozik: az átírást a Soniox végzi (API-kulcs kell "
                                        + "hozzá), az összefoglalót egy OpenAI-kompatibilis végpont — például a gépeden "
                                        + "futó LM Studio vagy egy felhős szolgáltató.")
                         }
@@ -500,14 +497,12 @@ ApplicationWindow {
                             }
                         }
                         Note {
-                            visible: !model.cloudChosen
                             text: qsTr("A kulcs a gépeden marad. A Beállításokban a kapcsolatot is kipróbálhatod; "
                                        + "átírás nélkül is rögzíthetsz, a kulcs csak a feldolgozáshoz kell.")
                         }
-                        Note {
-                            visible: !model.cloudLive
-                            iconName: "cloud"
-                            text: qsTr("Tanara Cloud: hamarosan — átírás és összefoglaló saját kulcs nélkül.")
+                        CloudComingSoon {
+                            compact: true
+                            width: parent.width
                         }
                         // Voice model: if WeSpeaker is missing it can be downloaded from here too; skippable.
                         VoiceModelOnboardingRow {

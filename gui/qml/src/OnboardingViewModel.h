@@ -72,11 +72,6 @@ class OnboardingViewModel : public QObject {
     Q_PROPERTY(QString llmStatus READ llmStatus NOTIFY readinessChanged)
     Q_PROPERTY(bool sttReady READ sttReady NOTIFY readinessChanged)
     Q_PROPERTY(bool llmReady READ llmReady NOTIFY readinessChanged)
-    // Live (sign-in) Tanara Cloud mode: only then is Cloud selectable.
-    Q_PROPERTY(bool cloudLive READ cloudLive NOTIFY readinessChanged)
-    // The user chose Tanara Cloud (in live mode both steps run on the Cloud): the step then
-    // does not show the own-key explanation.
-    Q_PROPERTY(bool cloudChosen READ cloudChosen NOTIFY readinessChanged)
 
     // ---- Call watcher ----
     Q_PROPERTY(bool watcherAutostart READ watcherAutostart WRITE setWatcherAutostart NOTIFY watcherChanged)
@@ -125,8 +120,6 @@ public:
     QString llmStatus() const { return m_llmStatus; }
     bool sttReady() const { return m_sttReady; }
     bool llmReady() const { return m_llmReady; }
-    bool cloudLive() const { return m_cloudLive; }
-    bool cloudChosen() const { return m_cloudChosen; }
 
     bool watcherAutostart() const { return m_draft.watcherAutostart; }
     void setWatcherAutostart(bool on);
@@ -212,7 +205,6 @@ private:
 
     QString m_sttStatus, m_llmStatus;
     bool m_sttReady = false, m_llmReady = false;
-    bool m_cloudLive = false, m_cloudChosen = false;
 };
 
 } // namespace tanara_qml

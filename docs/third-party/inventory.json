@@ -623,7 +623,7 @@
     "shippedIn": [
       "none"
     ],
-    "notes": "No notify-send, xdg-open or pactl invocations were found; QDesktopServices::openUrl (Qt) opens links/folders (gui/src/SettingsWidgetsDialogs.cpp, gui/src/cloud/*).",
+    "notes": "No notify-send, xdg-open or pactl invocations were found; QDesktopServices::openUrl (Qt) opens links/folders (gui/src/SettingsWidgetsDialogs.cpp).",
     "id": "linux-desktop-integration",
     "name": "freedesktop.org Notifications (D-Bus), XDG autostart, QSystemTrayIcon/StatusNotifier",
     "category": "runtime-tool",
@@ -858,8 +858,7 @@
     "whereInCode": [
       "core/include/tanara/cloud/CloudTypes.h (DefaultBaseUrl, PrivacyUrl https://app.tanara.remedit.hu/legal/privacy)",
       "docs/cloud-gateway-api.yaml",
-      "gui/src/cloud/*",
-      "gui/qml/src/SettingsCloudModel.cpp",
+      "gui/qml/CloudComingSoon.qml (the only UI: a 'coming soon' notice with a link)",
       "CMake options TANARA_BUILD_CLOUD, TANARA_CLOUD_TEASER"
     ],
     "attribution": {

@@ -3,7 +3,7 @@
 // ShellBridge: what the QML shell asks of the Qt Widgets world (App.bridge).
 //
 // The implementation lives in gui/src (QmlShellBridge: it knows the Settings / People /
-// recorder / Tanara Cloud Widgets classes) and main.cpp installs it:
+// recorder Widgets classes) and main.cpp installs it:
 //   AppContext::instance()->setBridge(bridge)
 // Only the abstract interface is here, so ShellActions (and tests with a fake bridge) can
 // be used without linking Widgets. Without a bridge (demo, screenshot) ShellActions skips
@@ -14,30 +14,14 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QVariantList>
 
 namespace tanara_qml {
 
 class ShellBridge : public QObject {
     Q_OBJECT
 
-    // ---- Tanara Cloud chrome: balance chip + bars ----
-    Q_PROPERTY(bool cloudChipVisible READ cloudChipVisible NOTIFY cloudChromeChanged)
-    Q_PROPERTY(QString cloudChipText READ cloudChipText NOTIFY cloudChromeChanged)
-    // "normal" | "warn" (low balance) | "danger" (used up)
-    Q_PROPERTY(QString cloudChipTone READ cloudChipTone NOTIFY cloudChromeChanged)
-    Q_PROPERTY(QString cloudChipToolTip READ cloudChipToolTip NOTIFY cloudChromeChanged)
-    // [{ key, level: "critical"|"warning"|"info", text, cta, closable }]
-    Q_PROPERTY(QVariantList cloudBanners READ cloudBanners NOTIFY cloudChromeChanged)
-
 public:
     using QObject::QObject;
-
-    virtual bool cloudChipVisible() const = 0;
-    virtual QString cloudChipText() const = 0;
-    virtual QString cloudChipTone() const = 0;
-    virtual QString cloudChipToolTip() const = 0;
-    virtual QVariantList cloudBanners() const = 0;
 
     // ---- Widgets dialogs ----
     // page: "" | "providers" | "watcher" | "cloud" | "summary" | "recording"
@@ -96,23 +80,10 @@ public:
     // Pick a meeting folder (track_*.ogg + meeting.json) to import; empty = cancelled.
     Q_INVOKABLE virtual QString pickMeetingFolder() { return {}; }
 
-    // ---- Tanara Cloud gates (called by ShellActions before starting processing) ----
-    // The cloud remedy of a blocked step (sign-in / upload / refresh). True = the bridge
-    // handled it (the caller must not open Settings). False for a non-cloud blocker.
-    virtual bool handleCloudBlocker(const tanara::ReadinessResult& blocker) = 0;
-    // Cost estimate + confirmation before a cloud run. True = can start. For an own-key (BYO)
-    // step, true immediately. task: transcribe | summarize; mode: "" | quick | complex.
-    virtual bool confirmCloudEstimate(const QString& meetingId, const QString& task,
-                                      const QString& mode) = 0;
-
     // ---- Participant guessing BEFORE THE TRANSCRIPT (audio clusters + voiceprint DB) ----
     // Runs with a modal, cancelable progress window. Returns a human summary sentence; on
     // cancel it is empty and *cancelled = true.
     virtual QString identifyParticipantsPreview(const QString& meetingId, bool* cancelled) = 0;
-
-    // ---- track actions ----
-    Q_INVOKABLE virtual void cloudBannerAction(const QString& key) = 0;
-    Q_INVOKABLE virtual void cloudBannerDismiss(const QString& key) = 0;
 
     // ---- recording and window lifecycle ----
     // Opens the floating recorder, and the main window can be hidden (recording runs in the background).
@@ -121,17 +92,11 @@ public:
     Q_INVOKABLE virtual void stopRecordingAndQuit() = 0;
     // Before the main window really closes: closes the recorder window, singleton, level monitoring.
     Q_INVOKABLE virtual void shutdown() = 0;
-    // The main window became visible (first time: cloud startup checks).
+    // The main window became visible (first time: the "Getting started" window may open).
     Q_INVOKABLE virtual void windowShown() = 0;
-    // The main window became active again (refreshes the cloud balance after a top-up).
-    Q_INVOKABLE virtual void windowActivated() = 0;
 
 signals:
-    void cloudChromeChanged();
-    // Non-modal notice (cost, write-back ...). requestId: copyable error id; usageLink: "Log on
-    // the web" link (see openUsageLog).
-    void toastRequested(const QString& text, const QString& requestId, bool usageLink);
-    // "Retry" / "Resume" in a cloud error window: the same step must be restarted.
+    // "Retry" / "Resume" after an error window: the same step must be restarted.
     // kind: transcribe | summary | topics | complex.
     void retryRequested(const QString& meetingId, const QString& kind);
     // Something changed that affects steps' runnability (settings, sign-in/out, models);
@@ -154,9 +119,6 @@ signals:
     void showWindowRequested();
     // After "Stop and quit" the recording closed: the main window can be closed.
     void quitRequested();
-
-public:
-    Q_INVOKABLE virtual void openUsageLog() = 0;
 };
 
 } // namespace tanara_qml

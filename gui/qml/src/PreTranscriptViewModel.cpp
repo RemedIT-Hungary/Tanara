@@ -8,8 +8,6 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
-#include "tanara/cloud/CloudAccount.h"
-#include "tanara/cloud/CloudTypes.h"
 #include "tanara/jobs/MeetingJobTracker.h"
 #include "tanara/store/MeetingStore.h"
 
@@ -136,13 +134,6 @@ void PreTranscriptViewModel::connectController()
                              [this, mine](const QString& id) { if (mine(id)) reload(); });
     m_connections << connect(c->settings(), &SettingsManager::settingsChanged, this,
                              &PreTranscriptViewModel::reload);
-    if (CloudAccount* acc = c->cloud()) {
-        m_connections << connect(acc, &CloudAccount::loggedIn, this, &PreTranscriptViewModel::reload);
-        m_connections << connect(acc, &CloudAccount::loggedOut, this, &PreTranscriptViewModel::reload);
-        m_connections << connect(acc, &CloudAccount::modelsUpdated, this, &PreTranscriptViewModel::reload);
-        m_connections << connect(acc, &CloudAccount::accountUpdated, this,
-                                 [this](const AccountInfo&) { reload(); });
-    }
 }
 
 void PreTranscriptViewModel::refresh() { reload(); }
@@ -153,11 +144,7 @@ void PreTranscriptViewModel::reload()
 
     m_blocker.clear();
     m_canStart = false;
-    m_cloudSelected = false;
-    m_cloudExpertName.clear();
-    m_cloudWarning.clear();
-    m_cloudLanguageLabel.clear();
-    m_cloudTeaser = false;
+    m_cloudSoon = false;
     m_errorMessage.clear();
     m_errorDetail.clear();
     m_fixActionLabel.clear();
@@ -207,32 +194,7 @@ void PreTranscriptViewModel::reload()
         const ReadinessResult r = c->canRun(WorkflowStep::Transcribe, m_meetingId);
         m_canStart = r.runnable;
         m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Transcribe, r);
-        m_cloudTeaser = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig && c->cloudTeaser();
-
-        // Tanara Cloud: tier + language above the button (when signed in), as in the old window.
-        if (c->usesCloud(WorkflowStep::Transcribe) && c->cloud() && c->cloud()->isLoggedIn()) {
-            const AppSettings s = c->settings()->settings();
-            m_cloudSelected = true;
-            m_cloudTier = s.cloudSttTier == QLatin1String("fast") ? QStringLiteral("fast")
-                                                                 : QStringLiteral("accurate");
-            const QVector<CloudModel> catalog = c->cloud()->models();
-            const std::optional<CloudModel> model =
-                findModel(catalog, c->cloudModelFor(WorkflowStep::Transcribe));
-            if (!s.cloudSttModel.isEmpty() && model && !model->isVirtual)
-                m_cloudExpertName = model->displayName.isEmpty() ? model->id : model->displayName;
-            const QString lang = s.languageHints.value(0);
-            m_cloudLanguageLabel = lang.isEmpty() ? tr("automatikus nyelvfelismerés")
-                                                  : tr("nyelv: %1").arg(lang);
-            QStringList warns;
-            if (model && !model->diarization)
-                warns << tr("Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy "
-                            "beszélőként jelenik meg. Ha fontos, ki mit mondott, válaszd a Pontos szintet.");
-            if (model && model->notRecommendedFor(lang))
-                warns << tr("Ehhez a nyelvhez ezt a szintet nem ajánljuk: a pontosság gyengébb lehet.");
-            if (catalog.isEmpty())
-                warns << tr("A modell-lista még nem töltődött le; a szintek a bejelentkezés után frissülnek.");
-            m_cloudWarning = warns.join(QLatin1Char('\n'));
-        }
+        m_cloudSoon = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig;
 
         if (job.isValid()) {
             m_state = QStringLiteral("running");
@@ -413,14 +375,6 @@ void PreTranscriptViewModel::loadDemo()
         m_fixActionPage = QStringLiteral("providers");
     } else if (st == QLatin1String("ready") || st == QLatin1String("readyNote")) {
         m_canStart = true;
-    } else if (st == QLatin1String("cloud")) {
-        m_canStart = true;
-        m_cloudSelected = true;
-        m_providerLabel = QStringLiteral("Tanara Cloud");
-        m_cloudLanguageLabel = tr("nyelv: %1").arg(QStringLiteral("hu"));
-        if (m_cloudTier == QLatin1String("fast"))
-            m_cloudWarning = tr("Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy "
-                                "beszélőként jelenik meg. Ha fontos, ki mit mondott, válaszd a Pontos szintet.");
     } else if (st == QLatin1String("mixing")) {
         m_canStart = true;
         m_mixdownState = QStringLiteral("running");
@@ -429,13 +383,14 @@ void PreTranscriptViewModel::loadDemo()
     } else {
         m_blocker = {
             {QStringLiteral("title"), tr("Nincs beállítva átíró szolgáltató")},
-            {QStringLiteral("text"), tr("Hiányzik: API-kulcs (Soniox). Add meg a saját kulcsodat, vagy "
-                                        "jelentkezz be a Tanara Cloudba.")},
+            {QStringLiteral("text"), tr("Hiányzik: API-kulcs (Soniox). Add meg a saját szolgáltatód "
+                                        "adatait a Beállításokban.")},
             {QStringLiteral("actionLabel"), tr("Szolgáltató beállítása")},
             {QStringLiteral("actionPage"), QStringLiteral("providers")},
             {QStringLiteral("reason"), tr("A szolgáltató beállítása után indítható.")},
             {QStringLiteral("kind"), int(BlockerKind::ProviderConfig)},
         };
+        m_cloudSoon = true;
     }
 }
 
@@ -453,25 +408,6 @@ void PreTranscriptViewModel::setIdentifyEnabled(bool enabled)
     if (!jobsupport::demoMode(c) && !m_meetingId.isEmpty())
         c->setIdentifyAfterTranscription(m_meetingId, enabled);
     emit changed();
-}
-
-void PreTranscriptViewModel::setCloudTier(const QString& tier)
-{
-    const QString t = tier == QLatin1String("fast") ? QStringLiteral("fast") : QStringLiteral("accurate");
-    AppController* c = app();
-    if (jobsupport::demoMode(c)) {
-        if (t == m_cloudTier) return;
-        m_cloudTier = t;
-        reload();
-        return;
-    }
-    // Same as the old CloudTierWidget: the tier goes into the settings, the Expert model is cleared.
-    AppSettings s = c->settings()->settings();
-    if (s.cloudSttTier == t && s.cloudSttModel.isEmpty())
-        return;
-    s.cloudSttTier = t;
-    s.cloudSttModel.clear();
-    c->settings()->setSettings(s);   // → settingsChanged → reload()
 }
 
 QString PreTranscriptViewModel::etaText() const

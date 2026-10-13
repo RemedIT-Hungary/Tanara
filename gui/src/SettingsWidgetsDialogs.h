@@ -1,9 +1,7 @@
 #pragma once
 // SettingsWidgetsDialogs: the Widgets-side helper of the QML Settings window
 // (implementation of tanara_qml::SettingsDialogs): native folder picker, opening a folder /
-// link, the People window, and the EXISTING modal Tanara Cloud flows (CloudLoginDialog,
-// upload, CloudModelPickerDialog, CloudTermsDialog). These were not rewritten in QML; they
-// open here, above the Settings window.
+// link, the People and Tags windows.
 //
 // All three processes in which Settings can open use it: the main window (QmlShellBridge),
 // the standalone recorder and the `tanara --settings` mode.
@@ -48,10 +46,6 @@ public:
     void openTags(const QString& tagId = QString());
     bool canOpenOnboarding() const override { return bool(m_onboardingOpener); }
     void openOnboarding() override { if (m_onboardingOpener) m_onboardingOpener(); }
-    bool cloudLogin() override;
-    void cloudTopup() override;
-    bool cloudPickModel(const QString& kind) override;
-    bool cloudTerms() override;
 
 protected:
     // While a call here is running, the (parentless) Widgets dialog that appears belongs to the

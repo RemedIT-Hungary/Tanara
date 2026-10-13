@@ -92,7 +92,6 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
     if (r.runnable)
         return out;
     const bool transcribe = step == tanara::WorkflowStep::Transcribe;
-    const bool cloudLive = controller && controller->cloudLive();
     QString title, text, actionLabel, actionPage, reason;
 
     const bool cloudProvider = r.providerId == tanara::cloud::ProviderId;
@@ -100,41 +99,34 @@ QVariantMap blockerInfo(tanara::AppController* controller, tanara::WorkflowStep 
     case tanara::BlockerKind::ProviderConfig:
         title = transcribe ? trj("Nincs beállítva átíró szolgáltató")
                            : trj("Nincs beállítva összefoglaló szolgáltató");
-        // The exact gap (e.g. "Missing: API key (Soniox)") + where to go next. Tanara Cloud is
-        // mentioned only if sign-in is really possible in this build.
+        // The exact gap (e.g. "Missing: API key (Soniox)") + where to go next.
         text = r.detail;
         if (!text.isEmpty() && !text.endsWith(QLatin1Char('.')))
             text += QLatin1Char('.');
         text += QLatin1Char(' ');
-        text += cloudLive ? trj("Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba.")
-                          : trj("Add meg a saját szolgáltatód adatait a Beállításokban.");
+        text += trj("Add meg a saját szolgáltatód adatait a Beállításokban.");
         actionLabel = trj("Szolgáltató beállítása");
         actionPage = QStringLiteral("providers");
         reason = trj("A szolgáltató beállítása után indítható.");
         break;
     case tanara::BlockerKind::Auth:
-        title = cloudProvider ? trj("Nem vagy bejelentkezve a Tanara Cloudba")
+        title = cloudProvider ? trj("A Tanara Cloud még nem érhető el")
                               : trj("Nincs bejelentkezve a szolgáltatóhoz");
         text = cloudProvider
-            ? trj("Jelentkezz be, vagy válts saját kulcsos szolgáltatóra a Beállításokban.")
+            ? trj("Válts saját kulcsos szolgáltatóra a Beállításokban.")
             : r.detail;
-        actionLabel = trj("Bejelentkezés");
-        actionPage = cloudProvider ? QStringLiteral("cloud") : QStringLiteral("providers");
-        reason = trj("Bejelentkezés után indítható.");
+        actionLabel = cloudProvider ? trj("Szolgáltató beállítása") : trj("Bejelentkezés");
+        actionPage = QStringLiteral("providers");
+        reason = cloudProvider ? trj("A szolgáltató beállítása után indítható.")
+                               : trj("Bejelentkezés után indítható.");
         break;
     case tanara::BlockerKind::Cloud:
-        if (r.fixActionHint == QLatin1String("cloud:topup")) {
-            title = trj("Elfogyott a Tanara Cloud egyenleged");
-            text = trj("Töltsd fel az egyenleged, vagy válts saját kulcsos szolgáltatóra.");
-            actionLabel = trj("Feltöltés");
-            reason = trj("Feltöltés után indítható.");
-        } else {
-            title = trj("A Tanara Cloudhoz frissíteni kell az alkalmazást");
-            text = r.detail + QLatin1Char(' ') + trj("A saját kulcsos mód frissítés nélkül is működik.");
-            actionLabel = trj("Frissítés");
-            reason = trj("Frissítés után indítható.");
-        }
-        actionPage = QStringLiteral("cloud");
+        // The UI does not offer Tanara Cloud (coming soon): the remedy is an own-key provider.
+        title = trj("A Tanara Cloud még nem érhető el");
+        text = trj("Válts saját kulcsos szolgáltatóra a Beállításokban.");
+        actionLabel = trj("Szolgáltató beállítása");
+        actionPage = QStringLiteral("providers");
+        reason = trj("A szolgáltató beállítása után indítható.");
         break;
     case tanara::BlockerKind::MeetingState:
         if (transcribe) {

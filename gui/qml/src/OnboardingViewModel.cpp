@@ -9,7 +9,6 @@
 #include "tanara/Localization.h"
 #include "tanara/Paths.h"
 #include "tanara/SettingsManager.h"
-#include "tanara/cloud/CloudTypes.h"
 #include "tanara/detect/Autostart.h"
 #include "tanara/provider/ConnectionTester.h"
 #include "tanara/provider/ProviderRegistry.h"
@@ -544,7 +543,7 @@ QString OnboardingViewModel::providerLabel(const AppSettings& s, bool stt)
 void OnboardingViewModel::refreshReadiness()
 {
     QString stt, llm;
-    bool sttOk = false, llmOk = false, live = false, chosen = false;
+    bool sttOk = false, llmOk = false;
     if (AppController* c = m_controller) {
         const AppSettings s = c->settings()->settings();
         const ReadinessModel::SecretProbe probe = [c](const QString& key) { return c->hasSecret(key); };
@@ -554,23 +553,18 @@ void OnboardingViewModel::refreshReadiness()
         llm = b.text;
         sttOk = a.ready;
         llmOk = b.ready;
-        live = c->cloudLive();
-        chosen = live && c->usesCloud(WorkflowStep::Transcribe) && c->usesCloud(WorkflowStep::Summarize);
     } else {
         // Demo: a fresh install's typical state: no key yet, the local LLM entered.
         stt = tr("Átírás") + QStringLiteral(": ") + tr("nincs kulcs");
         llm = tr("Összefoglaló") + QStringLiteral(": ") + QStringLiteral("LM Studio · gemma-4-12b");
         llmOk = true;
     }
-    if (stt == m_sttStatus && llm == m_llmStatus && sttOk == m_sttReady && llmOk == m_llmReady
-        && live == m_cloudLive && chosen == m_cloudChosen)
+    if (stt == m_sttStatus && llm == m_llmStatus && sttOk == m_sttReady && llmOk == m_llmReady)
         return;
     m_sttStatus = stt;
     m_llmStatus = llm;
     m_sttReady = sttOk;
     m_llmReady = llmOk;
-    m_cloudLive = live;
-    m_cloudChosen = chosen;
     emit readinessChanged();
 }
 

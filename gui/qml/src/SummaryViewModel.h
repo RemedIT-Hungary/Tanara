@@ -6,7 +6,7 @@
 //   view "topics"  : per-topic analysis (TopicListModel).
 //
 // It does NOT start the summary / topic suggestion / analysis (that is the shell's job:
-// shell.start...: gating + Tanara Cloud estimate); it provides the state and does the view's
+// shell.start...: gating); it provides the state and does the view's
 // small actions (clipboard, dismissing the stale marker, dismissing a leftover error).
 //
 // Participants' speaking-time share and the owner chips' colors come from the speaker
@@ -86,9 +86,8 @@ class SummaryViewModel : public QObject {
     Q_PROPERTY(bool canRun READ canRun NOTIFY changed)
     Q_PROPERTY(QVariantMap blocker READ blocker NOTIFY changed)
     Q_PROPERTY(QString providerLabel READ providerLabel NOTIFY changed)
-    Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY changed)
-    Q_PROPERTY(QString cloudTierLabel READ cloudTierLabel NOTIFY changed)
-    Q_PROPERTY(bool cloudTeaser READ cloudTeaser NOTIFY changed)
+    // "Tanara Cloud - coming soon" hint: shown while the step lacks a provider setting.
+    Q_PROPERTY(bool cloudSoon READ cloudSoon NOTIFY changed)
     Q_PROPERTY(QString transcriptLine READ transcriptLine NOTIFY changed)
 
     // ---- running task (summary / topic suggestion / closing summary) ----
@@ -212,9 +211,7 @@ public:
     bool canRun() const { return m_canRun; }
     QVariantMap blocker() const { return m_blocker; }
     QString providerLabel() const { return m_providerLabel; }
-    bool cloudSelected() const { return m_cloudSelected; }
-    QString cloudTierLabel() const { return m_cloudTierLabel; }
-    bool cloudTeaser() const { return m_cloudTeaser; }
+    bool cloudSoon() const { return m_cloudSoon; }
     QString transcriptLine() const { return m_transcriptLine; }
 
     bool jobRunning() const { return m_jobKind >= 0; }
@@ -360,9 +357,7 @@ private:
     bool m_canRun = false;
     QVariantMap m_blocker;
     QString m_providerLabel;
-    bool m_cloudSelected = false;
-    QString m_cloudTierLabel;
-    bool m_cloudTeaser = false;
+    bool m_cloudSoon = false;
     QString m_transcriptLine;
 
     int m_jobKind = -1;

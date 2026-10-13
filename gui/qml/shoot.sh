@@ -30,7 +30,7 @@ if [ $# -eq 0 ]; then
          "Main:1280x820:shellState=\"preTranscript\",taskRunning=true" \
          "SettingsWindow:900x800:demoState=\"B01\"" "SettingsWindow:900x780:demoState=\"B02\"" \
          "SettingsWindow:900x680:demoState=\"B03\"" "SettingsWindow:900x780:demoState=\"B04\"" \
-         "SettingsWindow:900x880:demoState=\"B05\"" "SettingsWindow:900x760:demoState=\"B06\"" \
+         "SettingsWindow:900x880:demoState=\"B05\"" "SettingsWindow:900x760:demoState=\"cloudComingSoon\"" \
          "SettingsWindow:900x720:demoState=\"B07\""
 fi
 

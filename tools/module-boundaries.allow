@@ -94,7 +94,6 @@ gui/qml/src/PlayerController.cpp -> tanara/AppController.h   # GUI -> AppControl
 gui/qml/src/PreTranscriptViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/RecorderViewModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/RecorderWindowHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/qml/src/SettingsCloudModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsDeviceModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsEmbeddingModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/qml/src/SettingsProviderModel.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
@@ -121,12 +120,6 @@ gui/src/RecorderSingleton.cpp -> platform:Q_OS_WIN   # platform (gui) -> P15
 gui/src/SettingsWidgetsDialogs.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellQaHook.h -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/src/ShellRecorderHost.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudEstimateDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudLoginDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudModelPickerDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudTermsDialog.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudTierWidget.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
-gui/src/cloud/CloudUi.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 gui/src/main.cpp -> platform:Q_OS_LINUX   # platform (gui) -> P15
 gui/src/main.cpp -> tanara/AppController.h   # GUI -> AppController.h -> P15
 

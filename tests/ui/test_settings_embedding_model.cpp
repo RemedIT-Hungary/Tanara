@@ -103,10 +103,8 @@ private slots:
 
         vm.setDemoState(QStringLiteral("B04embeddingCloud"));             // T16
         QCOMPARE(emb->mode(), QStringLiteral("cloud"));
-        QVERIFY(emb->cloudInfo().contains(QStringLiteral("hangfelvétel és a hanglenyomatok a gépen maradnak")));
-        QVERIFY(emb->cloudInfo().contains(QStringLiteral("120 kredit")));
-        QVERIFY(emb->cloudHint().isEmpty());                              // signed in in the demo
-        QCOMPARE(emb->status(), QStringLiteral("ok"));
+        QCOMPARE(emb->status(), QStringLiteral("neutral"));               // Cloud is "coming soon"
+        QCOMPARE(emb->statusText(), QStringLiteral("Nem elérhető"));
 
         vm.setDemoState(QStringLiteral("B04modelChange"));                // T15
         QVERIFY(emb->restartPending());
@@ -173,7 +171,14 @@ private slots:
         QCOMPARE(emb->mode(), QStringLiteral("none"));
         QCOMPARE(emb->status(), QStringLiteral("neutral"));
         QVERIFY(!emb->prepVisible());
-        QCOMPARE(emb->modeOptions().size(), 2);                           // a build without Cloud: no Cloud item
+        {
+            // The Cloud item is shown ("coming soon") but never selectable.
+            const QVariantList options = emb->modeOptions();
+            QCOMPARE(options.size(), 3);
+            const QVariantMap cloud = options.last().toMap();
+            QCOMPARE(cloud.value(QStringLiteral("value")).toString(), QStringLiteral("cloud"));
+            QVERIFY(!cloud.value(QStringLiteral("enabled")).toBool());
+        }
         emb->setMode(QStringLiteral("cloud"));
         QCOMPARE(emb->mode(), QStringLiteral("none"));
         QVERIFY(!vm.dirty());

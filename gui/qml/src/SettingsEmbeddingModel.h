@@ -42,8 +42,8 @@ class SettingsEmbeddingModel : public QObject {
 
     // "none" | "local" | "cloud": the draft's choice.
     Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY changed)
-    // The segmented selector's items: [{ value, label, enabled, toolTip }] (in a build without
-    // Cloud the Tanara Cloud item is missing; without sign-in it is disabled).
+    // The segmented selector's items: [{ value, label, enabled, toolTip }] (the Tanara Cloud item
+    // is always disabled: "coming soon").
     Q_PROPERTY(QVariantList modeOptions READ modeOptions NOTIFY changed)
     Q_PROPERTY(QString description READ description NOTIFY changed)
     // The local endpoint's fields (Address, Model, key) and the connection test.
@@ -51,9 +51,6 @@ class SettingsEmbeddingModel : public QObject {
     // The status pill: "neutral" | "ok" | "failed" | "testing" + label.
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString statusText READ statusText NOTIFY changed)
-    // Tanara Cloud: the info box and (if needed) the missing sign-in.
-    Q_PROPERTY(QString cloudInfo READ cloudInfo NOTIFY changed)
-    Q_PROPERTY(QString cloudHint READ cloudHint NOTIFY changed)
 
     // ---- LIBRARY PREPARATION ----
     Q_PROPERTY(bool prepVisible READ prepVisible NOTIFY changed)
@@ -86,8 +83,6 @@ public:
     SettingsProviderModel* card() const { return m_card; }
     QString status() const;
     QString statusText() const;
-    QString cloudInfo() const;
-    QString cloudHint() const;
 
     bool prepVisible() const;
     QString prepStatus() const;
@@ -138,7 +133,6 @@ private:
     // The model the core uses ("" = no embedding): the local endpoint's model, for Cloud the
     // gateway's base model.
     static QString effectiveModel(const tanara::AppSettings& s);
-    bool cloudSelectable() const;
     int estimateMinutes(int meetings) const;
 
     SettingsViewModel* m_vm = nullptr;

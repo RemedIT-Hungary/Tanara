@@ -149,35 +149,11 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        // ---- Tanara Cloud: what is sent, what it costs ----
-        Rectangle {
-            objectName: "embeddingCloudInfo"
+        // ---- Tanara Cloud: coming soon (the item is not selectable; shown for a stored setting) ----
+        CloudComingSoon {
             visible: root.mode === "cloud"
+            compact: true
             Layout.fillWidth: true
-            implicitHeight: cloudText.implicitHeight + 24
-            radius: Theme.radiusControl
-            color: Theme.accentSoft
-            border.width: 1
-            border.color: Theme.accentLine
-            TIcon { x: 12; y: 14; name: "info"; size: 15; color: Theme.accent }
-            TLabel {
-                id: cloudText
-                x: 37; y: 12
-                width: parent.width - 49
-                text: root.emb ? root.emb.cloudInfo : ""
-                font.pixelSize: Theme.fontSmall
-                cssLineHeight: 1.45
-                wrapMode: Text.Wrap
-            }
-        }
-        TLabel {
-            visible: text !== ""
-            Layout.fillWidth: true
-            text: root.emb ? root.emb.cloudHint : ""
-            muted: true
-            font.pixelSize: Theme.fontSmall
-            cssLineHeight: 1.45
-            wrapMode: Text.Wrap
         }
 
         // ---- model change: BEFORE saving ----

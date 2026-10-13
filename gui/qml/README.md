@@ -4,9 +4,9 @@ The Qt Quick front end of Tanara: design system (theme, icons, `T*` controls), t
 application shell (`Main.qml`) and the C++ view-models that feed it. The spec is
 `design/handoff/README.md`; rendered targets are in `design/handoff/renders/`.
 
-The process is still a `QApplication`: the Tanara Cloud dialogs (sign-in, estimate
-confirmation, errors, top-up, terms, mode choice, Expert model picker), the native file / folder
-pickers and the tray icon are Qt Widgets and open next to the QML windows. Everything else is
+The process is still a `QApplication`: the native file / folder pickers and the tray icon are
+Qt Widgets and open next to the QML windows. Tanara Cloud has no UI yet: every Cloud surface is
+the shared `CloudComingSoon` notice (link: https://tanara.remedit.eu). Everything else is
 QML: the main window, Settings (`SettingsWindow.qml`, see "Settings window"), People
 (`PeopleWindow.qml`, see "People window") and the floating recorder, both in the main window
 and in `tanara --record`. The old Widgets main window (`tanara --classic`) is gone.
@@ -20,7 +20,7 @@ and in `tanara --record`. The old Widgets main window (`tanara --classic`) is go
 | `gui/qml/icons/*.svg` | Lucide icons (ISC) → `:/qt/qml/Tanara/icons/` | glob |
 | `gui/qml/fonts/*.ttf` | IBM Plex Sans / Mono (OFL) → `:/qt/qml/Tanara/fonts/` | glob |
 | `tests/ui/*.cpp` | Qt Test, one executable per file, links `tanara_qml` | glob |
-| `gui/src/` | `main.cpp`, the bridge to the Widgets world and the remaining Widgets dialogs (`cloud/`); may include module headers | glob |
+| `gui/src/` | `main.cpp`, the bridge to the Widgets world and the Widgets helpers (pickers, tray); may include module headers | glob |
 
 **Build gotcha.** A new `QObject` header under `core/include/` in an *existing* build directory is not
 picked up by the core's AUTOMOC cache: delete the core autogen cache
@@ -206,7 +206,7 @@ an invisible `TextInput` keeps the active focus and would swallow every key.
 Overrides for `--demo` / `--qml-shot` (leave unset with a real controller; `demoState` below):
 `shellState` (`"empty" | "noSelection" | "preTranscript" | "meeting"`, `""` = computed),
 `taskRunning` (sample task strip), `demoSearch` (sidebar search text), `demoOverlay`
-(`retranscribe | delete | close | stop | confirm | toast | toastError | cloudToast | filters |
+(`retranscribe | delete | close | stop | confirm | toast | toastError | filters |
 rename | tracks | import | importSplit | importProbing | importError | importEmpty | importFailed |
 importProgress | importStrip | drop`; also `tagToast`, `selection`; `tracks` opens the
 "Sávok részletei" dialog on the Áttekintés), `demoTags` (header tag-model states), and `demoState`
@@ -261,7 +261,7 @@ everybody unknown: the raw speakers + "Elnevezem őket") · the approval banner 
 **Before the transcription** (U6, V5): the Áttekintés shows right after the recording (tracks playable and
 switchable, participants / tags / "Csak én beszéltem" usable); `PipelineSteps` embeds controls under a step
 (`transcriptContent` / `mixdownContent` / `voiceContent`): the `Átirat` step hosts `TranscribeStepPanel`
-(gating from `PreTranscriptViewModel`: missing setting → Beállítások, Tanara Cloud tier, `Átírás indítása`
+(gating from `PreTranscriptViewModel`: missing setting → Beállítások, `CloudComingSoon` hint, `Átírás indítása`
 → `shell.startTranscription`, error box with `Újra` + fix action), `Lekeverés` gets `Lekeverés indítása`
 when the mixdown is missing / stale (manual mixdown mode), the voiceprint step the identify switch.
 Without audio (import running, broken folder) the same tab says what is missing in the steps.
@@ -488,8 +488,8 @@ a danger toast. Main.qml splits dropped URLs with `ShellActions.isArchiveFile`: 
 the archive import, everything else to `openImport`. Format and checks: `core/include/tanara/store/MeetingArchive.h`.
 
 Widgets side (`gui/src/`): `QmlShellBridge` implements `tanara_qml::ShellBridge` (file
-pickers, all Tanara Cloud dialogs and chrome; it owns the `PeopleWindowHost` and the `SettingsWindowHost` and re-evaluates
-readiness, the recorder's device policy and the cloud chrome when Settings saves); `ShellRecorderHost` is the only
+pickers; it owns the `PeopleWindowHost` and the `SettingsWindowHost` and re-evaluates
+readiness and the recorder's device policy when Settings saves); `ShellRecorderHost` is the only
 place that knows the recorder (see "Recorder in the main window" below); `MediaPlayerBackend`
 is the Qt Multimedia engine behind `PlayerController` (the QML module itself does not link
 Multimedia).
@@ -729,7 +729,7 @@ overview; `demoVariant="novoice"` shows the "no voice model" wording).
 ## Widgets dialogs from QML
 
 `App.bridge` is a `QObject*` slot for the object that opens the Widgets dialogs
-(Tanara Cloud, native file pickers) and the QML recorder, Settings and People windows. The class belongs in `gui/src/` (it needs the Widgets
+(native file pickers) and the QML recorder, Settings and People windows. The class belongs in `gui/src/` (it needs the Widgets
 classes; that directory is globbed too) and is installed in `gui/src/main.cpp`:
 `tanara_qml::AppContext::instance()->setBridge(bridge);`. QML then calls its
 `Q_INVOKABLE`s: `App.bridge.openSettings()`. `tests/ui/test_qml_smoke.cpp` verifies that a
@@ -744,18 +744,17 @@ not drawn.
 | Piece | Role |
 |---|---|
 | `SettingsWindow.qml` | the window: navigation, scrolling content, footer (dirty indicator, Mégse / Mentés), the unsaved-changes / reset / logout / output-format dialogs |
-| `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsProviderFields`, `SettingsEmbeddingCard`, `SettingsCloudPanel`, `SettingsWaitlistPanel`) · `SettingsSummaryPage` | the pages B01–B07 (+ C09) |
+| `SettingsGeneralPage` · `SettingsRecordingPage` · `SettingsWatcherPage` · `SettingsServicesPage` (+ `SettingsProviderCard`, `SettingsProviderFields`, `SettingsEmbeddingCard`) · `SettingsSummaryPage` | the pages B01–B07 (+ C09) |
 | `SettingsSpeakersPage` (E01, B08) + `SettingsVoiceModelCard` | the **Beszélők** page: the "Te" section (own name and voiceprint, moved here from Általános), "Hangmodellek" (one card per speaker model, `vm.voiceModels` = `VoiceModelListModel`; enabling is part of the draft, downloading is immediate), the voiceprint backfill status. Card `state_`: `missing` \| `downloading` (`progress`, `progressText`, Mégse) \| `verifying` ("ellenőrzés…": after a download and when the page opens, `VoiceModelListModel.verify` checks the file size) \| `downloaded` \| `bundled` \| `error` (`errorText`, Újra; a size mismatch is `error` + corrupt and Újra replaces the file) \| `offline`; `enabledModel` / `canEnable`, `recommended`; licence, source link, size and dimension are shown before the download. The card's menu has **Törlés…** (`canDelete`; removes only the DOWNLOADED file under `<metaDir>/models`, never the bundled one, disabled while downloading / verifying; the page asks first — `askDelete(id, name)` — then calls `list.deleteModel(id)`). A quiet **Újraolvasás** link under the cards (`objectName: "voiceModelsRescan"`; `models.rescan()` → `AppController::rescanVoiceModels`) re-reads the folder and re-verifies after a model file was copied in by hand. **Backfill** shows the real "k / N" from `voiceprintBackfillStarted / Progress / Finished`; after a run with skips a "Melyik minták? (N)" toggle opens the list of skipped samples (`objectName: "voiceBackfillSkips"` / `"voiceBackfillSkip"`: person, sample, reason, missing model; one entry per sample; the person's name is a link that opens the People window on them, `"voiceBackfillSkipPerson"`; source: `AppController::backfillSkippedSamples`). With no model at all the page offers "WeSpeaker letöltése (N MB)"; with only the bundled CAM++ present a quiet fallback line ("Most a CAM++ tartalék fut…", `fallbackActive`) with a download button is shown |
 | `VoiceModelOnboardingRow` | the same downloader as one row in the First steps window (Szolgáltatások step; hidden when the default model exists); `demoState: "B08none"` |
 | `SettingsSegmented`, `SettingsRadio`, `SettingsSwitchRow`, `SettingsStepper`, `SettingsCombo`, `SettingsTextField`, `SettingsNavItem`, `SettingsStatusPill` | the window's controls (the device rows reuse the recorder's `RecorderSwitch`, `VuMeter`, `RecorderGroupHeader`, `RecorderDefaultPill`) |
 | `SettingsViewModel` | the draft: a copy of `AppSettings` + secrets + default sources + theme. Pages write the draft; `save()` applies **only the difference** onto the core's current settings (so nothing this window does not show, or that changed meanwhile, is lost), `discard()` drops it. `dirty` / `changeCount` / `footerText`, `errors`, `servicesWarn`, `openPage(page, focusField)` |
 | `SettingsDeviceModel` (`vm.devices`) | B02 device rows: switch = default source, rename, live level (`AppController::retainLevelMonitoring`, only while the page is visible) |
 | `SettingsProviderModel` (`vm.stt`, `vm.llm`) | a provider card rendered from the provider registry (`ProviderDescriptor.fields`); "Kapcsolat tesztelése" and "Lekérés" through `tanara::ConnectionTester` with the *draft* address and key |
-| `SettingsCloudModel` (`vm.cloud`) | Tanara Cloud account panel (everything from `CloudAccount`) and the waitlist offer |
-| `SettingsEmbeddingModel` (`vm.embedding`) | C09 "Beágyazás" card: mode Nincs (alap) / Helyi végpont / Tanara Cloud in the draft (`embeddingProviderId` / `embeddingConfigs`), the local endpoint's fields and test via `card` (a `SettingsProviderModel` of kind `embedding`), KÖNYVTÁR ELŐKÉSZÍTÉSE from `EmbeddingPreparer` (running / error / done, Megszakítás / Folytatás / Újraelőkészítés), the model-change warning before saving (`restartPending`), the CÍMKEJAVASLATOK switches and the rejected-suggestion reset (immediate, confirmed) |
+| `SettingsEmbeddingModel` (`vm.embedding`) | C09 "Beágyazás" card: mode Nincs (alap) / Helyi végpont / Tanara Cloud (always disabled: "hamarosan") in the draft (`embeddingProviderId` / `embeddingConfigs`), the local endpoint's fields and test via `card` (a `SettingsProviderModel` of kind `embedding`), KÖNYVTÁR ELŐKÉSZÍTÉSE from `EmbeddingPreparer` (running / error / done, Megszakítás / Folytatás / Újraelőkészítés), the model-change warning before saving (`restartPending`), the CÍMKEJAVASLATOK switches and the rejected-suggestion reset (immediate, confirmed) |
 | `SettingsPromptHighlighter` | `QSyntaxHighlighter` on the prompt editor's document (`{{VÁLTOZÓ}}`) |
 | `SettingsWindowHost` | C++ host with its own engine: `open(page, focusField)`, `saved()`, `themeModeSaved()`, `returnRequested()`, `closed()` |
-| `SettingsDialogs` | what the window needs from the desktop / Widgets (folder picker, open folder / URL, People, cloud login / top-up / Expert model / terms); implemented by `gui/src/SettingsWidgetsDialogs`, faked in tests |
+| `SettingsDialogs` | what the window needs from the desktop / Widgets (folder picker, open folder / URL, People); implemented by `gui/src/SettingsWidgetsDialogs`, faked in tests |
 
 Where it opens: the main window (`ShellActions.openSettings(page, focusField)` →
 `QmlShellBridge` → host), the stand-alone recorder (`tanara --record`, R10 "Rögzítés
@@ -790,8 +789,8 @@ Screenshots (fictional data, no controller):
 build/gui/tanara --qml-shot out.png --qml-page SettingsWindow --size 900x780 --qml-prop 'demoState="B04"'
 ```
 
-`demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `teaser` · `cloudOut` · `addApp` ·
-`logout` · `reset` · C09: `B04embedding` (local, idle) · `B04embeddingRunning` (T14) · `B04embeddingError` ·
+`demoState`: `B01` … `B07` · `B07notes` (the per-part notes prompt) · `advanced` (LLM card with "Haladó" open, incl. the reasoning switch) · `dirty` · `unsaved` · `schema` · `cloudComingSoon` (the Tanara Cloud tab: the notice) · `cloudSelected` (the saved setting names Cloud: warning banner) · `addApp` ·
+`reset` · C09: `B04embedding` (local, idle) · `B04embeddingRunning` (T14) · `B04embeddingError` ·
 `B04embeddingDone` · `B04embeddingCloud` (T16) · `B04embeddingNone` · `B04modelChange` (T15) · `rejectedReset` ·
 E01 (Beszélők page): `B08` (models on) · `B08download` (WeSpeaker downloading, 46 %) · `B08none` (nothing downloaded) · `B08error` · `B08offline` · `B08backfill` (voiceprint backfill running) · `B08partial` (backfill finished with failures; the skipped-samples list is open) · `B08bundled` (CAM++ shipped with the app) · `B08fallback` (WeSpeaker missing, bundled CAM++ runs as fallback) · `B08verify` (a model being verified + a size-mismatch error card) · `B08delete` (the delete confirmation open for CAM++).
 Example: `gui/qml/shoot.sh 'SettingsWindow:900x880:demoState="B08"'`.
@@ -880,7 +879,7 @@ accepted. Nothing is mandatory: "Később" and the window's × close it at any t
 | `welcome` | what Tanara does (local-first, own keys), "everything can be changed later" | — |
 | `you` | own name (prefilled from `AppSettings::userSpeakerName`, i.e. the OS account on a fresh install), UI language (applies at next start), theme (live preview) | name via `AppController::setUserSpeakerName`; `uiLanguage`; theme via `themeModeSaved` (the main window stores it) |
 | `folders` | recordings and notes folders, "alapértelmezett" pill when unchanged, Tallózás… (`SettingsDialogs::pickFolder`), reset | `audioDir`, `notesDir` |
-| `providers` | own-key explanation, readiness lines from `ReadinessModel` ("Átírás: nincs kulcs", "Összefoglaló: LM Studio · gemma-4-12b"), "Beállítás most" → Settings › Szolgáltatások, "Tanara Cloud: hamarosan" (not a choice; in live cloud mode with Cloud chosen the own-key copy is replaced) | — |
+| `providers` | own-key explanation, readiness lines from `ReadinessModel` ("Átírás: nincs kulcs", "Összefoglaló: LM Studio · gemma-4-12b"), "Beállítás most" → Settings › Szolgáltatások, the compact `CloudComingSoon` notice (Cloud is not a choice) | — |
 | `watcher` | "Induljon el a figyelő bejelentkezéskor" + platform note | `watcherAutostart` + `tanara::autostart::applyWatcher` |
 | `done` | summary of accepted / skipped steps; "Kezdjük" closes | `onboardingDone` |
 
@@ -890,8 +889,7 @@ accepted. Nothing is mandatory: "Később" and the window's × close it at any t
 | `OnboardingViewModel` | per-step draft over `AppSettings`; `next()` applies **only the step's difference** onto the core's current settings, `skip()` drops it, `discardPending()` on close, `markDone()`; `sttStatus` / `llmStatus`, `providerLabel()` |
 | `OnboardingWindowHost` | C++ host with its own engine: `open()` (manual, always), `openIfNeeded()` (first run: only while `AppSettings::onboardingDone` is false, once per process), centred over the transient parent; closing the window in any way sets `onboardingDone` |
 
-Where it opens: `QmlShellBridge::windowShown()` → next event-loop turn → after the cloud
-startup checks (K-01 mode choice in live cloud mode stays as it was) → `openIfNeeded()`. Never in
+Where it opens: `QmlShellBridge::windowShown()` → next event-loop turn → `openIfNeeded()`. Never in
 `--shell-script` QA mode. Manually: File › "Első lépések…" (`ShellActions.openOnboarding()` →
 `ShellBridge::openOnboarding()`) and the link at the bottom of Settings › Általános
 (`SettingsDialogs::openOnboarding()`; hidden where no main window runs: `tanara --record`,

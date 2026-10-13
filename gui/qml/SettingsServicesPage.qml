@@ -2,25 +2,22 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
 
-// Services: "Own key" or "Tanara Cloud" (if the build and setting allow it), below it the two
-// provider cards (the configured role collapsed) or the Cloud panel / waitlist offer; in both
-// modes the "Embedding" card (tag suggestions) and the TAG SUGGESTIONS switches.
+// Services: "Own key" or "Tanara Cloud" (coming soon), below it the two provider cards (the
+// configured role collapsed) or the "coming soon" notice; in both modes the "Embedding" card
+// (tag suggestions) and the TAG SUGGESTIONS switches.
 Column {
     id: root
 
     property var vm: null
     property bool demoDropdown: false      // screenshot: the STT list is open
-    signal logoutRequested()
     signal rejectedResetRequested()        // "Reset": the window asks for confirmation
 
-    readonly property string availability: vm ? vm.cloudAvailability : "none"
-    readonly property bool cloudView: vm && vm.serviceMode === "cloud" && availability !== "none"
+    readonly property bool cloudView: vm !== null && vm.serviceMode === "cloud"
 
     spacing: 16
 
     // ---- mode selector ----
     RowLayout {
-        visible: root.availability !== "none"
         width: parent.width
         spacing: 10
 
@@ -104,8 +101,8 @@ Column {
         ModeCard {
             text: qsTr("Tanara Cloud")
             iconName: "cloud"
-            caption: qsTr("Bejelentkezés és egyenleg; nincs kulcskezelés.")
-            pill: root.availability === "teaser" ? qsTr("hamarosan") : ""
+            caption: qsTr("Nincs kulcskezelés: az átírás és az összefoglaló a fiókodon fut.")
+            pill: qsTr("hamarosan")
             checked: root.cloudView
             onClicked: root.vm.serviceMode = "cloud"
         }
@@ -116,6 +113,15 @@ Column {
         visible: !root.cloudView
         width: parent.width
         spacing: 16
+
+        // The saved setting names Tanara Cloud (a developer setting): it cannot run yet.
+        TBanner {
+            objectName: "cloudUnavailableBanner"
+            visible: root.vm !== null && root.vm.cloudSelected
+            width: parent.width
+            tone: "warn"
+            text: qsTr("A beállítás a Tanara Cloudot választja, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.")
+        }
 
         Rectangle {
             visible: root.vm && root.vm.focusField !== ""
@@ -157,16 +163,9 @@ Column {
     }
 
     // ---- Tanara Cloud ----
-    SettingsCloudPanel {
-        visible: root.cloudView && root.availability === "live"
+    CloudComingSoon {
+        visible: root.cloudView
         width: parent.width
-        vm: root.vm
-        onLogoutRequested: root.logoutRequested()
-    }
-    SettingsWaitlistPanel {
-        visible: root.cloudView && root.availability === "teaser"
-        width: parent.width
-        vm: root.vm
     }
 
     // ---- embedding (for tag suggestions) ----

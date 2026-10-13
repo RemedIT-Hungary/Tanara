@@ -5,7 +5,6 @@ import QtQuick.Layouts
 // starts here in the PROCESSING column. It holds the content of the old pre-transcript view's
 // (PreTranscriptView) step 3 and error card, condensed for the 272 px step column:
 //   - missing setting (warn box, the button leads to the matching Settings page);
-//   - Tanara Cloud: Fast / Accurate tier and language;
 //   - "Start transcription" (primary) + provider, or the reason it is locked;
 //   - error: danger box with the message, "Retry" and the fixing action;
 //   - while running: a compact list of stages (state circle, name, progress), the
@@ -233,48 +232,6 @@ ColumnLayout {
         }
     }
 
-    // ---- Tanara Cloud: tier and language ----
-    Flow {
-        visible: !root.failed && !root.running && root.vm !== null && root.vm.cloudSelected
-        Layout.fillWidth: true
-        spacing: 6
-        TChip {
-            visible: root.vm && root.vm.cloudExpertName === ""
-            text: qsTr("Gyors")
-            tone: root.vm && root.vm.cloudTier === "fast" ? "accent" : "neutral"
-            onClicked: root.vm.cloudTier = "fast"
-        }
-        TChip {
-            visible: root.vm && root.vm.cloudExpertName === ""
-            text: qsTr("Pontos")
-            tone: root.vm && root.vm.cloudTier === "accurate" ? "accent" : "neutral"
-            onClicked: root.vm.cloudTier = "accurate"
-        }
-        TChip {
-            visible: root.vm && root.vm.cloudExpertName !== ""
-            text: root.vm ? qsTr("Expert: %1").arg(root.vm.cloudExpertName) : ""
-            removable: true
-            onRemoved: root.vm.cloudTier = "accurate"
-        }
-        TButton {
-            text: root.vm ? root.vm.cloudLanguageLabel : ""
-            variant: "ghost"
-            size: "small"
-            implicitHeight: 24
-            toolTipText: qsTr("Nyelv és Expert mód…")
-            onClicked: root.openSettings("cloud")
-        }
-    }
-    TLabel {
-        visible: !root.failed && !root.running && root.vm !== null && root.vm.cloudSelected && root.vm.cloudWarning !== ""
-        Layout.fillWidth: true
-        text: root.vm ? root.vm.cloudWarning : ""
-        color: Theme.warnInk
-        font.pixelSize: 12
-        cssLineHeight: 1.4
-        wrapMode: Text.Wrap
-    }
-
     // ---- start ----
     ColumnLayout {
         visible: !root.failed && !root.running
@@ -300,23 +257,10 @@ ColumnLayout {
             font.pixelSize: 12
             wrapMode: Text.Wrap
         }
-        RowLayout {
-            visible: root.vm !== null && root.vm.cloudTeaser
+        CloudComingSoon {
+            visible: root.vm !== null && root.vm.cloudSoon
+            compact: true
             Layout.fillWidth: true
-            spacing: 4
-            TLabel {
-                Layout.fillWidth: true
-                text: qsTr("Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.")
-                muted: true
-                font.pixelSize: 12
-                wrapMode: Text.Wrap
-            }
-            TButton {
-                text: qsTr("Érdekel")
-                variant: "ghost"; size: "small"
-                implicitHeight: 24
-                onClicked: root.openSettings("cloud")
-            }
         }
     }
 }

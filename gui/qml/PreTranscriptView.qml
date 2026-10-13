@@ -7,7 +7,7 @@ import QtQuick.Templates as T
 //   "steps"   context -> preparation -> transcription (the missing part is named, the button leads there)
 //   "running" section list with real progress, cancelable
 //   "failed"  error card with retry and a fix action
-// For screenshots: --qml-prop 'demoState="steps|ready|cloud|mixing|running|uploading|failed|note"'.
+// For screenshots: --qml-prop 'demoState="steps|ready|mixing|running|uploading|failed|note"'.
 Item {
     id: root
 
@@ -305,60 +305,6 @@ Item {
                         }
                     }
 
-                    // Tanara Cloud: tier (Fast / Accurate) and language above the start button.
-                    ColumnLayout {
-                        visible: vm.cloudSelected
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            TLabel {
-                                text: qsTr("Tanara Cloud · az átírás szintje:")
-                                font.pixelSize: Theme.fontSmall
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            TChip {
-                                visible: vm.cloudExpertName === ""
-                                text: qsTr("Gyors")
-                                tone: vm.cloudTier === "fast" ? "accent" : "neutral"
-                                onClicked: vm.cloudTier = "fast"
-                            }
-                            TChip {
-                                visible: vm.cloudExpertName === ""
-                                text: qsTr("Pontos")
-                                tone: vm.cloudTier === "accurate" ? "accent" : "neutral"
-                                onClicked: vm.cloudTier = "accurate"
-                            }
-                            TChip {
-                                visible: vm.cloudExpertName !== ""
-                                text: qsTr("Expert: %1").arg(vm.cloudExpertName)
-                                removable: true
-                                onRemoved: vm.cloudTier = "accurate"
-                            }
-                            TLabel {
-                                text: "· " + vm.cloudLanguageLabel
-                                muted: true
-                                font.pixelSize: Theme.fontSmall
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            TButton {
-                                text: qsTr("Nyelv és Expert mód…")
-                                variant: "ghost"; size: "small"
-                                implicitHeight: 24
-                                onClicked: root.openSettings("cloud")
-                            }
-                        }
-                        TBanner {
-                            visible: vm.cloudWarning !== ""
-                            Layout.fillWidth: true
-                            tone: "warn"
-                            text: vm.cloudWarning
-                        }
-                    }
-
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -383,23 +329,11 @@ Item {
                         }
                     }
 
-                    // "Coming soon" row (only if the build includes the Tanara Cloud preview).
-                    RowLayout {
-                        visible: vm.cloudTeaser
+                    // Tanara Cloud: coming soon (while no own provider is set up).
+                    CloudComingSoon {
+                        visible: vm.cloudSoon
+                        compact: true
                         Layout.fillWidth: true
-                        spacing: 6
-                        TLabel {
-                            text: qsTr("Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.")
-                            muted: true
-                            font.pixelSize: Theme.fontSmall
-                        }
-                        TButton {
-                            text: qsTr("Érdekel")
-                            variant: "ghost"; size: "small"
-                            implicitHeight: 24
-                            onClicked: root.openSettings("cloud")
-                        }
-                        Item { Layout.fillWidth: true }
                     }
                 }
             }

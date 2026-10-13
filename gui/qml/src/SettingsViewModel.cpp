@@ -3,7 +3,6 @@
 #include "DemoText.h"
 
 #include "AppContext.h"
-#include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
 #include "SettingsEmbeddingModel.h"
@@ -15,7 +14,7 @@
 #include "tanara/PromptLibrary.h"
 #include "tanara/SettingsManager.h"
 #include "tanara/audio/DeviceManager.h"
-#include "tanara/cloud/CloudAccount.h"
+#include "tanara/cloud/CloudTypes.h"
 #include "tanara/detect/Autostart.h"
 #include "tanara/detect/DetectorRegistry.h"
 #include "tanara/detect/IMeetingDetector.h"
@@ -218,10 +217,7 @@ SettingsViewModel::SettingsViewModel(QObject* parent) : QObject(parent)
     m_devices = new SettingsDeviceModel(this);
     m_stt = new SettingsProviderModel(this, ProviderKind::Stt);
     m_llm = new SettingsProviderModel(this, ProviderKind::Llm);
-    m_cloud = new SettingsCloudModel(this);
     m_embedding = new SettingsEmbeddingModel(this);
-    // Cloud selectability depends on sign-in.
-    connect(m_cloud, &SettingsCloudModel::accountChanged, m_embedding, &SettingsEmbeddingModel::notifyDraftChanged);
     // Voice models: the enabled list is part of the draft; the download is immediate (not a draft).
     m_voiceModels = new VoiceModelListModel(this);
     m_voiceModels->setDraftAccess([this] { return m_draft.voiceModels; },
@@ -291,14 +287,13 @@ void SettingsViewModel::setDemoState(const QString& state)
     m_demoState = state;
     attach();
     emit demoStateChanged();
-    emit controllerChanged();            // cloud availability depends on the demo state too
+    emit controllerChanged();
 }
 
 void SettingsViewModel::attach()
 {
     for (const QMetaObject::Connection& c : std::as_const(m_connections)) disconnect(c);
     m_connections.clear();
-    m_cloud->attach();
     m_embedding->attach();
     m_voiceModels->setController(m_controller);
 
@@ -378,14 +373,6 @@ void SettingsViewModel::loadFromCore()
         m_promptText.insert(id, stored.isEmpty() ? def : stored);
     }
 
-    const bool cloudLive = c->cloudLive();
-    const bool sttCloud = m_base.sttProviderId == cloud::ProviderId;
-    const bool llmCloud = m_base.llmProviderId == cloud::ProviderId;
-    m_ownStt = sttCloud ? QString() : m_base.sttProviderId;
-    m_ownLlm = llmCloud ? QString() : m_base.llmProviderId;
-    const bool teaserView = !cloudLive && c->cloudTeaser() && m_serviceMode == QLatin1String("cloud");
-    m_serviceMode = (cloudLive && sttCloud && llmCloud) || teaserView ? QStringLiteral("cloud")
-                                                                      : QStringLiteral("own");
 
     m_folderUsage.clear();
     m_loading = false;
@@ -395,7 +382,6 @@ void SettingsViewModel::loadFromCore()
     m_stt->reset();
     m_llm->reset();
     m_embedding->reset();
-    m_cloud->notifyDraftChanged();
     refreshVoiceprint();
     refreshFolderUsage();
     touch();
@@ -427,7 +413,7 @@ void SettingsViewModel::emitAllChanged()
 void SettingsViewModel::onExternalSettingsChanged()
 {
     if (m_saving || m_loading || !m_controller) return;
-    // Someone else saved (Expert model picker, estimate dialog, waitlist...): the new state
+    // Someone else saved (another window, the CLI...): the new state
     // becomes the base, and own unsaved changes are applied on top.
     storePromptsInDraft();
     AppSettings live = m_controller->settings()->settings();
@@ -449,7 +435,6 @@ void SettingsViewModel::onExternalSettingsChanged()
     m_stt->reset();
     m_llm->reset();
     m_embedding->reset();
-    m_cloud->notifyDraftChanged();
     touch();
     emitAllChanged();
 }
@@ -527,7 +512,7 @@ ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
     m.hasTranscript = true;
     const ReadinessModel model(m_draft, [this](const QString& key) {
         if (m_draftSecrets.contains(key)) return !m_draftSecrets.value(key).trimmed().isEmpty();
-        if (!m_controller) return m_cloud->loggedIn();      // demo: the sign-in key
+        if (!m_controller) return false;
         return m_controller->hasSecret(key);
     });
     return model.check(step, m);
@@ -535,13 +520,9 @@ ReadinessResult SettingsViewModel::draftReadiness(WorkflowStep step) const
 
 void SettingsViewModel::updateServicesWarn()
 {
-    bool warn;
-    if (!m_controller && m_serviceMode == QLatin1String("cloud") && cloudAvailability() == QLatin1String("live"))
-        warn = !m_cloud->loggedIn();
-    else
-        warn = !draftReadiness(WorkflowStep::Transcribe).runnable
-               || !draftReadiness(WorkflowStep::Summarize).runnable
-               || m_stt->lastTestFailed() || m_llm->lastTestFailed();
+    const bool warn = !draftReadiness(WorkflowStep::Transcribe).runnable
+                      || !draftReadiness(WorkflowStep::Summarize).runnable
+                      || m_stt->lastTestFailed() || m_llm->lastTestFailed();
     if (warn == m_servicesWarn) return;
     m_servicesWarn = warn;
     emit servicesWarnChanged();
@@ -552,9 +533,6 @@ QString SettingsViewModel::footerText() const
     if (m_changeCount <= 0) return tr("Nincs mentetlen változás");
     // Changing the embedding model also restarts the library's preparation.
     if (m_embedding->restartPending()) return tr("Modellváltás · mentéskor újraindul az előkészítés");
-    const bool toCloud = m_draft.sttProviderId == cloud::ProviderId && m_draft.llmProviderId == cloud::ProviderId
-                         && (m_base.sttProviderId != cloud::ProviderId || m_base.llmProviderId != cloud::ProviderId);
-    if (toCloud && m_changeCount <= 2) return tr("Tanara Cloud kiválasztva · mentéskor átvált");
     // A new voice model was enabled: on save, backfilling the existing samples starts.
     bool modelAdded = false;
     for (const QString& id : m_draft.voiceModels)
@@ -592,7 +570,7 @@ void SettingsViewModel::openPage(const QString& page, const QString& focusField)
     else if (page.isEmpty()) target = m_page;
     if (kPages.contains(target)) setPage(target);
 
-    if (page == QLatin1String("cloud") && cloudAvailability() != QLatin1String("none"))
+    if (page == QLatin1String("cloud"))
         setServiceMode(QStringLiteral("cloud"));
     else if (page == QLatin1String("providers") && !focusField.isEmpty())
         setServiceMode(QStringLiteral("own"));
@@ -1042,65 +1020,18 @@ void SettingsViewModel::pollDetector()
 
 // ---- Services ------------------------------------------------------------
 
-QString SettingsViewModel::cloudAvailability() const
+bool SettingsViewModel::cloudSelected() const
 {
-    if (!m_controller)
-        return m_demoState == QLatin1String("teaser") ? QStringLiteral("teaser") : QStringLiteral("live");
-    if (m_controller->cloudLive()) return QStringLiteral("live");
-    if (m_controller->cloudTeaser()) return QStringLiteral("teaser");
-    return QStringLiteral("none");
-}
-
-QString SettingsViewModel::lastOwnProvider(bool stt) const
-{
-    const QString remembered = stt ? m_ownStt : m_ownLlm;
-    if (!remembered.isEmpty()) return remembered;
-    const SettingsProviderModel* card = stt ? m_stt : m_llm;
-    const QMap<QString, ProviderConfig>& configs = stt ? m_draft.sttConfigs : m_draft.llmConfigs;
-    const QString fallback = stt ? QStringLiteral("soniox") : QStringLiteral("openai-compat");
-    QString first;
-    bool hasFallback = false;
-    for (const ProviderDescriptor& d : card->allDescriptors()) {
-        if (d.authMode == AuthMode::Login) continue;
-        if (first.isEmpty()) first = d.id;
-        if (d.id == fallback) hasFallback = true;
-    }
-    // Whichever already has a setting (not the default) is the likely earlier choice.
-    for (const ProviderDescriptor& d : card->allDescriptors())
-        if (d.authMode != AuthMode::Login && d.id != fallback && configs.contains(d.id)) return d.id;
-    return hasFallback ? fallback : first;
+    return m_draft.sttProviderId == cloud::ProviderId || m_draft.llmProviderId == cloud::ProviderId;
 }
 
 void SettingsViewModel::setServiceMode(const QString& mode)
 {
+    // Only the shown tab changes: Tanara Cloud is "coming soon", so there is nothing to save.
     const QString m = mode == QLatin1String("cloud") ? QStringLiteral("cloud") : QStringLiteral("own");
-    if (m == QLatin1String("cloud") && cloudAvailability() == QLatin1String("none")) return;
-    const bool live = cloudAvailability() == QLatin1String("live");
-    // Providers are touched only on a REAL mode switch: a mixed setting (e.g. transcription on
-    // Cloud, summary with an own key) must not change from a deep link.
-    if (live && m != m_serviceMode) {
-        // In live mode the choice is part of the draft: on save both steps' providers switch.
-        if (m == QLatin1String("cloud")) {
-            if (m_draft.sttProviderId != cloud::ProviderId) m_ownStt = m_draft.sttProviderId;
-            if (m_draft.llmProviderId != cloud::ProviderId) m_ownLlm = m_draft.llmProviderId;
-            m_draft.sttProviderId = cloud::ProviderId;
-            m_draft.llmProviderId = cloud::ProviderId;
-            m_draft.sttConfigs[cloud::ProviderId].type = cloud::ProviderId;
-            m_draft.llmConfigs[cloud::ProviderId].type = cloud::ProviderId;
-        } else {
-            if (m_draft.sttProviderId == cloud::ProviderId) m_draft.sttProviderId = lastOwnProvider(true);
-            if (m_draft.llmProviderId == cloud::ProviderId) m_draft.llmProviderId = lastOwnProvider(false);
-            normalize(m_draft);
-        }
-        m_stt->reset();
-        m_llm->reset();
-    }
-    // In teaser mode the "Tanara Cloud" card shows only the waitlist offer (nothing to save).
-    if (m != m_serviceMode) {
-        m_serviceMode = m;
-        emit serviceModeChanged();
-    }
-    touch();
+    if (m == m_serviceMode) return;
+    m_serviceMode = m;
+    emit serviceModeChanged();
 }
 
 // ---- Summary ------------------------------------------------------------------
@@ -1360,14 +1291,10 @@ void SettingsViewModel::discard()
         const QString stored = storedPrompt(m_base, id);
         m_promptText.insert(id, stored.isEmpty() ? m_promptDefault.value(id) : stored);
     }
-    const bool cloudBoth = m_base.sttProviderId == cloud::ProviderId && m_base.llmProviderId == cloud::ProviderId;
-    if (cloudAvailability() == QLatin1String("live"))
-        m_serviceMode = cloudBoth ? QStringLiteral("cloud") : QStringLiteral("own");
     m_devices->refreshFromDraft();
     m_stt->reset();
     m_llm->reset();
     m_embedding->reset();
-    m_cloud->notifyDraftChanged();
     touch();
     emitAllChanged();
     refreshFolderUsage();
@@ -1444,8 +1371,6 @@ void SettingsViewModel::loadDemo()
     m_voiceprintText = tr("Hanglenyomat: %n minta,", nullptr, 23) + QLatin1Char(' ')
                        + tr("%n megbeszélésből", nullptr, 9);
     m_hasVoiceprint = true;
-    m_ownStt = s.sttProviderId;
-    m_ownLlm = s.llmProviderId;
     m_serviceMode = QStringLiteral("own");
     m_focusField.clear();
     m_liveActive = false;
@@ -1455,7 +1380,6 @@ void SettingsViewModel::loadDemo()
     m_page = QStringLiteral("general");
     m_loading = false;
 
-    m_cloud->loadDemo(st);
     // States of the Embedding card; other pages have no embedding ("base").
     const QString emb = st == QLatin1String("B04") || st == QLatin1String("B04embedding") ? QStringLiteral("local")
         : st == QLatin1String("B04embeddingRunning") ? QStringLiteral("localRunning")
@@ -1508,14 +1432,16 @@ void SettingsViewModel::loadDemo()
                              tr("A végpont nem válaszol. Fut a helyi szerver (pl. LM Studio), és jó a port?"),
                              QStringLiteral("ECONNREFUSED"));
         m_llm->setAdvancedOpen(true);
-    } else if (st == QLatin1String("B06") || st == QLatin1String("cloudOut")) {
+    } else if (st == QLatin1String("cloudComingSoon")) {
+        m_page = QStringLiteral("services");
+        m_serviceMode = QStringLiteral("cloud");
+    } else if (st == QLatin1String("cloudSelected")) {
+        // The saved setting names Tanara Cloud (developer setting): not available, own key needed.
         m_page = QStringLiteral("services");
         m_draft.sttProviderId = cloud::ProviderId;
         m_draft.llmProviderId = cloud::ProviderId;
-        m_serviceMode = QStringLiteral("cloud");
-    } else if (st == QLatin1String("teaser")) {
-        m_page = QStringLiteral("services");
-        m_serviceMode = QStringLiteral("cloud");
+        m_stt->reset();
+        m_llm->reset();
     } else if (st == QLatin1String("B07") || st == QLatin1String("B07notes") || st == QLatin1String("schema")) {
         m_page = QStringLiteral("summary");
         // A prompt extended with an own rule -> "modified".

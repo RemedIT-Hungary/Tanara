@@ -12,11 +12,11 @@
 // without the already attached and the rejected ones. Accepting / rejecting is one undoable step each (toast).
 //
 // It does NOT start the transcription (that is the shell's job: shell.startTranscription:
-// gating + cloud estimate); it only provides state and saves the meeting's settings (context,
-// identification switch, Tanara Cloud tier).
+// gating); it only provides state and saves the meeting's settings (context,
+// identification switch).
 //
 // Without a controller or with App.demo it shows built-in FICTIONAL sample data; demoState
-// selects the state ("steps" | "ready" | "cloud" | "running" | "uploading" | "failed" |
+// selects the state ("steps" | "ready" | "running" | "uploading" | "failed" |
 // "note": steps with template suggestions and a detected call | "readyNote": can start, with
 // template suggestions and a detected call; the Overview's demo).
 //
@@ -75,13 +75,8 @@ class PreTranscriptViewModel : public QObject {
     Q_PROPERTY(QVariantMap blocker READ blocker NOTIFY changed)
     Q_PROPERTY(QString providerLabel READ providerLabel NOTIFY changed)
 
-    // ---- Tanara Cloud (only if the build includes it and it is the transcription provider) ----
-    Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY changed)       // tier selector visible
-    Q_PROPERTY(QString cloudTier READ cloudTier WRITE setCloudTier NOTIFY changed)   // fast | accurate
-    Q_PROPERTY(QString cloudExpertName READ cloudExpertName NOTIFY changed)          // non-empty -> Expert model
-    Q_PROPERTY(QString cloudLanguageLabel READ cloudLanguageLabel NOTIFY changed)
-    Q_PROPERTY(QString cloudWarning READ cloudWarning NOTIFY changed)
-    Q_PROPERTY(bool cloudTeaser READ cloudTeaser NOTIFY changed)           // "coming soon" row
+    // "Tanara Cloud - coming soon" hint: shown while the step lacks a provider setting.
+    Q_PROPERTY(bool cloudSoon READ cloudSoon NOTIFY changed)
 
     // ---- M04 ----
     Q_PROPERTY(QString jobTitle READ jobTitle NOTIFY jobChanged)
@@ -136,13 +131,7 @@ public:
     QVariantMap blocker() const { return m_blocker; }
     QString providerLabel() const { return m_providerLabel; }
 
-    bool cloudSelected() const { return m_cloudSelected; }
-    QString cloudTier() const { return m_cloudTier; }
-    void setCloudTier(const QString& tier);
-    QString cloudExpertName() const { return m_cloudExpertName; }
-    QString cloudLanguageLabel() const { return m_cloudLanguageLabel; }
-    QString cloudWarning() const { return m_cloudWarning; }
-    bool cloudTeaser() const { return m_cloudTeaser; }
+    bool cloudSoon() const { return m_cloudSoon; }
 
     QString jobTitle() const { return m_jobTitle; }
     QString etaText() const;
@@ -205,12 +194,7 @@ private:
     QVariantMap m_blocker;
     QString m_providerLabel;
 
-    bool m_cloudSelected = false;
-    QString m_cloudTier = QStringLiteral("accurate");
-    QString m_cloudExpertName;
-    QString m_cloudLanguageLabel;
-    QString m_cloudWarning;
-    bool m_cloudTeaser = false;
+    bool m_cloudSoon = false;
 
     QString m_jobTitle;
     QVariantList m_stages;

@@ -3,7 +3,7 @@
 //
 // Behavior tied to Widgets or a separate window lives here:
 //  - Settings (QML: tanara_qml::SettingsWindowHost, a non-modal separate window; the native
-//    folder picker and the cloud Widgets windows come from SettingsWidgetsDialogs), the
+//    folder picker comes from SettingsWidgetsDialogs), the
 //    People window (QML: tanara_qml::PeopleWindowHost), the Tags window (QML:
 //    tanara_qml::TagsWindowHost; its filter and meeting requests go to the shell), and the
 //    "Getting started" window (QML: tanara_qml::OnboardingWindowHost; opens once by itself on
@@ -12,14 +12,9 @@
 //    ShellRecorderHost (which wraps the QML recorder), the recorder's requests (open in the
 //    analyzer, recording settings), and the window handling at the end of a recording
 //    (bringing the hidden main window back, "Stop and quit");
-//  - the Tanara Cloud flows with the windows in gui/src/cloud: startup checks (mode picker,
-//    account / model refresh, pending transcription), estimate confirmation, sign-in,
-//    blockers (upload / update), error windows (with partial charge), charge / write-back
-//    notice, terms, too-old client, balance chip and bars.
 // The QML side reaches it through the tanara_qml::ShellBridge interface (gui/qml/src/ShellBridge.h).
 #include "ShellBridge.h"
 
-#include <QDateTime>
 #include <QPointer>
 #include <QStringList>
 
@@ -28,8 +23,6 @@ class QWidget;
 
 namespace tanara {
 class AppController;
-struct CloudError;
-struct Money;
 }
 
 namespace tanara_qml {
@@ -78,12 +71,6 @@ public:
     void setAutoOnboarding(bool on) { m_autoOnboarding = on; }
 
     // ---- ShellBridge ----
-    bool cloudChipVisible() const override { return m_chipVisible; }
-    QString cloudChipText() const override { return m_chipText; }
-    QString cloudChipTone() const override { return m_chipTone; }
-    QString cloudChipToolTip() const override { return m_chipToolTip; }
-    QVariantList cloudBanners() const override { return m_banners; }
-
     void openSettings(const QString& page) override;
     void openSettingsAt(const QString& page, const QString& focusField) override;
     void openPeople() override;
@@ -98,18 +85,11 @@ public:
     QString pickSaveFile(const QString& title, const QString& proposedPath, const QString& filter) override;
     QString pickArchiveFile() override;
     QString pickMeetingFolder() override;
-    bool handleCloudBlocker(const tanara::ReadinessResult& blocker) override;
-    bool confirmCloudEstimate(const QString& meetingId, const QString& task,
-                              const QString& mode) override;
     QString identifyParticipantsPreview(const QString& meetingId, bool* cancelled) override;
-    void cloudBannerAction(const QString& key) override;
-    void cloudBannerDismiss(const QString& key) override;
     void continueRecordingInBackground() override;
     void stopRecordingAndQuit() override;
     void shutdown() override;
     void windowShown() override;
-    void windowActivated() override;
-    void openUsageLog() override;
 
 protected:
     // Parents the parentless Widgets dialogs to the QML main window (transient parent).
@@ -118,20 +98,7 @@ protected:
 private:
     bool mainWindowHidden() const;
 
-    // ---- Tanara Cloud ----
-    void wireCloud();
-    void startupCloudChecks();
     void maybeOpenOnboarding();
-    void refreshCloudChrome();
-    bool cloudLogin();
-    void cloudToast(const QString& text, const QString& requestId = QString(),
-                    bool usageLink = true);
-    void onCloudCharged(const QString& meetingId, const QString& kind, const tanara::Money& total,
-                        int calls, const tanara::Money& balance, const QString& vatMode);
-    void onCloudRefunded(const QString& meetingId, const tanara::Money& refund,
-                         const tanara::Money& balance, const QString& requestId);
-    void onCloudError(const QString& meetingId, const QString& kind, const tanara::CloudError& e,
-                      const tanara::Money& charged);
 
     tanara::AppController* m_controller = nullptr;
     QPointer<QWindow> m_window;
@@ -146,13 +113,7 @@ private:
     bool m_quitAfterStop = false;
     bool m_shutDown = false;
 
-    bool m_chipVisible = false;
-    QString m_chipText, m_chipTone, m_chipToolTip;
-    QVariantList m_banners;
-    bool m_tooOldShown = false;
-    bool m_termsOffered = false;
-    bool m_cloudStartupDone = false;
-    QDateTime m_lastCloudRefresh;
+    bool m_startupDone = false;
 };
 
 } // namespace tanara_gui

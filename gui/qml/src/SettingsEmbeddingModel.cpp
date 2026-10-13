@@ -1,6 +1,5 @@
 #include "SettingsEmbeddingModel.h"
 
-#include "SettingsCloudModel.h"
 #include "SettingsProviderModel.h"
 #include "SettingsViewModel.h"
 #include "ShellFormat.h"
@@ -18,9 +17,6 @@ namespace tanara_qml {
 
 namespace {
 
-// Tanara Cloud embedding's credit need per meeting. PLACEHOLDER: the gateway does not state
-// the price yet (the server side is a separate task); until then the info text uses this estimate.
-constexpr int kCloudCreditsPerMeeting = 3;
 // Estimated time to prepare one meeting, until it can be measured from the running preparation.
 constexpr int kSecondsPerMeeting = 9;
 
@@ -118,16 +114,11 @@ QString SettingsEmbeddingModel::mode() const
     return QStringLiteral("local");
 }
 
-bool SettingsEmbeddingModel::cloudSelectable() const
-{
-    return m_vm && m_vm->cloudAvailability() == QLatin1String("live") && m_vm->cloud()->loggedIn();
-}
-
 void SettingsEmbeddingModel::setMode(const QString& mode)
 {
     if (!m_vm || mode == this->mode()) return;
     if (mode != QLatin1String("none") && mode != QLatin1String("local") && mode != QLatin1String("cloud")) return;
-    if (mode == QLatin1String("cloud") && !cloudSelectable()) return;
+    if (mode == QLatin1String("cloud")) return;   // Tanara Cloud is "coming soon": not selectable
     const QString id = providerFor(mode);
     AppSettings& d = m_vm->draft();
     d.embeddingProviderId = id;
@@ -150,15 +141,9 @@ QVariantList SettingsEmbeddingModel::modeOptions() const
     };
     QVariantList out{opt(QStringLiteral("none"), tr("Nincs (alap)")),
                      opt(QStringLiteral("local"), tr("Helyi végpont"))};
-    const QString availability = m_vm ? m_vm->cloudAvailability() : QStringLiteral("live");
-    if (availability == QLatin1String("none")) return out;   // a build without Cloud
-    QString tip;
-    if (availability == QLatin1String("teaser"))
-        tip = tr("A Tanara Cloud hamarosan érkezik.");
-    else if (m_vm && !m_vm->cloud()->loggedIn())
-        tip = tr("Ehhez jelentkezz be a Tanara Cloudba (fent, a Tanara Cloud kártyán).");
-    const bool enabled = !m_vm || cloudSelectable() || mode() == QLatin1String("cloud");
-    out << opt(QStringLiteral("cloud"), tr("Tanara Cloud"), enabled, enabled ? QString() : tip);
+    // Tanara Cloud is "coming soon": the item is shown, but it cannot be chosen.
+    out << opt(QStringLiteral("cloud"), tr("Tanara Cloud · hamarosan"), false,
+               tr("A Tanara Cloud hamarosan érkezik."));
     return out;
 }
 
@@ -176,25 +161,6 @@ QString SettingsEmbeddingModel::description() const
               "Nem kell hozzá modell, és semmi nem hagyja el a gépet.");
 }
 
-QString SettingsEmbeddingModel::cloudInfo() const
-{
-    QString text = tr("Az átiratok szövege a Tanara Cloudba kerül feldolgozásra, ugyanúgy, mint a "
-                      "felhős összefoglalásnál. A hangfelvétel és a hanglenyomatok a gépen maradnak.");
-    const int total = prepState().total;
-    if (total > 0)
-        text += QLatin1Char(' ')
-              + tr("Az előkészítés egyszer kb. %1 kredit, utána megbeszélésenként ~%2.")
-                    .arg(total * kCloudCreditsPerMeeting).arg(kCloudCreditsPerMeeting);
-    return text;
-}
-
-QString SettingsEmbeddingModel::cloudHint() const
-{
-    if (mode() != QLatin1String("cloud") || !m_vm || m_vm->cloud()->loggedIn()) return QString();
-    return tr("A Tanara Cloudhoz be kell jelentkezned (fent, a Tanara Cloud kártyán). Addig a "
-              "javaslatok az alap szinten működnek.");
-}
-
 // ---- status pill ------------------------------------------------------------------------
 
 QString SettingsEmbeddingModel::status() const
@@ -202,7 +168,7 @@ QString SettingsEmbeddingModel::status() const
     const QString m = mode();
     if (m == QLatin1String("none")) return QStringLiteral("neutral");
     if (m == QLatin1String("local") && m_card && !m_card->testState().isEmpty()) return m_card->testState();
-    if (m == QLatin1String("cloud") && m_vm && !m_vm->cloud()->loggedIn()) return QStringLiteral("neutral");
+    if (m == QLatin1String("cloud")) return QStringLiteral("neutral");   // not available yet
     const QString prep = prepStatus();
     if (prep == QLatin1String("error")) return QStringLiteral("failed");
     if (m == QLatin1String("local") && m_card && !m_card->configured()) return QStringLiteral("neutral");
@@ -217,7 +183,7 @@ QString SettingsEmbeddingModel::statusText() const
         // The card's "Connected · 31 ms": the header only needs the state.
         return m_card->testState() == QLatin1String("ok") ? tr("Kapcsolódva") : m_card->statusText();
     }
-    if (m == QLatin1String("cloud") && m_vm && !m_vm->cloud()->loggedIn()) return tr("Bejelentkezés kell");
+    if (m == QLatin1String("cloud")) return tr("Nem elérhető");
     const QString prep = prepStatus();
     if (prep == QLatin1String("error")) return tr("Nem érhető el");
     if (m == QLatin1String("local") && m_card && !m_card->configured()) return tr("Hiányos");

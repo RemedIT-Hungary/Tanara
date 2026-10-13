@@ -56,18 +56,18 @@ One instance, owned by `Main.qml`, plays the selected meeting's mixdown.
 
 ## `ShellActions` (Shell implements; exposed as the `shell` property)
 
-Everything that needs a Widgets dialog, a cloud estimate / login / error flow, or a
+Everything that needs a Widgets dialog or a
 change of what the window shows goes through here. Content components never call
 `AppController::transcribeMeeting` / `summarizeMeeting` / `extractMeetingTopics` /
 `generateComplexSummary` / `retranscribeMeeting` directly: the shell wraps them with the
-readiness check and the Tanara Cloud estimate confirmation.
+readiness check (a Tanara Cloud run never starts from the UI: it is "coming soon").
 
 | Invokable | Meaning |
 |---|---|
 | `openSettings(string page, string focusField = "")` | page: `""`, `"providers"`, `"watcher"`, `"cloud"`, `"summary"`, `"recording"`; opens the (non-modal) QML Settings window. focusField `"stt"` / `"llm"`: the missing provider's card highlighted, and back to the meeting after a successful save |
 | `openPeople(string person = "")` | People window (QML, non-modal), optionally with that person selected |
 | `openRecorder()` | floating recorder |
-| `startTranscription(string meetingId)` | readiness + cloud estimate, then transcribe |
+| `startTranscription(string meetingId)` | readiness, then transcribe |
 | `retranscribe(string meetingId)` | opens the M10 confirmation dialog (Shell owns it) |
 | `startQuickSummary(string meetingId)` | |
 | `startTopicExtraction(string meetingId)` | topic-based summary, round 1 |

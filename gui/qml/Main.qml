@@ -25,7 +25,7 @@ ApplicationWindow {
     property string demoSearch: ""
     // In demo / screenshots: a popup or state that opens at startup -
     // "retranscribe" | "delete" | "close" | "stop" | "confirm" | "toast" | "toastError" |
-    // "cloudToast" | "filters" | "rename" | "tracks" | "import" | "importSplit" |
+    // "filters" | "rename" | "tracks" | "import" | "importSplit" |
     // "importProbing" | "importError" | "importEmpty" | "importProgress" | "importStrip" | "drop" |
     // "tagToast" (tag step toast with "Undo") | "selection" (multi-select) |
     // "overviewChange" (the Overview change bar with "Undo")
@@ -319,8 +319,6 @@ ApplicationWindow {
             App.bridge.windowShown()
     }
 
-    onActiveChanged: if (active && App.bridge) App.bridge.windowActivated()
-
     onClosing: (close) => {
         // WHILE RECORDING, quitting would abort the recording -> ask first.
         if (shellActions.recording && !window.quitConfirmed) {
@@ -346,7 +344,6 @@ ApplicationWindow {
         case "toastError": toast.show(DemoText.t("Nincs rögzíthető hangeszköz.", "No audio device to record from."), "danger", "", false); break
         case "tagToast": toast.show(DemoText.t("Javaslat elutasítva: #Nordvik", "Suggestion dismissed: #Nordvik"), "", "", false, "tags"); break
         case "overviewChange": overviewTab.showChange(DemoText.t("Résztvevő eltávolítva: Lantos Réka", "Participant removed: Rachel Lane")); break
-        case "cloudToast": toast.show(DemoText.t("Az átírás a szolgáltató hibája miatt nem sikerült. A díjat ($0,42) visszaírtuk.", "Transcription failed because of a provider error. The charge ($0.42) has been refunded."), "", "req_8f3a2c71d0", true); break
         case "filters": sidebar.applyDemo("filters"); break       // tag filters + popover
         case "selection": sidebar.applyDemo("selection"); break   // multi-select
         case "rename": header.startRename(); break
@@ -625,18 +622,6 @@ ApplicationWindow {
                     iconName: "circle-dot"
                     onClicked: shellActions.openRecorder()
                 }
-                // Tanara Cloud balance chip - absent in own-key mode.
-                TButton {
-                    visible: App.bridge ? App.bridge.cloudChipVisible : false
-                    text: App.bridge ? App.bridge.cloudChipText : ""
-                    toolTipText: App.bridge ? App.bridge.cloudChipToolTip : ""
-                    variant: App.bridge && App.bridge.cloudChipTone === "danger" ? "dangerGhost" : "ghost"
-                    size: "small"
-                    iconName: App.bridge && App.bridge.cloudChipTone !== "normal" ? "triangle-alert" : ""
-                    font.weight: App.bridge && App.bridge.cloudChipTone !== "normal" ? Theme.weightSemiBold
-                                                                                    : Theme.weightRegular
-                    onClicked: shellActions.openSettings("cloud")
-                }
             }
             TDivider { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } }
         }
@@ -671,14 +656,6 @@ ApplicationWindow {
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 0
-
-                    ShellCloudBanners {
-                        bridge: App.bridge
-                        Layout.fillWidth: true
-                        Layout.leftMargin: Theme.space5
-                        Layout.rightMargin: Theme.space5
-                        Layout.topMargin: Theme.space3
-                    }
 
                     EmptyLibraryView {
                         visible: window.viewState === "empty"
@@ -884,7 +861,6 @@ ApplicationWindow {
                     anchors.bottomMargin: (!window.hasMeeting ? 0 : window.mapDockShown ? mapDock.height
                                                                      : Theme.playerHeight) + Theme.space4
                     width: Math.min(implicitWidth, parent.width - 2 * Theme.space5)
-                    onUsageLinkActivated: if (App.bridge) App.bridge.openUsageLog()
                     onUndoActivated: (undoKey) => { toast.hide(); shellActions.undoFromToast(undoKey) }
                     onRevealActivated: (path) => { toast.hide(); shellActions.revealFile(path) }
                 }

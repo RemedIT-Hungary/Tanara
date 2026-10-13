@@ -13,7 +13,7 @@ import QtQuick.Templates as T
 // The C++ host (tanara_qml::SettingsWindowHost) creates it and opens the requested page; it can
 // also be loaded standalone for screenshots:
 //   tanara --qml-shot out.png --qml-page SettingsWindow --size 900x680 --qml-prop 'demoState="B03"'
-// demoState: B01 ... B07 · dirty · unsaved · schema · teaser · cloudOut · addApp · logout · reset
+// demoState: B01 ... B07 · dirty · unsaved · schema · cloudComingSoon · cloudSelected · addApp · reset
 // · B04embedding · B04embeddingRunning · B04embeddingError · B04embeddingDone · B04embeddingCloud
 // · B04embeddingNone · B04modelChange · rejectedReset (confirmation)
 // · B08 · B08download · B08none · B08fallback · B08error · B08offline · B08backfill · B08partial · B08bundled
@@ -50,8 +50,7 @@ ApplicationWindow {
             model.controller = hostController
         } else if (demoState !== "") {
             // Screenshot / demo: the helper states (popups) also select a page.
-            const base = demoState === "addApp" ? "B03" : demoState === "logout" ? "B06"
-                       : demoState === "reset" ? "B07" : demoState === "rejectedReset" ? "B04embeddingDone" : demoState
+            const base = demoState === "addApp" ? "B03" : demoState === "reset" ? "B07" : demoState === "rejectedReset" ? "B04embeddingDone" : demoState
             model.demoState = base
             Qt.callLater(window.applyDemoOverlay)
         }
@@ -61,7 +60,6 @@ ApplicationWindow {
         switch (demoState) {
         case "unsaved": unsavedDialog.open(); break
         case "schema": schemaDialog.open(); break
-        case "logout": logoutDialog.open(); break
         case "reset": resetDialog.open(); break
         case "rejectedReset": rejectedDialog.open(); break
         }
@@ -90,7 +88,7 @@ ApplicationWindow {
         if (!visible) {
             window.closeConfirmed = false
             // No question stays open in a hidden window (reopening starts clean).
-            unsavedDialog.close(); resetDialog.close(); logoutDialog.close(); schemaDialog.close()
+            unsavedDialog.close(); resetDialog.close(); schemaDialog.close()
             rejectedDialog.close()
         }
     }
@@ -212,7 +210,6 @@ ApplicationWindow {
                         width: parent.width
                         vm: model
                         demoDropdown: window.demoState === "B04"
-                        onLogoutRequested: logoutDialog.open()
                         onRejectedResetRequested: rejectedDialog.open()
                     }
                     SettingsSpeakersPage {
@@ -346,25 +343,6 @@ ApplicationWindow {
                 text: qsTr("Visszaállítás")
                 variant: "primary"
                 onClicked: { rejectedDialog.accept(); model.embedding.clearRejected() }
-            }
-        ]
-    }
-
-    TDialog {
-        id: logoutDialog
-        title: qsTr("Kijelentkezel a Tanara Cloudból?")
-        TLabel {
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            cssLineHeight: 1.45
-            text: qsTr("A kulcsot ezen a gépen töröljük és visszavonjuk. A felvételeid és az átirataid megmaradnak.")
-        }
-        actions: [
-            TButton { text: qsTr("Mégse"); onClicked: logoutDialog.reject() },
-            TButton {
-                text: qsTr("Kijelentkezés")
-                variant: "danger"
-                onClicked: { logoutDialog.accept(); model.cloud.logout() }
             }
         ]
     }

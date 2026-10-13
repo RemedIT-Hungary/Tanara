@@ -40,16 +40,8 @@ public:
     using ShellBridge::ShellBridge;
 
     QStringList calls;
-    bool handleBlockers = false;      // true: the cloud blocker is "handled"
-    bool estimateAnswer = true;
     QString previewSummary = QStringLiteral("Kovács Lilla és 1 ismeretlen partner");
     bool previewCancelled = false;
-
-    bool cloudChipVisible() const override { return false; }
-    QString cloudChipText() const override { return {}; }
-    QString cloudChipTone() const override { return QStringLiteral("normal"); }
-    QString cloudChipToolTip() const override { return {}; }
-    QVariantList cloudBanners() const override { return {}; }
 
     void openSettings(const QString& page) override { calls << QStringLiteral("settings:") + page; }
     // The deep link's field; the page is logged the same way.
@@ -78,30 +70,16 @@ public:
     QString pickArchiveFile() override { calls << QStringLiteral("pickArchive"); return archivePath; }
     QString pickMeetingFolder() override { calls << QStringLiteral("pickFolder"); return folderPath; }
     QString savePath, archivePath, folderPath, lastProposed, lastFilter;
-    bool handleCloudBlocker(const tanara::ReadinessResult& r) override
-    {
-        calls << QStringLiteral("blocker:%1:%2").arg(int(r.blockerKind)).arg(r.providerId);
-        return handleBlockers;
-    }
-    bool confirmCloudEstimate(const QString&, const QString& task, const QString& mode) override
-    {
-        calls << QStringLiteral("estimate:%1:%2").arg(task, mode);
-        return estimateAnswer;
-    }
     QString identifyParticipantsPreview(const QString&, bool* cancelled) override
     {
         calls << QStringLiteral("preview");
         if (cancelled) *cancelled = previewCancelled;
         return previewCancelled ? QString() : previewSummary;
     }
-    void cloudBannerAction(const QString&) override {}
-    void cloudBannerDismiss(const QString&) override {}
     void continueRecordingInBackground() override {}
     void stopRecordingAndQuit() override {}
     void shutdown() override {}
     void windowShown() override {}
-    void windowActivated() override {}
-    void openUsageLog() override {}
 };
 
 } // namespace
@@ -538,12 +516,10 @@ private slots:
         QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
         QSignalSpy revisions(m_shell.get(), &ShellActions::readinessRevisionChanged);
 
-        // A missing API key is not a cloud blocker: Settings on the "External services" page.
+        // A missing API key: Settings on the "External services" page.
         m_shell->startTranscription(m.id);
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_bridge->calls.size(), 2);
-        QVERIFY(m_bridge->calls.at(0).startsWith(QStringLiteral("blocker:")));
-        QCOMPARE(m_bridge->calls.at(1), QStringLiteral("settings:providers"));
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
         QCOMPARE(m_bridge->lastFocusField, QStringLiteral("stt"));   // the transcriber's card opens highlighted
         QVERIFY(revisions.count() >= 1);
 
@@ -552,7 +528,7 @@ private slots:
         const tanara::Meeting empty = m_app->store()->createMeeting(QStringLiteral("Üres"));
         m_shell->startTranscription(empty.id);
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_bridge->calls.size(), 1);          // only the cloud-blocker question
+        QVERIFY(m_bridge->calls.isEmpty());
         QCOMPARE(m_toasts.size(), 1);
         QVERIFY(m_toasts.last().contains(QStringLiteral("Nem indítható")));
 
@@ -599,10 +575,11 @@ private slots:
         QTRY_VERIFY(!m_app->jobs()->isBusy(m.id));
     }
 
-    void cloudBlockerIsHandledByTheBridge()
+    void cloudProviderNeverRunsFromTheUi()
     {
-        // Live cloud mode, Tanara Cloud provider, not signed in: an Auth blocker; the bridge handles
-        // it (sign-in), the shell does NOT open Settings and does NOT start anything.
+        // Live cloud mode (developer setting) with the Tanara Cloud provider selected: the UI does
+        // not offer Cloud ("coming soon"), so nothing starts; the user is sent to the own-key
+        // provider settings.
         m_shell.reset();
         m_app.reset();
         qputenv("TANARA_CLOUD", "live");
@@ -623,18 +600,16 @@ private slots:
         QVERIFY(m_app->usesCloud(tanara::WorkflowStep::Transcribe));
         QSignalSpy started(m_app->jobs(), &tanara::MeetingJobTracker::jobStarted);
 
-        m_bridge->handleBlockers = true;
         m_shell->startTranscription(m.id);
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_bridge->calls.size(), 1);
-        QVERIFY(m_bridge->calls.at(0).startsWith(QStringLiteral("blocker:")));
-        QVERIFY(m_bridge->calls.at(0).endsWith(tanara::cloud::ProviderId));
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
+        QCOMPARE(m_bridge->lastFocusField, QStringLiteral("stt"));
 
         // The re-transcription confirmation goes through the same gate.
         m_bridge->calls.clear();
         m_shell->confirmRetranscribe(m.id, true);
         QCOMPARE(started.count(), 0);
-        QCOMPARE(m_bridge->calls.size(), 1);
+        QCOMPARE(m_bridge->calls, QStringList{QStringLiteral("settings:providers")});
     }
 
     void retranscribeAsksFirstAndReportsImpact()

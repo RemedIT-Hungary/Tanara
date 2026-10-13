@@ -15,7 +15,7 @@ add_executable(tanara ${TANARA_GUI_SOURCES})
 # (A tanara-cli SZÁNDÉKOSAN marad konzolos.)
 set_target_properties(tanara PROPERTIES WIN32_EXECUTABLE ON)
 
-# A gui/src fájljai egymást "cloud/…" és sima névvel includolják: a src/ az include-gyökér.
+# A gui/src fájljai egymást sima névvel includolják: a src/ az include-gyökér.
 target_include_directories(tanara PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(tanara PRIVATE

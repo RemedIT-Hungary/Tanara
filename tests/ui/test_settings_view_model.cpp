@@ -1,4 +1,4 @@
-// SettingsViewModel (+ SettingsProviderModel / SettingsDeviceModel / SettingsCloudModel,
+// SettingsViewModel (+ SettingsProviderModel / SettingsDeviceModel,
 // SettingsPromptHighlighter, SettingsWindowHost): the Settings window's view models.
 //
 //  - in demo mode (without a controller): the design states' data;
@@ -10,7 +10,6 @@
 // The Tanara Cloud gateway address is a closed local port (TANARA_CLOUD_URL), no sign-in.
 #include "AppContext.h"
 #include "QmlApp.h"
-#include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsDialogs.h"
 #include "SettingsPromptHighlighter.h"
@@ -106,7 +105,6 @@ public:
     using SettingsDialogs::SettingsDialogs;
     QStringList calls;
     QString folderAnswer;
-    bool loginAnswer = false;
 
     QString pickFolder(const QString& title, const QString& start) override
     {
@@ -116,10 +114,6 @@ public:
     void openFolder(const QString& path) override { calls << QStringLiteral("open:") + path; }
     void openUrl(const QString& url) override { calls << QStringLiteral("url:") + url; }
     void openPeople() override { calls << QStringLiteral("people"); }
-    bool cloudLogin() override { calls << QStringLiteral("login"); return loginAnswer; }
-    void cloudTopup() override { calls << QStringLiteral("topup"); }
-    bool cloudPickModel(const QString& kind) override { calls << QStringLiteral("expert:") + kind; return false; }
-    bool cloudTerms() override { calls << QStringLiteral("terms"); return false; }
 };
 
 // ---- fake detector: returns the given signal ----
@@ -307,17 +301,16 @@ private slots:
         QCOMPARE(vm.stt()->testState(), QStringLiteral("ok"));
         QVERIFY(vm.stt()->statusText().contains(QStringLiteral("210")));
 
-        vm.setDemoState(QStringLiteral("B06"));
-        QCOMPARE(vm.cloudAvailability(), QStringLiteral("live"));
+        vm.setDemoState(QStringLiteral("cloudComingSoon"));
+        QCOMPARE(vm.page(), QStringLiteral("services"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
-        QVERIFY(vm.dirty());
-        QVERIFY(vm.footerText().contains(QStringLiteral("Tanara Cloud")));
-        QVERIFY(vm.cloud()->loggedIn());
-        QVERIFY(vm.cloud()->email().endsWith(QStringLiteral("@example.com")));   // made-up account
+        QVERIFY(!vm.cloudSelected());
+        QVERIFY(!vm.dirty());                              // the "coming soon" notice changes nothing
 
-        vm.setDemoState(QStringLiteral("teaser"));
-        QCOMPARE(vm.cloudAvailability(), QStringLiteral("teaser"));
-        QVERIFY(!vm.dirty());                              // the teaser card changes nothing
+        vm.setDemoState(QStringLiteral("cloudSelected"));  // the saved setting names Tanara Cloud
+        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QVERIFY(vm.cloudSelected());
+        QVERIFY(vm.servicesWarn());
 
         vm.setDemoState(QStringLiteral("B07"));
         QCOMPARE(vm.page(), QStringLiteral("summary"));
@@ -350,7 +343,6 @@ private slots:
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.changeCount(), 0);
         QCOMPARE(vm.userName(), live().userSpeakerName);
-        QCOMPARE(vm.cloudAvailability(), QStringLiteral("none"));
 
         QSignalSpy dirty(&vm, &SettingsViewModel::dirtyChanged);
         const QString original = vm.audioQuality();
@@ -1175,9 +1167,9 @@ private slots:
         QCOMPARE(vm.page(), QStringLiteral("summary"));
         vm.openPage(QString());                            // empty: stays where it was
         QCOMPARE(vm.page(), QStringLiteral("summary"));
-        vm.openPage(QStringLiteral("cloud"));              // even without cloud it is the Services page
+        vm.openPage(QStringLiteral("cloud"));              // the Services page, on the "coming soon" tab
         QCOMPARE(vm.page(), QStringLiteral("services"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
         QVERIFY(vm.focusField().isEmpty());
 
         QSignalSpy back(&vm, &SettingsViewModel::returnRequested);
@@ -1205,71 +1197,42 @@ private slots:
 
     // ---- Tanara Cloud --------------------------------------------------------------------
 
-    void cloudLiveModeIsADraftChoice()
+    void cloudTabOnlyShowsTheNotice()
     {
+        // Tanara Cloud is "coming soon": even in live cloud mode the tab is a view, not a choice.
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
-        FakeDialogs dialogs;
         SettingsViewModel vm;
-        vm.setDialogsObject(&dialogs);
         vm.setController(m_app.get());
-        QCOMPARE(vm.cloudAvailability(), QStringLiteral("live"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QVERIFY(!vm.cloudSelected());
         // On the own-key card Cloud is not among the providers.
         for (const QVariant& p : vm.stt()->providers())
             QVERIFY(p.toMap().value("value").toString() != tanara::cloud::ProviderId);
 
         vm.stt()->setProviderId(QStringLiteral("whisper-compat"));
+        const int changes = vm.changeCount();
         vm.setServiceMode(QStringLiteral("cloud"));
         QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
-        QVERIFY(vm.dirty());
-        QVERIFY(vm.servicesWarn());                        // not signed in
-        QVERIFY(!vm.cloud()->loggedIn());
-        // Nothing made up: without signing in there is no balance or hours.
-        QVERIFY(vm.cloud()->balanceText().isEmpty());
-        QVERIFY(vm.cloud()->hoursText().isEmpty());
-        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));   // nothing switches until saving
-
-        // Back: the earlier own choice (even an unsaved one) stays.
-        vm.setServiceMode(QStringLiteral("own"));
+        QCOMPARE(vm.changeCount(), changes);               // the tab changes nothing in the draft
         QCOMPARE(vm.stt()->providerId(), QStringLiteral("whisper-compat"));
-        QCOMPARE(vm.llm()->providerId(), QStringLiteral("openai-compat"));
+        QVERIFY(!vm.cloudSelected());
+        QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));
 
-        vm.setServiceMode(QStringLiteral("cloud"));
-        vm.cloud()->setSttTier(QStringLiteral("fast"));
-        vm.cloud()->setEstimateBeforeRun(false);
-        vm.cloud()->setMeetingLanguage(QStringLiteral("en"));
-        QVERIFY(vm.save());
-        const AppSettings s = live();
-        QCOMPARE(s.sttProviderId, tanara::cloud::ProviderId);
-        QCOMPARE(s.llmProviderId, tanara::cloud::ProviderId);
-        QCOMPARE(s.cloudSttTier, QStringLiteral("fast"));
-        QCOMPARE(s.cloudEstimateBeforeRun, false);
-        QCOMPARE(s.languageHints, QStringList{QStringLiteral("en")});
-        QVERIFY(s.sttConfigs.contains(QStringLiteral("soniox")));          // the own-key setting stays
-        QVERIFY(m_app->usesCloud(tanara::WorkflowStep::Transcribe));
-
-        // Reopened it starts in Cloud mode; switching back goes to the own providers.
-        SettingsViewModel again;
-        again.setController(m_app.get());
-        QCOMPARE(again.serviceMode(), QStringLiteral("cloud"));
-        again.setServiceMode(QStringLiteral("own"));
-        QVERIFY(again.stt()->providerId() != tanara::cloud::ProviderId);
-        QVERIFY(again.llm()->providerId() != tanara::cloud::ProviderId);
-
-        // The modal flows ask for the Widgets windows (here: the fake dialogs).
-        vm.cloud()->login();
-        vm.cloud()->topup();
-        vm.cloud()->pickExpert(QStringLiteral("stt"));
-        QCOMPARE(dialogs.calls, (QStringList{QStringLiteral("login"), QStringLiteral("topup"),
-                                             QStringLiteral("expert:stt")}));
+        // The deep link to the Cloud page opens the notice, again without a draft change.
+        vm.setServiceMode(QStringLiteral("own"));
+        vm.openPage(QStringLiteral("cloud"), QString());
+        QCOMPARE(vm.page(), QStringLiteral("services"));
+        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));
+        QCOMPARE(vm.changeCount(), changes);
     }
 
-    void mixedCloudSetupSurvivesADeepLink()
+    void storedCloudProviderIsFlaggedUnavailable()
     {
-        // Transcription in Cloud, summary with an own key: the deep link to the missing LLM must not
-        // silently switch transcription away from Cloud.
+        // Transcription saved on Cloud (a developer setting), summary with an own key: the UI flags it
+        // as unavailable, a deep link to the missing LLM changes nothing, and picking an own provider
+        // clears the flag.
         startApp("live");
         if (!m_app->cloudLive())
             QSKIP("A build Tanara Cloud kliens nélkül készült.");
@@ -1281,6 +1244,7 @@ private slots:
         SettingsViewModel vm;
         vm.setController(m_app.get());
         QCOMPARE(vm.serviceMode(), QStringLiteral("own"));
+        QVERIFY(vm.cloudSelected());
         vm.openPage(QStringLiteral("providers"), QStringLiteral("llm"));
         QVERIFY(!vm.dirty());
         QCOMPARE(vm.stt()->providerId(), tanara::cloud::ProviderId);
@@ -1289,33 +1253,11 @@ private slots:
         QVERIFY(vm.save());
         QCOMPARE(live().sttProviderId, tanara::cloud::ProviderId);
         QCOMPARE(live().llmSelected().model, QStringLiteral("masik-modell"));
-    }
 
-    void cloudTeaserOnlyShowsTheOffer()
-    {
-        startApp("teaser");
-        if (!m_app->cloudTeaser())
-            QSKIP("A build a „Hamarosan” panel nélkül készült.");
-        SettingsViewModel vm;
-        vm.setController(m_app.get());
-        QCOMPARE(vm.cloudAvailability(), QStringLiteral("teaser"));
-        vm.setServiceMode(QStringLiteral("cloud"));
-        QCOMPARE(vm.serviceMode(), QStringLiteral("cloud"));   // the waitlist offer is visible...
-        QVERIFY(!vm.dirty());                                   // ...but there is nothing to save
+        vm.stt()->setProviderId(QStringLiteral("soniox"));
+        QVERIFY(!vm.cloudSelected());
+        QVERIFY(vm.save());
         QCOMPARE(live().sttProviderId, QStringLiteral("soniox"));
-
-        // The sign-up button works only with a valid address and consent (nothing is sent in the test).
-        SettingsCloudModel* cloud = vm.cloud();
-        QVERIFY(!cloud->waitCanSubmit());
-        cloud->setWaitEmail(QStringLiteral("valaki@example.com"));
-        QVERIFY(!cloud->waitCanSubmit());
-        cloud->setWaitConsent(true);
-        QVERIFY(cloud->waitCanSubmit());
-        cloud->setWaitEmail(QStringLiteral("nem-email"));
-        QVERIFY(!cloud->waitCanSubmit());
-        cloud->toggleWaitLanguage(QStringLiteral("hu"));
-        QCOMPARE(cloud->waitLanguages(), QStringList{QStringLiteral("hu")});
-        QVERIFY(cloud->joinedEmail().isEmpty());
     }
 
     // ---- the window and its host ----
@@ -1323,8 +1265,8 @@ private slots:
     void windowLoadsEveryDemoStateWithoutWarnings_data()
     {
         QTest::addColumn<QString>("state");
-        for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B06", "B07", "B07notes", "advanced", "dirty", "unsaved",
-                               "schema", "teaser", "cloudOut", "addApp", "logout", "reset",
+        for (const char* st : {"B01", "B02", "B03", "B04", "B05", "B07", "B07notes", "advanced", "dirty", "unsaved",
+                               "schema", "cloudComingSoon", "cloudSelected", "addApp", "reset",
                                "B04embedding", "B04embeddingRunning", "B04embeddingError", "B04embeddingDone",
                                "B04embeddingCloud", "B04embeddingNone", "B04modelChange", "rejectedReset",
                                "B08", "B08download", "B08none", "B08error", "B08offline", "B08backfill",

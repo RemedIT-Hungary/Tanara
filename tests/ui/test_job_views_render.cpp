@@ -123,7 +123,7 @@ private slots:
         QTest::addColumn<QString>("theme");
         QTest::addColumn<QString>("state");
         const QList<QPair<const char*, QStringList>> pages{
-            {"PreTranscriptView", {"steps", "ready", "cloud", "mixing", "running", "uploading", "failed", "note"}},
+            {"PreTranscriptView", {"steps", "ready", "mixing", "running", "uploading", "failed", "note"}},
             {"SummaryTab", {"stale", "done", "memo", "memoShort", "oldSummary", "oldMemo", "running", "topicsDoc", "empty",
                             "emptyBlocked", "emptyRunning", "emptyRunningParts", "emptyRunningMerge", "emptyError",
                             "emptyErrorKept", "emptyErrorContext", "emptyNote", "noteOpen", "noteChanged", "topics"}},
@@ -171,6 +171,55 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "locate", Q_ARG(QVariant, 3)));
         QVERIFY(QMetaObject::invokeMethod(tracks.get(), "togglePreview", Q_ARG(QVariant, QStringLiteral("/x"))));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+    }
+
+    void cloudComingSoonShowsTitleAndLink()
+    {
+        // Tanara Cloud has no UI yet: the shared notice names it and links to the product site, in
+        // the card and in the compact form (only the matching form is visible).
+        for (const bool compact : {false, true}) {
+            QQmlEngine engine;
+            QStringList warnings;
+            connect(&engine, &QQmlEngine::warnings, this, [&warnings](const QList<QQmlError>& l) {
+                for (const QQmlError& e : l) warnings << e.toString();
+            });
+            auto notice = create(engine, "CloudComingSoon", {{"compact", compact}});
+            QVERIFY(notice);
+            QCOMPARE(notice->objectName(), QStringLiteral("cloudComingSoon"));
+            QCOMPARE(notice->property("siteUrl").toString(), QStringLiteral("https://tanara.remedit.eu"));
+            int titles = 0, links = 0;
+            for (QQuickItem* item : notice->findChildren<QQuickItem*>()) {
+                if (!item->isVisible()) continue;
+                if (item->objectName() == QLatin1String("cloudComingSoonTitle")) {
+                    ++titles;
+                    QVERIFY(item->property("text").toString().contains(QStringLiteral("hamarosan")));
+                    QVERIFY(item->property("text").toString().contains(QStringLiteral("Tanara Cloud")));
+                }
+                if (item->objectName() == QLatin1String("cloudComingSoonLink")) {
+                    ++links;
+                    QCOMPARE(item->property("text").toString(), QStringLiteral("tanara.remedit.eu"));
+                }
+            }
+            QCOMPARE(titles, 1);
+            QCOMPARE(links, 1);
+            QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join(QLatin1Char('\n'))));
+        }
+    }
+
+    void cloudOfferIsTheComingSoonNotice()
+    {
+        // The blocked transcription view (no provider yet) shows the notice where the Cloud offer was.
+        QQmlEngine engine;
+        auto pre = create(engine, "PreTranscriptView", {{"demoState", "steps"}});
+        QVERIFY(pre);
+        bool found = false;
+        for (QQuickItem* item : pre->findChildren<QQuickItem*>())
+            if (item->objectName() == QLatin1String("cloudComingSoon") && item->isVisible()) found = true;
+        QVERIFY(found);
+        auto ready = create(engine, "PreTranscriptView", {{"demoState", "ready"}});
+        QVERIFY(ready);
+        for (QQuickItem* item : ready->findChildren<QQuickItem*>())
+            QVERIFY(!(item->objectName() == QLatin1String("cloudComingSoon") && item->isVisible()));
     }
 
     void actionsGoThroughTheShell()

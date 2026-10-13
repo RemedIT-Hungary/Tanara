@@ -406,6 +406,14 @@ Item {
                 }
             }
 
+            // ------------------------------------------------- Tanara Cloud: coming soon
+            Section {
+                objectName: "cloudComingSoonSection"
+                title: DemoText.t("Tanara Cloud: hamarosan", "Tanara Cloud: coming soon")
+                CloudComingSoon { width: Math.min(parent.width, 480) }
+                CloudComingSoon { compact: true; width: Math.min(parent.width, 480) }
+            }
+
             // ------------------------------------------------- banners, cards
             Section {
                 title: DemoText.t("Bannerek", "Banners")
@@ -420,7 +428,7 @@ Item {
                     width: parent.width
                     tone: "warn"
                     title: DemoText.t("Nincs beállítva átíró szolgáltató", "No transcription provider is set up")
-                    text: DemoText.t("Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba.", "Enter your own key, or sign in to Tanara Cloud.")
+                    text: DemoText.t("Add meg a saját szolgáltatód adatait a Beállításokban.", "Enter your own provider details in Settings.")
                     TButton { text: DemoText.t("Szolgáltató beállítása", "Set up provider"); size: "small"; trailingIconName: "arrow-right" }
                 }
                 TBanner {

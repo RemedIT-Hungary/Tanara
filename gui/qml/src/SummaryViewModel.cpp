@@ -9,7 +9,6 @@
 
 #include "tanara/AppController.h"
 #include "tanara/SettingsManager.h"
-#include "tanara/cloud/CloudAccount.h"
 #include "tanara/cloud/CloudTypes.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/jobs/MeetingJobTracker.h"
@@ -282,12 +281,6 @@ void SummaryViewModel::connectController()
     // The note (and the detected call) live in meeting.json: after saving / editing from another view.
     m_connections << connect(c->store(), &MeetingStore::meetingUpdated, this,
                              [this, mine](const QString& id) { if (mine(id)) m_note->reload(); });
-    if (CloudAccount* acc = c->cloud()) {
-        m_connections << connect(acc, &CloudAccount::loggedIn, this, &SummaryViewModel::reload);
-        m_connections << connect(acc, &CloudAccount::loggedOut, this, &SummaryViewModel::reload);
-        m_connections << connect(acc, &CloudAccount::accountUpdated, this,
-                                 [this](const AccountInfo&) { reload(); });
-    }
 }
 
 void SummaryViewModel::refresh() { reload(); }
@@ -430,9 +423,7 @@ void SummaryViewModel::reload()
     tanara::PerfScope perfScope("SummaryViewModel::reload", 20);
     m_blocker.clear();
     m_canRun = false;
-    m_cloudSelected = false;
-    m_cloudTierLabel.clear();
-    m_cloudTeaser = false;
+    m_cloudSoon = false;
     m_errorMessage.clear();
     m_errorDetail.clear();
     m_fixActionLabel.clear();
@@ -513,13 +504,7 @@ void SummaryViewModel::reload()
     m_canRun = r.runnable;
     m_blocker = jobsupport::blockerInfo(c, WorkflowStep::Summarize, r);
     m_providerLabel = jobsupport::providerLabel(c, WorkflowStep::Summarize);
-    m_cloudTeaser = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig && c->cloudTeaser();
-    if (c->usesCloud(WorkflowStep::Summarize) && c->cloud() && c->cloud()->isLoggedIn()) {
-        const AppSettings s = c->settings()->settings();
-        m_cloudSelected = true;
-        m_cloudTierLabel = !s.cloudLlmModel.isEmpty() ? tr("Expert-modell")
-                         : s.cloudLlmTier == QLatin1String("fast") ? tr("Gyors szint") : tr("Pontos szint");
-    }
+    m_cloudSoon = !r.runnable && r.blockerKind == BlockerKind::ProviderConfig;
 
     // Leftover error (the last summary attempt).
     const MeetingProcessingState ps = c->jobs()->state(m);

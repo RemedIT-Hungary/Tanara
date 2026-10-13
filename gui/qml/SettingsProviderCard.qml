@@ -143,7 +143,7 @@ Rectangle {
             TLabel {
                 visible: root.card && root.card.loginProvider
                 Layout.fillWidth: true
-                text: qsTr("Ezt a lépést a Tanara Cloud végzi: nincs kulcs, a fiókod egyenlegéből megy.")
+                text: qsTr("Ez a lépés a Tanara Cloudra van állítva, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.")
                 muted: true
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.Wrap

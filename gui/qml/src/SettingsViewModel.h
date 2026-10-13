@@ -13,17 +13,16 @@
 // and the theme (ui-state.json).
 //
 // Sub-models: `devices` (device list with live level), `stt` / `llm` (provider cards from the
-// provider registry), `cloud` (Tanara Cloud account / waitlist), `embedding` (the Embedding
+// provider registry), `embedding` (the Embedding
 // card, library preparation and tag-suggestion switches), `voiceModels` (the Speakers page's
 // voice models and the backfill state).
 //
 // Without a controller (--qml-shot / --demo, tests) it provides FICTIONAL data; `demoState`
-// ("B01" ... "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "teaser", "cloudOut",
+// ("B01" ... "B07", "B07notes", "advanced", "dirty", "unsaved", "schema", "cloudComingSoon", "cloudSelected",
 // "B04embedding" / "B04embeddingRunning" / "B04embeddingError" / "B04embeddingDone" /
 // "B04embeddingCloud" / "B04embeddingNone" / "B04modelChange", "B08" / "B08download" / "B08none" / "B08fallback" /
 // "B08error" / "B08offline" / "B08backfill" / "B08partial" / "B08bundled") sets the design states.
 //
-#include "SettingsCloudModel.h"
 #include "SettingsDeviceModel.h"
 #include "SettingsEmbeddingModel.h"
 #include "SettingsProviderModel.h"
@@ -120,13 +119,13 @@ class SettingsViewModel : public QObject {
     Q_PROPERTY(QString liveCallApp READ liveCallApp NOTIFY liveCallChanged)
 
     // ---- Services ----
-    // "live" (Tanara Cloud with sign-in) | "teaser" (waitlist) | "none"
-    Q_PROPERTY(QString cloudAvailability READ cloudAvailability NOTIFY controllerChanged)
-    // "own" | "cloud": which mode is selected (in teaser mode it only switches the view).
+    // "own" | "cloud": which tab is shown. Tanara Cloud is "coming soon": the "cloud" tab only
+    // shows the notice, it never changes the draft.
     Q_PROPERTY(QString serviceMode READ serviceMode WRITE setServiceMode NOTIFY serviceModeChanged)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* stt READ stt CONSTANT)
     Q_PROPERTY(tanara_qml::SettingsProviderModel* llm READ llm CONSTANT)
-    Q_PROPERTY(tanara_qml::SettingsCloudModel* cloud READ cloud CONSTANT)
+    // The draft names Tanara Cloud as a provider (e.g. a developer setting): not available in the UI.
+    Q_PROPERTY(bool cloudSelected READ cloudSelected NOTIFY dirtyChanged)
     Q_PROPERTY(tanara_qml::SettingsEmbeddingModel* embedding READ embedding CONSTANT)
 
     // ---- Speakers: voice models (download immediate, enabling goes into the draft), backfill ----
@@ -219,12 +218,11 @@ public:
     bool liveCallActive() const { return m_liveActive; }
     QString liveCallApp() const { return m_liveApp; }
 
-    QString cloudAvailability() const;
+    bool cloudSelected() const;
     QString serviceMode() const { return m_serviceMode; }
     void setServiceMode(const QString& mode);
     SettingsProviderModel* stt() const { return m_stt; }
     SettingsProviderModel* llm() const { return m_llm; }
-    SettingsCloudModel* cloud() const { return m_cloud; }
     SettingsEmbeddingModel* embedding() const { return m_embedding; }
     VoiceModelListModel* voiceModels() const { return m_voiceModels; }
 
@@ -336,7 +334,6 @@ signals:
 private:
     friend class SettingsDeviceModel;
     friend class SettingsProviderModel;
-    friend class SettingsCloudModel;
     friend class SettingsEmbeddingModel;
 
     void attach();
@@ -355,7 +352,6 @@ private:
     QString promptId(int index) const;
     void storePromptsInDraft();
     QStringList selectedDevicesForSave() const;
-    QString lastOwnProvider(bool stt) const;
 
     QPointer<tanara::AppController> m_controller;
     bool m_controllerSet = false;
@@ -394,12 +390,10 @@ private:
     QString m_liveApp, m_liveAppId;
 
     QString m_serviceMode = QStringLiteral("own");
-    QString m_ownStt, m_ownLlm;              // the own-key choice (before switching to Cloud)
 
     SettingsDeviceModel* m_devices = nullptr;
     SettingsProviderModel* m_stt = nullptr;
     SettingsProviderModel* m_llm = nullptr;
-    SettingsCloudModel* m_cloud = nullptr;
     SettingsEmbeddingModel* m_embedding = nullptr;
     VoiceModelListModel* m_voiceModels = nullptr;
 };

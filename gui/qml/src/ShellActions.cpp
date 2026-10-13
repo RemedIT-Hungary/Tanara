@@ -6,7 +6,6 @@
 #include "ShellBridge.h"
 
 #include "tanara/AppController.h"
-#include "tanara/cloud/CloudTypes.h"
 #include "tanara/edit/MeetingUndo.h"
 #include "tanara/edit/SpeakerEditor.h"
 #include "tanara/jobs/MeetingJobTracker.h"
@@ -185,10 +184,6 @@ void ShellActions::attachBridge()
     ShellBridge* b = m_bridge;
     if (!b)
         return;
-    connect(b, &ShellBridge::toastRequested, this,
-            [this](const QString& text, const QString& requestId, bool usageLink) {
-        emit toastRequested(text, QString(), requestId, usageLink);
-    });
     connect(b, &ShellBridge::retryRequested, this, &ShellActions::onRetry);
     connect(b, &ShellBridge::readinessChanged, this, &ShellActions::bumpReadiness);
     connect(b, &ShellBridge::showMeetingRequested, this, [this](const QString& meetingId) {
@@ -548,13 +543,10 @@ bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
     const tanara::ReadinessResult r = m_controller->canRun(step, meetingId);
     if (r.runnable)
         return true;
-    ShellBridge* b = bridge();
-    // Tanara Cloud: exactly one thing to do (sign in / upload / refresh).
-    if (b && b->handleCloudBlocker(r)) {
-        bumpReadiness();
-        return false;
-    }
-    if (r.blockerKind == BlockerKind::ProviderConfig || r.blockerKind == BlockerKind::Auth) {
+    // Tanara Cloud is not offered in the UI yet: a cloud blocker has the same remedy as a missing
+    // setting (an own-key provider).
+    if (r.blockerKind == BlockerKind::ProviderConfig || r.blockerKind == BlockerKind::Auth
+        || r.blockerKind == BlockerKind::Cloud) {
         // Missing provider setting -> the Settings "External services" page.
         openSettings(QStringLiteral("providers"),
                      step == WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"));
@@ -566,15 +558,20 @@ bool ShellActions::gate(WorkflowStep step, const QString& meetingId)
 
 bool ShellActions::estimateOk(const QString& meetingId, const QString& task, const QString& mode)
 {
+    Q_UNUSED(meetingId);
+    Q_UNUSED(mode);
     if (!m_controller)
         return false;
     const WorkflowStep step = task == QLatin1String("transcribe") ? WorkflowStep::Transcribe
                                                                   : WorkflowStep::Summarize;
     if (!m_controller->usesCloud(step))
         return true;                      // own key: no estimate
-    ShellBridge* b = bridge();
-    // Without a bridge, a cloud run MUST NOT start without confirmation.
-    return b && b->confirmCloudEstimate(meetingId, task, mode);
+    // A cloud run (a developer setting, TANARA_CLOUD=live) never starts from the UI: Tanara Cloud
+    // is "coming soon" and the user is told so.
+    toast(tr("A Tanara Cloud még nem érhető el: a Beállításokban saját kulcsot adj meg."));
+    openSettings(QStringLiteral("providers"),
+                 step == WorkflowStep::Transcribe ? QStringLiteral("stt") : QStringLiteral("llm"));
+    return false;
 }
 
 // ---- processing -----------------------------------------------------------------------

@@ -2,13 +2,8 @@
 
 #include "PeopleWindowHost.h"
 #include "TagsWindowHost.h"
-#include "cloud/CloudLoginDialog.h"
-#include "cloud/CloudModelPickerDialog.h"
-#include "cloud/CloudTermsDialog.h"
-#include "cloud/CloudUi.h"
 
 #include "tanara/AppController.h"
-#include "tanara/cloud/CloudAccount.h"
 
 #include <QApplication>
 #include <QDesktopServices>
@@ -71,7 +66,7 @@ void SettingsWidgetsDialogs::openFolder(const QString& path)
 
 void SettingsWidgetsDialogs::openUrl(const QString& url)
 {
-    cloudui::openUrl(url);
+    if (!url.isEmpty()) QDesktopServices::openUrl(QUrl::fromUserInput(url));
 }
 
 void SettingsWidgetsDialogs::openPeople()
@@ -98,42 +93,6 @@ void SettingsWidgetsDialogs::openTags(const QString& tagId)
     }
     if (!m_tags) m_tags = new tanara_qml::TagsWindowHost(m_controller, this);
     m_tags->open(tagId);
-}
-
-bool SettingsWidgetsDialogs::cloudLogin()
-{
-    Scope scope(this);
-    CloudLoginDialog dlg(m_controller, nullptr);
-    return dlg.exec() == QDialog::Accepted;
-}
-
-void SettingsWidgetsDialogs::cloudTopup()
-{
-    Scope scope(this);
-    cloudui::startTopup(nullptr, m_controller);
-}
-
-bool SettingsWidgetsDialogs::cloudPickModel(const QString& kind)
-{
-    Scope scope(this);
-    CloudModelPickerDialog dlg(m_controller, kind, nullptr);
-    return dlg.exec() == QDialog::Accepted;
-}
-
-bool SettingsWidgetsDialogs::cloudTerms()
-{
-    if (!m_controller || !m_controller->cloud()) return false;
-    Scope scope(this);
-    const tanara::TermsStatus t = m_controller->cloud()->account().terms;
-    if (t.needsAcceptance()) {
-        tanara::CloudError e;
-        e.kind = tanara::CloudErrorKind::TermsRequired;
-        return CloudTermsDialog::requireFromError(m_controller, e, nullptr);
-    }
-    if (t.needsEarlyAcceptance())
-        return CloudTermsDialog::offerEarly(m_controller, nullptr);
-    cloudui::openUrl(t.currentUrl);   // nothing to accept: just show it
-    return false;
 }
 
 } // namespace tanara_gui

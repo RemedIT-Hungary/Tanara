@@ -5,7 +5,7 @@
 // Settings can open in three processes (main window, standalone recorder, `tanara
 // --settings`), so it does not rely on the main window's bridge (ShellBridge) but on this
 // small interface. The implementation lives in gui/src (SettingsWidgetsDialogs: native folder
-// picker, Tanara Cloud's existing Widgets windows, People); tests provide a fake. Without it
+// picker, People); tests provide a fake. Without it
 // (demo, screenshot) the view model skips these actions.
 //
 #include <QObject>
@@ -36,12 +36,6 @@ public:
     // runs (the bridge opens it); not in the standalone recorder or in `tanara --settings` mode.
     virtual bool canOpenOnboarding() const { return false; }
     virtual void openOnboarding() {}
-
-    // ---- Tanara Cloud: the existing (modal) Widgets flows ----
-    virtual bool cloudLogin() = 0;                        // true = signed in
-    virtual void cloudTopup() = 0;                        // top-up link / "Write to us"
-    virtual bool cloudPickModel(const QString& kind) = 0; // Expert mode; kind: stt | llm
-    virtual bool cloudTerms() = 0;                        // view / accept the ToS
 };
 
 } // namespace tanara_qml

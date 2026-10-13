@@ -273,9 +273,7 @@ Flickable {
             Layout.fillWidth: true
             spacing: 6
             TLabel {
-                text: root.vm.cloudSelected
-                    ? qsTr("Szolgáltató: %1 · %2").arg(root.vm.providerLabel).arg(root.vm.cloudTierLabel)
-                    : qsTr("Szolgáltató: %1 · a modell a Beállítások › Összefoglaló alatt cserélhető").arg(root.vm.providerLabel)
+                text: qsTr("Szolgáltató: %1 · a modell a Beállítások › Összefoglaló alatt cserélhető").arg(root.vm.providerLabel)
                 muted: true
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.Wrap
@@ -284,30 +282,18 @@ Flickable {
                 verticalAlignment: Text.AlignVCenter
             }
             TButton {
-                text: root.vm.cloudSelected ? qsTr("Szint módosítása") : qsTr("Megnyitás")
+                text: qsTr("Megnyitás")
                 variant: "ghost"; size: "small"
                 implicitHeight: 24
                 muted: true
-                onClicked: if (root.shell) root.shell.openSettings(root.vm.cloudSelected ? "cloud" : "summary")
+                onClicked: if (root.shell) root.shell.openSettings("summary")
             }
         }
 
-        RowLayout {
-            visible: root.vm.cloudTeaser
+        CloudComingSoon {
+            visible: root.vm.cloudSoon
+            compact: true
             Layout.fillWidth: true
-            spacing: 6
-            TLabel {
-                text: qsTr("Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.")
-                muted: true
-                font.pixelSize: Theme.fontSmall
-            }
-            TButton {
-                text: qsTr("Érdekel")
-                variant: "ghost"; size: "small"
-                implicitHeight: 24
-                onClicked: if (root.shell) root.shell.openSettings("cloud")
-            }
-            Item { Layout.fillWidth: true }
         }
     }
 }

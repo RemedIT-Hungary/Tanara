@@ -324,258 +324,18 @@
     </message>
 </context>
 <context>
-    <name>CloudUi</name>
+    <name>CloudComingSoon</name>
     <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
+        <source>Tanara Cloud — hamarosan</source>
+        <translation>Tanara Cloud — coming soon</translation>
     </message>
     <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
+        <source>A Tanara Cloud előkészületben van. Részletek és értesítés:</source>
+        <translation>Tanara Cloud is in the works. Details and updates:</translation>
     </message>
     <message>
-        <source>Expert</source>
-        <translation>Expert</translation>
-    </message>
-    <message>
-        <source>Hibaazonosító: &lt;b&gt;%1&lt;/b&gt;</source>
-        <translation>Error ID: &lt;b&gt;%1&lt;/b&gt;</translation>
-    </message>
-    <message>
-        <source>Másolás</source>
-        <translation>Copy</translation>
-    </message>
-    <message>
-        <source>Másolva ✓</source>
-        <translation>Copied ✓</translation>
-    </message>
-    <message>
-        <source>Ha írsz nekünk, küldd el ezt is. A meeting tartalmát nem látjuk.</source>
-        <translation>Include it if you contact us. We can&apos;t see your meeting content.</translation>
-    </message>
-    <message>
-        <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection.</translation>
-    </message>
-    <message>
-        <source>Ezt az eszközt leválasztották. Jelentkezz be újra.</source>
-        <translation>This device was disconnected. Please sign in again.</translation>
-    </message>
-    <message>
-        <source>A fiókod fizetési vita miatt fel van függesztve. Részletek a weben.</source>
-        <translation>Your account is suspended due to a payment dispute. Details on the web.</translation>
-    </message>
-    <message>
-        <source>A fiókod fel van függesztve. Írj a supportnak.</source>
-        <translation>Your account is suspended. Contact support.</translation>
-    </message>
-    <message>
-        <source>Frissítsd a Tanarát (legalább %1; neked %2 van).</source>
-        <translation>Update Tanara (%1 or newer; you have %2).</translation>
-    </message>
-    <message>
-        <source>Karbantartás miatt a Tanara Cloud most nem elérhető.</source>
-        <translation>Tanara Cloud is under maintenance.</translation>
-    </message>
-    <message>
-        <source>A feldolgozó szolgáltatás átmenetileg nem elérhető.</source>
-        <translation>The processing service is temporarily unavailable.</translation>
-    </message>
-    <message>
-        <source>Túl sok kérés érkezett. Próbáld újra %1 mp múlva.</source>
-        <translation>Too many requests. Try again in %1 s.</translation>
-    </message>
-    <message>
-        <source>Elérted ennek az eszköznek a költési limitjét.</source>
-        <translation>This device reached its spending limit.</translation>
-    </message>
-    <message>
-        <source>A feldolgozáshoz el kell fogadnod az új ÁSZF-et.</source>
-        <translation>Accept the new Terms to continue processing.</translation>
-    </message>
-    <message>
-        <source>Nincs elég egyenleg.</source>
-        <translation>Not enough balance.</translation>
-    </message>
-    <message>
-        <source>Eldobható e-mail címmel nem lehet feliratkozni.</source>
-        <translation>Disposable e-mail addresses are not accepted.</translation>
-    </message>
-    <message>
-        <source>Hiba történt.</source>
-        <translation>Something went wrong.</translation>
-    </message>
-    <message>
-        <source>Bezárás</source>
-        <translation>Close</translation>
-    </message>
-    <message>
-        <source>Nem terheltünk semmit.</source>
-        <translation>Nothing was charged.</translation>
-    </message>
-    <message>
-        <source>Az eddig elkészült részek díja: %1. Folytathatod, ekkor csak a hátralévő részekért fizetsz.</source>
-        <translation>Cost of the finished parts: %1. You can continue and pay only for the remaining parts.</translation>
-    </message>
-    <message>
-        <source>Ehhez a lépéshez legalább %1 fedezet kell az egyenlegeden. A tényleges díj ennél kevesebb lehet. Az egyenleged: %2.</source>
-        <translation>This step needs at least %1 available. The actual charge may be lower. Your balance: %2.</translation>
-    </message>
-    <message>
-        <source>Ehhez a lépéshez %1 kell, az egyenleged %2.</source>
-        <translation>This step needs %1; your balance is %2.</translation>
-    </message>
-    <message>
-        <source>Nincs elég egyenleg</source>
-        <translation>Not enough balance</translation>
-    </message>
-    <message>
-        <source>Egyenleg feltöltése</source>
-        <translation>Top up balance</translation>
-    </message>
-    <message>
-        <source>A feltöltéshez írj nekünk.</source>
-        <translation>Contact us to top up.</translation>
-    </message>
-    <message>
-        <source>Írj nekünk</source>
-        <translation>Contact us</translation>
-    </message>
-    <message>
-        <source>Folytatás</source>
-        <translation>Continue</translation>
-    </message>
-    <message>
-        <source>Frissítés szükséges</source>
-        <translation>Update required</translation>
-    </message>
-    <message>
-        <source>Frissítsd a Tanarát a Tanara Cloudhoz</source>
-        <translation>Update Tanara to use Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Legalább %1 kell; neked %2 van. A saját kulcsos mód addig is működik.</source>
-        <translation>%1 or newer is required; you have %2. Your own-keys mode keeps working.</translation>
-    </message>
-    <message>
-        <source>Letöltés</source>
-        <translation>Download</translation>
-    </message>
-    <message>
-        <source>Tervezett karbantartás %1–%2 között.</source>
-        <translation>Planned maintenance between %1 and %2.</translation>
-    </message>
-    <message>
-        <source>Karbantartás</source>
-        <translation>Maintenance</translation>
-    </message>
-    <message>
-        <source>Próbáld újra kb. %1 perc múlva.</source>
-        <translation>Try again in about %1 min.</translation>
-    </message>
-    <message>
-        <source>Újra</source>
-        <translation>Retry</translation>
-    </message>
-    <message>
-        <source>A szolgáltatás átmenetileg nem elérhető</source>
-        <translation>Service temporarily unavailable</translation>
-    </message>
-    <message>
-        <source>A feldolgozó szolgáltatás átmenetileg nem elérhető. Próbáld újra később.</source>
-        <translation>The processing service is temporarily unavailable. Please try again later.</translation>
-    </message>
-    <message>
-        <source>Túl sok kérés</source>
-        <translation>Too many requests</translation>
-    </message>
-    <message>
-        <source>Újra (%1)</source>
-        <translation>Retry (%1)</translation>
-    </message>
-    <message>
-        <source>Havi limit: %1.</source>
-        <translation>Monthly limit: %1.</translation>
-    </message>
-    <message>
-        <source>Napi limit: %1.</source>
-        <translation>Daily limit: %1.</translation>
-    </message>
-    <message>
-        <source>Újraindul: %1.</source>
-        <translation>Resets: %1.</translation>
-    </message>
-    <message>
-        <source>Költési limit</source>
-        <translation>Spending limit</translation>
-    </message>
-    <message>
-        <source>Beállítások a weben</source>
-        <translation>Settings on the web</translation>
-    </message>
-    <message>
-        <source>Az eszköz le lett választva</source>
-        <translation>Device disconnected</translation>
-    </message>
-    <message>
-        <source>Ezt az eszközt leválasztották a fiókodról. Jelentkezz be újra.</source>
-        <translation>This device was disconnected from your account. Please sign in again.</translation>
-    </message>
-    <message>
-        <source>Bejelentkezés</source>
-        <translation>Sign in</translation>
-    </message>
-    <message>
-        <source>Fiók felfüggesztve</source>
-        <translation>Account suspended</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloud fiókod fel van függesztve. Kérdés esetén írj a supportnak.</source>
-        <translation>Your Tanara Cloud account is suspended. Contact support if you have questions.</translation>
-    </message>
-    <message>
-        <source>Megnyitás a weben</source>
-        <translation>Open on the web</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Support</translation>
-    </message>
-    <message>
-        <source>Nincs kapcsolat</source>
-        <translation>No connection</translation>
-    </message>
-    <message>
-        <source>Nem értük el a szervert</source>
-        <translation>We couldn&apos;t reach the server</translation>
-    </message>
-    <message>
-        <source>Ellenőrizd az internetkapcsolatot, és próbáld újra.</source>
-        <translation>Check your internet connection and try again.</translation>
-    </message>
-    <message>
-        <source>Az átírás nem készült el</source>
-        <translation>The transcription wasn&apos;t completed</translation>
-    </message>
-    <message>
-        <source>A becslés nem készült el</source>
-        <translation>The estimate wasn&apos;t completed</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló nem készült el teljesen</source>
-        <translation>The summary wasn&apos;t completed</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló nem készült el</source>
-        <translation>The summary wasn&apos;t completed</translation>
-    </message>
-    <message>
-        <source>Hiba történt</source>
-        <translation>Error</translation>
-    </message>
-    <message>
-        <source>A feldolgozás hibával leállt.</source>
-        <translation>Processing stopped with an error.</translation>
+        <source>Tanara Cloud — hamarosan.</source>
+        <translation>Tanara Cloud — coming soon.</translation>
     </message>
 </context>
 <context>
@@ -1965,10 +1725,6 @@
         <translation>Services</translation>
     </message>
     <message>
-        <source>A Tanara Cloudot választottad: az átírás és az összefoglaló a fiókodon fut, saját kulcs nem kell. A Beállításokban bármikor válthatsz saját kulcsra.</source>
-        <translation>You chose Tanara Cloud: transcription and summaries run on your account, no keys needed. You can switch to your own keys in Settings at any time.</translation>
-    </message>
-    <message>
         <source>A Tanara a saját kulcsoddal dolgozik: az átírást a Soniox végzi (API-kulcs kell hozzá), az összefoglalót egy OpenAI-kompatibilis végpont — például a gépeden futó LM Studio vagy egy felhős szolgáltató.</source>
         <translation>Tanara works with your own keys: Soniox does the transcription (an API key is needed), and an OpenAI-compatible endpoint writes the summary — for example LM Studio on your machine or a cloud service.</translation>
     </message>
@@ -1983,10 +1739,6 @@
     <message>
         <source>A kulcs a gépeden marad. A Beállításokban a kapcsolatot is kipróbálhatod; átírás nélkül is rögzíthetsz, a kulcs csak a feldolgozáshoz kell.</source>
         <translation>The key stays on your machine. You can test the connection in Settings; you can record without transcription, the key is only needed for processing.</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud: hamarosan — átírás és összefoglaló saját kulcs nélkül.</source>
-        <translation>Tanara Cloud: coming soon — transcription and summaries without your own keys.</translation>
     </message>
     <message>
         <source>Hívásfigyelő</source>
@@ -3015,40 +2767,12 @@
         <translation>Transcription</translation>
     </message>
     <message>
-        <source>Tanara Cloud · az átírás szintje:</source>
-        <translation>Tanara Cloud · transcription tier:</translation>
-    </message>
-    <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
-    </message>
-    <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
-    </message>
-    <message>
-        <source>Expert: %1</source>
-        <translation>Expert: %1</translation>
-    </message>
-    <message>
-        <source>Nyelv és Expert mód…</source>
-        <translation>Language and Expert mode…</translation>
-    </message>
-    <message>
         <source>Átírás indítása</source>
         <translation>Start transcription</translation>
     </message>
     <message>
         <source>Szolgáltató: %1</source>
         <translation>Provider: %1</translation>
-    </message>
-    <message>
-        <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
-        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
-    </message>
-    <message>
-        <source>Érdekel</source>
-        <translation>I&apos;m interested</translation>
     </message>
     <message>
         <source>az átírással egy menetben</source>
@@ -4136,113 +3860,6 @@
     </message>
 </context>
 <context>
-    <name>SettingsCloudPanel</name>
-    <message>
-        <source>Nincs bejelentkezve</source>
-        <translation>Not signed in</translation>
-    </message>
-    <message>
-        <source>Bejelentkezve · Tanara Cloud</source>
-        <translation>Signed in · Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Egy bejelentkezés az átíráshoz és az összefoglalóhoz. Jelszó nincs: a böngészőben hagyod jóvá.</source>
-        <translation>One sign-in for transcription and summaries. No password: you approve it in the browser.</translation>
-    </message>
-    <message>
-        <source>Kijelentkezés</source>
-        <translation>Sign out</translation>
-    </message>
-    <message>
-        <source>Bejelentkezés</source>
-        <translation>Sign in</translation>
-    </message>
-    <message>
-        <source>Részletek</source>
-        <translation>Details</translation>
-    </message>
-    <message>
-        <source>Egyenleg</source>
-        <translation>Balance</translation>
-    </message>
-    <message>
-        <source>elfogyott</source>
-        <translation>used up</translation>
-    </message>
-    <message>
-        <source>kevés</source>
-        <translation>low</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló költsége ezen felül, a szöveg hosszától függően.</source>
-        <translation>The summary costs extra, depending on the text length.</translation>
-    </message>
-    <message>
-        <source>Egyenleg frissítése</source>
-        <translation>Refresh balance</translation>
-    </message>
-    <message>
-        <source>Minőség</source>
-        <translation>Quality</translation>
-    </message>
-    <message>
-        <source>Expert mód…</source>
-        <translation>Expert mode…</translation>
-    </message>
-    <message>
-        <source>Konkrét modell választása a katalógusból</source>
-        <translation>Choose a specific model from the catalogue</translation>
-    </message>
-    <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
-    </message>
-    <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
-    </message>
-    <message>
-        <source>Expert-modell: %1</source>
-        <translation>Expert model: %1</translation>
-    </message>
-    <message>
-        <source>Átírás</source>
-        <translation>Transcription</translation>
-    </message>
-    <message>
-        <source>A megbeszélések nyelve</source>
-        <translation>Language of the meetings</translation>
-    </message>
-    <message>
-        <source>Összefoglaló</source>
-        <translation>Summary</translation>
-    </message>
-    <message>
-        <source>Költségbecslés minden feldolgozás előtt</source>
-        <translation>Cost estimate before every run</translation>
-    </message>
-    <message>
-        <source>Indítás előtt megmutatja, mennyibe kerül az átírás vagy az összefoglaló, és megerősítést kér. Kikapcsolva a feldolgozás kérdés nélkül indul.</source>
-        <translation>Before starting, it shows what the transcription or the summary will cost and asks for confirmation. When off, processing starts without asking.</translation>
-    </message>
-    <message>
-        <source>ÁSZF megtekintése…</source>
-        <translation>View the Terms…</translation>
-    </message>
-    <message>
-        <source>Napló a weben</source>
-        <translation>Log on the web</translation>
-    </message>
-    <message>
-        <source>Fiókom a weben</source>
-        <translation>My account on the web</translation>
-    </message>
-    <message>
-        <source>A saját kulcsos beállításaid megmaradnak; bármikor visszaválthatsz. Tanara Cloud módban az átíráshoz a hangfelvétel, az összefoglalóhoz az átirat a szerverünkön át a szolgáltatóhoz megy, és a feldolgozás után töröljük. A felvétel, a hanglenyomatok és minden fájl a gépeden marad.</source>
-        <translation>Your own-keys settings are kept; you can switch back at any time. In Tanara Cloud mode the recording (for transcription) and the transcript (for the summary) go to the provider through our server, and we delete them after processing. The recording, the voiceprints and every file stay on your computer.</translation>
-    </message>
-</context>
-<context>
     <name>SettingsCombo</name>
     <message>
         <source>Lista megnyitása</source>
@@ -4374,8 +3991,8 @@
         <translation>Choose a provider…</translation>
     </message>
     <message>
-        <source>Ezt a lépést a Tanara Cloud végzi: nincs kulcs, a fiókod egyenlegéből megy.</source>
-        <translation>Tanara Cloud does this step: there is no key, it is charged to your account balance.</translation>
+        <source>Ez a lépés a Tanara Cloudra van állítva, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.</source>
+        <translation>This step is set to Tanara Cloud, which is not available yet. Pick a provider with your own key.</translation>
     </message>
     <message>
         <source>A modell gondolkodása az összefoglalónál</source>
@@ -4515,12 +4132,16 @@
         <translation>Tanara Cloud</translation>
     </message>
     <message>
-        <source>Bejelentkezés és egyenleg; nincs kulcskezelés.</source>
-        <translation>Sign-in and a balance; no keys to manage.</translation>
+        <source>Nincs kulcskezelés: az átírás és az összefoglaló a fiókodon fut.</source>
+        <translation>No key handling: transcription and summaries run on your account.</translation>
     </message>
     <message>
         <source>hamarosan</source>
         <translation>coming soon</translation>
+    </message>
+    <message>
+        <source>A beállítás a Tanara Cloudot választja, ami még nem érhető el. Válassz saját kulcsos szolgáltatót.</source>
+        <translation>The setting selects Tanara Cloud, which is not available yet. Pick a provider with your own key.</translation>
     </message>
     <message>
         <source>Átírás</source>
@@ -4860,81 +4481,6 @@
     </message>
 </context>
 <context>
-    <name>SettingsWaitlistPanel</name>
-    <message>
-        <source>Tanara Cloud</source>
-        <translation>Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>hamarosan</source>
-        <translation>coming soon</translation>
-    </message>
-    <message>
-        <source>Átírás és összefoglaló saját API-kulcsok nélkül: bejelentkezel, és működik. Havidíj nélkül, csak a használatért fizetsz, a feltöltött egyenleg nem jár le. A saját kulcsos mód ingyenes marad, és továbbra is így működik.</source>
-        <translation>Transcription and summaries without your own API keys: you sign in and it works. No monthly fee, you only pay for what you use, and the balance you top up does not expire. Own-keys mode stays free and keeps working as it does now.</translation>
-    </message>
-    <message>
-        <source>Feliratkoztál: %1</source>
-        <translation>You signed up: %1</translation>
-    </message>
-    <message>
-        <source>Küldtünk egy megerősítő e-mailt. A feliratkozás a benne lévő linkre kattintva él; az indulásról ide írunk.</source>
-        <translation>We sent a confirmation e-mail. The sign-up becomes active when you click the link in it; we will write to this address about the launch.</translation>
-    </message>
-    <message>
-        <source>Másik címmel iratkozom fel</source>
-        <translation>Sign up with another address</translation>
-    </message>
-    <message>
-        <source>E-mail cím</source>
-        <translation>E-mail address</translation>
-    </message>
-    <message>
-        <source>nev@example.com</source>
-        <translation>name@example.com</translation>
-    </message>
-    <message>
-        <source>Mire használnád?</source>
-        <translation>What would you use it for?</translation>
-    </message>
-    <message>
-        <source>A megbeszélések nyelve</source>
-        <translation>Language of the meetings</translation>
-    </message>
-    <message>
-        <source>Magyar</source>
-        <translation>Hungarian</translation>
-    </message>
-    <message>
-        <source>Angol</source>
-        <translation>English</translation>
-    </message>
-    <message>
-        <source>Egyéb</source>
-        <translation>Other</translation>
-    </message>
-    <message>
-        <source>Értesítést kérek a Tanara Cloud indulásáról. Bármikor leiratkozhatok.</source>
-        <translation>Notify me when Tanara Cloud launches. I can unsubscribe at any time.</translation>
-    </message>
-    <message>
-        <source>Küldés…</source>
-        <translation>Sending…</translation>
-    </message>
-    <message>
-        <source>Értesítést kérek</source>
-        <translation>Notify me</translation>
-    </message>
-    <message>
-        <source>Adatkezelési tájékoztató</source>
-        <translation>Privacy notice</translation>
-    </message>
-    <message>
-        <source>Adatot csak a gombra kattintva küldünk: az e-mail címed, a válaszaid, a platform és a Tanara verziója. Megerősítő e-mailt kapsz; csak a megerősített cím kerül a listára.</source>
-        <translation>We send data only when you click the button: your e-mail address, your answers, the platform and the Tanara version. You&apos;ll get a confirmation e-mail; only confirmed addresses are added to the list.</translation>
-    </message>
-</context>
-<context>
     <name>SettingsWatcherPage</name>
     <message>
         <source>Hívásfigyelés</source>
@@ -5143,18 +4689,6 @@
         </translation>
     </message>
     <message>
-        <source>Kijelentkezel a Tanara Cloudból?</source>
-        <translation>Sign out of Tanara Cloud?</translation>
-    </message>
-    <message>
-        <source>A kulcsot ezen a gépen töröljük és visszavonjuk. A felvételeid és az átirataid megmaradnak.</source>
-        <translation>The key on this computer is deleted and revoked. Your recordings and transcripts are kept.</translation>
-    </message>
-    <message>
-        <source>Kijelentkezés</source>
-        <translation>Sign out</translation>
-    </message>
-    <message>
         <source>Kimeneti forma</source>
         <translation>Output format</translation>
     </message>
@@ -5173,13 +4707,6 @@
     <message>
         <source>Bezárás</source>
         <translation>Close</translation>
-    </message>
-</context>
-<context>
-    <name>ShellCloudBanners</name>
-    <message>
-        <source>Elrejtés</source>
-        <translation>Hide</translation>
     </message>
 </context>
 <context>
@@ -5925,28 +5452,12 @@
         <translation>Names, jargon and known mishearings go here (for example: “…” is really …). The summary takes this as reliable context, and a re-transcription sends it to the transcriber too.</translation>
     </message>
     <message>
-        <source>Szolgáltató: %1 · %2</source>
-        <translation>Provider: %1 · %2</translation>
-    </message>
-    <message>
         <source>Szolgáltató: %1 · a modell a Beállítások › Összefoglaló alatt cserélhető</source>
         <translation>Provider: %1 · change the model under Settings › Summary</translation>
     </message>
     <message>
-        <source>Szint módosítása</source>
-        <translation>Change tier</translation>
-    </message>
-    <message>
         <source>Megnyitás</source>
         <translation>Open</translation>
-    </message>
-    <message>
-        <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
-        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
-    </message>
-    <message>
-        <source>Érdekel</source>
-        <translation>I&apos;m interested</translation>
     </message>
 </context>
 <context>
@@ -7249,36 +6760,12 @@
         <translation>Retry</translation>
     </message>
     <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
-    </message>
-    <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
-    </message>
-    <message>
-        <source>Expert: %1</source>
-        <translation>Expert: %1</translation>
-    </message>
-    <message>
-        <source>Nyelv és Expert mód…</source>
-        <translation>Language and Expert mode…</translation>
-    </message>
-    <message>
         <source>Átírás indítása</source>
         <translation>Start transcription</translation>
     </message>
     <message>
         <source>Szolgáltató: %1</source>
         <translation>Provider: %1</translation>
-    </message>
-    <message>
-        <source>Nem akarsz kulcsokkal bajlódni? A Tanara Cloud hamarosan jön.</source>
-        <translation>Don&apos;t want to bother with keys? Tanara Cloud is coming soon.</translation>
-    </message>
-    <message>
-        <source>Érdekel</source>
-        <translation>I&apos;m interested</translation>
     </message>
 </context>
 <context>
@@ -9209,448 +8696,6 @@
     </message>
 </context>
 <context>
-    <name>tanara_gui::CloudEstimateDialog</name>
-    <message>
-        <source>Átírás — Tanara Cloud</source>
-        <translation>Transcription — Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Összefoglaló — Tanara Cloud</source>
-        <translation>Summary — Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Mód: Komplex összefoglaló (témánként)</source>
-        <translation>Mode: Complex summary (by topic)</translation>
-    </message>
-    <message>
-        <source>Mód: Gyors összefoglaló</source>
-        <translation>Mode: Quick summary</translation>
-    </message>
-    <message>
-        <source>Becsült költség</source>
-        <translation>Estimated cost</translation>
-    </message>
-    <message>
-        <source>Becslés készül…</source>
-        <translation>Estimating…</translation>
-    </message>
-    <message>
-        <source>Indítás</source>
-        <translation>Start</translation>
-    </message>
-    <message>
-        <source>Egyenleg feltöltése</source>
-        <translation>Top up balance</translation>
-    </message>
-    <message>
-        <source>Mégse</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>%1 – %2 között</source>
-        <translation>%1 – %2</translation>
-    </message>
-    <message>
-        <source>Átírás (%1), %2</source>
-        <translation>Transcription (%1), %2</translation>
-    </message>
-    <message>
-        <source>Összefoglaló (%1, %2)</source>
-        <translation>Summary (%1, %2)</translation>
-    </message>
-    <message>
-        <source>komplex</source>
-        <translation>complex</translation>
-    </message>
-    <message>
-        <source>gyors</source>
-        <translation>quick</translation>
-    </message>
-    <message>
-        <source>pontos</source>
-        <translation>exact</translation>
-    </message>
-    <message>
-        <source>becsült</source>
-        <translation>estimated</translation>
-    </message>
-    <message>
-        <source>kb. %1</source>
-        <translation>about %1</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló költsége ezen felül, a szöveg hosszától függően.</source>
-        <translation>The summary costs extra, depending on the text length.</translation>
-    </message>
-    <message>
-        <source>Egyenleged: %1</source>
-        <translation>Your balance: %1</translation>
-    </message>
-    <message>
-        <source>Utána kb. %1 marad</source>
-        <translation>About %1 left afterwards</translation>
-    </message>
-    <message>
-        <source>ez a beállított küszöb alatt van.</source>
-        <translation>this is below your low-balance threshold.</translation>
-    </message>
-    <message>
-        <source>Indítás — ≈ %1</source>
-        <translation>Start — ≈ %1</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Valószínűleg elég, de kevés tartalék marad.&lt;/b&gt; Ha menet közben elfogy, a már elkészült részek díja terhelődik, és feltöltés után folytathatod.</source>
-        <translation>&lt;b&gt;Probably enough, but with little margin.&lt;/b&gt; If it runs out midway, you pay only for the finished parts and can continue after topping up.</translation>
-    </message>
-    <message>
-        <source>Feltöltés</source>
-        <translation>Top up</translation>
-    </message>
-    <message>
-        <source>Írj nekünk</source>
-        <translation>Contact us</translation>
-    </message>
-    <message>
-        <source>Ehhez kb. %1 kell, az egyenleged %2.</source>
-        <translation>This needs about %1; your balance is %2.</translation>
-    </message>
-    <message>
-        <source>Az indításhoz tölts fel. Nem terheltünk semmit.</source>
-        <translation>Top up to start. Nothing was charged.</translation>
-    </message>
-    <message>
-        <source>Írj nekünk a feltöltéshez</source>
-        <translation>Contact us to top up</translation>
-    </message>
-    <message>
-        <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot, és próbáld újra.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection and try again.</translation>
-    </message>
-    <message>
-        <source>Újra</source>
-        <translation>Retry</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_gui::CloudLoginDialog</name>
-    <message>
-        <source>Bejelentkezés a Tanara Cloudba</source>
-        <translation>Sign in to Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Megnyitottuk a böngészőt. Ellenőrizd, hogy ugyanez a kód látszik-e, és hagyd jóvá.</source>
-        <translation>We opened your browser. Check that it shows the same code, then approve.</translation>
-    </message>
-    <message>
-        <source>Kód kérése…</source>
-        <translation>Requesting a code…</translation>
-    </message>
-    <message>
-        <source>Kód másolása</source>
-        <translation>Copy code</translation>
-    </message>
-    <message>
-        <source>Böngésző megnyitása újra</source>
-        <translation>Open browser again</translation>
-    </message>
-    <message>
-        <source>Mégse</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>Másolva ✓</source>
-        <translation>Copied ✓</translation>
-    </message>
-    <message>
-        <source>Sikeres bejelentkezés: %1</source>
-        <translation>Signed in: %1</translation>
-    </message>
-    <message>
-        <source>A kapcsolódást elutasítottad a böngészőben.</source>
-        <translation>You denied the connection in the browser.</translation>
-    </message>
-    <message>
-        <source>Újrapróbálom</source>
-        <translation>Try again</translation>
-    </message>
-    <message>
-        <source>A kód lejárt.</source>
-        <translation>The code expired.</translation>
-    </message>
-    <message>
-        <source>Új kód kérése</source>
-        <translation>Request a new code</translation>
-    </message>
-    <message>
-        <source>Hibaazonosító: %1</source>
-        <translation>Error ID: %1</translation>
-    </message>
-    <message>
-        <source>Újra</source>
-        <translation>Retry</translation>
-    </message>
-    <message>
-        <source>Ha a böngésző nem nyílt meg, nyisd meg ezt a címet: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt;, és írd be a kódot: &lt;b&gt;%2&lt;/b&gt;. Telefonon is jóváhagyhatod, ha ott vagy belépve.</source>
-        <translation>If the browser didn&apos;t open, open this address: &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter the code: &lt;b&gt;%2&lt;/b&gt;. You can also approve on your phone if you&apos;re signed in there.</translation>
-    </message>
-    <message>
-        <source>Nem sikerült megnyitni a böngészőt. Nyisd meg kézzel az alábbi címet, és írd be a kódot.</source>
-        <translation>We couldn&apos;t open your browser. Open the address below manually and enter the code.</translation>
-    </message>
-    <message>
-        <source>Várakozás a jóváhagyásra · lejár %1:%2 múlva</source>
-        <translation>Waiting for approval · expires in %1:%2</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_gui::CloudModeDialog</name>
-    <message>
-        <source>Hogyan dolgozzuk fel a meetingjeidet?</source>
-        <translation>How should we process your meetings?</translation>
-    </message>
-    <message>
-        <source>A felvétel és a beszélőfelismerés mindig a gépeden fut. Az átíráshoz és az összefoglalóhoz válassz feldolgozót — később a Beállításokban módosíthatod.</source>
-        <translation>Recording and speaker recognition always run on your computer. Choose how to process transcription and summaries — you can change it later in Settings.</translation>
-    </message>
-    <message>
-        <source>Saját kulcsok (BYO)</source>
-        <translation>Your own keys (BYO)</translation>
-    </message>
-    <message>
-        <source>Ingyenes. A saját Soniox-kulcsodat és helyi vagy saját LLM-edet használod. A hang közvetlenül a te szolgáltatódhoz megy, vagy teljesen helyben marad.</source>
-        <translation>Free. Use your own Soniox key and a local or your own LLM. Audio goes directly to your provider or stays fully local.</translation>
-    </message>
-    <message>
-        <source>Saját kulcsok beállítása</source>
-        <translation>Set up your own keys</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud</source>
-        <translation>Tanara Cloud</translation>
-    </message>
-    <message>
-        <source>Regisztráció után azonnal működik, havidíj nélkül. Próbaegyenleget adunk kártya-ellenőrzés után. A hang és az átirat a szerverünkön át a szolgáltatóhoz megy. Nem tároljuk: a feldolgozás után töröljük.</source>
-        <translation>Works right after sign-up, no subscription. Includes a trial balance after card verification. Audio and transcripts pass through our server to the provider. We don&apos;t store them: they&apos;re deleted after processing.</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud — bejelentkezés</source>
-        <translation>Tanara Cloud — sign in</translation>
-    </message>
-    <message>
-        <source>Később</source>
-        <translation>Later</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_gui::CloudModelPickerDialog</name>
-    <message>
-        <source>Expert mód — modell választása</source>
-        <translation>Expert mode — choose a model</translation>
-    </message>
-    <message>
-        <source>Átírás</source>
-        <translation>Transcription</translation>
-    </message>
-    <message>
-        <source>Összefoglaló</source>
-        <translation>Summary</translation>
-    </message>
-    <message>
-        <source>Keresés név vagy azonosító szerint…</source>
-        <translation>Search by name or ID…</translation>
-    </message>
-    <message>
-        <source>Nincs találat erre a keresésre.</source>
-        <translation>No results for this search.</translation>
-    </message>
-    <message>
-        <source>Az árak tájékoztató jellegűek (%1); a tényleges díjat a becslés és a feldolgozás után a Tanara Cloud mutatja.</source>
-        <translation>Prices are informational (%1); Tanara Cloud shows the actual cost in the estimate and after processing.</translation>
-    </message>
-    <message>
-        <source>← Vissza a Gyors / Pontos szintekhez</source>
-        <translation>← Back to Fast / Accurate tiers</translation>
-    </message>
-    <message>
-        <source>Kiválasztás</source>
-        <translation>Select</translation>
-    </message>
-    <message>
-        <source>Mégse</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>%1 / óra</source>
-        <translation>%1 / hour</translation>
-    </message>
-    <message>
-        <source>%1 / 1M bemeneti token · %2 / 1M kimeneti token</source>
-        <translation>%1 / 1M input tokens · %2 / 1M output tokens</translation>
-    </message>
-    <message>
-        <source>✓ beszélők elkülönítve</source>
-        <translation>✓ separates speakers</translation>
-    </message>
-    <message>
-        <source>▲ nem különíti el a beszélőket</source>
-        <translation>▲ doesn&apos;t separate speakers</translation>
-    </message>
-    <message>
-        <source>▲ magyarhoz nem ajánlott</source>
-        <translation>▲ not recommended for Hungarian</translation>
-    </message>
-    <message>
-        <source>▲ ehhez a nyelvhez nem ajánlott</source>
-        <translation>▲ not recommended for this language</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_gui::CloudTermsDialog</name>
-    <message>
-        <source>Az ÁSZF megváltozott</source>
-        <translation>The Terms have changed</translation>
-    </message>
-    <message>
-        <source>Új ÁSZF, hatályos: %1</source>
-        <translation>New Terms, effective %1</translation>
-    </message>
-    <message>
-        <source>A feldolgozáshoz el kell fogadnod az új ÁSZF-et.</source>
-        <translation>Accept the new Terms to continue processing.</translation>
-    </message>
-    <message>
-        <source>A futó feldolgozás nem szakad meg. A fiókod, a modellek listája és a kijelentkezés addig is működik.</source>
-        <translation>Running processing is not interrupted. Your account, the model list and sign-out keep working.</translation>
-    </message>
-    <message>
-        <source>Elfogadhatod most, vagy később. Hatálybalépés után a Tanara Cloud használatához el kell fogadnod.</source>
-        <translation>Accept now or later. After it takes effect, you&apos;ll need to accept it to keep using Tanara Cloud.</translation>
-    </message>
-    <message>
-        <source>Nem fogadom el, fiók törlése</source>
-        <translation>I don&apos;t accept — delete my account</translation>
-    </message>
-    <message>
-        <source>A fiók törlése a weben (Tanara Cloud dashboard) történik.</source>
-        <translation>Account deletion happens on the web (Tanara Cloud dashboard).</translation>
-    </message>
-    <message>
-        <source>Megtekintés</source>
-        <translation>View</translation>
-    </message>
-    <message>
-        <source>Elfogadom</source>
-        <translation>Accept</translation>
-    </message>
-    <message>
-        <source>Mégse</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>Később</source>
-        <translation>Later</translation>
-    </message>
-    <message>
-        <source>Elfogadás…</source>
-        <translation>Accepting…</translation>
-    </message>
-</context>
-<context>
-    <name>tanara_gui::CloudTierWidget</name>
-    <message>
-        <source>Automatikus</source>
-        <translation>Automatic</translation>
-    </message>
-    <message>
-        <source>Magyar</source>
-        <translation>Hungarian</translation>
-    </message>
-    <message>
-        <source>Angol</source>
-        <translation>English</translation>
-    </message>
-    <message>
-        <source>Német</source>
-        <translation>German</translation>
-    </message>
-    <message>
-        <source>Francia</source>
-        <translation>French</translation>
-    </message>
-    <message>
-        <source>Spanyol</source>
-        <translation>Spanish</translation>
-    </message>
-    <message>
-        <source>Olasz</source>
-        <translation>Italian</translation>
-    </message>
-    <message>
-        <source>Lengyel</source>
-        <translation>Polish</translation>
-    </message>
-    <message>
-        <source>Román</source>
-        <translation>Romanian</translation>
-    </message>
-    <message>
-        <source>Szlovák</source>
-        <translation>Slovak</translation>
-    </message>
-    <message>
-        <source>Átírás szintje:</source>
-        <translation>Transcription tier:</translation>
-    </message>
-    <message>
-        <source>Összefoglaló szintje:</source>
-        <translation>Summary tier:</translation>
-    </message>
-    <message>
-        <source>Gyors</source>
-        <translation>Fast</translation>
-    </message>
-    <message>
-        <source>Pontos</source>
-        <translation>Accurate</translation>
-    </message>
-    <message>
-        <source>Expert mód…</source>
-        <translation>Expert mode…</translation>
-    </message>
-    <message>
-        <source>A meeting nyelve:</source>
-        <translation>Meeting language:</translation>
-    </message>
-    <message>
-        <source>Expert: &lt;b&gt;%1&lt;/b&gt;</source>
-        <translation>Expert: &lt;b&gt;%1&lt;/b&gt;</translation>
-    </message>
-    <message>
-        <source>%1 / óra</source>
-        <translation>%1 / hour</translation>
-    </message>
-    <message>
-        <source>Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg. A felvételed sávjai megmaradnak. Ha fontos, ki mit mondott, válaszd a Pontos szintet.</source>
-        <translation>This tier doesn&apos;t separate speakers: everyone appears as one speaker in the transcript. Your recording keeps its separate tracks. If it matters who said what, choose Accurate.</translation>
-    </message>
-    <message>
-        <source>Magyar nyelvhez nem ajánljuk — a pontosság gyengébb lehet.</source>
-        <translation>Not recommended for Hungarian — accuracy may be lower.</translation>
-    </message>
-    <message>
-        <source>Ehhez a nyelvhez nem ajánljuk — a pontosság gyengébb lehet.</source>
-        <translation>Not recommended for this language — accuracy may be lower.</translation>
-    </message>
-    <message>
-        <source>A korábban választott modell már nem érhető el; a %1 szintet használjuk.</source>
-        <translation>The previously chosen model is no longer available; we use the %1 tier.</translation>
-    </message>
-    <message>
-        <source>A modell-lista még nem töltődött le — a szintek a bejelentkezés után frissülnek.</source>
-        <translation>The model list hasn&apos;t loaded yet — the tiers update after you sign in.</translation>
-    </message>
-</context>
-<context>
     <name>tanara_gui::QmlShellBridge</name>
     <message>
         <source>Hangfájl kiválasztása</source>
@@ -9691,85 +8736,6 @@
     <message>
         <source>Résztvevők azonosítása</source>
         <translation>Identifying participants</translation>
-    </message>
-    <message>
-        <source>Elfogadtad az ÁSZF %1 verzióját.</source>
-        <translation>You accepted Terms version %1.</translation>
-    </message>
-    <message>
-        <source>Az előző átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.</source>
-        <translation>Your previous transcription failed on the provider side. We refunded the %1 charge.</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud: nincs bejelentkezve</source>
-        <translation>Tanara Cloud: not signed in</translation>
-    </message>
-    <message>
-        <source>Bejelentkezés a Beállításokban</source>
-        <translation>Sign in from Settings</translation>
-    </message>
-    <message>
-        <source>%1 · ≈ %2 Pontos</source>
-        <translation>%1 · ≈ %2 Accurate</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud egyenleg (%1)</source>
-        <translation>Tanara Cloud balance (%1)</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud: …</source>
-        <translation>Tanara Cloud: …</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloudhoz frissítés kell (legalább %1). A saját kulcsos mód működik.</source>
-        <translation>Tanara Cloud requires an update (%1 or newer). Your own-keys mode works.</translation>
-    </message>
-    <message>
-        <source>Frissítés most</source>
-        <translation>Update now</translation>
-    </message>
-    <message>
-        <source>Feltöltés</source>
-        <translation>Top up</translation>
-    </message>
-    <message>
-        <source>Írj nekünk</source>
-        <translation>Contact us</translation>
-    </message>
-    <message>
-        <source>Elfogyott az egyenleged. A Tanara Cloud feldolgozás a feltöltésig szünetel; a saját kulcsos mód továbbra is működik.</source>
-        <translation>Your balance is used up. Tanara Cloud processing is paused until you top up; your own-keys mode keeps working.</translation>
-    </message>
-    <message>
-        <source>Kevés az egyenleged: %1 (≈ %2 Pontos átírás).</source>
-        <translation>Your balance is low: %1 (≈ %2 Accurate transcription).</translation>
-    </message>
-    <message>
-        <source>Részletek</source>
-        <translation>Details</translation>
-    </message>
-    <message>
-        <source>Ez az átírás %1 volt. Egyenleg: %2.</source>
-        <translation>This transcription cost %1. Balance: %2.</translation>
-    </message>
-    <message numerus="yes">
-        <source>Az összefoglaló %1 volt (%n rész). Egyenleg: %2.</source>
-        <translation>
-            <numerusform>This summary cost %1 (%n part). Balance: %2.</numerusform>
-            <numerusform>This summary cost %1 (%n parts). Balance: %2.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>A témák kigyűjtése %1 volt. Egyenleg: %2.</source>
-        <translation>Collecting the topics cost %1. Balance: %2.</translation>
-    </message>
-    <message>
-        <source>Az összefoglaló %1 volt. Egyenleg: %2.</source>
-        <translation>This summary cost %1. Balance: %2.</translation>
-    </message>
-    <message>
-        <source>Az átírás a szolgáltató hibája miatt nem sikerült. A díjat (%1) visszaírtuk.</source>
-        <translation>The transcription failed on the provider side. We refunded the %1 charge.</translation>
     </message>
 </context>
 <context>
@@ -11002,26 +9968,6 @@
 <context>
     <name>tanara_qml::PreTranscriptViewModel</name>
     <message>
-        <source>automatikus nyelvfelismerés</source>
-        <translation>automatic language detection</translation>
-    </message>
-    <message>
-        <source>nyelv: %1</source>
-        <translation>language: %1</translation>
-    </message>
-    <message>
-        <source>Ez a szint nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg. Ha fontos, ki mit mondott, válaszd a Pontos szintet.</source>
-        <translation>This tier doesn&apos;t separate speakers: everyone appears as a single speaker in the transcript. If it matters who said what, choose the Accurate tier.</translation>
-    </message>
-    <message>
-        <source>Ehhez a nyelvhez ezt a szintet nem ajánljuk: a pontosság gyengébb lehet.</source>
-        <translation>We don&apos;t recommend this tier for this language: accuracy may be lower.</translation>
-    </message>
-    <message>
-        <source>A modell-lista még nem töltődött le; a szintek a bejelentkezés után frissülnek.</source>
-        <translation>The model list has not been downloaded yet; the tiers are updated after you sign in.</translation>
-    </message>
-    <message>
         <source>MMM d. HH:mm</source>
         <translation>MMM d, HH:mm</translation>
     </message>
@@ -11094,8 +10040,8 @@
         <translation>No transcription provider is set up</translation>
     </message>
     <message>
-        <source>Hiányzik: API-kulcs (Soniox). Add meg a saját kulcsodat, vagy jelentkezz be a Tanara Cloudba.</source>
-        <translation>Missing: API key (Soniox). Enter your own key, or sign in to Tanara Cloud.</translation>
+        <source>Hiányzik: API-kulcs (Soniox). Add meg a saját szolgáltatód adatait a Beállításokban.</source>
+        <translation>Missing: API key (Soniox). Enter your own provider details in Settings.</translation>
     </message>
     <message>
         <source>Szolgáltató beállítása</source>
@@ -11209,213 +10155,6 @@
     </message>
 </context>
 <context>
-    <name>tanara_qml::SettingsCloudModel</name>
-    <message>
-        <source>Eldobható e-mail címmel nem lehet feliratkozni. Adj meg egy állandó címet.</source>
-        <translation>Disposable e-mail addresses are not accepted. Please use a permanent address.</translation>
-    </message>
-    <message>
-        <source>Ellenőrizd az e-mail címet.</source>
-        <translation>Check the e-mail address.</translation>
-    </message>
-    <message>
-        <source>Nem értük el a szervert. Ellenőrizd az internetkapcsolatot.</source>
-        <translation>We couldn&apos;t reach the server. Check your internet connection.</translation>
-    </message>
-    <message>
-        <source>Nem sikerült a feliratkozás. Próbáld újra később.</source>
-        <translation>The sign-up failed. Try again later.</translation>
-    </message>
-    <message>
-        <source>Hibaazonosító: %1</source>
-        <translation>Error ID: %1</translation>
-    </message>
-    <message>
-        <source>≈ %1 Pontos · ≈ %2 Gyors átírás</source>
-        <translation>≈ %1 Accurate · ≈ %2 Fast transcription</translation>
-    </message>
-    <message>
-        <source>Feltöltés</source>
-        <translation>Top up</translation>
-    </message>
-    <message>
-        <source>Írj nekünk a feltöltéshez</source>
-        <translation>Contact us to top up</translation>
-    </message>
-    <message>
-        <source>Frissítsd a Tanarát (legalább %1; neked %2 van).</source>
-        <translation>Update Tanara (%1 or newer; you have %2).</translation>
-    </message>
-    <message>
-        <source>Frissítés</source>
-        <translation>Update</translation>
-    </message>
-    <message>
-        <source>Ezt az eszközt leválasztották. Jelentkezz be újra.</source>
-        <translation>This device was disconnected. Please sign in again.</translation>
-    </message>
-    <message>
-        <source>Bejelentkezés</source>
-        <translation>Sign in</translation>
-    </message>
-    <message>
-        <source>A fiókod fizetési vita miatt fel van függesztve. Részletek a weben.</source>
-        <translation>Your account is suspended due to a payment dispute. Details on the web.</translation>
-    </message>
-    <message>
-        <source>A fiókod fel van függesztve. Írj a supportnak.</source>
-        <translation>Your account is suspended. Contact support.</translation>
-    </message>
-    <message>
-        <source>Megnyitás a weben</source>
-        <translation>Open on the web</translation>
-    </message>
-    <message>
-        <source>Az egyenleg most nem elérhető — utolsó ismert egyenleg: %1 (%2).</source>
-        <translation>The balance is not available right now — last known balance: %1 (%2).</translation>
-    </message>
-    <message>
-        <source>Az egyenleg most nem elérhető.</source>
-        <translation>The balance is not available right now.</translation>
-    </message>
-    <message>
-        <source>Elfogyott az egyenleged. A Tanara Cloud feldolgozás a feltöltésig szünetel.</source>
-        <translation>Your balance is used up. Tanara Cloud processing is paused until you top up.</translation>
-    </message>
-    <message>
-        <source>Írj nekünk</source>
-        <translation>Contact us</translation>
-    </message>
-    <message>
-        <source>Kevés az egyenleged.</source>
-        <translation>Your balance is low.</translation>
-    </message>
-    <message>
-        <source>A próbaegyenleg az e-mail címed megerősítése után jár.</source>
-        <translation>The trial balance is credited after you confirm your e-mail address.</translation>
-    </message>
-    <message>
-        <source>A próbaegyenleget a kártya-ellenőrzés után írjuk jóvá.</source>
-        <translation>The trial balance is credited after the card check.</translation>
-    </message>
-    <message>
-        <source>Ezzel a kártyával már aktiváltak próbaegyenleget.</source>
-        <translation>A trial balance was already activated with this card.</translation>
-    </message>
-    <message>
-        <source>Az ÁSZF új verzióját (%1) még nem fogadtad el — nélküle a feldolgozás nem indul.</source>
-        <translation>You have not accepted the new version of the Terms (%1) yet — processing will not start without it.</translation>
-    </message>
-    <message>
-        <source>Új ÁSZF lép életbe (%1). Már most elfogadhatod.</source>
-        <translation>New Terms are coming into effect (%1). You can accept them now.</translation>
-    </message>
-    <message>
-        <source>Elfogadott ÁSZF: %1</source>
-        <translation>Accepted Terms: %1</translation>
-    </message>
-    <message>
-        <source>Gyors: hamarabb elkészül és olcsóbb.</source>
-        <translation>Fast: finishes sooner and costs less.</translation>
-    </message>
-    <message>
-        <source>Pontos: nevekhez és szakszavakhoz megbízhatóbb.</source>
-        <translation>Accurate: more reliable for names and jargon.</translation>
-    </message>
-    <message>
-        <source>Gyors: rövidebb, olcsóbb összefoglaló-modell.</source>
-        <translation>Fast: a smaller, cheaper summary model.</translation>
-    </message>
-    <message>
-        <source>Pontos: alaposabb összefoglaló-modell.</source>
-        <translation>Accurate: a more thorough summary model.</translation>
-    </message>
-    <message>
-        <source>A modell-lista még nem töltődött le — az árak a bejelentkezés után látszanak.</source>
-        <translation>The model list has not been downloaded yet — prices appear after you sign in.</translation>
-    </message>
-    <message>
-        <source>A korábban választott modell már nem érhető el; a szint modelljét használjuk.</source>
-        <translation>The model you chose earlier is no longer available; the tier&apos;s model is used.</translation>
-    </message>
-    <message>
-        <source>%1 / óra.</source>
-        <translation>%1 / hour.</translation>
-    </message>
-    <message>
-        <source>Nem különíti el a beszélőket: az átiratban mindenki egy beszélőként jelenik meg.</source>
-        <translation>It does not separate speakers: everyone appears as one speaker in the transcript.</translation>
-    </message>
-    <message>
-        <source>Magyar nyelvhez nem ajánljuk.</source>
-        <translation>Not recommended for Hungarian.</translation>
-    </message>
-    <message>
-        <source>Ehhez a nyelvhez nem ajánljuk.</source>
-        <translation>Not recommended for this language.</translation>
-    </message>
-    <message>
-        <source>Automatikus</source>
-        <translation>Automatic</translation>
-    </message>
-    <message>
-        <source>Magyar</source>
-        <translation>Hungarian</translation>
-    </message>
-    <message>
-        <source>Angol</source>
-        <translation>English</translation>
-    </message>
-    <message>
-        <source>Német</source>
-        <translation>German</translation>
-    </message>
-    <message>
-        <source>Francia</source>
-        <translation>French</translation>
-    </message>
-    <message>
-        <source>Spanyol</source>
-        <translation>Spanish</translation>
-    </message>
-    <message>
-        <source>Olasz</source>
-        <translation>Italian</translation>
-    </message>
-    <message>
-        <source>Lengyel</source>
-        <translation>Polish</translation>
-    </message>
-    <message>
-        <source>Román</source>
-        <translation>Romanian</translation>
-    </message>
-    <message>
-        <source>Szlovák</source>
-        <translation>Slovak</translation>
-    </message>
-    <message>
-        <source>— (nem kötelező)</source>
-        <translation>— (optional)</translation>
-    </message>
-    <message>
-        <source>Megbeszélések</source>
-        <translation>Meetings</translation>
-    </message>
-    <message>
-        <source>Interjúk</source>
-        <translation>Interviews</translation>
-    </message>
-    <message>
-        <source>Hangfájlok</source>
-        <translation>Audio files</translation>
-    </message>
-    <message>
-        <source>Egyéb</source>
-        <translation>Other</translation>
-    </message>
-</context>
-<context>
     <name>tanara_qml::SettingsEmbeddingModel</name>
     <message>
         <source>Nincs (alap)</source>
@@ -11426,16 +10165,12 @@
         <translation>Local endpoint</translation>
     </message>
     <message>
+        <source>Tanara Cloud · hamarosan</source>
+        <translation>Tanara Cloud · coming soon</translation>
+    </message>
+    <message>
         <source>A Tanara Cloud hamarosan érkezik.</source>
         <translation>Tanara Cloud is coming soon.</translation>
-    </message>
-    <message>
-        <source>Ehhez jelentkezz be a Tanara Cloudba (fent, a Tanara Cloud kártyán).</source>
-        <translation>Sign in to Tanara Cloud for this (above, on the Tanara Cloud card).</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud</source>
-        <translation>Tanara Cloud</translation>
     </message>
     <message>
         <source>A rokon témákat is felismeri, akkor is, ha más szavakkal beszéltetek róla. Nem kell hozzá helyi modell.</source>
@@ -11450,18 +10185,6 @@
         <translation>Suggestions work at the basic level: based on shared participants, names and similar title. No model needed, and nothing leaves your computer.</translation>
     </message>
     <message>
-        <source>Az átiratok szövege a Tanara Cloudba kerül feldolgozásra, ugyanúgy, mint a felhős összefoglalásnál. A hangfelvétel és a hanglenyomatok a gépen maradnak.</source>
-        <translation>Transcript text is sent to Tanara Cloud for processing, just like with cloud summaries. The audio recording and voiceprints stay on your computer.</translation>
-    </message>
-    <message>
-        <source>Az előkészítés egyszer kb. %1 kredit, utána megbeszélésenként ~%2.</source>
-        <translation>Preparing costs about %1 credits once, then ~%2 per meeting.</translation>
-    </message>
-    <message>
-        <source>A Tanara Cloudhoz be kell jelentkezned (fent, a Tanara Cloud kártyán). Addig a javaslatok az alap szinten működnek.</source>
-        <translation>You need to sign in to Tanara Cloud (above, on the Tanara Cloud card). Until then, suggestions work at the basic level.</translation>
-    </message>
-    <message>
         <source>Alap szint</source>
         <translation>Basic level</translation>
     </message>
@@ -11470,8 +10193,8 @@
         <translation>Connected</translation>
     </message>
     <message>
-        <source>Bejelentkezés kell</source>
-        <translation>Sign-in required</translation>
+        <source>Nem elérhető</source>
+        <translation>Not available</translation>
     </message>
     <message>
         <source>Nem érhető el</source>
@@ -11658,10 +10381,6 @@
     <message>
         <source>Modellváltás · mentéskor újraindul az előkészítés</source>
         <translation>Model change · preparation restarts on save</translation>
-    </message>
-    <message>
-        <source>Tanara Cloud kiválasztva · mentéskor átvált</source>
-        <translation>Tanara Cloud selected · switches on save</translation>
     </message>
     <message>
         <source>Új hangmodell · mentéskor indul a minták pótlása</source>
@@ -11954,6 +10673,10 @@
     <message>
         <source>Nem indítható: %1</source>
         <translation>Cannot start: %1</translation>
+    </message>
+    <message>
+        <source>A Tanara Cloud még nem érhető el: a Beállításokban saját kulcsot adj meg.</source>
+        <translation>Tanara Cloud is not available yet: enter your own key in Settings.</translation>
     </message>
     <message numerus="yes">
         <source>A mostani átirat és a benne lévő %n kézi javítás elvész, az összefoglaló elavulttá válik.</source>
@@ -12270,18 +10993,6 @@
     <message>
         <source>Az átirat kész, %1 beszélő, %2 megszólalás.</source>
         <translation>The transcript is ready: %1 speakers, %2 utterances.</translation>
-    </message>
-    <message>
-        <source>Expert-modell</source>
-        <translation>Expert model</translation>
-    </message>
-    <message>
-        <source>Gyors szint</source>
-        <translation>Fast tier</translation>
-    </message>
-    <message>
-        <source>Pontos szint</source>
-        <translation>Accurate tier</translation>
     </message>
     <message>
         <source>MMM d. HH:mm</source>

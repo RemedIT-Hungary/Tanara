@@ -203,8 +203,6 @@ private slots:
         QVERIFY(!vm.sttReady());
         QCOMPARE(vm.llmStatus(), QStringLiteral("Összefoglaló: LM Studio · gemma-4-12b"));
         QVERIFY(vm.llmReady());
-        QVERIFY(!vm.cloudLive());
-        QVERIFY(!vm.cloudChosen());
 
         m_app->setSecret(tanara::keys::SonioxApiKey, QStringLiteral("teszt-kulcs"));
         vm.refreshReadiness();
